@@ -76,6 +76,21 @@ test('simulation stays in manual review even when its narrative value is high', 
   assert.ok(normalized.blockers.includes('reader_visibility_unconfirmed'));
 });
 
+test('invalid sources cannot acquire a safe visibility gate from normalized prose defaults', () => {
+  for (const entry of [
+    fact({ source: { ...fact().source, authority: 'possibility' } }),
+    fact({ owner: { chatKey: 'chat-b' } }),
+    fact({ schema: 'qianmu.narrative-entry.v999' }),
+  ]) {
+    const result = scoreNarrativeDirectorCandidate(entry, { chatKey: 'chat-a', viewerId: 'user' });
+    assert.equal(result.gates.sourceValid, false);
+    assert.equal(result.gates.spoilerSafe, false);
+    assert.equal(result.dimensions.spoilerRisk, 100);
+    assert.equal(result.recommendation, 'reject');
+    assert.ok(result.blockers.some(issue => issue.startsWith('source:')));
+  }
+});
+
 test('contradicted or near-duplicate shots are rejected instead of filling a shot quota', () => {
   const entry = fact({ entryId: 'coat-fact' });
   const contradicted = scoreNarrativeDirectorCandidate(entry, { chatKey: 'chat-a', contradictedEntryIds: ['coat-fact'] });
@@ -112,6 +127,15 @@ test('candidate normalization strips media, prompts and provider payloads', () =
     blob: new Blob(['x']), providerResponse: { result: 'raw' },
   });
   assert.doesNotMatch(JSON.stringify(normalized), /secret prompt|secret|example\.invalid|providerResponse|raw/);
+});
+
+test('candidate permission gates require actual booleans rather than truthy strings or objects', () => {
+  for (const value of ['false', 'true', 1, [], {}, null, undefined]) {
+    const gates = Object.fromEntries(['sourceValid', 'factConsistency', 'spoilerSafe', 'shotDistinct'].map(key => [key, value]));
+    assert.deepEqual(normalizeDirectorCandidate({ gates }).gates, { sourceValid: false, factConsistency: false, spoilerSafe: false, shotDistinct: false });
+  }
+  assert.deepEqual(normalizeDirectorCandidate({ gates: { source_valid: true, fact_consistency: true, spoiler_safe: true, shot_distinct: true } }).gates,
+    { sourceValid: true, factConsistency: true, spoilerSafe: true, shotDistinct: true });
 });
 
 test('director candidate scoring remains an idle release chunk', async () => {

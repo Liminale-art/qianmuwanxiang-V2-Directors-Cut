@@ -104,6 +104,7 @@ export function normalizeDirectorWorkOrder(value = {}) {
 export function validateDirectorWorkOrder(value = {}, consumer = '', chatKey = '') {
   const workOrder = normalizeDirectorWorkOrder(value);
   const issues = [];
+  if (value?.schema !== undefined && value.schema !== QIANMU_DIRECTOR_WORK_ORDER_SCHEMA) issues.push('work_order_schema_unsupported');
   if (!workOrder.workOrderId) issues.push('work_order_id_missing');
   if (!workOrder.owner.chatKey) issues.push('owner_chat_missing');
   if (chatKey && workOrder.owner.chatKey !== text(chatKey, 512)) issues.push('owner_chat_mismatch');
@@ -125,7 +126,7 @@ export function createDirectorWorkOrder(decisionValue = {}, consumer = '', chatK
   const normalizedConsumer = text(consumer, 40);
   const ownerChatKey = text(chatKey, 512);
   const issues = [];
-  if (!canConsumeDirectorDecision(decision, normalizedConsumer, ownerChatKey)) issues.push('decision_not_consumable');
+  if (!canConsumeDirectorDecision(decisionValue, normalizedConsumer, ownerChatKey)) issues.push('decision_not_consumable');
   const createdAt = timestamp(options.createdAt || options.created_at) || Date.now();
   const workOrder = normalizeDirectorWorkOrder({
     workOrderId: `work-${hash(`${decision.decisionId}|${decision.approval.revision}|${normalizedConsumer}`)}`,
@@ -142,7 +143,8 @@ export function createDirectorWorkOrder(decisionValue = {}, consumer = '', chatK
     createdAt,
   });
   const validation = validateDirectorWorkOrder(workOrder, normalizedConsumer, ownerChatKey);
-  return { ok: issues.length === 0 && validation.ok, issues: [...new Set([...issues, ...validation.issues])], workOrder };
+  const ok = issues.length === 0 && validation.ok;
+  return { ok, issues: [...new Set([...issues, ...validation.issues])], workOrder: ok ? workOrder : null };
 }
 
 export function canConsumeDirectorWorkOrder(value = {}, consumer = '', chatKey = '') {

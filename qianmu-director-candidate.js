@@ -71,13 +71,13 @@ export function scoreNarrativeDirectorCandidate(value = {}, context = {}) {
   const signature = text(direction.shotSignature || direction.shot_signature || [direction.duty, entry.fact.summary].filter(Boolean).join(' '), 1200);
   const sourceValid = validation.ok;
   const factConsistency = entry.continuity.state === 'active' && !contradicted.has(entry.entryId);
-  const spoilerSafe = canExposeNarrativeLedgerEntryToMainline(entry, options.viewerId || options.viewer_id);
+  const spoilerSafe = sourceValid && canExposeNarrativeLedgerEntryToMainline(entry, options.viewerId || options.viewer_id);
   const novelty = shotNovelty(signature, recentSignatures);
   const shotDistinct = novelty >= 25;
   const dimensions = {
     narrativeValue: score(direction.narrativeValue ?? direction.narrative_value, entry.evidenceRefs.length ? 65 : 50),
     continuityRisk: factConsistency ? (entry.evidenceRefs.length ? 10 : 30) : 100,
-    spoilerRisk: spoilerRisk(entry, options.viewerId || options.viewer_id),
+    spoilerRisk: sourceValid ? spoilerRisk(entry, options.viewerId || options.viewer_id) : 100,
     rhythmDistance: rhythmDistance(entry, options.currentFloor ?? options.current_floor),
     shotNovelty: novelty,
   };
@@ -167,10 +167,10 @@ export function normalizeDirectorCandidate(value = {}) {
     },
     total: score(raw.total, 0),
     gates: {
-      sourceValid: Boolean(gatesRaw.sourceValid ?? gatesRaw.source_valid),
-      factConsistency: Boolean(gatesRaw.factConsistency ?? gatesRaw.fact_consistency),
-      spoilerSafe: Boolean(gatesRaw.spoilerSafe ?? gatesRaw.spoiler_safe),
-      shotDistinct: Boolean(gatesRaw.shotDistinct ?? gatesRaw.shot_distinct),
+      sourceValid: (gatesRaw.sourceValid ?? gatesRaw.source_valid) === true,
+      factConsistency: (gatesRaw.factConsistency ?? gatesRaw.fact_consistency) === true,
+      spoilerSafe: (gatesRaw.spoilerSafe ?? gatesRaw.spoiler_safe) === true,
+      shotDistinct: (gatesRaw.shotDistinct ?? gatesRaw.shot_distinct) === true,
     },
     blockers: list(raw.blockers, 32, 200),
     recommendation: QIANMU_DIRECTOR_RECOMMENDATIONS.includes(raw.recommendation) ? raw.recommendation : 'reject',

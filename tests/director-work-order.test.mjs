@@ -63,6 +63,38 @@ test('unapproved consumers and revoked decisions cannot issue work orders', () =
   assert.ok(closed.issues.includes('decision_not_consumable'));
 });
 
+test('failed dispatch cannot leak a ready work order across a chat, revocation or consumer boundary', () => {
+  const decision = approvedDecision({ storyboard: true });
+  const before = structuredClone(decision);
+  for (const [input, consumer, chatKey] of [
+    [decision, 'storyboard', 'chat-b'],
+    [decision, 'voice', 'chat-a'],
+    [decision, 'subtitle', 'chat-a'],
+    [decision, 'film', 'chat-a'],
+    [revokeDirectorDecision(decision, 200), 'storyboard', 'chat-a'],
+  ]) {
+    const result = createDirectorWorkOrder(input, consumer, chatKey, { createdAt: 300 });
+    assert.equal(result.ok, false);
+    assert.equal(canConsumeDirectorWorkOrder(result.workOrder, consumer, chatKey), false);
+    assert.equal(directorWorkOrderToStoryboardShot(result.workOrder, chatKey), null);
+    assert.deepEqual(directorWorkOrderToVoiceLines(result.workOrder, chatKey), []);
+    assert.deepEqual(directorWorkOrderToSubtitleCues(result.workOrder, chatKey), []);
+    assert.equal(result.workOrder, null);
+  }
+  assert.deepEqual(decision, before);
+});
+
+test('future work-order formats are not silently converted into executable v1 orders', () => {
+  const decision = approvedDecision({ storyboard: true });
+  const { workOrder } = createDirectorWorkOrder(decision, 'storyboard', 'chat-a', { createdAt: 200 });
+  const legacy = structuredClone(workOrder);
+  delete legacy.schema;
+  assert.equal(canConsumeDirectorWorkOrder(legacy, 'storyboard', 'chat-a'), true);
+  const future = { ...workOrder, schema: 'qianmu.director-work-order.v999' };
+  assert.equal(canConsumeDirectorWorkOrder(future, 'storyboard', 'chat-a'), false);
+  assert.equal(directorWorkOrderToStoryboardShot(future, 'chat-a'), null);
+});
+
 test('storyboard adapter reads the work order rather than the source production packet', () => {
   const decision = approvedDecision({ storyboard: true });
   const { workOrder } = createDirectorWorkOrder(decision, 'storyboard', 'chat-a', { createdAt: 200 });

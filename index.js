@@ -614,7 +614,7 @@ async function refreshDirectorCandidatePool(packets, context = {}, requestEpoch 
     const entries = (Array.isArray(packets) ? packets : []).map(ledgerRuntime.adaptProductionPacketToNarrativeLedgerEntry);
     const ledger = ledgerRuntime.normalizeNarrativeLedger({ owner: { chatKey }, entries, revision: 0, updatedAt: new Date().toISOString() });
     const pool = candidateRuntime.buildNarrativeDirectorCandidatePool(ledger.entries, {
-      chatKey, viewerId: 'user', currentFloor: Number(context.floor), recentShotSignatures: [],
+      chatKey, viewerId: 'user', currentFloor: context.floor, recentShotSignatures: [],
     });
     const storyboard = storyboardState();
     if (requestEpoch !== directorNarrativeBridgeEpoch || !storyboard.enabled || !storyboard.directorBridge?.worldSideShotsEnabled) return null;

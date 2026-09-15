@@ -1,5 +1,5 @@
 // 千幕·导演决策单。把用户确认后的候选转成下游唯一可消费凭据；不读写存储、媒体或网络。
-import { normalizeDirectorCandidate } from './qianmu-director-candidate.js';
+import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate } from './qianmu-director-candidate.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 
 export const QIANMU_DIRECTOR_DECISION_SCHEMA = 'qianmu.director-decision.v1';
@@ -92,6 +92,7 @@ export function normalizeDirectorDecision(value = {}) {
 export function validateDirectorDecision(value = {}) {
   const decision = normalizeDirectorDecision(value);
   const issues = [];
+  if (value?.schema !== undefined && value.schema !== QIANMU_DIRECTOR_DECISION_SCHEMA) issues.push('decision_schema_unsupported');
   if (!decision.decisionId) issues.push('decision_id_missing');
   if (!decision.owner.chatKey) issues.push('owner_chat_missing');
   if (!decision.source.candidateId || !decision.source.ledgerEntryId || !decision.source.packetId) issues.push('source_chain_incomplete');
@@ -110,9 +111,12 @@ export function createDirectorDecision(candidateValue = {}, packetValue = {}, op
   const chatKey = text(input.chatKey || input.chat_key, 512);
   const packetChatKey = packetOwner(packet);
   const issues = [];
+  if (candidateValue?.schema !== undefined && candidateValue.schema !== QIANMU_DIRECTOR_CANDIDATE_SCHEMA) issues.push('candidate_schema_unsupported');
   if (!chatKey || candidate.owner.chatKey !== chatKey || packetChatKey !== chatKey) issues.push('owner_chat_mismatch');
   if (candidate.recommendation === 'reject') issues.push('candidate_rejected');
-  if (candidate.recommendation === 'manual_review' && input.explicitApproval !== true) issues.push('explicit_approval_required');
+  if (!candidate.gates.sourceValid || !candidate.gates.factConsistency || !candidate.gates.shotDistinct
+    || (candidate.recommendation === 'automatic' && (!candidate.gates.spoilerSafe || candidate.sourceKind !== 'prose'))) issues.push('candidate_gate_failed');
+  if (input.explicitApproval !== true) issues.push('explicit_approval_required');
   if (candidate.entryId !== text(input.ledgerEntryId || input.ledger_entry_id, 200)) issues.push('ledger_entry_mismatch');
   const visual = plain(packet.visualIntent) ? packet.visualIntent : {};
   const audio = plain(packet.audioIntent) ? packet.audioIntent : {};
@@ -143,7 +147,9 @@ export function createDirectorDecision(candidateValue = {}, packetValue = {}, op
     },
   });
   const validation = validateDirectorDecision(decision);
-  return { ok: issues.length === 0 && validation.ok, issues: [...new Set([...issues, ...validation.issues])], decision };
+  const ok = issues.length === 0 && validation.ok;
+  // A failed confirmation must not hand callers an apparently approved receipt.
+  return { ok, issues: [...new Set([...issues, ...validation.issues])], decision: ok ? decision : null };
 }
 
 export function canConsumeDirectorDecision(value = {}, consumer = '', chatKey = '') {

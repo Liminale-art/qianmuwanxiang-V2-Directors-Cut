@@ -8,6 +8,7 @@ import {
   revokeDirectorDecision,
   validateDirectorDecision,
 } from '../qianmu-director-decision.js';
+import { createDirectorWorkOrder, canConsumeDirectorWorkOrder } from '../qianmu-director-work-order.js';
 import { adaptProductionPacketToStoryboardShotSpec, storyboardProductionContext } from '../qianmu-storyboard.js';
 
 const candidate = (overrides = {}) => ({
@@ -53,6 +54,62 @@ test('rejected, mismatched and cross-chat sources cannot produce a usable decisi
   assert.ok(foreign.issues.includes('owner_chat_mismatch'));
   assert.ok(foreign.issues.includes('ledger_entry_mismatch'));
   assert.equal(canConsumeDirectorDecision(foreign.decision, 'storyboard', 'chat-b'), false);
+});
+
+test('failed confirmation returns no approved object that another consumer could accidentally use', () => {
+  const options = { chatKey: 'chat-a', ledgerEntryId: 'simulation-packet-a', explicitApproval: true, approvedAt: 100, outputs: { storyboard: true, voice: true, subtitle: true, film: true } };
+  const cases = [
+    [candidate(), packet(), { ...options, explicitApproval: false }],
+    [candidate({ recommendation: 'reject' }), packet(), options],
+    [candidate(), packet(), { ...options, ledgerEntryId: 'wrong-entry' }],
+    [candidate(), packet({ timelineAnchor: { chatKey: 'chat-b' } }), options],
+    [candidate(), packet({ packetId: '' }), options],
+    [candidate(), packet(), { ...options, outputs: {} }],
+  ];
+  for (const [rawCandidate, rawPacket, config] of cases) {
+    const result = createDirectorDecision(rawCandidate, rawPacket, config);
+    assert.equal(result.ok, false);
+    for (const consumer of ['storyboard', 'voice', 'subtitle', 'film']) {
+      assert.equal(canConsumeDirectorDecision(result.decision, consumer, 'chat-a'), false);
+      const dispatch = createDirectorWorkOrder(result.decision, consumer, 'chat-a', { createdAt: 200 });
+      assert.equal(dispatch.ok, false);
+      assert.equal(canConsumeDirectorWorkOrder(dispatch.workOrder, consumer, 'chat-a'), false);
+    }
+    assert.equal(result.decision, null);
+  }
+});
+
+test('candidate gates cannot be bypassed by changing the recommendation or by explicit approval', () => {
+  const options = { chatKey: 'chat-a', ledgerEntryId: 'simulation-packet-a', explicitApproval: true, approvedAt: 100, outputs: { storyboard: true } };
+  for (const gate of ['sourceValid', 'factConsistency', 'shotDistinct']) {
+    const result = createDirectorDecision(candidate({ gates: { ...candidate().gates, [gate]: false } }), packet(), options);
+    assert.equal(result.ok, false, gate);
+    assert.ok(result.issues.includes('candidate_gate_failed'));
+    assert.equal(result.decision, null);
+  }
+  const invalidAuto = createDirectorDecision(candidate({ recommendation: 'automatic' }), packet(), options);
+  assert.equal(invalidAuto.ok, false, 'automatic candidates must also be safe for the reader');
+  const automatic = candidate({ sourceKind: 'prose', recommendation: 'automatic', gates: { ...candidate().gates, spoilerSafe: true } });
+  assert.equal(createDirectorDecision(automatic, packet(), { ...options, explicitApproval: false }).ok, false, 'never fabricate explicit approval');
+  assert.equal(createDirectorDecision(automatic, packet(), options).ok, true);
+  const future = createDirectorDecision(candidate({ schema: 'qianmu.director-candidate.v999' }), packet(), options);
+  assert.equal(future.ok, false);
+  assert.ok(future.issues.includes('candidate_schema_unsupported'));
+  assert.equal(future.decision, null);
+  const misleading = createDirectorDecision(candidate({ gates: { ...candidate().gates, sourceValid: 'false' } }), packet(), options);
+  assert.equal(misleading.ok, false);
+});
+
+test('unknown decision schemas cannot be dispatched while schema-less legacy decisions remain usable', () => {
+  const { decision } = createDirectorDecision(candidate(), packet(), { chatKey: 'chat-a', ledgerEntryId: 'simulation-packet-a', explicitApproval: true, approvedAt: 100 });
+  const legacy = structuredClone(decision);
+  delete legacy.schema;
+  assert.equal(canConsumeDirectorDecision(legacy, 'storyboard', 'chat-a'), true);
+  const future = { ...decision, schema: 'qianmu.director-decision.v999' };
+  assert.equal(canConsumeDirectorDecision(future, 'storyboard', 'chat-a'), false);
+  const result = createDirectorWorkOrder(future, 'storyboard', 'chat-a', { createdAt: 200 });
+  assert.equal(result.ok, false);
+  assert.equal(result.workOrder, null);
 });
 
 test('revocation immediately closes every downstream consumer', () => {

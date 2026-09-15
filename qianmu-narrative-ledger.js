@@ -121,6 +121,7 @@ export function validateNarrativeLedgerEntry(value = {}, ownerChatKey = '') {
   const entry = normalizeNarrativeLedgerEntry(raw, ownerChatKey);
   const issues = [];
   if (!plain(value)) issues.push('entry_not_object');
+  if (raw.schema !== undefined && raw.schema !== QIANMU_NARRATIVE_ENTRY_SCHEMA) issues.push('entry_schema_unsupported');
   if (!entry.owner.chatKey) issues.push('owner_chat_missing');
   if (!QIANMU_NARRATIVE_SOURCE_KINDS.includes(raw.source?.kind)) issues.push('source_kind_invalid');
   if (!entry.source.recordId) issues.push('source_record_missing');
@@ -152,6 +153,7 @@ export function validateNarrativeLedger(value = {}) {
   const ledger = normalizeNarrativeLedger(raw);
   const issues = [];
   if (!plain(value)) issues.push('ledger_not_object');
+  if (raw.schema !== undefined && raw.schema !== QIANMU_NARRATIVE_LEDGER_SCHEMA) issues.push('ledger_schema_unsupported');
   if (!ledger.owner.chatKey) issues.push('owner_chat_missing');
   if (!Array.isArray(raw.entries)) issues.push('entries_missing');
   if (Array.isArray(raw.entries) && raw.entries.length > MAX_LEDGER_ENTRIES) issues.push('entries_limit');
@@ -166,7 +168,9 @@ export function validateNarrativeLedger(value = {}) {
 }
 
 export function canExposeNarrativeLedgerEntryToMainline(value = {}, viewerId = '') {
-  const entry = normalizeNarrativeLedgerEntry(value);
+  const validation = validateNarrativeLedgerEntry(value);
+  if (!validation.ok) return false;
+  const entry = validation.entry;
   if (entry.source.kind !== 'prose' || entry.source.authority !== 'canon') return false;
   if (entry.continuity.state !== 'active' || ['possible', 'disputed'].includes(entry.confidence.state)) return false;
   const viewer = text(viewerId, 160);

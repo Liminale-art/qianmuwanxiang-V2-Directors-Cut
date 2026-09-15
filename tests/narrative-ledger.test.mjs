@@ -64,6 +64,35 @@ test('unknown sources fail closed as director-only possibilities', () => {
   assert.equal(result.entry.readerVisibility.scope, 'director_only');
 });
 
+test('mainline exposure validates source completeness and authority before applying defaults', () => {
+  for (const raw of [
+    { ...proseFact, owner: {} },
+    { ...proseFact, source: { ...proseFact.source, recordId: '' } },
+    { ...proseFact, fact: {} },
+    { ...proseFact, source: { ...proseFact.source, authority: 'possibility' } },
+    { ...proseFact, schema: 'qianmu.narrative-entry.v999' },
+  ]) {
+    assert.equal(canExposeNarrativeLedgerEntryToMainline(raw, 'user'), false);
+    assert.equal(validateNarrativeLedgerEntry(raw).ok, false);
+  }
+});
+
+test('legacy and v1 visibility remain viewer-scoped without rewriting saved records', () => {
+  const legacy = { ...proseFact, readerVisibility: { scope: 'limited', viewerIds: ['alice', 'user'], hiddenFrom: ['user'] } };
+  const before = structuredClone(legacy);
+  for (const entry of [legacy, normalizeNarrativeLedgerEntry(legacy)]) {
+    assert.equal(validateNarrativeLedgerEntry(entry).ok, true);
+    assert.equal(canExposeNarrativeLedgerEntryToMainline(entry, 'alice'), true);
+    assert.equal(canExposeNarrativeLedgerEntryToMainline(entry, 'user'), false);
+    assert.equal(canExposeNarrativeLedgerEntryToMainline(entry, 'bob'), false);
+    assert.equal(canExposeNarrativeLedgerEntryToMainline(entry), false);
+  }
+  assert.deepEqual(legacy, before);
+  const unknown = validateNarrativeLedger({ schema: 'qianmu.narrative-ledger.v999', owner: { chatKey: 'chat-a' }, entries: [proseFact] });
+  assert.equal(unknown.ok, false);
+  assert.ok(unknown.issues.includes('ledger_schema_unsupported'));
+});
+
 test('ledger validation is bounded, chat-owned and rejects duplicate facts', () => {
   const first = normalizeNarrativeLedgerEntry(proseFact);
   const otherChat = { ...proseFact, owner: { chatKey: 'chat-b' }, entryId: 'other' };

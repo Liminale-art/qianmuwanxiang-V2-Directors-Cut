@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import vm from 'node:vm';
+import * as ledgerRuntime from '../qianmu-narrative-ledger.js';
+import * as candidateRuntime from '../qianmu-director-candidate.js';
 import {
   STORYBOARD_SCHEMA_VERSION,
   createStoryboardDefaults,
@@ -74,6 +77,25 @@ test('production packets become director-only ledger possibilities', () => {
   assert.equal(entry.temporalState, 'future');
   assert.equal(entry.readerVisibility.scope, 'director_only');
   assert.equal(canExposeNarrativeLedgerEntryToMainline(entry, 'user'), false);
+});
+
+test('the actual bridge preserves unknown current-floor context before candidate scoring', async () => {
+  const refresh = source.slice(source.indexOf('async function refreshDirectorCandidatePool('), source.indexOf('async function refreshDirectorProductionPackets('));
+  const context = vm.createContext({
+    featureRuntime: { load: async name => ({ narrativeLedger: ledgerRuntime, directorCandidates: candidateRuntime })[name] },
+    directorNarrativeBridgeEpoch: 0, directorCandidatePoolState: null,
+    storyboardState: () => ({ enabled: true, directorBridge: { worldSideShotsEnabled: true } }),
+    getChatKey: () => 'chat-a', console,
+  });
+  vm.runInContext(refresh, context);
+  const packet = { packetId: 'packet-a', timelineAnchor: { chatKey: 'chat-a', floor: 10 }, visualIntent: { description: '巷口雨声渐响。' } };
+  for (const floor of [undefined, null, '', '  ', false, [], {}]) {
+    const pool = await context.refreshDirectorCandidatePool([packet], { chatKey: 'chat-a', floor });
+    assert.equal(pool.candidates[0].dimensions.rhythmDistance, 50, String(floor));
+    assert.equal(pool.candidates[0].recommendation, 'manual_review');
+  }
+  const pool = await context.refreshDirectorCandidatePool([packet], { chatKey: 'chat-a', floor: 10 });
+  assert.equal(pool.candidates[0].dimensions.rhythmDistance, 0);
 });
 
 test('generation rechecks both the explicit setting and candidate rejection', () => {
