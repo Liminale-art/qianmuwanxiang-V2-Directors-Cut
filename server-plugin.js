@@ -7,6 +7,8 @@ import { imageServiceAccount } from './qianmu-image-service-access.js';
 import { createImageRestoreService } from './qianmu-image-restore-service.js';
 import { createSourceIdentityService } from './qianmu-source-identity-service.js';
 import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source-identity-contract.js';
+import { createChatCharacterReceiptService } from './qianmu-chat-character-receipt-service.js';
+import { chatCharacterReceiptError, chatCharacterReceiptErrorPayload } from './qianmu-chat-character-receipt.js';
 import { imageRestoreError, imageRestoreErrorPayload } from './qianmu-image-restore-contract.js';
 import {createVibeEncodingService,vibeServiceErrorPayload} from './qianmu-vibe-service.js';
 import { checkServerComfyReadiness } from './qianmu-comfy-readiness-server.js';
@@ -203,6 +205,24 @@ export async function init(router, options = {}) {
       if (!res.destroyed && !res.writableEnded) return res.json(result);
     } catch (error) {
       const result = sourceIdentityErrorPayload(error);
+      if (!res.destroyed && !res.writableEnded) return res.status(result.status).json(result.body);
+    } finally { res.off?.('close', onClose); }
+  });
+  let chatCharacterReceipt;
+  router.post('/chat-characters/receipt', async (req, res) => {
+    prepareImageResponse(res);
+    const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.once?.('close', onClose);
+    try {
+      try { imageServiceAccount(req); } catch (_) { throw chatCharacterReceiptError('account', '请先登录 ST 账户核验聊天', 401); }
+      if (!chatCharacterReceipt) {
+        chatCharacterReceipt = createChatCharacterReceiptService({ ...(options.chatCharacterReceiptOptions || {}), dataRoot: hostDataRoot() });
+        imageTaskServices.add(chatCharacterReceipt);
+      }
+      const result = await chatCharacterReceipt.inspect(req, req.body, { signal: controller.signal });
+      if (!res.destroyed && !res.writableEnded) return res.json(result);
+    } catch (error) {
+      const result = chatCharacterReceiptErrorPayload(error);
       if (!res.destroyed && !res.writableEnded) return res.status(result.status).json(result.body);
     } finally { res.off?.('close', onClose); }
   });
