@@ -4,12 +4,15 @@ import test from 'node:test';
 import {
   QIANMU_NARRATIVE_ENTRY_SCHEMA,
   QIANMU_NARRATIVE_LEDGER_SCHEMA,
+  adaptProductionPacketToNarrativeLedgerEntry,
   canExposeNarrativeLedgerEntryToMainline,
   invalidateNarrativeLedgerEntries,
+  normalizeNarrativeLedger,
   normalizeNarrativeLedgerEntry,
   validateNarrativeLedger,
   validateNarrativeLedgerEntry,
 } from '../qianmu-narrative-ledger.js';
+import { adaptDirectorPlanToProductionPackets } from '../qianmu-production-packet.js';
 
 const proseFact = {
   owner: { chatKey: 'chat-a' },
@@ -122,6 +125,63 @@ test('floor deletion, explicit supersession and cross-chat requests fail safely'
   assert.equal(superseded.ledger.entries[0].continuity.state, 'superseded');
   const repeated = invalidateNarrativeLedgerEntries(deleted.ledger, { chatKey: 'chat-a', kind: 'source_deleted', floor: 12 });
   assert.equal(repeated.ledger.revision, deleted.ledger.revision, 'repeated events remain idempotent');
+});
+
+test('missing and invalid source floors stay unanchored through repeated normalization', () => {
+  for (const floor of [undefined, null, '', '  ', false, true, [], [0], {}, -1, .5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    const input = { ...proseFact, source: { ...proseFact.source, floor } };
+    const entry = normalizeNarrativeLedgerEntry(input);
+    assert.equal(entry.source.floor, null, `not a floor: ${String(floor)}`);
+    assert.deepEqual(normalizeNarrativeLedgerEntry(entry), entry);
+    const ledger = normalizeNarrativeLedger({ owner: { chatKey: 'chat-a' }, entries: [entry] });
+    assert.deepEqual(normalizeNarrativeLedger(ledger), ledger);
+    assert.equal(validateNarrativeLedger(ledger).ok, true, 'legacy records need not invent a floor to remain readable');
+  }
+});
+
+test('real floor zero and legacy numeric strings keep their existing source identity', () => {
+  for (const [floor, expected] of [[0, 0], ['0', 0], [' 12 ', 12], [12, 12]]) {
+    const entry = normalizeNarrativeLedgerEntry({ ...proseFact, entryId: 'saved-fact', source: { ...proseFact.source, floor } });
+    assert.equal(entry.entryId, 'saved-fact');
+    assert.equal(entry.source.floor, expected);
+    assert.deepEqual(normalizeNarrativeLedgerEntry(entry), entry);
+    const result = invalidateNarrativeLedgerEntries({ owner: { chatKey: 'chat-a' }, entries: [entry] }, {
+      chatKey: 'chat-a', kind: 'source_deleted', floor,
+    });
+    assert.deepEqual(result.invalidatedEntryIds, ['saved-fact']);
+  }
+});
+
+test('unanchored world packets do not become floor-zero facts or expire with floor zero', () => {
+  const [packet] = adaptDirectorPlanToProductionPackets({ world_updates: [{ title: '雨声', content: '巷口雨声渐响。' }] }, { chatKey: 'chat-a' });
+  assert.equal(packet.timelineAnchor.floor, null);
+  const worldEntry = adaptProductionPacketToNarrativeLedgerEntry(packet);
+  assert.equal(worldEntry.source.floor, null);
+  const firstFloor = { ...proseFact, entryId: 'first-floor', source: { ...proseFact.source, floor: 0 } };
+  const ledger = normalizeNarrativeLedger({ owner: { chatKey: 'chat-a' }, entries: [firstFloor, worldEntry], revision: 5 });
+  const original = structuredClone(ledger);
+  for (const kind of ['source_deleted', 'message_revised', 'swipe_changed']) {
+    const result = invalidateNarrativeLedgerEntries(ledger, { chatKey: 'chat-a', kind, floor: 0 });
+    assert.deepEqual(result.invalidatedEntryIds, ['first-floor']);
+    assert.equal(result.ledger.revision, 6);
+    assert.deepEqual(result.ledger.entries[1], worldEntry);
+  }
+  assert.deepEqual(ledger, original, 'lifecycle evaluation does not mutate historical input');
+  const exact = invalidateNarrativeLedgerEntries(ledger, { chatKey: 'chat-a', kind: 'source_deleted', recordId: packet.packetId });
+  assert.deepEqual(exact.invalidatedEntryIds, [worldEntry.entryId], 'an exact source reference still expires unanchored records');
+  assert.equal(canExposeNarrativeLedgerEntryToMainline(worldEntry), false);
+});
+
+test('empty or invalid event floors do not expire real first-floor records', () => {
+  const entry = { ...proseFact, source: { ...proseFact.source, floor: 0 } };
+  const ledger = normalizeNarrativeLedger({ owner: { chatKey: 'chat-a' }, entries: [entry], revision: 5 });
+  for (const kind of ['source_deleted', 'message_revised', 'swipe_changed']) {
+    for (const floor of [undefined, null, '', '  ', false, true, [], [0], {}, -1, .5, Infinity, NaN]) {
+      const result = invalidateNarrativeLedgerEntries(ledger, { chatKey: 'chat-a', kind, floor });
+      assert.deepEqual(result.invalidatedEntryIds, [], `${kind}: ${String(floor)}`);
+      assert.deepEqual(result.ledger, ledger);
+    }
+  }
 });
 
 test('the ledger contract remains a lazy release chunk', async () => {

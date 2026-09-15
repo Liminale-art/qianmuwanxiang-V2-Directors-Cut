@@ -13,7 +13,12 @@ export const QIANMU_NARRATIVE_INVALIDATION_KINDS = Object.freeze([
 const MAX_LEDGER_ENTRIES = 400;
 const plain = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const text = (value, max = 2000) => String(value ?? '').trim().slice(0, max);
-const integer = (value) => Number.isInteger(Number(value)) && Number(value) >= 0 ? Number(value) : null;
+const integer = (value) => {
+  // Missing anchors are not floor zero; retain legacy numeric strings only.
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+};
 const list = (value, max = 80, itemMax = 240) => Array.isArray(value)
   ? [...new Set(value.map((item) => text(item, itemMax)).filter(Boolean))].slice(0, max)
   : [];

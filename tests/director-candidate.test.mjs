@@ -35,6 +35,30 @@ test('visible active prose facts pass all director gates with deterministic dime
   assert.ok(result.total > 0 && result.total <= 100);
 });
 
+test('unknown source floors keep neutral rhythm distance instead of assuming the first floor', () => {
+  for (const floor of [undefined, null, '', '  ', false, [], {}]) {
+    const result = scoreNarrativeDirectorCandidate(fact({ source: { ...fact().source, floor } }), { chatKey: 'chat-a', currentFloor: 0 });
+    assert.equal(result.dimensions.rhythmDistance, 50, `source floor: ${String(floor)}`);
+    assert.equal(result.gates.sourceValid, true, 'a record may have an ID without a floor');
+  }
+});
+
+test('missing or invalid current floors keep neutral rhythm distance across context aliases', () => {
+  for (const key of ['currentFloor', 'current_floor']) {
+    for (const floor of [undefined, null, '', '  ', false, true, [], [0], {}, -1, .5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      const result = scoreNarrativeDirectorCandidate(fact(), { chatKey: 'chat-a', [key]: floor });
+      assert.equal(result.dimensions.rhythmDistance, 50, `${key}: ${String(floor)}`);
+    }
+  }
+});
+
+test('valid zero and numeric-string floors retain deterministic rhythm scoring', () => {
+  for (const [sourceFloor, currentFloor, expected] of [[0, 0, 0], ['0', '1', 12], [10, '11', 12], ['12', 10, 24]]) {
+    const result = scoreNarrativeDirectorCandidate(fact({ source: { ...fact().source, floor: sourceFloor } }), { chatKey: 'chat-a', currentFloor });
+    assert.equal(result.dimensions.rhythmDistance, expected);
+  }
+});
+
 test('simulation stays in manual review even when its narrative value is high', () => {
   const simulation = fact({
     source: { kind: 'simulation', authority: 'possibility', recordId: 'plan-4', floor: 11 },

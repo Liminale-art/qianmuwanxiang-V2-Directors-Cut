@@ -45,8 +45,10 @@ function shotNovelty(signature, recentSignatures) {
 
 function rhythmDistance(entry, currentFloor) {
   const sourceFloor = entry.source.floor;
-  if (!Number.isInteger(sourceFloor) || !Number.isInteger(currentFloor)) return 50;
-  return Math.min(100, Math.abs(currentFloor - sourceFloor) * 12);
+  if (typeof currentFloor !== 'number' && (typeof currentFloor !== 'string' || !currentFloor.trim())) return 50;
+  const floor = Number(currentFloor);
+  if (!Number.isSafeInteger(sourceFloor) || !Number.isSafeInteger(floor) || floor < 0) return 50;
+  return Math.min(100, Math.abs(floor - sourceFloor) * 12);
 }
 
 function spoilerRisk(entry, viewerId) {
@@ -76,7 +78,7 @@ export function scoreNarrativeDirectorCandidate(value = {}, context = {}) {
     narrativeValue: score(direction.narrativeValue ?? direction.narrative_value, entry.evidenceRefs.length ? 65 : 50),
     continuityRisk: factConsistency ? (entry.evidenceRefs.length ? 10 : 30) : 100,
     spoilerRisk: spoilerRisk(entry, options.viewerId || options.viewer_id),
-    rhythmDistance: rhythmDistance(entry, Number(options.currentFloor ?? options.current_floor)),
+    rhythmDistance: rhythmDistance(entry, options.currentFloor ?? options.current_floor),
     shotNovelty: novelty,
   };
   const total = sourceValid ? Math.round(
