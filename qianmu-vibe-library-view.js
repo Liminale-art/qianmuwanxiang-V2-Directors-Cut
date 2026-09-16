@@ -55,17 +55,33 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
     else{queue.push(...nodes.slice(0,12));pump();}
   }
   async function loadDraftAsset(){
-    if(!draft.assetRef||!assets||draft.assetHead||draft.loadingHead)return;const currentDraft=draft;currentDraft.loadingHead=true;
-    try{const head=await assets.head(draft.assetRef);if(!live()||draft!==currentDraft)return;if(!head)throw Error('Vibe 资产已被清理，请重新导入');syncFields();draft.assetHead=head;render();}catch(error){if(live()&&draft===currentDraft)report(error);}finally{currentDraft.loadingHead=false;}
+    if(!draft.assetRef||!assets||draft.assetHead||draft.loadingHead)return;
+    const currentDraft=draft,asset=draft.assetRef,retrying=Boolean(draft.assetError);currentDraft.loadingHead=true;currentDraft.assetError='';
+    const current=()=>live()&&draft===currentDraft&&draft.assetRef===asset;
+    if(retrying)syncInformationControl();
+    try{
+      const head=await assets.head(asset);if(!current())return;if(!head)throw Error('Vibe 资产已被清理，请重新导入');
+      syncFields();draft.assetHead=head;syncInformationControl();
+    }catch(error){if(current()){draft.assetHead=null;draft.assetError=error?.message||'编码档位读取失败';syncInformationControl();report(error);}}
+    finally{currentDraft.loadingHead=false;}
   }
   function informationControl(){
     const normal=`<input class="text_pole sd-storyboard-vibe-info" type="number" min="0" max="1" step=".05" value="${escape(draft.info)}">`;
     if(!draft.assetRef)return normal;
+    if(draft.assetError)return `<button type="button" class="sd-btn sd-vibe-head-retry" title="${escape(draft.assetError)}" aria-label="${escape(draft.assetError)}；重试读取编码档位">重试读取</button>`;
     const head=draft.assetHead;if(!head)return `<input class="text_pole sd-storyboard-vibe-info" value="${escape(draft.info)}" disabled aria-label="正在读取编码档位">`;
     if(head.summary.hasImage)return normal;
     const options=head.summary.variants.filter(row=>row.model===VIBE_ENCODING_MODELS[modelId()]&&!row.customParams),values=[...new Set(options.map(row=>row.information))];
     if(!values.length||values.includes(null))return `<select class="text_pole sd-storyboard-vibe-info" disabled><option value="${escape(draft.info)}">${values.includes(null)?'固定编码':'当前模型无对应编码'}</option></select>`;
     return `<select class="text_pole sd-storyboard-vibe-info">${values.includes(Number(draft.info))?'':`<option value="${escape(draft.info)}" selected disabled>选择已有档位</option>`}${values.sort((a,b)=>a-b).map(value=>`<option value="${value}" ${value===Number(draft.info)?'selected':''}>${value}</option>`).join('')}</select>`;
+  }
+  function syncInformationControl(){
+    // Only metadata-dependent IE choices change. Repainting the entire editor
+    // would steal a user's name/strength caret and recreate unrelated previews.
+    const control=host?.querySelector('.sd-storyboard-vibe-info, .sd-vibe-head-retry');if(!control)return;
+    control.outerHTML=informationControl();
+    listen('.sd-storyboard-vibe-info','input',event=>{draft.info=event.currentTarget.value;revision++;});
+    listen('.sd-vibe-head-retry','click',loadDraftAsset);
   }
   function probe(url){
     return new Promise((resolve,reject)=>{
@@ -153,11 +169,12 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
       });
       if(selection){const button=host.ownerDocument.createElement('button');button.type='button';button.className='sd-icon-btn';button.setAttribute('aria-label','导出所选 Vibe 合集');button.innerHTML='<i class="fa-solid fa-download"></i>';host.querySelector('.sd-vibe-selection-bar').append(button);
         button.addEventListener('click',action(async()=>{const rows=(selection?.ids||[]).map(id=>items().find(row=>row.id===id));const blob=await assets.export(rows,{bundle:true});if(live())download(blob,'qianmu.naiv4vibeBundle');}));}
-      hydrateAssetPreviews();void loadDraftAsset();icons(search);icons(host.querySelector('.sd-vibe-selection-bar')||search);
+      hydrateAssetPreviews();icons(search);icons(host.querySelector('.sd-vibe-selection-bar')||search);
     }
     listen('.sd-vibe-editor','toggle',event=>{if(host.contains(event.currentTarget))onCollapse(!event.currentTarget.open);});
     listen('.sd-vibe-search','input',event=>{query=event.currentTarget.value.slice(0,120);visible=40;clearTimeout(timer);timer=setTimeout(()=>{if(live())renderLibrary();},120);});
     for(const key of ['name','strength','info'])listen(`.sd-storyboard-vibe-${key}`,'input',event=>{draft[key]=event.currentTarget.value;revision++;});
+    listen('.sd-vibe-head-retry','click',loadDraftAsset);
     // Native file picker must open in the original user activation, not in an awaited callback.
     host.querySelector('.sd-vibe-preview').addEventListener('click',()=>host.querySelector('.sd-storyboard-vibe-file')?.click());
     listen('.sd-storyboard-vibe-file','change',async event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';if(file&&await source({file})&&live())render();});
@@ -175,6 +192,9 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
     listen('.sd-vibe-cancel-selection','click',()=>{selection=null;onCancel();});
     listen('.sd-vibe-clear-selection','click',()=>{if(selection){selection.ids=[];renderLibrary();updateSelectionCount();}});
     listen('.sd-vibe-apply-selection','click',async()=>{if(selection)await onApply([...selection.ids]);});
+    // A retry may replace its control immediately; bind the initial fields first
+    // so a remount never adds a second input listener to that replacement.
+    if(assets)void loadDraftAsset();
   }
   function renderGallery(){
     const words=galleryQuery.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
