@@ -219,6 +219,42 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
 #story-director-modal[data-qm-theme] .sd-relus-tone-pos { color: color-mix(in srgb, #5f9e74 60%, var(--qm-ink)); }
 #story-director-modal[data-qm-theme] .sd-relus-tone-neg { color: color-mix(in srgb, #c2606a 60%, var(--qm-ink)); }
 
+/* World events follow the panel, while the star map deliberately keeps its
+   existing dark inspection canvas and semantic relation/animation colours. */
+#story-director-modal[data-qm-theme] :is(.sd-geo-band, .sd-geo-events) {
+  border-radius: var(--qm-card-radius);
+  border-color: var(--qm-line);
+  background: var(--qm-skin-material);
+  box-shadow: var(--qm-skin-shadow);
+  backdrop-filter: var(--qm-skin-filter);
+  -webkit-backdrop-filter: var(--qm-skin-filter);
+}
+#story-director-modal[data-qm-theme] .sd-geo-stage { border-radius: var(--qm-card-radius); }
+#story-director-modal[data-qm-theme] .sd-geo-stage :is(button, [role="button"]):focus-visible {
+  outline: 2px solid var(--sd-geo-skin-text) !important;
+  outline-offset: 3px;
+}
+#story-director-modal[data-qm-theme] .sd-evt-grid { grid-template-columns: repeat(auto-fill, minmax(min(248px, 100%), 1fr)); }
+#story-director-modal[data-qm-theme] .sd-evt-essence { overflow-wrap: anywhere; }
+#story-director-modal[data-qm-theme] .sd-evt-card {
+  --qm-event-tone: var(--sd-geo-stage-settle);
+  border-radius: var(--qm-card-radius);
+  background: color-mix(in srgb, var(--qm-raised) 36%, transparent);
+}
+#story-director-modal[data-qm-theme] .sd-evt-stage-brew { --qm-event-tone: var(--sd-geo-stage-brew); }
+#story-director-modal[data-qm-theme] .sd-evt-stage-erupt { --qm-event-tone: var(--sd-geo-stage-erupt); }
+#story-director-modal[data-qm-theme] .sd-evt-stage-spread { --qm-event-tone: var(--sd-geo-stage-spread); }
+#story-director-modal[data-qm-theme] .sd-evt-stage-fade { --qm-event-tone: var(--sd-geo-stage-fade); }
+#story-director-modal[data-qm-theme] .sd-evt-badge {
+  color: color-mix(in srgb, var(--qm-event-tone) 50%, var(--qm-ink));
+  background: color-mix(in srgb, var(--qm-event-tone) 10%, var(--qm-raised));
+  border: 1px solid color-mix(in srgb, var(--qm-event-tone) 32%, var(--qm-line));
+  text-shadow: none;
+}
+#story-director-modal[data-qm-theme] .sd-geo-tier-calm .sd-geo-tier-label { color: color-mix(in srgb, var(--sd-geo-ally) 50%, var(--qm-ink)); }
+#story-director-modal[data-qm-theme] .sd-geo-tier-undercurrent .sd-geo-tier-label { color: color-mix(in srgb, var(--sd-geo-tension) 50%, var(--qm-ink)); }
+#story-director-modal[data-qm-theme] :is(.sd-geo-tier-turmoil, .sd-geo-tier-boil) .sd-geo-tier-label { color: color-mix(in srgb, var(--sd-geo-conflict) 50%, var(--qm-ink)); }
+
 /* Vibe managers share their existing main-panel owner and read-only lifecycle. */
 #story-director-modal[data-qm-theme] :is(.sd-vibe-review, .sd-vibe-storage) { --sd-text-soft: var(--qm-muted); }
 #story-director-modal[data-qm-theme] :is(.sd-vibe-review-rows > article, .sd-vibe-storage-list > label) {
