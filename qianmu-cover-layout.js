@@ -5,7 +5,7 @@ const COVER_DESIGNS = Object.freeze({
 });
 const PORTRAIT_PANEL_THRESHOLD = 640;
 const ORIENTATIONS = Object.freeze(['auto', 'landscape', 'portrait']);
-const COMPOSITION_VARIANTS = Object.freeze(['auto', 'left', 'right', 'center']);
+const COMPOSITION_VARIANTS = Object.freeze(['auto', 'left', 'right']);
 
 function requireDimension(value, name) {
   if (!Number.isFinite(value)) throw new TypeError(`${name} must be a finite number`);
@@ -53,7 +53,7 @@ export function selectCoverComposition({ count, variant = 'auto' } = {}) {
   if (!Number.isInteger(count)) throw new TypeError('count must be an integer');
   if (count < 0 || count > 3) throw new RangeError('count must be between zero and three');
   if (!COMPOSITION_VARIANTS.includes(variant)) {
-    throw new RangeError('variant must be auto, left, right, or center');
+    throw new RangeError('variant must be auto, left, or right');
   }
   if (count === 0) return 'typographic';
   if (count === 1) return `solo-${variant === 'auto' ? 'right' : variant}`;

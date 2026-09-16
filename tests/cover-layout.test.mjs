@@ -138,7 +138,7 @@ test('geometry returns fresh data and neither helper mutates caller input', () =
 });
 
 test('zero through three images map to a finite editorial composition vocabulary', () => {
-  for (const variant of ['auto', 'left', 'right', 'center']) {
+  for (const variant of ['auto', 'left', 'right']) {
     assert.equal(selectCoverComposition({ count: 0, variant }), 'typographic');
     assert.equal(selectCoverComposition({ count: 2, variant }), 'diptych');
     assert.equal(selectCoverComposition({ count: 3, variant }), 'triptych');
@@ -147,7 +147,6 @@ test('zero through three images map to a finite editorial composition vocabulary
   assert.equal(selectCoverComposition({ count: 1, variant: 'auto' }), 'solo-right');
   assert.equal(selectCoverComposition({ count: 1, variant: 'left' }), 'solo-left');
   assert.equal(selectCoverComposition({ count: 1, variant: 'right' }), 'solo-right');
-  assert.equal(selectCoverComposition({ count: 1, variant: 'center' }), 'solo-center');
 });
 
 test('dimensions reject negative, nonfinite, missing, and nonnumeric inputs without coercion', () => {
@@ -174,7 +173,7 @@ test('orientation and variant reject values outside their enumerations', () => {
   for (const orientation of ['', 'mobile', 'Landscape', null, 1, {}, []]) {
     assert.throws(() => fitCoverFrame({ width: 1000, height: 800, orientation }), RangeError);
   }
-  for (const variant of ['', 'random', 'solo-left', null, 1, {}, []]) {
+  for (const variant of ['', 'random', 'solo-left', 'center', 'solo-center', null, 1, {}, []]) {
     for (const count of [0, 1, 2, 3]) {
       assert.throws(() => selectCoverComposition({ count, variant }), RangeError);
     }
