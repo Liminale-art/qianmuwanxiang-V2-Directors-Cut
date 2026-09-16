@@ -22,7 +22,8 @@ const BASES = {
     },
     glass: {
         light: {
-            bg: [0.943, 0.016, 255], surface: [0.972, 0.010, 255], raised: [0.990, 0.004, 255],
+            // White canvas and neutral opaque fallbacks; colored diffusion stays in the glow roles.
+            bg: [1, 0, 0], surface: [0.980, 0, 0], raised: [0.993, 0, 0],
             ink: [0.245, 0.023, 255], muted: [0.475, 0.024, 255], line: [0.830, 0.023, 255],
         },
         dark: {

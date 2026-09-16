@@ -122,12 +122,65 @@ test('the selected accent does not recolor base surfaces, typography, borders, o
     }
 });
 
-test('the themes have distinct bases, low-chroma editorial paper, and ordered surface elevation', () => {
+test('glass light uses a white canvas, neutral near-white surfaces, and the existing two glow roles', () => {
+    for (const accent of REPRESENTATIVE_COLORS) {
+        const palette = createThemePalette({ theme: 'glass', mode: 'light', accent });
+        assert.equal(palette.css['--qm-bg'], '#ffffff');
+        assert.equal(palette.css['--qm-surface'], '#f8f8f8');
+        assert.equal(palette.css['--qm-raised'], '#fdfdfd');
+        assert.ok(relativeLuminance(palette.css['--qm-surface']) < relativeLuminance(palette.css['--qm-raised']));
+        assert.ok(relativeLuminance(palette.css['--qm-raised']) < relativeLuminance(palette.css['--qm-bg']));
+        assertPalette(palette);
+    }
+    const { css } = createThemePalette({ theme: 'glass', mode: 'light', accent: '#005f73' });
+    assert.equal(css['--qm-glow-1'], '#a8dbea');
+    assert.equal(css['--qm-glow-2'], '#d5ddfa');
+});
+
+test('editorial palettes and glass night preserve their existing color tokens', () => {
+    const preserved = [
+        {
+            theme: 'editorial', mode: 'light',
+            css: {
+                '--qm-bg': '#f5f1e8', '--qm-surface': '#fbf8f1', '--qm-raised': '#fefdfa',
+                '--qm-ink': '#24201c', '--qm-muted': '#615b55', '--qm-line': '#cdc8be',
+                '--qm-accent': '#005f73', '--qm-on-accent': '#ffffff', '--qm-accent-soft': '#d1eaf1',
+                '--qm-glow-1': '#bdd6de', '--qm-glow-2': '#daddea',
+                '--qm-danger': '#c13234', '--qm-on-danger': '#ffffff',
+            },
+        },
+        {
+            theme: 'editorial', mode: 'dark',
+            css: {
+                '--qm-bg': '#1a1612', '--qm-surface': '#231e1a', '--qm-raised': '#2e2924',
+                '--qm-ink': '#e9e6df', '--qm-muted': '#ada9a0', '--qm-line': '#464039',
+                '--qm-accent': '#56a1b7', '--qm-on-accent': '#000000', '--qm-accent-soft': '#24393f',
+                '--qm-glow-1': '#41575d', '--qm-glow-2': '#3d3f49',
+                '--qm-danger': '#ff7871', '--qm-on-danger': '#000000',
+            },
+        },
+        {
+            theme: 'glass', mode: 'dark',
+            css: {
+                '--qm-bg': '#070f19', '--qm-surface': '#131b26', '--qm-raised': '#1f2834',
+                '--qm-ink': '#e8ebf1', '--qm-muted': '#a5adb8', '--qm-line': '#384352',
+                '--qm-accent': '#56a1b7', '--qm-on-accent': '#000000', '--qm-accent-soft': '#24393f',
+                '--qm-glow-1': '#2a5a68', '--qm-glow-2': '#393e55',
+                '--qm-danger': '#ff7871', '--qm-on-danger': '#000000',
+            },
+        },
+    ];
+    for (const { theme, mode, css } of preserved) {
+        assert.deepEqual(createThemePalette({ theme, mode, accent: '#005f73' }).css, css);
+    }
+});
+
+test('the themes have distinct bases, low-chroma editorial paper, and ordered surface elevation where the canvas is not white', () => {
     for (const mode of ['light', 'dark']) {
         const editorial = createThemePalette({ theme: 'editorial', mode }).css;
         const glass = createThemePalette({ theme: 'glass', mode }).css;
         for (const token of ['--qm-bg', '--qm-surface', '--qm-raised']) assert.notEqual(editorial[token], glass[token]);
-        for (const css of [editorial, glass]) {
+        for (const css of mode === 'light' ? [editorial] : [editorial, glass]) {
             assert.ok(relativeLuminance(css['--qm-bg']) < relativeLuminance(css['--qm-surface']));
             assert.ok(relativeLuminance(css['--qm-surface']) < relativeLuminance(css['--qm-raised']));
         }
