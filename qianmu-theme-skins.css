@@ -270,6 +270,21 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
   background: var(--qm-raised);
 }
 
+/* Theater's script/favorite rows and reading views stay in their existing tab. */
+#story-director-modal[data-qm-theme] :is([data-lib="script"] .sd-lib-folder, [data-lib="script"] .sd-lib-row,
+  .sd-theater-view-card .sd-lib-row, .sd-theater-latest) { border-radius: var(--qm-card-radius) !important; }
+#story-director-modal[data-qm-theme] [data-lib="script"] .sd-lib-folder {
+  background: color-mix(in srgb, var(--qm-raised) 36%, transparent) !important;
+}
+#story-director-modal[data-qm-theme] .sd-theater-view-card.sd-reader-card {
+  background: var(--qm-bg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#story-director-modal[data-qm-theme] :is(.sd-theater-view-card .sd-fav-time, .sd-theater-catalog-state > p) {
+  overflow-wrap: anywhere;
+}
+
 /* World events follow the panel, while the star map deliberately keeps its
    existing dark inspection canvas and semantic relation/animation colours. */
 #story-director-modal[data-qm-theme] :is(.sd-geo-band, .sd-geo-events) {

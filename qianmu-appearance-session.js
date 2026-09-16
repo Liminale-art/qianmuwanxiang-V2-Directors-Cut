@@ -3,7 +3,7 @@ import { createQianmuAppearanceRuntime } from './qianmu-appearance-runtime.js';
 import { prepareQianmuPortalBaseline, createQianmuClassicPainter } from './qianmu-appearance-portals.js';
 import { THEME_KEYS } from './qianmu-classic-palettes.js';
 
-const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-draft-body,dialog.sd-bundle-dialog > main,.sd-focus-voice-menu,.sd-focus-library-body,.sd-focus-voice-drawer-list,.sd-comfy-route-picker,.sd-comfy-route-dialog .popup-content,textarea';
+const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-reader-scroll,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-draft-body,dialog.sd-bundle-dialog > main,.sd-focus-voice-menu,.sd-focus-library-body,.sd-focus-voice-drawer-list,.sd-comfy-route-picker,.sd-comfy-route-dialog .popup-content,textarea';
 
 // Load once, after the existing stylesheet. Classic sessions make no request.
 export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, schedule = setTimeout, cancelSchedule = clearTimeout } = {}) {

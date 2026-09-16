@@ -159,6 +159,19 @@ test('late focus voice, library and drawer scrolling belongs to the existing mod
     }
 });
 
+test('late theater reading scroll belongs to the existing modal registration', async () => {
+    const f = fixture(), root = element(), scroll = element(); let attached = false;
+    root.contains = node => attached && node === scroll;
+    root.querySelectorAll = query => attached && query.split(',').includes('.sd-theater-reader-scroll') ? [scroll] : [];
+    f.set({ appearance: preference }); f.session.mount(root); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    attached = true; scroll.scrollTop = 193; scroll.scrollLeft = 11;
+    const paint = root.style.setProperty;
+    root.style.setProperty = (...args) => { paint(...args); if (args[0] === '--sd-text') { scroll.scrollTop = 0; scroll.scrollLeft = 0; } };
+    f.set({ appearance: { ...preference, family: 'editorial', mode: 'dark' } }); await f.session.sync();
+    assert.equal(scroll.scrollTop, 193); assert.equal(scroll.scrollLeft, 11); assert.equal(f.session.size, 1);
+    attached = false; scroll.isConnected = false; f.session.reset();
+});
+
 test('fixed-workflow popup captures its own native scroll areas and releases them with its owner', async () => {
     const f=fixture(),root=element(),scrollers=[element(),element()];
     root.contains=node=>scrollers.includes(node);
