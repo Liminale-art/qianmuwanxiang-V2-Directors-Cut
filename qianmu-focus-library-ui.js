@@ -22,9 +22,16 @@ export async function openFocusLibrary({document,host,store,namespace,guard,isAc
     body.innerHTML=`<div class="sd-focus-library-toolbar"><label>角色文件夹<select class="text_pole" data-field="folder"><option value="">全部角色</option>${options.map(([key,name])=>`<option value="${esc(key)}" ${key===folder?'selected':''}>${esc(name)}</option>`).join('')}</select></label>${management?'':button('new','新建','fa-plus')}</div>
       ${management?`<p class="sd-muted">所选语音包含音频原件。删除不可恢复，请先备份。导入只新增副本，不覆盖原库。</p><div class="sd-focus-library-toolbar">${button('all','全选此页')}${button('export','导出所选')}${button('import','导入备份')}${button('delete','清理所选')}${undo?button('undo','撤回本次导入'):''}<input hidden type="file" accept=".json,application/json" data-field="import"></div>`:''}
       <div class="sd-focus-library-list">${visible.map(row=>`<article data-id="${esc(row.id)}" data-role="${esc(row.characterKey)}">${management?`<input type="checkbox" aria-label="选择${esc(row.title||row.text)}" data-select="${esc(JSON.stringify([row.characterKey,row.id]))}" ${selected.has(JSON.stringify([row.characterKey,row.id]))?'checked':''}>`:''}<button type="button" class="sd-focus-library-item" data-action="edit"><b>${esc(row.title||row.text)}</b><span>${esc(row.speaker)} · ${row.moments.map(key=>moments[key]).join(' / ')}</span></button></article>`).join('')}</div>`;
+    if(!visible.length)body.querySelector('.sd-focus-library-list').innerHTML=`<p class="sd-muted sd-focus-library-empty" role="status">${folder?'此角色暂无已保存语音':'尚无已保存语音原件'}</p>`;
     paintIcons();
   }
   async function reload(){rows=await store.list(namespace,{isCurrent:live});await check();const valid=new Set(rows.map(row=>JSON.stringify([row.characterKey,row.id])));selected=new Set([...selected].filter(key=>valid.has(key)));render();}
+  async function loadInitial(){
+    body.setAttribute('aria-busy','true');body.replaceChildren();status.textContent='正在读取语音原件…';
+    try{await reload();if(live())status.textContent='';}
+    catch(error){if(live()){status.textContent=error.message||'读取未完成，请重试';body.innerHTML=button('retry','重新读取','fa-rotate');paintIcons();}}
+    finally{if(live())body.removeAttribute('aria-busy');}
+  }
   async function edit(row){
     const characterKey=row?.characterKey||folder;if(!characterKey){status.textContent='请先选择角色文件夹';return;}
     const scope={namespace,characterKey},context=binding(characterKey);editorContext=structuredClone({providerId:context.providerId,options:context.options||[]});let blob=null;
@@ -52,7 +59,8 @@ export async function openFocusLibrary({document,host,store,namespace,guard,isAc
   async function action(name,target){
     if(name==='close'){if(dirty&&!await confirm('离开编辑','未保存的语音将丢弃，确定离开？'))return;close();return;}
     await check();
-    if(name==='back'){if(dirty&&!await confirm('返回列表','放弃未保存修改？'))return;await check();await reload();}
+    if(name==='retry')await loadInitial();
+    else if(name==='back'){if(dirty&&!await confirm('返回列表','放弃未保存修改？'))return;await check();await reload();}
     else if(name==='new')await edit(null);
     else if(name==='edit'){const article=target.closest('article');await edit(rows.find(row=>row.id===article.dataset.id&&row.characterKey===article.dataset.role));}
     else if(name==='generate'||name==='save'){
@@ -95,6 +103,6 @@ export async function openFocusLibrary({document,host,store,namespace,guard,isAc
       await check();undo=result.added;await reload();status.textContent=`已导入 ${undo.length} 条，可在关闭本页前撤回本次导入`;
     });}
   });
-  try{await reload();paintIcons();portal.querySelector('[data-action=close]').focus();}catch(error){status.textContent=error.message;}
+  await loadInitial();if(live())portal.querySelector('[data-action=close]').focus();
   return {close,element:portal};
 }

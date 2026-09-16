@@ -1,60 +1,84 @@
 // Fresh origin and native IndexedDB; production ST, paid TTS and user data are never touched.
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext({hasTouch:true}),errors=[];let external=0;
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
+const skin=await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8');
+const appearance=(process.env.QIANMU_TEST_APPEARANCE||'').split('/');
+const deadline=setTimeout(()=>{void browser.close();},120000);
 await context.route('**/*',async route=>{const url=new URL(route.request().url());
-  if(url.origin==='https://qianmu.test'&&url.pathname==='/')return route.fulfill({contentType:'text/html',body:`<!doctype html><style>${css}</style><style>body{margin:0}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;height:850px!important;box-sizing:border-box}</style><div id="story-director-modal" class="open sd-theme-dark"><main>untouched host</main></div>`});
+  if(url.origin==='https://qianmu.test'&&url.pathname==='/')return route.fulfill({contentType:'text/html; charset=utf-8',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}\n${skin}</style><style>body{margin:0}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;height:100dvh!important;box-sizing:border-box}</style><div id="story-director-modal" class="open sd-theme-dark"><main>untouched host</main></div>`});
   if(url.origin==='https://qianmu.test'&&/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url),'utf8')});
   external++;return route.abort();
 });
 try {
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto('https://qianmu.test/');
-  await page.evaluate(async()=>{
+  await page.evaluate(async appearance=>{
     const {createFocusLibraryStore}=await import('/qianmu-focus-library-store.js'),{openFocusLibrary}=await import('/qianmu-focus-library-ui.js');
+    const {createQianmuAppearanceSession}=await import('/qianmu-appearance-session.js'),{updateAppearancePreferences}=await import('/qianmu-appearance-settings.js'),{applyQianmuIcons}=await import('/qianmu-icon-renderer.js');
+    window.appearanceSettings={theme:'dark'};window.appearanceSession=createQianmuAppearanceSession({readSettings:()=>appearanceSettings,loadStyles:()=>({promise:Promise.resolve(true),cancel(){}})});
+    window.setAppearance=async(family,mode)=>{appearanceSettings.appearance=updateAppearancePreferences(appearanceSettings,{family:family||'classic',mode:mode||'dark'});await appearanceSession.sync();};
+    appearanceSession.mount(document.querySelector('#story-director-modal'));await setAppearance(...appearance);
     window.store=createFocusLibraryStore();window.scope={namespace:'st-user:fixture',characterKey:'character:A.png'};window.calls={synth:0,download:[],confirm:[]};
     // Decodable silent mono WAV, not a real person's recording.
     const buffer=new ArrayBuffer(1644),v=new DataView(buffer),put=(at,text)=>[...text].forEach((c,i)=>v.setUint8(at+i,c.charCodeAt(0)));
     put(0,'RIFF');v.setUint32(4,1636,true);put(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,16000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);put(36,'data');v.setUint32(40,1600,true);
-    window.wav=new Blob([buffer],{type:'audio/wav'});window.live=true;
-    window.start=async management=>{window.view?.close();view=await openFocusLibrary({document,host:document.querySelector('#story-director-modal'),store,namespace:scope.namespace,isActive:()=>live,
+    window.wav=new Blob([buffer],{type:'audio/wav'});window.live=true;window.listReads=0;
+    window.start=async management=>{window.view?.close();view=await openFocusLibrary({document,host:document.querySelector('#story-director-modal'),store:{...store,list:async(...args)=>{listReads++;if(window.failList)throw Error('原件列表读取失败 <img src=x>');if(window.listGate)await listGate;return store.list(...args);}},namespace:scope.namespace,isActive:()=>live,
       guard:async()=>{if(!live)throw Error('changed owner');},choices:()=>[{avatar:'A.png',name:'甲'},{avatar:'B.png',name:'乙'}],
       binding:key=>({speaker:key==='character:A.png'?'甲':'乙',providerId:'minimax',voice:{voiceId:'v'},options:[{voiceId:'v',label:'测试音色'}]}),generate:async()=>{calls.synth++;if(window.delayed)return new Promise(resolve=>window.finish=resolve);return wav;},
-      escape:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),icons:()=>{},
+      escape:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),icons:applyQianmuIcons,
       confirm:async(...args)=>{calls.confirm.push(args);return true;},notify:()=>{},download:(file,name)=>calls.download.push({file,name}),stopAudio:()=>{}},{management});};
     await start(false);
-  });
+  },appearance);
   const checks=[],ok=(name,value)=>{assert.ok(value,name);checks.push(name);};
+  const roundtrip=async label=>{
+    const result=await page.evaluate(async appearance=>{
+      const portal=document.querySelector('.sd-focus-library'),scroller=portal.querySelector('.sd-focus-library-body'),field=portal.querySelector('textarea')||portal.querySelector('button');field.focus({preventScroll:true});
+      if(field.tagName==='TEXTAREA')field.setSelectionRange(1,4);
+      scroller.scrollTop=Math.min(60,(scroller.scrollHeight-scroller.clientHeight)/2);
+      const top=scroller.scrollTop,html=portal.innerHTML,nodes=[...portal.querySelectorAll('*')],reads=listReads,requests=JSON.stringify(calls),value=field.value,range=[field.selectionStart,field.selectionEnd],audio=portal.querySelector('audio'),src=audio?.src,playing=audio&&!audio.paused;
+      let writes=0;const originals=['put','delete','clear'].map(name=>[name,IDBObjectStore.prototype[name]]);
+      for(const [name,original] of originals)IDBObjectStore.prototype[name]=function(...args){writes++;return original.apply(this,args);};
+      try{await setAppearance('glass',appearance[1]==='light'?'dark':'light');await setAppearance(...appearance);}finally{for(const [name,original] of originals)IDBObjectStore.prototype[name]=original;}
+      return {dom:portal.innerHTML===html&&nodes.every(node=>node.isConnected),focus:document.activeElement===field,draft:field.value===value&&JSON.stringify([field.selectionStart,field.selectionEnd])===JSON.stringify(range),scroll:Math.abs(top-scroller.scrollTop)<1,reads:listReads===reads,writes:writes===0,requests:JSON.stringify(calls)===requests,audio:!audio||(audio.isConnected&&audio.src===src&&(!playing||!audio.paused))};
+    },appearance);ok(label+': '+JSON.stringify(result),Object.values(result).every(Boolean));
+  };
   for(const width of [320,393,1100]){
     await page.setViewportSize({width,height:898});const box=await page.locator('.sd-focus-library').boundingBox();
     ok(`library contained at ${width}`,box.x>=0&&box.x+box.width<=width+1&&box.y>=0&&box.y+box.height<=898);
   }
   await page.locator('[data-field=folder]').selectOption('character:A.png');await page.locator('[data-action=new]').click();
   await page.locator('[data-field=text]').fill('<script>not markup</script> 完成了');await page.locator('[data-field=title]').fill('my voice');
+  await roundtrip('editing survives appearance changes without losing caret, writing or generating');
   await page.locator('[data-moment="shortBreak:complete"]').check();await page.locator('[data-action=generate]').click();
-  await page.waitForFunction(()=>document.querySelector('[role=status]').textContent.includes('请试听'));
+  await page.waitForFunction(()=>document.querySelector('.sd-focus-library-status').textContent.includes('请试听'));
   ok('explicit generation asks confirmation exactly once',await page.evaluate(()=>calls.synth===1&&calls.confirm.filter(row=>row[0]==='生成语音').length===1));
   await page.locator('audio').evaluate(audio=>audio.load());await page.waitForFunction(()=>document.querySelector('audio').readyState>=1);
   ok('preview uses a genuinely decodable local audio',await page.locator('audio').evaluate(audio=>Number.isFinite(audio.duration)&&audio.duration>0));
+  await page.locator('audio').evaluate(async audio=>{audio.muted=true;audio.loop=true;await audio.play();});
+  await roundtrip('playing original remains attached and playing through theme switches');
+  await page.locator('audio').evaluate(audio=>audio.pause());
   await page.locator('[data-action=save]').click();await page.waitForSelector('.sd-focus-library-item');
   ok('save produced one original in the independent database',await page.evaluate(async()=>(await store.summary(scope.namespace)).count===1));
   ok('title and script-like text stay escaped',await page.locator('.sd-focus-library-body script').count()===0);
   await page.locator('[data-action=edit]').click();await page.locator('[data-field=text]').fill('changed words');await page.locator('[data-action=save]').click();
-  await page.waitForFunction(()=>document.querySelector('[role=status]').textContent.includes('请先生成'));
+  await page.waitForFunction(()=>document.querySelector('.sd-focus-library-status').textContent.includes('请先生成'));
   ok('text edits cannot save the old sound under new words',await page.evaluate(async()=>(await store.list(scope.namespace))[0].text.startsWith('<script>')));
   await page.locator('[data-action=back]').click();await page.waitForSelector('[data-field=folder]');await page.locator('[data-field=folder]').selectOption('character:B.png');
   ok('another character starts with an empty folder',await page.locator('.sd-focus-library-item').count()===0);
-  await page.evaluate(()=>start(true));await page.locator('[data-action=all]').click();await page.locator('[data-action=export]').click();
+  await page.evaluate(()=>start(true));await page.locator('[data-action=all]').click();await roundtrip('management selection survives appearance changes');await page.locator('[data-action=export]').click();
   await page.waitForFunction(()=>calls.download.length===1);const file=await page.evaluate(async()=>({text:await calls.download[0].file.text(),name:calls.download[0].name}));
   ok('backup does not trigger generation',await page.evaluate(()=>calls.synth===1));
   await page.locator('[data-field=import]').setInputFiles({name:file.name,mimeType:'application/json',buffer:Buffer.from(file.text)});
-  await page.waitForFunction(()=>document.querySelector('[role=status]').textContent.includes('可在关闭本页前撤回'));
+  await page.waitForFunction(()=>document.querySelector('.sd-focus-library-status').textContent.includes('可在关闭本页前撤回'));
   ok('import adds a copy and keeps the original',await page.evaluate(async()=>(await store.summary(scope.namespace)).count===2));
   await page.locator('[data-action=undo]').click();await page.waitForFunction(()=>!document.querySelector('[data-action=undo]'));
   ok('undo removes only this import',await page.evaluate(async()=>(await store.summary(scope.namespace)).count===1));
-  await page.locator('[data-action=all]').click();await page.locator('[data-action=delete]').click();await page.waitForFunction(()=>document.querySelector('[role=status]').textContent.includes('已删除'));
+  await page.locator('[data-action=all]').click();await page.locator('[data-action=delete]').click();await page.waitForFunction(async()=>document.querySelector('.sd-focus-library-status').textContent.includes('已删除')&&(await store.summary(scope.namespace)).count===0);
   ok('selected cleanup accounts for originals and metadata',await page.evaluate(async()=>{const x=await store.summary(scope.namespace);return x.count===0&&x.bytes===0;}));
   // Transaction failure and newer edits must abort an entire selected batch.
   const batchChecks=await page.evaluate(async()=>{
@@ -118,5 +142,21 @@ try {
     }
     return checks;
   });checks.push(...managementChecks);
+  await page.evaluate(async()=>{window.failList=true;await start(true);});
+  ok('failed initial read is visible and escaped, with a retry action',await page.locator('.sd-focus-library-status').textContent().then(text=>text.includes('原件列表读取失败'))&&await page.locator('.sd-focus-library img').count()===0&&await page.locator('[data-action=retry]').count()===1);
+  await roundtrip('read error and retry survive theme changes');
+  await page.evaluate(()=>{window.failList=false;});await page.locator('[data-action=retry]').click();await page.waitForSelector('.sd-focus-library-empty');
+  ok('retry recovers a confirmed empty library without synthesis',await page.locator('.sd-focus-library-status').textContent().then(text=>text==='')&&await page.evaluate(()=>calls.synth===2));
+  const qa=new URL(`../dist/local-qa/focus-originals/${appearance[0]||'classic'}-${appearance[1]||'dark'}/`,import.meta.url);await mkdir(qa,{recursive:true});
+  await page.evaluate(async()=>{const clips=Array.from({length:24},(_,i)=>({clip:{...scope,id:'theme-'+i,title:'原件 '+i,text:'只读保留的录音',moments:['focus:complete'],speaker:'甲'},blob:wav}));await store.batch(scope.namespace,{add:clips});await start(true);});
+  for(const width of [320,393,1100]){
+    await page.setViewportSize({width,height:width===320?568:898});await page.locator('[data-action=all]').click();await roundtrip('populated management at '+width);
+    ok('management controls remain contained at '+width,await page.locator('.sd-focus-library-body').evaluate(node=>node.scrollWidth<=node.clientWidth+1));
+    if(width===393){await page.locator('.sd-focus-library-body').evaluate(node=>node.scrollTop=0);await page.screenshot({caret:'initial',path:fileURLToPath(new URL('management-393.png',qa))});}
+  }
+  await page.evaluate(()=>{view.close();window.listGate=new Promise(resolve=>window.releaseList=resolve);window.pendingOpen=start(true);});await page.waitForFunction(()=>document.querySelector('.sd-focus-library-body')?.getAttribute('aria-busy')==='true');
+  await page.locator('[data-action=close]').click();await page.evaluate(async()=>{releaseList();await pendingOpen;window.listGate=null;});
+  ok('closing during initial read restores the host without resurrecting a late result',await page.locator('.sd-focus-library').count()===0&&await page.locator('main').evaluate(node=>!node.inert));
+  await page.evaluate(()=>{store.close();appearanceSession.reset();});
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors,realDOM:true,nativeIndexedDB:true,realAudioDecode:true,paidTTS:false}));
-}finally{await context.close();await browser.close();}
+}finally{clearTimeout(deadline);await context.close();await browser.close();}
