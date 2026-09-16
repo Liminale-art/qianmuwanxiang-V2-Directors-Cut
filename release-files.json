@@ -294,6 +294,7 @@
     "qianmu-narrative-context.js",
     "qianmu-notes.js",
     "qianmu-notes-theme.js",
+    "qianmu-storyboard-nav-lifecycle.js",
     "qianmu-openai-image-compat.js",
     "qianmu-production-packet.js",
     "qianmu-reader.js",

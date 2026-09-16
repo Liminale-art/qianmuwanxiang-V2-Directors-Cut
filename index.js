@@ -139,6 +139,7 @@ import {
   saveQianmuNote,
 } from './qianmu-notes.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
+import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.160';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.160';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.160';
@@ -6955,6 +6956,7 @@ function renderModal() {
   const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
   const editorLayout = !!editorView || (activeTab === 'theater' && !!theaterView);
   const storyboardLayout = activeTab === 'imagegen';
+  const restoreStoryboardNav = preserveQianmuStoryboardNav(modal, storyboardLayout);
   modal.className = `sd-theme-${themeKey}${wasOpen ? ' open' : ''}${animIn ? ' sd-anim-in' : ''}${storyboardLayout ? ' sd-storyboard-mode' : ''}`;
   modal.innerHTML = `
     <div class="sd-backdrop"></div>
@@ -6992,6 +6994,7 @@ function renderModal() {
       ${renderInjectDock()}
       `}
     </section>`;
+  restoreStoryboardNav();
   applyQianmuIcons(modal); featureRuntime.bindIntent(modal);
   // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
   modal.onclick = (event) => {
@@ -23081,7 +23084,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-storyboard-production-packet]').forEach((button) => button.addEventListener('click', () => {
     void storyboardGenerateProductionPacket(root, String(button.dataset.storyboardProductionPacket || ''));
   }));
-  root.querySelectorAll('[data-storyboard-view]').forEach((button) => button.addEventListener('click', () => {
+  bindQianmuStoryboardNavigation(root, (button) => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     const nextView = button.dataset.storyboardView;
     if (!nextView) return;
@@ -23089,7 +23092,7 @@ function bindStoryboardTabEvents(root) {
     storyboardVibeSelection=null;storyboardVibeLibraryController?.cancelSelection();storyboardVibeLibraryController?.exitGallery();
     if (nextView === state.view && !wasPicking) return;
     storyboardNavigate(root, { view: nextView, editingArtistPresetId: '', editingPromptItemId: '', promptItemDraft: null });
-  }));
+  });
   root.querySelectorAll('[data-storyboard-gallery-kind]').forEach((button) => button.addEventListener('click', () => {
     const requestedKind = String(button.dataset.storyboardGalleryKind || '');
     const nextKind = ['motion', 'film'].includes(requestedKind) ? requestedKind : 'stills';
