@@ -16,6 +16,35 @@ function element() {
 }
 const appearance = patch => updateAppearancePreferences({}, { family: 'glass', ...patch });
 
+test('classic rebase releases all new-theme overrides before owner paint, then captures the new baseline', () => {
+    let settings = { theme: 'dark', appearance: appearance({}) };
+    const runtime = createQianmuAppearanceRuntime({readSettings:()=>settings}), a=element(), b=element();
+    a.style.setProperty('--sd-text','old-a');b.style.setProperty('--sd-text','old-b');
+    runtime.register(a,{scrollTargets:()=>[a]});runtime.register(b,{role:'hive-entry',tone:'dark',edgeIndex:5});
+    const order=[];
+    runtime.rebaseClassic((root,options)=>{
+        assert.equal(a.getAttribute('data-qm-theme'),null);assert.equal(b.getAttribute('data-qm-theme'),null);
+        assert.ok(Object.isFrozen(options));order.push(options.role||'surface');
+        root.style.setProperty('--sd-text','new-classic');a.scrollTop=22;
+    });
+    assert.deepEqual(order,['surface','hive-entry']);assert.equal(a.scrollTop,83);assert.equal(a.getAttribute('data-qm-theme'),'glass');
+    settings={theme:'summer'};runtime.sync();assert.equal(a.style.getPropertyValue('--sd-text'),'new-classic');assert.equal(b.style.getPropertyValue('--sd-text'),'new-classic');runtime.dispose();
+});
+
+test('a failed classic painter still reapplies the active appearance and restores owned scroll offsets', () => {
+    const runtime=createQianmuAppearanceRuntime({readSettings:()=>({appearance:appearance({})})}),root=element();
+    runtime.register(root,{scrollTargets:()=>[root]});
+    assert.throws(()=>runtime.rebaseClassic(()=>{root.scrollTop=0;throw Error('paint failed');}),/paint failed/);
+    assert.equal(root.getAttribute('data-qm-theme'),'glass');assert.equal(root.scrollTop,83);runtime.dispose();
+});
+
+test('classic rebase prunes detached roots and validates before any surface writes', () => {
+    const runtime=createQianmuAppearanceRuntime({readSettings:()=>({})}),a=element(),b=element();
+    runtime.register(a);runtime.register(b);b.isConnected=false;let paints=0;
+    assert.throws(()=>runtime.rebaseClassic(null),TypeError);assert.equal(a.writes,0);
+    runtime.rebaseClassic(root=>{assert.equal(root,a);paints++;});assert.equal(paints,1);assert.equal(runtime.size,1);runtime.dispose();
+});
+
 test('classic-only mount and synchronization leave roots and settings untouched', () => {
     const settings = { theme: 'dream' }, before = structuredClone(settings), root = element(); let coverReads = 0;
     const runtime = createQianmuAppearanceRuntime({ readSettings: () => settings, readCoverAccent() { coverReads++; } });

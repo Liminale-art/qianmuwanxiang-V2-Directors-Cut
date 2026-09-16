@@ -3,11 +3,12 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
+import {QUICK_HIVE_THEME_PALETTES} from '../qianmu-classic-palettes.js';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 const require = createRequire(import.meta.url), {chromium} = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
-const paletteSource = source.slice(source.indexOf('const QUICK_HIVE_THEME_PALETTES'), source.indexOf('function currentHiveThemeKey'));
+const paletteSource = `const QUICK_HIVE_THEME_PALETTES = ${JSON.stringify(QUICK_HIVE_THEME_PALETTES)};`;
 const variablesSource = source.slice(source.indexOf('const NOTES_THEME_VARIABLES'), source.indexOf('function syncNotesTheme'));
 const browser = await chromium.launch({channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true});
 const context = await browser.newContext(), errors = [], checks = [];

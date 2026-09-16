@@ -68,7 +68,8 @@ test('the actual appearance change event synchronizes notes without rebuilding t
   const start = source.indexOf('modal._sdThemeMenuCleanup = bindQianmuThemeMenu');
   assert.ok(start >= 0, 'the appearance selection remains wired to the production menu');
   const event = source.slice(start, source.indexOf("modal.querySelectorAll('.sd-tab')", start));
-  assert.match(event, /renderModal\(\)[\s\S]*syncNotesTheme\(\)/);
+  assert.match(event, /selectQianmuClassicTheme/);
+  assert.match(event, /if \(appearanceSession.supported\)[\s\S]*return;[\s\S]*renderModal\(\)[\s\S]*syncNotesTheme\(\)/, 'modern browsers use in-place synchronization; the old fallback stays limited to unsupported browsers');
   assert.doesNotMatch(event, /renderNotesPanelPortal|renderFloatingNotes/);
   assert.match(source, /function renderFloatButton\(\) \{\s*syncNotesTheme\(\);/, 'settings restoration and appearance refreshes use the same notes sync');
   const helper = await readFile(new URL('../qianmu-notes-theme.js', import.meta.url), 'utf8');

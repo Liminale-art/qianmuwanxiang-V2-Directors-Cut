@@ -140,6 +140,8 @@ import {
 } from './qianmu-notes.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
 import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js';
+import { THEMES, THEME_KEYS, QUICK_HIVE_THEME_PALETTES, READER_PORTAL_BG } from './qianmu-classic-palettes.js';
+import { selectQianmuClassicTheme } from './qianmu-appearance-actions.js';
 import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.160';
@@ -1003,50 +1005,6 @@ const GEOPOLITICS_SCHEMA_TEXT = `【活幕·势·额外输出字段】
 - 【输出规范：定量约束，唯变是传】势力数量必须不低于3，上限6股；世界事件必须最低2桩，上限6桩（至少1桩为跨地域核心脉络），仅回传本幕有实质变化或新增的条目，原样复述无变化内容不计为有效输出（唯独 faction_relations 因关乎星图连通性，须持续维护、回传当前完整关系网，不可借「无变化」省略）。
 
 ⚠️ 输出前自检（违则本字段视为失职）：你是否真的输出了 faction_relations 数组、孤立无连线的势力是否控制在总数三分之一以内（3-4 股≤1、5-6 股≤2）、其余势力是否都连进了关系网？是否存在漏掉的关系？`;
-
-// 外观主题：key 即 modal 上的 sd-theme-<key> 类名，配色全在 style.css 里定义。
-// dot = 下拉里名字前的小圆点底色（单色，取该主题强调色；多色渐变在小圆里会露边角故不用）。
-const THEMES = [
-  { key: 'light', name: '日间', dot: '#fdfcefff' },
-  { key: 'dark', name: '夜间', dot: '#181818ff' },
-  { key: 'summer', name: '柠夏', dot: '#9be84a' },
-  { key: 'candy', name: '粉糯', dot: '#ffc7c9ff' },
-  { key: 'kraft', name: '旧笺', dot: '#c7a877' },
-  { key: 'dream', name: '幻梦', dot: '#9b8fd0' },
-];
-const THEME_KEYS = THEMES.map((t) => t.key);
-const QUICK_HIVE_THEME_PALETTES = Object.freeze({
-  light: {
-    lightFill: 'rgba(248, 247, 243, .30)', darkFill: 'rgba(43, 44, 44, .38)',
-    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
-    edges: ['#77736d', '#c99b51', '#ddd8cd'], mainEdge: '#c99b51', mainFill: 'rgba(255, 255, 255, .22)',
-  },
-  dark: {
-    lightFill: 'rgba(68, 72, 70, .32)', darkFill: 'rgba(35, 37, 38, .44)',
-    lightIcon: '#f7f3ea', darkIcon: '#f7f3ea',
-    edges: ['#8faf9b', '#d8ddd8', '#777c79'], mainEdge: '#8faf9b', mainFill: 'rgba(43, 44, 44, .34)',
-  },
-  summer: {
-    lightFill: 'rgba(248, 249, 246, .30)', darkFill: 'rgba(45, 48, 47, .38)',
-    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
-    edges: ['#c6df4e', '#83cbb4', '#ddd8cd', '#77736d'], mainEdge: '#9fca62', mainFill: 'rgba(255, 255, 255, .22)',
-  },
-  candy: {
-    lightFill: 'rgba(249, 247, 247, .30)', darkFill: 'rgba(46, 43, 45, .38)',
-    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
-    edges: ['#e5c971', '#e8a7bd', '#ddd8cd', '#77736d'], mainEdge: '#e3a0b8', mainFill: 'rgba(255, 255, 255, .22)',
-  },
-  kraft: {
-    lightFill: 'rgba(248, 246, 241, .30)', darkFill: 'rgba(45, 43, 40, .38)',
-    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
-    edges: ['#a77b45', '#d8b66e', '#ddd8cd', '#77736d'], mainEdge: '#c99b51', mainFill: 'rgba(255, 255, 255, .22)',
-  },
-  dream: {
-    lightFill: 'rgba(249, 248, 250, .30)', darkFill: 'rgba(44, 43, 48, .38)',
-    lightIcon: '#4b4b49', darkIcon: '#f7f3ea',
-    edges: ['#b7a5e3', '#8ec9c0', '#e6a8c7', '#e4cd8e', '#ddd8cd', '#77736d'], mainEdge: '#b7a5e3', mainFill: 'rgba(255, 255, 255, .22)',
-  },
-});
 
 function currentHiveThemeKey() {
   return THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
@@ -7018,9 +6976,14 @@ function renderModal() {
     activeTab = 'coread'; renderModal();
   });
   modal._sdThemeMenuCleanup = bindQianmuThemeMenu(modal, (next) => {
+    if (appearanceSession.supported) {
+      try { selectQianmuClassicTheme({settings,themeKey:next,session:appearanceSession,save:saveSettings,resolveLogo:key=>FLOAT_LOGO_URLS[key]||FLOAT_LOGO_URL}); }
+      catch (error) { toast('外观切换未完成，已保留原设置。','warning'); console.warn('[千幕] 外观切换失败',error); return false; }
+      return;
+    }
     if (next && next !== settings.theme) { settings.theme = next; saveSettings(); }
     renderFloatButton();
-    renderModal();   // 重渲染会重建菜单（默认收起态）
+    renderModal();   // 不支持弱引用的旧浏览器维持原经典行为
     syncNotesTheme();
   });
   modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
@@ -25768,9 +25731,6 @@ async function importTemplates(event) {
 
 // 全屏 portal 需从模态复制的主题变量（避免 CSS 重复声明，永远跟随千幕当前主题）
 const READER_PORTAL_VARS = ['--sd-text', '--sd-muted', '--sd-border', '--sd-hairline', '--sd-glass', '--sd-glass-weak', '--sd-card', '--sd-folder-head', '--sd-input-bg', '--sd-accent', '--sd-primary', '--sd-primary-text', '--sd-window-bg', '--sd-pre', '--sd-font'];
-// 全屏 portal 不透明底色（按主题给实色，避免透出下方 ST 页面）
-const READER_PORTAL_BG = { light: '#f3efe7', dark: '#1c1e22', summer: '#e9f5ee', candy: '#faf0f4', kraft: '#f1e7cf', dream: '#f0eff8' };
-
 // 打开阅读器时把该书正文载入此缓存（重数据不进 settings/DOM 反复读）；关闭阅读器即清。
 let readerContentCache = null;   // { bookId, fullText, chapters:[{title,content}], sig }
 let readerScrollSaveTimer = null;

@@ -1,6 +1,7 @@
 import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceRuntime } from './qianmu-appearance-runtime.js';
-import { prepareQianmuPortalBaseline } from './qianmu-appearance-portals.js';
+import { prepareQianmuPortalBaseline, createQianmuClassicPainter } from './qianmu-appearance-portals.js';
+import { THEME_KEYS } from './qianmu-classic-palettes.js';
 
 const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-draft-body,textarea';
 
@@ -74,6 +75,11 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         get ready() { return ready; },
         get size() { return runtime.size; },
         sync, mount, mountNotes,
+        repaintClassic(options) {
+            if (!runtime.supported) return;
+            const key = readSettings()?.theme;
+            runtime.rebaseClassic(createQianmuClassicPainter(document, THEME_KEYS.includes(key) ? key : 'light', options));
+        },
         mountPortal(root, options) {
             if (!root?.isConnected || !runtime.supported) return () => {};
             if (!runtime.has(root) && readAppearancePreferences(readSettings()).family !== 'classic') prepareQianmuPortalBaseline(root, readSettings()?.theme);

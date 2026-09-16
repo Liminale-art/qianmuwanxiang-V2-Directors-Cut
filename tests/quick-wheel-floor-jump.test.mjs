@@ -13,6 +13,7 @@ import {
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const utilsSource = await readFile(new URL('../qianmu-storyboard-utils.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const classic = await readFile(new URL('../qianmu-classic-palettes.js', import.meta.url), 'utf8');
 
 // 更新后只沿用用户自定义入口，全部千幕 tab 均可自由选择，不设置可见的产品上限。
 assert.match(source, /quickWheelCustomOrder/);
@@ -34,8 +35,8 @@ assert.match(source, /button\.innerHTML = `\$\{iconMarkup\}\$\{QUICK_HEX_BORDER_
 assert.match(source, /const FLOAT_LOGO_URLS = Object\.freeze\([\s\S]*qianmulogo-dark\.png[\s\S]*qianmulogo-summer\.png[\s\S]*qianmulogo-candy\.png[\s\S]*qianmulogo-dream\.png/, '四套新增外观必须使用各自正式 Logo');
 assert.match(source, /btn\.innerHTML = `<img src="\$\{logoUrl\}"/, '正式 Logo 必须按当前外观挂载到真实悬浮窗');
 assert.doesNotMatch(source, /sd-wheel-core/, '展开时不得再创建会使锚点跳位的替代中心按钮');
-assert.match(source, /const QUICK_HIVE_THEME_PALETTES = Object\.freeze\([\s\S]*dark:[\s\S]*summer:[\s\S]*candy:[\s\S]*kraft:[\s\S]*dream:/, '蜂巢边线与主 Logo 必须按六套面板外观建立视觉方案');
-assert.match(source, /lightFill:[^\n]*darkFill:[\s\S]*edges:/, '主题只改变灰白玻璃的明暗与边线，不得把玻璃底染成强调色');
+assert.match(classic, /const QUICK_HIVE_THEME_PALETTES = Object\.freeze\([\s\S]*dark:[\s\S]*summer:[\s\S]*candy:[\s\S]*kraft:[\s\S]*dream:/, '蜂巢边线与主 Logo 必须按六套面板外观建立视觉方案');
+assert.match(classic, /lightFill:[^\n]*darkFill:[\s\S]*edges:/, '主题只改变灰白玻璃的明暗与边线，不得把玻璃底染成强调色');
 assert.match(source, /root\.className = `sd-wheel-hive sd-hive-theme-\$\{themeKey\}/, '展开蜂巢必须标记当前面板外观');
 const renderFloat = source.slice(source.indexOf('function renderFloatButton'), source.indexOf('function renderBusyState'));
 assert.match(renderFloat, /FLOAT_LOGO_URLS\[themeKey\][\s\S]*sd-hive-theme-\$\{themeKey\}[\s\S]*palette\.mainEdge/, '主悬浮窗必须同步 Logo、边线与灰白玻璃明暗');
@@ -99,8 +100,8 @@ assert.match(css, /#story-director-quick-wheel/);
 assert.match(css, /#story-director-float\.sd-float-wheel-opening\s*\{[^}]*transition:\s*none !important/, '读取触屏长按锚点前必须冻结主格位移动画');
 assert.match(css, /--sd-wheel-item-height/);
 assert.match(css, /clip-path:\s*polygon\(50% 0, 100% 25%, 100% 75%/, '蜂巢入口必须是左右直边的竖向正六边形');
-assert.match(source, /mainEdge: '#c99b51'[\s\S]*mainEdge: '#8faf9b'[\s\S]*mainEdge: '#9fca62'[\s\S]*mainEdge: '#e3a0b8'/, '主 Logo 边线必须覆盖日间、夜间、柠夏与粉糯的指定强调色');
-assert.match(source, /kraft:[\s\S]*mainEdge: '#c99b51'/, '旧笺主 Logo 必须沿用金色边线');
+assert.match(classic, /mainEdge: '#c99b51'[\s\S]*mainEdge: '#8faf9b'[\s\S]*mainEdge: '#9fca62'[\s\S]*mainEdge: '#e3a0b8'/, '主 Logo 边线必须覆盖日间、夜间、柠夏与粉糯的指定强调色');
+assert.match(classic, /kraft:[\s\S]*mainEdge: '#c99b51'/, '旧笺主 Logo 必须沿用金色边线');
 assert.match(css, /#story-director-float\.sd-hive-theme-dream[^}]*animation:\s*sd-hive-dream-edge 12s/, '幻梦主 Logo 边线必须缓慢虹彩变化');
 assert.match(source, /QUICK_HEX_BORDER_SVG[\s\S]*<polygon points="43\.301,0 86\.602,25 86\.602,75 43\.301,100 0,75 0,25"/, '主悬浮窗与蜂巢片必须使用左右直边的真实六边形矢量描边');
 assert.match(css, /#story-director-float\s*\{[^}]*backdrop-filter:\s*blur\(22px\) saturate\(1\.12\)/, '主悬浮窗必须直接采样页面背景形成毛玻璃');

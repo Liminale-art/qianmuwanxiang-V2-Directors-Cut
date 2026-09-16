@@ -48,6 +48,23 @@ export function createQianmuAppearanceRuntime({ readSettings, readCoverAccent = 
         get preferences() { return preferences; },
         get size() { prune(); return references.size; },
         has(root) { return roots.has(root); },
+        rebaseClassic(paint) {
+            assertLive();
+            if (typeof paint !== 'function') throw new TypeError('A synchronous classic painter is required.');
+            const next = current(); prune();
+            const entries = [...references].map(ref => roots.get(ref.deref())).filter(Boolean);
+            const restoreScroll = captureScroll(entries);
+            try {
+                // Release EVERY root first: copied portal tokens must not come from a still-themed parent.
+                for (const entry of entries) entry.controller.setTheme(null);
+                for (const entry of entries) paint(entry.root, entry.options);
+            } finally {
+                try { for (const entry of entries) entry.controller.setTheme(next.options); }
+                finally { restoreScroll(); }
+            }
+            preferences = next.preferences;
+            return preferences;
+        },
         sync() {
             assertLive();
             // Finish preference/cover reads before changing any existing surface.
@@ -71,7 +88,7 @@ export function createQianmuAppearanceRuntime({ readSettings, readCoverAccent = 
             try { controller.register(root, options); controller.setTheme(next.options); }
             catch (error) { controller.dispose(); throw error; }
             finally { restoreScroll(); }
-            const ref = new WeakReference(root), entry = { root, controller, ref, scrollTargets };
+            const ref = new WeakReference(root), entry = { root, controller, ref, scrollTargets, options: Object.freeze({ ...options }) };
             roots.set(root, entry); references.add(ref); preferences = next.preferences;
             let active = true;
             return () => {

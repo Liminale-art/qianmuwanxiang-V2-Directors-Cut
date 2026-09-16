@@ -5,10 +5,11 @@ import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
+import { READER_PORTAL_BG } from '../qianmu-classic-palettes.js';
 import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
-const constants=vm.runInNewContext(source.slice(source.indexOf('const READER_PORTAL_VARS ='),source.indexOf('// 打开阅读器时把该书正文'))+';({READER_PORTAL_VARS,READER_PORTAL_BG})');
+const constants={...vm.runInNewContext(source.slice(source.indexOf('const READER_PORTAL_VARS ='),source.indexOf('// 打开阅读器时把该书正文'))+';({READER_PORTAL_VARS})'),READER_PORTAL_BG};
 const names=['mountReaderPortal','openTheaterFullscreen','unmountTheaterFullscreen','theaterFullscreenEsc','openStorageCleanupDialog','openStorageChatCleanupDialog','ttsOpenQuickPopup','ttsCloseQuickPopup','ttsPopupOutside'];
 const code=names.map(storyboardFunctionSource).join('\n')+`;Object.assign(window,{${names.join(',')}});`;
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
@@ -19,14 +20,14 @@ await context.route('**/*',async route=>{
     const url=route.request().url();
     if(url==='https://qianmu.test/')return route.fulfill({contentType:'text/html',body:'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>'});
     const file=url.replace('https://qianmu.test/','');
-    if(['qianmu-appearance-session.js','qianmu-appearance-runtime.js','qianmu-appearance-settings.js','qianmu-appearance-portals.js','qianmu-theme-surfaces.js','qianmu-theme-palette.js','qianmu-storage-backup-view.js'].includes(file))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
+    if(['qianmu-appearance-session.js','qianmu-appearance-runtime.js','qianmu-appearance-settings.js','qianmu-appearance-portals.js','qianmu-theme-surfaces.js','qianmu-theme-palette.js','qianmu-storage-backup-view.js','qianmu-classic-palettes.js','qianmu-appearance-actions.js'].includes(file))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
     external++;return route.abort();
 });
 try{
     await page.goto('https://qianmu.test/');
     for(const file of ['style.css','qianmu-theme-skins.css'])await page.addStyleTag({content:await readFile(new URL('../'+file,import.meta.url),'utf8')});
     await page.evaluate(async({code,constants})=>{
-        const noop=()=>{};Object.assign(window,constants,await import('./qianmu-appearance-session.js'),await import('./qianmu-appearance-settings.js'),await import('./qianmu-appearance-portals.js'),await import('./qianmu-theme-surfaces.js'),await import('./qianmu-storage-backup-view.js'),{
+        const noop=()=>{};Object.assign(window,constants,await import('./qianmu-appearance-session.js'),await import('./qianmu-appearance-settings.js'),await import('./qianmu-appearance-portals.js'),await import('./qianmu-theme-surfaces.js'),await import('./qianmu-storage-backup-view.js'),await import('./qianmu-appearance-actions.js'),{
             MODAL_ID:'story-director-modal',THEME_KEYS:['light','dark','summer','candy','kraft','dream'],STORAGE_CLEANUP_LAYER_ID:'qianmu-storage-cleanup-layer',
             NOTES_THEME_VARIABLES:['--sd-text','--sd-muted','--sd-border','--sd-hairline','--sd-glass','--sd-glass-weak','--sd-card','--sd-folder-head','--sd-sticky-bg','--sd-pre','--sd-input-bg','--sd-accent','--sd-primary','--sd-primary-text'],
             STORAGE_ITEM_RISK:{},STORAGE_CHAT_CLEARABLE:new Set(['notes']),getChatKey:()=> 'isolated-chat',storageChatScopeLabel:key=>key,formatStorageBytes:bytes=>`${bytes} B`,
@@ -86,8 +87,15 @@ try{
             }
             await page.evaluate(()=>{for(const key of ['reader','theater','storage','tts'])portalFixture[key].style.removeProperty('visibility');});
         }
+        const failedSave=await page.evaluate(()=>{
+            const f=portalFixture,before=settings.appearance,themeKey=settings.theme;
+            const values=[f.reader,f.theater,f.storage,f.tts].map(node=>[node.dataset.qmTheme,node.dataset.qmMode,node.style.getPropertyValue('--sd-text')]);
+            let error='';try{selectQianmuClassicTheme({settings,themeKey:'candy',session:appearanceSession,save:()=>{throw Error('isolated save failure');},resolveLogo:()=>null});}catch(reason){error=reason.message;}
+            return {error,same:settings.appearance===before,themeKey:settings.theme,expectedKey:themeKey,values,after:[f.reader,f.theater,f.storage,f.tts].map(node=>[node.dataset.qmTheme,node.dataset.qmMode,node.style.getPropertyValue('--sd-text')]),draft:f.input.value,checked:f.checkbox.checked};
+        });assert.equal(failedSave.error,'isolated save failure');assert.equal(failedSave.same,true);assert.equal(failedSave.themeKey,failedSave.expectedKey);assert.deepEqual(failedSave.after,failedSave.values);assert.equal(failedSave.draft,'未保存阅读批注');assert.equal(failedSave.checked,true);checks.push(`${width}/${family}/${mode}: synchronous native-save failure restores original preference identity and all portal palettes`);
         const restored=await page.evaluate(async()=>{
-            const f=portalFixture;settings.appearance=updateAppearancePreferences(settings,{family:'classic'});await appearanceSession.sync();
+            const f=portalFixture;
+            selectQianmuClassicTheme({settings,themeKey:settings.theme==='dark'?'summer':'dark',session:appearanceSession,save:()=>{},resolveLogo:()=>null});
             const expected=getComputedStyle(document.getElementById(MODAL_ID)).getPropertyValue('--sd-text').trim();
             const result={themes:[f.reader,f.theater,f.storage,f.tts].map(node=>node.dataset.qmTheme||''),text:[f.reader,f.theater,f.storage,f.tts].map(node=>getComputedStyle(node).getPropertyValue('--sd-text').trim()),expected,readerBackground:f.reader.style.getPropertyValue('--sd-portal-bg'),expectedBackground:READER_PORTAL_BG[settings.theme]};
             f.storage.querySelector('.sd-storage-cleanup-cancel').click();result.cancelled=await storageResult;

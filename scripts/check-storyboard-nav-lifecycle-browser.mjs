@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import vm from 'node:vm';
+import { THEMES as themes, QUICK_HIVE_THEME_PALETTES as hivePalettes } from '../qianmu-classic-palettes.js';
 import { createStoryboardFormFixture, storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
 const require = createRequire(import.meta.url), { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -11,8 +11,6 @@ const bindingStart = entry.indexOf('  bindQianmuStoryboardNavigation(root, (butt
 const bindingEnd = entry.indexOf("  root.querySelectorAll('[data-storyboard-gallery-kind]')", bindingStart);
 assert.ok(bindingStart > 0 && bindingEnd > bindingStart);
 const binding = entry.slice(bindingStart, bindingEnd);
-const themes = vm.runInNewContext(entry.slice(entry.indexOf('const THEMES = ['), entry.indexOf('const THEME_KEYS =')) + '; THEMES;');
-const hivePalettes = vm.runInNewContext(entry.slice(entry.indexOf('const QUICK_HIVE_THEME_PALETTES ='), entry.indexOf('function currentHiveThemeKey')) + '; QUICK_HIVE_THEME_PALETTES;');
 const names = ['renderModal', 'closeModal', 'storyboardNavigate', 'storyboardApplyRoute', 'storyboardPageKey', 'storyboardScroller',
   'storyboardRememberPageScroll', 'storyboardRestorePageScroll', 'storyboardPageTitle', 'renderStoryboardTab', 'renderStoryboardNav'];
 const code = names.map(storyboardFunctionSource).join('\n') + `\nObject.assign(window,{${names.join(',')}});`;
@@ -24,7 +22,7 @@ await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' });
   if (url === 'https://qianmu.test/qianmu-theme-skins.css') { skinRequests++; return route.fulfill({status:failSkin?404:200,contentType:'text/css',body:failSkin?'':await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')}); }
-  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-settings.js', 'qianmu-appearance-portals.js', 'qianmu-notes-theme.js']) {
+  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-settings.js', 'qianmu-appearance-portals.js', 'qianmu-notes-theme.js', 'qianmu-classic-palettes.js', 'qianmu-appearance-actions.js']) {
     if (url === `https://qianmu.test/${file}`) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
   }
   external++; return route.abort();
@@ -33,10 +31,10 @@ try {
   await page.goto('https://qianmu.test/'); await page.addStyleTag({ content: css });
   await page.evaluate(async ({ code, binding, form, themes }) => {
     const nav = await import('./qianmu-storyboard-nav-lifecycle.js'), theme = await import('./qianmu-theme-surfaces.js'), icons = await import('./qianmu-icon-renderer.js');
-    Object.assign(window, nav, icons, await import('./qianmu-theme-menu.js'), { theme });
+    Object.assign(window, nav, icons, await import('./qianmu-theme-menu.js'), await import('./qianmu-appearance-actions.js'), { theme });
     const noop = () => {}, counters = { saves: 0, captures: 0, float: 0, notes: 0 };
     Object.assign(window, {
-      counters, form, state: { view: 'create', source: 'novel', assetView: 'tags', editingArtistPresetId: '', editingPromptItemId: '' },
+      counters, form, FLOAT_LOGO_URLS:{}, FLOAT_LOGO_URL:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', toast:message=>{throw Error(message);}, state: { view: 'create', source: 'novel', assetView: 'tags', editingArtistPresetId: '', editingPromptItemId: '' },
       storyboardState: () => window.state, clone: structuredClone, htmlEscape: value => String(value), MODAL_ID: 'story-director-modal',
       activeTab: 'imagegen', settings: { theme: 'light', lastTab: 'dashboard' }, THEME_KEYS: themes.map(theme => theme.key), THEMES: themes,
       readerView: null, focusClockLockConfirming: false, coreadOpenRequestId: 0, editorView: null, theaterView: null,
@@ -164,16 +162,24 @@ try {
       return { maximum, remaining: outsideListeners.size, expanded: trigger.getAttribute('aria-expanded') };
     }); assert.deepEqual(repeats, { maximum: 1, remaining: 0, expanded: 'false' }); checks.push(`${width}: 25 menu toggles have no document-listener accumulation`);
     for (const key of themes.map(theme => theme.key)) {
-      const prior = await page.evaluate(() => ({ ...counters, theme: settings.theme, renders: performanceRuntime.modalRenderCount }));
+      const prior = await page.evaluate(() => {
+        window.classicBody=document.querySelector('.sd-body');
+        if(!classicBody.querySelector('textarea'))classicBody.insertAdjacentHTML('beforeend','<details open><summary>保留折叠</summary><textarea>尚未保存的编辑</textarea></details><div style="height:1700px"></div>');
+        window.classicDraft=classicBody.querySelector('textarea');classicDraft.setSelectionRange(1,4);classicBody.scrollTop=73;
+        return { ...counters, theme: settings.theme, renders: performanceRuntime.modalRenderCount,scroll:classicBody.scrollTop };
+      });
       await page.locator('.sd-theme-btn').click();
       await page.locator(`.sd-theme-opt[data-theme="${key}"]`).click();
       const next = await page.evaluate(() => ({ ...counters, theme: settings.theme, renders: performanceRuntime.modalRenderCount,
         listeners: outsideListeners.size, hidden: document.querySelector('.sd-theme-menu').hidden,
-        checked: document.querySelector('.sd-theme-opt[aria-checked="true"]').dataset.theme }));
+        checked: document.querySelector('.sd-theme-opt[aria-checked="true"]').dataset.theme,
+        same:classicBody===document.querySelector('.sd-body')&&classicDraft===classicBody.querySelector('textarea'),draft:classicDraft.value,selection:[classicDraft.selectionStart,classicDraft.selectionEnd],scroll:classicBody.scrollTop,
+        expanded:classicBody.querySelector('details').open,focus:document.activeElement===document.querySelector('.sd-theme-btn'),className:document.getElementById(MODAL_ID).className }));
       assert.equal(next.theme, key); assert.equal(next.checked, key); assert.equal(next.hidden, true); assert.equal(next.listeners, 0);
-      assert.equal(next.saves, prior.saves + (key === prior.theme ? 0 : 1)); assert.equal(next.renders, prior.renders + 1);
-      assert.equal(next.float, prior.float + 1); assert.equal(next.notes, prior.notes + 1);
-      checks.push(`${width}/${key}: actual classic choice persists once and retains float/notes synchronization`);
+      assert.equal(next.saves, prior.saves + (key === prior.theme ? 0 : 1)); assert.equal(next.renders, prior.renders);
+      assert.equal(next.float, prior.float); assert.equal(next.notes, prior.notes);
+      assert.equal(next.same,true);assert.equal(next.draft,'尚未保存的编辑');assert.deepEqual(next.selection,[1,4]);assert.equal(next.scroll,prior.scroll);assert.equal(next.expanded,true);assert.equal(next.focus,true);assert.ok(next.className.includes('sd-theme-'+key));
+      checks.push(`${width}/${key}: actual classic menu persists once without rerender, keeps draft/selection/scroll/fold and returns trigger focus`);
     }
     await page.locator('.sd-theme-btn').focus(); await page.keyboard.press('ArrowDown');
     assert.equal(await page.locator('.sd-theme-opt[aria-checked="true"]').evaluate(node => node === document.activeElement), true);
@@ -237,10 +243,13 @@ try {
   });assert.deepEqual(late,{theme:'glass',mode:'dark',main:false,count:1});checks.push('actual notes portal inherits saved appearance with main panel absent');
   for(const classic of themes.map(theme=>theme.key)){
     const restored=await page.evaluate(async classic=>{
-      settings.theme=classic;settings.appearance=updateAppearancePreferences(settings,{family:'classic'});await appearanceSession.sync();syncNotesTheme();
+      settings.appearance=updateAppearancePreferences(settings,{family:'glass'});await appearanceSession.sync();
+      const nodes=[document.querySelector('.sd-note-body'),mountFixture.main.querySelector('img'),mountFixture.hiveButton,mountFixture.floating];
+      const previousRenders=performanceRuntime.modalRenderCount;
+      selectQianmuClassicTheme({settings,themeKey:classic,session:appearanceSession,save:saveSettings,resolveLogo:()=>FLOAT_LOGO_URL});
       const source=document.createElement('div');source.id=MODAL_ID;source.className=`sd-theme-${classic}`;document.body.append(source);const expected=getComputedStyle(source).getPropertyValue('--sd-text').trim();source.remove();
-      const panel=document.getElementById(NOTES_PANEL_LAYER_ID);return {theme:panel.dataset.qmTheme||'',text:getComputedStyle(panel).getPropertyValue('--sd-text').trim(),expected,hive:mountFixture.hiveButton.style.color};
-    },classic);assert.equal(restored.theme,'');assert.equal(restored.text,restored.expected);assert.equal(restored.hive,'pink');checks.push(`${classic}: actual notes sync restores clean classic tokens after new theme`);
+      const panel=document.getElementById(NOTES_PANEL_LAYER_ID);return {theme:panel.dataset.qmTheme||'',text:getComputedStyle(panel).getPropertyValue('--sd-text').trim(),expected,hive:mountFixture.hiveButton.style.getPropertyValue('--sd-wheel-icon'),edge:mountFixture.hiveButton.style.getPropertyValue('--sd-wheel-edge'),floatEdge:mountFixture.main.style.getPropertyValue('--sd-float-edge'),noteEdge:mountFixture.floating.style.getPropertyValue('--sd-wheel-edge'),same:nodes.every(node=>node.isConnected),renders:performanceRuntime.modalRenderCount-previousRenders,family:settings.appearance.family};
+    },classic);assert.equal(restored.theme,'');assert.equal(restored.text,restored.expected);assert.equal(restored.hive,hivePalettes[classic].darkIcon);assert.equal(restored.edge,hivePalettes[classic].edges[2%hivePalettes[classic].edges.length]);assert.equal(restored.floatEdge,hivePalettes[classic].mainEdge);assert.equal(restored.noteEdge,restored.edge);assert.equal(restored.same,true);assert.equal(restored.renders,0);assert.equal(restored.family,'classic');checks.push(`${classic}: action exits new theme and recolors real notes/hive/main without replacing nodes, also when main panel is absent`);
   }
   const reset=await page.evaluate(()=>{appearanceSession.reset();return {size:appearanceSession.size,links:document.querySelectorAll('link[href="https://qianmu.test/qianmu-theme-skins.css"]').length};});assert.deepEqual(reset,{size:0,links:0});checks.push('production session cleanup releases skin and registrations');
   failSkin=true;

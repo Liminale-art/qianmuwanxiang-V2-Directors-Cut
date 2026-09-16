@@ -39,7 +39,12 @@ export function bindQianmuThemeMenu(root, onSelect) {
         if (disposed || menu.hidden || !keys.has(button) || button.disabled || button.hidden) return;
         const key = keys.get(button);
         if (!key || button.dataset.theme !== key) return;
-        event.stopPropagation(); close(); onSelect(key);
+        event.stopPropagation(); close(true);
+        if (onSelect(key) === false) return;
+        for (const option of buttons) {
+            option.classList[option === button ? 'add' : 'remove']('active');
+            option.setAttribute('aria-checked', String(option === button));
+        }
     }
     function keydown(event) {
         if (disposed) return;

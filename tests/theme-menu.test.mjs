@@ -90,6 +90,13 @@ test('absent menu on storyboard pages is an inert disposer', () => {
     const cleanup = bindQianmuThemeMenu({ querySelector: () => null }, () => assert.fail()); cleanup(); cleanup();
 });
 
+test('successful in-place selection updates radio state and returns focus, a rejected action keeps the old radio',()=>{
+    for(const accepted of [true,false]){
+        const f=fixture();bindQianmuThemeMenu(f.root,()=>accepted);f.trigger.emit('click');f.menu.emit('click',{target:f.buttons[2]});
+        assert.equal(f.document.activeElement,f.trigger);assert.equal(f.buttons[2].getAttribute('aria-checked'),String(accepted));assert.equal(f.buttons[1].getAttribute('aria-checked'),String(!accepted));
+    }
+});
+
 test('production rerender, allowed close and extension disposal all release menu ownership', async () => {
     const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
     assert.match(entry, /function closeModal\(\) \{\s*if \(focusClockBlockExit\(\)\) return;\s*document.getElementById\(MODAL_ID\)\?\._sdThemeMenuCleanup\?\.\(\);/);
