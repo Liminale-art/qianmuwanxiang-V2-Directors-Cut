@@ -206,6 +206,19 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
   -webkit-backdrop-filter: var(--qm-skin-filter);
 }
 
+/* Existing story folds remain nested in their original cards. Share the family
+   shape without stacking another blur layer or changing injection controls. */
+#story-director-modal[data-qm-theme] :is(.sd-item-card, .sd-chain-item, .sd-relus-row) {
+  border-radius: var(--qm-card-radius) !important;
+  background: color-mix(in srgb, var(--qm-raised) 36%, transparent) !important;
+}
+#story-director-modal[data-qm-theme] :is(.sd-item-summary-main h4, .sd-item-detail dd, .sd-chain-node, .sd-relus-parties, .sd-relus-tension, .sd-relus-drift) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#story-director-modal[data-qm-theme] .sd-relus-tone-pos { color: color-mix(in srgb, #5f9e74 60%, var(--qm-ink)); }
+#story-director-modal[data-qm-theme] .sd-relus-tone-neg { color: color-mix(in srgb, #c2606a 60%, var(--qm-ink)); }
+
 /* Vibe managers share their existing main-panel owner and read-only lifecycle. */
 #story-director-modal[data-qm-theme] :is(.sd-vibe-review, .sd-vibe-storage) { --sd-text-soft: var(--qm-muted); }
 #story-director-modal[data-qm-theme] :is(.sd-vibe-review-rows > article, .sd-vibe-storage-list > label) {
