@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import vm from 'node:vm';
 import { createStoryboardFormFixture, storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
 const require = createRequire(import.meta.url), { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -10,7 +11,8 @@ const bindingStart = entry.indexOf('  bindQianmuStoryboardNavigation(root, (butt
 const bindingEnd = entry.indexOf("  root.querySelectorAll('[data-storyboard-gallery-kind]')", bindingStart);
 assert.ok(bindingStart > 0 && bindingEnd > bindingStart);
 const binding = entry.slice(bindingStart, bindingEnd);
-const names = ['renderModal', 'storyboardNavigate', 'storyboardApplyRoute', 'storyboardPageKey', 'storyboardScroller',
+const themes = vm.runInNewContext(entry.slice(entry.indexOf('const THEMES = ['), entry.indexOf('const THEME_KEYS =')) + '; THEMES;');
+const names = ['renderModal', 'closeModal', 'storyboardNavigate', 'storyboardApplyRoute', 'storyboardPageKey', 'storyboardScroller',
   'storyboardRememberPageScroll', 'storyboardRestorePageScroll', 'storyboardPageTitle', 'renderStoryboardTab', 'renderStoryboardNav'];
 const code = names.map(storyboardFunctionSource).join('\n') + `\nObject.assign(window,{${names.join(',')}});`;
 const css = (await Promise.all(['style.css', 'qianmu-theme-skins.css'].map(file => readFile(new URL('../' + file, import.meta.url), 'utf8')))).join('\n');
@@ -20,21 +22,21 @@ page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' });
-  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js']) {
+  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js']) {
     if (url === `https://qianmu.test/${file}`) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
   }
   external++; return route.abort();
 });
 try {
   await page.goto('https://qianmu.test/'); await page.addStyleTag({ content: css });
-  await page.evaluate(async ({ code, binding, form }) => {
+  await page.evaluate(async ({ code, binding, form, themes }) => {
     const nav = await import('./qianmu-storyboard-nav-lifecycle.js'), theme = await import('./qianmu-theme-surfaces.js'), icons = await import('./qianmu-icon-renderer.js');
-    Object.assign(window, nav, icons, { theme });
-    const noop = () => {}, counters = { saves: 0, captures: 0 };
+    Object.assign(window, nav, icons, await import('./qianmu-theme-menu.js'), { theme });
+    const noop = () => {}, counters = { saves: 0, captures: 0, float: 0, notes: 0 };
     Object.assign(window, {
       counters, form, state: { view: 'create', source: 'novel', assetView: 'tags', editingArtistPresetId: '', editingPromptItemId: '' },
       storyboardState: () => window.state, clone: structuredClone, htmlEscape: value => String(value), MODAL_ID: 'story-director-modal',
-      activeTab: 'imagegen', settings: { theme: 'light', lastTab: 'dashboard' }, THEME_KEYS: ['light'], THEMES: [],
+      activeTab: 'imagegen', settings: { theme: 'light', lastTab: 'dashboard' }, THEME_KEYS: themes.map(theme => theme.key), THEMES: themes,
       readerView: null, focusClockLockConfirming: false, coreadOpenRequestId: 0, editorView: null, theaterView: null,
       storyboardVibeLibraryController: null, storyboardVibeSelection: null, focusClockLockGuard: null,
       modalJustOpened: false, EXTENSION_NAME: '千幕', COREAD_VISIBLE: false, COREAD_ENABLED: false, worldPage: 'front',
@@ -44,6 +46,8 @@ try {
       storyboardCaptureTagDraft: noop, prepareDirectorWorldEntryLinks: noop, snapshotAccState: noop,
       saveSettings: () => counters.saves++, storyboardCaptureWorkbench: () => counters.captures++,
       closeModal: noop, bindQianmuVersionBadge: noop, bindNotesPanelEvents: noop, applyAccState: noop, renderBusyState: noop, syncFontWithST: noop,
+      focusClockBlockExit: () => false, focusClockCloseVoiceDrawer: noop, unmountReaderPortal: noop, unmountTheaterFullscreen: noop,
+      renderFloatButton: () => counters.float++, syncNotesTheme: () => counters.notes++,
       storyboardReconcileGalleryLinks: noop, renderStoryboardCreate: () => form,
       renderStoryboardAssets: () => '<section class="sd-card" style="height:1200px">隔离的素材内容</section>',
       renderStoryboardGallery: () => '<section class="sd-card">隔离的阅片室内容</section>', renderStoryboardLogs: () => '<section class="sd-card">隔离的日志内容</section>',
@@ -52,7 +56,7 @@ try {
     new Function(code)();
     window.bindActiveTabEvents = new Function('root', `const state=storyboardState();\n${binding}`);
     window.renderActiveTab = () => activeTab === 'imagegen' ? renderStoryboardTab() : '<p>原审片页占位，仅验证离开分镜生命周期</p>';
-  }, { code, binding, form: createStoryboardFormFixture().content });
+  }, { code, binding, form: createStoryboardFormFixture().content, themes });
   for (const width of [393, 1280]) for (const mode of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(mode => {
@@ -138,6 +142,51 @@ try {
     const next = old.cloneNode(true); next.querySelector('button').setAttribute('aria-label', '新入口'); old.replaceWith(next);
     return { restored: restore(), same: root.querySelector('.sd-storyboard-nav') === next, second: restore() };
   }); assert.deepEqual(mismatch, { restored: false, same: true, second: false }); checks.push('changed labels safely keep the fresh renderer; restoration is single-use');
+
+  // Existing appearance choices use the same actual modal and its extracted lifecycle-owned menu.
+  await page.evaluate(() => {
+    controller.setTheme(null); activeTab = 'dashboard'; renderModal();
+    const add = document.addEventListener, remove = document.removeEventListener;
+    window.outsideListeners = new Set();
+    document.addEventListener = function(type, handler, capture) { if (type === 'click' && handler.name === 'outside' && capture === true) outsideListeners.add(handler); return add.call(this, type, handler, capture); };
+    document.removeEventListener = function(type, handler, capture) { if (type === 'click' && handler.name === 'outside' && capture === true) outsideListeners.delete(handler); return remove.call(this, type, handler, capture); };
+    window.restoreDocumentListeners = () => { document.addEventListener = add; document.removeEventListener = remove; };
+  });
+  for (const width of [393, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const repeats = await page.evaluate(() => {
+      const trigger = document.querySelector('.sd-theme-btn'); let maximum = 0;
+      for (let i = 0; i < 25; i++) { trigger.click(); maximum = Math.max(maximum, outsideListeners.size); trigger.click(); }
+      return { maximum, remaining: outsideListeners.size, expanded: trigger.getAttribute('aria-expanded') };
+    }); assert.deepEqual(repeats, { maximum: 1, remaining: 0, expanded: 'false' }); checks.push(`${width}: 25 menu toggles have no document-listener accumulation`);
+    for (const key of themes.map(theme => theme.key)) {
+      const prior = await page.evaluate(() => ({ ...counters, theme: settings.theme, renders: performanceRuntime.modalRenderCount }));
+      await page.locator('.sd-theme-btn').click();
+      await page.locator(`.sd-theme-opt[data-theme="${key}"]`).click();
+      const next = await page.evaluate(() => ({ ...counters, theme: settings.theme, renders: performanceRuntime.modalRenderCount,
+        listeners: outsideListeners.size, hidden: document.querySelector('.sd-theme-menu').hidden,
+        checked: document.querySelector('.sd-theme-opt[aria-checked="true"]').dataset.theme }));
+      assert.equal(next.theme, key); assert.equal(next.checked, key); assert.equal(next.hidden, true); assert.equal(next.listeners, 0);
+      assert.equal(next.saves, prior.saves + (key === prior.theme ? 0 : 1)); assert.equal(next.renders, prior.renders + 1);
+      assert.equal(next.float, prior.float + 1); assert.equal(next.notes, prior.notes + 1);
+      checks.push(`${width}/${key}: actual classic choice persists once and retains float/notes synchronization`);
+    }
+    await page.locator('.sd-theme-btn').focus(); await page.keyboard.press('ArrowDown');
+    assert.equal(await page.locator('.sd-theme-opt[aria-checked="true"]').evaluate(node => node === document.activeElement), true);
+    await page.keyboard.press('Home'); assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'light');
+    await page.keyboard.press('End'); assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'dream');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.sd-theme-btn').evaluate(node => node === document.activeElement && node.getAttribute('aria-expanded') === 'false'), true);
+    checks.push(`${width}: real menu ArrowDown/Home/End/Escape and focus return`);
+    const cleanup = await page.evaluate(() => {
+      document.querySelector('.sd-theme-btn').click(); renderModal(); const rerender = outsideListeners.size;
+      document.querySelector('.sd-theme-btn').click(); closeModal(); const close = outsideListeners.size;
+      const hidden = document.querySelector('.sd-theme-menu').hidden;
+      document.getElementById(MODAL_ID).classList.add('open'); renderModal();
+      return { rerender, close, hidden };
+    }); assert.deepEqual(cleanup, { rerender: 0, close: 0, hidden: true }); checks.push(`${width}: actual rerender and modal close release an open menu`);
+  }
+  await page.evaluate(() => restoreDocumentListeners());
   assert.deepEqual(errors, []); assert.equal(external, 0);
-  console.log(JSON.stringify({ passed: checks.length, checks, errors, external, productionDataRead: false, scope: 'actual modal/route/scroll code with isolated host and library services; theme settings not yet enabled in production' }));
+  console.log(JSON.stringify({ passed: checks.length, checks, errors, external, productionDataRead: false, scope: 'actual modal/route/scroll/menu code with isolated host services; new themes not yet enabled in production' }));
 } finally { await context.close(); await browser.close(); }

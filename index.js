@@ -139,6 +139,7 @@ import {
   saveQianmuNote,
 } from './qianmu-notes.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
+import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.160';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.160';
@@ -4201,6 +4202,7 @@ function openModal(tab) {
 
 function closeModal() {
   if (focusClockBlockExit()) return;
+  document.getElementById(MODAL_ID)?._sdThemeMenuCleanup?.();
   focusClockCancelEntry();
   coreadOpenRequestId++;
   focusClockPauseForReadingExit();
@@ -6921,6 +6923,7 @@ function renderModal() {
   if (activeTab !== 'coread') focusClockPauseForReadingExit();
   const modal = document.getElementById(MODAL_ID);
   if (!modal) return;
+  modal._sdThemeMenuCleanup?.();
   storyboardCaptureTagDraft(modal);
   modal._sdTagCompleteCleanup?.();
   modal._sdVibePreviewsCleanup?.();
@@ -6972,16 +6975,7 @@ function renderModal() {
           ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
           <button class="sd-storyboard-shortcut ${activeTab === 'imagegen' ? 'active' : ''}" title="分镜" aria-label="分镜"><i class="fa-solid fa-camera" data-qm-icon="qm-regular-aperture"></i></button>
           <button class="sd-plug-shortcut ${activeTab === 'plug' ? 'active' : ''}" title="API与日志" aria-label="API与日志"><i class="fa-solid fa-gear" data-qm-icon="qm-duotone-gear"></i></button>
-          <div class="sd-theme-pick">
-            <button class="sd-theme-btn" title="外观主题" aria-label="外观主题" aria-haspopup="true"><i class="fa-solid fa-palette"></i></button>
-            <div class="sd-theme-menu" role="menu" hidden>
-              ${THEMES.map((t) => `
-                <button class="sd-theme-opt ${themeKey === t.key ? 'active' : ''}" role="menuitemradio" aria-checked="${themeKey === t.key}" data-theme="${t.key}">
-                  <span class="sd-theme-dot" style="background:${t.dot}"></span>
-                  <span class="sd-theme-name">${t.name}</span>
-                </button>`).join('')}
-            </div>
-          </div>
+          ${renderQianmuThemeMenu(THEMES, themeKey)}
           <button class="sd-close" title="关闭"><i class="fa-solid fa-xmark"></i></button>
         </div>
       </header>
@@ -7014,32 +7008,12 @@ function renderModal() {
     if (!COREAD_ENABLED) { toast(COREAD_TEASER, 'info'); return; }   // 正式版：图标露出但功能沉睡，点击只弹预告
     activeTab = 'coread'; renderModal();
   });
-  const themePick = modal.querySelector('.sd-theme-pick');
-  const themeMenu = themePick?.querySelector('.sd-theme-menu');
-  modal.querySelector('.sd-theme-btn')?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    if (!themeMenu) return;
-    const willOpen = themeMenu.hidden;
-    themeMenu.hidden = !willOpen;
-    themePick.classList.toggle('open', willOpen);
-    if (willOpen) {
-      // 点菜单外任意处即收起，只挂一次
-      const closeOnce = (ev) => {
-        if (themePick.contains(ev.target)) return;
-        themeMenu.hidden = true;
-        themePick.classList.remove('open');
-        document.removeEventListener('click', closeOnce, true);
-      };
-      document.addEventListener('click', closeOnce, true);
-    }
-  });
-  modal.querySelectorAll('.sd-theme-opt').forEach((el) => el.addEventListener('click', () => {
-    const next = el.dataset.theme;
+  modal._sdThemeMenuCleanup = bindQianmuThemeMenu(modal, (next) => {
     if (next && next !== settings.theme) { settings.theme = next; saveSettings(); }
     renderFloatButton();
     renderModal();   // 重渲染会重建菜单（默认收起态）
     syncNotesTheme();
-  }));
+  });
   modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
     focusClockCloseVoiceDrawer();
     if (el.dataset.tab !== 'theater') theaterView = null;
@@ -36291,6 +36265,7 @@ function cleanupRuntime(resetSettings = false) {
     });
     clean('injection', () => clearDirectorInjection());
     clean('panels', () => {
+      document.getElementById(MODAL_ID)?._sdThemeMenuCleanup?.();
       storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
       document.getElementById(MODAL_ID)?._sdVibePreviewsCleanup?.();
       document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();

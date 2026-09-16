@@ -65,7 +65,8 @@ test('invalid appearance indices are bounded and unsupported theme tokens are re
 
 test('the actual appearance change event synchronizes notes without rebuilding their content', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  const start = source.indexOf("modal.querySelectorAll('.sd-theme-opt').forEach");
+  const start = source.indexOf('modal._sdThemeMenuCleanup = bindQianmuThemeMenu');
+  assert.ok(start >= 0, 'the appearance selection remains wired to the production menu');
   const event = source.slice(start, source.indexOf("modal.querySelectorAll('.sd-tab')", start));
   assert.match(event, /renderModal\(\)[\s\S]*syncNotesTheme\(\)/);
   assert.doesNotMatch(event, /renderNotesPanelPortal|renderFloatingNotes/);
