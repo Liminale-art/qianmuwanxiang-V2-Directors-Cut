@@ -1,5 +1,8 @@
 import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceRuntime } from './qianmu-appearance-runtime.js';
+import { prepareQianmuPortalBaseline } from './qianmu-appearance-portals.js';
+
+const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-draft-body,textarea';
 
 // Load once, after the existing stylesheet. Classic sessions make no request.
 export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, schedule = setTimeout, cancelSchedule = clearTimeout } = {}) {
@@ -52,7 +55,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         if (prior?.signature === signature && runtime.has(root)) { void sync(); return prior.off; }
         prior?.off();
         const release = runtime.register(root, { role, tone, edgeIndex,
-            scrollTargets: () => [root, ...root.querySelectorAll('.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,textarea')],
+            scrollTargets: () => [root, ...root.querySelectorAll(SCROLL_TARGETS)],
         });
         let active = true;
         const entry = { signature, off() { if (!active) return; active = false; release(); if (mounted.get(root) === entry) mounted.delete(root); } };
@@ -71,6 +74,11 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         get ready() { return ready; },
         get size() { return runtime.size; },
         sync, mount, mountNotes,
+        mountPortal(root, options) {
+            if (!root?.isConnected || !runtime.supported) return () => {};
+            if (!runtime.has(root) && readAppearancePreferences(readSettings()).family !== 'classic') prepareQianmuPortalBaseline(root, readSettings()?.theme);
+            return mount(root, options);
+        },
         mountHive(root) {
             mount(root);
             for (const button of root.querySelectorAll('[data-hive-tone]')) {

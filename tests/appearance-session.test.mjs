@@ -109,6 +109,7 @@ test('synchronous and asynchronous loader failures are consumed and leave mounte
 
 test('unsupported weak references add no mounts or stylesheet request; invalid owners fail fast', async () => {
     const session = createQianmuAppearanceSession({ readSettings: () => ({ appearance: preference }), WeakReference: null, loadStyles: () => assert.fail('unexpected stylesheet request') });
-    session.mount(element()); assert.equal(await session.sync(), false); assert.equal(session.size, 0); session.reset();
+    session.mount(element()); const portal=element();portal.style.setProperty('--sd-text','untouched');session.mountPortal(portal);assert.equal(portal.style.getPropertyValue('--sd-text'),'untouched');
+    assert.equal(await session.sync(), false); assert.equal(session.size, 0); session.reset();
     assert.throws(() => createQianmuAppearanceSession(), TypeError);
 });

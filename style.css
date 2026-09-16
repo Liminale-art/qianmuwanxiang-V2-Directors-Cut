@@ -762,7 +762,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 /* ---------- 4. 弹窗与主题变量 ---------- */
-#story-director-modal {
+#story-director-modal, .qm-classic-theme-probe {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
@@ -803,6 +803,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 #story-director-modal.sd-theme-dark,
+.qm-classic-theme-probe.sd-theme-dark,
 #story-director-floor-nav.sd-theme-dark {
   color-scheme: dark;                   /* 夜间勾选框随暗色方案渲染，清晰可见 */
 
@@ -836,6 +837,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* 柠夏：柠檬苏打，柠黄 + 浅蓝双调 */
 #story-director-modal.sd-theme-summer,
+.qm-classic-theme-probe.sd-theme-summer,
 #story-director-floor-nav.sd-theme-summer {
   --sd-text: #2c5560;
   --sd-muted: rgba(44, 85, 96, .60);
@@ -860,6 +862,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* 粉糯：淡粉 + 奶黄 + 淡蓝三色软糖（低饱和柔和版，按钮奶黄） */
 #story-director-modal.sd-theme-candy,
+.qm-classic-theme-probe.sd-theme-candy,
 #story-director-floor-nav.sd-theme-candy {
   --sd-text: #6f5161;
   --sd-muted: rgba(111, 81, 97, .58);
@@ -885,6 +888,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* 旧笺：温润旧纸，浅暖褐 + 极淡暗角（去脏，提亮） */
 #story-director-modal.sd-theme-kraft,
+.qm-classic-theme-probe.sd-theme-kraft,
 #story-director-floor-nav.sd-theme-kraft {
   --sd-text: #5a4a30;
   --sd-muted: rgba(90, 74, 48, .58);
@@ -909,6 +913,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* 幻梦：白螺钿珠光，淡虹彩在乳白底上缓缓流转 */
 #story-director-modal.sd-theme-dream,
+.qm-classic-theme-probe.sd-theme-dream,
 #story-director-floor-nav.sd-theme-dream {
   --sd-text: #565377;
   --sd-muted: rgba(86, 83, 119, .56);
@@ -2741,8 +2746,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* ---------- 15. 降级 ---------- */
 @supports not (backdrop-filter: blur(1px)) {
   #story-director-modal .sd-window { background: var(--sd-window-bg) !important; }
-  #story-director-modal { --sd-card: rgba(252, 249, 243, .94); --sd-glass: rgba(255, 255, 255, .7); }
-  #story-director-modal.sd-theme-dark { --sd-card: rgba(36, 38, 42, .96); --sd-glass: rgba(255, 255, 255, .1); }
+  #story-director-modal, .qm-classic-theme-probe { --sd-card: rgba(252, 249, 243, .94); --sd-glass: rgba(255, 255, 255, .7); }
+  #story-director-modal.sd-theme-dark, .qm-classic-theme-probe.sd-theme-dark { --sd-card: rgba(36, 38, 42, .96); --sd-glass: rgba(255, 255, 255, .1); }
 }
 
 /* ---------- 15b. 通用资料库（剧本库 / 剧札共用）+ 幕外阅读 ---------- */

@@ -10,6 +10,7 @@ const ALIASES = Object.freeze({
     '--sd-primary': '--qm-accent', '--sd-primary-text': '--qm-on-accent',
     '--sd-danger': '--qm-danger', '--sd-on-danger': '--qm-on-danger',
 });
+export const QIANMU_THEME_PROPERTIES = Object.freeze(Object.keys(ALIASES));
 
 /** Opaque fallback tokens; glass composition and readability still need renderer-level checks. */
 export function createQianmuThemeSnapshot(options = {}) {
@@ -29,7 +30,7 @@ export function createQianmuThemeSnapshot(options = {}) {
 }
 
 function surfaceOptions({ role = 'surface', tone = null, edgeIndex = 0 } = {}) {
-    if (!['surface', 'hive-entry', 'hive-main'].includes(role)) throw new TypeError('Unknown theme surface role.');
+    if (!['surface', 'hive-entry', 'hive-main', 'reader', 'media'].includes(role)) throw new TypeError('Unknown theme surface role.');
     if (tone !== null && tone !== 'light' && tone !== 'dark') throw new TypeError('Invalid hive tone.');
     if (!Number.isSafeInteger(edgeIndex) || edgeIndex < 0) throw new TypeError('Invalid hive edge index.');
     return Object.freeze({ role, tone, edgeIndex });
@@ -81,9 +82,16 @@ export function createQianmuThemeSurfaceController() {
     }
     function apply(record) {
         if (!snapshot) { restore(record); return; }
-        for (const [name, value] of Object.entries(snapshot.tokens)) patchStyle(record, name, value);
-        patchAttribute(record, 'data-qm-theme', snapshot.theme);
-        patchAttribute(record, 'data-qm-mode', snapshot.mode);
+        // Inspection canvases remain neutral/dark in both appearance modes.
+        const surface = record.options.role === 'media' && snapshot.mode !== 'dark'
+            ? createQianmuThemeSnapshot({ theme: snapshot.theme, mode: 'dark', accent: snapshot.accent }) : snapshot;
+        for (const [name, value] of Object.entries(surface.tokens)) patchStyle(record, name, value);
+        patchAttribute(record, 'data-qm-theme', surface.theme);
+        patchAttribute(record, 'data-qm-mode', surface.mode);
+        if (record.options.role === 'reader') {
+            patchStyle(record, '--sd-portal-bg', snapshot.css['--qm-bg']);
+            patchStyle(record, 'background-color', snapshot.css['--qm-bg'], 'important');
+        }
         if (record.options.role === 'hive-entry') {
             const { tone, edgeIndex } = record.options;
             const visual = snapshot.hive[tone || snapshot.mode];

@@ -296,6 +296,7 @@
     "qianmu-notes-theme.js",
     "qianmu-theme-menu.js",
     "qianmu-appearance-session.js",
+    "qianmu-appearance-portals.js",
     "qianmu-appearance-runtime.js",
     "qianmu-appearance-settings.js",
     "qianmu-theme-surfaces.js",

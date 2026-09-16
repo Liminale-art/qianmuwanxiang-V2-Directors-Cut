@@ -5942,6 +5942,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   document.body.appendChild(root);
   applyQianmuIcons(root);
   bindFloorNavigatorViewport(root);
+  appearanceSession.mountPortal(root);
   root.tabIndex = -1;
   const close = () => closeFloorNavigator();
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
@@ -8266,6 +8267,7 @@ function openStorageCleanupDialog(data) {
     document.body.appendChild(layer);
     applyQianmuIcons(layer);
     const finish = bindStorageCleanupLifetime(layer, modal, resolve);
+    appearanceSession.mountPortal(layer);
     const sync = () => {
       const count = layer.querySelectorAll('input:checked').length;
       const confirm = layer.querySelector('.sd-storage-cleanup-confirm');
@@ -8492,6 +8494,7 @@ function openStorageChatCleanupDialog(data) {
     document.body.appendChild(layer);
     applyQianmuIcons(layer);
     const finish = bindStorageCleanupLifetime(layer, modal, resolve);
+    appearanceSession.mountPortal(layer);
     const sync = () => {
       const count = layer.querySelectorAll('input:checked').length;
       const confirm = layer.querySelector('.sd-storage-cleanup-confirm');
@@ -11981,6 +11984,7 @@ function ttsOpenQuickPopup(btn) {
   document.body.appendChild(pop);
   applyQianmuIcons(pop);
   ttsPopupEl = pop;
+  appearanceSession.mountPortal(pop);
   // 定位到按钮下方
   const r = btn.getBoundingClientRect();
   pop.style.left = `${Math.min(window.innerWidth - pop.offsetWidth - 8, Math.max(8, r.left))}px`;
@@ -16029,6 +16033,7 @@ async function storyboardOpenVideoDraftEditor(source) {
     });
     document.body.appendChild(layer);
     storyboardVideoDraftEditorEl = layer;
+    appearanceSession.mountPortal(layer,{role:'media'});
     syncPicker();
     void refreshReadiness(false);
     layer.focus({ preventScroll: true });
@@ -17087,6 +17092,7 @@ async function storyboardOpenFilmViewer(timelineId) {
     layer.setAttribute('aria-label', '完整影片顺序预览');
     document.body.appendChild(layer);
     storyboardFilmViewerEl = layer;
+    appearanceSession.mountPortal(layer,{role:'media'});
     storyboardFilmPlaybackSession = playerRuntime.createVideoTimelinePlaybackSession({
       openMotion: (assetId, options) => storyboardVideoGallerySession.open(assetId, options),
       resolveStill: storyboardFilmResolveStill,
@@ -17245,6 +17251,7 @@ async function storyboardOpenVideoViewer(assetId) {
     layer.addEventListener('keydown', (event) => { if (event.key === 'Escape') storyboardCloseVideoViewer(); });
     document.body.appendChild(layer);
     storyboardVideoViewerEl = layer;
+    appearanceSession.mountPortal(layer,{role:'media'});
     layer.focus({ preventScroll: true });
   } catch (_) {
     storyboardCloseVideoViewer();
@@ -21849,6 +21856,7 @@ async function storyboardOpenLightbox(input, initialId = '') {
   });
   document.body.appendChild(layer);
   storyboardLightboxEl = layer;
+  appearanceSession.mountPortal(layer,{role:'media'});
   render();
   layer.focus({ preventScroll: true });
 }
@@ -28039,6 +28047,7 @@ function coreadTopNotice(message, level = 'warning') {
   if (!layer) {
     layer = document.createElement('div'); layer.id = 'sd-coread-notice-layer';
     document.body.appendChild(layer);
+    appearanceSession.mountPortal(layer);
   }
   const item = document.createElement('div');
   item.className = `sd-coread-notice is-${level}`;
@@ -30229,6 +30238,7 @@ function coreadOpenVoicePopup(msg, speaker, btn) {
   document.body.appendChild(pop);
   applyQianmuIcons(pop);
   ttsPopupEl = pop;
+  appearanceSession.mountPortal(pop);
   const r = btn.getBoundingClientRect();
   pop.style.left = `${Math.min(window.innerWidth - pop.offsetWidth - 8, Math.max(8, r.left))}px`;
   pop.style.top = `${Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6)}px`;
@@ -30736,6 +30746,7 @@ function coreadShowRefillChooser(bookId) {
   document.body.appendChild(overlay);
   applyQianmuIcons(overlay);
   syncViewport();
+  appearanceSession.mountPortal(overlay);
   viewport?.addEventListener('resize', syncViewport);
   viewport?.addEventListener('scroll', syncViewport);
   window.addEventListener('orientationchange', syncViewport);
@@ -31301,6 +31312,7 @@ function mountReaderPortal(innerHtml) {
   document.body.appendChild(portal);
   applyQianmuIcons(portal);
   readerPortalNode = portal;
+  appearanceSession.mountPortal(portal,{role:'reader'});
   return portal;
 }
 
@@ -35527,6 +35539,7 @@ function openTheaterFullscreen(scene) {
   document.body.appendChild(portal);
   applyQianmuIcons(portal);
   portal.querySelector('.sd-theater-fs-back')?.addEventListener('click', unmountTheaterFullscreen);
+  appearanceSession.mountPortal(portal,{role:'reader'});
   portal.querySelector('.sd-theater-fs-close')?.addEventListener('click', unmountTheaterFullscreen);
   setTimeout(() => document.addEventListener('keydown', theaterFullscreenEsc, true), 0);
 }

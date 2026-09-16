@@ -1,5 +1,5 @@
 // Real renderer CSS coverage, isolated from ST, credentials, storage and providers.
-// The stylesheet and controller are not yet activated by the production entry.
+// Core production mounts are checked separately; this is renderer-level CSS coverage.
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
