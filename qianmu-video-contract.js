@@ -267,7 +267,10 @@ export function createVideoShotFromStoryboardFrames(shotValue = {}, records = []
     sourceShotId: config.sourceShotId || config.source_shot_id || rawShot.sourceShotId || rawShot.source_shot_id,
     keyframes: { ...(plain(rawShot.keyframes) ? rawShot.keyframes : {}), firstAssetId: first?.assetId || '', lastAssetId: last?.assetId || '' },
     references: { ...(plain(rawShot.references) ? rawShot.references : {}), assetIds: referenceAssetIds },
-    requestedMode: config.requestedMode || config.requested_mode || rawShot.requestedMode || rawShot.route?.requestedMode || 'auto',
+    // A prior normalized shot already has route.requestedMode. Write the new
+    // choice into that canonical slot so it cannot override this explicit edit.
+    route: { requestedMode: config.requestedMode || config.requested_mode
+      || rawShot.route?.requestedMode || rawShot.route?.requested_mode || rawShot.requestedMode || 'auto' },
   }, manifest);
   return { spec, manifest };
 }
@@ -495,9 +498,11 @@ export function resolveH3VideoMode(specValue = {}, manifestValue = {}, requested
     ready: missingRequirements.length === 0,
     missingRequirements,
     inputs: {
-      firstFrameAssetId: refs.first?.assetId || '',
-      lastFrameAssetId: refs.last?.assetId || '',
-      referenceAssetIds: refs.references.map((asset) => asset.assetId),
+      // Preserve the manifest/editor choices, but expose only this route's
+      // active inputs to prompt, cost, media loading and provider consumers.
+      firstFrameAssetId: ['i2va', 'fl2va'].includes(mode) ? refs.first?.assetId || '' : '',
+      lastFrameAssetId: ['l2va', 'fl2va'].includes(mode) ? refs.last?.assetId || '' : '',
+      referenceAssetIds: mode === 'ref2va' ? refs.references.map((asset) => asset.assetId) : [],
     },
   };
 }

@@ -192,7 +192,41 @@ try {
             ok(`${label} second Escape closes`, await page.locator('.sd-storyboard-video-draft-layer').count() === 0);
         }
     }
+    // Explicit mode edits must survive the structured source shot's old auto route.
+    // Exercise the same controls the user edits, all the way to the unpaid review.
     await page.setViewportSize({ width: 393, height: 700 });
+    for (const [mode, label, count] of [['t2va', '纯文本引导', 0], ['i2va', '当前画面为首帧', 1],
+        ['l2va', '尾帧引导', 1], ['fl2va', '首尾帧', 2], ['ref2va', '参考素材', 1]]) {
+        await page.evaluate(async mode => {
+            await setAppearance('glass', 'light'); await storyboardOpenVideoDraftEditor(records[0]);
+            setField('.sd-storyboard-video-draft-direction textarea', 'A slow camera move toward the doorway.', 'input');
+            setField('.sd-video-draft-mode', mode);
+            if (mode === 'l2va') click('[data-video-draft-picker="tail"]');
+        }, mode);
+        await page.waitForFunction(() => !document.querySelector('.sd-video-readiness-refresh').disabled);
+        if (['l2va', 'fl2va', 'ref2va'].includes(mode)) {
+            if (mode !== 'ref2va') ok(`${mode} missing tail remains explicit`, await page.locator('.sd-storyboard-video-draft-route').innerText().then(text => text.includes('还需选择')));
+            await page.evaluate(mode => {
+                click('[data-video-draft-record="frame-1"] > button');
+                if (mode === 'ref2va') { setField('[data-video-draft-record="frame-1"] .sd-video-draft-reference-role', 'style_reference'); click('.sd-video-draft-picker-done'); }
+            }, mode);
+        }
+        ok(`${mode} actual route label honors selection`, await page.locator('.sd-storyboard-video-draft-route').innerText().then(text => text === `将使用「${label}」`));
+        await page.evaluate(() => click('.sd-video-prompt-prepare'));
+        await page.waitForFunction(() => !document.querySelector('.sd-video-prompt-prepare').disabled);
+        await page.evaluate(() => click('.sd-video-confirmation-open'));
+        await page.waitForFunction(() => !document.querySelector('.sd-video-confirmation-open').disabled);
+        const summary = await page.locator('.sd-video-confirmation-summary dd').allTextContents();
+        ok(`${mode} confirmation agrees with selection`, summary[0] === label && summary[4] === `${count} 项`);
+        ok(`${mode} actual prompt passes route-specific validation`, await page.locator('.sd-video-confirmation-cost-check').isEnabled());
+        ok(`${mode} manual mode does not approve or submit`, await page.locator('.sd-video-confirmation-accept').isDisabled());
+        await page.evaluate(() => { click('.sd-video-confirmation-cost-check'); click('.sd-video-confirmation-rights-check'); click('.sd-video-confirmation-license-check'); });
+        ok(`${mode} complete local review can be approved without sending`, await page.locator('.sd-video-confirmation-accept').isEnabled());
+        await page.evaluate(() => { click('.sd-video-confirmation-close'); setField('.sd-video-draft-mode', 'auto'); click('.sd-video-confirmation-open'); });
+        await page.waitForFunction(() => !document.querySelector('.sd-video-confirmation-open').disabled);
+        ok(`${mode} mode edits clear prior acknowledgements`, await page.locator('.sd-video-confirmation-checks input:checked').count() === 0 && await page.locator('.sd-video-confirmation-accept').isDisabled());
+        await page.evaluate(() => storyboardCloseVideoDraftEditor());
+    }
     await page.evaluate(async () => { await setAppearance('glass', 'light'); fixtureCredential = false; optionalServiceState = { status: 'missing', services: [] }; await storyboardOpenVideoDraftEditor(records[0]); });
     await page.waitForFunction(() => !document.querySelector('.sd-video-readiness-refresh').disabled);
     ok('missing infrastructure remains visibly blocked', await page.locator('[data-video-readiness="gateway"][data-status="blocked"],[data-video-readiness="credential"][data-status="blocked"]').count() === 2);
