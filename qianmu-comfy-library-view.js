@@ -42,9 +42,11 @@ const options=document=>{
 };
 export function renderComfyLibrary(view) {
   const draft=view.draft,disabled=view.busy?'disabled':'';
+  const message=view.error||(view.busy?'正在处理，请稍候…':!draft&&!view.rows?.length?(view.archived?'归档中还没有工作流。':'还没有保存的工作流，可新建或导入。'):'');
+  const feedback=message?`<p class="sd-comfy-library-note" role="${view.error?'alert':'status'}">${escape(message)}</p>`:'';
   if(draft){
     let inspection;try{inspection=inspectComfyLibraryDocument(draft.document);}catch(error){inspection={issue:error.message,slots:[]};}
-    return `<div class="sd-comfy-library sd-comfy-library-editor" aria-busy="${Boolean(view.busy)}"><fieldset ${disabled}>
+    return `<div class="sd-comfy-library sd-comfy-library-editor" aria-busy="${Boolean(view.busy)}">${feedback}<fieldset ${disabled}>
       <div class="sd-comfy-library-tools">${icon('cancel','取消编辑','xmark')}<span>${escape(draft.name||'新工作流')}${draft.version?` · v${draft.version}`:''}</span>${icon('save-copy','另存新方案','copy')}${icon('save','保存版本','floppy-disk')}</div>
       <section class="sd-card"><div class="sd-storyboard-card-body">
         <label><span>方案名</span><input class="text_pole" data-comfy-draft="name" maxlength="80" value="${escape(draft.name)}"></label>
@@ -61,7 +63,7 @@ export function renderComfyLibrary(view) {
       <p class="sd-comfy-library-note">仅已接入工作流的参数生效。保存不切换当前配方；返回列表后可明确应用。</p>
     </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
   }
-  return `<div class="sd-comfy-library" aria-busy="${Boolean(view.busy)}"><fieldset ${disabled}>
+  return `<div class="sd-comfy-library" aria-busy="${Boolean(view.busy)}">${feedback}<fieldset ${disabled}>
     <div class="sd-comfy-library-tools"><input class="text_pole" data-comfy-search type="search" aria-label="搜索工作流" value="${escape(view.search||'')}">${icon('import','导入工作流','upload')}${icon('new','新建工作流','plus')}</div>
     <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="from-current">保存当前配方到库</button><button type="button" class="sd-btn ${view.archived?'active':''}" aria-pressed="${Boolean(view.archived)}" data-comfy-action="archived">归档</button>${icon('refresh','刷新列表','rotate')}</div>
     <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="candidates">候选方案</button>${icon('backup-library','备份整个工作流库（含历史版本）','download')}${icon('restore-library','恢复工作流库备份','folder')}</div>
@@ -87,7 +89,12 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
     host.innerHTML=renderComfyLibrary(view);bind();onIcons(host);};
   const authorize=async()=>{const expected=entry,value=await resolveNamespace();if(!visible()||entry!==expected)throw Error('页面已切换，操作未继续');
     if(namespace&&namespace!==value){namespace=value;loaded=false;view.rows=[];view.draft=null;view.usage=null;verifiedEntry=entry;throw Error('账户已切换，请刷新工作流库');}namespace=value;verifiedEntry=entry;return value;};
-  const loadList=async()=>{const rows=await store.list(namespace,{archived:view.archived}),usage=await store.usage(namespace);if(!visible())return;view.rows=rows;view.usage=usage;loaded=true;};
+  const loadList=async()=>{
+    const account=namespace,rows=await store.list(account,{archived:view.archived}),usage=await store.usage(account);
+    // A slow read must not publish the previous account's list after a switch.
+    // Reuse the same ownership guard used by explicit workflow operations.
+    await authorize();if(!visible())return;view.rows=rows;view.usage=usage;loaded=true;
+  };
   const guarded=async work=>{
     if(view.busy||!visible())return;operationEntry=entry;view.busy=true;view.error='';changed();
     try{await authorize();await work();}catch(error){if(visible()){view.error=error.message||'工作流操作失败';notify(view.error,'warning');}}

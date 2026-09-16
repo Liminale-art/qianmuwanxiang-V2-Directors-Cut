@@ -9,7 +9,7 @@ const safeImage=value=>{
   try{for(const part of value.split('/').slice(1)){const decoded=decodeURIComponent(part);if(!decoded||decoded==='.'||decoded==='..'||/[\\/%\u0000-\u001f\u007f]/.test(decoded))return '';}}catch(_){return '';}
   return value;
 };
-const status=view=>`<p class="sd-character-status" role="status">${escape(view.error||'参考图须在支持的镜头台启用；性征暂不参与生成')}</p>`;
+const status=view=>`<p class="sd-character-status" role="${view.error?'alert':'status'}">${escape(view.error||(view.busy?'正在处理，请稍候…':!view.draft&&!view.restoring&&!view.rows.length?'还没有保存的角色档案，可按类别新建。':'参考图须在支持的镜头台启用；性征暂不参与生成'))}</p>`;
 const field=(name,label,value,max,textarea=false)=>`<label><span>${label}</span>${textarea?`<textarea class="text_pole" data-archive-field="${name}" maxlength="${max}">${escape(value)}</textarea>`:`<input class="text_pole" data-archive-field="${name}" maxlength="${max}" value="${escape(value)}">`}</label>`;
 const visibleBinding=(bindings,subject,chatKey)=>{try{return selectCharacterBinding(bindings,subject,chatKey);}catch(error){if(error?.code==='character_archive_alias')return {aliasConflict:true};throw error;}};
 const hasAliasRows=bindings=>bindings.some(row=>row.category==='user'&&canonicalUserSubjectKey(row.subjectKey)&&canonicalUserSubjectKey(row.subjectKey)!==row.subjectKey);
