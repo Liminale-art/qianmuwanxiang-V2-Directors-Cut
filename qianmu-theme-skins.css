@@ -1,0 +1,250 @@
+/* Optional skins over the real renderers. Load after style.css.
+   Only explicitly registered Qianmu roots opt in; classic and host UI stay untouched.
+   Layout/content/data lifecycles remain owned by their existing renderers. */
+:is(#story-director-modal, [data-qm-theme]):is([data-qm-theme="editorial"], [data-qm-theme="glass"]) {
+  --sd-window-glow: none;
+  --qm-card-radius: 5px;
+  --qm-button-radius: 9px;
+  --qm-action-ink: color-mix(in srgb, var(--qm-accent) 55%, var(--qm-ink));
+  --qm-danger-ink: color-mix(in srgb, var(--qm-danger) 65%, var(--qm-ink));
+  --qm-skin-material: var(--qm-surface);
+  --qm-skin-filter: none;
+  --qm-skin-shadow: none;
+  --qm-skin-window: var(--qm-bg);
+  color: var(--qm-ink);
+  color-scheme: light;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-mode="dark"] { color-scheme: dark; }
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] {
+  --qm-card-radius: 22px;
+  --qm-skin-material: color-mix(in srgb, var(--qm-surface) 65%, transparent);
+  --qm-skin-filter: blur(22px) saturate(1.12);
+  --qm-skin-shadow: inset 0 1px 0 #ffffff26, 0 5px 24px #00000008;
+  --qm-skin-window: radial-gradient(ellipse 45% 46% at 17% 67%, color-mix(in srgb, var(--qm-glow-1) 57%, transparent), transparent 77%),
+    radial-gradient(ellipse 34% 34% at 85% 24%, color-mix(in srgb, var(--qm-glow-2) 37%, transparent), transparent 75%), var(--qm-bg);
+}
+
+/* No geometry override for the main window: retain saved/host-constrained dimensions. */
+#story-director-modal[data-qm-theme] .sd-window {
+  background: var(--qm-skin-window) !important;
+  border-color: var(--qm-line) !important;
+  border-radius: 12px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#story-director-modal[data-qm-theme="glass"] .sd-window { border-radius: 30px !important; }
+#story-director-modal[data-qm-theme] .sd-window::before { display: none; animation: none; }
+#story-director-modal[data-qm-theme] :is(.sd-header, .sd-tabs, .sd-storyboard-titlebar) {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-storyboard-titlebar > [role="heading"] {
+  font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+  font-weight: 400;
+  letter-spacing: .08em;
+}
+
+/* Common surfaces and fields: no width, visibility, font-size or interaction resets. */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-card, .sd-accordion) {
+  background: var(--qm-skin-material) !important;
+  border-color: var(--qm-line) !important;
+  border-radius: var(--qm-card-radius) !important;
+  box-shadow: var(--qm-skin-shadow) !important;
+  backdrop-filter: var(--qm-skin-filter) !important;
+  -webkit-backdrop-filter: var(--qm-skin-filter) !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] :is(.sd-card, .sd-accordion) {
+  border-color: color-mix(in srgb, var(--qm-ink) 12%, transparent) !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"][data-qm-mode="light"] :is(.sd-card, .sd-accordion) {
+  border-color: #ffffffdc !important;
+}
+/* Nested settings share the enclosing material; do not stack expensive blur layers. */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] .sd-card .sd-card {
+  background: color-mix(in srgb, var(--qm-raised) 32%, transparent) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.text_pole, .sd-notes-search) {
+  color: var(--qm-ink) !important;
+  background: var(--qm-raised) !important;
+  border-color: var(--qm-line) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(input, textarea)::placeholder {
+  color: var(--qm-muted) !important;
+  opacity: 1;
+}
+#story-director-modal[data-qm-theme] select.text_pole option { color: var(--qm-ink); background: var(--qm-raised); }
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, .sd-icon-btn, .sd-option-chip) {
+  background: color-mix(in srgb, var(--qm-accent) 7%, var(--qm-raised)) !important;
+  color: var(--qm-action-ink) !important;
+  border-color: color-mix(in srgb, var(--qm-accent) 25%, var(--qm-line)) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, .sd-option-chip) {
+  border-radius: 999px !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, .sd-icon-btn):disabled { opacity: .46; cursor: not-allowed; }
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-primary, .sd-option-chip.active) {
+  background: var(--qm-accent) !important;
+  color: var(--qm-on-accent) !important;
+  border-color: transparent !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .sd-danger {
+  color: var(--qm-danger-ink) !important;
+  background: color-mix(in srgb, var(--qm-danger) 6%, var(--qm-raised)) !important;
+  border-color: color-mix(in srgb, var(--qm-danger) 40%, var(--qm-line)) !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(button, input, select, textarea, summary, a):focus-visible {
+  outline: 2px solid var(--qm-ink) !important;
+  outline-offset: 3px;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-body, .sd-storyboard-scroll, textarea, .sd-note-list) {
+  scrollbar-width: none;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-body, .sd-storyboard-scroll, textarea, .sd-note-list)::-webkit-scrollbar { display: none; }
+
+/* Notes have local classic color variables; inheritance alone cannot update these. */
+#qianmu-notes-panel-layer[data-qm-theme] .sd-notes-panel {
+  --sd-notes-surface: var(--qm-bg);
+  --sd-notes-card: var(--qm-surface);
+  border-color: var(--qm-line);
+  border-radius: var(--qm-card-radius);
+  color: var(--qm-ink);
+}
+#qianmu-notes-panel-layer[data-qm-theme="glass"] .sd-notes-panel {
+  --sd-notes-surface: color-mix(in srgb, var(--qm-bg) 90%, transparent);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+/* An independent dialog needs a canvas, not merely inherited text tokens. */
+dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-color: var(--qm-line); }
+
+/* Paper uses a quiet icon rail. Glass floats over the scroll surface with a safe tail. */
+#story-director-modal[data-qm-theme="editorial"] .sd-storyboard-root {
+  grid-template-rows: 46px minmax(0, 1fr) calc(58px + env(safe-area-inset-bottom)) !important;
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-storyboard-nav {
+  background: transparent !important;
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom)) !important;
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-storyboard-nav button {
+  height: 44px;
+  min-height: 44px !important;
+  background: transparent !important;
+  color: var(--qm-muted);
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-storyboard-nav button.active { color: var(--qm-action-ink); }
+#story-director-modal[data-qm-theme="editorial"] .sd-storyboard-nav button span { display: none; }
+
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-root {
+  grid-template-rows: 46px minmax(0, 1fr) !important;
+}
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-scroll {
+  padding-bottom: calc(100px + env(safe-area-inset-bottom));
+  scroll-padding-bottom: calc(100px + env(safe-area-inset-bottom));
+}
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav {
+  --qm-nav-closed: 48px;
+  --qm-nav-open: 112px;
+  --qm-nav-label: 44px;
+  position: absolute;
+  z-index: 5;
+  top: auto;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 362px;
+  max-width: calc(100% - 24px);
+  min-height: 60px;
+  margin: 0 !important;
+  padding: 7px 12px !important;
+  border: 1px solid color-mix(in srgb, var(--qm-ink) 12%, transparent) !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--qm-raised) 78%, transparent) !important;
+  backdrop-filter: blur(24px) saturate(1.35) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.35) !important;
+  box-shadow: inset 0 1px 1px #ffffff70, inset 0 -1px 1px #ffffff1f, 0 10px 32px #00000017 !important;
+}
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav button {
+  flex: 0 0 auto;
+  width: var(--qm-nav-closed);
+  min-width: 0;
+  min-height: 44px !important;
+  height: 44px;
+  gap: 0;
+  padding: 0 8px !important;
+  overflow: hidden;
+  border-radius: 999px !important;
+  background: transparent;
+  color: var(--qm-ink);
+  transition: width .34s cubic-bezier(.22, 1, .36, 1), background .2s, color .2s;
+}
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav button.active {
+  width: var(--qm-nav-open);
+  background: var(--qm-ink);
+  color: var(--qm-bg);
+}
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav button :is(i, .qm-glyph-icon) { flex: 0 0 18px; }
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav button span {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 0;
+  margin-inline-start: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transform: translateX(-4px);
+  transition: width .34s cubic-bezier(.22, 1, .36, 1), margin-inline-start .34s cubic-bezier(.22, 1, .36, 1), opacity .2s, transform .34s cubic-bezier(.22, 1, .36, 1);
+}
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav button.active span {
+  width: var(--qm-nav-label);
+  margin-inline-start: 8px;
+  opacity: 1;
+  transform: none;
+}
+@media (max-width: 520px) {
+  #story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav {
+    --qm-nav-closed: 40px;
+    --qm-nav-open: 100px;
+    --qm-nav-label: 38px;
+    width: 286px;
+    gap: 2px;
+    padding: 6px 8px !important;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    min-height: 58px;
+  }
+}
+@media (max-width: 360px) {
+  #story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav {
+    --qm-nav-closed: 36px;
+    --qm-nav-open: 94px;
+    --qm-nav-label: 36px;
+    width: 264px;
+  }
+}
+/* Respect platform accessibility choices without relying on a JS preference watcher. */
+@media (prefers-reduced-motion: reduce) {
+  #story-director-modal[data-qm-theme] .sd-storyboard-nav :is(button, button span) { transition: none !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] { --qm-skin-material: var(--qm-surface); --qm-skin-filter: none; --qm-skin-window: var(--qm-bg); }
+  :is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] .sd-card .sd-card { background: var(--qm-surface) !important; }
+  #qianmu-notes-panel-layer[data-qm-theme="glass"] .sd-notes-panel {
+    --sd-notes-surface: var(--qm-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  #story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav {
+    background: var(--qm-raised) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
