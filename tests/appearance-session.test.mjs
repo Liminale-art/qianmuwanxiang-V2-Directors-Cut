@@ -143,3 +143,18 @@ test('production native reviews retain the modal ancestry used by inherited appe
         assert.match(body(name), /openStoryboard(?:Link|Bundle)Review\(\{ parent,/);
     }
 });
+
+test('late focus voice, library and drawer scrolling belongs to the existing modal registration', async () => {
+    for (const selector of ['.sd-focus-voice-menu', '.sd-focus-library-body', '.sd-focus-voice-drawer-list']) {
+        const f = fixture(), root = element(), scroll = element(); let attached = false;
+        root.contains = node => attached && node === scroll;
+        root.querySelectorAll = query => attached && query.split(',').includes(selector) ? [scroll] : [];
+        f.set({ appearance: preference }); f.session.mount(root); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+        attached = true; scroll.scrollTop = 173;
+        const paint = root.style.setProperty;
+        root.style.setProperty = (...args) => { paint(...args); if (args[0] === '--sd-text') scroll.scrollTop = 0; };
+        f.set({ appearance: { ...preference, family: 'editorial', mode: 'dark' } }); await f.session.sync();
+        assert.equal(scroll.scrollTop, 173, selector); assert.equal(f.session.size, 1);
+        attached = false; scroll.isConnected = false; f.session.reset();
+    }
+});

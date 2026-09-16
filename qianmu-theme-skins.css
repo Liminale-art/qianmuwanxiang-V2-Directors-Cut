@@ -133,7 +133,7 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
 }
 #story-director-modal[data-qm-theme] .sd-bundle-dialog > main { scrollbar-width: none; }
 #story-director-modal[data-qm-theme] .sd-bundle-dialog > main::-webkit-scrollbar { display: none; }
-#story-director-modal[data-qm-theme] .sd-bundle-dialog :is(.sd-btn, .sd-icon-btn) {
+#story-director-modal[data-qm-theme] :is(.sd-bundle-dialog, .sd-focus-library, .sd-focus-voice-drawer) :is(.sd-btn, .sd-icon-btn) {
   /* Palette changes are atomic: do not cross-fade a dark button beneath text
      that has already inherited the light palette (or vice versa). */
   transition: transform .15s ease, filter .15s ease;
@@ -148,6 +148,24 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
   background: var(--qm-raised);
   border: 1px solid var(--qm-line);
   border-radius: var(--qm-button-radius);
+}
+/* Focus owns these late-mounted children of the same modal. No duplicate portal,
+   editor or media lifecycle is introduced when switching an appearance. */
+#story-director-modal[data-qm-theme] :is(.sd-focus-voice-menu, .sd-focus-library, .sd-focus-voice-drawer) {
+  background: var(--qm-skin-window);
+  color: var(--qm-ink);
+  border-color: var(--qm-line);
+  border-radius: var(--qm-card-radius);
+  box-shadow: var(--qm-skin-shadow);
+  backdrop-filter: var(--qm-skin-filter);
+  -webkit-backdrop-filter: var(--qm-skin-filter);
+}
+#story-director-modal[data-qm-theme] :is(.sd-focus-voice-menu, .sd-focus-library-body, .sd-focus-voice-drawer-list) { scrollbar-width: none; }
+#story-director-modal[data-qm-theme] :is(.sd-focus-voice-menu, .sd-focus-library-body, .sd-focus-voice-drawer-list)::-webkit-scrollbar { display: none; }
+#story-director-modal[data-qm-theme] :is(.sd-focus-voice-provider, .sd-focus-dialogue-moments > [aria-pressed="true"]) {
+  color: var(--qm-action-ink);
+  border-color: color-mix(in srgb, var(--qm-accent) 25%, var(--qm-line));
+  background: color-mix(in srgb, var(--qm-accent) 7%, var(--qm-raised));
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-storage-cleanup-dialog, .sd-floor-panel, .sd-reader-refill-card),
 .sd-tts-popup[data-qm-theme] {
