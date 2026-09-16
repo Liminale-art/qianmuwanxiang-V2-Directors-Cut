@@ -1740,7 +1740,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-runtime-health-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 #story-director-modal .sd-runtime-health-actions small { color: var(--sd-muted); font-size: 10px; line-height: 1.4; }
 
-/* API 与日志 · 手机式储存空间盘点。浏览器来源总量与千幕可归因量分开展示。 */
+/* 数据管理保持原入口：突出已盘点内容，站点配额与可管理量不混为磁盘容量。 */
 #story-director-modal .sd-storage-card { break-inside: avoid; }
 #story-director-modal .sd-storage-card .sd-card-title-row { margin-bottom: 14px; }
 #story-director-modal .sd-storage-card .sd-card-title-row > div { min-width: 0; }
@@ -1755,16 +1755,38 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   font-size: 12px;
 }
 #story-director-modal .sd-storage-totals b { color: var(--sd-text); text-align: right; font-weight: 650; }
+#story-director-modal .sd-storage-overview { gap: 18px; }
+#story-director-modal .sd-storage-overview > span:not(.sd-storage-hero) { flex-wrap: wrap; line-height: 1.5; }
+#story-director-modal .sd-storage-overview .sd-storage-hero {
+  order: -1;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+#story-director-modal .sd-storage-hero > b {
+  max-width: 100%;
+  font-size: clamp(30px, 4.5vw, 44px);
+  font-weight: 500;
+  letter-spacing: -.035em;
+  line-height: 1.12;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 #story-director-modal .sd-storage-ios-bar {
   display: flex;
   width: 100%;
   height: 18px;
-  margin: 15px 0 13px;
+  margin: 20px 0 8px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--sd-border) 76%, transparent);
-  border-radius: 7px;
+  border: 0;
+  border-radius: var(--sd-radius-control, 9px);
   background: color-mix(in srgb, var(--sd-glass) 82%, transparent);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .12), 0 1px 2px rgba(0, 0, 0, .08);
+  box-shadow: none;
 }
 #story-director-modal .sd-storage-segment {
   flex: var(--sd-storage-weight) 1 0;
@@ -1776,20 +1798,24 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-storage-segment:last-child { border-right: 0; }
 #story-director-modal .sd-storage-legend {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
 }
 #story-director-modal .sd-storage-legend > span {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 7px;
+  gap: 12px;
   min-width: 0;
-  font-size: 11px;
+  min-height: 41px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--sd-hairline);
+  font-size: 12px;
 }
-#story-director-modal .sd-storage-legend > span > i { width: 8px; height: 8px; border-radius: 3px; background: var(--sd-storage-color); }
-#story-director-modal .sd-storage-legend em { overflow: hidden; color: var(--sd-muted); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-storage-legend b { font-weight: 550; white-space: nowrap; }
+#story-director-modal .sd-storage-legend > span:last-child { border-bottom: 0; }
+#story-director-modal .sd-storage-legend > span > i { width: 10px; height: 10px; border-radius: 50%; background: var(--sd-storage-color); }
+#story-director-modal .sd-storage-legend em { overflow: hidden; color: var(--sd-text); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-storage-legend b { color: var(--sd-muted); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #story-director-modal .sd-storage-pressure {
   margin: 12px 0 0;
   padding: 9px 11px;
@@ -1806,8 +1832,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 #story-director-modal .sd-storage-scope { margin: 13px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.45; }
 #story-director-modal .sd-storage-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
-#story-director-modal .sd-storage-disclosure { margin-top: 13px; min-width: 0; border: 1px solid var(--sd-hairline); border-radius: var(--sd-radius-control); }
-#story-director-modal .sd-storage-disclosure > summary { padding: 11px 12px; color: var(--sd-text); font-size: var(--sd-font-secondary, 12px); cursor: pointer; list-style: none; }
+#story-director-modal .sd-storage-disclosure { margin-top: 13px; min-width: 0; border: 1px solid var(--sd-hairline); border-radius: var(--sd-radius-control, 9px); }
+#story-director-modal .sd-storage-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 11px 12px; color: var(--sd-text); font-size: var(--sd-font-secondary, 12px); cursor: pointer; list-style: none; }
+#story-director-modal .sd-storage-disclosure > summary > :is(i, .qm-glyph-icon) { flex: none; width: 16px; height: 16px; }
 #story-director-modal .sd-storage-disclosure > summary::-webkit-details-marker { display: none; }
 #story-director-modal .sd-storage-disclosure > summary:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: -2px; border-radius: inherit; }
 #story-director-modal .sd-storage-disclosure[open] > summary { border-bottom: 1px solid var(--sd-hairline); }
@@ -1818,6 +1845,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-storage-backup-row > .sd-btn { min-width: 48px; min-height: 34px; margin: 0; padding: 5px 9px; }
 #story-director-modal .sd-storage-backup-section .sd-undo-config[hidden] { display: none !important; }
 #story-director-modal .sd-storage-card .sd-storage-actions > * { min-width: 0; overflow-wrap: anywhere; }
+#story-director-modal .sd-storage-manage-actions > .sd-btn { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 44px; text-align: left; }
+#story-director-modal .sd-storage-manage-actions > .sd-btn > :is(i, .qm-glyph-icon) { flex: none; width: 16px; height: 16px; }
 
 /* 便笺是完全不透明的紧凑工作页；舞台拦住下层操作，蜂巢入口只有拖出后才在 ST 顶层出现。 */
 #story-director-modal .sd-notes-stage {

@@ -67,6 +67,29 @@ test('missing browser quota does not prevent module backup or invent a device di
   assert.doesNotMatch(html, /NaN|Infinity/);
 });
 
+test('data management promotes real accounted bytes without changing quota accounting or entry ownership', () => {
+  const snapshot = data(), html = fixture(snapshot).renderStorageManagementCard();
+  assert.match(html, /<h3>数据管理<\/h3>/);
+  assert.match(html, /class="sd-storage-hero">千幕已盘点<b>1000 B<\/b>/);
+  assert.match(html, /本设备 · 站点已用 \/ 配额<b>4000 B \/ 10000 B<\/b>/);
+  for (const [category, bytes] of [['参考素材', 1000], ['其他 ST 数据', 3000], ['可用空间', 6000]]) {
+    assert.match(html, new RegExp(`<em>${category}</em><b>${bytes} B</b>`));
+  }
+  assert.equal((html.match(/class="sd-btn sd-primary sd-storage-clean"/g) || []).length, 1);
+  assert.equal((html.match(/class="sd-btn sd-storage-chat-clean"/g) || []).length, 1);
+  assert.equal((html.match(/fa-arrow-right" aria-hidden="true"/g) || []).length, 4);
+  assert.doesNotMatch(html, /fa-arrow-up-right|↗|2\.46 GB/);
+});
+
+test('incomplete inventory never promotes unaccounted bytes to the large Qianmu total', () => {
+  const snapshot = data(); snapshot.vibeStorage = {status: 'unavailable', error: '<not read>'};
+  const html = fixture(snapshot).renderStorageManagementCard();
+  assert.match(html, /class="sd-storage-hero">千幕已盘点<b>1000 B<\/b>/);
+  assert.match(html, /<em>未盘点站点数据<\/em><b>3000 B<\/b>/);
+  assert.match(html, /未读取的部分不会按零占用处理/);
+  assert.match(html, /&lt;not read&gt;/);
+});
+
 test('central backup entry binds once and reuses the existing export and restore boundaries', async () => {
   const calls = [], node = dataset => ({ dataset, value: 'picked', listeners: {}, files: [{ name: 'fixture' }],
     addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }, click() { this.clicks = (this.clicks || 0) + 1; } });

@@ -138,6 +138,7 @@ import {
   saveImportedQianmuNote,
   saveQianmuNote,
 } from './qianmu-notes.js';
+import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.160';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.160';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.160';
@@ -6215,6 +6216,7 @@ function bindFloatDrag(btn) {
 }
 
 function renderFloatButton() {
+  syncNotesTheme();
   let btn = document.getElementById(FLOAT_ID);
   if (!settings.enabled || !settings.floatingButton) {
     closeQuickWheel();
@@ -6515,6 +6517,10 @@ const NOTES_THEME_VARIABLES = Object.freeze([
   '--sd-check-mark', '--sd-primary', '--sd-primary-text',
 ]);
 
+function syncNotesTheme() {
+  syncQianmuNotesTheme({themeKey:currentHiveThemeKey(),palette:currentHivePalette(),appearance:notesFeatureSettings().appearance,variables:NOTES_THEME_VARIABLES});
+}
+
 function notesPanelUsesCompactLayout() {
   return window.matchMedia?.('(max-width: 620px)')?.matches ?? window.innerWidth <= 620;
 }
@@ -6580,28 +6586,12 @@ function renderNotesPanelPortal() {
     layer?.remove();
     return null;
   }
-  let themeSource = document.getElementById(MODAL_ID);
-  let removeThemeSource = false;
-  if (!themeSource) {
-    themeSource = document.createElement('div');
-    themeSource.id = MODAL_ID;
-    document.body.appendChild(themeSource);
-    removeThemeSource = true;
-  }
-  const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
-  for (const key of THEME_KEYS) themeSource.classList.toggle(`sd-theme-${key}`, key === themeKey);
   if (!layer) {
     layer = document.createElement('div');
     layer.id = NOTES_PANEL_LAYER_ID;
     document.body.appendChild(layer);
   }
-  layer.className = `sd-theme-${themeKey}`;
-  const sourceStyle = getComputedStyle(themeSource);
-  for (const variable of NOTES_THEME_VARIABLES) {
-    const value = sourceStyle.getPropertyValue(variable);
-    if (value) layer.style.setProperty(variable, value);
-  }
-  if (removeThemeSource) themeSource.remove();
+  syncNotesTheme();
   layer.style.setProperty('--sd-font', getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif');
   layer.style.setProperty('--sd-note-editor-font-size', `${notesFeatureSettings().editorFontSize}px`);
   stopNotesPanelResizeTracking();
@@ -7045,7 +7035,7 @@ function renderModal() {
     if (next && next !== settings.theme) { settings.theme = next; saveSettings(); }
     renderFloatButton();
     renderModal();   // 重渲染会重建菜单（默认收起态）
-    if (notesPanelOpen) renderNotesPanelPortal();
+    syncNotesTheme();
   }));
   modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
     focusClockCloseVoiceDrawer();
@@ -8153,7 +8143,7 @@ function renderStorageManagementCard() {
   const backupSection = renderStorageBackupSection();
   if (!data) {
     const message = status === 'error' ? `盘点失败：${htmlEscape(error || '当前环境不可用')}` : '正在盘点本机数据…';
-    return `<section class="sd-card sd-storage-card"><div class="sd-card-title-row"><h3>储存空间</h3><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate"></i></button></div><p class="sd-muted" role="status">${message}</p>${backupSection}</section>`;
+    return `<section class="sd-card sd-storage-card"><div class="sd-card-title-row"><h3>数据管理</h3><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate"></i></button></div><p class="sd-muted" role="status">${message}</p>${backupSection}</section>`;
   }
   const categories = data.categories.filter((item) => Number(item.bytes) > 0);
   const originUsage = Math.max(0, Number(data.origin.usage) || 0);
@@ -8186,16 +8176,16 @@ function renderStorageManagementCard() {
   const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary].some(row=>['unavailable','partial'].includes(row?.status))
     || [data.imageAttempts,data.imageChannels,data.serviceReceipts,data.comfyReceipts].some(row=>row?.error);
   return `<section class="sd-card sd-storage-card">
-    <div class="sd-card-title-row"><div><h3>储存空间</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
-    <div class="sd-storage-totals"><span>本设备 · 站点已用 / 配额<b>${htmlEscape(originText)}</b></span><span>千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span></div>
+    <div class="sd-card-title-row"><div><h3>数据管理</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
+    <div class="sd-storage-totals sd-storage-overview"><span>本设备 · 站点已用 / 配额<b>${htmlEscape(originText)}</b></span><span class="sd-storage-hero">千幕已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span></div>
     <div class="sd-storage-ios-bar" role="img" aria-label="储存空间分布">${storageBar}</div>
     <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
     ${pressureNotice}
     ${incomplete ? '<p class="sd-storage-pressure is-warning" role="status">部分数据暂不可读取，统计尚不完整。可展开占用明细核对；未读取的部分不会按零占用处理。</p>' : ''}
     <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
     ${backupSection}
-    <div class="sd-storage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}><i class="fa-solid fa-sliders"></i>选择清理模块</button><button type="button" class="sd-btn sd-storage-chat-clean" ${data.idb?.chatScopes?.length ? '' : 'disabled'}><i class="fa-solid fa-message"></i>按聊天管理</button></div>
-    <details class="sd-storage-disclosure sd-storage-details" data-storage-section="details"><summary>占用明细与维护</summary><div class="sd-storage-disclosure-body">
+    <div class="sd-storage-actions sd-storage-manage-actions"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${data.manageableBytes > 0 ? '' : 'disabled'}>选择清理模块<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button><button type="button" class="sd-btn sd-storage-chat-clean" ${data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天管理<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></div>
+    <details class="sd-storage-disclosure sd-storage-details" data-storage-section="details"><summary>占用明细与维护<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></summary><div class="sd-storage-disclosure-body">
     <div class="sd-storage-totals"><span>可管理项目<b>${htmlEscape(formatStorageBytes(data.manageableBytes))}</b></span><span>无所属书籍的图片<b>${htmlEscape(orphanText)}</b></span></div>
     ${data.imageAttempts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageAttempts.error)}</p>` : ''}
     ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
