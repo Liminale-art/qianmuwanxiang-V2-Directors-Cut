@@ -9511,6 +9511,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   background: #242629;
 }
 .sd-storyboard-video-confirmation[hidden] { display: none !important; }
+.sd-storyboard-video-draft-body[hidden],
+.sd-video-confirmation-checks label[hidden] { display: none !important; }
 .sd-storyboard-video-confirmation > header {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
@@ -9973,7 +9975,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-storyboard-video-viewer-close { top: max(14px, env(safe-area-inset-top)); right: 14px; }
   .sd-storyboard-video-draft-layer { align-items: end; padding: max(8px, env(safe-area-inset-top)) 8px 0; }
   .sd-storyboard-video-draft-editor { width: 100%; max-height: min(88dvh, 760px); border-radius: 14px 14px 0 0; }
-  .sd-storyboard-video-draft-body { grid-template-columns: 1fr; padding: 10px 12px; }
+  .sd-storyboard-video-draft-body { grid-template-columns: 1fr; grid-auto-rows: max-content; align-content: start; padding: 10px 12px; }
   .sd-storyboard-video-draft-body > figure { display: grid; grid-template-columns: minmax(110px, .45fr) minmax(0, .55fr); }
   .sd-storyboard-video-draft-body > figure > img { height: 104px; aspect-ratio: auto; object-fit: cover; }
   .sd-storyboard-video-draft-body > figure figcaption { align-content: center; }

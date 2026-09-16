@@ -193,6 +193,17 @@ const motionWrites = motion.stats.writes;
 assert.equal(applyQianmuIcons(motion.root), 3);
 assert.deepEqual(motionIcons.map(icon => icon.children[0]), motionGlyphs);
 assert.equal(motion.stats.writes, motionWrites);
+const draftOwner = makeOwnedRoot('isolated-draft-owner');
+draftOwner.root.classList.add('sd-storyboard-video-draft-layer');
+const draftIcons = ['fa-xmark', 'fa-arrow-left', 'fa-plus', 'fa-images', 'fa-shield-halved', 'fa-floppy-disk'].map(name => draftOwner.root.appendChild(
+  new FakeElement('i', { className: `fa-solid ${name}`, ownerDocument: draftOwner.document, stats: draftOwner.stats }),
+));
+assert.equal(applyQianmuIcons(draftOwner.root), 6, '独立动态草稿及嵌套核对页应有本地图标');
+const draftGlyphs = draftIcons.map(icon => icon.children[0]), draftWrites = draftOwner.stats.writes;
+assert.ok(draftGlyphs.every(icon => icon?.classList.contains('qm-glyph-svg')));
+assert.equal(applyQianmuIcons(draftOwner.root), 6);
+assert.deepEqual(draftIcons.map(icon => icon.children[0]), draftGlyphs);
+assert.equal(draftOwner.stats.writes, draftWrites);
 const camera = local.root.appendChild(new FakeElement('i', { className: 'fa-solid fa-camera', ownerDocument: local.document, stats: local.stats }));
 assert.equal(applyQianmuIcons(local.root), 1);
 assert.equal(camera.getAttribute('data-qm-glyph'), 'qm-duotone-camera');

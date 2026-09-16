@@ -198,3 +198,19 @@ test('fixed-workflow popup captures its own native scroll areas and releases the
     assert.deepEqual(scrollers.map(node=>[node.scrollTop,node.scrollLeft]),[[70,3],[71,3]]);
     off();off();assert.equal(f.session.size,0);assert.equal(root.getAttribute('data-qm-theme'),null);f.session.reset();
 });
+
+test('video draft picker and confirmation retain their separate scroll offsets through palette writes', async () => {
+    for (const selector of ['.sd-storyboard-video-draft-picker-grid', '.sd-video-confirmation-body']) {
+        const f = fixture(), root = element(), scroll = element();
+        root.contains = node => node === scroll;
+        root.querySelectorAll = query => query.split(',').includes(selector) ? [scroll] : [];
+        f.set({ appearance: preference });
+        const off = f.session.mountPortal(root, { role: 'media' }), ready = f.session.sync();
+        f.loads[0].resolve(true); await ready; scroll.scrollTop = 171; scroll.scrollLeft = 3;
+        const paint = root.style.setProperty;
+        root.style.setProperty = (...args) => { paint(...args); if (args[0] === '--sd-text') { scroll.scrollTop = 0; scroll.scrollLeft = 0; } };
+        f.set({ appearance: { ...preference, family: 'editorial', mode: 'dark' } }); await f.session.sync();
+        assert.equal(scroll.scrollTop, 171, selector); assert.equal(scroll.scrollLeft, 3, selector);
+        off(); assert.equal(f.session.size, 0); f.session.reset();
+    }
+});
