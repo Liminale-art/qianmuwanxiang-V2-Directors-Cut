@@ -23,6 +23,8 @@ export function createVibePreservationController({actions,onClose,confirm=async(
       <small class="sd-vibe-review-file-info">每页最多 40 项。列表不读取图片/编码正文；选择导出后才读取单项。${page?.missing?'本机尚无此分区，未创建或升级数据库。':''}</small>
       <div class="sd-vibe-review-rows">${rows.map((row,i)=>`<article><span>${escape(row.key)}</span><button type="button" class="sd-btn" data-preserve-row="${i}" ${busy||!row.readable?'disabled':''}>${row.readable?'导出此项':'无法确认归属'}</button></article>`).join('')}</div>
       <div class="sd-vibe-review-tools"><button type="button" class="sd-btn sd-preserve-prev" ${busy||!back.length?'disabled':''}>上一页</button><button type="button" class="sd-btn sd-preserve-next" ${busy||!page?.next?'disabled':''}>下一页</button></div></section>`;
+    host.querySelector('.sd-vibe-preservation').setAttribute('aria-busy',String(busy));
+    if(page&&!busy&&!message&&!rows.length)host.querySelector('.sd-vibe-review-rows').innerHTML='<p class="sd-vibe-empty" role="status">此分区暂无原始条目</p>';
     host.querySelector('.sd-preserve-close').onclick=()=>{epoch++;onClose();};
     host.querySelector('.sd-preserve-section').onchange=event=>{section=event.target.value;page=null;after='';back.length=0;void run(load)();};
     host.querySelector('.sd-preserve-refresh').onclick=run(load);

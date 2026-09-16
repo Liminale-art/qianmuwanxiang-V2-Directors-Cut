@@ -130,6 +130,8 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
       <small>不自动清理。其他聊天和历史镜头仍可能引用这些文件；删除后需重新导入同一原文件。未决关联文件可导出，清理前须先核查。</small>
       <div class="sd-vibe-storage-list">${rows.slice(0,visible).map(row=>`<label><input type="checkbox" data-vibe-storage-id="${row.id}" ${selected.has(row.id)?'checked':''} ${busy?'disabled':''}><span><b>${escape(row.name||'未命名 Vibe')}</b><small>${bytes(row.bytes+row.previewBytes)} · ${row.type==='image'?'含原图':'纯编码'} · ${row.variants} 个编码档位</small><small>当前库引用 ${snapshot.library.filter(item=>item.assetId===row.id).length} · 未归档关联 ${row.receiptCount}${row.pending?` · 未决 ${row.pending}`:''}</small></span></label>`).join('')}</div>
       ${rows.length>visible?'<button type="button" class="sd-btn sd-vibe-storage-more">加载更多</button>':''}`:''}</section>`;
+    host.querySelector('.sd-vibe-storage').setAttribute('aria-busy',String(busy));
+    if(snapshot&&!busy&&!message&&!rows.length)host.querySelector('.sd-vibe-storage-list').innerHTML='<p class="sd-vibe-empty" role="status">当前设备与账户暂无 Vibe 文件</p>';
     host.querySelector('.sd-vibe-storage-close').onclick=()=>{epoch++;onClose();};
     host.querySelector('.sd-vibe-storage-refresh').onclick=run(refresh);
     host.querySelector('.sd-vibe-restore-open input')?.addEventListener('change',event=>{const file=event.target.files?.[0];if(!file)return;

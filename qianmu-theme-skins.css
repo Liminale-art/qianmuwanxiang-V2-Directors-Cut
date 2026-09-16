@@ -206,6 +206,21 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
   -webkit-backdrop-filter: var(--qm-skin-filter);
 }
 
+/* Vibe managers share their existing main-panel owner and read-only lifecycle. */
+#story-director-modal[data-qm-theme] :is(.sd-vibe-review, .sd-vibe-storage) { --sd-text-soft: var(--qm-muted); }
+#story-director-modal[data-qm-theme] :is(.sd-vibe-review-rows > article, .sd-vibe-storage-list > label) {
+  background: var(--qm-skin-material);
+  border-color: var(--qm-line);
+  border-radius: var(--qm-card-radius);
+  box-shadow: var(--qm-skin-shadow);
+  backdrop-filter: var(--qm-skin-filter);
+  -webkit-backdrop-filter: var(--qm-skin-filter);
+}
+#story-director-modal[data-qm-theme="glass"][data-qm-mode="light"] :is(.sd-vibe-review-rows > article, .sd-vibe-storage-list > label) { border-color: #ffffffdc; }
+/* The card material must not erase the existing fee-state indicators. */
+#story-director-modal[data-qm-theme] .sd-vibe-review-rows article[data-state="unknown"] { border-left-color: #cf9c43; }
+#story-director-modal[data-qm-theme] .sd-vibe-review-rows article[data-state="rejected"] { border-left-color: #cf7272; }
+
 /* Paper uses a quiet icon rail. Glass floats over the scroll surface with a safe tail. */
 #story-director-modal[data-qm-theme="editorial"] .sd-storyboard-root {
   grid-template-rows: 46px minmax(0, 1fr) calc(58px + env(safe-area-inset-bottom)) !important;
