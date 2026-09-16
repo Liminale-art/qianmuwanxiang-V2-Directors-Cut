@@ -240,6 +240,36 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
 #story-director-modal[data-qm-theme] :is(.sd-scroll, .sd-context-item > pre, .sd-inject-term) { scrollbar-width: none; }
 #story-director-modal[data-qm-theme] :is(.sd-scroll, .sd-context-item > pre, .sd-inject-term)::-webkit-scrollbar { display: none; }
 
+/* TTS uses the same library rows, without changing provider, voice identity or
+   synthesis controls. Keep resource/status colors separate from action color. */
+#story-director-modal[data-qm-theme] :is(.sd-tts-lib-list, .sd-tts-npc-list, [data-lib="ttsscheme"]) :is(.sd-lib-folder, .sd-lib-row) {
+  border-radius: var(--qm-card-radius) !important;
+}
+#story-director-modal[data-qm-theme] :is(.sd-tts-lib-list, .sd-tts-npc-list, [data-lib="ttsscheme"]) .sd-lib-folder {
+  background: color-mix(in srgb, var(--qm-raised) 36%, transparent) !important;
+}
+#story-director-modal[data-qm-theme] .sd-tts-enabled.is-enabled {
+  color: color-mix(in srgb, #4fae73 50%, var(--qm-ink)) !important;
+  background: color-mix(in srgb, #4fae73 10%, var(--qm-raised)) !important;
+  border-color: color-mix(in srgb, #4fae73 40%, var(--qm-line)) !important;
+}
+#story-director-modal[data-qm-theme] .sd-tts-enabled:not(.is-enabled) {
+  color: var(--qm-muted) !important;
+  background: var(--qm-raised) !important;
+  border-color: var(--qm-line) !important;
+}
+#story-director-modal[data-qm-theme] .sd-tts-resource-badge {
+  --qm-voice-type: #3791d2;
+  color: color-mix(in srgb, var(--qm-voice-type) 50%, var(--qm-ink));
+  background: color-mix(in srgb, var(--qm-voice-type) 10%, var(--qm-raised));
+}
+#story-director-modal[data-qm-theme] .sd-tts-resource-badge[data-model="seed-icl-2.0"] { --qm-voice-type: #9333ea; }
+#story-director-modal[data-qm-theme] .sd-tts-resource-badge[data-model="seed-icl-1.0"] { --qm-voice-type: #d9911f; }
+#story-director-modal[data-qm-theme] .sd-tts-resource-badge[data-model="auto"] {
+  color: var(--qm-muted);
+  background: var(--qm-raised);
+}
+
 /* World events follow the panel, while the star map deliberately keeps its
    existing dark inspection canvas and semantic relation/animation colours. */
 #story-director-modal[data-qm-theme] :is(.sd-geo-band, .sd-geo-events) {
