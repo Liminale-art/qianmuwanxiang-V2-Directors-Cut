@@ -22,3 +22,23 @@ export function selectQianmuClassicTheme({ settings, themeKey, session, save, re
     }
     return true;
 }
+
+/** Save the requested family/mode immediately; a resource failure keeps classic
+ * pixels with a retryable preference, not a false claim that the new skin loaded. */
+export function changeQianmuAppearance({ settings, patch, session, save }) {
+    if (!settings || !session?.supported || typeof save !== 'function') throw new TypeError('Appearance changes are unavailable.');
+    const next = updateAppearancePreferences(settings, patch);
+    if (next.family === 'classic') throw new TypeError('Use the classic action to restore its palette.');
+    const before = settings.appearance, had = Object.hasOwn(settings, 'appearance');
+    if (JSON.stringify(readAppearancePreferences(settings)) === JSON.stringify(next)) return session.sync();
+    try {
+        settings.appearance = next;
+        const settled = session.sync();
+        save();
+        return settled;
+    } catch (error) {
+        if (had) settings.appearance = before; else delete settings.appearance;
+        try { void session.sync(); } catch { /* Keep the original error. */ }
+        throw error;
+    }
+}

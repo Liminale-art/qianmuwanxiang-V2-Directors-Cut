@@ -1,7 +1,8 @@
 // Execute the real modal renderer, route/scroll functions and route-binding block.
 // Non-routing host services and library contents are isolated stubs; no providers run.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 import { THEMES as themes, QUICK_HIVE_THEME_PALETTES as hivePalettes } from '../qianmu-classic-palettes.js';
 import { createStoryboardFormFixture, storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
@@ -17,11 +18,12 @@ const code = names.map(storyboardFunctionSource).join('\n') + `\nObject.assign(w
 const css = (await Promise.all(['style.css', 'qianmu-theme-skins.css'].map(file => readFile(new URL('../' + file, import.meta.url), 'utf8')))).join('\n');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage(), errors = [], checks = []; let external = 0, skinRequests = 0, failSkin = false;
+let holdSkin = false, releaseSkin = null;
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' });
-  if (url === 'https://qianmu.test/qianmu-theme-skins.css') { skinRequests++; return route.fulfill({status:failSkin?404:200,contentType:'text/css',body:failSkin?'':await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')}); }
+  if (url === 'https://qianmu.test/qianmu-theme-skins.css') { skinRequests++; if(holdSkin)await new Promise(resolve=>releaseSkin=resolve); return route.fulfill({status:failSkin?404:200,contentType:'text/css',body:failSkin?'':await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')}); }
   for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-settings.js', 'qianmu-appearance-portals.js', 'qianmu-notes-theme.js', 'qianmu-classic-palettes.js', 'qianmu-appearance-actions.js']) {
     if (url === `https://qianmu.test/${file}`) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
   }
@@ -31,12 +33,12 @@ try {
   await page.goto('https://qianmu.test/'); await page.addStyleTag({ content: css });
   await page.evaluate(async ({ code, binding, form, themes }) => {
     const nav = await import('./qianmu-storyboard-nav-lifecycle.js'), theme = await import('./qianmu-theme-surfaces.js'), icons = await import('./qianmu-icon-renderer.js');
-    Object.assign(window, nav, icons, await import('./qianmu-theme-menu.js'), await import('./qianmu-appearance-actions.js'), { theme });
+    Object.assign(window, nav, icons, await import('./qianmu-theme-menu.js'), await import('./qianmu-appearance-actions.js'), await import('./qianmu-appearance-settings.js'), { theme });
     const noop = () => {}, counters = { saves: 0, captures: 0, float: 0, notes: 0 };
     Object.assign(window, {
       counters, form, FLOAT_LOGO_URLS:{}, FLOAT_LOGO_URL:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', toast:message=>{throw Error(message);}, state: { view: 'create', source: 'novel', assetView: 'tags', editingArtistPresetId: '', editingPromptItemId: '' },
       storyboardState: () => window.state, clone: structuredClone, htmlEscape: value => String(value), MODAL_ID: 'story-director-modal',
-      activeTab: 'imagegen', settings: { theme: 'light', lastTab: 'dashboard' }, THEME_KEYS: themes.map(theme => theme.key), THEMES: themes,
+      activeTab: 'imagegen', settings: { theme: 'light', lastTab: 'dashboard' }, THEME_KEYS: themes.map(theme => theme.key), THEMES: themes,currentHiveThemeKey:()=>THEME_KEYS.includes(settings.theme)?settings.theme:'light',
       readerView: null, focusClockLockConfirming: false, coreadOpenRequestId: 0, editorView: null, theaterView: null,
       storyboardVibeLibraryController: null, storyboardVibeSelection: null, focusClockLockGuard: null,
       modalJustOpened: false, EXTENSION_NAME: '千幕', COREAD_VISIBLE: false, COREAD_ENABLED: false, worldPage: 'front',
@@ -182,8 +184,8 @@ try {
       checks.push(`${width}/${key}: actual classic menu persists once without rerender, keeps draft/selection/scroll/fold and returns trigger focus`);
     }
     await page.locator('.sd-theme-btn').focus(); await page.keyboard.press('ArrowDown');
-    assert.equal(await page.locator('.sd-theme-opt[aria-checked="true"]').evaluate(node => node === document.activeElement), true);
-    await page.keyboard.press('Home'); assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'light');
+    assert.equal(await page.locator('.sd-theme-opt[data-theme][aria-checked="true"]').evaluate(node => node === document.activeElement), true);
+    await page.keyboard.press('Home'); assert.equal(await page.evaluate(() => document.activeElement.dataset.appearanceFamily), 'editorial');
     await page.keyboard.press('End'); assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'dream');
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('.sd-theme-btn').evaluate(node => node === document.activeElement && node.getAttribute('aria-expanded') === 'false'), true);
@@ -262,6 +264,60 @@ try {
   failSkin=false;
   const retried=await page.evaluate(async()=>{const ready=await appearanceSession.retry();const theme=document.getElementById(NOTES_PANEL_LAYER_ID).dataset.qmTheme;appearanceSession.reset();return {ready,theme,errors:expectedStyleErrors.length};});
   assert.deepEqual(retried,{ready:true,theme:'glass',errors:1});assert.equal(skinRequests,3);checks.push('explicit stylesheet retry recovers the same mounted notes without rendering');
+  // Actual NEW appearance entry, including owned loader failures and a late result.
+  await page.evaluate(async saveSource=>{
+    const {createQianmuAppearanceSession}=await import('./qianmu-appearance-session.js');
+    appearanceSession.reset();document.getElementById(MODAL_ID)?._sdThemeMenuCleanup?.();
+    document.body.innerHTML='<div id="story-director-modal" class="sd-theme-dream open"></div>';
+    settings={theme:'dream',lastTab:'dashboard'};activeTab='dashboard';window.renderActiveTab=()=>form;
+    window.ctx=()=>({saveSettingsDebounced:()=>{counters.saves++;window.nativeAppearanceSave=JSON.stringify(settings);}});
+    window.saveSettings=new Function(saveSource+';return saveSettings;')();
+    window.menuResourceErrors=[];appearanceSession=createQianmuAppearanceSession({readSettings:()=>settings,styleUrl:'https://qianmu.test/qianmu-theme-skins.css',onError:error=>menuResourceErrors.push(error.message)});
+    renderModal();window.newMenuDraft=document.querySelector('textarea');newMenuDraft.value='原位保留的取景编辑';newMenuDraft.setSelectionRange(2,6);
+    window.newMenuBody=document.querySelector('.sd-body');newMenuBody.scrollTop=79;
+  },storyboardFunctionSource('saveSettings'));
+  const screenshots=process.env.QIANMU_MENU_SCREENSHOT_DIR;if(screenshots)await mkdir(screenshots,{recursive:true});
+  for(const width of [393,1280])for(const family of ['editorial','glass'])for(const mode of ['light','dark']){
+    await page.setViewportSize({width,height:900});
+    if(await page.locator('.sd-theme-menu').isHidden())await page.locator('.sd-theme-btn').click();
+    const before=await page.evaluate(()=>({renders:performanceRuntime.modalRenderCount,scroll:newMenuBody.scrollTop,saves:counters.saves,preference:readAppearancePreferences(settings)}));
+    await page.locator(`[data-appearance-family="${family}"]`).click();await page.locator(`[data-appearance-mode="${mode}"]`).click();
+    await page.evaluate(()=>appearanceSession.sync());await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const after=await page.evaluate(()=>{const main=document.getElementById(MODAL_ID),menu=document.querySelector('.sd-theme-menu'),bounds=menu.getBoundingClientRect();return {
+      family:main.dataset.qmTheme,mode:main.dataset.qmMode,legacy:settings.theme,preference:readAppearancePreferences(settings),saves:counters.saves,renders:performanceRuntime.modalRenderCount,
+      same:newMenuBody===document.querySelector('.sd-body')&&newMenuDraft===document.querySelector('textarea'),draft:newMenuDraft.value,selection:[newMenuDraft.selectionStart,newMenuDraft.selectionEnd],scroll:newMenuBody.scrollTop,
+      familyRadio:menu.querySelector('[data-appearance-family][aria-checked="true"]').dataset.appearanceFamily,modeRadio:menu.querySelector('[data-appearance-mode][aria-checked="true"]').dataset.appearanceMode,
+      status:document.querySelector('.sd-theme-feedback').hidden,visible:!menu.hidden,fits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight,focus:document.activeElement.dataset.appearanceMode,modeBackgrounds:[...menu.querySelectorAll('[data-appearance-mode]')].map(button=>getComputedStyle(button).backgroundColor),
+    };});
+    assert.equal(after.family,family);assert.equal(after.mode,mode);assert.equal(after.legacy,'dream');assert.equal(after.familyRadio,family);assert.equal(after.modeRadio,mode);
+    assert.equal(after.same,true);assert.equal(after.draft,'原位保留的取景编辑');assert.deepEqual(after.selection,[2,6]);assert.equal(after.scroll,before.scroll);assert.equal(after.renders,before.renders);assert.equal(after.status,true);assert.equal(after.visible,true);assert.equal(after.fits,true);assert.equal(after.focus,mode);
+    assert.equal(after.saves-before.saves,Number(before.preference.family!==family)+Number(before.preference.mode!==mode));
+    assert.notEqual(after.modeBackgrounds[0],after.modeBackgrounds[1]);
+    checks.push(`${width}/${family}/${mode}: real family/day-night clicks keep workbench draft/selection/scroll and focus; save once per changed field`);
+    if(screenshots&&width===393&&mode==='light')await page.screenshot({path:path.join(screenshots,`${family}-${mode}-393.png`)});
+  }
+  const reopened=await page.evaluate(async()=>{
+    const previous=settings.appearance;settings=JSON.parse(nativeAppearanceSave);document.getElementById(MODAL_ID)._sdThemeMenuCleanup();appearanceSession.reset();renderModal();await appearanceSession.sync();
+    return {family:document.getElementById(MODAL_ID).dataset.qmTheme,mode:document.getElementById(MODAL_ID).dataset.qmMode,saved:settings.appearance,previous};
+  });assert.equal(reopened.family,'glass');assert.equal(reopened.mode,'dark');assert.deepEqual(reopened.saved,reopened.previous);checks.push('JSON-round-tripped saved preferences restore the real menu/skin on a new mount (isolated native-save stub)');
+  await page.evaluate(()=>{appearanceSession.reset();settings.appearance=updateAppearancePreferences(settings,{family:'classic'});renderModal();});
+  failSkin=true;await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="glass"]').click();await page.evaluate(()=>appearanceSession.sync());
+  const failedMenu=await page.evaluate(()=>({theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',error:document.querySelector('.sd-theme-status').textContent,retry:!document.querySelector('.sd-theme-retry').hidden,open:!document.querySelector('.sd-theme-menu').hidden,title:document.querySelector('.sd-theme-btn').title}));
+  assert.equal(failedMenu.theme,'');assert.match(failedMenu.error,/暂用经典/);assert.equal(failedMenu.retry,true);assert.equal(failedMenu.open,true);assert.match(failedMenu.title,/未加载/);checks.push('real CSS 404 is visible in the open appearance menu, with classic pixels and an explicit retry');
+  failSkin=false;await page.locator('.sd-theme-retry').click();await page.evaluate(()=>appearanceSession.sync());await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+  const menuRetry=await page.evaluate(()=>({theme:document.getElementById(MODAL_ID).dataset.qmTheme,status:document.querySelector('.sd-theme-feedback').hidden,focus:document.activeElement.dataset.appearanceFamily}));assert.deepEqual(menuRetry,{theme:'glass',status:true,focus:'glass'});checks.push('real retry button recovers without rerender and returns focus to selected family when retry disappears');
+  await page.locator('[data-theme="candy"]').click();
+  const classicExit=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',closed:document.querySelector('.sd-theme-menu').hidden,modeHidden:[...document.querySelectorAll('[data-appearance-mode]')].every(button=>button.hidden)}));assert.deepEqual(classicExit,{family:'classic',legacy:'candy',theme:'',closed:true,modeHidden:true});checks.push('real classic choice exits the new family, restores its own palette and hides new-family mode controls');
+  await page.evaluate(()=>{appearanceSession.reset();renderModal();});holdSkin=true;
+  await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="editorial"]').click();
+  await page.waitForFunction(()=>appearanceSession.status==='loading');await page.evaluate(()=>{window.pendingAppearance=appearanceSession.sync();});
+  await page.locator('[data-appearance-family="glass"]').click();await page.locator('[data-theme="summer"]').click();
+  for(let attempt=0;!releaseSkin&&attempt<100;attempt++)await new Promise(resolve=>setTimeout(resolve,10));assert.ok(releaseSkin,'held stylesheet request arrived');holdSkin=false;releaseSkin();releaseSkin=null;
+  await page.evaluate(()=>pendingAppearance);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+  const cancelled=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',checked:document.querySelector('[data-theme][aria-checked="true"]').dataset.theme,status:document.querySelector('.sd-theme-feedback').hidden}));assert.deepEqual(cancelled,{family:'classic',legacy:'summer',theme:'',checked:'summer',status:true});checks.push('switching families and returning to classic during a pending stylesheet does not apply stale pixels or stale menu state');
+  await page.setViewportSize({width:320,height:568});await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="glass"]').click();await page.locator('[data-appearance-mode="dark"]').click();
+  const compact=await page.evaluate(()=>{const menu=document.querySelector('.sd-theme-menu'),bounds=menu.getBoundingClientRect();return {fits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight,mode:document.getElementById(MODAL_ID).dataset.qmMode,overflow:getComputedStyle(menu).overflowY};});assert.equal(compact.fits,true);assert.equal(compact.mode,'dark');assert.equal(compact.overflow,'auto');checks.push('320x568 compact viewport keeps the appearance menu inside the viewport with scroll fallback');
+  await page.evaluate(()=>{document.getElementById(MODAL_ID)._sdThemeMenuCleanup();appearanceSession.reset();});
   assert.deepEqual(errors, []); assert.equal(external, 0);
-  console.log(JSON.stringify({ passed: checks.length, checks, errors, external, skinRequests, productionDataRead: false, scope: 'actual modal/route/scroll/menu and core appearance mount code with isolated host services; new-theme settings UI not enabled' }));
-} finally { await context.close(); await browser.close(); }
+  console.log(JSON.stringify({ passed: checks.length, checks, errors, external, skinRequests, productionDataRead: false, scope: 'actual modal/route/scroll/menu and classic/new-theme actions with isolated native save and host services; no physical device or real account persistence' }));
+} finally { releaseSkin?.(); await context.close(); await browser.close(); }

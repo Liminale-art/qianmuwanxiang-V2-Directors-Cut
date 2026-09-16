@@ -141,7 +141,8 @@ import {
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
 import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js';
 import { THEMES, THEME_KEYS, QUICK_HIVE_THEME_PALETTES, READER_PORTAL_BG } from './qianmu-classic-palettes.js';
-import { selectQianmuClassicTheme } from './qianmu-appearance-actions.js';
+import { selectQianmuClassicTheme, changeQianmuAppearance } from './qianmu-appearance-actions.js';
+import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.160';
@@ -6941,7 +6942,7 @@ function renderModal() {
           ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}
           <button class="sd-storyboard-shortcut ${activeTab === 'imagegen' ? 'active' : ''}" title="分镜" aria-label="分镜"><i class="fa-solid fa-camera" data-qm-icon="qm-regular-aperture"></i></button>
           <button class="sd-plug-shortcut ${activeTab === 'plug' ? 'active' : ''}" title="API与日志" aria-label="API与日志"><i class="fa-solid fa-gear" data-qm-icon="qm-duotone-gear"></i></button>
-          ${renderQianmuThemeMenu(THEMES, themeKey)}
+          ${renderQianmuThemeMenu(THEMES, themeKey, {settings,supported:appearanceSession.supported})}
           <button class="sd-close" title="关闭"><i class="fa-solid fa-xmark"></i></button>
         </div>
       </header>
@@ -6985,7 +6986,7 @@ function renderModal() {
     renderFloatButton();
     renderModal();   // 不支持弱引用的旧浏览器维持原经典行为
     syncNotesTheme();
-  });
+  }, appearanceSession.supported ? {read:()=>({...readAppearancePreferences(settings),classic:currentHiveThemeKey()}),status:()=>appearanceSession.status,sync:()=>appearanceSession.sync(),retry:()=>appearanceSession.retry(),change:patch=>changeQianmuAppearance({settings,patch,session:appearanceSession,save:saveSettings})} : null);
   modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
     focusClockCloseVoiceDrawer();
     if (el.dataset.tab !== 'theater') theaterView = null;

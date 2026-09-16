@@ -73,6 +73,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
     return Object.freeze({
         get supported() { return runtime.supported; },
         get ready() { return ready; },
+        get status() { return !runtime.supported ? 'unsupported' : ready ? 'ready' : failed ? 'error' : loading ? 'loading' : 'idle'; },
         get size() { return runtime.size; },
         sync, mount, mountNotes,
         repaintClassic(options) {

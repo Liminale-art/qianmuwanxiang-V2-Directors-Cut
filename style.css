@@ -1164,6 +1164,29 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-theme-opt.active .sd-theme-dot { box-shadow: 0 0 0 2px var(--sd-accent); }
 #story-director-modal .sd-theme-name { font-size: .95em; }
 
+/* Same appearance entry: two new families and all six classic choices. */
+#story-director-modal .sd-theme-menu.is-appearance {
+  width: min(240px, calc(100vw - 48px));
+  max-height: min(440px, 60dvh);
+  overflow: auto;
+  scrollbar-width: none;
+  padding: 8px;
+}
+#story-director-modal .sd-theme-menu.is-appearance::-webkit-scrollbar { display: none; }
+#story-director-modal :is(.sd-theme-family-options, .sd-theme-modes) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+#story-director-modal .sd-theme-modes { border-top: 1px solid var(--sd-hairline); margin-top: 6px; padding-top: 6px; }
+#story-director-modal .sd-theme-menu :is(.sd-theme-modes, .sd-theme-feedback, .sd-theme-opt)[hidden] { display: none !important; }
+#story-director-modal .is-appearance .sd-theme-opt { min-height: 36px; }
+#story-director-modal .sd-theme-section { grid-column: 1 / -1; padding: 6px 10px 2px; font-size: .78em; color: var(--sd-muted); }
+#story-director-modal .sd-theme-modes .sd-theme-opt { justify-content: center; text-align: center; }
+#story-director-modal .sd-theme-modes .sd-theme-opt.active { background: var(--sd-primary) !important; color: var(--sd-primary-text) !important; }
+#story-director-modal .sd-theme-dot-editorial { background: #e8dfcd; }
+#story-director-modal .sd-theme-dot-glass { background: #b5d2e8; }
+#story-director-modal .sd-theme-feedback { padding: 8px 6px 2px; font-size: .82em; color: var(--sd-text); }
+#story-director-modal .sd-theme-retry { justify-content: center; margin-top: 5px; border: 1px solid var(--sd-border) !important; }
+#story-director-modal .sd-theme-btn.has-appearance-error { box-shadow: 0 0 0 2px var(--sd-accent) !important; }
+#story-director-modal .sd-theme-menu .sd-theme-opt:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: -2px; }
+
 /* ---------- 6. 标签页 ---------- */
 #story-director-modal .sd-tabs {
   flex: 0 0 auto;

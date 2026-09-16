@@ -21,6 +21,7 @@ function fixture() {
 
 test('classic mounts are inert, idempotent and do not request the optional skin', async () => {
     const f = fixture(), root = element(), off = f.session.mount(root);
+    assert.equal(f.session.status,'idle');
     assert.equal(f.session.mount(root), off); await f.session.sync(); assert.equal(f.loads.length, 0); assert.equal(f.session.size, 1); assert.equal(root.getAttribute('data-qm-theme'), null);
     off(); off(); assert.equal(f.session.size, 0); f.session.reset();
 });
@@ -28,8 +29,10 @@ test('classic mounts are inert, idempotent and do not request the optional skin'
 test('skin load is shared and new colors are applied only after successful loading', async () => {
     const f = fixture(), a = element(), b = element(); f.set({ theme: 'light', appearance: preference });
     f.session.mount(a); f.session.mount(b); const ready = f.session.sync();
+    assert.equal(f.session.status,'loading');
     assert.equal(f.loads.length, 1); assert.equal(a.getAttribute('data-qm-theme'), null); assert.equal(f.session.ready, false);
     f.loads[0].resolve(true); assert.equal(await ready, true);
+    assert.equal(f.session.status,'ready');
     assert.equal(a.getAttribute('data-qm-theme'), 'glass'); assert.equal(b.getAttribute('data-qm-theme'), 'glass'); assert.equal(f.session.ready, true);
     f.session.reset(); assert.equal(f.loads[0].cancelled, 1); assert.equal(a.getAttribute('data-qm-theme'), null);
 });
@@ -49,6 +52,7 @@ test('switching back to classic during loading does not flash the abandoned them
 test('failed styles retain classic and report once, with an explicit retry path', async () => {
     const f = fixture(), root = element(); f.set({ appearance: preference }); f.session.mount(root); let ready = f.session.sync();
     f.loads[0].resolve(false); assert.equal(await ready, false); await f.session.sync(); f.session.mount(element());
+    assert.equal(f.session.status,'error');
     assert.equal(f.errors.length, 1); assert.equal(f.loads.length, 1); assert.equal(root.getAttribute('data-qm-theme'), null);
     ready = f.session.retry(); assert.equal(f.loads.length, 2); f.loads[1].resolve(true); assert.equal(await ready, true);
     assert.equal(root.getAttribute('data-qm-theme'), 'glass'); f.session.reset();
@@ -109,6 +113,7 @@ test('synchronous and asynchronous loader failures are consumed and leave mounte
 
 test('unsupported weak references add no mounts or stylesheet request; invalid owners fail fast', async () => {
     const session = createQianmuAppearanceSession({ readSettings: () => ({ appearance: preference }), WeakReference: null, loadStyles: () => assert.fail('unexpected stylesheet request') });
+    assert.equal(session.status,'unsupported');
     session.mount(element()); const portal=element();portal.style.setProperty('--sd-text','untouched');session.mountPortal(portal);assert.equal(portal.style.getPropertyValue('--sd-text'),'untouched');
     assert.equal(await session.sync(), false); assert.equal(session.size, 0); session.reset();
     assert.throws(() => createQianmuAppearanceSession(), TypeError);

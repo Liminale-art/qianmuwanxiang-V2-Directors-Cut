@@ -36,6 +36,15 @@ test('theme markup preserves radio semantics, explicit button types and escaped 
     assert.match(html, /data-theme="dark"/); assert.match(html, /role="menu" aria-label="外观主题" hidden/);
 });
 
+test('extended menu groups new families and day/night without dropping any classic option',()=>{
+    const themes=['light','dark','summer','candy','kraft','dream'].map(key=>({key,name:key,dot:'#fff'}));
+    const html=renderQianmuThemeMenu(themes,'dream',{supported:true,settings:{theme:'dream',appearance:{version:1,family:'glass',mode:'dark'}}});
+    for(const {key} of themes)assert.match(html,new RegExp(`data-theme="${key}"`));
+    assert.match(html,/data-appearance-family="editorial"/);assert.match(html,/aria-checked="true" data-appearance-family="glass"/);assert.match(html,/aria-checked="true" data-appearance-mode="dark"/);
+    assert.match(html,/role="group" aria-label="明暗"/);assert.match(html,/role="status" aria-live="polite"/);assert.match(html,/sd-theme-retry/);
+    const legacy=renderQianmuThemeMenu(themes,'dark',{supported:false,settings:{appearance:{version:1,family:'glass'}}});assert.doesNotMatch(legacy,/data-appearance-family|data-appearance-mode/);assert.equal((legacy.match(/aria-checked="true"/g)||[]).length,1);
+});
+
 test('repeated trigger open/close owns at most one document listener', () => {
     const f = fixture(), cleanup = bindQianmuThemeMenu(f.root, () => assert.fail('toggle selected a theme'));
     for (let i = 0; i < 30; i++) {
@@ -102,7 +111,7 @@ test('production rerender, allowed close and extension disposal all release menu
     assert.match(entry, /function closeModal\(\) \{\s*if \(focusClockBlockExit\(\)\) return;\s*document.getElementById\(MODAL_ID\)\?\._sdThemeMenuCleanup\?\.\(\);/);
     assert.match(entry, /modal\._sdThemeMenuCleanup\?\.\(\);\s*storyboardCaptureTagDraft/);
     assert.match(entry, /clean\('panels', \(\) => \{\s*document.getElementById\(MODAL_ID\)\?\._sdThemeMenuCleanup\?\.\(\);/);
-    assert.match(entry, /renderQianmuThemeMenu\(THEMES, themeKey\)/);
+    assert.match(entry, /renderQianmuThemeMenu\(THEMES, themeKey, \{settings,supported:appearanceSession.supported\}\)/);
     const start = entry.indexOf('function renderModal()'), render = entry.slice(start, entry.indexOf('\nfunction ', start + 1));
     assert.equal(/const themePick =|const closeOnce =/.test(render), false, 'the old leaking menu binder must be removed from renderModal');
     const module = await readFile(new URL('../qianmu-theme-menu.js', import.meta.url), 'utf8');

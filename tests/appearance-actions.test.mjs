@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectQianmuClassicTheme } from '../qianmu-appearance-actions.js';
+import { selectQianmuClassicTheme, changeQianmuAppearance } from '../qianmu-appearance-actions.js';
 import { createQianmuClassicPainter } from '../qianmu-appearance-portals.js';
 import { QUICK_HIVE_THEME_PALETTES, READER_PORTAL_BG, THEME_KEYS } from '../qianmu-classic-palettes.js';
+import { migrateQianmuSettingsV2 } from '../qianmu-data-migrations.js';
 
 function action(settings, { saveError=false, paintError=false }={}) {
     const paints=[], saves=[];
@@ -19,6 +20,30 @@ test('a classic choice saves once, keeps legacy-only settings legacy-only and sa
 test('return to the saved classic also explicitly exits a new family while preserving its next-use preferences',()=>{
     const settings={theme:'dream',appearance:{version:1,family:'glass',mode:'dark',source:'manual',accent:'#123456',harmony:'complementary'}},f=action(settings);
     assert.equal(f.run('dream'),true);assert.deepEqual(settings.appearance,{version:1,family:'classic',mode:'dark',source:'manual',accent:'#123456',harmony:'complementary'});assert.deepEqual(f.saves,['dream']);assert.equal(f.paints.length,1);
+});
+test('new family/day-night actions preserve the legacy theme and request one native save per actual change',async()=>{
+    const settings={theme:'dream'},calls=[];const session={supported:true,sync(){calls.push('sync');return Promise.resolve(true);}};
+    const run=patch=>changeQianmuAppearance({settings,patch,session,save:()=>calls.push('save')});
+    assert.equal(await run({family:'glass'}),true);assert.equal(settings.theme,'dream');assert.equal(settings.appearance.family,'glass');assert.deepEqual(calls,['sync','save']);
+    await run({family:'glass'});assert.deepEqual(calls,['sync','save','sync']);await run({mode:'dark'});assert.equal(settings.appearance.mode,'dark');assert.equal(calls.filter(value=>value==='save').length,2);
+});
+test('new-family resource failure retains a retryable preference, not a false success',async()=>{
+    const settings={theme:'kraft'},session={supported:true,sync:()=>Promise.resolve(false)};let saves=0;
+    assert.equal(await changeQianmuAppearance({settings,patch:{family:'editorial'},session,save:()=>saves++}),false);assert.equal(settings.appearance.family,'editorial');assert.equal(settings.theme,'kraft');assert.equal(saves,1);
+});
+test('native JSON transport and the existing additive settings migration retain new appearance fields',async()=>{
+    const settings={theme:'dream',unrelated:{draft:'keep'}};
+    await changeQianmuAppearance({settings,patch:{family:'glass',mode:'dark'},session:{supported:true,sync:()=>Promise.resolve(true)},save(){}});
+    const restored=migrateQianmuSettingsV2(JSON.parse(JSON.stringify(settings)));
+    assert.equal(restored.failed,false);assert.deepEqual(restored.value.appearance,settings.appearance);assert.equal(restored.value.theme,'dream');assert.deepEqual(restored.value.unrelated,{draft:'keep'});
+});
+test('new-family validation and synchronous save failure do not overwrite old settings',()=>{
+    const settings={theme:'summer'},session={supported:true,sync:()=>Promise.resolve(false)};let saves=0;
+    for(const patch of [{family:'classic'},{family:'injected'},{mode:'invalid'}])assert.throws(()=>changeQianmuAppearance({settings,patch,session,save:()=>saves++}));
+    assert.equal(saves,0);assert.deepEqual(settings,{theme:'summer'});
+    assert.throws(()=>changeQianmuAppearance({settings,patch:{family:'glass'},session,save(){throw Error('save failed');}}),/save failed/);assert.deepEqual(settings,{theme:'summer'});
+    assert.throws(()=>changeQianmuAppearance({settings,patch:{family:'glass'},session:{supported:false},save(){}}));
+    const future={theme:'dark',appearance:{version:98}};assert.throws(()=>changeQianmuAppearance({settings:future,patch:{family:'glass'},session,save(){}}));assert.deepEqual(future,{theme:'dark',appearance:{version:98}});
 });
 test('unknown keys or future appearance versions leave settings, pixels and persistence untouched',()=>{
     for(const settings of [{theme:'light'},{theme:'light',appearance:{version:99,family:'glass'}}]){
