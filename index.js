@@ -140,6 +140,7 @@ import {
 } from './qianmu-notes.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
 import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js';
+import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.160';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.160';
@@ -1385,6 +1386,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 });
 
 let settings = null;
+const appearanceSession = createQianmuAppearanceSession({readSettings:()=>settings,styleUrl:new URL(`./qianmu-theme-skins.css?v=${VERSION}`,import.meta.url),onError:error=>console.warn('[千幕] 外观资源未加载，保留经典主题',error)});
 let ttsRestoreTasks = 0;
 const configUndo = createConfigUndoSlot();
 let configUndoAction = null;
@@ -6076,6 +6078,7 @@ function openQuickWheel(btn) {
   document.body.appendChild(root);
   applyQianmuIcons(root);
   quickWheelOriginButton = btn;
+  appearanceSession.mountHive(root);
   btn.classList.add('sd-wheel-active');
   bindQuickWheelOutsideDismiss(root);
   root.addEventListener('click', (event) => { if (!event.target.closest('.sd-wheel-command')) closeQuickWheel(); });
@@ -6255,6 +6258,7 @@ function renderFloatButton() {
   btn.style.setProperty('pointer-events', 'auto', 'important');
   bindFloatDrag(btn);
   applyFloatPosition(btn);
+  appearanceSession.mount(btn,{role:'hive-main'});
 }
 
 function scheduleFloatButtonRecovery(delay = 80) {
@@ -6521,7 +6525,9 @@ const NOTES_THEME_VARIABLES = Object.freeze([
 ]);
 
 function syncNotesTheme() {
+  void appearanceSession.sync();
   syncQianmuNotesTheme({themeKey:currentHiveThemeKey(),palette:currentHivePalette(),appearance:notesFeatureSettings().appearance,variables:NOTES_THEME_VARIABLES});
+  appearanceSession.mountNotes(document);
 }
 
 function notesPanelUsesCompactLayout() {
@@ -6648,6 +6654,7 @@ function renderFloatingNotes() {
   document.body.appendChild(layer);
   applyQianmuIcons(layer);
   bindFloatingNoteEvents(layer);
+  appearanceSession.mountNotes(document);
 }
 
 function bindFloatingNoteEvents(layer) {
@@ -6989,6 +6996,7 @@ function renderModal() {
       `}
     </section>`;
   restoreStoryboardNav();
+  appearanceSession.mount(modal);
   applyQianmuIcons(modal); featureRuntime.bindIntent(modal);
   // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
   modal.onclick = (event) => {
@@ -36258,6 +36266,7 @@ function cleanupRuntime(resetSettings = false) {
   };
   try {
     clean('float host guard', () => stopFloatHostGuard());
+    clean('appearance', () => appearanceSession.reset());
     clean('quick dock', () => unbindQuickDockCapture());
     clean('float reveal', () => {
       if (floatRevealOutsideHandler) document.removeEventListener('pointerdown', floatRevealOutsideHandler, true);

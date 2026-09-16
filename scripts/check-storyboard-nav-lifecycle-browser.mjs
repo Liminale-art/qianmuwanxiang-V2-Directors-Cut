@@ -12,17 +12,19 @@ const bindingEnd = entry.indexOf("  root.querySelectorAll('[data-storyboard-gall
 assert.ok(bindingStart > 0 && bindingEnd > bindingStart);
 const binding = entry.slice(bindingStart, bindingEnd);
 const themes = vm.runInNewContext(entry.slice(entry.indexOf('const THEMES = ['), entry.indexOf('const THEME_KEYS =')) + '; THEMES;');
+const hivePalettes = vm.runInNewContext(entry.slice(entry.indexOf('const QUICK_HIVE_THEME_PALETTES ='), entry.indexOf('function currentHiveThemeKey')) + '; QUICK_HIVE_THEME_PALETTES;');
 const names = ['renderModal', 'closeModal', 'storyboardNavigate', 'storyboardApplyRoute', 'storyboardPageKey', 'storyboardScroller',
   'storyboardRememberPageScroll', 'storyboardRestorePageScroll', 'storyboardPageTitle', 'renderStoryboardTab', 'renderStoryboardNav'];
 const code = names.map(storyboardFunctionSource).join('\n') + `\nObject.assign(window,{${names.join(',')}});`;
 const css = (await Promise.all(['style.css', 'qianmu-theme-skins.css'].map(file => readFile(new URL('../' + file, import.meta.url), 'utf8')))).join('\n');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
-const context = await browser.newContext(), page = await context.newPage(), errors = [], checks = []; let external = 0;
+const context = await browser.newContext(), page = await context.newPage(), errors = [], checks = []; let external = 0, skinRequests = 0, failSkin = false;
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' });
-  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js']) {
+  if (url === 'https://qianmu.test/qianmu-theme-skins.css') { skinRequests++; return route.fulfill({status:failSkin?404:200,contentType:'text/css',body:failSkin?'':await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')}); }
+  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-settings.js', 'qianmu-notes-theme.js']) {
     if (url === `https://qianmu.test/${file}`) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
   }
   external++; return route.abort();
@@ -53,6 +55,8 @@ try {
       renderStoryboardGallery: () => '<section class="sd-card">隔离的阅片室内容</section>', renderStoryboardLogs: () => '<section class="sd-card">隔离的日志内容</section>',
       qianmuVersionBadgeMarkup: () => '', renderInjectDock: () => '', updateTabsFade: noop, bindTabsScrollControls: noop,
     });
+    const {createQianmuAppearanceSession} = await import('./qianmu-appearance-session.js');
+    window.appearanceSession = createQianmuAppearanceSession({readSettings:()=>settings,loadStyles:()=>({promise:Promise.resolve(true),cancel:noop})});
     new Function(code)();
     window.bindActiveTabEvents = new Function('root', `const state=storyboardState();\n${binding}`);
     window.renderActiveTab = () => activeTab === 'imagegen' ? renderStoryboardTab() : '<p>原审片页占位，仅验证离开分镜生命周期</p>';
@@ -187,6 +191,68 @@ try {
     }); assert.deepEqual(cleanup, { rerender: 0, close: 0, hidden: true }); checks.push(`${width}: actual rerender and modal close release an open menu`);
   }
   await page.evaluate(() => restoreDocumentListeners());
+
+  // Production mount calls, real optional stylesheet loader, no manually applied controller.
+  await page.evaluate(() => { controller.dispose(); appearanceSession.reset(); document.head.querySelectorAll('style').forEach(node=>node.remove()); document.body.innerHTML='<div id="story-director-modal" class="sd-theme-light open"></div>'; });
+  await page.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')});
+  const mounts = ['currentHiveThemeKey','currentHivePalette','syncNotesTheme','renderNotesPanelPortal','renderFloatingNotes','bindFloatingNoteEvents','renderFloatButton'];
+  await page.evaluate(async ({functions,palettes}) => {
+    const noop=()=>{}, {createQianmuAppearanceSession}=await import('./qianmu-appearance-session.js');
+    Object.assign(window,await import('./qianmu-notes-theme.js'),await import('./qianmu-appearance-settings.js'),{
+      MODULE_NAME:'isolated-qianmu',QUICK_HIVE_THEME_PALETTES:palettes,NOTES_PANEL_LAYER_ID:'qianmu-notes-panel-layer',NOTES_FLOAT_LAYER_ID:'qianmu-notes-float-layer',FLOAT_ID:'story-director-float',
+      NOTES_THEME_VARIABLES:['--sd-text','--sd-muted','--sd-accent','--sd-card','--sd-primary'],QUICK_HEX_BORDER_SVG:'',FLOAT_LOGO_URLS:{},FLOAT_LOGO_URL:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>',
+      notesPanelOpen:false,notesFeatureSettings:()=>settings.notes,notesFeatureEnabled:()=>true,stopNotesPanelResizeTracking:noop,bindNotesPanelResize:noop,
+      renderNotesPanel:()=>'<div class="sd-notes-stage"><section class="sd-notes-panel"><textarea class="sd-note-body">真实挂载测试草稿</textarea></section></div>',
+      clampDetachedNotesEntry:value=>value,detachedNotesGeometry:()=>({width:60,height:68}),detachedNoteCanReturnHome:()=>false,toast:noop,openNotesPanel:noop,
+      bindFloatDrag:noop,closeQuickWheel:noop,closeFloorNavigator:noop,applyFloatPosition:btn=>{btn.style.left='15px';btn.style.top='140px';},
+    });
+    settings={theme:'light',enabled:true,floatingButton:true,lastTab:'imagegen',notes:{enabled:true,detached:true,position:{x:80,y:160},appearance:{tone:'dark',edgeIndex:2},editorFontSize:18}};
+    appearanceSession=createQianmuAppearanceSession({readSettings:()=>settings,styleUrl:'https://qianmu.test/qianmu-theme-skins.css',onError:error=>{throw error;}});
+    new Function(functions+';Object.assign(window,{syncNotesTheme,renderNotesPanelPortal,renderFloatingNotes,renderFloatButton});')();
+    activeTab='imagegen'; state={view:'create',source:'novel',assetView:'tags'};renderModal();renderFloatingNotes();renderFloatButton();
+    notesPanelOpen=true;renderNotesPanelPortal();
+    const hive=document.createElement('div');hive.innerHTML='<button data-hive-tone="dark" data-hive-edge-index="2" style="color:pink!important;background:red!important;left:18px;top:23px">H</button>';document.body.append(hive);appearanceSession.mountHive(hive);
+    window.mountFixture={hive,hiveButton:hive.querySelector('button'),notes:document.querySelector('.sd-note-body'),floating:document.querySelector('.sd-detached-notes-entry'),main:document.getElementById(FLOAT_ID),root:document.getElementById(MODAL_ID)};
+  },{functions:mounts.map(storyboardFunctionSource).join('\n'),palettes:hivePalettes});
+  assert.equal(skinRequests,0);checks.push('production classic mounts add no optional stylesheet request');
+  for(const width of [393,1280])for(const family of ['editorial','glass'])for(const mode of ['light','dark']){
+    await page.setViewportSize({width,height:900});
+    const result=await page.evaluate(async({family,mode})=>{
+      const f=mountFixture;f.notes.focus();f.notes.setSelectionRange(2,5);const renders=performanceRuntime.modalRenderCount;
+      settings.appearance=updateAppearancePreferences(settings,{family,mode,source:'manual',accent:'#6581b2'});await appearanceSession.sync();syncNotesTheme();
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      return {roots:[f.root,f.notes.closest('#qianmu-notes-panel-layer'),f.floating,f.main,f.hiveButton].map(node=>[node.dataset.qmTheme,node.dataset.qmMode]),
+        same:f.notes===document.querySelector('.sd-note-body')&&f.floating===document.querySelector('.sd-detached-notes-entry'),focus:document.activeElement===f.notes,selection:[f.notes.selectionStart,f.notes.selectionEnd],
+        sameRenders:renders===performanceRuntime.modalRenderCount,hiveColor:getComputedStyle(f.hiveButton).color,edge:f.main.style.getPropertyValue('--sd-float-edge'),accent:f.root.style.getPropertyValue('--sd-accent'),left:f.floating.style.left,
+        text:getComputedStyle(f.notes.closest('#qianmu-notes-panel-layer')).getPropertyValue('--sd-text').trim(),mainText:f.root.style.getPropertyValue('--sd-text').trim()};
+    },{family,mode});
+    assert.deepEqual(result.roots,Array(5).fill([family,mode]));assert.equal(result.same,true);assert.equal(result.focus,true);assert.equal(result.sameRenders,true);assert.deepEqual(result.selection,[2,5]);
+    assert.notEqual(result.hiveColor,'rgb(255, 192, 203)');assert.equal(result.edge,result.accent);assert.equal(result.left,'80px');assert.equal(result.text,result.mainText);
+    checks.push(`${width}/${family}/${mode}: actual main/notes/floating/float hooks and hive colors update without rendering`);
+  }
+  assert.equal(skinRequests,1);checks.push('new theme stylesheet loads once after classic CSS across all real mounted surfaces');
+  const late=await page.evaluate(()=>{
+    document.getElementById(MODAL_ID).remove();document.getElementById(NOTES_PANEL_LAYER_ID).remove();appearanceSession.sync();renderNotesPanelPortal();
+    const panel=document.getElementById(NOTES_PANEL_LAYER_ID);return {theme:panel.dataset.qmTheme,mode:panel.dataset.qmMode,main:!!document.getElementById(MODAL_ID),count:document.querySelectorAll('#qianmu-notes-panel-layer').length};
+  });assert.deepEqual(late,{theme:'glass',mode:'dark',main:false,count:1});checks.push('actual notes portal inherits saved appearance with main panel absent');
+  for(const classic of themes.map(theme=>theme.key)){
+    const restored=await page.evaluate(async classic=>{
+      settings.theme=classic;settings.appearance=updateAppearancePreferences(settings,{family:'classic'});await appearanceSession.sync();syncNotesTheme();
+      const source=document.createElement('div');source.id=MODAL_ID;source.className=`sd-theme-${classic}`;document.body.append(source);const expected=getComputedStyle(source).getPropertyValue('--sd-text').trim();source.remove();
+      const panel=document.getElementById(NOTES_PANEL_LAYER_ID);return {theme:panel.dataset.qmTheme||'',text:getComputedStyle(panel).getPropertyValue('--sd-text').trim(),expected,hive:mountFixture.hiveButton.style.color};
+    },classic);assert.equal(restored.theme,'');assert.equal(restored.text,restored.expected);assert.equal(restored.hive,'pink');checks.push(`${classic}: actual notes sync restores clean classic tokens after new theme`);
+  }
+  const reset=await page.evaluate(()=>{appearanceSession.reset();return {size:appearanceSession.size,links:document.querySelectorAll('link[href="https://qianmu.test/qianmu-theme-skins.css"]').length};});assert.deepEqual(reset,{size:0,links:0});checks.push('production session cleanup releases skin and registrations');
+  failSkin=true;
+  const failed=await page.evaluate(async()=>{
+    const {createQianmuAppearanceSession}=await import('./qianmu-appearance-session.js');window.expectedStyleErrors=[];
+    appearanceSession=createQianmuAppearanceSession({readSettings:()=>settings,styleUrl:'https://qianmu.test/qianmu-theme-skins.css',onError:error=>expectedStyleErrors.push(error.message)});
+    settings.appearance=updateAppearancePreferences(settings,{family:'glass'});appearanceSession.mountNotes(document);const ready=await appearanceSession.sync();
+    return {ready,errors:expectedStyleErrors.length,theme:document.getElementById(NOTES_PANEL_LAYER_ID).dataset.qmTheme||'',links:document.querySelectorAll('link[href="https://qianmu.test/qianmu-theme-skins.css"]').length};
+  });assert.deepEqual(failed,{ready:false,errors:1,theme:'',links:0});checks.push('real stylesheet 404 leaves classic visible and removes failed link');
+  failSkin=false;
+  const retried=await page.evaluate(async()=>{const ready=await appearanceSession.retry();const theme=document.getElementById(NOTES_PANEL_LAYER_ID).dataset.qmTheme;appearanceSession.reset();return {ready,theme,errors:expectedStyleErrors.length};});
+  assert.deepEqual(retried,{ready:true,theme:'glass',errors:1});assert.equal(skinRequests,3);checks.push('explicit stylesheet retry recovers the same mounted notes without rendering');
   assert.deepEqual(errors, []); assert.equal(external, 0);
-  console.log(JSON.stringify({ passed: checks.length, checks, errors, external, productionDataRead: false, scope: 'actual modal/route/scroll/menu code with isolated host services; new themes not yet enabled in production' }));
+  console.log(JSON.stringify({ passed: checks.length, checks, errors, external, skinRequests, productionDataRead: false, scope: 'actual modal/route/scroll/menu and core appearance mount code with isolated host services; new-theme settings UI not enabled' }));
 } finally { await context.close(); await browser.close(); }

@@ -29,7 +29,7 @@ export function createQianmuThemeSnapshot(options = {}) {
 }
 
 function surfaceOptions({ role = 'surface', tone = null, edgeIndex = 0 } = {}) {
-    if (!['surface', 'hive-entry'].includes(role)) throw new TypeError('Unknown theme surface role.');
+    if (!['surface', 'hive-entry', 'hive-main'].includes(role)) throw new TypeError('Unknown theme surface role.');
     if (tone !== null && tone !== 'light' && tone !== 'dark') throw new TypeError('Invalid hive tone.');
     if (!Number.isSafeInteger(edgeIndex) || edgeIndex < 0) throw new TypeError('Invalid hive edge index.');
     return Object.freeze({ role, tone, edgeIndex });
@@ -90,8 +90,14 @@ export function createQianmuThemeSurfaceController() {
             patchStyle(record, '--sd-wheel-glass-fill', visual.fill, 'important');
             patchStyle(record, '--sd-wheel-icon', visual.icon, 'important');
             patchStyle(record, '--sd-wheel-edge', visual.edges[edgeIndex % visual.edges.length], 'important');
+            patchStyle(record, 'color', visual.icon, 'important');
             // Existing hive buttons lock their fill inline; update only its color longhand,
             // preserving any separately owned background image, position and repeat settings.
+            patchStyle(record, 'background-color', visual.fill, 'important');
+        }
+        if (record.options.role === 'hive-main') {
+            const visual = snapshot.hive[snapshot.mode];
+            patchStyle(record, '--sd-float-edge', snapshot.tokens['--sd-accent'], 'important');
             patchStyle(record, 'background-color', visual.fill, 'important');
         }
     }

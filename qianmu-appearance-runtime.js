@@ -47,6 +47,7 @@ export function createQianmuAppearanceRuntime({ readSettings, readCoverAccent = 
         supported,
         get preferences() { return preferences; },
         get size() { prune(); return references.size; },
+        has(root) { return roots.has(root); },
         sync() {
             assertLive();
             // Finish preference/cover reads before changing any existing surface.

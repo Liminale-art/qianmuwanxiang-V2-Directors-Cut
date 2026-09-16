@@ -1,0 +1,114 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createQianmuAppearanceSession, loadQianmuAppearanceStyles } from '../qianmu-appearance-session.js';
+
+function element() {
+    const styles = new Map(), attrs = new Map();
+    return { nodeType: 1, ownerDocument: {}, isConnected: true, scrollTop: 0, scrollLeft: 0, querySelectorAll: () => [],
+        getAttribute: key => attrs.get(key) ?? null, setAttribute: (key, value) => attrs.set(key, value), removeAttribute: key => attrs.delete(key),
+        style: { getPropertyValue: key => styles.get(key)?.value || '', getPropertyPriority: key => styles.get(key)?.priority || '', setProperty: (key, value, priority = '') => styles.set(key, { value, priority }), removeProperty: key => styles.delete(key) },
+    };
+}
+const preference = { version: 1, family: 'glass', mode: 'light' };
+function fixture() {
+    let settings = { theme: 'light' }, loads = [], errors = [];
+    const session = createQianmuAppearanceSession({ readSettings: () => settings, onError: error => errors.push(error), loadStyles: () => {
+        const load = { cancelled: 0 }; load.promise = new Promise(resolve => load.resolve = resolve); load.cancel = () => { load.cancelled++; load.resolve(false); }; loads.push(load); return load;
+    } });
+    return { session, loads, errors, set: value => settings = value };
+}
+
+test('classic mounts are inert, idempotent and do not request the optional skin', async () => {
+    const f = fixture(), root = element(), off = f.session.mount(root);
+    assert.equal(f.session.mount(root), off); await f.session.sync(); assert.equal(f.loads.length, 0); assert.equal(f.session.size, 1); assert.equal(root.getAttribute('data-qm-theme'), null);
+    off(); off(); assert.equal(f.session.size, 0); f.session.reset();
+});
+
+test('skin load is shared and new colors are applied only after successful loading', async () => {
+    const f = fixture(), a = element(), b = element(); f.set({ theme: 'light', appearance: preference });
+    f.session.mount(a); f.session.mount(b); const ready = f.session.sync();
+    assert.equal(f.loads.length, 1); assert.equal(a.getAttribute('data-qm-theme'), null); assert.equal(f.session.ready, false);
+    f.loads[0].resolve(true); assert.equal(await ready, true);
+    assert.equal(a.getAttribute('data-qm-theme'), 'glass'); assert.equal(b.getAttribute('data-qm-theme'), 'glass'); assert.equal(f.session.ready, true);
+    f.session.reset(); assert.equal(f.loads[0].cancelled, 1); assert.equal(a.getAttribute('data-qm-theme'), null);
+});
+
+test('load completion reads current preferences, never a stale choice', async () => {
+    const f = fixture(), root = element(); f.set({ appearance: preference }); f.session.mount(root);
+    f.set({ appearance: { ...preference, family: 'editorial', mode: 'dark' } }); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    assert.equal(root.getAttribute('data-qm-theme'), 'editorial'); assert.equal(root.getAttribute('data-qm-mode'), 'dark'); f.session.reset();
+});
+
+test('switching back to classic during loading does not flash the abandoned theme', async () => {
+    const f = fixture(), root = element(); f.set({ appearance: preference }); f.session.mount(root); const ready = f.session.sync();
+    f.set({ theme: 'dream' }); await f.session.sync(); f.loads[0].resolve(true); await ready;
+    assert.equal(root.getAttribute('data-qm-theme'), null); f.session.reset();
+});
+
+test('failed styles retain classic and report once, with an explicit retry path', async () => {
+    const f = fixture(), root = element(); f.set({ appearance: preference }); f.session.mount(root); let ready = f.session.sync();
+    f.loads[0].resolve(false); assert.equal(await ready, false); await f.session.sync(); f.session.mount(element());
+    assert.equal(f.errors.length, 1); assert.equal(f.loads.length, 1); assert.equal(root.getAttribute('data-qm-theme'), null);
+    ready = f.session.retry(); assert.equal(f.loads.length, 2); f.loads[1].resolve(true); assert.equal(await ready, true);
+    assert.equal(root.getAttribute('data-qm-theme'), 'glass'); f.session.reset();
+});
+
+test('reset cancels a pending style load and stale completion cannot repaint new roots', async () => {
+    const f = fixture(), old = element(); f.set({ appearance: preference }); f.session.mount(old); const first = f.session.sync();
+    f.session.reset(); const next = element(); f.session.mount(next); const second = f.session.sync();
+    f.loads[0].resolve(true); assert.equal(await first, false); assert.equal(next.getAttribute('data-qm-theme'), null);
+    f.loads[1].resolve(true); assert.equal(await second, true); assert.equal(next.getAttribute('data-qm-theme'), 'glass'); assert.equal(old.getAttribute('data-qm-theme'), null); f.session.reset();
+});
+
+test('a pruned element can be reattached without a stale mount record suppressing registration', async () => {
+    const f = fixture(), root = element(); f.set({ appearance: preference }); const off = f.session.mount(root); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    root.isConnected = false; await f.session.sync(); assert.equal(f.session.size, 0);
+    root.isConnected = true; f.session.mount(root); off(); assert.equal(f.session.size, 1); assert.equal(root.getAttribute('data-qm-theme'), 'glass'); f.session.reset();
+});
+
+test('hive main and entries retain position while owning their inline important colors', async () => {
+    const f = fixture(), root = element(), main = element(), button = element(); button.dataset = { hiveTone: 'dark', hiveEdgeIndex: '2' }; root.querySelectorAll = selector => selector === '[data-hive-tone]' ? [button] : [];
+    main.style.setProperty('background-color', 'red', 'important'); main.style.setProperty('--sd-float-edge', 'blue', 'important'); button.style.setProperty('color', 'pink', 'important'); button.style.setProperty('left', '17px');
+    f.set({ appearance: preference }); f.session.mount(main, { role: 'hive-main' }); f.session.mountHive(root); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    assert.notEqual(main.style.getPropertyValue('--sd-float-edge'), 'blue'); assert.notEqual(button.style.getPropertyValue('color'), 'pink'); assert.equal(button.style.getPropertyValue('left'), '17px');
+    f.set({ theme: 'light' }); await f.session.sync(); assert.equal(main.style.getPropertyValue('background-color'), 'red'); assert.equal(main.style.getPropertyPriority('background-color'), 'important'); assert.equal(button.style.getPropertyValue('color'), 'pink'); f.session.reset();
+});
+
+test('stylesheet ownership removes handlers on success, failure and cancellation', async () => {
+    const links = [], document = { createElement: () => ({ remove() { this.removed = true; } }), head: { appendChild: link => links.push(link) } };
+    const a = loadQianmuAppearanceStyles(document, 'https://qianmu.test/skin.css'); assert.equal(links[0].rel, 'stylesheet'); links[0].onload(); assert.equal(await a.promise, true); assert.equal(links[0].onerror, null); a.cancel(); assert.equal(links[0].removed, true);
+    const b = loadQianmuAppearanceStyles(document, 'b.css'); links[1].onerror(); assert.equal(await b.promise, false); assert.equal(links[1].removed, true);
+    const c = loadQianmuAppearanceStyles(document, 'c.css'); c.cancel(); c.cancel(); assert.equal(await c.promise, false); assert.equal(links[2].onload, null);
+});
+
+test('production mounts use explicit lifecycle boundaries and keep the classic notes sync order', async () => {
+    const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+    assert.match(entry, /restoreStoryboardNav\(\);\s*appearanceSession\.mount\(modal\);/);
+    assert.match(entry, /function syncNotesTheme\(\) \{\s*void appearanceSession\.sync\(\);\s*syncQianmuNotesTheme\([\s\S]*?appearanceSession\.mountNotes\(document\);/);
+    assert.match(entry, /bindFloatingNoteEvents\(layer\);\s*appearanceSession\.mountNotes\(document\);/);
+    assert.match(entry, /applyFloatPosition\(btn\);\s*appearanceSession\.mount\(btn,\{role:'hive-main'\}\);/);
+    assert.match(entry, /appearanceSession\.mountHive\(root\);/); assert.match(entry, /clean\('appearance', \(\) => appearanceSession\.reset\(\)\);/);
+});
+
+test('a stalled stylesheet is bounded and cancellation clears its timer and listeners', async () => {
+    let expire, cleared = [], link;
+    const document = { createElement: () => ({ remove() { this.removed = true; } }), head: { appendChild: value => link = value } };
+    const pending = loadQianmuAppearanceStyles(document, 'slow.css', { timeoutMs: 100, schedule: (callback, ms) => { assert.equal(ms, 100); expire = callback; return 7; }, cancelSchedule: id => cleared.push(id) });
+    expire(); assert.equal(await pending.promise, false); assert.equal(link.removed, true); assert.equal(link.onload, null); assert.deepEqual(cleared, [7]); pending.cancel(); assert.deepEqual(cleared, [7]);
+});
+
+test('synchronous and asynchronous loader failures are consumed and leave mounted roots classic', async () => {
+    for (const loadStyles of [() => { throw Error('load denied'); }, () => ({ promise: Promise.reject(Error('load denied')), cancel() {} })]) {
+        let errors = [];
+        const session = createQianmuAppearanceSession({ readSettings: () => ({ appearance: preference }), loadStyles, onError: error => errors.push(error.message) });
+        const root = element(); session.mount(root); await session.sync(); await session.sync();
+        assert.deepEqual(errors, ['load denied']); assert.equal(root.getAttribute('data-qm-theme'), null); session.reset();
+    }
+});
+
+test('unsupported weak references add no mounts or stylesheet request; invalid owners fail fast', async () => {
+    const session = createQianmuAppearanceSession({ readSettings: () => ({ appearance: preference }), WeakReference: null, loadStyles: () => assert.fail('unexpected stylesheet request') });
+    session.mount(element()); assert.equal(await session.sync(), false); assert.equal(session.size, 0); session.reset();
+    assert.throws(() => createQianmuAppearanceSession(), TypeError);
+});
