@@ -118,3 +118,28 @@ test('unsupported weak references add no mounts or stylesheet request; invalid o
     assert.equal(await session.sync(), false); assert.equal(session.size, 0); session.reset();
     assert.throws(() => createQianmuAppearanceSession(), TypeError);
 });
+
+test('late native dialog scroll is captured through its actual modal parent without a second mount', async () => {
+    const f = fixture(), root = element(), main = element(); let attached = false;
+    root.contains = node => attached && node === main;
+    root.querySelectorAll = selector => attached && selector.includes('dialog.sd-bundle-dialog > main') ? [main] : [];
+    f.set({ appearance: preference }); f.session.mount(root); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    attached = true; main.scrollTop = 137; main.scrollLeft = 9;
+    const paint = root.style.setProperty;
+    root.style.setProperty = (...args) => { paint(...args); if (args[0] === '--sd-text') { main.scrollTop = 205; main.scrollLeft = 0; } };
+    f.set({ appearance: { ...preference, mode: 'dark' } }); await f.session.sync();
+    assert.equal(main.scrollTop, 137); assert.equal(main.scrollLeft, 9); assert.equal(f.session.size, 1);
+    attached = false; main.isConnected = false; await f.session.sync(); f.session.reset();
+});
+
+test('production native reviews retain the modal ancestry used by inherited appearance and scroll protection', async () => {
+    const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+    const body = name => source.match(new RegExp(`^async function ${name}\\([\\s\\S]*?(?=^(?:async )?function |$(?![\\s\\S]))`, 'm'))?.[0] || '';
+    assert.match(body('storyboardOpenRestoreStorage'), /manager\.openMappingRegistry:manager\.openRestoreStorageManager\)\(\{parent:modal/);
+    assert.match(body('storyboardOpenRestoreStorage'), /modal\s*=\s*document\.getElementById\(MODAL_ID\)/);
+    assert.match(body('storyboardOpenUserAliases'), /openUserAliasReview\(\{parent:document\.getElementById\(MODAL_ID\)/);
+    for (const name of ['storyboardReviewRecordLink', 'storyboardImportBundle']) {
+        assert.match(body(name), /const parent = document\.getElementById\(MODAL_ID\)/);
+        assert.match(body(name), /openStoryboard(?:Link|Bundle)Review\(\{ parent,/);
+    }
+});

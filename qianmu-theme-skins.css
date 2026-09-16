@@ -122,6 +122,33 @@
 }
 /* An independent dialog needs a canvas, not merely inherited text tokens. */
 dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-color: var(--qm-line); }
+/* Native top-layer dialogs remain children of the modal: inherit its live palette.
+   Keep their existing header/main/footer geometry, state and cancellation owners. */
+#story-director-modal[data-qm-theme] dialog.sd-bundle-dialog {
+  background: var(--qm-skin-window);
+  color: var(--qm-ink);
+  border-color: var(--qm-line);
+  border-radius: var(--qm-card-radius);
+  box-shadow: var(--qm-skin-shadow);
+}
+#story-director-modal[data-qm-theme] .sd-bundle-dialog > main { scrollbar-width: none; }
+#story-director-modal[data-qm-theme] .sd-bundle-dialog > main::-webkit-scrollbar { display: none; }
+#story-director-modal[data-qm-theme] .sd-bundle-dialog :is(.sd-btn, .sd-icon-btn) {
+  /* Palette changes are atomic: do not cross-fade a dark button beneath text
+     that has already inherited the light palette (or vice versa). */
+  transition: transform .15s ease, filter .15s ease;
+}
+#story-director-modal[data-qm-theme] .sd-mapping-dialog .sd-mapping-item {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+}
+#story-director-modal[data-qm-theme] .sd-mapping-search :is(input, select) {
+  color: var(--qm-ink);
+  background: var(--qm-raised);
+  border: 1px solid var(--qm-line);
+  border-radius: var(--qm-button-radius);
+}
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-storage-cleanup-dialog, .sd-floor-panel, .sd-reader-refill-card),
 .sd-tts-popup[data-qm-theme] {
   background: var(--qm-skin-material) !important;
