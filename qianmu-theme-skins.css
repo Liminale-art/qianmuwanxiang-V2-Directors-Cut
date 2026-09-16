@@ -285,6 +285,30 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
   overflow-wrap: anywhere;
 }
 
+/* Settings retain their original controls and read-only diagnostics. Long
+   service/storage errors must wrap without hiding the reason for a failure. */
+#story-director-modal[data-qm-theme] :is(.sd-runtime-health-line, .sd-storage-card p[role="status"], .sd-storage-pressure) {
+  overflow-wrap: anywhere;
+}
+#story-director-modal[data-qm-theme] .sd-runtime-health-line > span + span {
+  min-width: 0;
+  white-space: normal;
+}
+#story-director-modal[data-qm-theme] .sd-runtime-health-grid b {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+#story-director-modal[data-qm-theme] .sd-log-entry { border-radius: var(--qm-card-radius) !important; }
+#story-director-modal[data-qm-theme] .sd-log-status.success { color: color-mix(in srgb, #4f9e6b 50%, var(--qm-ink)); }
+#story-director-modal[data-qm-theme] .sd-log-status.error { color: color-mix(in srgb, #c05050 50%, var(--qm-ink)); }
+#story-director-modal[data-qm-theme] .sd-log-status.cancelled { color: color-mix(in srgb, #b08c3f 50%, var(--qm-ink)); }
+#story-director-modal[data-qm-theme] :is(.sd-widget-toggle.active, .sd-structured-output-toggle.active,
+  .sd-video-channel-badge.ready, .sd-video-channel-state > span[data-status="ready"]) { color: var(--qm-action-ink) !important; }
+/* The request/response readout deliberately keeps its dark terminal canvas. */
+#story-director-modal[data-qm-theme] .sd-term { scrollbar-width: none; }
+#story-director-modal[data-qm-theme] .sd-term::-webkit-scrollbar { display: none; }
+
 /* World events follow the panel, while the star map deliberately keeps its
    existing dark inspection canvas and semantic relation/animation colours. */
 #story-director-modal[data-qm-theme] :is(.sd-geo-band, .sd-geo-events) {
