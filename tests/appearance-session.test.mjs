@@ -158,3 +158,16 @@ test('late focus voice, library and drawer scrolling belongs to the existing mod
         attached = false; scroll.isConnected = false; f.session.reset();
     }
 });
+
+test('fixed-workflow popup captures its own native scroll areas and releases them with its owner', async () => {
+    const f=fixture(),root=element(),scrollers=[element(),element()];
+    root.contains=node=>scrollers.includes(node);
+    root.querySelectorAll=selectors=>['.sd-comfy-route-picker','.sd-comfy-route-dialog .popup-content'].flatMap((selector,index)=>selectors.split(',').includes(selector)?[scrollers[index]]:[]);
+    f.set({appearance:preference});const off=f.session.mountPortal(root),ready=f.session.sync();f.loads[0].resolve(true);await ready;
+    scrollers.forEach((node,index)=>{node.scrollTop=70+index;node.scrollLeft=3;});
+    const paint=root.style.setProperty;
+    root.style.setProperty=(...args)=>{paint(...args);if(args[0]==='--sd-text')scrollers.forEach(node=>{node.scrollTop=0;node.scrollLeft=0;});};
+    f.set({appearance:{...preference,mode:'dark'}});await f.session.sync();
+    assert.deepEqual(scrollers.map(node=>[node.scrollTop,node.scrollLeft]),[[70,3],[71,3]]);
+    off();off();assert.equal(f.session.size,0);assert.equal(root.getAttribute('data-qm-theme'),null);f.session.reset();
+});

@@ -6,10 +6,13 @@ import {createRequire} from 'node:module';
 import {implementation as historicalImplementation} from '../tests/helpers/comfy-character-fixture.mjs';
 import {createStoryboardFormFixture,storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
+const appearance=process.env.QIANMU_TEST_APPEARANCE||'';
+assert.ok(!appearance||/^(editorial|glass)\/(light|dark)$/.test(appearance),'invalid isolated appearance');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true}),errors=[],checks=[];let external=0,referenceImage;
-const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
-await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
+const css=await readFile(new URL('../style.css',import.meta.url),'utf8')+(appearance?'\n'+await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8'):'');
+const qa=new URL(`../dist/local-qa/${appearance?appearance.replace('/','-')+'/':''}`,import.meta.url);
+await mkdir(qa,{recursive:true});
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'&&url.pathname==='/user/images/synthetic-character.png'&&referenceImage)return route.fulfill({contentType:'image/png',body:referenceImage});
@@ -20,7 +23,40 @@ await context.route('**/*',async route=>{
 const ok=(name,value)=>{assert.ok(value,name);checks.push(name);};
 try{
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto('https://qianmu.test/');
-  await page.evaluate(async()=>{
+  const verifyAppearance=async(label,selector)=>{
+    if(!appearance)return;
+    const result=await page.evaluate(async selector=>{
+      const root=document.getElementById('story-director-modal'),host=document.getElementById('host'),field=host.querySelector(selector),scroll=host.closest('.sd-storyboard-scroll');
+      field.focus({preventScroll:true});if(field.setSelectionRange&&(!field.type||['text','search','textarea'].includes(field.type)))field.setSelectionRange(0,2);
+      scroll.scrollTop=Math.min(43,scroll.scrollHeight-scroll.clientHeight);
+      const before={nodes:[...host.querySelectorAll('*')],html:host.innerHTML,value:field.value,selection:[field.selectionStart,field.selectionEnd],top:scroll.scrollTop,applied:applied.length,downloads:downloads.length,notices:notices.length};
+      const requested=appearanceSettings.appearance,put=IDBObjectStore.prototype.put;let writes=0;
+      IDBObjectStore.prototype.put=function(...args){writes++;return put.apply(this,args);};
+      try{
+        appearanceSettings.appearance=updateAppearancePreferences(appearanceSettings,{family:requested.family==='glass'?'editorial':'glass',mode:requested.mode==='light'?'dark':'light'});
+        await appearanceSession.sync();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        const value={nodes:before.nodes.every(node=>node.isConnected)&&host.innerHTML===before.html,focus:document.activeElement===field,value:field.value===before.value,
+          selection:JSON.stringify([field.selectionStart,field.selectionEnd])===JSON.stringify(before.selection),scroll:scroll.scrollTop===Math.min(before.top,scroll.scrollHeight-scroll.clientHeight),
+          actions:before.applied===applied.length&&before.downloads===downloads.length&&before.notices===notices.length,top:[before.top,scroll.scrollTop],max:scroll.scrollHeight-scroll.clientHeight,theme:root.dataset.qmTheme};
+        appearanceSettings.appearance=requested;await appearanceSession.sync();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        // The floating glass rail has a different safe tail. If the target page
+        // is shorter than the old offset, native clamping is the correct result.
+        value.restored=root.dataset.qmTheme===requested.family&&before.nodes.every(node=>node.isConnected)&&field.value===before.value&&document.activeElement===field&&scroll.scrollTop===Math.min(value.top[1],scroll.scrollHeight-scroll.clientHeight);
+        value.writes=writes;value.restoredTop=scroll.scrollTop;
+        value.pills=[...host.querySelectorAll('button.sd-btn')].every(node=>getComputedStyle(node).borderRadius==='999px');
+        return value;
+      }finally{IDBObjectStore.prototype.put=put;}
+    },selector);
+    assert.ok(result.nodes&&result.focus&&result.value&&result.selection&&result.scroll&&result.actions&&result.restored&&result.pills&&result.writes===0,`${appearance} ${label}: ${JSON.stringify(result)}`);
+    checks.push(`${appearance} ${label} keeps nodes, draft, focus, selection, bounded scroll and explicit-save boundaries`);
+  };
+  await page.evaluate(async appearance=>{
+    if(appearance){
+      Object.assign(window,await import('/qianmu-appearance-session.js'),await import('/qianmu-appearance-settings.js'));
+      const [family,mode]=appearance.split('/');window.appearanceSettings={theme:'dark',appearance:updateAppearancePreferences({}, {family,mode})};
+      window.appearanceSession=createQianmuAppearanceSession({readSettings:()=>appearanceSettings,loadStyles:()=>({promise:Promise.resolve(true),cancel(){}})});
+      appearanceSession.mount(document.getElementById('story-director-modal'));await appearanceSession.sync();
+    }
     const {renderComfyWorkbench}=await import('/qianmu-comfy-workbench.js');
     const {createComfyWorkflowStore}=await import('/qianmu-comfy-library.js');
     const {createComfyLibraryController}=await import('/qianmu-comfy-library-view.js');
@@ -38,7 +74,7 @@ try{
       controller.mount(host);
     };
     draw(false);
-  });
+  },appearance);
   for(const width of [320,393,1100]){
     await page.setViewportSize({width,height:898});await page.evaluate(()=>draw(false));
     const metrics=await page.locator('.sd-comfy-workbench').evaluate(node=>({overflow:node.scrollWidth-node.clientWidth,fields:[...node.querySelectorAll('[data-storyboard-field]')].map(field=>({height:field.getBoundingClientRect().height,label:getComputedStyle(field.parentElement).textAlign}))}));
@@ -71,7 +107,8 @@ try{
     ok(`editor contains all controls at ${width}`,await page.locator('.sd-comfy-library').evaluate(node=>node.scrollWidth-node.clientWidth<=1));
     ok(`no retired addition fields at ${width}`,await page.locator('[data-comfy-draft="positivePrompt"],[data-comfy-draft="negativePrompt"]').count()===0);
     ok(`editor icons render locally at ${width}`,await page.locator('[data-comfy-action="save"] svg').count()===1);
-    await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/comfy-library-${width}.png`,import.meta.url))});
+    await verifyAppearance(`workflow editor at ${width}`,'[data-comfy-draft="workflow"]');
+    await page.screenshot({caret:'initial',path:fileURLToPath(new URL(`comfy-library-${width}.png`,qa))});
   }
   await page.locator('[data-comfy-action="export-draft"]').click();await page.waitForFunction(()=>downloads.length===1);
   ok('export retains legacy original',await page.evaluate(()=>downloads[0].document.positivePrompt==='legacy extra'));
@@ -79,7 +116,7 @@ try{
   ok('saved-version application carries current account',await page.evaluate(()=>applied[0].namespace===scope));
   await page.locator('[data-comfy-runtime]').selectOption('plus');
   await page.locator('[data-comfy-console]').fill('https://www.runninghub.cn/workflow/1980237776367083521?source=workspace');
-  await page.locator('[data-comfy-draft="name"]').fill('新版本');await page.locator('[data-comfy-action="save"]').click();await page.waitForSelector('.sd-comfy-library-row');
+  await page.locator('[data-comfy-draft="name"]').fill('新版本');await verifyAppearance('dirty workflow before explicit save','[data-comfy-draft="name"]');await page.locator('[data-comfy-action="save"]').click();await page.waitForSelector('.sd-comfy-library-row');
   ok('saving does not apply or overwrite historical additions',await page.evaluate(async()=>{
     const rows=await store.list(scope),versions=await store.versions(scope,rows[0].id);
     const latest=await store.load(scope,rows[0].id,rows[0].revision),old=await store.load(scope,rows[0].id,versions.find(row=>row.version===1).revision);
@@ -104,16 +141,26 @@ try{
     window.routeRecipe=await pinComfyRouteWorkflow({namespace:scope,selection:routeHead,createStore});
     // ST Popup is the sole shell substitute; selection/async loading/pinning run unmodified.
     class Popup{
-      constructor(wrap,_type,_text,options){this.wrap=wrap;this.options=options;}
+      constructor(wrap,_type,_text,options){this.wrap=wrap;this.options=options;this.dlg=document.createElement('dialog');this.dlg.className='popup';}
       show(){return new Promise(resolve=>{
-        const dialog=document.createElement('dialog');dialog.style.cssText='box-sizing:border-box;max-width:calc(100vw - 24px);border:0;border-radius:12px';dialog.append(this.wrap);
+        const dialog=this.dlg;
+        dialog.style.cssText='box-sizing:border-box;max-width:calc(100vw - 24px)';
+        const body=document.createElement('div'),content=document.createElement('div'),controls=document.createElement('div');
+        body.className='popup-body';content.className='popup-content';controls.className='popup-controls';
+        content.append(this.wrap);body.append(content);dialog.append(body,controls);
         for(const [action,text] of [['confirm',this.options.okButton],['cancel',this.options.cancelButton]]){
-          const button=document.createElement('button');button.textContent=text;button.dataset.testPicker=action;
-          button.onclick=()=>{dialog.close();dialog.remove();resolve(action==='confirm');};dialog.append(button);
+          const button=document.createElement('button');button.className='menu_button '+(action==='confirm'?'popup-button-ok':'popup-button-cancel');button.textContent=text;button.dataset.testPicker=action;
+          button.onclick=()=>{dialog.close();dialog.remove();resolve(action==='confirm');};controls.append(button);
         }document.body.append(dialog);dialog.showModal();
+        window.lastPickerDialog=dialog;
+        window.pickerClassic={background:getComputedStyle(dialog).backgroundColor,color:getComputedStyle(dialog).color};
       });}
     }
-    window.startPicker=hasReferences=>{window.picked=undefined;void openComfyRoutePicker({context:{Popup,POPUP_TYPE:{CONFIRM:1}},namespace:scope,hasReferences,createStore}).then(value=>window.picked=value,error=>window.picked={error:error.message});};
+    const shell=document.createElement('style');shell.textContent='.popup{background:#242424;color:#eee;border:1px solid #777;border-radius:10px;padding:14px}.popup-controls{display:flex;justify-content:center;gap:8px;margin-top:12px}.popup-controls .menu_button{min-height:40px;padding:8px 16px}.popup .popup-content{min-width:0}';document.head.prepend(shell);
+    window.pickerMounts=0;window.pickerReleases=0;
+    window.startPicker=hasReferences=>{window.picked=undefined;void openComfyRoutePicker({context:{Popup,POPUP_TYPE:{CONFIRM:1}},namespace:scope,hasReferences,createStore,
+      mountAppearance:dialog=>{if(!window.appearanceSession)return;pickerMounts++;const off=appearanceSession.mountPortal(dialog);return ()=>{pickerReleases++;off();};}
+    }).then(value=>window.picked=value,error=>window.picked={error:error.message});};
     window.poolStore=createComfyPoolStore({dbName:'qianmu-comfy-pools-browser-synthetic'});
     const candidate=createComfyPoolCandidate({namespace:scope,choice:{recipe:routeRecipe,roles:true}});candidate.target.comfyCharacterEnabled=true;
     await poolStore.save(scope,{name:'历史候选',pool:{schema:COMFY_SELECTION_SCHEMA,namespace:scope,id:'draft',revision:'draft',enabled:false,styleLock:true,candidates:[candidate]}});
@@ -132,23 +179,50 @@ try{
     await page.locator('[data-comfy-route-references]').check();
     ok(`picker fields fit at ${width}`,await page.locator('.sd-comfy-route-picker').evaluate(node=>node.scrollWidth-node.clientWidth<=1&&[...node.querySelectorAll('select')].every(field=>field.getBoundingClientRect().height===40)));
     ok(`picker has no role toggle at ${width}`,await page.locator('[data-comfy-route-roles]').count()===0);
+    if(appearance){
+      const result=await page.evaluate(async()=>{
+        const root=lastPickerDialog,picker=root.querySelector('.sd-comfy-route-picker'),fields=[...picker.querySelectorAll('select,input')],nodes=[...root.querySelectorAll('*')];
+        const requested=appearanceSettings.appearance,before=fields.map(node=>[node.value,node.checked]),html=picker.innerHTML;
+        fields[1].focus({preventScroll:true});const baseline=appearanceSession.size;
+        const unrelated=document.createElement('dialog');unrelated.className='popup';document.body.append(unrelated);
+        const hostColor=getComputedStyle(unrelated).color,hostBackground=getComputedStyle(unrelated).backgroundColor;
+        let stable=true,classic=false,modes=true,writes=0;const put=IDBObjectStore.prototype.put;
+        IDBObjectStore.prototype.put=function(...args){writes++;return put.apply(this,args);};
+        try{
+          for(const patch of [{family:requested.family==='glass'?'editorial':'glass',mode:requested.mode==='light'?'dark':'light'},{family:'classic'},requested]){
+            appearanceSettings.appearance=patch===requested?requested:updateAppearancePreferences(appearanceSettings,patch);await appearanceSession.sync();await new Promise(resolve=>requestAnimationFrame(resolve));
+            stable&&=nodes.every(node=>node.isConnected)&&picker.innerHTML===html&&document.activeElement===fields[1]&&JSON.stringify(fields.map(node=>[node.value,node.checked]))===JSON.stringify(before)&&appearanceSession.size===baseline;
+            stable&&=getComputedStyle(unrelated).color===hostColor&&getComputedStyle(unrelated).backgroundColor===hostBackground&&!unrelated.hasAttribute('data-qm-theme');
+            if(patch.family==='classic')classic=!root.hasAttribute('data-qm-theme')&&getComputedStyle(root).color===pickerClassic.color&&getComputedStyle(root).backgroundColor===pickerClassic.background;
+            else modes&&=root.dataset.qmTheme===patch.family&&root.dataset.qmMode===patch.mode&&getComputedStyle(root).colorScheme===patch.mode;
+          }
+          return {stable,classic,modes,writes,owners:baseline};
+        }finally{IDBObjectStore.prototype.put=put;unrelated.remove();}
+      });
+      ok(`${appearance} picker at ${width} switches in place, restores classic and never themes an unrelated ST popup: ${JSON.stringify(result)}`,result.stable&&result.classic&&result.modes&&result.writes===0&&result.owners===2);
+      await page.screenshot({caret:'initial',path:fileURLToPath(new URL(`comfy-picker-${width}.png`,qa))});
+    }
     await page.locator('[data-test-picker="confirm"]').click();await page.waitForFunction(()=>window.picked!==undefined);
     ok(`picker preserves explicit version and reference choice at ${width}`,await page.evaluate(()=>!picked.error&&picked.roles===false&&picked.useReferences===true&&picked.recipe.binding.revision===routeHead.revision));
+    if(appearance)ok(`${appearance} picker at ${width} releases its appearance on confirmation`,await page.evaluate(()=>pickerMounts===pickerReleases&&appearanceSession.size===1&&!lastPickerDialog.hasAttribute('data-qm-theme')));
   }
   await page.evaluate(()=>startPicker(false));await page.waitForSelector('dialog[open]');
   ok('missing workbench references cannot be requested',await page.locator('[data-comfy-route-references]').isDisabled());
   await page.locator('[data-test-picker="cancel"]').click();await page.waitForFunction(()=>window.picked!==undefined);ok('cancel does not bind a workflow',await page.evaluate(()=>picked===null));
+  if(appearance)ok(`${appearance} cancelling picker releases its appearance without binding`,await page.evaluate(()=>pickerMounts===pickerReleases&&appearanceSession.size===1&&!lastPickerDialog.hasAttribute('data-qm-theme')));
   await page.evaluate(()=>openPools());await page.waitForSelector('[data-pool-id]');await page.locator('[data-pool-action="edit"]').first().click();await page.waitForSelector('[data-pool-name]');
   await page.locator('[data-pool-member] summary').click();
   for(const width of [320,393,1100]){
     await page.setViewportSize({width,height:898});
     ok(`candidate controls fit at ${width}`,await page.locator('.sd-comfy-pools').evaluate(node=>node.scrollWidth-node.clientWidth<=1));
     ok(`candidate role toggle stays retired at ${width}`,await page.locator('[data-pool-action="toggle-roles"]').count()===0);
-    await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/comfy-pool-${width}.png`,import.meta.url))});
+    await verifyAppearance(`candidate editor at ${width}`,'[data-pool-name]');
+    await page.screenshot({caret:'initial',path:fileURLToPath(new URL(`comfy-pool-${width}.png`,qa))});
   }
   await page.locator('[data-pool-action="toggle-member"]').click();await page.waitForFunction(()=>document.querySelector('[data-pool-action="toggle-member"]').getAttribute('aria-pressed')==='true');
   await page.locator('[data-pool-action="add-member"]').click();await page.waitForFunction(()=>document.querySelectorAll('[data-pool-member]').length===2);
   await page.locator('[data-pool-action="style-lock"]').click();await page.waitForFunction(()=>document.querySelector('[data-pool-action="style-lock"]').getAttribute('aria-pressed')==='false');
+  await verifyAppearance('dirty candidate choices before save','[data-pool-name]');
   await page.locator('[data-pool-action="save"]').click();await page.waitForSelector('[data-pool-id]');
   ok('new pool revision retires roles but preserves enabled choices, style lock and historical data',await page.evaluate(async()=>{
     const row=(await poolStore.list(scope))[0],versions=await poolStore.versions(scope,row.id);
@@ -186,13 +260,14 @@ try{
   await page.waitForFunction(()=>document.querySelector('.sd-character-cover-upload img')?.naturalWidth===80);
   for(const width of [320,393,1100]){
     await page.setViewportSize({width,height:898});
-    await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/comfy-character-${width}.png`,import.meta.url))});
+    await verifyAppearance(`character editor at ${width}`,'[data-archive-field="name"]');
+    await page.screenshot({caret:'initial',path:fileURLToPath(new URL(`comfy-character-${width}.png`,qa))});
     const overflow=await page.locator('.sd-character-editor').evaluate(node=>({width:node.clientWidth,scroll:node.scrollWidth,children:[...node.querySelectorAll('*')].filter(child=>child.getBoundingClientRect().right>node.getBoundingClientRect().right+1).slice(0,10).map(child=>child.className)}));
     ok(`character editor contains fields at ${width}: ${JSON.stringify(overflow)}`,overflow.scroll-overflow.width<=1);
     ok(`character toolbar retains reachable full-sized actions at ${width}`,await page.locator('.sd-character-editor > fieldset > .sd-character-tools').evaluate(node=>[...node.querySelectorAll('button')].every(button=>{const box=button.getBoundingClientRect(),toolbar=node.getBoundingClientRect();return box.width>=40&&box.height>=40&&box.left>=toolbar.left-1&&box.right<=toolbar.right+1;})));
     ok(`retired editor absent but reference control remains at ${width}`,await page.locator('[data-archive-action^="comfy-"]').count()===0&&await page.locator('[data-archive-image]').count()===1);
   }
-  await page.locator('[data-archive-field="name"]').fill('更新角色');await page.locator('[data-archive-action="save"]').click();await page.waitForSelector('.sd-character-file');
+  await page.locator('[data-archive-field="name"]').fill('更新角色');await verifyAppearance('dirty character before save','[data-archive-field="name"]');await page.locator('[data-archive-action="save"]').click();await page.waitForSelector('.sd-character-file');
   ok('editing old archive keeps legacy workflow, references and appearance',await page.evaluate(async()=>{
     const saved=await charStore.load(scope,charHead.id);return saved.head.version===2&&saved.document.name==='更新角色'
       &&JSON.stringify(saved.document.comfy)===JSON.stringify(oldCharacter.comfy)&&JSON.stringify(saved.document.imagegen)===JSON.stringify(oldCharacter.imagegen);
@@ -255,5 +330,5 @@ try{
   await page.locator('.sd-comfy-connection-options > summary').click();await page.waitForFunction(()=>targetDisposes===1);
   ok('closing management disposes its active authorization view without changing the saved connection',await page.evaluate(()=>!document.querySelector('.sd-comfy-targets').open&&connectionState.connections.comfy.draft.options.comfyTransport==='gateway'));
   await page.evaluate(()=>host._sdComfyTargetsCleanup());
-  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,appearance:appearance||'classic',external,errors}));
 }finally{await context.close();await browser.close();}

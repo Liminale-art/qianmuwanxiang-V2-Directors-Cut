@@ -41,6 +41,44 @@ test('actual picker retains explicit workflow and reference selection without qu
   }finally{if(prior===undefined)delete globalThis.document;else globalThis.document=prior;}
 });
 
+for(const outcome of ['confirm','cancel','reject','show-throws','mount-throws','dispose-throws'])test(`picker appearance follows only its own attached dialog and releases on ${outcome}`,async()=>{
+  const f=fixture(),prior=globalThis.document,priorWarn=console.warn,events=[],warnings=[];
+  const fields={'[data-comfy-route-pick=workflow]':{value:selection.id,addEventListener(){}},'[data-comfy-route-pick=revision]':{value:selection.revision},'[role=status]':{},'[data-comfy-route-references]':{checked:true}};
+  globalThis.document={createElement:()=>({innerHTML:'',querySelector:selector=>fields[selector]})};
+  console.warn=message=>warnings.push(message);
+  const dialog={isConnected:false,classList:{add:name=>events.push(name)}};
+  class Popup{
+    constructor(){this.dlg=dialog;}
+    show(){
+      events.push('show');if(outcome==='show-throws')throw Error('cannot open');
+      dialog.isConnected=true;
+      return Promise.resolve().then(()=>{events.push('close');dialog.isConnected=false;if(outcome==='reject')throw Error('host failed');return outcome!=='cancel';});
+    }
+  }
+  try{
+    const pending=openComfyRoutePicker({...f.options,binding:selection,context:{Popup,POPUP_TYPE:{CONFIRM:1}},mountAppearance:root=>{
+      assert.equal(root,dialog);assert.equal(root.isConnected,true);events.push('mount');
+      if(outcome==='mount-throws')throw Error('appearance only');
+      return ()=>{events.push('release');if(outcome==='dispose-throws')throw Error('appearance cleanup only');};
+    }});
+    if(outcome==='reject'||outcome==='show-throws')await assert.rejects(pending,outcome==='reject'?/host failed/:/cannot open/);
+    else {const result=await pending;assert.equal(result===null,outcome==='cancel');if(result)assert.equal(result.recipe.binding.id,selection.id);}
+    assert.equal(events[0],'sd-comfy-route-dialog');
+    assert.equal(events.filter(value=>value==='mount').length,outcome==='show-throws'?0:1);
+    assert.equal(events.filter(value=>value==='release').length,['show-throws','mount-throws'].includes(outcome)?0:1);
+    if(events.includes('mount'))assert.ok(events.indexOf('show')<events.indexOf('mount')&&events.indexOf('mount')<events.indexOf('close'));
+    assert.equal(warnings.length,['mount-throws','dispose-throws'].includes(outcome)?1:0);
+    assert.equal(f.opens,f.closes);
+  }finally{console.warn=priorWarn;if(prior===undefined)delete globalThis.document;else globalThis.document=prior;}
+});
+
+test('both production fixed-workflow picker bridges supply their existing appearance owner',()=>{
+  for(const name of ['storyboardPickComfyPoolWorkflow','storyboardBindRouteWorkflow']){
+    // Scope names are checked against the actual extracted production functions.
+    assert.match(section(name),/mountAppearance: dialog=>appearanceSession\.mountPortal\(dialog\)/);
+  }
+});
+
 test('pinning captures a bounded lightweight identity and an immutable exact recipe without writes', async () => {
   const f = fixture(), before = copy(f.document), recipe = await pinComfyRouteWorkflow(f.options);
   assert.equal(recipe.binding.namespace, namespace); assert.deepEqual(recipe.binding.id, selection.id);

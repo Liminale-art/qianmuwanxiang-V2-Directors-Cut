@@ -10,7 +10,7 @@ export function renderComfyRoutePicker({ heads, selectedId, versions = [], selec
     <p role="status">${escape(message || (!heads.length ? '请先在 Comfy 工作流库保存方案。' : ''))}</p></div>`;
 }
 
-export async function openComfyRoutePicker({ context, namespace, binding, hasReferences = false, guard = async () => {}, createStore = createComfyWorkflowStore }) {
+export async function openComfyRoutePicker({ context, namespace, binding, hasReferences = false, guard = async () => {}, createStore = createComfyWorkflowStore, mountAppearance }) {
   if (!context?.Popup || !context.POPUP_TYPE) throw Error('当前 ST 不支持工作流选择面板');
   await guard(); const store = createStore();
   try {
@@ -35,9 +35,21 @@ export async function openComfyRoutePicker({ context, namespace, binding, hasRef
         } catch (error) { if (alive && token === request) status.textContent = error.message || '版本读取失败'; }
         finally { if (alive && token === request) { loading = false; revision.disabled = false; } }
       });
-      let result;
-      try { result = await new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '绑定分工', cancelButton: '取消' }).show(); }
-      finally { alive = false; request++; }
+      let result, releaseAppearance;
+      try {
+        const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '绑定分工', cancelButton: '取消' });
+        popup.dlg?.classList.add('sd-comfy-route-dialog');
+        // ST attaches its owned dialog synchronously at the start of show().
+        // Mount before the opening animation, without moving it under our modal
+        // or replacing ST's focus, close, cancellation and result lifecycle.
+        const shown = popup.show();
+        try { if (popup.dlg?.isConnected) releaseAppearance = mountAppearance?.(popup.dlg); }
+        catch (_) { console.warn('[千幕] 工作流选择面板外观未接入，保留原样式'); }
+        result = await shown;
+      } finally {
+        alive = false; request++;
+        try { releaseAppearance?.(); } catch (_) { console.warn('[千幕] 工作流选择面板外观清理失败'); }
+      }
       await guard(); if (!result) return null;
       selectedId = select.value; selectedRevision = revision.value;
       useReferences = hasReferences && wrap.querySelector('[data-comfy-route-references]').checked;

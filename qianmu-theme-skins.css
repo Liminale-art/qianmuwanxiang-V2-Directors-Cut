@@ -84,7 +84,9 @@
   box-shadow: none !important;
   text-shadow: none !important;
 }
-:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, .sd-option-chip) {
+/* Match the legacy button:not(...) specificity so new-theme action chips do
+   not silently fall back to classic rectangular corners in the real panels. */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, button.sd-btn, .sd-option-chip) {
   border-radius: 999px !important;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, .sd-icon-btn):disabled { opacity: .46; cursor: not-allowed; }
@@ -122,6 +124,32 @@
 }
 /* An independent dialog needs a canvas, not merely inherited text tokens. */
 dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-color: var(--qm-line); }
+/* Only our fixed-workflow picker opts in to styling ST's popup shell. Other
+   host dialogs and the classic picker retain their original host styling. */
+dialog.sd-comfy-route-dialog[data-qm-theme] {
+  background: var(--qm-skin-window);
+  color: var(--qm-ink);
+  border-color: var(--qm-line);
+  border-radius: var(--qm-card-radius);
+  box-shadow: var(--qm-skin-shadow);
+  text-shadow: none;
+}
+.sd-comfy-route-dialog[data-qm-theme] :is(.sd-comfy-route-picker, .popup-content) { scrollbar-width: none; }
+.sd-comfy-route-dialog[data-qm-theme] :is(.sd-comfy-route-picker, .popup-content)::-webkit-scrollbar { display: none; }
+.sd-comfy-route-dialog[data-qm-theme] .popup-controls .menu_button {
+  background: var(--qm-raised);
+  color: var(--qm-action-ink);
+  border: 1px solid var(--qm-line);
+  border-radius: 999px;
+  box-shadow: none;
+  text-shadow: none;
+  transition: transform .15s ease, filter .15s ease;
+}
+.sd-comfy-route-dialog[data-qm-theme] .popup-controls .popup-button-ok {
+  background: var(--qm-accent);
+  color: var(--qm-on-accent);
+  border-color: transparent;
+}
 /* Native top-layer dialogs remain children of the modal: inherit its live palette.
    Keep their existing header/main/footer geometry, state and cancellation owners. */
 #story-director-modal[data-qm-theme] dialog.sd-bundle-dialog {

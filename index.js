@@ -14383,7 +14383,7 @@ async function storyboardPickComfyPoolWorkflow(state, { namespace, previous, gua
   };
   const runtime = await featureRuntime.load('comfyRoutes'); await check();
   const picked = await runtime.openComfyRoutePicker({ context: ctx(), namespace, binding: previous?.target.comfyWorkflowBinding,
-    hasReferences: references?.enabled === true, guard: check });
+    hasReferences: references?.enabled === true, guard: check, mountAppearance: dialog=>appearanceSession.mountPortal(dialog) });
   await check(); return picked ? { ...picked, references } : null;
 }
 
@@ -14734,7 +14734,7 @@ async function storyboardBindRouteWorkflow(root, rule) {
     };
     await guard();
     const picked = await runtime.openComfyRoutePicker({ context: ctx(), namespace, binding: rule.target.comfyWorkflowBinding,
-      hasReferences: references?.enabled === true, guard });
+      hasReferences: references?.enabled === true, guard, mountAppearance: dialog=>appearanceSession.mountPortal(dialog) });
     await guard(); if (!picked) return;
     const next = { ...rule.target, parameterPresetId: '', modelId: 'comfy-workflow', capabilityModelId: 'comfy-workflow',
       comfyWorkflowBinding: picked.recipe.binding, comfyCharacterEnabled: false,
