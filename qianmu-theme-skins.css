@@ -331,7 +331,11 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
   .sd-storyboard-video-draft-layer[data-qm-theme] .sd-storyboard-video-draft-editor { border-radius: var(--qm-card-radius) var(--qm-card-radius) 0 0; }
 }
 
-/* Sequential preview keeps a neutral media canvas and its original controls. */
+/* Film editing keeps its original controls; preview retains a neutral media canvas. */
+#story-director-modal[data-qm-theme] :is(.sd-storyboard-film-grid > article, .sd-storyboard-film-clip,
+  .sd-storyboard-film-transition, .sd-storyboard-film-subtitle, .sd-storyboard-film-voice) { border-radius: var(--qm-card-radius); }
+#story-director-modal[data-qm-theme] .sd-storyboard-film-source-grid { scrollbar-width: none; }
+#story-director-modal[data-qm-theme] .sd-storyboard-film-source-grid::-webkit-scrollbar { display: none; }
 .sd-storyboard-film-viewer[data-qm-theme] :is(.sd-storyboard-film-viewer-stage, aside) { border-radius: var(--qm-card-radius); }
 .sd-storyboard-film-viewer[data-qm-theme] :is(aside, .sd-storyboard-film-viewer-segments) { scrollbar-width: none; }
 .sd-storyboard-film-viewer[data-qm-theme] :is(aside, .sd-storyboard-film-viewer-segments)::-webkit-scrollbar { display: none; }

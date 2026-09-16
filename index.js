@@ -1530,6 +1530,7 @@ const storyboardFilmRuntime = {
   chatKey: '', status: 'idle', requestId: 0, timelines: [], motionChains: [], error: '', timelineError: '', mediaError: '',
 };
 let storyboardFilmEditor = null;
+let storyboardFilmEditorOpenSeq = 0;
 let initialized = false;
 let duplicateRuntimeWarned = false;
 let lifecycleHandled = false;
@@ -16267,7 +16268,7 @@ function storyboardReconcileFilmPostproduction(editor = storyboardFilmEditor) {
 }
 
 function storyboardCaptureFilmPostproduction(root) {
-  if (!storyboardFilmEditor || !root?.querySelector('.sd-storyboard-film-postproduction')) return;
+  if (!storyboardFilmEditor || !root?.querySelector('.sd-storyboard-film-post-body')) return;
   storyboardEnsureFilmClipIds(storyboardFilmEditor);
   const project = storyboardFilmPostproductionDraft(storyboardFilmEditor);
   const previousTransitions = new Map(project.transitions.map((item) => [`${item.fromClipId}\n${item.toClipId}`, item]));
@@ -16583,19 +16584,26 @@ async function storyboardRefreshFilmGallery({ rerender = false, force = false } 
 async function storyboardOpenFilmEditor(timelineId = '') {
   const chatKey = String(getChatKey() || '');
   if (!chatKey) return toast('请先进入一个聊天。', 'warning');
+  const request = ++storyboardFilmEditorOpenSeq;
+  const root = document.getElementById(MODAL_ID), page = root?.querySelector('.sd-storyboard-film-page');
+  const current = () => request === storyboardFilmEditorOpenSeq && page?.isConnected && root.classList.contains('open')
+    && chatKey === String(getChatKey() || '') && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'film';
   try {
     const [{ store }, postproduction] = await Promise.all([
       storyboardEnsureFilmRuntime(),
       storyboardEnsureFilmPostproductionRuntime(),
     ]);
+    if (!current()) return;
     let timeline = null;
     let postproductionProject = null;
     if (timelineId) {
       timeline = storyboardFilmRuntime.timelines.find((item) => item.timelineId === timelineId) || await store.load(timelineId, chatKey);
-      if (!timeline) return toast('这份影片时间线已不存在或不属于当前聊天。', 'warning');
+      if (!current()) return;
+      if (!timeline || timeline.owner?.chatKey !== chatKey) return toast('这份影片时间线已不存在或不属于当前聊天。', 'warning');
       postproductionProject = await postproduction.store.load(timeline.timelineId, chatKey, timeline)
         || postproduction.postproductionModule.createEmptyVideoPostproduction(timeline);
     }
+    if (!current()) return;
     storyboardFilmEditor = storyboardFilmEditorFromTimeline(timeline, postproductionProject);
     if (!timeline) storyboardFilmEditor.postproduction = postproduction.postproductionModule.createEmptyVideoPostproduction({
       timelineId: storyboardFilmEditor.timelineId,
@@ -16606,7 +16614,7 @@ async function storyboardOpenFilmEditor(timelineId = '') {
     storyboardReconcileFilmPostproduction(storyboardFilmEditor);
     renderModal();
   } catch (_) {
-    toast('影片编辑器暂时无法打开。', 'warning');
+    if (current()) toast('影片编辑器暂时无法打开。', 'warning');
   }
 }
 

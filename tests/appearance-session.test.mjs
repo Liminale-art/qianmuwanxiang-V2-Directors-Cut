@@ -230,3 +230,16 @@ test('film viewer keeps independent detail and segment-strip scroll through pale
         off(); assert.equal(f.session.size, 0); f.session.reset();
     }
 });
+
+test('film source grids retain their scroll while an editor changes appearance', async () => {
+    const f = fixture(), root = element(), scroll = element();
+    root.contains = node => node === scroll;
+    root.querySelectorAll = query => query.split(',').includes('.sd-storyboard-film-source-grid') ? [scroll] : [];
+    f.set({ appearance: preference });
+    const off = f.session.mount(root), ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    scroll.scrollTop = 137;
+    const paint = root.style.setProperty;
+    root.style.setProperty = (...args) => { paint(...args); if (args[0] === '--sd-text') scroll.scrollTop = 0; };
+    f.set({ appearance: { ...preference, family: 'editorial', mode: 'dark' } }); await f.session.sync();
+    assert.equal(scroll.scrollTop, 137); off(); f.session.reset();
+});
