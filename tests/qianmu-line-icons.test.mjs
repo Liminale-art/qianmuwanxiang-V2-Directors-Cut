@@ -179,6 +179,20 @@ function makeOwnedRoot(id = 'story-director-modal') {
 
 assert.equal(applyQianmuIcons(), 0);
 const local = makeOwnedRoot();
+// The motion viewer mounts directly under body, not inside the main modal.
+// Its existing caller must not silently depend on an external icon font.
+const motion = makeOwnedRoot('isolated-motion-owner');
+motion.root.classList.add('sd-storyboard-video-viewer');
+const motionIcons = ['fa-xmark', 'fa-download', 'fa-trash-can'].map(name => motion.root.appendChild(
+  new FakeElement('i', { className: `fa-solid ${name}`, ownerDocument: motion.document, stats: motion.stats }),
+));
+assert.equal(applyQianmuIcons(motion.root), 3, '独立动态查看器应识别为千幕本地图标作用域');
+assert.ok(motionIcons.every(icon => icon.children.length === 1 && icon.children[0].classList.contains('qm-glyph-svg')));
+const motionGlyphs = motionIcons.map(icon => icon.children[0]);
+const motionWrites = motion.stats.writes;
+assert.equal(applyQianmuIcons(motion.root), 3);
+assert.deepEqual(motionIcons.map(icon => icon.children[0]), motionGlyphs);
+assert.equal(motion.stats.writes, motionWrites);
 const camera = local.root.appendChild(new FakeElement('i', { className: 'fa-solid fa-camera', ownerDocument: local.document, stats: local.stats }));
 assert.equal(applyQianmuIcons(local.root), 1);
 assert.equal(camera.getAttribute('data-qm-glyph'), 'qm-duotone-camera');

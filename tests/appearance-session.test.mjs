@@ -172,6 +172,20 @@ test('late theater reading scroll belongs to the existing modal registration', a
     attached = false; scroll.isConnected = false; f.session.reset();
 });
 
+test('motion viewer keeps its existing detail scroll through a palette layout change', async () => {
+    const f = fixture(), root = element(), detail = element();
+    root.contains = node => node === detail;
+    root.querySelectorAll = query => query.split(',').includes('.sd-storyboard-video-viewer > aside') ? [detail] : [];
+    f.set({ appearance: preference });
+    const off = f.session.mountPortal(root, { role: 'media' }), ready = f.session.sync();
+    f.loads[0].resolve(true); await ready; detail.scrollTop = 149;
+    const paint = root.style.setProperty;
+    root.style.setProperty = (...args) => { paint(...args); if (args[0] === '--sd-text') detail.scrollTop = 0; };
+    f.set({ appearance: { ...preference, family: 'editorial', mode: 'dark' } }); await f.session.sync();
+    assert.equal(detail.scrollTop, 149); assert.equal(root.getAttribute('data-qm-mode'), 'dark');
+    off(); assert.equal(f.session.size, 0); f.session.reset();
+});
+
 test('fixed-workflow popup captures its own native scroll areas and releases them with its owner', async () => {
     const f=fixture(),root=element(),scrollers=[element(),element()];
     root.contains=node=>scrollers.includes(node);

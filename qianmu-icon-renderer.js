@@ -485,6 +485,7 @@ export const QIANMU_ICON_ROOT_SELECTOR = [
   '.sd-storyboard-message-action',
   '.sd-storyboard-inline',
   '.sd-storyboard-lightbox',
+  '.sd-storyboard-video-viewer',
   '.sd-lib-edit-form',
   '.sd-thread-edit-form',
   '.sd-conflict-form',
