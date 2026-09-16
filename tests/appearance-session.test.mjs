@@ -214,3 +214,19 @@ test('video draft picker and confirmation retain their separate scroll offsets t
         off(); assert.equal(f.session.size, 0); f.session.reset();
     }
 });
+
+test('film viewer keeps independent detail and segment-strip scroll through palette writes', async () => {
+    for (const selector of ['.sd-storyboard-film-viewer > aside', '.sd-storyboard-film-viewer-segments']) {
+        const f = fixture(), root = element(), scroll = element();
+        root.contains = node => node === scroll;
+        root.querySelectorAll = query => query.split(',').includes(selector) ? [scroll] : [];
+        f.set({ appearance: preference });
+        const off = f.session.mountPortal(root, { role: 'media' }), ready = f.session.sync();
+        f.loads[0].resolve(true); await ready; scroll.scrollTop = 181; scroll.scrollLeft = 133;
+        const paint = root.style.setProperty;
+        root.style.setProperty = (...args) => { paint(...args); if (args[0] === '--sd-text') { scroll.scrollTop = 0; scroll.scrollLeft = 0; } };
+        f.set({ appearance: { ...preference, family: 'editorial', mode: 'dark' } }); await f.session.sync();
+        assert.equal(scroll.scrollTop, 181, selector); assert.equal(scroll.scrollLeft, 133, selector);
+        off(); assert.equal(f.session.size, 0); f.session.reset();
+    }
+});

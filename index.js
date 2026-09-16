@@ -17028,6 +17028,7 @@ async function storyboardOpenFilmViewer(timelineId) {
   if (!chatKey || !timelineId) return;
   storyboardCloseFilmViewer();
   const openRequest = storyboardFilmViewerPaintSeq;
+  let layer = null;
   try {
     const [{ store }, playerRuntime, galleryRuntime, postproduction] = await Promise.all([
       storyboardEnsureFilmRuntime(),
@@ -17038,17 +17039,20 @@ async function storyboardOpenFilmViewer(timelineId) {
     const timeline = storyboardFilmRuntime.timelines.find((item) => item.timelineId === timelineId) || await store.load(timelineId, chatKey);
     if (openRequest !== storyboardFilmViewerPaintSeq) return;
     if (!timeline || timeline.owner?.chatKey !== chatKey || chatKey !== String(getChatKey() || '')) throw new Error('timeline owner mismatch');
+    let project;
     try {
-      storyboardFilmViewerPostproduction = await postproduction.store.load(timeline.timelineId, chatKey, timeline)
+      project = await postproduction.store.load(timeline.timelineId, chatKey, timeline)
         || postproduction.postproductionModule.createEmptyVideoPostproduction(timeline);
     } catch (_) {
-      storyboardFilmViewerPostproduction = postproduction.postproductionModule.createEmptyVideoPostproduction(timeline);
+      project = postproduction.postproductionModule.createEmptyVideoPostproduction(timeline);
     }
+    if (openRequest !== storyboardFilmViewerPaintSeq || chatKey !== String(getChatKey() || '')) return;
+    storyboardFilmViewerPostproduction = project;
     storyboardFilmViewerLastReadyIndex = -1;
     storyboardFilmVoiceAutoplayWarned = false;
     storyboardFilmVoiceFailures.clear();
     if (!storyboardVideoGallerySession) storyboardVideoGallerySession = galleryRuntime.createVideoGallerySession(blobStore);
-    const layer = document.createElement('div');
+    layer = document.createElement('div');
     layer.className = 'sd-storyboard-film-viewer';
     layer.tabIndex = -1;
     layer.setAttribute('role', 'dialog');
@@ -17067,6 +17071,7 @@ async function storyboardOpenFilmViewer(timelineId) {
     await storyboardFilmPlaybackSession.open(timeline, { chatKey });
     layer.focus({ preventScroll: true });
   } catch (_) {
+    if (layer ? storyboardFilmViewerEl !== layer : openRequest !== storyboardFilmViewerPaintSeq) return;
     storyboardCloseFilmViewer();
     toast('这份影片暂时无法预览。', 'warning');
   }

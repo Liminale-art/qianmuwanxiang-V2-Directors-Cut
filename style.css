@@ -10164,7 +10164,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   background: rgba(0,0,0,.52);
 }
 .sd-storyboard-film-viewer-stage :is(img, video) {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 0;
   display: block;
   width: 100%;

@@ -204,6 +204,16 @@ assert.ok(draftGlyphs.every(icon => icon?.classList.contains('qm-glyph-svg')));
 assert.equal(applyQianmuIcons(draftOwner.root), 6);
 assert.deepEqual(draftIcons.map(icon => icon.children[0]), draftGlyphs);
 assert.equal(draftOwner.stats.writes, draftWrites);
+const filmOwner = makeOwnedRoot('isolated-film-owner');
+filmOwner.root.classList.add('sd-storyboard-film-viewer');
+const filmIcons = ['fa-xmark', 'fa-backward-step', 'fa-play', 'fa-forward-step', 'fa-video', 'fa-image'].map(name => filmOwner.root.appendChild(
+  new FakeElement('i', { className: `fa-solid ${name}`, ownerDocument: filmOwner.document, stats: filmOwner.stats }),
+));
+assert.equal(applyQianmuIcons(filmOwner.root), 6, '影片预览独立根应拥有本地控制及分段图标');
+assert.ok(filmIcons.every(icon => icon.children[0]?.classList.contains('qm-glyph-svg')));
+const filmWrites = filmOwner.stats.writes;
+assert.equal(applyQianmuIcons(filmOwner.root), 6);
+assert.equal(filmOwner.stats.writes, filmWrites);
 const camera = local.root.appendChild(new FakeElement('i', { className: 'fa-solid fa-camera', ownerDocument: local.document, stats: local.stats }));
 assert.equal(applyQianmuIcons(local.root), 1);
 assert.equal(camera.getAttribute('data-qm-glyph'), 'qm-duotone-camera');
