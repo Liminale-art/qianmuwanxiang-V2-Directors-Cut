@@ -219,6 +219,27 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
 #story-director-modal[data-qm-theme] .sd-relus-tone-pos { color: color-mix(in srgb, #5f9e74 60%, var(--qm-ink)); }
 #story-director-modal[data-qm-theme] .sd-relus-tone-neg { color: color-mix(in srgb, #c2606a 60%, var(--qm-ink)); }
 
+/* Source selection and backstage libraries reuse their original nested folds.
+   Keep nested surfaces light: the enclosing card already owns any blur. */
+#story-director-modal[data-qm-theme] :is(.sd-context-source-pick > .sd-dropdown, .sd-unified-source-block,
+  .sd-backstage-blueprint-library .sd-lib-folder) {
+  border-radius: var(--qm-card-radius) !important;
+  background: color-mix(in srgb, var(--qm-raised) 36%, transparent) !important;
+}
+#story-director-modal[data-qm-theme] :is(.sd-unified-source-entry, .sd-backstage-blueprint-library .sd-lib-row) {
+  border-radius: var(--qm-card-radius) !important;
+}
+#story-director-modal[data-qm-theme] :is(.sd-context-source-pick, .sd-unified-source-block) .sd-dropdown-head > b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#story-director-modal[data-qm-theme] :is(.sd-context-source-pick, .sd-unified-source-block) .sd-dropdown-head > span { flex-shrink: 0; }
+#story-director-modal[data-qm-theme] :is(.sd-context-entry-label > span, .sd-context-source-pick .sd-source-row > span) {
+  overflow-wrap: anywhere;
+}
+#story-director-modal[data-qm-theme] :is(.sd-scroll, .sd-context-item > pre, .sd-inject-term) { scrollbar-width: none; }
+#story-director-modal[data-qm-theme] :is(.sd-scroll, .sd-context-item > pre, .sd-inject-term)::-webkit-scrollbar { display: none; }
+
 /* World events follow the panel, while the star map deliberately keeps its
    existing dark inspection canvas and semantic relation/animation colours. */
 #story-director-modal[data-qm-theme] :is(.sd-geo-band, .sd-geo-events) {
