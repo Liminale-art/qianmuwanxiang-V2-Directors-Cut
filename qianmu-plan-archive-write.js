@@ -1,4 +1,4 @@
-// Immutable plan archive variants. Hashing finishes before the IndexedDB transaction.
+// Immutable plan and recipe archive variants. Hashing finishes before the IndexedDB transaction.
 // Native Web Crypto avoids importing media parsers into the shared blob store.
 const identity = row => JSON.stringify([row.chatKey, row.planId, row.plan]);
 // Release only metadata for confirmed chat groups; payloads and other chats stay intact.
@@ -16,23 +16,40 @@ export function releasePlanReferencesForChats(plans, keys) {
 export async function preserveCapturedPlanArchives(captures, write) {
   const result = await write(captures.map(item => ({key:item.key, chatKey:item.chatKey, planId:item.id,
     plan:structuredClone(item.plan), updatedAt:item.updatedAt})), {preserveExisting:true});
+  return committedReferences(captures, result);
+}
+
+// Both automatic archival and explicit prompt edits preserve earlier recipes.
+// References distinguish content revisions, not accounts or character ownership.
+export async function preserveCapturedSnapshotArchives(captures, write) {
+  const result = await write(captures.map(({key,chatKey,recordId,snapshot}) => ({
+    key, chatKey, recordId, snapshot:structuredClone(snapshot),
+  })), {preserveExisting:true});
+  return committedReferences(captures, result);
+}
+
+function committedReferences(captures, result) {
   const keys = result?.stored;
-  if (!Array.isArray(keys) || keys.length !== captures.length || keys.some((key,index) => {
-    const base = captures[index].key, prefix = `${base}\u241frevision:`;
+  if (!Array.isArray(keys) || keys.length !== captures.length || captures.some((item,index) => {
+    const key = keys[index], base = item.key, prefix = `${base}\u241frevision:`;
     return typeof key !== 'string' || !key || (key !== base && (!key.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(key.slice(prefix.length))));
   })) throw new Error('归档返回位置不完整，已保留完整镜头内容');
   return captures.map((item,index) => ({...item,key:keys[index]}));
 }
 
 export async function writePreservedPlanArchives(db, storeName, records) {
+  return writePreservedVariants(db, storeName, records, identity);
+}
+
+async function writePreservedVariants(db, storeName, records, contentOf) {
   const copies = records.map(row => structuredClone(row));
   const prepared = await Promise.all(copies.map(async record => {
-    const content = identity(record);
+    const content = contentOf(record);
     const bytes = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
     const hash = Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2,'0')).join('');
     return {record, key:record.key, content, variant:`${record.key}\u241frevision:${hash}`};
   }));
-  return writePreservedRecords(db, storeName, prepared, identity);
+  return writePreservedRecords(db, storeName, prepared, contentOf);
 }
 
 // Detailed logs have no variant reference in their consumers. On a collision,
@@ -48,11 +65,7 @@ export function writePreservedPipelineLogs(db, storeName, records) {
 
 export function writePreservedSnapshotArchives(db, storeName, records) {
   const contentOf = row => JSON.stringify([row.chatKey, row.recordId, row.snapshot]);
-  const prepared = records.map(row => {
-    const record = structuredClone(row);
-    return {record, key:record.key, content:contentOf(record)};
-  });
-  return writePreservedRecords(db, storeName, prepared, contentOf);
+  return writePreservedVariants(db, storeName, records, contentOf);
 }
 
 function writePreservedRecords(db, storeName, prepared, contentOf) {

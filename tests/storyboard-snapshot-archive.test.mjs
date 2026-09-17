@@ -25,7 +25,8 @@ test('snapshot writes are transactional and reads stay bounded', () => {
 test('inline snapshots win during migration and are stripped only after durable storage', () => {
   assert.match(source, /function storyboardSnapshotForRecord[\s\S]*?record\?\.snapshot[\s\S]*?storyboardSnapshotCache\.get/);
   const archive = source.slice(source.indexOf('async function storyboardArchiveGallerySnapshots'), source.indexOf('async function storyboardHydrateGallerySnapshots'));
-  assert.ok(archive.indexOf('await blobStore.putStoryboardSnapshots') < archive.indexOf('delete item.record.snapshot'));
+  const writeAt=archive.indexOf('await preserveCapturedSnapshotArchives');
+  assert.ok(writeAt >= 0 && writeAt < archive.indexOf('delete item.record.snapshot'));
   assert.match(archive, /item\.record\.snapshot !== item\.source/);
   assert.match(archive, /await saveMetadata\(\)[\s\S]*?item\.record\.snapshot = item\.source/);
   assert.match(archive, /epoch !== storyboardSnapshotEpoch/);

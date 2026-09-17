@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {preserveCapturedSnapshotArchives} from '../qianmu-plan-archive-write.js';
 function fixture() {
   const record={id:'image',chatKey:'chat',snapshot:{prompt:'original'}},rows=[record],calls=[];
-  const c=vm.createContext({getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
+  const c=vm.createContext({preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
     storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:structuredClone,console:{warn(){}},
     storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>calls.push('metadata'),
-    blobStore:{blobStoreAvailable:()=>true,putStoryboardSnapshots:async(_rows,options)=>{assert.equal(options.preserveExisting,true);calls.push('write');},
+    blobStore:{blobStoreAvailable:()=>true,putStoryboardSnapshots:async(rows,options)=>{assert.equal(options.preserveExisting,true);calls.push('write');return {stored:rows.map(row=>row.key)};},
       deleteStoryboardSnapshots:()=>assert.fail('automatic archival must not delete older originals'),getStoryboardSnapshots:async()=>{calls.push('read');return [];}}});
   vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardArchiveGallerySnapshots','storyboardHydrateGallerySnapshots'].map(section).join('\n'),c);
   return {c,record,rows,calls};
@@ -21,9 +22,9 @@ test('automatic snapshot archival retains full inline content when preservation 
 });
 
 test('removed or edited records during archival are not stripped and do not authorize original deletion',async()=>{
-  for(const change of ['remove','edit','epoch']) {
+  for(const change of ['remove','edit','epoch','id']) {
     const e=fixture(),original=e.record.snapshot;
-    e.c.blobStore.putStoryboardSnapshots=async()=>{if(change==='remove')e.rows.length=0;else if(change==='edit')original.prompt='new edit';else e.c.storyboardSnapshotEpoch++;};
+    e.c.blobStore.putStoryboardSnapshots=async(rows)=>{if(change==='remove')e.rows.length=0;else if(change==='edit')original.prompt='new edit';else if(change==='id')e.record.id='new-id';else e.c.storyboardSnapshotEpoch++;return {stored:rows.map(row=>row.key)};};
     assert.equal(await e.c.storyboardArchiveGallerySnapshots([e.record]),0);
     assert.equal(e.record.snapshot,original);assert.equal(e.c.storyboardSnapshotCache.size,0);assert.deepEqual(e.calls,[]);
   }
