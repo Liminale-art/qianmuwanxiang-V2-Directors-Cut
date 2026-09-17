@@ -66,5 +66,33 @@ try{
   check('whole-operation deadline covers an unresolved account guard',await b.evaluate(async()=>{let release;try{await api.captureHistoricalStoryboardSource({...options,timeoutMs:100,account:()=>new Promise(done=>release=done)});return false;}catch(error){release('st-user:alice');return error.message.includes('超时');}}));
   check('no uploaded recipes, preserve/write routes or local paths in request bodies',requests.every(row=>Object.keys(row.body).sort().join(',')===(row.route.endsWith('/recipe/read')?'expectedAccount,selection,target,version':'expectedAccount,gallerySha256,target,version')));
   check('no external, production, paid or image calls and no browser exceptions',unexpected.length===0&&errors.length===0);
+  // Original-byte fixtures are provided directly, so packaging has no additional
+  // network ability and still uses the real guarded source and archived recipes.
+  f.rows.pop();await f.write();
+  const c=await device(),stable=await readFile(f.file),stableRecipes=await archiveBytes();
+  const packed=await c.evaluate(async()=>{
+    window.bundles=await import('/qianmu-historical-storyboard-bundle.js');window.envelope=await import('/qianmu-storyboard-bundle.js');
+    window.still=new Blob([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII='),c=>c.charCodeAt(0))],{type:'image/png'});
+    window.sourceSession=await api.captureHistoricalStoryboardSource(options);window.sourceBefore=sourceSession.source;
+    window.packed=await bundles.captureHistoricalStoryboardBundle({session:sourceSession,guard:options.guard,readImage:async()=>still,createdAt:123});
+    return bundles.inspectHistoricalStoryboardBundle(packed.file);
+  });
+  check('browser produces separately scoped v4 history envelope without current configuration',packed.manifest.schema==='qianmu.storyboard.bundle.v4'&&packed.manifest.scope==='historical-chat-originals'&&!packed.manifest.entries.some(row=>['storyboard','workflows','pools','characters'].includes(row.id)));
+  assert.deepEqual(packed.source.saved,f.saved);checks.push('packed and reread historical draft and album originals preserve unknown fields');
+  check('archive recipes retain all 120 nodes after actual Blob round trip',packed.source.recipes.every(row=>row.snapshot.payload.parameters.workflow.nodes.length===120));
+  check('browser deduplicates identical original bytes while retaining two record associations',packed.manifest.entries.filter(row=>row.id.startsWith('image:')).length===1&&packed.media.images.length===2);
+  check('browser packaged original bytes are not recompressed',await c.evaluate(async()=>{const o=await envelope.openStoryboardBundle(packed.file),row=o.manifest.entries.find(row=>row.id.startsWith('image:'));return Array.from((await o.read(row.id)).bytes).join(',')===Array.from(new Uint8Array(await still.arrayBuffer())).join(',');}));
+  check('history summary expressly excludes unavailable resource classes and restoration',packed.summary.restoreSupported===false&&packed.summary.excluded.join(',')==='chat-body,global-settings,shared-libraries,referenced-assets');
+  check('successful packaging closes its source session',await c.evaluate(async()=>{try{await sourceSession.verify();return false;}catch{return true;}}));
+  check('old restoration inspector refuses new scope without silently dropping originals',await c.evaluate(async()=>{const api=await import('/qianmu-storyboard-bundle-resources.js');try{await api.inspectStoryboardResourceBundle(packed.file);return false;}catch(error){return error.message.includes('不会忽略人物草稿');}}));
+  check('source and immutable recipe files remain unchanged by packaging',(await readFile(f.file)).equals(stable)&&JSON.stringify(await archiveBytes())===JSON.stringify(stableRecipes));
+  check('truncating a Blob is detected on reread',await c.evaluate(async()=>{try{await bundles.inspectHistoricalStoryboardBundle(packed.file.slice(0,-1));return false;}catch{return true;}}));
+  check('corrupting a section is detected before a successful package summary',await c.evaluate(async()=>{const bytes=new Uint8Array(await packed.file.arrayBuffer());bytes[bytes.length-1]^=1;try{await bundles.inspectHistoricalStoryboardBundle(new Blob([bytes]));return false;}catch{return true;}}));
+  const d=await device();
+  await d.evaluate(async()=>{window.bundles=await import('/qianmu-historical-storyboard-bundle.js');window.s=await api.captureHistoricalStoryboardSource({...options,recordIds:['server']});});
+  f.saved.characterDrafts.items[0].future.note='changed before packing';await f.write();
+  check('another device changing saved drafts prevents packaging a stale source',await d.evaluate(async()=>{try{await bundles.captureHistoricalStoryboardBundle({session:s,guard:options.guard,readImage:async()=>{throw Error('image must not read');}});return false;}catch(error){return error.message.includes('人物');}}));
+  check('browser package timeout cancels even a stalled original reader',await c.evaluate(async()=>{const s=await api.captureHistoricalStoryboardSource(options);let release;try{await bundles.captureHistoricalStoryboardBundle({session:s,guard:options.guard,timeoutMs:100,readImage:()=>new Promise(done=>release=done)});return false;}catch(error){release?.(still);return error.message.includes('超时');}}));
+  check('packaging makes no additional routes, paid calls, writes, or browser exceptions',unexpected.length===0&&errors.length===0&&requests.every(row=>allowed.includes(row.route)));
   console.log(JSON.stringify({checks,errors,unexpected,isolatedDevices:contexts.length,realTemporaryChatFiles:true,realRecipeArchives:true,productionDataRead:false}));
 }finally{for(const context of contexts)await context.close();await browser.close();await new Promise(done=>server.close(done));await f.close();}

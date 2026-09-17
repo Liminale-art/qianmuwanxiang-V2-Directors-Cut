@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-historical-storyboard-source.js",
+    "qianmu-historical-storyboard-bundle.js",
     "qianmu-chat-gallery-evidence.js",
     "qianmu-chat-gallery-state.js",
     "qianmu-chat-gallery-evidence-reader.js",

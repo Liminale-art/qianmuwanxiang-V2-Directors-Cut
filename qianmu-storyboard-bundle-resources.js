@@ -169,6 +169,7 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
 
 export async function inspectStoryboardResourceBundle(file, { guard = async () => {}, includeOrigins = false } = {}) {
   const opened = await openStoryboardBundle(file, { guard }), namespace = opened.manifest.namespace;
+  if (opened.manifest.scope !== 'current-chat-and-libraries') fail('此包仅保全历史聊天原件，不含当前配置和通用资源库；此恢复入口尚不支持，不会忽略人物草稿或写入任何数据');
   const mappings=await inspectBundleMappings(opened,{guard});
   const carriers=await inspectBundleCarriers(opened,{mappings,guard});
   const config = await (async () => inspectConfig(await opened.readJson('storyboard'), namespace, {withOrigins:true,guard}))(); await guard();
