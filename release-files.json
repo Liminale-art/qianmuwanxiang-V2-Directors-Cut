@@ -49,6 +49,8 @@
     "qianmu-st-context-sources.js",
     "qianmu-gallery-narrative.js",
     "qianmu-gallery-narrative-view.js",
+    "qianmu-gallery-catalog-contract.js",
+    "qianmu-gallery-catalog-store.js",
     "qianmu-config-export.js",
     "qianmu-library-backup.js",
     "qianmu-json-input.js",
