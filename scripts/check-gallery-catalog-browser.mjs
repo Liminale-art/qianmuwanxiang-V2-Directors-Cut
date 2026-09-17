@@ -111,6 +111,8 @@ try {
                     revision = (await scale.upsert(ns, source, rows, { expectedRevision: revision })).revision;
                 }
                 const indexedMs = performance.now() - start, readAt = performance.now(), first = await scale.page(ns, { limit: 40 }), readMs = performance.now() - readAt;
+                const owners = await scale.scopes(ns), chats = await scale.scopes(ns, { ownerKey: source.ownerKey });
+                check(size + ' rows: role and chat directories each touch one row without scanning all works', owners.rows.length === 1 && owners.visited === 1 && chats.rows.length === 1 && chats.visited === 1 && !owners.nextCursor && !chats.nextCursor);
                 check(size + ' rows: first page touches exactly 40 metadata records', first.totalIndexed === size && first.rows.length === 40 && first.visited === 40);
                 const second = await scale.page(ns, { limit: 40, cursor: first.nextCursor });
                 check(size + ' rows: time ties do not duplicate or omit at page boundary', new Set([...first.rows,...second.rows].map(row => row.recordId)).size === 80 && first.rows[0].recordId === String(size - 1).padStart(6,'0') && second.rows.at(-1).recordId === String(size - 80).padStart(6,'0'));

@@ -65,6 +65,8 @@
     "qianmu-gallery-narrative-view.js",
     "qianmu-gallery-catalog-contract.js",
     "qianmu-gallery-catalog-store.js",
+    "qianmu-gallery-directory.js",
+    "qianmu-gallery-directory-view.js",
     "qianmu-current-chat-source.js",
     "qianmu-chat-file-target.js",
     "qianmu-config-export.js",

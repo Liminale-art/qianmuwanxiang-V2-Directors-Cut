@@ -36,6 +36,24 @@ export function projectGalleryCatalogEntry(namespace, source, value) {
 export const galleryCatalogKey = row => [row.namespace, row.ownerKey, row.chatKey, row.recordId];
 // Logical serialized metadata budget only, not browser disk usage, quota, or original-file capacity.
 export const galleryCatalogBytes = row => new TextEncoder().encode(JSON.stringify(row)).byteLength;
+// Hierarchical directory pages jump over complete primary-key prefixes. No full
+// scan, display-name grouping, schema upgrade or additional identity store.
+export function galleryCatalogScopeQuery(namespace, input = {}) {
+    namespace = galleryCatalogAccount(namespace);
+    if (!object(input) || Object.keys(input).some(key => !['ownerKey', 'limit', 'cursor'].includes(key))) fail('query', '角色聊天目录条件无效');
+    const ownerKey = input.ownerKey ?? '', limit = input.limit ?? 24, cursor = input.cursor ?? null;
+    if (ownerKey !== '') galleryCatalogOwner(ownerKey);
+    if (!Number.isInteger(limit) || limit < 1 || limit > GALLERY_CATALOG_LIMITS.page) fail('query', '角色聊天目录页大小无效');
+    const prefix = ownerKey ? [namespace, ownerKey] : [namespace], signature = JSON.stringify({ namespace, ownerKey, scope: true });
+    if (cursor !== null) {
+        if (!exact(cursor, ['version', 'signature', 'revision', 'after']) || cursor.version !== 1 || cursor.signature !== signature
+            || !Number.isSafeInteger(cursor.revision) || cursor.revision < 0 || !Array.isArray(cursor.after)
+            || cursor.after.length !== prefix.length + 1 || prefix.some((part, i) => cursor.after[i] !== part)) fail('cursor', '角色聊天目录已变化，请返回第一页');
+        if (ownerKey) galleryCatalogSource({ ownerKey, chatKey: cursor.after[2] });
+        else galleryCatalogOwner(cursor.after[1]);
+    }
+    return { namespace, ownerKey, limit, cursor, prefix, signature };
+}
 export function galleryCatalogStoredEntry(row, namespace) {
     if (!exact(row, ['namespace', 'ownerKey', 'chatKey', 'recordId', 'kind', 'createdAt', 'label', 'tags', 'key', 'tagKeys', 'bytes'])) fail('index', '图库索引结构异常，请保留原资料');
     const entry = projectGalleryCatalogEntry(namespace, { ownerKey: row.ownerKey, chatKey: row.chatKey }, { ...row, id: row.recordId });

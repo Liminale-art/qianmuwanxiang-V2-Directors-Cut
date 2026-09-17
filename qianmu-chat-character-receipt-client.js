@@ -83,7 +83,7 @@ async function createCurrentChatReceiptClient({getContext,epoch,
     };
     const client=createChatReceiptClient({namespace,target:source.target,guard:check,
       headers:headers||(()=>getContext().getRequestHeaders?.()||{}),fetchImpl,timeoutMs},galleryOnly);
-    return Object.freeze({...client,owner:Object.freeze({namespace,chatKey:source.target.chatId}),target:source.target,assertCurrent:current,
+    return Object.freeze({...client,owner:Object.freeze({namespace,chatKey:source.target.chatId}),source:source.source,target:source.target,assertCurrent:current,guard:check,
       close(){source.close();client.close();}});
   }catch(error){source.close();throw error;}
 }

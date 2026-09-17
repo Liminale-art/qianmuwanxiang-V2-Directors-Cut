@@ -1,8 +1,8 @@
 import { GALLERY_CATALOG_VERSION, GALLERY_CATALOG_LIMITS as limits, galleryCatalogError, galleryCatalogAccount,
     galleryCatalogSource, projectGalleryCatalogEntry, galleryCatalogKey, galleryCatalogStoredRow, galleryCatalogStoredEntry,
-    galleryCatalogQuery, galleryCatalogMatches } from './qianmu-gallery-catalog-contract.js';
+    galleryCatalogQuery, galleryCatalogScopeQuery, galleryCatalogMatches } from './qianmu-gallery-catalog-contract.js';
 
-// Lazy, derived metadata only. Not opened on import or wired to live chat saves yet.
+// Lazy, derived metadata only. Not opened on import or wired to live chat saves.
 // Existing media, recipes, source identities and receipts remain their respective authorities.
 export function createGalleryCatalogStore({ indexedDB = globalThis.indexedDB, keyRange = globalThis.IDBKeyRange,
     dbName = 'qianmu-gallery-catalog', timeoutMs = 8000 } = {}) {
@@ -69,6 +69,27 @@ export function createGalleryCatalogStore({ indexedDB = globalThis.indexedDB, ke
         });
     }
     return {
+        async scopes(namespace, input = {}, { isCurrent = () => true } = {}) {
+            const query = galleryCatalogScopeQuery(namespace, structuredClone(input));
+            return operation('readonly', isCurrent, (tx, read, set) => state(tx, read, namespace, header => {
+                if (query.cursor && query.cursor.revision !== header.revision) fail('stale', '图库目录已更新，请重新载入第一页');
+                // Every stored identity component is a string. An array sentinel
+                // sorts after all strings, skipping even a 50k-record chat in one jump.
+                const start = query.cursor ? [...query.cursor.after, []] : query.prefix;
+                const request = tx.objectStore('entries').openCursor(keyRange.bound(start, [...query.prefix, []], false, true));
+                const rows = []; let visited = 0;
+                const finish = after => set({ version: 1, namespace, revision: header.revision, rows, visited,
+                    nextCursor: after ? { version: 1, signature: query.signature, revision: header.revision, after } : null });
+                read(request, cursor => {
+                    if (!cursor) { finish(null); return; }
+                    visited++; const row = galleryCatalogStoredEntry(cursor.value, namespace);
+                    const after = query.ownerKey ? [namespace, row.ownerKey, row.chatKey] : [namespace, row.ownerKey];
+                    if (rows.length === query.limit) { finish(rows.at(-1).after); return; }
+                    rows.push({ ownerKey: row.ownerKey, ...(query.ownerKey ? { chatKey: row.chatKey } : {}), after });
+                    cursor.continue([...after, []]);
+                });
+            }));
+        },
         async page(namespace, input = {}, { isCurrent = () => true } = {}) {
             const query = galleryCatalogQuery(namespace, structuredClone(input));
             return operation('readonly', isCurrent, (tx, read, set) => state(tx, read, namespace, header => {
