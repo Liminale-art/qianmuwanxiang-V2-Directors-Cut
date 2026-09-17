@@ -69,13 +69,16 @@ test('journal patch can restore the exact pending link and original payload with
 
 async function production({ pending = false, changeAt = '', lock = true, saveFail = false, cancel = false } = {}) {
   const f = fixture(), state = { shotPlans: [] }, store = { storyboardImages: f.records }; let saved = null, writes = 0, rendered = 0, scheduler = 0, closed = 0;
-  let outcome, phase, applyError, revision = 0; const notices = [];
+  let outcome, phase, applyError, revision = 0, viewOpen = true; const notices = [];
   const modules = { storyboardPackageAssets: { createStoryboardPackageGuard: async () => ({ namespace: 'st-user:test', guard: async () => {} }) }, imageAdmission: {},
-    storyboardPackageJournal: { createStoryboardPackageJournal: () => ({ hasMutation: async () => pending, prepareMutation: async row => { saved = row; if (changeAt === 'prepared') f.messages[1].mes = 'changed'; return row; }, updateMutation: async (_, value) => { phase = value; }, close: () => closed++ }) },
+    storyboardPackageJournal: { createStoryboardPackageJournal: () => ({ hasMutation: async () => pending, prepareMutation: async row => { saved = row; if (changeAt === 'prepared') f.messages[1].mes = 'changed'; return row; }, updateMutation: async (_, value) => {
+      phase = value;
+      if (value === 'applied') { if (changeAt === 'applied') f.messages[1].mes = 'changed'; if (changeAt === 'owner') revision++; if (changeAt === 'closed') viewOpen = false; }
+    }, close: () => closed++ }) },
     storyboardPackageMutation: mutation, storyboardLinkReview: { createStoryboardLinkReview },
     storyboardLinkReviewView: { openStoryboardLinkReview: ({ session, apply }) => {
       session.selectFloor(1); session.selectParagraph(1);
-      return { isOpen: true, close() {}, finished: Promise.resolve().then(async () => { if (cancel) return; try { outcome = await apply(); } catch (error) { applyError = error; } }) };
+      return { get isOpen() { return viewOpen; }, close() {}, finished: Promise.resolve().then(async () => { if (cancel) return; try { outcome = await apply(); return outcome; } catch (error) { applyError = error; } }) };
     } } };
   const context = vm.createContext({ console, structuredClone, storyboardImportPackage: {}, storyboardExportPackage: {}, storyboardState: () => state, getChatStore: () => store,
     getChatKey: () => 'chat', storyboardAdmissionEpoch: 1, featureRuntime: { load: async name => modules[name] },
@@ -84,7 +87,7 @@ async function production({ pending = false, changeAt = '', lock = true, saveFai
     storyboardSafeUrl: url => url, ctx: () => ({ chat: f.messages }), storyboardLinkReviewParagraphs: text => text.split('\n'), applyQianmuIcons() {}, storyboardLinkReview: null,
     saveMetadata: async () => { writes++; if (changeAt === 'save') f.messages[1].mes = 'changed'; if (saveFail) throw new Error('write failed'); },
     storyboardScheduleInlineRender: () => scheduler++, renderModal: () => rendered++, toast: message => notices.push(message) });
-  context.createStorageBackupCheck=()=>{const check=()=>{};check.release=()=>{};return check;};
+  context.createStorageBackupCheck=()=>{const original=revision;const check=()=>{if(revision!==original)throw Error('页面状态已变化');};check.release=()=>{};return check;};
   vm.runInContext(storyboardFunctionSource('storyboardPackageContext')+'\n'+storyboardFunctionSource('storyboardReviewRecordLink'), context);
   await context.storyboardReviewRecordLink(f.record);
   return { f, store, saved, writes, rendered, scheduler, closed, outcome, phase, applyError, notices, busy: context.storyboardImportPackage.busy };
@@ -102,5 +105,17 @@ test('real entry reports uncertain save or changed narrative without claiming a 
   for (const options of [{ saveFail: true }, { changeAt: 'save' }]) {
     const r = await production(options); assert.equal(r.writes, 1); assert.equal(r.phase, 'uncertain'); assert.equal(r.scheduler, 0); assert.match(r.applyError.message, /未确认/);
     assert.ok(r.saved.patch[0].before.value[0].restoreLinkReview);
+  }
+});
+
+test('cancelling a link review does not rebuild the underlying page or discard unrelated UI input', async () => {
+  const r = await production({ cancel: true }); assert.equal(r.rendered, 0); assert.equal(r.writes, 0); assert.equal(r.busy, false);
+});
+
+test('late journal completion rechecks narrative, owner and view before reporting success or scheduling insertion', async () => {
+  for (const changeAt of ['applied', 'owner', 'closed']) {
+    const r = await production({ changeAt }); assert.equal(r.writes, 1); assert.equal(r.scheduler, 0); assert.equal(r.rendered, 0);
+    assert.equal(r.outcome, undefined); assert.match(r.applyError.message, /定位保存未确认/);
+    assert.ok(r.saved.patch[0].before.value[0].restoreLinkReview); assert.equal(r.closed, 1); assert.equal(r.busy, false);
   }
 });

@@ -5,13 +5,29 @@ export function openStoryboardLinkReview({ parent, session, apply, paintIcons = 
   const dialog = document.createElement('dialog'); dialog.className = 'sd-bundle-dialog sd-link-review-dialog'; dialog.setAttribute('aria-labelledby','qm-link-review-title');
   const returnFocus = document.activeElement;
   let step = 'floors', page = 0, choice = null, busy = false, closed = false, result = null, notice = '', resolve;
+  let floorPage = 0, floorScroll = 0, selectedFloor = null;
   const finished = new Promise(done => resolve = done);
+  // The host owns a persistence journal/lock until a pending apply settles, even after UI closure.
   function close() { if (closed) return; closed = true; window.removeEventListener('pagehide', close); if (dialog.open) dialog.close(); dialog.remove(); if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); if (!busy) resolve(result); }
-  function draw() {
-    if (closed) return;
+  function active() { if (!closed && !dialog.isConnected) close(); return !closed; }
+  function draw({ focus = '', scroll = null, keepNotice = false } = {}) {
+    if (!active()) return;
+    const focused = document.activeElement;
+    if (!focus && dialog.contains(focused)) for (const key of ['data-link-floor','data-link-paragraph','data-link-action']) {
+      if (focused.hasAttribute(key)) { focus = `[${key}="${focused.getAttribute(key)}"]`; break; }
+    }
     let data = { rows: [], pages: 1, page: 0 };
     try { if (!result) data = step === 'floors' ? session.floors(page) : session.paragraphs(page); }
-    catch (error) { notice = error.message; choice = null; step = 'floors'; }
+    catch (error) {
+      if (!keepNotice || !notice) notice = error.message;
+      choice = null;
+      if (step === 'paragraphs') {
+        step = 'floors';
+        // A changed/swiped reply invalidates the paragraph, not the ability to choose a fresh floor.
+        try { data = session.floors(floorPage); } catch (_) { /* The image itself may also be stale; preserve the actionable notice. */ }
+        focus = `[data-link-floor="${selectedFloor}"]`; scroll = floorScroll;
+      }
+    }
     page = data.page;
     dialog.innerHTML = `<header><b id="qm-link-review-title">核对正文位置</b><button type="button" class="sd-icon-btn" data-link-action="close" aria-label="关闭核对页面"><i data-qm-icon="qm-regular-x"></i></button></header>
       <main><p>只调整此图的正文落点，不重新生成，不改原配方。原来源与定位记录保留。</p>
@@ -20,34 +36,43 @@ export function openStoryboardLinkReview({ parent, session, apply, paintIcons = 
       <nav>${button('previous','上一页',!page)}<span>${page + 1} / ${data.pages}</span>${button('next','下一页',page + 1 >= data.pages)}</nav></fieldset>`}
       </main><footer><p role="status">${escape(notice || (choice ? `确认后将插在第 ${choice.floor + 1} 层、第 ${choice.index + 1} 段末尾。` : '请先选层，再明确选择段落；不会自动猜测。'))}</p><div>${result ? button('close','完成') : `${button(step === 'floors' ? 'close' : 'floors',step === 'floors' ? '取消' : '重新选层',busy)}${button('confirm','确认挂回',busy || !choice)}`}</div></footer>`;
     paintIcons(dialog);
+    if (scroll !== null) dialog.querySelector('main').scrollTop = scroll;
+    const target = focus && dialog.querySelector(focus);
+    if (target && !target.disabled) target.focus({ preventScroll: true });
+    else if (focus) (dialog.querySelector(result ? 'footer [data-link-action="close"]' : '[data-link-floor]:enabled, [data-link-paragraph]:enabled') || dialog.querySelector('[data-link-action="close"]'))?.focus({ preventScroll: true });
   }
   dialog.addEventListener('cancel', event => { event.preventDefault(); close(); }); dialog.addEventListener('close', close);
   dialog.addEventListener('click', event => {
+    if (!active()) return;
     const action = event.target.closest('[data-link-action]')?.dataset.linkAction;
     if (action === 'close') { close(); return; } if (busy || result || closed) return;
     try {
       const floor = event.target.closest('[data-link-floor]');
-      if (floor) { session.selectFloor(Number(floor.dataset.linkFloor)); step = 'paragraphs'; page = 0; choice = null; notice = ''; draw(); return; }
+      if (floor) {
+        session.selectFloor(Number(floor.dataset.linkFloor)); floorPage = page; floorScroll = dialog.querySelector('main').scrollTop; selectedFloor = Number(floor.dataset.linkFloor);
+        step = 'paragraphs'; page = 0; choice = null; notice = ''; draw({ focus: '[data-link-paragraph="0"]', scroll: 0 }); return;
+      }
       if (!action) return;
-      if (action === 'floors') { step = 'floors'; page = 0; choice = null; notice = ''; }
+      if (action === 'floors') { step = 'floors'; page = floorPage; choice = null; notice = ''; draw({ focus: `[data-link-floor="${selectedFloor}"]`, scroll: floorScroll }); return; }
       if (action === 'previous' || action === 'next') page += action === 'next' ? 1 : -1;
       if (action === 'confirm' && choice) {
+        session.validate();
         busy = true; notice = '正在保存定位；关闭会停止后续步骤，已写入部分需核对。'; draw();
+        if (!active() || !choice) { busy = false; if (closed) resolve(result); else draw({ keepNotice: true }); return; }
         void (async () => {
           try { result = await apply(); notice = '正文位置已应用。请刷新后使用“核对导入”确认保存；可从该记录恢复原定位。'; }
           catch (error) { notice = error?.message || '保存未确认，请核对导入记录'; choice = null; }
-          finally { busy = false; if (closed) resolve(result); else draw(); }
+          finally { busy = false; if (!active()) resolve(result); else draw({ keepNotice: true }); }
         })(); return;
       }
-      draw(); dialog.querySelector('main').scrollTop = 0;
+      draw({ scroll: 0 });
     } catch (error) { notice = error.message; choice = null; draw(); }
   });
   dialog.addEventListener('change', event => {
-    if (busy || closed || !event.target.matches('[data-link-paragraph]')) return;
+    if (!active() || busy || result || !event.target.matches('[data-link-paragraph]')) return;
     try { choice = session.selectParagraph(Number(event.target.dataset.linkParagraph)); notice = ''; }
     catch (error) { notice = error.message; choice = null; }
-    const scroll = dialog.querySelector('main').scrollTop; draw(); dialog.querySelector('main').scrollTop = scroll;
-    dialog.querySelector(`[data-link-paragraph="${choice?.index}"]`)?.focus({ preventScroll: true });
+    draw({ scroll: dialog.querySelector('main').scrollTop, focus: `[data-link-paragraph="${choice?.index}"]` });
   });
   parent.append(dialog); draw(); window.addEventListener('pagehide', close);
   try { dialog.showModal(); } catch (error) { close(); throw error; }

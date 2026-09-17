@@ -72,6 +72,7 @@ try {
                 floors() { calls.push('floors'); if (state === 'error') throw Error('隔离测试：读取失败，可关闭后重新核对'); return { page: 0, pages: 1, rows: rows.map(index => ({ floor: index, name: '隔离角色', preview: '当前正文片段，只检查展示与选择，不会挂回正文。' })) }; },
                 selectFloor() {}, paragraphs: () => ({ page: 0, pages: 1, floor: 0, rows: rows.map(index => ({ index, text: '保留原文语义、位置与正在核对的选择。'.repeat(6) })) }),
                 selectParagraph: index => ({ floor: 0, index }),
+                validate() {},
             } });
             window.dialog = root.querySelector('dialog');
         };
