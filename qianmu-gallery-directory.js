@@ -33,7 +33,7 @@ export async function createGalleryDirectorySession({ getContext, epoch, guard =
     createHistoricalClient = createChatGalleryReceiptClient, createRecordClient = createChatGalleryRecordClient,
     loadImage = loadGalleryPreviewImage } = {}) {
     const client = await createClient({ getContext, epoch, guard });
-    let closed = false, store, updating = false, previews = new WeakMap();
+    let closed = false, store, updating = false, exporting = false, previews = new WeakMap();
     const saving = new WeakSet();
     const readers = new Set(), mediaController = new AbortController(), namespace = client.owner.namespace, source = client.source;
     const current = () => { if (closed) throw Error('图库目录已关闭'); client.assertCurrent(); return true; };
@@ -103,6 +103,15 @@ export async function createGalleryDirectorySession({ getContext, epoch, guard =
             } finally { readers.delete(receiptReader); readers.delete(recordReader); receiptReader.close(); recordReader.close(); }
         },
         releasePreview(preview) { previews.delete(preview); },
+        async exportOriginals(rows, save, options = {}) {
+            if (exporting) throw Error('正在导出所选原图，请稍候'); exporting = true;
+            try {
+                await check(); const { exportGalleryOriginals } = await import('./qianmu-gallery-original-export.js'); await check();
+                return await exportGalleryOriginals({ ...options, namespace, rows, target: galleryDirectoryTarget, save, guard: check,
+                    headers: () => getContext().getRequestHeaders?.() || {}, parentSignal: mediaController.signal,
+                    createHistoricalClient, createRecordClient, loadImage });
+            } finally { exporting = false; }
+        },
         async savePreview(preview, save) {
             const captured = previews.get(preview);
             if (!captured || typeof save !== 'function') throw Error('此预览已关闭或不是当前会话读取的原图，请重新打开');

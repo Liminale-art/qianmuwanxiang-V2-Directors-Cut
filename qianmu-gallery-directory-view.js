@@ -13,7 +13,7 @@ export function galleryDirectoryOwnerLabel(ownerKey, context) {
 }
 
 // The directory is a local, rebuildable list of observed references, not an
-// account-wide server inventory. Only an explicit picture click loads media.
+// account-wide server inventory. Only explicit preview/export actions load media.
 export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = () => true, locate, save,
     connect = createGalleryDirectorySession, timeoutMs = 20000 } = {}) {
     const document = parent.ownerDocument, view = document.defaultView, returnFocus = document.activeElement;
@@ -21,11 +21,12 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
     dialog.setAttribute('aria-label', '角色与聊天目录');
     let closed = false, busy = true, session, page = null, stack = [null], ownerKey = '', chatKey = '', tag = '', notice = '', sourceNotice = '';
     let timer, resolve, openingExpired = false; const finished = new Promise(done => resolve = done);
+    const exportRows = new Map(); let exportController = null;
     let preview = null, previewUrl = '', releaseZoom, listScroll = 0, restoreList = false, previewIndex = 0;
     function releasePreview() { releaseZoom?.(); releaseZoom = null; if (preview) session?.releasePreview?.(preview); if (previewUrl) view.URL.revokeObjectURL(previewUrl); previewUrl = ''; preview = null; }
     function close() {
         if (closed) return; closed = true; clearTimeout(timer); observer.disconnect(); view.removeEventListener('pagehide', close);
-        releasePreview();
+        exportController?.abort(); exportRows.clear(); releasePreview();
         session?.close(); if (dialog.open) dialog.close(); dialog.remove();
         if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); resolve();
     }
@@ -55,14 +56,16 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
         const focusKey = ['data-directory-action', 'data-directory-scope', 'data-directory-record'].find(key => dialog.contains(focused) && focused.hasAttribute(key));
         const focusValue = focusKey ? focused.getAttribute(focusKey) : '';
         const own = session && ownerKey === session.source.ownerKey && chatKey === session.source.chatKey;
+        const selectable = chatKey && !own && typeof save === 'function';
         const title = chatKey || (ownerKey ? galleryDirectoryOwnerLabel(ownerKey, getContext()) : '选择角色或群组');
-        dialog.innerHTML = `<header><b>角色与聊天</b>${button('close', '关闭')}</header><main>
+        dialog.innerHTML = `<header><b>角色与聊天</b>${exportController ? button('export-cancel', '取消导出') : ''}${button('close', '关闭')}</header><main>
           <p class="sd-directory-boundary">本机目录 · 只收录访问并核对过的聊天，不代表账户全部资料。历史引用不随原件缺失自动删除。</p>
           <fieldset ${busy ? 'disabled' : ''}><nav>${button('owners', '全部角色')}${ownerKey ? button('chats', '该角色的聊天', !chatKey) : ''}${button('refresh', '更新当前聊天目录', !session)}</nav>
           <h3>${escape(title)}</h3>${ownerKey ? `<p>${escape(ownerKey)}</p>` : ''}
           ${chatKey ? `<form class="sd-directory-search"><input class="text_pole" type="search" name="tag" maxlength="80" value="${escape(tag)}" placeholder="按完整标签查找" aria-label="目录标签"><button type="submit" class="sd-btn">查找</button>${button('clear-tag', '清除', !tag)}</form><p>${own ? '当前聊天 · 可打开原画面' : '历史目录 · 可只读预览 ST 内保存的原图，不切换当前聊天。'}</p>` : ''}
+          ${selectable ? `<p>可跨页选择本聊天已收录的原图，最多 100 张、ZIP 上限 128 MiB；换聊天或筛选会清空选择。包含来源清单与原图自带元数据，不是完整聊天／千幕联包备份。缺少任一所选原图会停止整包导出。</p><nav>${button('export-page', '选择本页')}${button('export-clear', '清空选择', !exportRows.size)}<span data-directory-export-count>已选 ${exportRows.size} 张</span>${button('export-selected', '导出所选原图', !exportRows.size)}</nav>` : ''}
           <div class="sd-directory-rows">${(page?.rows || []).map((row, i) => chatKey
-            ? `<div class="sd-directory-row"><span><b>${escape(row.tags.slice(0, 3).join(' · ') || '静帧')}</b><small>${escape(new Date(row.createdAt).toLocaleString())}</small></span><button type="button" class="sd-btn" ${own ? 'data-directory-record' : 'data-directory-history'}="${i}">${own ? '查看画面' : '只读预览'}</button></div>`
+            ? `<div class="sd-directory-row">${selectable ? `<input type="checkbox" data-directory-select="${i}" aria-label="选择原图 ${escape(row.recordId)}" ${exportRows.has(row.recordId) ? 'checked' : ''}>` : ''}<span><b>${escape(row.tags.slice(0, 3).join(' · ') || '静帧')}</b><small>${escape(new Date(row.createdAt).toLocaleString())}</small></span><button type="button" class="sd-btn" ${own ? 'data-directory-record' : 'data-directory-history'}="${i}">${own ? '查看画面' : '只读预览'}</button></div>`
             : `<button type="button" class="sd-directory-row" data-directory-scope="${i}"><span><b>${escape(ownerKey ? row.chatKey : galleryDirectoryOwnerLabel(row.ownerKey, getContext()))}</b><small>${escape(ownerKey ? '查看该聊天目录' : row.ownerKey)}</small></span></button>`).join('') || `<p>${busy ? '正在读取目录…' : '没有符合条件的目录条目；未收录不等于没有原作品。'}</p>`}</div>
           <nav aria-label="图库目录分页">${button('previous', '上一页', stack.length === 1)}<span>第 ${stack.length} 页</span>${button('next', '下一页', !page?.nextCursor)}</nav></fieldset>
           ${sourceNotice ? `<p class="sd-directory-source" role="status">${escape(sourceNotice)}</p>` : ''}
@@ -99,7 +102,7 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
         finally { busy = false; if (alive()) for (const node of buttons()) node.disabled = false; }
         // Keep the existing image node, zoom, scroll and expanded details intact.
     }
-    function reset() { stack = [null]; page = null; sourceNotice = ''; tag = ''; }
+    function reset() { stack = [null]; page = null; sourceNotice = ''; tag = ''; exportRows.clear(); }
     async function refresh() {
         notice = '正在核对服务器已保存的当前静帧，再更新本机目录…'; draw();
         try {
@@ -109,16 +112,43 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
         ownerKey = ''; chatKey = ''; reset(); await load();
     }
     dialog.addEventListener('cancel', event => { event.preventDefault(); close(); }); dialog.addEventListener('close', close);
+    dialog.addEventListener('change', event => {
+        const input = event.target.closest('[data-directory-select]'); if (!input || busy || !alive()) return;
+        const row = page?.rows[Number(input.dataset.directorySelect)]; if (!row) return;
+        if (input.checked && !exportRows.has(row.recordId) && exportRows.size >= 100) { input.checked = false; notice = '每次最多选择 100 张，请分批导出。'; }
+        else { if (input.checked) exportRows.set(row.recordId, structuredClone(row)); else exportRows.delete(row.recordId); notice = ''; }
+        dialog.querySelector('[data-directory-export-count]').textContent = `已选 ${exportRows.size} 张`;
+        for (const key of ['export-clear', 'export-selected']) dialog.querySelector(`[data-directory-action="${key}"]`).disabled = !exportRows.size;
+        dialog.querySelector('footer [role="status"]').textContent = notice || '只导出明确勾选的原图，不改变原聊天或目录。';
+    });
     dialog.addEventListener('click', event => {
         const action = event.target.closest('[data-directory-action]')?.dataset.directoryAction;
         if (action === 'close') { close(); return; }
         if (action === 'preview-save') { void saveOriginal(); return; }
+        if (action === 'export-cancel') { exportController?.abort(); return; }
+        if (action === 'export-selected') {
+            if (!alive() || busy || !session || !exportRows.size || typeof save !== 'function') return;
+            const rows = [...exportRows.values()]; exportController = new AbortController();
+            void work(async () => {
+                try {
+                    const result = await session.exportOriginals(rows, (blob, filename) => { guard(); return save(blob, filename); }, {
+                        signal: exportController.signal,
+                        onProgress: value => { if (alive()) dialog.querySelector('footer [role="status"]').textContent = value.phase === 'packing' ? '正在打包并复核来源…可取消导出。' : `正在读取所选原图 ${value.completed + 1} / ${value.total}…可取消导出。`; },
+                    }); guard(); notice = `${result.count} 张所选原图已交给浏览器保存为 ZIP，请确认下载结果；不是完整聊天或千幕联包备份。`;
+                } finally { exportController = null; }
+            }); return;
+        }
         const selected = event.target.closest('[data-directory-scope]'), record = event.target.closest('[data-directory-record]');
         const historical = event.target.closest('[data-directory-history]');
         if (!action && !selected && !record && !historical) return;
         if (historical) listScroll = dialog.querySelector('main').scrollTop;
         void work(async () => {
-            if (action === 'preview-back') { releasePreview(); restoreList = true; }
+            if (action === 'export-page') {
+                const rows = page?.rows || [];
+                if (exportRows.size + rows.filter(row => !exportRows.has(row.recordId)).length > 100) throw Error('每次最多选择 100 张；本页未追加，请先导出已选原图');
+                for (const row of rows) exportRows.set(row.recordId, structuredClone(row));
+            } else if (action === 'export-clear') exportRows.clear();
+            else if (action === 'preview-back') { releasePreview(); restoreList = true; }
             else if (historical) {
                 previewIndex = Number(historical.dataset.directoryHistory); const row = page?.rows[previewIndex]; if (!row) return;
                 notice = '正在从原聊天读取这一张画面…'; draw();
@@ -141,7 +171,7 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
                 const original = await session.locate(row); guard(); close(); await locate(original);
             } else if (action === 'refresh') await refresh();
             else if (action === 'owners' || action === 'chats') { if (action === 'owners') ownerKey = ''; chatKey = ''; reset(); await load(); }
-            else if (action === 'clear-tag') { tag = ''; stack = [null]; page = null; await load(); }
+            else if (action === 'clear-tag') { tag = ''; exportRows.clear(); stack = [null]; page = null; await load(); }
             else if (action === 'previous' || action === 'next') {
                 if (action === 'previous' && stack.length > 1) stack.pop();
                 else if (action === 'next' && page?.nextCursor) stack.push(page.nextCursor); else return;
@@ -152,7 +182,7 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
     dialog.addEventListener('submit', event => {
         event.preventDefault(); if (!event.target.matches('.sd-directory-search')) return;
         const value = new FormData(event.target).get('tag');
-        void work(async () => { tag = value.trim(); stack = [null]; page = null; await load(); });
+        void work(async () => { tag = value.trim(); exportRows.clear(); stack = [null]; page = null; await load(); });
     });
     parent.append(dialog); observer.observe(parent, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['class'] });
     observer.observe(document.body, { childList: true, subtree: true }); view.addEventListener('pagehide', close); draw();
