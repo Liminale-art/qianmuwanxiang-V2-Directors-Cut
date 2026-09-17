@@ -47,6 +47,8 @@
     "qianmu-comfy-new-execution.js",
     "qianmu-config-connections.js",
     "qianmu-st-context-sources.js",
+    "qianmu-gallery-narrative.js",
+    "qianmu-gallery-narrative-view.js",
     "qianmu-config-export.js",
     "qianmu-library-backup.js",
     "qianmu-json-input.js",
