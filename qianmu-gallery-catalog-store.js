@@ -1,6 +1,6 @@
 import { GALLERY_CATALOG_VERSION, GALLERY_CATALOG_LIMITS as limits, galleryCatalogError, galleryCatalogAccount,
     galleryCatalogSource, projectGalleryCatalogEntry, galleryCatalogKey, galleryCatalogStoredRow, galleryCatalogStoredEntry,
-    galleryCatalogQuery, galleryCatalogScopeQuery, galleryCatalogMatches } from './qianmu-gallery-catalog-contract.js';
+    galleryCatalogQuery, galleryCatalogScopeQuery, galleryCatalogMaintenanceQuery, galleryCatalogMatches } from './qianmu-gallery-catalog-contract.js';
 
 // Lazy, derived metadata only. Not opened on import or wired to live chat saves.
 // Existing media, recipes, source identities and receipts remain their respective authorities.
@@ -69,6 +69,47 @@ export function createGalleryCatalogStore({ indexedDB = globalThis.indexedDB, ke
         });
     }
     return {
+        async usage(namespace, { isCurrent = () => true } = {}) {
+            namespace = galleryCatalogAccount(namespace);
+            return operation('readonly', isCurrent, (tx, read, set) => state(tx, read, namespace, set));
+        },
+        async inspectPage(namespace, input = {}, { isCurrent = () => true } = {}) {
+            const query = galleryCatalogMaintenanceQuery(namespace, structuredClone(input));
+            return operation('readonly', isCurrent, (tx, read, set) => state(tx, read, namespace, header => {
+                if (query.cursor && query.cursor.revision !== header.revision) fail('stale', '图库目录已更新，请重新盘点');
+                const request = tx.objectStore('entries').openCursor(keyRange.bound(query.cursor?.after ?? query.prefix, [...query.prefix, []], Boolean(query.cursor), true));
+                let count = 0, bytes = 0, last;
+                const finish = more => set({ namespace, revision: header.revision, count, bytes,
+                    nextCursor: more ? { version: 1, signature: query.signature, revision: header.revision, after: last } : null });
+                read(request, cursor => {
+                    if (!cursor) { finish(false); return; }
+                    galleryCatalogStoredEntry(cursor.value, namespace);
+                    if (count === limits.batch) { finish(true); return; }
+                    count++; bytes += cursor.value.bytes; last = cursor.key; cursor.continue();
+                });
+            }));
+        },
+        async clearScopeBatch(namespace, input = {}, { expectedRevision, confirmed = false, isCurrent = () => true } = {}) {
+            const query = galleryCatalogMaintenanceQuery(namespace, structuredClone(input));
+            if (query.cursor || confirmed !== true || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || expectedRevision === Number.MAX_SAFE_INTEGER) fail('consent', '请重新盘点并确认移除目录引用');
+            return operation('readwrite', isCurrent, (tx, read, set) => state(tx, read, namespace, header => {
+                if (header.revision !== expectedRevision) fail('conflict', '目录在确认后已变化，未继续清理，请重新盘点');
+                const request = tx.objectStore('entries').openCursor(keyRange.bound(query.prefix, [...query.prefix, []], false, true));
+                let removed = 0, bytes = 0;
+                const finish = more => {
+                    const result = () => set({ namespace, revision: header.revision, removed, bytes, more });
+                    if (removed) { header.revision++; read(tx.objectStore('state').put(header), result); } else result();
+                };
+                read(request, cursor => {
+                    if (!cursor) { finish(false); return; }
+                    galleryCatalogStoredEntry(cursor.value, namespace);
+                    if (removed === limits.batch) { finish(true); return; }
+                    header.count--; header.bytes -= cursor.value.bytes;
+                    if (header.count < 0 || header.bytes < 0) fail('index', '目录计值不符，本批未清理');
+                    removed++; bytes += cursor.value.bytes; cursor.delete(); cursor.continue();
+                });
+            }));
+        },
         async scopes(namespace, input = {}, { isCurrent = () => true } = {}) {
             const query = galleryCatalogScopeQuery(namespace, structuredClone(input));
             return operation('readonly', isCurrent, (tx, read, set) => state(tx, read, namespace, header => {

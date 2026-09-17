@@ -36,6 +36,24 @@ export function projectGalleryCatalogEntry(namespace, source, value) {
 export const galleryCatalogKey = row => [row.namespace, row.ownerKey, row.chatKey, row.recordId];
 // Logical serialized metadata budget only, not browser disk usage, quota, or original-file capacity.
 export const galleryCatalogBytes = row => new TextEncoder().encode(JSON.stringify(row)).byteLength;
+// Maintenance scopes include both media kinds, but only derived references in
+// this exact account / owner / chat. They never describe original-file ownership.
+export function galleryCatalogMaintenanceQuery(namespace, input = {}) {
+    namespace = galleryCatalogAccount(namespace);
+    if (!object(input) || Object.keys(input).some(key => !['ownerKey', 'chatKey', 'cursor'].includes(key))) fail('query', '目录整理范围无效');
+    const ownerKey = input.ownerKey ?? '', chatKey = input.chatKey ?? '', cursor = input.cursor ?? null;
+    if (!text(ownerKey, 1024, true) || !text(chatKey, 1024, true) || chatKey && !ownerKey) fail('query', '目录整理须先选择准确角色');
+    if (ownerKey) galleryCatalogOwner(ownerKey);
+    const prefix = [namespace, ...(ownerKey ? [ownerKey] : []), ...(chatKey ? [chatKey] : [])];
+    const signature = JSON.stringify({ namespace, ownerKey, chatKey, maintenance: true });
+    if (cursor !== null) {
+        if (!exact(cursor, ['version', 'signature', 'revision', 'after']) || cursor.version !== 1 || cursor.signature !== signature
+            || !Number.isSafeInteger(cursor.revision) || cursor.revision < 0 || !Array.isArray(cursor.after) || cursor.after.length !== 4
+            || prefix.some((part, i) => cursor.after[i] !== part)) fail('cursor', '目录整理范围已变化，请重新盘点');
+        projectGalleryCatalogEntry(namespace, { ownerKey: cursor.after[1], chatKey: cursor.after[2] }, { id: cursor.after[3], kind: 'still', createdAt: 0 });
+    }
+    return { namespace, ownerKey, chatKey, prefix, signature, cursor };
+}
 // Hierarchical directory pages jump over complete primary-key prefixes. No full
 // scan, display-name grouping, schema upgrade or additional identity store.
 export function galleryCatalogScopeQuery(namespace, input = {}) {

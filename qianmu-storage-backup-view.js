@@ -100,6 +100,8 @@ function storagePackageRow(key,label,accept) {
 function renderStorageResourceRows(data,formatStorageBytes) {
   const htmlEscape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
   return `${data.imageAttempts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageAttempts.error)}</p>` : ''}
+<div class="sd-storage-actions"><span>${data.galleryCatalogStorage?.status==='ready'?`图库目录 · 当前账户本机 ${data.galleryCatalogStorage.count} 条引用 · ${htmlEscape(formatStorageBytes(data.galleryCatalogStorage.bytes))} 逻辑估算`:'图库目录暂未盘点 · 当前总计不含此部分'}<br>仅来源与标签索引，不含图片、影片原件</span><button type="button" class="sd-btn sd-storage-gallery-catalog">管理目录</button></div>
+${data.galleryCatalogStorage?.status==='unavailable'?`<p class="sd-storage-pressure is-warning">${htmlEscape(data.galleryCatalogStorage.error||'目录暂不可读取，未清除旧引用。')}</p>`:''}
 ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
 ${data.serviceReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.serviceReceipts.error)}</p>` : ''}
 ${data.comfyReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.comfyReceipts.error)}</p>` : ''}

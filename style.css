@@ -45,6 +45,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-gallery-directory .sd-directory-row > button { flex-shrink: 0; }
 #story-director-modal .sd-gallery-directory nav { flex-wrap: wrap; justify-content: flex-start; }
 #story-director-modal .sd-gallery-directory h3 { margin-top: 14px; overflow-wrap: anywhere; }
+#story-director-modal .sd-gallery-directory p { overflow-wrap: anywhere; }
 #story-director-modal .sd-directory-search { display: flex; gap: 6px; margin-block: 10px; }
 #story-director-modal .sd-directory-search input { min-width: 0; flex: 1; }
 #story-director-modal .sd-gallery-directory main { scrollbar-width: none; }
