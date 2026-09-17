@@ -1,12 +1,13 @@
 import { createGalleryCatalogStore } from './qianmu-gallery-catalog-store.js';
-import { galleryCatalogAccount, galleryCatalogMaintenanceQuery, GALLERY_CATALOG_LIMITS } from './qianmu-gallery-catalog-contract.js';
+import { galleryCatalogAccount, galleryCatalogSource, galleryCatalogMaintenanceQuery, GALLERY_CATALOG_LIMITS } from './qianmu-gallery-catalog-contract.js';
 
 const fail = message => Object.assign(new Error(message), { code: 'gallery_catalog_management' });
-// No current-chat requirement, source reads, original-media access or account
-// guessing. The caller supplies the host's authenticated account resolver.
+// Inspection/cleanup only touches derived references. Historical source reads
+// require the separate, explicit single-chat export confirmation below.
 export async function createGalleryCatalogManagement({ resolveNamespace, isCurrent = () => true, createStore = createGalleryCatalogStore,
-    yieldTask = () => new Promise(resolve => setTimeout(resolve, 0)) } = {}) {
+    yieldTask = () => new Promise(resolve => setTimeout(resolve, 0)), headers = () => ({}) } = {}) {
     let closed = false, busy = false, store;
+    const exportLifetime = new AbortController();
     const plans = new WeakSet();
     const valid = () => !closed && isCurrent() === true;
     if (!valid()) throw fail('资料页面已变化');
@@ -15,7 +16,7 @@ export async function createGalleryCatalogManagement({ resolveNamespace, isCurre
         try { if (!valid() || namespace !== await resolveNamespace() || !valid()) throw fail('目录整理账户或页面已变化，请重新打开'); }
         catch (error) { close(); throw error; }
     };
-    function close() { closed = true; store?.close(); }
+    function close() { closed = true; exportLifetime.abort(); store?.close(); }
     await check(); store = createStore();
     const progress = (callback, value) => { if (callback) callback(Object.freeze({ ...value })); };
     return {
@@ -23,6 +24,14 @@ export async function createGalleryCatalogManagement({ resolveNamespace, isCurre
         get closed() { return closed; },
         async usage() { await check(); const result = await store.usage(namespace, { isCurrent: valid }); await check(); return result; },
         async scopes(input = {}) { await check(); const result = await store.scopes(namespace, input, { isCurrent: valid }); await check(); return result; },
+        async exportHistory(source,save,options={}) {
+            if (busy) throw fail('资料正在处理，请稍候');
+            const selected=galleryCatalogSource(source),captured={...options}; busy = true;
+            try {
+                const { exportGalleryHistory } = await import('./qianmu-gallery-history-export.js');
+                return await exportGalleryHistory({...captured,namespace,source:selected,save,resolveNamespace,headers,guard:check,parentSignal:exportLifetime.signal});
+            } finally { busy = false; }
+        },
         async inspect(input = {}, onProgress) {
             if (busy) throw fail('目录整理正在处理，请稍候');
             const query = galleryCatalogMaintenanceQuery(namespace, input);

@@ -102,9 +102,10 @@ test('actual manager entry binds once, locks duplicate opens and rejects a lazy-
     const button = { isConnected: true, disabled: false, listeners: [], addEventListener(_type, fn) { this.listeners.push(fn); } };
     const root = { querySelector: selector => selector === '.sd-storage-gallery-catalog' ? button : null, querySelectorAll: () => [] };
     let release, opens = 0, refreshes = 0;
-    const module = { openGalleryCatalogManagement(options) { opens++; assert.equal(options.anchor, button); return { finished: Promise.resolve() }; } };
+    const download=()=>{};
+    const module = { openGalleryCatalogManagement(options) { opens++; assert.equal(options.anchor, button); assert.equal(options.save,download); return { finished: Promise.resolve() }; } };
     const context = vm.createContext({ storyboardAdmissionEpoch: 1, ctx: () => ({}), featureRuntime: { load: async () => ({ resolveImageAccountNamespace: async () => ns }) },
-        loadLocalChunk: () => new Promise(resolve => release = resolve), refreshStorageInventory: () => refreshes++, toast: () => assert.fail('unexpected toast') });
+        loadLocalChunk: () => new Promise(resolve => release = resolve), refreshStorageInventory: () => refreshes++, ttsDownloadBlob:download, toast: () => assert.fail('unexpected toast') });
     vm.runInContext(section('bindStorageManagementEvents'), context); context.bindStorageManagementEvents(root); context.bindStorageManagementEvents(root);
     assert.equal(button.listeners.length, 1);
     const pending = button.listeners[0]({ currentTarget: button }); await button.listeners[0]({ currentTarget: button }); assert.equal(button.disabled, true);

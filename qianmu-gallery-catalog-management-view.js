@@ -6,10 +6,11 @@ const button = (action, label, disabled = false) => `<button type="button" class
 // One resource row in the existing data manager. No original media deletion,
 // automatic reset/rebuild, new primary card or duplicate backup entry.
 export function openGalleryCatalogManagement({ anchor, resolveNamespace, getContext = () => ({}), isCurrent = () => true,
-    connect = createGalleryCatalogManagement, timeoutMs = 20000 } = {}) {
+    connect = createGalleryCatalogManagement, timeoutMs = 20000, save } = {}) {
     const document = anchor.ownerDocument, view = document.defaultView, parent = anchor.closest('#story-director-modal');
     const dialog = document.createElement('dialog'); dialog.className = 'sd-bundle-dialog sd-gallery-directory'; dialog.setAttribute('aria-label', '图库目录管理');
     let closed = false, busy = true, expired = false, session, plan, page, ownerKey = '', chatKey = '', cursors = [null], confirming = false, notice = '', timer, finish;
+    let exportPrompt = false, exportController = null;
     const finished = new Promise(resolve => finish = resolve);
     const valid = () => !closed && !session?.closed && anchor.isConnected && dialog.isConnected && parent?.classList.contains('open') && isCurrent();
     const check = () => { if (!valid()) { close(); throw Error('目录管理页面已关闭或变化'); } };
@@ -17,7 +18,7 @@ export function openGalleryCatalogManagement({ anchor, resolveNamespace, getCont
     const scope = () => ({ ...(ownerKey ? { ownerKey } : {}), ...(chatKey ? { chatKey } : {}) });
     const label = () => [ownerKey ? galleryDirectoryOwnerLabel(ownerKey, getContext()) : '当前账户 · 全部目录引用', chatKey].filter(Boolean).join(' / ');
     function close() {
-        if (closed) return; closed = true; clearTimeout(timer); session?.close(); observer.disconnect(); view.removeEventListener('pagehide', close);
+        if (closed) return; closed = true; clearTimeout(timer); exportController?.abort(); session?.close(); observer.disconnect(); view.removeEventListener('pagehide', close);
         if (dialog.open) dialog.close(); dialog.remove(); if (anchor.isConnected) anchor.focus({ preventScroll: true }); finish();
     }
     const observer = new view.MutationObserver(records => {
@@ -25,11 +26,14 @@ export function openGalleryCatalogManagement({ anchor, resolveNamespace, getCont
     });
     function draw() {
         if (!valid()) { close(); return; }
-        dialog.innerHTML = `<header><b>图库目录管理</b>${button('close', '关闭')}</header><main>
-          <p>只整理当前账户在本浏览器的目录引用，不删除图片、视频、聊天或提示词，不释放 VPS 原图空间。清除后需逐聊天重新收录，不会自动扫描全库重建。</p>
+        dialog.innerHTML = `<header><b>图库目录管理</b>${exportController ? button('export-stop','取消保全') : ''}${button('close', '关闭')}</header><main>
+          <p>目录整理只影响当前账户在本浏览器的引用，不删除图片、视频、聊天或提示词，不释放 VPS 原图空间。清除后需逐聊天重新收录，不会自动扫描全库重建。选定聊天后可另行确认保全服务器静帧原件。</p>
           <fieldset ${busy || !session ? 'disabled' : ''}><nav>${button('all', '全部')}${ownerKey ? button('owner', '此角色／群组') : ''}${button('refresh', '重新盘点')}</nav>
           <h3>${escape(label())}</h3>${ownerKey ? `<p>${escape(ownerKey)}</p>` : ''}
           <p>${plan ? `${plan.count} 条目录引用 · ${bytes(plan.bytes)} 逻辑元数据估算（非实际磁盘占用）` : '尚未完成本范围盘点，未允许清理。'}</p>
+          ${chatKey && typeof save === 'function' && !confirming ? `<section aria-label="聊天静帧原件保全"><p>可从这个聊天的实际保存文件保全静帧原件；不是仅导出本机目录中的条目，也不含影片。</p>${exportPrompt
+            ? `<p>确认保全上述角色／群组的此聊天？包含当前已保存的全部静帧、完整配方、人物草稿、相册和正文定位摘要。最多 400 张、单图 16 MiB、整包 512 MiB。缺图或缺配方会整次停止，不自动改为部分包。</p><p>不含正文全文、通用资源库、外部参考素材或当前模型设置。仅原件保全，暂不支持恢复；分享前请检查提示词和原图自带元数据。</p>${button('export-confirm','确认保全原件')}${button('export-back','返回')}`
+            : button('export-history','保全此聊天静帧原件')}</section>` : ''}
           ${confirming ? `<section role="group" aria-label="确认清除目录引用"><p>确认清除上述范围的 ${plan.count} 条目录引用？原件保留，但此操作不能直接撤回；历史目录需重新打开原聊天后收录。</p>${button('confirm', '确认清除目录引用')}${button('cancel', '返回')}</section>`
             : `${!chatKey ? `<p>${ownerKey ? '可按聊天缩小范围' : '可按角色／群组缩小范围'}</p><div class="sd-directory-rows">${(page?.rows || []).map((row, i) => `<button type="button" class="sd-directory-row" data-catalog-scope="${i}"><span><b>${escape(ownerKey ? row.chatKey : galleryDirectoryOwnerLabel(row.ownerKey, getContext()))}</b><small>${escape(row.ownerKey)}</small></span></button>`).join('') || '<p>此范围没有已收录目录。</p>'}</div><nav>${button('previous', '上一页', cursors.length === 1)}<span>第 ${cursors.length} 页</span>${button('next', '下一页', !page?.nextCursor)}</nav>` : ''}${button('clear', '清除此范围目录引用', !plan?.count)}`}
           </fieldset></main><footer><p role="status" data-catalog-status>${escape(notice || '只存来源、时间和标签的派生目录，不是原作品备份。')}</p></footer>`;
@@ -37,7 +41,7 @@ export function openGalleryCatalogManagement({ anchor, resolveNamespace, getCont
     const update = message => { notice = message; if (valid()) dialog.querySelector('[data-catalog-status]').textContent = message; };
     async function loadPage() { page = chatKey ? null : await session.scopes({ ...(ownerKey ? { ownerKey } : {}), cursor: cursors.at(-1), limit: 24 }); check(); }
     async function inspect() {
-        plan = null; confirming = false;
+        plan = null; confirming = false; exportPrompt = false;
         await loadPage();
         plan = await session.inspect(scope(), value => update(`正在盘点本范围：${value.count} 条目录引用…`)); check();
         // Scope navigation and counts must refer to the same directory revision.
@@ -53,9 +57,22 @@ export function openGalleryCatalogManagement({ anchor, resolveNamespace, getCont
     dialog.addEventListener('click', event => {
         const action = event.target.closest('[data-catalog-action]')?.dataset.catalogAction, selected = event.target.closest('[data-catalog-scope]');
         if (action === 'close') { close(); return; }
+        if (action === 'export-stop') { exportController?.abort(); return; }
         if (!action && !selected) return;
         void work(async () => {
-            if (action === 'clear') { if (plan?.count) confirming = true; return; }
+            if (action === 'export-history') { if (chatKey && typeof save === 'function') exportPrompt = true; return; }
+            if (action === 'export-back') { exportPrompt = false; return; }
+            if (action === 'export-confirm') {
+                if (!exportPrompt || !chatKey || typeof save !== 'function') return;
+                exportPrompt = false; exportController = new AbortController(); draw();
+                try {
+                    const result = await session.exportHistory(scope(),(file,name)=>{check();return save(file,name);},{confirmed:true,signal:exportController.signal,
+                        onProgress:value=>update(value.phase==='source'?'正在读取原聊天与完整配方…可取消保全。':value.phase==='images'?`正在读取原图 ${value.completed+1} / ${value.total}…可取消保全。`:value.phase==='packing'?'正在打包并复核来源…可取消保全。':'正在交给浏览器保存…')});
+                    check(); notice = `${result.count} 张静帧及原配方、已保存的人物草稿与相册已交给浏览器保存，请确认下载结果。此包暂不支持恢复；原聊天与目录未修改。`;
+                } finally { exportController = null; }
+                return;
+            }
+            if (action === 'clear') { exportPrompt = false; if (plan?.count) confirming = true; return; }
             if (action === 'cancel') { confirming = false; return; }
             if (action === 'confirm') {
                 if (!confirming || !plan?.count) return;
@@ -84,7 +101,7 @@ export function openGalleryCatalogManagement({ anchor, resolveNamespace, getCont
     timer = setTimeout(() => { expired = true; busy = false; notice = '目录连接超时，未清理任何引用。请关闭后重试。'; draw(); }, Math.max(100, Math.min(30000, Number(timeoutMs) || 20000)));
     void (async () => {
         try {
-            const late = await connect({ resolveNamespace, isCurrent: () => valid() && !expired });
+            const late = await connect({ resolveNamespace, isCurrent: () => valid() && !expired, headers:()=>getContext().getRequestHeaders?.()||{} });
             if (!valid() || expired) { late.close(); return; } session = late; clearTimeout(timer); await inspect(); notice = '';
         } catch (error) { notice = error?.message || '目录暂不可读取'; }
         finally { busy = false; if (!closed) draw(); }
