@@ -1831,24 +1831,38 @@ export function classifyStoragePressure(estimate = {}) {
   };
 }
 
+// Legacy chat keys are opaque local bucket labels, not account/character identity.
+// Never repair or truncate one into a different deletion target.
+function exactStorageChatKey(value) {
+  if (typeof value !== 'string' || !value || value !== value.trim() || /[\u0000-\u001f\u007f]/u.test(value)) return '';
+  for (const char of value) if (char.length === 1 && /[\ud800-\udfff]/u.test(char)) return '';
+  return value;
+}
+
 function readerBucketScope(key, value = {}) {
-  const rawKey = String(key ?? '');
-  const bookId = String(value?.bookId || '').trim();
-  const suffix = bookId ? `::${bookId}` : '';
-  if (suffix && rawKey.endsWith(suffix)) return rawKey.slice(0, -suffix.length);
-  const separator = rawKey.lastIndexOf('::');
-  return separator > 0 ? rawKey.slice(0, separator) : '';
+  const rawKey = exactStorageChatKey(key);
+  if (!rawKey) return '';
+  if (value && Object.hasOwn(value, 'bookId')) {
+    const bookId = exactStorageChatKey(value.bookId);
+    const suffix = bookId ? `::${bookId}` : '';
+    return suffix && rawKey.endsWith(suffix) ? exactStorageChatKey(rawKey.slice(0, -suffix.length)) : '';
+  }
+  // Older vectors omit bookId. Only a single separator is unambiguous; do not
+  // guess where a compound imported key splits or override a conflicting bookId.
+  const separator = rawKey.indexOf('::');
+  return separator > 0 && separator === rawKey.lastIndexOf('::') && exactStorageChatKey(rawKey.slice(separator + 2))
+    ? exactStorageChatKey(rawKey.slice(0, separator)) : '';
 }
 
 function storageRecordChatKey(name, key, value) {
-  if (name === STORE_TTS_LINES) return String(key ?? '').trim().slice(0, 512);
-  if (name === STORE_CHATS || name === STORE_VECTORS) return readerBucketScope(key, value).slice(0, 512);
-  if (name === STORE_STORYBOARD_INBOX) return String(value?.chatKey || '').trim().slice(0, 512);
-  if (name === STORE_STORYBOARD_SNAPSHOTS) return String(value?.chatKey || '').trim().slice(0, 512);
-  if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return String(value?.chatKey || '').trim().slice(0, 512);
-  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET || name === STORE_VIDEO_DRAFTS || name === STORE_VIDEO_TIMELINES || name === STORE_VIDEO_POSTPRODUCTION) return String(value?.chatKey || '').trim().slice(0, 512);
-  if (name === STORE_VIDEO_MEDIA) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
-  if (name === STORE_AUDIO) return String(value?.meta?.chatKey || '').trim().slice(0, 512);
+  if (name === STORE_TTS_LINES) return exactStorageChatKey(key);
+  if (name === STORE_CHATS || name === STORE_VECTORS) return readerBucketScope(key, value);
+  if (name === STORE_STORYBOARD_INBOX) return exactStorageChatKey(value?.chatKey);
+  if (name === STORE_STORYBOARD_SNAPSHOTS) return exactStorageChatKey(value?.chatKey);
+  if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return exactStorageChatKey(value?.chatKey);
+  if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET || name === STORE_VIDEO_DRAFTS || name === STORE_VIDEO_TIMELINES || name === STORE_VIDEO_POSTPRODUCTION) return exactStorageChatKey(value?.chatKey);
+  if (name === STORE_VIDEO_MEDIA) return exactStorageChatKey(value?.meta?.chatKey);
+  if (name === STORE_AUDIO) return exactStorageChatKey(value?.meta?.chatKey);
   return '';
 }
 
@@ -1891,21 +1905,29 @@ async function estimateStoreUsage(name) {
   await new Promise((resolve, reject) => {
     const cursor = s.openCursor();
     cursor.onsuccess = () => {
-      const current = cursor.result;
-      if (!current) { resolve(); return; }
-      count++;
-      const recordBytes = estimateStoredValueBytes(current.key) + estimateStoredValueBytes(current.value);
-      bytes += recordBytes;
-      const chatKey = storageRecordChatKey(name, current.key, current.value);
-      if (chatKey) {
-        const scope = scopeMap.get(chatKey) || { chatKey, count: 0, bytes: 0 };
-        scope.count++;
-        scope.bytes += recordBytes;
-        scopeMap.set(chatKey, scope);
+      try {
+        const current = cursor.result;
+        if (!current) return;
+        count++;
+        const recordBytes = estimateStoredValueBytes(current.key) + estimateStoredValueBytes(current.value);
+        bytes += recordBytes;
+        const chatKey = storageRecordChatKey(name, current.key, current.value);
+        if (chatKey) {
+          const scope = scopeMap.get(chatKey) || { chatKey, count: 0, bytes: 0 };
+          scope.count++;
+          scope.bytes += recordBytes;
+          scopeMap.set(chatKey, scope);
+        }
+        current.continue();
+      } catch (error) {
+        reject(error);
+        try { s.transaction.abort(); } catch { /* already aborted */ }
       }
-      current.continue();
     };
     cursor.onerror = () => reject(cursor.error);
+    s.transaction.oncomplete = () => resolve();
+    s.transaction.onerror = () => reject(s.transaction.error || new Error(`${name} inventory failed`));
+    s.transaction.onabort = () => reject(s.transaction.error || new Error(`${name} inventory aborted`));
   });
   return { name, ...info, count, bytes, scopes: [...scopeMap.values()].sort((left, right) => right.bytes - left.bytes) };
 }
@@ -2045,21 +2067,28 @@ async function clearStoreChatScope(name, chatKey, check) {
     const target = transaction.objectStore(name);
     let count = 0;
     let bytes = 0;
+    let stopped;
+    const checkTransaction = () => {
+      if (stopped) return false;
+      try { check(); return true; }
+      catch (error) { stopped = error; transaction.abort(); return false; }
+    };
     const cursor = target.openCursor();
     cursor.onsuccess = () => {
+      if (!checkTransaction()) return;
       const current = cursor.result;
       if (!current) return;
       if (storageRecordChatKey(name, current.key, current.value) === chatKey) {
         count++;
         bytes += estimateStoredValueBytes(current.key) + estimateStoredValueBytes(current.value);
-        current.delete();
+        current.delete().onsuccess = checkTransaction;
       }
       current.continue();
     };
-    cursor.onerror = () => reject(cursor.error);
+    cursor.onerror = () => { if (!stopped) reject(cursor.error); };
     transaction.oncomplete = () => resolve({ name, chatKey, count, bytes });
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error || new Error(`${name} cleanup aborted`));
+    transaction.onerror = () => { if (!stopped) reject(transaction.error); };
+    transaction.onabort = () => reject(stopped || transaction.error || new Error(`${name} cleanup aborted`));
   });
 }
 
@@ -2069,7 +2098,7 @@ export function normalizeChatScopedStorageSelections(selections = []) {
   const allowed = new Set(CHAT_SCOPED_CLEARABLE_STORES);
   const unique = new Map();
   for (const selection of Array.isArray(selections) ? selections : []) {
-    const chatKey = String(selection?.chatKey || '').trim().slice(0, 512);
+    const chatKey = exactStorageChatKey(selection?.chatKey);
     const name = String(selection?.name || selection?.store || '');
     if (!chatKey || !allowed.has(name)) continue;
     unique.set(`${name}\n${chatKey}`, { name, chatKey });

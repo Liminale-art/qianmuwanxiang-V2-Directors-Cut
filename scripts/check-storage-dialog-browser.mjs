@@ -17,7 +17,7 @@ try{
   const checks=await page.evaluate(async source=>{
     Object.assign(window,await import('/qianmu-storage-backup-view.js'),await import('/qianmu-storage-cleanup-session.js'));
     Object.assign(window,{MODAL_ID:'fixture-modal',STORAGE_CLEANUP_LAYER_ID:'fixture-chooser',THEME_KEYS:['light'],NOTES_THEME_VARIABLES:[],STORAGE_ITEM_RISK:{},STORAGE_CHAT_CLEARABLE:new Set(['audio']),
-      settings:{theme:'light'},storyboardAdmissionEpoch:1,storageInventoryState:{data:{idb:{stores:[],chatScopes:[]}}},appearanceSession:{mountPortal(){}},applyQianmuIcons(){},getChatKey:()=> 'fixture',storageChatScopeLabel:()=> 'fixture',htmlEscape:String,formatStorageBytes:String,toast(){},refreshStorageInventory:async()=>{}});
+      settings:{theme:'light'},storyboardAdmissionEpoch:1,storageInventoryState:{data:{idb:{stores:[],chatScopes:[]}}},appearanceSession:{mountPortal(){}},applyQianmuIcons(){},getChatKey:()=> 'fixture',htmlEscape:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),formatStorageBytes:String,toast(){},refreshStorageInventory:async()=>{}});
     window.storageCleanupSession=createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch});
     new Function(source+';window.bindCleanup=bindStorageManagementEvents;')();
     const checks=[];
@@ -45,6 +45,20 @@ try{
       if(storageCleanupSession.busy||layer.isConnected)throw Error(kind+'/'+action+' left the cleanup locked');
       const retry=storageCleanupSession.begin({isConnected:true});if(!retry)throw Error('retry blocked');retry.release();
       checks.push(kind+'/'+action);
+    }
+    {
+      const keys=['fixture','x'.repeat(520)+'<img src=x onerror=alert(1)>'];
+      storageInventoryState.data={idb:{stores:[{name:'audio',count:5,scopes:keys.map(chatKey=>({chatKey,count:1}))}],chatScopes:keys.map(chatKey=>({chatKey,stores:[{name:'audio',label:'audio',count:1,bytes:2}]}))}};
+      document.body.innerHTML='<section id="fixture-modal" class="open"><section class="sd-storage-card"><button class="sd-storage-chat-clean">Chat</button></section></section>';
+      bindCleanup(document.querySelector('.sd-storage-card'));document.querySelector('.sd-storage-chat-clean').click();
+      const layer=document.getElementById(STORAGE_CLEANUP_LAYER_ID),groups=[...layer.querySelectorAll('.sd-storage-chat-group')];
+      if(groups.length!==2||groups[0].querySelector('b').textContent!=='fixture'||groups.some(group=>group.open)||layer.textContent.includes('当前聊天'))throw Error('unverified legacy scope claimed current chat ownership');
+      checks.push('legacy labels do not claim current chat ownership or pre-open a guessed group');
+      if(!layer.textContent.includes('另有 3 条')||!layer.textContent.includes('不同账户')||!layer.textContent.includes('保留原处'))throw Error('unassigned records or ownership limitation not disclosed');
+      checks.push('common and unassigned records remain disclosed outside scoped deletion');
+      if(layer.querySelector('img')||!groups[1].textContent.includes(keys[1]))throw Error('full opaque key was truncated or interpreted as markup');
+      checks.push('complete opaque key can be inspected without interpreting markup');
+      layer.querySelector('.sd-storage-cleanup-cancel').click();await new Promise(resolve=>setTimeout(resolve,0));
     }
     for(const mode of ['single','mixed-yes','mixed-no']){
       storageInventoryState.data={diagnosticsBytes:10,restoreStorage:{status:'ready',bytes:10,count:1,namespace:'synthetic'}};
@@ -84,6 +98,6 @@ try{
       const retry=session.begin(card);retry.check();retry.release();checks.push('post-confirmation lifetime '+action);
     }
     return checks;
-  },['openStorageCleanupDialog','openStorageChatCleanupDialog','bindStorageManagementEvents'].map(section).join('\n'));
-  assert.equal(checks.length,28);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  },['storageChatScopeLabel','openStorageCleanupDialog','openStorageChatCleanupDialog','bindStorageManagementEvents'].map(section).join('\n'));
+  assert.equal(checks.length,31);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
