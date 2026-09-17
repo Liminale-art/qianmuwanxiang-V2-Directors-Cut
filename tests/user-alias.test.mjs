@@ -94,6 +94,20 @@ test('both the archive and alias review UI stay usable during ambiguous USER bin
   const library=aliasFixture(),view=renderCharacterArchive({rows:library.archives.map(row=>row.head),bindings:library.bindings,subjects:[subject],chatKey:'new-chat',search:'',collapsed:{},shown:{}});
   assert.match(view,/地址待核对/);assert.match(view,/data-archive-action="user-aliases"/);
 });
+
+test('USER alias view distinguishes unavailable verification from loading and verified empty bindings',()=>{
+  const state={preview:null,busy:false,accepted:false,notice:'read failed'};
+  const failed=renderUserAliasReview(state);assert.match(failed,/核对未完成/);assert.doesNotMatch(failed,/正在核对本机绑定|未发现需要整理/);
+  assert.match(renderUserAliasReview({...state,busy:true}),/正在核对本机绑定/);
+  const empty=renderUserAliasReview({...state,preview:{total:0,offset:0,rows:[],ready:false}});assert.match(empty,/未发现需要整理/);assert.doesNotMatch(empty,/核对未完成|正在核对本机绑定/);
+});
+
+test('USER candidate focus keys use the verified identity rather than the current page row position',async()=>{
+  const {options}=await fixture(),preview=await runUserAliasOperation('user-alias-preview',{...options,input:{choices:{},offset:0}});
+  const html=renderUserAliasReview({preview,busy:false,accepted:false,notice:''});
+  for(const row of preview.rows)assert.ok(html.includes(`data-alias-candidate="${row.candidateId}"`));
+  assert.equal((html.match(/data-alias-choice=/g)||[]).length,preview.rows.length);
+});
 class WorkerFixture{static handler;static last;constructor(){this.events={};WorkerFixture.last=this;}addEventListener(name,fn){this.events[name]=fn;}postMessage(value){queueMicrotask(()=>WorkerFixture.handler(this,value));}emit(value){this.events.message({data:value});}terminate(){this.closed=true;}}
 test('worker target RPC is bounded, ordered and restricted to alias operations; cancellation never silently retries apply',async()=>{
   const {options}=await fixture(),input={choices:{},offset:0},preview=await runUserAliasOperation('user-alias-preview',{...options,input});
