@@ -21,7 +21,7 @@ function fixture(kind = 'still') {
         postproduction: { mode: 'layered', subtitles: [], audio: { dialogue: [{ source: { assetId: 'voice' } }] } } });
     const editor = draft();
     const state = vm.createContext({ root, storyboardFilmEditor: editor, currentChat: 'chat', panelOpen: true, MODAL_ID: 'modal', activeTab: 'imagegen',
-        storyboardGalleryKind: 'film', route: { view: 'gallery' }, storyboardState: () => state.route,
+        settings: {}, storyboardAdmissionEpoch: 1, storyboardGalleryKind: 'film', route: { view: 'gallery' }, storyboardState: () => state.route,
         document: { getElementById: () => ({ classList: { contains: () => state.panelOpen } }) }, getChatKey: () => state.currentChat,
         uid: () => 'new-clip', storyboardCaptureFilmEditor: () => { calls.capture++; if (state.durationField) editor.selections[0].durationSeconds = state.durationField; },
         storyboardFilmPostproductionDraft: value => value.postproduction, storyboardReconcileFilmPostproduction() {},
@@ -46,8 +46,10 @@ function invalidate(f, action) {
     if (action === 'change-chat') f.state.currentChat = 'other';
     if (action === 'close') f.state.panelOpen = false;
     if (action === 'replace-page') f.page.isConnected = false;
+    if (action === 'account') f.state.settings = {};
+    if (action === 'epoch') f.state.storyboardAdmissionEpoch++;
 }
-for (const action of ['new-draft', 'change-chat', 'close', 'replace-page']) {
+for (const action of ['new-draft', 'change-chat', 'close', 'replace-page', 'account', 'epoch']) {
     for (const operation of ['still', 'motion', 'preview', 'subtitles']) {
         test(`late ${operation} is ignored after ${action}`, async () => {
             const f = fixture(operation), gate = deferred(), entered = deferred();

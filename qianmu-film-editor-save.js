@@ -6,6 +6,27 @@ const pendingTimelines = new Set();
 const timelineKey = editor => JSON.stringify([editor?.owner?.chatKey || '', editor?.timelineId || '']);
 export const isFilmEditorSaving = editor => Boolean(editor && (pending.has(editor) || pendingTimelines.has(timelineKey(editor))));
 
+// A confirmation owns the same per-film slot as a save; unrelated films remain usable.
+export async function deleteFilmTimelineSnapshot({ timeline, confirm, readCurrent, ensureRuntime, canCommit }) {
+  if (!timeline || isFilmEditorSaving(timeline)) return { status: 'busy' };
+  const key = timelineKey(timeline);
+  pendingTimelines.add(key);
+  try {
+    const snapshot = structuredClone(timeline), fingerprint = JSON.stringify(snapshot);
+    const current = () => canCommit() && JSON.stringify(readCurrent()) === fingerprint;
+    if (!current()) return { status: 'stale' };
+    if (!await confirm(snapshot)) return { status: 'cancelled' };
+    if (!current()) return { status: 'stale' };
+    const { store } = await ensureRuntime();
+    if (!current()) return { status: 'stale' };
+    // The adapter checks the stored revision and deletes both metadata stores in
+    // one transaction. A failed second delete must never leave half a film.
+    const result = await store.removeIfUnchanged(snapshot, { guard: current });
+    return { status: result.deleted?.includes(snapshot.timelineId) ? 'deleted' : 'stale' };
+  } catch (error) { return { status: 'error', error }; }
+  finally { pendingTimelines.delete(key); }
+}
+
 export async function saveFilmEditorSnapshot({ editor, readSources, ensureRuntime, ensurePostproduction, workOrder, canCommit }) {
   if (!editor || isFilmEditorSaving(editor)) return { status: 'busy' };
   const key = timelineKey(editor);

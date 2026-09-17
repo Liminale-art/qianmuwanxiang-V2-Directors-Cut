@@ -43,9 +43,20 @@ test('film mutations keep stable clip ids and remove stale transition boundaries
 
 test('deleting a film removes only the timeline sidecar and leaves source media untouched', () => {
   const remove = source.slice(source.indexOf('async function storyboardDeleteFilmTimeline'), source.indexOf('function storyboardCloseFilmViewer'));
-  assert.match(remove, /await store\.remove\(\[timelineId\]\)/);
-  assert.match(remove, /postproduction\.store\.remove\(\[timelineId\]\)/);
+  assert.match(remove, /deleteFilmTimelineSnapshot\(\{/);
+  assert.match(filmSave, /store\.removeIfUnchanged\(snapshot, \{ guard: current \}\)/);
   assert.doesNotMatch(remove, /deleteVideoMedia|deleteStoryboard|removeVideo/);
+});
+
+test('guarded film deletion opens only both metadata stores and aborts on a partial failure', async () => {
+  const storage = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
+  const remove = storage.slice(storage.indexOf('export async function deleteVideoTimelineSnapshot'), storage.indexOf('export async function deleteVideoTimelines'));
+  assert.match(remove, /db\.transaction\(\[STORE_VIDEO_TIMELINES, STORE_VIDEO_POSTPRODUCTION\], 'readwrite'\)/);
+  assert.match(remove, /timelines\.delete\(expected\.timelineId\)/);
+  assert.match(remove, /posts\.delete\(expected\.timelineId\)/);
+  assert.match(remove, /transaction\.abort\(\)/);
+  assert.match(remove, /transaction\.oncomplete/);
+  assert.doesNotMatch(remove, /STORE_VIDEO_MEDIA|STORE_AUDIO|STORE_IMAGES|\.remove\(/);
 });
 
 test('film preview reads layered subtitles on demand and renders them as text', () => {

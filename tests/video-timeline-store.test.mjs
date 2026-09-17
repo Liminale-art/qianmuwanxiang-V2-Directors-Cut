@@ -62,6 +62,24 @@ test('timeline restore is chat-scoped and normalizes untrusted records', async (
   assert.doesNotMatch(JSON.stringify(listed), /secret prompt/);
 });
 
+test('guarded removal delegates an exact normalized snapshot without using the bulk delete path', async () => {
+  let seen;
+  const safe = timeline();
+  const adapter = createVideoTimelineStoreAdapter(mockStorage({
+    deleteVideoTimelines: async () => { throw Error('unsafe fallback'); },
+    deleteVideoTimelineSnapshot: async (value, options) => { seen = value; assert.equal(options.guard(), true); return { deleted: [value.timelineId] }; },
+  }));
+  assert.deepEqual(await adapter.removeIfUnchanged(safe, { guard: () => true }), { deleted: [safe.timelineId] });
+  assert.deepEqual(seen, safe);
+});
+
+test('guarded removal rejects absent guards and fails closed with an old storage implementation', async () => {
+  const adapter = createVideoTimelineStoreAdapter(mockStorage());
+  await assert.rejects(adapter.removeIfUnchanged(timeline()), /guard/);
+  assert.deepEqual(await adapter.removeIfUnchanged(timeline(), { guard: () => false }), { deleted: [] });
+  await assert.rejects(adapter.removeIfUnchanged(timeline(), { guard: () => true }), /unavailable/);
+});
+
 test('timeline removal is bounded and deduplicated', async () => {
   let captured;
   const adapter = createVideoTimelineStoreAdapter(mockStorage({
@@ -80,7 +98,7 @@ test('the additive timeline store is idle, chat-cleanable and included in the re
   const persistence = storage.slice(storage.indexOf('function normalizeStoredVideoTimeline'), storage.indexOf('// ── 动态镜头：本地成片仓'));
   assert.match(persistence, /schema: 'qianmu\.video-timeline\.v1'/);
   assert.doesNotMatch(persistence, /apiKey|authorization|remoteUrl|base64|Blob/);
-assert.match(source, /videoTimelineStore:\s*\{[\s\S]*import\('\.\/qianmu-video-timeline-store\.js\?v=1\.59\.160'\)/);
+assert.match(source, /videoTimelineStore:\s*\{[\s\S]*import\('\.\/qianmu-video-timeline-store\.js\?v=1\.59\.161'\)/);
   assert.match(source, /video_timelines: \['不可恢复 · 完整影片时间线', true\]/);
   assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_timelines/);
   assert.ok(release.files.includes('qianmu-video-timeline-store.js'));

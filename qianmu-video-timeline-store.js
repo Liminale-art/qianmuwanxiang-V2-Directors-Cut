@@ -60,6 +60,14 @@ export function createVideoTimelineStoreAdapter(storageValue = defaultStorage) {
         .slice(0, limit);
     },
 
+    async removeIfUnchanged(value, options = {}) {
+      const validation = validateVideoTimeline(value);
+      if (!validation.ok || typeof options.guard !== 'function') throw new Error('film deletion requires a valid snapshot and owner guard');
+      if (!options.guard()) return { deleted: [] };
+      if (typeof storage.deleteVideoTimelineSnapshot !== 'function') throw new Error('safe film deletion is unavailable');
+      return storage.deleteVideoTimelineSnapshot(validation.timeline, options);
+    },
+
     async remove(timelineIds = []) {
       const ids = [...new Set((Array.isArray(timelineIds) ? timelineIds : [])
         .map((value) => text(value, 200)).filter(Boolean))].slice(0, 500);

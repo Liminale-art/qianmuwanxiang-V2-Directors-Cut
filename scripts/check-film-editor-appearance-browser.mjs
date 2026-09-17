@@ -40,7 +40,7 @@ try {
             import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
             import('/qianmu-film-editor-save.js'),
         ]);
-        Object.assign(window, utils, icons, saver, { MODAL_ID: 'story-director-modal', settings: { theme: 'dark' }, activeTab: 'imagegen',
+        Object.assign(window, utils, icons, saver, { MODAL_ID: 'story-director-modal', settings: { theme: 'dark' }, storyboardAdmissionEpoch: 1, activeTab: 'imagegen',
             storyboardFilmEditor: null, storyboardFilmEditorOpenSeq: 0, storyboardGalleryKind: 'film', fixtureChat: 'film-chat',
             routeState: { view: 'gallery' }, storyboardState: () => routeState, getChatKey: () => fixtureChat,
             storyboardProductionContext: () => window.directorFixture ? { packetId: 'fixture' } : {},

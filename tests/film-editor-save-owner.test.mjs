@@ -8,13 +8,15 @@ import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs'
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 function fixture() {
-    const notices = [], writes = [], posts = [], root = { isConnected: true }, button = { disabled: false, isConnected: true };
+    const page = { isConnected: true };
+    const notices = [], writes = [], posts = [], root = { isConnected: true, querySelector: () => page }, button = { disabled: false, isConnected: true };
     const draft = title => ({ timelineId: 'film-' + title, title, owner: { chatKey: 'chat' }, createdAt: 1,
         selections: [{ clipId: 'clip-a', kind: 'still', recordId: 'still', durationSeconds: 3, audio: 'mute' }],
         postproduction: { mode: 'native_only', transitions: [], subtitles: [], audio: { dialogue: [], ambience: [], music: [] } } });
     const editor = draft('original');
     const state = vm.createContext({
         storyboardFilmEditor: editor, currentChat: 'chat', field: 'original', panelOpen: true, MODAL_ID: 'modal', renders: 0,
+        settings: {}, storyboardAdmissionEpoch: 1, activeTab: 'imagegen', storyboardGalleryKind: 'film', storyboardState: () => ({ view: 'gallery' }),
         document: { getElementById: () => ({ classList: { contains: () => state.panelOpen } }) },
         getChatKey: () => state.currentChat, clone: structuredClone,
         isFilmEditorSaving, saveFilmEditorSnapshot,
@@ -31,11 +33,11 @@ function fixture() {
         toast: (text, tone) => notices.push({ text, tone }), storyboardVideoOperationIssueLabel: text => text,
         renderModal: () => { state.renders++; },
     });
-    vm.runInContext(storyboardFunctionSource('storyboardSaveFilmEditor'), state);
-    return { state, root, button, editor, draft, notices, writes, posts, save: () => state.storyboardSaveFilmEditor(root, button) };
+    vm.runInContext(storyboardFunctionSource('storyboardFilmEditorGuard') + '\n' + storyboardFunctionSource('storyboardSaveFilmEditor'), state);
+    return { state, root, page, button, editor, draft, notices, writes, posts, save: () => state.storyboardSaveFilmEditor(root, button) };
 }
 
-for (const action of ['replace-editor', 'change-chat', 'close-panel', 'edit-text']) {
+for (const action of ['replace-editor', 'change-chat', 'close-panel', 'edit-text', 'account', 'epoch', 'page']) {
     test(`film save does not start persistence after ${action} during approval`, async () => {
         const f = fixture(), gate = deferred(), entered = deferred();
         f.state.approval = async () => { entered.resolve(); await gate.promise; };
@@ -44,6 +46,9 @@ for (const action of ['replace-editor', 'change-chat', 'close-panel', 'edit-text
         if (action === 'change-chat') f.state.currentChat = 'other';
         if (action === 'close-panel') f.state.panelOpen = false;
         if (action === 'edit-text') f.state.field = 'new text';
+        if (action === 'account') f.state.settings = {};
+        if (action === 'epoch') f.state.storyboardAdmissionEpoch++;
+        if (action === 'page') f.page.isConnected = false;
         gate.resolve(); await saving;
         assert.equal(f.writes.length, 0); assert.equal(f.posts.length, 0); assert.equal(f.button.disabled, false);
         assert.ok(f.state.storyboardFilmEditor); assert.equal(f.state.renders, 0);

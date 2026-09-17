@@ -1387,6 +1387,38 @@ export async function listVideoTimelines(chatKey = '', options = {}) {
   return records.sort((left, right) => Number(right.updatedAt || 0) - Number(left.updatedAt || 0)).slice(0, limit);
 }
 
+// Compare and remove the approved timeline and its sidecar in one transaction.
+// No media stores are opened; a failed/aborted transaction retains both records.
+export async function deleteVideoTimelineSnapshot(value, { guard } = {}) {
+  const expected = normalizeStoredVideoTimeline(value);
+  if (!expected.timelineId || !expected.owner.chatKey || !expected.clips.length || typeof guard !== 'function') {
+    throw new Error('film deletion requires a snapshot and owner guard');
+  }
+  const fingerprint = JSON.stringify(expected), db = await openDB();
+  if (!guard()) return { deleted: [] };
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_VIDEO_TIMELINES, STORE_VIDEO_POSTPRODUCTION], 'readwrite');
+    const timelines = transaction.objectStore(STORE_VIDEO_TIMELINES), posts = transaction.objectStore(STORE_VIDEO_POSTPRODUCTION);
+    let removed = false, failure = null, remaining = 2;
+    transaction.oncomplete = () => resolve({ deleted: removed ? [expected.timelineId] : [] });
+    transaction.onerror = transaction.onabort = () => reject(failure || transaction.error || new Error('film deletion aborted'));
+    const timelineRequest = timelines.get(expected.timelineId), postRequest = posts.get(expected.timelineId);
+    const inspect = () => {
+      if (--remaining) return;
+      try {
+        const record = timelineRequest.result, post = postRequest.result;
+        if (!guard() || !record || record.chatKey !== expected.owner.chatKey
+          || JSON.stringify(normalizeStoredVideoTimeline(record.timeline)) !== fingerprint
+          || (post && (post.chatKey !== expected.owner.chatKey || post.project?.owner?.chatKey !== expected.owner.chatKey))) return;
+        timelines.delete(expected.timelineId);
+        posts.delete(expected.timelineId);
+        removed = true;
+      } catch (error) { failure = error; transaction.abort(); }
+    };
+    timelineRequest.onsuccess = postRequest.onsuccess = inspect;
+  });
+}
+
 export async function deleteVideoTimelines(timelineIds = []) {
   const ids = [...new Set((Array.isArray(timelineIds) ? timelineIds : []).map(videoDraftStorageId).filter(Boolean))].slice(0, 500);
   if (!ids.length) return { deleted: [] };

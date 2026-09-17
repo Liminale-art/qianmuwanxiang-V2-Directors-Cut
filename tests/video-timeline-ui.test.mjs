@@ -51,9 +51,10 @@ test('the editor keeps exact ordered sources and saves through the strict contra
 
 test('film deletion removes only the timeline and never its source media', () => {
   const start = source.indexOf('async function storyboardDeleteFilmTimeline');
-  const end = source.indexOf('function renderStoryboardVideoGallery', start);
+  const end = source.indexOf('function storyboardCloseFilmViewer', start);
   const block = source.slice(start, end);
-  assert.match(block, /store\.remove\(\[timelineId\]\)/);
+  assert.match(block, /deleteFilmTimelineSnapshot\(\{/);
+  assert.match(filmSave, /store\.removeIfUnchanged\(snapshot, \{ guard: current \}\)/);
   assert.match(block, /不会删除静帧和动态成片/);
   assert.doesNotMatch(block, /deleteVideoMedia|storyboardDeleteRecord|removeFavorite/);
 });
