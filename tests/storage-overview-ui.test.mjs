@@ -23,6 +23,25 @@ const data = () => ({sampledAt: 1, origin: { available: true, usage: 4000, quota
   comfyStorage: { status: 'ready', workflows: { status: 'ready', count: 0, bytes: 0 }, pools: { status: 'ready', count: 0, bytes: 0 }, scenes: { status: 'ready', count: 0, bytes: 0 } }
 });
 
+test('server recipe file sizes occupy one read-only row without changing browser totals or cleanup',()=>{
+  const snapshot=data();snapshot.recipeStorage={status:'ready',state:'present',files:3,bytes:12345678,limitFiles:4096,limitBytes:268435456};
+  const html=fixture(snapshot).renderStorageManagementCard();
+  assert.equal((html.match(/sd-storage-server-recipes/g)||[]).length,1);assert.match(html,/3 个归档文件 · 12345678 B/);
+  assert.match(html,/不计入本设备占用/);assert.match(html,/不代表可恢复配方数量/);assert.match(html,/千幕已盘点<b>1000 B/);
+  assert.match(html,/<em>其他 ST 数据<\/em><b>3000 B/);assert.match(html,/<em>可用空间<\/em><b>6000 B/);
+  assert.doesNotMatch(html.slice(html.indexOf('sd-storage-server-recipes'),html.indexOf('</p>',html.indexOf('sd-storage-server-recipes'))),/<button|<input/);
+});
+
+test('server missing, unavailable and above-limit states keep distinct meanings',()=>{
+  const snapshot=data();snapshot.recipeStorage={status:'ready',state:'absent',files:0,bytes:0,limitFiles:4096,limitBytes:268435456};
+  assert.match(fixture(snapshot).renderStorageManagementCard(),/0 个归档文件 · 0 B · 尚无服务器配方文件/);
+  snapshot.recipeStorage={status:'unavailable',bytes:null,files:null,error:'<private>'};let html=fixture(snapshot).renderStorageManagementCard();
+  const row=html.slice(html.indexOf('sd-storage-server-recipes'),html.indexOf('</p>',html.indexOf('sd-storage-server-recipes')));
+  assert.match(row,/暂未读取/);assert.match(row,/&lt;private&gt;/);assert.doesNotMatch(row,/<private>|0 B|0 个归档/);
+  snapshot.recipeStorage={status:'ready',state:'present',files:4096,bytes:268435500,limitFiles:4096,limitBytes:268435456};
+  html=fixture(snapshot).renderStorageManagementCard();assert.match(html,/268435500 B/);assert.match(html,/已达到配方写入安全限额/);assert.match(html,/未自动清理原件/);
+});
+
 test('storage backup remains accessible before inventory and after inventory failure', () => {
   for (const status of ['loading', 'error']) {
     const html = fixture(null, status).renderStorageManagementCard();

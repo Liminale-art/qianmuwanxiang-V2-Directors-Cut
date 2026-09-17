@@ -100,6 +100,9 @@ function storagePackageRow(key,label,accept) {
 function renderStorageResourceRows(data,formatStorageBytes) {
   const htmlEscape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
   return `${data.imageAttempts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageAttempts.error)}</p>` : ''}
+<p class="sd-storage-scope sd-storage-server-recipes" role="status" style="overflow-wrap:anywhere">服务器配方 · 当前账户<br>${data.recipeStorage?.status==='ready'
+  ? `${data.recipeStorage.files} 个归档文件 · ${htmlEscape(formatStorageBytes(data.recipeStorage.bytes))}${data.recipeStorage.state==='absent'?' · 尚无服务器配方文件':''}<br>不计入本设备占用；含保留旧版及未核验文件，不代表可恢复配方数量。${data.recipeStorage.files>=data.recipeStorage.limitFiles||data.recipeStorage.bytes>=data.recipeStorage.limitBytes?'<br>已达到配方写入安全限额；不是 VPS 磁盘容量，未自动清理原件。':''}`
+  : `暂未读取 · ${htmlEscape(data.recipeStorage?.error||'配套后端尚未返回占用信息，未按零值计算。')}`}</p>
 <div class="sd-storage-actions"><span>${data.galleryCatalogStorage?.status==='ready'?`图库目录 · 当前账户本机 ${data.galleryCatalogStorage.count} 条引用 · ${htmlEscape(formatStorageBytes(data.galleryCatalogStorage.bytes))} 逻辑估算`:'图库目录暂未盘点 · 当前总计不含此部分'}<br>仅来源与标签索引，不含图片、影片原件</span><button type="button" class="sd-btn sd-storage-gallery-catalog">管理目录</button></div>
 ${data.galleryCatalogStorage?.status==='unavailable'?`<p class="sd-storage-pressure is-warning">${htmlEscape(data.galleryCatalogStorage.error||'目录暂不可读取，未清除旧引用。')}</p>`:''}
 ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}

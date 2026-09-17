@@ -228,6 +228,11 @@ test('actual plugin routes authenticate, refuse client payloads and return no-st
   assert.notEqual((await request('preserve',{...input(rows),snapshot:recipe('forged')})).status,200);
   const saved=await request('preserve');assert.equal(saved.status,200);assert.equal(saved.headers.get('cache-control'),'no-store');assert.equal(saved.headers.get('x-content-type-options'),'nosniff');
   const proof=await saved.json();assert.equal(proof.proof,'durable-recipe');assert.equal(proof.snapshot,undefined);
+  const storageBody={version:1,expectedAccount:account('alice')};
+  assert.equal((await request('storage',storageBody,false)).status,401);
+  assert.equal((await request('storage',{...storageBody,path:f.archive})).status,400);
+  const storage=await request('storage',storageBody);assert.equal(storage.status,200);assert.equal(storage.headers.get('cache-control'),'no-store');assert.equal(storage.headers.get('x-content-type-options'),'nosniff');
+  const usage=await storage.json();assert.equal(usage.files,1);assert.equal(usage.bytes,proof.reference.bytes);assert.equal(usage.proof,'observed-file-sizes');assert.doesNotMatch(JSON.stringify(usage),/snapshot|prompt|Alice|chatId|\.json/);
   delete rows[0].snapshot;rows[0].snapshotServerRef=proof.reference;await f.write(rows);
   const read=await request('read');assert.equal(read.status,200);assert.deepEqual((await read.json()).snapshot,recipe());
   assert.match(before.toString(),/PRIVATE_BODY/);assert.match((await fs.readFile(f.file)).toString(),/PRIVATE_BODY/);

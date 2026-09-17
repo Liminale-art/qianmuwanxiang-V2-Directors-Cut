@@ -1,7 +1,7 @@
 import {createChatCharacterReceiptService} from './qianmu-chat-character-receipt-service.js';
 import {createRecipeArchiveStore} from './qianmu-recipe-archive-store.js';
 import {imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
-import {recipeArchiveError,recipeArchiveRequest,recipeArchiveSnapshot,recipeArchiveReference,recipeArchiveResponse,RECIPE_ARCHIVE_LIMITS} from './qianmu-recipe-archive-contract.js';
+import {recipeArchiveError,recipeArchiveRequest,recipeArchiveSnapshot,recipeArchiveReference,recipeArchiveResponse,recipeArchiveStorageRequest,recipeArchiveStorageResponse,RECIPE_ARCHIVE_LIMITS} from './qianmu-recipe-archive-contract.js';
 const fail=(code,message,status)=>{throw recipeArchiveError(code,message,status);};
 
 // Accepts selectors, never client recipes/paths/owners. The saved ST record is authoritative.
@@ -40,11 +40,17 @@ export function createRecipeArchiveService(options){
     return recipeArchiveResponse({ok:true,version:1,expectedAccount:captured.expectedAccount,target:captured.target,selection:captured.selection,
       reference,...(write?{}:{snapshot,origin}),proof:write?'durable-recipe':'read-only-recipe'});
   }
-  function run(req,input,options,write){
-    let body;try{body=recipeArchiveRequest(input);if(closed)fail('changed','配方保全服务已关闭');if(pending.size>=RECIPE_ARCHIVE_LIMITS.pending)fail('busy','配方保全请求正忙',429);}
+  function run(req,input,options,write,summary=false){
+    let body;try{body=(summary?recipeArchiveStorageRequest:recipeArchiveRequest)(input);if(closed)fail('changed','配方保全服务已关闭');if(pending.size>=RECIPE_ARCHIVE_LIMITS.pending)fail('busy','配方保全请求正忙',429);}
     catch(error){return Promise.reject(error);}
-    const task=process(req,body,options,write);pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
+    const originalRoot=req.user?.directories?.root;
+    const task=summary?store.usage(req,body.expectedAccount,options).then(value=>{
+      if(closed||options?.signal?.aborted||req.user?.directories?.root!==originalRoot||!imageServiceAccountStillMatches(req,{namespace:body.expectedAccount}))fail('changed','配方盘点账户或目录已变化');
+      return recipeArchiveStorageResponse({ok:true,...body,...value,limitFiles:RECIPE_ARCHIVE_LIMITS.files,limitBytes:RECIPE_ARCHIVE_LIMITS.totalBytes,proof:'observed-file-sizes'});
+    }):process(req,body,options,write);
+    pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
   }
   return Object.freeze({preserve:(req,input,options)=>run(req,input,options,true),read:(req,input,options)=>run(req,input,options,false),
+    storage:(req,input,options)=>run(req,input,options,false,true),
     async close(){closed=true;await Promise.allSettled([source.close(),store.close(),...pending]);}});
 }

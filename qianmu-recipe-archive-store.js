@@ -26,15 +26,40 @@ export function createRecipeArchiveStore({dataRoot,io=fs}={}){
       if(closed||signal?.aborted||!imageServiceAccountStillMatches(req,account)||req.user?.directories?.root!==original)fail('changed','配方保全已取消或账户目录变化，请保留原副本');
     }};context.guard();return context;
   }
-  async function roots(context,create=false){
+  async function roots(context,create=false,includeFolder=true){
     context.guard();let cursor=root;const directories=[cursor];
     for(const part of path.relative(root,context.accountRoot).split(path.sep)){cursor=path.join(cursor,part);directories.push(cursor);}
-    for(const directory of [...directories,context.folder]){
+    for(const directory of [...directories,...(includeFolder?[context.folder]:[])]){
       if(directory===context.folder&&create){context.guard();try{await io.mkdir(directory,{mode:0o700});}catch(error){if(error.code!=='EEXIST')throw error;}}
       const current=await stat(directory),prior=context.roots.get(directory);
       if(!current.isDirectory()||current.isSymbolicLink()||path.resolve(await io.realpath(directory))!==directory||prior&&!sameFile(prior,current))fail('path','配方目录为链接或已被替换，未继续操作');
       context.roots.set(directory,current);context.guard();
     }
+  }
+  async function storage(context){
+    // Count every regular file, including interrupted/unreferenced versions. No
+    // content reads, attribution guesses, repair, mkdir, deletion or symlink following.
+    await roots(context,false,false);
+    try{await roots(context);}catch(error){
+      if(error.code!=='ENOENT')throw error;
+      await roots(context,false,false);
+      try{await stat(context.folder);}catch(missing){if(missing.code==='ENOENT'){context.guard();return {state:'absent',files:0,bytes:0};}throw missing;}
+      fail('changed','配方目录在盘点期间出现，请重新读取');
+    }
+    const before=await stat(context.folder),files=new Map();let bytes=0;
+    const directory=await io.opendir(context.folder);
+    for await(const item of directory){
+      context.guard();if(files.size>=LIMIT.files||files.has(item.name))fail('capacity','配方目录超过可完整盘点的数量上限，未返回部分合计',507);
+      const current=await stat(path.join(context.folder,item.name));
+      if(!current.isFile()||current.isSymbolicLink()||current.nlink!==1n||current.size<0n||current.size>BigInt(Number.MAX_SAFE_INTEGER))fail('path','配方目录含链接、子目录或不支持的文件，未返回不完整占用');
+      bytes+=Number(current.size);if(!Number.isSafeInteger(bytes))fail('capacity','配方占用超出可精确计值的范围',507);
+      files.set(item.name,current);
+    }
+    await roots(context);
+    for(const [name,prior] of files){context.guard();if(!unchanged(prior,await stat(path.join(context.folder,name))))fail('changed','配方文件在盘点期间变化，请重读');}
+    await roots(context);const after=await stat(context.folder);
+    if(!sameFile(before,after)||before.mtimeNs!==after.mtimeNs||before.ctimeNs!==after.ctimeNs)fail('changed','配方目录在盘点期间变化，请重读');
+    context.guard();return {state:'present',files:files.size,bytes};
   }
   async function read(context,reference){
     const ref=recipeArchiveReference(reference);await roots(context);const target=path.join(context.folder,ref.id+'.json'),before=await stat(target);
@@ -80,12 +105,12 @@ export function createRecipeArchiveStore({dataRoot,io=fs}={}){
     if(process.platform!=='win32'){const folder=await io.open(context.folder,'r');try{await folder.sync();}finally{await folder.close();}}
     await read(context,ref);context.guard();return ref;
   }
-  function run(req,expectedAccount,input,options,write){
+  function run(req,expectedAccount,input,options,write,summary=false){
     let context;try{context=capture(req,expectedAccount,options?.signal);if(pending.size>=LIMIT.pending)fail('busy','配方保全正忙，请稍后重试',429);
-      if(write&&writing.has(context.account.namespace))fail('busy','当前账户正在保全另一份配方，请稍后重试',429);
+      if((write||summary)&&writing.has(context.account.namespace))fail('busy','当前账户正在保全另一份配方，请稍后重试',429);
     }catch(error){return Promise.reject(error);}
     if(write)writing.add(context.account.namespace);
-    const task=(async()=>{try{return await (write?add(context,input):read(context,input));}catch(error){
+    const task=(async()=>{try{return await (summary?storage(context):write?add(context,input):read(context,input));}catch(error){
       context.guard();if(String(error?.code||'').startsWith('recipe_archive_'))throw error;
       if(error?.code==='ENOENT')fail('missing','服务器配方原件不存在，原引用保留',404);
       fail('storage','配方保存或读取未确认，已保留原聊天及旧归档',503);
@@ -93,5 +118,6 @@ export function createRecipeArchiveStore({dataRoot,io=fs}={}){
   }
   return Object.freeze({put:(req,envelope,options)=>run(req,envelope?.expectedAccount,envelope,options,true),
     get:(req,expectedAccount,reference,options)=>run(req,expectedAccount,reference,options,false),
+    usage:(req,expectedAccount,options)=>run(req,expectedAccount,null,options,false,true),
     async close(){closed=true;await Promise.allSettled([...pending]);}});
 }

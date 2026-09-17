@@ -85,7 +85,7 @@ test('actual inventory counts catalog once, preserves unavailable status and rec
         const module = new Proxy({}, { get: (_target, name) => name === 'then' ? undefined : name === 'resolveImageAccountNamespace' ? async () => ns : name === 'collectGalleryCatalogStorage' ? async options => {
             calls++; assert.equal(await options.resolveNamespace(), ns); assert.equal(options.isCurrent(), true);
             if (unavailable) throw Error('fixture unavailable'); return { namespace: ns, status: 'ready', count: 3, bytes: 90 };
-        } : async () => empty() });
+        } : name === 'collectRecipeArchiveStorage' ? async () => ({namespace:ns,status:'ready',files:2,bytes:12345678}) : async () => empty() });
         const context = vm.createContext({ settings: {}, storyboardAdmissionEpoch: 0, navigator: {},
             featureRuntime: { load: async () => module }, blobStore: { estimateBlobStoreUsage: async () => ({ totalBytes: 0, categories: [] }), auditOrphanedReaderBlobs: async () => ({}), classifyStoragePressure: () => ({}) },
             storyboardManageImageChannels: async () => empty(), storyboardImageServiceRuntime: async () => ({ manage: async () => empty() }), storyboardComfyRecoveryRuntime: async () => ({ usage: async () => empty() }),
@@ -94,6 +94,8 @@ test('actual inventory counts catalog once, preserves unavailable status and rec
         vm.runInContext(code, context); const inventory = await context.collectStorageInventory();
         assert.equal(calls, 1); assert.equal(inventory.trackedBytes, unavailable ? 0 : 90); assert.equal(inventory.manageableBytes, 0, 'catalog is not silently added to generic deletion');
         assert.equal(inventory.galleryCatalogStorage.status, unavailable ? 'unavailable' : 'ready');
+        assert.equal(inventory.recipeStorage.bytes,12345678);assert.equal(inventory.recoverableBytes,0,'server files never become local cleanup candidates');
+        assert.ok(inventory.categories.every(row=>row.bytes<12345678),'server bytes are not browser categories');
     }
 });
 test('actual manager entry binds once, locks duplicate opens and rejects a lazy-load context switch', async () => {

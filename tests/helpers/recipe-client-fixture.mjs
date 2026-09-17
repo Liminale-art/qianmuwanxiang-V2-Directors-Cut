@@ -21,7 +21,7 @@ export async function recipeClientFixture(t){
     async save(){await fs.writeFile(file,JSON.stringify({chat_metadata:context.chatMetadata})+'\n'+JSON.stringify({mes:'private body not requested'})+'\n');},
     async fetch(url,options){
       e.calls.push({url,...options,body:JSON.parse(options.body)});
-      try{const result=await service[url.endsWith('/preserve')?'preserve':'read'](req,JSON.parse(options.body),{signal:options.signal});return Response.json(result);}
+      try{const result=await service[url.endsWith('/storage')?'storage':url.endsWith('/preserve')?'preserve':'read'](req,JSON.parse(options.body),{signal:options.signal});return Response.json(result);}
       catch(error){const result=recipeArchiveErrorPayload(error);return Response.json(result.body,{status:result.status});}
     },
     client(options={}){return createCurrentRecipeArchiveClient({getContext:()=>context,epoch:()=>e.epoch,getGallery:()=>rows,account:async()=>e.account,fetchImpl:e.fetch,...options});},

@@ -19,7 +19,7 @@ const server=http.createServer(async(req,res)=>{
     if(path==='/fixture'){json(res,f.rows);return;}
     let body='';for await(const part of req){body+=part;if(body.length>3*1024*1024)throw Error('oversized fixture');}
     if(path==='/fixture-save'){f.rows=JSON.parse(body);await f.save();json(res,{ok:true});return;}
-    if(/^\/api\/plugins\/qianmu-tts\/chat-gallery\/recipe\/(?:read|preserve)$/.test(path)){
+    if(/^\/api\/plugins\/qianmu-tts\/chat-gallery\/recipe\/(?:read|preserve|storage)$/.test(path)){
       const result=await f.fetch(path,{body,signal:new AbortController().signal});json(res,await result.json(),result.status);return;
     }
     unexpected.push(path);json(res,{ok:false},404);
@@ -75,7 +75,16 @@ try{
   }));
   check('retry safely publishes the already preserved recipe',await c.evaluate(()=>entry.archive())===1);
   check('closed sessions refuse late reads',await c.evaluate(async()=>{const module=await import('/qianmu-recipe-archive-client.js'),client=module.createCurrentRecipeArchiveClient({getContext:ctx,epoch:()=>0,getGallery:storyboardGalleryRecords,account:async()=>account});client.close();try{await client.read(rows[0]);return false;}catch{return true;}}));
+  const usage=await c.evaluate(async()=>{context.chatId=undefined;const {collectRecipeArchiveStorage}=await import('/qianmu-recipe-storage.js');return collectRecipeArchiveStorage({resolveNamespace:async()=>account,headers:()=>context.getRequestHeaders()});});
+  check('server file observation works without an open chat and includes retained versions',usage.status==='ready'&&usage.files===3&&usage.bytes>originalRef.bytes);
+  check('a fresh browser context sees the same account-level server observation',JSON.stringify(await b.evaluate(async()=>{const {collectRecipeArchiveStorage}=await import('/qianmu-recipe-storage.js');return collectRecipeArchiveStorage({resolveNamespace:async()=>account});}))===JSON.stringify(usage));
+  check('browser rejects a pending observation after account switch',await c.evaluate(async()=>{
+    const {collectRecipeArchiveStorage}=await import('/qianmu-recipe-storage.js');try{await collectRecipeArchiveStorage({resolveNamespace:async()=>account,fetchImpl:async(...args)=>{const reply=await fetch(...args);account='st-user:bob';return reply;}});return false;}catch(error){return error.code==='recipe_storage_stale';}finally{account='st-user:alice';}
+  }));
+  check('old backend keeps unknown server bytes distinct from zero in the browser',await c.evaluate(async()=>{
+    const {collectRecipeArchiveStorage}=await import('/qianmu-recipe-storage.js');const value=await collectRecipeArchiveStorage({resolveNamespace:async()=>account,fetchImpl:async()=>new Response('old',{status:404})});return value.status==='unavailable'&&value.bytes===null&&value.files===null;
+  }));
   assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
-  check('no paid generation or external routes were called',f.calls.every(call=>/\/recipe\/(?:read|preserve)$/.test(call.url)));
+  check('no paid generation or external routes were called',f.calls.every(call=>/\/recipe\/(?:read|preserve|storage)$/.test(call.url)));
   console.log(JSON.stringify({checks,errors,unexpected,isolatedDevices:contexts.length,realTemporaryChatFiles:true}));
 }finally{for(const context of contexts)await context.close();await browser.close();await new Promise(done=>server.close(done));await f.close();}

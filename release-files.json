@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-recipe-storage.js",
     "qianmu-recipe-archive-contract.js",
     "qianmu-recipe-archive-client.js",
     "qianmu-recipe-archive-store.js",

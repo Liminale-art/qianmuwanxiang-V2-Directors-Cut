@@ -15,6 +15,23 @@ export function recipeArchiveRequest(value){
   try{return chatGalleryRecordRequest(value);}catch{fail('contract','配方请求必须是准确的账户、聊天和单张画面定位',400);}
 }
 
+export function recipeArchiveStorageRequest(value){
+  if(!exact(value,['version','expectedAccount'])||value.version!==1||typeof value.expectedAccount!=='string'||!/^st-user:[a-f0-9]{64}$/.test(value.expectedAccount))
+    fail('contract','配方占用请求只接受当前账户核对，不接受路径或聊天范围',400);
+  return {...value};
+}
+export function recipeArchiveStorageResponse(value){
+  if(!exact(value,['ok','version','expectedAccount','state','files','bytes','limitFiles','limitBytes','proof'])||value.ok!==true
+    ||value.proof!=='observed-file-sizes'||!['absent','present'].includes(value.state)
+    ||!Number.isSafeInteger(value.files)||value.files<0||value.files>RECIPE_ARCHIVE_LIMITS.files
+    ||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.files===0&&value.bytes!==0
+    ||value.state==='absent'&&(value.files!==0||value.bytes!==0)
+    ||value.limitFiles!==RECIPE_ARCHIVE_LIMITS.files||value.limitBytes!==RECIPE_ARCHIVE_LIMITS.totalBytes)
+    fail('contract','配方占用返回不完整，未以零值替代',400);
+  recipeArchiveStorageRequest({version:value.version,expectedAccount:value.expectedAccount});
+  return {...value};
+}
+
 export function recipeArchiveSnapshot(value){
   if(!object(value)||typeof value.source!=='string'||!value.source||value.source.length>120
     ||typeof value.prompt!=='string'||typeof value.negative!=='string'||!object(value.profile)||!object(value.payload))fail('content','原聊天未保留完整配方结构，未用当前设置补齐');

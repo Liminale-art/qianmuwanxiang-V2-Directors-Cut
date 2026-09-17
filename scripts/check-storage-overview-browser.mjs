@@ -16,7 +16,7 @@ const constants = source.slice(source.indexOf('const STORAGE_CATEGORY_LABELS'), 
 const MB = 1024 * 1024;
 const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota: 2000 * MB}, trackedBytes: 400 * MB, manageableBytes: 400 * MB,
   categories: [{category: 'images', bytes: 240 * MB}, {category: 'audio', bytes: 120 * MB}, {category: 'reader', bytes: 40 * MB}],
-  idb: {chatScopes: ['fixture']}, vibeStorage: {status: 'ready', assets: {count: 0, bytes: 0}, previews: {bytes: 0}, records: {count: 0, bytes: 0}, metadata: {bytes: 0}},
+  idb: {chatScopes: ['fixture']}, recipeStorage:{status:'ready',state:'present',files:10,bytes:5*MB,limitFiles:4096,limitBytes:256*MB}, vibeStorage: {status: 'ready', assets: {count: 0, bytes: 0}, previews: {bytes: 0}, records: {count: 0, bytes: 0}, metadata: {bytes: 0}},
   restoreStorage: {status: 'ready', count: 0, bytes: 0}, mappingStorage: {status: 'ready', count: 0, bytes: 0}, carrierStorage: {status: 'ready', count: 0, bytes: 0},
   characterStorage: {status: 'ready', documents: {count: 0, bytes: 0}, bindings: {count: 0, bytes: 0}, indexes: {bytes: 0}},
   comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}, notesStorage: {status:'ready',bytes:200,count:3,pinned:1}};
@@ -36,6 +36,7 @@ await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({contentType: 'text/html', body: '<!doctype html><html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>'});
   if (url === 'https://qianmu.test/qianmu-icon-renderer.js') return route.fulfill({contentType: 'text/javascript', body: await readFile(new URL('../qianmu-icon-renderer.js', import.meta.url), 'utf8')});
+  for(const file of ['qianmu-theme-surfaces.js','qianmu-theme-palette.js'])if(url===`https://qianmu.test/${file}`)return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
   // Stylesheet background art does not belong to the storage renderer under test.
   if (url.startsWith('https://qianmu.test/') && /\.(?:png|jpe?g|webp|woff2?)(?:\?|$)/.test(url)) return route.fulfill({status: 204, body: ''});
   external++; return route.abort();
@@ -46,6 +47,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('https://qianmu.test/');
   await page.addStyleTag({content: css});
+  await page.addStyleTag({content:await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')});
   await page.addStyleTag({content: 'body{margin:0;background:#555}#story-director-modal{box-sizing:border-box}#story-director-modal .sd-storage-card{width:min(620px,100%);box-sizing:border-box;margin:0 auto}'});
   for (const width of [320, 393, 768, 1280]) for (const theme of ['light', 'dark', 'summer', 'candy', 'kraft', 'dream']) {
     await page.setViewportSize({width, height: 898});
@@ -80,8 +82,24 @@ try {
     assert.equal(await page.locator('.sd-storage-details').count(), 0);
     assert.equal(await page.locator('.sd-storage-backup-section .sd-storage-clean').count(), 1);
     assert.equal(await page.locator('.sd-storage-backup-section .sd-storage-characters').count(), 1);
+    assert.equal(await page.locator('.sd-storage-server-recipes').count(),1);assert.match(await page.locator('.sd-storage-server-recipes').textContent(),/10 个归档文件 · 5.0 MB/);
     checks.push(`${theme}/${width}: single resource list, real layout, local arrows, unique controls`);
   }
+  for(const width of [320,393,1280])for(const theme of ['editorial','glass'])for(const mode of ['light','dark']){
+    await page.setViewportSize({width,height:898});
+    const result=await page.evaluate(async ({html,theme,mode})=>{
+      window.storageTheme?.dispose();document.body.innerHTML=`<div id="story-director-modal" class="open sd-theme-light"><section class="sd-window"><main class="sd-body">${html}</main></section></div>`;
+      const root=document.getElementById('story-director-modal'),{createQianmuThemeSurfaceController}=await import('/qianmu-theme-surfaces.js');
+      window.storageTheme=createQianmuThemeSurfaceController();storageTheme.register(root);storageTheme.setTheme({theme,mode,accent:'#5c79d3'});
+      root.querySelector('details').open=true;await new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)));
+      const row=root.querySelector('.sd-storage-server-recipes'),card=root.querySelector('.sd-storage-card'),box=row.getBoundingClientRect();
+      return {fit:box.left>=0&&box.right<=innerWidth&&row.scrollWidth<=row.clientWidth,hero:root.querySelector('.sd-storage-hero b').textContent,
+        row:row.textContent,radius:getComputedStyle(card).borderRadius,inputs:root.querySelectorAll('input[data-storage-import="notes"]').length};
+    },{html:render(),theme,mode});
+    assert.equal(result.fit,true,`${width}/${theme}/${mode}`);assert.equal(result.hero,'400.0 MB');assert.match(result.row,/5.0 MB/);assert.equal(result.inputs,1);assert.equal(result.radius,theme==='editorial'?'0px':'22px');
+    checks.push(`${theme}/${mode}/${width}: server row fits themed resource list and does not alter browser totals`);
+  }
+  await page.evaluate(()=>window.storageTheme?.dispose());
   for (const status of ['loading', 'error']) {
     await page.evaluate(html => {document.querySelector('#story-director-modal .sd-body').innerHTML = html;}, render(null, status));
     assert.equal(await page.locator('.sd-storage-hero').count(), 0);
@@ -92,15 +110,17 @@ try {
     checks.push(`${status}: no fake total or cleanup, backup remains available`);
   }
   const changed=structuredClone(snapshot);changed.notesStorage={status:'ready',count:7,pinned:2,bytes:400};
+  changed.recipeStorage={status:'unavailable',files:null,bytes:null,error:'配套后端尚未读取'};
   const summaryRefresh=await page.evaluate(({before,after,replace})=>{
     document.body.innerHTML=before;const card=document.querySelector('.sd-storage-card'),backup=card.querySelector('.sd-storage-backup-section');
     backup.open=true;const input=backup.querySelector('input[data-storage-import="notes"]'),button=backup.querySelector('[data-storage-export="notes"]');
     button.focus();let clicks=0;button.addEventListener('click',()=>clicks++);
     (0,eval)(`(${replace})`)(card,after,{icons(){},bind(){}});button.click();
-    return {sameInput:input===document.querySelector('input[data-storage-import="notes"]'),sameBackup:backup===document.querySelector('.sd-storage-backup-section'),open:backup.open,clicks,text:backup.querySelector('.sd-storage-notes-summary').textContent};
+    return {sameInput:input===document.querySelector('input[data-storage-import="notes"]'),sameBackup:backup===document.querySelector('.sd-storage-backup-section'),open:backup.open,clicks,text:backup.querySelector('.sd-storage-notes-summary').textContent,recipe:backup.querySelector('.sd-storage-server-recipes').textContent};
   },{before:render(),after:render(changed),replace:replaceStorageManagementCard.toString()});
   assert.equal(summaryRefresh.sameInput&&summaryRefresh.sameBackup&&summaryRefresh.open,true);assert.equal(summaryRefresh.clicks,1);assert.match(summaryRefresh.text,/已保存 7 条（常驻 2 条）/);
   checks.push('live account notes summary refresh retains the original backup file chooser, listeners and disclosure');
+  assert.match(summaryRefresh.recipe,/暂未读取/);assert.doesNotMatch(summaryRefresh.recipe,/5.0 MB|0.0 MB/);checks.push('server observation refresh clears stale numbers without replacing live backup inputs');
   const resourceRefresh=await page.evaluate(async ({before,after,loading,failed,replace,source})=>{
     Object.assign(window,{settings:{},configUndo:{available:()=>false},MODAL_ID:'story-director-modal',storageInventoryState:{data:{mappingStorage:{namespace:'before'}}}});
     let calls=0,lastNamespace='';window.storyboardOpenRestoreStorage=(_root,namespace)=>{calls++;lastNamespace=namespace;};
