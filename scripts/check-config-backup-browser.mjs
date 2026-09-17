@@ -134,7 +134,7 @@ try{
     window.storageInventoryState={status:'loading',data:null};window.htmlEscape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;');
     window.optionalServiceState={status:'idle',services:[]};
     window.renderFixtureStorage=new Function(source+';return renderStorageManagementCard;')();
-  },['optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'));
+  },['formatStorageBytes','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'));
   const layouts=[];
   for(const width of [320,393,720,1100])for(const theme of ['', 'sd-theme-dark'])for(const recoverable of [false,true]){
     await page.setViewportSize({width,height:898});
@@ -155,7 +155,7 @@ try{
       return {rows,noOverflow:root.scrollWidth<=root.clientWidth+1&&body.scrollWidth<=body.clientWidth+1,
         filesHidden:[...root.querySelectorAll('input[type=file]')].every(el=>el.getClientRects().length===0)};
     });
-    assert.equal(layout.rows.length,6);assert.equal(layout.noOverflow,true,`overflow at ${width}/${theme}/${recoverable}`);
+    assert.equal(layout.rows.length,7);assert.equal(layout.noOverflow,true,`overflow at ${width}/${theme}/${recoverable}`);
     assert.ok(layout.rows.every(row=>row.contained&&row.aligned&&row.label>0),`controls at ${width}/${theme}/${recoverable}`);
     assert.equal(layout.filesHidden,true);assert.equal(await page.locator('.sd-undo-config').isVisible(),recoverable);
     await page.locator('.sd-storage-backup-section > summary').press('Enter');

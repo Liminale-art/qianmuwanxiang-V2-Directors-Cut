@@ -97,7 +97,7 @@ test('central backup entry binds once and reuses the existing export and restore
   const calls = [], node = dataset => ({ dataset, value: 'picked', listeners: {}, files: [{ name: 'fixture' }],
     addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }, click() { this.clicks = (this.clicks || 0) + 1; } });
   const configExport = node({}), configImport = node({}), configFile = node({});
-  const names = ['storyboard', 'reader', 'favorites', 'notes'];
+  const names = ['storyboard', 'reader', 'favorites', 'audio', 'notes'];
   const exports = names.map(storageExport => node({ storageExport })), picks = names.map(storagePick => node({ storagePick })), imports = names.map(storageImport => node({ storageImport }));
   const backup = { dataset: {}, querySelector: selector => ({ '.sd-export-config': configExport, '.sd-import-config': configImport, '.sd-import-config-file': configFile }[selector]
     || imports.find(input => selector === `input[data-storage-import="${input.dataset.storageImport}"]`)),
@@ -108,7 +108,7 @@ test('central backup entry binds once and reuses the existing export and restore
     storyboardImportAnyPackage: file => { assert.equal(file.name, 'fixture'); calls.push('storyboard-import'); },
     coreadExportData: () => calls.push('reader-export'), coreadImportDataFile: () => calls.push('reader-import'),
     exportTtsFavoritesBackup: button => { assert.equal(button, exports[2]); calls.push('favorites-export'); },
-    importTtsFavoritesBackup: () => calls.push('favorites-import'), exportPinnedNotesBackup: () => calls.push('notes-export'), importPinnedNotesBackup: () => calls.push('notes-import') });
+    importTtsFavoritesBackup: () => calls.push('favorites-import'), ttsExportAudioCache: () => calls.push('audio-export'), ttsImportAudioCache: () => calls.push('audio-import'), exportPinnedNotesBackup: () => calls.push('notes-export'), importPinnedNotesBackup: () => calls.push('notes-import') });
   vm.runInContext(section('bindStorageManagementEvents'), context);
   context.bindStorageManagementEvents(root); context.bindStorageManagementEvents(root);
   assert.deepEqual(calls, [], 'binding controls must never start backup, restore, or generation');
@@ -118,5 +118,5 @@ test('central backup entry binds once and reuses the existing export and restore
   for (const button of exports) button.listeners.click[0]();
   for (const button of picks) button.listeners.click[0]();
   for (const input of imports) { assert.equal(input.clicks, 1); await input.listeners.change[0]({ target: input, currentTarget: input }); assert.equal(input.value, ''); }
-  assert.deepEqual(calls, ['config-export', 'config-import', 'storyboard-export', 'reader-export', 'favorites-export', 'notes-export', 'storyboard-import', 'reader-import', 'favorites-import', 'notes-import']);
+  assert.deepEqual(calls, ['config-export', 'config-import', 'storyboard-export', 'reader-export', 'favorites-export', 'audio-export', 'notes-export', 'storyboard-import', 'reader-import', 'favorites-import', 'audio-import', 'notes-import']);
 });

@@ -235,7 +235,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
     focus:['focusClockEntryBusy'],director:['busy','theaterBusy'],image:['storyboardBusy','storyboardCompilerBusy','storyboardAutomaticCurrent'],
   };
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
-  const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,focusLibraryRuntime:null,
+  const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,focusLibraryRuntime:null,ttsExportAudioCache:{busy:false},ttsImportAudioCache:{busy:false},
     storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
     storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},exportPinnedNotesBackup:{busy:false},exportTtsFavoritesBackup:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
@@ -252,6 +252,11 @@ test('actual activity adapter blocks each independent lane without normalizing o
   }
   for(const status of ['running','paused']){c.settings.focusClock.status=status;assert.ok(c.configRestoreActivity().focus,status);cases++;}
   c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,34);
+  for(const transfer of [c.ttsExportAudioCache,c.ttsImportAudioCache]) {
+    transfer.busy=true;assert.equal(c.configRestoreActivity().audioCache,true);
+    assert.equal(!!c.configRestoreActivity(true,transfer).audioCache,false,'a cache transfer excludes its own slot, not the other transfer');
+    transfer.busy=false;idle();
+  }
   c.storageCleanupSession.busy=true;
   let otherServiceWork=false;
   c.storyboardImageService={busy:true,busyExcept:name=>{assert.equal(name,'manage');return otherServiceWork;}};

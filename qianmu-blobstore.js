@@ -421,7 +421,11 @@ export function createReaderPackageWriter({check = () => {}} = {}) {
               try {
                 check();
                 if (lookup.result !== undefined) return;
-                audio.add({blob:entry.blob, meta:entry.meta || {}, createdAt:entry.createdAt || Date.now()}, entry.key);
+                const write = audio.add({blob:entry.blob, meta:entry.meta || {}, createdAt:entry.createdAt || Date.now()}, entry.key);
+                write.onsuccess = () => {
+                  try { check(); }
+                  catch (error) { guardError = error; try { transaction.abort(); } catch (_) { reject(error); } }
+                };
                 inserted = true;
               } catch (error) { guardError = error; try { transaction.abort(); } catch (_) { reject(error); } }
             };

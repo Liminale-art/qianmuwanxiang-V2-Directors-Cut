@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-audio-cache-backup.js",
     "qianmu-model-response.js",
     "qianmu-model-external.js",
     "qianmu-model-host.js",

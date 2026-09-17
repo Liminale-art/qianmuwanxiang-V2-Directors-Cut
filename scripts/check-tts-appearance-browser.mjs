@@ -89,7 +89,8 @@ try {
             await page.evaluate(async ({ family, mode, provider }) => { await setAppearance(family, mode); renderVoices(provider); }, { family, mode, provider });
             ok(label + ' actual provider form and all original library controls are present', await page.evaluate(() =>
                 document.querySelectorAll('.sd-tts-provider option').length === 3 && document.querySelectorAll('.sd-tts-lib-test').length === 30
-                && document.querySelectorAll('.sd-tts-narch-test').length === 25 && document.querySelectorAll('.sd-tts-fav-refresh,.sd-tts-cache-export,.sd-tts-cache-import,.sd-tts-cache-clear,.sd-tts-save-prompt,.sd-tts-save-scheme').length === 6));
+                && document.querySelectorAll('.sd-tts-narch-test').length === 25 && document.querySelectorAll('.sd-tts-fav-refresh,.sd-tts-save-prompt,.sd-tts-save-scheme').length === 3
+                && document.querySelectorAll('.sd-tts-cache-limit').length === 1 && document.querySelectorAll('.sd-tts-cache-export,.sd-tts-cache-import,.sd-tts-cache-clear').length === 0));
             ok(label + ' provider-specific parameter gates are unchanged', await page.evaluate(provider => provider === 'minimax'
                 ? !!document.querySelector('.sd-tts-langboost') && !!document.querySelector('.sd-tts-prondict-from')
                 : provider === 'doubao' ? !!document.querySelector('.sd-tts-auth-mode') && !!document.querySelector('.sd-tts-sample-rate') && !document.querySelector('.sd-tts-langboost')
