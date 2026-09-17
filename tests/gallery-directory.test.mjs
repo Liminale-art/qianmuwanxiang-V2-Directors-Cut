@@ -116,3 +116,68 @@ test('cancel between historical metadata and image fetch releases readers withou
     }});s=await create(f.options);
     await assert.rejects(s.preview({namespace:ns,...source,recordId:'old',createdAt:3,kind:'still'}));assert.equal(loaded,0);assert.ok(released>=2);assert.equal(f.writes,0);
 });
+
+function savingFixture({ mime = 'image/png', duringRead = async () => {}, guard = async () => {} } = {}) {
+    let reads = 0, loads = 0, released = 0;
+    const record = { id: 'old/private:name', createdAt: 3, url: '/user/images/fixture.png', tags: ['original'] };
+    const blob = new Blob(['original bytes, never re-encoded'], { type: mime }), selections = [], targets = [];
+    const f = fixture({ options: { guard,
+        createHistoricalClient: () => ({ inspect: async () => ({ state: 'present', gallery: { sha256: 'a'.repeat(64) } }), close() { released++; } }),
+        createRecordClient: options => { targets.push(options.target); return { async read(selection) { reads++; selections.push(selection); await duringRead(reads); return { record: structuredClone(record) }; }, close() { released++; } }; },
+        loadImage: async () => { loads++; return { blob, width: 10, height: 20 }; },
+    } });
+    return { ...f, record, blob, selections, targets, get reads() { return reads; }, get loads() { return loads; }, get released() { return released; },
+        selected: { namespace: ns, ownerKey: 'char:B.png', chatKey: 'historical', recordId: record.id, createdAt: 3, kind: 'still' } };
+}
+
+test('historical saving rechecks the exact source and downloads identical preview bytes without a second media request', async () => {
+    for (const [mime, extension] of [['image/png','png'],['image/jpeg','jpg'],['image/webp','webp']]) {
+        const f = savingFixture({ mime }), before = structuredClone(f.context), s = await create(f.options), preview = await s.preview(f.selected);
+        let saved; const result = await s.savePreview(preview, (blob, filename) => saved = { blob, filename });
+        assert.equal(saved.blob, f.blob); assert.equal(await saved.blob.text(), 'original bytes, never re-encoded');
+        assert.equal(saved.filename, `qianmu-still-3.${extension}`); assert.equal(result.bytes, f.blob.size);
+        assert.equal(f.loads, 1); assert.equal(f.reads, 2); assert.equal(f.released, 3);
+        assert.deepEqual(f.selections[0], f.selections[1]); assert.deepEqual(f.targets[1], { kind: 'character', chatId: 'historical', avatar: 'B.png' });
+        assert.deepEqual(f.context, before); assert.ok(Object.isFrozen(preview) && Object.isFrozen(preview.record.tags)); s.close();
+    }
+});
+
+test('copied, released, foreign-session or closed preview cannot authorize a download', async () => {
+    const f = savingFixture(), s = await create(f.options), preview = await s.preview(f.selected), otherFixture = savingFixture(), other = await create(otherFixture.options);
+    await assert.rejects(s.savePreview({ ...preview }, () => assert.fail('forged download')));
+    await assert.rejects(other.savePreview(preview, () => assert.fail('foreign download'))); other.close();
+    s.releasePreview(preview); await assert.rejects(s.savePreview(preview, () => assert.fail('released download')));
+    const reopened = await s.preview(f.selected); s.close(); await assert.rejects(s.savePreview(reopened, () => assert.fail('closed download')));
+});
+
+test('changed historical record and missing source reject saving without falling back to an unverified URL', async () => {
+    for (const change of [() => { throw Error('record_changed'); }, () => { throw Error('record_missing'); }, record => { record.url = '/user/images/replaced.png'; }]) {
+        const f = savingFixture({ duringRead: async n => { if (n === 2) change(f.record); } });
+        const s = await create(f.options), preview = await s.preview(f.selected);
+        await assert.rejects(s.savePreview(preview, () => assert.fail('stale download'))); assert.equal(f.loads, 1); assert.equal(f.released, 3); s.close();
+    }
+});
+
+test('account/source guard failure during revalidation never invokes browser download', async () => {
+    let changed = false;
+    const f = savingFixture({ guard: async () => { if (changed) throw Error('account changed'); }, duringRead: async n => { if (n === 2) changed = true; } });
+    const s = await create(f.options), preview = await s.preview(f.selected);
+    await assert.rejects(s.savePreview(preview, () => assert.fail('wrong-account download')), /account changed/); assert.equal(f.loads, 1);
+});
+
+test('closing or releasing a preview during pending metadata revalidation suppresses late download', async () => {
+    for (const close of [false, true]) {
+        let release, started; const waiting = new Promise(resolve => started = resolve), gate = new Promise(resolve => release = resolve);
+        const f = savingFixture({ duringRead: async n => { if (n === 2) { started(); await gate; } } }), s = await create(f.options), preview = await s.preview(f.selected);
+        const pending = s.savePreview(preview, () => assert.fail('late download')); await waiting;
+        if (close) s.close(); else s.releasePreview(preview); release(); await assert.rejects(pending, /关闭/); s.close();
+    }
+});
+
+test('duplicate save is blocked until the first request exits, and callback failure permits explicit retry', async () => {
+    let release, started; const waiting = new Promise(resolve => started = resolve), gate = new Promise(resolve => release = resolve);
+    const f = savingFixture({ duringRead: async n => { if (n === 2) { started(); await gate; } } }), s = await create(f.options), preview = await s.preview(f.selected);
+    const pending = s.savePreview(preview, () => { throw Error('browser download blocked'); }); await waiting;
+    await assert.rejects(s.savePreview(preview, () => assert.fail('duplicate download')), /正在/); release(); await assert.rejects(pending, /browser download blocked/);
+    let saved = 0; await s.savePreview(preview, () => saved++); assert.equal(saved, 1); assert.equal(f.reads, 3); assert.equal(f.loads, 1); s.close();
+});

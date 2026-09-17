@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
 const { chromium } = createRequire(import.meta.url)(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), errors = [], checks = []; let external = 0;
@@ -18,6 +19,7 @@ await context.route('**/*', async route => {
 });
 try {
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); await page.goto('https://qianmu.test/');
+    await page.addScriptTag({ content: storyboardFunctionSource('ttsDownloadBlob') });
     const result = await page.evaluate(async () => {
         const { createGalleryCatalogStore: create } = await import('/qianmu-gallery-catalog-store.js');
         const { createGalleryDirectorySession } = await import('/qianmu-gallery-directory.js');
@@ -54,6 +56,7 @@ try {
             eventSource: { on(type, handler) { const set = listeners.get(type) || new Set(); set.add(handler); listeners.set(type, set); }, removeListener(type, handler) { listeners.get(type)?.delete(handler); } } };
         window.generation = 1; window.account = ns; window.opened = null; window.receipts = []; window.readGate = null;
         window.mediaCalls=0;window.imageFail=false;window.imageGate=null;window.createdUrls=[];window.revokedUrls=[];
+        window.saveCalls=0;window.recordCalls=0;window.recordGate=null;window.recordConflict=false;window.downloadFail=false;window.recordTimeout=10000;
         const createUrl=URL.createObjectURL.bind(URL),revokeUrl=URL.revokeObjectURL.bind(URL);
         URL.createObjectURL=blob=>{const url=createUrl(blob);window.createdUrls.push(url);return url;};URL.revokeObjectURL=url=>{window.revokedUrls.push(url);revokeUrl(url);};
         const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=1800;canvas.getContext('2d').fillRect(0,0,1000,1800);
@@ -63,6 +66,10 @@ try {
             const request = JSON.parse(options.body); window.receipts.push(request);
             check('metadata request never uploads source contents or generates images', !options.body.includes('PRIVATE') && /\/chat-gallery\/(receipt|record)$/.test(url));
             if (window.readGate) await window.readGate;
+            if (url.endsWith('/record')) {
+                window.recordCalls++; if (window.recordGate) await window.recordGate;
+                if (window.recordConflict) return new Response(JSON.stringify({ok:false,code:'chat_character_receipt_record_changed'}),{status:409,headers:{'Content-Type':'application/json'}});
+            }
             if (request.target.avatar === 'B.png') return new Response(JSON.stringify({ ok: false, code: 'chat_character_receipt_missing', message: 'PRIVATE_PATH' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
             const selectedFrames=request.target.avatar==='C.png'?[{id:'same-id',createdAt:100,url:'/user/images/fixture.png',tags:['历史画面']}]:frames;
             const value = chatGalleryReceiptText(selectedFrames);
@@ -75,10 +82,11 @@ try {
             const root = document.getElementById('story-director-modal'); root.classList.add('open');
             window.controller = openGalleryDirectory({ parent: root, getContext: () => window.host, epoch: () => window.generation,
                 locate: record => { window.opened = record.id; },
+                save: (blob, filename) => { if (window.downloadFail) throw Error('浏览器下载受阻'); window.saveCalls++; window.ttsDownloadBlob(blob, filename); },
                 connect: options => createGalleryDirectorySession({ ...options,
                     createClient: opts => createCurrentChatGalleryReceiptClient({ ...opts, account: async () => window.account, fetchImpl }),
                     createHistoricalClient: opts => createChatGalleryReceiptClient({ ...opts, fetchImpl }),
-                    createRecordClient:opts=>createChatGalleryRecordClient({...opts,fetchImpl}),
+                    createRecordClient:opts=>createChatGalleryRecordClient({...opts,fetchImpl,timeoutMs:window.recordTimeout}),
                     loadImage:(url,opts)=>loadGalleryPreviewImage(url,{...opts,fetchImpl:async(path,options)=>{
                         if(path!=='/user/images/fixture.png'||options.redirect!=='error'||options.credentials!=='same-origin')throw Error('unexpected media access');
                         window.mediaCalls++;if(window.imageGate)await window.imageGate;
@@ -129,15 +137,51 @@ try {
         send('pointerdown',1,100);send('pointerdown',2,200);send('pointermove',2,260);send('pointerup',1,100);send('pointerup',2,260);
     });
     assert.ok(Number(await stage.getAttribute('data-scale'))>1);await dialog.locator('[data-preview-zoom="reset"]').click();checks.push('real wheel and synthetic two-pointer zoom work with one-click reset');
+    await dialog.locator('[data-preview-zoom="in"]').click(); await dialog.locator('details summary').click();
+    const selectedScale=await stage.getAttribute('data-scale'),mediaBeforeSave=await page.evaluate(()=>window.mediaCalls);
+    await page.evaluate(()=>{window.previewImageNode=document.querySelector('.sd-directory-image-stage img');});
+    const saving=page.waitForEvent('download');await dialog.locator('[data-directory-action="preview-save"]').click();const download=await saving;
+    assert.equal(download.suggestedFilename(),'qianmu-still-100.png');
+    assert.deepEqual(await readFile(await download.path()),Buffer.from(await page.evaluate(async()=>Array.from(new Uint8Array(await window.previewBlob.arrayBuffer())))));
+    assert.equal(await page.evaluate(()=>window.mediaCalls),mediaBeforeSave);assert.equal(await stage.getAttribute('data-scale'),selectedScale);
+    assert.equal(await dialog.locator('details[open]').count(),1);assert.equal(await page.evaluate(()=>window.previewImageNode===document.querySelector('.sd-directory-image-stage img')),true);
+    assert.match(await dialog.locator('footer').innerText(),/交给浏览器保存/);assert.match(await dialog.locator('footer').innerText(),/不是完整联包/);
+    checks.push('native browser download is byte-identical to the decoded original, without another media fetch or lost zoom/details');
+    await page.evaluate(()=>{window.downloadFail=true;});await dialog.locator('[data-directory-action="preview-save"]').click();
+    await page.waitForFunction(()=>document.querySelector('.sd-gallery-directory footer').textContent.includes('下载受阻'));
+    assert.equal(await page.evaluate(()=>window.saveCalls),1);assert.equal(await dialog.locator('[data-directory-action="preview-save"]').isEnabled(),true);
+    checks.push('browser handoff failure remains visible and enables explicit retry without a false success');
+    await page.evaluate(()=>{window.downloadFail=false;window.recordConflict=true;});await dialog.locator('[data-directory-action="preview-save"]').click();
+    await page.waitForFunction(()=>document.querySelector('.sd-gallery-directory footer').textContent.includes('已变化'));
+    assert.equal(await page.evaluate(()=>window.saveCalls),1);assert.equal(await page.evaluate(()=>window.mediaCalls),mediaBeforeSave);
+    checks.push('changed historical metadata blocks download with no URL fallback, new media request or source write');
+    const metadataBefore=await page.evaluate(()=>window.recordCalls);
+    await page.evaluate(()=>{window.recordConflict=false;window.recordGate=new Promise(resolve=>window.releaseRecord=resolve);});
+    await dialog.locator('[data-directory-action="preview-save"]').click();await page.waitForFunction(n=>window.recordCalls>n,metadataBefore);
+    assert.equal(await dialog.locator('[data-directory-action="preview-back"]').isDisabled(),true);
+    await dialog.locator('[data-directory-action="preview-save"]').dispatchEvent('click');
+    assert.equal(await page.evaluate(()=>window.recordCalls),metadataBefore+1);
+    const retryDownload=page.waitForEvent('download');await page.evaluate(()=>{window.releaseRecord();window.recordGate=null;});await retryDownload;
+    await page.waitForFunction(()=>!document.querySelector('[data-directory-action="preview-save"]').disabled);
+    assert.equal(await page.evaluate(()=>window.saveCalls),2);checks.push('duplicate save is ignored while revalidating and an explicit retry issues exactly one native download');
+    await page.evaluate(()=>{window.recordTimeout=100;window.recordGate=new Promise(resolve=>window.releaseRecord=resolve);});
+    await dialog.locator('[data-directory-action="preview-save"]').click();
+    await page.waitForFunction(()=>document.querySelector('.sd-gallery-directory footer').textContent.includes('已取消'));
+    await page.evaluate(()=>{window.releaseRecord();window.recordGate=null;window.recordTimeout=10000;});
+    assert.equal(await page.evaluate(()=>window.saveCalls),2);assert.equal(await dialog.locator('[data-directory-action="preview-save"]').isEnabled(),true);
+    checks.push('timed-out metadata check is cancellable and its late response cannot start a download');
     for(const theme of [null,{theme:'editorial',mode:'light'},{theme:'editorial',mode:'dark'},{theme:'glass',mode:'light'},{theme:'glass',mode:'dark'}])for(const width of [320,1280]){
         await page.evaluate(theme=>window.themeController.setTheme(theme),theme);
         await page.setViewportSize({width,height:720});await dialog.locator('[data-preview-zoom="reset"]').click();
         const fits=await stage.evaluate(node=>{const img=node.querySelector('img').getBoundingClientRect();return img.width<=node.clientWidth+1&&img.height<=node.clientHeight+1;});
-        assert.equal(fits,true);checks.push(`${theme?.theme||'classic'}/${theme?.mode||'default'}/${width}px portrait preview initially contains the complete image`);
+        assert.equal(fits,true);
+        const saveFits=await dialog.locator('[data-directory-action="preview-save"]').evaluate(node=>{const outer=node.closest('dialog').getBoundingClientRect(),rect=node.getBoundingClientRect();return rect.left>=outer.left&&rect.right<=outer.right;});
+        assert.equal(saveFits,true);checks.push(`${theme?.theme||'classic'}/${theme?.mode||'default'}/${width}px portrait preview and original-save control fit within the dialog`);
     }
     await dialog.locator('[data-directory-action="preview-back"]').click();await idle();
     assert.equal(await dialog.locator('[data-directory-history]').count(),1);assert.match(await dialog.locator('h3').innerText(),/同名聊天/);
-    assert.deepEqual(await page.evaluate(()=>window.createdUrls),await page.evaluate(()=>window.revokedUrls));checks.push('back keeps the selected role/chat/page and releases its blob URL');
+    await page.waitForFunction(()=>window.createdUrls.length===window.revokedUrls.length);
+    assert.deepEqual((await page.evaluate(()=>window.createdUrls)).sort(),(await page.evaluate(()=>window.revokedUrls)).sort());checks.push('back keeps the selected role/chat/page and releases preview and download blob URLs');
     for(const shape of [[1800,1000],[1000,1000]]){
         await page.evaluate(async([width,height])=>{const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;canvas.getContext('2d').fillRect(0,0,width,height);window.previewBlob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));},shape);
         await dialog.locator('[data-directory-history]').click();await page.waitForFunction(width=>document.querySelector('.sd-directory-image-stage img')?.naturalWidth===width,shape[0]);
@@ -151,6 +195,23 @@ try {
     await page.evaluate(()=>{window.imageFail=true;});await dialog.locator('[data-directory-history]').click();await idle();
     assert.match(await dialog.locator('footer').innerText(),/原图不存在/);assert.equal(await dialog.locator('img').count(),0);checks.push('missing image reports failure while keeping the directory and original reference');
     await page.evaluate(()=>{window.imageFail=false;});
+    const openHistoricalPreview=async()=>{
+        await dialog.locator('[data-directory-history]').click();await page.waitForFunction(()=>document.querySelector('.sd-directory-image-stage img')?.naturalWidth>0);
+    };
+    await openHistoricalPreview();const savesBeforeClose=await page.evaluate(()=>window.saveCalls),readsBeforeClose=await page.evaluate(()=>window.recordCalls);
+    await page.evaluate(()=>{window.recordGate=new Promise(resolve=>window.releaseRecord=resolve);});
+    await dialog.locator('[data-directory-action="preview-save"]').click();await page.waitForFunction(n=>window.recordCalls>n,readsBeforeClose);
+    await page.keyboard.press('Escape');await page.evaluate(()=>{window.releaseRecord();window.recordGate=null;});
+    await page.waitForFunction(()=>window.listenerCount()===0);assert.equal(await page.evaluate(()=>window.saveCalls),savesBeforeClose);
+    checks.push('closing while a save is checking metadata aborts readers and suppresses late native download');
+    await page.evaluate(()=>window.openFixture());await idle();await dialog.locator('[data-directory-scope]').filter({hasText:'char:C.png'}).click();await idle();await dialog.locator('[data-directory-scope]').first().click();await idle();
+    await openHistoricalPreview();const readsBeforeAccount=await page.evaluate(()=>window.recordCalls);
+    await page.evaluate(()=>{window.recordGate=new Promise(resolve=>window.releaseRecord=resolve);});
+    await dialog.locator('[data-directory-action="preview-save"]').click();await page.waitForFunction(n=>window.recordCalls>n,readsBeforeAccount);
+    await page.evaluate(()=>{window.account='st-user:other';window.releaseRecord();window.recordGate=null;});
+    await page.waitForFunction(()=>!document.querySelector('.sd-gallery-directory'));assert.equal(await page.evaluate(()=>window.saveCalls),savesBeforeClose);
+    assert.equal(await page.evaluate(()=>window.listenerCount()),0);checks.push('account change during save closes stale preview without a download or current-chat mutation');
+    await page.evaluate(()=>{window.account='st-user:fixture';window.openFixture();});await idle();
     await click('owners'); await dialog.locator('[data-directory-scope]').filter({ hasText: 'char:A.png' }).click(); await idle();
     await dialog.locator('[data-directory-scope]').first().click(); await idle();
     for (const theme of [null, { theme: 'editorial', mode: 'light' }, { theme: 'editorial', mode: 'dark' }, { theme: 'glass', mode: 'light' }, { theme: 'glass', mode: 'dark' }]) for (const width of [320, 393, 1280]) {
@@ -176,7 +237,7 @@ try {
     await dialog.locator('[data-directory-history]').click();await page.waitForFunction(n=>window.mediaCalls>n,beforeCalls);
     await page.keyboard.press('Escape');await page.evaluate(()=>{window.releaseImage();window.imageGate=null;});
     await page.waitForFunction(()=>window.listenerCount()===0);
-    assert.deepEqual(await page.evaluate(()=>window.createdUrls),await page.evaluate(()=>window.revokedUrls));checks.push('closing during original fetch prevents late preview and releases source listeners');
+    assert.deepEqual((await page.evaluate(()=>window.createdUrls)).sort(),(await page.evaluate(()=>window.revokedUrls)).sort());checks.push('closing during original fetch prevents late preview and releases source listeners');
     await page.evaluate(() => { window.readGate = new Promise(resolve => window.releaseGate = resolve); window.openFixture(); });
     await page.waitForFunction(() => document.querySelector('.sd-gallery-directory'));
     await page.keyboard.press('Escape'); await page.evaluate(() => { window.releaseGate(); window.readGate = null; });

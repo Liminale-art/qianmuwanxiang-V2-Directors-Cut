@@ -33,10 +33,11 @@ export async function createGalleryDirectorySession({ getContext, epoch, guard =
     createHistoricalClient = createChatGalleryReceiptClient, createRecordClient = createChatGalleryRecordClient,
     loadImage = loadGalleryPreviewImage } = {}) {
     const client = await createClient({ getContext, epoch, guard });
-    let closed = false, store, updating = false;
+    let closed = false, store, updating = false, previews = new WeakMap();
+    const saving = new WeakSet();
     const readers = new Set(), mediaController = new AbortController(), namespace = client.owner.namespace, source = client.source;
     const current = () => { if (closed) throw Error('图库目录已关闭'); client.assertCurrent(); return true; };
-    function close() { closed = true; mediaController.abort(); client.close(); for (const reader of readers) reader.close(); readers.clear(); store?.close(); }
+    function close() { closed = true; previews = new WeakMap(); mediaController.abort(); client.close(); for (const reader of readers) reader.close(); readers.clear(); store?.close(); }
     const check = async () => {
         try { current(); await client.guard(); current(); await guard(); current(); }
         catch (error) { close(); throw error; }
@@ -92,10 +93,36 @@ export async function createGalleryDirectorySession({ getContext, epoch, guard =
             try {
                 const receipt = await receiptReader.inspect(); await check();
                 if (receipt.state !== 'present') throw Error('原聊天没有静帧记录；历史目录引用保留');
-                const result = await recordReader.read({ recordId: row.recordId, createdAt: row.createdAt, gallerySha256: receipt.gallery.sha256 }); await check();
+                const selection = { recordId: row.recordId, createdAt: row.createdAt, gallerySha256: receipt.gallery.sha256 };
+                const result = await recordReader.read(selection); await check();
                 const media = await loadImage(result.record.url, { guard: check, signal: mediaController.signal }); await check();
-                return { ...media, record: result.record, source: selected };
+                const record = Object.freeze({ ...result.record, tags: Object.freeze([...result.record.tags]) });
+                const preview = Object.freeze({ ...media, record, source: Object.freeze(selected) });
+                previews.set(preview, { target, selection, recordText: JSON.stringify(record), blob: media.blob });
+                return preview;
             } finally { readers.delete(receiptReader); readers.delete(recordReader); receiptReader.close(); recordReader.close(); }
+        },
+        releasePreview(preview) { previews.delete(preview); },
+        async savePreview(preview, save) {
+            const captured = previews.get(preview);
+            if (!captured || typeof save !== 'function') throw Error('此预览已关闭或不是当前会话读取的原图，请重新打开');
+            if (saving.has(preview)) throw Error('正在核对并保存这张原图，请稍候');
+            const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[captured.blob?.type];
+            if (!extension || !captured.blob.size) throw Error('预览原图格式不完整，未保存');
+            const verify = async () => { await check(); if (previews.get(preview) !== captured) throw Error('原图预览已关闭，未继续保存'); };
+            saving.add(preview); let reader;
+            try {
+                await verify();
+                reader = createRecordClient({ namespace, target: captured.target, headers: () => getContext().getRequestHeaders?.() || {}, guard: verify });
+                readers.add(reader);
+                const result = await reader.read(captured.selection); await verify();
+                if (JSON.stringify(result.record) !== captured.recordText) throw Error('原画面来源已变化，请重新打开后保存');
+                // Save the exact bytes already decoded for this preview, not a screenshot,
+                // a second media response, or a supposedly restorable chat/configuration pack.
+                const filename = `qianmu-still-${captured.selection.createdAt}.${extension}`;
+                await save(captured.blob, filename);
+                return { filename, bytes: captured.blob.size };
+            } finally { saving.delete(preview); if (reader) { readers.delete(reader); reader.close(); } }
         },
         close,
     };
