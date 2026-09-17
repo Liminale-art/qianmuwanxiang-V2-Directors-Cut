@@ -86,6 +86,28 @@ test('hive tone can follow appearance mode when not explicitly pinned', () => {
     }
 });
 
+test('detached notes follow current day/night and accent even with saved dark tone and neutral edge zero', () => {
+    const controller = createQianmuThemeSurfaceController(), root = element();
+    root.style.setProperty('--sd-wheel-glass-fill', 'classic-fill');
+    root.style.setProperty('--sd-wheel-icon', 'classic-icon');
+    root.style.setProperty('--sd-wheel-edge', 'classic-edge');
+    root.style.setProperty('left', '80px'); root.style.setProperty('top', '180px');
+    controller.register(root, { role: 'notes-entry', tone: 'dark', edgeIndex: 0 });
+    for (const theme of ['editorial', 'glass']) for (const mode of ['light', 'dark']) for (const accent of ['#d24962', '#3c78bb']) {
+        const snapshot = controller.setTheme({ theme, mode, accent });
+        assert.equal(root.style.getPropertyValue('--sd-wheel-glass-fill'), snapshot.hive[mode].fill);
+        assert.equal(root.style.getPropertyValue('--sd-wheel-edge'), snapshot.css['--qm-accent']);
+        assert.equal(root.style.getPropertyValue('--sd-wheel-icon'), `color-mix(in srgb, ${snapshot.css['--qm-accent']} 55%, ${snapshot.hive[mode].icon})`);
+        assert.equal(root.style.getPropertyValue('color'), root.style.getPropertyValue('--sd-wheel-icon'));
+        assert.equal(root.style.getPropertyValue('left'), '80px'); assert.equal(root.style.getPropertyValue('top'), '180px');
+    }
+    controller.setTheme(null);
+    assert.equal(root.style.getPropertyValue('--sd-wheel-glass-fill'), 'classic-fill');
+    assert.equal(root.style.getPropertyValue('--sd-wheel-icon'), 'classic-icon');
+    assert.equal(root.style.getPropertyValue('--sd-wheel-edge'), 'classic-edge');
+    assert.equal(root.style.getPropertyValue('color'), '');
+});
+
 test('same snapshot causes no redundant DOM writes', () => {
     const controller = createQianmuThemeSurfaceController(), root = element();
     controller.register(root); controller.setTheme({ accent: '#abc' }); const writes = root.writes;

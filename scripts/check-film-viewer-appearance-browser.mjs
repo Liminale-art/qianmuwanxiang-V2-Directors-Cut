@@ -131,7 +131,7 @@ try {
                 const stage = getComputedStyle(document.querySelector('.sd-storyboard-film-viewer-stage'));
                 const scroller = getComputedStyle(document.querySelector('.sd-storyboard-film-viewer-segments'));
                 return family === 'classic' ? stage.borderRadius === '14px' && scroller.scrollbarWidth === 'thin'
-                    : stage.borderRadius === (family === 'glass' ? '22px' : '5px') && scroller.scrollbarWidth === 'none';
+                    : stage.borderRadius === (family === 'glass' ? '22px' : '0px') && scroller.scrollbarWidth === 'none';
             }, family));
             ok(`${label} title/subtitle remain text`, await page.locator('aside img,.sd-storyboard-film-viewer-subtitles img').count() === 0
                 && await page.locator('.sd-storyboard-film-viewer-subtitles').innerText().then(text => text.includes('<img src=x>')));

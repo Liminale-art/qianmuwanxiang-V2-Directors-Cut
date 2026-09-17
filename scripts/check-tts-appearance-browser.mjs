@@ -115,7 +115,7 @@ try {
             ok(label + ' hot palette changes preserve local edits, selection, scroll and provider state: ' + JSON.stringify(stable), Object.values(stable).every(Boolean));
             ok(label + ' labels cannot inject markup', await page.locator('.sd-body img').count() === 0);
             if (family !== 'classic') {
-                ok(label + ' voice lists follow family corners', await page.locator('.sd-tts-lib-list .sd-lib-folder,.sd-tts-npc-list .sd-lib-row').evaluateAll((nodes, family) => nodes.every(node => getComputedStyle(node).borderTopLeftRadius === (family === 'glass' ? '22px' : '5px')), family));
+                ok(label + ' voice lists follow family corners', await page.locator('.sd-tts-lib-list .sd-lib-folder,.sd-tts-npc-list .sd-lib-row').evaluateAll((nodes, family) => nodes.every(node => getComputedStyle(node).borderTopLeftRadius === (family === 'glass' ? '22px' : '0px')), family));
                 ok(label + ' scrollbars are hidden without disabling scrolling', await page.locator('.sd-tts-lib-list,.sd-tts-npc-list').evaluateAll(nodes => nodes.every(node => getComputedStyle(node).scrollbarWidth === 'none' && node.scrollTop > 0)));
                 ok(label + ' provider and mapping fields fit the narrow panel', await page.locator('.sd-tts-model-row,.sd-tts-voice-row,.sd-tts-tag-row,.sd-tts-prondict-row').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1)));
                 const enabled = await page.locator('.sd-tts-enabled').evaluate(node => ({ color: getComputedStyle(node).color, contrast: contrast(node) }));

@@ -139,7 +139,7 @@ try {
                 ok(label + ' diagnostic text fits narrow cards: ' + JSON.stringify(over.slice(0, 2)), over.length === 0);
                 const ratios = await page.locator('.sd-log-status,.sd-structured-output-toggle.active,.sd-widget-toggle.active,.sd-video-channel-badge.ready,.sd-video-channel-state > span[data-status=ready]').evaluateAll(nodes => nodes.map(contrast));
                 ok(label + ' log/status and selected widget labels stay readable: ' + JSON.stringify(ratios), ratios.every(value => value >= 4.5));
-                ok(label + ' log folds use theme corners', await page.locator('.sd-log-entry').first().evaluate((node, family) => getComputedStyle(node).borderTopLeftRadius === (family === 'glass' ? '22px' : '5px'), family));
+                ok(label + ' log folds use theme corners', await page.locator('.sd-log-entry').first().evaluate((node, family) => getComputedStyle(node).borderTopLeftRadius === (family === 'glass' ? '22px' : '0px'), family));
                 ok(label + ' log text retains scrolling without visible bars', await page.locator('.sd-term').evaluateAll(nodes => nodes.every(node => getComputedStyle(node).scrollbarWidth === 'none')));
                 ok(label + ' selected widgets remain distinct and terminal keeps its own canvas', await page.evaluate(() =>
                     getComputedStyle(document.querySelector('.sd-widget-toggle.active')).backgroundColor !== getComputedStyle(document.querySelector('.sd-widget-toggle:not(.active)')).backgroundColor

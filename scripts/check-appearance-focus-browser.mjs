@@ -124,7 +124,7 @@ try {
             await page.evaluate(kind => remember(kind), kind);
             const result = await page.evaluate(kind => flip(kind), kind);
             assert.equal(result.nodes && result.focus && result.scroll && result.count && result.values, true, `${label}/${kind}: continuity ${JSON.stringify(result)}`);
-            assert.equal(result.fits, true); assert.equal(result.radius, await page.evaluate(() => settings.appearance.family === 'glass' ? '22px' : '5px'));
+            assert.equal(result.fits, true); assert.equal(result.radius, await page.evaluate(() => settings.appearance.family === 'glass' ? '22px' : '0px'));
             if (kind === 'editor') assert.deepEqual(result.selection, [2, 5]);
             if (screenshots && width === 393 && family === 'glass') {
                 const appearanceName = await page.evaluate(() => `${settings.appearance.family}-${settings.appearance.mode}`);

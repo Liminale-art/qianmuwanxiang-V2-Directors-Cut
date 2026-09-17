@@ -24,7 +24,7 @@ await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' });
   if (url === 'https://qianmu.test/qianmu-theme-skins.css') { skinRequests++; if(holdSkin)await new Promise(resolve=>releaseSkin=resolve); return route.fulfill({status:failSkin?404:200,contentType:'text/css',body:failSkin?'':await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')}); }
-  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-settings.js', 'qianmu-appearance-portals.js', 'qianmu-notes-theme.js', 'qianmu-classic-palettes.js', 'qianmu-appearance-actions.js']) {
+  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-settings.js', 'qianmu-appearance-portals.js', 'qianmu-notes-theme.js', 'qianmu-classic-palettes.js', 'qianmu-appearance-actions.js', 'qianmu-hive-theme-logo.js']) {
     if (url === `https://qianmu.test/${file}`) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
   }
   external++; return route.abort();
@@ -171,10 +171,11 @@ try {
         return { ...counters, theme: settings.theme, renders: performanceRuntime.modalRenderCount,scroll:classicBody.scrollTop };
       });
       await page.locator('.sd-theme-btn').click();
+      await page.locator('[data-appearance-family="classic"]').click();
       await page.locator(`.sd-theme-opt[data-theme="${key}"]`).click();
       const next = await page.evaluate(() => ({ ...counters, theme: settings.theme, renders: performanceRuntime.modalRenderCount,
         listeners: outsideListeners.size, hidden: document.querySelector('.sd-theme-menu').hidden,
-        checked: document.querySelector('.sd-theme-opt[aria-checked="true"]').dataset.theme,
+        checked: document.querySelector('.sd-theme-opt[data-theme][aria-checked="true"]').dataset.theme,
         same:classicBody===document.querySelector('.sd-body')&&classicDraft===classicBody.querySelector('textarea'),draft:classicDraft.value,selection:[classicDraft.selectionStart,classicDraft.selectionEnd],scroll:classicBody.scrollTop,
         expanded:classicBody.querySelector('details').open,focus:document.activeElement===document.querySelector('.sd-theme-btn'),className:document.getElementById(MODAL_ID).className }));
       assert.equal(next.theme, key); assert.equal(next.checked, key); assert.equal(next.hidden, true); assert.equal(next.listeners, 0);
@@ -184,9 +185,9 @@ try {
       checks.push(`${width}/${key}: actual classic menu persists once without rerender, keeps draft/selection/scroll/fold and returns trigger focus`);
     }
     await page.locator('.sd-theme-btn').focus(); await page.keyboard.press('ArrowDown');
-    assert.equal(await page.locator('.sd-theme-opt[data-theme][aria-checked="true"]').evaluate(node => node === document.activeElement), true);
+    assert.equal(await page.locator('.sd-theme-opt[data-appearance-family="classic"]').evaluate(node => node === document.activeElement), true);
     await page.keyboard.press('Home'); assert.equal(await page.evaluate(() => document.activeElement.dataset.appearanceFamily), 'editorial');
-    await page.keyboard.press('End'); assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'dream');
+    await page.keyboard.press('End'); assert.equal(await page.evaluate(() => document.activeElement.dataset.appearanceFamily), 'classic');
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('.sd-theme-btn').evaluate(node => node === document.activeElement && node.getAttribute('aria-expanded') === 'false'), true);
     checks.push(`${width}: real menu ArrowDown/Home/End/Escape and focus return`);
@@ -206,7 +207,7 @@ try {
   const mounts = ['currentHiveThemeKey','currentHivePalette','syncNotesTheme','renderNotesPanelPortal','renderFloatingNotes','bindFloatingNoteEvents','renderFloatButton'];
   await page.evaluate(async ({functions,palettes}) => {
     const noop=()=>{}, {createQianmuAppearanceSession}=await import('./qianmu-appearance-session.js');
-    Object.assign(window,await import('./qianmu-notes-theme.js'),await import('./qianmu-appearance-settings.js'),{
+    Object.assign(window,await import('./qianmu-notes-theme.js'),await import('./qianmu-appearance-settings.js'),await import('./qianmu-hive-theme-logo.js'),{
       MODULE_NAME:'isolated-qianmu',QUICK_HIVE_THEME_PALETTES:palettes,NOTES_PANEL_LAYER_ID:'qianmu-notes-panel-layer',NOTES_FLOAT_LAYER_ID:'qianmu-notes-float-layer',FLOAT_ID:'story-director-float',
       NOTES_THEME_VARIABLES:['--sd-text','--sd-muted','--sd-accent','--sd-card','--sd-primary'],QUICK_HEX_BORDER_SVG:'',FLOAT_LOGO_URLS:{},FLOAT_LOGO_URL:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>',
       notesPanelOpen:false,notesFeatureSettings:()=>settings.notes,notesFeatureEnabled:()=>true,stopNotesPanelResizeTracking:noop,bindNotesPanelResize:noop,
@@ -281,18 +282,21 @@ try {
     await page.setViewportSize({width,height:900});
     if(await page.locator('.sd-theme-menu').isHidden())await page.locator('.sd-theme-btn').click();
     const before=await page.evaluate(()=>({renders:performanceRuntime.modalRenderCount,scroll:newMenuBody.scrollTop,saves:counters.saves,preference:readAppearancePreferences(settings)}));
-    await page.locator(`[data-appearance-family="${family}"]`).click();await page.locator(`[data-appearance-mode="${mode}"]`).click();
+    const familyChoice=page.locator(`[data-appearance-family="${family}"]`);
+    if(await familyChoice.getAttribute('aria-expanded')!=='true')await familyChoice.click();
+    if(await page.locator('.sd-theme-mode-toggle').getAttribute('data-current-mode')!==mode)await page.locator('.sd-theme-mode-toggle').click();
+    else await page.locator('.sd-theme-mode-toggle').focus();
     await page.evaluate(()=>appearanceSession.sync());await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const after=await page.evaluate(()=>{const main=document.getElementById(MODAL_ID),menu=document.querySelector('.sd-theme-menu'),bounds=menu.getBoundingClientRect();return {
       family:main.dataset.qmTheme,mode:main.dataset.qmMode,legacy:settings.theme,preference:readAppearancePreferences(settings),saves:counters.saves,renders:performanceRuntime.modalRenderCount,
       same:newMenuBody===document.querySelector('.sd-body')&&newMenuDraft===document.querySelector('textarea'),draft:newMenuDraft.value,selection:[newMenuDraft.selectionStart,newMenuDraft.selectionEnd],scroll:newMenuBody.scrollTop,
-      familyRadio:menu.querySelector('[data-appearance-family][aria-checked="true"]').dataset.appearanceFamily,modeRadio:menu.querySelector('[data-appearance-mode][aria-checked="true"]').dataset.appearanceMode,
-      status:document.querySelector('.sd-theme-feedback').hidden,visible:!menu.hidden,fits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight,focus:document.activeElement.dataset.appearanceMode,modeBackgrounds:[...menu.querySelectorAll('[data-appearance-mode]')].map(button=>getComputedStyle(button).backgroundColor),
+      familyRadio:menu.querySelector('[data-appearance-family][aria-checked="true"]').dataset.appearanceFamily,modeRadio:menu.querySelector('.sd-theme-mode-toggle').dataset.currentMode,
+      status:document.querySelector('.sd-theme-feedback').hidden,visible:!menu.hidden,fits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight,focus:document.activeElement.dataset.currentMode,modeIcons:menu.querySelectorAll('.sd-theme-mode-toggle svg').length,modeLabel:menu.querySelector('.sd-theme-mode-toggle').getAttribute('aria-label'),
     };});
     assert.equal(after.family,family);assert.equal(after.mode,mode);assert.equal(after.legacy,'dream');assert.equal(after.familyRadio,family);assert.equal(after.modeRadio,mode);
     assert.equal(after.same,true);assert.equal(after.draft,'原位保留的取景编辑');assert.deepEqual(after.selection,[2,6]);assert.equal(after.scroll,before.scroll);assert.equal(after.renders,before.renders);assert.equal(after.status,true);assert.equal(after.visible,true);assert.equal(after.fits,true);assert.equal(after.focus,mode);
     assert.equal(after.saves-before.saves,Number(before.preference.family!==family)+Number(before.preference.mode!==mode));
-    assert.notEqual(after.modeBackgrounds[0],after.modeBackgrounds[1]);
+    assert.equal(after.modeIcons,1);assert.equal(after.modeLabel,mode==='dark'?'切换至日间':'切换至夜间');
     checks.push(`${width}/${family}/${mode}: real family/day-night clicks keep workbench draft/selection/scroll and focus; save once per changed field`);
     if(screenshots&&width===393&&mode==='light')await page.screenshot({path:path.join(screenshots,`${family}-${mode}-393.png`)});
   }
@@ -306,16 +310,16 @@ try {
   assert.equal(failedMenu.theme,'');assert.match(failedMenu.error,/暂用经典/);assert.equal(failedMenu.retry,true);assert.equal(failedMenu.open,true);assert.match(failedMenu.title,/未加载/);checks.push('real CSS 404 is visible in the open appearance menu, with classic pixels and an explicit retry');
   failSkin=false;await page.locator('.sd-theme-retry').click();await page.evaluate(()=>appearanceSession.sync());await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
   const menuRetry=await page.evaluate(()=>({theme:document.getElementById(MODAL_ID).dataset.qmTheme,status:document.querySelector('.sd-theme-feedback').hidden,focus:document.activeElement.dataset.appearanceFamily}));assert.deepEqual(menuRetry,{theme:'glass',status:true,focus:'glass'});checks.push('real retry button recovers without rerender and returns focus to selected family when retry disappears');
-  await page.locator('[data-theme="candy"]').click();
-  const classicExit=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',closed:document.querySelector('.sd-theme-menu').hidden,modeHidden:[...document.querySelectorAll('[data-appearance-mode]')].every(button=>button.hidden)}));assert.deepEqual(classicExit,{family:'classic',legacy:'candy',theme:'',closed:true,modeHidden:true});checks.push('real classic choice exits the new family, restores its own palette and hides new-family mode controls');
+  await page.locator('[data-appearance-family="classic"]').click();await page.locator('[data-theme="candy"]').click();
+  const classicExit=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',closed:document.querySelector('.sd-theme-menu').hidden,modeHidden:document.querySelector('.sd-theme-accent-options').hidden}));assert.deepEqual(classicExit,{family:'classic',legacy:'candy',theme:'',closed:true,modeHidden:true});checks.push('real classic choice exits the new family, restores its own palette and hides new-family mode controls');
   await page.evaluate(()=>{appearanceSession.reset();renderModal();});holdSkin=true;
   await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="editorial"]').click();
   await page.waitForFunction(()=>appearanceSession.status==='loading');await page.evaluate(()=>{window.pendingAppearance=appearanceSession.sync();});
-  await page.locator('[data-appearance-family="glass"]').click();await page.locator('[data-theme="summer"]').click();
+  await page.locator('[data-appearance-family="glass"]').click();await page.locator('[data-appearance-family="classic"]').click();await page.locator('[data-theme="summer"]').click();
   for(let attempt=0;!releaseSkin&&attempt<100;attempt++)await new Promise(resolve=>setTimeout(resolve,10));assert.ok(releaseSkin,'held stylesheet request arrived');holdSkin=false;releaseSkin();releaseSkin=null;
   await page.evaluate(()=>pendingAppearance);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
   const cancelled=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',checked:document.querySelector('[data-theme][aria-checked="true"]').dataset.theme,status:document.querySelector('.sd-theme-feedback').hidden}));assert.deepEqual(cancelled,{family:'classic',legacy:'summer',theme:'',checked:'summer',status:true});checks.push('switching families and returning to classic during a pending stylesheet does not apply stale pixels or stale menu state');
-  await page.setViewportSize({width:320,height:568});await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="glass"]').click();await page.locator('[data-appearance-mode="dark"]').click();
+  await page.setViewportSize({width:320,height:568});await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="glass"]').click();if(await page.locator('.sd-theme-mode-toggle').getAttribute('data-current-mode')!=='dark')await page.locator('.sd-theme-mode-toggle').click();
   const compact=await page.evaluate(()=>{const menu=document.querySelector('.sd-theme-menu'),bounds=menu.getBoundingClientRect();return {fits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight,mode:document.getElementById(MODAL_ID).dataset.qmMode,overflow:getComputedStyle(menu).overflowY};});assert.equal(compact.fits,true);assert.equal(compact.mode,'dark');assert.equal(compact.overflow,'auto');checks.push('320x568 compact viewport keeps the appearance menu inside the viewport with scroll fallback');
   await page.evaluate(()=>{document.getElementById(MODAL_ID)._sdThemeMenuCleanup();appearanceSession.reset();});
   assert.deepEqual(errors, []); assert.equal(external, 0);

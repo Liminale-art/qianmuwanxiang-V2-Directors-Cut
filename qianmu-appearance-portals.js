@@ -51,7 +51,7 @@ export function createQianmuClassicPainter(document, themeKey, { resolveLogo } =
             root.style.setProperty('background-color', READER_PORTAL_BG[themeKey]);
             for (const name of QIANMU_THEME_PROPERTIES) if (tokens[name]) root.style.setProperty(name, tokens[name]);
         }
-        if (role === 'hive-entry') {
+        if (role === 'hive-entry' || role === 'notes-entry') {
             const mode = tone || (themeKey === 'dark' ? 'dark' : 'light');
             for (const [name, value] of [['--sd-wheel-glass-fill', palette[mode + 'Fill']], ['--sd-wheel-icon', palette[mode + 'Icon']], ['--sd-wheel-edge', palette.edges[edgeIndex % palette.edges.length]], ['background-color', palette[mode + 'Fill']], ['color', palette[mode + 'Icon']]]) root.style.setProperty(name, value, 'important');
         }

@@ -43,7 +43,7 @@ try{
         // is shorter than the old offset, native clamping is the correct result.
         value.restored=root.dataset.qmTheme===requested.family&&before.nodes.every(node=>node.isConnected)&&field.value===before.value&&document.activeElement===field&&scroll.scrollTop===Math.min(value.top[1],scroll.scrollHeight-scroll.clientHeight);
         value.writes=writes;value.restoredTop=scroll.scrollTop;
-        value.pills=[...host.querySelectorAll('button.sd-btn')].every(node=>getComputedStyle(node).borderRadius==='999px');
+        value.pills=[...host.querySelectorAll('button.sd-btn')].every(node=>getComputedStyle(node).borderRadius===(requested.family==='glass'?'999px':'0px'));
         return value;
       }finally{IDBObjectStore.prototype.put=put;}
     },selector);

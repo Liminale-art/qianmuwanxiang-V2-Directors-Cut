@@ -141,14 +141,15 @@ import {
 } from './qianmu-notes.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
 import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js';
+import { QIANMU_HIVE_THEME_LOGO } from './qianmu-hive-theme-logo.js';
 import { THEMES, THEME_KEYS, QUICK_HIVE_THEME_PALETTES, READER_PORTAL_BG } from './qianmu-classic-palettes.js';
 import { selectQianmuClassicTheme, changeQianmuAppearance } from './qianmu-appearance-actions.js';
 import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.161';
-import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.161';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.161';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.162';
+import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.162';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.162';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -156,7 +157,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.161';
+} from './qianmu-llm-output.js?v=1.59.162';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -240,286 +241,286 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.161';
+} from './qianmu-storyboard.js?v=1.59.162';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.161';
+const VERSION = '1.59.162';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
 const featureRuntime = createFeatureRuntime({
-  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.161') },
-  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.161') },
-  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.161') },
-  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.161') },
-  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.161') },
-  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.161') },
-  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.161') },
-  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.161') },
-  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.161') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.161') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.161') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.161') },
-  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.161') },
-  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.161') },
-  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.161') },
-  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.161') },
-  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.161') },
-  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.161') },
-  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.161') },
-  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.161') },
-  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.161') },
-  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.161') },
-  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.161') },
-  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.161') },
-  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.161') },
-  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.161') },
-  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.161') },
-  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.161') },
-  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.161') },
-  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.161') },
-  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.161') },
+  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.162') },
+  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.162') },
+  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.162') },
+  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.162') },
+  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.162') },
+  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.162') },
+  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.162') },
+  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.162') },
+  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.162') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.162') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.162') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.162') },
+  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.162') },
+  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.162') },
+  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.162') },
+  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.162') },
+  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.162') },
+  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.162') },
+  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.162') },
+  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.162') },
+  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.162') },
+  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.162') },
+  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.162') },
+  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.162') },
+  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.162') },
+  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.162') },
+  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.162') },
+  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.162') },
+  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.162') },
+  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.162') },
+  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.162') },
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.161'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.162'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.161'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.162'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.161'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.162'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.161'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.162'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.161'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.162'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.162'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.162'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.162'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.162'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.161'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.162'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.161'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.162'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.161'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.162'),
   },
   artistPromptReview: {
     label: '原画师层核对',
-    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.161'),
+    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.162'),
   },
   styleRecipe: {
     label: '图片风格配置',
-    load: () => import('./qianmu-style-recipe.js?v=1.59.161'),
+    load: () => import('./qianmu-style-recipe.js?v=1.59.162'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.161'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.162'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.161'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.162'),
   },
   readerCore: {
     label: '伴读解析器', intent: '.sd-coread-shortcut',
-    load: () => loadLocalChunk('./qianmu-reader.js?v=1.59.161').then(module => (reader = module)),
+    load: () => loadLocalChunk('./qianmu-reader.js?v=1.59.162').then(module => (reader = module)),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.161'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.162'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.162'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.162'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.162'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.162'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.162'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.162'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.162'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
-    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.162'),
   },
   comfyStorage: {
     label: 'Comfy 储存盘点',
-    load: () => import('./qianmu-comfy-storage.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-storage.js?v=1.59.162'),
   },
   comfyAuto: {
     label: 'Comfy 候选调度',
-    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.162'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.162'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.162'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.161'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.162'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.161'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.162'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.161'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.162'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.161'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.162'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.161'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.162'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.161'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.162'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.161'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.162'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.161'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.162'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.161'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.162'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.161'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.162'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.161'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.162'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.161'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.162'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.161'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.162'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.161'),
+    load: () => import('./qianmu-video-task.js?v=1.59.162'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.161'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.162'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.161'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.162'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.161'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.162'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.161'),
+    load: () => import('./qianmu-video-store.js?v=1.59.162'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.161'),
+    load: () => import('./qianmu-video-result.js?v=1.59.162'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.161'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.162'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.161'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.162'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.161'),
+    load: () => import('./qianmu-video-media.js?v=1.59.162'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.161'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.162'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.161'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.162'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.161'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.162'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.161'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.162'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.161'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.162'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.161'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.162'),
   },
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        loadLocalChunk('./builtin-theaters.js?v=1.59.161'),
-        loadLocalChunk('./qianmu-theaters.js?v=1.59.161'),
+        loadLocalChunk('./builtin-theaters.js?v=1.59.162'),
+        loadLocalChunk('./qianmu-theaters.js?v=1.59.162'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -5404,7 +5405,7 @@ function bindNotesHiveDetachDrag(button, item, layout) {
   button.title = '便笺（拖出蜂巢可浮贴入口）';
   button.setAttribute('aria-label', button.title);
   button.addEventListener('pointerdown', (event) => {
-    if (event.button != null && event.button !== 0) return;
+    if (drag || event.isPrimary === false || (event.button != null && event.button !== 0)) return;
     drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, ready: false };
     try { button.setPointerCapture?.(event.pointerId); } catch (_) {}
   });
@@ -5418,7 +5419,7 @@ function bindNotesHiveDetachDrag(button, item, layout) {
     drag.ready = distance >= releaseDistance;
     button.classList.add('is-undock-dragging');
     button.classList.toggle('is-undock-ready', drag.ready);
-    button.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${drag.ready ? 0.86 : 0.94})`;
+    button.style.setProperty('transform', `translate3d(${dx}px, ${dy}px, 0) scale(${drag.ready ? 0.86 : 0.94})`, 'important');
     event.preventDefault();
   });
   const finish = (event, cancelled = false) => {
@@ -5427,8 +5428,9 @@ function bindNotesHiveDetachDrag(button, item, layout) {
     const moved = drag.moved;
     const x = Number(event?.clientX ?? drag.startX);
     const y = Number(event?.clientY ?? drag.startY);
-    try { button.releasePointerCapture?.(drag.pointerId); } catch (_) {}
+    const pointerId = drag.pointerId;
     drag = null;
+    try { button.releasePointerCapture?.(pointerId); } catch (_) {}
     resetVisual();
     if (moved) {
       suppressClick = true;
@@ -5450,6 +5452,7 @@ function bindNotesHiveDetachDrag(button, item, layout) {
   };
   button.addEventListener('pointerup', (event) => finish(event));
   button.addEventListener('pointercancel', (event) => finish(event, true));
+  button.addEventListener('lostpointercapture', (event) => finish(event, true));
   button.addEventListener('click', (event) => {
     if (!suppressClick) return;
     event.preventDefault();
@@ -6205,7 +6208,7 @@ function renderFloatButton() {
   btn.classList.remove(...THEME_KEYS.map((key) => `sd-hive-theme-${key}`));
   btn.classList.add(`sd-hive-theme-${themeKey}`);
   // 本地 logo 铺满圆形悬浮球（object-fit:cover 由 CSS 控）；img 不拦指针，拖拽/点击仍落在按钮上
-  btn.innerHTML = `<img src="${logoUrl}" alt="${EXTENSION_NAME}" draggable="false">${QUICK_HEX_BORDER_SVG}`;
+  btn.innerHTML = `<img src="${logoUrl}" alt="${EXTENSION_NAME}" draggable="false">${QIANMU_HIVE_THEME_LOGO}${QUICK_HEX_BORDER_SVG}`;
   btn.title = EXTENSION_NAME;
   // 与蜂巢片相同，锁定悬浮主格的关键玻璃属性，避免第三方主题把 blur/background 清空。
   btn.style.setProperty('--sd-float-edge', palette.mainEdge, 'important');
@@ -6938,7 +6941,6 @@ function renderModal() {
         <div class="sd-titlebox">
           <h2>${EXTENSION_NAME}</h2>
           ${qianmuVersionBadgeMarkup()}
-          <p>一蝶振翅&nbsp;&nbsp;万象入幕</p>
         </div>
         <div class="sd-header-actions">
           ${COREAD_VISIBLE ? `<button class="sd-coread-shortcut ${activeTab === 'coread' ? 'active' : ''}" title="伴读" aria-label="伴读"><i class="fa-solid fa-book-open" data-qm-icon="coread-entry"></i></button>` : ''}

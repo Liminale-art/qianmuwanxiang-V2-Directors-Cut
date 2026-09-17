@@ -68,7 +68,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         const entry = floating?.querySelector('.sd-detached-notes-entry');
         const appearance = readSettings()?.notes?.appearance || {};
         const index = Number(appearance.edgeIndex);
-        mount(entry, { role: 'hive-entry', tone: appearance.tone === 'light' ? 'light' : 'dark', edgeIndex: Number.isFinite(index) ? Math.max(0, Math.trunc(index)) : 0 });
+        mount(entry, { role: 'notes-entry', tone: appearance.tone === 'light' ? 'light' : 'dark', edgeIndex: Number.isFinite(index) ? Math.max(0, Math.trunc(index)) : 0 });
     }
     return Object.freeze({
         get supported() { return runtime.supported; },

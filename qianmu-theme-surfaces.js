@@ -30,7 +30,7 @@ export function createQianmuThemeSnapshot(options = {}) {
 }
 
 function surfaceOptions({ role = 'surface', tone = null, edgeIndex = 0 } = {}) {
-    if (!['surface', 'hive-entry', 'hive-main', 'reader', 'media'].includes(role)) throw new TypeError('Unknown theme surface role.');
+    if (!['surface', 'hive-entry', 'notes-entry', 'hive-main', 'reader', 'media'].includes(role)) throw new TypeError('Unknown theme surface role.');
     if (tone !== null && tone !== 'light' && tone !== 'dark') throw new TypeError('Invalid hive tone.');
     if (!Number.isSafeInteger(edgeIndex) || edgeIndex < 0) throw new TypeError('Invalid hive edge index.');
     return Object.freeze({ role, tone, edgeIndex });
@@ -92,13 +92,18 @@ export function createQianmuThemeSurfaceController() {
             patchStyle(record, '--sd-portal-bg', snapshot.css['--qm-bg']);
             patchStyle(record, 'background-color', snapshot.css['--qm-bg'], 'important');
         }
-        if (record.options.role === 'hive-entry') {
+        if (record.options.role === 'hive-entry' || record.options.role === 'notes-entry') {
             const { tone, edgeIndex } = record.options;
-            const visual = snapshot.hive[tone || snapshot.mode];
+            // A detached note is an app entry, not a permanently light/dark hive tile.
+            // Retain its saved classic tone/index in options for restoration only.
+            const followsTheme = record.options.role === 'notes-entry';
+            const visual = snapshot.hive[followsTheme ? snapshot.mode : tone || snapshot.mode];
+            const accent = snapshot.css['--qm-accent'];
+            const icon = followsTheme ? `color-mix(in srgb, ${accent} 55%, ${visual.icon})` : visual.icon;
             patchStyle(record, '--sd-wheel-glass-fill', visual.fill, 'important');
-            patchStyle(record, '--sd-wheel-icon', visual.icon, 'important');
-            patchStyle(record, '--sd-wheel-edge', visual.edges[edgeIndex % visual.edges.length], 'important');
-            patchStyle(record, 'color', visual.icon, 'important');
+            patchStyle(record, '--sd-wheel-icon', icon, 'important');
+            patchStyle(record, '--sd-wheel-edge', followsTheme ? accent : visual.edges[edgeIndex % visual.edges.length], 'important');
+            patchStyle(record, 'color', icon, 'important');
             // Existing hive buttons lock their fill inline; update only its color longhand,
             // preserving any separately owned background image, position and repeat settings.
             patchStyle(record, 'background-color', visual.fill, 'important');

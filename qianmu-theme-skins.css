@@ -15,13 +15,39 @@
   color-scheme: light;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-mode="dark"] { color-scheme: dark; }
+/* New families recolor the same traced logo from their live ink/accent tokens.
+   Classic keeps the original image and its remembered color when opting out. */
+#story-director-float[data-qm-theme] > img { display: none !important; }
+/* A remembered classic dream class must not animate over the live accent. */
+#qianmu-notes-float-layer[data-qm-theme] .sd-detached-notes-entry > .sd-hive-hex-outline polygon { animation: none !important; }
+#story-director-float[data-qm-theme] > svg.qm-hive-theme-logo {
+  display: block !important;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+  position: relative;
+  z-index: 2;
+  transform: translateY(4%);
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] {
+  --qm-card-radius: 0px;
+  --qm-button-radius: 0px;
+  --sd-radius-control: 0px;
+}
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] {
   --qm-card-radius: 22px;
   --qm-skin-material: color-mix(in srgb, var(--qm-surface) 65%, transparent);
   --qm-skin-filter: blur(22px) saturate(1.12);
   --qm-skin-shadow: inset 0 1px 0 #ffffff26, 0 5px 24px #00000008;
-  --qm-skin-window: radial-gradient(ellipse 45% 46% at 17% 67%, color-mix(in srgb, var(--qm-glow-1) 57%, transparent), transparent 77%),
-    radial-gradient(ellipse 34% 34% at 85% 24%, color-mix(in srgb, var(--qm-glow-2) 37%, transparent), transparent 75%), var(--qm-bg);
+  /* An isotropic field can move or be cropped by a resized panel, but cannot
+     squash into a stripe. Separate radii retain the primary/secondary balance. */
+  --qm-glow-radius-primary: clamp(240px, 44vmin, 560px);
+  --qm-glow-radius-secondary: clamp(180px, 32vmin, 410px);
+  --qm-skin-window: radial-gradient(circle var(--qm-glow-radius-primary) at 17% 67%, color-mix(in srgb, var(--qm-glow-1) 57%, transparent), transparent 77%),
+    radial-gradient(circle var(--qm-glow-radius-secondary) at 85% 24%, color-mix(in srgb, var(--qm-glow-2) 37%, transparent), transparent 75%), var(--qm-bg);
 }
 
 /* No geometry override for the main window: retain saved/host-constrained dimensions. */
@@ -33,6 +59,7 @@
   -webkit-backdrop-filter: none !important;
 }
 #story-director-modal[data-qm-theme="glass"] .sd-window { border-radius: 30px !important; }
+#story-director-modal[data-qm-theme="editorial"] .sd-window { border-radius: 0 !important; }
 #story-director-modal[data-qm-theme] .sd-window::before { display: none; animation: none; }
 #story-director-modal[data-qm-theme] :is(.sd-header, .sd-tabs, .sd-storyboard-titlebar) {
   background: transparent !important;
@@ -42,6 +69,14 @@
   font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif;
   font-weight: 400;
   letter-spacing: .08em;
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-header h2 {
+  background: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: var(--qm-ink) !important;
+  color: var(--qm-ink) !important;
+  text-shadow: none !important;
 }
 
 /* Common surfaces and fields: no width, visibility, font-size or interaction resets. */
@@ -88,6 +123,35 @@
    not silently fall back to classic rectangular corners in the real panels. */
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, button.sd-btn, .sd-option-chip) {
   border-radius: 999px !important;
+}
+/* Editorial is a rectangular control system, including late-mounted dialogs,
+   detached notes and label-based upload buttons. The duplicated root in :is()
+   matches the legacy two-ID mobile rules without touching the host document.
+   Do not square avatar selectors, radio dots, switch tracks/thumbs or media. */
+:is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] :is(
+  button:not([data-coread-identity]):not(.sd-world-edge):not([role="switch"]),
+  .sd-btn, .sd-icon-btn, .menu_button, .sd-option-chip,
+  input:not([type="radio"]):not([type="checkbox"]):not([type="range"]),
+  textarea, select, details, details > summary,
+  .sd-theme-menu, .sd-version-tag, .sd-storyboard-nav, .sd-storyboard-source-tabs,
+  .sd-storyboard-engine-modes, .sd-storyboard-compiler-sources,
+  .sd-focus-phase-tabs, .sd-focus-activity-tabs, .sd-focus-sound-sources, .sd-focus-segments,
+  .sd-focus-dialogue-moments, .sd-focus-voice-provider,
+  .sd-lib-folder, .sd-lib-row, .sd-note-list-item,
+  .sd-floor-tabs, .sd-floor-search, .sd-prose-control, .sd-prose-checks label,
+  .sd-storage-cleanup-list label, .sd-storage-chat-group, .sd-storage-chat-group label,
+  .sd-storyboard-check-grid .checkbox_label, .sd-storyboard-consistency-row,
+  .sd-storyboard-connection-result, .sd-storyboard-secret-state,
+  .sd-storyboard-log-status, .sd-storyboard-log-meta span,
+  .sd-comfy-classification-badges > span, .sd-tts-resource-badge,
+  .sd-storyboard-film-postproduction > header > div,
+  .sd-storyboard-film-post-body > section, .sd-video-confirmation-summary dl > div
+) { border-radius: 0 !important; }
+:is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] input[type="checkbox"]:not(.checkbox_label > input):not([role="switch"]) {
+  border-radius: 0 !important;
+}
+:is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .sd-focus-sound-preview::before {
+  border-radius: 0;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, .sd-icon-btn):disabled { opacity: .46; cursor: not-allowed; }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-primary, .sd-option-chip.active) {

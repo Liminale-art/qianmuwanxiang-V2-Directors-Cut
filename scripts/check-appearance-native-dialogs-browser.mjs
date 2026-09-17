@@ -142,7 +142,7 @@ try {
         assert.equal(rendered.contained, true, `${label}: viewport`); assert.equal(rendered.footer, true, `${label}: footer`);
         assert.ok(rendered.overflow <= 1, `${label}: horizontal overflow ${rendered.overflow}`);
         assert.equal(rendered.scrollbars, 'none', `${label}: hidden scrollbar`);
-        assert.equal(rendered.radius, family === 'glass' ? '22px' : '5px', `${label}: material radius`);
+        assert.equal(rendered.radius, family === 'glass' ? '22px' : '0px', `${label}: material radius`);
         assert.equal(rendered.scheme, mode, `${label}: native control scheme`);
         assert.ok(rendered.contrast >= 4.5, `${label}: body text contrast against opaque base`);
         assert.ok(rendered.actionContrast === null || rendered.actionContrast >= 4.5, `${label}: action and metadata text contrast ${rendered.actionContrast}`);

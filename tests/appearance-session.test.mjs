@@ -79,6 +79,25 @@ test('hive main and entries retain position while owning their inline important 
     f.set({ theme: 'light' }); await f.session.sync(); assert.equal(main.style.getPropertyValue('background-color'), 'red'); assert.equal(main.style.getPropertyPriority('background-color'), 'important'); assert.equal(button.style.getPropertyValue('color'), 'pink'); f.session.reset();
 });
 
+test('mountNotes gives detached entry a theme-following role without rewriting saved classic appearance', async () => {
+    const f = fixture(), floating = element(), entry = element();
+    const settings = { theme: 'dream', notes: { appearance: { tone: 'dark', edgeIndex: 0 } }, appearance: { ...preference, accent: '#d24962' } };
+    floating.querySelector = () => entry;
+    const document = { getElementById: id => id === 'qianmu-notes-float-layer' ? floating : null };
+    entry.style.setProperty('left', '80px');
+    f.set(settings); f.session.mountNotes(document); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    const before = { icon: entry.style.getPropertyValue('--sd-wheel-icon'), fill: entry.style.getPropertyValue('background-color') };
+    assert.equal(entry.style.getPropertyValue('--sd-wheel-edge'), entry.style.getPropertyValue('--qm-accent'));
+    assert.match(before.icon, /color-mix/);
+    settings.appearance = { ...settings.appearance, mode: 'dark', accent: '#3c78bb' }; await f.session.sync();
+    assert.notEqual(entry.style.getPropertyValue('--sd-wheel-icon'), before.icon);
+    assert.notEqual(entry.style.getPropertyValue('background-color'), before.fill);
+    assert.equal(entry.style.getPropertyValue('--sd-wheel-edge'), entry.style.getPropertyValue('--qm-accent'));
+    assert.deepEqual(settings.notes.appearance, { tone: 'dark', edgeIndex: 0 });
+    assert.equal(entry.style.getPropertyValue('left'), '80px');
+    assert.equal(f.session.size, 2); f.session.reset();
+});
+
 test('stylesheet ownership removes handlers on success, failure and cancellation', async () => {
     const links = [], document = { createElement: () => ({ remove() { this.removed = true; } }), head: { appendChild: link => links.push(link) } };
     const a = loadQianmuAppearanceStyles(document, 'https://qianmu.test/skin.css'); assert.equal(links[0].rel, 'stylesheet'); links[0].onload(); assert.equal(await a.promise, true); assert.equal(links[0].onerror, null); a.cancel(); assert.equal(links[0].removed, true);

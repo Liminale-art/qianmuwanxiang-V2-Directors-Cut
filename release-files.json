@@ -303,6 +303,7 @@
     "qianmu-appearance-runtime.js",
     "qianmu-appearance-settings.js",
     "qianmu-theme-surfaces.js",
+    "qianmu-hive-theme-logo.js",
     "qianmu-theme-palette.js",
     "qianmu-theme-skins.css",
     "qianmu-storyboard-nav-lifecycle.js",

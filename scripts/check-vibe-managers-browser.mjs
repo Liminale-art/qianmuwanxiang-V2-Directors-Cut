@@ -72,7 +72,7 @@ try{
     ok(label+' controls and long records fit narrow and wide layouts',await page.locator('#host').evaluate(node=>node.scrollWidth<=node.clientWidth+1));
     if(family!=='classic'){
       const skin=await page.locator(row).first().evaluate(node=>{const style=getComputedStyle(node);return {radius:style.borderTopRightRadius,filter:style.backdropFilter};});
-      ok(label+' record cards follow the chosen surface',skin.radius===(family==='glass'?'22px':'5px')&&(family!=='glass'||skin.filter.includes('blur')));
+      ok(label+' record cards follow the chosen surface',skin.radius===(family==='glass'?'22px':'0px')&&(family!=='glass'||skin.filter.includes('blur')));
       if(kind==='review')ok(label+' unresolved and rejected fees keep distinct warning edges',await page.locator(row).first().evaluate(node=>getComputedStyle(node).borderLeftColor==='rgb(207, 156, 67)')&&await page.locator(row).nth(1).evaluate(node=>getComputedStyle(node).borderLeftColor==='rgb(207, 114, 114)'));
     }
     if(width===393&&((family==='glass'&&mode==='light'&&kind==='storage')||(family==='editorial'&&mode==='dark'&&kind==='review'))){await page.evaluate(()=>document.querySelector('.sd-storyboard-scroll').scrollTop=0);await page.screenshot({caret:'initial',path:fileURLToPath(new URL(`${family}-${mode}-${kind}-393.png`,qa))});}

@@ -142,7 +142,7 @@ try {
                 const overflow = await page.locator(tab === 'context' ? '.sd-dropdown-head,.sd-context-entry-label > span' : '.sd-backstage-blueprint-body,.sd-director-law-body').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).map(node => ({ className: node.className, scroll: node.scrollWidth, width: node.clientWidth })).filter(node => node.scroll > node.width + 1));
                 ok(label + ' inner content fits narrow cards: ' + JSON.stringify(overflow.slice(0, 3)), overflow.length === 0);
                 const surface = page.locator(tab === 'context' ? '.sd-context-source-pick .sd-dropdown' : '.sd-backstage-blueprint-library .sd-lib-folder').first();
-                ok(label + ' nested source surfaces follow family corners', await surface.evaluate((node, family) => getComputedStyle(node).borderTopLeftRadius === (family === 'glass' ? '22px' : '5px'), family));
+                ok(label + ' nested source surfaces follow family corners', await surface.evaluate((node, family) => getComputedStyle(node).borderTopLeftRadius === (family === 'glass' ? '22px' : '0px'), family));
                 const scrolls = page.locator(tab === 'context' ? '.sd-entry-scroll,.sd-context-item pre' : '.sd-lib-list,.sd-inject-term');
                 ok(label + ' nested scroll stays available without a visible scrollbar', await scrolls.evaluateAll(nodes => nodes.every(node => getComputedStyle(node).scrollbarWidth === 'none')));
                 ok(label + ' source/terminal text remains readable', await page.locator(tab === 'context' ? '.sd-context-item pre' : '.sd-inject-term').evaluateAll(nodes => nodes.every(node => readContrast(node) >= 4.5)));

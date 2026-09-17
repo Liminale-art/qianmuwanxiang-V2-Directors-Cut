@@ -87,3 +87,14 @@ test('readers gain opaque classic tokens even with no copied main panel, but neu
     paint(reader,{role:'reader'});paint(media,{role:'media'});
     assert.equal(reader.style.getPropertyValue('--sd-portal-bg'),READER_PORTAL_BG.kraft);assert.equal(reader.style.getPropertyValue('background-color'),READER_PORTAL_BG.kraft);assert.equal(reader.style.getPropertyValue('--sd-text'),'classic-kraft---sd-text');assert.equal(media.style.getPropertyValue('background-color'),'neutral');assert.equal(media.style.getPropertyValue('--sd-text'),'');
 });
+
+test('detached-note role restores the saved classic tone and edge preference, including non-default light tiles',()=>{
+    for(const key of THEME_KEYS)for(const tone of ['light','dark'])for(const edgeIndex of [0,2,5]){
+        const entry=node('is-glass-'+tone),palette=QUICK_HIVE_THEME_PALETTES[key];entry.style.setProperty('left','80px');
+        painter(key)(entry,{role:'notes-entry',tone,edgeIndex});
+        assert.equal(entry.style.getPropertyValue('--sd-wheel-glass-fill'),palette[tone+'Fill']);
+        assert.equal(entry.style.getPropertyValue('--sd-wheel-icon'),palette[tone+'Icon']);
+        assert.equal(entry.style.getPropertyValue('--sd-wheel-edge'),palette.edges[edgeIndex%palette.edges.length]);
+        assert.equal(entry.style.getPropertyValue('left'),'80px');
+    }
+});

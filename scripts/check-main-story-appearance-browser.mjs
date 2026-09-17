@@ -68,7 +68,7 @@ try{
     if(family!=='classic'){
       ok(label+' long content has no horizontal overflow',await page.locator('.sd-body').evaluate(node=>node.scrollWidth<=node.clientWidth+1));
       ok(label+' long details are not clipped inside their enclosing card',await page.locator('.sd-item-detail dd, .sd-item-summary-main h4, .sd-chain-node').evaluateAll(nodes=>nodes.every(node=>node.scrollWidth<=node.clientWidth+1)));
-      if(tab==='tasksnodes')ok(label+' nested task surface follows the selected family',await page.locator('.sd-item-card').first().evaluate((node,family)=>getComputedStyle(node).borderTopLeftRadius===(family==='glass'?'22px':'5px'),family));
+      if(tab==='tasksnodes')ok(label+' nested task surface follows the selected family',await page.locator('.sd-item-card').first().evaluate((node,family)=>getComputedStyle(node).borderTopLeftRadius===(family==='glass'?'22px':'0px'),family));
       if(tab==='castworld'){
         const ratios=await page.locator('.sd-relus-tone').evaluateAll(nodes=>nodes.map(node=>contrast(node)));
         ok(label+' positive and negative relationship labels remain readable: '+JSON.stringify(ratios),ratios.every(value=>value>=4.5));

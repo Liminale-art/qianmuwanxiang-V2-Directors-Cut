@@ -112,7 +112,7 @@ try {
                 const clip = getComputedStyle(document.querySelector('.sd-storyboard-film-clip'));
                 const grid = getComputedStyle(document.querySelector('.sd-storyboard-film-source-grid'));
                 return family === 'classic' ? grid.scrollbarWidth === 'thin'
-                    : clip.borderRadius === (family === 'glass' ? '22px' : '5px') && grid.scrollbarWidth === 'none';
+                    : clip.borderRadius === (family === 'glass' ? '22px' : '0px') && grid.scrollbarWidth === 'none';
             }, family));
             const controls = await page.evaluate(() => ({ foreign: document.querySelectorAll('[data-storyboard-film-add-id="foreign"]').length,
                 sources: document.querySelectorAll('[data-storyboard-film-add-kind]').length, icons: document.querySelectorAll('.qm-glyph-svg').length,

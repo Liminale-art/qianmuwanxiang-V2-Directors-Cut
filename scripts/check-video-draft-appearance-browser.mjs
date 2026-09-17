@@ -121,7 +121,7 @@ try {
             if (family !== 'classic') {
                 const ratios = await page.locator('.sd-video-prompt-status,.sd-video-readiness-summary,.sd-storyboard-video-estimate > small,.sd-storyboard-video-draft-editor > footer > small').evaluateAll(nodes => nodes.map(contrast));
                 ok(`${label} readable local/cost notices ${JSON.stringify(ratios)}`, ratios.every(ratio => ratio >= 4.5));
-                ok(`${label} family shell shape`, initial.radius === (family === 'glass' ? '22px' : '5px'));
+                ok(`${label} family shell shape`, initial.radius === (family === 'glass' ? '22px' : '0px'));
             }
             await page.evaluate(() => setField('.sd-storyboard-video-draft-direction textarea', 'A slow camera move toward the doorway.', 'input'));
             const retained = await page.evaluate(([family, mode]) => switchPreserving('.sd-storyboard-video-draft-body', family, mode === 'dark' ? 'light' : 'dark'), [family, mode]);

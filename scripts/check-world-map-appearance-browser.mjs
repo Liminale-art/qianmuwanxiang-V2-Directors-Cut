@@ -57,7 +57,7 @@ try{
     ok(label+' expanded list keeps its dark-canvas text contrast',await page.locator('.sd-geo-list-card[open] .sd-geo-list-body p,.sd-geo-list-card[open] .sd-geo-list-rel > b,.sd-geo-list-card[open] .sd-geo-list-rel > span').evaluateAll(nodes=>nodes.length>2&&nodes.every(node=>mapTextContrast(node)>=4.5)));
     if(family!=='classic'){
       ok(label+' event grid and its inner text do not overflow',await page.locator('.sd-evt-grid, .sd-evt-essence').evaluateAll(nodes=>nodes.filter(node=>node.getClientRects().length).every(node=>node.scrollWidth<=node.clientWidth+1)));
-      ok(label+' outer surfaces match the selected family',await page.locator('.sd-geo-events').evaluate((node,family)=>getComputedStyle(node).borderTopLeftRadius===(family==='glass'?'22px':'5px'),family));
+      ok(label+' outer surfaces match the selected family',await page.locator('.sd-geo-events').evaluate((node,family)=>getComputedStyle(node).borderTopLeftRadius===(family==='glass'?'22px':'0px'),family));
       await page.locator('.sd-geo-view-btn[data-view=list]').focus();
       await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
       ok(label+' keyboard focus stays visible on the dark map island',await page.locator('.sd-geo-view-btn[data-view=list]').evaluate(node=>getComputedStyle(node).outlineWidth==='2px'&&getComputedStyle(node).outlineColor==='rgb(233, 231, 226)'));
