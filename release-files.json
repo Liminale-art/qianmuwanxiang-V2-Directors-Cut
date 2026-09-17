@@ -3,6 +3,8 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-storyboard-export-scope.js",
+    "qianmu-storyboard-export-scope-view.js",
     "qianmu-gallery-catalog-management.js",
     "qianmu-gallery-catalog-management-view.js",
     "qianmu-chat-gallery-receipt.js",
