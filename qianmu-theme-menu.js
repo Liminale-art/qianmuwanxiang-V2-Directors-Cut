@@ -13,18 +13,17 @@ export function renderQianmuThemeMenu(themes, selected, { settings, supported = 
     const classic = themes.map(theme => `<button type="button" class="sd-theme-opt ${current === theme.key ? 'active' : ''}${supported && ['light', 'dark'].includes(theme.key) ? ' sd-theme-classic-mode' : ''}" role="menuitemradio" aria-checked="${current === theme.key}" data-theme="${escape(theme.key)}" aria-label="${escape(theme.name)}" title="${escape(theme.name)}">
           ${supported && ['light', 'dark'].includes(theme.key) ? modeIcon(theme.key) : `<span class="sd-theme-dot" style="background:${escape(theme.dot)}"></span><span class="sd-theme-name">${escape(theme.name)}</span>`}
         </button>`).join('');
-    const families = ['editorial', 'glass', 'classic'].map((family, index) => `<button type="button" class="sd-theme-opt ${preference.family === family ? 'active' : ''}" role="menuitemradio" aria-checked="${preference.family === family}" data-appearance-family="${family}" aria-expanded="false" aria-controls="qianmu-theme-details"><span class="sd-theme-dot sd-theme-dot-${family}" aria-hidden="true"></span><span class="sd-theme-name">${['纸间', '流光', '经典'][index]}</span></button>`).join('');
+    const families = ['editorial', 'glass', 'classic'].map((family, index) => `<button type="button" class="sd-theme-opt ${preference.family === family ? 'active' : ''}" role="menuitemradio" aria-checked="${preference.family === family}" data-appearance-family="${family}" aria-controls="qianmu-theme-details"><span class="sd-theme-dot sd-theme-dot-${family}" aria-hidden="true"></span><span class="sd-theme-name">${['纸间', '流光', '经典'][index]}</span></button>`).join('');
     const swatches = accents.map(([accent, name]) => `<button type="button" class="sd-theme-opt sd-theme-swatch" role="menuitemradio" aria-checked="${preference.accent === accent}" data-appearance-accent="${accent}" title="${name}" aria-label="${name}" style="--sd-swatch:${accent}"><span aria-hidden="true"></span></button>`).join('');
     return `<div class="sd-theme-pick">
       <button type="button" class="sd-theme-btn" title="外观主题" aria-label="外观主题" aria-haspopup="menu" aria-expanded="false" aria-controls="qianmu-appearance-menu"><i class="fa-solid fa-palette"></i></button>
       <div id="qianmu-appearance-menu" class="sd-theme-menu${supported ? ' is-appearance' : ''}" role="menu" aria-label="外观主题" hidden>
         ${supported ? `<div class="sd-theme-family-options" role="group" aria-label="主题">${families}</div>
-        <div id="qianmu-theme-details" class="sd-theme-details" role="group" aria-label="主题颜色" hidden>
-          <div class="sd-theme-classic-options" role="group" aria-label="经典颜色" hidden>${classic}</div>
-          <div class="sd-theme-accent-options" role="group" aria-label="强调色" hidden>
+        <div id="qianmu-theme-details" class="sd-theme-details" role="group" aria-label="主题颜色">
+          <div class="sd-theme-classic-options" role="group" aria-label="经典颜色"${preference.family === 'classic' ? '' : ' hidden'}>${classic}</div>
+          <div class="sd-theme-accent-options" role="group" aria-label="强调色"${preference.family === 'classic' ? ' hidden' : ''}>
             <div class="sd-theme-detail-head"><span>强调色</span><button type="button" class="sd-theme-opt sd-theme-mode-toggle" role="menuitem" data-appearance-mode-toggle aria-label="切换至${preference.mode === 'dark' ? '日间' : '夜间'}" title="切换至${preference.mode === 'dark' ? '日间' : '夜间'}">${modeIcon(preference.mode)}</button></div>
-            <div class="sd-theme-swatches">${swatches}</div>
-            <label class="sd-theme-custom-color"><span>自定颜色</span><input class="sd-theme-color" type="color" value="${preference.accent}" aria-label="自定强调色"></label>
+            <div class="sd-theme-swatches">${swatches}<label class="sd-theme-custom-color sd-theme-swatch${accents.some(([accent]) => accent === preference.accent) ? '' : ' active'}" title="自定强调色" style="--sd-swatch:${preference.accent}"><span aria-hidden="true">+</span><input class="sd-theme-color" type="color" value="${preference.accent}" aria-label="自定强调色"></label></div>
           </div>
         </div><div class="sd-theme-feedback" hidden><span class="sd-theme-status" role="status" aria-live="polite"></span><button type="button" class="sd-theme-opt sd-theme-retry" role="menuitem" hidden>重试</button></div>` : classic}
       </div>
@@ -37,10 +36,10 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     if (!pick || !trigger || !menu) return () => {};
     const document = root.ownerDocument, buttons = [...menu.querySelectorAll('.sd-theme-opt')];
     const keys = new Map(buttons.map(button => [button, { classic: button.dataset.theme, family: button.dataset.appearanceFamily, accent: button.dataset.appearanceAccent }]));
-    const details = menu.querySelector?.('.sd-theme-details'), classicOptions = menu.querySelector?.('.sd-theme-classic-options'), accentOptions = menu.querySelector?.('.sd-theme-accent-options');
-    const color = menu.querySelector?.('.sd-theme-color'), mode = menu.querySelector?.('.sd-theme-mode-toggle');
+    const classicOptions = menu.querySelector?.('.sd-theme-classic-options'), accentOptions = menu.querySelector?.('.sd-theme-accent-options');
+    const color = menu.querySelector?.('.sd-theme-color'), customColor = menu.querySelector?.('.sd-theme-custom-color'), mode = menu.querySelector?.('.sd-theme-mode-toggle');
     const feedback = menu.querySelector?.('.sd-theme-feedback'), status = menu.querySelector?.('.sd-theme-status'), retry = menu.querySelector?.('.sd-theme-retry');
-    let disposed = false, listening = false, actionError = '', sequence = 0, expanded = null;
+    let disposed = false, listening = false, actionError = '', sequence = 0;
     function refresh() {
         if (disposed || !appearance) return;
         const preference = appearance.read(), resource = appearance.status();
@@ -51,12 +50,14 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
             const checked = key.classic ? preference.family === 'classic' && key.classic === preference.classic
                 : key.family ? key.family === preference.family : key.accent === preference.accent;
             button.setAttribute('aria-checked', String(checked)); button.classList[checked ? 'add' : 'remove']('active');
-            if (key.family) button.setAttribute('aria-expanded', String(expanded === key.family));
         }
-        if (details) details.hidden = expanded !== preference.family;
         if (classicOptions) classicOptions.hidden = preference.family !== 'classic';
         if (accentOptions) accentOptions.hidden = preference.family === 'classic';
         if (color && color.value !== preference.accent) color.value = preference.accent;
+        if (customColor) {
+            customColor.style.setProperty('--sd-swatch', preference.accent);
+            customColor.classList[accents.some(([accent]) => accent === preference.accent) ? 'remove' : 'add']('active');
+        }
         if (mode) {
             const title = `切换至${preference.mode === 'dark' ? '日间' : '夜间'}`;
             mode.setAttribute('aria-label', title); mode.setAttribute('title', title);
@@ -81,7 +82,6 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         });
     }
     function close(restoreFocus = false) {
-        expanded = null;
         menu.hidden = true; pick.classList.remove('open'); trigger.setAttribute('aria-expanded', 'false');
         if (listening) { document.removeEventListener('click', outside, true); listening = false; }
         if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
@@ -112,10 +112,8 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
             if (!appearance || button.dataset.appearanceFamily !== key.family || button.dataset.appearanceAccent !== key.accent) return;
             event.stopPropagation(); actionError = ''; sequence++;
             try {
-                if (key.family) expanded = expanded === key.family ? null : key.family;
                 const result = key.family === 'classic' ? onSelect(appearance.read().classic)
                     : appearance.change(key.family ? { family: key.family } : key.accent ? { accent: key.accent, source: 'manual' } : { mode: appearance.read().mode === 'dark' ? 'light' : 'dark' });
-                if (result === false) expanded = null;
                 refresh(); settle(result);
             }
             catch { actionError = '外观切换未完成，已保留原设置。'; refresh(); }

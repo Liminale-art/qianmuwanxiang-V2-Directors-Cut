@@ -36,13 +36,16 @@ test('theme markup preserves radio semantics, explicit button types and escaped 
     assert.match(html, /data-theme="dark"/); assert.match(html, /role="menu" aria-label="外观主题" hidden/);
 });
 
-test('progressive menu starts with three families and retains all classic options behind disclosure',()=>{
+test('compact menu shows current family controls immediately without disclosure',()=>{
     const themes=['light','dark','summer','candy','kraft','dream'].map(key=>({key,name:key,dot:'#fff'}));
     const html=renderQianmuThemeMenu(themes,'dream',{supported:true,settings:{theme:'dream',appearance:{version:1,family:'glass',mode:'dark'}}});
     for(const {key} of themes)assert.match(html,new RegExp(`data-theme="${key}"`));
     assert.match(html,/data-appearance-family="editorial"/);assert.match(html,/aria-checked="true" data-appearance-family="glass"/);assert.match(html,/data-appearance-family="classic"/);
     assert.equal((html.match(/data-appearance-family=/g)||[]).length,3);
-    assert.match(html,/class="sd-theme-details" role="group" aria-label="主题颜色" hidden/);
+    assert.match(html,/class="sd-theme-details" role="group" aria-label="主题颜色">/);
+    assert.match(html,/class="sd-theme-accent-options" role="group" aria-label="强调色">/);
+    assert.match(html,/class="sd-theme-classic-options" role="group" aria-label="经典颜色" hidden/);
+    assert.doesNotMatch(html,/data-appearance-family="[^"]+" aria-expanded/);
     assert.match(html,/data-appearance-mode-toggle aria-label="切换至日间"/);
     assert.match(html,/role="status" aria-live="polite"/);assert.match(html,/sd-theme-retry/);
     const legacy=renderQianmuThemeMenu(themes,'dark',{supported:false,settings:{appearance:{version:1,family:'glass'}}});assert.doesNotMatch(legacy,/data-appearance-family|data-appearance-mode/);assert.equal((legacy.match(/aria-checked="true"/g)||[]).length,1);
@@ -53,6 +56,7 @@ test('both new families expose safe curated and custom accent controls, not the 
         const html=renderQianmuThemeMenu([], 'light', {supported:true,settings:{appearance:{version:1,family,accent:'#AbC',mode:'light'}}});
         assert.equal((html.match(/data-appearance-accent=/g)||[]).length,6);
         assert.match(html,/type="color" value="#aabbcc" aria-label="自定强调色"/);
+        assert.match(html,/sd-theme-custom-color sd-theme-swatch active/);
         assert.match(html,/data-appearance-mode-toggle aria-label="切换至夜间"/);
         assert.doesNotMatch(html,/>日间<|>夜间</);
     }

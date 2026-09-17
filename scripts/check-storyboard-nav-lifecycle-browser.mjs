@@ -187,7 +187,7 @@ try {
     await page.locator('.sd-theme-btn').focus(); await page.keyboard.press('ArrowDown');
     assert.equal(await page.locator('.sd-theme-opt[data-appearance-family="classic"]').evaluate(node => node === document.activeElement), true);
     await page.keyboard.press('Home'); assert.equal(await page.evaluate(() => document.activeElement.dataset.appearanceFamily), 'editorial');
-    await page.keyboard.press('End'); assert.equal(await page.evaluate(() => document.activeElement.dataset.appearanceFamily), 'classic');
+    await page.keyboard.press('End'); assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'dream');
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('.sd-theme-btn').evaluate(node => node === document.activeElement && node.getAttribute('aria-expanded') === 'false'), true);
     checks.push(`${width}: real menu ArrowDown/Home/End/Escape and focus return`);
@@ -283,7 +283,7 @@ try {
     if(await page.locator('.sd-theme-menu').isHidden())await page.locator('.sd-theme-btn').click();
     const before=await page.evaluate(()=>({renders:performanceRuntime.modalRenderCount,scroll:newMenuBody.scrollTop,saves:counters.saves,preference:readAppearancePreferences(settings)}));
     const familyChoice=page.locator(`[data-appearance-family="${family}"]`);
-    if(await familyChoice.getAttribute('aria-expanded')!=='true')await familyChoice.click();
+    if(await familyChoice.getAttribute('aria-checked')!=='true')await familyChoice.click();
     if(await page.locator('.sd-theme-mode-toggle').getAttribute('data-current-mode')!==mode)await page.locator('.sd-theme-mode-toggle').click();
     else await page.locator('.sd-theme-mode-toggle').focus();
     await page.evaluate(()=>appearanceSession.sync());await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -320,7 +320,7 @@ try {
   await page.evaluate(()=>pendingAppearance);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
   const cancelled=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',checked:document.querySelector('[data-theme][aria-checked="true"]').dataset.theme,status:document.querySelector('.sd-theme-feedback').hidden}));assert.deepEqual(cancelled,{family:'classic',legacy:'summer',theme:'',checked:'summer',status:true});checks.push('switching families and returning to classic during a pending stylesheet does not apply stale pixels or stale menu state');
   await page.setViewportSize({width:320,height:568});await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="glass"]').click();if(await page.locator('.sd-theme-mode-toggle').getAttribute('data-current-mode')!=='dark')await page.locator('.sd-theme-mode-toggle').click();
-  const compact=await page.evaluate(()=>{const menu=document.querySelector('.sd-theme-menu'),bounds=menu.getBoundingClientRect();return {fits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight,mode:document.getElementById(MODAL_ID).dataset.qmMode,overflow:getComputedStyle(menu).overflowY};});assert.equal(compact.fits,true);assert.equal(compact.mode,'dark');assert.equal(compact.overflow,'auto');checks.push('320x568 compact viewport keeps the appearance menu inside the viewport with scroll fallback');
+  const compact=await page.evaluate(()=>{const menu=document.querySelector('.sd-theme-menu'),bounds=menu.getBoundingClientRect();return {fits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight,bounds:{left:bounds.left,right:bounds.right,bottom:bounds.bottom},mode:document.getElementById(MODAL_ID).dataset.qmMode,overflow:getComputedStyle(menu).overflowY};});assert.equal(compact.fits,true,JSON.stringify(compact));assert.equal(compact.mode,'dark');assert.equal(compact.overflow,'auto');checks.push('320x568 compact viewport keeps the appearance menu inside the viewport with scroll fallback');
   await page.evaluate(()=>{document.getElementById(MODAL_ID)._sdThemeMenuCleanup();appearanceSession.reset();});
   assert.deepEqual(errors, []); assert.equal(external, 0);
   console.log(JSON.stringify({ passed: checks.length, checks, errors, external, skinRequests, productionDataRead: false, scope: 'actual modal/route/scroll/menu and classic/new-theme actions with isolated native save and host services; no physical device or real account persistence' }));

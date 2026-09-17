@@ -103,9 +103,15 @@ try {
     async function compact(label) {
         const state = await page.evaluate(() => menuState());
         assert.equal(state.visible, true, label);
-        assert.deepEqual(state.options.map(option => option.family), ['editorial', 'glass', 'classic'], `${label}: only three family choices`);
-        assert.equal(await details.isVisible(), false);
-        checks.push(`${label}: closed details leave exactly 纸间 / 流光 / 经典`);
+        assert.deepEqual(state.options.slice(0, 3).map(option => option.family), ['editorial', 'glass', 'classic'], `${label}: three family tiles first`);
+        assert.equal(await details.isVisible(), true);
+        assert.equal(state.options.length, state.preference.family === 'classic' ? 9 : 11);
+        const tiles = await page.locator('[data-appearance-family]').evaluateAll(nodes => nodes.map(node => {
+            const { x, y, width, height } = node.getBoundingClientRect(); return { x, y, width, height };
+        }));
+        assert.ok(tiles.every(tile => Math.abs(tile.y - tiles[0].y) < 1 && Math.abs(tile.width - tiles[0].width) < 1 && Math.abs(tile.height - tiles[0].height) < 1), `${label}: equal tiles on one row`);
+        assert.ok(tiles[0].x < tiles[1].x && tiles[1].x < tiles[2].x);
+        checks.push(`${label}: equal family tiles on one row with current colors immediately available`);
     }
     async function bounds(label) {
         const box = await menu.boundingBox();
@@ -126,7 +132,7 @@ try {
             assert.equal(await page.locator('.sd-theme-classic-options').isVisible(), false);
             const selected = await page.evaluate(() => menuState());
             assert.equal(selected.theme, family); assert.equal(selected.preference.family, family);
-            assert.equal(await familyButton(family).getAttribute('aria-expanded'), 'true');
+            assert.equal(await familyButton(family).getAttribute('aria-expanded'), null);
             assert.ok(await page.locator('[data-appearance-accent]:visible').count() >= 3, 'new themes need real selectable preset accents');
             assert.equal(await page.locator('input.sd-theme-color[type=color]:visible').count(), 1);
             assert.equal(await page.locator('.sd-theme-mode-toggle:visible').count(), 1);
@@ -170,18 +176,28 @@ try {
             assert.equal(afterColor.saves, beforeColor.saves + 1, 'native input + change commits same color once');
             assert.equal(afterColor.focused, true); assert.notEqual(afterColor.accent, beforeColor.accent); assert.equal(afterColor.notesAccent, afterColor.accent);
             assert.equal(await details.isVisible(), true);
+            const swatches = await page.locator('.sd-theme-swatch > span').evaluateAll(nodes => nodes.map(node => {
+                const rect = node.getBoundingClientRect(), css = getComputedStyle(node);
+                return { y: rect.y, width: rect.width, height: rect.height, radius: css.borderRadius, outline: css.outlineStyle, background: css.backgroundColor };
+            }));
+            assert.equal(swatches.length, 7);
+            assert.ok(swatches.every(item => Math.abs(item.y - swatches[0].y) < 1 && item.width === swatches[0].width && item.height === swatches[0].height && item.radius === swatches[0].radius), `custom color matches preset geometry: ${JSON.stringify(swatches)}`);
+            assert.equal(swatches.at(-1).background, 'rgb(200, 78, 120)');
+            assert.equal(await page.locator('.sd-theme-custom-color').evaluate(node => node.classList.contains('active')), true);
+            assert.equal(await page.locator('[data-appearance-accent].active').count(), 0, 'custom accent does not leave a preset marked selected');
+            checks.push(`${width}/${family}: custom swatch matches preset geometry, current color and selection feedback`);
             checks.push(`${width}/${family}: custom color updates main/notes without recreating input or double-saving input + change`);
             await continuity(`${width}/${family}/custom-color`);
 
             await familyButton(family).click();
-            await compact(`${width}/${family}/same-family-collapse`);
-            assert.equal(await page.evaluate(() => menuState().theme), family, 'collapse is not a theme reset');
+            await compact(`${width}/${family}/same-family`);
+            assert.equal(await page.evaluate(() => menuState().theme), family, 'same-family selection does not reset theme or hide colors');
             await familyButton(family).click(); assert.equal(await details.isVisible(), true);
             await page.keyboard.press('Escape'); assert.equal(await menu.isVisible(), false);
             assert.equal(await trigger.evaluate(node => node === document.activeElement), true);
             await trigger.click(); await compact(`${width}/${family}/reopen`);
             assert.equal(await familyButton(family).getAttribute('aria-checked'), 'true');
-            checks.push(`${width}/${family}: Escape restores trigger focus and every reopen collapses preferences`);
+            checks.push(`${width}/${family}: Escape restores trigger focus and reopening keeps current colors available`);
         }
 
         await familyButton('classic').click(); await settled();
@@ -208,7 +224,7 @@ try {
         await continuity(`${width}/new-theme-return`);
         if (screenshotDir) {
             for (const family of ['editorial', 'glass', 'classic']) {
-                if (await familyButton(family).getAttribute('aria-expanded') !== 'true') await familyButton(family).click();
+                if (await familyButton(family).getAttribute('aria-checked') !== 'true') await familyButton(family).click();
                 await settled();
                 const file = path.join(screenshotDir, `menu-${family}-${width}.png`);
                 await page.screenshot({ path: file }); screenshots.push(file);
@@ -224,8 +240,11 @@ try {
     assert.equal(await familyButton('glass').evaluate(node => node === document.activeElement), true);
     await compact('keyboard/saved-theme');
     await page.keyboard.press('Home'); assert.equal(await familyButton('editorial').evaluate(node => node === document.activeElement), true);
-    await page.keyboard.press('End'); assert.equal(await familyButton('classic').evaluate(node => node === document.activeElement), true);
-    await page.keyboard.press('ArrowDown'); assert.equal(await familyButton('editorial').evaluate(node => node === document.activeElement), true);
+    await page.keyboard.press('End'); assert.equal(await page.locator('.sd-theme-color').evaluate(node => node === document.activeElement), true);
+    await page.keyboard.press('ArrowDown'); assert.equal(await page.locator('.sd-theme-color').evaluate(node => node === document.activeElement), true, 'native color retains arrow ownership');
+    await familyButton('editorial').focus();
+    await page.keyboard.press('ArrowUp'); assert.equal(await page.locator('.sd-theme-color').evaluate(node => node === document.activeElement), true, 'first item wraps to native color');
+    await familyButton('editorial').focus();
     await page.keyboard.press('Enter'); await settled();
     assert.equal(await details.isVisible(), true);
     const visited = [];
@@ -246,7 +265,7 @@ try {
     checks.push('keyboard: selected family, Home/End/wrap, native color reachability, hidden controls skipped, Escape and outside focus');
 
     // Resource failure keeps the classic pixels and a separate retry accessible
-    // even after the detail drawer is collapsed; settings remain recoverable.
+    // while the current colors remain visible; settings remain recoverable.
     await page.evaluate(() => setup({ failStyles: true }));
     await trigger.click(); await familyButton('glass').click(); await settled();
     await page.waitForFunction(() => session.status === 'error');
@@ -254,7 +273,7 @@ try {
     assert.equal(await page.evaluate(() => readAppearancePreferences(settings).family), 'glass');
     assert.equal(await page.locator('.sd-theme-retry').isVisible(), true);
     assert.match(await page.locator('.sd-theme-status').innerText(), /经典/);
-    await familyButton('glass').click(); assert.equal(await details.isVisible(), false);
+    await familyButton('glass').click(); assert.equal(await details.isVisible(), true);
     assert.equal(await page.locator('.sd-theme-retry').isVisible(), true);
     await page.locator('.sd-theme-retry').click(); await settled();
     await page.waitForFunction(() => session.status === 'ready');
@@ -263,7 +282,7 @@ try {
     assert.equal(await page.locator('.sd-theme-retry').isVisible(), false);
     assert.equal(await familyButton('glass').evaluate(node => node === document.activeElement), true, 'focus leaves disappearing retry for selected family');
     await continuity('resource-failure/retry');
-    checks.push('resource failure: classic fallback, requested preference retained, retry survives collapsed details and restores selected-family focus');
+    checks.push('resource failure: classic fallback, requested preference and visible colors retained; retry restores selected-family focus');
 
     // A native color interaction emits input followed by change. If input fails,
     // the action restores both preferences and pixels; the trailing old-color
