@@ -14,7 +14,7 @@ const source = ['storyboardFilmDurationLabel', 'storyboardFilmMotionItems', 'sto
     'storyboardFilmClipTimings', 'storyboardFilmDirectorSubtitleCount', 'storyboardFilmDirectorVoiceCount', 'storyboardFilmEditorFromTimeline',
     'storyboardFilmDurationMs', 'storyboardEnsureFilmClipIds', 'storyboardFilmPostproductionDraft', 'storyboardReconcileFilmPostproduction',
     'storyboardCaptureFilmPostproduction', 'storyboardCaptureFilmEditor', 'renderStoryboardFilmPostproduction', 'renderStoryboardFilmEditor',
-    'renderStoryboardFilmGallery', 'storyboardOpenFilmEditor', 'storyboardSaveFilmEditor', 'renderStoryboardGalleryKindSwitch', 'storyboardVideoMetaLabel',
+    'renderStoryboardFilmGallery', 'storyboardOpenFilmEditor', 'storyboardSaveFilmEditor', 'storyboardFilmEditorGuard', 'storyboardImportDirectorSubtitles', 'renderStoryboardGalleryKindSwitch', 'storyboardVideoMetaLabel',
     'storyboardSafeUrl', 'storyboardRecordChatKey'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
 const require = createRequire(import.meta.url), { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
@@ -43,14 +43,22 @@ try {
         Object.assign(window, utils, icons, saver, { MODAL_ID: 'story-director-modal', settings: { theme: 'dark' }, activeTab: 'imagegen',
             storyboardFilmEditor: null, storyboardFilmEditorOpenSeq: 0, storyboardGalleryKind: 'film', fixtureChat: 'film-chat',
             routeState: { view: 'gallery' }, storyboardState: () => routeState, getChatKey: () => fixtureChat,
-            storyboardProductionContext: () => ({}), storyboardDirectorDecisionSnapshot: () => null, formatDateTime: () => '2026-09-17 07:00',
-            calls: { post: 0, auth: 0, render: 0, writes: 0, sidecars: 0, forbidden: 0 }, notices: [], toast: (text, tone) => notices.push({ text, tone }),
+            storyboardProductionContext: () => window.directorFixture ? { packetId: 'fixture' } : {},
+            storyboardDirectorDecisionSnapshot: () => window.directorFixture ? { status: 'approved', outputs: { subtitle: true }, lanes: { dialogue: ['fixture'] } } : null,
+            formatDateTime: () => '2026-09-17 07:00',
+            calls: { post: 0, auth: 0, render: 0, writes: 0, sidecars: 0, audioReads: 0, preview: 0, forbidden: 0 }, notices: [], toast: (text, tone) => notices.push({ text, tone }),
             storyboardVideoOperationIssueLabel: text => text,
         });
         const forbidden = () => { calls.forbidden++; throw Error('Production mutation forbidden'); };
-        window.storyboardDeleteFilmTimeline = window.storyboardOpenFilmViewer = window.storyboardGenerateDirectorVoice
-            = window.storyboardImportDirectorSubtitles = window.ttsPlayBlob = forbidden;
-        window.blobStore = { getAudio: forbidden };
+        window.storyboardDeleteFilmTimeline = window.storyboardOpenFilmViewer = window.storyboardGenerateDirectorVoice = forbidden;
+        window.ttsPlayBlob = async () => { calls.preview++; };
+        window.blobStore = { getAudio: async () => { calls.audioReads++; if (window.audioGate) await audioGate; return { blob: new Blob(['synthetic cached audio']) }; } };
+        window.featureRuntime = { load: async name => {
+            if (name !== 'directorWorkOrders') return forbidden();
+            return { directorWorkOrderToSubtitleCues: (_, __, timing) => [{ cueId: 'cue-' + timing.clipId,
+                startMs: timing.startMs, endMs: timing.startMs + 1000, text: '已审核的原台词', kind: 'dialogue',
+                source: { kind: 'director', refId: 'ref-' + timing.clipId, clipId: timing.clipId, relativeStartMs: 0, relativeEndMs: 1000 } }] };
+        } };
         window.storyboardDirectorWorkOrderForRecord = async () => { calls.auth++; if (window.approvalGate) await approvalGate; return null; };
         const canvas = document.createElement('canvas'); canvas.width = 240; canvas.height = 320;
         const paint = canvas.getContext('2d'); paint.fillStyle = '#658777'; paint.fillRect(0, 0, 240, 320);
@@ -237,6 +245,50 @@ try {
     await page.evaluate(() => { releaseApproval(); approvalGate = null; });
     await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
     ok('leaving before approval prevents writes and does not revive the editor', await page.evaluate(() => calls.writes === 4 && calls.sidecars === 3 && storyboardFilmEditor === null));
+    await page.evaluate(() => {
+        window.resetActionEditor = () => {
+            fixtureChat = 'film-chat'; storyboardGalleryKind = 'film'; document.getElementById(MODAL_ID).classList.add('open');
+            window.directorFixture = true; storyboardFilmEditor = storyboardFilmEditorFromTimeline(film, structuredClone(project));
+            storyboardFilmEditor.postproduction.audio.dialogue.push({ audioId: 'voice', label: '隔离缓存配音', source: { kind: 'director_voice', assetId: 'cached', clipId: 'clip-0', relativeStartMs: 0, relativeEndMs: 1000 } });
+            renderModal(); window.actionEditor = storyboardFilmEditor;
+        };
+    });
+    for (const operation of ['still', 'motion', 'subtitles', 'preview']) {
+        for (const action of ['close', 'change-chat', 'new-draft', 'replace-page']) {
+            await page.evaluate(operation => {
+                resetActionEditor(); window.readsBefore = operation === 'preview' ? calls.audioReads : calls.auth; window.playsBefore = calls.preview;
+                window.beforeAction = JSON.stringify(storyboardFilmEditor);
+                if (operation === 'preview') window.audioGate = new Promise(resolve => { window.releaseAction = resolve; });
+                else window.approvalGate = new Promise(resolve => { window.releaseAction = resolve; });
+            }, operation);
+            const selector = operation === 'preview' ? '[data-storyboard-film-voice-preview]' : operation === 'subtitles' ? '[data-storyboard-film-director-subtitles]' : `[data-storyboard-film-add-kind="${operation}"]`;
+            await page.locator(selector).first().click();
+            await page.waitForFunction(operation => (operation === 'preview' ? calls.audioReads : calls.auth) > readsBefore, operation);
+            await page.evaluate(async action => {
+                if (action === 'close') document.getElementById(MODAL_ID).classList.remove('open');
+                if (action === 'change-chat') fixtureChat = 'other-chat';
+                if (action === 'new-draft') { storyboardFilmEditor = storyboardFilmEditorFromTimeline(film, structuredClone(project)); renderModal(); }
+                if (action === 'replace-page') renderModal();
+                window.rendersBeforeRelease = calls.render; releaseAction(); audioGate = null; approvalGate = null;
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }, action);
+            ok(`late ${operation} after ${action} has no effect`, await page.evaluate(() => calls.preview === playsBefore
+                && calls.render === rendersBeforeRelease && JSON.stringify(actionEditor) === beforeAction));
+        }
+    }
+    await page.evaluate(() => { resetActionEditor(); window.readsBefore = calls.auth;
+        window.approvalGate = new Promise(resolve => { window.releaseAction = resolve; }); });
+    await page.locator('[data-storyboard-film-director-subtitles]').click();
+    await page.waitForFunction(() => calls.auth > readsBefore);
+    await page.locator('[data-storyboard-film-subtitle-text]').first().fill('导入等待时继续编辑的字幕');
+    await page.evaluate(async () => { await setAppearance('editorial', 'dark'); releaseAction(); approvalGate = null; });
+    await page.waitForFunction(() => storyboardFilmEditor.postproduction.subtitles.length === 12);
+    ok('theme change does not cancel an import or discard unsaved subtitle text', await page.evaluate(() => storyboardFilmEditor.postproduction.subtitles[0].text === '导入等待时继续编辑的字幕'));
+    await page.locator('[data-storyboard-film-director-subtitles]').click();
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+    ok('repeated explicit import keeps one copy per source', await page.evaluate(() => storyboardFilmEditor.postproduction.subtitles.length === 12));
+    await page.locator('[data-storyboard-film-voice-preview]').click();
+    ok('current cached voice reaches the existing player without generation', await page.evaluate(() => calls.preview === 1 && calls.forbidden === 0));
     ok('no production persistence or generation', await page.evaluate(() => calls.forbidden === 0));
     ok('no browser errors ' + JSON.stringify(errors), errors.length === 0); ok('no unlisted requests', external === 0);
     console.log(JSON.stringify({ passed: checks.length, errors, external, calls: await page.evaluate(() => calls), checks }));

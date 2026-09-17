@@ -16413,20 +16413,31 @@ async function storyboardEnsureFilmPostproductionRuntime() {
   return { postproductionModule, store: storyboardVideoPostproductionStore };
 }
 
+function storyboardFilmEditorGuard(root, editor = storyboardFilmEditor) {
+  const page = root?.querySelector('.sd-storyboard-film-page');
+  return () => Boolean(editor && storyboardFilmEditor === editor && editor.owner?.chatKey === String(getChatKey() || '')
+    && page?.isConnected && root?.isConnected && document.getElementById(MODAL_ID)?.classList.contains('open')
+    && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'film');
+}
+
 async function storyboardImportDirectorSubtitles(root, button) {
   if (!storyboardFilmEditor) return;
+  const editor = storyboardFilmEditor, current = storyboardFilmEditorGuard(root, editor);
+  if (!current()) return;
   storyboardCaptureFilmEditor(root);
-  const project = storyboardFilmPostproductionDraft(storyboardFilmEditor);
+  const selectionKey = JSON.stringify(editor.selections);
+  const project = storyboardFilmPostproductionDraft(editor);
   if (project.subtitles.length >= 500) return toast('一条影片最多保存 500 条字幕。', 'warning');
   if (button) button.disabled = true;
   try {
     const runtime = await featureRuntime.load('directorWorkOrders');
-    const chatKey = String(storyboardFilmEditor.owner?.chatKey || '');
-    const clipTimings = storyboardFilmClipTimings(storyboardFilmEditor.selections);
+    if (!current()) return;
+    const chatKey = String(editor.owner?.chatKey || '');
+    const clipTimings = storyboardFilmClipTimings(editor.selections);
     const existingRefs = new Set(project.subtitles.map((cue) => String(cue.source?.refId || '')).filter(Boolean));
     const additions = [];
     let eligible = 0;
-    for (const selection of storyboardFilmEditor.selections) {
+    for (const selection of editor.selections) {
       const record = storyboardFilmSourceRecordForSelection(selection, chatKey);
       const production = storyboardProductionContext(record || {});
       const decision = storyboardDirectorDecisionSnapshot(record || {});
@@ -16437,6 +16448,7 @@ async function storyboardImportDirectorSubtitles(root, button) {
       const timing = clipTimings.get(String(selection.clipId || ''));
       if (!timing) continue;
       const workOrder = await storyboardDirectorWorkOrderForRecord(record, 'subtitle');
+      if (!current()) return;
       const cues = runtime.directorWorkOrderToSubtitleCues(workOrder, chatKey, {
         startMs: timing.startMs,
         endMs: timing.endMs,
@@ -16449,16 +16461,20 @@ async function storyboardImportDirectorSubtitles(root, button) {
         additions.push(cue);
       }
     }
+    if (!current()) return;
     if (!eligible) return toast('当前影片没有可导入的导演字幕。', 'info');
     if (!additions.length) return toast('导演字幕已经全部导入。', 'info');
-    const available = Math.max(0, 500 - project.subtitles.length);
-    project.mode = 'layered';
-    project.subtitles.push(...additions.slice(0, available));
-    storyboardReconcileFilmPostproduction(storyboardFilmEditor);
-    toast(`已导入 ${Math.min(available, additions.length)} 条导演字幕。`, 'success');
+    storyboardCaptureFilmEditor(root);
+    if (JSON.stringify(editor.selections) !== selectionKey) return toast('片段已调整，请重新导入字幕。', 'info');
+    const target = storyboardFilmPostproductionDraft(editor), refs = new Set(target.subtitles.map(cue => cue.source?.refId).filter(Boolean));
+    const accepted = additions.filter(cue => !refs.has(cue.source.refId)).slice(0, Math.max(0, 500 - target.subtitles.length));
+    target.mode = 'layered';
+    target.subtitles.push(...accepted);
+    storyboardReconcileFilmPostproduction(editor);
+    toast(`已导入 ${accepted.length} 条导演字幕。`, 'success');
     renderModal();
   } catch (error) {
-    toast(storyboardVideoOperationIssueLabel(error?.message), 'warning');
+    if (current()) toast(storyboardVideoOperationIssueLabel(error?.message), 'warning');
   } finally {
     if (button?.isConnected) button.disabled = false;
   }
@@ -23109,22 +23125,27 @@ function bindStoryboardTabEvents(root) {
     renderModal();
   }));
   root.querySelectorAll('[data-storyboard-film-voice-preview]').forEach((button) => button.addEventListener('click', async () => {
+    const editor = storyboardFilmEditor, current = storyboardFilmEditorGuard(root, editor);
+    if (!current()) return;
     const index = Number(button.dataset.storyboardFilmVoicePreview);
     const track = storyboardFilmEditor ? storyboardFilmPostproductionDraft(storyboardFilmEditor).audio.dialogue[index] : null;
     if (!track?.source?.assetId) return;
     button.disabled = true;
     try {
       const hit = await blobStore.getAudio(track.source.assetId);
+      if (!current()) return;
       if (!hit?.blob) return toast('这条配音缓存已被清理，请重新生成。', 'warning');
       await ttsPlayBlob(hit.blob);
     } catch (_) {
-      toast('这条配音暂时无法播放。', 'warning');
+      if (current()) toast('这条配音暂时无法播放。', 'warning');
     } finally {
       if (button.isConnected) button.disabled = false;
     }
   }));
   root.querySelectorAll('[data-storyboard-film-add-kind]').forEach((button) => button.addEventListener('click', async () => {
     if (!storyboardFilmEditor) return;
+    const editor = storyboardFilmEditor, current = storyboardFilmEditorGuard(root, editor);
+    if (!current()) return;
     storyboardCaptureFilmEditor(root);
     if (storyboardFilmEditor.selections.length >= 120) return toast('一条影片时间线最多 120 段。', 'warning');
     const kind = button.dataset.storyboardFilmAddKind === 'motion' ? 'motion' : 'still';
@@ -23135,14 +23156,18 @@ function bindStoryboardTabEvents(root) {
       if (!item) return toast('这段动态成片已不可用。', 'warning');
       const sourceRecord = storyboardFilmStillRecords().find((entry) => entry.id === item.recordId);
       try { if (sourceRecord) await storyboardDirectorWorkOrderForRecord(sourceRecord, 'film'); }
-      catch (error) { return toast(storyboardVideoOperationIssueLabel(error?.message), 'warning'); }
-      storyboardFilmEditor.selections.push({ clipId: uid('clip'), kind, assetId: item.assetId, recordId: item.recordId, durationSeconds: item.technical.durationSeconds, audio: 'native', title: Number.isInteger(item.owner.floor) ? `第 ${item.owner.floor} 层` : '' });
+      catch (error) { if (current()) toast(storyboardVideoOperationIssueLabel(error?.message), 'warning'); return; }
+      if (!current()) return;
+      if (editor.selections.length >= 120) return toast('一条影片时间线最多 120 段。', 'warning');
+      editor.selections.push({ clipId: uid('clip'), kind, assetId: item.assetId, recordId: item.recordId, durationSeconds: item.technical.durationSeconds, audio: 'native', title: Number.isInteger(item.owner.floor) ? `第 ${item.owner.floor} 层` : '' });
     } else {
       const item = storyboardFilmStillRecords().find((entry) => entry.id === sourceId);
       if (!item) return toast('这幅静帧已不可用。', 'warning');
       try { await storyboardDirectorWorkOrderForRecord(item, 'film'); }
-      catch (error) { return toast(storyboardVideoOperationIssueLabel(error?.message), 'warning'); }
-      storyboardFilmEditor.selections.push({ clipId: uid('clip'), kind, recordId: item.id, durationSeconds: 3, audio: 'mute', title: Number.isInteger(item.floor) ? `第 ${item.floor} 层` : '' });
+      catch (error) { if (current()) toast(storyboardVideoOperationIssueLabel(error?.message), 'warning'); return; }
+      if (!current()) return;
+      if (editor.selections.length >= 120) return toast('一条影片时间线最多 120 段。', 'warning');
+      editor.selections.push({ clipId: uid('clip'), kind, recordId: item.id, durationSeconds: 3, audio: 'mute', title: Number.isInteger(item.floor) ? `第 ${item.floor} 层` : '' });
     }
     storyboardReconcileFilmPostproduction(storyboardFilmEditor);
     renderModal();
