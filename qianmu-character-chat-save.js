@@ -2,11 +2,11 @@ import {createCurrentChatCharacterReceiptClient} from './qianmu-chat-character-r
 import {chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
 import {readChatCharacterCollection,prepareChatCharacterMetadataWrite} from './qianmu-character-chat-batch.js';
 import {characterArchiveError} from './qianmu-character-archive.js';
+import {acquireChatSaveLock,releaseChatSaveLock} from './qianmu-chat-save-lock.js';
 
 const fail=message=>{throw characterArchiveError('chat_save',message);};
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),byte=>byte.toString(16).padStart(2,'0')).join('');
-const activeSaves=new WeakMap();
 
 // Write-through to the HOST'S current-chat save only. No direct /api/chats/save, whole-chat copy, or second writer.
 // Unconfirmed intent remains in this session until verified; it is not a cross-refresh recovery journal.
@@ -17,7 +17,7 @@ export async function createChatCharacterSaveSession({getContext,epoch,account,g
   client.assertCurrent();const context=getContext(),store=context.chatMetadata?.story_director_liminale,saveHost=context.saveMetadata;
   if(!store||typeof store!=='object'||Array.isArray(store)||typeof saveHost!=='function'){client.close();fail('当前聊天资料或 ST 保存接口尚未就绪');}
   let closed=false,busy=false,hostPending=false,intent=null,cancelOperation=null;const owner=client.owner,token={};
-  const release=()=>{if(!busy&&!hostPending&&activeSaves.get(store)===token)activeSaves.delete(store);};
+  const release=()=>{if(!busy&&!hostPending)releaseChatSaveLock(store,token);};
   const check=()=>{
     if(closed||isCurrent()!==true)fail('当前聊天、来源或账户已变化，原保存暂停');
     client.assertCurrent();
@@ -57,7 +57,7 @@ export async function createChatCharacterSaveSession({getContext,epoch,account,g
     return verifyCurrent();
   }
   async function exclusive(work){
-    check();if(busy||hostPending||activeSaves.has(store)&&activeSaves.get(store)!==token)fail('上一项人物保存尚未结束，请先核对结果');busy=true;activeSaves.set(store,token);
+    check();if(busy||hostPending||!acquireChatSaveLock(store,token))fail('上一项人物保存尚未结束，请先核对结果');busy=true;
     let timer;const cancellation=new Promise((_,reject)=>{
       cancelOperation=()=>reject(characterArchiveError('chat_save_cancelled','人物保存等待已结束，请保留当前内容核对'));
       timer=setTimeout(()=>{closed=true;client.close();cancelOperation?.();},Math.max(300,Math.min(30000,timeoutMs*3)));

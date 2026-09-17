@@ -6,6 +6,8 @@
     "qianmu-historical-storyboard-source.js",
     "qianmu-historical-original-restore.js",
     "qianmu-historical-recipe-restore.js",
+    "qianmu-historical-chat-save.js",
+    "qianmu-chat-save-lock.js",
     "qianmu-historical-storyboard-bundle.js",
     "qianmu-historical-storyboard-merge.js",
     "qianmu-gallery-history-export.js",
