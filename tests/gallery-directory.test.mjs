@@ -181,3 +181,20 @@ test('duplicate save is blocked until the first request exits, and callback fail
     await assert.rejects(s.savePreview(preview, () => assert.fail('duplicate download')), /正在/); release(); await assert.rejects(pending, /browser download blocked/);
     let saved = 0; await s.savePreview(preview, () => saved++); assert.equal(saved, 1); assert.equal(f.reads, 3); assert.equal(f.loads, 1); s.close();
 });
+
+test('historical details are bound to the exact live preview and never read local recipes or current settings',async()=>{
+    let reads=0,closed=0;const f=savingFixture();
+    f.options.createDetailsClient=options=>({async read(selection){reads++;assert.deepEqual(options.target,target({ownerKey:f.selected.ownerKey,chatKey:f.selected.chatKey}));assert.deepEqual(selection,{recordId:f.record.id,createdAt:3,gallerySha256:'a'.repeat(64)});return {record:{generation:{prompt:'historical only'}}};},close(){closed++;}});
+    const session=await create(f.options),preview=await session.preview(f.selected);assert.deepEqual(await session.previewDetails(preview),{prompt:'historical only'});
+    assert.equal(f.loads,1);assert.equal(reads,1);assert.equal(closed,1);await assert.rejects(session.previewDetails({...preview}),/不是/);
+    session.releasePreview(preview);await assert.rejects(session.previewDetails(preview),/关闭/);session.close();
+});
+
+test('released previews and cancelled detail reads cannot return late generation data',async()=>{
+    for(const change of ['release','close','abort']){
+        let release,started;const gate=new Promise(resolve=>release=resolve),ready=new Promise(resolve=>started=resolve),f=savingFixture(),controller=new AbortController();
+        f.options.createDetailsClient=()=>({async read(){started();await gate;return {record:{generation:{prompt:'late'}}};},close(){}});
+        const session=await create(f.options),preview=await session.preview(f.selected),pending=session.previewDetails(preview,{signal:controller.signal});await ready;
+        if(change==='release')session.releasePreview(preview);else if(change==='close')session.close();else controller.abort();release();await assert.rejects(pending);session.close();
+    }
+});

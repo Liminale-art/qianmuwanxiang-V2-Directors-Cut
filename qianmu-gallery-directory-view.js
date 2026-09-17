@@ -1,6 +1,7 @@
 import { htmlEscape as escape } from './qianmu-storyboard-utils.js';
 import { createGalleryDirectorySession } from './qianmu-gallery-directory.js';
 import { bindGalleryPreviewZoom } from './qianmu-gallery-preview-zoom.js';
+import { bindGalleryGenerationDetails } from './qianmu-gallery-details-view.js';
 
 const button = (action, label, disabled = false) => `<button type="button" class="sd-btn" data-directory-action="${action}" ${disabled ? 'disabled' : ''}>${label}</button>`;
 export function galleryDirectoryOwnerLabel(ownerKey, context) {
@@ -22,8 +23,8 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
     let closed = false, busy = true, session, page = null, stack = [null], ownerKey = '', chatKey = '', tag = '', notice = '', sourceNotice = '';
     let timer, resolve, openingExpired = false; const finished = new Promise(done => resolve = done);
     const exportRows = new Map(); let exportController = null;
-    let preview = null, previewUrl = '', releaseZoom, listScroll = 0, restoreList = false, previewIndex = 0;
-    function releasePreview() { releaseZoom?.(); releaseZoom = null; if (preview) session?.releasePreview?.(preview); if (previewUrl) view.URL.revokeObjectURL(previewUrl); previewUrl = ''; preview = null; }
+    let preview = null, previewUrl = '', releaseZoom, releaseDetails, listScroll = 0, restoreList = false, previewIndex = 0;
+    function releasePreview() { releaseDetails?.(); releaseDetails = null; releaseZoom?.(); releaseZoom = null; if (preview) session?.releasePreview?.(preview); if (previewUrl) view.URL.revokeObjectURL(previewUrl); previewUrl = ''; preview = null; }
     function close() {
         if (closed) return; closed = true; clearTimeout(timer); observer.disconnect(); view.removeEventListener('pagehide', close);
         exportController?.abort(); exportRows.clear(); releasePreview();
@@ -43,14 +44,16 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
     });
     function draw() {
         if (!alive()) return;
-        releaseZoom?.(); releaseZoom = null;
+        releaseZoom?.(); releaseZoom = null; releaseDetails?.(); releaseDetails = null;
         if (preview) {
             dialog.innerHTML = `<header><b>历史画面 · 只读</b>${button('preview-back', '返回目录', busy)}${button('close', '关闭')}</header><main>
               <div class="sd-directory-image-stage" tabindex="0" aria-label="历史原图；滚轮或双指缩放，拖动平移，0 恢复"><div><img src="${escape(previewUrl)}" alt="${escape(preview.record.tags.join(' · ') || '历史画面')}" draggable="false"></div></div>
               <nav aria-label="图片操作"><button type="button" class="sd-btn" data-preview-zoom="out" aria-label="缩小">−</button><span data-preview-scale>100%</span><button type="button" class="sd-btn" data-preview-zoom="in" aria-label="放大">＋</button><button type="button" class="sd-btn" data-preview-zoom="reset">恢复适配</button>${typeof save === 'function' ? button('preview-save', '保存原图', busy) : ''}</nav>
-              <details class="sd-directory-image-details"><summary>来源与详情</summary><p>${escape(galleryDirectoryOwnerLabel(preview.source.ownerKey, getContext()))}</p><p>${escape(preview.source.chatKey)}</p><p>${escape(preview.source.ownerKey)}</p><p>${escape(new Date(preview.record.createdAt).toLocaleString())} · ${preview.width} × ${preview.height}</p><p>${escape(preview.record.tags.join(' · '))}</p><p>按原文件位置读取的当前快照，不是永久归属或原件一致性证明。</p></details>
+              <details class="sd-directory-image-details"><summary>来源与详情</summary><p>${escape(galleryDirectoryOwnerLabel(preview.source.ownerKey, getContext()))}</p><p>${escape(preview.source.chatKey)}</p><p>${escape(preview.source.ownerKey)}</p><p>${escape(new Date(preview.record.createdAt).toLocaleString())} · ${preview.width} × ${preview.height}</p><p>${escape(preview.record.tags.join(' · '))}</p><p>按原文件位置读取的当前快照，不是永久归属或原件一致性证明。</p><section data-directory-generation aria-live="polite"></section></details>
               </main><footer><p role="status">只读查看，可保存本次读取的图片文件，保留其自带元数据；不另附千幕资料，不是完整联包备份。</p></footer>`;
-            releaseZoom = bindGalleryPreviewZoom(dialog, { ...preview, isCurrent: alive }); return;
+            releaseZoom = bindGalleryPreviewZoom(dialog, { ...preview, isCurrent: alive });
+            const selectedPreview = preview;
+            releaseDetails = bindGalleryGenerationDetails(dialog.querySelector('details'), { read: options => session.previewDetails(selectedPreview, options), isCurrent: () => alive() && preview === selectedPreview }); return;
         }
         const focused = document.activeElement;
         const focusKey = ['data-directory-action', 'data-directory-scope', 'data-directory-record'].find(key => dialog.contains(focused) && focused.hasAttribute(key));

@@ -24,7 +24,9 @@ try {
         const { createGalleryCatalogStore: create } = await import('/qianmu-gallery-catalog-store.js');
         const { createGalleryDirectorySession } = await import('/qianmu-gallery-directory.js');
         const { openGalleryDirectory } = await import('/qianmu-gallery-directory-view.js');
-        const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient } = await import('/qianmu-chat-character-receipt-client.js');
+        const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient, createChatGalleryDetailsClient } = await import('/qianmu-chat-character-receipt-client.js');
+        const { projectChatGalleryDetails } = await import('/qianmu-chat-gallery-details.js');
+        const { projectChatGalleryRecord } = await import('/qianmu-chat-gallery-record.js');
         const { loadGalleryPreviewImage } = await import('/qianmu-gallery-preview-media.js');
         const { chatGalleryReceiptText } = await import('/qianmu-chat-gallery-receipt.js');
         const checks = [], check = (label, ok) => { if (!ok) throw Error(label); checks.push(label); };
@@ -57,6 +59,7 @@ try {
         window.generation = 1; window.account = ns; window.opened = null; window.receipts = []; window.readGate = null;
         window.mediaCalls=0;window.imageFail=false;window.imageGate=null;window.createdUrls=[];window.revokedUrls=[];
         window.saveCalls=0;window.recordCalls=0;window.recordGate=null;window.recordConflict=false;window.downloadFail=false;window.recordTimeout=10000;
+        window.detailCalls=0;window.detailGate=null;window.detailMissing=false;window.detailConflict=false;
         const createUrl=URL.createObjectURL.bind(URL),revokeUrl=URL.revokeObjectURL.bind(URL);
         URL.createObjectURL=blob=>{const url=createUrl(blob);window.createdUrls.push(url);return url;};URL.revokeObjectURL=url=>{window.revokedUrls.push(url);revokeUrl(url);};
         const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=1800;canvas.getContext('2d').fillRect(0,0,1000,1800);
@@ -64,17 +67,23 @@ try {
         const digest = async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
         async function fetchImpl(url, options) {
             const request = JSON.parse(options.body); window.receipts.push(request);
-            check('metadata request never uploads source contents or generates images', !options.body.includes('PRIVATE') && /\/chat-gallery\/(receipt|record)$/.test(url));
+            check('metadata request never uploads source contents or generates images', !options.body.includes('PRIVATE') && /\/chat-gallery\/(receipt|record|details)$/.test(url));
             if (window.readGate) await window.readGate;
             if (url.endsWith('/record')) {
                 window.recordCalls++; if (window.recordGate) await window.recordGate;
                 if (window.recordConflict) return new Response(JSON.stringify({ok:false,code:'chat_character_receipt_record_changed'}),{status:409,headers:{'Content-Type':'application/json'}});
             }
             if (request.target.avatar === 'B.png') return new Response(JSON.stringify({ ok: false, code: 'chat_character_receipt_missing', message: 'PRIVATE_PATH' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-            const selectedFrames=request.target.avatar==='C.png'?[{id:'same-id',createdAt:100,url:'/user/images/fixture.png',tags:['历史画面']}]:frames;
+            const selectedFrames=request.target.avatar==='C.png'?[{id:'same-id',createdAt:100,url:'/user/images/fixture.png',tags:['历史画面'],prompt:'历史原始\n<img src=x onerror=alert(1)>',finalPrompt:'历史最终',negative:'',seed:0,snapshotRef:'PRIVATE_LOCAL_REF',apiKey:'PRIVATE_SECRET'}]:frames;
             const value = chatGalleryReceiptText(selectedFrames);
+            if(url.endsWith('/details')){
+                window.detailCalls++;if(window.detailGate)await window.detailGate;
+                if(window.detailMissing)return new Response('old backend',{status:404});
+                if(window.detailConflict)return new Response(JSON.stringify({ok:false,code:'chat_character_receipt_record_changed'}),{status:409,headers:{'Content-Type':'application/json'}});
+                return new Response(JSON.stringify({ok:true,version:1,expectedAccount:'st-user:'+await digest('fixture'),target:request.target,gallerySha256:await digest(value.text),record:projectChatGalleryDetails(selectedFrames[0]),proof:'read-only-details'}),{headers:{'Content-Type':'application/json'}});
+            }
             if(url.endsWith('/record'))return new Response(JSON.stringify({ok:true,version:1,expectedAccount:'st-user:'+await digest('fixture'),target:request.target,
-                gallerySha256:await digest(value.text),record:selectedFrames[0],proof:'read-only-record'}),{headers:{'Content-Type':'application/json'}});
+                gallerySha256:await digest(value.text),record:projectChatGalleryRecord(selectedFrames[0]),proof:'read-only-record'}),{headers:{'Content-Type':'application/json'}});
             return new Response(JSON.stringify({ ok: true, version: 1, expectedAccount: 'st-user:' + await digest('fixture'), target: request.target,
                 state: 'present', gallery: { count: value.count, bytes: value.bytes, sha256: await digest(value.text) }, proof: 'read-only-snapshot' }), { headers: { 'Content-Type': 'application/json' } });
         }
@@ -87,6 +96,7 @@ try {
                     createClient: opts => createCurrentChatGalleryReceiptClient({ ...opts, account: async () => window.account, fetchImpl }),
                     createHistoricalClient: opts => createChatGalleryReceiptClient({ ...opts, fetchImpl }),
                     createRecordClient:opts=>createChatGalleryRecordClient({...opts,fetchImpl,timeoutMs:window.recordTimeout}),
+                    createDetailsClient:opts=>createChatGalleryDetailsClient({...opts,fetchImpl}),
                     loadImage:(url,opts)=>loadGalleryPreviewImage(url,{...opts,fetchImpl:async(path,options)=>{
                         if(path!=='/user/images/fixture.png'||options.redirect!=='error'||options.credentials!=='same-origin')throw Error('unexpected media access');
                         window.mediaCalls++;if(window.imageGate)await window.imageGate;
@@ -128,6 +138,7 @@ try {
     await dialog.locator('[data-directory-history]').first().click();
     await page.waitForFunction(()=>document.querySelector('.sd-directory-image-stage img')?.naturalWidth===1000);
     assert.equal(await dialog.locator('details[open]').count(),0);assert.equal(await dialog.locator('[data-directory-record],.sd-storyboard-lightbox-delete,.sd-storyboard-lightbox-edit').count(),0);
+    assert.equal(await page.evaluate(()=>window.detailCalls),0);checks.push('opening a historical picture leaves generation details folded and unread');
     assert.equal(await page.evaluate(()=>JSON.stringify(window.host.chatMetadata)),hostBefore);checks.push('historical original decodes read-only without changing current chat, closed details and no mutation controls');
     const stage=dialog.locator('.sd-directory-image-stage');await stage.hover();await page.mouse.wheel(0,-200);
     await page.waitForFunction(()=>Number(document.querySelector('.sd-directory-image-stage').dataset.scale)>1);
@@ -138,6 +149,13 @@ try {
     });
     assert.ok(Number(await stage.getAttribute('data-scale'))>1);await dialog.locator('[data-preview-zoom="reset"]').click();checks.push('real wheel and synthetic two-pointer zoom work with one-click reset');
     await dialog.locator('[data-preview-zoom="in"]').click(); await dialog.locator('details summary').click();
+    await page.waitForFunction(()=>document.querySelector('[data-generation-field="prompt"]'));
+    assert.equal(await dialog.locator('[data-generation-field="prompt"]').innerText(),'历史原始\n<img src=x onerror=alert(1)>');
+    assert.equal(await dialog.locator('[data-generation-field="model"]').innerText(),'未记录');assert.equal(await dialog.locator('[data-generation-field="seed"]').innerText(),'0');
+    assert.equal(await dialog.locator('[data-generation-field="negative"]').innerText(),'（原记录为空）');assert.equal(await dialog.locator('[data-generation-recipe]').getAttribute('data-generation-recipe'),'reference-only');
+    assert.equal(await dialog.locator('[data-directory-generation] img').count(),0);assert.doesNotMatch(await dialog.locator('[data-directory-generation]').innerText(),/PRIVATE_LOCAL_REF|PRIVATE_SECRET/);
+    const initialDetailCalls=await page.evaluate(()=>window.detailCalls);await dialog.locator('details summary').click();await dialog.locator('details summary').click();
+    assert.equal(await page.evaluate(()=>window.detailCalls),initialDetailCalls);checks.push('details preserve exact historical text, empty values and zero seed safely without current defaults or repeated reads');
     const selectedScale=await stage.getAttribute('data-scale'),mediaBeforeSave=await page.evaluate(()=>window.mediaCalls);
     await page.evaluate(()=>{window.previewImageNode=document.querySelector('.sd-directory-image-stage img');});
     const saving=page.waitForEvent('download');await dialog.locator('[data-directory-action="preview-save"]').click();const download=await saving;
@@ -177,6 +195,7 @@ try {
         assert.equal(fits,true);
         const saveFits=await dialog.locator('[data-directory-action="preview-save"]').evaluate(node=>{const outer=node.closest('dialog').getBoundingClientRect(),rect=node.getBoundingClientRect();return rect.left>=outer.left&&rect.right<=outer.right;});
         assert.equal(saveFits,true);checks.push(`${theme?.theme||'classic'}/${theme?.mode||'default'}/${width}px portrait preview and original-save control fit within the dialog`);
+        assert.equal(await dialog.locator('details').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true);
     }
     await dialog.locator('[data-directory-action="preview-back"]').click();await idle();
     assert.equal(await dialog.locator('[data-directory-history]').count(),1);assert.match(await dialog.locator('h3').innerText(),/同名聊天/);
@@ -242,6 +261,35 @@ try {
     await page.waitForFunction(() => document.querySelector('.sd-gallery-directory'));
     await page.keyboard.press('Escape'); await page.evaluate(() => { window.releaseGate(); window.readGate = null; });
     await page.waitForFunction(() => window.listenerCount() === 0); checks.push('cancel during receipt releases listeners and suppresses late repaint');
+    const openDetailsPreview=async()=>{
+        await page.evaluate(()=>window.openFixture());await idle();await dialog.locator('[data-directory-scope]').filter({hasText:'char:C.png'}).click();await idle();
+        await dialog.locator('[data-directory-scope]').first().click();await idle();await openHistoricalPreview();
+    };
+    await openDetailsPreview();await page.evaluate(()=>{window.detailMissing=true;});await dialog.locator('details summary').click();
+    await page.waitForFunction(()=>document.querySelector('[data-directory-generation]')?.textContent.includes('更新千幕配套后端'));
+    assert.equal(await dialog.locator('.sd-directory-image-stage img').count(),1);const retryMedia=await page.evaluate(()=>window.mediaCalls);
+    await page.evaluate(()=>{window.detailMissing=false;});await dialog.locator('[data-directory-generation] button').click();await page.waitForFunction(()=>document.querySelector('[data-generation-field="prompt"]'));
+    assert.equal(await page.evaluate(()=>window.mediaCalls),retryMedia);checks.push('old backend is explained inline while the picture stays usable, and explicit retry does not reload media');
+    await actionBack();
+    async function actionBack(){await dialog.locator('[data-directory-action="preview-back"]').click();await idle();}
+    await openHistoricalPreview();await page.evaluate(()=>{window.detailConflict=true;});await dialog.locator('details summary').click();
+    await page.waitForFunction(()=>document.querySelector('[data-directory-generation]')?.textContent.includes('原聊天画面已变化'));
+    assert.equal(await dialog.locator('[data-generation-field]').count(),0);checks.push('changed historical source never fills details from current settings or another snapshot');
+    await page.evaluate(()=>{window.detailConflict=false;});await actionBack();await openHistoricalPreview();
+    await page.evaluate(()=>{window.detailGate=new Promise(resolve=>window.releaseDetail=resolve);});
+    let detailBefore=await page.evaluate(()=>window.detailCalls);await dialog.locator('details summary').click();await page.waitForFunction(n=>window.detailCalls>n,detailBefore);
+    await dialog.locator('details summary').click();await page.evaluate(()=>{window.releaseDetail();window.detailGate=null;});
+    assert.equal(await dialog.locator('[data-generation-field]').count(),0);await dialog.locator('details summary').click();await page.waitForFunction(()=>document.querySelector('[data-generation-field="prompt"]'));
+    assert.equal(await page.evaluate(()=>window.detailCalls),detailBefore+2);checks.push('folding pending details cancels the read, suppresses late fields and permits a fresh open');
+    await actionBack();await openHistoricalPreview();await page.evaluate(()=>{window.detailGate=new Promise(resolve=>window.releaseDetail=resolve);});
+    detailBefore=await page.evaluate(()=>window.detailCalls);await dialog.locator('details summary').click();await page.waitForFunction(n=>window.detailCalls>n,detailBefore);
+    await actionBack();await page.evaluate(()=>{window.releaseDetail();window.detailGate=null;});assert.equal(await dialog.locator('[data-generation-field],.sd-directory-image-stage').count(),0);
+    checks.push('returning to the directory releases pending detail requests without restoring the old picture');
+    await openHistoricalPreview();await page.evaluate(()=>{window.detailGate=new Promise(resolve=>window.releaseDetail=resolve);});
+    detailBefore=await page.evaluate(()=>window.detailCalls);await dialog.locator('details summary').click();await page.waitForFunction(n=>window.detailCalls>n,detailBefore);
+    await page.evaluate(()=>{window.account='st-user:other';window.releaseDetail();window.detailGate=null;});
+    await page.waitForFunction(()=>!document.querySelector('.sd-gallery-directory'));assert.equal(await page.evaluate(()=>window.listenerCount()),0);
+    checks.push('account switch during details closes the stale preview without exposing late generation text');
     assert.equal(external, 0); assert.deepEqual(errors, []);
     console.log(JSON.stringify({ ok: true, checks: [...result, ...checks], externalRequests: external, pageErrors: errors }));
 } finally { clearTimeout(timer); await browser.close(); }

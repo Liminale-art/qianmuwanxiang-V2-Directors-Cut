@@ -1,6 +1,6 @@
 import { createGalleryCatalogStore } from './qianmu-gallery-catalog-store.js';
 import { projectGalleryCatalogEntry, galleryCatalogSource, galleryCatalogAccount } from './qianmu-gallery-catalog-contract.js';
-import { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient } from './qianmu-chat-character-receipt-client.js';
+import { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient, createChatGalleryDetailsClient } from './qianmu-chat-character-receipt-client.js';
 import { loadGalleryPreviewImage } from './qianmu-gallery-preview-media.js';
 import { chatGalleryReceiptText } from './qianmu-chat-gallery-receipt.js';
 import { chatFileTarget } from './qianmu-chat-file-target.js';
@@ -31,7 +31,7 @@ export function galleryDirectoryTarget(source) {
 export async function createGalleryDirectorySession({ getContext, epoch, guard = async () => {},
     createClient = createCurrentChatGalleryReceiptClient, createStore = createGalleryCatalogStore,
     createHistoricalClient = createChatGalleryReceiptClient, createRecordClient = createChatGalleryRecordClient,
-    loadImage = loadGalleryPreviewImage } = {}) {
+    createDetailsClient = createChatGalleryDetailsClient, loadImage = loadGalleryPreviewImage } = {}) {
     const client = await createClient({ getContext, epoch, guard });
     let closed = false, store, updating = false, exporting = false, previews = new WeakMap();
     const saving = new WeakSet();
@@ -103,6 +103,16 @@ export async function createGalleryDirectorySession({ getContext, epoch, guard =
             } finally { readers.delete(receiptReader); readers.delete(recordReader); receiptReader.close(); recordReader.close(); }
         },
         releasePreview(preview) { previews.delete(preview); },
+        async previewDetails(preview, { signal } = {}) {
+            const captured = previews.get(preview);
+            if (!captured) throw Error('此预览已关闭或不是本次读取的原图，请重新打开');
+            const verify = async () => { await check(); if (signal?.aborted || previews.get(preview) !== captured) throw Error('画面详情读取已取消'); };
+            await verify();
+            const reader = createDetailsClient({ namespace, target: captured.target, headers: () => getContext().getRequestHeaders?.() || {}, guard: verify });
+            readers.add(reader);
+            try { const result = await reader.read(captured.selection, { signal }); await verify(); return result.record.generation; }
+            finally { readers.delete(reader); reader.close(); }
+        },
         async exportOriginals(rows, save, options = {}) {
             if (exporting) throw Error('正在导出所选原图，请稍候'); exporting = true;
             try {
