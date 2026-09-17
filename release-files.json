@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-historical-storyboard-source.js",
+    "qianmu-historical-original-restore.js",
     "qianmu-historical-storyboard-bundle.js",
     "qianmu-historical-storyboard-merge.js",
     "qianmu-gallery-history-export.js",
