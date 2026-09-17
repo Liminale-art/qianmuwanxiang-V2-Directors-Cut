@@ -54,7 +54,7 @@ try {
     }
     Object.assign(window,await import('/qianmu-plan-archive-write.js'),{blobStore:api,clone:structuredClone,
       storyboardGalleryRecords:()=>records,getChatKey:()=> 'entry-chat',storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
-      sanitizeStoryboardSnapshot:structuredClone,storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{saves++;},
+      sanitizeStoryboardSnapshot:structuredClone,storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{saves++;},storyboardRecipeArchiveClient:async()=>{throw Error('old backend fixture');},
       storyboardState:()=>state,ctx:()=>({Popup,POPUP_TYPE:{CONFIRM:1}}),normalizeStoryboardShotSpec:value=>value,characterReferenceChoice:()=>'',
       synchronizeStoryboardCaptionBase:()=>{},storyboardRenderInlineImages:()=>{inlineRenders++;},storyboardRedrawRecord:()=>{generations++;},toast:()=>{}});
     const entry=new Function(source+';return {archive:storyboardArchiveGallerySnapshots,store:storyboardStoreSnapshotForRecord,read:storyboardReadSnapshotForRecord,hydrate:storyboardHydrateGallerySnapshots,snapshot:storyboardSnapshotForRecord,edit:storyboardEditPrompt};')();
@@ -65,7 +65,7 @@ try {
     check('actual editor only-save action succeeds',await entry.edit({record})===true);
     const editedRef=record.snapshotRef;
     check('only-save edits point to a new immutable revision',editedRef!==base&&editedRef!==importedRef&&!record.snapshot);
-    check('only-save neither generates nor bypasses metadata and inline refresh',generations===0&&saves===2&&inlineRenders===1);
+    check('only-save neither generates nor bypasses inline-save then reference-save and inline refresh',generations===0&&saves===3&&inlineRenders===1);
     check('old, imported and edited recipes remain separately readable',(await read(base)).snapshot.prompt==='old prompt'&&(await read(importedRef)).snapshot.prompt==='imported prompt'&&(await read(editedRef)).snapshot.prompt==='user edited prompt');
     check('editing retains non-prompt generation parameters',(await read(editedRef)).snapshot.payload.parameters.steps===28&&(await read(editedRef)).snapshot.profile.seed===0);
     storyboardSnapshotCache.clear();
@@ -81,7 +81,7 @@ try {
     await entry.hydrate([legacyRecord,record],{migrate:false});
     check('batch rehydration does not confuse legacy and revised recipes',entry.snapshot(legacyRecord).prompt==='old prompt'&&entry.snapshot(record).prompt==='user edited prompt');
     // Return to an older version creates no overwrite and does not grow another archive.
-    check('saving an identical old recipe reuses its reference',await entry.store(record,old)===true&&record.snapshotRef===base);
+    check('saving an identical old recipe reuses its reference and retains inline until host save',await entry.store(record,old)===true&&record.snapshotRef===base&&record.snapshot.prompt===old.prompt);
     const nativeDigest=SubtleCrypto.prototype.digest;
     try {
       SubtleCrypto.prototype.digest=function(){return Promise.reject(Error('synthetic digest unavailable'));};

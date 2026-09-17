@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-recipe-archive-contract.js",
+    "qianmu-recipe-archive-client.js",
     "qianmu-recipe-archive-store.js",
     "qianmu-recipe-archive-service.js",
     "qianmu-chat-gallery-details.js",

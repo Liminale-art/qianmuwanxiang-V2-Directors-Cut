@@ -29,7 +29,7 @@ function fixture() {
   const record={id:'image',chatKey:'chat',snapshotRef:base},rows=[record],cache=new Map([[base,{prompt:'old'}]]),writes=[];
   const c=vm.createContext({preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,storyboardSnapshotCache:cache,
     storyboardSnapshotReads:new Map(),storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:structuredClone,
-    console:{warn(){}},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{},
+    console:{warn(){}},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{},storyboardRecipeArchiveClient:async()=>{throw Error('old backend fixture');},
     blobStore:{blobStoreAvailable:()=>true,putStoryboardSnapshots:async(records,options)=>{
       assert.equal(options.preserveExisting,true);writes.push(structuredClone(records));return {stored:[revision]};
     },getStoryboardSnapshots:async()=>[{key:base,snapshot:{prompt:'old'}},{key:revision,snapshot:{prompt:'edited'}}]}});
@@ -42,7 +42,9 @@ test('actual prompt edit and automatic archival use returned references without 
   for(const automatic of [false,true]) {
     const e=fixture();e.record.snapshot={prompt:'edited'};
     const result=automatic?await e.c.storyboardArchiveGallerySnapshots():await e.c.storyboardStoreSnapshotForRecord(e.record,e.record.snapshot);
-    assert.equal(result,automatic?1:true);assert.equal(e.record.snapshotRef,revision);assert.equal(e.record.snapshot,undefined);
+    assert.equal(result,automatic?1:true);assert.equal(e.record.snapshotRef,revision);
+    if(!automatic){assert.equal(e.record.snapshot.prompt,'edited');await e.c.saveMetadata();assert.equal(await e.c.storyboardArchiveGallerySnapshots(),1);}
+    assert.equal(e.record.snapshot,undefined);
     assert.equal(e.cache.get(base).prompt,'old');assert.equal(e.cache.get(revision).prompt,'edited');
     e.cache.clear();assert.equal((await e.c.storyboardReadSnapshotForRecord(e.record)).prompt,'edited');
     assert.equal((await e.c.storyboardReadSnapshotForRecord({id:'image',chatKey:'chat',snapshotRef:base})).prompt,'old');

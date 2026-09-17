@@ -121,7 +121,7 @@ for(const choice of ['save','cancel','generate','changed'])test(`actual prompt e
   const updated=(await prepareCharacterShotEdit(original,draft,{namespace})).snapshot;
   const fields={'.sd-storyboard-edit-positive':{value:''},'.sd-storyboard-edit-negative':{value:''}};
   const context=vm.createContext({...storyboard,clone:copy,storyboardState:()=>state,getChatKey:()=> 'chat',storyboardReadSnapshotForRecord:async()=>copy(original),toast:m=>notices.push(m),
-    storyboardStoreSnapshotForRecord:async(_,value)=>saved=copy(value),saveMetadata:async()=>{},storyboardRenderInlineImages(){},storyboardRedrawRecord:()=>{generated++;return true;},
+    storyboardStoreSnapshotForRecord:async(_,value)=>saved=copy(value),saveMetadata:async()=>{},storyboardArchiveGallerySnapshots:async()=>0,storyboardRenderInlineImages(){},storyboardRedrawRecord:()=>{generated++;return true;},
     document:{createElement:()=>({querySelector:selector=>fields[selector],insertAdjacentHTML(){}})},
     featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:{openCharacterShotEditor:async()=>{if(choice==='changed')record.finalPrompt='other edit';return {snapshot:updated};}}},
     ctx:()=>({POPUP_TYPE:{CONFIRM:1},Popup:class{constructor(wrap,type,title,options){this.options=options;}async show(){round++;if(round===1){assert.ok(this.options.customButtons.some(row=>row.result===3));return 3;}assert.equal(fields['.sd-storyboard-edit-positive'].value,original.payload.prompt);return choice==='cancel'?0:choice==='generate'?1:2;}}}),

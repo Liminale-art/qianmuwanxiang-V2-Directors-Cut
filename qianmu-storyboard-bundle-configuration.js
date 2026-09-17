@@ -32,10 +32,10 @@ export function createStoryboardBundleConfiguration({ namespace, chatKey, settin
     };
     const images = (source.chat?.images || []).map(raw => {
       if (!raw?.id || !Object.hasOwn(STORYBOARD_SOURCES, raw.source)) fail('成片包含不支持的渠道，未部分导入');
-      if (raw.snapshotRef && !raw.snapshot && !raw.recipeUnavailable) fail('成片缺少原始配置，请保留原包');
+      if ((raw.snapshotRef || raw.snapshotServerRef) && !raw.snapshot && !raw.recipeUnavailable) fail('成片缺少原始配置，请保留原包');
       const url = source.imageUrls?.[raw.id];
       if (typeof url !== 'string' || !/^\/user\/images\/Qianmu-Storyboards\/import-[a-f0-9]{64}\.(?:png|jpg|webp)$/.test(url)) fail('成片缺少已核对的原件收据地址');
-      const record = { ...raw, url, chatKey }; delete record.snapshotRef; delete record.snapshotVersion;
+      const record = { ...raw, url, chatKey }; delete record.snapshotRef; delete record.snapshotVersion; delete record.snapshotServerRef;
       record.snapshot = sanitizeStoryboardSnapshot(record.snapshot || {}, { source: record.source, prompt: record.prompt, negative: record.negative });
       const floor = Number.isInteger(record.floor) ? record.floor : null, message = list[floor];
       const sourceFloor = floor ?? (Number.isInteger(raw.lastKnownFloor) ? raw.lastKnownFloor : Number.isInteger(raw.messageRef?.lastKnownFloor) ? raw.messageRef.lastKnownFloor : null);

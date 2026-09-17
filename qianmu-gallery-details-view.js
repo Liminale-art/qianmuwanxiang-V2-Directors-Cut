@@ -1,7 +1,8 @@
 const labels = { source: '渠道', model: '模型', width: '生成宽度', height: '生成高度', seed: '种子', steps: '步数', cfg: '引导系数', sampler: '采样器', scheduler: '调度器', prompt: '原始提示词', finalPrompt: '最终提示词', negative: '原始负面提示词', effectiveNegative: '实际负面提示词', artistString: '画师串' };
 const recipes = {
     inline: '聊天内保留配方。本页仅读取显示信息，未核验该配方是否完整或仍可复现。',
-    'reference-only': '聊天只保留配方引用，服务器未提供精确配方；请在原设备保全本地归档。',
+    'reference-only': '聊天只保留本机配方引用；请在原设备保全本地归档。',
+    'server-reference': '聊天保存了服务器配方引用；回到原聊天可按需读取。此处尚未核验归档可用性。',
     unavailable: '原记录已标记精确配方不可用。',
     'not-recorded': '原聊天未记录精确配方来源。',
 };

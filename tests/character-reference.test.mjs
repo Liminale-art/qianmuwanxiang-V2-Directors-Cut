@@ -136,7 +136,7 @@ test('actual inline edit only saves the selected frozen reference; it neither fe
     let saved,generated=0,account=namespace,accountReads=0;const notices=[],record={id:'old',prompt:'original exact',floor:0};
     const fields={'.sd-storyboard-edit-positive':{value:''},'.sd-storyboard-edit-negative':{value:''},'.sd-character-reference-picker':{value:''}};
     const context=vm.createContext({...storyboard,clone:structuredClone,getChatKey:()=> 'chat',storyboardState:()=>state,
-      storyboardReadSnapshotForRecord:async()=>structuredClone(original),storyboardStoreSnapshotForRecord:async(r,snapshot)=>{saved=snapshot;},
+      storyboardReadSnapshotForRecord:async()=>structuredClone(original),storyboardStoreSnapshotForRecord:async(r,snapshot)=>{saved=snapshot;},storyboardArchiveGallerySnapshots:async()=>0,
       featureRuntime:{load:async key=>{assert.equal(key,'imageAdmission');return {resolveImageAccountNamespace:async()=>{if(++accountReads===2&&choice==='read-failure')throw Error('账户暂不可读取');return account;}};}},
       document:{createElement:()=>({querySelector:selector=>fields[selector],insertAdjacentHTML(){}})},
       ctx:()=>({POPUP_TYPE:{CONFIRM:'confirm'},Popup:class{async show(){fields['.sd-character-reference-picker'].value=choice;if(choice==='switch-account')account='st-user:other';return 2;}}}),

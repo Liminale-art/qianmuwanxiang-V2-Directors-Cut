@@ -4,7 +4,7 @@ import { chatGalleryRecordRequest, chatGalleryRecordSelection } from './qianmu-c
 export const CHAT_GALLERY_DETAILS_RESPONSE_BYTES = 256 * 1024;
 const textFields = Object.freeze({ source: 80, model: 240, prompt: 24000, finalPrompt: 24000, negative: 12000, effectiveNegative: 12000, artistString: 6000, sampler: 240, scheduler: 240 });
 const scalarFields = ['width', 'height', 'seed', 'steps', 'cfg'];
-const recipeStates = ['inline', 'reference-only', 'unavailable', 'not-recorded'];
+const recipeStates = ['inline', 'reference-only', 'server-reference', 'unavailable', 'not-recorded'];
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const exact = (value, keys) => object(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const fail = () => { throw chatCharacterReceiptError('details_content', '原画面生成信息不兼容或超过显示上限，未截断内容', 409); };
@@ -31,6 +31,7 @@ export function projectChatGalleryDetails(raw) {
     chatGalleryRecordSelection({ recordId: raw.id, createdAt: raw.createdAt, gallerySha256: '0'.repeat(64) });
     const generation = generationFields(raw);
     generation.recipeState = raw.recipeUnavailable === true ? 'unavailable' : object(raw.snapshot) ? 'inline'
+        : object(raw.snapshotServerRef) ? 'server-reference'
         : typeof raw.snapshotRef === 'string' && raw.snapshotRef ? 'reference-only' : 'not-recorded';
     return { id: raw.id, createdAt: raw.createdAt, generation };
 }

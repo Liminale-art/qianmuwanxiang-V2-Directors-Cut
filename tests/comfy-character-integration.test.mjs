@@ -161,7 +161,7 @@ test('actual inline editing can disable only this image role recipe without chan
   const record={id:'old',prompt:'garden',floor:0},fields={'.sd-storyboard-edit-positive':{value:''},'.sd-storyboard-edit-negative':{value:''},'.sd-comfy-character-inline':{checked:true}};
   Object.assign(h.context,{getChatKey:()=> 'chat',storyboardReadSnapshotForRecord:async()=>copy(j),storyboardStoreSnapshotForRecord:async(_,value)=>saved=value,
     document:{createElement:()=>({querySelector:selector=>fields[selector],insertAdjacentHTML(){}})},ctx:()=>({POPUP_TYPE:{CONFIRM:1},Popup:class{async show(){fields['.sd-comfy-character-inline'].checked=false;return 2;}}}),
-    synchronizeStoryboardCaptionBase(){},saveMetadata:async()=>{},storyboardRenderInlineImages(){},storyboardRedrawRecord:()=>generated++});
+    synchronizeStoryboardCaptionBase(){},saveMetadata:async()=>{},storyboardArchiveGallerySnapshots:async()=>0,storyboardRenderInlineImages(){},storyboardRedrawRecord:()=>generated++});
   vm.runInContext(section('storyboardEditPrompt'),h.context);assert.equal(await h.context.storyboardEditPrompt({record}),true);
   assert.equal(saved.profile.comfyCharacterEnabled,false);assert.equal(saved.payload.comfyCharacterPlan,undefined);
   assert.equal(saved.payload.parameters.workflow.lora.inputs.strength_model,0);assert.equal(j.profile.comfyCharacterEnabled,true);assert.equal(generated,0);

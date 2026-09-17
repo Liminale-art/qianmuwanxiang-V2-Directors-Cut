@@ -234,6 +234,20 @@ test('actual export prevents duplicate heavy work and explicitly describes legac
   assert.ok(e.notices.some(([text,kind])=>kind==='warning'&&text.includes('原文件')));assert.equal(e.context.storyboardExportPackage.busy,false);
 });
 
+test('actual export resolves server recipes before packaging, and refuses missing, failed or stale reads',async()=>{
+  for(const mode of ['ok','missing','failure','switch']){
+    const e=indexFixture(),record={id:'server-image',createdAt:1,source:'novel',url:'/one.png',snapshotServerRef:{version:1}};e.setImages([record]);
+    let reads=0;e.context.storyboardReadSnapshotForRecord=async row=>{reads++;assert.equal(row.id,record.id);
+      if(mode==='failure')throw Error('server offline');if(mode==='switch')e.switch();
+      return mode==='missing'?null:{source:'novel',prompt:'saved server prompt',negative:'',profile:{seed:'0'},payload:{prompt:'saved server prompt'}};};
+    e.context.storyboardSnapshotForRecord=()=>assert.fail('server ref must not fall back to local cache');
+    await e.context.storyboardExportPackage({originals:false});assert.equal(reads,1);
+    if(mode==='ok'){const saved=JSON.parse(await e.exported().text());assert.equal(saved.chat.images[0].snapshot.prompt,'saved server prompt');}
+    else{assert.equal(e.exported(),null);assert.equal(e.notices.at(-1)[1],'error');}
+    assert.equal(record.snapshot,undefined);assert.equal(e.context.storyboardExportPackage.busy,false);
+  }
+});
+
 test('actual export rejects broken resource selections and truncated Tag rules before reading images',async()=>{
   for(const mutate of [s=>s.selectedVibeIds=['missing'],s=>s.promptCompiler.instructionPresetId='missing',s=>s.tagLibrary=[{id:'t',content:'x'.repeat(6001)}],s=>s.generationPolicy.maxImages=8,s=>s.routing.rules=[{id:'bad',target:{providerId:'unknown'}}]]){
     const e=indexFixture();mutate(e.state);const before=structuredClone(e.state);e.context.fetch=()=>assert.fail('must stop before media');

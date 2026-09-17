@@ -347,7 +347,7 @@ test('the real inline editor synchronizes captions on save without starting gene
     storyboardReadSnapshotForRecord: async () => snap,
     ctx: () => ({}), promptInput: async () => answers.shift(), confirmDialog: async () => false,
     storyboardStoreSnapshotForRecord: async (_record, value) => { saved = value; },
-    saveMetadata: async () => {}, storyboardRenderInlineImages: () => {},
+    saveMetadata: async () => {}, storyboardArchiveGallerySnapshots: async () => 0, storyboardRenderInlineImages: () => {},
     storyboardRedrawRecord: () => { redraws++; }, toast: () => assert.fail('unexpected toast'),
   }, ['storyboardEditPrompt']);
   assert.equal(await context.storyboardEditPrompt({ record }), true);
