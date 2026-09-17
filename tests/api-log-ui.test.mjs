@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { renderModelDiagnostics } from '../qianmu-director-live.js';
 
 const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -11,7 +12,7 @@ assert.ok(start > 0 && end > start, 'production log renderer is available');
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const settings = { logOpenState: {} };
 const render = vm.runInNewContext(`${entry.slice(start, end)}\nrenderLogEntry`, {
-  settings, htmlEscape: escape, infoTag: value => `<small>${escape(value)}</small>`, estimateTokens: value => String(value).length,
+  settings, renderModelDiagnostics, htmlEscape: escape, infoTag: value => `<small>${escape(value)}</small>`, estimateTokens: value => String(value).length,
 });
 const labels = {success:'成功', error:'失败', cancelled:'已取消', loading:'生成中', none:'状态未知'};
 
@@ -40,7 +41,8 @@ test('status presentation does not mutate log payload, persistent state or open 
   assert.equal(JSON.stringify({log, settings}), before);
   assert.match(html, /data-acc="log-kept" open/);
   for (const content of ['&lt;request&gt;', '&lt;response&gt;', '&lt;failure&gt;', '2026/9/17 19:00', '3.2s', '小剧场']) assert.ok(html.includes(content));
-  assert.equal((html.match(/<pre class="sd-term/g) || []).length, 3);
+  assert.equal((html.match(/<pre class="sd-term/g) || []).length, 4);
+  assert.match(html, /class="sd-log-reasoning" hidden/);
   delete settings.logOpenState.kept;
 });
 

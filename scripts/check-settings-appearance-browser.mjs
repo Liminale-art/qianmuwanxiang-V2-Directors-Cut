@@ -44,6 +44,7 @@ try {
             import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
         ]);
         for (const name of ['htmlEscape', 'uniqueClean', 'infoTag', 'estimateTokens', 'isPlainObject']) window[name] = utils[name];
+        window.renderModelDiagnostics = (await import('/qianmu-director-live.js')).renderModelDiagnostics;
         Object.assign(window, {
             settings: { theme: 'dark' }, activeTab: 'plug', editorView: null, calls: 0,
             getFloatSize: () => 48, notesFeatureEnabled: () => true, renderStorageBackupSection, applyQianmuIcons,
@@ -113,26 +114,28 @@ try {
                 const policy = storyboardVideoBudgetPolicy(); return policy.automatic.enabled === false && policy.manual.requireCostConfirmation && policy.highResolution.requireExplicitConfirmation;
             }));
             ok(label + ' model source and storage failure/partial meanings are preserved', await page.evaluate(state => {
-                if (state === 'host') return document.querySelector('.sd-api-url').closest('.sd-card').classList.contains('sd-disabled-card');
+                if (state === 'host') return document.querySelector('.sd-api-external-fields').hidden && document.querySelector('.sd-provider-select').value === 'sillytavern'
+                    && !document.querySelector('.sd-save-api').getClientRects().length && document.querySelector('.sd-stream-toggle').getClientRects().length;
                 if (state === 'error') return document.querySelector('.sd-storage-card').textContent.includes('盘点失败') && !document.querySelector('.sd-storage-hero') && document.querySelector('.sd-video-h3-forget').disabled;
                 if (state === 'partial') return document.querySelector('.sd-storage-card').textContent.includes('统计尚不完整') && !!document.querySelector('.is-critical') && document.querySelector('.sd-storage-legend').textContent.includes('未盘点站点数据');
                 return document.querySelector('.sd-storage-hero b').textContent === '400 MB';
             }, state));
             await page.evaluate(() => document.querySelectorAll('details').forEach(node => { node.open = true; }));
-            await page.locator('.sd-api-url').fill('https://unsubmitted.invalid/v1');
-            const stable = await page.evaluate(async ({ family, mode }) => {
-                const body = document.querySelector('.sd-body'), edit = body.querySelector('.sd-api-url'); edit.focus(); edit.setSelectionRange(8, 19);
+            if (state !== 'host') await page.locator('.sd-api-url').fill('https://unsubmitted.invalid/v1');
+            const stable = await page.evaluate(async ({ family, mode, state }) => {
+                const body = document.querySelector('.sd-body'), edit = body.querySelector(state === 'host' ? '.sd-provider-select' : '.sd-api-url'); edit.focus();
+                if (state !== 'host') edit.setSelectionRange(8, 19);
                 body.querySelector('.sd-wheel-command-toggle').checked = false; body.scrollTop = 70;
                 body.querySelectorAll('.sd-term').forEach(node => { node.scrollTop = 40; });
                 const html = body.innerHTML, nodes = [...body.querySelectorAll('*')], data = JSON.stringify([settings, storageInventoryState, healthFixture, optionalServiceState]);
                 const controls = [...body.querySelectorAll('input,select')].map(node => [node, node.value, node.checked]);
                 const positions = [body, ...body.querySelectorAll('.sd-term')].map(node => [node, node.scrollTop]);
                 await setAppearance(family === 'glass' ? 'editorial' : 'glass', mode === 'light' ? 'dark' : 'light'); await setAppearance(family, mode);
-                return { dom: html === body.innerHTML && nodes.every(node => node.isConnected), focus: document.activeElement === edit, selection: edit.selectionStart === 8 && edit.selectionEnd === 19,
+                return { dom: html === body.innerHTML && nodes.every(node => node.isConnected), focus: document.activeElement === edit, selection: state === 'host' || edit.selectionStart === 8 && edit.selectionEnd === 19,
                     controls: controls.every(([node, value, checked]) => node.value === value && node.checked === checked),
                     scroll: positions[0][1] > 0 && positions.slice(1).filter(([, top]) => top > 0).length >= 10 && positions.every(([node, top]) => Math.abs(top - node.scrollTop) < 1),
                     reads: calls === 0, state: data === JSON.stringify([settings, storageInventoryState, healthFixture, optionalServiceState]) };
-            }, { family, mode });
+            }, { family, mode, state });
             ok(label + ' hot swap does not reset draft/folds/scroll or mutate snapshots: ' + JSON.stringify(stable), Object.values(stable).every(Boolean));
             ok(label + ' diagnostics and logs cannot insert untrusted images', await page.locator('.sd-body img').count() === 0);
             if (family !== 'classic') {

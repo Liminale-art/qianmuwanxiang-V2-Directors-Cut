@@ -1,4 +1,5 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
+import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
@@ -156,9 +157,9 @@ import { selectQianmuClassicTheme, changeQianmuAppearance } from './qianmu-appea
 import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
-import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.172';
-import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.172';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.172';
+import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.173';
+import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.173';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.173';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -166,7 +167,7 @@ import {
   parseQianmuDialoguePayload,
   qianmuChatCompletionError,
   qianmuChatCompletionText,
-} from './qianmu-llm-output.js?v=1.59.172';
+} from './qianmu-llm-output.js?v=1.59.173';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -250,286 +251,286 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.172';
+} from './qianmu-storyboard.js?v=1.59.173';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.172';
+const VERSION = '1.59.173';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
 const featureRuntime = createFeatureRuntime({
-  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.172') },
-  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.172') },
-  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.172') },
-  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.172') },
-  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.172') },
-  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.172') },
-  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.172') },
-  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.172') },
-  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.172') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.172') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.172') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.172') },
-  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.172') },
-  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.172') },
-  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.172') },
-  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.172') },
-  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.172') },
-  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.172') },
-  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.172') },
-  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.172') },
-  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.172') },
-  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.172') },
-  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.172') },
-  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.172') },
-  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.172') },
-  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.172') },
-  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.172') },
-  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.172') },
-  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.172') },
-  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.172') },
-  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.172') },
+  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.173') },
+  vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.173') },
+  vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.173') },
+  vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.173') },
+  vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.173') },
+  storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.173') },
+  storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.173') },
+  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.173') },
+  storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.173') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.173') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.173') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.173') },
+  storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.173') },
+  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.173') },
+  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.173') },
+  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.173') },
+  storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.173') },
+  storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.173') },
+  storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.173') },
+  storyboardBundleFormat: { label: '分镜联包识别', load: () => import('./qianmu-storyboard-bundle.js?v=1.59.173') },
+  storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.173') },
+  storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.173') },
+  storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.173') },
+  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.173') },
+  storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.173') },
+  storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.173') },
+  storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.173') },
+  storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.173') },
+  vibePreservation: { label: 'Vibe 原始数据保全', load: () => import('./qianmu-vibe-preservation-view.js?v=1.59.173') },
+  vibePrepare: { label: 'Vibe 生成准备', load: () => import('./qianmu-vibe-prepare.js?v=1.59.173') },
+  tagComplete: { label: 'Tag 联想', load: () => import('./qianmu-tag-complete.js?v=1.59.173') },
   modelPicker: {
     label: '模型选择',
-    load: () => import('./qianmu-model-picker.js?v=1.59.172'),
+    load: () => import('./qianmu-model-picker.js?v=1.59.173'),
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.172'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.173'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.172'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.173'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.172'),
+    load: () => import('./qianmu-image-channel.js?v=1.59.173'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.172'),
+    load: () => import('./qianmu-image-service-client.js?v=1.59.173'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',
-    load: () => import('./qianmu-comfy-submission.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-submission.js?v=1.59.173'),
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.173'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.173'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
-    load: () => import('./qianmu-comfy-references.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-references.js?v=1.59.173'),
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.172'),
+    load: () => import('./qianmu-character-archive-view.js?v=1.59.173'),
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.172'),
+    load: () => import('./qianmu-character-casting.js?v=1.59.173'),
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.172'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.173'),
   },
   artistPromptReview: {
     label: '原画师层核对',
-    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.172'),
+    load: () => import('./qianmu-artist-prompt-review.js?v=1.59.173'),
   },
   styleRecipe: {
     label: '图片风格配置',
-    load: () => import('./qianmu-style-recipe.js?v=1.59.172'),
+    load: () => import('./qianmu-style-recipe.js?v=1.59.173'),
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.172'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.173'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.172'),
+    load: () => import('./qianmu-character-reference.js?v=1.59.173'),
   },
   readerCore: {
     label: '伴读解析器', intent: '.sd-coread-shortcut',
-    load: () => loadLocalChunk('./qianmu-reader.js?v=1.59.172').then(module => (reader = module)),
+    load: () => loadLocalChunk('./qianmu-reader.js?v=1.59.173').then(module => (reader = module)),
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.172'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.173'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => import('./qianmu-comfy-workbench.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-workbench.js?v=1.59.173'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.173'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-route.js?v=1.59.173'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.173'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.173'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-library-view.js?v=1.59.173'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.173'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
-    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-lock-runtime.js?v=1.59.173'),
   },
   comfyStorage: {
     label: 'Comfy 储存盘点',
-    load: () => import('./qianmu-comfy-storage.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-storage.js?v=1.59.173'),
   },
   comfyAuto: {
     label: 'Comfy 候选调度',
-    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-auto-runtime.js?v=1.59.173'),
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.173'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.173'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
-    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.172'),
+    load: () => import('./qianmu-comfy-targets-view.js?v=1.59.173'),
   },
   productionPacket: {
     label: '第二摄影机制片包',
-    load: () => import('./qianmu-production-packet.js?v=1.59.172'),
+    load: () => import('./qianmu-production-packet.js?v=1.59.173'),
   },
   narrativeLedger: {
     label: '共享叙事账本',
-    load: () => import('./qianmu-narrative-ledger.js?v=1.59.172'),
+    load: () => import('./qianmu-narrative-ledger.js?v=1.59.173'),
   },
   directorCandidates: {
     label: '导演候选评分',
-    load: () => import('./qianmu-director-candidate.js?v=1.59.172'),
+    load: () => import('./qianmu-director-candidate.js?v=1.59.173'),
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.172'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.173'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.172'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.173'),
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.172'),
+    load: () => import('./qianmu-video-contract.js?v=1.59.173'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.172'),
+    load: () => import('./qianmu-video-draft.js?v=1.59.173'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.172'),
+    load: () => import('./qianmu-video-draft-store.js?v=1.59.173'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.172'),
+    load: () => import('./qianmu-video-readiness.js?v=1.59.173'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.172'),
+    load: () => import('./qianmu-video-pricing.js?v=1.59.173'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.172'),
+    load: () => import('./qianmu-video-confirmation.js?v=1.59.173'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.172'),
+    load: () => import('./qianmu-video-prompt.js?v=1.59.173'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.172'),
+    load: () => import('./qianmu-video-task.js?v=1.59.173'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.172'),
+    load: () => import('./qianmu-video-budget.js?v=1.59.173'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.172'),
+    load: () => import('./qianmu-video-minimax.js?v=1.59.173'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.172'),
+    load: () => import('./qianmu-video-runtime.js?v=1.59.173'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.172'),
+    load: () => import('./qianmu-video-store.js?v=1.59.173'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.172'),
+    load: () => import('./qianmu-video-result.js?v=1.59.173'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.172'),
+    load: () => import('./qianmu-video-gallery.js?v=1.59.173'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.172'),
+    load: () => import('./qianmu-video-coordinator.js?v=1.59.173'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.172'),
+    load: () => import('./qianmu-video-media.js?v=1.59.173'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.172'),
+    load: () => import('./qianmu-video-timeline.js?v=1.59.173'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.172'),
+    load: () => import('./qianmu-video-timeline-store.js?v=1.59.173'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.172'),
+    load: () => import('./qianmu-video-timeline-player.js?v=1.59.173'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.172'),
+    load: () => import('./qianmu-video-postproduction.js?v=1.59.173'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.172'),
+    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.173'),
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.172'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.173'),
   },
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
       const [zizi, qianmu] = await Promise.all([
-        loadLocalChunk('./builtin-theaters.js?v=1.59.172'),
-        loadLocalChunk('./qianmu-theaters.js?v=1.59.172'),
+        loadLocalChunk('./builtin-theaters.js?v=1.59.173'),
+        loadLocalChunk('./qianmu-theaters.js?v=1.59.173'),
       ]);
       return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
     },
@@ -1378,6 +1379,7 @@ let contextScanCache = { presets: {}, worldBooks: {}, presetNames: [], worldBook
 let contextAutoScanned = false;    // 本次 ST 会话内是否已自动补扫过取材（重进/刷新后首开取材页时懒加载一次）
 let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染加入场动画，之后的静默重渲染（刷新/扫描/切换）不再重播，消除闪动
 let busy = false;                  // 推演忙碌态
+let directorRun = null, directorLiveLog = null;
 let abortController = null;         // 推演中止句柄
 let cancelRequested = false;       // 推演取消标记
 let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许并发）
@@ -3464,89 +3466,10 @@ function validateApiSettings() {
 // }
 
 async function callExternalApi(messages, onDelta = null, cfg = null, controller = null) {
-  const apiUrl = cfg?.apiUrl ?? settings.apiUrl;
-  const apiKey = cfg?.apiKey ?? settings.apiKey;
-  const model = cfg?.model ?? settings.model;
-  const temperature = cfg?.temperature ?? settings.temperature;
-  const base = normalizeUrl(normalizeQianmuChatApiRoot(apiUrl));
-  if (!(base && apiKey && model)) throw new Error('INVALID_API_SETTINGS');
-  const ac = controller || (abortController = new AbortController());   // 调用方可传入独立句柄（幕外/推演各管各的）
-  // stream/max_tokens 默认取全局设置，cfg 可逐调用覆盖（伴读总结卡自带 gen-params）
-  const wantStream = cfg?.stream != null ? !!cfg.stream : !!settings.streamEnabled;
-  const stream = wantStream && typeof onDelta === 'function';
-  const body = { model, messages, temperature: Number(temperature || 0.75), stream };
-  const maxTokens = Number(cfg?.maxTokens != null ? cfg.maxTokens : settings.maxOutputTokens || 0);
-  if (maxTokens > 0) body.max_tokens = maxTokens;
-  if (!stream && cfg?.jsonSchema) {
-    const responseFormat = createQianmuChatCompletionResponseFormat(cfg.jsonSchema, {
-      mode: cfg.structuredOutputMode ?? settings.structuredOutputMode,
-      name: cfg.jsonSchemaName,
-      strict: cfg.jsonSchemaStrict,
-    });
-    if (responseFormat) body.response_format = responseFormat;
-  }
-  const res = await fetch(`${base}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: ac.signal,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}${text ? ` · ${text.slice(0, 300)}` : ''}`);
-  }
-  if (!stream || !res.body) {
-    const data = await res.json();
-    const message = data.choices?.[0]?.message || {};
-    const reasoning = modelMessageReasoning(message);
-    if (reasoning && typeof cfg?.onReasoning === 'function') cfg.onReasoning(reasoning);
-    return message.content || data.choices?.[0]?.text || '';
-  }
-  return await readSseStream(res.body, onDelta, cfg?.onReasoning);
+  const { callExternalModel } = await import('./qianmu-model-external.js');
+  return callExternalModel(messages, onDelta, cfg, controller || (abortController = new AbortController()),
+    { settings, normalizeUrl, normalizeQianmuChatApiRoot, createQianmuChatCompletionResponseFormat });
 }
-
-async function readSseStream(stream, onDelta, onReasoning = null) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-  let full = '';
-  let reasoningFull = '';
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data:')) continue;
-        const payload = trimmed.slice(5).trim();
-        if (payload === '[DONE]') continue;
-        try {
-          const json = JSON.parse(payload);
-          const choice = json.choices?.[0] || {};
-          const delta = choice.delta?.content
-            ?? choice.message?.content
-            ?? choice.text
-            ?? '';
-          if (delta) { full += delta; if (onDelta) onDelta(full); }
-          const reasoningDelta = modelMessageReasoning(choice.delta || choice.message || {});
-          if (reasoningDelta) {
-            reasoningFull = reasoningDelta.length >= reasoningFull.length && reasoningDelta.startsWith(reasoningFull)
-              ? reasoningDelta
-              : reasoningFull + reasoningDelta;
-            if (typeof onReasoning === 'function') onReasoning(reasoningFull);
-          }
-        } catch (_) {}
-      }
-    }
-  } finally {
-    reader.releaseLock?.();
-  }
-  return full;
-}
-
 function getGenerateRaw() {
   const context = ctx();
   if (typeof context.generateRaw === 'function') return context.generateRaw.bind(context);
@@ -3554,40 +3477,29 @@ function getGenerateRaw() {
   return null;
 }
 
-// 跟随 ST 当前 API：按官方 generateRaw 文档约定调用——prompt 传用户内容、systemPrompt 单独传（可空）。
-// systemPrompt 由调用方显式传入：推演传导演系统提示词；幕外不传，保持与推演链路隔离，避免被灌入推演系统提示词。
-// onDelta：开启流式时的实时预览回调。generateRaw 不暴露流式回调，仅能借 ST 的 STREAM_TOKEN_RECEIVED 事件尽力预览
-// （部分构建/raw 生成不发此事件，则无逐字预览，但最终结果仍以 generateRaw 返回值为准、完全正确）。
-// extraArgs：传递给 generateRaw 的额外参数（如 stream_response 等，ST 1.12.5+ 支持）。
+// Director requests use the independent official CC factory; other existing callers retain raw compatibility.
 async function callSillyTavernModel(userPrompt, systemPrompt = '', onDelta = null, extraArgs = {}) {
+  const { directorRequest, controller, guard, onResponse, onReasoning, ...rawArgs } = extraArgs;
+  const context = ctx();
+  if (directorRequest) {
+    const { hostChatModelAvailable, callHostChatModel } = await import('./qianmu-model-host.js');
+    if (hostChatModelAvailable(context)) {
+      const result = await callHostChatModel({ context,
+        messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), { role: 'user', content: userPrompt }],
+        stream: Boolean(onDelta), maxTokens: rawArgs.max_tokens, signal: controller?.signal, guard, onDelta, onResponse, onReasoning });
+      return result.text;
+    }
+    if (onDelta) throw new Error('当前 ST 连接尚无独立流式接口；请使用聊天补全连接，或关闭流式后生成。未发送模型请求。');
+  }
   const generateRaw = getGenerateRaw();
   if (!generateRaw) throw new Error('INVALID_API_SETTINGS');
-  const args = { prompt: userPrompt, ...extraArgs };
-  if (systemPrompt) args.systemPrompt = systemPrompt;
-  const context = ctx();
-  const source = context.eventSource;
-  const streamType = context.event_types?.STREAM_TOKEN_RECEIVED || 'stream_token_received';
-  let streamHandler = null;
-  if (onDelta && source?.on && source?.off) {
-    let acc = '';
-    streamHandler = (payload) => {
-      // 兼容两种事件载荷：累积文本（以 acc 开头且更长）或单 token 增量（追加）
-      const s = typeof payload === 'string' ? payload : String(payload?.text ?? payload ?? '');
-      if (!s) return;
-      if (s.length >= acc.length && s.startsWith(acc)) acc = s;
-      else acc += s;
-      try { onDelta(acc); } catch (_) {}
-    };
-    source.on(streamType, streamHandler);
-  }
-  try {
-    const out = await generateRaw(args);
-    return String(out ?? '');
-  } finally {
-    if (streamHandler) source.off(streamType, streamHandler);
-  }
+  if (await guard?.() === false || controller?.signal.aborted) throw new Error('USER_CANCELLED');
+  const out = await generateRaw({ prompt: userPrompt, ...rawArgs, ...(systemPrompt ? { systemPrompt } : {}) });
+  if (await guard?.() === false || controller?.signal.aborted) throw new Error('USER_CANCELLED');
+  onResponse?.({ text: String(out ?? ''), reasoning: '', finishReason: '', complete: true,
+    compatibility: '当前旧接口只提供处理后的最终正文，未提供原始结束原因或独立流式。' });
+  return String(out ?? '');
 }
-
 // 字符串感知的缺逗号补全（仅在字符串外操作，{{user}} 等内容不受影响）
 // insertMissingCommas - 已迁移到 qianmu-storyboard-utils.js
 // function insertMissingCommas(text) {
@@ -3774,21 +3686,22 @@ function directorHasQualityNeeds(needs) {
   return Object.keys(needs.gaps || {}).length > 0 || (needs.stagnantFields || []).length > 0;
 }
 
-async function repairDirectorPlanQuality(plan, previousPlan, store) {
+async function repairDirectorPlanQuality(plan, previousPlan, store, request = {}) {
   const needs = directorQualityNeeds(plan, previousPlan, store);
   if (!directorHasQualityNeeds(needs)) return { plan, needs, repaired: false, raw: '', error: '' };
   const requestedFields = uniqueClean([...Object.keys(needs.gaps), ...needs.stagnantFields]);
   const jurisdiction = requestedFields.map((field) => `- ${field}：${DIRECTOR_SECTION_RULES[field]}`).join('\n');
   const systemPrompt = `你是千幕推演的“缺口补写器”。已有合格字段绝不可改写，只输出被点名字段组成的 JSON 对象，不输出解释、Markdown 或思考过程。\n叙事辖区：\n${jurisdiction}\n同一事件可以在不同板块形成因果呼应，但每个板块必须提供本职角度，禁止换词复述。`;
   const userPrompt = `【近期对话】\n${getChatHistoryText() || '暂无对话'}\n\n【当前已生成结果】\n${JSON.stringify(plan)}\n\n【需要修复的缺口】\n数量不足：${JSON.stringify(needs.gaps)}\n疑似沿用上轮、须整体换成贴合新正文的新内容：${needs.stagnantFields.join('、') || '无'}\n\n只返回上述必要字段。数量不足的字段补到既定下限；疑似沿用上轮的字段返回完整替换数组。`;
+  let raw = '';
   try {
-    const raw = settings.providerMode === 'sillytavern'
-      ? await callSillyTavernModel(userPrompt, systemPrompt, null, { stream_response: false, max_tokens: Math.min(4200, Math.max(1400, Number(settings.maxOutputTokens || 2600))) })
+    raw = settings.providerMode === 'sillytavern'
+      ? await callSillyTavernModel(userPrompt, systemPrompt, null, { ...request, directorRequest: true, stream_response: false, max_tokens: Math.min(4200, Math.max(1400, Number(settings.maxOutputTokens || 2600))) })
       : await callExternalApi([{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], null, {
-        stream: false, temperature: Math.min(.85, Math.max(.45, Number(settings.temperature || .7))),
+        ...request, stream: false, temperature: Math.min(.85, Math.max(.45, Number(settings.temperature || .7))),
         maxTokens: Math.min(4200, Math.max(1400, Number(settings.maxOutputTokens || 2600))),
-      }, abortController);
-    const patch = normalizePlan(extractJson(raw));
+      }, request.controller || abortController);
+    const patch = normalizePlan(parseDirectorFinal(raw));
     for (const field of requestedFields) {
       const returned = Array.isArray(patch[field]) ? patch[field] : [];
       if (!returned.length) continue;
@@ -3804,7 +3717,7 @@ async function repairDirectorPlanQuality(plan, previousPlan, store) {
     return { plan, needs, repaired: true, raw, removed, error: '' };
   } catch (error) {
     if (error?.name === 'AbortError' || error?.message === 'USER_CANCELLED') throw error;
-    return { plan, needs, repaired: false, raw: '', error: error?.message || String(error) };
+    return { plan, needs, repaired: false, raw: error?.modelResponse?.text || raw, error: error?.message || String(error) };
   }
 }
 
@@ -3812,13 +3725,9 @@ function makeStreamLogUpdater(log) {
   let lastPaint = 0;
   const paint = (text) => {
     const modal = document.getElementById(MODAL_ID);
-    if (!modal || activeTab !== 'plug') return;
-    const entry = modal.querySelector(`.sd-log-entry[data-acc="log-${CSS.escape(log.id)}"]`);
-    const pre = entry?.querySelectorAll('.sd-term')?.[entry.querySelector('.sd-term-error') ? 2 : 1];
-    if (pre) {
-      pre.textContent = text;
-      pre.scrollTop = pre.scrollHeight;
-    }
+    if (!modal) return;
+    paintModelLog(modal, log);
+    refreshDirectorLiveUI();
   };
   return (full) => {
     log.response = String(full || '');
@@ -3827,6 +3736,27 @@ function makeStreamLogUpdater(log) {
     lastPaint = now;
     paint(log.response);
   };
+}
+
+function refreshDirectorLiveUI() {
+  const root = document.getElementById(MODAL_ID), host = root?.querySelector('[data-director-live-host]');
+  const list = root?.querySelector('.sd-log-list'), log = directorLiveLog;
+  if (list && log && ![...list.children].some(entry => entry.dataset.acc === `log-${log.id}`)) {
+    list.querySelector('.sd-log-empty')?.remove(); list.insertAdjacentHTML('afterbegin', renderLogEntry(log, 0));
+    while (list.children.length > LOG_LIMIT) list.lastElementChild.remove();
+  }
+  if (root && log) paintModelLog(root, log, renderLogEntry);
+  if (!host) return;
+  const html = renderDirectorLive(directorLiveLog, { tasksOnly: activeTab === 'tasksnodes' });
+  if (host._liveHtml !== html) { host.innerHTML = html; host._liveHtml = html; }
+  const button = host.querySelector('.sd-director-log'); if (button) button.onclick = openDirectorLiveLog;
+}
+function openDirectorLiveLog() {
+  const log = directorLiveLog; if (!log) return;
+  settings.logOpenState ||= {}; settings.logOpenState[log.id] = true;
+  activeTab = 'plug'; renderModal();
+  const entries = document.getElementById(MODAL_ID)?.querySelectorAll('.sd-log-entry') || [];
+  [...entries].find(entry => entry.dataset.acc === `log-${log.id}`)?.scrollIntoView({ block: 'nearest' });
 }
 
 async function generateDirectorPlan(showSuccessToast = true, silentFailure = false, options = {}) {
@@ -3843,26 +3773,46 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   renderBusyState();
   const startedAt = Date.now();
   const log = pushLog({ id: uid('log'), kind: 'director', status: 'loading', time: new Date().toLocaleString(), duration: '', request: '', response: '', error: '' });
+  const ownerSettings = settings, store = getChatStore(), chat = ctx().chat, key = getChatKey();
+  const modelKeys = ['providerMode', 'apiUrl', 'apiKey', 'model', 'temperature', 'maxOutputTokens'];
+  const modelValues = modelKeys.map(field => settings[field]);
+  const controller = new AbortController(), run = { controller, log }; directorRun = run; abortController = controller;
+  directorLiveLog = log; refreshDirectorLiveUI();
+  const alive = () => directorRun === run && settings === ownerSettings && ctx().chat === chat && getChatKey() === key && getChatStore() === store;
+  let identity, namespace;
+  const guard = async () => {
+    if (modelKeys.some((field, i) => settings[field] !== modelValues[i])) throw new Error('模型配置已变更，本次原文保留但不继续补写或采用；请按新配置重新推演。');
+    if (!alive() || controller.signal.aborted || namespace && namespace !== await identity.resolveImageAccountNamespace()) {
+      controller.abort(); throw Object.assign(new Error('生成所属的聊天或账户已变化，未写入其他聊天'), { name: 'AbortError' });
+    }
+    if (!alive() || controller.signal.aborted) throw Object.assign(new Error('已取消生成'), { name: 'AbortError' });
+    return true;
+  };
+  const paintResponse = makeStreamLogUpdater(log);
+  const updateResponse = response => { if (alive()) { log.response = response.text; log.reasoning = response.reasoning; log.completion = { ...response }; delete log.completion.text; delete log.completion.reasoning; paintResponse(response.text); } };
   try {
+    identity = await featureRuntime.load('imageAdmission'); namespace = await identity.resolveImageAccountNamespace(); await guard();
     const userPrompt = await buildPrompt();
+    await guard();
     const messages = [{ role: 'system', content: settings.systemPrompt || DEFAULT_SYSTEM_PROMPT }, { role: 'user', content: userPrompt }];
     log.request = JSON.stringify(messages, null, 2);
     saveSettings();
 
-    const onDelta = settings.streamEnabled ? makeStreamLogUpdater(log) : null;
+    const onDelta = settings.streamEnabled ? paintResponse : null;
     const raw = settings.providerMode === 'sillytavern'
-      ? await callSillyTavernModel(userPrompt, settings.systemPrompt || DEFAULT_SYSTEM_PROMPT, onDelta)
-      : await callExternalApi(messages, onDelta);
+      ? await callSillyTavernModel(userPrompt, settings.systemPrompt || DEFAULT_SYSTEM_PROMPT, onDelta, { directorRequest: true, controller, guard, onResponse: updateResponse })
+      : await callExternalApi(messages, onDelta, { guard, onResponse: updateResponse }, controller);
+    await guard();
     if (cancelRequested) throw new Error('USER_CANCELLED');
     log.response = String(raw || '');
-    const store = getChatStore();
     const previousPlan = store.plan ? clone(store.plan) : null;
-    const newPlan = normalizePlan(extractJson(raw));
+    const newPlan = normalizePlan(parseDirectorFinal(raw));
     const initialRemoved = directorDedupePlan(newPlan);
-    const quality = await repairDirectorPlanQuality(newPlan, previousPlan, store);
+    const quality = await repairDirectorPlanQuality(newPlan, previousPlan, store, { controller, guard });
+    await guard();
     if (cancelRequested) throw new Error('USER_CANCELLED');
-    if (quality.raw) log.response = `${raw}\n\n【千幕定向补写】\n${quality.raw}`;
-    else if (quality.error) log.response = `${raw}\n\n【千幕质量门控】\n定向补写未完成，已保留首轮可用结果：${quality.error}`;
+    if (quality.raw) log.repairResponse = quality.raw;
+    if (quality.error) log.repairError = quality.error;
     const now = new Date().toISOString();
     store.directorQuality = {
       at: now,
@@ -3885,36 +3835,42 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     store.history = [{ id: uid('hist'), createdAt: now, directorPlanRevisionId:store.directorPlanRevisionId, plan: clone(newPlan) }, ...(Array.isArray(store.history) ? store.history : [])].slice(0, 5);
     injectSelection.clear();   // 新推演结果生成，旧写入勾选失效
     await saveMetadata();
+    await guard();
     await applyDirectorInjection();
     log.status = 'success';
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     saveSettings();
     if (showSuccessToast) toast('推演完成，下一幕已就位。', 'success');
   } catch (error) {
+    if (error?.modelResponse) updateResponse(error.modelResponse);
     const msg = error?.name === 'AbortError' ? 'USER_CANCELLED' : (error?.message || String(error));
     const isJsonFail = msg.startsWith('JSON_PARSE_FAILED::');
     log.status = msg === 'USER_CANCELLED' ? 'cancelled' : 'error';
     log.error = msg === 'INVALID_API_SETTINGS' ? '请检查API设置'
       : msg === 'USER_CANCELLED' ? '已取消生成'
-      : isJsonFail ? `模型返回的JSON格式有误（多为输出中途被截断或缺少逗号），自动修复未成功，本次结果未写入。原始返回已完整保留在下方「返回」中，直接重试通常即可。\n原始错误：${msg.slice(19)}`
+      : isJsonFail ? `模型输出格式有误，本次结果未写入；已收到的原文和完整条目仍可查看，未自动重试。\n原始错误：${msg.slice(19)}`
       : msg;
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
-    saveSettings();
+    if (alive()) saveSettings();
     // 失败提示照常后台弹出（推演完成/失败的反馈关界面也要能收到）；日志里始终有完整记录可回看
-    if (!silentFailure) {
+    if (!silentFailure && alive()) {
       if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
-      else if (isJsonFail) toast('生成失败：模型输出的JSON格式有误，原文已保留在日志，可直接重试。', 'error');
-      else if (msg === 'INVALID_API_SETTINGS' || settings.providerMode === 'external') apiToast();
+      else if (error?.code === 'MODEL_OUTPUT_INCOMPLETE' || isJsonFail) toast(`本次推演未完整完成：${log.error}`, 'warning');
+      else if (msg === 'INVALID_API_SETTINGS') apiToast();
       else toast(`生成失败：${log.error}`, 'error');
     }
   } finally {
-    abortController = null;
-    cancelRequested = false;
-    busy = false;
-    renderBusyState();
-    if (!background) {
-      renderModal();
-      renderFloatButton();
+    if (directorRun === run) {
+      directorRun = null;
+      if (abortController === controller) abortController = null;
+      cancelRequested = false;
+      busy = false;
+      renderBusyState();
+      refreshDirectorLiveUI();
+      if (!background && settings === ownerSettings && ctx().chat === chat) {
+        renderModal();
+        renderFloatButton();
+      }
     }
   }
 }
@@ -3960,14 +3916,14 @@ async function fetchModels() {
 
 function stopGeneration() {
   cancelRequested = true;
-  if (abortController) abortController.abort();
-  const loading = (settings.logHistory || []).find((x) => x.status === 'loading' && x.kind !== 'theater');
+  (directorRun?.controller || abortController)?.abort();
+  const loading = directorRun?.log || (settings.logHistory || []).find((x) => x.status === 'loading' && x.kind !== 'theater');
   if (loading) {
     loading.status = 'cancelled';
     loading.error = '已取消生成';
   }
   saveSettings();
-  busy = false;
+  // Keep the admission gate closed until this request has actually unwound.
   renderBusyState();
   rerenderIfOpen();
   // 取消提示统一由生成流程的 catch 负责，避免在此重复弹出
@@ -6955,6 +6911,7 @@ function renderModal() {
     renderModal();
   }));
   bindActiveTabEvents(modal);
+  refreshDirectorLiveUI();
   focusClockLockGuard?.sync();
   bindNotesPanelEvents(modal);
   applyAccState(modal);
@@ -7074,7 +7031,7 @@ function renderActiveTab() {
   if (editorView) return renderEditorView();
   switch (activeTab) {
     case 'focus': return renderFocusClockTab();
-    case 'tasksnodes': return renderTasksNodesTab();
+    case 'tasksnodes': return `<div data-director-live-host>${renderDirectorLive(directorLiveLog, { tasksOnly: true })}</div>${renderTasksNodesTab()}`;
     case 'castworld': return renderCastWorldTab();
     case 'context': return renderContextTab();
     case 'settings': return renderDirectorSettingsTab();
@@ -7084,7 +7041,7 @@ function renderActiveTab() {
     case 'geopolitics': return renderGeopoliticsTab();
     case 'coread': return COREAD_ENABLED ? (reader ? renderCoreadTab() : renderCoreadRuntimeGate()) : renderDashboardTab();   // 功能沉睡时误入 coread 回落仪表盘
     case 'plug': return renderPlugTab();
-    default: return renderDashboardTab();
+    default: return `<div data-director-live-host>${renderDirectorLive(directorLiveLog)}</div>${renderDashboardTab()}`;
   }
 }
 
@@ -9183,11 +9140,12 @@ function renderLogEntry(log, index) {
       <span class="sd-log-kind sd-log-kind-${htmlEscape(log.kind || 'director')}">${htmlEscape(kindLabel)}</span>
     </summary>
     <div class="sd-log-detail">
-      ${log.error ? `<div class="sd-log-cap"><i class="fa-solid fa-triangle-exclamation"></i>失败提示</div><pre class="sd-term sd-term-error">${htmlEscape(log.error)}</pre>` : ''}
+      <div class="sd-log-failure">${log.error ? `<div class="sd-log-cap"><i class="fa-solid fa-triangle-exclamation"></i>失败提示</div><pre class="sd-term sd-term-error">${htmlEscape(log.error)}</pre>` : ''}</div>
       <div class="sd-log-cap"><i class="fa-solid fa-arrow-up"></i>发送${log.request ? infoTag(`约 ${estimateTokens(log.request)} token`) : ''}</div>
-      <pre class="sd-term">${htmlEscape(log.request || '暂无')}</pre>
+      <pre class="sd-term sd-term-request">${htmlEscape(log.request || '暂无')}</pre>
       <div class="sd-log-cap"><i class="fa-solid fa-arrow-down"></i>返回${log.response ? infoTag(`约 ${estimateTokens(log.response)} token`) : ''}</div>
-      <pre class="sd-term">${htmlEscape(log.response || '暂无')}</pre>
+      <pre class="sd-term sd-term-response">${htmlEscape(log.response || '暂无')}</pre>
+      <div class="sd-log-diagnostics">${renderModelDiagnostics(log)}</div>
     </div>
   </details>`;
 }
@@ -12262,15 +12220,11 @@ function renderPlugTab() {
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
   const floatSize = getFloatSize();
   return `
-    <section class="sd-card">
-      <h3>模型来源</h3>
-      <div class="sd-source-pick">
-        <label class="sd-source-opt ${isExternal ? 'active' : ''}"><input type="radio" name="sd-provider" value="external" ${isExternal ? 'checked' : ''}><span class="sd-source-dot"></span>自定义（兼容 OpenAI）</label>
-        <label class="sd-source-opt ${!isExternal ? 'active' : ''}"><input type="radio" name="sd-provider" value="sillytavern" ${!isExternal ? 'checked' : ''}><span class="sd-source-dot"></span>使用SillyTavern当前API设置</label>
-      </div>
-    </section>
-    <section class="sd-card ${isExternal ? '' : 'sd-disabled-card'}">
-      <h3>API</h3>
+    <section class="sd-card sd-model-config">
+      <h3>模型配置</h3>
+      <label>模型来源</label><select class="text_pole sd-provider-select" aria-label="模型来源"><option value="sillytavern" ${!isExternal ? 'selected' : ''}>使用 SillyTavern 当前 API 设置</option><option value="external" ${isExternal ? 'selected' : ''}>自定义（兼容 OpenAI）</option></select>
+      ${!isExternal ? '<p class="sd-muted">继承 ST 当前连接；聊天补全支持独立流式，不影响正文生成。</p>' : ''}
+      <div class="sd-api-external-fields" ${isExternal ? '' : 'hidden'}>
       <label>API预设</label>
       <div class="sd-api-profile-row">
         <select class="text_pole sd-api-profile-select"><option value="">选择API预设</option>${profiles.map((profile) => `<option value="${htmlEscape(profile.id)}">${htmlEscape(profile.name || profile.model || '未命名API')}</option>`).join('')}</select>
@@ -12286,14 +12240,14 @@ function renderPlugTab() {
         <label><span>最大输出</span><input class="text_pole sd-max-output" type="number" min="0" step="256" placeholder="0 表示不限" value="${htmlEscape(settings.maxOutputTokens ?? 32000)}"></label>
         <label><span>上下文长度</span><input class="text_pole sd-context-budget" type="number" min="0" step="1000" placeholder="0 表示不限" value="${htmlEscape(settings.contextBudget ?? 1000000)}"></label>
       </div>
-      <button type="button" class="sd-structured-output-toggle ${settings.structuredOutputMode === 'json_schema' ? 'active' : ''}" aria-pressed="${settings.structuredOutputMode === 'json_schema' ? 'true' : 'false'}"><i class="fa-solid fa-check-double"></i><span>严格结构化输出</span></button>
+      <details><summary>兼容选项</summary><p class="sd-muted">仅对支持 JSON Schema 的渠道及已提供结构定义的请求生效，用于约束返回字段；不会提高模型能力，也不能防止输出截断。不确定时保持关闭。</p><button type="button" class="sd-structured-output-toggle ${settings.structuredOutputMode === 'json_schema' ? 'active' : ''}" aria-pressed="${settings.structuredOutputMode === 'json_schema' ? 'true' : 'false'}"><span>启用 JSON Schema 约束</span></button></details>
+      </div>
       <div class="sd-button-row sd-api-action-row">
-        <button class="sd-btn sd-save-api">保存API</button>
-        <button class="sd-btn sd-save-api-profile">保存为预设</button>
-        <button class="sd-btn sd-test-api"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button>
+        <button class="sd-btn sd-save-api" ${isExternal ? '' : 'hidden'}>保存API</button>
+        <button class="sd-btn sd-save-api-profile" ${isExternal ? '' : 'hidden'}>保存为预设</button>
+        <button class="sd-btn sd-test-api">测试连接</button>
         <div class="sd-api-stream-action">
           <button type="button" class="sd-btn sd-stream-toggle ${settings.streamEnabled ? 'sd-primary' : ''}" aria-pressed="${settings.streamEnabled ? 'true' : 'false'}">流式传输</button>
-          <small class="sd-muted sd-stream-scope-hint">仅支持自定义</small>
         </div>
       </div>
     </section>
@@ -12316,7 +12270,7 @@ function renderPlugTab() {
     <section class="sd-card">
       <h3>日志</h3>
       <p class="sd-muted">保留最近 ${LOG_LIMIT} 次生成记录。</p>
-      ${logs.length ? `<div class="sd-log-list">${logs.map((log, i) => renderLogEntry(log, i)).join('')}</div>` : '<p class="sd-muted">暂无日志。</p>'}
+      <div class="sd-log-list">${logs.length ? logs.map((log, i) => renderLogEntry(log, i)).join('') : '<p class="sd-muted sd-log-empty">暂无日志。</p>'}</div>
     </section>
     ${renderStorageManagementCard()}`;
 }
@@ -25299,11 +25253,11 @@ function bindActiveTabEvents(root) {
     renderModal();
   });
 
-  root.querySelectorAll('input[name="sd-provider"]').forEach((el) => el.addEventListener('change', () => {
-    settings.providerMode = el.value;
+  root.querySelector('.sd-provider-select')?.addEventListener('change', (event) => {
+    settings.providerMode = event.target.value === 'external' ? 'external' : 'sillytavern';
     saveSettings();
     renderModal();
-  }));
+  });
   root.querySelector('.sd-structured-output-toggle')?.addEventListener('click', () => {
     settings.structuredOutputMode = settings.structuredOutputMode === 'json_schema' ? 'none' : 'json_schema';
     saveSettings();
@@ -26845,7 +26799,7 @@ function dialogApiConn() {
 }
 
 // 对话生成的统一分发：external 预设优先走 ST 后端代理（绕 CORS），失败再回落浏览器直连（支持流式）；否则 ST generateRaw。
-// onDelta：流式回调，只在浏览器直连路径生效（ST 后端代理端点不支持流式；ST generateRaw 走 STREAM_TOKEN_RECEIVED 事件）。
+// 伴读沿用独立直连预览；非推演的 ST 兼容调用不订阅全局正文 token 事件。
 // controller：调用方持有的 AbortController，用于「停止生成」按钮中断在途请求。
 async function callCoreadDialogModel(systemPrompt, userPrompt, opts = {}) {
   const conn = dialogApiConn();
@@ -26880,7 +26834,7 @@ async function callCoreadDialogModel(systemPrompt, userPrompt, opts = {}) {
       throw proxyErr;
     }
   }
-  // 默认：跟随 ST 当前连接（generateRaw 走 STREAM_TOKEN_RECEIVED 尽力预览）
+  // 默认：跟随 ST 当前连接，兼容路径在完成后一次性返回。
   return await callSillyTavernModel(userPrompt, systemPrompt, onDelta);
 }
 
@@ -36020,6 +35974,7 @@ function bindEvents() {
     queueMicrotask(() => void runBackgroundDirectorRefresh());
   };
   const rerenderHandler = async () => {
+    directorRun?.controller.abort(); directorLiveLog = null;
     if(storyboardVibeControllerContext&&storyboardVibeControllerContext.chat!==String(getChatKey()||'')){
       storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
     }
@@ -36187,6 +36142,7 @@ function cleanupRuntime(resetSettings = false) {
   cancelStartupFallback();
   if (!isRuntimeOwner()) return;
   initialized = false;
+  directorRun?.controller.abort(); directorLiveLog = null;
   const clean = (label, callback) => {
     try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }
   };

@@ -53,7 +53,9 @@ assert.deepEqual(parseQianmuDialoguePayload('[{"speaker":"乙","text":"再见"}]
 });
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(source, /if \(!stream && cfg\?\.jsonSchema\)[\s\S]*body\.response_format = responseFormat/, '结构化字段只能在明确提供 Schema 的非流式请求中出现');
+const external = await readFile(new URL('../qianmu-model-external.js', import.meta.url), 'utf8');
+assert.match(source, /return callExternalModel\(messages, onDelta, cfg/);
+assert.match(external, /if \(!stream && cfg\?\.jsonSchema\)[\s\S]*body\.response_format = responseFormat/, '结构化字段只能在明确提供 Schema 的非流式请求中出现');
 assert.match(source, /structuredOutputMode: 'none'/, '全新安装必须默认兼容模式');
 assert.match(source, /profile\.structuredOutputMode[\s\S]*normalizeQianmuStructuredOutputMode/, 'API 预设必须独立保存能力声明');
 assert.match(source, /storyboardCallCompiler[\s\S]*jsonSchema: requestOptions\.jsonSchema/, '分镜编译器必须具备传入严格 Schema 的能力门面');

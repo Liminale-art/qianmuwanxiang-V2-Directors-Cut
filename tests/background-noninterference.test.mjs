@@ -20,7 +20,7 @@ test('background director completion does not rebuild the open panel or stop liv
     source.indexOf('// MIGRATED to qianmu-storyboard-utils.js'),
   );
   assert.match(generate, /const background = Boolean\(options\?\.background\)/);
-  assert.match(generate, /if \(!background\) \{[\s\S]*renderModal\(\);[\s\S]*renderFloatButton\(\);[\s\S]*\}/);
+  assert.match(generate, /if \(!background && settings === ownerSettings && ctx\(\)\.chat === chat\) \{[\s\S]*renderModal\(\);[\s\S]*renderFloatButton\(\);[\s\S]*\}/);
   assert.doesNotMatch(generate, /storyboardCloseFilmViewer|storyboardCloseVideoViewer|ttsStopPlayback|ttsStopChat/);
   const background = source.slice(source.indexOf('const runBackgroundDirectorRefresh ='), source.indexOf('const refreshHandler ='));
   assert.match(background, /generateDirectorPlan\(false, true, \{ background: true \}\)/);

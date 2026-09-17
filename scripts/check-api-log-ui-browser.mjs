@@ -27,6 +27,7 @@ try {
     const [utils, {createQianmuAppearanceSession}, {updateAppearancePreferences}] = await Promise.all([import('/qianmu-storyboard-utils.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js')]);
     for (const name of ['htmlEscape','infoTag','estimateTokens']) window[name] = utils[name];
     window.settings = {theme:'dark',logOpenState:{}};
+    window.renderModelDiagnostics = (await import('/qianmu-director-live.js')).renderModelDiagnostics;
     (0, eval)(source);
     window.appearance = createQianmuAppearanceSession({readSettings:()=>settings,loadStyles:()=>({promise:Promise.resolve(true),cancel(){}})});
     appearance.mount(document.querySelector('#story-director-modal'));

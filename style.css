@@ -3473,6 +3473,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   resize: none;
 }
 
+#story-director-modal .sd-model-config [hidden] { display: none !important; }
+
 /* API 与日志：悬浮球开关展开的尺寸控制，拖动时由 JS 即时同步页面上的球。 */
 #story-director-modal .sd-float-size-control {
   display: grid;

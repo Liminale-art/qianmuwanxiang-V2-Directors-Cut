@@ -3,6 +3,10 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-model-response.js",
+    "qianmu-model-external.js",
+    "qianmu-model-host.js",
+    "qianmu-director-live.js",
     "qianmu-film-editor-save.js",
     "qianmu-notes-device.js",
     "qianmu-notes-panel-sync.js",
