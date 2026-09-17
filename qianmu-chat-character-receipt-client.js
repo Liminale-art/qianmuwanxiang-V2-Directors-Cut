@@ -1,5 +1,6 @@
 import {CHAT_CHARACTER_RECEIPT_LIMITS as LIMIT,chatCharacterReceiptError,chatCharacterReceiptTarget,
   chatCharacterReceiptResponse,chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
+import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
 
 const fail=message=>chatCharacterReceiptError('client',message);
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -52,45 +53,23 @@ export function createChatCharacterReceiptClient({namespace,target,headers=()=>(
   }});
 }
 
-function captureCurrentChat(getContext,epoch){
-  const context=getContext(),revision=epoch(),object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
-  if(!object(context)||!Array.isArray(context.chat)||!object(context.chatMetadata)||!Number.isSafeInteger(revision)||revision<0
-    ||typeof context.chatId!=='string'||!context.chatId)throw fail('请先打开一个已定位的聊天，未使用角色编号或默认聊天兜底');
-  let target,hostId;
-  if(context.groupId!==null&&context.groupId!==undefined&&context.groupId!==''){
-    const id=context.groupId;
-    if(!(Number.isSafeInteger(id)&&id>=0||typeof id==='string'&&id===id.trim()&&id.length<=512&&!/[\u0000-\u001f\u007f]/.test(id))||!Array.isArray(context.groups))throw fail('群聊定位尚未就绪');
-    hostId=String(context.groupId);const matches=context.groups.filter(row=>row&&String(row.id)===hostId);
-    if(matches.length!==1||matches[0].chat_id!==context.chatId)throw fail('当前群组和聊天文件不一致');
-    target=chatCharacterReceiptTarget({kind:'group',chatId:context.chatId});
-  }else{
-    const id=context.characterId;
-    if(!(Number.isSafeInteger(id)&&id>=0||typeof id==='string'&&/^(?:0|[1-9][0-9]*)$/.test(id)&&Number.isSafeInteger(Number(id)))||!Array.isArray(context.characters))throw fail('当前角色定位尚未就绪');
-    const character=context.characters[id];hostId=String(id);
-    if(!object(character)||character.chat!==context.chatId)throw fail('当前角色和聊天文件不一致');
-    target=chatCharacterReceiptTarget({kind:'character',chatId:context.chatId,avatar:character.avatar});
-  }
-  // These references and the caller's host-event epoch detect reloads and A -> B -> A switches.
-  return {target,hostId,revision,messages:context.chat,metadata:context.chatMetadata,store:context.chatMetadata.story_director_liminale};
-}
-
 // Host adapter for receipts, not a writer. Requires the real chat-event epoch; a fallback ID is never a file locator.
 export async function createCurrentChatCharacterReceiptClient({getContext,epoch,
   account=async()=> (await import('./qianmu-image-admission.js')).resolveImageAccountNamespace(),guard=async()=>{},
   headers,fetchImpl,timeoutMs}={}){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof account!=='function'||typeof guard!=='function')throw fail('聊天核验缺少宿主身份和切换保护');
-  const captured=captureCurrentChat(getContext,epoch);
-  const current=()=>{
-    const now=captureCurrentChat(getContext,epoch);
-    if(now.revision!==captured.revision||now.hostId!==captured.hostId||now.messages!==captured.messages||now.metadata!==captured.metadata||now.store!==captured.store
-      ||JSON.stringify(now.target)!==JSON.stringify(captured.target))throw fail('当前聊天已切换或重载，原核验作废');
-  };
-  await guard();current();const namespace=await account();current();await guard();current();
-  const check=async()=>{
-    await guard();current();const selectedAccount=await account();current();
-    if(selectedAccount!==namespace)throw fail('当前 ST 账户已变化，原聊天核验作废');await guard();current();
-  };
-  const client=createChatCharacterReceiptClient({namespace,target:captured.target,guard:check,
-    headers:headers||(()=>getContext().getRequestHeaders?.()||{}),fetchImpl,timeoutMs});
-  return Object.freeze({...client,owner:Object.freeze({namespace,chatKey:captured.target.chatId}),target:Object.freeze({...captured.target}),assertCurrent:current});
+  let source;
+  try{source=captureCurrentChatSource({getContext,epoch});}catch(error){throw fail(error.message);}
+  const current=()=>{try{source.assertCurrent();}catch(error){throw fail(error.message);}};
+  try{
+    await guard();current();const namespace=await account();current();await guard();current();
+    const check=async()=>{
+      await guard();current();const selectedAccount=await account();current();
+      if(selectedAccount!==namespace)throw fail('当前 ST 账户已变化，原聊天核验作废');await guard();current();
+    };
+    const client=createChatCharacterReceiptClient({namespace,target:source.target,guard:check,
+      headers:headers||(()=>getContext().getRequestHeaders?.()||{}),fetchImpl,timeoutMs});
+    return Object.freeze({...client,owner:Object.freeze({namespace,chatKey:source.target.chatId}),target:source.target,assertCurrent:current,
+      close(){source.close();client.close();}});
+  }catch(error){source.close();throw error;}
 }

@@ -28,17 +28,27 @@ await context.route('**/*', async route => {
 try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async source => {
-        const [utils, storyboard, model, view, session, preferences, icons] = await Promise.all([
+        const [utils, storyboard, model, view, session, preferences, icons, chatSource] = await Promise.all([
             import('/qianmu-storyboard-utils.js'), import('/qianmu-storyboard.js'), import('/qianmu-gallery-narrative.js'),
-            import('/qianmu-gallery-narrative-view.js'), import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
+            import('/qianmu-gallery-narrative-view.js'), import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'), import('/qianmu-current-chat-source.js'),
         ]);
         const f = window.fixture = { context: { chatMetadata: {}, chat: [] }, chatKey: 'chat', writes: 0, renders: 0, records: [],
             state: { view: 'gallery', gallerySource: 'novel', gallerySearch: '', galleryTrack: 'all' } };
+        f.buses = [];
+        f.makeBus = () => {
+            const events = new Map(), bus = {
+                on(type, handler) { const rows = events.get(type) || []; rows.push(handler); events.set(type, rows); },
+                removeListener(type, handler) { events.set(type, (events.get(type) || []).filter(row => row !== handler)); },
+                emit(type, value) { for (const handler of [...(events.get(type) || [])]) handler(value); },
+                count() { return [...events.values()].reduce((sum, rows) => sum + rows.length, 0); },
+            }; f.buses.push(bus); return bus;
+        };
         const canvas = document.createElement('canvas'); canvas.width = 160; canvas.height = 120;
         const paint = canvas.getContext('2d'); paint.fillStyle = '#627d87'; paint.fillRect(0, 0, 160, 120);
         const url = canvas.toDataURL('image/png');
         f.reset = () => {
-            f.context = { chatMetadata: {}, chat: Array.from({ length: 32 }, (_, i) => ({ mes: `开场 ${i}\n海岸 ${i}\n归途 ${i}`, name: '角色 <b>', send_date: 'date-' + i, swipe_id: 0 })) };
+            f.context = { chatId: 'chat', characterId: 0, characters: [{ name: '角色', avatar: 'A.png', chat: 'chat' }],
+                eventSource: f.makeBus(), chatMetadata: { integrity: 'fixture-integrity' }, chat: Array.from({ length: 32 }, (_, i) => ({ mes: `开场 ${i}\n海岸 ${i}\n归途 ${i}`, name: '角色 <b>', send_date: 'date-' + i, swipe_id: 0 })) };
             f.records = []; f.chatKey = 'chat'; f.state = { view: 'gallery', gallerySource: 'novel', gallerySearch: '', galleryTrack: 'all' };
             f.context.chat.forEach((message, floor) => {
                 for (let p = 0; p < 3; p++) for (let variant = 0; variant < 2; variant++) f.records.push({
@@ -52,7 +62,7 @@ try {
             f.original = JSON.stringify(f.records);
         };
         f.reset();
-        Object.assign(window, utils, view, { storyboardProductionDeliveryPolicy: storyboard.storyboardProductionDeliveryPolicy,
+        Object.assign(window, utils, view, chatSource, { storyboardProductionDeliveryPolicy: storyboard.storyboardProductionDeliveryPolicy,
             storyboardGalleryNarrative: model.createGalleryNarrativeSession(), storyboardGallerySelection: new Set(), storyboardGallerySelectMode: false,
             storyboardGalleryVisibleCount: 40, storyboardGalleryOpenCollectionId: '', storyboardGalleryInspectorRecordId: '', storyboardGalleryKind: 'stills',
             storyboardAdmissionEpoch: 1, settings: { theme: 'dark' }, STORYBOARD_SOURCES: { novel: { label: 'NAI' }, comfy: { label: 'Comfy' } },
@@ -138,6 +148,47 @@ try {
         input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); return same;
     });
     ok('Chinese composition stays attached until committed', ime && await page.locator('.sd-gallery-narrative-rows>button').count() === 1);
+
+    ok('directory-only repaint releases old source listeners rather than accumulating them', await page.evaluate(() => fixture.buses.reduce((sum,bus) => sum + bus.count(), 0) === 5));
+    for (const change of ['integrity', 'rename', 'deletion', 'same-name-character', 'unrelated-rename', 'unrelated-deletion', 'unrelated-trailing-load']) {
+        const result = await page.evaluate(async change => {
+            fixture.reset(); const root = document.getElementById('story-director-modal'); root.classList.add('open'); renderModal();
+            const button = document.querySelector('.sd-gallery-narrative-rows>button'), count = fixture.renders;
+            if (change === 'integrity') fixture.context.chatMetadata.integrity = 'new-incarnation';
+            if (change === 'rename') fixture.context.eventSource.emit('chat_renamed', { avatarId: 'A.png', oldFileName: 'chat.jsonl', newFileName: 'untrusted?.jsonl' });
+            if (change === 'deletion') fixture.context.eventSource.emit('chat_deleted', 'chat');
+            if (change === 'same-name-character') { fixture.context.characters.push({ name: '角色', avatar: 'B.png', chat: 'chat' }); fixture.context.characterId = 1; }
+            if (change === 'unrelated-rename') fixture.context.eventSource.emit('chat_renamed', { avatarId: 'Other.png', oldFileName: 'chat.jsonl', newFileName: 'elsewhere.jsonl' });
+            if (change === 'unrelated-deletion') fixture.context.eventSource.emit('chat_deleted', 'other');
+            if (change === 'unrelated-trailing-load') fixture.context.eventSource.emit('chat_loaded', { detail: { id: 0 } });
+            button.click(); await new Promise(resolve => setTimeout(resolve, 0));
+            return { unchanged: fixture.renders === count, disabled: button.disabled, listeners: fixture.context.eventSource.count(),
+                dataUnchanged: JSON.stringify(fixture.records) === fixture.original };
+        }, change);
+        const unrelated = change.startsWith('unrelated');
+        ok(`${change} keeps source guards read-only and owner-specific`, result.dataUnchanged && (unrelated ? !result.unchanged && result.listeners === 5 : result.unchanged && result.disabled && result.listeners === 0));
+    }
+    for (const change of ['close-root', 'remove-root', 'remove-ancestor', 'replace-directory', 'rebind']) {
+        const result = await page.evaluate(async change => {
+            fixture.reset(); const root = document.getElementById('story-director-modal'); root.classList.add('open');
+            let wrapper; if (change === 'remove-ancestor') { wrapper = document.createElement('div'); document.body.append(wrapper); wrapper.append(root); }
+            renderModal(); const bus = fixture.context.eventSource;
+            if (change === 'close-root') root.classList.remove('open');
+            if (change === 'remove-root') root.remove();
+            if (change === 'remove-ancestor') wrapper.remove();
+            if (change === 'replace-directory') root.querySelector('.sd-gallery-narrative').remove();
+            if (change === 'rebind') { storyboardBindGalleryNarrative(root); storyboardBindGalleryNarrative(root); }
+            await new Promise(resolve => setTimeout(resolve, 0)); const count = bus.count();
+            if (change === 'remove-root' || change === 'remove-ancestor') document.body.append(root); root.classList.add('open'); return count;
+        }, change);
+        ok(`${change} releases exactly the ended scope's event subscriptions`, result === (change === 'rebind' ? 5 : 0));
+    }
+    ok('unresolved host source disables directory actions without hiding images or making writes', await page.evaluate(() => {
+        fixture.reset(); fixture.context.characterId = undefined; renderModal();
+        return [...document.querySelectorAll('.sd-gallery-narrative button, .sd-gallery-narrative input')].every(node => node.disabled)
+            && document.querySelector('.sd-gallery-narrative-note').textContent.includes('来源尚未就绪') && document.querySelectorAll('.sd-storyboard-gallery-card').length > 0
+            && fixture.context.eventSource.count() === 0 && fixture.writes === 0;
+    }));
 
     for (const change of ['chat', 'account', 'closed', 'detached', 'reply-before-click']) {
         const result = await page.evaluate(change => {

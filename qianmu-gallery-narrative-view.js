@@ -18,14 +18,40 @@ export function renderGalleryNarrative(session) {
     </section>`;
 }
 
-// Bind only this render's nodes. No timers, global event handlers, storage, or
-// closures able to act on a later chat/closed/replaced page.
-export function bindGalleryNarrative(root, { session, update, isCurrent, changed }) {
+// Each borrowed source has exactly this render's lifetime; no writes or source relocation.
+export function bindGalleryNarrative(root, { session, update, isCurrent, changed, captureSource }) {
     const area = root.querySelector('.sd-gallery-narrative'); if (!area) return;
+    area._qianmuSourceRelease?.();
+    let source = null, observer = null, disposed = false;
+    const release = () => { if (disposed) return; disposed = true; observer?.disconnect(); source?.close(); };
+    if (captureSource) {
+        try { source = captureSource(); } catch (_) {
+            const note = area.querySelector('.sd-gallery-narrative-note');
+            if (note) note.textContent = '当前聊天来源尚未就绪或已变化，请重新打开阅片室。';
+            area.querySelectorAll('button, input').forEach(node => { node.disabled = true; }); return;
+        }
+        area._qianmuSourceRelease = release;
+        const ancestors = []; for (let parent = root.parentNode; parent; parent = parent.parentNode) ancestors.push(parent);
+        observer = new MutationObserver(() => {
+            if (!area.isConnected || !root.contains(area) || !root.isConnected || !root.classList.contains('open') || root.parentNode !== ancestors[0]
+                || ancestors.some((node, i) => node.parentNode !== (ancestors[i + 1] || null))) release();
+        });
+        observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+        // Watch detach/reparent boundaries, not every streaming-text mutation elsewhere in ST.
+        for (const parent of ancestors) observer.observe(parent, { childList: true });
+    }
     const owner = session.owner, chatKey = session.chatKey, epoch = session.epoch;
     let composing = false;
-    const alive = () => area.isConnected && root.contains(area) && isCurrent()
-        && session.owner === owner && session.chatKey === chatKey && session.epoch === epoch;
+    const alive = () => {
+        if (disposed) return false;
+        if (source && !source.isCurrent()) {
+            const note = area.querySelector('.sd-gallery-narrative-note');
+            if (note) note.textContent = '当前聊天来源已变化，请重新打开阅片室。';
+            area.querySelectorAll('button, input').forEach(node => { node.disabled = true; }); release(); return false;
+        }
+        return area.isConnected && root.contains(area) && isCurrent()
+            && session.owner === owner && session.chatKey === chatKey && session.epoch === epoch;
+    };
     function fresh() { if (!alive()) return false; update(); return alive(); }
     function finish(all) {
         if (all) session.setOpen(false);
@@ -35,8 +61,9 @@ export function bindGalleryNarrative(root, { session, update, isCurrent, changed
     }
     function paint(focus = '') {
         const next = document.createElement('template'); next.innerHTML = renderGalleryNarrative(session);
+        release();
         area.replaceWith(next.content.firstElementChild);
-        bindGalleryNarrative(root, { session, update, isCurrent, changed });
+        bindGalleryNarrative(root, { session, update, isCurrent, changed, captureSource });
         if (focus) root.querySelector(`.sd-gallery-narrative ${focus}`)?.focus({ preventScroll: true });
     }
     area.querySelector('details').addEventListener('toggle', event => { if (alive()) session.setOpen(event.target.open); });

@@ -1,4 +1,5 @@
 import {normalizeChatCharacterCollection,CHAT_CHARACTER_COLLECTION_LIMITS} from './qianmu-character-chat-batch.js';
+import {chatFileTarget} from './qianmu-chat-file-target.js';
 
 export const CHAT_CHARACTER_RECEIPT_LIMITS=Object.freeze({headerBytes:2*1024*1024,responseBytes:2048,pending:4});
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
@@ -6,21 +7,8 @@ const keys=(value,fields)=>object(value)&&Object.keys(value).length===fields.len
 const account=value=>typeof value==='string'&&/^st-user:[a-f0-9]{64}$/.test(value);
 export const chatCharacterReceiptError=(code,message,status=409)=>Object.assign(new Error(message),{code:`chat_character_receipt_${code}`,status});
 const fail=message=>{throw chatCharacterReceiptError('contract',message,400);};
-function basename(value,max=250){
-  if(typeof value!=='string'||!value||value!==value.trim()||/[<>:"/\\|?*\u0000-\u001f\u007f]/.test(value)||/[. ]$/.test(value)
-    ||/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value)||new TextEncoder().encode(value).byteLength>max
-    ||new TextDecoder().decode(new TextEncoder().encode(value))!==value)fail('聊天定位无效，请重新打开目标聊天');
-  return value;
-}
 export function chatCharacterReceiptTarget(value){
-  if(!object(value)||!['character','group'].includes(value.kind)||!keys(value,value.kind==='character'?['kind','chatId','avatar']:['kind','chatId']))fail('请指定准确的单聊或群聊');
-  const target={kind:value.kind,chatId:basename(value.chatId,249)};
-  if(value.kind==='character'){
-    target.avatar=basename(value.avatar);
-    if(!target.avatar.endsWith('.png'))fail('角色文件格式不兼容，请重新核对聊天');
-    basename(target.avatar.replace('.png','')); // Match ST's exact folder rule; never sanitize into a different chat.
-  }
-  return target;
+  try{return chatFileTarget(value);}catch(error){fail(error.message);}
 }
 export function chatCharacterReceiptRequest(value){
   if(!keys(value,['version','expectedAccount','target'])||value.version!==1||!account(value.expectedAccount))fail('聊天核验请求版本或账户无效');
