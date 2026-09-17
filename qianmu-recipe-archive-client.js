@@ -1,6 +1,7 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
 import {recipeArchiveRequest,recipeArchiveResponse,recipeArchiveReference,recipeArchiveError,RECIPE_ARCHIVE_LIMITS} from './qianmu-recipe-archive-contract.js';
+import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
 
 const fail=message=>recipeArchiveError('client',message);
 const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),n=>n.toString(16).padStart(2,'0')).join('');
@@ -8,11 +9,26 @@ const equal=(a,b)=>chatGalleryReceiptText([a]).text===chatGalleryReceiptText([b]
 
 // A short-lived borrower of one actual host gallery. Never uploads a recipe or reads
 // an unscoped local cache. Every returned recipe/ref must come from the saved source.
-export function createCurrentRecipeArchiveClient({getContext,epoch,getGallery,
+export function createCurrentRecipeArchiveClient(options={}){
+  const {getContext,epoch}=options,source=captureCurrentChatSource({getContext,epoch});
+  try{return createRecipeArchiveClient({...options,source,headers:options.headers||(()=>getContext().getRequestHeaders?.()||{})});}
+  catch(error){source.close();throw error;}
+}
+
+// Exact saved-file reader. It cannot preserve/upload or impersonate an open host
+// chat. The caller owns the account/session guard; records are detached immediately.
+export function createHistoricalRecipeArchiveClient({namespace,target,records,guard,...options}={}){
+  if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace)||typeof guard!=='function')throw fail('历史配方读取缺少账户或会话保护');
+  const selected=chatCharacterReceiptTarget(target);chatGalleryReceiptText(records);
+  if(!Array.isArray(records))throw fail('历史配方缺少原聊天画面');
+  const rows=structuredClone(records),source={target:selected,assertCurrent(){},close(){}};
+  return createRecipeArchiveClient({...options,source,getGallery:()=>rows,account:async()=>namespace,guard},false);
+}
+
+function createRecipeArchiveClient({source,getGallery,
   account=async()=>(await import('./qianmu-image-admission.js')).resolveImageAccountNamespace(),
-  headers,guard=async()=>{},fetchImpl=globalThis.fetch,timeoutMs=8000}={}){
+  headers=()=>({}),guard=async()=>{},fetchImpl=globalThis.fetch,timeoutMs=8000}={},writable=true){
   if(typeof getGallery!=='function'||typeof account!=='function'||!Number.isFinite(timeoutMs))throw fail('配方读取缺少聊天来源');
-  const source=captureCurrentChatSource({getContext,epoch});
   let original,rows;
   try{rows=getGallery();original=chatGalleryReceiptText(rows).text;}catch(error){source.close();throw error;}
   const pending=new Set();let namespace,closed=false;
@@ -49,7 +65,7 @@ export function createCurrentRecipeArchiveClient({getContext,epoch,getGallery,
     return bounded(async(signal,alive)=>{
       const expectedAccount='st-user:'+await digest(namespace.slice(8));
       const body=recipeArchiveRequest({version:1,expectedAccount,target:source.target,selection:{...selection,gallerySha256:await digest(original)}});
-      const provided=new Headers(await (headers?headers():getContext().getRequestHeaders?.()||{}));
+      const provided=new Headers(await headers());
       const requestHeaders={'Content-Type':'application/json',Accept:'application/json'};
       if(provided.has('x-csrf-token'))requestHeaders['X-CSRF-Token']=provided.get('x-csrf-token');
       await check();alive();
@@ -74,7 +90,7 @@ export function createCurrentRecipeArchiveClient({getContext,epoch,getGallery,
       await check();alive();return result;
     },options);
   }
-  return Object.freeze({preserve:(record,options)=>call('preserve',record,options),read:(record,options)=>call('read',record,options),
+  return Object.freeze({...writable?{preserve:(record,options)=>call('preserve',record,options)}:{},read:(record,options)=>call('read',record,options),
     guard:options=>bounded(async()=>true,options),
     close(){closed=true;source.close();for(const abort of pending)abort();rows=null;}});
 }
