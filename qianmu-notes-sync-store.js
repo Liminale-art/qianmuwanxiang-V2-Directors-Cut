@@ -45,6 +45,18 @@ export function validateNotesLocalState(value,namespace) {
 }
 export function emptyNotesLocalState(namespace){return {version:1,namespace:notesLocalNamespace(namespace),rows:[],receipts:[],serverRevision:0};}
 
+// Logical UTF-8 bytes, not browser allocation or server disk usage. No prose leaves this projection.
+export function summarizeNotesLocalState(state) {
+  validateNotesLocalState(state, state?.namespace);
+  const live = state.rows.filter(row => !row.deleted);
+  return Object.freeze({ status: 'ready', namespace: state.namespace,
+    count: live.length, pinned: live.filter(row => row.note.pinned).length,
+    pending: state.rows.filter(row => row.pending).length, deleted: state.rows.length - live.length,
+    bytes: state.rows.length || state.receipts.length || state.serverRevision ? new TextEncoder().encode(JSON.stringify(state)).byteLength : 0,
+    estimated: true, scope: 'current-account-local',
+  });
+}
+
 export function createNotesSyncStore({indexedDB=globalThis.indexedDB,dbName='qianmu-notes-sync',timeoutMs=8000}={}) {
   let database=null,opening=null,closed=false;const pending=new Set(),timeout=Math.max(100,Math.min(30000,Number(timeoutMs)||8000));
   const check=guard=>{if(closed)throw notesLocalError('closed','便笺会话已关闭');if(guard()===false)throw notesLocalError('account','便笺账户已变化');};

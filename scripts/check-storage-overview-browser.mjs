@@ -19,7 +19,7 @@ const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota
   idb: {chatScopes: ['fixture']}, vibeStorage: {status: 'ready', assets: {count: 0, bytes: 0}, previews: {bytes: 0}, records: {count: 0, bytes: 0}, metadata: {bytes: 0}},
   restoreStorage: {status: 'ready', count: 0, bytes: 0}, mappingStorage: {status: 'ready', count: 0, bytes: 0}, carrierStorage: {status: 'ready', count: 0, bytes: 0},
   characterStorage: {status: 'ready', documents: {count: 0, bytes: 0}, bindings: {count: 0, bytes: 0}, indexes: {bytes: 0}},
-  comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}};
+  comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}, notesStorage: {status:'ready',bytes:200,count:3,pinned:1}};
 function render(data = snapshot, status = 'ready') {
   const state = vm.createContext({renderStorageBackupSection, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
     optionalServiceState: {status: 'ready', services: [], version: 'fixture'},
@@ -86,6 +86,16 @@ try {
     assert.equal(await page.locator('.sd-storage-card > :last-child').getAttribute('class'), 'sd-storage-service');
     checks.push(`${status}: no fake total or cleanup, backup remains available`);
   }
+  const changed=structuredClone(snapshot);changed.notesStorage={status:'ready',count:7,pinned:2,bytes:400};
+  const summaryRefresh=await page.evaluate(({before,after,replace})=>{
+    document.body.innerHTML=before;const card=document.querySelector('.sd-storage-card'),backup=card.querySelector('.sd-storage-backup-section');
+    backup.open=true;const input=backup.querySelector('input[data-storage-import="notes"]'),button=backup.querySelector('[data-storage-export="notes"]');
+    button.focus();let clicks=0;button.addEventListener('click',()=>clicks++);
+    (0,eval)(`(${replace})`)(card,after,{icons(){},bind(){}});button.click();
+    return {sameInput:input===document.querySelector('input[data-storage-import="notes"]'),sameBackup:backup===document.querySelector('.sd-storage-backup-section'),open:backup.open,clicks,text:backup.querySelector('.sd-storage-notes-summary').textContent};
+  },{before:render(),after:render(changed),replace:replaceStorageManagementCard.toString()});
+  assert.equal(summaryRefresh.sameInput&&summaryRefresh.sameBackup&&summaryRefresh.open,true);assert.equal(summaryRefresh.clicks,1);assert.match(summaryRefresh.text,/已保存 7 条（常驻 2 条）/);
+  checks.push('live account notes summary refresh retains the original backup file chooser, listeners and disclosure');
   const serviceSource = ['optionalServiceLabel', 'optionalServiceDetail', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n');
   const serviceChecks = await page.evaluate(async ({html, source, replace}) => {
     document.body.innerHTML = `<div id="story-director-modal" class="open"><div class="sd-body" style="height:400px;overflow:auto"><input class="api-draft" value="https://unsaved.invalid/v1"><div style="height:200px"></div>${html}<div style="height:800px"></div></div></div>`;

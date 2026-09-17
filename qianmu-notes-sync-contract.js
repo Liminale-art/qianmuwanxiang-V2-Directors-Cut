@@ -14,6 +14,12 @@ export function notesSyncMutationId(value) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{8,120}$/.test(value)) fail('便笺同步操作编号无效');
   return value;
 }
+// getRandomValues remains available on HTTP LAN pages where randomUUID is absent.
+export function notesSyncOperationId(cryptoImpl = globalThis.crypto) {
+  if (typeof cryptoImpl?.randomUUID === 'function') return notesSyncMutationId(cryptoImpl.randomUUID());
+  if (typeof cryptoImpl?.getRandomValues !== 'function') throw notesSyncError('unavailable', '浏览器无法创建安全便笺编号，请保留草稿并换用支持的浏览器', 503);
+  return Array.from(cryptoImpl.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
+}
 export function notesSyncNoteInput(value) {
   if (!keys(value,['title','body','pinned','createdAt']) || !text(value.title,NOTES_SYNC_LIMITS.title) || !text(value.body,NOTES_SYNC_LIMITS.body)
     || typeof value.pinned !== 'boolean' || !integer(value.createdAt)) fail('便笺内容不完整、过大或包含不支持的字段；未截断原文');

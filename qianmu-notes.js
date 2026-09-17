@@ -4,6 +4,7 @@
 
 import * as blobStore from './qianmu-blobstore.js';
 import {readLibraryBackupFile,confirmLibraryRestore,NOTE_TEXT_LIMITS} from './qianmu-library-backup.js';
+import {notesSyncOperationId} from './qianmu-notes-sync-contract.js';
 
 let configuration = null, session = null, opening = null, closing = null, epoch = 0, syncTimer = null;
 const localWrites = new Set();
@@ -34,7 +35,9 @@ async function notesSession(expectedNamespace, admittedEpoch) {
       if (token !== epoch || namespace !== await configuration.resolveNamespace() || token !== epoch) throw changed();
     };
     await guard();
-    const runtime = createNotesSyncRuntime({ namespace, headers: configuration.headers, guard,
+    const client = configuration.createRuntime ? null : (await import('./qianmu-notes-sync-client.js')).createNotesSyncClient({ namespace, headers: configuration.headers, guard });
+    await guard();
+    const runtime = createNotesSyncRuntime({ namespace, client, guard,
       onChange: event => { if (token === epoch && session?.namespace === namespace) configuration.onChange?.(event); } });
     if (token !== epoch) { await runtime.close(); throw changed(); }
     session = { namespace, runtime, guard };
@@ -66,6 +69,7 @@ export async function listLegacyQianmuNotes() {
 }
 export async function adoptLegacyQianmuNotes({ confirmed = false, namespace } = {}) {
   if (confirmed !== true || !namespace) throw new Error('请先确认旧便笺所属的 ST 账户。');
+  if (!globalThis.crypto?.subtle?.digest) throw new Error('旧便笺归属核验需要 HTTPS 或本机 localhost；原件仍可查看和导出，未迁移。');
   const current = await notesSession(namespace), notes = await listLegacyQianmuNotes();
   const content = notes.map(({ id, title, body, pinned, createdAt, updatedAt }) => ({ id, title, body, pinned, createdAt, updatedAt })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(content)));
@@ -112,6 +116,12 @@ export async function listQianmuNotes() {
   return notes.map(note => withOwner(note, current.namespace)).sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
 }
 
+export async function getQianmuNotesStorage() {
+  const current = await notesSession(), summary = await current.runtime.summary();
+  await current.guard();
+  return summary;
+}
+
 export async function saveQianmuNote(input, { namespace = input?._notesAccount } = {}) {
   if (closing) throw changed();
   const admittedEpoch = epoch;
@@ -128,7 +138,7 @@ export async function saveImportedQianmuNote(input, {check}) {
   check();
   const current = await notesSession(); check();
   // Imports always receive fresh IDs; a concurrent tab cannot turn an import into an overwrite.
-  const note = normalizeQianmuNote({ ...input, id: `note-import-${crypto.randomUUID()}`, floating: false, updatedAt: Date.now() });
+  const note = normalizeQianmuNote({ ...input, id: `note-import-${notesSyncOperationId()}`, floating: false, updatedAt: Date.now() });
   const saved = await localWrite(() => current.runtime.save(note));
   queueSync();
   return withOwner(saved, current.namespace);

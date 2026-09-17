@@ -43,7 +43,7 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_IMAGES]: { label: '书内插图', category: 'images', recoverable: false },
   [STORE_VECTORS]: { label: '伴读检索向量', category: 'reader', recoverable: false },
   [STORE_TTS_LINES]: { label: '台词提取缓存', category: 'cache', recoverable: true },
-  [STORE_NOTES]: { label: '固定便笺', category: 'notes', recoverable: false },
+  [STORE_NOTES]: { label: '旧版便笺（本机）', category: 'notes', recoverable: false },
   [STORE_STORYBOARD_INBOX]: { label: '分镜待归档', category: 'images', recoverable: false },
   [STORE_STORYBOARD_PIPELINE_LOGS]: { label: '分镜详细日志', category: 'logs', recoverable: true },
   [STORE_STORYBOARD_SNAPSHOTS]: { label: '阅片重绘快照', category: 'cache', recoverable: false },
@@ -787,7 +787,7 @@ export async function deleteNote(noteId) {
 }
 
 export async function listNotes({requireCommit = false} = {}) {
-  if (requireCommit && !blobStoreAvailable()) throw new Error('固定便笺储存不可用，未读取备份目录。');
+  if (requireCommit && !blobStoreAvailable()) throw new Error('旧版便笺储存不可用，未读取备份目录。');
   const s = await store(STORE_NOTES, 'readonly');
   const out = [];
   await new Promise((resolve, reject) => {

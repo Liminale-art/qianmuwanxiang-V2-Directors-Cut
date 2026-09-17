@@ -24,6 +24,8 @@ try {
   await page.addStyleTag({ content: await readFile(new URL('../style.css', import.meta.url), 'utf8') });
   await page.evaluate(async source => {
     for (const file of ['qianmu-notes', 'qianmu-notes-panel-sync', 'qianmu-notes-device']) Object.assign(window, await import(`./${file}.js`));
+    const configure = configureQianmuNotes, { createNotesSyncRuntime } = await import('./qianmu-notes-sync-runtime.js');
+    window.configureQianmuNotes = options => configure({ ...options, createRuntime: input => createNotesSyncRuntime({ ...input, client: null }) });
     const notes = { enabled: true, detached: false, position: { x: 15, y: 40 }, panelSize: { width: 430, height: 420 }, editorFontSize: 13, appearance: { tone: 'dark', edgeIndex: 0 } };
     Object.assign(window, { notesSyncPanel: null, notesDevice: null, notesViewEpoch: 0, notesReadEpoch: 0, notesSaveTimers: new Map(), notesPanelOpen: false, notesLoaded: false,
       notesLoading: null, notesRuntime: [], notesActiveId: '', notesSearch: '', notesZCounter: 1, notesPanelResizeObserver: null,

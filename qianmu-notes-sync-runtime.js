@@ -1,11 +1,11 @@
 // Local-first note sessions. The transport is injected; this module performs no network request itself.
-import {createNotesSyncStore,notesLocalNamespace,notesLocalError,notesLocalContent,notesLocalGeometry} from './qianmu-notes-sync-store.js';
-import {notesSyncListResponse,notesSyncWriteResponse,notesSyncConflictResponse,notesSyncMutationId} from './qianmu-notes-sync-contract.js';
+import {createNotesSyncStore,notesLocalNamespace,notesLocalError,notesLocalContent,notesLocalGeometry,summarizeNotesLocalState} from './qianmu-notes-sync-store.js';
+import {notesSyncListResponse,notesSyncWriteResponse,notesSyncConflictResponse,notesSyncMutationId,notesSyncOperationId} from './qianmu-notes-sync-contract.js';
 
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 const content=note=>({title:note.title,body:note.body,pinned:note.pinned,createdAt:note.createdAt});
 const changed=(left,right)=>!same(content(left),content(right));
-export function createNotesSyncRuntime({namespace,store=null,client=null,onChange=()=>{},guard=()=>true,uid=()=>crypto.randomUUID(),now=Date.now,cryptoImpl=globalThis.crypto}={}) {
+export function createNotesSyncRuntime({namespace,store=null,client=null,onChange=()=>{},guard=()=>true,uid=notesSyncOperationId,now=Date.now,cryptoImpl=globalThis.crypto}={}) {
   notesLocalNamespace(namespace);const ownsStore=!store;store ||= createNotesSyncStore();
   const session=notesSyncMutationId(uid()),observed=new Map(),accepted=new Map(),forks=new Map();
   let closed=false,tail=Promise.resolve(),syncing=null,lastState='local-only',lastError='',pendingCount=0,conflicts=0,hasSynced=false;
@@ -126,5 +126,5 @@ export function createNotesSyncRuntime({namespace,store=null,client=null,onChang
     }catch(error){if(!closed){lastState=error?.code==='notes_sync_unavailable'?'local-only':'error';lastError=error?.message||'便笺同步失败，本机内容已保留';notify('error');}throw error;}
   }
   function sync(){if(syncing)return syncing;const work=synchronize();syncing=work.then(()=>{syncing=null;notify('status');return status();},error=>{syncing=null;notify('status');throw error;});return syncing;}
-  return Object.freeze({namespace,list,save,remove,importLegacy,sync,get status(){return status();},close(){closed=true;client?.close?.();if(ownsStore)store.close();observed.clear();accepted.clear();forks.clear();}});
+  return Object.freeze({namespace,list,save,remove,importLegacy,sync,summary:()=>serial(async()=>summarizeNotesLocalState(await read())),get status(){return status();},close(){closed=true;client?.close?.();if(ownsStore)store.close();observed.clear();accepted.clear();forks.clear();}});
 }

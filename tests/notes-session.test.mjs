@@ -9,6 +9,7 @@ async function fixture() {
     return {
       status: { state: 'local-only', pending: notes.size, error: '', conflicts: 0 },
       async list() { await guard(); return [...notes.values()].map(value => ({ ...value })); },
+      async summary() { await guard(); const summary = { status:'ready', namespace, count:notes.size, bytes:100, pinned:0 }; if(blocker)await blocker; return summary; },
       async save(note) { await guard(); if (blocker) await blocker; const saved = { ...note, localRevision: (notes.get(note.id)?.localRevision || 0) + 1, revision: 0 }; notes.set(note.id, saved); writes++; onChange({ reason: 'save' }); return saved; },
       async remove(id) { await guard(); notes.delete(id); },
       async sync() { await guard(); },
@@ -115,4 +116,16 @@ test('migration needs an explicitly confirmed account and never opens the old st
     await assert.rejects(e.api.adoptLegacyQianmuNotes({ confirmed: true, namespace: 'st-user:another' }), /账户或会话已变化/);
     assert.equal(e.writes, 0);
   } finally { await e.api.clearTemporaryQianmuNotes(); }
+});
+
+test('inventory publishes only current account counts and rejects a late summary after account switch', async () => {
+  const e = await fixture(); let release;
+  try {
+    await e.api.saveQianmuNote(e.api.createQianmuNote({ body:'private original' }));
+    assert.deepEqual(await e.api.getQianmuNotesStorage(), { status:'ready',namespace:'st-user:alice',count:1,bytes:100,pinned:0 });
+    e.setBlock(new Promise(resolve => { release = resolve; }));
+    const reading = e.api.getQianmuNotesStorage(); await new Promise(resolve => setImmediate(resolve));
+    e.setAccount('st-user:bob'); release(); await assert.rejects(reading, /账户或会话已变化/);
+    assert.equal(e.writes, 1);
+  } finally { release?.(); await e.api.clearTemporaryQianmuNotes(); }
 });
