@@ -12,6 +12,8 @@ import {CHAT_CHARACTER_RECEIPT_LIMITS,chatCharacterReceiptTarget,chatCharacterRe
 import {emptyChatCharacterCollection,prepareChatCharacterBatch} from '../qianmu-character-chat-batch.js';
 import {imageServiceAccount} from '../qianmu-image-service-access.js';
 import {init,exit} from '../server-plugin.js';
+import {createChatGalleryReceiptClient,createCurrentChatGalleryReceiptClient} from '../qianmu-chat-character-receipt-client.js';
+import {chatGalleryReceiptText,chatGalleryReceiptResponse,CHAT_GALLERY_RECEIPT_LIMITS} from '../qianmu-chat-gallery-receipt.js';
 
 const owner={namespace:'st-user:alice',chatKey:'旅途 01'},target={kind:'character',chatId:owner.chatKey,avatar:'Alice.png'};
 const account=handle=>imageServiceAccount({user:{profile:{handle,enabled:true}}}).namespace;
@@ -38,6 +40,84 @@ async function fixture(t,options={}){
   return {root,userRoot,chats,groups,folder,file,request,service,write:async(value=header(),body='PRIVATE_BODY')=>fs.writeFile(file,JSON.stringify(value)+'\n'+JSON.stringify({mes:body})+'\n')};
 }
 const rejectsCode=(promise,code)=>assert.rejects(promise,{code:'chat_character_receipt_'+code});
+
+const gallery=()=>[{id:'frame-1',createdAt:1,url:'/PRIVATE_IMAGE.png',prompt:'PRIVATE_PROMPT',future:{unknown:true}}];
+function galleryResponse(value=gallery(),selected=target){
+  const normalized=chatGalleryReceiptText(value),summary=normalized?{count:normalized.count,bytes:normalized.bytes,sha256:createHash('sha256').update(normalized.text).digest('hex')}:null;
+  return {ok:true,version:1,expectedAccount:account('alice'),target:selected,state:summary?'present':'absent',gallery:summary,proof:'read-only-snapshot'};
+}
+
+test('gallery digest is exact for future fields and order; absent and empty are distinct',()=>{
+  const a=gallery(),b=[{future:a[0].future,prompt:a[0].prompt,url:a[0].url,createdAt:1,id:'frame-1'}];
+  assert.deepEqual(chatGalleryReceiptText(a),chatGalleryReceiptText(b));
+  assert.notEqual(chatGalleryReceiptText(a).text,chatGalleryReceiptText([{...a[0],future:{unknown:false}}]).text);
+  assert.equal(chatGalleryReceiptText(undefined),null);assert.equal(chatGalleryReceiptText([]).count,0);
+  for(const value of [null,{},[null],[undefined],[{n:NaN}],[{n:undefined}],[{at:new Date()}],new Array(1)])assert.throws(()=>chatGalleryReceiptText(value));
+  const cycle={};cycle.self=cycle;assert.throws(()=>chatGalleryReceiptText([cycle]));
+  const hole=new Array(1);hole.extra=true;assert.throws(()=>chatGalleryReceiptText([{nested:hole}]));
+  assert.throws(()=>chatGalleryReceiptText([{text:'a'.repeat(CHAT_GALLERY_RECEIPT_LIMITS.bytes)}]));
+  assert.throws(()=>chatGalleryReceiptText(Array.from({length:10001},()=>({}))));
+});
+
+test('gallery receipt response exposes only bounded count/digest and an exact source target',()=>{
+  assert.deepEqual(chatGalleryReceiptResponse(galleryResponse()),galleryResponse());
+  for(const value of [{...galleryResponse(),url:'PRIVATE'}, {...galleryResponse(),gallery:{...galleryResponse().gallery,prompt:'PRIVATE'}},
+    {...galleryResponse(),state:'absent'}, {...galleryResponse(),target:{...target,avatar:'../other.png'}},
+    {...galleryResponse(),gallery:{...galleryResponse().gallery,count:-1}}])assert.throws(()=>chatGalleryReceiptResponse(value));
+});
+
+test('gallery service reads only its declared record family and never exposes unrelated content or writes',async t=>{
+  const f=await fixture(t);const value=header();value.chat_metadata.story_director_liminale.storyboardImages=gallery();
+  value.chat_metadata.story_director_liminale.characterDrafts='malformed unrelated family';await f.write(value,'PRIVATE_BODY');
+  const before=await fs.readFile(f.file),result=await f.service.inspectGallery(f.request,input());
+  assert.deepEqual(result,galleryResponse());assert.doesNotMatch(JSON.stringify(result),/PRIVATE_|prompt|url|characterDrafts/);
+  assert.deepEqual(await fs.readFile(f.file),before);await rejectsCode(f.service.inspect(f.request,input()),'content');
+});
+
+test('gallery missing, absent, empty, malformed and oversized sources do not collapse to the same state',async t=>{
+  const f=await fixture(t);await rejectsCode(f.service.inspectGallery(f.request,input()),'missing');
+  await f.write();assert.equal((await f.service.inspectGallery(f.request,input())).state,'absent');
+  for(const records of [[],null,{},[null]]){
+    const value=header();value.chat_metadata.story_director_liminale.storyboardImages=records;await f.write(value);
+    if(Array.isArray(records)&&!records.length)assert.deepEqual((await f.service.inspectGallery(f.request,input())).gallery,galleryResponse([]).gallery);
+    else await rejectsCode(f.service.inspectGallery(f.request,input()),'content');
+  }
+  await fs.writeFile(f.file,'x'.repeat(CHAT_CHARACTER_RECEIPT_LIMITS.headerBytes+1)+'\n');await rejectsCode(f.service.inspectGallery(f.request,input()),'size');
+});
+
+test('gallery lookup separates same-named character chats and group files inside the authenticated account',async t=>{
+  const f=await fixture(t),a=header(),b=header();a.chat_metadata.story_director_liminale.storyboardImages=gallery();b.chat_metadata.story_director_liminale.storyboardImages=[];await f.write(a);
+  await fs.mkdir(path.join(f.chats,'Bob'));await fs.writeFile(path.join(f.chats,'Bob',target.chatId+'.jsonl'),JSON.stringify(b)+'\n');
+  const selected={...target,avatar:'Bob.png'};assert.deepEqual(await f.service.inspectGallery(f.request,input(selected)),galleryResponse([],selected));
+  const group={kind:'group',chatId:target.chatId};await fs.writeFile(path.join(f.groups,target.chatId+'.jsonl'),JSON.stringify(b)+'\n');
+  assert.deepEqual(await f.service.inspectGallery(f.request,input(group)),galleryResponse([],group));
+  await rejectsCode(f.service.inspectGallery(f.request,{...input(),expectedAccount:account('bob')}),'account');
+  await rejectsCode(f.service.inspectGallery(f.request,input({...target,chatId:'../escape'})),'contract');
+});
+
+test('gallery client verifies the complete local snapshot without sending its contents to the server',async()=>{
+  let seen;const client=createChatGalleryReceiptClient({namespace:owner.namespace,target,fetchImpl:async(url,options)=>{seen={url,...options};return json(galleryResponse());}});
+  assert.equal((await client.verify(gallery())).matches,true);assert.match(seen.url,/\/chat-gallery\/receipt$/);assert.deepEqual(JSON.parse(seen.body),input());
+  assert.doesNotMatch(seen.body,/PRIVATE_|prompt|url/);assert.equal((await client.verify([{...gallery()[0],future:{unknown:false}}])).matches,false);
+  // Explicit absent response; the fixture default otherwise produces a populated gallery.
+  const absentClient=createChatGalleryReceiptClient({namespace:owner.namespace,target,fetchImpl:async()=>json({...galleryResponse(),state:'absent',gallery:null})});
+  assert.equal((await absentClient.verify(undefined)).matches,true);assert.equal((await absentClient.verify([])).matches,false);client.close();absentClient.close();
+});
+
+test('gallery client rejects stale targets, wrong receipt family, oversized responses and reports missing source safely',async()=>{
+  for(const value of [response(),{...galleryResponse(),target:{...target,avatar:'Bob.png'}},{...galleryResponse(),expectedAccount:account('bob')}]){
+    const client=createChatGalleryReceiptClient({namespace:owner.namespace,target,fetchImpl:async()=>json(value)});await rejectsCode(client.verify(gallery()),'client');client.close();
+  }
+  const large=createChatGalleryReceiptClient({namespace:owner.namespace,target,fetchImpl:async()=>new Response(' '.repeat(2049),{headers:{'content-type':'application/json'}})});await rejectsCode(large.inspect(),'client');large.close();
+  const missing=createChatGalleryReceiptClient({namespace:owner.namespace,target,fetchImpl:async()=>json({ok:false,code:'chat_character_receipt_missing',message:'PRIVATE_PATH'},404)});
+  await assert.rejects(missing.inspect(),error=>error.message.includes('不存在或已移动')&&!error.message.includes('PRIVATE_PATH'));missing.close();
+});
+
+test('current gallery adapter requires exact host source and rejects a same-name character switch',async()=>{
+  let revision=1,calls=0;const context={chatId:target.chatId,characterId:0,characters:[{avatar:target.avatar,chat:target.chatId},{avatar:'Bob.png',chat:target.chatId}],chat:[],chatMetadata:{story_director_liminale:{storyboardImages:gallery()}}};
+  const client=await createCurrentChatGalleryReceiptClient({getContext:()=>context,epoch:()=>revision,account:async()=>owner.namespace,fetchImpl:async()=>{calls++;return json(galleryResponse());}});
+  assert.equal((await client.verify(gallery())).matches,true);context.characterId=1;revision++;await rejectsCode(client.verify(gallery()),'client');assert.equal(calls,1);client.close();
+});
 
 test('receipt target uses exact safe basenames; body cannot choose a root, namespace, path or future version',()=>{
   assert.deepEqual(chatCharacterReceiptRequest(input()),input());
@@ -178,7 +258,7 @@ test('guard timeout never dispatches later; context switch after response reject
 });
 
 test('production HTTP route plus browser client verifies a synthetic chat without saving or exposing its contents',async t=>{
-  const f=await fixture(t),routes=new Map(),seen=[];await f.write();const before=await fs.readFile(f.file);
+  const f=await fixture(t),routes=new Map(),seen=[],value=header();value.chat_metadata.story_director_liminale.storyboardImages=gallery();await f.write(value);const before=await fs.readFile(f.file);
   await init({get:(name,handler)=>routes.set(`GET ${name}`,handler),post:(name,handler)=>routes.set(`POST ${name}`,handler)},{dataRoot:f.root});
   const server=http.createServer(async(req,res)=>{
     if(req.headers['x-test-login']==='alice')req.user=structuredClone(f.request.user);
@@ -198,5 +278,8 @@ test('production HTTP route plus browser client verifies a synthetic chat withou
   assert.equal((await client.verify(draft())).matches,true);
   const rejected=await fetch(origin+endpoint,{method:'POST',headers:{'x-test-login':'alice','content-type':'application/json'},body:JSON.stringify({...input(),root:f.root})});
   assert.equal(rejected.status,400);assert.doesNotMatch(await rejected.text(),/qianmu-chat-receipt-test|PRIVATE_/);
-  assert.deepEqual(await fs.readFile(f.file),before);assert.ok(seen.every(url=>url===endpoint));client.close();
+  const galleryEndpoint='/chat-gallery/receipt';assert.equal((await fetch(origin+galleryEndpoint,{method:'POST'})).status,401);
+  const galleryClient=createChatGalleryReceiptClient({namespace:owner.namespace,target,fetchImpl:async(url,options)=>fetch(origin+url.replace('/api/plugins/qianmu-tts',''),{...options,headers:{...options.headers,'x-test-login':'alice'}})});
+  assert.equal((await galleryClient.verify(gallery())).matches,true);
+  assert.deepEqual(await fs.readFile(f.file),before);assert.ok(seen.every(url=>[endpoint,galleryEndpoint].includes(url)));client.close();galleryClient.close();
 });

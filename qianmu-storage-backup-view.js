@@ -85,6 +85,7 @@ export function renderStorageBackupSection(notesStorage, formatBytes = value => 
       <p class="sd-storage-scope">旧版便笺原件仍在本浏览器；请从便笺面板的“旧便笺”查看、导出或确认归属。旧版清理不会删除账户便笺。</p>
       <h4 class="sd-storage-group-title">分镜与伴读</h4>
       ${storagePackageRow('storyboard','分镜资源','.qmb,application/json,.json')}
+      <p class="sd-storage-scope sd-storage-gallery-check-status" role="status" style="overflow-wrap:anywhere" hidden></p>
       ${storagePackageRow('reader','伴读资料','application/json,.json')}
       <div class="sd-storage-resource-list">${data ? renderStorageResourceRows(data,formatBytes) : '<p class="sd-storage-scope">资料目录等待盘点；备份与恢复仍可使用。</p>'}</div>
       <div class="sd-storage-actions sd-storage-manage-actions">${data ? `<button type="button" class="sd-btn sd-primary sd-storage-clean" ${ready && data.manageableBytes > 0 ? '' : 'disabled'}>选择清理项目<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天选择本机记录<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>` : ''}</div>
@@ -93,7 +94,7 @@ export function renderStorageBackupSection(notesStorage, formatBytes = value => 
 }
 
 function storagePackageRow(key,label,accept) {
-  return `<div class="sd-storage-backup-row"><span>${label}</span><button type="button" class="sd-btn" data-storage-export="${key}" aria-label="导出${label}">导出</button><button type="button" class="sd-btn" data-storage-pick="${key}" aria-label="导入${label}">导入</button><input type="file" data-storage-import="${key}" accept="${accept}" hidden></div>`;
+  return `<div class="sd-storage-backup-row"><span>${label}${key==='storyboard'?'<button type="button" class="sd-btn sd-storage-gallery-check" aria-label="核对当前聊天静帧来源">核对来源</button>':''}</span><button type="button" class="sd-btn" data-storage-export="${key}" aria-label="导出${label}">导出</button><button type="button" class="sd-btn" data-storage-pick="${key}" aria-label="导入${label}">导入</button><input type="file" data-storage-import="${key}" accept="${accept}" hidden></div>`;
 }
 
 function renderStorageResourceRows(data,formatStorageBytes) {

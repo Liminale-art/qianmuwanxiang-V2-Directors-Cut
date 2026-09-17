@@ -3,6 +3,8 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-chat-gallery-receipt.js",
+    "qianmu-storage-gallery-check.js",
     "qianmu-audio-cache-backup.js",
     "qianmu-model-response.js",
     "qianmu-model-external.js",

@@ -226,7 +226,7 @@ export async function init(router, options = {}) {
     } finally { res.off?.('close', onClose); }
   });
   let chatCharacterReceipt;
-  router.post('/chat-characters/receipt', async (req, res) => {
+  for(const [route,method] of [['/chat-characters/receipt','inspect'],['/chat-gallery/receipt','inspectGallery']])router.post(route, async (req, res) => {
     prepareImageResponse(res);
     const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
     res.once?.('close', onClose);
@@ -236,7 +236,7 @@ export async function init(router, options = {}) {
         chatCharacterReceipt = createChatCharacterReceiptService({ ...(options.chatCharacterReceiptOptions || {}), dataRoot: hostDataRoot() });
         imageTaskServices.add(chatCharacterReceipt);
       }
-      const result = await chatCharacterReceipt.inspect(req, req.body, { signal: controller.signal });
+      const result = await chatCharacterReceipt[method](req, req.body, { signal: controller.signal });
       if (!res.destroyed && !res.writableEnded) return res.json(result);
     } catch (error) {
       const result = chatCharacterReceiptErrorPayload(error);

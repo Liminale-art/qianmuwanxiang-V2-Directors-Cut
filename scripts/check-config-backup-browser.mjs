@@ -150,13 +150,13 @@ try{
       const root=document.querySelector('.sd-storage-card'),body=document.querySelector('.sd-body');
       const rows=[...root.querySelectorAll('.sd-storage-backup-row')].map(row=>{
         const box=row.getBoundingClientRect(),controls=[...row.querySelectorAll('button')].map(el=>el.getBoundingClientRect());
-        return {contained:controls.every(b=>b.left>=box.left-1&&b.right<=box.right+1),aligned:controls.length<2||Math.abs(controls[0].height-controls[1].height)<1,label:row.querySelector('span').getBoundingClientRect().width};
+        return {contained:controls.every(b=>b.left>=box.left-1&&b.right<=box.right+1),aligned:controls.length<2||Math.abs(controls[0].height-controls[1].height)<1,label:row.querySelector('span').getBoundingClientRect().width,heights:controls.map(b=>b.height)};
       });
       return {rows,noOverflow:root.scrollWidth<=root.clientWidth+1&&body.scrollWidth<=body.clientWidth+1,
         filesHidden:[...root.querySelectorAll('input[type=file]')].every(el=>el.getClientRects().length===0)};
     });
     assert.equal(layout.rows.length,7);assert.equal(layout.noOverflow,true,`overflow at ${width}/${theme}/${recoverable}`);
-    assert.ok(layout.rows.every(row=>row.contained&&row.aligned&&row.label>0),`controls at ${width}/${theme}/${recoverable}`);
+    assert.ok(layout.rows.every(row=>row.contained&&row.aligned&&row.label>0),`controls at ${width}/${theme}/${recoverable}: ${JSON.stringify(layout.rows)}`);
     assert.equal(layout.filesHidden,true);assert.equal(await page.locator('.sd-undo-config').isVisible(),recoverable);
     await page.locator('.sd-storage-backup-section > summary').press('Enter');
     assert.equal(await page.locator('.sd-export-config').isVisible(),false);

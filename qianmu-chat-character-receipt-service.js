@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {CHAT_CHARACTER_RECEIPT_LIMITS as LIMIT,chatCharacterReceiptError,chatCharacterReceiptRequest,
   chatCharacterReceiptResponse,chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
+import {chatGalleryReceiptText,chatGalleryReceiptResponse} from './qianmu-chat-gallery-receipt.js';
 
 const fail=(code,message,status)=>{throw chatCharacterReceiptError(code,message,status);};
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
@@ -70,26 +71,34 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
       return header.chat_metadata;
     }finally{await handle.close();}
   }
-  async function inspect(req,input,{signal}={}){
+  async function inspect(req,input,{signal}={},galleryOnly=false){
     const context=capture(req,input,signal);let metadata;
     try{metadata=await readHeader(context);}catch(error){
       if(error?.code==='ENOENT')fail('missing','原聊天记录不存在或已移动，未确认保存',404);
       throw error;
     }
-    context.guard();let collection=null;
+    context.guard();let collection=null,gallery=null;
     if(Object.hasOwn(metadata,'story_director_liminale')){
       const store=metadata.story_director_liminale;
       if(!object(store))fail('content','千幕聊天资料损坏，请保全原记录');
-      if(Object.hasOwn(store,'characterDrafts')){
+      if(galleryOnly&&Object.hasOwn(store,'storyboardImages')){
+        const {text,...fields}=chatGalleryReceiptText(store.storyboardImages);
+        gallery={...fields,sha256:createHash('sha256').update(text).digest('hex')};
+      }
+      if(!galleryOnly&&Object.hasOwn(store,'characterDrafts')){
         let summary;try{summary=chatCharacterCollectionReceiptText(store.characterDrafts,context.owner);}catch{fail('content','聊天人物资料版本、归属或内容不一致，请保全原记录');}
         const {text,...fields}=summary;collection={...fields,sha256:createHash('sha256').update(text).digest('hex')};
       }
     }
-    context.guard();return chatCharacterReceiptResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
+    context.guard();
+    if(galleryOnly)return chatGalleryReceiptResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
+      state:gallery?'present':'absent',gallery,proof:'read-only-snapshot'});
+    return chatCharacterReceiptResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
       state:collection?'present':'absent',collection,proof:'read-only-snapshot'});
   }
-  return Object.freeze({inspect(req,input,options){
+  function run(req,input,options,galleryOnly=false){
     if(pending.size>=LIMIT.pending)return Promise.reject(chatCharacterReceiptError('busy','聊天核验正忙，请稍后重试',429));
-    const operation=inspect(req,input,options);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
-  },async close(){closed=true;await Promise.allSettled([...pending]);}});
+    const operation=inspect(req,input,options,galleryOnly);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
+  }
+  return Object.freeze({inspect:(req,input,options)=>run(req,input,options),inspectGallery:(req,input,options)=>run(req,input,options,true),async close(){closed=true;await Promise.allSettled([...pending]);}});
 }
