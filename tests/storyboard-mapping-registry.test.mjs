@@ -91,3 +91,17 @@ test('registry UI preserves escaped full identities, explicit unset bindings, an
   assert.match(html,/&lt;chat&gt;/);assert.doesNotMatch(html,/<chat>/);assert.match(html,/不使用档案（显式解除）/);assert.match(html,/不代表恢复已经完成/);assert.match(html,/&lt;error&gt;/);assert.match(html,/data-mapping-action="export"/);
   assert.doesNotMatch(html,/data-mapping-action="delete"|自动恢复/);
 });
+
+test('registry inventory distinguishes unavailable, loading and a verified empty directory',()=>{
+  const format=bytes=>`${bytes} B`,state={detail:null,list:null,busy:false,notice:'read failed',kind:'all',query:''};
+  const failed=renderMappingRegistry(state,format);assert.match(failed,/目录暂不可用/);assert.doesNotMatch(failed,/正在读取目录/);
+  assert.match(renderMappingRegistry({...state,busy:true},format),/正在读取目录/);
+  const empty=renderMappingRegistry({...state,list:{offset:0,total:0,rows:[],storage:{count:0,bytes:0}}},format);
+  assert.match(empty,/0 份 · 0 B/);assert.doesNotMatch(empty,/目录暂不可用|正在读取目录/);
+});
+
+test('registry redraw escapes a pending search draft without changing the query or adding executable markup',()=>{
+  const query='a" autofocus <img src=x> &',html=renderMappingRegistry({detail:null,list:null,busy:false,notice:'',kind:'subjects',query},bytes=>`${bytes} B`);
+  assert.match(html,/value="a&quot; autofocus &lt;img src=x&gt; &amp;"/);assert.doesNotMatch(html,/<img src=x>/);
+  assert.match(html,/value="subjects" selected/);
+});
