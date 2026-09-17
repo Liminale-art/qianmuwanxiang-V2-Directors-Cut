@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const filmSave = await readFile(new URL('../qianmu-film-editor-save.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 test('the screening room exposes film as a distinct product route', () => {
@@ -38,12 +39,14 @@ test('the editor keeps exact ordered sources and saves through the strict contra
   const saveStart = source.indexOf('async function storyboardSaveFilmEditor');
   const saveEnd = source.indexOf('async function storyboardDeleteFilmTimeline', saveStart);
   const saveBlock = source.slice(saveStart, saveEnd);
-  assert.match(saveBlock, /timelineModule\.buildVideoTimeline\(\{/);
+  assert.match(saveBlock, /saveFilmEditorSnapshot\(\{/);
+  assert.match(filmSave, /timelineModule\.buildVideoTimeline\(\{/);
   assert.match(saveBlock, /motionItems: storyboardFilmMotionItems\(\)/);
   assert.match(saveBlock, /stillRecords: storyboardFilmStillRecords\(chatKey\)/);
-  assert.match(saveBlock, /selections: storyboardFilmEditor\.selections/);
-  assert.match(saveBlock, /store\.save\(\{ \.\.\.built\.timeline, createdAt: storyboardFilmEditor\.createdAt \}\)/);
+  assert.match(filmSave, /selections: draft\.selections/);
+  assert.match(filmSave, /store\.save\(\{ \.\.\.built\.timeline, createdAt: draft\.createdAt \}\)/);
   assert.doesNotMatch(saveBlock, /prompt|apiKey|Blob|base64|fetch\(/i);
+  assert.doesNotMatch(filmSave, /prompt|apiKey|Blob|base64|fetch\(/i);
 });
 
 test('film deletion removes only the timeline and never its source media', () => {

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const filmSave = await readFile(new URL('../qianmu-film-editor-save.js', import.meta.url), 'utf8');
 
 test('ordinary prose media bypasses the director runtime without loading it', () => {
   const helper = source.slice(
@@ -42,9 +43,10 @@ test('film timeline validates world-side still and motion sources on add and sav
     source.indexOf('async function storyboardSaveFilmEditor'),
     source.indexOf('async function storyboardDeleteFilmTimeline'),
   );
-  assert.match(save, /for \(const selection of storyboardFilmEditor\.selections\)/);
-  assert.match(save, /await storyboardDirectorWorkOrderForRecord\(sourceRecord, 'film'\)/);
-  assert.ok(save.indexOf("storyboardDirectorWorkOrderForRecord(sourceRecord, 'film')") < save.indexOf('buildVideoTimeline'));
+  assert.match(save, /saveFilmEditorSnapshot\([\s\S]*workOrder: storyboardDirectorWorkOrderForRecord/);
+  assert.match(filmSave, /for \(const selection of draft\.selections\)/);
+  assert.match(filmSave, /await workOrder\(sourceRecord, 'film'\)/);
+  assert.ok(filmSave.indexOf("workOrder(sourceRecord, 'film')") < filmSave.indexOf('buildVideoTimeline'));
 
   const binding = source.slice(
     source.indexOf("root.querySelectorAll('[data-storyboard-film-add-kind]')"),

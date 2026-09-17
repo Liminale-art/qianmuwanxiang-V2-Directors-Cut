@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-film-editor-save.js",
     "vendor/noble-hashes-2.4.0/blake3.js",
     "vendor/noble-hashes-2.4.0/blake2.js",
     "vendor/noble-hashes-2.4.0/_blake.js",

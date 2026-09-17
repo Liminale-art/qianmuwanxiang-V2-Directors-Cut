@@ -1,6 +1,7 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
+import { isFilmEditorSaving, saveFilmEditorSnapshot } from './qianmu-film-editor-save.js';
 import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard, finishCoreadPackageImport } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
@@ -16619,91 +16620,46 @@ async function storyboardOpenFilmEditor(timelineId = '') {
 }
 
 async function storyboardSaveFilmEditor(root, button) {
-  if (!storyboardFilmEditor) return;
+  const editor = storyboardFilmEditor;
+  if (!editor) return;
+  if (isFilmEditorSaving(editor)) return toast('这份影片正在保存，请稍候。', 'info');
   const chatKey = String(getChatKey() || '');
-  if (!chatKey || storyboardFilmEditor.owner.chatKey !== chatKey) return toast('影片草稿不属于当前聊天，未保存。', 'warning');
+  if (!chatKey || editor.owner.chatKey !== chatKey) return toast('影片草稿不属于当前聊天，未保存。', 'warning');
   storyboardCaptureFilmEditor(root);
-  if (!storyboardFilmEditor.selections.length) return toast('请至少加入一段静帧或动态成片。', 'warning');
+  if (!editor.selections.length) return toast('请至少加入一段静帧或动态成片。', 'warning');
+  storyboardFilmPostproductionDraft(editor);
+  const fingerprint = JSON.stringify(editor);
+  const owns = () => storyboardFilmEditor === editor && chatKey === String(getChatKey() || '')
+    && root?.isConnected && document.getElementById(MODAL_ID)?.classList.contains('open');
+  const unchanged = () => { if (!owns()) return false; storyboardCaptureFilmEditor(root); return JSON.stringify(editor) === fingerprint; };
   if (button) button.disabled = true;
   try {
-    const stillRecords = storyboardFilmStillRecords(chatKey);
-    const stillById = new Map(stillRecords.map((record) => [String(record.id || ''), record]));
-    const motionById = new Map(storyboardFilmMotionItems().map((item) => [String(item.assetId || ''), item]));
-    for (const selection of storyboardFilmEditor.selections) {
-      const sourceRecord = selection.kind === 'motion'
-        ? stillById.get(String(motionById.get(String(selection.assetId || ''))?.recordId || ''))
-        : stillById.get(String(selection.recordId || ''));
-      if (sourceRecord) await storyboardDirectorWorkOrderForRecord(sourceRecord, 'film');
-    }
-    const directorProject = storyboardFilmPostproductionDraft(storyboardFilmEditor);
-    const validatedLayers = new Map();
-    const validateDirectorLayer = async (source, consumer) => {
-      if (source?.kind !== (consumer === 'voice' ? 'director_voice' : 'director')) return;
-      const key = `${consumer}:${source.recordId}`;
-      let workOrder = validatedLayers.get(key);
-      if (!workOrder) {
-        const sourceRecord = stillById.get(String(source.recordId || ''));
-        if (!sourceRecord) throw new Error('director_layer_source_invalid');
-        workOrder = await storyboardDirectorWorkOrderForRecord(sourceRecord, consumer);
-        validatedLayers.set(key, workOrder);
-      }
-      if (!workOrder || workOrder.workOrderId !== source.workOrderId || workOrder.source.decisionId !== source.decisionId) {
-        throw new Error('director_layer_source_invalid');
-      }
-    };
-    for (const cue of directorProject.subtitles) await validateDirectorLayer(cue.source, 'subtitle');
-    for (const track of directorProject.audio.dialogue) await validateDirectorLayer(track.source, 'voice');
-    const [{ timelineModule, store }, postproduction] = await Promise.all([
-      storyboardEnsureFilmRuntime(),
-      storyboardEnsureFilmPostproductionRuntime(),
-    ]);
-    const built = timelineModule.buildVideoTimeline({
-      timelineId: storyboardFilmEditor.timelineId,
-      title: storyboardFilmEditor.title,
-      owner: { chatKey },
-      motionItems: storyboardFilmMotionItems(),
-      stillRecords: storyboardFilmStillRecords(chatKey),
-      selections: storyboardFilmEditor.selections,
+    const result = await saveFilmEditorSnapshot({ editor, readSources: () => ({ stillRecords: storyboardFilmStillRecords(chatKey), motionItems: storyboardFilmMotionItems() }),
+      ensureRuntime: storyboardEnsureFilmRuntime, ensurePostproduction: storyboardEnsureFilmPostproductionRuntime,
+      workOrder: storyboardDirectorWorkOrderForRecord, canCommit: unchanged,
     });
-    if (!built.ok) {
-      const missing = built.issues.some((issue) => issue.includes('not_found') || issue.includes('owner_mismatch') || issue.includes('source_invalid'));
-      toast(missing ? '部分素材已不可用或不属于当前聊天，请先移除。' : '影片顺序未通过校验，请检查片段。', 'warning');
-      if (button) button.disabled = false;
-      return;
+    if (result.saved && chatKey === String(getChatKey() || '')) {
+      storyboardFilmRuntime.timelines = [result.saved, ...storyboardFilmRuntime.timelines.filter(item => item.timelineId !== result.saved.timelineId)]
+        .sort((left, right) => right.updatedAt - left.updatedAt);
     }
-    const postproductionCandidate = {
-      ...storyboardFilmPostproductionDraft(storyboardFilmEditor),
-      timelineId: built.timeline.timelineId,
-      owner: { chatKey },
-      durationMs: Math.round(built.timeline.durationSeconds * 1000),
-    };
-    const postproductionValidation = postproduction.postproductionModule.validateVideoPostproduction(postproductionCandidate, built.timeline);
-    if (!postproductionValidation.ok) {
-      const subtitleIssue = postproductionValidation.issues.some((issue) => issue.includes('subtitle_'));
-      const transitionIssue = postproductionValidation.issues.some((issue) => issue.includes('transition_'));
-      toast(subtitleIssue ? '请补全字幕正文，并检查起止时间。' : transitionIssue ? '转场与当前片段顺序不匹配，请重新选择。' : '影片后期设置未通过校验。', 'warning');
-      if (button) button.disabled = false;
-      return;
+    if (result.status === 'partial') return toast(owns()
+      ? '影片顺序已保存，但后期设置未保存成功；草稿仍保留，请重试保存。'
+      : '原影片顺序已保存，但后期设置保存失败，请返回原聊天检查。', 'warning');
+    if (!owns()) return;
+    if (result.status === 'saved') {
+      if (!unchanged()) return toast('点击保存时的版本已保存，后续修改仍保留在草稿中。', 'info');
+      storyboardFilmEditor = null;
+      toast('影片时间线已保存。', 'success');
+      renderModal();
+    } else if (result.status === 'stale') {
+      toast('草稿已有新修改，本次未写入，请重新保存。', 'info');
+    } else if (result.status !== 'busy') {
+      const code = String(result.error?.message || '');
+      toast(result.message || (code.startsWith('director_') ? storyboardVideoOperationIssueLabel(code) : '影片时间线保存失败，请稍后重试。'), 'warning');
     }
-    const saved = await store.save({ ...built.timeline, createdAt: storyboardFilmEditor.createdAt });
-    const savedPostproduction = await postproduction.store.save({
-      ...postproductionValidation.project,
-      timelineId: saved.timelineId,
-      owner: { chatKey },
-      durationMs: Math.round(saved.durationSeconds * 1000),
-    }, saved);
-    if (chatKey !== String(getChatKey() || '')) return;
-    storyboardFilmEditor.postproduction = savedPostproduction;
-    storyboardFilmRuntime.timelines = [saved, ...storyboardFilmRuntime.timelines.filter((item) => item.timelineId !== saved.timelineId)]
-      .sort((left, right) => right.updatedAt - left.updatedAt);
-    storyboardFilmEditor = null;
-    toast('影片时间线已保存。', 'success');
-    renderModal();
-  } catch (error) {
-    if (button) button.disabled = false;
-    const code = String(error?.message || '');
-    toast(code.startsWith('director_') ? storyboardVideoOperationIssueLabel(code) : '影片时间线保存失败，请稍后重试。', 'warning');
-  }
+  } catch (_) {
+    if (owns()) toast('影片时间线保存失败，请稍后重试。', 'warning');
+  } finally { if (button?.isConnected) button.disabled = false; }
 }
 
 async function storyboardDeleteFilmTimeline(timelineId) {

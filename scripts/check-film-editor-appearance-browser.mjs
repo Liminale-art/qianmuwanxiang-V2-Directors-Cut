@@ -1,5 +1,6 @@
 // Existing film gallery/editor renderers and event bindings with synthetic data.
-// No real persistence, file access, TTS, video generation, deletion or export.
+// Saving is tested only against in-memory substitutes. No real persistence,
+// file access, TTS, video generation, deletion or export.
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +14,7 @@ const source = ['storyboardFilmDurationLabel', 'storyboardFilmMotionItems', 'sto
     'storyboardFilmClipTimings', 'storyboardFilmDirectorSubtitleCount', 'storyboardFilmDirectorVoiceCount', 'storyboardFilmEditorFromTimeline',
     'storyboardFilmDurationMs', 'storyboardEnsureFilmClipIds', 'storyboardFilmPostproductionDraft', 'storyboardReconcileFilmPostproduction',
     'storyboardCaptureFilmPostproduction', 'storyboardCaptureFilmEditor', 'renderStoryboardFilmPostproduction', 'renderStoryboardFilmEditor',
-    'renderStoryboardFilmGallery', 'storyboardOpenFilmEditor', 'renderStoryboardGalleryKindSwitch', 'storyboardVideoMetaLabel',
+    'renderStoryboardFilmGallery', 'storyboardOpenFilmEditor', 'storyboardSaveFilmEditor', 'renderStoryboardGalleryKindSwitch', 'storyboardVideoMetaLabel',
     'storyboardSafeUrl', 'storyboardRecordChatKey'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
 const require = createRequire(import.meta.url), { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
@@ -34,21 +35,23 @@ await context.route('**/*', async route => {
 try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async ({ source, bindings }) => {
-        const [utils, timelines, postproduction, sessions, preferences, icons] = await Promise.all([
+        const [utils, timelines, postproduction, sessions, preferences, icons, saver] = await Promise.all([
             import('/qianmu-storyboard-utils.js'), import('/qianmu-video-timeline.js'), import('/qianmu-video-postproduction.js'),
             import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
+            import('/qianmu-film-editor-save.js'),
         ]);
-        Object.assign(window, utils, icons, { MODAL_ID: 'story-director-modal', settings: { theme: 'dark' }, activeTab: 'imagegen',
+        Object.assign(window, utils, icons, saver, { MODAL_ID: 'story-director-modal', settings: { theme: 'dark' }, activeTab: 'imagegen',
             storyboardFilmEditor: null, storyboardFilmEditorOpenSeq: 0, storyboardGalleryKind: 'film', fixtureChat: 'film-chat',
             routeState: { view: 'gallery' }, storyboardState: () => routeState, getChatKey: () => fixtureChat,
             storyboardProductionContext: () => ({}), storyboardDirectorDecisionSnapshot: () => null, formatDateTime: () => '2026-09-17 07:00',
-            calls: { post: 0, auth: 0, render: 0, forbidden: 0 }, notices: [], toast: (text, tone) => notices.push({ text, tone }),
+            calls: { post: 0, auth: 0, render: 0, writes: 0, sidecars: 0, forbidden: 0 }, notices: [], toast: (text, tone) => notices.push({ text, tone }),
+            storyboardVideoOperationIssueLabel: text => text,
         });
         const forbidden = () => { calls.forbidden++; throw Error('Production mutation forbidden'); };
-        window.storyboardSaveFilmEditor = window.storyboardDeleteFilmTimeline = window.storyboardOpenFilmViewer = window.storyboardGenerateDirectorVoice
+        window.storyboardDeleteFilmTimeline = window.storyboardOpenFilmViewer = window.storyboardGenerateDirectorVoice
             = window.storyboardImportDirectorSubtitles = window.ttsPlayBlob = forbidden;
         window.blobStore = { getAudio: forbidden };
-        window.storyboardDirectorWorkOrderForRecord = async () => { calls.auth++; return null; };
+        window.storyboardDirectorWorkOrderForRecord = async () => { calls.auth++; if (window.approvalGate) await approvalGate; return null; };
         const canvas = document.createElement('canvas'); canvas.width = 240; canvas.height = 320;
         const paint = canvas.getContext('2d'); paint.fillStyle = '#658777'; paint.fillRect(0, 0, 240, 320);
         paint.fillStyle = '#d9dbd0'; paint.fillRect(12, 18, 216, 180); const url = canvas.toDataURL('image/png');
@@ -63,9 +66,13 @@ try {
             cueId: `cue-${i}`, startMs: i * 3000, endMs: i * 3000 + 2500, text: `原文 <img src=x> ${i + 1}`, source: { kind: 'manual' }, kind: 'dialogue',
         })), transitions: [{ fromClipId: 'clip-0', toClipId: 'clip-1', type: 'crossfade', durationMs: 400 }] }, film);
         window.storyboardFilmRuntime = { chatKey: fixtureChat, status: 'ready', timelines: [film], motionChains: [{ items: motion }], error: '', timelineError: '', mediaError: '' };
-        window.storyboardEnsureFilmRuntime = async () => ({ timelineModule: timelines, store: { load: async () => null } });
+        window.storyboardEnsureFilmRuntime = async () => ({ timelineModule: timelines, store: { load: async () => null,
+            save: async value => { calls.writes++; const saved = { ...structuredClone(value), updatedAt: Date.now() }; if (window.writeGate) await writeGate; window.savedTimeline = saved; return saved; },
+        } });
         window.storyboardEnsureFilmPostproductionRuntime = async () => ({ postproductionModule: postproduction, store: {
             load: async () => { calls.post++; const result = structuredClone(project); if (window.postGate) await postGate; return result; },
+            save: async (value, timeline) => { if (window.postFailure) throw Error('isolated sidecar write failure'); calls.sidecars++;
+                window.savedProject = postproduction.normalizeVideoPostproduction(value, timeline); return savedProject; },
         } });
         (0, eval)(source);
         window.bindFilm = new Function('root', bindings);
@@ -192,7 +199,45 @@ try {
         ok(`late ${action} cannot replace the gallery`, await page.evaluate(() => !storyboardFilmEditor && !document.querySelector('.sd-storyboard-film-title')));
         await page.evaluate(() => { document.getElementById(MODAL_ID).classList.add('open'); fixtureChat = 'film-chat'; storyboardGalleryKind = 'film'; renderModal(); });
     }
-    ok('no persistence or generation', await page.evaluate(() => calls.forbidden === 0));
+    ok('appearance and draft actions did not implicitly persist', await page.evaluate(() => calls.writes === 0 && calls.sidecars === 0));
+    // Exercise the real save wrapper with explicit clicks; only memory stores
+    // receive the captured timeline/sidecar pair. Production storage is absent.
+    await page.locator('.sd-storyboard-film-edit').click();
+    await page.locator('.sd-storyboard-film-title').fill('点击保存的版本');
+    await page.evaluate(() => { window.writeGate = new Promise(resolve => { window.releaseWrite = resolve; }); });
+    await page.locator('.sd-storyboard-film-save').click();
+    await page.waitForFunction(() => calls.writes === 1);
+    ok('save disables its current button while pending', await page.locator('.sd-storyboard-film-save').isDisabled());
+    await page.locator('.sd-storyboard-film-title').fill('保存期间继续修改');
+    await page.locator('[data-storyboard-film-subtitle-text]').first().fill('输入框内的新字幕');
+    await page.evaluate(() => { releaseWrite(); writeGate = null; });
+    await page.waitForFunction(() => calls.sidecars === 1 && !isFilmEditorSaving(storyboardFilmEditor));
+    ok('completed save cannot erase later title or raw textarea input', await page.evaluate(() => savedTimeline.title === '点击保存的版本'
+        && storyboardFilmEditor.title === '保存期间继续修改' && storyboardFilmEditor.postproduction.subtitles[0].text === '输入框内的新字幕'
+        && !document.querySelector('.sd-storyboard-film-save').disabled));
+    await page.locator('.sd-storyboard-film-save').click();
+    await page.waitForFunction(() => !storyboardFilmEditor);
+    ok('explicit retry commits the newer snapshot and returns to list', await page.evaluate(() => savedTimeline.title === '保存期间继续修改'
+        && savedProject.subtitles[0].text === '输入框内的新字幕' && calls.writes === 2 && calls.sidecars === 2));
+    await page.locator('.sd-storyboard-film-edit').click();
+    await page.evaluate(() => { window.postFailure = true; });
+    await page.locator('.sd-storyboard-film-save').click();
+    await page.waitForFunction(() => notices.some(item => item.text.includes('后期设置未保存成功')));
+    ok('partial persistence is disclosed and leaves an editable draft', await page.evaluate(() => calls.writes === 3 && calls.sidecars === 2
+        && !!storyboardFilmEditor && !document.querySelector('.sd-storyboard-film-save').disabled));
+    await page.evaluate(() => { postFailure = false; });
+    await page.locator('.sd-storyboard-film-save').click();
+    await page.waitForFunction(() => !storyboardFilmEditor);
+    ok('partial persistence can be explicitly retried', await page.evaluate(() => calls.writes === 4 && calls.sidecars === 3));
+    await page.locator('.sd-storyboard-film-edit').click();
+    await page.evaluate(() => { window.authBefore = calls.auth; window.approvalGate = new Promise(resolve => { window.releaseApproval = resolve; }); });
+    await page.locator('.sd-storyboard-film-save').click();
+    await page.waitForFunction(() => calls.auth > authBefore);
+    await page.locator('.sd-storyboard-film-cancel').click();
+    await page.evaluate(() => { releaseApproval(); approvalGate = null; });
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+    ok('leaving before approval prevents writes and does not revive the editor', await page.evaluate(() => calls.writes === 4 && calls.sidecars === 3 && storyboardFilmEditor === null));
+    ok('no production persistence or generation', await page.evaluate(() => calls.forbidden === 0));
     ok('no browser errors ' + JSON.stringify(errors), errors.length === 0); ok('no unlisted requests', external === 0);
     console.log(JSON.stringify({ passed: checks.length, errors, external, calls: await page.evaluate(() => calls), checks }));
 } catch (error) { console.error(JSON.stringify(await page.evaluate(() => ({ notices: window.notices, layout: window.layout?.(), calls: window.calls })))); throw error; }

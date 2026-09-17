@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const filmSave = await readFile(new URL('../qianmu-film-editor-save.js', import.meta.url), 'utf8');
 
 test('film editor exposes bounded native and layered postproduction controls', () => {
   const render = source.slice(source.indexOf('function renderStoryboardFilmPostproduction'), source.indexOf('function renderStoryboardFilmEditor'));
@@ -24,9 +25,10 @@ test('postproduction is loaded only after opening a film editor and saved beside
   assert.match(open, /postproduction\.store\.load\(timeline\.timelineId, chatKey, timeline\)/);
   assert.match(open, /createEmptyVideoPostproduction/);
   const save = source.slice(source.indexOf('async function storyboardSaveFilmEditor'), source.indexOf('async function storyboardDeleteFilmTimeline'));
-  assert.match(save, /validateVideoPostproduction\(postproductionCandidate, built\.timeline\)[\s\S]*if \(!postproductionValidation\.ok\)/);
-  assert.ok(save.indexOf('validateVideoPostproduction(postproductionCandidate, built.timeline)') < save.indexOf('await store.save'), '后期合同必须在时间线首次写入前通过');
-  assert.match(save, /postproduction\.store\.save\([\s\S]*timelineId: saved\.timelineId[\s\S]*}, saved\)/);
+  assert.match(save, /saveFilmEditorSnapshot\([\s\S]*ensurePostproduction: storyboardEnsureFilmPostproductionRuntime/);
+  assert.match(filmSave, /validateVideoPostproduction\(postproductionCandidate, built\.timeline\)[\s\S]*if \(!postproductionValidation\.ok\)/);
+  assert.ok(filmSave.indexOf('validateVideoPostproduction(postproductionCandidate, built.timeline)') < filmSave.indexOf('await store.save'), '后期合同必须在时间线首次写入前通过');
+  assert.match(filmSave, /postproduction\.store\.save\([\s\S]*timelineId: saved\.timelineId[\s\S]*}, saved\)/);
   const init = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(init, /storyboardEnsureFilmPostproductionRuntime|featureRuntime\.load\('videoPostproduction/);
 });

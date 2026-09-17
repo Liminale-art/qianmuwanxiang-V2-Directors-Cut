@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const filmSave = await readFile(new URL('../qianmu-film-editor-save.js', import.meta.url), 'utf8');
 
 test('director voice generation is explicit, sequential and uses the existing TTS cache', () => {
   const generate = source.slice(
@@ -36,10 +37,10 @@ test('film save revalidates director subtitle and voice layer work orders before
     source.indexOf('async function storyboardSaveFilmEditor'),
     source.indexOf('async function storyboardDeleteFilmTimeline'),
   );
-  assert.match(save, /for \(const cue of directorProject\.subtitles\) await validateDirectorLayer\(cue\.source, 'subtitle'\)/);
-  assert.match(save, /for \(const track of directorProject\.audio\.dialogue\) await validateDirectorLayer\(track\.source, 'voice'\)/);
-  assert.ok(save.indexOf('validateDirectorLayer(track.source') < save.indexOf('buildVideoTimeline'));
-  assert.match(save, /workOrder\.workOrderId !== source\.workOrderId/);
+  assert.match(save, /workOrder: storyboardDirectorWorkOrderForRecord/);
+  assert.match(filmSave, /\[project\.subtitles, 'subtitle'\], \[project\.audio\.dialogue, 'voice'\]/);
+  assert.ok(filmSave.indexOf('await validateLayer(item.source') < filmSave.indexOf('buildVideoTimeline'));
+  assert.match(filmSave, /order\.workOrderId !== source\.workOrderId/);
 });
 
 test('director voice tracks follow and leave with their stable clip', () => {
