@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-chat-gallery-evidence.js",
+    "qianmu-chat-gallery-state.js",
     "qianmu-chat-gallery-evidence-reader.js",
     "qianmu-recipe-storage.js",
     "qianmu-recipe-archive-contract.js",
