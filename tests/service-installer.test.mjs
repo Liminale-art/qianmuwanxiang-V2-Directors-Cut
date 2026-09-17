@@ -12,6 +12,7 @@ const win=process.platform==='win32';
 const powershell=win?path.join(path.dirname(process.execPath),'../../native/powershell/pwsh.exe'):'pwsh';
 const bash=win?'C:/Program Files/Git/bin/bash.exe':'sh';
 const original='port: 8000\nenableServerPlugins: false # keep this\nother: preserved\n';
+const hostCoreFiles=['public/img/logo.png','public/index.html','public/locales/zh-cn.json','public/scripts/openai.js','public/scripts/power-user.js','public/scripts/world-info.js'];
 async function command(binary,args,{cwd,env={}}={}) {
   const child=spawn(binary,args,{cwd,env:{...process.env,...env},windowsHide:true,stdio:['ignore','pipe','pipe']});
   let output='';for(const stream of [child.stdout,child.stderr])stream.on('data',bytes=>{output+=bytes;});
@@ -42,6 +43,27 @@ async function run(f,engine,extra={},before='') {
 const backups=async f=>(await fs.readdir(path.dirname(f.configFile))).filter(name=>/^config\.yaml\.qianmu-backup\./.test(name)&&!name.endsWith('.ref'));
 // Both shells are exercised on Windows; other CI hosts run their native sh path.
 for(const engine of win?['powershell','shell']:['shell']) {
+  test(`${engine}: installation leaves tracked ST core files clean and a subsequent official-core fast-forward succeeds`,async t=>{
+    const f=await fixture(t);
+    for(const file of hostCoreFiles){await fs.mkdir(path.dirname(path.join(f.st,file)),{recursive:true});await fs.writeFile(path.join(f.st,file),`original fixture ${file}\n`);}
+    await fs.writeFile(path.join(f.st,'.gitignore'),'config.yaml*\ndata/\nplugins/\n.qianmu-installer.lock/\n');
+    await f.git('-C',f.st,'init','--initial-branch=codex/st-base');await f.git('-C',f.st,'config','user.name','ST Test');await f.git('-C',f.st,'config','user.email','st@example.invalid');await f.git('-C',f.st,'config','commit.gpgsign','false');
+    await f.git('-C',f.st,'add','.');await f.git('-C',f.st,'commit','-m','synthetic ST base');
+    await f.git('-C',f.st,'checkout','-b','codex/st-official-next');
+    for(const file of hostCoreFiles)await fs.writeFile(path.join(f.st,file),`official update fixture ${file}\n`);
+    await f.git('-C',f.st,'add','public');await f.git('-C',f.st,'commit','-m','synthetic upstream core change');await f.git('-C',f.st,'checkout','codex/st-base');
+    const installed=await run(f,engine);assert.equal(installed.code,0,installed.output);
+    assert.equal(await f.git('-C',f.st,'status','--porcelain','--','public'),'');
+    await f.git('-C',f.st,'merge','--ff-only','codex/st-official-next');
+    for(const file of hostCoreFiles)assert.equal(await fs.readFile(path.join(f.st,file),'utf8'),`official update fixture ${file}\n`);
+    const updated=await run(f,engine);assert.equal(updated.code,0,updated.output);assert.equal(await f.git('-C',f.st,'status','--porcelain','--','public'),'');
+    assert.equal(await fs.readFile(path.join(f.data,'old-user-data'),'utf8'),'keep legacy data');
+  });
+  test(`${engine}: an existing third-party core patch is preserved rather than reset, staged or silently adopted`,async t=>{
+    const f=await fixture(t),file=path.join(f.st,'public/scripts/openai.js');await fs.mkdir(path.dirname(file),{recursive:true});
+    const text='// third-party bridge: keep this user modification\n';await fs.writeFile(file,text);
+    const result=await run(f,engine);assert.equal(result.code,0,result.output);assert.equal(await fs.readFile(file,'utf8'),text);
+  });
   test(`${engine}: real local Git install enables only the intended key after code is ready`,async t=>{
     const f=await fixture(t),result=await run(f,engine);assert.equal(result.code,0,result.output);
     assert.equal(await fs.readFile(f.configFile,'utf8'),original.replace('false','true'));
