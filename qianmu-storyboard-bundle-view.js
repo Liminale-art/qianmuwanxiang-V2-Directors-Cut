@@ -25,7 +25,7 @@ function renderSourceAliases(view){
 }
 function renderSubjectPicker(view) {
   const picker=view.targetPicker;if(!picker)return '';
-  return `<section data-bundle-target-picker><h3>选择${picker.category==='char'?'CHAR':'USER'}目标</h3><input class="text_pole" data-bundle-target-query maxlength="160" aria-label="搜索目标名称或文件" value="${escape(picker.query)}">
+  return `<section data-bundle-target-picker><h3>选择${picker.category==='char'?'CHAR':'USER'}目标</h3><input class="text_pole" data-bundle-target-query maxlength="160" aria-label="搜索目标名称或文件" value="${escape(view.targetQueryDraft ?? picker.query)}">
     <nav>${button('targets-search','搜索')}${button('targets-close','关闭选择')}</nav>
     ${picker.rows.map((row,index)=>`<p><button type="button" class="sd-btn" data-bundle-target-select="${index}"><span>${escape(row.name)}</span><small>${escape(row.subjectKey)}</small></button></p>`).join('')}
     <nav>${button('targets-previous','上一页',picker.offset===0)}<span>${picker.total?Math.floor(picker.offset/24)+1:0} / ${Math.ceil(picker.total/24)}</span>${button('targets-next','下一页',picker.offset+24>=picker.total)}</nav></section>`;
@@ -97,40 +97,62 @@ export function renderStoryboardBundleReview(view) {
 export function openStoryboardBundleReview({ parent, fileName, connect, paintIcons = () => {} }) {
   const dialog = document.createElement('dialog'); dialog.className = 'sd-bundle-dialog'; dialog.setAttribute('aria-labelledby','qm-bundle-title');
   const view = { fileName, page: 0, preview: null, busy: true, notice: '', result: null, historyReviewed:false,receiptPage:null,carriersReviewed:false,carrierPage:null,environmentReviewed: false, environmentMapped: false, bindingsReviewed: false, subjectsReviewed: false, subjectsMapped:false,subjectMappings:undefined,targetPicker:null,targetIndex:null, sourceAliasChoices:undefined,sourceAliasPage:null,sourceAliasesReviewed:false,connectionsReviewed: false, resourcesReviewed: false, resourcePage: null };
-  let session = null, closed = false, choices = {}, focusChoice = null, resolve; const finished = new Promise(done => resolve = done);
-  function close() { if (closed) return; closed = true; session?.close(); if (dialog.open) dialog.close(); dialog.remove(); resolve(view.result); }
+  let session = null, closed = false, choices = {}, focusChoice = null, focusField = null, resolve; const finished = new Promise(done => resolve = done);
+  function releaseSession() { const current = session; session = null; current?.close(); }
+  function close() { if (closed) return; closed = true; try { releaseSession(); } finally { if (dialog.open) dialog.close(); dialog.remove(); resolve(view.result); } }
+  function active() { if (closed) return false; if (!dialog.isConnected) { close(); return false; } return true; }
+  function clearPages() { view.receiptPage=null;view.carrierPage=null;view.resourcePage=null;view.sourceAliasPage=null;view.targetPicker=null;view.targetIndex=null;view.targetQueryDraft=null; }
+  async function request(method, ...args) {
+    if (!active() || !session) throw Error('恢复页面已关闭');
+    const result = await session[method](...args);
+    if (!active()) throw Error('恢复页面已关闭');
+    return result;
+  }
   function draw() {
-    if (closed) return;
+    if (!active()) return;
     const scroll = dialog.querySelector('[data-bundle-scroll]')?.scrollTop || 0;
-    const focused = dialog.contains(document.activeElement) ? document.activeElement.dataset.bundleChoice : undefined;
+    const element = dialog.contains(document.activeElement) ? document.activeElement : null;
+    const focused = element?.dataset.bundleChoice;
     if (focused !== undefined) focusChoice = focused;
+    const field = element && [...element.attributes].find(attribute => attribute.name.startsWith('data-bundle-'));
+    if (field) focusField = { name: field.name, value: field.value, selection: element.matches('[data-bundle-target-query]') ? [element.selectionStart, element.selectionEnd, element.selectionDirection] : null };
     dialog.innerHTML = renderStoryboardBundleReview(view); paintIcons(dialog);
     const main = dialog.querySelector('[data-bundle-scroll]'); main.scrollTop = scroll;
-    if (!view.busy && focusChoice !== null) dialog.querySelector(`[data-bundle-choice="${Number(focusChoice)}"]`)?.focus({ preventScroll: true });
+    if (!view.busy && (focusField || focusChoice !== null)) {
+      const controls = [...dialog.querySelectorAll('button,input,select')];
+      const next = controls.find(node => focusField && node.getAttribute(focusField.name) === focusField.value && !node.matches(':disabled'))
+        || (focusChoice !== null && controls.find(node => node.dataset.bundleChoice === focusChoice && !node.matches(':disabled')))
+        || dialog.querySelector('[data-bundle-action="close"]');
+      next?.focus({ preventScroll: true });
+      if (next?.matches('[data-bundle-target-query]') && focusField?.selection) next.setSelectionRange(...focusField.selection);
+    }
   }
   async function run(action, resourceOptions) {
-    if (view.busy || !session || closed) return;
+    if (!active() || view.busy || view.result || !session) return;
     view.busy = true; view.notice = ''; draw();
     try {
       if (action === 'preview' || action==='mapping' || action==='alias-choice') {
         view.historyReviewed=false;view.carriersReviewed=false;
         view.sourceAliasesReviewed=false;view.subjectsMapped=false;view.environmentMapped=false;view.environmentReviewed=false;view.bindingsReviewed=false;view.subjectsReviewed=false;view.connectionsReviewed=false;view.resourcesReviewed=false;
-        view.preview=await session.preview(choices,view.subjectMappings,view.sourceAliasChoices);view.subjectMappings=view.preview.subjectMappings;view.sourceAliasChoices=view.preview.sourceAliasChoices;
-        if(view.sourceAliasPage){const offset=view.sourceAliasPage.offset<view.preview.sourceAliases?.total?view.sourceAliasPage.offset:0;view.sourceAliasPage=await session.aliases({choices:view.sourceAliasChoices||{},offset});if(view.sourceAliasPage.digest!==view.preview.sourceAliases?.digest)throw Error('来源USER地址选择已变化，请重新核对');}
+        view.receiptPage=null;view.carrierPage=null;view.resourcePage=null;view.targetPicker=null;view.targetIndex=null;view.targetQueryDraft=null;
+        view.preview=await request('preview',choices,view.subjectMappings,view.sourceAliasChoices);view.subjectMappings=view.preview.subjectMappings;view.sourceAliasChoices=view.preview.sourceAliasChoices;
+        if(view.sourceAliasPage){const offset=view.sourceAliasPage.offset<view.preview.sourceAliases?.total?view.sourceAliasPage.offset:0;view.sourceAliasPage=await request('aliases',{choices:view.sourceAliasChoices||{},offset});if(view.sourceAliasPage.digest!==view.preview.sourceAliases?.digest)throw Error('来源USER地址选择已变化，请重新核对');}
       }
-      if (action === 'choose') view.preview = await session.choose(choices);
-      if(action==='receipts'){view.historyReviewed=false;const page=await session.receipts(resourceOptions);if(page.indexDigest!==view.preview.summary.mappingReceipts.digest)throw Error('历史凭据清单与原包不符');view.receiptPage=page;}
-      if(action==='carriers'){view.carriersReviewed=false;const page=await session.carriers(resourceOptions);if(page.descriptorDigest!==view.preview.carrierRestore?.descriptorDigest)throw Error('来源清单与原包不符');view.carrierPage=page;}
-      if(action==='targets')view.targetPicker=await session.targets(resourceOptions);
-      if(action==='aliases'){view.sourceAliasesReviewed=false;const page=await session.aliases({choices:view.sourceAliasChoices||{},offset:resourceOptions?.offset||0});if(page.digest!==view.preview.sourceAliases?.digest)throw Error('来源USER地址选择已变化，请重新核对');view.sourceAliasPage=page;}
-      if (action === 'resources') { const page=await session.resources(resourceOptions);if(page.digest!==view.preview.summary.resourceOrigins.digest)throw Error('文件用途清单与当前预览不符');view.resourcePage=page; }
+      if (action === 'choose') view.preview = await request('choose',choices);
+      if(action==='receipts'){view.historyReviewed=false;const page=await request('receipts',resourceOptions);if(page.indexDigest!==view.preview.summary.mappingReceipts.digest)throw Error('历史凭据清单与原包不符');view.receiptPage=page;}
+      if(action==='carriers'){view.carriersReviewed=false;const page=await request('carriers',resourceOptions);if(page.descriptorDigest!==view.preview.carrierRestore?.descriptorDigest)throw Error('来源清单与原包不符');view.carrierPage=page;}
+      if(action==='targets'){view.targetPicker=await request('targets',resourceOptions);view.targetQueryDraft=view.targetPicker.query;}
+      if(action==='aliases'){view.sourceAliasesReviewed=false;const page=await request('aliases',{choices:view.sourceAliasChoices||{},offset:resourceOptions?.offset||0});if(page.digest!==view.preview.sourceAliases?.digest)throw Error('来源USER地址选择已变化，请重新核对');view.sourceAliasPage=page;}
+      if (action === 'resources') { const page=await request('resources',resourceOptions);if(page.digest!==view.preview.summary.resourceOrigins.digest)throw Error('文件用途清单与当前预览不符');view.resourcePage=page; }
       if (action === 'restore') {
-        view.result = await session.restore(view.preview, { confirmed: true, environmentReviewed: view.environmentReviewed, environmentMapped: view.environmentMapped, bindingsReviewed: view.bindingsReviewed, subjectsReviewed: view.subjectsReviewed, subjectsMapped:view.subjectsMapped, sourceAliasesReviewed:view.sourceAliasesReviewed,connectionsReviewed: view.connectionsReviewed, resourcesReviewed: view.resourcesReviewed,historyReviewed:view.historyReviewed,carriersReviewed:view.carriersReviewed });
-        session.close(); // Release the source Blob, decoded documents and worker DB connections while the result stays readable.
+        view.result = await request('restore',view.preview, { confirmed: true, environmentReviewed: view.environmentReviewed, environmentMapped: view.environmentMapped, bindingsReviewed: view.bindingsReviewed, subjectsReviewed: view.subjectsReviewed, subjectsMapped:view.subjectsMapped, sourceAliasesReviewed:view.sourceAliasesReviewed,connectionsReviewed: view.connectionsReviewed, resourcesReviewed: view.resourcesReviewed,historyReviewed:view.historyReviewed,carriersReviewed:view.carriersReviewed });
+        releaseSession(); // Release the source Blob, decoded documents and worker DB connections while the result stays readable.
         view.notice = '原件已核对，配置已应用。请刷新后点击“核对导入”确认保存；历史生成任务不会续跑。';
       }
     } catch (error) {
+      if (!active()) return;
       view.notice = error?.message || '恢复未确认，请核对原包';
+      clearPages();
       view.historyReviewed=false;view.carriersReviewed=false;
       if (view.preview) view.preview = { ...view.preview, ready: false, needsRecheck: true, planDigest: '' };
       view.sourceAliasesReviewed=false;view.subjectsMapped=false;view.environmentMapped = false; view.environmentReviewed = false; view.bindingsReviewed = false; view.subjectsReviewed = false; view.connectionsReviewed = false; view.resourcesReviewed = false;
@@ -139,10 +161,11 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
   }
   dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
   dialog.addEventListener('close', close);
+  dialog.addEventListener('input', event => { if (active() && !view.busy && event.target.matches('[data-bundle-target-query]')) view.targetQueryDraft=event.target.value; });
   dialog.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing&&event.target.matches('[data-bundle-target-query]')&&view.targetPicker){event.preventDefault();void run('targets',{category:view.targetPicker.category,query:event.target.value,offset:0});}});
   dialog.addEventListener('click', event => {
     const action = event.target.closest('[data-bundle-action]')?.dataset.bundleAction;
-    if (action === 'close') { close(); return; } if (view.busy) return;
+    if (action === 'close') { close(); return; } if (!active() || view.busy || view.result) return;
     if(action==='receipts'){void run('receipts',{offset:0});return;}
     if(action==='carriers'){void run('carriers',{offset:0});return;}
     if(['carriers-previous','carriers-next'].includes(action)&&view.carrierPage){void run('carriers',{offset:view.carrierPage.offset+(action==='carriers-next'?24:-24)});return;}
@@ -164,7 +187,7 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
     else if (['preview','restore'].includes(action)) void run(action);
   });
   dialog.addEventListener('change', event => {
-    if (view.busy || closed) return; const field = event.target;
+    if (!active() || view.busy || view.result) return; const field = event.target;
     if(field.matches('[data-bundle-history-reviewed]')){focusChoice=null;view.historyReviewed=field.checked;draw();return;}
     if(field.matches('[data-bundle-carriers-reviewed]')){focusChoice=null;view.carriersReviewed=field.checked;draw();return;}
     if(field.matches('[data-bundle-source-reviewed]')){focusChoice=null;view.sourceAliasesReviewed=field.checked;draw();return;}
@@ -192,8 +215,8 @@ export function openStoryboardBundleReview({ parent, fileName, connect, paintIco
   parent.appendChild(dialog); draw();
   try { dialog.showModal(); } catch (error) { close(); throw error; }
   void (async () => {
-    try { session = await connect(); if (closed) { session.close(); return; } view.preview = await session.preview();view.subjectMappings=view.preview.subjectMappings;view.sourceAliasChoices=view.preview.sourceAliasChoices; }
-    catch (error) { view.notice = error?.message || '原包核对失败，请关闭后重选文件'; }
+    try { session = await connect(); if (!active()) { releaseSession(); return; } view.preview = await request('preview');view.subjectMappings=view.preview.subjectMappings;view.sourceAliasChoices=view.preview.sourceAliasChoices; }
+    catch (error) { if(active())view.notice = error?.message || '原包核对失败，请关闭后重选文件'; }
     finally { view.busy = false; draw(); }
   })();
   return Object.freeze({ finished, close, get isOpen() { return !closed && dialog.isConnected; } });

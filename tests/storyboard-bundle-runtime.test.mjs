@@ -251,3 +251,21 @@ test('review markup escapes filenames and role fields, pages conflicts and requi
   p.ready = true; p.planDigest = 'f'.repeat(64); html = renderStoryboardBundleReview({ preview: p, page: 0, busy: false, environmentReviewed: true });
   assert.doesNotMatch(html, /data-bundle-action="restore" disabled/);
 });
+
+test('target picker preserves the unsent search draft as escaped text, including an empty draft', () => {
+  const preview = { ...view(), subjectReview: [{ category: 'char', subjectKey: 'char.png', state: 'matched' }] };
+  const input = { preview, page: 0, targetPicker: { category: 'char', query: 'previous query', rows: [], offset: 0, total: 0 } };
+  const draft = renderStoryboardBundleReview({ ...input, targetQueryDraft: '\"><img src=x>' });
+  assert.match(draft, /aria-label="搜索目标名称或文件" value="&quot;&gt;&lt;img src=x&gt;"/);
+  assert.doesNotMatch(draft, /<img/);
+  assert.match(renderStoryboardBundleReview({ ...input, targetQueryDraft: '' }), /aria-label="搜索目标名称或文件" value=""/);
+  assert.match(renderStoryboardBundleReview(input), /aria-label="搜索目标名称或文件" value="previous query"/);
+});
+
+test('completed restore is a read-only result, not another confirm or retry operation', () => {
+  const preview = { ...view(), ready: true, planDigest: 'c'.repeat(64) };
+  const html = renderStoryboardBundleReview({ preview, page: 0, environmentReviewed: true, result: { resourcesVerified: true, settingsVerified: false } });
+  assert.match(html, /<fieldset disabled>/);
+  assert.doesNotMatch(html, /data-bundle-action="(?:restore|preview)"/);
+  assert.match(html, /关闭并稍后核对导入/);
+});

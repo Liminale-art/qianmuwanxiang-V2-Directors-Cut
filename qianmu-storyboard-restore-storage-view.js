@@ -15,24 +15,26 @@ export function openRestoreStorageManager({parent,chatHash,run,icons=()=>{},form
   const controller=new AbortController(),view={summary:null,busy:false,notice:'',selected:new Set(),accepted:false,chatHash};
   let closed=false,resolve;const finished=new Promise(done=>resolve=done);
   const close=()=>{if(closed)return;closed=true;controller.abort();if(dialog.open)dialog.close();dialog.remove();resolve();};
-  const draw=()=>{if(closed)return;if(!dialog.isConnected){close();return;}const scroll=dialog.querySelector('main')?.scrollTop||0;dialog.innerHTML=renderRestoreStorageReview(view,formatBytes);dialog.querySelector('main').scrollTop=scroll;icons(dialog);};
+  const active=()=>{if(closed)return false;if(!dialog.isConnected){close();return false;}return true;};
+  const draw=()=>{if(!active())return;const scroll=dialog.querySelector('main')?.scrollTop||0;dialog.innerHTML=renderRestoreStorageReview(view,formatBytes);dialog.querySelector('main').scrollTop=scroll;icons(dialog);};
   async function work(action){
-    if(closed||view.busy)return;if(action==='clear'&&(!view.accepted||!view.selected.size))return;
+    if(!active()||view.busy)return;if(action==='clear'&&(!view.accepted||!view.selected.size))return;
     const selected=[...view.selected].map(index=>{const {kind,key,fingerprint}=view.summary.items[index];return {kind,key,fingerprint};});
     view.busy=true;view.notice='';draw();
     try{
       if(action==='clear'){
         const result=await run('clear',{selected,confirmed:true,recoveryLossAccepted:true,signal:controller.signal});
+        if(!active())return;
         view.notice=`已结束 ${result.removed.length} 条记录，原图和配置未删除。${result.complete?'':` ${result.error}；其余请重新核对。`}`;
       }
-      view.summary=await run('inspect',{signal:controller.signal});
-    }catch(error){view.summary=null;view.notice=error?.message||'记录核对未完成，请刷新';}
+      const summary=await run('inspect',{signal:controller.signal});if(!active())return;view.summary=summary;
+    }catch(error){if(!active())return;view.summary=null;view.notice=[view.notice,error?.message||'记录核对未完成，请刷新'].filter(Boolean).join(' ');}
     finally{view.selected.clear();view.accepted=false;view.busy=false;draw();}
   }
   dialog.addEventListener('cancel',event=>{event.preventDefault();close();});dialog.addEventListener('close',close);
   dialog.addEventListener('click',event=>{const action=event.target.closest('[data-restore-storage]')?.dataset.restoreStorage;if(action==='close')close();else if(action==='refresh')void work('inspect');else if(action==='clear')void work('clear');});
   dialog.addEventListener('change',event=>{
-    if(view.busy)return;const input=event.target;
+    if(!active()||view.busy)return;const input=event.target;
     if(input.matches('[data-restore-item]')){const index=Number(input.dataset.restoreItem);if(!view.summary?.items[index])return;input.checked?view.selected.add(index):view.selected.delete(index);view.accepted=false;dialog.querySelector('[data-restore-loss]').checked=false;}
     else if(input.matches('[data-restore-loss]'))view.accepted=input.checked;
     dialog.querySelector('[data-restore-storage="clear"]').disabled=!view.selected.size||!view.accepted;
