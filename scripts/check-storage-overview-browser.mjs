@@ -5,7 +5,7 @@ import {mkdir, readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import vm from 'node:vm';
-import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection, replaceStorageManagementCard} from '../qianmu-storage-backup-view.js';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 
 const require = createRequire(import.meta.url);
@@ -22,9 +22,10 @@ const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota
   comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}};
 function render(data = snapshot, status = 'ready') {
   const state = vm.createContext({renderStorageBackupSection, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
+    optionalServiceState: {status: 'ready', services: [], version: 'fixture'},
     htmlEscape: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: bytes => `${((Number(bytes) || 0) / MB).toFixed(1)} MB`, blobStore: {classifyStoragePressure: () => ({level: 'normal'})}});
-  vm.runInContext(constants + section('renderStorageManagementCard'), state);
+  vm.runInContext(constants + ['optionalServiceLabel', 'optionalServiceDetail', 'renderStorageServiceStatus', 'renderStorageManagementCard'].map(section).join('\n'), state);
   return state.renderStorageManagementCard();
 }
 
@@ -81,8 +82,39 @@ try {
     assert.equal(await page.locator('.sd-storage-hero').count(), 0);
     assert.equal(await page.locator('.sd-storage-backup-section').count(), 1);
     assert.equal(await page.locator('.sd-storage-clean').count(), 0);
+    assert.equal(await page.locator('.sd-storage-service-refresh').count(), 1);
+    assert.equal(await page.locator('.sd-storage-card > :last-child').getAttribute('class'), 'sd-storage-service');
     checks.push(`${status}: no fake total or cleanup, backup remains available`);
   }
+  const serviceSource = ['optionalServiceLabel', 'optionalServiceDetail', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n');
+  const serviceChecks = await page.evaluate(async ({html, source, replace}) => {
+    document.body.innerHTML = `<div id="story-director-modal" class="open"><div class="sd-body" style="height:400px;overflow:auto"><input class="api-draft" value="https://unsaved.invalid/v1"><div style="height:200px"></div>${html}<div style="height:800px"></div></div></div>`;
+    Object.assign(window, {MODAL_ID: 'story-director-modal', optionalServiceState: {status: 'idle', services: [], checkedAt: 0}, optionalServiceProbePromise: null,
+      settings: {}, configUndo: {available: () => false}, ctx: () => ({getRequestHeaders: () => ({})}), probeCount: 0,
+      renderModal: () => {throw Error('Unexpected modal redraw');}, paintStorageManagementCard: () => {throw Error('Unexpected card redraw');},
+      storyboardPaintVideoConnectionState: async () => {},
+      featureRuntime: {load: async () => ({probeQianmuOptionalService: async () => {probeCount++; return new Promise(resolve => {window.resolveProbe = resolve;});}})}});
+    (0, eval)(source); window.replaceCard = (0, eval)(`(${replace})`);
+    const root = document.getElementById(MODAL_ID), body = root.querySelector('.sd-body'), draft = root.querySelector('.api-draft');
+    bindStorageManagementEvents(root); bindStorageManagementEvents(root);
+    draft.focus(); draft.setSelectionRange(8, 15); body.scrollTop = 150;
+    const savedTop = body.scrollTop, card = root.querySelector('.sd-storage-card'), button = card.querySelector('.sd-storage-service-refresh');
+    button.click(); button.click(); await new Promise(resolve => setTimeout(resolve, 0));
+    const checking = probeCount === 1 && button.getAttribute('aria-busy') === 'true';
+    const pending = optionalServiceProbePromise;
+    resolveProbe({status: 'ready', version: 'fixture', services: [], checkedAt: Date.now()}); await pending;
+    const stable = root.querySelector('.sd-storage-card') === card && root.querySelector('.api-draft') === draft
+      && draft.value === 'https://unsaved.invalid/v1' && document.activeElement === draft && draft.selectionStart === 8 && draft.selectionEnd === 15 && body.scrollTop === savedTop;
+    replaceCard(card, html, {icons: () => {}, bind: bindStorageManagementEvents});
+    const fresh = root.querySelector('.sd-storage-service-refresh');
+    bindStorageManagementEvents(root); button.click(); fresh.click(); await new Promise(resolve => setTimeout(resolve, 0));
+    const rebound = fresh !== button && probeCount === 2;
+    const again = optionalServiceProbePromise;
+    resolveProbe({status: 'missing', services: [], checkedAt: Date.now()}); await again;
+    return {checking, stable, rebound, result: root.querySelector('.sd-optional-service-label').textContent === '未安装（可选）',
+      focus: document.activeElement === draft, draft: draft.value === 'https://unsaved.invalid/v1'};
+  }, {html: render(), source: serviceSource, replace: replaceStorageManagementCard.toString()});
+  for (const [key, value] of Object.entries(serviceChecks)) {assert.equal(value, true, `service ${key}`); checks.push(`service ${key}`);}
   assert.equal(external, 0); assert.deepEqual(errors, []);
   console.log(JSON.stringify({checks, external, errors, productionDataRead: false}));
 } finally {await context.close(); await browser.close();}

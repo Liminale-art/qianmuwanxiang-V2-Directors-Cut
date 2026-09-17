@@ -62,6 +62,34 @@ test('both new families expose safe curated and custom accent controls, not the 
     }
 });
 
+test('appearance families are text-only and mode leads the accent row without a redundant heading',()=>{
+    const html=renderQianmuThemeMenu([], 'light', {supported:true});
+    const families=html.slice(html.indexOf('class="sd-theme-family-options"'), html.indexOf('id="qianmu-theme-details"'));
+    assert.doesNotMatch(families,/sd-theme-dot|<svg|<img/);
+    for(const name of ['纸间','流光','经典'])assert.match(families,new RegExp(`>${name}<`));
+    assert.match(html,/class="sd-theme-swatches"><button[^>]+data-appearance-mode-toggle/);
+    assert.doesNotMatch(html,/sd-theme-detail-head|>强调色<|>\+</);
+    assert.match(html,/sd-theme-custom-color[^>]*><span aria-hidden="true"><\/span><input/);
+});
+
+test('classic palettes keep all exact identities and accessible names while rendering only color dots',()=>{
+    const themes=['light','dark','summer','candy','kraft','dream'].map(key=>({key,name:`颜色${key}`,dot:'#abcd12'}));
+    const html=renderQianmuThemeMenu(themes,'summer',{supported:true});
+    const classic=html.slice(html.indexOf('class="sd-theme-classic-options"'),html.indexOf('class="sd-theme-accent-options"'));
+    assert.equal((classic.match(/sd-theme-swatch/g)||[]).length,6);
+    assert.doesNotMatch(classic,/sd-theme-name|<svg|sd-theme-mode-toggle/);
+    for(const {key,name} of themes)assert.match(classic,new RegExp(`data-theme="${key}" aria-label="${name}" title="${name}"`));
+    assert.match(classic,/aria-checked="true" data-theme="summer"/);
+});
+
+test('rainbow custom dot remains circular independently of the rectangular editorial button shell',async()=>{
+    const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
+    assert.match(css,/\.sd-theme-custom-color > span \{ background: conic-gradient\(/);
+    assert.match(css,/\.sd-theme-swatch > span \{[^}]+border-radius: 50%/);
+    assert.match(css,/\.sd-theme-classic-options \{[^}]+repeat\(6,/);
+    assert.match(css,/\.sd-theme-swatches \{[^}]+repeat\(8,/);
+});
+
 test('the production header no longer renders the tagline in any family',async()=>{
     const entry=await readFile(new URL('../index.js',import.meta.url),'utf8');
     const start=entry.indexOf('function renderModal()'),render=entry.slice(start,entry.indexOf('\nfunction ',start+1));

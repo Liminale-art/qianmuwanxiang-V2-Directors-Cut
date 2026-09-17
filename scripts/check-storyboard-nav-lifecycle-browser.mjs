@@ -177,12 +177,14 @@ try {
         listeners: outsideListeners.size, hidden: document.querySelector('.sd-theme-menu').hidden,
         checked: document.querySelector('.sd-theme-opt[data-theme][aria-checked="true"]').dataset.theme,
         same:classicBody===document.querySelector('.sd-body')&&classicDraft===classicBody.querySelector('textarea'),draft:classicDraft.value,selection:[classicDraft.selectionStart,classicDraft.selectionEnd],scroll:classicBody.scrollTop,
-        expanded:classicBody.querySelector('details').open,focus:document.activeElement===document.querySelector('.sd-theme-btn'),className:document.getElementById(MODAL_ID).className }));
-      assert.equal(next.theme, key); assert.equal(next.checked, key); assert.equal(next.hidden, true); assert.equal(next.listeners, 0);
+        expanded:classicBody.querySelector('details').open,focus:document.activeElement===document.querySelector('.sd-theme-opt[data-theme][aria-checked="true"]'),className:document.getElementById(MODAL_ID).className }));
+      assert.equal(next.theme, key); assert.equal(next.checked, key); assert.equal(next.hidden, false); assert.equal(next.listeners, 1);
       assert.equal(next.saves, prior.saves + (key === prior.theme ? 0 : 1)); assert.equal(next.renders, prior.renders);
       assert.equal(next.float, prior.float); assert.equal(next.notes, prior.notes);
       assert.equal(next.same,true);assert.equal(next.draft,'尚未保存的编辑');assert.deepEqual(next.selection,[1,4]);assert.equal(next.scroll,prior.scroll);assert.equal(next.expanded,true);assert.equal(next.focus,true);assert.ok(next.className.includes('sd-theme-'+key));
-      checks.push(`${width}/${key}: actual classic menu persists once without rerender, keeps draft/selection/scroll/fold and returns trigger focus`);
+      checks.push(`${width}/${key}: actual classic menu persists once in place without rerender, keeps draft/selection/scroll/fold and selected swatch focus`);
+      await page.keyboard.press('Escape');
+      assert.equal(await page.evaluate(()=>outsideListeners.size),0);
     }
     await page.locator('.sd-theme-btn').focus(); await page.keyboard.press('ArrowDown');
     assert.equal(await page.locator('.sd-theme-opt[data-appearance-family="classic"]').evaluate(node => node === document.activeElement), true);
@@ -311,7 +313,7 @@ try {
   failSkin=false;await page.locator('.sd-theme-retry').click();await page.evaluate(()=>appearanceSession.sync());await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
   const menuRetry=await page.evaluate(()=>({theme:document.getElementById(MODAL_ID).dataset.qmTheme,status:document.querySelector('.sd-theme-feedback').hidden,focus:document.activeElement.dataset.appearanceFamily}));assert.deepEqual(menuRetry,{theme:'glass',status:true,focus:'glass'});checks.push('real retry button recovers without rerender and returns focus to selected family when retry disappears');
   await page.locator('[data-appearance-family="classic"]').click();await page.locator('[data-theme="candy"]').click();
-  const classicExit=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',closed:document.querySelector('.sd-theme-menu').hidden,modeHidden:document.querySelector('.sd-theme-accent-options').hidden}));assert.deepEqual(classicExit,{family:'classic',legacy:'candy',theme:'',closed:true,modeHidden:true});checks.push('real classic choice exits the new family, restores its own palette and hides new-family mode controls');
+  const classicExit=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',closed:document.querySelector('.sd-theme-menu').hidden,modeHidden:document.querySelector('.sd-theme-accent-options').hidden}));assert.deepEqual(classicExit,{family:'classic',legacy:'candy',theme:'',closed:false,modeHidden:true});checks.push('real classic choice exits the new family in place, restores its own palette and hides new-family mode controls');
   await page.evaluate(()=>{appearanceSession.reset();renderModal();});holdSkin=true;
   await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="editorial"]').click();
   await page.waitForFunction(()=>appearanceSession.status==='loading');await page.evaluate(()=>{window.pendingAppearance=appearanceSession.sync();});
@@ -319,7 +321,7 @@ try {
   for(let attempt=0;!releaseSkin&&attempt<100;attempt++)await new Promise(resolve=>setTimeout(resolve,10));assert.ok(releaseSkin,'held stylesheet request arrived');holdSkin=false;releaseSkin();releaseSkin=null;
   await page.evaluate(()=>pendingAppearance);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
   const cancelled=await page.evaluate(()=>({family:settings.appearance.family,legacy:settings.theme,theme:document.getElementById(MODAL_ID).dataset.qmTheme||'',checked:document.querySelector('[data-theme][aria-checked="true"]').dataset.theme,status:document.querySelector('.sd-theme-feedback').hidden}));assert.deepEqual(cancelled,{family:'classic',legacy:'summer',theme:'',checked:'summer',status:true});checks.push('switching families and returning to classic during a pending stylesheet does not apply stale pixels or stale menu state');
-  await page.setViewportSize({width:320,height:568});await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="glass"]').click();if(await page.locator('.sd-theme-mode-toggle').getAttribute('data-current-mode')!=='dark')await page.locator('.sd-theme-mode-toggle').click();
+  await page.setViewportSize({width:320,height:568});if(await page.locator('.sd-theme-menu').isHidden())await page.locator('.sd-theme-btn').click();await page.locator('[data-appearance-family="glass"]').click();if(await page.locator('.sd-theme-mode-toggle').getAttribute('data-current-mode')!=='dark')await page.locator('.sd-theme-mode-toggle').click();
   const compact=await page.evaluate(()=>{const menu=document.querySelector('.sd-theme-menu'),bounds=menu.getBoundingClientRect();return {fits:bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight,bounds:{left:bounds.left,right:bounds.right,bottom:bounds.bottom},mode:document.getElementById(MODAL_ID).dataset.qmMode,overflow:getComputedStyle(menu).overflowY};});assert.equal(compact.fits,true,JSON.stringify(compact));assert.equal(compact.mode,'dark');assert.equal(compact.overflow,'auto');checks.push('320x568 compact viewport keeps the appearance menu inside the viewport with scroll fallback');
   await page.evaluate(()=>{document.getElementById(MODAL_ID)._sdThemeMenuCleanup();appearanceSession.reset();});
   assert.deepEqual(errors, []); assert.equal(external, 0);

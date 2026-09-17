@@ -10,10 +10,10 @@ const modeIcon = mode => mode === 'dark'
 export function renderQianmuThemeMenu(themes, selected, { settings, supported = false } = {}) {
     const preference = readAppearancePreferences(settings);
     const current = !supported || preference.family === 'classic' ? selected : '';
-    const classic = themes.map(theme => `<button type="button" class="sd-theme-opt ${current === theme.key ? 'active' : ''}${supported && ['light', 'dark'].includes(theme.key) ? ' sd-theme-classic-mode' : ''}" role="menuitemradio" aria-checked="${current === theme.key}" data-theme="${escape(theme.key)}" aria-label="${escape(theme.name)}" title="${escape(theme.name)}">
-          ${supported && ['light', 'dark'].includes(theme.key) ? modeIcon(theme.key) : `<span class="sd-theme-dot" style="background:${escape(theme.dot)}"></span><span class="sd-theme-name">${escape(theme.name)}</span>`}
+    const classic = themes.map(theme => `<button type="button" class="sd-theme-opt ${current === theme.key ? 'active' : ''}${supported ? ' sd-theme-swatch' : ''}" role="menuitemradio" aria-checked="${current === theme.key}" data-theme="${escape(theme.key)}" aria-label="${escape(theme.name)}" title="${escape(theme.name)}" style="--sd-swatch:${escape(theme.dot)}">
+          ${supported ? '<span aria-hidden="true"></span>' : `<span class="sd-theme-dot" style="background:${escape(theme.dot)}"></span><span class="sd-theme-name">${escape(theme.name)}</span>`}
         </button>`).join('');
-    const families = ['editorial', 'glass', 'classic'].map((family, index) => `<button type="button" class="sd-theme-opt ${preference.family === family ? 'active' : ''}" role="menuitemradio" aria-checked="${preference.family === family}" data-appearance-family="${family}" aria-controls="qianmu-theme-details"><span class="sd-theme-dot sd-theme-dot-${family}" aria-hidden="true"></span><span class="sd-theme-name">${['纸间', '流光', '经典'][index]}</span></button>`).join('');
+    const families = ['editorial', 'glass', 'classic'].map((family, index) => `<button type="button" class="sd-theme-opt ${preference.family === family ? 'active' : ''}" role="menuitemradio" aria-checked="${preference.family === family}" data-appearance-family="${family}" aria-controls="qianmu-theme-details"><span class="sd-theme-name">${['纸间', '流光', '经典'][index]}</span></button>`).join('');
     const swatches = accents.map(([accent, name]) => `<button type="button" class="sd-theme-opt sd-theme-swatch" role="menuitemradio" aria-checked="${preference.accent === accent}" data-appearance-accent="${accent}" title="${name}" aria-label="${name}" style="--sd-swatch:${accent}"><span aria-hidden="true"></span></button>`).join('');
     return `<div class="sd-theme-pick">
       <button type="button" class="sd-theme-btn" title="外观主题" aria-label="外观主题" aria-haspopup="menu" aria-expanded="false" aria-controls="qianmu-appearance-menu"><i class="fa-solid fa-palette"></i></button>
@@ -22,8 +22,7 @@ export function renderQianmuThemeMenu(themes, selected, { settings, supported = 
         <div id="qianmu-theme-details" class="sd-theme-details" role="group" aria-label="主题颜色">
           <div class="sd-theme-classic-options" role="group" aria-label="经典颜色"${preference.family === 'classic' ? '' : ' hidden'}>${classic}</div>
           <div class="sd-theme-accent-options" role="group" aria-label="强调色"${preference.family === 'classic' ? ' hidden' : ''}>
-            <div class="sd-theme-detail-head"><span>强调色</span><button type="button" class="sd-theme-opt sd-theme-mode-toggle" role="menuitem" data-appearance-mode-toggle aria-label="切换至${preference.mode === 'dark' ? '日间' : '夜间'}" title="切换至${preference.mode === 'dark' ? '日间' : '夜间'}">${modeIcon(preference.mode)}</button></div>
-            <div class="sd-theme-swatches">${swatches}<label class="sd-theme-custom-color sd-theme-swatch${accents.some(([accent]) => accent === preference.accent) ? '' : ' active'}" title="自定强调色" style="--sd-swatch:${preference.accent}"><span aria-hidden="true">+</span><input class="sd-theme-color" type="color" value="${preference.accent}" aria-label="自定强调色"></label></div>
+            <div class="sd-theme-swatches"><button type="button" class="sd-theme-opt sd-theme-mode-toggle" role="menuitem" data-appearance-mode-toggle aria-label="切换至${preference.mode === 'dark' ? '日间' : '夜间'}" title="切换至${preference.mode === 'dark' ? '日间' : '夜间'}">${modeIcon(preference.mode)}</button>${swatches}<label class="sd-theme-custom-color sd-theme-swatch${accents.some(([accent]) => accent === preference.accent) ? '' : ' active'}" title="自定强调色"><span aria-hidden="true"></span><input class="sd-theme-color" type="color" value="${preference.accent}" aria-label="自定强调色"></label></div>
           </div>
         </div><div class="sd-theme-feedback" hidden><span class="sd-theme-status" role="status" aria-live="polite"></span><button type="button" class="sd-theme-opt sd-theme-retry" role="menuitem" hidden>重试</button></div>` : classic}
       </div>
@@ -55,7 +54,6 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         if (accentOptions) accentOptions.hidden = preference.family === 'classic';
         if (color && color.value !== preference.accent) color.value = preference.accent;
         if (customColor) {
-            customColor.style.setProperty('--sd-swatch', preference.accent);
             customColor.classList[accents.some(([accent]) => accent === preference.accent) ? 'remove' : 'add']('active');
         }
         if (mode) {
@@ -120,10 +118,17 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
             return;
         }
         if (!key.classic || button.dataset.theme !== key.classic) return;
+        if (appearance) {
+            // Classic colours are complete legacy palettes, not independently
+            // configurable day/night accents. Keep their existing action owner.
+            event.stopPropagation(); actionError = ''; sequence++;
+            try { const result = onSelect(key.classic); refresh(); settle(result); }
+            catch { actionError = '颜色切换未完成，已保留原设置。'; refresh(); }
+            return;
+        }
         event.stopPropagation(); close(true);
         if (onSelect(key.classic) === false) return;
         actionError = ''; sequence++;
-        if (appearance) { refresh(); return; }
         for (const option of buttons) {
             option.classList[option === button ? 'add' : 'remove']('active');
             option.setAttribute('aria-checked', String(option === button));

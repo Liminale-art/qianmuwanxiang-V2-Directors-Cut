@@ -112,7 +112,7 @@ test('the record manager is unchecked by default, names destructive consequences
 });
 
 function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'not sampled'}){
-  return vm.createContext({renderStorageBackupSection,focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
+  return vm.createContext({renderStorageBackupSection,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
     featureRuntime:{load:async key=>key==='storyboardRestoreStorage'?{collectStoryboardRestoreStorage:async()=>restore,collectStoryboardMappingStorage:async()=>mappings}:key==='vibeStorageSummary'?{collectVibeStorage:async()=>({status:'unavailable',bytes:null})}:key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,errors:[]})}:{manageImageAdmissionStorage:async()=>({bytes:0,count:0}),resolveImageAccountNamespace:async()=>namespace}},
     storyboardManageImageChannels:async()=>({bytes:0}),storyboardImageServiceRuntime:async()=>({manage:async()=>({bytes:0})}),storyboardComfyRecoveryRuntime:async()=>({usage:async()=>({bytes:0})}),
@@ -121,7 +121,7 @@ function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'
 }
 test('actual space card adds journal bytes exactly once without calling them recoverable or server disk capacity',async()=>{
   const {options}=fixture(),summary=await collectRestoreStorage(options),context=globalFixture(summary);
-  vm.runInContext([section('collectStorageInventory'),section('renderStorageManagementCard')].join('\n'),context);
+  vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
   assert.equal(data.trackedBytes,10+summary.bytes);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);assert.equal(data.origin.quota,99999);
   assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes);
@@ -129,14 +129,14 @@ test('actual space card adds journal bytes exactly once without calling them rec
 });
 
 test('actual space card keeps an unavailable record manager visible without manufacturing a zero-byte result',async()=>{
-  const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'bad <record>'});vm.runInContext([section('collectStorageInventory'),section('renderStorageManagementCard')].join('\n'),context);
+  const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'bad <record>'});vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10);
   const html=context.renderStorageManagementCard();assert.match(html,/恢复记录占用暂不可读取 · 当前总计不含此部分/);assert.match(html,/bad &lt;record>/);assert.doesNotMatch(html,/分镜恢复记录 · 0 条/);
 });
 
 test('actual space card counts mapping bodies plus heads once, without advertising them as clearable cache',async()=>{
   const {options}=fixture(),summary=await collectRestoreStorage(options),mappings={version:1,status:'ready',namespace,count:2,bytes:1400,recordBytes:1000,indexBytes:400},context=globalFixture(summary,mappings);
-  vm.runInContext([section('collectStorageInventory'),section('renderStorageManagementCard')].join('\n'),context);
+  vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
   assert.equal(data.trackedBytes,10+summary.bytes+1400);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);
   assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes+1400);

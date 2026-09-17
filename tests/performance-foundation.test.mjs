@@ -12,11 +12,11 @@ assert.match(source, /数据只保留在本次页面，不写入日志或用户�
 assert.match(focusRuntime, /if \(state.status !== 'running'\) return;[\s\S]*setInterval\(tick, 500\)/, 'the focus clock must not poll while idle or paused');
 assert.match(source, /\['专注时钟', focusClockRuntime\?\.active\]/, 'health diagnostics must read the runtime owner rather than a duplicate timer');
 assert.doesNotMatch(source, /^import[^\n]*qianmu-image-direct/m, 'image provider transports must stay outside the startup module graph');
-assert.match(source, /createFeatureRuntime\(\{[\s\S]*imageDirect:[\s\S]*import\('\.\/qianmu-image-direct\.js\?v=1\.59\.170'\)[\s\S]*featureRuntime\.load\('imageDirect'\)/, 'the direct image runtime must enter the shared on-demand feature boundary');
-assert.match(source, /optionalService:[\s\S]*import\('\.\/qianmu-service-capabilities\.js\?v=1\.59\.170'\)/, 'optional backend capability checks must stay outside the startup graph');
+assert.match(source, /createFeatureRuntime\(\{[\s\S]*imageDirect:[\s\S]*import\('\.\/qianmu-image-direct\.js\?v=1\.59\.171'\)[\s\S]*featureRuntime\.load\('imageDirect'\)/, 'the direct image runtime must enter the shared on-demand feature boundary');
+assert.match(source, /optionalService:[\s\S]*import\('\.\/qianmu-service-capabilities\.js\?v=1\.59\.171'\)/, 'optional backend capability checks must stay outside the startup graph');
 assert.doesNotMatch(source, /^import .*\.\/builtin-theaters\.js/m, 'large built-in theater catalogs must stay outside the startup graph');
 assert.doesNotMatch(source, /^import .*\.\/qianmu-theaters\.js/m, 'large Qianmu theater catalogs must stay outside the startup graph');
-assert.match(source, /theaterCatalog:[\s\S]*Promise\.all\([\s\S]*loadLocalChunk\('\.\/builtin-theaters\.js\?v=1\.59\.170'\)[\s\S]*loadLocalChunk\('\.\/qianmu-theaters\.js\?v=1\.59\.170'\)/, 'both managed theater catalogs must share one recoverable on-demand feature boundary');
+assert.match(source, /theaterCatalog:[\s\S]*Promise\.all\([\s\S]*loadLocalChunk\('\.\/builtin-theaters\.js\?v=1\.59\.171'\)[\s\S]*loadLocalChunk\('\.\/qianmu-theaters\.js\?v=1\.59\.171'\)/, 'both managed theater catalogs must share one recoverable on-demand feature boundary');
 assert.match(source, /function renderTheaterTab\(\)[\s\S]*ensureTheaterCatalog\(\)[\s\S]*sd-theater-catalog-retry/, 'the theater page must load its catalog on first entry and expose retry after a failed chunk');
 const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
 assert.doesNotMatch(initSource, /seedBuiltinTheaters\(\)/, 'startup must not parse or seed theater catalogs before the feature is opened');
@@ -27,7 +27,7 @@ assert.match(source, /function inputMenuObservationRoot\(\)[\s\S]*return sendFor
 assert.match(source, /inputMenuObserverTarget = target;[\s\S]*inputMenuObserver\.observe\(target, \{ childList: true, subtree: true \}\)/, 'the input entry observer must not remain hard-wired to the entire document body');
 assert.match(source, /storyboardCheckConnection[\s\S]*await directImageRuntime\(\)[\s\S]*directImage\.checkDirectImageConnection/, 'connection tests must enter the lazy image boundary');
 assert.match(source, /storyboardRunJob[\s\S]*await directImageRuntime\(\)[\s\S]*directImage\.generateDirectImage/, 'generation jobs must enter the lazy image boundary');
-assert.match(styles, /\.sd-runtime-health-grid[\s\S]*grid-template-columns: repeat\(2/, 'desktop diagnostics need a compact two-column layout');
-assert.match(styles, /@media \(max-width: 520px\)[\s\S]*\.sd-runtime-health-grid \{ grid-template-columns: minmax\(0, 1fr\)/, 'mobile diagnostics must collapse to one column');
+assert.doesNotMatch(source, /function renderRuntimeHealthCard|sd-runtime-health-refresh|<b>运行与性能<\/b>/, 'internal measurements must not retain the removed diagnostics card or its whole-modal refresh');
+assert.match(styles, /\.sd-storage-service[\s\S]*flex-wrap: wrap/, 'compact backend status must fit narrow storage cards');
 
 console.log('Performance foundation contract OK');

@@ -9,9 +9,10 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const constants = source.slice(source.indexOf('const STORAGE_CATEGORY_LABELS'), source.indexOf('function renderStorageManagementCard'));
 function fixture(data = null, status = 'ready') {
   const context = vm.createContext({renderStorageBackupSection, storageInventoryState: { data, status, error: '<unavailable>' },
+    optionalServiceState: {status: 'idle'},
     htmlEscape: x => String(x ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: x => `${Number(x) || 0} B`, blobStore: { classifyStoragePressure: () => ({ level: 'normal' }) } });
-  vm.runInContext(constants + section('renderStorageManagementCard'), context);
+  vm.runInContext(constants + ['optionalServiceLabel', 'optionalServiceDetail', 'renderStorageServiceStatus', 'renderStorageManagementCard'].map(section).join('\n'), context);
   return context;
 }
 const data = () => ({sampledAt: 1, origin: { available: true, usage: 4000, quota: 10000 }, trackedBytes: 1000, manageableBytes: 900,
@@ -27,6 +28,7 @@ test('storage backup remains accessible before inventory and after inventory fai
     const html = fixture(null, status).renderStorageManagementCard();
     assert.match(html, /sd-storage-backup-section/);
     assert.match(html, /sd-import-config-file/);
+    assert.match(html, /sd-storage-service[\s\S]*后端服务[\s\S]*重新检测/);
     for (const name of ['storyboard', 'reader', 'favorites', 'notes']) assert.match(html, new RegExp(`data-storage-import="${name}"`));
     assert.doesNotMatch(html, /sd-storage-clean"|sd-storage-chat-clean"/);
     if (status === 'error') { assert.match(html, /&lt;unavailable&gt;/); assert.doesNotMatch(html, /<unavailable>/); }
@@ -45,6 +47,7 @@ test('storage overview is compact while maintenance detail remains available and
   assert.match(html, /千幕已盘点<b>1000 B/);
   assert.match(html, /不代表 VPS 磁盘总容量/);
   assert.match(html, /配置不包含素材原件/);
+  assert.ok(html.indexOf('class="sd-storage-service"') > html.lastIndexOf('</details>'), 'service status remains at the card end outside any disclosure');
   assert.deepEqual(snapshot, before, 'render must not mutate accounting, assets, or recovery data');
 });
 

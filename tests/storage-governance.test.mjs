@@ -65,7 +65,8 @@ assert.match(storeSource, /export function normalizeChatScopedStorageSelections\
 
 const plugTab = source.slice(source.indexOf('function renderPlugTab'), source.indexOf('/* ============================================================', source.indexOf('function renderPlugTab')));
 const tasksTab = source.slice(source.indexOf('function renderTasksNodesTab'), source.indexOf('function renderCastWorldTab'));
-assert.match(plugTab, /renderRuntimeHealthCard\(\)[\s\S]*renderStorageManagementCard\(\)/, 'storage management must be the final API/log card');
+assert.match(plugTab, /renderStorageManagementCard\(\)/, 'storage management must remain the final API/log card');
+assert.doesNotMatch(plugTab, /renderRuntimeHealthCard|运行与性能/, 'runtime diagnostics must not compete with data management');
 assert.doesNotMatch(plugTab, /sd-export-config|<h3>配置备份/, 'configuration backup must live inside storage management, not a competing card');
 assert.doesNotMatch(tasksTab, /renderStorageManagementCard|storageCard/, 'the task page must remain focused on task data');
 assert.match(source, /sd-storage-ios-bar[\s\S]*sd-storage-legend/, 'storage must use an iOS-style multicolor bar and legend');

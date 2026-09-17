@@ -111,7 +111,9 @@ try {
         }));
         assert.ok(tiles.every(tile => Math.abs(tile.y - tiles[0].y) < 1 && Math.abs(tile.width - tiles[0].width) < 1 && Math.abs(tile.height - tiles[0].height) < 1), `${label}: equal tiles on one row`);
         assert.ok(tiles[0].x < tiles[1].x && tiles[1].x < tiles[2].x);
-        checks.push(`${label}: equal family tiles on one row with current colors immediately available`);
+        assert.equal(await page.locator('[data-appearance-family] .sd-theme-dot').count(), 0);
+        assert.equal(await page.locator('.sd-theme-detail-head').count(), 0);
+        checks.push(`${label}: text-only family tiles on one row with current colors immediately available`);
     }
     async function bounds(label) {
         const box = await menu.boundingBox();
@@ -136,7 +138,13 @@ try {
             assert.ok(await page.locator('[data-appearance-accent]:visible').count() >= 3, 'new themes need real selectable preset accents');
             assert.equal(await page.locator('input.sd-theme-color[type=color]:visible').count(), 1);
             assert.equal(await page.locator('.sd-theme-mode-toggle:visible').count(), 1);
+            const row = await page.locator('.sd-theme-swatches').evaluate(node => [...node.children].map(item => {
+                const box = item.getBoundingClientRect(); return { mode: item.hasAttribute('data-appearance-mode-toggle'), x: box.x, y: box.y, width: box.width, height: box.height };
+            }));
+            assert.equal(row.length, 8); assert.equal(row[0].mode, true);
+            assert.ok(row.every((item,index) => Math.abs(item.y - row[0].y) < 1 && item.width >= 24 && item.height >= 36 && (!index || item.x > row[index - 1].x)));
             checks.push(`${width}/${family}: family applies immediately and reveals preset/manual accents and a single mode icon`);
+            checks.push(`${width}/${family}: mode is first in the single color row, with distinct nonoverlapping hit targets`);
             await bounds(`${width}/${family}`); await continuity(`${width}/${family}/open`);
 
             const mode = page.locator('.sd-theme-mode-toggle');
@@ -176,16 +184,17 @@ try {
             assert.equal(afterColor.saves, beforeColor.saves + 1, 'native input + change commits same color once');
             assert.equal(afterColor.focused, true); assert.notEqual(afterColor.accent, beforeColor.accent); assert.equal(afterColor.notesAccent, afterColor.accent);
             assert.equal(await details.isVisible(), true);
-            const swatches = await page.locator('.sd-theme-swatch > span').evaluateAll(nodes => nodes.map(node => {
+            const swatches = await page.locator('.sd-theme-accent-options .sd-theme-swatch > span').evaluateAll(nodes => nodes.map(node => {
                 const rect = node.getBoundingClientRect(), css = getComputedStyle(node);
-                return { y: rect.y, width: rect.width, height: rect.height, radius: css.borderRadius, outline: css.outlineStyle, background: css.backgroundColor };
+                return { y: rect.y, width: rect.width, height: rect.height, radius: css.borderRadius, outline: css.outlineStyle, background: css.backgroundImage };
             }));
             assert.equal(swatches.length, 7);
             assert.ok(swatches.every(item => Math.abs(item.y - swatches[0].y) < 1 && item.width === swatches[0].width && item.height === swatches[0].height && item.radius === swatches[0].radius), `custom color matches preset geometry: ${JSON.stringify(swatches)}`);
-            assert.equal(swatches.at(-1).background, 'rgb(200, 78, 120)');
+            assert.match(swatches.at(-1).background, /^conic-gradient\(/);
+            assert.equal(await page.locator('.sd-theme-custom-color > span').innerText(), '');
             assert.equal(await page.locator('.sd-theme-custom-color').evaluate(node => node.classList.contains('active')), true);
             assert.equal(await page.locator('[data-appearance-accent].active').count(), 0, 'custom accent does not leave a preset marked selected');
-            checks.push(`${width}/${family}: custom swatch matches preset geometry, current color and selection feedback`);
+            checks.push(`${width}/${family}: plus-free rainbow picker matches circular preset geometry and retains selection feedback`);
             checks.push(`${width}/${family}: custom color updates main/notes without recreating input or double-saving input + change`);
             await continuity(`${width}/${family}/custom-color`);
 
@@ -209,14 +218,22 @@ try {
         assert.equal(await page.evaluate(() => menuState().classic), 'dream');
         for (const theme of ['light', 'dark']) {
             const button = page.locator(`[data-theme="${theme}"]`);
-            assert.equal((await button.innerText()).trim(), '', `${theme} classic control is icon-only`);
-            assert.ok(await button.getAttribute('aria-label'), `${theme} icon has an accessible name`);
+            assert.equal((await button.innerText()).trim(), '', `${theme} classic control is dot-only`);
+            assert.ok(await button.getAttribute('aria-label'), `${theme} dot has an accessible name`);
         }
+        const classicDots = await page.locator('.sd-theme-classic-options .sd-theme-swatch').evaluateAll(nodes => nodes.map(node => {
+            const box = node.getBoundingClientRect(), dot = node.querySelector('span');
+            return { x: box.x, y: box.y, name: node.textContent.trim(), title: node.title, radius: getComputedStyle(dot).borderRadius };
+        }));
+        assert.equal(classicDots.length,6);
+        assert.ok(classicDots.every((item,index) => Math.abs(item.y-classicDots[0].y)<1 && item.name==='' && item.title && item.radius==='50%' && (!index || item.x>classicDots[index-1].x)));
         await bounds(`${width}/classic`); await continuity(`${width}/classic-roundtrip`);
         await page.locator('[data-theme="summer"]').click(); await settled();
-        assert.equal(await menu.isVisible(), false); assert.equal(await page.evaluate(() => settings.theme), 'summer');
+        assert.equal(await menu.isVisible(), true); assert.equal(await page.evaluate(() => settings.theme), 'summer');
+        assert.equal(await page.locator('[data-theme="summer"]').evaluate(node => node === document.activeElement),true);
         assert.equal(await page.evaluate(() => [fixture.root, document.getElementById('qianmu-notes-panel-layer')].every(node => node.classList.contains('sd-theme-summer') && !node.hasAttribute('data-qm-theme'))), true);
-        checks.push(`${width}/classic: six legacy palettes preserved, named mode icons and synchronized classic restoration`);
+        checks.push(`${width}/classic: six dot-only legacy palettes on one row with accessible names, in-place selection, stable focus and synchronized restoration`);
+        await page.keyboard.press('Escape');
         await trigger.click(); await compact(`${width}/classic-reopen`);
         await familyButton('glass').click(); await settled();
         assert.equal(await page.locator('.sd-theme-color').inputValue(), '#c84e78');
@@ -334,6 +351,42 @@ try {
         assert.equal(await trigger.evaluate(node => node.classList.contains('has-appearance-error')), false);
         checks.push(`${label}: next genuine color edit succeeds once, updates pixels and clears the prior failure`);
         await continuity(`${label}/recovery`);
+    }
+
+    // Classic palettes share in-place interaction, but keep their native save
+    // owner and full-palette semantics (not invented independent day/night).
+    for (const previousFamily of ['classic', 'glass']) {
+        await page.evaluate(async family => {
+            await setup({ family, mode: 'dark', classic: 'dream' });
+        }, previousFamily);
+        await trigger.click();
+        if(previousFamily !== 'classic') await familyButton('classic').click();
+        await settled();
+        const before=await page.evaluate(()=>({ settings:JSON.stringify(settings), saves:fixture.saveCalls, attempts:fixture.saveAttempts,
+            pixels:[fixture.root,document.getElementById('qianmu-notes-panel-layer')].map(node=>({classes:[...node.classList].sort(),style:node.getAttribute('style')})) }));
+        await page.evaluate(()=>{fixture.failSave=true;});
+        const selected=page.locator('[data-theme="summer"]');
+        await selected.click(); await settled();
+        const failed=await page.evaluate(()=>({ settings:JSON.stringify(settings), saves:fixture.saveCalls, attempts:fixture.saveAttempts,
+            pixels:[fixture.root,document.getElementById('qianmu-notes-panel-layer')].map(node=>({classes:[...node.classList].sort(),style:node.getAttribute('style')})) }));
+        assert.equal(failed.settings,before.settings); assert.deepEqual(failed.pixels,before.pixels);
+        assert.equal(failed.saves,before.saves); assert.equal(failed.attempts,before.attempts+1);
+        assert.equal(await menu.isVisible(),true);assert.equal(await selected.evaluate(node=>node===document.activeElement),true);
+        assert.equal(await page.locator('[data-theme="dream"]').getAttribute('aria-checked'),'true');
+        assert.equal(await selected.getAttribute('aria-checked'),'false');
+        assert.match(await page.locator('.sd-theme-status').innerText(),/颜色切换未完成.*已保留原设置/);
+        await continuity(`classic-save-failure/${previousFamily}`);
+        await page.evaluate(()=>{fixture.failSave=false;});
+        await selected.click(); await settled();
+        assert.equal(await page.evaluate(()=>settings.theme),'summer');
+        assert.equal(await page.evaluate(()=>fixture.saveCalls),before.saves+1);
+        assert.equal(await menu.isVisible(),true); assert.equal(await selected.evaluate(node=>node===document.activeElement),true);
+        assert.equal(await selected.getAttribute('aria-checked'),'true');
+        assert.equal(await page.locator('.sd-theme-feedback').isVisible(),false);
+        checks.push(`classic-save-failure/${previousFamily}: failed choice restores settings/pixels/radio while keeping focus and menu; retry succeeds once`);
+        await selected.click(); await settled();
+        assert.equal(await page.evaluate(()=>fixture.saveCalls),before.saves+1,'same classic palette does not save twice');
+        checks.push(`classic-save-failure/${previousFamily}: repeating active palette leaves menu open without redundant saves`);
     }
 
     // Old engines retain the usable classic-only fallback, without advertising

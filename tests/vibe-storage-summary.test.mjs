@@ -32,7 +32,7 @@ test('account or page changes during success and error paths reject the old summ
   await assert.rejects(()=>collectVibeStorage({...options,call:async()=>{live=false;throw Error('read error');}}),{code:'vibe_storage_stale'});
 });
 function globalContext(value=summary()){
-  return vm.createContext({renderStorageBackupSection,focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
+  return vm.createContext({renderStorageBackupSection,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[{category:'images',bytes:10,count:1}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
     featureRuntime:{load:async key=>key==='vibeStorageSummary'?{collectVibeStorage:options=>collectVibeStorage({...options,call:async()=>{if(value instanceof Error)throw value;return value;}})}:key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:600,workflows:{bytes:100,count:1},pools:{bytes:200,count:2},scenes:{bytes:300,count:3},errors:[]})}:{manageImageAdmissionStorage:async()=>({bytes:1,count:1}),resolveImageAccountNamespace:async()=>namespace}},
     storyboardManageImageChannels:async()=>({bytes:2,count:1}),storyboardImageServiceRuntime:async()=>({manage:async()=>({bytes:3,count:1})}),storyboardComfyRecoveryRuntime:async()=>({usage:async()=>({bytes:4,count:1})}),
@@ -47,7 +47,7 @@ test('actual global inventory includes Vibe exactly once while preserving browse
   assert.equal(data.vibeStorage.records.reviewCount,32);
 });
 test('actual global card reports unmeasured Vibe content without losing its management entry or implying zero',async()=>{
-  const context=globalContext(Error('bad <metadata>'));vm.runInContext([section('collectStorageInventory'),section('refreshStorageInventory'),section('renderStorageManagementCard')].join('\n'),context);
+  const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
   assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/当前总计不含此部分/);assert.match(html,/未盘点站点数据/);assert.match(html,/sd-storage-vibes/);assert.match(html,/bad &lt;metadata>/);
   assert.doesNotMatch(html,/Vibe 文件 · 0/);

@@ -48,7 +48,9 @@ assert.doesNotMatch(JSON.stringify(failed), /network details/);
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 assert.match(source, /if \(activeTab === 'plug'\)[\s\S]*refreshOptionalServiceState\(false\)/, '能力检测只应随 API 与日志页进入');
-assert.match(source, /function paintOptionalServiceState\(\)[\s\S]*\.sd-optional-service-label[\s\S]*\.sd-optional-service-detail/, '检测结果必须局部更新诊断卡');
+assert.match(source, /function paintOptionalServiceState\(\)[\s\S]*\.sd-optional-service-label[\s\S]*\.sd-storage-service-refresh/, '检测结果必须局部更新数据管理末尾的状态和按钮');
+const paint = source.slice(source.indexOf('function paintOptionalServiceState()'), source.indexOf('function runtimeHealthSnapshot()'));
+assert.doesNotMatch(paint, /renderModal\(|innerHTML|paintStorageManagementCard\(/, '服务检测不得重建面板或数据管理卡、清空尚未提交的输入');
 assert.doesNotMatch(source, /setInterval\([^\n]*refreshOptionalServiceState/, '能力检测不得变成后台轮询');
 
 console.log('Optional service capability contract OK');

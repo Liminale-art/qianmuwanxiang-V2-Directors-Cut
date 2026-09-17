@@ -132,8 +132,9 @@ try{
   await page.addStyleTag({content:css});
   await page.evaluate(source=>{
     window.storageInventoryState={status:'loading',data:null};window.htmlEscape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;');
+    window.optionalServiceState={status:'idle',services:[]};
     window.renderFixtureStorage=new Function(source+';return renderStorageManagementCard;')();
-  },section('renderStorageManagementCard'));
+  },['optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'));
   const layouts=[];
   for(const width of [320,393,720,1100])for(const theme of ['', 'sd-theme-dark'])for(const recoverable of [false,true]){
     await page.setViewportSize({width,height:898});

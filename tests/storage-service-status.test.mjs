@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import vm from 'node:vm';
+import {setImmediate as flush} from 'node:timers/promises';
+import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+
+const htmlEscape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+const fixture = () => {
+  const label = {dataset: {}, textContent: '', title: ''}, attributes = {}, button = {isConnected: true, setAttribute: (key, value) => {attributes[key] = value;}};
+  const modal = {open: true, classList: {contains: () => modal.open}, contains: node => node === button && button.isConnected,
+    querySelector: selector => selector === '.sd-optional-service-label' ? label : selector === '.sd-storage-service-refresh' ? button : null,
+    querySelectorAll: () => []};
+  const counters = {load: 0, probe: 0, video: 0}; let release, reject;
+  const context = vm.createContext({htmlEscape, MODAL_ID: 'fixture', document: {getElementById: () => modal},
+    optionalServiceState: {status: 'idle', services: [], checkedAt: 0}, optionalServiceProbePromise: null,
+    ctx: () => ({getRequestHeaders: () => ({'X-CSRF-Token': 'synthetic'})}),
+    featureRuntime: {load: async () => {counters.load++; return {probeQianmuOptionalService: async () => {
+      counters.probe++; return new Promise((resolve, fail) => {release = resolve; reject = fail;});
+    }};}},
+    renderModal: () => assert.fail('backend check must not redraw the modal'),
+    paintStorageManagementCard: () => assert.fail('backend check must not replace the storage card'),
+    storyboardPaintVideoConnectionState: async () => {counters.video++;},
+  });
+  vm.runInContext(['optionalServiceLabel', 'optionalServiceDetail', 'renderStorageServiceStatus', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n'), context);
+  return {context, modal, label, button, attributes, counters, resolve: value => release(value), reject: value => reject(value)};
+};
+
+test('compact backend footer covers ready, missing, checking and failure without exposing diagnostics', () => {
+  const f = fixture();
+  for (const [status, expected] of [['idle', '尚未检查'], ['checking', '检测中'], ['ready', '可用'], ['missing', '未安装'], ['unsupported', '不支持'], ['error', '暂不可达']]) {
+    f.context.optionalServiceState = {status, services: [], version: '<unsafe>', message: '"<error>'};
+    const html = f.context.renderStorageServiceStatus();
+    assert.match(html, new RegExp(expected)); assert.match(html, /role="status" aria-live="polite"/);
+    assert.match(html, /重新检测/); assert.doesNotMatch(html, /<unsafe>|<error>|运行与性能|活动观察器|最慢重绘/);
+    assert.match(html, new RegExp(`aria-busy="${status === 'checking'}"`));
+  }
+});
+
+test('repeated binding and clicks coalesce; completion only updates live footer fields', async () => {
+  const f = fixture();
+  f.context.bindStorageManagementEvents(f.modal); f.context.bindStorageManagementEvents(f.modal);
+  f.button.onclick(); f.button.onclick();
+  await flush();
+  assert.equal(f.counters.probe, 1); assert.equal(f.attributes['aria-busy'], 'true'); assert.equal(f.label.textContent, '检测中');
+  const pending = f.context.optionalServiceProbePromise;
+  f.resolve({status: 'ready', services: ['doubao-tts'], version: 'fixture', checkedAt: Date.now()}); await pending;
+  assert.equal(f.label.textContent, '可用 · vfixture'); assert.equal(f.label.title, '豆包语音网关');
+  await flush(); assert.equal(f.counters.video, 1, 'same-page video status is refreshed locally');
+  assert.equal(f.attributes['aria-busy'], 'false'); assert.equal(f.attributes['aria-disabled'], 'false');
+  await f.context.refreshOptionalServiceState(false); assert.equal(f.counters.probe, 1, 'fresh result remains cached');
+  f.context.bindStorageManagementEvents(f.modal); f.button.onclick(); await flush();
+  assert.equal(f.counters.probe, 2, 'explicit recheck bypasses cache once');
+  const next = f.context.optionalServiceProbePromise;
+  f.resolve({status: 'missing', services: [], checkedAt: Date.now()}); await next;
+  assert.equal(f.label.textContent, '未安装（可选）');
+});
+
+test('probe failure recovers controls without rejection or dropping existing application state', async () => {
+  const f = fixture(), pending = f.context.refreshOptionalServiceState(true); await flush();
+  f.reject(Error('synthetic failure')); await pending;
+  assert.equal(f.context.optionalServiceState.status, 'error'); assert.equal(f.context.optionalServiceProbePromise, null);
+  assert.equal(f.label.textContent, '暂不可达'); assert.equal(f.attributes['aria-disabled'], 'false');
+});
+
+test('closing the modal prevents late probe results from touching a hidden footer', async () => {
+  const f = fixture(), pending = f.context.refreshOptionalServiceState(true); await flush();
+  f.modal.open = false; f.label.textContent = 'closed view';
+  f.resolve({status: 'ready', services: [], checkedAt: Date.now()}); await pending;
+  assert.equal(f.label.textContent, 'closed view'); assert.equal(f.context.optionalServiceState.status, 'ready');
+  f.modal.open = true; f.context.paintOptionalServiceState(); assert.equal(f.label.textContent, '可用');
+});
+
+test('detached, replaced or closed service controls cannot launch a probe', async () => {
+  const f = fixture(); f.context.bindStorageManagementEvents(f.modal);
+  f.button.isConnected = false; f.button.onclick(); await flush(); assert.equal(f.counters.probe, 0);
+  f.button.isConnected = true; f.modal.open = false; f.button.onclick(); await flush(); assert.equal(f.counters.probe, 0);
+  f.modal.open = true; f.modal.contains = () => false; f.button.onclick(); await flush(); assert.equal(f.counters.probe, 0);
+});
