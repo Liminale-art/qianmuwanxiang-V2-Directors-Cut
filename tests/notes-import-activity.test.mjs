@@ -4,13 +4,13 @@ import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
 import {normalizeQianmuNote, importQianmuNotesBackup} from '../qianmu-notes.js';
-const payload=JSON.stringify({type:'qianmu-notes',version:1,notes:[{id:'same',body:'first'},{id:'other',body:'second'}]});
+const payload=JSON.stringify({type:'qianmu-notes',version:1,notes:[{id:'same',body:'first',pinned:true},{id:'other',body:'second',pinned:false}]});
 function fixture(){
   const saved=[],notices=[];
   const view={isConnected:true,open:true,classList:{contains:()=>view.open}};
   const c=vm.createContext({document:{getElementById:()=>view},MODAL_ID:'fixture',settings:{},storyboardAdmissionEpoch:1,normalizeQianmuNote,importQianmuNotesBackup,
     confirmDialog:async()=>true,listQianmuNotes:async()=>[{id:'same'}],saveQianmuNote:async note=>saved.push(note),uid:()=> 'copy',
-    notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
+    notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,notesSyncControls(){},renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
   vm.runInContext(source('createStorageBackupCheck')+'\n'+source('importPinnedNotesBackup'),c);
   c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('页面变化，已写入内容保留');},release(){c.released=(c.released||0)+1;}});
   c.configRestoreActivity=(include=true,own=null)=>({active:c.otherActivity,transfer:[c.importPinnedNotesBackup,c.importTtsFavoritesBackup,c.coreadImportDataFile,c.coreadExportData,c.exportPinnedNotesBackup,c.exportTtsFavoritesBackup,c.storyboardOpenRestoreStorage].some(t=>t!==own&&t.busy)||c.storageCleanupSession.busy});
@@ -40,7 +40,7 @@ test('a pending notes import prevents cleanup and duplicate imports before readi
   assert.equal(e.c.storageCleanupSession.begin({isConnected:true}),null);
   await e.run();assert.equal(reads,1);release(payload);await pending;
   assert.equal(e.c.importPinnedNotesBackup.busy,false);assert.equal(e.saved.length,2);
-  assert.deepEqual(e.saved.map(n=>n.id),['copy','other']);assert.ok(e.saved.every(n=>n.pinned&&!n.floating));
+  assert.deepEqual(e.saved.map(n=>n.id),['copy','other']);assert.deepEqual(e.saved.map(n=>n.pinned),[true,false]);assert.ok(e.saved.every(n=>!n.floating));
 });
 test('active cleanup rejects import without reading a file or changing the cleanup lock',async()=>{
   const e=fixture(),token=e.c.storageCleanupSession.begin({isConnected:true});e.input.files[0].text=()=>{throw Error('must not read');};
@@ -100,7 +100,7 @@ test('failed final inventory reports already committed imports and does not publ
 });
 test('a failed entry remains separate from the committed count',async()=>{
   const e=fixture();e.c.saveQianmuNote=async note=>{if(note.id==='copy')throw Error('synthetic write failure');e.saved.push(note);};
-  await e.run();assert.equal(e.saved.length,1);assert.match(e.notices.at(-1),/已导入 1 条固定便笺，1 条失败并跳过/);
+  await e.run();assert.equal(e.saved.length,1);assert.match(e.notices.at(-1),/已导入 1 条便笺，1 条失败并跳过/);
 });
 
 test('notes import stops on late page or task changes, retaining only committed notes and releasing its watcher',async()=>{

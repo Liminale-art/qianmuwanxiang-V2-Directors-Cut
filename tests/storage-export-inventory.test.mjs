@@ -5,11 +5,14 @@ import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixt
 import {exportLibraryBackup,FAVORITE_TEXT_LIMITS} from '../qianmu-library-backup.js';
 
 function fixture(){
-  const f={notes:[{id:'note',body:'完整原文',pinned:true},{id:'temporary',body:'session only',pinned:false}],favorites:[{id:'voice',blob:new Blob(['synthetic audio'],{type:'audio/mpeg'}),label:'收藏',meta:{speaker:'角色',apiKey:'never export'},createdAt:123}],downloads:[],notices:[]};
+  const f={notes:[{id:'note',body:'完整原文',pinned:true},{id:'unpinned',body:'未固定便笺亦自动保存',pinned:false,localRevision:3,revision:2,_notesAccount:'st-user:fixture',floating:true,x:120}],favorites:[{id:'voice',blob:new Blob(['synthetic audio'],{type:'audio/mpeg'}),label:'收藏',meta:{speaker:'角色',apiKey:'never export'},createdAt:123}],downloads:[],notices:[]};
   f.icon={className:'original-icon'};f.button={isConnected:true,disabled:false,querySelector:()=>f.icon};
   f.modal={isConnected:true,open:true,classList:{contains:()=>f.modal.open}};f.other={};
-  f.guards=[];
-  const c=vm.createContext({exportLibraryBackup,FAVORITE_TEXT_LIMITS,createCoreadImportViewGuard:(origin,action,subject)=>{const g={origin,action,subject,released:0,check(){if(f.pageChanged)throw Error('export page changed');},release(){g.released++;}};f.guards.push(g);return g;},confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'fixture',document:{getElementById:()=>f.modal},Blob,clone:structuredClone,blobStore:{listNotes:async()=>f.notes,listFavorites:async()=>f.favorites},
+  f.guards=[];f.notesControls=0;
+  f.readers={listNotes:async()=>f.notes,listFavorites:async()=>f.favorites};
+  const c=vm.createContext({exportLibraryBackup,FAVORITE_TEXT_LIMITS,createCoreadImportViewGuard:(origin,action,subject)=>{const g={origin,action,subject,released:0,check(){if(f.pageChanged)throw Error('export page changed');},release(){g.released++;}};f.guards.push(g);return g;},confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,MODAL_ID:'fixture',document:{getElementById:()=>f.modal},Blob,clone:structuredClone,
+    notesSyncControls:()=>{f.notesControls++;},listQianmuNotes:async options=>{assert.ok(f.notesControls>0,'initialize the account-scoped notes facade before reading');assert.equal(options.strict,true);return f.readers.listNotes(options);},
+    blobStore:{listNotes:async()=>{throw Error('legacy unscoped notes inventory must not be read');},listFavorites:async options=>{assert.equal(options.requireCommit,true);return f.readers.listFavorites(options);}},
     fileStamp:()=> 'fixture',blobToBase64:async blob=>Buffer.from(await blob.arrayBuffer()).toString('base64'),
     ttsDownloadBlob:(blob,name)=>f.downloads.push({blob,name}),toast:(...args)=>f.notices.push(args),setQianmuIconClass:(icon,name)=>icon.className=name});
   vm.runInContext(['createStorageBackupCheck','storageSafeFavoriteMeta','exportPinnedNotesBackup','exportTtsFavoritesBackup'].map(source).join('\n'),c);
@@ -17,11 +20,12 @@ function fixture(){
   f.c=c;return f;
 }
 
-test('normal module exports preserve pinned prose and audio bytes with their existing credential-free format',async()=>{
+test('normal module exports preserve all saved prose including unpinned notes and audio bytes in their credential-free format',async()=>{
   const f=fixture();await f.c.exportPinnedNotesBackup(f.button);await f.c.exportTtsFavoritesBackup(f.button);
   const notes=JSON.parse(await f.downloads[0].blob.text()),favorites=JSON.parse(await f.downloads[1].blob.text());
   assert.equal(notes.type,'qianmu-notes');assert.equal(notes.version,1);assert.equal(notes.credentialsIncluded,false);
-  assert.deepEqual(notes.notes,[f.notes[0]]);assert.equal(f.notes.length,2,'export does not delete temporary notes');
+  assert.deepEqual(notes.notes,[f.notes[0],{id:'unpinned',body:'未固定便笺亦自动保存',pinned:false}]);assert.equal(f.notes.length,2,'export does not change either saved note');
+  assert.equal(f.notesControls,1);assert.equal(notes.notes[1]._notesAccount,undefined);assert.equal(notes.notes[1].localRevision,undefined);assert.equal(notes.notes[1].revision,undefined);assert.equal(notes.notes[1].floating,undefined);assert.equal(notes.notes[1].x,undefined);
   assert.equal(favorites.type,'qianmu-tts-favorites');assert.equal(favorites.version,1);assert.equal(favorites.credentialsIncluded,false);
   assert.equal(Buffer.from(favorites.entries[0].data,'base64').toString(),'synthetic audio');
   assert.equal(favorites.entries[0].meta.speaker,'角色');assert.equal(favorites.entries[0].meta.apiKey,undefined);
@@ -66,18 +70,18 @@ for(const name of ['exportPinnedNotesBackup','exportTtsFavoritesBackup'])test(na
 
 for(const [name,method] of [['exportPinnedNotesBackup','listNotes'],['exportTtsFavoritesBackup','listFavorites']]){
   test(name+' requests committed inventory and never labels a failed read as an empty library',async()=>{
-    const f=fixture(),{c,notices}=f;c.blobStore[method]=async options=>{assert.equal(options.requireCommit,true);throw Error('inventory interrupted');};await c[name]();
+    const f=fixture(),{c,notices}=f;f.readers[method]=async options=>{assert.equal(options[method==='listNotes'?'strict':'requireCommit'],true);throw Error('inventory interrupted');};await c[name]();
     assert.equal(notices.length,1);assert.equal(notices[0][1],'error');assert.match(notices[0][0],/inventory interrupted/);assert.doesNotMatch(notices[0][0],/没有可导出/);
   });
   test(name+' treats only a successfully scanned empty library as empty',async()=>{
-    const f=fixture(),{c,notices}=f;c.blobStore[method]=async options=>{assert.equal(options.requireCommit,true);return [];};await c[name]();assert.equal(notices.length,1);assert.equal(notices[0][1],'info');assert.match(notices[0][0],/没有可导出/);
+    const f=fixture(),{c,notices}=f;f.readers[method]=async options=>{assert.equal(options[method==='listNotes'?'strict':'requireCommit'],true);return [];};await c[name]();assert.equal(notices.length,1);assert.equal(notices[0][1],'info');assert.match(notices[0][0],/没有可导出/);
   });
 }
 
 for(const [name,method,phase] of [['exportPinnedNotesBackup','listNotes','read'],['exportTtsFavoritesBackup','listFavorites','read'],['exportTtsFavoritesBackup','listFavorites','encode']])test(name+' '+phase+' waits cannot download after page, owner or activity changes',async()=>{
   for(const mode of ['settings','epoch','button','modal','closed','activity']){
     const f=fixture();let release;
-    if(phase==='read')f.c.blobStore[method]=()=>new Promise(r=>release=()=>r(method==='listNotes'?f.notes:f.favorites));
+    if(phase==='read')f.readers[method]=()=>new Promise(r=>release=()=>r(method==='listNotes'?f.notes:f.favorites));
     else f.c.blobToBase64=()=>new Promise(r=>release=()=>r('YQ=='));
     const pending=f.c[name](f.button);await new Promise(r=>setImmediate(r));assert.equal(f.c[name].busy,true);
     if(mode==='settings')f.c.settings={};if(mode==='epoch')f.c.storyboardAdmissionEpoch++;
@@ -88,7 +92,7 @@ for(const [name,method,phase] of [['exportPinnedNotesBackup','listNotes','read']
 
 test('each pending export blocks duplicate and opposite exports until its own finally releases activity',async()=>{
   for(const [name,method,opposite] of [['exportPinnedNotesBackup','listNotes','exportTtsFavoritesBackup'],['exportTtsFavoritesBackup','listFavorites','exportPinnedNotesBackup']]){
-    const f=fixture();let release,reads=0;f.c.blobStore[method]=()=>{reads++;return new Promise(r=>release=()=>r(method==='listNotes'?f.notes:f.favorites));};
+    const f=fixture();let release,reads=0;f.readers[method]=()=>{reads++;return new Promise(r=>release=()=>r(method==='listNotes'?f.notes:f.favorites));};
     const pending=f.c[name](f.button);await new Promise(r=>setImmediate(r));assert.equal(f.c.configRestoreActivity().transfer,true);
     await f.c[name]();await f.c[opposite]();assert.equal(reads,1);assert.equal(f.downloads.length,0);
     release();await pending;assert.equal(f.downloads.length,1);assert.equal(!!f.c.configRestoreActivity().transfer,false);
@@ -117,10 +121,10 @@ test('active work blocks exports before reading and icon setup failure cannot st
 test('library exports release their shared page watcher on every success, cancellation and failure path',async()=>{
   for(const [name,method] of [['exportPinnedNotesBackup','listNotes'],['exportTtsFavoritesBackup','listFavorites']])for(const mode of ['success','empty','read','download','page','icon','cancel','setup']){
     const f=fixture(),c=f.c;
-    if(mode==='empty')c.blobStore[method]=async()=>[];
-    if(mode==='read')c.blobStore[method]=async()=>{throw Error('read interrupted');};
+    if(mode==='empty')f.readers[method]=async()=>[];
+    if(mode==='read')f.readers[method]=async()=>{throw Error('read interrupted');};
     if(mode==='download')c.ttsDownloadBlob=()=>{throw Error('download interrupted');};
-    if(mode==='page')c.blobStore[method]=async()=>{f.pageChanged=true;return method==='listNotes'?f.notes:f.favorites;};
+    if(mode==='page')f.readers[method]=async()=>{f.pageChanged=true;return method==='listNotes'?f.notes:f.favorites;};
     if(mode==='icon')c.setQianmuIconClass=(icon,value)=>{if(value.includes('spinner'))throw Error('icon failed');icon.className=value;};
     if(mode==='setup')c.createCoreadImportViewGuard=()=>{throw Error('closed initially');};
     if(mode==='cancel'){c.confirmDialog=async()=>false;f.notes[0].body='a'.repeat(20001);f.favorites[0].label='a'.repeat(1001);}

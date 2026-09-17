@@ -20,8 +20,8 @@ assert.match(source, /theaterCatalog:[\s\S]*Promise\.all\([\s\S]*loadLocalChunk\
 assert.match(source, /function renderTheaterTab\(\)[\s\S]*ensureTheaterCatalog\(\)[\s\S]*sd-theater-catalog-retry/, 'the theater page must load its catalog on first entry and expose retry after a failed chunk');
 const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
 assert.doesNotMatch(initSource, /seedBuiltinTheaters\(\)/, 'startup must not parse or seed theater catalogs before the feature is opened');
-assert.doesNotMatch(initSource, /hydrateNotesRuntime\(\)/, 'startup must not scan all pinned notes before the notes workspace is opened');
-assert.match(source, /function openNotesPanel\(\)[\s\S]*renderNotesPanelPortal\(\)[\s\S]*hydrateNotesRuntime\(\)/, 'the independent notes entry must hydrate its IndexedDB records on first use');
+assert.doesNotMatch(initSource, /hydrateNotesRuntime\(/, 'startup must not scan account notes before the notes workspace is opened');
+assert.match(source, /function openNotesPanel\(\)[\s\S]*renderNotesPanelPortal\(\)[\s\S]*hydrateNotesRuntime\(true\)/, 'each independent notes opening must refresh its local account records before synchronization');
 assert.match(source, /function runtimeHealthSnapshot\(\)[\s\S]*featureRuntime\.snapshot\(\)[\s\S]*lazyFeatures/, 'session diagnostics must expose feature chunk state without persisting it');
 assert.match(source, /function inputMenuObservationRoot\(\)[\s\S]*return sendForm \|\| menu\?\.parentElement \|\| document\.body/, 'the input entry observer must prefer the narrow input-shell boundary');
 assert.match(source, /inputMenuObserverTarget = target;[\s\S]*inputMenuObserver\.observe\(target, \{ childList: true, subtree: true \}\)/, 'the input entry observer must not remain hard-wired to the entire document body');

@@ -86,11 +86,13 @@ assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clea
 assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.scopeCount[\s\S]*个聊天/, 'cleanup rows must reveal how many chat buckets each registered store contains');
 assert.match(source, /openStorageChatCleanupDialog[\s\S]*导出伴读整包[\s\S]*导出语音缓存[\s\S]*clearChatScopedStorage\(selected, cleanup\)/, 'chat cleanup must offer module backups before session-scoped per-item deletion');
 assert.match(source, /openStorageCleanupDialog[\s\S]*sd-storage-backup-home[\s\S]*先去备份与恢复/, 'module cleanup must route to the single backup home rather than running imports inside a stale selection');
-assert.match(source, /function exportPinnedNotesBackup[\s\S]*filter\(\(note\) => note\.pinned\)[\s\S]*type: 'qianmu-notes'/, 'the notes backup must exclude temporary session-only notes');
+const notesExport=source.slice(source.indexOf('async function exportPinnedNotesBackup'),source.indexOf('async function importPinnedNotesBackup'));
+assert.match(notesExport, /listQianmuNotes\(/, 'notes backup reads the current account library, not the unowned legacy library');
+assert.doesNotMatch(notesExport,/filter\(\(note\) => note\.pinned\)/,'non-prominent automatically saved notes must be included in backups');
 assert.match(source, /function importPinnedNotesBackup[\s\S]*importQianmuNotesBackup\(file, \{check, confirm:confirmDialog, read:\(\)=>listQianmuNotes\(\{strict:true\}\), write:note=>saveImportedQianmuNote\(note,\{check\}\), uid, progress\}\)/, 'the guarded entry must confirm, use strict inventory and preserve confirmed progress through later failures');
 assert.equal(NOTES_BACKUP_LIMITS.bytes,12*1024*1024);assert.equal(NOTES_BACKUP_LIMITS.entries,1000);
 assert.match(notesSource, /function importQianmuNotesBackup[\s\S]*readLibraryBackupFile\(file,'qianmu-notes',\{check\}\)[\s\S]*await read\(\)/, 'notes restore must finish shared strict preflight before accessing the destination; boundary behavior is verified in library-backup tests');
-assert.match(notesSource, /occupiedIds\.has\(id\)[\s\S]*uid\('note-import'\)[\s\S]*pinned: true, floating: false/, 'restoring notes must preserve local collisions as independent safe copies');
+assert.match(notesSource, /occupiedIds\.has\(id\)[\s\S]*uid\('note-import'\)[\s\S]*pinned: Boolean\(raw\.pinned\), floating: false/, 'restoring notes preserves collisions as independent copies and keeps prominence separate from persistence');
 assert.match(source, /function exportTtsFavoritesBackup[\s\S]*qianmu-tts-favorites[\s\S]*credentialsIncluded: false/, 'voice favorites need a credential-free binary backup before destructive cleanup');
 assert.equal(FAVORITES_BACKUP_LIMITS.bytes,256*1024*1024);assert.equal(FAVORITES_BACKUP_LIMITS.entries,2000);
 assert.match(source, /function importTtsFavoritesBackup[\s\S]*readLibraryBackupFile\(file,'qianmu-tts-favorites',\{check\}\)[\s\S]*hasFavorite\(id\)[\s\S]*uid\('fav-import'\)/, 'favorite restore must preflight before destination lookup and preserve ID collisions as copies; limits are behavior-tested');

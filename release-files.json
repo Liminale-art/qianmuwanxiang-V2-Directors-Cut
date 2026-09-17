@@ -4,6 +4,12 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-film-editor-save.js",
+    "qianmu-notes-device.js",
+    "qianmu-notes-panel-sync.js",
+    "qianmu-notes-sync-contract.js",
+    "qianmu-notes-sync-store.js",
+    "qianmu-notes-sync-runtime.js",
+    "qianmu-notes-sync-service.js",
     "vendor/noble-hashes-2.4.0/blake3.js",
     "vendor/noble-hashes-2.4.0/blake2.js",
     "vendor/noble-hashes-2.4.0/_blake.js",

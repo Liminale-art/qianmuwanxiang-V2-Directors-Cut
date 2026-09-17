@@ -135,6 +135,7 @@ import {
 import * as blobStore from './qianmu-blobstore.js';
 import {
   clearTemporaryQianmuNotes,
+  configureQianmuNotes,
   createQianmuNote,
   deleteQianmuNote,
   importQianmuNotesBackup,
@@ -142,7 +143,10 @@ import {
   normalizeQianmuNote,
   saveImportedQianmuNote,
   saveQianmuNote,
+  qianmuNotesState,
 } from './qianmu-notes.js';
+import { createNotesPanelSync, captureNotesRefresh, mergeNotesRefresh } from './qianmu-notes-panel-sync.js';
+import { readNotesDeviceState, saveNotesDeviceState } from './qianmu-notes-device.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
 import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js';
 import { QIANMU_HIVE_THEME_LOGO } from './qianmu-hive-theme-logo.js';
@@ -1486,6 +1490,7 @@ let notesSearch = '';
 let notesZCounter = 10;
 let notesPanelResizeObserver = null;
 const notesSaveTimers = new Map();
+let notesSyncPanel = null, notesDevice = null, notesViewEpoch = 0, notesReadEpoch = 0;
 let storyboardInlineTimer = null;
 let storyboardInlineVideoHydrationTimer = null;
 const storyboardInlinePendingFloors = new Set();
@@ -5340,6 +5345,7 @@ function bindNotesHiveDetachDrag(button, item, layout) {
       tone: button.dataset.hiveTone === 'light' ? 'light' : 'dark',
       edgeIndex: Math.max(0, Math.trunc(Number(button.dataset.hiveEdgeIndex) || 0)),
     };
+    persistNotesDevice();
     saveSettings();
     closeQuickWheel();
     renderFloatingNotes();
@@ -6253,6 +6259,10 @@ const NOTES_EDITOR_FONT_SIZES = Object.freeze([13, 14, 16, 18, 20, 24]);
 function notesFeatureSettings() {
   if (!isPlainObject(settings.notes)) settings.notes = clone(DEFAULT_SETTINGS.notes);
   mergeDefaults(settings.notes, DEFAULT_SETTINGS.notes);
+  if (!notesDevice) { try { notesDevice = readNotesDeviceState(settings.notes); } catch (_) { notesDevice = { detached: false, position: { x: null, y: null }, panelSize: { width: null, height: null } }; } }
+  for (const key of ['detached', 'position', 'panelSize']) Object.defineProperty(settings.notes, key, {
+    configurable: true, enumerable: false, get: () => notesDevice[key], set: value => { notesDevice[key] = value; },
+  });
   if (!isPlainObject(settings.notes.position)) settings.notes.position = { x: null, y: null };
   if (!isPlainObject(settings.notes.panelSize)) settings.notes.panelSize = { width: null, height: null };
   if (!isPlainObject(settings.notes.appearance)) settings.notes.appearance = { tone: 'dark', edgeIndex: 0 };
@@ -6269,12 +6279,28 @@ function notesFeatureSettings() {
   return settings.notes;
 }
 
+function persistNotesDevice() {
+  const { detached, position, panelSize } = settings.notes;
+  notesDevice = { detached, position: { ...position }, panelSize: { ...panelSize } };
+  try { saveNotesDeviceState(notesDevice); } catch (error) { toast(`便笺位置仅保留到本次关闭：${error.message}`, 'warning'); }
+}
+
+function notesSyncControls() {
+  if (notesSyncPanel) return notesSyncPanel;
+  configureQianmuNotes({ resolveNamespace: async () => (await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(), headers: storyboardRequestHeaders,
+    onChange: event => { notesSyncPanel?.changed(event); if (event.reason === 'account') { notesViewEpoch++; notesRuntime = []; notesActiveId = ''; notesLoaded = false; notesSaveTimers.clear(); if (notesPanelOpen) renderNotesPanelPortal(); } } });
+  return notesSyncPanel = createNotesPanelSync({ getRoot: () => document.getElementById(NOTES_PANEL_LAYER_ID),
+    hasUnsaved: () => notesSaveTimers.size > 0,
+    refresh: () => hydrateNotesRuntime(true), retryLocal: async () => { for (const note of notesRuntime.filter(note => notesSaveTimers.has(note.id))) await persistNoteRuntime(note); },
+    confirm: confirmDialog, download: ttsDownloadBlob, notify: toast });
+}
+
 function notesFeatureEnabled() {
   return notesFeatureSettings().enabled;
 }
 
 function notesSortRuntime() {
-  notesRuntime.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+  notesRuntime.sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
 }
 
 function notesFind(noteId) {
@@ -6290,39 +6316,56 @@ function notesReplaceLocal(input) {
 }
 
 async function hydrateNotesRuntime(force = false) {
+  notesSyncControls();
   if (notesLoading) return notesLoading;
   if (notesLoaded && !force) return notesRuntime;
+  const epoch = notesViewEpoch, readEpoch = notesReadEpoch, baseline = captureNotesRefresh(notesRuntime);
   notesLoading = listQianmuNotes().then((notes) => {
-    notesRuntime = Array.isArray(notes) ? notes : [];
+    if (epoch !== notesViewEpoch || readEpoch !== notesReadEpoch) return notesRuntime;
+    const root = document.getElementById(NOTES_PANEL_LAYER_ID), editor = root?.querySelector('.sd-note-body');
+    const kept = notesRuntime.filter(note => notesSaveTimers.has(note.id) || note.id === notesActiveId && editor === document.activeElement);
+    const keepIds = new Set(kept.map(note => note.id));
+    notesRuntime = mergeNotesRefresh(notesRuntime, notes, baseline, keepIds);
     notesSortRuntime();
     notesZCounter = Math.max(1, ...notesRuntime.map((note) => Number(note.zOrder) || 0)) + 1;
     notesLoaded = true;
     if (!notesFind(notesActiveId)) notesActiveId = '';
-    renderFloatingNotes();
-    if (notesPanelOpen) renderNotesPanelPortal();
+    if (notesPanelOpen && editor && notesFind(notesActiveId)) {
+      if (editor !== document.activeElement) editor.value = notesFind(notesActiveId).body;
+      notesSyncPanel?.paint();
+    } else if (notesPanelOpen) renderNotesPanelPortal();
     return notesRuntime;
   }).catch((error) => {
     console.warn(`[${MODULE_NAME}] notes load failed`, error);
-    notesLoaded = true;
+    notesSyncControls().fail(error);
     return notesRuntime;
   }).finally(() => { notesLoading = null; });
   return notesLoading;
 }
 
 async function persistNoteRuntime(note, { renderPanel = false } = {}) {
-  const saved = await saveQianmuNote(note);
-  notesReplaceLocal(saved);
-  renderFloatingNotes();
-  if (renderPanel && notesPanelOpen) renderNotesPanelPortal();
-  return saved;
+  const epoch = notesViewEpoch, snapshot = { ...note }, revision = Symbol();
+  notesSaveTimers.set(note.id, revision); notesSyncControls().beginWrite();
+  let failure;
+  try {
+    const saved = await saveQianmuNote(snapshot);
+    if (epoch !== notesViewEpoch) return saved;
+    const current = notesFind(note.id);
+    if (!current) return saved;
+    // Preserve later keystrokes and the input's object reference while acknowledging this write.
+    const originalId = snapshot.id, latest = notesSaveTimers.get(originalId) === revision;
+    Object.assign(current, latest ? saved : saved.id === originalId ? { localRevision: saved.localRevision, revision: saved.revision, _notesAccount: saved._notesAccount } : {});
+    if (latest) { notesSaveTimers.delete(originalId); if (notesActiveId === originalId) notesActiveId = saved.id; }
+    notesSortRuntime();
+    if (renderPanel && notesPanelOpen) renderNotesPanelPortal();
+    return saved;
+  } catch (error) { failure = error; throw error; }
+  finally { notesSyncPanel?.endWrite(failure); }
 }
 
 function scheduleNoteSave(note) {
-  clearTimeout(notesSaveTimers.get(note.id));
-  notesSaveTimers.set(note.id, setTimeout(() => {
-    notesSaveTimers.delete(note.id);
-    void persistNoteRuntime(note).catch((error) => console.warn(`[${MODULE_NAME}] note save failed`, error));
-  }, 320));
+  // Persist each edit immediately; only the optional network sync is debounced.
+  void persistNoteRuntime(note).catch(error => { console.warn(`[${MODULE_NAME}] note save failed`, error); });
 }
 
 function openNotesPanel() {
@@ -6333,11 +6376,12 @@ function openNotesPanel() {
   notesPanelOpen = true;
   renderNotesPanelPortal();
   renderFloatingNotes();
-  void hydrateNotesRuntime();
+  void hydrateNotesRuntime(true).then(() => notesSyncControls().sync());
 }
 
 function closeNotesPanel() {
   notesPanelOpen = false;
+  notesSyncPanel?.hide();
   stopNotesPanelResizeTracking();
   document.getElementById(NOTES_PANEL_LAYER_ID)?.remove();
   renderFloatingNotes();
@@ -6361,11 +6405,11 @@ function renderNotesPanel() {
   const editorFontSize = notesFeatureSettings().editorFontSize;
   const editorFontOptions = NOTES_EDITOR_FONT_SIZES.map((size) => `<option value="${size}" ${size === editorFontSize ? 'selected' : ''}>${size}px</option>`).join('');
   const list = visible.map((note) => `<article class="sd-note-list-item" data-note-id="${htmlEscape(note.id)}">
-    <button type="button" class="sd-note-select"><span>${htmlEscape(noteExcerpt(note))}</span><time>${htmlEscape(noteUpdatedLabel(note))}</time></button>
+    <button type="button" class="sd-note-select"><span>${htmlEscape(noteExcerpt(note))}</span><time>${note.syncConflictOf ? '冲突副本 · ' : ''}${htmlEscape(noteUpdatedLabel(note))}</time></button>
     <div class="sd-note-list-actions">
-      ${note.pinned ? '<i class="fa-solid fa-thumbtack sd-note-pinned-mark" title="已固定"></i>' : ''}
+      ${note.pinned ? '<i class="fa-solid fa-thumbtack sd-note-pinned-mark" title="常驻便笺"></i>' : ''}
       <button type="button" class="sd-note-tools-toggle" title="更多" aria-label="更多操作" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
-      <div class="sd-note-item-tools" hidden><button type="button" class="sd-note-copy" title="复制" aria-label="复制"><i class="fa-solid fa-copy"></i></button><button type="button" class="sd-note-pin ${note.pinned ? 'active' : ''}" title="${note.pinned ? '取消固定' : '固定'}" aria-label="固定"><i class="fa-solid fa-thumbtack"></i></button><button type="button" class="sd-note-delete" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
+      <div class="sd-note-item-tools" hidden><button type="button" class="sd-note-copy" title="复制" aria-label="复制"><i class="fa-solid fa-copy"></i></button><button type="button" class="sd-note-pin ${note.pinned ? 'active' : ''}" title="${note.pinned ? '取消常驻' : '常驻'}" aria-label="常驻便笺"><i class="fa-solid fa-thumbtack"></i></button><button type="button" class="sd-note-delete" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </div>
   </article>`).join('');
   if (active) return `<div class="sd-notes-stage"><section class="sd-notes-panel is-editor" role="dialog" aria-modal="false" aria-label="编辑便笺">
@@ -6443,7 +6487,7 @@ function bindNotesPanelResize(layer) {
     previous = size;
     const noteSettings = notesFeatureSettings();
     noteSettings.panelSize = size;
-    saveSettings();
+    persistNotesDevice();
   });
   notesPanelResizeObserver.observe(panel);
 }
@@ -6474,6 +6518,7 @@ function renderNotesPanelPortal() {
   applyQianmuIcons(layer);
   bindNotesPanelEvents(layer);
   bindNotesPanelResize(layer);
+  notesSyncControls().mount();
   return layer;
 }
 
@@ -6562,7 +6607,7 @@ function bindFloatingNoteEvents(layer) {
     const noteSettings = notesFeatureSettings();
     noteSettings.position = position;
     if (inside) noteSettings.detached = false;
-    saveSettings();
+    persistNotesDevice();
     if (inside) {
       renderFloatingNotes();
       toast('便笺入口已回到千幕蜂巢。', 'success');
@@ -6626,12 +6671,15 @@ function bindNotesPanelEvents(root) {
     event.target.closest('.sd-note-font-size-control')?.setAttribute('title', `字号：${requested}px`);
     saveSettings();
   });
-  root.querySelector('.sd-note-new')?.addEventListener('click', () => {
-    const note = createQianmuNote({ title: '', body: '', pinned: false });
-    notesReplaceLocal(note);
-    notesActiveId = note.id;
-    void saveQianmuNote(note);
-    renderNotesPanelPortal();
+  root.querySelector('.sd-note-new')?.addEventListener('click', async event => {
+    const button = event.currentTarget; button.disabled = true;
+    const epoch = notesViewEpoch;
+    try {
+      const note = await saveQianmuNote({ ...createQianmuNote({ title: '', body: '', pinned: false }), _notesAccount: qianmuNotesState().namespace });
+      if (epoch !== notesViewEpoch || !button.isConnected) return;
+      notesReplaceLocal(note); notesActiveId = note.id; renderNotesPanelPortal();
+    } catch (error) { notesSyncControls().fail(error); toast(error.message, 'warning'); }
+    finally { if (button.isConnected) button.disabled = false; }
   });
   root.querySelector('.sd-notes-search')?.addEventListener('input', (event) => {
     notesSearch = event.target.value;
@@ -6666,22 +6714,34 @@ function bindNotesPanelEvents(root) {
       note.pinned = !note.pinned;
       const pinned = note.pinned;
       void persistNoteRuntime(note, { renderPanel: true })
-        .then(() => toast(pinned ? '便笺已保存' : '便笺已取消固定', 'success'))
+        .then(() => toast(pinned ? '便笺已设为常驻' : '已取消常驻，内容仍自动保存', 'success'))
         .catch((error) => console.warn(`[${MODULE_NAME}] note pin save failed`, error));
     });
     item.querySelector('.sd-note-delete')?.addEventListener('click', async () => {
       const note = notesFind(item.dataset.noteId);
       if (!note) return;
-      await deleteQianmuNote(note.id);
-      notesRuntime = notesRuntime.filter((entry) => entry.id !== note.id);
-      if (notesActiveId === note.id) notesActiveId = '';
-      renderNotesPanelPortal();
+      const epoch = notesViewEpoch;
+      try {
+        if (notesSaveTimers.has(note.id)) return toast('这条便笺尚未完成本机保存，请先重试保存再删除。', 'warning');
+        if (!await confirmDialog('删除便笺', '此操作会同步删除同一 ST 账户其他设备上的这条便笺。是否继续？')) return;
+        if (epoch !== notesViewEpoch || !item.isConnected) return;
+        await deleteQianmuNote(note.id, { namespace: note._notesAccount, localRevision: note.localRevision });
+        if (epoch !== notesViewEpoch) return;
+        notesReadEpoch++;
+        notesSaveTimers.delete(note.id);
+        notesRuntime = notesRuntime.filter((entry) => entry.id !== note.id);
+        if (notesActiveId === note.id) notesActiveId = '';
+        await notesLoading;
+        if (epoch !== notesViewEpoch) return;
+        await hydrateNotesRuntime(true);
+      } catch (error) { toast(error.message || '便笺未删除，请重新核对。', 'warning'); }
     });
   });
   const editor = root.querySelector('.sd-note-editor');
   const note = notesFind(editor?.dataset.noteId);
   if (!note) return;
   editor.querySelector('.sd-note-body')?.addEventListener('input', (event) => { note.body = event.target.value; note.updatedAt = Date.now(); scheduleNoteSave(note); });
+  editor.querySelector('.sd-note-body')?.addEventListener('blur', () => { if (!notesSaveTimers.size) void hydrateNotesRuntime(true); });
 }
 
 function qianmuInstalledExtensionName() {
@@ -8144,14 +8204,15 @@ async function exportPinnedNotesBackup(button = null) {
   let check;
   try {
   check=createStorageBackupCheck(button,exportPinnedNotesBackup);check();
+  notesSyncControls();
   if (button) button.disabled = true;
   if (icon) setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
-    const notes = (await blobStore.listNotes({requireCommit:true})).filter((note) => note.pinned);
+    const notes = await listQianmuNotes({strict:true});
     check();
-    if (!notes.length) return toast('没有可导出的固定便笺。', 'info');
+    if (!notes.length) return toast('没有可导出的便笺。', 'info');
     const payload = {
       type: 'qianmu-notes', version: 1, exportedAt: new Date().toISOString(), credentialsIncluded: false,
-      notes: notes.map((note) => clone(note)),
+      notes: notes.map(({id,title,body,pinned,createdAt,updatedAt}) => ({id,title,body,pinned,createdAt,updatedAt})),
     };
     await exportLibraryBackup(payload,{confirm:confirmDialog,check,download:ttsDownloadBlob,stamp:fileStamp,notify:toast});
   } catch (error) {
@@ -8174,6 +8235,7 @@ async function importPinnedNotesBackup(event) {
   const progress = {imported:0, failed:[]};
   try {
     check=createStorageBackupCheck(input,importPinnedNotesBackup,'导入');
+    notesSyncControls();
     check();
     const {imported, failed, cancelled} = await importQianmuNotesBackup(file, {check, confirm:confirmDialog, read:()=>listQianmuNotes({strict:true}), write:note=>saveImportedQianmuNote(note,{check}), uid, progress});
     if(cancelled)return;
@@ -8184,8 +8246,8 @@ async function importPinnedNotesBackup(event) {
     renderFloatingNotes();
     await refreshStorageInventory(true);
     check();
-    if (failed.length) toast(`已导入 ${imported} 条固定便笺，${failed.length} 条失败并跳过。${failed.slice(0, 2).join('；')}`, 'warning');
-    else toast(`已导入 ${imported} 条固定便笺；同 ID 条目已作为副本保留。`, 'success');
+    if (failed.length) toast(`已导入 ${imported} 条便笺，${failed.length} 条失败并跳过。${failed.slice(0, 2).join('；')}`, 'warning');
+    else toast(`已导入 ${imported} 条便笺，待同步；同 ID 条目已作为副本保留。`, 'success');
   } catch (error) {
     toast(`便笺导入未完成：${progress.imported ? `已导入 ${progress.imported} 条，已写入内容保留；` : ''}${error?.message || error}`, 'error');
   } finally {
@@ -8392,11 +8454,9 @@ function reconcileClearedStorageItems(selected) {
     chatStore.ttsLineKeyByMes = {};
   }
   if (cleared.has('notes')) {
-    notesRuntime = notesRuntime.filter((note) => !note.pinned);
-    notesLoaded = true;
-    if (!notesFind(notesActiveId)) notesActiveId = '';
-    renderFloatingNotes();
-    if (notesPanelOpen) renderNotesPanelPortal();
+    // This category is the unowned legacy store only. It has no authority over
+    // account originals, pending edits or deletion tombstones in the sync store.
+    notesSyncPanel?.paint();
   }
   if (cleared.has('storyboard_pipeline_logs')) {
     storyboardPipelineArchiveEpoch++;
@@ -36228,9 +36288,10 @@ function cleanupRuntime(resetSettings = false) {
     clean('focus clock', () => stopFocusClockRuntime());
     clean('notes', () => {
       stopNotesPanelResizeTracking();
-      for (const timer of notesSaveTimers.values()) clearTimeout(timer);
+      notesViewEpoch++;
+      notesSyncPanel?.dispose(); notesSyncPanel = null;
       notesSaveTimers.clear();
-      clearTemporaryQianmuNotes();
+      void clearTemporaryQianmuNotes().catch(error => console.warn(`[${MODULE_NAME}] note close failed`, error));
       notesRuntime = [];
       notesLoaded = false;
       notesLoading = null;

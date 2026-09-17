@@ -1,5 +1,6 @@
 // Production detached-note render/mount/theme/drag chain with synthetic settings.
 // No user notes, production origin, account persistence or provider is accessed.
+// Settings and device saves are separate counters, not durable-storage proof.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -23,12 +24,12 @@ try {
     await page.evaluate(async functions => {
         for (const file of ['qianmu-appearance-session', 'qianmu-appearance-actions', 'qianmu-classic-palettes', 'qianmu-icon-renderer', 'qianmu-notes-theme']) Object.assign(window, await import(`./${file}.js`));
         window.settings = { theme: 'dream', notes: { enabled: true, detached: true, position: { x: 80, y: 180 }, appearance: { tone: 'dark', edgeIndex: 0 } } };
-        window.fixture = { saves: 0, opens: 0, renders: 0 };
+        window.fixture = { settingsSaves: 0, deviceSaves: 0, opens: 0, renders: 0 };
         Object.assign(window, { MODULE_NAME: 'isolated-qianmu', NOTES_FLOAT_LAYER_ID: 'qianmu-notes-float-layer', NOTES_PANEL_LAYER_ID: 'qianmu-notes-panel-layer', notesPanelOpen: false,
             QUICK_HEX_BORDER_SVG: '<svg class="sd-hive-hex-outline" viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,1 99,25 99,75 50,99 1,75 1,25"/></svg>',
             notesFeatureSettings: () => settings.notes, clampDetachedNotesEntry: position => ({ ...position }), detachedNotesGeometry: () => ({ width: 52, height: 60 }),
             htmlEscape: value => String(value).replaceAll('"', '&quot;'), detachedNoteCanReturnHome: () => false,
-            saveSettings: () => fixture.saves++, openNotesPanel: () => fixture.opens++, toast() {}, NOTES_THEME_VARIABLES: ['--sd-text', '--sd-accent', '--sd-card'],
+            saveSettings: () => fixture.settingsSaves++, persistNotesDevice: () => fixture.deviceSaves++, openNotesPanel: () => fixture.opens++, toast() {}, NOTES_THEME_VARIABLES: ['--sd-text', '--sd-accent', '--sd-card'],
         });
         window.appearanceSession = createQianmuAppearanceSession({ readSettings: () => settings, document, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
         new Function(functions + ';Object.assign(window,{renderFloatingNotes,bindFloatingNoteEvents,syncNotesTheme});')();
@@ -46,7 +47,7 @@ try {
                 background: style.backgroundColor, edge: line.stroke, animation: line.animationName,
                 accent: resolve(style.getPropertyValue('--qm-accent') || '#000'),
                 ink: resolve(`color-mix(in srgb, ${style.getPropertyValue('--qm-accent') || '#000'} 55%, ${style.getPropertyValue('--qm-ink') || '#000'})`),
-                position: [entry.style.left, entry.style.top], preference: { ...settings.notes.appearance }, renders: fixture.renders, saves: fixture.saves };
+                position: [entry.style.left, entry.style.top], preference: { ...settings.notes.appearance }, renders: fixture.renders, settingsSaves: fixture.settingsSaves, deviceSaves: fixture.deviceSaves };
         };
     }, ['currentHiveThemeKey', 'currentHivePalette', 'renderFloatingNotes', 'bindFloatingNoteEvents', 'syncNotesTheme'].map(section).join('\n'));
     const original = await page.evaluate(() => inspect());
@@ -73,6 +74,7 @@ try {
                         assert.equal(result.edge, result.accent, 'computed stroke must use the selected accent even for saved edge 0');
                         assert.equal(result.icon, result.ink); assert.equal(result.color, result.ink);
                         assert.deepEqual(result.preference, { tone: 'dark', edgeIndex: 0 }); assert.deepEqual(result.position, ['80px', '180px']); assert.equal(result.renders, 1);
+                        assert.equal(result.deviceSaves, 0, 'appearance edits must not write device geometry');
                         if (priorAccent) { assert.notEqual(result.edge, priorAccent.edge); assert.notEqual(result.icon, priorAccent.icon); }
                         priorAccent = result;
                         if (accent === '#3c78bb' && priorMode) { assert.notEqual(result.background, priorMode.background, 'day/night must not stay on saved dark tone'); assert.notEqual(result.icon, priorMode.icon); }
@@ -84,14 +86,16 @@ try {
         }
         // The real pointer-capture handler continues while the theme is changed.
         await page.mouse.move(106, 210); await page.mouse.down(); await page.mouse.move(151, 248);
-        const before = await page.evaluate(() => ({ position: [fixture.entry.style.left, fixture.entry.style.top], saves: fixture.saves, dragging: fixture.entry.classList.contains('is-dragging') }));
+        const before = await page.evaluate(() => ({ position: [fixture.entry.style.left, fixture.entry.style.top], settingsSaves: fixture.settingsSaves, deviceSaves: fixture.deviceSaves, dragging: fixture.entry.classList.contains('is-dragging') }));
         assert.equal(before.dragging, true);
         await page.evaluate(() => fixture.change({ mode: 'light', accent: '#527c69' }));
         await page.mouse.move(180, 278); await page.mouse.up();
-        const after = await page.evaluate(() => ({ same: fixture.entry === document.querySelector('.sd-detached-notes-entry'), position: settings.notes.position, saves: fixture.saves, dragging: fixture.entry.classList.contains('is-dragging') }));
-        assert.equal(after.same, true); assert.equal(after.dragging, false); assert.equal(after.saves, before.saves + 2, 'one theme save plus one completed drag save');
+        const after = await page.evaluate(() => ({ same: fixture.entry === document.querySelector('.sd-detached-notes-entry'), position: settings.notes.position, settingsSaves: fixture.settingsSaves, deviceSaves: fixture.deviceSaves, dragging: fixture.entry.classList.contains('is-dragging') }));
+        assert.equal(after.same, true); assert.equal(after.dragging, false);
+        assert.equal(after.settingsSaves, before.settingsSaves + 1, 'only the theme edit writes account preferences, not the drag');
+        assert.equal(after.deviceSaves, before.deviceSaves + 1, 'completed drag writes device geometry once');
         assert.ok(after.position.x > Number.parseFloat(before.position[0]) && after.position.y > Number.parseFloat(before.position[1]));
-        checks.push('Native captured-pointer drag continues across accent/day-night change and saves its new position once');
+        checks.push('Native captured-pointer drag continues across appearance change: one account theme save and one separate device geometry save');
 
         // All classic palettes must continue using the retained classic tone and edge.
         for (const key of ['light', 'dark', 'summer', 'candy', 'kraft', 'dream']) {
@@ -122,6 +126,7 @@ try {
         await page.locator('.sd-detached-notes-entry').click(); assert.equal(await page.evaluate(() => fixture.opens), 1);
         checks.push('Theme adaptation preserves the real detached-note click-to-open binding');
         assert.equal(external, 0); assert.deepEqual(errors, []);
-        console.log(JSON.stringify({ passed: checks.length, checks, errors, external, productionDataRead: false }));
+        console.log(JSON.stringify({ passed: checks.length, checks, errors, external, productionDataRead: false,
+            scope: 'real renderer, theme session and native drag handlers; account/device saves use separate synthetic counters, not real localStorage' }));
     }
 } finally { await context.close(); await browser.close(); }

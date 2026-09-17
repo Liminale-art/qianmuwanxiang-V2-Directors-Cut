@@ -12,20 +12,22 @@ import {
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const storeSource = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
+const notesSource = await readFile(new URL('../qianmu-notes.js', import.meta.url), 'utf8');
 
 const clipped = normalizeQianmuNote({ id: 'n', title: 'a'.repeat(150), body: 'b'.repeat(21000), width: 10, height: 900 });
 assert.equal(clipped.title.length, 120, 'legacy note titles remain bounded during migration');
 assert.equal(clipped.body.length, 20000, 'note bodies must remain bounded');
 
-clearTemporaryQianmuNotes();
-const temporary = createQianmuNote({ body: 'temporary ST note', pinned: false });
-await saveQianmuNote(temporary);
-assert.ok((await listQianmuNotes()).some((note) => note.id === temporary.id));
-await deleteQianmuNote(temporary.id);
-assert.ok(!(await listQianmuNotes()).some((note) => note.id === temporary.id));
+await clearTemporaryQianmuNotes();
+const draft = createQianmuNote({ body: 'automatic durable ST note', pinned: false });
+await assert.rejects(saveQianmuNote(draft), /账户尚未就绪/, 'anonymous drafts must not silently enter an unowned temporary store');
+await assert.rejects(listQianmuNotes(), /账户尚未就绪/);
+await assert.rejects(deleteQianmuNote(draft.id), /账户尚未就绪/);
+assert.doesNotMatch(notesSource, /const temporaryNotes|temporaryNotes\.set|if \(note\.pinned/);
+assert.match(notesSource,/current\.runtime\.save\(note\)/,'all notes delegate to the durable account runtime regardless of prominence');
 
 assert.match(storeSource, /DB_VERSION = 15[\s\S]*STORE_NOTES = 'notes'/, 'notes keep an isolated database store');
-assert.match(storeSource, /STORE_NOTES.*recoverable: false/, 'pinned notes must not enter safe cleanup');
+assert.match(storeSource, /STORE_NOTES.*recoverable: false/, 'unowned legacy originals must not enter safe cleanup');
 assert.match(source, /id: 'notes', label: '便笺'[\s\S]*qm-regular-note-pencil/, 'the hive owns a local bundled note icon');
 assert.match(source, /function bindNotesHiveDetachDrag[\s\S]*noteSettings\.detached = true/, 'dragging the hive cell out detaches the entry itself');
 assert.match(source, /noteSettings\.appearance = \{[\s\S]*hiveTone[\s\S]*hiveEdgeIndex/, 'detaching must preserve the source hive cell tone and edge choice');
@@ -48,7 +50,7 @@ assert.match(source, /function renderNotesPanel\(\)[\s\S]*aria-modal="false"/, '
 assert.match(source, /function renderNotesPanelPortal\(\)[\s\S]*document\.body\.appendChild\(layer\)/, 'notes must live in an independent body portal');
 assert.match(source, /function qianmuDockingSurfaceBusy\(\)[\s\S]*\[role="dialog"\]\[aria-modal="true"\][\s\S]*function detachedNoteCanReturnHome/, 'docking must be disabled while another modal or panel is active');
 assert.match(source, /function detachedNoteCanReturnHome[\s\S]*getElementById\(FLOAT_ID\)[\s\S]*noteRect\.left >= logoRect\.left[\s\S]*noteRect\.right <= logoRect\.right/, 'a detached note must be fully placed over the real Qianmu logo before returning home');
-assert.match(source, /pinned \? '便笺已保存'/, 'pinning a note confirms durable storage');
+assert.match(source, /pinned \? '便笺已设为常驻' : '已取消常驻，内容仍自动保存'/, 'pinning changes prominence, never the durable lifetime of prose');
 assert.match(styles, /\.sd-notes-panel[\s\S]*background: var\(--sd-notes-surface\)/, 'the notes page must use an opaque theme surface');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(60vw,[\s\S]*height: min\(60vh,/, 'desktop notes use the compact sixty-percent workspace');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*resize: both/, 'desktop notes must expose native two-axis drag resizing');
@@ -56,7 +58,7 @@ assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-font-size-control \{[^
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-font-size \{[^}]*position: absolute;[^}]*inset: 0;[^}]*opacity: 0;/, 'the native font selector must remain accessible over the icon without changing its visual size');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-body \{[^}]*font-size: var\(--sd-note-editor-font-size, 13px\);/, 'the detached note editor uses the persisted readable type size');
 assert.match(source, /panelSize: \{ width: null, height: null \}/, 'desktop note size must have a backward-compatible persisted setting');
-assert.match(source, /function bindNotesPanelResize[\s\S]*new ResizeObserver[\s\S]*noteSettings\.panelSize = size;[\s\S]*saveSettings\(\)/, 'desktop note resizing must persist without rebuilding the editor');
+assert.match(source, /function bindNotesPanelResize[\s\S]*new ResizeObserver[\s\S]*noteSettings\.panelSize = size;[\s\S]*persistNotesDevice\(\)/, 'desktop note resizing persists locally without rebuilding the editor or sharing geometry');
 assert.match(styles, /\.sd-note-pinned-mark,[\s\S]*\.sd-note-tools-toggle,[\s\S]*width: 28px; height: 28px/, 'pin state and more control must occupy the same visual slot');
 assert.match(styles, /\.sd-note-item-tools \{[\s\S]*border: 0;[\s\S]*background: transparent/, 'the expanded more menu remains visually unboxed');
 assert.match(source, /layer\.onpointerdown = isolateFromHostMenus;[\s\S]*layer\.onclick = isolateFromHostMenus;/, 'the independent notes page must not bubble clicks into ST menu dismiss handlers');

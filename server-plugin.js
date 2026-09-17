@@ -7,6 +7,8 @@ import { imageServiceAccount } from './qianmu-image-service-access.js';
 import { createImageRestoreService } from './qianmu-image-restore-service.js';
 import { createSourceIdentityService } from './qianmu-source-identity-service.js';
 import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source-identity-contract.js';
+import { createNotesSyncService } from './qianmu-notes-sync-service.js';
+import { notesSyncError, notesSyncErrorPayload } from './qianmu-notes-sync-contract.js';
 import { createChatCharacterReceiptService } from './qianmu-chat-character-receipt-service.js';
 import { chatCharacterReceiptError, chatCharacterReceiptErrorPayload } from './qianmu-chat-character-receipt.js';
 import { imageRestoreError, imageRestoreErrorPayload } from './qianmu-image-restore-contract.js';
@@ -186,6 +188,21 @@ export async function init(router, options = {}) {
 
   let imageTasks;
   const hostDataRoot = () => options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
+  let notesSync;
+  for (const [method, route] of [['get','/notes'],['post','/notes/write']]) router[method](route, async (req,res) => {
+    prepareImageResponse(res);
+    const controller = new AbortController(), onClose = () => {if(!res.writableEnded)controller.abort();};
+    res.once?.('close',onClose);
+    try {
+      try {imageServiceAccount(req);} catch (_) {throw notesSyncError('account','请先登录 ST 账户同步便笺',401);}
+      if(!notesSync){notesSync=createNotesSyncService({...(options.notesSyncOptions||{}),dataRoot:hostDataRoot()});imageTaskServices.add(notesSync);}
+      const result = method==='get' ? await notesSync.list(req,{signal:controller.signal}) : await notesSync.write(req,req.body,{signal:controller.signal});
+      if(!res.destroyed&&!res.writableEnded)return res.json(result);
+    } catch(error) {
+      const result=notesSyncErrorPayload(error);
+      if(!res.destroyed&&!res.writableEnded)return res.status(result.status).json(result.body);
+    } finally {res.off?.('close',onClose);}
+  });
   let sourceIdentity;
   const sourceIdentityFor = req => {
     try { imageServiceAccount(req); } catch (_) { throw sourceIdentityError('account', '请先登录 ST 账户核对来源标识', 401); }

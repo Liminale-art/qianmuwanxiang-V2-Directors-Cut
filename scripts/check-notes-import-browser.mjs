@@ -9,26 +9,29 @@ let external=0;const errors=[];
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.href==='https://qianmu.test/')return route.fulfill({contentType:'text/html',body:'<!doctype html>'});
-  if(url.origin==='https://qianmu.test'&&['/qianmu-notes.js','/qianmu-blobstore.js','/qianmu-reader-package.js','/qianmu-json-input.js','/qianmu-library-backup.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+  if(url.origin==='https://qianmu.test'&&/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   external++;return route.abort();
 });
 try{
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('https://qianmu.test/');
   const checks=await page.evaluate(async backupCheckSource=>{
     const api=await import('/qianmu-notes.js'),db=await import('/qianmu-blobstore.js'),checks=[];
+    const {createNotesSyncRuntime}=await import('/qianmu-notes-sync-runtime.js');
+    api.configureQianmuNotes({resolveNamespace:async()=> 'st-user:synthetic-import',createRuntime:options=>createNotesSyncRuntime(options)});
     const check=(name,value)=>{if(!value)throw Error(name);checks.push(name);},guard=()=>{};
     const read=()=>api.listQianmuNotes({strict:true}),write=note=>api.saveImportedQianmuNote(note,{check:guard});
-    await db.putNote('original',{body:'keep original'});
-    let collision=false;try{await write({id:'original',body:'must not replace'});}catch{collision=true;}
-    check('create-only import preserves an existing ID',collision&&(await read()).find(n=>n.id==='original').body==='keep original');
-    const add=IDBObjectStore.prototype.add;let result;
+    await db.putNote('legacy-retained',api.normalizeQianmuNote({id:'legacy-retained',body:'unowned original remains'}));
+    await api.saveQianmuNote(api.normalizeQianmuNote({id:'original',body:'keep original',pinned:false}));
+    const importedCopy=await write({id:'original',body:'must not replace',pinned:false});
+    check('import assigns a fresh ID and preserves the existing account original',importedCopy.id!=='original'&&(await read()).find(n=>n.id==='original').body==='keep original'&&!importedCopy.pinned);
+    const add=IDBObjectStore.prototype.add,notesPut=IDBObjectStore.prototype.put;let result;
     try{
-      IDBObjectStore.prototype.add=function(value,key){const request=add.call(this,value,key);if(key==='abort')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
+      IDBObjectStore.prototype.put=function(value,...args){const request=notesPut.call(this,value,...args);if(this.name==='accounts'&&value.rows?.some(row=>row.note?.body==='rollback'))request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
       const file=new File([JSON.stringify({type:'qianmu-notes',version:1,notes:[{id:'abort',body:'rollback'},{id:'committed',body:'saved'}]})],'fixture.json');
       result=await api.importQianmuNotesBackup(file,{check:guard,confirm:async()=>true,read,write,uid:()=> 'copy'});
-    }finally{IDBObjectStore.prototype.add=add;}
+    }finally{IDBObjectStore.prototype.put=notesPut;}
     const notes=await read();
-    check('aborted successful request is failed while another note commits',result.imported===1&&result.failed.length===1&&!notes.some(n=>n.id==='abort')&&notes.some(n=>n.id==='committed'));
+    check('aborted successful account write is failed while another unpinned import commits',result.imported===1&&result.failed.length===1&&!notes.some(n=>n.body==='rollback')&&notes.some(n=>n.body==='saved'&&!n.pinned));
     for(const row of [null,{id:'bad',body:'字'.repeat(20001)}]){
       let rejected=false,destinationReads=0;
       const file=new File([JSON.stringify({type:'qianmu-notes',version:1,notes:[{id:'preflight-first',body:'must not write'},row]})],'invalid.json');
@@ -38,11 +41,11 @@ try{
     const {readLibraryBackupFile}=await import('/qianmu-library-backup.js');
     let rejectedAudio=false;try{await readLibraryBackupFile(new File(['{"type":"qianmu-tts-favorites","version":1,"entries":[{"data":"YR=="}]}'],'bad-audio.json'),'qianmu-tts-favorites',{check:guard});}catch(error){rejectedAudio=error.message.includes('第 1 条');}
     check('native browser rejects incomplete canonical audio before allocating decoded copies',rejectedAudio);
-    const cursor=IDBObjectStore.prototype.openCursor;let failed=false;
+    const noteGet=IDBObjectStore.prototype.get;let failed=false;
     try{
-      IDBObjectStore.prototype.openCursor=function(...args){const request=cursor.apply(this,args);if(this.name==='notes')request.addEventListener('success',()=>{if(!request.result)this.transaction.abort();});return request;};
+      IDBObjectStore.prototype.get=function(...args){const request=noteGet.apply(this,args);if(this.name==='accounts')request.addEventListener('success',()=>this.transaction.abort(),{once:true});return request;};
       try{await read();}catch{failed=true;}
-    }finally{IDBObjectStore.prototype.openCursor=cursor;}
+    }finally{IDBObjectStore.prototype.get=noteGet;}
     check('a late inventory abort cannot masquerade as a successfully read empty or partial library',failed);
     let guarded=false;try{await api.saveImportedQianmuNote({id:'stale'},{check(){throw Error('stale');}});}catch{guarded=true;}
     check('stale import does not create a note',guarded&&!(await read()).some(n=>n.id==='stale'));
@@ -205,6 +208,7 @@ try{
     }
     const descriptor=Object.getOwnPropertyDescriptor(window,'indexedDB');
     try{
+      await api.clearTemporaryQianmuNotes();
       Object.defineProperty(window,'indexedDB',{configurable:true,value:undefined});
       for(const method of ['listNotes','listFavorites']){let failed=false;try{await db[method]({requireCommit:true});}catch{failed=true;}check(method+' strict backup inventory rejects unavailable storage even with a cached database',failed);}
       let unavailableScans=0;for(const [method] of scans){try{await reader[method]();}catch{unavailableScans++;}}check('every backup directory rejects unavailable storage',unavailableScans===scans.length);
@@ -214,10 +218,11 @@ try{
       for(const [name,run] of [['strict read',read],['persistent import',()=>write({id:'no-storage'})],['favorite import',()=>db.importFavorite('no-storage',audio,{},'')],['reader import',()=>writer.putBook('no-storage',{})]]){
         let failed=false;try{await run();}catch{failed=true;}check(name+' rejects unavailable storage',failed);
       }
-      await api.saveQianmuNote({id:'temporary',body:'normal temporary',pinned:false});
-      const local=await api.listQianmuNotes();
-      check('normal temporary notes still work but failed imports never become temporary',local.some(n=>n.id==='temporary')&&!local.some(n=>n.id==='no-storage'));
+      let durableFailed=false;try{await api.saveQianmuNote(api.normalizeQianmuNote({id:'temporary',body:'must not claim temporary fallback',pinned:false}));}catch{durableFailed=true;}
+      check('unpinned notes refuse a false temporary-save success when durable storage is unavailable',durableFailed);
     }finally{if(descriptor)Object.defineProperty(window,'indexedDB',descriptor);else delete window.indexedDB;}
+    await api.clearTemporaryQianmuNotes();
+    check('restoring storage recovers original account notes without invented fallback entries',(await read()).some(n=>n.id==='original')&&!(await read()).some(n=>n.id==='temporary'||n.id==='no-storage'));
     const {createCoreadImportViewGuard,prepareCoreadPackageExport,readCoreadPackageFile,applyCoreadPackageData,createCoreadImportProgress,finishCoreadPackageImport}=await import('/qianmu-reader-package.js');
     const atomicKey='reader-atomic',put=IDBObjectStore.prototype.put;
     const originalPair=async()=>{await writer.putBook(atomicKey,{meta:{id:atomicKey,title:'old title',progress:12},fullText:'old prose'});await writer.putCover(atomicKey,new Blob(['old cover']));};
@@ -343,6 +348,7 @@ try{
       check('native '+mode+' confirmation never touches destination or publishes success',reads===0&&!(await read()).some(n=>n.id==='confirm-not-written')&&(mode==='cancel'?restored?.cancelled:confirmationError.includes('导入页面')));
       backupCheck.release();f.done();
     }
+    await api.clearTemporaryQianmuNotes();
     return checks;
   },storyboardFunctionSource('createStorageBackupCheck'));
   await page.evaluate(code=>{window.eval(code);window.downloadRevoked=0;const revoke=URL.revokeObjectURL.bind(URL);URL.revokeObjectURL=url=>{window.downloadRevoked++;revoke(url);};},storyboardFunctionSource('ttsDownloadBlob'));
@@ -364,5 +370,5 @@ try{
   checks.push('a fresh document rereads the retained original, cover and import-time metadata from native storage');
   assert.equal(restored.settings.fontSize,16);assert.equal(restored.settings.books[0].id,'reader-atomic');assert.equal(restored.settings.books[0].hasCover,true);
   checks.push('synthetic compensated settings survive reload independently without overwriting the original metadata snapshot');
-  assert.equal(checks.length,161);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,162);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:checks.length,checks,external,errors}));
 }finally{await context.close();await browser.close();}

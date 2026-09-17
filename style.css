@@ -10795,3 +10795,16 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-gallery-page:has(.sd-gallery-narrative) .sd-storyboard-gallery-new-folder { grid-column:3;grid-row:1; }
   #story-director-modal .sd-storyboard-gallery-page:has(.sd-gallery-narrative) .sd-storyboard-gallery-search { grid-column:1/-1;grid-row:2; }
 }
+#qianmu-notes-panel-layer .sd-notes-sync {
+  display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+  padding: 5px 14px; font-size: 11px; color: var(--sd-muted); min-width: 0;
+}
+#qianmu-notes-panel-layer .sd-notes-sync-status { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#qianmu-notes-panel-layer .sd-notes-sync button { border: 0; background: transparent; color: var(--sd-accent); font: inherit; cursor: pointer; padding: 4px; white-space: nowrap; }
+#qianmu-notes-panel-layer .sd-notes-sync button[hidden] { display: none; }
+#qianmu-notes-panel-layer .sd-notes-sync button:disabled { opacity: .5; cursor: default; }
+#qianmu-notes-panel-layer .sd-notes-sync[data-state="error"] .sd-notes-sync-status { color: var(--sd-text); }
+#qianmu-notes-panel-layer .sd-note-legacy-review { position: absolute; inset: 12px; z-index: 2; display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--sd-notes-surface, var(--sd-card)); border: 1px solid var(--sd-border); color: var(--sd-text); border-radius: inherit; min-height: 0; }
+#qianmu-notes-panel-layer .sd-note-legacy-review p { font-size: 12px; margin: 0; }
+#qianmu-notes-panel-layer .sd-note-legacy-review textarea { flex: 1; min-height: 50px; width: 100%; resize: none; }
+#qianmu-notes-panel-layer .sd-note-legacy-review > div { display: flex; flex-wrap: wrap; gap: 8px; }

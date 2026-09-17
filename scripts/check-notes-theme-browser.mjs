@@ -34,9 +34,9 @@ try {
     const panel = document.querySelector('.sd-notes-panel'); panel.style.position = 'absolute'; panel.style.left = '300px'; panel.style.top = '150px';
     const textarea = panel.querySelector('textarea'); textarea.focus(); textarea.setSelectionRange(2, 7, 'backward');
     const entry = document.querySelector('.sd-detached-notes-entry');
-    window.fixture = {panel, textarea, entry, noteSettings: {position: {x: 80, y: 90}, detached: true}, saves: 0, binds: 0};
+    window.fixture = {panel, textarea, entry, noteSettings: {position: {x: 80, y: 90}, detached: true}, settingsSaves: 0, deviceSaves: 0, binds: 0};
     Object.assign(window, {clampDetachedNotesEntry: value => value, detachedNoteCanReturnHome: () => false,
-      notesFeatureSettings: () => fixture.noteSettings, saveSettings: () => fixture.saves++,
+      notesFeatureSettings: () => fixture.noteSettings, saveSettings: () => fixture.settingsSaves++, persistNotesDevice: () => fixture.deviceSaves++,
       renderFloatingNotes: () => {throw Error('theme switch recreated entry');}, toast(){}, openNotesPanel(){}});
     new Function(dragSource + ';window.bindFloating=bindFloatingNoteEvents;')();
     bindFloating(document.getElementById('qianmu-notes-float-layer'));
@@ -52,11 +52,11 @@ try {
         after: {width: panel.style.width, height: panel.style.height, left: entry.style.left, top: entry.style.top},
         edge: entry.style.getPropertyValue('--sd-wheel-edge'), expected: palettes[theme].edges[2 % palettes[theme].edges.length],
         copiedInk: getComputedStyle(document.getElementById('qianmu-notes-panel-layer')).getPropertyValue('--sd-text').trim(),
-        sourceInk: getComputedStyle(document.getElementById('story-director-modal')).getPropertyValue('--sd-text').trim(), saves: fixture.saves};
+        sourceInk: getComputedStyle(document.getElementById('story-director-modal')).getPropertyValue('--sd-text').trim(), settingsSaves: fixture.settingsSaves, deviceSaves: fixture.deviceSaves};
     }, {theme, tone});
     assert.equal(result.sameEditor && result.samePanel && result.sameEntry && result.active, true);
     assert.equal(result.value, '未保存的原始正文。继续输入。'); assert.deepEqual(result.selection, [2, 7, 'backward']);
-    assert.deepEqual(result.after, result.geometry); assert.equal(result.edge, result.expected); assert.equal(result.copiedInk, result.sourceInk); assert.equal(result.saves, 0);
+    assert.deepEqual(result.after, result.geometry); assert.equal(result.edge, result.expected); assert.equal(result.copiedInk, result.sourceInk); assert.equal(result.settingsSaves, 0); assert.equal(result.deviceSaves, 0);
     checks.push(`${theme}/${tone}: in-place colour with text, backward selection and geometry retained`);
   }
   // Use native pointer capture; recolour in the middle of the actual drag handler.
@@ -66,14 +66,15 @@ try {
   await page.evaluate(() => recolor('summer'));
   await page.mouse.move(200, 194); await page.mouse.up();
   const after = await page.evaluate(() => ({same: fixture.entry === document.querySelector('.sd-detached-notes-entry'), position: fixture.noteSettings.position,
-    left: fixture.entry.style.left, top: fixture.entry.style.top, dragging: fixture.entry.classList.contains('is-dragging'), saves: fixture.saves}));
-  assert.equal(after.same, true); assert.equal(after.dragging, false); assert.equal(after.saves, 1);
+    left: fixture.entry.style.left, top: fixture.entry.style.top, dragging: fixture.entry.classList.contains('is-dragging'), settingsSaves: fixture.settingsSaves, deviceSaves: fixture.deviceSaves}));
+  assert.equal(after.same, true); assert.equal(after.dragging, false); assert.equal(after.settingsSaves, 0); assert.equal(after.deviceSaves, 1);
   assert.notEqual(after.left, before.left); assert.notEqual(after.top, before.top);
   assert.equal(Number.parseFloat(after.left), after.position.x); assert.equal(Number.parseFloat(after.top), after.position.y);
-  checks.push('native captured-pointer drag continues across theme change and commits the final position once');
+  checks.push('native captured-pointer drag continues across theme change and writes device geometry once without saving account settings');
   await page.evaluate(() => {document.getElementById('story-director-modal').remove(); recolor('candy');});
   assert.equal(await page.locator('#story-director-modal').count(), 0);
   checks.push('open standalone editor resolves theme without leaving a main-panel placeholder');
   assert.equal(external, 0); assert.deepEqual(errors, []);
-  console.log(JSON.stringify({checks, external, errors, productionDataRead: false}));
+  console.log(JSON.stringify({passed:checks.length,checks, external, errors, productionDataRead: false,
+    scope:'real theme sync and native drag handler; independent synthetic device/account save counters, not real localStorage'}));
 } finally {await context.close(); await browser.close();}

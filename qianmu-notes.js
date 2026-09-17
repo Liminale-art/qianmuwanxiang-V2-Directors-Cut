@@ -1,10 +1,79 @@
 // 千幕 · 轻量便笺数据层
-// 固定便笺写入 IndexedDB；未固定便笺只存在当前页面运行态，重开 ST 自动消失。
+// All notes are durable. Pinning controls prominence, never whether prose survives.
+// The account-scoped sync store is separate from the legacy, unowned notes store.
 
 import * as blobStore from './qianmu-blobstore.js';
 import {readLibraryBackupFile,confirmLibraryRestore,NOTE_TEXT_LIMITS} from './qianmu-library-backup.js';
 
-const temporaryNotes = new Map();
+let configuration = null, session = null, opening = null, closing = null, epoch = 0, syncTimer = null;
+const localWrites = new Set();
+const changed = () => new Error('便笺账户或会话已变化，原内容保留，请重新打开便笺。');
+
+export function configureQianmuNotes(options) {
+  configuration = options;
+}
+
+export function qianmuNotesState() {
+  return { namespace: session?.namespace || '', ...(session?.runtime.status || { state: 'local-only', pending: 0, error: '', conflicts: 0 }) };
+}
+
+async function notesSession(expectedNamespace, admittedEpoch) {
+  // A write admitted before close must finish the opening/session chain that
+  // close is draining. New callers still wait outside that drain boundary.
+  if (closing && admittedEpoch === undefined) await closing;
+  if (admittedEpoch !== undefined && admittedEpoch !== epoch) throw changed();
+  if (!configuration) throw new Error('便笺账户尚未就绪，请重新打开。');
+  const token = epoch, namespace = await configuration.resolveNamespace();
+  if (token !== epoch || expectedNamespace && expectedNamespace !== namespace) throw changed();
+  if (session?.namespace === namespace) return session;
+  if (opening) { await opening; return notesSession(expectedNamespace, admittedEpoch); }
+  opening = (async () => {
+    if (session) { await session.runtime.close(); session = null; configuration.onChange?.({ reason: 'account' }); }
+    const { createNotesSyncRuntime } = configuration.createRuntime ? { createNotesSyncRuntime: configuration.createRuntime } : await import('./qianmu-notes-sync-runtime.js');
+    const guard = async () => {
+      if (token !== epoch || namespace !== await configuration.resolveNamespace() || token !== epoch) throw changed();
+    };
+    await guard();
+    const runtime = createNotesSyncRuntime({ namespace, headers: configuration.headers, guard,
+      onChange: event => { if (token === epoch && session?.namespace === namespace) configuration.onChange?.(event); } });
+    if (token !== epoch) { await runtime.close(); throw changed(); }
+    session = { namespace, runtime, guard };
+    return session;
+  })();
+  try { return await opening; } finally { opening = null; }
+}
+
+function withOwner(note, namespace) { return { ...note, _notesAccount: namespace }; }
+function queueSync() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { syncTimer = null; void syncQianmuNotes().catch(() => {}); }, 650);
+}
+async function localWrite(action) {
+  const operation = action(); localWrites.add(operation);
+  try { return await operation; } finally { localWrites.delete(operation); }
+}
+
+export async function syncQianmuNotes() {
+  const current = await notesSession();
+  await current.runtime.sync(); await current.guard();
+  return qianmuNotesState();
+}
+
+// Legacy data has no account evidence. Inspection/export is local; adoption is explicit.
+export async function listLegacyQianmuNotes() {
+  if (!blobStore.blobStoreAvailable()) return [];
+  return blobStore.listNotes({ requireCommit: true });
+}
+export async function adoptLegacyQianmuNotes({ confirmed = false, namespace } = {}) {
+  if (confirmed !== true || !namespace) throw new Error('请先确认旧便笺所属的 ST 账户。');
+  const current = await notesSession(namespace), notes = await listLegacyQianmuNotes();
+  const content = notes.map(({ id, title, body, pinned, createdAt, updatedAt }) => ({ id, title, body, pinned, createdAt, updatedAt })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(content)));
+  const receipt = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+  await current.guard();
+  const result = await localWrite(() => current.runtime.importLegacy(notes, { confirmed: true, receipt }));
+  queueSync(); return result;
+}
 
 const text = (value, limit) => Array.from(String(value ?? '')).slice(0, limit).join('');
 const number = (value, fallback, min, max) => {
@@ -37,44 +106,50 @@ export function createQianmuNote(input = {}) {
   return normalizeQianmuNote({ ...input, createdAt: Date.now(), updatedAt: Date.now() });
 }
 
-export async function listQianmuNotes({strict = false} = {}) {
-  if (strict && !blobStore.blobStoreAvailable()) throw new Error('无法读取固定便笺库，未开始导入。');
-  const persistent = strict ? await blobStore.listNotes({requireCommit:true})
-    : blobStore.blobStoreAvailable() ? await blobStore.listNotes().catch(() => []) : [];
-  const merged = new Map(persistent.map((note) => [note.id, normalizeQianmuNote({ ...note, pinned: true })]));
-  for (const [id, note] of temporaryNotes) if (!merged.has(id)) merged.set(id, normalizeQianmuNote(note));
-  return [...merged.values()].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+export async function listQianmuNotes() {
+  const current = await notesSession(), notes = await current.runtime.list();
+  await current.guard();
+  return notes.map(note => withOwner(note, current.namespace)).sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
 }
 
-export async function saveQianmuNote(input) {
-  const note = normalizeQianmuNote({ ...input, updatedAt: Date.now() });
-  if (note.pinned && blobStore.blobStoreAvailable()) {
-    temporaryNotes.delete(note.id);
-    await blobStore.putNote(note.id, note);
-  } else {
-    temporaryNotes.set(note.id, note);
-    if (blobStore.blobStoreAvailable()) await blobStore.deleteNote(note.id).catch(() => {});
-  }
-  return note;
+export async function saveQianmuNote(input, { namespace = input?._notesAccount } = {}) {
+  if (closing) throw changed();
+  const admittedEpoch = epoch;
+  const { _notesAccount, ...note } = input;
+  return localWrite(async () => {
+    const current = await notesSession(namespace, admittedEpoch);
+    const saved = await current.runtime.save(note);
+    await current.guard(); queueSync();
+    return withOwner(saved, current.namespace);
+  });
 }
 
 export async function saveImportedQianmuNote(input, {check}) {
   check();
-  if (!blobStore.blobStoreAvailable()) throw new Error('固定便笺储存不可用，未保存为临时便笺。');
-  const note = normalizeQianmuNote({...input, pinned:true, floating:false, updatedAt:Date.now()});
-  if (temporaryNotes.has(note.id)) throw new Error('便笺 ID 已被占用，原内容保留，请重新导入。');
-  await blobStore.addNote(note.id, note, {check});
-  return note;
+  const current = await notesSession(); check();
+  // Imports always receive fresh IDs; a concurrent tab cannot turn an import into an overwrite.
+  const note = normalizeQianmuNote({ ...input, id: `note-import-${crypto.randomUUID()}`, floating: false, updatedAt: Date.now() });
+  const saved = await localWrite(() => current.runtime.save(note));
+  queueSync();
+  return withOwner(saved, current.namespace);
 }
 
-export async function deleteQianmuNote(noteId) {
-  const id = String(noteId || '');
-  temporaryNotes.delete(id);
-  if (blobStore.blobStoreAvailable()) await blobStore.deleteNote(id).catch(() => {});
+export async function deleteQianmuNote(noteId, { namespace, localRevision } = {}) {
+  const current = await notesSession(namespace);
+  await localWrite(() => current.runtime.remove(String(noteId || ''), { localRevision }));
+  await current.guard(); queueSync();
 }
 
-export function clearTemporaryQianmuNotes() {
-  temporaryNotes.clear();
+export async function clearTemporaryQianmuNotes() {
+  if (closing) return closing;
+  clearTimeout(syncTimer); syncTimer = null;
+  closing = (async () => {
+    await Promise.allSettled([...localWrites]);
+    epoch++; clearTimeout(syncTimer); syncTimer = null;
+    const previous = session; session = null;
+    await previous?.runtime.close();
+  })();
+  try { await closing; } finally { closing = null; }
 }
 
 // Import data only. The caller owns activity admission, view updates and notices.
@@ -92,7 +167,7 @@ export async function importQianmuNotesBackup(file, {check, confirm, read, write
     if (!id || occupiedIds.has(id)) id = uid('note-import');
     occupiedIds.add(id);
     try {
-      await write(normalizeQianmuNote({ ...raw, id, pinned: true, floating: false }));
+      await write(normalizeQianmuNote({ ...raw, id, pinned: Boolean(raw.pinned), floating: false }));
       progress.imported++;
     } catch (error) {
       failed.push(`第 ${index + 1} 条：${error?.message || error}`);
