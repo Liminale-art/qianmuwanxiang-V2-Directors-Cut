@@ -2,9 +2,11 @@ import {createChatCharacterReceiptService} from './qianmu-chat-character-receipt
 import {createRecipeArchiveStore} from './qianmu-recipe-archive-store.js';
 import {imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {recipeArchiveError,recipeArchiveRequest,recipeArchiveSnapshot,recipeArchiveReference,recipeArchiveResponse,recipeArchiveStorageRequest,recipeArchiveStorageResponse,RECIPE_ARCHIVE_LIMITS} from './qianmu-recipe-archive-contract.js';
+import {recipeRestoreRequest,inspectRecipeRestoreRequest,recipeRestoreResponse} from './qianmu-recipe-restore-contract.js';
 const fail=(code,message,status)=>{throw recipeArchiveError(code,message,status);};
 
-// Accepts selectors, never client recipes/paths/owners. The saved ST record is authoritative.
+// Ordinary preserve/read accept only selectors; the saved ST record is authoritative.
+// Explicit restore is separate, content-verified and never overwrites a caller-chosen ID.
 export function createRecipeArchiveService(options){
   const source=createChatCharacterReceiptService(options),store=createRecipeArchiveStore(options),pending=new Set();let closed=false;
   async function inspect(req,input,signal){
@@ -50,7 +52,25 @@ export function createRecipeArchiveService(options){
     }):process(req,body,options,write);
     pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
   }
+  function restore(req,raw,options={}){
+    let input;try{input=recipeRestoreRequest(raw);if(closed||options.signal?.aborted)fail('changed','配方恢复已取消');if(pending.size>=RECIPE_ARCHIVE_LIMITS.pending)fail('busy','配方保全请求正忙',429);}
+    catch(error){return Promise.reject(error);}
+    const originalRoot=req.user?.directories?.root;
+    const guard=()=>{if(closed||options.signal?.aborted||req.user?.directories?.root!==originalRoot||!imageServiceAccountStillMatches(req,{namespace:input.expectedAccount}))fail('changed','配方恢复账户或目录已变化，未确认写入');};
+    const task=(async()=>{
+      guard();const {envelope}=await inspectRecipeRestoreRequest(input);guard();
+      // Import to an immutable generated ID, never overwrite the old ID supplied
+      // by a file. Corrupt/missing old files remain untouched for manual recovery.
+      const reference=await store.put(req,envelope,options);guard();
+      const saved=await store.get(req,input.expectedAccount,reference,options);guard();
+      await inspectRecipeRestoreRequest({...input,snapshot:saved.snapshot,source:saved.source});guard();
+      return recipeRestoreResponse({ok:true,version:1,expectedAccount:input.expectedAccount,source:input.source,
+        originalReference:input.originalReference,reference,proof:'durable-restored-recipe'});
+    })();
+    pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
+  }
   return Object.freeze({preserve:(req,input,options)=>run(req,input,options,true),read:(req,input,options)=>run(req,input,options,false),
     storage:(req,input,options)=>run(req,input,options,false,true),
+    restore,
     async close(){closed=true;await Promise.allSettled([source.close(),store.close(),...pending]);}});
 }

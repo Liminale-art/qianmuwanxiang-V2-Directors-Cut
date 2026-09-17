@@ -12,6 +12,8 @@
     "qianmu-chat-gallery-state.js",
     "qianmu-chat-gallery-evidence-reader.js",
     "qianmu-recipe-storage.js",
+    "qianmu-recipe-restore-contract.js",
+    "qianmu-recipe-restore-client.js",
     "qianmu-recipe-archive-contract.js",
     "qianmu-recipe-archive-client.js",
     "qianmu-recipe-archive-store.js",
