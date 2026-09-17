@@ -1,5 +1,6 @@
 import { htmlEscape as escape } from './qianmu-storyboard-utils.js';
 import { createGalleryDirectorySession } from './qianmu-gallery-directory.js';
+import { bindGalleryPreviewZoom } from './qianmu-gallery-preview-zoom.js';
 
 const button = (action, label, disabled = false) => `<button type="button" class="sd-btn" data-directory-action="${action}" ${disabled ? 'disabled' : ''}>${label}</button>`;
 export function galleryDirectoryOwnerLabel(ownerKey, context) {
@@ -12,7 +13,7 @@ export function galleryDirectoryOwnerLabel(ownerKey, context) {
 }
 
 // The directory is a local, rebuildable list of observed references, not an
-// account-wide server inventory. Only opening an existing current record loads media.
+// account-wide server inventory. Only an explicit picture click loads media.
 export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = () => true, locate,
     connect = createGalleryDirectorySession, timeoutMs = 20000 } = {}) {
     const document = parent.ownerDocument, view = document.defaultView, returnFocus = document.activeElement;
@@ -20,8 +21,11 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
     dialog.setAttribute('aria-label', '角色与聊天目录');
     let closed = false, busy = true, session, page = null, stack = [null], ownerKey = '', chatKey = '', tag = '', notice = '', sourceNotice = '';
     let timer, resolve, openingExpired = false; const finished = new Promise(done => resolve = done);
+    let preview = null, previewUrl = '', releaseZoom, listScroll = 0, restoreList = false, previewIndex = 0;
+    function releasePreview() { releaseZoom?.(); releaseZoom = null; if (previewUrl) view.URL.revokeObjectURL(previewUrl); previewUrl = ''; preview = null; }
     function close() {
         if (closed) return; closed = true; clearTimeout(timer); observer.disconnect(); view.removeEventListener('pagehide', close);
+        releasePreview();
         session?.close(); if (dialog.open) dialog.close(); dialog.remove();
         if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); resolve();
     }
@@ -38,6 +42,15 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
     });
     function draw() {
         if (!alive()) return;
+        releaseZoom?.(); releaseZoom = null;
+        if (preview) {
+            dialog.innerHTML = `<header><b>历史画面 · 只读</b>${button('preview-back', '返回目录', busy)}${button('close', '关闭')}</header><main>
+              <div class="sd-directory-image-stage" tabindex="0" aria-label="历史原图；滚轮或双指缩放，拖动平移，0 恢复"><div><img src="${escape(previewUrl)}" alt="${escape(preview.record.tags.join(' · ') || '历史画面')}" draggable="false"></div></div>
+              <nav aria-label="图片缩放"><button type="button" class="sd-btn" data-preview-zoom="out" aria-label="缩小">−</button><span data-preview-scale>100%</span><button type="button" class="sd-btn" data-preview-zoom="in" aria-label="放大">＋</button><button type="button" class="sd-btn" data-preview-zoom="reset">恢复适配</button></nav>
+              <details class="sd-directory-image-details"><summary>来源与详情</summary><p>${escape(galleryDirectoryOwnerLabel(preview.source.ownerKey, getContext()))}</p><p>${escape(preview.source.chatKey)}</p><p>${escape(preview.source.ownerKey)}</p><p>${escape(new Date(preview.record.createdAt).toLocaleString())} · ${preview.width} × ${preview.height}</p><p>${escape(preview.record.tags.join(' · '))}</p><p>按原文件位置读取的当前快照，不是永久归属或原件一致性证明。</p></details>
+              </main><footer><p role="status">只读查看，不切换或改写当前聊天，不提供历史记录的编辑、重绘或删除操作。</p></footer>`;
+            releaseZoom = bindGalleryPreviewZoom(dialog, { ...preview, isCurrent: alive }); return;
+        }
         const focused = document.activeElement;
         const focusKey = ['data-directory-action', 'data-directory-scope', 'data-directory-record'].find(key => dialog.contains(focused) && focused.hasAttribute(key));
         const focusValue = focusKey ? focused.getAttribute(focusKey) : '';
@@ -47,9 +60,9 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
           <p class="sd-directory-boundary">本机目录 · 只收录访问并核对过的聊天，不代表账户全部资料。历史引用不随原件缺失自动删除。</p>
           <fieldset ${busy ? 'disabled' : ''}><nav>${button('owners', '全部角色')}${ownerKey ? button('chats', '该角色的聊天', !chatKey) : ''}${button('refresh', '更新当前聊天目录', !session)}</nav>
           <h3>${escape(title)}</h3>${ownerKey ? `<p>${escape(ownerKey)}</p>` : ''}
-          ${chatKey ? `<form class="sd-directory-search"><input class="text_pole" type="search" name="tag" maxlength="80" value="${escape(tag)}" placeholder="按完整标签查找" aria-label="目录标签"><button type="submit" class="sd-btn">查找</button>${button('clear-tag', '清除', !tag)}</form><p>${own ? '当前聊天 · 可打开原画面' : '历史目录 · 在 ST 打开此角色的对应聊天后，可查看原画面。'}</p>` : ''}
+          ${chatKey ? `<form class="sd-directory-search"><input class="text_pole" type="search" name="tag" maxlength="80" value="${escape(tag)}" placeholder="按完整标签查找" aria-label="目录标签"><button type="submit" class="sd-btn">查找</button>${button('clear-tag', '清除', !tag)}</form><p>${own ? '当前聊天 · 可打开原画面' : '历史目录 · 可只读预览 ST 内保存的原图，不切换当前聊天。'}</p>` : ''}
           <div class="sd-directory-rows">${(page?.rows || []).map((row, i) => chatKey
-            ? `<div class="sd-directory-row"><span><b>${escape(row.tags.slice(0, 3).join(' · ') || '静帧')}</b><small>${escape(new Date(row.createdAt).toLocaleString())}</small></span>${own ? `<button type="button" class="sd-btn" data-directory-record="${i}">查看画面</button>` : ''}</div>`
+            ? `<div class="sd-directory-row"><span><b>${escape(row.tags.slice(0, 3).join(' · ') || '静帧')}</b><small>${escape(new Date(row.createdAt).toLocaleString())}</small></span><button type="button" class="sd-btn" ${own ? 'data-directory-record' : 'data-directory-history'}="${i}">${own ? '查看画面' : '只读预览'}</button></div>`
             : `<button type="button" class="sd-directory-row" data-directory-scope="${i}"><span><b>${escape(ownerKey ? row.chatKey : galleryDirectoryOwnerLabel(row.ownerKey, getContext()))}</b><small>${escape(ownerKey ? '查看该聊天目录' : row.ownerKey)}</small></span></button>`).join('') || `<p>${busy ? '正在读取目录…' : '没有符合条件的目录条目；未收录不等于没有原作品。'}</p>`}</div>
           <nav aria-label="图库目录分页">${button('previous', '上一页', stack.length === 1)}<span>第 ${stack.length} 页</span>${button('next', '下一页', !page?.nextCursor)}</nav></fieldset>
           ${sourceNotice ? `<p class="sd-directory-source" role="status">${escape(sourceNotice)}</p>` : ''}
@@ -58,6 +71,7 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
             const target = [...dialog.querySelectorAll(`[${focusKey}]`)].find(node => node.getAttribute(focusKey) === focusValue && !node.matches(':disabled'));
             (target || dialog.querySelector('[data-directory-action="close"]'))?.focus({ preventScroll: true });
         }
+        if (restoreList) { restoreList = false; dialog.querySelector('main').scrollTop = listScroll; dialog.querySelector(`[data-directory-history="${previewIndex}"]`)?.focus({ preventScroll: true }); }
     }
     async function load() {
         const input = { ...(ownerKey ? { ownerKey } : {}), cursor: stack.at(-1), limit: 24 };
@@ -85,9 +99,17 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
         const action = event.target.closest('[data-directory-action]')?.dataset.directoryAction;
         if (action === 'close') { close(); return; }
         const selected = event.target.closest('[data-directory-scope]'), record = event.target.closest('[data-directory-record]');
-        if (!action && !selected && !record) return;
+        const historical = event.target.closest('[data-directory-history]');
+        if (!action && !selected && !record && !historical) return;
+        if (historical) listScroll = dialog.querySelector('main').scrollTop;
         void work(async () => {
-            if (selected) {
+            if (action === 'preview-back') { releasePreview(); restoreList = true; }
+            else if (historical) {
+                previewIndex = Number(historical.dataset.directoryHistory); const row = page?.rows[previewIndex]; if (!row) return;
+                notice = '正在从原聊天读取这一张画面…'; draw();
+                const result = await session.preview(row); guard();
+                previewUrl = view.URL.createObjectURL(result.blob); preview = result;
+            } else if (selected) {
                 const row = page?.rows[Number(selected.dataset.directoryScope)]; if (!row) return;
                 if (ownerKey) chatKey = row.chatKey; else ownerKey = row.ownerKey;
                 reset(); await load(); draw();

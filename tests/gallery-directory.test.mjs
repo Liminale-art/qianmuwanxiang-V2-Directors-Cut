@@ -93,3 +93,26 @@ test('historical inspection reads only exact receipt target and releases every r
     const s = await create(f.options); assert.equal((await s.inspectSource({ ownerKey: 'char:B.png', chatKey: 'chat' })).state, 'absent');
     assert.deepEqual(seen.target, { kind: 'character', avatar: 'B.png', chatId: 'chat' }); assert.equal(released, 1); assert.equal(f.writes, 0); s.close();
 });
+
+test('historical preview binds a fresh receipt and record selector without writing current chat or index', async () => {
+    let selection, released=0, loaded=0;
+    const f=fixture({options:{
+        createHistoricalClient:()=>({inspect:async()=>({state:'present',gallery:{sha256:'a'.repeat(64)}}),close(){released++;}}),
+        createRecordClient:()=>({read:async input=>{selection=input;return {record:{id:'old',createdAt:3,url:'/user/images/fixture.png',tags:[]}};},close(){released++;}}),
+        loadImage:async(url,options)=>{assert.equal(url,'/user/images/fixture.png');await options.guard();loaded++;return {blob:new Blob(['fixture']),width:10,height:20};},
+    }}),s=await create(f.options),before=structuredClone(f.context);
+    const selected={namespace:ns,ownerKey:'char:B.png',chatKey:'old-chat',recordId:'old',createdAt:3,kind:'still'};
+    const result=await s.preview(selected);assert.deepEqual(selection,{recordId:'old',createdAt:3,gallerySha256:'a'.repeat(64)});
+    assert.equal(result.source.ownerKey,'char:B.png');assert.equal(loaded,1);assert.equal(released,2);assert.equal(f.writes,0);assert.deepEqual(f.context,before);
+    await assert.rejects(s.preview({...selected,namespace:'st-user:other'}));await assert.rejects(s.preview({...selected,kind:'motion'}));s.close();
+});
+
+test('cancel between historical metadata and image fetch releases readers without fetching image', async () => {
+    let s,loaded=0,released=0;
+    const f=fixture({options:{
+        createHistoricalClient:()=>({inspect:async()=>({state:'present',gallery:{sha256:'a'.repeat(64)}}),close(){released++;}}),
+        createRecordClient:()=>({read:async()=>{s.close();return {record:{url:'/user/images/fixture.png'}};},close(){released++;}}),
+        loadImage:async()=>{loaded++;},
+    }});s=await create(f.options);
+    await assert.rejects(s.preview({namespace:ns,...source,recordId:'old',createdAt:3,kind:'still'}));assert.equal(loaded,0);assert.ok(released>=2);assert.equal(f.writes,0);
+});

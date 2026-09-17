@@ -22,7 +22,8 @@ try {
         const { createGalleryCatalogStore: create } = await import('/qianmu-gallery-catalog-store.js');
         const { createGalleryDirectorySession } = await import('/qianmu-gallery-directory.js');
         const { openGalleryDirectory } = await import('/qianmu-gallery-directory-view.js');
-        const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient } = await import('/qianmu-chat-character-receipt-client.js');
+        const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient } = await import('/qianmu-chat-character-receipt-client.js');
+        const { loadGalleryPreviewImage } = await import('/qianmu-gallery-preview-media.js');
         const { chatGalleryReceiptText } = await import('/qianmu-chat-gallery-receipt.js');
         const checks = [], check = (label, ok) => { if (!ok) throw Error(label); checks.push(label); };
         const ns = 'st-user:fixture', source = { ownerKey: 'char:A.png', chatKey: '同名聊天' };
@@ -43,7 +44,7 @@ try {
         revision = (await store.upsert(ns, source, [entry('old-missing')], { expectedRevision: revision })).revision;
         let stale = false; try { await store.scopes(ns, { cursor: before.nextCursor }); } catch (error) { stale = error.code === 'gallery_catalog_stale'; }
         check('revision changes reject stale scope pages', stale);
-        for (const name of ['char:B.png', 'group:9']) revision = (await store.upsert(ns, { ownerKey: name, chatKey: source.chatKey }, [entry('same-id')], { expectedRevision: revision })).revision;
+        for (const name of ['char:B.png', 'char:C.png', 'group:9']) revision = (await store.upsert(ns, { ownerKey: name, chatKey: source.chatKey }, [entry('same-id')], { expectedRevision: revision })).revision;
         store.close();
         const frames = Array.from({ length: 51 }, (_, i) => ({ id: `shot${i}`, createdAt: 200 + i, tags: [i % 2 ? '旅人' : '海岸'], url: '/private.png', prompt: 'PRIVATE_PROMPT' }));
         frames[50].tags.push('<img src=x onerror=alert(1)>');
@@ -52,13 +53,21 @@ try {
             characters: [{ avatar: 'A.png', chat: source.chatKey, name: '同名角色' }, { avatar: 'B.png', chat: source.chatKey, name: '同名角色' }], groups: [{ id: 9, chat_id: source.chatKey, name: '<img src=x>' }],
             eventSource: { on(type, handler) { const set = listeners.get(type) || new Set(); set.add(handler); listeners.set(type, set); }, removeListener(type, handler) { listeners.get(type)?.delete(handler); } } };
         window.generation = 1; window.account = ns; window.opened = null; window.receipts = []; window.readGate = null;
+        window.mediaCalls=0;window.imageFail=false;window.imageGate=null;window.createdUrls=[];window.revokedUrls=[];
+        const createUrl=URL.createObjectURL.bind(URL),revokeUrl=URL.revokeObjectURL.bind(URL);
+        URL.createObjectURL=blob=>{const url=createUrl(blob);window.createdUrls.push(url);return url;};URL.revokeObjectURL=url=>{window.revokedUrls.push(url);revokeUrl(url);};
+        const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=1800;canvas.getContext('2d').fillRect(0,0,1000,1800);
+        window.previewBlob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
         const digest = async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
         async function fetchImpl(url, options) {
             const request = JSON.parse(options.body); window.receipts.push(request);
-            check('receipt request never uploads source contents or requests images', !options.body.includes('PRIVATE') && url.endsWith('/chat-gallery/receipt'));
+            check('metadata request never uploads source contents or generates images', !options.body.includes('PRIVATE') && /\/chat-gallery\/(receipt|record)$/.test(url));
             if (window.readGate) await window.readGate;
             if (request.target.avatar === 'B.png') return new Response(JSON.stringify({ ok: false, code: 'chat_character_receipt_missing', message: 'PRIVATE_PATH' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-            const value = chatGalleryReceiptText(frames);
+            const selectedFrames=request.target.avatar==='C.png'?[{id:'same-id',createdAt:100,url:'/user/images/fixture.png',tags:['历史画面']}]:frames;
+            const value = chatGalleryReceiptText(selectedFrames);
+            if(url.endsWith('/record'))return new Response(JSON.stringify({ok:true,version:1,expectedAccount:'st-user:'+await digest('fixture'),target:request.target,
+                gallerySha256:await digest(value.text),record:selectedFrames[0],proof:'read-only-record'}),{headers:{'Content-Type':'application/json'}});
             return new Response(JSON.stringify({ ok: true, version: 1, expectedAccount: 'st-user:' + await digest('fixture'), target: request.target,
                 state: 'present', gallery: { count: value.count, bytes: value.bytes, sha256: await digest(value.text) }, proof: 'read-only-snapshot' }), { headers: { 'Content-Type': 'application/json' } });
         }
@@ -68,7 +77,14 @@ try {
                 locate: record => { window.opened = record.id; },
                 connect: options => createGalleryDirectorySession({ ...options,
                     createClient: opts => createCurrentChatGalleryReceiptClient({ ...opts, account: async () => window.account, fetchImpl }),
-                    createHistoricalClient: opts => createChatGalleryReceiptClient({ ...opts, fetchImpl }) }), ...extra });
+                    createHistoricalClient: opts => createChatGalleryReceiptClient({ ...opts, fetchImpl }),
+                    createRecordClient:opts=>createChatGalleryRecordClient({...opts,fetchImpl}),
+                    loadImage:(url,opts)=>loadGalleryPreviewImage(url,{...opts,fetchImpl:async(path,options)=>{
+                        if(path!=='/user/images/fixture.png'||options.redirect!=='error'||options.credentials!=='same-origin')throw Error('unexpected media access');
+                        window.mediaCalls++;if(window.imageGate)await window.imageGate;
+                        return window.imageFail?new Response('missing',{status:404}):new Response(window.previewBlob,{headers:{'Content-Type':'image/png'}});
+                    }}),
+                }), ...extra });
         };
         window.listenerCount = () => [...listeners.values()].reduce((n, set) => n + set.size, 0);
         const { createQianmuThemeSurfaceController } = await import('/qianmu-theme-surfaces.js');
@@ -97,6 +113,44 @@ try {
     await dialog.locator('[data-directory-scope]').first().click(); await idle();
     assert.match(await dialog.locator('.sd-directory-source').innerText(), /不存在或已移动/); assert.doesNotMatch(await dialog.innerText(), /PRIVATE_PATH/);
     assert.equal(await dialog.locator('[data-directory-record]').count(), 0); checks.push('same-named other role has separate source; missing original cannot be opened or auto-deleted');
+    const hostBefore=await page.evaluate(()=>JSON.stringify(window.host.chatMetadata));
+    assert.equal(await page.evaluate(()=>window.mediaCalls),0);checks.push('browsing history does not prefetch any image');
+    await click('owners');await dialog.locator('[data-directory-scope]').filter({hasText:'char:C.png'}).click();await idle();
+    await dialog.locator('[data-directory-scope]').first().click();await idle();
+    await dialog.locator('[data-directory-history]').first().click();
+    await page.waitForFunction(()=>document.querySelector('.sd-directory-image-stage img')?.naturalWidth===1000);
+    assert.equal(await dialog.locator('details[open]').count(),0);assert.equal(await dialog.locator('[data-directory-record],.sd-storyboard-lightbox-delete,.sd-storyboard-lightbox-edit').count(),0);
+    assert.equal(await page.evaluate(()=>JSON.stringify(window.host.chatMetadata)),hostBefore);checks.push('historical original decodes read-only without changing current chat, closed details and no mutation controls');
+    const stage=dialog.locator('.sd-directory-image-stage');await stage.hover();await page.mouse.wheel(0,-200);
+    await page.waitForFunction(()=>Number(document.querySelector('.sd-directory-image-stage').dataset.scale)>1);
+    await dialog.locator('[data-preview-zoom="reset"]').click();assert.equal(await stage.getAttribute('data-scale'),'1');
+    await stage.evaluate(node=>{
+        const send=(type,id,x)=>node.dispatchEvent(new PointerEvent(type,{bubbles:true,pointerId:id,pointerType:'touch',clientX:x,clientY:150}));
+        send('pointerdown',1,100);send('pointerdown',2,200);send('pointermove',2,260);send('pointerup',1,100);send('pointerup',2,260);
+    });
+    assert.ok(Number(await stage.getAttribute('data-scale'))>1);await dialog.locator('[data-preview-zoom="reset"]').click();checks.push('real wheel and synthetic two-pointer zoom work with one-click reset');
+    for(const theme of [null,{theme:'editorial',mode:'light'},{theme:'editorial',mode:'dark'},{theme:'glass',mode:'light'},{theme:'glass',mode:'dark'}])for(const width of [320,1280]){
+        await page.evaluate(theme=>window.themeController.setTheme(theme),theme);
+        await page.setViewportSize({width,height:720});await dialog.locator('[data-preview-zoom="reset"]').click();
+        const fits=await stage.evaluate(node=>{const img=node.querySelector('img').getBoundingClientRect();return img.width<=node.clientWidth+1&&img.height<=node.clientHeight+1;});
+        assert.equal(fits,true);checks.push(`${theme?.theme||'classic'}/${theme?.mode||'default'}/${width}px portrait preview initially contains the complete image`);
+    }
+    await dialog.locator('[data-directory-action="preview-back"]').click();await idle();
+    assert.equal(await dialog.locator('[data-directory-history]').count(),1);assert.match(await dialog.locator('h3').innerText(),/同名聊天/);
+    assert.deepEqual(await page.evaluate(()=>window.createdUrls),await page.evaluate(()=>window.revokedUrls));checks.push('back keeps the selected role/chat/page and releases its blob URL');
+    for(const shape of [[1800,1000],[1000,1000]]){
+        await page.evaluate(async([width,height])=>{const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;canvas.getContext('2d').fillRect(0,0,width,height);window.previewBlob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));},shape);
+        await dialog.locator('[data-directory-history]').click();await page.waitForFunction(width=>document.querySelector('.sd-directory-image-stage img')?.naturalWidth===width,shape[0]);
+        for(const width of [320,1280]){
+            await page.setViewportSize({width,height:720});await dialog.locator('[data-preview-zoom="reset"]').click();
+            assert.equal(await stage.evaluate(node=>{const rect=node.querySelector('img').getBoundingClientRect();return rect.width<=node.clientWidth+1&&rect.height<=node.clientHeight+1;}),true);
+            checks.push(`${shape.join('x')} at ${width}px keeps all image edges visible`);
+        }
+        await dialog.locator('[data-directory-action="preview-back"]').click();await idle();
+    }
+    await page.evaluate(()=>{window.imageFail=true;});await dialog.locator('[data-directory-history]').click();await idle();
+    assert.match(await dialog.locator('footer').innerText(),/原图不存在/);assert.equal(await dialog.locator('img').count(),0);checks.push('missing image reports failure while keeping the directory and original reference');
+    await page.evaluate(()=>{window.imageFail=false;});
     await click('owners'); await dialog.locator('[data-directory-scope]').filter({ hasText: 'char:A.png' }).click(); await idle();
     await dialog.locator('[data-directory-scope]').first().click(); await idle();
     for (const theme of [null, { theme: 'editorial', mode: 'light' }, { theme: 'editorial', mode: 'dark' }, { theme: 'glass', mode: 'light' }, { theme: 'glass', mode: 'dark' }]) for (const width of [320, 393, 1280]) {
@@ -116,6 +170,13 @@ try {
     await page.waitForFunction(() => document.querySelector('.sd-gallery-directory footer')?.textContent.includes('连接超时'));
     await page.waitForFunction(() => window.lateClosed === true); checks.push('late connection after timeout is closed and never indexes');
     await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.sd-gallery-directory'));
+    await page.evaluate(()=>window.openFixture());await idle();await dialog.locator('[data-directory-scope]').filter({hasText:'char:C.png'}).click();await idle();await dialog.locator('[data-directory-scope]').first().click();await idle();
+    const beforeCalls=await page.evaluate(()=>window.mediaCalls);
+    await page.evaluate(()=>{window.imageGate=new Promise(resolve=>window.releaseImage=resolve);});
+    await dialog.locator('[data-directory-history]').click();await page.waitForFunction(n=>window.mediaCalls>n,beforeCalls);
+    await page.keyboard.press('Escape');await page.evaluate(()=>{window.releaseImage();window.imageGate=null;});
+    await page.waitForFunction(()=>window.listenerCount()===0);
+    assert.deepEqual(await page.evaluate(()=>window.createdUrls),await page.evaluate(()=>window.revokedUrls));checks.push('closing during original fetch prevents late preview and releases source listeners');
     await page.evaluate(() => { window.readGate = new Promise(resolve => window.releaseGate = resolve); window.openFixture(); });
     await page.waitForFunction(() => document.querySelector('.sd-gallery-directory'));
     await page.keyboard.press('Escape'); await page.evaluate(() => { window.releaseGate(); window.readGate = null; });

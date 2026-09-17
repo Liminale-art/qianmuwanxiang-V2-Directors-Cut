@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-chat-gallery-receipt.js",
+    "qianmu-chat-gallery-record.js",
     "qianmu-storage-gallery-check.js",
     "qianmu-audio-cache-backup.js",
     "qianmu-model-response.js",
@@ -67,6 +68,8 @@
     "qianmu-gallery-catalog-store.js",
     "qianmu-gallery-directory.js",
     "qianmu-gallery-directory-view.js",
+    "qianmu-gallery-preview-media.js",
+    "qianmu-gallery-preview-zoom.js",
     "qianmu-current-chat-source.js",
     "qianmu-chat-file-target.js",
     "qianmu-config-export.js",

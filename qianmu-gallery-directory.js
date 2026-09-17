@@ -1,6 +1,7 @@
 import { createGalleryCatalogStore } from './qianmu-gallery-catalog-store.js';
 import { projectGalleryCatalogEntry, galleryCatalogSource, galleryCatalogAccount } from './qianmu-gallery-catalog-contract.js';
-import { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient } from './qianmu-chat-character-receipt-client.js';
+import { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient } from './qianmu-chat-character-receipt-client.js';
+import { loadGalleryPreviewImage } from './qianmu-gallery-preview-media.js';
 import { chatGalleryReceiptText } from './qianmu-chat-gallery-receipt.js';
 import { chatFileTarget } from './qianmu-chat-file-target.js';
 
@@ -29,12 +30,13 @@ export function galleryDirectoryTarget(source) {
 
 export async function createGalleryDirectorySession({ getContext, epoch, guard = async () => {},
     createClient = createCurrentChatGalleryReceiptClient, createStore = createGalleryCatalogStore,
-    createHistoricalClient = createChatGalleryReceiptClient } = {}) {
+    createHistoricalClient = createChatGalleryReceiptClient, createRecordClient = createChatGalleryRecordClient,
+    loadImage = loadGalleryPreviewImage } = {}) {
     const client = await createClient({ getContext, epoch, guard });
     let closed = false, store, updating = false;
-    const readers = new Set(), namespace = client.owner.namespace, source = client.source;
+    const readers = new Set(), mediaController = new AbortController(), namespace = client.owner.namespace, source = client.source;
     const current = () => { if (closed) throw Error('图库目录已关闭'); client.assertCurrent(); return true; };
-    function close() { closed = true; client.close(); for (const reader of readers) reader.close(); readers.clear(); store?.close(); }
+    function close() { closed = true; mediaController.abort(); client.close(); for (const reader of readers) reader.close(); readers.clear(); store?.close(); }
     const check = async () => {
         try { current(); await client.guard(); current(); await guard(); current(); }
         catch (error) { close(); throw error; }
@@ -79,6 +81,21 @@ export async function createGalleryDirectorySession({ getContext, epoch, guard =
             const matches = (records() || []).filter(item => item?.id === row.recordId);
             if (matches.length !== 1 || matches[0].createdAt !== row.createdAt) throw Error('原画面记录已变化或不存在；历史目录引用保留，未自动删除');
             return matches[0];
+        },
+        async preview(row) {
+            await check();
+            if (row.namespace !== namespace || row.kind !== 'still') throw Error('画面属于另一账户或不支持此类型');
+            const selected = { ownerKey: row.ownerKey, chatKey: row.chatKey }, target = galleryDirectoryTarget(selected);
+            const receiptReader = createHistoricalClient({ namespace, target, headers: () => getContext().getRequestHeaders?.() || {}, guard: check });
+            const recordReader = createRecordClient({ namespace, target, headers: () => getContext().getRequestHeaders?.() || {}, guard: check });
+            readers.add(receiptReader); readers.add(recordReader);
+            try {
+                const receipt = await receiptReader.inspect(); await check();
+                if (receipt.state !== 'present') throw Error('原聊天没有静帧记录；历史目录引用保留');
+                const result = await recordReader.read({ recordId: row.recordId, createdAt: row.createdAt, gallerySha256: receipt.gallery.sha256 }); await check();
+                const media = await loadImage(result.record.url, { guard: check, signal: mediaController.signal }); await check();
+                return { ...media, record: result.record, source: selected };
+            } finally { readers.delete(receiptReader); readers.delete(recordReader); receiptReader.close(); recordReader.close(); }
         },
         close,
     };

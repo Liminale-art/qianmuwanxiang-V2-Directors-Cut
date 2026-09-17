@@ -12,8 +12,9 @@ import {CHAT_CHARACTER_RECEIPT_LIMITS,chatCharacterReceiptTarget,chatCharacterRe
 import {emptyChatCharacterCollection,prepareChatCharacterBatch} from '../qianmu-character-chat-batch.js';
 import {imageServiceAccount} from '../qianmu-image-service-access.js';
 import {init,exit} from '../server-plugin.js';
-import {createChatGalleryReceiptClient,createCurrentChatGalleryReceiptClient} from '../qianmu-chat-character-receipt-client.js';
+import {createChatGalleryReceiptClient,createCurrentChatGalleryReceiptClient,createChatGalleryRecordClient} from '../qianmu-chat-character-receipt-client.js';
 import {chatGalleryReceiptText,chatGalleryReceiptResponse,CHAT_GALLERY_RECEIPT_LIMITS} from '../qianmu-chat-gallery-receipt.js';
+import {chatGalleryRecordRequest,chatGalleryRecordResponse,projectChatGalleryRecord,CHAT_GALLERY_RECORD_RESPONSE_BYTES} from '../qianmu-chat-gallery-record.js';
 
 const owner={namespace:'st-user:alice',chatKey:'旅途 01'},target={kind:'character',chatId:owner.chatKey,avatar:'Alice.png'};
 const account=handle=>imageServiceAccount({user:{profile:{handle,enabled:true}}}).namespace;
@@ -42,6 +43,10 @@ async function fixture(t,options={}){
 const rejectsCode=(promise,code)=>assert.rejects(promise,{code:'chat_character_receipt_'+code});
 
 const gallery=()=>[{id:'frame-1',createdAt:1,url:'/PRIVATE_IMAGE.png',prompt:'PRIVATE_PROMPT',future:{unknown:true}}];
+const readableGallery=()=>[{...gallery()[0],url:'/user/images/fixture.png',tags:['海岸'],snapshot:{apiKey:'PRIVATE_KEY'},privateOther:'PRIVATE_OTHER'}];
+const recordRequest=(records=readableGallery(),patch={})=>({...input(),selection:{recordId:'frame-1',createdAt:1,gallerySha256:galleryResponse(records).gallery.sha256,...patch}});
+const recordResponse=()=>({ok:true,version:1,expectedAccount:account('alice'),target,gallerySha256:recordRequest().selection.gallerySha256,
+  record:projectChatGalleryRecord(readableGallery()[0]),proof:'read-only-record'});
 function galleryResponse(value=gallery(),selected=target){
   const normalized=chatGalleryReceiptText(value),summary=normalized?{count:normalized.count,bytes:normalized.bytes,sha256:createHash('sha256').update(normalized.text).digest('hex')}:null;
   return {ok:true,version:1,expectedAccount:account('alice'),target:selected,state:summary?'present':'absent',gallery:summary,proof:'read-only-snapshot'};
@@ -257,6 +262,78 @@ test('guard timeout never dispatches later; context switch after response reject
   await rejectsCode(switched.inspect(),'client');
 });
 
+test('historical record contract admits only an exact selector and small render-only projection',()=>{
+  assert.deepEqual(chatGalleryRecordRequest(recordRequest()),recordRequest());
+  assert.deepEqual(Object.keys(recordResponse().record),['id','createdAt','url','tags']);
+  assert.deepEqual(chatGalleryRecordResponse(recordResponse()),recordResponse());
+  assert.doesNotMatch(JSON.stringify(recordResponse()),/PRIVATE_|snapshot|prompt|privateOther/);
+  for(const value of [{...recordRequest(),url:'/user/images/other.png'},{...recordRequest(),root:'/'},
+    {...recordRequest(),selection:{...recordRequest().selection,createdAt:'1'}},recordRequest(undefined,{gallerySha256:'guess'}),recordRequest(undefined,{recordId:''})])assert.throws(()=>chatGalleryRecordRequest(value));
+  for(const patch of [{url:'https://example.invalid/image.png'},{url:'//example.invalid/image.png'},{url:'blob:xyz'},{url:'data:image/png;base64,AAAA'},
+    {url:'/api/plugins/delete.png'},{url:'/user/images/%2e%2e/other.png'},{url:'/user/images/image.svg'},{url:'/user/images/a.png?token=PRIVATE'}])assert.throws(()=>projectChatGalleryRecord({...readableGallery()[0],...patch}));
+  assert.throws(()=>chatGalleryRecordResponse({...recordResponse(),record:{...recordResponse().record,prompt:'PRIVATE'}}));
+});
+
+test('historical single-record reader never changes bytes or reveals another record and chat metadata',async t=>{
+  const f=await fixture(t),records=[...readableGallery(),{...readableGallery()[0],id:'other',prompt:'PRIVATE_OTHER_PROMPT'}],value=header();
+  value.chat_metadata.story_director_liminale.storyboardImages=records;await f.write(value);const before=await fs.readFile(f.file);
+  const reply=await f.service.readGalleryRecord(f.request,recordRequest(records));
+  assert.equal(reply.record.id,'frame-1');assert.equal(reply.record.url,'/user/images/fixture.png');
+  assert.doesNotMatch(JSON.stringify(reply),/PRIVATE_|other|snapshot|characterDrafts/);assert.deepEqual(await fs.readFile(f.file),before);
+});
+
+test('historical record reader rejects changed snapshots, missing IDs, duplicate IDs and changed times',async t=>{
+  const f=await fixture(t),records=readableGallery(),value=header();value.chat_metadata.story_director_liminale.storyboardImages=records;await f.write(value);
+  await rejectsCode(f.service.readGalleryRecord(f.request,recordRequest(records,{gallerySha256:'0'.repeat(64)})),'record_changed');
+  await rejectsCode(f.service.readGalleryRecord(f.request,recordRequest(records,{recordId:'missing'})),'record_missing');
+  await rejectsCode(f.service.readGalleryRecord(f.request,recordRequest(records,{createdAt:2})),'record_changed');
+  records.push({...records[0],url:'/user/images/second.png'});await f.write(value);
+  await rejectsCode(f.service.readGalleryRecord(f.request,recordRequest(records)),'record_ambiguous');
+  await f.write();await rejectsCode(f.service.readGalleryRecord(f.request,recordRequest()),'record_missing');
+});
+
+test('historical reader retains authentication, exact file, cancellation and link boundaries',async t=>{
+  const f=await fixture(t),value=header();value.chat_metadata.story_director_liminale.storyboardImages=readableGallery();await f.write(value);
+  await rejectsCode(f.service.readGalleryRecord({},recordRequest()),'account');
+  await rejectsCode(f.service.readGalleryRecord(f.request,{...recordRequest(),expectedAccount:account('bob')}),'account');
+  const controller=new AbortController();controller.abort();await rejectsCode(f.service.readGalleryRecord(f.request,recordRequest(),{signal:controller.signal}),'changed');
+  const linked=path.join(f.folder,'extra.jsonl');await fs.link(f.file,linked);
+  await rejectsCode(f.service.readGalleryRecord(f.request,recordRequest()),'path');
+  assert.doesNotMatch(JSON.stringify(chatCharacterReceiptErrorPayload(Error('PRIVATE_PATH'))),/PRIVATE_PATH/);
+});
+
+test('historical reader refuses unsupported media locations without server-side fetching',async t=>{
+  const f=await fixture(t);
+  for(const url of ['https://private.invalid/image.png','/api/unsafe.png','blob:old','data:image/png;base64,AAAA']){
+    const records=[{...readableGallery()[0],url}],value=header();value.chat_metadata.story_director_liminale.storyboardImages=records;await f.write(value);
+    await rejectsCode(f.service.readGalleryRecord(f.request,recordRequest(records)),'record_url');
+  }
+});
+
+test('record client binds selector, digest, account and target and strips unrelated request headers',async()=>{
+  let calls=0;const client=createChatGalleryRecordClient({namespace:owner.namespace,target,headers:()=>({'X-CSRF-Token':'fixture',Authorization:'PRIVATE_KEY'}),fetchImpl:async(url,options)=>{
+    calls++;assert.equal(url,'/api/plugins/qianmu-tts/chat-gallery/record');assert.deepEqual(JSON.parse(options.body),recordRequest());
+    assert.equal(options.headers.Authorization,undefined);assert.equal(options.redirect,'error');assert.equal(options.cache,'no-store');return json(recordResponse());
+  }});
+  assert.deepEqual(await client.read(recordRequest().selection),recordResponse());assert.equal(calls,1);client.close();await rejectsCode(client.read(recordRequest().selection),'client');
+  for(const patch of [{record:{...recordResponse().record,id:'other'}},{record:{...recordResponse().record,createdAt:2}},{gallerySha256:'0'.repeat(64)},
+    {expectedAccount:account('bob')},{target:{...target,avatar:'Other.png'}}]){
+    const wrong=createChatGalleryRecordClient({namespace:owner.namespace,target,fetchImpl:async()=>json({...recordResponse(),...patch})});
+    await rejectsCode(wrong.read(recordRequest().selection),'client');wrong.close();
+  }
+});
+
+test('record client enforces byte limit, safe errors and cancellation while waiting for a body',async()=>{
+  for(const reply of [new Response('x'.repeat(CHAT_GALLERY_RECORD_RESPONSE_BYTES+1),{headers:{'content-type':'application/json'}}),
+    json({ok:false,code:'chat_character_receipt_record_missing',message:'PRIVATE_SERVER_PATH'},404),new Response('old backend',{status:404})]){
+    const client=createChatGalleryRecordClient({namespace:owner.namespace,target,fetchImpl:async()=>reply});
+    await assert.rejects(client.read(recordRequest().selection),error=>error.code==='chat_character_receipt_client'&&!error.message.includes('PRIVATE'));client.close();
+  }
+  let cancelled=false;const stream=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('{'));},cancel(){cancelled=true;}});
+  const client=createChatGalleryRecordClient({namespace:owner.namespace,target,timeoutMs:100,fetchImpl:async()=>new Response(stream,{headers:{'content-type':'application/json'}})});
+  await rejectsCode(client.read(recordRequest().selection),'client');assert.equal(cancelled,true);client.close();
+});
+
 test('production HTTP route plus browser client verifies a synthetic chat without saving or exposing its contents',async t=>{
   const f=await fixture(t),routes=new Map(),seen=[],value=header();value.chat_metadata.story_director_liminale.storyboardImages=gallery();await f.write(value);const before=await fs.readFile(f.file);
   await init({get:(name,handler)=>routes.set(`GET ${name}`,handler),post:(name,handler)=>routes.set(`POST ${name}`,handler)},{dataRoot:f.root});
@@ -281,5 +358,10 @@ test('production HTTP route plus browser client verifies a synthetic chat withou
   const galleryEndpoint='/chat-gallery/receipt';assert.equal((await fetch(origin+galleryEndpoint,{method:'POST'})).status,401);
   const galleryClient=createChatGalleryReceiptClient({namespace:owner.namespace,target,fetchImpl:async(url,options)=>fetch(origin+url.replace('/api/plugins/qianmu-tts',''),{...options,headers:{...options.headers,'x-test-login':'alice'}})});
   assert.equal((await galleryClient.verify(gallery())).matches,true);
-  assert.deepEqual(await fs.readFile(f.file),before);assert.ok(seen.every(url=>[endpoint,galleryEndpoint].includes(url)));client.close();galleryClient.close();
+  assert.deepEqual(await fs.readFile(f.file),before);
+  const recordEndpoint='/chat-gallery/record';assert.equal((await fetch(origin+recordEndpoint,{method:'POST'})).status,401);
+  value.chat_metadata.story_director_liminale.storyboardImages=readableGallery();await f.write(value);const recordBefore=await fs.readFile(f.file);
+  const recordClient=createChatGalleryRecordClient({namespace:owner.namespace,target,fetchImpl:async(url,options)=>fetch(origin+url.replace('/api/plugins/qianmu-tts',''),{...options,headers:{...options.headers,'x-test-login':'alice'}})});
+  assert.deepEqual(await recordClient.read(recordRequest().selection),recordResponse());assert.deepEqual(await fs.readFile(f.file),recordBefore);
+  assert.ok(seen.every(url=>[endpoint,galleryEndpoint,recordEndpoint].includes(url)));client.close();galleryClient.close();recordClient.close();
 });

@@ -6,6 +6,7 @@ import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-imag
 import {CHAT_CHARACTER_RECEIPT_LIMITS as LIMIT,chatCharacterReceiptError,chatCharacterReceiptRequest,
   chatCharacterReceiptResponse,chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
 import {chatGalleryReceiptText,chatGalleryReceiptResponse} from './qianmu-chat-gallery-receipt.js';
+import {chatGalleryRecordRequest,projectChatGalleryRecord,chatGalleryRecordResponse} from './qianmu-chat-gallery-record.js';
 
 const fail=(code,message,status)=>{throw chatCharacterReceiptError(code,message,status);};
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
@@ -71,19 +72,20 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
       return header.chat_metadata;
     }finally{await handle.close();}
   }
-  async function inspect(req,input,{signal}={},galleryOnly=false){
+  async function inspect(req,input,{signal}={},galleryOnly=false,selection=null){
     const context=capture(req,input,signal);let metadata;
     try{metadata=await readHeader(context);}catch(error){
       if(error?.code==='ENOENT')fail('missing','原聊天记录不存在或已移动，未确认保存',404);
       throw error;
     }
-    context.guard();let collection=null,gallery=null;
+    context.guard();let collection=null,gallery=null,records;
     if(Object.hasOwn(metadata,'story_director_liminale')){
       const store=metadata.story_director_liminale;
       if(!object(store))fail('content','千幕聊天资料损坏，请保全原记录');
       if(galleryOnly&&Object.hasOwn(store,'storyboardImages')){
         const {text,...fields}=chatGalleryReceiptText(store.storyboardImages);
         gallery={...fields,sha256:createHash('sha256').update(text).digest('hex')};
+        records=store.storyboardImages;
       }
       if(!galleryOnly&&Object.hasOwn(store,'characterDrafts')){
         let summary;try{summary=chatCharacterCollectionReceiptText(store.characterDrafts,context.owner);}catch{fail('content','聊天人物资料版本、归属或内容不一致，请保全原记录');}
@@ -91,14 +93,26 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
       }
     }
     context.guard();
+    if(selection){
+      if(!gallery)fail('record_missing','原聊天没有静帧记录；目录引用保留',404);
+      if(gallery.sha256!==selection.gallerySha256)fail('record_changed','原聊天画面已变化，请重新打开此画面',409);
+      const matches=records.filter(row=>row.id===selection.recordId);
+      if(!matches.length)fail('record_missing','原画面记录已不存在；目录引用保留',404);
+      if(matches.length!==1)fail('record_ambiguous','原聊天存在重复画面编号，不能猜测原图',409);
+      if(matches[0].createdAt!==selection.createdAt)fail('record_changed','原画面生成时间与目录不符，未打开其他画面',409);
+      return chatGalleryRecordResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
+        gallerySha256:gallery.sha256,record:projectChatGalleryRecord(matches[0]),proof:'read-only-record'});
+    }
     if(galleryOnly)return chatGalleryReceiptResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
       state:gallery?'present':'absent',gallery,proof:'read-only-snapshot'});
     return chatCharacterReceiptResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
       state:collection?'present':'absent',collection,proof:'read-only-snapshot'});
   }
-  function run(req,input,options,galleryOnly=false){
+  function run(req,input,options,galleryOnly=false,selection=null){
     if(pending.size>=LIMIT.pending)return Promise.reject(chatCharacterReceiptError('busy','聊天核验正忙，请稍后重试',429));
-    const operation=inspect(req,input,options,galleryOnly);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
+    const operation=inspect(req,input,options,galleryOnly,selection);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
   }
-  return Object.freeze({inspect:(req,input,options)=>run(req,input,options),inspectGallery:(req,input,options)=>run(req,input,options,true),async close(){closed=true;await Promise.allSettled([...pending]);}});
+  return Object.freeze({inspect:(req,input,options)=>run(req,input,options),inspectGallery:(req,input,options)=>run(req,input,options,true),
+    async readGalleryRecord(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection);},
+    async close(){closed=true;await Promise.allSettled([...pending]);}});
 }

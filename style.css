@@ -49,6 +49,12 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-directory-search input { min-width: 0; flex: 1; }
 #story-director-modal .sd-gallery-directory main { scrollbar-width: none; }
 #story-director-modal .sd-gallery-directory main::-webkit-scrollbar { display: none; }
+#story-director-modal .sd-directory-image-stage { height: min(56dvh, 500px); width: 100%; overflow: auto; scrollbar-width: none; touch-action: none; overscroll-behavior: contain; cursor: grab; }
+#story-director-modal .sd-directory-image-stage:active { cursor: grabbing; }
+#story-director-modal .sd-directory-image-stage::-webkit-scrollbar { display: none; }
+#story-director-modal .sd-directory-image-stage > div { position: relative; min-width: 100%; min-height: 100%; }
+#story-director-modal .sd-directory-image-stage img { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: none; max-height: none; object-fit: contain; user-select: none; }
+#story-director-modal .sd-directory-image-details { margin-block: 12px; overflow-wrap: anywhere; }
 #story-director-modal .sd-restore-storage-dialog .sd-restore-storage-item { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--sd-border,#7774); text-align:left; }
 #story-director-modal .sd-restore-storage-dialog .sd-restore-storage-item>span { display:grid; gap:4px; min-width:0; overflow-wrap:anywhere; }
 #story-director-modal .sd-restore-storage-dialog .sd-restore-storage-item small { font-size:12px; color:var(--sd-muted,#777); }
