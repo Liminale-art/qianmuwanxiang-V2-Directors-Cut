@@ -240,7 +240,7 @@ export async function init(router, options = {}) {
     finally{res.off?.('close',onClose);}
   });
   let chatCharacterReceipt;
-  for(const [route,method] of [['/chat-characters/receipt','inspect'],['/chat-gallery/receipt','inspectGallery'],['/chat-gallery/record','readGalleryRecord'],['/chat-gallery/details','readGalleryDetails']])router.post(route, async (req, res) => {
+  for(const [route,method] of [['/chat-characters/receipt','inspect'],['/chat-gallery/receipt','inspectGallery'],['/chat-gallery/record','readGalleryRecord'],['/chat-gallery/details','readGalleryDetails'],['/chat-gallery/evidence','readGalleryEvidence']])router.post(route, async (req, res) => {
     prepareImageResponse(res);
     const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
     res.once?.('close', onClose);

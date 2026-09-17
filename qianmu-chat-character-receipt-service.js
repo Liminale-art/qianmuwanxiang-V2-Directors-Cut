@@ -8,6 +8,8 @@ import {CHAT_CHARACTER_RECEIPT_LIMITS as LIMIT,chatCharacterReceiptError,chatCha
 import {chatGalleryReceiptText,chatGalleryReceiptResponse} from './qianmu-chat-gallery-receipt.js';
 import {chatGalleryRecordRequest,projectChatGalleryRecord,chatGalleryRecordResponse} from './qianmu-chat-gallery-record.js';
 import {projectChatGalleryDetails,chatGalleryDetailsResponse} from './qianmu-chat-gallery-details.js';
+import {chatGalleryEvidenceRequest} from './qianmu-chat-gallery-evidence.js';
+import {readSavedChatGalleryEvidence} from './qianmu-chat-gallery-evidence-reader.js';
 
 const fail=(code,message,status)=>{throw chatCharacterReceiptError(code,message,status);};
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
@@ -15,7 +17,8 @@ const child=(root,target)=>{const relative=path.relative(root,target);return rel
 const sameFile=(a,b)=>typeof a?.ino==='bigint'&&a.ino>0n&&typeof a.dev==='bigint'&&a.dev>=0n&&a.ino===b?.ino&&a.dev===b.dev;
 const unchanged=(a,b)=>sameFile(a,b)&&a.size===b.size&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs&&b.nlink===1n&&b.isFile()&&!b.isSymbolicLink();
 
-// Authenticated, bounded FIRST-LINE read only. No mkdir, chat writer, body scan, global library, or new storage.
+// Existing receipts read only the FIRST LINE. The explicit evidence method alone
+// scans bounded JSONL bodies to produce digests. No mkdir, writer or global library.
 export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
   if(typeof dataRoot!=='string'||!dataRoot||dataRoot.includes('\0'))fail('setup','增强服务缺少可信的 ST 数据目录',503);
   const configuredRoot=path.resolve(dataRoot);
@@ -73,8 +76,10 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
       return header.chat_metadata;
     }finally{await handle.close();}
   }
-  async function inspect(req,input,{signal}={},galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false){
+  async function inspect(req,input,{signal}={},galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false,evidenceDigest=null){
     const context=capture(req,input,signal);let metadata;
+    if(evidenceDigest!==null){try{return await readSavedChatGalleryEvidence(context,evidenceDigest,{io,lstat,checkedRoots,unchanged});}
+      catch(error){if(error?.code==='ENOENT')fail('missing','原聊天记录不存在或已移动，未读取正文来源',404);throw error;}}
     try{metadata=await readHeader(context);}catch(error){
       if(error?.code==='ENOENT')fail('missing','原聊天记录不存在或已移动，未确认保存',404);
       throw error;
@@ -112,11 +117,12 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
     return chatCharacterReceiptResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
       state:collection?'present':'absent',collection,proof:'read-only-snapshot'});
   }
-  function run(req,input,options,galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false){
+  function run(req,input,options,galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false,evidenceDigest=null){
     if(pending.size>=LIMIT.pending)return Promise.reject(chatCharacterReceiptError('busy','聊天核验正忙，请稍后重试',429));
-    const operation=inspect(req,input,options,galleryOnly,selection,detailsOnly,recipeSource);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
+    const operation=inspect(req,input,options,galleryOnly,selection,detailsOnly,recipeSource,evidenceDigest);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
   }
   return Object.freeze({inspect:(req,input,options)=>run(req,input,options),inspectGallery:(req,input,options)=>run(req,input,options,true),
+    async readGalleryEvidence(req,input,options){const {gallerySha256,...body}=chatGalleryEvidenceRequest(input);return run(req,body,options,true,null,false,false,gallerySha256);},
     async readGalleryRecord(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection);},
     async readGalleryDetails(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection,true);},
     async readGalleryRecipeSource(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection,false,true);},

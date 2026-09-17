@@ -27,16 +27,34 @@ export function storyboardChatProjectionMatches(projected, messages) {
   return projected.length === current.length && projected.every((row, index) => Object.keys(row).every(key => row[key] === current[index][key]));
 }
 export async function captureStoryboardChatEvidence(messages, chatKey, { guard = async () => {} } = {}) {
+  const projected = projectStoryboardChatMessages(messages), capture = createStoryboardChatEvidenceCapture(chatKey, {guard});
+  for (const message of projected) await capture.append(message);
+  return capture.finish();
+}
+
+// Streaming counterpart with the exact same v1 wire format. Retain digests only,
+// not every narrative body; an interrupted/invalid stream can never be finalized.
+export function createStoryboardChatEvidenceCapture(chatKey, {guard = async () => {}} = {}) {
   if (!chat(chatKey)) fail('正文来源聊天标识无效');
-  const projected = projectStoryboardChatMessages(messages), rows = []; let bytes = 0; await guard();
-  for (const [floor, message] of projected.entries()) {
-    const serialized = new TextEncoder().encode(JSON.stringify(message)); bytes += serialized.byteLength;
-    if (bytes > MAX_TEXT_BYTES) fail('正文来源核对超过 128 MiB，未截断聊天或生成不完整证据');
-    rows.push({ floor, sha256: await vibeDigest(serialized), messageHash: hashText(message.mes),
-      revisionHash: createStoryboardMessageReference({ message, floor, chatKey, now: 1 }).revisionHash, swipeId: message.swipe_id });
-  }
-  const core = { schema: STORYBOARD_CHAT_EVIDENCE_SCHEMA, chatKey, messages: rows };
-  const digest = await vibeDigest(JSON.stringify(core)); await guard(); return { ...core, digest };
+  const rows=[];let bytes=0,busy=false,ended=false;
+  const enter=()=>{if(ended||busy){ended=true;fail('正文来源读取已结束或存在并发写入');}busy=true;};
+  return Object.freeze({
+    async append(input){
+      enter();try{
+        const message=projectStoryboardChatMessages([input])[0],floor=rows.length;
+        if(floor>=MAX_MESSAGES)fail('正文来源列表超过十万层，未截断');
+        const serialized=new TextEncoder().encode(JSON.stringify(message));bytes+=serialized.byteLength;
+        if(bytes>MAX_TEXT_BYTES)fail('正文来源核对超过 128 MiB，未截断聊天或生成不完整证据');
+        await guard();const sha256=await vibeDigest(serialized);await guard();if(ended)fail('正文来源读取已取消');
+        rows.push({floor,sha256,messageHash:hashText(message.mes),revisionHash:createStoryboardMessageReference({message,floor,chatKey,now:1}).revisionHash,swipeId:message.swipe_id});
+      }catch(error){ended=true;throw error;}finally{busy=false;}
+    },
+    async finish(){
+      enter();ended=true;try{await guard();const core={schema:STORYBOARD_CHAT_EVIDENCE_SCHEMA,chatKey,messages:rows};
+        const digest=await vibeDigest(JSON.stringify(core));await guard();return {...core,digest};
+      }finally{busy=false;}
+    },
+  });
 }
 export async function inspectStoryboardChatEvidence(value, chatKey = value?.chatKey) {
   if (!keys(value, ['schema', 'chatKey', 'messages', 'digest']) || value.schema !== STORYBOARD_CHAT_EVIDENCE_SCHEMA || !chat(value.chatKey) || value.chatKey !== chatKey
