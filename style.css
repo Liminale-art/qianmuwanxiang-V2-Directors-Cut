@@ -1893,6 +1893,10 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-storage-backup-row > span { font-size: var(--sd-font-secondary, 12px); color: var(--sd-muted); }
 #story-director-modal .sd-storage-backup-row > .sd-btn { min-width: 48px; min-height: 34px; margin: 0; padding: 5px 9px; }
 #story-director-modal .sd-storage-backup-section .sd-undo-config[hidden] { display: none !important; }
+#story-director-modal .sd-storage-group-title { margin: 18px 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--sd-hairline); font-size: var(--sd-font-secondary, 12px); color: var(--sd-text); }
+#story-director-modal .sd-storage-resource-list { min-width: 0; }
+#story-director-modal .sd-storage-resource-list > .sd-storage-actions { padding: 10px 0; border-bottom: 1px solid var(--sd-hairline); align-items: center; }
+#story-director-modal .sd-storage-resource-list > .sd-storage-actions > span { font-size: var(--sd-font-secondary, 12px); }
 #story-director-modal .sd-storage-card .sd-storage-actions > * { min-width: 0; overflow-wrap: anywhere; }
 #story-director-modal .sd-storage-manage-actions > .sd-btn { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 44px; text-align: left; }
 #story-director-modal .sd-storage-manage-actions > .sd-btn > :is(i, .qm-glyph-icon) { flex: none; width: 16px; height: 16px; }

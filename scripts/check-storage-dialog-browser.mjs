@@ -17,11 +17,11 @@ try{
   const checks=await page.evaluate(async source=>{
     Object.assign(window,await import('/qianmu-storage-backup-view.js'),await import('/qianmu-storage-cleanup-session.js'));
     Object.assign(window,{MODAL_ID:'fixture-modal',STORAGE_CLEANUP_LAYER_ID:'fixture-chooser',THEME_KEYS:['light'],NOTES_THEME_VARIABLES:[],STORAGE_ITEM_RISK:{},STORAGE_CHAT_CLEARABLE:new Set(['audio']),
-      settings:{theme:'light'},storyboardAdmissionEpoch:1,storageInventoryState:{data:{idb:{stores:[],chatScopes:[]}}},applyQianmuIcons(){},getChatKey:()=> 'fixture',storageChatScopeLabel:()=> 'fixture',htmlEscape:String,formatStorageBytes:String,toast(){},refreshStorageInventory:async()=>{}});
+      settings:{theme:'light'},storyboardAdmissionEpoch:1,storageInventoryState:{data:{idb:{stores:[],chatScopes:[]}}},appearanceSession:{mountPortal(){}},applyQianmuIcons(){},getChatKey:()=> 'fixture',storageChatScopeLabel:()=> 'fixture',htmlEscape:String,formatStorageBytes:String,toast(){},refreshStorageInventory:async()=>{}});
     window.storageCleanupSession=createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch});
     new Function(source+';window.bindCleanup=bindStorageManagementEvents;')();
     const checks=[];
-    for(const kind of ['module','chat'])for(const action of ['cancel','close','backdrop','escape','remove','modal-close','modal-remove','card-replace','pagehide',...(kind==='module'?['backup']:[])]){
+    for(const kind of ['module','chat'])for(const action of ['cancel','close','backdrop','escape','remove','modal-close','modal-remove','card-replace','pagehide','backup']){
       document.body.innerHTML='<section id="fixture-modal" class="open"><section class="sd-storage-card"><button class="sd-storage-clean">Module</button><button class="sd-storage-chat-clean">Chat</button></section></section>';
       const modal=document.getElementById(MODAL_ID),card=modal.firstElementChild;bindCleanup(card);
       card.querySelector(kind==='module'?'.sd-storage-clean':'.sd-storage-chat-clean').click();
@@ -85,5 +85,5 @@ try{
     }
     return checks;
   },['openStorageCleanupDialog','openStorageChatCleanupDialog','bindStorageManagementEvents'].map(section).join('\n'));
-  assert.equal(checks.length,27);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,28);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}

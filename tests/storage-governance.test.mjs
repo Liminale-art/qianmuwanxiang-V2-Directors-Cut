@@ -71,7 +71,8 @@ assert.doesNotMatch(plugTab, /sd-export-config|<h3>配置备份/, 'configuration
 assert.doesNotMatch(tasksTab, /renderStorageManagementCard|storageCard/, 'the task page must remain focused on task data');
 assert.match(source, /sd-storage-ios-bar[\s\S]*sd-storage-legend/, 'storage must use an iOS-style multicolor bar and legend');
 assert.match(styles, /\.sd-storage-ios-bar[\s\S]*\.sd-storage-segment[\s\S]*--sd-storage-color/, 'each category must own a visual segment');
-assert.match(source, /本设备 · 站点已用 \/ 配额[\s\S]*千幕已盘点[\s\S]*可管理项目/, 'device origin, attributable, and manageable totals must remain separate');
+assert.match(source, /本设备 · 站点已用 \/ 配额[\s\S]*千幕已盘点/, 'device origin and attributable totals remain separate without a duplicate manageable subtotal');
+assert.match(source,/const manageableBytes[\s\S]*manageableBytes,/,'cleanup eligibility still uses the independently calculated manageable total');
 assert.match(source, /浏览器分配给当前 ST 站点来源的空间[\s\S]*千幕仅统计可明确归因的本地内容/, 'origin use must never be mislabeled as Qianmu-only storage');
 assert.match(source, /不代表 VPS 磁盘总容量/, 'browser quota must not be confused with server disk capacity');
 assert.match(source, /classifyStoragePressure\(originEstimate \|\| \{\}\)[\s\S]*pressureNotice[\s\S]*千幕不会自动清理/, 'high origin usage must produce a visible warning without automatic cleanup');
@@ -81,11 +82,12 @@ assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]
 assert.match(source, /blobStore\.clearStorageItems\(stores, cleanup\)[\s\S]*selected\.includes\('__diagnostics__'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected stores and diagnostics must be cleared independently under the initiating session');
 assert.match(source, /cleared\.has\('storyboard_pipeline_logs'\)[\s\S]*storyboardPipelineArchiveEpoch\+\+[\s\S]*filter\(\(item\) => !storyboardPipelineIsTerminal\(item\)\)/, 'clearing detailed logs must invalidate archive callbacks while preserving active pipelines');
 assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cleared\.has\('tts_lines'\)[\s\S]*ttsLineCache\.clear\(\)/, 'the TTS cache item must include and clear its portable chat snapshot');
-assert.match(source, /orphanReaderBlobs[\s\S]*无所属书籍的图片[\s\S]*__orphan_reader_blobs__/, 'orphaned reader blobs must keep a clear label and a separate cleanup choice');
+assert.match(source, /__orphan_reader_blobs__[\s\S]*孤儿封面与书内插图/, 'orphaned reader blobs retain a clearly labelled explicit cleanup choice, not a duplicate accounting row');
 assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(cleanup\)/, 'orphan cleanup must only run after explicit selection under its initiating session');
 assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.scopeCount[\s\S]*个聊天/, 'cleanup rows must reveal how many chat buckets each registered store contains');
-assert.match(source, /openStorageChatCleanupDialog[\s\S]*导出伴读整包[\s\S]*导出语音缓存[\s\S]*clearChatScopedStorage\(selected, cleanup\)/, 'chat cleanup must offer module backups before session-scoped per-item deletion');
-assert.match(source, /openStorageCleanupDialog[\s\S]*sd-storage-backup-home[\s\S]*先去备份与恢复/, 'module cleanup must route to the single backup home rather than running imports inside a stale selection');
+assert.match(source, /openStorageChatCleanupDialog[\s\S]*sd-storage-backup-home[\s\S]*clearChatScopedStorage\(selected, cleanup\)/, 'chat cleanup returns to the single backup home before session-scoped per-item deletion');
+assert.doesNotMatch(source,/sd-storage-export-(?:reader|audio)/,'cleanup must not run duplicate exports while holding the cleanup lock');
+assert.match(source, /openStorageCleanupDialog[\s\S]*sd-storage-backup-home[\s\S]*先返回资料管理备份/, 'module cleanup must route to the single backup home rather than running imports inside a stale selection');
 const notesExport=source.slice(source.indexOf('async function exportPinnedNotesBackup'),source.indexOf('async function importPinnedNotesBackup'));
 assert.match(notesExport, /listQianmuNotes\(/, 'notes backup reads the current account library, not the unowned legacy library');
 assert.doesNotMatch(notesExport,/filter\(\(note\) => note\.pinned\)/,'non-prominent automatically saved notes must be included in backups');

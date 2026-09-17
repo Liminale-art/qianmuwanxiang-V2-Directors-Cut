@@ -132,7 +132,7 @@ test('actual space card adds journal bytes exactly once without calling them rec
 test('actual space card keeps an unavailable record manager visible without manufacturing a zero-byte result',async()=>{
   const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'bad <record>'});vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10);
-  const html=context.renderStorageManagementCard();assert.match(html,/恢复记录占用暂不可读取 · 当前总计不含此部分/);assert.match(html,/bad &lt;record>/);assert.doesNotMatch(html,/分镜恢复记录 · 0 条/);
+  const html=context.renderStorageManagementCard();assert.match(html,/恢复记录占用暂不可读取 · 当前总计不含此部分/);assert.match(html,/bad &lt;record&gt;/);assert.doesNotMatch(html,/分镜恢复记录 · 0 条/);
 });
 
 test('actual space card counts mapping bodies plus heads once, without advertising them as clearable cache',async()=>{

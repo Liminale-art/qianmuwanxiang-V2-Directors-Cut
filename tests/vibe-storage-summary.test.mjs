@@ -50,7 +50,7 @@ test('actual global inventory includes Vibe exactly once while preserving browse
 test('actual global card reports unmeasured Vibe content without losing its management entry or implying zero',async()=>{
   const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
-  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/当前总计不含此部分/);assert.match(html,/未盘点站点数据/);assert.match(html,/sd-storage-vibes/);assert.match(html,/bad &lt;metadata>/);
+  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/当前总计不含此部分/);assert.match(html,/未盘点站点数据/);assert.match(html,/sd-storage-vibes/);assert.match(html,/bad &lt;metadata&gt;/);
   assert.doesNotMatch(html,/Vibe 文件 · 0/);
 });
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};

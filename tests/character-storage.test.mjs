@@ -66,7 +66,7 @@ test('actual global card includes role metadata once, not as recoverable cache, 
 });
 test('unavailable role summary remains explicitly uncounted and keeps the existing management route',async()=>{
   const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'broken <index>'});vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
-  assert.equal(data.trackedBytes,10);const html=context.renderStorageManagementCard();assert.match(html,/角色库占用暂不可读取/);assert.match(html,/broken &lt;index>/);assert.doesNotMatch(html,/角色库 · 0 份档案/);
+  assert.equal(data.trackedBytes,10);const html=context.renderStorageManagementCard();assert.match(html,/角色库占用暂不可读取/);assert.match(html,/broken &lt;index&gt;/);assert.doesNotMatch(html,/角色库 · 0 份档案/);
 });
 test('actual role management shortcut changes only the view and never rewrites engine, prompts or bindings',()=>{
   let click;const routes=[],state={source:'comfy',prompt:'unchanged',bindings:['bound']},before=clone(state);
