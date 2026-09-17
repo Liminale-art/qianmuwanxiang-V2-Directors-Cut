@@ -141,7 +141,7 @@ test('candidate permission gates require actual booleans rather than truthy stri
 test('director candidate scoring remains an idle release chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-assert.match(source, /directorCandidates:\s*\{[\s\S]*import\('\.\/qianmu-director-candidate\.js\?v=1\.59\.193'\)/);
+assert.match(source, /directorCandidates:\s*\{[\s\S]*import\('\.\/qianmu-director-candidate\.js\?v=1\.59\.194'\)/);
   const init = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(init, /featureRuntime\.load\('directorCandidates'\)/);
   assert.ok(release.files.includes('qianmu-director-candidate.js'));

@@ -88,6 +88,22 @@ try{
   check('source and immutable recipe files remain unchanged by packaging',(await readFile(f.file)).equals(stable)&&JSON.stringify(await archiveBytes())===JSON.stringify(stableRecipes));
   check('truncating a Blob is detected on reread',await c.evaluate(async()=>{try{await bundles.inspectHistoricalStoryboardBundle(packed.file.slice(0,-1));return false;}catch{return true;}}));
   check('corrupting a section is detected before a successful package summary',await c.evaluate(async()=>{const bytes=new Uint8Array(await packed.file.arrayBuffer());bytes[bytes.length-1]^=1;try{await bundles.inspectHistoricalStoryboardBundle(new Blob([bytes]));return false;}catch{return true;}}));
+  const mergeRequests=requests.length,mergeResult=await c.evaluate(async()=>{
+    window.mergeApi=await import('/qianmu-historical-storyboard-merge.js');
+    window.inspected=await bundles.inspectHistoricalStoryboardBundle(packed.file);
+    window.mergeOptions={source:inspected.source,namespace:options.namespace,target:options.target,currentSaved:{},currentEvidence:inspected.source.chatEvidence,guard:options.guard};
+    window.mergeBeforeDatabases=JSON.stringify(await indexedDB.databases());
+    return mergeApi.planHistoricalStoryboardMerge(mergeOptions);
+  });
+  assert.deepEqual(mergeResult.proposedSaved,packed.source.saved);checks.push('same-chat proposal preserves every raw original field after browser QMB round trip');
+  check('compatible proposal explicitly remains non-restorable pending assets, dependencies and durable host save',mergeResult.compatible&&mergeResult.restoreSupported===false&&mergeResult.requiredStages.length===4);
+  check('absent baseline slots remain absent, without invented current settings',Object.keys(mergeResult.before).length===0&&!Object.hasOwn(mergeResult.proposedSaved,'imagegen'));
+  check('identical existing browser records produce no repeated additions',await c.evaluate(async()=>{const result=await mergeApi.planHistoricalStoryboardMerge({...mergeOptions,currentSaved:structuredClone(inspected.source.saved)});return result.changedFields.length===0&&Object.values(result.added).every(value=>value===0);}));
+  check('browser draft conflict with future fields blocks the entire metadata proposal',await c.evaluate(async()=>{const currentSaved=structuredClone(inspected.source.saved);currentSaved.characterDrafts.items[0].future.note='local edit';const result=await mergeApi.planHistoricalStoryboardMerge({...mergeOptions,currentSaved});return !result.compatible&&result.proposedSaved===null&&result.added===null&&currentSaved.characterDrafts.items[0].future.note==='local edit';}));
+  check('same named chat under another character is refused in browser',await c.evaluate(async()=>{try{await mergeApi.planHistoricalStoryboardMerge({...mergeOptions,target:{...mergeOptions.target,avatar:'Other.png'}});return false;}catch{return true;}}));
+  check('browser account guard failure prevents returning a merge proposal',await c.evaluate(async()=>{let count=0;try{await mergeApi.planHistoricalStoryboardMerge({...mergeOptions,guard:async()=>{if(++count>2)throw Error('changed');}});return false;}catch(error){return error.message==='changed';}}));
+  check('browser proposal is detached from source and live metadata',await c.evaluate(async()=>{const currentSaved=structuredClone(inspected.source.saved),before=JSON.stringify(currentSaved),result=await mergeApi.planHistoricalStoryboardMerge({...mergeOptions,currentSaved});result.proposedSaved.characterDrafts.items[0].future.note='changed output';return JSON.stringify(currentSaved)===before&&JSON.stringify(inspected.source.saved)===before;}));
+  check('metadata proposal performs no API, storage or source-file writes',requests.length===mergeRequests&&(await readFile(f.file)).equals(stable)&&JSON.stringify(await archiveBytes())===JSON.stringify(stableRecipes)&&await c.evaluate(async()=>JSON.stringify(await indexedDB.databases())===mergeBeforeDatabases));
   const d=await device();
   await d.evaluate(async()=>{window.bundles=await import('/qianmu-historical-storyboard-bundle.js');window.s=await api.captureHistoricalStoryboardSource({...options,recordIds:['server']});});
   f.saved.characterDrafts.items[0].future.note='changed before packing';await f.write();

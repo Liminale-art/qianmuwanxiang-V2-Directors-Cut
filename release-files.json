@@ -5,6 +5,7 @@
   "files": [
     "qianmu-historical-storyboard-source.js",
     "qianmu-historical-storyboard-bundle.js",
+    "qianmu-historical-storyboard-merge.js",
     "qianmu-gallery-history-export.js",
     "qianmu-chat-gallery-evidence.js",
     "qianmu-chat-gallery-state.js",
