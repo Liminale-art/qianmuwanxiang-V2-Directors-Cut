@@ -6,6 +6,7 @@ import { projectChatGalleryState } from './qianmu-chat-gallery-state.js';
 import { captureStoryboardChatEvidence, inspectStoryboardChatEvidence, projectStoryboardChatMessages, storyboardChatProjectionMatches } from './qianmu-storyboard-chat-evidence.js';
 import { acquireChatSaveLock, releaseChatSaveLock } from './qianmu-chat-save-lock.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
+import { createHistoricalChatMutation, inspectHistoricalChatMutation } from './qianmu-historical-chat-journal.js';
 
 const fields = ['storyboardImages', 'storyboardCollections', 'characterDrafts'];
 const scope = 'historical-chat-metadata-only';
@@ -25,18 +26,19 @@ function selected(store) {
 // CURRENT exact chat only, via ST's existing saveMetadata. Never POST a copied
 // whole chat or write historical disk files directly. This primitive is not a v4
 // restore authorization: caller must finish original/dependency checks and later
-// provide a persistent journal before wiring a user restore entry. Intent here
-// survives only within this session; no cross-refresh recovery claim is made.
+// supply the existing package journal before wiring a user restore entry. With
+// no journal, intent survives only this session (legacy/internal test adapters).
 export function createHistoricalChatSaveSession({ getContext, epoch, namespace, account, guard, isCurrent,
-  headers, fetchImpl = globalThis.fetch, timeoutMs = 30000, hostTimeoutMs = 10000 } = {}) {
+  headers, fetchImpl = globalThis.fetch, timeoutMs = 30000, hostTimeoutMs = 10000, journal } = {}) {
   if (![getContext, epoch, account, guard, isCurrent, fetchImpl].every(fn => typeof fn === 'function')
     || typeof namespace !== 'string' || !/^st-user:.+/.test(namespace) || namespace.length > 512 || /[\u0000-\u001f\u007f]/.test(namespace)
     || !Number.isFinite(timeoutMs) || timeoutMs < 1 || !Number.isFinite(hostTimeoutMs) || hostTimeoutMs < 1) fail('缺少当前聊天的保存身份与来源保护');
+  if (journal && !['loadHistoricalChatMutation', 'prepareHistoricalChatMutation', 'updateHistoricalChatMutation'].every(key => typeof journal[key] === 'function')) fail('原聊天持久恢复记录接口不完整');
   const source = captureCurrentChatSource({ getContext, epoch }), target = source.target, context = getContext();
   const store = context.chatMetadata.story_director_liminale, saveHost = context.saveMetadata;
   if (!object(store) || typeof saveHost !== 'function') { source.close(); fail('当前聊天资料或 ST 保存接口不可用'); }
   const token = {}, activeClients = new Set();
-  let closed = false, busy = false, hostPending = false, intent = null, cancelOperation = null;
+  let closed = false, busy = false, hostPending = false, intent = null, journalRow = null, recovered = false, cancelOperation = null;
   const release = () => { if (!busy && !hostPending) releaseChatSaveLock(store, token); };
   const current = () => {
     if (closed || isCurrent() !== true) fail('当前保存页面已结束或来源已变化');
@@ -44,11 +46,27 @@ export function createHistoricalChatSaveSession({ getContext, epoch, namespace, 
     if (getContext().chatMetadata.story_director_liminale !== store || getContext().saveMetadata !== saveHost) fail('当前聊天资料对象或保存接口已变化');
   };
   const pending = () => intent ? clone(intent) : null;
-  const unknown = reason => ({ status: 'unconfirmed', reason, pending: pending(), durableJournal: false });
+  const unknown = reason => ({ status: 'unconfirmed', reason, pending: pending(), durableJournal: Boolean(journalRow) });
   const localMatches = value => equal(selected(store), value);
+  const journalCurrent = () => { try { current(); return !cancelledOperation(); } catch { return false; } };
+  let cancelledOperation = () => false;
+  function changesFor(before, after) {
+    const changes = fields.filter(key => Object.hasOwn(after, key) && (!Object.hasOwn(before, key) || !equal(before[key], after[key])));
+    for (const key of changes) {
+      const descriptor = Object.getOwnPropertyDescriptor(store, key);
+      if (descriptor && (!Object.hasOwn(descriptor, 'value') || !descriptor.writable) || !descriptor && !Object.isExtensible(store)) fail('聊天资料字段不可安全写入，未部分修改');
+    }
+    return changes.map(key => [key, clone(after[key])]);
+  }
+  async function submitted(operation) {
+    if (journalRow) {
+      const updated = await journal.updateHistoricalChatMutation(journalRow, 'submitted', { isCurrent: journalCurrent }); await operation.check(); journalRow = updated;
+    }
+  }
   async function exclusive(work) {
     current(); if (busy || hostPending || !acquireChatSaveLock(store, token)) fail('上一项聊天资料保存尚未结束，请先核对'); busy = true;
     const controller = new AbortController(); let reject;
+    cancelledOperation = () => controller.signal.aborted;
     const cancelled = new Promise((_, no) => reject = no);
     const abort = () => { controller.abort(); for (const client of activeClients) client.close(); reject(new Error('聊天资料保存等待已结束')); };
     cancelOperation = abort; const timer = setTimeout(() => { closed = true; source.close(); abort(); }, Math.min(120000, timeoutMs));
@@ -90,8 +108,12 @@ export function createHistoricalChatSaveSession({ getContext, epoch, namespace, 
     if (!await observe(intent.after, intent.chatEvidence, operation)) return unknown('readback_mismatch');
     await operation.check();
     if (!localMatches(intent.after) || !storyboardChatProjectionMatches(messages, getContext().chat)) fail('保存核对期间资料或正文已变化');
+    if (journalRow && journalRow.phase !== 'verified') {
+      const updated = await journal.updateHistoricalChatMutation(journalRow, 'verified', { isCurrent: journalCurrent }); await operation.check(); journalRow = updated;
+      if (!localMatches(intent.after) || !storyboardChatProjectionMatches(messages, getContext().chat)) fail('记录保存确认时资料已变化');
+    }
     const fileHash = intent.fileHash; intent = null;
-    return { status: 'saved', fileHash, metadataVerified: true, durableJournal: false };
+    return { status: 'saved', fileHash, metadataVerified: true, durableJournal: Boolean(journalRow) };
   }
   async function invokeHost(operation) {
     current(); hostPending = true; let promise;
@@ -123,6 +145,8 @@ export function createHistoricalChatSaveSession({ getContext, epoch, namespace, 
       return exclusive(async operation => {
         if (intent) fail('尚有原聊天保存待核对，不能开始新的保存');
         await operation.check();
+        if (journal && await journal.loadHistoricalChatMutation(namespace, { isCurrent: journalCurrent })) fail('已有持久待核对记录，请先重新核对并明确结束原记录');
+        await operation.check();
         for (const value of [proposal.before, proposal.after]) await projectChatGalleryState(value, { namespace, chatKey: target.chatId });
         proposal.chatEvidence = await inspectStoryboardChatEvidence(proposal.chatEvidence, target.chatId); await operation.check();
         if (!localMatches(proposal.before)) fail('当前资料与提案基线不符，未覆盖用户编辑');
@@ -131,34 +155,53 @@ export function createHistoricalChatSaveSession({ getContext, epoch, namespace, 
         await operation.check();
         if (!localMatches(proposal.before) || !storyboardChatProjectionMatches(messages, getContext().chat)) fail('保存前资料或正文已变化');
         if (equal(proposal.before, proposal.after)) return { status: 'unchanged', metadataVerified: true, durableJournal: false };
-        const changes = fields.filter(key => Object.hasOwn(proposal.after, key)
-          && (!Object.hasOwn(proposal.before, key) || !equal(proposal.before[key], proposal.after[key])));
-        for (const key of changes) {
-          const descriptor = Object.getOwnPropertyDescriptor(store, key);
-          if (descriptor && (!Object.hasOwn(descriptor, 'value') || !descriptor.writable) || !descriptor && !Object.isExtensible(store)) fail('聊天资料字段不可安全写入，未部分修改');
+        changesFor(proposal.before, proposal.after);
+        if (journal) {
+          const row = await createHistoricalChatMutation(proposal); await operation.check();
+          const stored = await journal.prepareHistoricalChatMutation(row, { confirmed: true, isCurrent: journalCurrent }); await operation.check();
+          journalRow = stored; intent = clone(proposal); await submitted(operation);
+          if (!await observe(proposal.before, proposal.chatEvidence, operation)) fail('写前记录保存期间服务器资料已变化，未覆盖');
+          await operation.check();
         }
         // Final synchronous source/body/value check -> THREE FIELDS -> native
         // host call, with no intervening await and no replacement of the store.
         current(); if (!localMatches(proposal.before) || !storyboardChatProjectionMatches(messages, getContext().chat)) fail('最终保存前资料已变化');
-        intent = clone(proposal);
-        for (const key of changes) store[key] = clone(proposal.after[key]);
+        const changes = changesFor(proposal.before, proposal.after); intent = clone(proposal);
+        for (const [key, value] of changes) store[key] = value;
         return invokeHost(operation);
       });
     },
+    recover() { return exclusive(async operation => {
+      if (!journal) fail('当前保存未接入持久恢复记录'); if (intent) fail('本会话已有待核对内容');
+      await operation.check(); const stored = await journal.loadHistoricalChatMutation(namespace, { isCurrent: journalCurrent }); await operation.check();
+      if (!stored) return { status: 'idle' };
+      const row = await inspectHistoricalChatMutation(stored); await operation.check();
+      if (row.namespace !== namespace || !equal(row.proposal.target, target)) fail('待核对记录属于另一份准确聊天，未切换或写入');
+      journalRow = row; intent = clone(row.proposal); recovered = true;
+      await inspectLocalEvidence(intent.chatEvidence, operation.check);
+      if (localMatches(intent.after)) return verify(operation);
+      if (localMatches(intent.before)) return unknown('confirmation_required');
+      return unknown('local_conflict');
+    }); },
     verify() { return exclusive(operation => verify(operation)); },
     retry({ confirmed = false } = {}) {
       return exclusive(async operation => {
         if (confirmed !== true) fail('请明确确认重试原聊天待核对保存');
         if (!intent) return { status: 'idle' };
-        await operation.check(); if (!localMatches(intent.after)) fail('本地已编辑，不会补写旧保存');
+        await operation.check(); const needsApply = recovered && journalRow && localMatches(intent.before);
+        if (!needsApply && !localMatches(intent.after)) fail('本地已编辑，不会补写旧保存');
         const messages = await inspectLocalEvidence(intent.chatEvidence, operation.check);
         // A preflight selector mismatch is NOT proof that the server is at the
         // original baseline. Only a fresh successful observation authorizes retry.
         let committed = false; try { committed = await observe(intent.after, intent.chatEvidence, operation); } catch { await operation.check(); }
-        if (committed) return verify(operation);
+        if (committed) return needsApply ? unknown('reload_required') : verify(operation);
         if (!await observe(intent.before, intent.chatEvidence, operation)) fail('服务器已变化，未重发旧资料');
+        if (journalRow?.phase === 'verified') fail('已核对完成的记录不会自动恢复为旧资料');
+        await submitted(operation);
+        if (journalRow && !await observe(intent.before, intent.chatEvidence, operation)) fail('重试记录保存期间服务器资料已变化，未覆盖');
         await operation.check();
-        if (!localMatches(intent.after) || !storyboardChatProjectionMatches(messages, getContext().chat)) fail('重试前资料或正文已变化');
+        if (!localMatches(needsApply ? intent.before : intent.after) || !storyboardChatProjectionMatches(messages, getContext().chat)) fail('重试前资料或正文已变化');
+        if (needsApply) { const changes = changesFor(intent.before, intent.after); current(); for (const [key, value] of changes) store[key] = value; }
         return invokeHost(operation);
       });
     },

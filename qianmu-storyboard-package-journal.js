@@ -4,6 +4,7 @@ import {inspectStoryboardSubjectMapReview} from './qianmu-storyboard-subject-map
 import {mappingHead,validateMappingHead,mappingHeadKey} from './qianmu-storyboard-mapping-contract.js';
 import {inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
 import {sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
+import {inspectHistoricalChatMutation,historicalChatMutationNext} from './qianmu-historical-chat-journal.js';
 import {comfyLibraryBackupDigest as mappingDigest} from './qianmu-comfy-library-backup.js';
 // Asset checkpoints are identity-only; the separate mutation store holds local before/after configuration.
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_package_journal',submissionState:'not_submitted'});};
@@ -38,7 +39,7 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     opening=new Promise((resolve,reject)=>{
       let done=false,request;const finish=(failure,value)=>{if(done){value?.close();return;}done=true;clearTimeout(timer);failure?reject(failure):resolve(value);};
       const timer=setTimeout(()=>finish(error('读取导入恢复记录超时')),timeout);
-      try{request=indexedDB.open(dbName,6);}catch(_){finish(error('无法打开导入恢复记录'));return;}
+      try{request=indexedDB.open(dbName,7);}catch(_){finish(error('无法打开导入恢复记录'));return;}
       request.onupgradeneeded=()=>{if(done||closed){request.transaction?.abort();return;}const db=request.result;
         if(!db.objectStoreNames.contains('checkpoints')){const store=db.createObjectStore('checkpoints',{keyPath:'key'});store.createIndex('namespace','namespace');}
         if(!db.objectStoreNames.contains('mutations'))db.createObjectStore('mutations',{keyPath:'namespace'});
@@ -47,6 +48,8 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
         if(!db.objectStoreNames.contains('subjectMaps')){const store=db.createObjectStore('subjectMaps',{keyPath:'key'});store.createIndex('namespace','namespace');}
         // Old receipts stay untouched. Their small index is derived lazily outside the upgrade transaction.
         if(!db.objectStoreNames.contains('mappingHeads')){const store=db.createObjectStore('mappingHeads',{keyPath:'key'});store.createIndex('namespace','namespace');}
+        // Additive only: never migrate, reinterpret or discard older mutations.
+        if(!db.objectStoreNames.contains('historicalChatMutations'))db.createObjectStore('historicalChatMutations',{keyPath:'namespace'});
       };
       request.onerror=()=>finish(error('导入恢复记录不可用'));request.onblocked=()=>finish(error('请关闭旧页面后重新核对导入恢复记录'));
       request.onsuccess=()=>{const db=request.result;if(done||closed){db.close();finish(ended());return;}database=db;
@@ -111,6 +114,36 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     if(row.namespace!==namespace||row.key!==expectedDigest)fail('环境映射凭据归属不符');return row;
   }
   return Object.freeze({
+    async loadHistoricalChatMutation(namespace,{isCurrent=()=>true}={}){
+      if(!account(namespace))fail('无法确认原聊天恢复账户');
+      const row=await transaction('readonly',isCurrent,(store,read,set)=>read(store.get(namespace),set),'historicalChatMutations');
+      const checked=row?await inspectHistoricalChatMutation(row):null;
+      if(closed||!isCurrent())throw ended();if(checked&&checked.namespace!==namespace)fail('原聊天恢复记录账户不符');return checked;
+    },
+    async prepareHistoricalChatMutation(input,{confirmed=false,isCurrent=()=>true}={}){
+      if(confirmed!==true)fail('请明确确认保存原聊天待核对记录');
+      const row=await inspectHistoricalChatMutation(input);
+      if(row.phase!=='prepared'||row.revision!==1)fail('原聊天恢复记录必须从准备阶段开始');
+      return transaction('readwrite',isCurrent,(store,read,set,tx)=>read(store.get(row.namespace),current=>{
+        if(current)fail('本账户已有原聊天待核对记录，未覆盖或自动删除');
+        read(tx.objectStore('mutations').getKey(row.namespace),legacy=>{
+          if(legacy!==undefined)fail('本账户已有原分镜恢复记录，请先核对');store.add(row);set(row);
+        });
+      }),['historicalChatMutations','mutations']);
+    },
+    async updateHistoricalChatMutation(input,phase,{isCurrent=()=>true}={}){
+      const previous=await inspectHistoricalChatMutation(input),next=historicalChatMutationNext(previous,phase,now());
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(previous.namespace),current=>{
+        if(JSON.stringify(current)!==JSON.stringify(previous))fail('原聊天待核对记录已被另一页面修改');store.put(next);set(next);
+      }),'historicalChatMutations');
+    },
+    async dismissHistoricalChatMutation(input,{confirmed=false,isCurrent=()=>true}={}){
+      if(confirmed!==true)fail('请明确确认结束此待核对记录；不会删除聊天或原件');
+      const previous=await inspectHistoricalChatMutation(input);
+      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(previous.namespace),current=>{
+        if(JSON.stringify(current)!==JSON.stringify(previous))fail('原聊天待核对记录已变化，未删除');store.delete(previous.namespace);set(true);
+      }),'historicalChatMutations');
+    },
     loadMappingReceipt,
     async importMappingReceipt(input,{head:inputHead,confirmed=false,isCurrent=()=>true}={}){
       if(confirmed!==true)fail('请单独确认保存历史迁移凭据');
@@ -262,13 +295,18 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
       }));
     },
     async hasMutation(namespace){
-      if(!account(namespace))fail('无法确认元数据恢复账户');return transaction('readonly',()=>true,(store,read,set)=>read(store.getKey(namespace),key=>set(key!==undefined)),'mutations');
+      if(!account(namespace))fail('无法确认元数据恢复账户');return transaction('readonly',()=>true,(store,read,set,tx)=>read(store.getKey(namespace),key=>{
+        if(key!==undefined){set(true);return;}read(tx.objectStore('historicalChatMutations').getKey(namespace),historical=>set(historical!==undefined));
+      }),['mutations','historicalChatMutations']);
     },
     async prepareMutation(input,{isCurrent=()=>true}={}){
       const row=structuredClone(validateStoryboardMutation(input));if(row.phase!=='prepared'||row.revision!==1)fail('元数据恢复记录必须从准备阶段开始');
-      return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(row.namespace),existing=>{
-        if(existing)fail('本账户已有待核对的分镜导入，请先处理恢复记录');store.add(row);set(row);
-      }),'mutations');
+      return transaction('readwrite',isCurrent,(store,read,set,tx)=>read(store.get(row.namespace),existing=>{
+        if(existing)fail('本账户已有待核对的分镜导入，请先处理恢复记录');
+        read(tx.objectStore('historicalChatMutations').getKey(row.namespace),historical=>{
+          if(historical!==undefined)fail('本账户已有原聊天待核对记录，请先核对');store.add(row);set(row);
+        });
+      }),['mutations','historicalChatMutations']);
     },
     async updateMutation(input,phase,{isCurrent=()=>true}={}){
       const previous=structuredClone(validateStoryboardMutation(input));if(!['applied','uncertain'].includes(phase))fail('元数据保存阶段无效');
