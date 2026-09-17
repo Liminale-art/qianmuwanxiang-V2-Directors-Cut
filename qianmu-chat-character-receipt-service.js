@@ -73,7 +73,7 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
       return header.chat_metadata;
     }finally{await handle.close();}
   }
-  async function inspect(req,input,{signal}={},galleryOnly=false,selection=null,detailsOnly=false){
+  async function inspect(req,input,{signal}={},galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false){
     const context=capture(req,input,signal);let metadata;
     try{metadata=await readHeader(context);}catch(error){
       if(error?.code==='ENOENT')fail('missing','原聊天记录不存在或已移动，未确认保存',404);
@@ -101,6 +101,9 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
       if(!matches.length)fail('record_missing','原画面记录已不存在；目录引用保留',404);
       if(matches.length!==1)fail('record_ambiguous','原聊天存在重复画面编号，不能猜测原图',409);
       if(matches[0].createdAt!==selection.createdAt)fail('record_changed','原画面生成时间与目录不符，未打开其他画面',409);
+      // Internal server consumer only. No generic HTTP route exposes this raw source.
+      if(recipeSource)return {expectedAccount:context.account.namespace,target:context.body.target,selection:{...selection},
+        unavailable:matches[0].recipeUnavailable===true,snapshot:matches[0].snapshot??null,reference:matches[0].snapshotServerRef??null};
       return (detailsOnly?chatGalleryDetailsResponse:chatGalleryRecordResponse)({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
         gallerySha256:gallery.sha256,record:(detailsOnly?projectChatGalleryDetails:projectChatGalleryRecord)(matches[0]),proof:detailsOnly?'read-only-details':'read-only-record'});
     }
@@ -109,12 +112,13 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
     return chatCharacterReceiptResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
       state:collection?'present':'absent',collection,proof:'read-only-snapshot'});
   }
-  function run(req,input,options,galleryOnly=false,selection=null,detailsOnly=false){
+  function run(req,input,options,galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false){
     if(pending.size>=LIMIT.pending)return Promise.reject(chatCharacterReceiptError('busy','聊天核验正忙，请稍后重试',429));
-    const operation=inspect(req,input,options,galleryOnly,selection,detailsOnly);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
+    const operation=inspect(req,input,options,galleryOnly,selection,detailsOnly,recipeSource);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
   }
   return Object.freeze({inspect:(req,input,options)=>run(req,input,options),inspectGallery:(req,input,options)=>run(req,input,options,true),
     async readGalleryRecord(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection);},
     async readGalleryDetails(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection,true);},
+    async readGalleryRecipeSource(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection,false,true);},
     async close(){closed=true;await Promise.allSettled([...pending]);}});
 }

@@ -10,6 +10,8 @@ import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source
 import { createNotesSyncService } from './qianmu-notes-sync-service.js';
 import { notesSyncError, notesSyncErrorPayload } from './qianmu-notes-sync-contract.js';
 import { createChatCharacterReceiptService } from './qianmu-chat-character-receipt-service.js';
+import { createRecipeArchiveService } from './qianmu-recipe-archive-service.js';
+import { recipeArchiveError, recipeArchiveErrorPayload } from './qianmu-recipe-archive-contract.js';
 import { chatCharacterReceiptError, chatCharacterReceiptErrorPayload } from './qianmu-chat-character-receipt.js';
 import { imageRestoreError, imageRestoreErrorPayload } from './qianmu-image-restore-contract.js';
 import {createVibeEncodingService,vibeServiceErrorPayload} from './qianmu-vibe-service.js';
@@ -224,6 +226,18 @@ export async function init(router, options = {}) {
       const result = sourceIdentityErrorPayload(error);
       if (!res.destroyed && !res.writableEnded) return res.status(result.status).json(result.body);
     } finally { res.off?.('close', onClose); }
+  });
+  let recipeArchive;
+  for(const [route,method] of [['/chat-gallery/recipe/preserve','preserve'],['/chat-gallery/recipe/read','read']])router.post(route,async(req,res)=>{
+    prepareImageResponse(res);
+    const controller=new AbortController(),onClose=()=>{if(!res.writableEnded)controller.abort();};res.once?.('close',onClose);
+    try{
+      try{imageServiceAccount(req);}catch{throw recipeArchiveError('account','请先登录 ST 账户保全配方',401);}
+      if(!recipeArchive){recipeArchive=createRecipeArchiveService({...options.recipeArchiveOptions,dataRoot:hostDataRoot()});imageTaskServices.add(recipeArchive);}
+      const result=await recipeArchive[method](req,req.body,{signal:controller.signal});
+      if(!res.destroyed&&!res.writableEnded)return res.json(result);
+    }catch(error){const result=recipeArchiveErrorPayload(error);if(!res.destroyed&&!res.writableEnded)return res.status(result.status).json(result.body);}
+    finally{res.off?.('close',onClose);}
   });
   let chatCharacterReceipt;
   for(const [route,method] of [['/chat-characters/receipt','inspect'],['/chat-gallery/receipt','inspectGallery'],['/chat-gallery/record','readGalleryRecord'],['/chat-gallery/details','readGalleryDetails']])router.post(route, async (req, res) => {
