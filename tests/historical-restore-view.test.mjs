@@ -25,8 +25,14 @@ test('historical restore view keeps scope and explicit dependency consent', () =
 });
 
 test('historical restore view enables restore only after exact consent', () => {
-  const html = renderHistoricalRestoreReview({ fileName: 'history.qmb', preview, busy: false, result: null, dependenciesAccepted: true });
+  const html = renderHistoricalRestoreReview({ fileName: 'history.qmb', preview, busy: false, result: null, dependenciesAccepted: true, hostWriteReady: true });
   assert.doesNotMatch(html, /data-historical-action="restore" disabled/);
+});
+
+test('historical restore remains readable but never offers a write when the host save contract is absent', () => {
+  const html = renderHistoricalRestoreReview({ fileName: 'history.qmb', preview, busy: false, result: null, dependenciesAccepted: true, hostWriteReady: false });
+  assert.match(html, /仍可只读核对原件/);
+  assert.match(html, /data-historical-action="restore" disabled/);
 });
 
 test('historical restore view reports a completed result without another write action', () => {

@@ -5,6 +5,7 @@ export async function importHistoricalStoryboardBundle(file, [
   transfer.busy = true;
   const context = () => Object.assign(hostContext(), baseContext());
   context.release = baseContext.release;
+  const hostWriteReady = typeof hostContext()?.saveMetadata === 'function';
   let journal = null, review = null;
   try {
     const initial = context();
@@ -32,17 +33,20 @@ export async function importHistoricalStoryboardBundle(file, [
     journal = journalModule.createStoryboardPackageJournal();
     await journal.assertNoHistoricalChatMutation(scope.namespace, { isCurrent });
     await guard();
-    review = viewModule.openHistoricalRestoreReview({ parent, fileName: file.name || '历史聊天分镜原件', paintIcons: applyIcons,
+    review = viewModule.openHistoricalRestoreReview({ parent, fileName: file.name || '历史聊天分镜原件', hostWriteReady, paintIcons: applyIcons,
       connect: async () => {
         const coordinator = restoreModule.createHistoricalRestore({ file, namespace: scope.namespace, getContext: context,
           epoch, account: () => identityModule.resolveImageAccountNamespace(), guard, isCurrent, journal,
           headers: () => typeof hostContext().getRequestHeaders === 'function' ? hostContext().getRequestHeaders() : {} });
         return Object.freeze({
           preview: () => coordinator.preview(),
-          restore: args => navigator.locks.request(`qianmu:package-import:${scope.namespace}`, { mode: 'exclusive', ifAvailable: true }, lock => {
-            if (!lock) throw new Error('另一页面正在恢复，请稍后重试');
-            return coordinator.restore(args);
-          }),
+          restore: args => {
+            if (typeof hostContext()?.saveMetadata !== 'function') throw new Error('当前 ST 宿主未提供可确认的聊天保存接口，仅可只读核对原件');
+            return navigator.locks.request(`qianmu:package-import:${scope.namespace}`, { mode: 'exclusive', ifAvailable: true }, lock => {
+              if (!lock) throw new Error('另一页面正在恢复，请稍后重试');
+              return coordinator.restore(args);
+            });
+          },
           close: () => coordinator.close(),
         });
       } });

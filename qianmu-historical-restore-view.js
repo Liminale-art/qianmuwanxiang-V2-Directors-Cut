@@ -27,7 +27,8 @@ function renderImages(preview) {
 
 export function renderHistoricalRestoreReview(view) {
   const preview = view?.preview;
-  const ready = Boolean(preview?.ready && view.dependenciesAccepted);
+  const hostWriteReady = view?.hostWriteReady !== false;
+  const ready = Boolean(preview?.ready && view.dependenciesAccepted && hostWriteReady);
   const excluded = Array.isArray(preview?.excluded) ? preview.excluded : [];
   const result = view?.result;
   return `<header><b id="qm-historical-restore-title">恢复历史聊天分镜</b><button type="button" class="sd-icon-btn" data-historical-action="close" title="关闭恢复页面" aria-label="关闭恢复页面"><i data-qm-icon="qm-regular-x"></i></button></header>
@@ -39,6 +40,7 @@ export function renderHistoricalRestoreReview(view) {
       ${preview ? `<section><h3>本次范围</h3>${renderImages(preview)}<p>配方 ${Number(preview.recipes || 0)} 条 · 当前聊天资料为三项字段受保护合并（画面、相册、人物草稿）。</p>
         <p>明确不恢复：${excluded.map(item => escape(item)).join('、') || '外部依赖'}</p></section>` : ''}
       ${preview?.journal ? `<section><h3>已有待核对记录</h3><p>阶段 ${escape(preview.journal.phase)} · 记录修订 ${Number(preview.journal.revision || 0)}。本次核对会绑定同一原件指纹，不会自动换用其他聊天或旧记录。</p></section>` : ''}
+      ${preview && !hostWriteReady ? '<section><p>当前 ST 宿主未提供可确认的聊天保存接口；仍可只读核对原件，但恢复按钮保持关闭，不会修改聊天资料。</p></section>' : ''}
       ${preview?.ready === false ? '<section><p>当前原件、聊天或原图未通过完整核对，恢复按钮保持关闭；请保留原文件并先处理冲突。</p></section>' : ''}
       ${preview ? `<label class="sd-bundle-review"><input type="checkbox" data-historical-dependencies ${view.dependenciesAccepted ? 'checked' : ''}>我已理解以上恢复范围，确认外部依赖不会随本原件恢复；仅在当前准确聊天中继续。</label>` : ''}
     </fieldset></main>
