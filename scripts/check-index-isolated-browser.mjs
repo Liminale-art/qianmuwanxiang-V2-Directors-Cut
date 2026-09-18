@@ -123,6 +123,22 @@ try {
     observed.storyboardMode = Boolean(modal?.classList.contains('sd-storyboard-mode'));
     observed.storyboardBody = Boolean(modal?.querySelector('.sd-storyboard-body'));
     observed.storyboardNav = Boolean(modal?.querySelector('.sd-storyboard-nav'));
+    const navViews = ['create', 'characters', 'assets', 'gallery', 'logs'];
+    const navResults = [];
+    for (const view of navViews) {
+      const currentButton = modal?.querySelector(`[data-storyboard-view="${view}"]`);
+      if (!currentButton) throw new Error(`missing storyboard navigation view: ${view}`);
+      currentButton.click();
+      await new Promise(resolve => setTimeout(resolve, 140));
+      const activeButton = modal?.querySelector('.sd-storyboard-nav button[aria-current="page"]');
+      navResults.push({
+        view,
+        active: activeButton?.dataset.storyboardView || '',
+        label: activeButton?.querySelector('span')?.textContent || '',
+        title: modal?.querySelector('.sd-storyboard-titlebar [role="heading"]')?.textContent || '',
+      });
+    }
+    observed.storyboardNavViews = navResults;
     observed.storyboardFixtureStillReadable = context.chat.length === 3
       && context.chatMetadata.story_director_liminale?.storyboardImages?.length === 3
       && context.chatMetadata.story_director_liminale?.storyboardCollections?.[0]?.imageIds?.length === 3;
@@ -141,6 +157,8 @@ try {
   assert.equal(result.observed.storyboardMode, true);
   assert.equal(result.observed.storyboardBody, true);
   assert.equal(result.observed.storyboardNav, true);
+  assert.deepEqual(result.observed.storyboardNavViews.map(item => item.view), ['create', 'characters', 'assets', 'gallery', 'logs']);
+  assert.ok(result.observed.storyboardNavViews.every(item => item.active === item.view));
   assert.equal(result.observed.storyboardFixtureStillReadable, true);
   assert.equal(result.restored, true);
   assert.equal(result.floatAfterDisable, false);

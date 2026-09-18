@@ -9,6 +9,8 @@ test('full-entry isolated browser harness uses a temporary fixture and restores 
   assert.match(source, /full-entry-phase1/);
   assert.match(source, /storyboardImageCount/);
   assert.match(source, /storyboardCollectionCount/);
+  assert.match(source, /storyboardNavViews/);
+  assert.match(source, /missing storyboard navigation view/);
   assert.match(source, /const originalChat = context\.chat/);
   assert.match(source, /context\.chat = originalChat/);
   assert.match(source, /await module\.onActivate\(\)/);
