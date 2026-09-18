@@ -6,6 +6,19 @@ import { historicalRestoreFixture as fixture } from './helpers/historical-restor
 import { png } from './helpers/historical-original-restore-fixture.mjs';
 import { createHistoricalChatMutation } from '../qianmu-historical-chat-journal.js';
 
+test('unified stages inspect the immutable package once while retaining image reads and live checks',async t=>{
+  const f=await fixture(t),file=f.packed.file,slice=file.slice.bind(file);let opens=0;
+  await f.hideArchive();
+  file.slice=(start,...rest)=>{if(start===0)opens++;return slice(start,...rest);};
+  const session=f.open();await session.preview();assert.equal(opens,1);
+  assert.equal((await f.apply(session)).status,'restored');
+  // One validated inspection shared by every stage; one fresh original-file
+  // reader still hashes the actual image sections before submitting any bytes.
+  assert.equal(opens,2);assert.equal(f.saves,1);
+  assert.ok(f.traffic.filter(row=>row.url.endsWith('/image/restore/inspect')).length>4);
+  f.namespace='st-user:other';await assert.rejects(session.preview());assert.equal(f.saves,1);
+});
+
 test('unified restore preserves originals, full recipes and raw chat fields with actual final reads', async t => {
   const f = await fixture(t); await f.hideArchive(); const before = structuredClone(f.context.chatMetadata), session = f.open();
   const view = await session.preview(); assert.equal(view.ready, true); assert.equal(view.mode, 'fresh'); assert.equal(f.saves, 0); assert.equal(f.recipeCalls.length, 0);

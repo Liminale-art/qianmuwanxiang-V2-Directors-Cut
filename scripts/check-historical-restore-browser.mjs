@@ -48,6 +48,8 @@ const writes = () => calls.filter(row => /\/(recipe|image\/restore)\/restore$/.t
 async function initialise(page) {
   await page.evaluate(async () => {
     const data = await (await fetch('/fixture')).json(); window.file = await (await fetch('/fixture.qmb')).blob(); window.target = data.target;
+    window.packageOpens = 0; const slice = file.slice.bind(file);
+    file.slice = (start, ...rest) => { if (start === 0) packageOpens++; return slice(start, ...rest); };
     window.account = 'st-user:alice'; window.active = true; window.epoch = 0;
     window.context = { chatId: target.chatId, characterId: 0, characters: [{ avatar: target.avatar, chat: target.chatId }],
       chat: data.messages, chatMetadata: data.metadata, getRequestHeaders: () => ({ 'X-CSRF-Token': 'fixture', Authorization: 'PRIVATE' }),
@@ -69,10 +71,21 @@ try {
   const a = await device(); check('construction does not write files or call host', calls.length === 0 && hostCalls === 0);
   const view = await a.evaluate(async () => window.view = await session.preview());
   check('preview identifies missing images and fresh exact-chat scope without writes', view.ready && view.mode === 'fresh' && view.images.every(row => row.state === 'missing') && writes() === 0);
+  check('all preview stages share exactly one successful immutable-package inspection', await a.evaluate(() => packageOpens === 1));
+  check('mutating a detached inspection never poisons the next restore stage', await a.evaluate(async () => {
+    const { inspectHistoricalStoryboardBundle: inspect } = await import('/qianmu-historical-storyboard-bundle.js');
+    const first = await inspect(file); first.source.recipes.length = 0; first.media.images.length = 0;
+    const second = await inspect(file); return second.source.recipes.length === 2 && second.media.images.length === 2 && packageOpens === 1;
+  }));
+  check('cached inspection still refuses invalid page guard without any file write', await a.evaluate(async () => {
+    const { inspectHistoricalStoryboardBundle: inspect } = await import('/qianmu-historical-storyboard-bundle.js');
+    try { await inspect(file, { guard: async () => false }); return false; } catch { return true; }
+  }) && writes() === 0);
   check('preview explicitly excludes narrative, video, global resources and dependencies', view.dependenciesRestored === false && view.excluded.length === 5);
   check('dependency consent is required independently of confirmation', await a.evaluate(async () => { try { await session.restore({ confirmed: true, expectedDigest: view.digest }); return false; } catch { return true; } }) && writes() === 0);
   const failed = await a.evaluate(async () => { try { await session.restore(consent(view)); return null; } catch (error) { return { state: error.state, stage: error.stage }; } });
   check('host silently not persisting yields needs-review instead of completion', failed.state === 'needs_review' && hostCalls === 1);
+  check('write stage reopens image sections but does not repeat every whole-package inspection', await a.evaluate(() => packageOpens === 2));
   check('actual IDB retains exact before and proposed new archive reference', await a.evaluate(async () => { const row = await journal.loadHistoricalChatMutation(account); return row.phase === 'submitted' && row.proposal.before.storyboardImages[1].snapshotServerRef.id !== row.proposal.after.storyboardImages[1].snapshotServerRef.id; }));
   for (const name of ['inline.png', 'server.png']) assert.deepEqual(await fs.readFile(path.join(f.images, name)), png); checks.push('both original files remain byte exact after host failure');
   check('failed native save leaves on-disk chat byte identical', await fs.readFile(f.file, 'utf8') === original);

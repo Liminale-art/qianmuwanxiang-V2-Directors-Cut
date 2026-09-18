@@ -17,6 +17,51 @@ async function repack(file,change){
 }
 async function replace(options,id,edit){const row=options.entries.find(item=>item.id===id),value=JSON.parse(await row.file.text());edit(value);row.file=json(value);}
 
+function countReads(file){
+  const slice=file.slice.bind(file);let reads=0;
+  file.slice=(...args)=>{reads++;return slice(...args);};
+  return ()=>reads;
+}
+
+test('same immutable package reuses validated bytes but returns independent complete data',async t=>{
+  const f=await historicalSourceFixture(t),{file}=await pack(f),reads=countReads(file);
+  const first=await inspect(file),expected=structuredClone(first),count=reads();assert.ok(count>0);
+  first.source.saved.storyboardImages[0].url='tampered';first.source.recipes.length=0;
+  first.manifest.entries.length=0;first.media.images.length=0;first.summary.images=-1;
+  const second=await inspect(file);assert.equal(reads(),count);assert.deepEqual(second,expected);
+  second.source.saved.characterDrafts.length=0;assert.deepEqual(await inspect(file),expected);
+});
+
+test('cached package still requires the caller guard before and after detached delivery',async t=>{
+  const f=await historicalSourceFixture(t),{file}=await pack(f);await inspect(file);
+  await assert.rejects(inspect(file,{guard:async()=>false}),/保护/);
+  await assert.rejects(inspect(file,{guard:async()=>{throw Error('account changed');}}),/account changed/);
+  let checks=0;await assert.rejects(inspect(file,{guard:async()=>++checks<2}),/保护/);assert.equal(checks,2);
+  assert.equal((await inspect(file)).summary.images,2);
+});
+
+test('interrupted inspection is not reused by the next caller',async t=>{
+  const f=await historicalSourceFixture(t),{file}=await pack(f),reads=countReads(file);let checks=0;
+  await assert.rejects(inspect(file,{guard:async()=>{if(++checks===5)throw Error('closed');}}),/closed/);
+  const interrupted=reads();assert.ok(interrupted>0);
+  assert.equal((await inspect(file)).summary.images,2);assert.ok(reads()>interrupted);
+});
+
+test('cache belongs to exact Blob, never its filename, length or manifest fingerprint',async t=>{
+  const f=await historicalSourceFixture(t),{file}=await pack(f);await inspect(file);
+  const other=new Blob([file]),reads=countReads(other);assert.equal((await inspect(other)).summary.images,2);assert.ok(reads()>0);
+  const bytes=new Uint8Array(await file.arrayBuffer());bytes[bytes.length-1]^=1;
+  const corrupt=new Blob([bytes]),badReads=countReads(corrupt);await assert.rejects(inspect(corrupt));const first=badReads();
+  await assert.rejects(inspect(corrupt));assert.ok(badReads()>first);assert.equal((await inspect(file)).summary.images,2);
+});
+
+test('concurrent callers do not share cancellation or an unverified pending result',async t=>{
+  const f=await historicalSourceFixture(t),{file}=await pack(f);let checks=0;
+  const results=await Promise.allSettled([inspect(file,{guard:async()=>{if(++checks===5)throw Error('cancelled');}}),inspect(file)]);
+  assert.equal(results[0].status,'rejected');assert.equal(results[1].status,'fulfilled');
+  assert.equal((await inspect(file)).summary.images,2);
+});
+
 test('historical segmented package preserves source, unknown draft fields, both recipes and exact image bytes without writes',async t=>{
   const f=await historicalSourceFixture(t),before=await readFile(f.file),session=await f.capture(),source=session.source,seen=[];
   const packed=await capture({session,guard,createdAt:123,readImage:async(selection,{signal})=>{seen.push(selection);assert.equal(signal.aborted,false);return blob;}});

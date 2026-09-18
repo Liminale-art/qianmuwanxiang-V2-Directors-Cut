@@ -16,6 +16,10 @@ const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const equal=(a,b)=>chatGalleryReceiptText([a]).text===chatGalleryReceiptText([b]).text;
 const json=value=>new Blob([JSON.stringify(value)],{type:'application/json'});
 const mediaSchema='qianmu.storyboard.historical-media.v1';
+// Only successful inspection of this exact immutable Blob is reusable. Never
+// cache live chat/server state, failures, pending promises or caller-owned data.
+// A weak key lets the package and its decoded contents leave memory together.
+const inspectedFiles=new WeakMap();
 
 // Preserve original JSON fields, including unknown draft/album fields. Validation
 // does not normalize originals or invent historical settings. Hashes prove file
@@ -104,6 +108,21 @@ export async function captureHistoricalStoryboardBundle({session,readImage,guard
 }
 
 export async function inspectHistoricalStoryboardBundle(file,{guard=async()=>{}}={}){
+  const check=async()=>{if(await guard()===false)fail('历史原件核对来源保护未通过');};
+  await check();
+  if(!(file instanceof Blob))fail('请选择历史原件联包');
+  let result=inspectedFiles.get(file);
+  if(!result){
+    result=await inspectFile(file,check);
+    await check();
+  }
+  // Preserve the detached, mutable return contract. Neither a review consumer
+  // nor a restore stage may poison the next stage's already verified contents.
+  const detached=structuredClone(result);await check();
+  inspectedFiles.set(file,result);return detached;
+}
+
+async function inspectFile(file,guard){
   const opened=await openStoryboardBundle(file,{guard});
   if(opened.manifest.scope!==HISTORICAL_BUNDLE_SCOPE)fail('此入口只核对历史原件联包，不替代当前配置恢复');
   const source=await inspectHistoricalStoryboardSource(await opened.readJson('historical-originals'),{guard});
