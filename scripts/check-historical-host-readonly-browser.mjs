@@ -15,10 +15,19 @@ if (!['http:', 'https:'].includes(parsedTarget.protocol)) throw new Error('QIANM
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const connectUrl = String(process.env.QIANMU_ST_CDP_URL || '').trim();
+const browserChannel = String(process.env.QIANMU_BROWSER_CHANNEL || '').trim();
+const browserExecutable = String(process.env.QIANMU_BROWSER_EXECUTABLE || '').trim();
+if (browserChannel && browserExecutable) {
+  throw new Error('Use only one of QIANMU_BROWSER_CHANNEL or QIANMU_BROWSER_EXECUTABLE');
+}
 const attached = Boolean(connectUrl);
 const browser = attached
   ? await chromium.connectOverCDP(connectUrl)
-  : await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
+  : await chromium.launch({
+    channel: browserChannel || undefined,
+    executablePath: browserExecutable || undefined,
+    headless: true,
+  });
 
 let context;
 let page;

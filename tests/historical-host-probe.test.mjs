@@ -8,7 +8,15 @@ const releaseConfig = JSON.parse(await readFile(new URL('../release-files.json',
 test('real-host probe requires explicit URL and read-only acknowledgement', () => {
   assert.match(source, /QIANMU_ST_URL/);
   assert.match(source, /QIANMU_READONLY_CONFIRM/);
+  assert.match(source, /QIANMU_BROWSER_EXECUTABLE/);
   assert.match(source, /refusing to guess a host/);
+});
+
+test('real-host probe accepts an explicit local browser executable without mixing launch modes', () => {
+  assert.match(source, /QIANMU_BROWSER_CHANNEL/);
+  assert.match(source, /browserChannel && browserExecutable/);
+  assert.match(source, /Use only one of QIANMU_BROWSER_CHANNEL or QIANMU_BROWSER_EXECUTABLE/);
+  assert.match(source, /executablePath: browserExecutable/);
 });
 
 test('real-host probe aborts every non-GET request before navigation can write', () => {
