@@ -58,7 +58,7 @@ try {
             eventSource: { on(type, handler) { const set = listeners.get(type) || new Set(); set.add(handler); listeners.set(type, set); }, removeListener(type, handler) { listeners.get(type)?.delete(handler); } } };
         window.generation = 1; window.account = ns; window.opened = null; window.receipts = []; window.readGate = null;
         window.mediaCalls=0;window.imageFail=false;window.imageGate=null;window.createdUrls=[];window.revokedUrls=[];
-        window.saveCalls=0;window.recordCalls=0;window.recordGate=null;window.recordConflict=false;window.downloadFail=false;window.recordTimeout=10000;
+        window.saveCalls=0;window.recordCalls=0;window.recordGate=null;window.recordConflict=false;window.downloadFail=false;window.recordTimeout=10000;window.selectedPreview=null;
         window.detailCalls=0;window.detailGate=null;window.detailMissing=false;window.detailConflict=false;
         const createUrl=URL.createObjectURL.bind(URL),revokeUrl=URL.revokeObjectURL.bind(URL);
         URL.createObjectURL=blob=>{const url=createUrl(blob);window.createdUrls.push(url);return url;};URL.revokeObjectURL=url=>{window.revokedUrls.push(url);revokeUrl(url);};
@@ -290,6 +290,12 @@ try {
     await page.evaluate(()=>{window.account='st-user:other';window.releaseDetail();window.detailGate=null;});
     await page.waitForFunction(()=>!document.querySelector('.sd-gallery-directory'));assert.equal(await page.evaluate(()=>window.listenerCount()),0);
     checks.push('account switch during details closes the stale preview without exposing late generation text');
+    await page.evaluate(()=>{window.account='st-user:fixture';window.openFixture({select:async preview=>{window.selectedPreview={id:preview.record.id,source:preview.source,bytes:preview.blob.size};}});});await idle();
+    await dialog.locator('[data-directory-scope]').filter({hasText:'char:C.png'}).click();await idle();await dialog.locator('[data-directory-scope]').first().click();await idle();
+    await dialog.locator('[data-directory-history]').first().click();await page.waitForFunction(()=>document.querySelector('.sd-directory-image-stage img')?.naturalWidth>0);
+    assert.equal(await dialog.locator('[data-directory-action="preview-select"]').count(),1);await dialog.locator('[data-directory-action="preview-select"]').click();await page.waitForFunction(()=>!document.querySelector('.sd-gallery-directory'));
+    assert.deepEqual(await page.evaluate(()=>window.selectedPreview),{id:'same-id',source:{ownerKey:'char:C.png',chatKey:'同名聊天'},bytes:await page.evaluate(()=>window.previewBlob.size)});
+    checks.push('historical preview can be explicitly selected by a read-only consumer and closes without changing the source chat');
     assert.equal(external, 0); assert.deepEqual(errors, []);
     console.log(JSON.stringify({ ok: true, checks: [...result, ...checks], externalRequests: external, pageErrors: errors }));
 } finally { clearTimeout(timer); await browser.close(); }

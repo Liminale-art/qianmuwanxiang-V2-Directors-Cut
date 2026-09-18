@@ -15,7 +15,7 @@ export function galleryDirectoryOwnerLabel(ownerKey, context) {
 
 // The directory is a local, rebuildable list of observed references, not an
 // account-wide server inventory. Only explicit preview/export actions load media.
-export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = () => true, locate, save,
+export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = () => true, locate, save, select,
     connect = createGalleryDirectorySession, timeoutMs = 20000 } = {}) {
     const document = parent.ownerDocument, view = document.defaultView, returnFocus = document.activeElement;
     const dialog = document.createElement('dialog'); dialog.className = 'sd-bundle-dialog sd-gallery-directory';
@@ -46,7 +46,7 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
         if (!alive()) return;
         releaseZoom?.(); releaseZoom = null; releaseDetails?.(); releaseDetails = null;
         if (preview) {
-            dialog.innerHTML = `<header><b>历史画面 · 只读</b>${button('preview-back', '返回目录', busy)}${button('close', '关闭')}</header><main>
+            dialog.innerHTML = `<header><b>历史画面 · 只读</b>${typeof select === 'function' ? button('preview-select', '选择此图', busy) : ''}${button('preview-back', '返回目录', busy)}${button('close', '关闭')}</header><main>
               <div class="sd-directory-image-stage" tabindex="0" aria-label="历史原图；滚轮或双指缩放，拖动平移，0 恢复"><div><img src="${escape(previewUrl)}" alt="${escape(preview.record.tags.join(' · ') || '历史画面')}" draggable="false"></div></div>
               <nav aria-label="图片操作"><button type="button" class="sd-btn" data-preview-zoom="out" aria-label="缩小">−</button><span data-preview-scale>100%</span><button type="button" class="sd-btn" data-preview-zoom="in" aria-label="放大">＋</button><button type="button" class="sd-btn" data-preview-zoom="reset">恢复适配</button>${typeof save === 'function' ? button('preview-save', '保存原图', busy) : ''}</nav>
               <details class="sd-directory-image-details"><summary>来源与详情</summary><p>${escape(galleryDirectoryOwnerLabel(preview.source.ownerKey, getContext()))}</p><p>${escape(preview.source.chatKey)}</p><p>${escape(preview.source.ownerKey)}</p><p>${escape(new Date(preview.record.createdAt).toLocaleString())} · ${preview.width} × ${preview.height}</p><p>${escape(preview.record.tags.join(' · '))}</p><p>按原文件位置读取的当前快照，不是永久归属或原件一致性证明。</p><section data-directory-generation aria-live="polite"></section></details>
@@ -105,6 +105,19 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
         finally { busy = false; if (alive()) for (const node of buttons()) node.disabled = false; }
         // Keep the existing image node, zoom, scroll and expanded details intact.
     }
+    async function selectOriginal() {
+        if (!alive() || busy || !preview || typeof select !== 'function') return;
+        busy = true;
+        const selected = preview;
+        draw();
+        try {
+            await select(selected);
+            guard();
+            close();
+        } catch (error) {
+            if (alive()) { busy = false; notice = `${error?.message || '图片选择未完成'}。原聊天和原图未修改。`; draw(); }
+        }
+    }
     function reset() { stack = [null]; page = null; sourceNotice = ''; tag = ''; exportRows.clear(); }
     async function refresh() {
         notice = '正在核对服务器已保存的当前静帧，再更新本机目录…'; draw();
@@ -128,6 +141,7 @@ export function openGalleryDirectory({ parent, getContext, epoch, isCurrent = ()
         const action = event.target.closest('[data-directory-action]')?.dataset.directoryAction;
         if (action === 'close') { close(); return; }
         if (action === 'preview-save') { void saveOriginal(); return; }
+        if (action === 'preview-select') { void selectOriginal(); return; }
         if (action === 'export-cancel') { exportController?.abort(); return; }
         if (action === 'export-selected') {
             if (!alive() || busy || !session || !exportRows.size || typeof save !== 'function') return;

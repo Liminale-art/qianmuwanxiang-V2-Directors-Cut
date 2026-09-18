@@ -98,6 +98,7 @@
     "qianmu-gallery-catalog-store.js",
     "qianmu-gallery-directory.js",
     "qianmu-gallery-directory-view.js",
+    "qianmu-historical-gallery-consumer.js",
     "qianmu-gallery-preview-media.js",
     "qianmu-gallery-preview-zoom.js",
     "qianmu-current-chat-source.js",

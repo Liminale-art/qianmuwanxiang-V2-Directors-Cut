@@ -257,7 +257,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.204';
+const VERSION = '1.59.205';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -14916,6 +14916,8 @@ function storyboardFilteredGalleryRecords(state) {
 
 function storyboardSetArtistPreview(root, value) {
   const url = storyboardSafeUrl(value);
+  const input = root?.querySelector('.sd-storyboard-artist-edit-preview');
+  if (input) input.value = value || '';
   const editor = root?.querySelector('.sd-storyboard-artist-preview-editor');
   const frame = editor?.querySelector('.sd-storyboard-artist-preview-frame');
   const image = frame?.querySelector('img');
@@ -14963,7 +14965,7 @@ function renderStoryboardArtistLibrary(state) {
     const galleryOptions = [...storyboardGalleryRecords()].reverse().filter((item) => storyboardSafeUrl(item.url)).slice(0, 120)
       .map((item, index) => `<option value="${htmlEscape(storyboardSafeUrl(item.url))}">${htmlEscape(snip(item.finalPrompt || item.prompt || `画面 ${index + 1}`, 46))}</option>`).join('');
     return `<div class="sd-storyboard-artist-editor-page"><header><div><button type="button" class="sd-icon-btn sd-storyboard-cancel-artist-edit" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button><button type="button" class="sd-icon-btn sd-primary sd-storyboard-save-artist-card" title="保存" aria-label="保存"><i class="fa-solid fa-floppy-disk"></i></button></div></header><div class="sd-storyboard-artist-editor-fields">
-      <div class="sd-storyboard-artist-preview-editor ${preview ? 'has-image' : 'is-empty'}"><div class="sd-storyboard-artist-preview-frame">${preview ? `<img src="${htmlEscape(preview)}" alt="画师串预览">` : '<img alt="画师串预览" hidden>'}<span ${preview ? 'hidden' : ''}><i class="fa-regular fa-image"></i></span></div><div class="sd-storyboard-artist-preview-sources"><button type="button" class="sd-btn sd-storyboard-artist-preview-url-mode">URL</button><label class="sd-btn">本地上传<input type="file" class="sd-storyboard-artist-preview-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label><select class="text_pole sd-storyboard-artist-preview-gallery" aria-label="从阅片室选择"><option value="">阅片室选择</option>${galleryOptions}</select></div><input class="text_pole sd-storyboard-artist-edit-preview" value="${htmlEscape(editing?.previewUrl || '')}" placeholder="https://"></div>
+       <div class="sd-storyboard-artist-preview-editor ${preview ? 'has-image' : 'is-empty'}"><div class="sd-storyboard-artist-preview-frame">${preview ? `<img src="${htmlEscape(preview)}" alt="画师串预览">` : '<img alt="画师串预览" hidden>'}<span ${preview ? 'hidden' : ''}><i class="fa-regular fa-image"></i></span></div><div class="sd-storyboard-artist-preview-sources"><button type="button" class="sd-btn sd-storyboard-artist-preview-url-mode">URL</button><label class="sd-btn">本地上传<input type="file" class="sd-storyboard-artist-preview-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label><select class="text_pole sd-storyboard-artist-preview-gallery" aria-label="从阅片室选择"><option value="">阅片室选择</option>${galleryOptions}</select></div><input class="text_pole sd-storyboard-artist-edit-preview" value="${htmlEscape(editing?.previewUrl || '')}" placeholder="https://"></div>
       <label><span>名称</span><input class="text_pole sd-storyboard-artist-edit-name" maxlength="80" value="${htmlEscape(editing?.name || '')}"></label>
       <label><span>画师串</span><textarea class="text_pole sd-storyboard-artist-edit-value" spellcheck="false">${htmlEscape(editing?.value || '')}</textarea></label>
       <label><span>正面提示词</span><textarea class="text_pole sd-storyboard-artist-edit-positive" spellcheck="false">${htmlEscape(editing?.positivePrompt || '')}</textarea></label>
@@ -23316,12 +23318,17 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelector('.sd-storyboard-cancel-artist-edit')?.addEventListener('click', () => storyboardReturnTo(root, 'artists', { editingArtistPresetId: '' }));
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
+  const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
+  if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.205').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+      root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
+      apply: value => storyboardSetArtistPreview(root, value), notify: toast,
+    })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });
+  }
   root.querySelector('.sd-storyboard-artist-edit-preview')?.addEventListener('input', (event) => storyboardSetArtistPreview(root, event.target.value));
   root.querySelector('.sd-storyboard-artist-preview-gallery')?.addEventListener('change', (event) => {
     const value = String(event.target.value || '');
     if (!value) return;
-    const field = root.querySelector('.sd-storyboard-artist-edit-preview');
-    if (field) field.value = value;
     storyboardSetArtistPreview(root, value);
   });
   root.querySelector('.sd-storyboard-artist-preview-file')?.addEventListener('change', async (event) => {
@@ -23330,8 +23337,6 @@ function bindStoryboardTabEvents(root) {
     if (!file) return;
     try {
       const value = await storyboardArtistPreviewFromFile(file);
-      const field = root.querySelector('.sd-storyboard-artist-edit-preview');
-      if (field) field.value = value;
       storyboardSetArtistPreview(root, value);
     } catch (error) {
       toast(error?.message || '预览图读取失败。', 'warning');
