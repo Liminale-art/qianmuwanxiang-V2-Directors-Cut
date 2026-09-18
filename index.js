@@ -160,6 +160,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.202';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.202';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.203';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -256,7 +257,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.202';
+const VERSION = '1.59.203';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -290,6 +291,8 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.202') },
   storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.202') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.202') },
+  historicalRestore: { label: '历史聊天分镜恢复', load: () => import('./qianmu-historical-restore.js?v=1.59.203') },
+  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.203') },
   storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.202') },
   storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.202') },
   storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.202') },
@@ -1649,37 +1652,6 @@ function lastChatIdx() {
   const chat = ctx().chat;
   return Array.isArray(chat) ? chat.length - 1 : -1;
 }
-
-// clone - 已迁移到 qianmu-storyboard-utils.js
-// function clone(value) {
-//   if (typeof structuredClone === 'function') return structuredClone(value);
-//   return JSON.parse(JSON.stringify(value));
-// }
-
-// isPlainObject - 已迁移到 qianmu-storyboard-utils.js
-// function isPlainObject(value) {
-//   return value && typeof value === 'object' && !Array.isArray(value);
-// }
-
-// hashText - 已迁移到 qianmu-storyboard-utils.js
-// 轻量字符串哈希，用于判断默认提示词是否被用户改动过
-// function hashText(text) {
-//   const str = String(text || '');
-//   let h = 5381;
-//   for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
-//   return `${str.length}:${h.toString(36)}`;
-// }
-
-// mergeDefaults - 已迁移到 qianmu-storyboard-utils.js
-// function mergeDefaults(target, defaults) {
-//   for (const [key, value] of Object.entries(defaults)) {
-//     if (!Object.prototype.hasOwnProperty.call(target, key)) {
-//       target[key] = clone(value);
-//     } else if (isPlainObject(value) && isPlainObject(target[key])) {
-//       mergeDefaults(target[key], value);
-//     }
-//   }
-// }
 
 function migrateTtsProviderSettings(s) {
   if (!isPlainObject(s.tts)) s.tts = clone(DEFAULT_SETTINGS.tts);
@@ -21905,7 +21877,11 @@ async function storyboardImportAnyPackage(file) {
   if (!file || storyboardImportPackage.busy) return;
   try {
     const format = await featureRuntime.load('storyboardBundleFormat');
-    if (/\.qmb$/i.test(file.name || '') || await format.isStoryboardBundleFile(file)) return storyboardImportBundle(file);
+    if (/\.qmb$/i.test(file.name || '') || await format.isStoryboardBundleFile(file)) {
+      const header=await format.openStoryboardBundle(file);
+      if(header.manifest.scope===format.HISTORICAL_BUNDLE_SCOPE)return importHistoricalStoryboardBundle(file,[storyboardPackageContext(storyboardImportPackage),ctx,storyboardImportPackage,storyboardExportPackage,MODAL_ID,()=>storyboardActiveJobs.size||storyboardQueue.length,()=>storyboardAdmissionEpoch,featureRuntime,applyQianmuIcons,storyboardScheduleInlineRender,renderModal,toast]);
+      return storyboardImportBundle(file);
+    }
     return storyboardImportPackage(file);
   } catch (error) { toast(`分镜包读取失败：${error?.message || '请选择完整原文件'}`, 'error'); }
 }
