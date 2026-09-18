@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../scripts/check-historical-host-readonly-browser.mjs', import.meta.url), 'utf8');
+const releaseConfig = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
 
 test('real-host probe requires explicit URL and read-only acknowledgement', () => {
   assert.match(source, /QIANMU_ST_URL/);
@@ -26,4 +27,12 @@ test('real-host probe only inspects save capability and never invokes it', () =>
 test('real-host probe closes only its own page when attached to a browser', () => {
   assert.match(source, /attachedBrowser: attached/);
   assert.match(source, /if \(!attached\) await browser\.close/);
+});
+
+test('real-host probe stays development-only and cannot enter the release whitelist', () => {
+  assert.ok(releaseConfig.forbiddenSegments.includes('scripts'));
+  assert.ok(releaseConfig.forbiddenSegments.includes('tests'));
+  assert.ok(!releaseConfig.files.includes('scripts/check-historical-host-readonly-browser.mjs'));
+  assert.ok(!releaseConfig.files.includes('tests/historical-host-probe.test.mjs'));
+  assert.ok(!releaseConfig.directories.some(directory => ['scripts', 'tests'].includes(directory)));
 });
