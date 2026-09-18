@@ -10,6 +10,58 @@ const clone = value => {
 const temporaryId = () => `qianmu-memory-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 /**
+ * Build a deterministic, memory-only Phase 1 sample for browser checks.
+ * The shape deliberately stays within chat-owned storyboard fields; it is
+ * not a persistence format and must never be passed to a host writer.
+ */
+export function createQianmuPhase1Fixture(options = {}) {
+  const id = String(options.id || 'qianmu-phase1-fixture');
+  if (!id || id.length > 120) throw new TypeError('fixture id is invalid');
+  const floors = [
+    { floor: 0, title: '夜班厨房', text: '水汽沿着窗框上升，角色A把火调小。' },
+    { floor: 1, title: '餐桌边的停顿', text: '角色B没有回答，只把旧瓷杯推回两人之间。' },
+    { floor: 2, title: '电车经过之前', text: '窗外的灯影切过桌面，镜头移向未说出口的手势。' },
+  ];
+  const entries = floors.map(item => ({
+    mes: item.text,
+    name: item.floor % 2 ? '角色B' : '角色A',
+    is_user: false,
+    send_date: item.floor + 1,
+    extra: { qianmuTemporaryFixture: true, fixtureId: id, floor: item.floor },
+  }));
+  const storyboardImages = floors.map((item, index) => ({
+    id: `${id}-image-${index + 1}`,
+    kind: 'still',
+    status: 'succeeded',
+    temporary: true,
+    fixtureId: id,
+    floor: item.floor,
+    messageRef: { floor: item.floor, chatKey: `temporary:${id}` },
+    title: item.title,
+    prompt: index === 0 ? 'cinematic kitchen, steam, medium shot' : index === 1 ? 'two people at a table, held silence' : 'tram light across a table, insert shot',
+    negative: 'text, watermark',
+    provider: 'novel',
+    model: 'temporary-fixture',
+    createdAt: index + 1,
+  }));
+  const storyboardCollections = [{
+    id: `${id}-sequence`,
+    name: '临时连续镜头',
+    temporary: true,
+    fixtureId: id,
+    imageIds: storyboardImages.map(row => row.id),
+  }];
+  const layer = {
+    schemaVersion: 8,
+    temporary: true,
+    fixtureId: id,
+    storyboardImages,
+    storyboardCollections,
+  };
+  return Object.freeze({ id, entries, layer: clone(layer), floors: clone(floors) });
+}
+
+/**
  * Install a small, explicitly temporary chat/metadata pair in memory.
  *
  * The caller receives a one-shot restore function. The original property
@@ -28,13 +80,10 @@ export function installQianmuMemoryFixture(context, options = {}) {
   const id = String(options.id || temporaryId());
   if (!id || id.length > 120) throw new TypeError('fixture id is invalid');
 
-  const entry = clone(options.entry || {
-    mes: '[temporary qianmu readonly fixture]',
-    name: '__qianmu_temp__',
-    is_user: false,
-    send_date: 0,
-    extra: { qianmuTemporaryFixture: true, fixtureId: id },
-  });
+  const defaults = createQianmuPhase1Fixture({ id });
+  const entries = clone(options.entries || (options.entry ? [options.entry] : [defaults.entries[0]]));
+  if (!Array.isArray(entries) || entries.length === 0) throw new TypeError('fixture entries must be a non-empty array');
+  const entry = entries[0];
   const storyboardImages = clone(options.storyboardImages === undefined ? [{
     id: `${id}-image`,
     kind: 'still',
@@ -52,7 +101,7 @@ export function installQianmuMemoryFixture(context, options = {}) {
   layer.temporary = true;
   layer.fixtureId = id;
 
-  const chat = Array.isArray(original.chat) ? [...original.chat, entry] : [entry];
+  const chat = Array.isArray(original.chat) ? [...original.chat, ...entries] : entries;
   const metadata = original.chatMetadata && typeof original.chatMetadata === 'object'
     ? { ...original.chatMetadata, story_director_liminale: layer }
     : { story_director_liminale: layer };

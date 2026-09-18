@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { installQianmuMemoryFixture } from './helpers/qianmu-memory-fixture.mjs';
+import { createQianmuPhase1Fixture, installQianmuMemoryFixture } from './helpers/qianmu-memory-fixture.mjs';
+
+test('phase 1 fixture is deterministic and contains ordered floors and a sequence collection', () => {
+  const fixture = createQianmuPhase1Fixture({ id: 'phase1-contract' });
+  assert.equal(fixture.id, 'phase1-contract');
+  assert.deepEqual(fixture.floors.map(row => row.floor), [0, 1, 2]);
+  assert.deepEqual(fixture.entries.map(row => row.extra.floor), [0, 1, 2]);
+  assert.deepEqual(fixture.layer.storyboardImages.map(row => row.floor), [0, 1, 2]);
+  assert.deepEqual(fixture.layer.storyboardCollections[0].imageIds, [
+    'phase1-contract-image-1',
+    'phase1-contract-image-2',
+    'phase1-contract-image-3',
+  ]);
+  assert.equal(fixture.layer.temporary, true);
+});
 
 test('memory fixture appends one temporary floor and restores original references exactly', () => {
   const originalChat = [{ mes: 'existing', name: 'narrator' }];
@@ -53,4 +67,30 @@ test('memory fixture rejects invalid contexts and malformed storyboard arrays be
   const context = { chat: [] };
   assert.throws(() => installQianmuMemoryFixture(context, { storyboardImages: null }), /storyboardImages must be an array/);
   assert.deepEqual(context, { chat: [] });
+});
+
+test('memory fixture can install the ordered phase 1 sample without invoking writers', () => {
+  const sample = createQianmuPhase1Fixture({ id: 'phase1-install' });
+  const calls = [];
+  const originalChat = [{ mes: 'existing' }];
+  const context = {
+    chat: originalChat,
+    chatMetadata: {},
+    saveMetadata: () => calls.push('metadata'),
+  };
+  const fixture = installQianmuMemoryFixture(context, {
+    id: sample.id,
+    entries: sample.entries,
+    layer: sample.layer,
+  });
+  assert.equal(context.chat.length, 4);
+  assert.deepEqual(context.chat.slice(1).map(row => row.extra.floor), [0, 1, 2]);
+  assert.deepEqual(context.chatMetadata.story_director_liminale.storyboardImages.map(row => row.id), [
+    'phase1-install-image-1',
+    'phase1-install-image-2',
+    'phase1-install-image-3',
+  ]);
+  fixture.restore();
+  assert.equal(context.chat, originalChat);
+  assert.deepEqual(calls, []);
 });

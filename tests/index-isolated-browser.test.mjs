@@ -6,7 +6,9 @@ const source = await readFile(new URL('../scripts/check-index-isolated-browser.m
 const releaseConfig = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
 
 test('full-entry isolated browser harness uses a temporary fixture and restores the host', () => {
-  assert.match(source, /temporary qianmu full-entry fixture/);
+  assert.match(source, /full-entry-phase1/);
+  assert.match(source, /storyboardImageCount/);
+  assert.match(source, /storyboardCollectionCount/);
   assert.match(source, /const originalChat = context\.chat/);
   assert.match(source, /context\.chat = originalChat/);
   assert.match(source, /await module\.onActivate\(\)/);

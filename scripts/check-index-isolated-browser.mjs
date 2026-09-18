@@ -83,8 +83,23 @@ try {
     if (!button) throw new Error('full index did not render the floating entry');
     const originalChat = context.chat;
     const originalMetadata = context.chatMetadata;
-    context.chat = [{ mes: '[temporary qianmu full-entry fixture]', name: '__qianmu_temp__', is_user: false }];
-    context.chatMetadata = { story_director_liminale: { schemaVersion: 8, temporary: true, fixtureId: 'full-entry', storyboardImages: [{ id: 'full-entry-image', kind: 'still', temporary: true }], storyboardCollections: [] } };
+    const fixtureId = 'full-entry-phase1';
+    context.chat = [
+      { mes: '水汽沿着窗框上升，角色A把火调小。', name: '角色A', is_user: false, extra: { qianmuTemporaryFixture: true, fixtureId, floor: 0 } },
+      { mes: '角色B没有回答，只把旧瓷杯推回两人之间。', name: '角色B', is_user: false, extra: { qianmuTemporaryFixture: true, fixtureId, floor: 1 } },
+      { mes: '窗外的灯影切过桌面，镜头移向未说出口的手势。', name: '角色A', is_user: false, extra: { qianmuTemporaryFixture: true, fixtureId, floor: 2 } },
+    ];
+    context.chatMetadata = { story_director_liminale: {
+      schemaVersion: 8,
+      temporary: true,
+      fixtureId,
+      storyboardImages: [
+        { id: `${fixtureId}-image-1`, kind: 'still', status: 'succeeded', temporary: true, fixtureId, floor: 0, title: '夜班厨房', prompt: 'cinematic kitchen, steam, medium shot' },
+        { id: `${fixtureId}-image-2`, kind: 'still', status: 'succeeded', temporary: true, fixtureId, floor: 1, title: '餐桌边的停顿', prompt: 'two people at a table, held silence' },
+        { id: `${fixtureId}-image-3`, kind: 'still', status: 'succeeded', temporary: true, fixtureId, floor: 2, title: '电车经过之前', prompt: 'tram light across a table, insert shot' },
+      ],
+      storyboardCollections: [{ id: `${fixtureId}-sequence`, name: '临时连续镜头', temporary: true, fixtureId, imageIds: [`${fixtureId}-image-1`, `${fixtureId}-image-2`, `${fixtureId}-image-3`] }],
+    } };
     button.click();
     await new Promise(resolve => setTimeout(resolve, 40));
     if (!document.getElementById('story-director-modal')) button.click();
@@ -96,6 +111,8 @@ try {
       modalOpen: Boolean(modal?.classList.contains('open')),
       chatLength: context.chat.length,
       qianmuMetadataPresent: Boolean(context.chatMetadata.story_director_liminale),
+      storyboardImageCount: context.chatMetadata.story_director_liminale?.storyboardImages?.length || 0,
+      storyboardCollectionCount: context.chatMetadata.story_director_liminale?.storyboardCollections?.length || 0,
       storyboardMode: Boolean(modal?.classList.contains('sd-storyboard-mode')),
       title: modal?.querySelector('.sd-header h2, .sd-storyboard-body')?.textContent?.slice(0, 80) || '',
       writesBeforeCleanup: [...writes],
@@ -106,7 +123,9 @@ try {
     observed.storyboardMode = Boolean(modal?.classList.contains('sd-storyboard-mode'));
     observed.storyboardBody = Boolean(modal?.querySelector('.sd-storyboard-body'));
     observed.storyboardNav = Boolean(modal?.querySelector('.sd-storyboard-nav'));
-    observed.storyboardFixtureStillReadable = context.chat.length === 1 && Boolean(context.chatMetadata.story_director_liminale?.storyboardImages?.length);
+    observed.storyboardFixtureStillReadable = context.chat.length === 3
+      && context.chatMetadata.story_director_liminale?.storyboardImages?.length === 3
+      && context.chatMetadata.story_director_liminale?.storyboardCollections?.[0]?.imageIds?.length === 3;
     context.chat = originalChat;
     context.chatMetadata = originalMetadata;
     await module.onDisable();
@@ -115,8 +134,10 @@ try {
   assert.equal(result.observed.floatRendered, true);
   assert.equal(result.observed.modalRendered, true);
   assert.equal(result.observed.modalOpen, true);
-  assert.equal(result.observed.chatLength, 1);
+  assert.equal(result.observed.chatLength, 3);
   assert.equal(result.observed.qianmuMetadataPresent, true);
+  assert.equal(result.observed.storyboardImageCount, 3);
+  assert.equal(result.observed.storyboardCollectionCount, 1);
   assert.equal(result.observed.storyboardMode, true);
   assert.equal(result.observed.storyboardBody, true);
   assert.equal(result.observed.storyboardNav, true);
