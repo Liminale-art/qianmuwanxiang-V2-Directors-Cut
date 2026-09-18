@@ -47,11 +47,11 @@ export function renderHistoricalRestoreReview(view) {
     <footer><p role="status">${escape(view?.notice || (view?.busy ? '正在核对；关闭不会写入未确认内容。' : '预览不会修改正文或聊天资料。'))}</p><div>${result ? button('close', '关闭') : `${button('preview', '重新核对', view?.busy)}${button('restore', '确认恢复', view?.busy || !ready)}`}</div></footer>`;
 }
 
-export function openHistoricalRestoreReview({ parent, fileName, hostWriteReady = true, connect, paintIcons = () => {} }) {
+export function openHistoricalRestoreReview({ parent, fileName, hostWriteReady = true, readHostWriteReady, connect, paintIcons = () => {} }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'sd-bundle-dialog sd-historical-restore-dialog';
   dialog.setAttribute('aria-labelledby', 'qm-historical-restore-title');
-  const view = { fileName, hostWriteReady: hostWriteReady !== false, preview: null, busy: true, notice: '', result: null, dependenciesAccepted: false };
+  const view = { fileName, hostWriteReady: hostWriteReady !== false, readHostWriteReady, preview: null, busy: true, notice: '', result: null, dependenciesAccepted: false };
   let session = null;
   let closed = false;
   let resolve;
@@ -74,8 +74,15 @@ export function openHistoricalRestoreReview({ parent, fileName, hostWriteReady =
     return true;
   }
 
+  function hostReady() {
+    if (!view.hostWriteReady) return false;
+    if (typeof view.readHostWriteReady !== 'function') return true;
+    try { return view.readHostWriteReady() === true; } catch (_) { return false; }
+  }
+
   function draw() {
     if (!active()) return;
+    view.hostWriteReady = hostReady();
     const scroll = dialog.querySelector('[data-historical-scroll]')?.scrollTop || 0;
     dialog.innerHTML = renderHistoricalRestoreReview(view);
     paintIcons(dialog);
@@ -92,6 +99,12 @@ export function openHistoricalRestoreReview({ parent, fileName, hostWriteReady =
 
   async function run(action) {
     if (!active() || view.busy || view.result || !session) return;
+    if (action === 'restore' && !hostReady()) {
+      view.hostWriteReady = false;
+      view.notice = '当前 ST 宿主保存接口已不可用，仅可只读核对原件。';
+      draw();
+      return;
+    }
     view.busy = true;
     view.notice = '';
     draw();

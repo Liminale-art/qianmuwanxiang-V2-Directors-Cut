@@ -33,7 +33,8 @@ export async function importHistoricalStoryboardBundle(file, [
     journal = journalModule.createStoryboardPackageJournal();
     await journal.assertNoHistoricalChatMutation(scope.namespace, { isCurrent });
     await guard();
-    review = viewModule.openHistoricalRestoreReview({ parent, fileName: file.name || '历史聊天分镜原件', hostWriteReady, paintIcons: applyIcons,
+    review = viewModule.openHistoricalRestoreReview({ parent, fileName: file.name || '历史聊天分镜原件', hostWriteReady,
+      readHostWriteReady: () => typeof hostContext()?.saveMetadata === 'function', paintIcons: applyIcons,
       connect: async () => {
         const coordinator = restoreModule.createHistoricalRestore({ file, namespace: scope.namespace, getContext: context,
           epoch, account: () => identityModule.resolveImageAccountNamespace(), guard, isCurrent, journal,

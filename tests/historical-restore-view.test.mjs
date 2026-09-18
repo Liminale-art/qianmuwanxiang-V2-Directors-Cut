@@ -68,3 +68,28 @@ test('historical restore dialog carries the host save capability into its live v
     review.close();
   } finally { globalThis.document = previousDocument; }
 });
+
+test('historical restore rechecks a host that becomes unavailable before confirmation', async () => {
+  const previousDocument = globalThis.document;
+  const dialog = {
+    open: false, isConnected: true, innerHTML: '', listeners: new Map(),
+    className: '', setAttribute() {}, addEventListener(type, handler) { this.listeners.set(type, handler); },
+    querySelector(selector) { return selector === '[data-historical-scroll]' ? { scrollTop: 0 } : null; },
+    appendChild() {}, showModal() { this.open = true; }, close() { this.open = false; }, remove() { this.isConnected = false; },
+  };
+  globalThis.document = { createElement() { return dialog; } };
+  let canSave = true, restores = 0;
+  try {
+    const session = { preview: async () => preview, restore: async () => { restores++; }, close() {} };
+    const review = openHistoricalRestoreReview({ parent: { appendChild() {} }, fileName: 'history.qmb', hostWriteReady: true,
+      readHostWriteReady: () => canSave, connect: async () => session });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    canSave = false;
+    dialog.listeners.get('click')({ target: { closest: () => ({ dataset: { historicalAction: 'restore' } }) } });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(restores, 0);
+    assert.match(dialog.innerHTML, /当前 ST 宿主保存接口已不可用/);
+    assert.match(dialog.innerHTML, /data-historical-action="restore" disabled/);
+    review.close();
+  } finally { globalThis.document = previousDocument; }
+});
