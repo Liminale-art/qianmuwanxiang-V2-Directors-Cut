@@ -257,7 +257,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.205';
+const VERSION = '1.59.206';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -23320,7 +23320,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
   if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
-    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.205').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.206').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
       root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
       apply: value => storyboardSetArtistPreview(root, value), notify: toast,
     })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });

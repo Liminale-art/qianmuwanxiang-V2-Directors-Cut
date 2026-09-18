@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { renderHistoricalRestoreReview } from '../qianmu-historical-restore-view.js';
+import { openHistoricalRestoreReview, renderHistoricalRestoreReview } from '../qianmu-historical-restore-view.js';
 import { importHistoricalStoryboardBundle } from '../qianmu-historical-import-runtime.js';
 
 const preview = {
@@ -47,4 +47,24 @@ test('historical import runtime does not claim the transfer slot when another tr
   const result = await importHistoricalStoryboardBundle(new Blob(), [null, null, transfer, exportTransfer]);
   assert.equal(result, undefined);
   assert.equal(transfer.busy, true);
+});
+
+test('historical restore dialog carries the host save capability into its live view', async () => {
+  const previousDocument = globalThis.document;
+  const dialog = {
+    open: false, isConnected: true, innerHTML: '', listeners: new Map(),
+    className: '', setAttribute() {}, addEventListener(type, handler) { this.listeners.set(type, handler); },
+    querySelector(selector) { return selector === '[data-historical-scroll]' ? { scrollTop: 0 } : null; },
+    appendChild() {}, showModal() { this.open = true; }, close() { this.open = false; }, remove() { this.isConnected = false; },
+  };
+  globalThis.document = { createElement() { return dialog; } };
+  try {
+    const session = { preview: async () => preview, close() {} };
+    const review = openHistoricalRestoreReview({ parent: { appendChild() {} }, fileName: 'history.qmb', hostWriteReady: false,
+      connect: async () => session });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.match(dialog.innerHTML, /当前 ST 宿主未提供可确认的聊天保存接口/);
+    assert.match(dialog.innerHTML, /data-historical-action="restore" disabled/);
+    review.close();
+  } finally { globalThis.document = previousDocument; }
 });
