@@ -114,6 +114,12 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
     if(row.namespace!==namespace||row.key!==expectedDigest)fail('环境映射凭据归属不符');return row;
   }
   return Object.freeze({
+    async assertNoHistoricalChatMutation(namespace,{isCurrent=()=>true}={}){
+      if(!account(namespace))fail('无法确认原聊天恢复账户');
+      const present=await transaction('readonly',isCurrent,(store,read,set)=>read(store.getKey(namespace),key=>set(key!==undefined)),'historicalChatMutations');
+      if(present)fail('本账户有原聊天恢复记录，请保留原包；可在数据管理的“分镜恢复记录”中查看或明确结束，聊天和原件不会被删除。');
+      return true;
+    },
     async loadHistoricalChatMutation(namespace,{isCurrent=()=>true}={}){
       if(!account(namespace))fail('无法确认原聊天恢复账户');
       const row=await transaction('readonly',isCurrent,(store,read,set)=>read(store.get(namespace),set),'historicalChatMutations');

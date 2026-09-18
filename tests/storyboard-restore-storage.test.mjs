@@ -16,7 +16,7 @@ function fixture(){
   const e={rows:new Map([['configuration',mutation],['vibes',checkpoint],...['characters','bundle'].map(kind=>[kind,{...common,kind,key:JSON.stringify([namespace,kind]),sourceDigest:fileHash,planDigest:'c'.repeat(64),phase:'verified',updatedAt:1,...(kind==='bundle'?{chatHash:'d'.repeat(64)}:{})}])]),removed:[],locks:[],live:true};
   const get=kind=>clone(e.rows.get(kind)||null);
   const dismiss=(kind,input,options)=>{assert.equal(options.confirmed,true);assert.equal(options.isCurrent(),true);assert.deepEqual(input,e.rows.get(kind));e.rows.delete(kind);e.removed.push(kind);e.afterRemove?.(kind);};
-  const journal={list:async ns=>{assert.equal(ns,namespace);return e.rows.has('vibes')?[get('vibes')]:[];},loadMutation:async()=>get('configuration'),loadResource:async(_ns,kind)=>get(kind),
+  const journal={list:async ns=>{assert.equal(ns,namespace);return e.rows.has('vibes')?[get('vibes')]:[];},loadMutation:async()=>get('configuration'),loadHistoricalChatMutation:async()=>null,loadResource:async(_ns,kind)=>get(kind),
     dismissMutation:async(...args)=>dismiss('configuration',...args),dismissCheckpoint:async(...args)=>dismiss('vibes',...args),dismissResource:async(row,...args)=>dismiss(row.kind,row,...args)};
   const options={journal,namespace,guard:async()=>{if(!e.live)throw Error('scope');},isCurrent:()=>e.live,locks:{request:async(name,options,fn)=>{e.locks.push(name);return fn(e.locked?null:{});}}};
   return {e,options};

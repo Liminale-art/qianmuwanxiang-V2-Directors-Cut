@@ -1,25 +1,36 @@
 import { vibeDigest } from './qianmu-vibe-file.js';
+import { inspectHistoricalChatMutation } from './qianmu-historical-chat-journal.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_restore_storage', submissionState: 'not_submitted' }); };
 const account = value => typeof value === 'string' && /^st-user:.+/.test(value) && value.length <= 512 && !/[\u0000-\u001f\u007f]/.test(value);
-const kinds = ['configuration','vibes','characters','bundle'];
+const kinds = ['configuration','vibes','characters','bundle','historical-chat'];
 const clone = structuredClone;
 const identity = row => JSON.stringify([row?.kind,row?.key]);
 async function readRows(journal, namespace, guard) {
   await guard(); const stages = await journal.list(namespace); await guard();
   const mutation = await journal.loadMutation(namespace); await guard();
+  // Required, not optional: an old/incomplete reader must not report zero bytes
+  // or hide the newer account-wide pending operation that blocks other imports.
+  const historical = await journal.loadHistoricalChatMutation(namespace); await guard();
+  const checked = historical ? await inspectHistoricalChatMutation(historical) : null; await guard();
   const characters = await journal.loadResource(namespace,'characters'); await guard();
   const bundle = await journal.loadResource(namespace,'bundle'); await guard();
   if (stages.length > 8) fail('恢复记录超出支持范围，请先保全核对');
-  return [...stages.map(record=>({kind:'vibes',record})),...(mutation?[{kind:'configuration',record:mutation}]:[]),...(characters?[{kind:'characters',record:characters}]:[]),...(bundle?[{kind:'bundle',record:bundle}]:[])];
+  return [...stages.map(record=>({kind:'vibes',record})),...(mutation?[{kind:'configuration',record:mutation}]:[]),...(checked?[{kind:'historical-chat',record:checked}]:[]),...(characters?[{kind:'characters',record:characters}]:[]),...(bundle?[{kind:'bundle',record:bundle}]:[])];
 }
 async function summarize(rows, namespace, guard) {
   const items = [];
   for (const {kind,record} of rows) {
     if (record.namespace !== namespace) fail('恢复记录账户不符');
     const text = JSON.stringify(record), fingerprint = await vibeDigest(text); await guard();
-    items.push({ kind, key: kind==='configuration'?namespace:record.key, fingerprint, bytes:new Blob([text]).size, revision:record.revision,
-      phase:record.phase, chatHash:record.chatHash||'', fileHash:record.fileHash||record.sourceDigest, updatedAt:record.updatedAt??record.createdAt });
+    const historical = kind === 'historical-chat';
+    // Exact target includes owner identity; a same-named chat is never labelled
+    // "current chat" based only on the legacy chat-name digest. No raw proposal
+    // or character/file name crosses the Worker boundary to the manager.
+    const targetHash = historical ? await vibeDigest(JSON.stringify(record.proposal.target)) : null; await guard();
+    items.push({ kind, key: kind==='configuration'||historical?namespace:record.key, fingerprint, bytes:new Blob([text]).size, revision:record.revision,
+      phase:record.phase, chatHash:historical?'':record.chatHash||'', fileHash:historical?record.proposal.fileHash:record.fileHash||record.sourceDigest,
+      updatedAt:record.updatedAt??record.createdAt, ...(historical?{targetHash}:{}) });
   }
   return { version:1, status:'ready', namespace, bytes:items.reduce((sum,row)=>sum+row.bytes,0), count:items.length, items };
 }
@@ -34,7 +45,7 @@ export async function clearRestoreStorage({ journal, namespace, selected, confir
   locks=globalThis.navigator?.locks }) {
   if (!account(namespace) || typeof guard!=='function' || typeof isCurrent!=='function') fail('缺少恢复记录清理范围');
   if (confirmed!==true || recoveryLossAccepted!==true) fail('请明确确认失去所选恢复记录；这不会回滚配置或删除原图');
-  if (!Array.isArray(selected) || !selected.length || selected.length>11 || new Set(selected.map(identity)).size!==selected.length
+  if (!Array.isArray(selected) || !selected.length || selected.length>12 || new Set(selected.map(identity)).size!==selected.length
     || selected.some(row=>!row||Object.keys(row).some(key=>!['kind','key','fingerprint'].includes(key))||!kinds.includes(row.kind)||typeof row.key!=='string'||!/^([a-f0-9]{64})$/.test(row.fingerprint))) fail('请重新选择有效的恢复记录');
   const choices=clone(selected);
   const check=async()=>{if(isCurrent()!==true)fail('清理页面已变化');await guard();if(isCurrent()!==true)fail('清理页面已变化');};
@@ -50,6 +61,7 @@ export async function clearRestoreStorage({ journal, namespace, selected, confir
       try{
         await check(); const row=current.get(identity(choice)),options={confirmed:true,isCurrent};
         if(row.kind==='configuration')await journal.dismissMutation(row.record,options);
+        else if(row.kind==='historical-chat')await journal.dismissHistoricalChatMutation(row.record,options);
         else if(row.kind==='vibes')await journal.dismissCheckpoint(row.record,options);
         else await journal.dismissResource(row.record,options);
         removed.push(choice);removedBytes+=row.summary.bytes;await check();
@@ -61,13 +73,15 @@ export async function clearRestoreStorage({ journal, namespace, selected, confir
 
 export function validateRestoreStorageSummary(value,namespace){
   const integer=v=>Number.isSafeInteger(v)&&v>=0;
-  if(!account(namespace)||!value||Object.keys(value).some(key=>!['version','status','namespace','bytes','count','items'].includes(key))||value.version!==1||value.status!=='ready'||value.namespace!==namespace||!Array.isArray(value.items)||value.items.length>11||value.count!==value.items.length||!integer(value.bytes))fail('恢复记录计值无效');
+  if(!account(namespace)||!value||Object.keys(value).some(key=>!['version','status','namespace','bytes','count','items'].includes(key))||value.version!==1||value.status!=='ready'||value.namespace!==namespace||!Array.isArray(value.items)||value.items.length>12||value.count!==value.items.length||!integer(value.bytes))fail('恢复记录计值无效');
   const seen=new Set();
   for(const row of value.items){
-    if(!row||Object.keys(row).some(key=>!['kind','key','fingerprint','bytes','revision','phase','chatHash','fileHash','updatedAt'].includes(key))||!kinds.includes(row.kind)||typeof row.key!=='string'||row.key.length>2048
+    const historical=row?.kind==='historical-chat';
+    if(!row||Object.keys(row).some(key=>!['kind','key','fingerprint','bytes','revision','phase','chatHash','fileHash','updatedAt',...(historical?['targetHash']:[])].includes(key))||!kinds.includes(row.kind)||typeof row.key!=='string'||row.key.length>2048
       ||!integer(row.bytes)||!integer(row.revision)||row.revision<1||!integer(row.updatedAt)||!(/^[a-f0-9]{64}$/).test(row.fingerprint)||!(/^[a-f0-9]{64}$/).test(row.fileHash)
-      ||!(row.chatHash===''||/^[a-f0-9]{64}$/.test(row.chatHash))||!['prepared','staging','assets_ready','applied','uncertain','originals','workflows','pools','metadata','vibes','verified'].includes(row.phase)||seen.has(identity(row)))fail('恢复记录摘要不完整');
-    const key=row.kind==='configuration'?namespace:row.kind==='vibes'?JSON.stringify([namespace,row.chatHash,row.fileHash]):JSON.stringify([namespace,row.kind]);
+      ||!(historical?row.chatHash===''&&/^[a-f0-9]{64}$/.test(row.targetHash):row.chatHash===''||/^[a-f0-9]{64}$/.test(row.chatHash))
+      ||!(historical?['prepared','submitted','uncertain','verified']:['prepared','staging','assets_ready','applied','uncertain','originals','workflows','pools','metadata','vibes','verified']).includes(row.phase)||seen.has(identity(row)))fail('恢复记录摘要不完整');
+    const key=row.kind==='configuration'||historical?namespace:row.kind==='vibes'?JSON.stringify([namespace,row.chatHash,row.fileHash]):JSON.stringify([namespace,row.kind]);
     if(row.key!==key)fail('恢复记录摘要归属不符');
     seen.add(identity(row));
   }
