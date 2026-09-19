@@ -56,17 +56,20 @@ export function applyTextCollectionMutation(previous,input,now){
 }
 
 export function textCollectionSyncQuery(value,method){
-  if(!['list','get'].includes(method)||!fields(value,['version','expectedAccount',...(method==='get'?['id']:['cursor','limit'])])
+  const filtered=method==='list'&&Object.hasOwn(value||{},'search');let search;
+  if(filtered){if(typeof value.search!=='string'||value.search.length>160||value.search.includes('\0'))fail('收藏搜索词无效或过长');search=value.search.trim();if(search)text(search);}
+  if(!['list','get'].includes(method)||!fields(value,['version','expectedAccount',...(method==='get'?['id']:['cursor','limit']),...(filtered?['search']:[])])
     ||value.version!==1||!account(value.expectedAccount))fail('收藏读取请求格式无效');
   if(method==='get'){if(!id(value.id))fail('收藏编号无效');return Object.freeze({...value});}
-  if(!integer(value.limit)||value.limit<1||value.limit>TEXT_COLLECTION_SYNC_LIMITS.page||value.cursor!==null&&(!fields(value.cursor,['revision','offset'])
-    ||!integer(value.cursor.revision)||!integer(value.cursor.offset)))fail('收藏分页参数无效');
-  return Object.freeze({...value,cursor:value.cursor===null?null:Object.freeze({...value.cursor})});
+  if(!integer(value.limit)||value.limit<1||value.limit>TEXT_COLLECTION_SYNC_LIMITS.page||value.cursor!==null&&(!fields(value.cursor,['revision','offset',...(filtered?['search']:[])])
+    ||!integer(value.cursor.revision)||!integer(value.cursor.offset)||filtered&&value.cursor.search!==search))fail('收藏分页参数或搜索范围无效');
+  return Object.freeze({...value,...filtered?{search}:{},cursor:value.cursor===null?null:Object.freeze({...value.cursor})});
 }
 
 export function textCollectionSyncResponse(value,method,input){
   const request=method==='write'?textCollectionSyncMutation(input):textCollectionSyncQuery(input,method);
   const extra=method==='write'?['mutationId','id','revision','updatedAt']:method==='get'?['record']:['items','total','nextCursor'];
+  const filtered=method==='list'&&Object.hasOwn(request,'search');if(filtered)extra.push('search');
   if(!fields(value,['ok','version','expectedAccount','libraryRevision',...extra])||value.ok!==true||value.version!==1
     ||value.expectedAccount!==request.expectedAccount||!integer(value.libraryRevision))fail('收藏返回账户或格式不一致');
   if(method==='write'){
@@ -79,11 +82,12 @@ export function textCollectionSyncResponse(value,method,input){
     if(item&&(item.id!==request.id||item.source.account!==request.expectedAccount||item.revision>value.libraryRevision))fail('收藏详情与请求不一致');
     return Object.freeze({...value,record:item});
   }
+  if(filtered&&value.search!==request.search)fail('收藏返回与当前搜索不一致');
   const offset=request.cursor?.offset||0;
   if(!integer(value.total)||value.total>TEXT_COLLECTION_SYNC_LIMITS.records||offset>value.total||!Array.isArray(value.items)
     ||value.items.length!==Math.min(request.limit,value.total-offset)||request.cursor&&request.cursor.revision!==value.libraryRevision)fail('收藏目录版本或分页范围不一致');
   const next=offset+value.items.length,ids=new Set();
-  if(next<value.total? !fields(value.nextCursor,['revision','offset'])||value.nextCursor.revision!==value.libraryRevision||value.nextCursor.offset!==next : value.nextCursor!==null)fail('收藏目录缺失后续分页或游标无效');
+  if(next<value.total? !fields(value.nextCursor,['revision','offset',...(filtered?['search']:[])])||value.nextCursor.revision!==value.libraryRevision||value.nextCursor.offset!==next||filtered&&value.nextCursor.search!==request.search : value.nextCursor!==null)fail('收藏目录缺失后续分页或游标无效');
   const items=value.items.map(item=>{
     if(!fields(item,['id','revision','createdAt','updatedAt','charName','userName','mode','preview'])||!id(item.id)||ids.has(item.id)
       ||!integer(item.revision)||item.revision<1||item.revision>value.libraryRevision||!timestamp(item.createdAt)||!timestamp(item.updatedAt)||item.updatedAt<item.createdAt

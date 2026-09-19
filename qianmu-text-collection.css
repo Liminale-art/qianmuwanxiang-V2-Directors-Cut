@@ -84,6 +84,8 @@ dialog.qm-text-collection-dialog::backdrop { background: #0007; }
 .qm-text-collection-row > span, .qm-text-collection-row > small { display: block; width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qm-text-collection-row > span { font-size: 14px; font-weight: 600; }
 .qm-text-collection-row > small { font-size: 12px; color: var(--sd-muted, inherit); opacity: .8; }
+.qm-text-collection-search { display: flex; gap: 6px; margin-bottom: 10px; }
+.qm-text-collection-search input { flex: 1; min-width: 0; width: 0; box-sizing: border-box; min-height: 36px; padding: 6px 8px; font: inherit; color: inherit; background: var(--sd-input-bg, #8882); border: 1px solid var(--sd-hairline, #8886); border-radius: var(--qm-button-radius, 8px); }
 @media (max-height: 420px) {
     .qm-text-collection-dialog > header, .qm-text-collection-dialog > footer { padding: 8px 12px; }
     .qm-text-collection-dialog textarea { height: 120px; min-height: 80px; }

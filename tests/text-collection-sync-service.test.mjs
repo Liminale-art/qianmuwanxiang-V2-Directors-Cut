@@ -8,7 +8,7 @@ import {imageServiceAccount} from '../qianmu-image-service-access.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 import {createTextCollectionSyncService} from '../qianmu-text-collection-sync-service.js';
 import {TEXT_COLLECTION_SYNC_LIMITS} from '../qianmu-text-collection-sync-contract.js';
-import {textCollectionSyncResponse,textCollectionSyncErrorPayload} from '../qianmu-text-collection-sync-contract.js';
+import {textCollectionSyncResponse,textCollectionSyncErrorPayload,textCollectionSyncQuery} from '../qianmu-text-collection-sync-contract.js';
 import {init,exit} from '../server-plugin.js';
 import {createServer} from 'node:http';
 import {createTextCollectionClient} from '../qianmu-text-collection-client.js';
@@ -171,4 +171,19 @@ test('real client and local HTTP plugin handlers round-trip disk originals witho
   assert.equal((await c.write(edit())).revision,2);await assert.rejects(c.write(edit()),{code:'text_collection_sync_conflict'});
   assert.equal((await c.write(edit('delete',{baseRevision:2}))).revision,3);assert.equal((await c.get(input.id)).record,null);assert.equal((await c.list()).total,0);
   assert.equal(received,9);assert.doesNotMatch(await fs.readFile(f.file,'utf8'),/selected|edited|角色/);
+});
+
+test('search is read-only across saved names and actual selected text, with query-bound summary pagination',async t=>{
+  const f=await fixture(t);await f.service.write(f.req,create());await f.service.write(f.req,create('collection-2','alice',2));
+  const before=await fs.readFile(f.file,'utf8'),request=query({search:' SELECTED ',limit:1});
+  const page=await f.service.list(f.req,request);assert.equal(page.total,2);assert.equal(page.search,'SELECTED');assert.equal(page.nextCursor.search,'SELECTED');
+  assert.deepEqual(textCollectionSyncResponse(page,'list',request),page);assert.equal(Object.hasOwn(page.items[0],'text'),false);
+  const next=await f.service.list(f.req,query({search:'SELECTED',limit:1,cursor:page.nextCursor}));assert.equal(next.items[0].id,'collection-1');assert.equal(next.nextCursor,null);
+  for(const search of ['角色','读者','😀'])assert.equal((await f.service.list(f.req,query({search}))).total,2);
+  for(const search of ['hidden','deleted-chat','.*','不存在'])assert.equal((await f.service.list(f.req,query({search}))).total,0);
+  await assert.rejects(f.service.list(f.req,query({search:'另一查询',cursor:page.nextCursor})),{code:'text_collection_sync_contract'});
+  assert.throws(()=>textCollectionSyncResponse({...page,search:'other'},'list',request));
+  assert.throws(()=>textCollectionSyncResponse({...page,nextCursor:{...page.nextCursor,search:'other'}},'list',request));
+  for(const search of ['x'.repeat(161),'\0','\ud800',[],null])assert.throws(()=>textCollectionSyncQuery(query({search}),'list'));
+  assert.equal(await fs.readFile(f.file,'utf8'),before);
 });

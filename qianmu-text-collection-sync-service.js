@@ -70,11 +70,13 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
     const {state}=await disk.read(context),base={ok:true,version:1,expectedAccount:context.account.namespace,libraryRevision:state.revision};
     if(method==='get'){const entry=state.entries.find(row=>row.id===input.id);return {...base,record:entry&&!entry.deleted?entry.record:null};}
     if(input.cursor&&input.cursor.revision!==state.revision)fail('changed','收藏目录已变化，请刷新后继续浏览');
-    const entries=state.entries.filter(row=>!row.deleted).sort((a,b)=>b.record.createdAt-a.record.createdAt||(a.id<b.id?-1:a.id>b.id?1:0)),offset=input.cursor?.offset||0;
+    const term=(input.search||'').toLowerCase(),filter=Object.hasOwn(input,'search')?{search:input.search}:{};
+    const entries=state.entries.filter(row=>!row.deleted&&(!term||[row.record.text,row.record.source.charName,row.record.source.userName].some(value=>value.toLowerCase().includes(term))))
+      .sort((a,b)=>b.record.createdAt-a.record.createdAt||(a.id<b.id?-1:a.id>b.id?1:0)),offset=input.cursor?.offset||0;
     if(offset>entries.length)fail('contract','收藏分页位置无效',400);
     const items=entries.slice(offset,offset+input.limit).map(({record})=>({id:record.id,revision:record.revision,createdAt:record.createdAt,updatedAt:record.updatedAt,
       charName:record.source.charName,userName:record.source.userName,mode:record.mode,preview:textCollectionPreview(record)}));
-    const next=offset+items.length;return {...base,items,total:entries.length,nextCursor:next<entries.length?{revision:state.revision,offset:next}:null};
+    const next=offset+items.length;return {...base,...filter,items,total:entries.length,nextCursor:next<entries.length?{revision:state.revision,offset:next,...filter}:null};
   }
   function track(request,body,options,method){
     let context,input;

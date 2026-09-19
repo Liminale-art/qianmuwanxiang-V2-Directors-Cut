@@ -54,6 +54,12 @@ try{
   await button('next').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),1);assert.equal(await button('next').isDisabled(),true);
   await button('prev').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),50);
   checks.push('50-item pages use summary-only reads with correct previous/next controls');
+  const search=page.locator('input[aria-label="搜索收藏"]');await search.fill('COLLECTION-4');await search.press('Enter');await ready();
+  assert.equal(await page.locator('[data-collection-id]').count(),11);assert.equal(reads,0);assert.equal(await button('next').isDisabled(),true);
+  await search.fill('不存在');await button('search').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),0);
+  await search.fill('旧用户');await button('search').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),50);await button('next').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),1);
+  await button('clear-search').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),50);assert.equal(await search.inputValue(),'');
+  checks.push('explicit library-wide search finds prose or captured names without eager body reads and resets pagination on query changes');
   await page.locator('[data-collection-id="collection-50"]').click();await ready();assert.equal(reads,1);
   assert.match(await page.locator('[data-collection-title]').textContent(),/当时角色 & <旧用户>.*2026-09-19/);
   await button('copy').click();await ready();assert.equal(await page.evaluate(()=>fixture.copied),'收藏原文 collection-50\n不依赖聊天');
