@@ -7,6 +7,7 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 const keys = (value, fields) => object(value) && Object.keys(value).length === fields.length && Object.keys(value).every(key => fields.includes(key));
 const fail = (code, message) => { throw Object.assign(new Error(message), { code: `text_collection_${code}` }); };
 const integer = value => Number.isSafeInteger(value) && value >= 0;
+const account = value => typeof value === 'string' && /^st-user:[a-f0-9]{64}$/.test(value);
 function validText(value, limit) {
     if (typeof value !== 'string' || value.length > limit || value.includes('\0')) return false;
     for (let i = 0; i < value.length; i++) {
@@ -67,7 +68,8 @@ export function createTextCollection({ id, source, mode, start, end, createdAt }
 
 // Validates serialized records without reloading the original chat or trusting extra fields.
 export function textCollectionRecord(value) {
-    if (!keys(value, recordKeys) || value.schemaVersion !== 1 || !identifier(value.id)
+    const restored = value?.schemaVersion === 2;
+    if (!keys(value, [...recordKeys, ...(restored ? ['ownerAccount', 'restoredFrom'] : [])]) || ![1, 2].includes(value.schemaVersion) || !identifier(value.id)
         || !keys(value.source, [...sourceKeys, 'textLength']) || !integer(value.source.textLength)
         || value.source.textLength < 1 || value.source.textLength > TEXT_COLLECTION_LIMITS.text
         || !keys(value.range, ['start', 'end']) || !['full', 'selection'].includes(value.mode)
@@ -76,8 +78,24 @@ export function textCollectionRecord(value) {
     const range = offsets(value.range.start, value.range.end, source.textLength), text = textCollectionText(value.text);
     const createdAt = timestamp(value.createdAt), updatedAt = timestamp(value.updatedAt);
     if (updatedAt < createdAt || value.mode === 'full' && (range.start !== 0 || range.end !== source.textLength)
-        || value.revision === 1 && text.length !== range.end - range.start) fail('record', '收藏来源范围或版本时间不一致');
-    return Object.freeze({ schemaVersion: 1, id: value.id, source, mode: value.mode, range, text, createdAt, updatedAt, revision: value.revision });
+        || !restored && value.revision === 1 && text.length !== range.end - range.start) fail('record', '收藏来源范围或版本时间不一致');
+    let provenance = {};
+    if (restored) {
+        const origin = value.restoredFrom;
+        if (!account(value.ownerAccount) || !keys(origin, ['account', 'id', 'revision', 'restoredAt']) || !account(origin.account)
+            || !identifier(origin.id) || origin.id === value.id || !integer(origin.revision) || origin.revision < 1) fail('record', '收藏恢复来源无效');
+        provenance = { ownerAccount: value.ownerAccount, restoredFrom: Object.freeze({ ...origin, restoredAt: timestamp(origin.restoredAt) }) };
+    }
+    return Object.freeze({ schemaVersion: value.schemaVersion, id: value.id, source, mode: value.mode, range, text, createdAt, updatedAt, revision: value.revision, ...provenance });
+}
+
+// Call with a validated record: ownership and original chat provenance are distinct after restoration.
+export const textCollectionRecordAccount = record => record.schemaVersion === 2 ? record.ownerAccount : record.source.account;
+
+export function restoreTextCollectionCopy(input, { id, ownerAccount, restoredAt } = {}) {
+    const original = textCollectionRecord(input);
+    return textCollectionRecord({ ...original, schemaVersion: 2, id, ownerAccount, revision: 1,
+        restoredFrom: { account: textCollectionRecordAccount(original), id: original.id, revision: original.revision, restoredAt } });
 }
 
 export function updateTextCollection(record, changes, expectedRevision, updatedAt) {

@@ -37,20 +37,22 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
       ||!integer(raw.revision)||!Array.isArray(raw.entries)||raw.entries.length>limits.records||!Array.isArray(raw.mutations)
       ||raw.mutations.length>limits.mutations||raw.mutations.length!==raw.revision)fail('corrupt','收藏文件格式或账户不一致，请保留原件核对',503);
     const {checksum,...state}=raw;if(sha(JSON.stringify(state))!==checksum)fail('corrupt','收藏文件校验失败，未覆盖',503);
-    const mutations=new Set(),latest=new Map();
+    const mutations=new Set(),latest=new Map(),restored=new Set();
     for(const receipt of state.mutations){
       const prior=latest.get(receipt?.id);
       if(!fields(receipt,['mutationId','hash','id','revision','updatedAt','operation'])||!identifier(receipt.mutationId)||!identifier(receipt.id)
         ||typeof receipt.hash!=='string'||!/^[a-f0-9]{64}$/.test(receipt.hash)||mutations.has(receipt.mutationId)||!integer(receipt.revision)
         ||receipt.revision!==(prior?.revision||0)+1||!integer(receipt.updatedAt)||receipt.updatedAt>253402214400000
-        ||(prior? !['edit','delete'].includes(receipt.operation)||prior.operation==='delete'||receipt.updatedAt<=prior.updatedAt : receipt.operation!=='create'))fail('corrupt','收藏保存凭据损坏，未覆盖',503);
+        ||(prior? !['edit','delete'].includes(receipt.operation)||prior.operation==='delete'||receipt.updatedAt<=prior.updatedAt : !['create','restore'].includes(receipt.operation)))fail('corrupt','收藏保存凭据损坏，未覆盖',503);
+      if(!prior&&receipt.operation==='restore')restored.add(receipt.id);
       mutations.add(receipt.mutationId);latest.set(receipt.id,receipt);
     }
     if(latest.size!==state.entries.length)fail('corrupt','收藏条目与保存凭据数量不一致',503);
     const ids=new Set();
     for(const rawEntry of state.entries){
       const entry=textCollectionSyncEntry(rawEntry,context.account.namespace),receipt=latest.get(entry.id);
-      if(ids.has(entry.id)||!receipt||entry.revision!==receipt.revision||entry.updatedAt!==receipt.updatedAt||entry.deleted!==(receipt.operation==='delete'))fail('corrupt','收藏正文与保存凭据不一致',503);
+      if(ids.has(entry.id)||!receipt||entry.revision!==receipt.revision||entry.updatedAt!==receipt.updatedAt||entry.deleted!==(receipt.operation==='delete')
+        ||!entry.deleted&&(entry.record.schemaVersion===2)!==restored.has(entry.id))fail('corrupt','收藏正文与保存凭据不一致',503);
       ids.add(entry.id);
     }
     return state;

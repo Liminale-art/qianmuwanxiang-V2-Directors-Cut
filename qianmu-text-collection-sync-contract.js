@@ -1,4 +1,4 @@
-import {textCollectionRecord,textCollectionText,updateTextCollection} from './qianmu-text-collection.js';
+import {textCollectionRecord,textCollectionRecordAccount,restoreTextCollectionCopy,textCollectionText,updateTextCollection} from './qianmu-text-collection.js';
 import {validateTextCollectionBackup} from './qianmu-text-collection-backup.js';
 
 export const TEXT_COLLECTION_SYNC_VERSION=1;
@@ -13,16 +13,20 @@ const fail=(message)=>{throw textCollectionSyncError('contract',message,400);};
 function record(value){try{return textCollectionRecord(value);}catch(_){fail('收藏记录无效；未截断或改写内容');}}
 function text(value){try{return textCollectionText(value);}catch(_){fail('收藏文字为空、过长或编码无效；未截断原文');}}
 
-// Explicit operations prevent editing captured names/ranges or sending prose with deletion.
+// Restore makes a new owned copy; it never edits captured names/ranges on existing records.
 export function textCollectionSyncMutation(value){
   const keys=['version','expectedAccount','mutationId','operation','id','baseRevision'];
-  const extra=value?.operation==='create'?['record']:value?.operation==='edit'?['text']:[];
+  const extra=['create','restore'].includes(value?.operation)?['record']:value?.operation==='edit'?['text']:[];
   if(!fields(value,[...keys,...extra])||value.version!==TEXT_COLLECTION_SYNC_VERSION||!account(value.expectedAccount)
-    ||!id(value.mutationId)||!id(value.id)||!integer(value.baseRevision)||!['create','edit','delete'].includes(value.operation))fail('收藏保存请求格式无效');
+    ||!id(value.mutationId)||!id(value.id)||!integer(value.baseRevision)||!['create','restore','edit','delete'].includes(value.operation))fail('收藏保存请求格式无效');
   const base={version:1,expectedAccount:value.expectedAccount,mutationId:value.mutationId,operation:value.operation,id:value.id,baseRevision:value.baseRevision};
+  if(value.operation==='restore'){
+    const item=record(value.record);if(value.baseRevision!==0||item.id===value.id)fail('恢复收藏须使用新的副本编号，不能覆盖原件');
+    return Object.freeze({...base,record:item});
+  }
   if(value.operation==='create'){
     const item=record(value.record);
-    if(value.baseRevision!==0||item.id!==value.id||item.source.account!==value.expectedAccount||item.revision!==1||item.updatedAt!==item.createdAt)fail('新收藏的账户、编号或初始版本不一致');
+    if(value.baseRevision!==0||item.id!==value.id||item.schemaVersion!==1||item.source.account!==value.expectedAccount||item.revision!==1||item.updatedAt!==item.createdAt)fail('新收藏的账户、编号或初始版本不一致');
     return Object.freeze({...base,record:item});
   }
   if(value.baseRevision<1)fail('只能编辑或删除已确认保存的收藏');
@@ -38,7 +42,7 @@ export function textCollectionSyncEntry(value,expectedAccount){
     return Object.freeze({...value});
   }
   const item=record(value.record);
-  if(item.id!==value.id||item.source.account!==expectedAccount||item.revision!==value.revision||item.updatedAt!==value.updatedAt)fail('收藏储存条目与账户或正文版本不一致');
+  if(item.id!==value.id||textCollectionRecordAccount(item)!==expectedAccount||item.revision!==value.revision||item.updatedAt!==value.updatedAt)fail('收藏储存条目与账户或正文版本不一致');
   return Object.freeze({id:value.id,revision:value.revision,updatedAt:value.updatedAt,deleted:false,record:item});
 }
 
@@ -49,6 +53,10 @@ export function applyTextCollectionMutation(previous,input,now){
   if(current&&current.id!==request.id)fail('收藏变更目标与已读取条目不一致');
   if((current?.revision||0)!==request.baseRevision||current?.deleted)throw textCollectionSyncError('conflict','收藏已在其他设备变更，请重新载入；本机内容仍保留');
   if(!timestamp(now))throw textCollectionSyncError('clock','收藏保存时钟无效，未写入',503);
+  if(request.operation==='restore'){
+    const item=restoreTextCollectionCopy(request.record,{id:request.id,ownerAccount:request.expectedAccount,restoredAt:now});
+    return textCollectionSyncEntry({id:request.id,revision:1,updatedAt:item.updatedAt,deleted:false,record:item},request.expectedAccount);
+  }
   if(request.operation==='create')return textCollectionSyncEntry({id:request.id,revision:1,updatedAt:request.record.updatedAt,deleted:false,record:request.record},request.expectedAccount);
   const updatedAt=Math.max(now,current.updatedAt+1),revision=current.revision+1;
   if(!timestamp(updatedAt)||!integer(revision))throw textCollectionSyncError('clock','收藏版本或保存时钟无效，未写入',503);
@@ -81,12 +89,12 @@ export function textCollectionSyncResponse(value,method,input){
   }
   if(method==='write'){
     if(value.mutationId!==request.mutationId||value.id!==request.id||value.revision!==request.baseRevision+1||value.revision>value.libraryRevision
-      ||!timestamp(value.updatedAt)||request.operation==='create'&&value.updatedAt!==request.record.createdAt)fail('收藏保存确认与请求不一致');
+      ||!timestamp(value.updatedAt)||['create','restore'].includes(request.operation)&&value.updatedAt!==request.record.updatedAt)fail('收藏保存确认与请求不一致');
     return Object.freeze({...value});
   }
   if(method==='get'){
     const item=value.record===null?null:record(value.record);
-    if(item&&(item.id!==request.id||item.source.account!==request.expectedAccount||item.revision>value.libraryRevision))fail('收藏详情与请求不一致');
+    if(item&&(item.id!==request.id||textCollectionRecordAccount(item)!==request.expectedAccount||item.revision>value.libraryRevision))fail('收藏详情与请求不一致');
     return Object.freeze({...value,record:item});
   }
   if(filtered&&value.search!==request.search)fail('收藏返回与当前搜索不一致');

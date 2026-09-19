@@ -1,4 +1,4 @@
-import {textCollectionRecord} from './qianmu-text-collection.js';
+import {textCollectionRecord,textCollectionRecordAccount} from './qianmu-text-collection.js';
 import {assertJsonInputBounds,parseBoundedJson} from './qianmu-json-input.js';
 
 export const TEXT_COLLECTION_BACKUP_LIMITS=Object.freeze({bytes:64*1024*1024,records:10000});
@@ -17,7 +17,7 @@ export function validateTextCollectionBackup(value){
     ||value.records.length>TEXT_COLLECTION_BACKUP_LIMITS.records)fail('正文收藏备份格式或容量无效');
   const seen=new Set(),records=value.records.map((input,index)=>{
     let record;try{record=textCollectionRecord(input);}catch{fail(`第 ${index+1} 条收藏无效`);}
-    if(record.source.account!==value.sourceAccount||seen.has(record.id)||record.revision>value.libraryRevision)fail(`第 ${index+1} 条收藏账户、编号或版本不一致`);
+    if(textCollectionRecordAccount(record)!==value.sourceAccount||seen.has(record.id)||record.revision>value.libraryRevision)fail(`第 ${index+1} 条收藏账户、编号或版本不一致`);
     seen.add(record.id);return record;
   });
   return Object.freeze({type,version:1,sourceAccount:value.sourceAccount,exportedAt:value.exportedAt,libraryRevision:value.libraryRevision,records:Object.freeze(records)});

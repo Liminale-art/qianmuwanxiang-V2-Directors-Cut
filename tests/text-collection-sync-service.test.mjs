@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash,randomUUID} from 'node:crypto';
 import {imageServiceAccount} from '../qianmu-image-service-access.js';
-import {createTextCollection} from '../qianmu-text-collection.js';
+import {createTextCollection,updateTextCollection} from '../qianmu-text-collection.js';
 import {createTextCollectionSyncService} from '../qianmu-text-collection-sync-service.js';
 import {TEXT_COLLECTION_SYNC_LIMITS} from '../qianmu-text-collection-sync-contract.js';
 import {textCollectionSyncResponse,textCollectionSyncErrorPayload,textCollectionSyncQuery} from '../qianmu-text-collection-sync-contract.js';
@@ -176,6 +176,9 @@ test('real client and local HTTP plugin handlers round-trip disk originals witho
   const exported=await c.snapshot();assert.equal(exported.libraryRevision,2);assert.equal(exported.backup.records[0].text,edit().text);
   assert.equal((await c.write(edit('delete',{baseRevision:2}))).revision,3);assert.equal((await c.get(input.id)).record,null);assert.equal((await c.list()).total,0);
   assert.equal(received,10);assert.doesNotMatch(await fs.readFile(f.file,'utf8'),/selected|edited|角色/);
+  const restored={...input,operation:'restore',mutationId:randomUUID(),id:'restored-http',record:updateTextCollection(input.record,{text:'恢复副本文本'},1,2)};
+  assert.equal((await c.write(restored)).revision,1);const copy=(await c.get(restored.id)).record;assert.equal(copy.text,'恢复副本文本');assert.equal(copy.schemaVersion,2);
+  assert.deepEqual((await c.snapshot()).backup.records,[copy]);assert.equal(received,13);
 });
 
 test('snapshot reads originals once, retains edited metadata and excludes tombstones and receipts',async t=>{
@@ -204,6 +207,19 @@ test('snapshot serializes with local edits and suppresses late account or cancel
       await assert.rejects(pending,e=>e.code===`text_collection_sync_${mode==='account'?'account':'closed'}`&&e.writeState==='not_started');
     }
   }
+});
+
+test('restore is an owned durable copy, retries remain idempotent after deletion and never access the origin account',async t=>{
+  const f=await fixture(t),source=updateTextCollection(create('source-record','bob').record,{text:'不同长度的修订原件'},1,90);
+  const input={version:1,expectedAccount:account('alice'),mutationId:randomUUID(),operation:'restore',id:'restored-record',baseRevision:0,record:source};
+  const ack=await f.service.write(f.req,input);assert.equal(ack.revision,1);assert.equal(ack.updatedAt,90);assert.equal(ack.libraryRevision,1);
+  const service=f.build(),stored=(await service.get(f.req,detail(input.id))).record;assert.equal(stored.ownerAccount,account('alice'));assert.deepEqual(stored.source,source.source);
+  assert.equal(stored.text,source.text);assert.equal(stored.createdAt,source.createdAt);assert.deepEqual(await fs.readdir(f.root),['alice']);
+  assert.deepEqual(await service.write(f.req,input),ack);assert.equal((await service.snapshot(f.req,snapshot())).backup.records.length,1);
+  await assert.rejects(service.write(f.req,{...input,mutationId:randomUUID()}),{code:'text_collection_sync_conflict'});
+  await service.write(f.req,edit('edit',{id:input.id,text:'再次修改'}));await service.write(f.req,edit('delete',{id:input.id,baseRevision:2}));
+  assert.deepEqual(await f.build().write(f.req,input),ack);assert.equal((await service.get(f.req,detail(input.id))).record,null);
+  assert.doesNotMatch(await fs.readFile(f.file,'utf8'),/不同长度|再次修改|source-record|deleted-chat|ownerAccount/);
 });
 
 test('search is read-only across saved names and actual selected text, with query-bound summary pagination',async t=>{
