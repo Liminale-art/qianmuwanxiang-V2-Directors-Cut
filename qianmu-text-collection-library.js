@@ -67,7 +67,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     await run(async()=>{
       if(action==='pending'){
         const module=await import('./qianmu-text-collection-outbox-view.js');if(!current())return;
-        pendingView=module.openTextCollectionOutbox({parent,session,outbox,isCurrent:current,copy});
+        pendingView=module.openTextCollectionOutbox({parent,session,outbox,isCurrent:current,copy,confirm});
         try{await pendingView.finished;}finally{pendingView?.dispose();pendingView=null;}
         if(current())status.textContent='待存查看已关闭；可刷新服务器列表核对已确认的收藏';return;
       }

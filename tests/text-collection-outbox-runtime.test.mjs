@@ -56,3 +56,16 @@ test('save adapter cannot claim retained content when local writes fail or accou
   for(const mode of ['quota','switch']){const f=fixture(),runtime=f.runtime();if(mode==='quota')f.failUpdate=1;else f.mode='switch';
     await assert.rejects(runtime.save(request()),cause=>cause.localSaved!==true);assert.equal(f.sent.length,mode==='quota'?0:1);runtime.close();}
 });
+
+test('local removal needs explicit consent, checks the viewed snapshot and never sends a server deletion',async()=>{
+  const f=fixture(),runtime=f.runtime(),row=await runtime.enqueue(request());await assert.rejects(runtime.remove(row),{code:'text_collection_sync_consent'});assert.equal(f.state.entries.length,1);
+  f.mode='lost';await assert.rejects(runtime.submit(row.request.mutationId));const started=(await runtime.list())[0];
+  await assert.rejects(runtime.remove(row,{confirmed:true}),{code:'text_collection_sync_local_conflict'});
+  await assert.rejects(runtime.remove(started,{confirmed:true}),{code:'text_collection_sync_consent'});
+  const before=f.sent.length;assert.equal((await runtime.remove(started,{confirmed:true,acceptUnconfirmed:true})).removed,true);assert.equal(f.sent.length,before);assert.equal(f.state.entries.length,0);
+  assert.equal((await runtime.remove(started,{confirmed:true,acceptUnconfirmed:true})).removed,false);runtime.close();
+});
+test('failed local removal and an invalidated account leave all originals untouched',async()=>{
+  for(const mode of ['quota','account']){const f=fixture(),runtime=f.runtime(),row=await runtime.enqueue(request());if(mode==='quota')f.failUpdate=2;else f.valid=false;
+    await assert.rejects(runtime.remove(row,{confirmed:true}));assert.deepEqual(f.state.entries,[row]);assert.equal(f.sent.length,0);runtime.close();}
+});

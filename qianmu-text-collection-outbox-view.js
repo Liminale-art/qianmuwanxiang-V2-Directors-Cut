@@ -2,15 +2,17 @@ import {textCollectionDisplayLabel} from './qianmu-text-collection.js';
 
 // Local pending originals are not server-confirmed records. Browsing this view
 // makes no service request; only an explicit retry submits the saved identity.
-export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy}={}){
+export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy,confirm}={}){
   const document=parent?.ownerDocument,view=document?.defaultView;
-  if(!parent?.isConnected||!session||!outbox||typeof isCurrent!=='function')throw TypeError('收藏待存页面不可用');
+  if(!parent?.isConnected||!session||!outbox||typeof isCurrent!=='function'||typeof confirm!=='function')throw TypeError('收藏待存页面不可用');
   let closed=false,busy=false,rows=[],selected=null,page=0,resolve;
   const controller=new view.AbortController(),focused=document.activeElement,finished=new Promise(done=>{resolve=done;});
   const current=()=>!closed&&parent.isConnected&&isCurrent()===true;
   const dialog=document.createElement('dialog');dialog.className='qm-text-collection-dialog';dialog.dataset.collectionOutbox='';dialog.setAttribute('aria-label','本机待存');
   dialog.innerHTML='<header><strong>本机待存</strong><button type="button" data-pending-action="close">关闭</button></header><main><p>仅保留在当前浏览器与账户；不是已同步的收藏。</p><div data-pending-list></div><section data-pending-detail hidden><p data-pending-title></p><textarea aria-label="待存原文" readonly></textarea></section></main><footer><p data-pending-status role="status" aria-live="polite"></p><div class="qm-text-collection-actions" data-pending-pages><button type="button" data-pending-action="prev">上一页</button><button type="button" data-pending-action="refresh">刷新</button><button type="button" data-pending-action="next">下一页</button></div><div class="qm-text-collection-actions" data-pending-tools hidden><button type="button" data-pending-action="back">返回列表</button><button type="button" data-pending-action="copy">复制</button><button type="button" data-pending-action="retry">重试保存</button></div></footer>';
   const q=selector=>dialog.querySelector(selector),list=q('[data-pending-list]'),detail=q('[data-pending-detail]'),editor=q('textarea'),status=q('[data-pending-status]');
+  const localActions=document.createElement('div');localActions.className='qm-text-collection-actions';localActions.hidden=true;localActions.style.marginTop='8px';
+  localActions.innerHTML='<button type="button" data-pending-action="remove">移除此机待存</button>';q('footer').append(localActions);
   const text=row=>row.request.operation==='edit'?row.request.text:row.request.record.text;
   const original=row=>row.base||row.request.record;
   const label=row=>{const item=original(row);return textCollectionDisplayLabel(item.source.charName,item.source.userName,item.createdAt);};
@@ -42,7 +44,7 @@ export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy}=
       const title=document.createElement('span'),preview=document.createElement('small');title.textContent=`${label(row)} · ${stateLabel(row)}`;
       const snippet=Array.from(text(row).replace(/\s+/g,' ').trim());preview.textContent=snippet.slice(0,100).join('')+(snippet.length>100?'…':'');button.append(title,preview);fragment.append(button);
     }
-    list.replaceChildren(fragment);list.hidden=false;detail.hidden=true;q('[data-pending-pages]').hidden=false;q('[data-pending-tools]').hidden=true;
+    list.replaceChildren(fragment);list.hidden=false;detail.hidden=true;localActions.hidden=true;q('[data-pending-pages]').hidden=false;q('[data-pending-tools]').hidden=true;
     status.textContent=`本机待存 ${rows.length} 条${rows.length?` · 第 ${page+1} 页`:''}`;
   }
   async function click(event){
@@ -50,13 +52,21 @@ export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy}=
     if(action==='close'){stop();return;}
     await run(async()=>{
       if(id){selected=(await outbox.list()).find(row=>row.request.mutationId===id);if(!current())return;if(!selected)return load(page);
-        editor.value=text(selected);q('[data-pending-title]').textContent=label(selected);list.hidden=true;detail.hidden=false;q('[data-pending-pages]').hidden=true;q('[data-pending-tools]').hidden=false;
+        editor.value=text(selected);q('[data-pending-title]').textContent=label(selected);list.hidden=true;detail.hidden=false;localActions.hidden=false;q('[data-pending-pages]').hidden=true;q('[data-pending-tools]').hidden=false;
         status.textContent=selected.state==='conflict'?'版本冲突；本机修改与编辑前原件均保留，不覆盖另一端内容。':selected.started?'上次提交结果待核对；重试使用原编号，不重复创建。':'尚未提交服务器，可重试保存。';return;
       }
       if(action==='back'||action==='refresh')return load(page);
       if(action==='prev')return load(page-1);if(action==='next')return load(page+1);
       if(!selected)return;
       if(action==='copy'){await (copy||((value)=>view.navigator.clipboard.writeText(value)))(text(selected));await session.guard();if(current())status.textContent='已复制待存原文';return;}
+      if(action==='remove'){
+        const snapshot=selected,unknown=snapshot.started&&snapshot.state!=='conflict';
+        const warning='仅移除当前设备的这条待存文字及编辑前原件；不会删除服务器收藏，也不会改动聊天。移除后不能撤销，请先复制或备份需要的内容。';
+        if(await confirm('移除此机待存',warning+(unknown?' 上次提交结果未知，服务器仍可能已保存；移除此机记录不等于取消原请求。':''))!==true){if(current())status.textContent='未移除，本机待存仍保留';return;}
+        await session.guard();if(!current())return;
+        const result=await outbox.remove(snapshot,{confirmed:true,acceptUnconfirmed:unknown});if(!current())return;await load(page);
+        if(current())status.textContent+=result.removed?' · 已移除此机待存，未删除服务器内容':' · 此待存已不存在';return;
+      }
       if(action==='retry'&&selected.state!=='conflict'){
         try{await outbox.submit(selected.request.mutationId,{signal:controller.signal});}
         catch(cause){const latest=(await outbox.list()).find(row=>row.request.mutationId===selected.request.mutationId);if(latest)selected=latest;throw cause;}
