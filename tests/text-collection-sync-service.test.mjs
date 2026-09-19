@@ -8,6 +8,8 @@ import {imageServiceAccount} from '../qianmu-image-service-access.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 import {createTextCollectionSyncService} from '../qianmu-text-collection-sync-service.js';
 import {TEXT_COLLECTION_SYNC_LIMITS} from '../qianmu-text-collection-sync-contract.js';
+import {textCollectionSyncResponse,textCollectionSyncErrorPayload} from '../qianmu-text-collection-sync-contract.js';
+import {init,exit} from '../server-plugin.js';
 
 const account=handle=>imageServiceAccount({user:{profile:{handle}}}).namespace;
 const request=(folder,handle='alice')=>({user:{profile:{handle},directories:{root:folder}}});
@@ -112,4 +114,35 @@ test('an account change during post-commit lock release never returns another ac
   const f=await fixture(t),service=f.build({io:{...fs,unlink:async file=>{await fs.unlink(file);if(file===f.lock)f.req.user.profile.handle='bob';}}});
   await assert.rejects(service.write(f.req,create()),{code:'text_collection_sync_account',status:401,writeState:'unconfirmed'});
   f.req.user.profile.handle='alice';assert.equal((await f.service.list(f.req,query())).total,1);
+});
+
+test('actual plugin routes authenticate and return only no-store collection results; service exits cleanly',async t=>{
+  const f=await fixture(t),routes=new Map(),router={get:(p,h)=>routes.set(`GET ${p}`,h),post:(p,h)=>routes.set(`POST ${p}`,h)};
+  await init(router,{dataRoot:f.root});t.after(exit);
+  const call=async(action,req)=>{
+    const result={status:200,headers:{}};const res={set(k,v){result.headers[k]=v;return res;},status(v){result.status=v;return res;},json(v){result.body=v;return res;},once(){},off(){}};
+    await routes.get(`POST /text-collections/${action}`)(req,res);return result;
+  };
+  assert.equal((await call('list',{body:query()})).status,401);assert.deepEqual(await fs.readdir(f.folder),[]);
+  const input=create(),written=await call('write',{...f.req,body:input});assert.equal(written.status,200);
+  assert.deepEqual(textCollectionSyncResponse(written.body,'write',input),written.body);
+  const listed=await call('list',{...f.req,body:query()});assert.equal(listed.headers['Cache-Control'],'no-store');assert.equal(listed.headers['X-Content-Type-Options'],'nosniff');
+  assert.equal(textCollectionSyncResponse(listed.body,'list',query()).items.length,1);
+  const found=await call('get',{...f.req,body:detail()});assert.deepEqual(textCollectionSyncResponse(found.body,'get',detail()).record,input.record);
+  const foreign=await call('get',{...f.req,body:{...detail(),expectedAccount:account('bob')}});assert.equal(foreign.status,401);assert.doesNotMatch(JSON.stringify(foreign.body),/selected|deleted-chat/);
+  const wrong=await call('write',{...f.req,body:{...input,mutationId:randomUUID()}});assert.equal(wrong.status,409);assert.equal(wrong.body.writeState,'not_started');
+  await exit();assert.equal((await call('get',{...f.req,body:detail()})).status,409);
+});
+
+test('response validation refuses stale acknowledgements, wrong accounts, partial pages and hidden source text',async t=>{
+  const f=await fixture(t),input=create(),ack=await f.service.write(f.req,input);
+  for(const change of [{mutationId:randomUUID()},{id:'different-id'},{revision:2},{libraryRevision:0},{expectedAccount:account('bob')},{path:'private'}])assert.throws(()=>textCollectionSyncResponse({...ack,...change},'write',input));
+  await f.service.write(f.req,create('collection-2','alice',2));const request=query({limit:1}),page=await f.service.list(f.req,request);
+  assert.equal(textCollectionSyncResponse(page,'list',request).items[0].id,'collection-2');
+  for(const mutate of [r=>{r.nextCursor=null;},r=>{r.nextCursor.offset=0;},r=>{r.items=[];},r=>{r.total=0;},r=>{r.items[0].text='hidden prose';},r=>{r.items[0].preview='x'.repeat(102);}]){
+    const value=structuredClone(page);mutate(value);assert.throws(()=>textCollectionSyncResponse(value,'list',request));
+  }
+  const found=await f.service.get(f.req,detail());assert.throws(()=>textCollectionSyncResponse(found,'get',{...detail(),id:'another-id'}));
+  assert.deepEqual(textCollectionSyncResponse({...found,record:null},'get',detail()).record,null);
+  const payload=textCollectionSyncErrorPayload(Error('private path and credential'));assert.equal(payload.status,503);assert.doesNotMatch(JSON.stringify(payload),/private path|credential/);
 });

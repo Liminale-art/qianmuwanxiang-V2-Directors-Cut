@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {createAccountDocumentFiles} from './qianmu-account-document-files.js';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {textCollectionPreview} from './qianmu-text-collection.js';
-import {TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncError as error,textCollectionSyncMutation,textCollectionSyncEntry,applyTextCollectionMutation} from './qianmu-text-collection-sync-contract.js';
+import {TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncError as error,textCollectionSyncMutation,textCollectionSyncEntry,applyTextCollectionMutation,textCollectionSyncQuery} from './qianmu-text-collection-sync-contract.js';
 
 const schema='qianmu.text-collection-sync.v1',filename='.qianmu-text-collection-v1.json';
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -54,7 +54,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
     }
     return state;
   }
-  const ack=(context,receipt,revision)=>({ok:true,version:1,expectedAccount:context.account.namespace,id:receipt.id,revision:receipt.revision,updatedAt:receipt.updatedAt,libraryRevision:revision});
+  const ack=(context,receipt,revision)=>({ok:true,version:1,expectedAccount:context.account.namespace,mutationId:receipt.mutationId,id:receipt.id,revision:receipt.revision,updatedAt:receipt.updatedAt,libraryRevision:revision});
   async function mutate(context,input){
     return disk.exclusive(context,async()=>{
       const {state,fingerprint}=await disk.read(context),hash=sha(JSON.stringify(input)),index=state.mutations.findIndex(row=>row.mutationId===input.mutationId);
@@ -65,13 +65,6 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
       const next={...state,revision:state.revision+1,entries:previous?state.entries.map(row=>row.id===entry.id?entry:row):[...state.entries,entry],mutations:[...state.mutations,receipt]};
       await disk.writeAtomic(context,next,fingerprint);context.guard();return ack(context,receipt,next.revision);
     });
-  }
-  function query(input,method){
-    const keys=['version','expectedAccount',...(method==='get'?['id']:['cursor','limit'])];
-    if(!fields(input,keys)||input.version!==1)fail('contract','收藏读取请求格式无效',400);
-    if(method==='get'){if(!identifier(input.id))fail('contract','收藏编号无效',400);return {...input};}
-    if(!integer(input.limit)||input.limit<1||input.limit>limits.page||input.cursor!==null&&(!fields(input.cursor,['revision','offset'])||!integer(input.cursor.revision)||!integer(input.cursor.offset)))fail('contract','收藏分页参数无效',400);
-    return {...input,cursor:input.cursor===null?null:{...input.cursor}};
   }
   async function inspect(context,input,method){
     const {state}=await disk.read(context),base={ok:true,version:1,expectedAccount:context.account.namespace,libraryRevision:state.revision};
@@ -85,7 +78,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
   }
   function track(request,body,options,method){
     let context,input;
-    try{context=capture(request,body,options?.signal);input=method==='write'?textCollectionSyncMutation(body):query(body,method);if(pending.size>=64)fail('busy','收藏请求过多，请稍后重试',429);}
+    try{context=capture(request,body,options?.signal);input=method==='write'?textCollectionSyncMutation(body):textCollectionSyncQuery(body,method);if(pending.size>=64)fail('busy','收藏请求过多，请稍后重试',429);}
     catch(cause){return Promise.reject(cause);}
     const key=context.account.namespace,prior=tails.get(key)||Promise.resolve();
     const task=prior.catch(()=>{}).then(async()=>{

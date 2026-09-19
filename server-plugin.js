@@ -9,6 +9,7 @@ import { createSourceIdentityService } from './qianmu-source-identity-service.js
 import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source-identity-contract.js';
 import { createNotesSyncService } from './qianmu-notes-sync-service.js';
 import { notesSyncError, notesSyncErrorPayload } from './qianmu-notes-sync-contract.js';
+import { installTextCollectionRoutes } from './qianmu-text-collection-routes.js';
 import { createChatCharacterReceiptService } from './qianmu-chat-character-receipt-service.js';
 import { createRecipeArchiveService } from './qianmu-recipe-archive-service.js';
 import { recipeArchiveError, recipeArchiveErrorPayload } from './qianmu-recipe-archive-contract.js';
@@ -190,6 +191,7 @@ export async function init(router, options = {}) {
 
   let imageTasks;
   const hostDataRoot = () => options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
+  installTextCollectionRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.textCollectionOptions});
   let notesSync;
   for (const [method, route] of [['get','/notes'],['post','/notes/write']]) router[method](route, async (req,res) => {
     prepareImageResponse(res);

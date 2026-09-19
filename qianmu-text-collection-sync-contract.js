@@ -54,3 +54,49 @@ export function applyTextCollectionMutation(previous,input,now){
   const item=request.operation==='edit'?updateTextCollection(current.record,{text:request.text},current.revision,updatedAt):null;
   return textCollectionSyncEntry({id:request.id,revision,updatedAt,deleted:request.operation==='delete',record:item},request.expectedAccount);
 }
+
+export function textCollectionSyncQuery(value,method){
+  if(!['list','get'].includes(method)||!fields(value,['version','expectedAccount',...(method==='get'?['id']:['cursor','limit'])])
+    ||value.version!==1||!account(value.expectedAccount))fail('收藏读取请求格式无效');
+  if(method==='get'){if(!id(value.id))fail('收藏编号无效');return Object.freeze({...value});}
+  if(!integer(value.limit)||value.limit<1||value.limit>TEXT_COLLECTION_SYNC_LIMITS.page||value.cursor!==null&&(!fields(value.cursor,['revision','offset'])
+    ||!integer(value.cursor.revision)||!integer(value.cursor.offset)))fail('收藏分页参数无效');
+  return Object.freeze({...value,cursor:value.cursor===null?null:Object.freeze({...value.cursor})});
+}
+
+export function textCollectionSyncResponse(value,method,input){
+  const request=method==='write'?textCollectionSyncMutation(input):textCollectionSyncQuery(input,method);
+  const extra=method==='write'?['mutationId','id','revision','updatedAt']:method==='get'?['record']:['items','total','nextCursor'];
+  if(!fields(value,['ok','version','expectedAccount','libraryRevision',...extra])||value.ok!==true||value.version!==1
+    ||value.expectedAccount!==request.expectedAccount||!integer(value.libraryRevision))fail('收藏返回账户或格式不一致');
+  if(method==='write'){
+    if(value.mutationId!==request.mutationId||value.id!==request.id||value.revision!==request.baseRevision+1||value.revision>value.libraryRevision
+      ||!timestamp(value.updatedAt)||request.operation==='create'&&value.updatedAt!==request.record.createdAt)fail('收藏保存确认与请求不一致');
+    return Object.freeze({...value});
+  }
+  if(method==='get'){
+    const item=value.record===null?null:record(value.record);
+    if(item&&(item.id!==request.id||item.source.account!==request.expectedAccount||item.revision>value.libraryRevision))fail('收藏详情与请求不一致');
+    return Object.freeze({...value,record:item});
+  }
+  const offset=request.cursor?.offset||0;
+  if(!integer(value.total)||value.total>TEXT_COLLECTION_SYNC_LIMITS.records||offset>value.total||!Array.isArray(value.items)
+    ||value.items.length!==Math.min(request.limit,value.total-offset)||request.cursor&&request.cursor.revision!==value.libraryRevision)fail('收藏目录版本或分页范围不一致');
+  const next=offset+value.items.length,ids=new Set();
+  if(next<value.total? !fields(value.nextCursor,['revision','offset'])||value.nextCursor.revision!==value.libraryRevision||value.nextCursor.offset!==next : value.nextCursor!==null)fail('收藏目录缺失后续分页或游标无效');
+  const items=value.items.map(item=>{
+    if(!fields(item,['id','revision','createdAt','updatedAt','charName','userName','mode','preview'])||!id(item.id)||ids.has(item.id)
+      ||!integer(item.revision)||item.revision<1||item.revision>value.libraryRevision||!timestamp(item.createdAt)||!timestamp(item.updatedAt)||item.updatedAt<item.createdAt
+      ||!['full','selection'].includes(item.mode)||![item.charName,item.userName].every(name=>typeof name==='string'&&name.length<=256&&name.trim())
+      ||typeof item.preview!=='string'||Array.from(item.preview).length>101)fail('收藏目录条目格式无效');
+    text(item.charName);text(item.userName);text(item.preview);ids.add(item.id);return Object.freeze({...item});
+  });
+  return Object.freeze({...value,items:Object.freeze(items),nextCursor:value.nextCursor===null?null:Object.freeze({...value.nextCursor})});
+}
+
+export function textCollectionSyncErrorPayload(cause){
+  const known=/^text_collection_sync_[a-z_]+$/.test(cause?.code||'')&&typeof cause?.message==='string'&&cause.message.length<=240;
+  return {status:known&&Number.isInteger(cause.status)&&cause.status>=400&&cause.status<=599?cause.status:503,
+    body:{ok:false,version:1,code:known?cause.code:'text_collection_sync_storage',message:known?cause.message:'收藏储存暂不可用，请保留当前内容后重试',
+      writeState:cause?.writeState==='unconfirmed'?'unconfirmed':'not_started'}};
+}
