@@ -23,6 +23,8 @@ test('live fixture probe scopes network blocking to its new page and aborts non-
 test('live fixture probe replaces and restores chat, metadata and writers without persistence', () => {
   assert.match(source, /temporaryChat/);
   assert.match(source, /storyboardImages/);
+  assert.match(source, /storyboardNavViews/);
+  assert.match(source, /missing storyboard navigation view/);
   assert.match(source, /restoreProperty\('chat'/);
   assert.match(source, /restoreProperty\('chatMetadata'/);
   assert.match(source, /restoreProperty\('saveMetadata'/);

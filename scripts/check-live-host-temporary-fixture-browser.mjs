@@ -100,11 +100,28 @@ try {
         const modal = document.getElementById('story-director-modal');
         modal?.querySelector('.sd-storyboard-shortcut')?.click();
         await new Promise(resolve => setTimeout(resolve, 250));
+        const navViews = ['create', 'characters', 'assets', 'gallery', 'logs'];
+        const storyboardNavViews = [];
+        for (const view of navViews) {
+          const currentModal = document.getElementById('story-director-modal');
+          const currentButton = currentModal?.querySelector(`[data-storyboard-view="${view}"]`);
+          if (!currentButton) throw new Error(`missing storyboard navigation view: ${view}`);
+          currentButton.click();
+          await new Promise(resolve => setTimeout(resolve, 140));
+          const activeButton = currentModal?.querySelector('.sd-storyboard-nav button[aria-current="page"]');
+          storyboardNavViews.push({
+            view,
+            active: activeButton?.dataset.storyboardView || '',
+            label: activeButton?.querySelector('span')?.textContent || '',
+            title: currentModal?.querySelector('.sd-storyboard-titlebar [role="heading"]')?.textContent || '',
+          });
+        }
         observed = {
           frontEndLoaded: true,
           floatRendered: Boolean(button.isConnected),
           modalRendered: Boolean(modal),
           storyboardMode: Boolean(modal?.classList.contains('sd-storyboard-mode')),
+          storyboardNavViews,
           chatLength: context.chat.length,
           storyboardImageCount: context.chatMetadata?.story_director_liminale?.storyboardImages?.length || 0,
           storyboardCollectionCount: context.chatMetadata?.story_director_liminale?.storyboardCollections?.length || 0,
