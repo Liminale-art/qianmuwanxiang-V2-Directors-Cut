@@ -1196,6 +1196,24 @@ function legacyShotType(shot) {
   return shot.characters.length > 1 ? 'group' : 'portrait';
 }
 
+// v1 facts have paragraph provenance but no independent narrative branch/timepoint.
+// Never copy a batch-wide update into every shot or guess an ambiguous branch.
+function continuityUpdatesForShot(plan,shot,options){
+  const lookup=options.paragraphIndexById,position=id=>{
+    const value=lookup instanceof Map?lookup.get(id):object(lookup)&&Object.hasOwn(lookup,id)?lookup[id]:undefined;
+    return Number.isSafeInteger(value)&&value>=0?value:null;
+  };
+  const anchor=position(shot.insert_after),source=new Set(shot.source_paragraph_ids||[]);
+  if(anchor===null)return [];
+  const branch=item=>JSON.stringify([item.narrative_layer,item.composition?.continuity_key||'']);
+  const ownBranch=branch(shot);
+  return (Array.isArray(plan.continuity_updates)?plan.continuity_updates:[]).filter(fact=>{
+    const refs=fact.source_paragraph_ids;
+    if(!Array.isArray(refs)||!refs.length||refs.some(id=>!source.has(id)||position(id)===null||position(id)>anchor))return false;
+    return !(plan.shots||[]).some(other=>branch(other)!==ownBranch&&(other.source_paragraph_ids||[]).some(id=>refs.includes(id)));
+  });
+}
+
 export function adaptStoryboardPlanContract(value, options = {}) {
   if (!object(value) || value.schema !== STORYBOARD_PLAN_RESPONSE_SCHEMA_ID) return null;
   const shots = (Array.isArray(value.shots) ? value.shots : []).map((shot, index) => {
@@ -1250,7 +1268,7 @@ export function adaptStoryboardPlanContract(value, options = {}) {
       continuityUpdates: {
         time: shot.scene?.time,
         light: (shot.scene?.lighting || []).join(', '),
-        facts: value.continuity_updates,
+        facts: continuityUpdatesForShot(value,shot,options),
       },
       sensitive: shot.sensitive,
       safetyNotes: shot.safety_notes,
