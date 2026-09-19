@@ -27,6 +27,7 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
   }
   return Object.freeze({expectedAccount,namespace,guard,list:(input,options)=>client.list(input,options),get:(id,options)=>client.get(id,options),
     snapshot:options=>client.snapshot(options),
+    inventory:options=>client.inventory(options),
     restoreInfo:options=>client.restoreInfo(options),
     prepareCreate:record=>prepare('create',{id:record.id,baseRevision:0,record}),
     prepareRestore:(record,id)=>prepare('restore',{id,baseRevision:0,record}),

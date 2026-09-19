@@ -32,6 +32,22 @@ async function fixture(t,options={}){
 }
 const gate=()=>{let release;return {promise:new Promise(resolve=>{release=resolve;}),release:()=>release()};};
 
+test('inventory reads one verified file, reports UTF-8 originals separately and never returns source text',async t=>{
+  const f=await fixture(t),q=snapshot();
+  const absent=await f.service.inventory(f.req,q);assert.equal(absent.state,'absent');assert.equal(absent.bytes,0);assert.deepEqual(await fs.readdir(f.folder),[]);
+  textCollectionSyncResponse(absent,'inventory',q);
+  await f.service.write(f.req,create());await f.service.write(f.req,create('collection-2'));
+  await f.service.write(f.req,edit('delete'));
+  let reads=0;const reader=f.build({io:{...fs,open:async(...args)=>{reads++;return fs.open(...args);}}});
+  const usage=await reader.inventory(f.req,q);assert.equal(reads,1);assert.equal(usage.count,1);assert.equal(usage.deletedCount,1);
+  assert.equal(usage.bytes,(await fs.stat(f.file)).size);assert.equal(usage.textBytes,Buffer.byteLength(create().record.text,'utf8'));
+  assert.equal(usage.libraryRevision,3);textCollectionSyncResponse(usage,'inventory',q);
+  assert.doesNotMatch(JSON.stringify(usage),/selected|角色|读者|deleted-chat|alice|collection-/);
+  await assert.rejects(reader.inventory({},q),{status:401});await assert.rejects(reader.inventory(f.req,{...q,expectedAccount:account('bob')}),{status:401});
+  await assert.rejects(reader.inventory(f.req,{...q,path:f.file}),{status:400});
+  await fs.writeFile(f.file,'corrupt');await assert.rejects(reader.inventory(f.req,q),{status:503});assert.equal(await fs.readFile(f.file,'utf8'),'corrupt');
+});
+
 test('reads create no files, host identity fences all operations and client paths are rejected',async t=>{
   const f=await fixture(t);assert.deepEqual((await f.service.list(f.req,query())).items,[]);assert.deepEqual(await fs.readdir(f.folder),[]);
   await assert.rejects(f.service.list({},query()),{status:401});await assert.rejects(f.service.write(f.req,create('collection-1','bob')),{status:401});
@@ -182,6 +198,7 @@ test('real client and local HTTP plugin handlers round-trip disk originals witho
   assert.equal((await c.write(restored)).revision,1);const copy=(await c.get(restored.id)).record;assert.equal(copy.text,'恢复副本文本');assert.equal(copy.schemaVersion,2);
   assert.deepEqual((await c.snapshot()).backup.records,[copy]);assert.equal(received,13);
   const info=await c.restoreInfo();assert.equal(info.restoreVersion,1);assert.equal(info.remainingRecords,TEXT_COLLECTION_SYNC_LIMITS.records-2);assert.equal(info.remainingMutations,TEXT_COLLECTION_SYNC_LIMITS.mutations-4);assert.equal(received,14);
+  const usage=await c.inventory();assert.equal(usage.count,1);assert.equal(usage.deletedCount,1);assert.equal(usage.bytes,(await fs.stat(f.file)).size);assert.equal(usage.textBytes,Buffer.byteLength(copy.text));assert.equal(received,15);
 });
 
 test('snapshot reads originals once, retains edited metadata and excludes tombstones and receipts',async t=>{

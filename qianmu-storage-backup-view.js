@@ -119,6 +119,9 @@ function renderStorageResourceRows(data,formatStorageBytes) {
   : `暂未读取 · ${htmlEscape(data.recipeStorage?.error||'配套后端尚未返回占用信息，未按零值计算。')}`}</p>
 <div class="sd-storage-actions"><span>${data.galleryCatalogStorage?.status==='ready'?`图库目录 · 当前账户本机 ${data.galleryCatalogStorage.count} 条引用 · ${htmlEscape(formatStorageBytes(data.galleryCatalogStorage.bytes))} 逻辑估算`:'图库目录暂未盘点 · 当前总计不含此部分'}<br>仅来源与标签索引，不含图片、影片原件</span><button type="button" class="sd-btn sd-storage-gallery-catalog">管理目录</button></div>
 ${data.galleryCatalogStorage?.status==='unavailable'?`<p class="sd-storage-pressure is-warning">${htmlEscape(data.galleryCatalogStorage.error||'目录暂不可读取，未清除旧引用。')}</p>`:''}
+<p class="sd-storage-scope sd-storage-collection-summary" role="status" style="overflow-wrap:anywhere">服务器正文收藏 · 当前账户<br>${data.collectionStorage?.status==='ready'
+  ? `${data.collectionStorage.count} 条原件 · 文件 ${htmlEscape(formatStorageBytes(data.collectionStorage.bytes))}${data.collectionStorage.state==='absent'?' · 尚无收藏文件':''}<br>其中正文 UTF-8 ${htmlEscape(formatStorageBytes(data.collectionStorage.textBytes))}；文件另含来源、同步回执及 ${data.collectionStorage.deletedCount} 条删除标记。不计入浏览器配额，也不是 VPS 磁盘容量。`
+  : `暂未读取 · ${htmlEscape(data.collectionStorage?.error||'收藏占用尚未盘点，未按零占用处理。')}`}</p>
 ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
 ${data.serviceReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.serviceReceipts.error)}</p>` : ''}
 ${data.comfyReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.comfyReceipts.error)}</p>` : ''}

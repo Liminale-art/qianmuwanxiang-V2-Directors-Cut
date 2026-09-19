@@ -67,8 +67,8 @@ export function applyTextCollectionMutation(previous,input,now){
 export function textCollectionSyncQuery(value,method){
   const filtered=method==='list'&&Object.hasOwn(value||{},'search');let search;
   if(filtered){if(typeof value.search!=='string'||value.search.length>160||value.search.includes('\0'))fail('收藏搜索词无效或过长');search=value.search.trim();if(search)text(search);}
-  const simple=['snapshot','restore-info'].includes(method);
-  if(!['list','get','snapshot','restore-info'].includes(method)||!fields(value,['version','expectedAccount',...(simple?[]:method==='get'?['id']:['cursor','limit']),...(filtered?['search']:[])])
+  const simple=['snapshot','restore-info','inventory'].includes(method);
+  if(!['list','get','snapshot','restore-info','inventory'].includes(method)||!fields(value,['version','expectedAccount',...(simple?[]:method==='get'?['id']:['cursor','limit']),...(filtered?['search']:[])])
     ||value.version!==1||!account(value.expectedAccount))fail('收藏读取请求格式无效');
   if(simple)return Object.freeze({...value});
   if(method==='get'){if(!id(value.id))fail('收藏编号无效');return Object.freeze({...value});}
@@ -79,10 +79,18 @@ export function textCollectionSyncQuery(value,method){
 
 export function textCollectionSyncResponse(value,method,input){
   const request=method==='write'?textCollectionSyncMutation(input):textCollectionSyncQuery(input,method);
-  const extra=method==='write'?['mutationId','id','revision','updatedAt']:method==='restore-info'?['restoreVersion','remainingRecords','remainingMutations']:method==='snapshot'?['backup']:method==='get'?['record']:['items','total','nextCursor'];
+  const extra=method==='write'?['mutationId','id','revision','updatedAt']:method==='inventory'?['state','count','deletedCount','bytes','textBytes']:method==='restore-info'?['restoreVersion','remainingRecords','remainingMutations']:method==='snapshot'?['backup']:method==='get'?['record']:['items','total','nextCursor'];
   const filtered=method==='list'&&Object.hasOwn(request,'search');if(filtered)extra.push('search');
   if(!fields(value,['ok','version','expectedAccount','libraryRevision',...extra])||value.ok!==true||value.version!==1
     ||value.expectedAccount!==request.expectedAccount||!integer(value.libraryRevision))fail('收藏返回账户或格式不一致');
+  if(method==='inventory'){
+    if(!['absent','present'].includes(value.state)||!['count','deletedCount','bytes','textBytes'].every(key=>integer(value[key]))
+      ||value.count+value.deletedCount>TEXT_COLLECTION_SYNC_LIMITS.records||value.count+2*value.deletedCount>value.libraryRevision
+      ||value.libraryRevision>TEXT_COLLECTION_SYNC_LIMITS.mutations||value.bytes>TEXT_COLLECTION_SYNC_LIMITS.bytes||value.textBytes>value.bytes
+      ||value.count===0&&value.textBytes!==0||value.state==='absent'&&(value.bytes!==0||value.libraryRevision!==0)
+      ||value.state==='present'&&value.bytes===0)fail('收藏占用统计无效，未按零占用处理');
+    return Object.freeze({...value});
+  }
   if(method==='restore-info'){
     if(value.restoreVersion!==1||!integer(value.remainingRecords)||value.remainingRecords>TEXT_COLLECTION_SYNC_LIMITS.records
       ||!integer(value.remainingMutations)||value.remainingMutations!==TEXT_COLLECTION_SYNC_LIMITS.mutations-value.libraryRevision)fail('收藏恢复能力或剩余额度无效，请更新千幕后端');

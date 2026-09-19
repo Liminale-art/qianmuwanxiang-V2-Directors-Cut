@@ -7816,7 +7816,7 @@ function storageSettingsSnapshotWithoutDiagnostics() {
 async function collectStorageInventory() {
   const storageApi = globalThis.navigator?.storage;
   const storageEpoch=storyboardAdmissionEpoch;
-  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage,carrierStorage, focusLibrary, notesStorage, galleryCatalogStorage,recipeStorage] = await Promise.all([
+  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage,carrierStorage, focusLibrary, notesStorage, galleryCatalogStorage,recipeStorage,collectionStorage] = await Promise.all([
     storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
     blobStore.estimateBlobStoreUsage(),
     blobStore.auditOrphanedReaderBlobs(),
@@ -7850,8 +7850,9 @@ async function collectStorageInventory() {
     Promise.all([featureRuntime.load('recipeStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectRecipeArchiveStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,headers:()=>ctx().getRequestHeaders?.(),
     })).catch(error=>{if(error?.code==='recipe_storage_stale')throw error;return {status:'unavailable',bytes:null,files:null,error:'服务器配方暂未读取'};}),
+    collectionFloorTools.storageSummary(()=>storageEpoch===storyboardAdmissionEpoch),
   ]);
-  for(const storage of [vibeStorage,restoreStorage,mappingStorage,carrierStorage,characterStorage,comfyStorage,notesStorage,galleryCatalogStorage,recipeStorage])if(storage.namespace){const identity=await featureRuntime.load('imageAdmission');if(storage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
+  for(const storage of [vibeStorage,restoreStorage,mappingStorage,carrierStorage,characterStorage,comfyStorage,notesStorage,galleryCatalogStorage,recipeStorage,collectionStorage])if(storage.namespace){const identity=await featureRuntime.load('imageAdmission');if(storage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(storageEpoch!==storyboardAdmissionEpoch)throw new Error('储存页面已变化，请重新盘点');
   const pressure = blobStore.classifyStoragePressure(originEstimate || {});
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics());
@@ -7926,7 +7927,7 @@ async function collectStorageInventory() {
     restoreStorage,
     mappingStorage,
     carrierStorage,
-    characterStorage, focusLibrary, notesStorage, galleryCatalogStorage,recipeStorage,
+    characterStorage, focusLibrary, notesStorage, galleryCatalogStorage,recipeStorage,collectionStorage,
   };
 }
 

@@ -43,6 +43,7 @@ function inventory(summary) {
   let initialized=0,account=namespace;
   const zero=()=>({status:'ready',bytes:0,count:0});
   const context=vm.createContext({notesSyncControls:()=>initialized++,getQianmuNotesStorage:async()=>{assert.equal(initialized,1);if(summary instanceof Error)throw summary;return summary;},
+    collectionFloorTools:{storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
     focusClockLibrary:()=>({summary:async()=>zero()}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:100000,quota:200000})}},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:50,recoverableBytes:0,categories:[{category:'notes',bytes:50,count:2}],stores:[{name:'notes',label:'旧版便笺（本机）',count:2,bytes:50}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
     featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account,manageImageAdmissionStorage:async()=>zero(),collectComfyStorage:async()=>zero(),collectVibeStorage:async()=>({status:'unavailable',bytes:null}),collectCharacterStorage:async()=>({status:'unavailable',bytes:null}),collectStoryboardRestoreStorage:async()=>zero(),collectStoryboardMappingStorage:async()=>zero(),collectStoryboardCarrierStorage:async()=>({...zero(),originalCount:0})})},

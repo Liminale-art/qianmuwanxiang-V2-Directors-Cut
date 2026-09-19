@@ -87,7 +87,14 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       button.innerHTML='<i class="fa-solid fa-bookmark"></i>';toolbar.append(button);applyIcons?.(button);
     }
   }
-  return Object.freeze({refresh,dispose,openLibrary,exportBackup,restoreBackup,get restoreBusy(){return restoring!==null;}});
+  const storageSummary=async valid=>{
+    let module;try{module=await import('./qianmu-text-collection-storage.js');}catch{
+      if(isCurrent()!==true||!valid())throw new Error('收藏储存页面已变化，请重新盘点');
+      return {status:'unavailable',bytes:null,count:null,error:'收藏统计组件未加载，请刷新重试；未按零占用处理。'};
+    }
+    return module.collectTextCollectionStorage({resolveNamespace,isCurrent:()=>isCurrent()===true&&valid(),headers});
+  };
+  return Object.freeze({refresh,dispose,openLibrary,exportBackup,restoreBackup,storageSummary,get restoreBusy(){return restoring!==null;}});
 }
 
 // Save rendered prose as plain text; never collect embedded media or plugin controls.

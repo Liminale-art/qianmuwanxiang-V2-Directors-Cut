@@ -59,6 +59,7 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
   }
   return Object.freeze({list:(input={cursor:null,limit:50},options)=>call('list',input,options),get:(id,options)=>call('get',{id},options),write:(input,options)=>call('write',input,options),
     snapshot:options=>call('snapshot',{},options),
+    inventory:options=>call('inventory',{},options),
     restoreInfo:options=>call('restore-info',{},options),
     close(){closed=true;for(const abort of pending)abort();pending.clear();}});
 }

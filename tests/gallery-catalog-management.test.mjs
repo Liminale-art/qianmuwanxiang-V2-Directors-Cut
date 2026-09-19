@@ -90,12 +90,14 @@ test('actual inventory counts catalog once, preserves unavailable status and rec
             featureRuntime: { load: async () => module }, blobStore: { estimateBlobStoreUsage: async () => ({ totalBytes: 0, categories: [] }), auditOrphanedReaderBlobs: async () => ({}), classifyStoragePressure: () => ({}) },
             storyboardManageImageChannels: async () => empty(), storyboardImageServiceRuntime: async () => ({ manage: async () => empty() }), storyboardComfyRecoveryRuntime: async () => ({ usage: async () => empty() }),
             focusClockLibrary: () => ({ summary: async () => empty() }), notesSyncControls: () => {}, getQianmuNotesStorage: () => empty(), storageJsonBytes: () => 0,
+    collectionFloorTools:{storageSummary:async valid=>{assert.equal(valid(),true);return {namespace:ns,status:'ready',bytes:7654321,count:2};}},
             storageSettingsSnapshotWithoutDiagnostics: () => ({}), storageDiagnosticSnapshot: () => ({}), getChatStore: () => ({}) });
         vm.runInContext(code, context); const inventory = await context.collectStorageInventory();
         assert.equal(calls, 1); assert.equal(inventory.trackedBytes, unavailable ? 0 : 90); assert.equal(inventory.manageableBytes, 0, 'catalog is not silently added to generic deletion');
         assert.equal(inventory.galleryCatalogStorage.status, unavailable ? 'unavailable' : 'ready');
         assert.equal(inventory.recipeStorage.bytes,12345678);assert.equal(inventory.recoverableBytes,0,'server files never become local cleanup candidates');
         assert.ok(inventory.categories.every(row=>row.bytes<12345678),'server bytes are not browser categories');
+        assert.equal(inventory.collectionStorage.bytes,7654321);assert.ok(inventory.categories.every(row=>row.bytes<7654321),'collection originals are not local cache');
     }
 });
 test('actual manager entry binds once, locks duplicate opens and rejects a lazy-load context switch', async () => {

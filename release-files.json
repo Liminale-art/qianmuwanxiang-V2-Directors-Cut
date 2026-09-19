@@ -56,6 +56,7 @@
     "qianmu-text-collection-restore-batch.js",
     "qianmu-text-collection-restore-view.js",
     "qianmu-text-collection-floor.js",
+    "qianmu-text-collection-storage.js",
     "qianmu-text-collection-library.js",
     "qianmu-text-collection-capture.js",
     "qianmu-text-collection-session.js",

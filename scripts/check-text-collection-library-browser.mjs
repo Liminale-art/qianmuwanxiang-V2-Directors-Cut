@@ -15,7 +15,7 @@ const service=createTextCollectionSyncService({dataRoot:root});
 const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'create',id,baseRevision:0,record:createTextCollection({id,mode:'full',createdAt:Date.UTC(2026,8,19)+Number(id.split('-')[1]||0),
   source:{account:expectedAccount,chatId:'deleted-chat',messageId:0,replyId:'old-reply',charName:'当时角色',userName:'<旧用户>',text:`收藏原文 ${id}\r\n不依赖聊天`}})});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
-const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
+const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
@@ -25,7 +25,7 @@ await context.route('**/*',async route=>{
     if(url.pathname==='/qianmu-text-collection.css')return route.fulfill({contentType:'text/css',body:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
     const file=url.pathname.slice(1);if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(new URL('../'+file,import.meta.url),'utf8')});
     const action=url.pathname.split('/').at(-1);
-    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','restore-info','write'].includes(action)&&route.request().method()==='POST'){
+    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','restore-info','inventory','write'].includes(action)&&route.request().method()==='POST'){
       const input=route.request().postDataJSON();assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
       if(action==='list'&&failListOnce){failListOnce=false;return route.abort('failed');}
       if(action==='get')reads++;if(action==='write')writes.push(input);
@@ -146,6 +146,14 @@ try{
   await page.evaluate(payload=>{fixture.restoreConsent=false;fixture.openRestore(payload);},restorePayload);await ready();await restoreButton.click();await ready();assert.match(await status(),/未开始恢复/);assert.equal(writes.length,beforeInvalid);await closeRestore.click();await page.evaluate(()=>fixture.restorePending);
   await page.evaluate(payload=>fixture.openRestore(payload),restorePayload);await ready();await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));await page.evaluate(()=>fixture.restorePending);assert.equal(writes.length,beforeInvalid);
   checks.push('invalid backups, declined restore and owner disposal do not write; all restore portals and busy ownership are released');
+  const inventory=await page.evaluate(async()=>{
+    const data=await fixture.floorTools.storageSummary(()=>true);
+    const {renderStorageBackupSection}=await import('./qianmu-storage-backup-view.js');
+    const host=document.createElement('section');host.id='inventory';host.style.width='100%';host.innerHTML=renderStorageBackupSection(null,value=>`${value} B`,{data:{collectionStorage:data}});document.body.append(host);host.querySelector('details').open=true;return data;
+  });assert.equal(inventory.count,53);assert.equal(inventory.deletedCount,2);assert.equal(inventory.bytes,(await fs.stat(path.join(folder,'.qianmu-text-collection-v1.json'))).size);assert.equal(writes.length,beforeInvalid);
+  assert.match(await page.locator('#inventory .sd-storage-collection-summary').textContent(),/53 条原件.*不计入浏览器配额/);
+  for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await page.locator('#inventory .sd-storage-collection-summary').evaluate(node=>({scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(size.scroll<=size.client+1);}
+  checks.push('lazy server inventory shows exact file bytes and tombstone counts without writes or narrow-screen overflow');
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({count:checks.length,checks,pageErrors:errors,externalRequests:external,productionWrites:false,persistence:'real account-file service in temporary directory; browser transport intercepted; synthetic login, not live ST'},null,2));
 }finally{

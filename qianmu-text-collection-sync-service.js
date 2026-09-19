@@ -70,7 +70,11 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
     });
   }
   async function inspect(context,input,method){
-    const {state}=await disk.read(context),base={ok:true,version:1,expectedAccount:context.account.namespace,libraryRevision:state.revision};
+    const {state,fingerprint}=await disk.read(context),base={ok:true,version:1,expectedAccount:context.account.namespace,libraryRevision:state.revision};
+    if(method==='inventory'){
+      let count=0,textBytes=0;for(const entry of state.entries)if(!entry.deleted){count++;textBytes+=Buffer.byteLength(entry.record.text,'utf8');}
+      return {...base,state:fingerprint?'present':'absent',count,deletedCount:state.entries.length-count,bytes:Number(fingerprint?.size||0),textBytes};
+    }
     if(method==='restore-info')return {...base,restoreVersion:1,remainingRecords:limits.records-state.entries.length,remainingMutations:limits.mutations-state.mutations.length};
     // One verified read: a concurrent writer can never mix revisions across exported records.
     if(method==='snapshot')return {...base,backup:validateTextCollectionBackup({type:'qianmu-text-collections',version:1,
@@ -99,6 +103,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
   }
   return Object.freeze({list:(request,input,options)=>track(request,input,options,'list'),get:(request,input,options)=>track(request,input,options,'get'),
     snapshot:(request,input,options)=>track(request,input,options,'snapshot'),
+    inventory:(request,input,options)=>track(request,input,options,'inventory'),
     'restore-info':(request,input,options)=>track(request,input,options,'restore-info'),
     write:(request,input,options)=>track(request,input,options,'write'),async close(){closed=true;await Promise.allSettled([...pending]);}});
 }
