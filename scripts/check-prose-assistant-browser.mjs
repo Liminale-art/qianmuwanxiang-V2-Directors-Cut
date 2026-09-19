@@ -5,11 +5,12 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
 const checks=[],errors=[];let external=0;
-const allowed=new Set(['qianmu-plain-text-range.js','qianmu-current-chat-source.js','qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js',...['panel','source','context','session','request','messages'].map(name=>`qianmu-prose-assistant-${name}.js`)]);
+const allowed=new Set(['qianmu-prose-floor-tools.js','qianmu-text-collection-floor.js','qianmu-plain-text-range.js','qianmu-current-chat-source.js','qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js',...['floor','panel','source','context','session','request','messages'].map(name=>`qianmu-prose-assistant-${name}.js`)]);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{const url=new URL(route.request().url()),file=url.pathname.slice(1);
   if(url.origin==='https://qianmu.test'){
-    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><button id="entry">助手</button><main id="fixture"></main>'});
+    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><button id="entry">助手</button><main id="fixture"></main>'});
+    if(file==='qianmu-prose-assistant.css')return route.fulfill({contentType:'text/css',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
     if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
   }external++;return route.abort();
 });
@@ -58,5 +59,20 @@ try{
   await page.evaluate(()=>{fixture.confirm=false;});await action('clear').click();assert.equal(await page.locator('[data-pa-turn]').count(),4);await page.evaluate(()=>{fixture.confirm=true;});await action('clear').click();await page.waitForFunction(()=>!document.querySelector('[data-pa-turn]'));checks.push('clearing dialogue requires confirmation and does not touch host prose');
   await page.evaluate(()=>{fixture.host.chat[1].mes='changed';document.querySelector('#fixture').append(document.createElement('i'));});await page.waitForFunction(()=>!document.querySelector('dialog'));assert.equal(await page.evaluate(()=>fixture.listenerCount()),0);checks.push('edited source closes the borrowed panel and releases every host listener');
   await page.evaluate(()=>fixture.open());await page.evaluate(()=>document.querySelector('#fixture').remove());await page.waitForFunction(()=>!document.querySelector('dialog'));assert.equal(await page.evaluate(()=>fixture.listenerCount()),0);checks.push('detached parent disposes the panel without leaving a focus or listener trap');
+  await page.evaluate(async()=>{
+    const {createProseFloorTools}=await import('./qianmu-prose-floor-tools.js');const root=document.createElement('section');root.id='chat';
+    root.innerHTML='<div class="mes" mesid="0"><div class="mes_text"><p>渲染正文</p><span hidden>HIDDEN</span><button>CONTROL</button><div class="sd-storyboard-inline">MEDIA</div></div><div class="mes_buttons"><div class="extraMesButtons"></div></div></div><div class="mes" mesid="1"><div class="mes_text">系统提示</div><div class="mes_buttons"></div></div>';
+    document.body.append(root);fixture.host.chat=[{mes:'raw markup',is_user:true},{mes:'system',is_system:true}];fixture.mounted=0;fixture.detached=0;fixture.notices=[];
+    fixture.tools=createProseFloorTools({getContext:()=>fixture.host,getChatKey:()=>fixture.host.chatId,names:()=>({charName:'C',userName:'U'}),resolveNamespace:fixture.source.resolveNamespace,
+      headers:()=>({}),applyIcons:button=>{button.dataset.fixtureIcon='yes';},mountPortal:()=>{fixture.mounted++;return ()=>{fixture.detached++;};},notify:value=>fixture.notices.push(value),
+      isCurrent:()=>fixture.live,assistantConfig:()=>({profiles:[],systemPrompt:''}),confirm:async(...args)=>{fixture.hostConfirm=args;return false;}});fixture.tools.refresh(root);fixture.tools.refresh(root);
+  });
+  assert.equal(await page.locator('[data-qm-collect-floor]').count(),1);assert.equal(await page.locator('[data-qm-prose-assistant]').count(),1);const sentBefore=await page.evaluate(()=>fixture.sent.length);
+  await page.locator('[data-qm-prose-assistant]').click();await page.waitForFunction(()=>document.querySelector('dialog[open]'));assert.equal(await page.getByLabel('选择引用正文').inputValue(),'渲染正文');assert.equal(await page.evaluate(()=>fixture.sent.length),sentBefore);await action('clear').click();assert.deepEqual(await page.evaluate(()=>fixture.hostConfirm),['正文助手','清空此面板的助手对话？不会删除正式聊天。']);await action('close').click();
+  await page.waitForFunction(()=>fixture.mounted===fixture.detached);assert.equal(await page.locator('[data-qm-prose-assistant-portal]').count(),0);checks.push('shared floor scan adds idempotent independent collection/assistant entries, excludes system floors and opens only rendered plaintext without model calls');
+  await page.locator('[data-qm-prose-assistant]').click();await page.waitForFunction(()=>document.querySelector('dialog[open]'));await page.evaluate(()=>{fixture.host.chatId='B';fixture.host.characters[0].chat='B';fixture.tools.refresh(document.querySelector('#chat'));});
+  await page.waitForFunction(()=>!document.querySelector('dialog'));assert.equal(await page.evaluate(()=>fixture.listenerCount()),0);assert.equal(await page.evaluate(()=>fixture.mounted),await page.evaluate(()=>fixture.detached));checks.push('host refresh detects changed owner/chat and disposes only the original assistant portal');
+  await page.evaluate(()=>fixture.tools.dispose());assert.equal(await page.locator('[data-qm-prose-assistant], [data-qm-collect-floor]').count(),0);
+  await page.evaluate(()=>fixture.tools.refresh(document.querySelector('#chat')));assert.equal(await page.locator('[data-qm-prose-assistant]').count(),1);await page.evaluate(()=>fixture.tools.dispose());assert.deepEqual(await page.evaluate(()=>fixture.notices),[]);checks.push('shared hot cleanup removes owned entries and can initialize again without duplicated handlers');
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,count:checks.length,externalRequests:external,pageErrors:errors,productionWrites:false,persistence:'memory-only panel with synthetic host/model responses'},null,2));
 }finally{await context.close();await browser.close();}

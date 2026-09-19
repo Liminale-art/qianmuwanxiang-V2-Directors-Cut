@@ -1,5 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download}={}){
+export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   const floorOf=node=>{const raw=node?.getAttribute('mesid')??node?.dataset?.messageId;return raw!==undefined&&raw!==null&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null;};
   const current=()=>root?.isConnected&&isCurrent()===true;
@@ -10,6 +10,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     link.addEventListener('error',()=>link.remove(),{once:true});
   };
   async function click(event){
+    if(extraFloorTools?.click(event)===true)return;
     const button=event.target.closest?.('[data-qm-collect-floor]');
     if(!button||!root?.contains(button)||!current()||opening||active)return;
     const node=button.closest('.mes'),floor=floorOf(node),message=Number.isInteger(floor)?getContext().chat?.[floor]:null;
@@ -63,7 +64,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     }catch(cause){if(valid())notify?.(`收藏导出未完成：${String(cause?.message||cause).slice(0,200)}`,'warning');}
     finally{check?.release?.();if(exporting===entry)exporting=null;button.disabled=disabled;}
   }
-  function disposeFloor(){epoch++;root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
+  function disposeFloor(){epoch++;extraFloorTools?.disposeFloor();root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
   async function restoreBackup(file,input,confirm,createCheck){
     if(restoring){restoring.view?.element.focus();return;}if(!input?.isConnected||isCurrent()!==true)return;
     const parent=input.closest('.sd-storage-backup-section'),document=input.ownerDocument;if(!parent)return;
@@ -97,8 +98,10 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
   function refresh(chatRoot){
     if(!chatRoot?.isConnected||isCurrent()!==true)return;
     if(root!==chatRoot){disposeFloor();root=chatRoot;root.addEventListener('click',click);}
+    extraFloorTools?.bindRoot(root);
     for(const node of root.querySelectorAll('.mes')){
       const floor=floorOf(node),message=Number.isInteger(floor)?getContext().chat?.[floor]:null,existing=node.querySelector('[data-qm-collect-floor]');
+      extraFloorTools?.refreshNode(node,floor,message);
       if(!message||message.is_system){existing?.remove();continue;}if(existing)continue;
       const toolbar=node.querySelector('.mes_buttons .extraMesButtons, .mes_buttons .mes_buttons_inner, .mes_buttons');if(!toolbar)continue;
       const button=root.ownerDocument.createElement('button');button.type='button';button.className='mes_button interactable qm-text-collection-floor';button.dataset.qmCollectFloor='';button.title='收藏正文';button.setAttribute('aria-label',button.title);
