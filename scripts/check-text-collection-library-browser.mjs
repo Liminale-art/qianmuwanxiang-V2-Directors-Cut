@@ -159,8 +159,11 @@ try{
     const host=document.createElement('section');host.id='inventory';host.style.width='100%';host.innerHTML=renderStorageBackupSection(null,value=>`${value} B`,{data:{collectionStorage:data}});document.body.append(host);host.querySelector('details').open=true;return data;
   });assert.equal(inventory.count,53);assert.equal(inventory.deletedCount,2);assert.equal(inventory.bytes,(await fs.stat(path.join(folder,'.qianmu-text-collection-v1.json'))).size);assert.equal(writes.length,beforeInvalid);
   assert.match(await page.locator('#inventory .sd-storage-collection-summary').textContent(),/53 条原件.*不计入浏览器配额/);
+  assert.equal(inventory.pending.status,'ready');assert.equal(inventory.pending.count,1);assert.equal(inventory.pending.conflicts,1);assert.ok(inventory.pending.bytes>0);
+  assert.match(await page.locator('#inventory .sd-storage-collection-pending-summary').textContent(),/1 条.*冲突 1 条.*不是可重建缓存/);
   for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await page.locator('#inventory .sd-storage-collection-summary').evaluate(node=>({scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(size.scroll<=size.client+1);}
   checks.push('lazy server inventory shows exact file bytes and tombstone counts without writes or narrow-screen overflow');
+  checks.push('independent real IndexedDB pending statistics retain conflict counts and do not expose prose or count server originals as browser data');
   await page.evaluate(()=>{
     fixture.cleanupConsent=false;fixture.cleanupAsks=[];fixture.cleanupHost=document.createElement('section');document.body.append(fixture.cleanupHost);
     fixture.openCleanup=()=>{fixture.cleanupPending=fixture.floorTools.cleanupOriginals(fixture.cleanupHost,async(...args)=>{fixture.cleanupAsks.push(args);return fixture.cleanupConsent;},()=>{if(!fixture.cleanupHost.isConnected)throw Error('closed');},'st-user:alice',2);};fixture.openCleanup();

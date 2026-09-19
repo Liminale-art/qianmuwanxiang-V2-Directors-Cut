@@ -4,6 +4,8 @@ import {createHash} from 'node:crypto';
 import {collectTextCollectionStorage} from '../qianmu-text-collection-storage.js';
 import {textCollectionSyncQuery,textCollectionSyncResponse} from '../qianmu-text-collection-sync-contract.js';
 import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
+import {createTextCollection} from '../qianmu-text-collection.js';
+import {createTextCollectionOutboxEntry,emptyTextCollectionOutbox,summarizeTextCollectionOutbox} from '../qianmu-text-collection-outbox-store.js';
 
 const expectedAccount='st-user:'+createHash('sha256').update('alice').digest('hex');
 const query={version:1,expectedAccount};
@@ -50,4 +52,23 @@ test('resource display distinguishes server originals, file overhead and browser
   assert.match(html,/1 条原件 · 文件 2200 B/);assert.match(html,/正文 UTF-8 10 B/);assert.match(html,/1 条删除标记/);assert.match(html,/不计入浏览器配额/);
   const failed=renderStorageBackupSection(null,String,{data:{collectionStorage:{status:'unavailable',error:'bad <img src=x>'}}});
   assert.match(failed,/bad &lt;img/);assert.doesNotMatch(failed,/<img|0 条原件/);
+});
+
+const localState=()=>({...emptyTextCollectionOutbox(expectedAccount),entries:[createTextCollectionOutboxEntry({version:1,expectedAccount,mutationId:'pending-1',operation:'create',id:'local-01',baseRevision:0,
+  record:createTextCollection({id:'local-01',mode:'full',createdAt:1,source:{account:expectedAccount,chatId:'deleted',messageId:0,replyId:'r',charName:'角色',userName:'用户',text:'私人待存原文'}})},{queuedAt:1})]});
+test('server outage leaves independent device statistics available without writing or closing an injected store',async()=>{
+  const state=localState(),store={read:async account=>{assert.equal(account,expectedAccount);return structuredClone(state);},close(){throw Error('borrowed');}};
+  const result=await collectTextCollectionStorage({...options,outboxStore:store,fetchImpl:async()=>{throw Error('offline');}});
+  assert.equal(result.status,'unavailable');assert.equal(result.bytes,null);assert.deepEqual(result.pending,summarizeTextCollectionOutbox(state));assert.equal(result.pending.count,1);
+  assert.doesNotMatch(JSON.stringify(result),/私人待存原文|pending-1|deleted/);
+});
+test('local read failure preserves unknown scope while remote statistics remain readable, and stale reads reject all',async()=>{
+  const result=await collectTextCollectionStorage({...options,outboxStore:{read:async()=>{throw Error('PRIVATE');}},fetchImpl:async()=>response(usage())});
+  assert.equal(result.status,'ready');assert.equal(result.pending.status,'unavailable');assert.equal(result.pending.bytes,null);assert.doesNotMatch(result.pending.error,/PRIVATE/);
+  let account='st-user:alice',calls=0;await assert.rejects(collectTextCollectionStorage({resolveNamespace:async()=>account,isCurrent:()=>true,outboxStore:{read:async()=>{account='st-user:bob';return localState();}},fetchImpl:async()=>{calls++;return response(usage());}}),{code:'text_collection_storage_stale'});assert.equal(calls,0);
+});
+test('pending resource row explains local estimates independently of a failed server inventory and escapes errors',()=>{
+  const html=renderStorageBackupSection(null,value=>`${value} B`,{data:{collectionStorage:{status:'unavailable',pending:summarizeTextCollectionOutbox(localState())}}});
+  assert.match(html,/收藏待存 · 当前账户本机/);assert.match(html,/1 条 · \d+ B 内容及请求记录估算 · 冲突 0 条/);assert.match(html,/不是可重建缓存/);assert.doesNotMatch(html,/私人待存原文/);
+  const failed=renderStorageBackupSection(null,String,{data:{collectionStorage:{pending:{status:'unavailable',error:'<bad>'}}}});assert.match(failed,/&lt;bad&gt;/);assert.doesNotMatch(failed,/0 条 ·/);
 });

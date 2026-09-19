@@ -39,11 +39,11 @@ test('malformed or failed local reads reject rather than manufacture zero storag
   await assert.rejects(runtime.summary(),/broken database/);runtime.close();
 });
 
-function inventory(summary) {
+function inventory(summary,collectionStorage={status:'unavailable',bytes:null,count:null}) {
   let initialized=0,account=namespace;
   const zero=()=>({status:'ready',bytes:0,count:0});
   const context=vm.createContext({notesSyncControls:()=>initialized++,getQianmuNotesStorage:async()=>{assert.equal(initialized,1);if(summary instanceof Error)throw summary;return summary;},
-    collectionFloorTools:{storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
+    collectionFloorTools:{storageSummary:async()=>collectionStorage},
     focusClockLibrary:()=>({summary:async()=>zero()}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:100000,quota:200000})}},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:50,recoverableBytes:0,categories:[{category:'notes',bytes:50,count:2}],stores:[{name:'notes',label:'旧版便笺（本机）',count:2,bytes:50}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
     featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account,manageImageAdmissionStorage:async()=>zero(),collectComfyStorage:async()=>zero(),collectVibeStorage:async()=>({status:'unavailable',bytes:null}),collectCharacterStorage:async()=>({status:'unavailable',bytes:null}),collectStoryboardRestoreStorage:async()=>zero(),collectStoryboardMappingStorage:async()=>zero(),collectStoryboardCarrierStorage:async()=>({...zero(),originalCount:0})})},
@@ -58,6 +58,13 @@ test('actual global inventory adds account notes alongside legacy bytes without 
   assert.equal(result.categories.find(row=>row.category==='notes').bytes,750);assert.equal(result.categories.find(row=>row.category==='notes').count,5);
   assert.equal(result.origin.usage,100000);assert.equal(result.origin.quota,200000);assert.equal(result.notesStorage,summary);
   assert.deepEqual(Array.from(result.idb.stores,row=>row.name),['notes']);
+});
+
+test('actual inventory counts pending originals once, excludes server bytes and never calls them recoverable cache',async()=>{
+  const collectionStorage={status:'ready',namespace,bytes:9000,count:4,pending:{status:'ready',bytes:321,count:2}};
+  const {context}=inventory({status:'ready',namespace,bytes:0,count:0},collectionStorage),result=await context.collectStorageInventory();
+  assert.equal(result.trackedBytes,371);assert.equal(result.categories.find(row=>row.category==='collections').bytes,321);assert.equal(result.recoverableBytes,0);assert.equal(result.manageableBytes,50);
+  collectionStorage.pending={status:'unavailable',bytes:null,count:null};const failed=await context.collectStorageInventory();assert.equal(failed.trackedBytes,50);
 });
 
 test('unreadable account notes remain uncounted and a foreign-account snapshot is never mixed into totals',async()=>{

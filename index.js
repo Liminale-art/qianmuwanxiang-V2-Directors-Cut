@@ -17,7 +17,7 @@ import { runningHubUsageFields, renderRunningHubTaskUsage } from './qianmu-runni
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
-import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, collectionCleanupOptions } from './qianmu-storage-backup-view.js';
+import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, collectionCleanupOptions, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -7898,7 +7898,8 @@ async function collectStorageInventory() {
   const focusBytes=focusLibrary.status==='ready'?focusLibrary.bytes:0;if(focusBytes)addCategory('audio',focusBytes,focusLibrary.count);
   const notesBytes=notesStorage.status==='ready'?notesStorage.bytes:0;if(notesStorage.status==='ready')addCategory('notes',notesBytes,notesStorage.count);
   const galleryCatalogBytes=galleryCatalogStorage.status==='ready'?galleryCatalogStorage.bytes:0;if(galleryCatalogStorage.status==='ready')addCategory('logs',galleryCatalogBytes,galleryCatalogStorage.count);
-  const trackedBytes = galleryCatalogBytes + notesBytes + focusBytes + Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize+carrierSize;
+  const pending=collectionStorage.pending,pendingBytes=pending?.status==='ready'?pending.bytes:0;if(pendingBytes)addCategory('collections',pendingBytes,pending.count);
+  const trackedBytes = pendingBytes + galleryCatalogBytes + notesBytes + focusBytes + Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize+carrierSize;
   const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
   const manageableBytes = focusBytes + Number(idb.totalBytes || 0) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
   return {
@@ -7957,14 +7958,6 @@ async function refreshStorageInventory(force = false) {
   return storageInventoryState.data;
 }
 
-const STORAGE_CATEGORY_LABELS = Object.freeze({
-  images: '图片', vibes: '参考素材', characters: '角色资料', audio: '音频', video: '影片', reader: '伴读资料', notes: '便笺', logs: '日志与记录', cache: '临时缓存', settings: '设置与预设', chat: '当前聊天数据', other: '其他',
-});
-
-const STORAGE_CATEGORY_COLORS = Object.freeze({
-  images: '#5aa9ff', vibes: '#b29bc9', characters: '#c985b1', audio: '#ff9f43', video: '#6f8fff', reader: '#9b7cff', notes: '#f2c94c', logs: '#ff647c', cache: '#3dc7c9', settings: '#65c466', chat: '#8d94a6', other: '#747b88',
-});
-
 function renderStorageManagementCard() {
   const { status, data, error } = storageInventoryState;
   const backupSection = renderStorageBackupSection(data?.notesStorage, formatStorageBytes, { data, ready: status === 'ready' });
@@ -7982,7 +7975,7 @@ function renderStorageManagementCard() {
   const scaleBytes = Math.max(1, data.origin.quota > 0 ? Math.max(data.origin.quota, usedForScale) : usedForScale);
   const barItems = [
     ...categories.map((item) => ({ key: item.category, label: STORAGE_CATEGORY_LABELS[item.category] || item.category, bytes: Number(item.bytes) || 0, color: STORAGE_CATEGORY_COLORS[item.category] || STORAGE_CATEGORY_COLORS.other })),
-    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary,data.notesStorage].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
+    ...(unknownUsage > 0 ? [{ key: 'origin-other', label: [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary,data.notesStorage,data.collectionStorage?.pending].some(row=>['unavailable','partial'].includes(row?.status))?'未盘点站点数据':'其他 ST 数据', bytes: unknownUsage, color: '#555d6b' }] : []),
     ...(freeBytes > 0 ? [{ key: 'free', label: '可用空间', bytes: freeBytes, color: 'rgba(127, 127, 127, .18)' }] : []),
   ];
   const storageBar = barItems.map((item) => `<i class="sd-storage-segment sd-storage-${htmlEscape(item.key)}" style="--sd-storage-weight:${Math.max(0, item.bytes / scaleBytes)};--sd-storage-color:${item.color}" title="${htmlEscape(item.label)} ${htmlEscape(formatStorageBytes(item.bytes))}"></i>`).join('');
@@ -7997,7 +7990,7 @@ function renderStorageManagementCard() {
     : pressure.level === 'warning'
       ? `<p class="sd-storage-pressure is-warning" role="status">浏览器来源空间已使用 ${pressurePercent}% · 剩余约 ${htmlEscape(formatStorageBytes(pressure.freeBytes))}。可按需整理，千幕不会自动清理。</p>`
       : '';
-  const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary,data.notesStorage,data.galleryCatalogStorage].some(row=>['unavailable','partial'].includes(row?.status))
+  const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary,data.notesStorage,data.galleryCatalogStorage,data.collectionStorage?.pending].some(row=>['unavailable','partial'].includes(row?.status))
     || [data.imageAttempts,data.imageChannels,data.serviceReceipts,data.comfyReceipts].some(row=>row?.error);
   return `<section class="sd-card sd-storage-card">
     <div class="sd-card-title-row"><div><h3>数据管理</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="刷新" aria-label="刷新"><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>

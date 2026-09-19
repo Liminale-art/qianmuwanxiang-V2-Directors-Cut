@@ -102,7 +102,7 @@ assert.match(source, /storageSafeFavoriteMeta[\s\S]*const allowed = \['speaker'[
 assert.match(source, /bindStoragePackageActions\(backup,[\s\S]*reader:coreadExportData[\s\S]*imports:[\s\S]*reader:coreadImportDataFile/, 'the unified storage backup home retains both initiating control identities through the shared bindings');
 assert.match(source, /STORAGE_CHAT_CLEARABLE[\s\S]*reader_chats[\s\S]*reader_vectors/, 'the UI must expose only the same chat-scoped store subset');
 assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'persistent-storage prompts must be removed');
-const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('const STORAGE_CATEGORY_LABELS'));
+const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('function renderStorageManagementCard'));
 assert.match(refreshInventory, /paintStorageManagementCard\(\)/, 'inventory completion must patch only its own card');
 assert.doesNotMatch(refreshInventory, /renderModal\(\)/, 'inventory completion must not rebuild the full Qianmu window');
 assert.match(source, /function paintStorageManagementCard\(\)[\s\S]*replaceStorageManagementCard\(current, renderStorageManagementCard\(\), \{[\s\S]*bind:bindStorageManagementEvents/, 'a replaced storage card must restore its own controls through the existing view module');
