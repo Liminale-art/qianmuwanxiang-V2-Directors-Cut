@@ -44,4 +44,12 @@ export function measureProseAssistantHistory(value,key,namespace){
   return Object.freeze({bytes:new TextEncoder().encode(JSON.stringify(state)).byteLength,count:state.rows.length,
     complete:state.rows.filter(row=>row.status==='complete').length,failed:state.rows.filter(row=>row.status==='failed').length,cancelled:state.rows.filter(row=>row.status==='cancelled').length});
 }
+export function validateProseAssistantCleanupPlan(value,namespace){
+  account(namespace);if(!exact(value,['version','namespace','entries'])||value.version!==1||value.namespace!==namespace||!Array.isArray(value.entries)||value.entries.length>10000)fail();
+  const seen=new Set();for(const entry of value.entries){
+    if(!exact(entry,['key','revision','updatedAt','count','bytes']))fail();proseAssistantHistoryKey(entry.key,namespace);
+    if(seen.has(entry.key)||!Number.isSafeInteger(entry.revision)||entry.revision<1||entry.revision>=Number.MAX_SAFE_INTEGER||!Number.isSafeInteger(entry.updatedAt)||entry.updatedAt<0||entry.updatedAt>253402214400000
+      ||!Number.isSafeInteger(entry.count)||entry.count<1||entry.count>PROSE_ASSISTANT_HISTORY_LIMITS.turns||!Number.isSafeInteger(entry.bytes)||entry.bytes<1||entry.bytes>PROSE_ASSISTANT_HISTORY_LIMITS.bytes)fail();seen.add(entry.key);
+  }return value;
+}
 export {error as proseAssistantHistoryError,account as proseAssistantHistoryAccount};

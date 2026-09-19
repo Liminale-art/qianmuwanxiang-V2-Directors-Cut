@@ -57,7 +57,29 @@ export function createAccountLocalStore({indexedDB=globalThis.indexedDB,dbName,t
       }catch(_){const error=fail('storage','账户资料盘点暂不可用');if(tx)abort(error);else finish(error);}
     });
   }
-  return Object.freeze({read:(namespace,options)=>access(namespace,null,options),scan,update:(namespace,mutator,options)=>{
+  // One bounded transaction for an explicitly captured set, not a database clear.
+  async function updateMany(names,mutator,{guard=()=>true}={}){
+    if(!Array.isArray(names)||names.length>10000||typeof mutator!=='function')throw fail('storage','账户资料批量范围无效');
+    const keys=[...names];keys.forEach(key=>validateNamespace(key));if(new Set(keys).size!==keys.length)throw fail('storage','账户资料批量范围重复');check(guard);if(!keys.length)return 0;
+    const db=await open();check(guard);
+    return new Promise((resolve,reject)=>{
+      let tx,done=false,count=0,failure;const finish=error=>{if(done)return;done=true;clearTimeout(timer);pending.delete(tx);error?reject(error):resolve(count);};
+      const abort=error=>{failure=error;try{tx?.abort();}catch(_){finish(error);}};
+      const timer=setTimeout(()=>{const error=fail('timeout','账户资料批量操作结果未确认，请重新盘点');abort(error);finish(error);},timeout);
+      try{
+        tx=db.transaction('accounts','readwrite');pending.add(tx);
+        tx.oncomplete=()=>{try{check(guard);finish();}catch(error){finish(error);}};tx.onabort=()=>finish(failure||fail('storage','账户资料批量操作未完成，原内容保留'));
+        tx.onerror=()=>{failure ||= fail('storage','账户资料批量保存失败，原内容保留');};
+        const target=tx.objectStore('accounts');
+        const next=index=>{if(index===keys.length)return;const key=keys[index],request=target.get(key);
+          request.onsuccess=()=>{try{check(guard);const state=validate(request.result===undefined?empty(key):request.result,key),result=mutator(state,key);
+            if(result?.then)throw fail('storage','账户资料批量事务不能等待网络');validate(state,key);check(guard);target.put(state);count++;next(index+1);
+          }catch(error){abort(error);}};
+        };next(0);
+      }catch(_){const error=fail('storage','账户资料批量操作不可用');if(tx)abort(error);else finish(error);}
+    });
+  }
+  return Object.freeze({read:(namespace,options)=>access(namespace,null,options),scan,updateMany,update:(namespace,mutator,options)=>{
     if(typeof mutator!=='function')return Promise.reject(fail('storage','缺少账户资料事务'));return access(namespace,mutator,options);
   },close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
 }

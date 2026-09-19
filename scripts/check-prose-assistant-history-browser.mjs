@@ -85,6 +85,31 @@ try{
  const inaccessible=await page.evaluate(async()=>{const cursor=IDBObjectStore.prototype.openCursor;try{IDBObjectStore.prototype.openCursor=function(){throw Error('private scan failure');};return await fixture.store.usage(fixture.account);}catch(error){return {code:error.code,message:error.message};}finally{IDBObjectStore.prototype.openCursor=cursor;}});
  assert.equal(inaccessible.code,'prose_assistant_history_storage');assert.doesNotMatch(inaccessible.message,/private/);assert.deepEqual(await page.evaluate(()=>fixture.store.usage(fixture.account)),usage.summary);
  checks.push('cursor failures remain explicit unavailable errors rather than a successful zero, and a later read can recover');
+ const cleanup=await page.evaluate(async()=>{
+  const state=await fixture.read();await fixture.write(state.revision,[fixture.row()],{now:20});fixture.cleanup=await fixture.store.planCleanup(fixture.account);
+  fixture.cleanupBefore=[await fixture.read(),await fixture.store.read(fixture.account,fixture.key(fixture.account,'B'))];return {plan:fixture.cleanup,frozen:Object.isFrozen(fixture.cleanup)&&Object.isFrozen(fixture.cleanup.entries)&&fixture.cleanup.entries.every(Object.isFrozen)};
+ });
+ assert.equal(cleanup.frozen,true);assert.equal(cleanup.plan.entries.length,2);assert.doesNotMatch(JSON.stringify(cleanup.plan),/问题|纯文本|FOREIGN|LEGACY|apiKey/);
+ await assert.rejects(page.evaluate(()=>fixture.store.clearPlan(fixture.account,fixture.cleanup)));
+ const conflictCleanup=await page.evaluate(async()=>{const before=fixture.cleanupBefore[1],row=fixture.row();row.assistant='changed in another page';await fixture.store.write(fixture.account,before.namespace,before.revision,[row],{now:21});try{await fixture.store.clearPlan(fixture.account,fixture.cleanup,{confirmed:true});}catch(error){return {code:error.code,first:await fixture.read(),second:await fixture.store.read(fixture.account,before.namespace)};}});
+ assert.equal(conflictCleanup.code,'prose_assistant_history_conflict');assert.deepEqual(conflictCleanup.first,(await page.evaluate(()=>fixture.cleanupBefore))[0]);assert.equal(conflictCleanup.second.rows[0].assistant,'changed in another page');
+ checks.push('explicit metadata-only cleanup plan requires confirmation and a later-record conflict rolls back earlier writes in the same transaction');
+ await page.evaluate(async()=>{fixture.cleanup=await fixture.store.planCleanup(fixture.account);fixture.cleanupBefore=[await fixture.read(),await fixture.store.read(fixture.account,fixture.key(fixture.account,'B'))];});
+ for(const mode of ['quota','abort','guard']){
+  const result=await page.evaluate(async mode=>{const put=IDBObjectStore.prototype.put;let n=0,live=true,failure;
+   try{IDBObjectStore.prototype.put=function(value){n++;if(mode==='quota'&&n===2)throw new DOMException('quota','QuotaExceededError');const request=put.call(this,value),tx=this.transaction;if(mode==='abort'&&n===2)request.addEventListener('success',()=>tx.abort());if(mode==='guard'&&n===1)request.addEventListener('success',()=>{live=false;});return request;};
+    await fixture.store.clearPlan(fixture.account,fixture.cleanup,{confirmed:true,guard:()=>live,now:22});
+   }catch(error){failure=error.code;}finally{IDBObjectStore.prototype.put=put;}
+   return {failure,actual:[await fixture.read(),await fixture.store.read(fixture.account,fixture.key(fixture.account,'B'))],before:fixture.cleanupBefore};
+  },mode);assert.ok(result.failure,mode);assert.deepEqual(result.actual,result.before,mode);
+ }
+ checks.push('quota on the second write, native post-request abort and a mid-transaction guard change preserve every original rather than a partial deletion');
+ const clearedBatch=await page.evaluate(async()=>{await fixture.store.write(fixture.account,fixture.key(fixture.account,'C'),0,[fixture.row()],{now:23});const result=await fixture.store.clearPlan(fixture.account,fixture.cleanup,{confirmed:true,now:24});return {result,a:await fixture.read(),b:await fixture.store.read(fixture.account,fixture.key(fixture.account,'B')),c:await fixture.store.read(fixture.account,fixture.key(fixture.account,'C')),next:await fixture.store.planCleanup(fixture.account)};});
+ assert.deepEqual(clearedBatch.result,{status:'complete',clearedConversations:2,clearedTurns:2,retainedRevisionMarkers:true});assert.deepEqual(clearedBatch.a.rows,[]);assert.deepEqual(clearedBatch.b.rows,[]);assert.equal(clearedBatch.c.rows.length,1);assert.equal(clearedBatch.next.entries.length,1);assert.equal(clearedBatch.next.entries[0].key,clearedBatch.c.namespace);
+ for(const [name,at]of [['a',0],['b',1]])assert.equal(clearedBatch[name].revision,(await page.evaluate(()=>fixture.cleanupBefore))[at].revision+1);
+ checks.push('confirmed batch clears only observed conversations, preserves records created after confirmation and keeps empty revision markers out of later cleanup plans');
+ await assert.rejects(page.evaluate(()=>fixture.write(fixture.cleanupBefore[0].revision,[fixture.row()],{now:25})));await assert.rejects(page.evaluate(()=>fixture.store.clearPlan(fixture.account,fixture.cleanup,{confirmed:true})));
+ assert.deepEqual((await page.evaluate(()=>fixture.read())).rows,[]);checks.push('stale panel writes and repeated old cleanup plans cannot revive content or rewrite the new clear markers');
  await page.evaluate(()=>fixture.rawPut({namespace:fixture.key(fixture.account,'broken'),invalid:true}));await assert.rejects(page.evaluate(()=>fixture.store.usage(fixture.account)));
  checks.push('damaged own-account history rejects the entire summary instead of silently excluding its unknown occupancy');
  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,count:checks.length,externalRequests:external,pageErrors:errors,productionWrites:false,scope:'isolated real IndexedDB only; no host panel, ST sync or model'},null,2));
