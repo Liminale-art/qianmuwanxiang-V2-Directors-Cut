@@ -32,6 +32,12 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
     restoreInfo:options=>client.restoreInfo(options),
     batchInfo:options=>client.batchInfo(options),
     cleanupPlan:options=>client.cleanupPlan(options),
+    resumePending(input){
+      if(closed||isCurrent()!==true)throw error('cancelled','收藏会话已关闭，未恢复待存操作');
+      const request=textCollectionSyncMutation(input);
+      if(request.expectedAccount!==expectedAccount||!['create','edit','restore'].includes(request.operation))throw error('account','待存操作与当前账户或支持范围不一致',401);
+      return Object.freeze({request,submit:options=>client.write(request,options)});
+    },
     prepareBatch(mutations){
       if(closed||isCurrent()!==true)throw error('cancelled','收藏会话已关闭，未准备新批次');
       const request=textCollectionBulkRequest({version:1,expectedAccount,mutations});

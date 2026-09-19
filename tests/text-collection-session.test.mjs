@@ -58,6 +58,14 @@ test('old backend capability failure is read-only and cannot start a restoration
   assert.equal(sent.length,1);assert.match(sent[0],/\/batch-info$/);s.close();
 });
 
+test('durable pending handles resume unchanged in a new account session and reject deletion or foreign ownership',async()=>{
+  const sent=[],transport={fetchImpl:async(_,o)=>{const r=JSON.parse(o.body);sent.push(r);return response(ack(r));}};
+  const first=await createTextCollectionSession(options(transport)),saved=structuredClone(first.prepareCreate(item()).request);first.close();
+  const second=await createTextCollectionSession(options(transport));await second.resumePending(saved).submit();assert.deepEqual(sent,[saved]);
+  assert.throws(()=>second.resumePending({...saved,expectedAccount:'st-user:'+'b'.repeat(64)}));assert.throws(()=>second.resumePending(second.prepareDelete('collection-1',1).request));
+  second.close();assert.throws(()=>second.resumePending(saved));
+});
+
 test('cleanup manifest can carry all bounded IDs without fetching originals or sending mutations',async()=>{
   let calls=0;const items=Array.from({length:10000},(_,i)=>({id:('collection-'+i).padEnd(120,'x'),revision:1}));
   const s=await createTextCollectionSession(options({fetchImpl:async(url,o)=>{

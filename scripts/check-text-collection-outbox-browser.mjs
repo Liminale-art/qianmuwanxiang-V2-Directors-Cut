@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext();
-const checks=[],errors=[],allowed=new Set(['account-local-store','text-collection-outbox-store','text-collection-sync-contract','text-collection-backup','text-collection','json-input'].map(name=>`qianmu-${name}.js`));let external=0;
+const checks=[],errors=[],allowed=new Set(['account-local-store','text-collection-outbox-runtime','text-collection-outbox-store','text-collection-sync-contract','text-collection-backup','text-collection','json-input'].map(name=>`qianmu-${name}.js`));let external=0;
 const deadline=setTimeout(()=>{console.error('Collection outbox check exceeded 60 seconds');void browser.close();},60000);
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
@@ -52,6 +52,25 @@ try{
   checks.push('native transaction abort after request success, quota failure, invalid schema and stale guard preserve all old rows');
   await page.evaluate(()=>fixture.store.close());await assert.rejects(page.evaluate(()=>fixture.read()));await boot(page);assert.deepEqual(await page.evaluate(()=>fixture.read()),baseline);
   checks.push('closed session rejects work while reopening retains all committed pending identities');
+  const beforeRefresh=await page.evaluate(async()=>{
+    const {createTextCollectionOutboxRuntime}=await import('./qianmu-text-collection-outbox-runtime.js');let sent;
+    const session={expectedAccount:fixture.namespace,guard:async()=>true,resumePending:request=>({submit:async()=>{
+      sent=request;const state=await fixture.read();if(!state.entries.find(row=>row.request.mutationId===request.mutationId)?.started)throw Error('not durable');throw Error('lost receipt');
+    }})};
+    const runtime=createTextCollectionOutboxRuntime({session,store:fixture.store}),entry=fixture.make(4);
+    await runtime.enqueue(entry.request);try{await runtime.submit(entry.request.mutationId);}catch{}runtime.close();return {sent,state:await fixture.read()};
+  });
+  assert.equal(beforeRefresh.state.entries.length,4);assert.equal(beforeRefresh.state.entries.find(row=>row.request.mutationId==='mutation-4').started,true);
+  await boot(page);
+  const afterRefresh=await page.evaluate(async()=>{
+    const {createTextCollectionOutboxRuntime}=await import('./qianmu-text-collection-outbox-runtime.js');let sent;
+    const session={expectedAccount:fixture.namespace,guard:async()=>true,resumePending:request=>({submit:async()=>{
+      sent=request;return {ok:true,version:1,expectedAccount:fixture.namespace,libraryRevision:4,mutationId:request.mutationId,id:request.id,revision:1,updatedAt:request.record.updatedAt};
+    }})};
+    const runtime=createTextCollectionOutboxRuntime({session,store:fixture.store}),result=await runtime.submit('mutation-4');runtime.close();return {sent,result,state:await fixture.read()};
+  });
+  assert.deepEqual(afterRefresh.sent,beforeRefresh.sent);assert.equal(afterRefresh.result.status,'confirmed');assert.deepEqual(afterRefresh.state,baseline);
+  checks.push('actual runtime persists before synthetic transport and retries the identical request after reload, removing only the acknowledged entry');
   assert.equal(external,0);assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({passed:checks.length,checks,errors,externalRequests:external,productionDataRead:false,networkSubmissions:0,scope:'actual account-local/outbox modules with browser IndexedDB; no capture/editor integration'},null,2));
+  console.log(JSON.stringify({passed:checks.length,checks,errors,externalRequests:external,productionDataRead:false,networkSubmissions:0,scope:'actual account-local/outbox store/runtime with browser IndexedDB; synthetic transport, no capture/editor integration'},null,2));
 }finally{clearTimeout(deadline);await context.close();await browser.close();}
