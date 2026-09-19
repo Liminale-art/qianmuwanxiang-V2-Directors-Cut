@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext();
-const allowed=new Set(['qianmu-prose-assistant-history.js','qianmu-prose-assistant-history-contract.js','qianmu-account-local-store.js','qianmu-chat-file-target.js']),checks=[],errors=[];let external=0;
+const allowed=new Set(['qianmu-prose-assistant-history.js','qianmu-prose-assistant-history-contract.js','qianmu-prose-assistant-history-runtime.js','qianmu-account-local-store.js','qianmu-chat-file-target.js']),checks=[],errors=[];let external=0;
 const timer=setTimeout(()=>{console.error('Assistant history check exceeded 60 seconds');void browser.close();},60000);
 await context.route('**/*',async route=>{const url=new URL(route.request().url()),file=url.pathname.slice(1);
  if(url.origin==='https://qianmu.test'){
@@ -44,5 +44,17 @@ try{
  checks.push('clearing retains a revision marker so an older page cannot resurrect removed dialogue');
  await page.evaluate(()=>fixture.store.close());await assert.rejects(page.evaluate(()=>fixture.read()));await boot(page);assert.deepEqual(await page.evaluate(()=>fixture.read()),cleared);
  checks.push('closing releases database ownership; reopening reads committed state without resuming a model request');
+ await page.evaluate(async()=>{
+  const {openProseAssistantHistory}=await import('./qianmu-prose-assistant-history-runtime.js');fixture.openRuntime=()=>openProseAssistantHistory({source:{key:fixture.key(),scope:{namespace:fixture.account},guard:async()=>true,assertCurrent:()=>true},store:fixture.store,isCurrent:()=>true});
+  fixture.runtime=await fixture.openRuntime();await fixture.runtime.save({key:fixture.key(),busy:false,rows:[fixture.row(4)]});fixture.runtime.close();fixture.runtime=await fixture.openRuntime();
+ });
+ assert.equal(await page.evaluate(()=>fixture.runtime.initialHistory().rows[0].id),4);
+ const failed=await page.evaluate(async()=>{const put=IDBObjectStore.prototype.put;try{IDBObjectStore.prototype.put=function(){throw new DOMException('quota','QuotaExceededError');};await fixture.runtime.save({key:fixture.key(),busy:false,rows:[fixture.row(4),fixture.row(5)]});}catch(_){return fixture.runtime.status();}finally{IDBObjectStore.prototype.put=put;}});
+ assert.equal(failed.dirty,true);assert.equal(failed.canRetry,true);assert.equal((await page.evaluate(()=>fixture.read())).rows.length,1);
+ await page.evaluate(()=>fixture.runtime.retry());assert.equal((await page.evaluate(()=>fixture.read())).rows.length,2);assert.equal(await page.evaluate(()=>fixture.runtime.status().dirty),false);
+ checks.push('real coordinator restores committed rows, retains a failed snapshot and explicitly retries after quota recovery without changing the prior original');
+ const conflict=await page.evaluate(async()=>{const other=await fixture.openRuntime();await other.save({key:fixture.key(),busy:false,rows:[]});other.close();try{await fixture.runtime.save({key:fixture.key(),busy:false,rows:[fixture.row(6)]});}catch(error){return {code:error.code,status:fixture.runtime.status()};}});
+ assert.equal(conflict.code,'prose_assistant_history_conflict');assert.equal(conflict.status.canRetry,false);assert.deepEqual((await page.evaluate(()=>fixture.read())).rows,[]);await page.evaluate(()=>fixture.runtime.close());
+ checks.push('coordinator respects another page clear and refuses both silent rebasing and automatic resurrection');
  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,count:checks.length,externalRequests:external,pageErrors:errors,productionWrites:false,scope:'isolated real IndexedDB only; no host panel, ST sync or model'},null,2));
 }finally{clearTimeout(timer);await context.close();await browser.close();}
