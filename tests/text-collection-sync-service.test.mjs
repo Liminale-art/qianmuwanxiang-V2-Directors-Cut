@@ -17,6 +17,7 @@ const account=handle=>imageServiceAccount({user:{profile:{handle}}}).namespace;
 const request=(folder,handle='alice')=>({user:{profile:{handle},directories:{root:folder}}});
 const query=(extra={})=>({version:1,expectedAccount:account('alice'),cursor:null,limit:50,...extra});
 const detail=(id='collection-1')=>({version:1,expectedAccount:account('alice'),id});
+const snapshot=()=>({version:1,expectedAccount:account('alice')});
 const create=(id='collection-1',handle='alice',createdAt=1)=>({version:1,expectedAccount:account(handle),mutationId:randomUUID(),operation:'create',id,baseRevision:0,
   record:createTextCollection({id,mode:'selection',source:{account:account(handle),chatId:'deleted-chat',messageId:0,replyId:'reply-1',charName:'角色',userName:'读者',text:'hidden START selected😀 END hidden'},start:13,end:23,createdAt})});
 const edit=(operation='edit',extra={})=>({version:1,expectedAccount:account('alice'),mutationId:randomUUID(),operation,id:'collection-1',baseRevision:1,...operation==='edit'?{text:' edited\r\ntext '}:{},...extra});
@@ -126,11 +127,14 @@ test('actual plugin routes authenticate and return only no-store collection resu
     await routes.get(`POST /text-collections/${action}`)(req,res);return result;
   };
   assert.equal((await call('list',{body:query()})).status,401);assert.deepEqual(await fs.readdir(f.folder),[]);
+  assert.equal((await call('snapshot',{body:snapshot()})).status,401);
   const input=create(),written=await call('write',{...f.req,body:input});assert.equal(written.status,200);
   assert.deepEqual(textCollectionSyncResponse(written.body,'write',input),written.body);
   const listed=await call('list',{...f.req,body:query()});assert.equal(listed.headers['Cache-Control'],'no-store');assert.equal(listed.headers['X-Content-Type-Options'],'nosniff');
   assert.equal(textCollectionSyncResponse(listed.body,'list',query()).items.length,1);
   const found=await call('get',{...f.req,body:detail()});assert.deepEqual(textCollectionSyncResponse(found.body,'get',detail()).record,input.record);
+  const exported=await call('snapshot',{...f.req,body:snapshot()});assert.equal(exported.headers['Cache-Control'],'no-store');
+  assert.deepEqual(textCollectionSyncResponse(exported.body,'snapshot',snapshot()).backup.records,[input.record]);
   const foreign=await call('get',{...f.req,body:{...detail(),expectedAccount:account('bob')}});assert.equal(foreign.status,401);assert.doesNotMatch(JSON.stringify(foreign.body),/selected|deleted-chat/);
   const wrong=await call('write',{...f.req,body:{...input,mutationId:randomUUID()}});assert.equal(wrong.status,409);assert.equal(wrong.body.writeState,'not_started');
   await exit();assert.equal((await call('get',{...f.req,body:detail()})).status,409);
@@ -169,8 +173,37 @@ test('real client and local HTTP plugin handlers round-trip disk originals witho
   assert.equal((await c.list()).total,0);const input=create();assert.equal((await c.write(input)).revision,1);
   assert.deepEqual((await c.get(input.id)).record,input.record);assert.equal((await c.list()).items[0].charName,'角色');
   assert.equal((await c.write(edit())).revision,2);await assert.rejects(c.write(edit()),{code:'text_collection_sync_conflict'});
+  const exported=await c.snapshot();assert.equal(exported.libraryRevision,2);assert.equal(exported.backup.records[0].text,edit().text);
   assert.equal((await c.write(edit('delete',{baseRevision:2}))).revision,3);assert.equal((await c.get(input.id)).record,null);assert.equal((await c.list()).total,0);
-  assert.equal(received,9);assert.doesNotMatch(await fs.readFile(f.file,'utf8'),/selected|edited|角色/);
+  assert.equal(received,10);assert.doesNotMatch(await fs.readFile(f.file,'utf8'),/selected|edited|角色/);
+});
+
+test('snapshot reads originals once, retains edited metadata and excludes tombstones and receipts',async t=>{
+  const f=await fixture(t);assert.deepEqual((await f.service.snapshot(f.req,snapshot())).backup.records,[]);assert.deepEqual(await fs.readdir(f.folder),[]);
+  await f.service.write(f.req,create());await f.service.write(f.req,edit());await f.service.write(f.req,create('collection-2'));
+  await f.service.write(f.req,edit('delete',{id:'collection-2'}));const original=await fs.readFile(f.file);
+  let reads=0;const service=f.build({io:{...fs,open:async(file,...args)=>{if(file===f.file)reads++;return fs.open(file,...args);}}});
+  const result=await service.snapshot(f.req,snapshot());assert.equal(reads,1);assert.equal(result.libraryRevision,4);assert.equal(result.backup.exportedAt,100);
+  assert.equal(result.backup.records.length,1);const record=result.backup.records[0];assert.equal(record.revision,2);assert.equal(record.text,edit().text);
+  assert.equal(record.createdAt,1);assert.deepEqual(record.range,create().record.range);assert.deepEqual(record.source,create().record.source);
+  assert.doesNotMatch(JSON.stringify(result),/mutationId|checksum|collection-2|hidden START|END hidden/);assert.deepEqual(await fs.readFile(f.file),original);
+  for(const change of [{expectedAccount:account('bob')},{libraryRevision:3},{backup:{...result.backup,libraryRevision:3}},{backup:{...result.backup,sourceAccount:account('bob')}}])assert.throws(()=>textCollectionSyncResponse({...result,...change},'snapshot',snapshot()));
+  await assert.rejects(service.snapshot(f.req,{...snapshot(),path:f.file}),{status:400});await assert.rejects(service.snapshot(f.req,{...snapshot(),expectedAccount:account('bob')}),{status:401});
+});
+
+test('snapshot serializes with local edits and suppresses late account or cancellation results',async t=>{
+  for(const mode of ['edit','account','abort']){
+    const f=await fixture(t);await f.service.write(f.req,create());const entered=gate(),held=gate();let pause=true;
+    const service=f.build({io:{...fs,open:async(file,...args)=>{const handle=await fs.open(file,...args);if(file===f.file&&pause){pause=false;entered.release();await held.promise;}return handle;}}});
+    const controller=new AbortController(),pending=service.snapshot(f.req,snapshot(),{signal:controller.signal});await entered.promise;
+    if(mode==='edit'){
+      const update=service.write(f.req,edit());held.release();const result=await pending;assert.equal(result.libraryRevision,1);assert.deepEqual(result.backup.records,[create().record]);
+      await update;assert.equal((await service.snapshot(f.req,snapshot())).libraryRevision,2);
+    }else{
+      if(mode==='account')f.req.user.profile.handle='bob';else controller.abort();held.release();
+      await assert.rejects(pending,e=>e.code===`text_collection_sync_${mode==='account'?'account':'closed'}`&&e.writeState==='not_started');
+    }
+  }
 });
 
 test('search is read-only across saved names and actual selected text, with query-bound summary pagination',async t=>{

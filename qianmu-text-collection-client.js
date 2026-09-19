@@ -1,4 +1,6 @@
 import {textCollectionSyncError as error,textCollectionSyncMutation,textCollectionSyncQuery,textCollectionSyncResponse} from './qianmu-text-collection-sync-contract.js';
+import {TEXT_COLLECTION_BACKUP_LIMITS} from './qianmu-text-collection-backup.js';
+import {parseBoundedJson} from './qianmu-json-input.js';
 
 const base='/api/plugins/qianmu-tts/text-collections';
 // Same transport boundaries as notes sync; reuse the collection contracts, never the notes database.
@@ -34,12 +36,12 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
         if(response.url){const actual=new URL(response.url);if(actual.pathname!==path||actual.search||actual.hash||origin&&actual.origin!==origin)throw error('response','收藏返回不是当前 ST 接口',502);}
         if([404,405,501].includes(response.status))throw error('unavailable','请安装或更新千幕后端并重启 ST；本次收藏尚未确认保存',503);
         if([401,403].includes(response.status))throw error('account','收藏登录或校验已失效，请刷新 ST 后重试',401);
-        const limit=method==='get'?2*1024*1024:256*1024;
+        const limit=method==='snapshot'?TEXT_COLLECTION_BACKUP_LIMITS.bytes+1024:method==='get'?2*1024*1024:256*1024;
         if(!/^application\/json\b/i.test(response.headers?.get?.('content-type')||'')||Number(response.headers.get('content-length'))>limit)throw error('response','收藏返回格式不兼容或过大，未采用部分内容',502);
         reader=response.body?.getReader?.();if(!reader)throw error('response','收藏返回不完整',502);
         const decoder=new TextDecoder('utf-8',{fatal:true});let body='',bytes=0;
         while(true){const part=await reader.read();await check();if(part.done)break;bytes+=part.value.byteLength;if(bytes>limit)throw error('response','收藏返回超过安全读取上限',502);body+=decoder.decode(part.value,{stream:true});}
-        body+=decoder.decode();const value=JSON.parse(body);
+        body+=decoder.decode();const value=method==='snapshot'?parseBoundedJson(body,{maxBytes:limit,maxDepth:16,maxNodes:500000,label:'收藏快照'}):JSON.parse(body);
         if(!response.ok||value?.ok!==true){
           const known=value?.ok===false&&value.version===1&&/^text_collection_sync_[a-z_]+$/.test(value.code||'')&&typeof value.message==='string'&&value.message.length<=240;
           throw error(known?value.code.slice('text_collection_sync_'.length):'service',known?value.message:'收藏服务暂不可用，请保留当前内容',response.status);
@@ -56,5 +58,6 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
     }
   }
   return Object.freeze({list:(input={cursor:null,limit:50},options)=>call('list',input,options),get:(id,options)=>call('get',{id},options),write:(input,options)=>call('write',input,options),
+    snapshot:options=>call('snapshot',{},options),
     close(){closed=true;for(const abort of pending)abort();pending.clear();}});
 }

@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {createAccountDocumentFiles} from './qianmu-account-document-files.js';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {textCollectionPreview} from './qianmu-text-collection.js';
+import {validateTextCollectionBackup} from './qianmu-text-collection-backup.js';
 import {TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncError as error,textCollectionSyncMutation,textCollectionSyncEntry,applyTextCollectionMutation,textCollectionSyncQuery} from './qianmu-text-collection-sync-contract.js';
 
 const schema='qianmu.text-collection-sync.v1',filename='.qianmu-text-collection-v1.json';
@@ -68,6 +69,9 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
   }
   async function inspect(context,input,method){
     const {state}=await disk.read(context),base={ok:true,version:1,expectedAccount:context.account.namespace,libraryRevision:state.revision};
+    // One verified read: a concurrent writer can never mix revisions across exported records.
+    if(method==='snapshot')return {...base,backup:validateTextCollectionBackup({type:'qianmu-text-collections',version:1,
+      sourceAccount:context.account.namespace,exportedAt:now(),libraryRevision:state.revision,records:state.entries.filter(row=>!row.deleted).map(row=>row.record)})};
     if(method==='get'){const entry=state.entries.find(row=>row.id===input.id);return {...base,record:entry&&!entry.deleted?entry.record:null};}
     if(input.cursor&&input.cursor.revision!==state.revision)fail('changed','收藏目录已变化，请刷新后继续浏览');
     const term=(input.search||'').toLowerCase(),filter=Object.hasOwn(input,'search')?{search:input.search}:{};
@@ -91,5 +95,6 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
     pending.add(task);tails.set(key,task);void task.finally(()=>{pending.delete(task);if(tails.get(key)===task)tails.delete(key);}).catch(()=>{});return task;
   }
   return Object.freeze({list:(request,input,options)=>track(request,input,options,'list'),get:(request,input,options)=>track(request,input,options,'get'),
+    snapshot:(request,input,options)=>track(request,input,options,'snapshot'),
     write:(request,input,options)=>track(request,input,options,'write'),async close(){closed=true;await Promise.allSettled([...pending]);}});
 }

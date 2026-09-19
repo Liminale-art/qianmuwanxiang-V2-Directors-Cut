@@ -1,4 +1,5 @@
 import {textCollectionRecord,textCollectionText,updateTextCollection} from './qianmu-text-collection.js';
+import {validateTextCollectionBackup} from './qianmu-text-collection-backup.js';
 
 export const TEXT_COLLECTION_SYNC_VERSION=1;
 export const TEXT_COLLECTION_SYNC_LIMITS=Object.freeze({records:10000,mutations:100000,bytes:64*1024*1024,page:50});
@@ -58,8 +59,9 @@ export function applyTextCollectionMutation(previous,input,now){
 export function textCollectionSyncQuery(value,method){
   const filtered=method==='list'&&Object.hasOwn(value||{},'search');let search;
   if(filtered){if(typeof value.search!=='string'||value.search.length>160||value.search.includes('\0'))fail('收藏搜索词无效或过长');search=value.search.trim();if(search)text(search);}
-  if(!['list','get'].includes(method)||!fields(value,['version','expectedAccount',...(method==='get'?['id']:['cursor','limit']),...(filtered?['search']:[])])
+  if(!['list','get','snapshot'].includes(method)||!fields(value,['version','expectedAccount',...(method==='snapshot'?[]:method==='get'?['id']:['cursor','limit']),...(filtered?['search']:[])])
     ||value.version!==1||!account(value.expectedAccount))fail('收藏读取请求格式无效');
+  if(method==='snapshot')return Object.freeze({...value});
   if(method==='get'){if(!id(value.id))fail('收藏编号无效');return Object.freeze({...value});}
   if(!integer(value.limit)||value.limit<1||value.limit>TEXT_COLLECTION_SYNC_LIMITS.page||value.cursor!==null&&(!fields(value.cursor,['revision','offset',...(filtered?['search']:[])])
     ||!integer(value.cursor.revision)||!integer(value.cursor.offset)||filtered&&value.cursor.search!==search))fail('收藏分页参数或搜索范围无效');
@@ -68,10 +70,15 @@ export function textCollectionSyncQuery(value,method){
 
 export function textCollectionSyncResponse(value,method,input){
   const request=method==='write'?textCollectionSyncMutation(input):textCollectionSyncQuery(input,method);
-  const extra=method==='write'?['mutationId','id','revision','updatedAt']:method==='get'?['record']:['items','total','nextCursor'];
+  const extra=method==='write'?['mutationId','id','revision','updatedAt']:method==='snapshot'?['backup']:method==='get'?['record']:['items','total','nextCursor'];
   const filtered=method==='list'&&Object.hasOwn(request,'search');if(filtered)extra.push('search');
   if(!fields(value,['ok','version','expectedAccount','libraryRevision',...extra])||value.ok!==true||value.version!==1
     ||value.expectedAccount!==request.expectedAccount||!integer(value.libraryRevision))fail('收藏返回账户或格式不一致');
+  if(method==='snapshot'){
+    let backup;try{backup=validateTextCollectionBackup(value.backup);}catch{fail('收藏快照不完整或格式无效');}
+    if(backup.sourceAccount!==request.expectedAccount||backup.libraryRevision!==value.libraryRevision)fail('收藏快照账户或版本不一致');
+    return Object.freeze({...value,backup});
+  }
   if(method==='write'){
     if(value.mutationId!==request.mutationId||value.id!==request.id||value.revision!==request.baseRevision+1||value.revision>value.libraryRevision
       ||!timestamp(value.updatedAt)||request.operation==='create'&&value.updatedAt!==request.record.createdAt)fail('收藏保存确认与请求不一致');

@@ -69,6 +69,19 @@ test('account guards reject late data and a closed session cannot dispatch after
   const pending=closing.list();await entered.promise;closing.close();await assert.rejects(pending);held.release({});await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,1);
 });
 
+test('snapshot accepts complete originals beyond summary limits but rejects oversized and duplicate-key envelopes',async()=>{
+  const records=Array.from({length:4},(_,i)=>createTextCollection({id:`collection-${i}`,mode:'full',createdAt:1,source:{...item().source,text:'文'.repeat(100000)}}));
+  const value={ok:true,version:1,expectedAccount,libraryRevision:4,backup:{type:'qianmu-text-collections',version:1,sourceAccount:expectedAccount,libraryRevision:4,exportedAt:2,records}};
+  let sent;const c=client({fetchImpl:async(url,options)=>{sent={url,input:JSON.parse(options.body)};return response(value);}});
+  assert.deepEqual((await c.snapshot()).backup.records,records);assert.deepEqual(sent,{url:`${base}/snapshot`,input:{version:1,expectedAccount}});c.close();
+  for(const mode of ['declared','duplicate','invalid']){
+    const bad=client({fetchImpl:async()=>mode==='declared'?response(value,200,{'content-length':String(64*1024*1024+1025)}):mode==='duplicate'
+      ?new Response(JSON.stringify(value).replace('"ok":true','"ok":false,"ok":true'),{headers:{'content-type':'application/json'}})
+      :response({...value,backup:{...value.backup,records:[...records,records[0]]}})});
+    await assert.rejects(bad.snapshot(),e=>e.writeState==='not_started');bad.close();
+  }
+});
+
 test('input records are frozen before asynchronous work and explicit retries retain the same mutation identity',async()=>{
   const held=gate(),entered=gate(),sent=[];let first=true;
   const c=client({headers:()=>{entered.release();return held.promise;},fetchImpl:async(url,options)=>{sent.push(JSON.parse(options.body));if(first){first=false;throw Error('ack lost');}return response(ack());}});
