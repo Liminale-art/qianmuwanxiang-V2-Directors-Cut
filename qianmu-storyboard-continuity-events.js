@@ -14,6 +14,14 @@ function unique(values,limit,key){
   const map=new Map();for(const value of values){const name=key(value);if(!id(name)||map.has(name))fail('scope','变化来源编号缺失或重复');map.set(name,value);}return map;
 }
 function freeze(value){if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;}
+const comparePoints=(a,b)=>a.index-b.index||a.offset-b.offset;
+// Unlike the legacy human-name ledger, subject IDs are exact roster keys.
+const factSlot=fact=>JSON.stringify([fact.category,fact.subject,fact.key.toLowerCase()]);
+function locate(paragraph,evidence){
+  const start=paragraph.indexOf(evidence);
+  if(start<0||paragraph.indexOf(evidence,start+1)!==-1)fail('grounding','变化证据未唯一匹配正文，请提供可定位的原句');
+  return start+evidence.length;
+}
 
 // The host supplies the verified message revision, paragraph order and local
 // branch/subject rosters. They are not model fields or an ownership grant.
@@ -38,18 +46,39 @@ export function bindStoryboardContinuityEvents(events,{messageRef,chatKey,paragr
       ||!text(event.value,1000)||event.value!==event.value.trim()||!text(event.evidence,1000)||event.evidence!==event.evidence.trim())fail('event','变化字段或来源引用无效');return event.id;
   });
   const bound=[...eventMap.values()].map(event=>{
-    const paragraph=sources.get(event.paragraphId).text,start=paragraph.indexOf(event.evidence);
-    if(start<0||paragraph.indexOf(event.evidence,start+1)!==-1)fail('grounding','变化证据未唯一匹配正文，请提供可定位的原句');
     return {id:event.id,branchId:event.branchId,narrativeLayer:branchMap.get(event.branchId).layer,
-      point:{paragraphId:event.paragraphId,index:positions.get(event.paragraphId),offset:start+event.evidence.length},
+      point:{paragraphId:event.paragraphId,index:positions.get(event.paragraphId),offset:locate(sources.get(event.paragraphId).text,event.evidence)},
       fact:normalizeStoryboardContinuityFact({id:event.id,subject:event.subjectId,category:event.category,key:event.key,value:event.value,persistence:event.persistence,evidence:event.evidence,
         sourceParagraphIds:[event.paragraphId],sourceFloor:ref.lastKnownFloor,status:'active'})};
-  }).sort((a,b)=>a.point.index-b.point.index||a.point.offset-b.point.offset);
+  }).sort((a,b)=>comparePoints(a.point,b.point));
   const slots=new Set();bound.forEach((event,index)=>{
     // Two contrary assignments at the same textual instant must be repaired,
     // not arbitrarily resolved by JSON array order or object sorting.
-    const slot=JSON.stringify([event.branchId,event.point.index,event.point.offset,...[event.fact.category,event.fact.subject,event.fact.key].map(value=>value.toLowerCase())]);
+    const slot=JSON.stringify([event.branchId,event.point.index,event.point.offset,factSlot(event.fact)]);
     if(slots.has(slot))fail('conflict','同一时点的状态槽重复，请重新核对变化');slots.add(slot);event.fact.order=index;
   });
   return freeze({schema:STORYBOARD_CONTINUITY_EVENTS_SCHEMA,messageRef:ref,branches:[...branchMap.values()].map(b=>({...b})),events:bound});
+}
+
+// Rebind raw events rather than accepting arbitrary pre-bound offsets. This
+// computes state after the quoted instant, independent of shot selection or
+// image completion. Cross-floor inheritance requires a separate verified link.
+export function replayStoryboardContinuityAt(events,options,target){
+  const bound=bindStoryboardContinuityEvents(events,options);
+  if(!exact(target,['branchId','paragraphId','evidence'])||!text(target.evidence,1000)||target.evidence!==target.evidence.trim())fail('target','镜头状态时点无效');
+  const branch=bound.branches.find(value=>value.id===target.branchId),index=options.paragraphs.findIndex(value=>value.id===target.paragraphId);
+  if(!branch||index<0)fail('target','镜头状态时点未属于当前叙事来源');
+  const point={paragraphId:target.paragraphId,index,offset:locate(options.paragraphs[index].text,target.evidence)};
+  const facts=[],appliedEventIds=[],slots=new Map(),moments=[];
+  const expire=at=>{for(const item of moments)if(item.fact.status==='active'&&comparePoints(item.point,at)<0)item.fact.status='expired';};
+  for(const event of bound.events){
+    if(event.branchId!==branch.id||comparePoints(event.point,point)>0)continue;
+    expire(event.point);
+    const fact={...event.fact,sourceParagraphIds:[...event.fact.sourceParagraphIds],supersedes:[]},slot=factSlot(fact),previous=slots.get(slot);
+    if(previous?.status==='active'){previous.status='superseded';previous.replacedBy=fact.id;fact.supersedes.push(previous.id);}
+    facts.push(fact);slots.set(slot,fact);appliedEventIds.push(event.id);
+    if(fact.persistence==='momentary')moments.push({point:event.point,fact});
+  }
+  expire(point);
+  return freeze({messageRef:bound.messageRef,branchId:branch.id,narrativeLayer:branch.layer,point,appliedEventIds,facts,activeFacts:facts.filter(fact=>fact.status==='active')});
 }
