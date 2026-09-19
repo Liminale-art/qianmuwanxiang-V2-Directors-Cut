@@ -8,7 +8,7 @@ const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage();
 const checks = [], errors = [], allowed = new Set(['qianmu-text-collection.js', 'qianmu-text-collection-view.js', 'qianmu-notes-sync-contract.js', 'qianmu-text-collection-backup.js', 'qianmu-json-input.js']);
-for(const file of ['floor','capture','session','client','sync-contract','bulk-contract','outbox-store','outbox-runtime'])allowed.add(`qianmu-text-collection-${file}.js`);
+for(const file of ['floor','capture','session','client','sync-contract','bulk-contract','outbox-store','outbox-runtime','outbox-backup'])allowed.add(`qianmu-text-collection-${file}.js`);
 allowed.add('qianmu-account-local-store.js');
 const writes=[];let apiMode='ok',held;
 let external = 0;

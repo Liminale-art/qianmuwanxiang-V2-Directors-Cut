@@ -1,5 +1,6 @@
 import {createTextCollectionOutboxStore,createTextCollectionOutboxEntry,textCollectionOutboxEntry,textCollectionOutboxAccount,summarizeTextCollectionOutbox} from './qianmu-text-collection-outbox-store.js';
 import {textCollectionSyncError as error,textCollectionSyncResponse,textCollectionSyncMutation} from './qianmu-text-collection-sync-contract.js';
+import {prepareTextCollectionOutboxBackup,mergeTextCollectionOutboxBackup} from './qianmu-text-collection-outbox-backup.js';
 
 // Stable identity belongs to this exact conflicted save, not to an editor session.
 // Keep the domain and canonical payload stable across refreshes and future versions.
@@ -105,6 +106,11 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
       if(at>=0&&same(state.entries[at],source))state.entries.splice(at,1);
     });return result;
   }
-  return Object.freeze({namespace,enqueue,submit,save,remove,keepCopy,list:async()=>structuredClone((await read()).entries),summary:async()=>summarizeTextCollectionOutbox(await read()),
+  async function importBackup(payload,{confirmed=false}={}){
+    if(confirmed!==true)throw error('consent','请确认仅将备份合并至当前账户的本机待存');let result;
+    await update(state=>{result=mergeTextCollectionOutboxBackup(state,payload);state.entries=result.state.entries;});
+    return Object.freeze({added:result.added,duplicates:result.duplicates});
+  }
+  return Object.freeze({namespace,enqueue,submit,save,remove,keepCopy,importBackup,backup:async()=>prepareTextCollectionOutboxBackup(await read(),{exportedAt:now()}),list:async()=>structuredClone((await read()).entries),summary:async()=>summarizeTextCollectionOutbox(await read()),
     close(){closed=true;for(const controller of controllers)controller.abort();if(ownsStore)store.close();}});
 }

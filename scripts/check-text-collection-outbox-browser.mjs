@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext();
-const checks=[],errors=[],allowed=new Set(['account-local-store','text-collection-outbox-runtime','text-collection-outbox-store','text-collection-sync-contract','text-collection-backup','text-collection','json-input'].map(name=>`qianmu-${name}.js`));let external=0;
+const checks=[],errors=[],allowed=new Set(['account-local-store','text-collection-outbox-backup','text-collection-outbox-runtime','text-collection-outbox-store','text-collection-sync-contract','text-collection-backup','text-collection','json-input'].map(name=>`qianmu-${name}.js`));let external=0;
 const deadline=setTimeout(()=>{console.error('Collection outbox check exceeded 60 seconds');void browser.close();},60000);
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
@@ -71,6 +71,17 @@ try{
   });
   assert.deepEqual(afterRefresh.sent,beforeRefresh.sent);assert.equal(afterRefresh.result.status,'confirmed');assert.deepEqual(afterRefresh.state,baseline);
   checks.push('actual runtime persists before synthetic transport and retries the identical request after reload, removing only the acknowledged entry');
+  const backupCheck=await page.evaluate(async()=>{
+    const {createTextCollectionOutboxRuntime}=await import('./qianmu-text-collection-outbox-runtime.js'),{readTextCollectionOutboxBackupFile}=await import('./qianmu-text-collection-outbox-backup.js');
+    let sends=0;const session={expectedAccount:fixture.namespace,guard:async()=>true,resumePending:()=>{sends++;throw Error('must not submit');}},runtime=createTextCollectionOutboxRuntime({session,store:fixture.store});
+    const backup=await runtime.backup(),payload=await readTextCollectionOutboxBackupFile(backup.blob,{check:()=>{}});await fixture.store.update(fixture.namespace,state=>{state.entries=[];});
+    let failed=false;const put=IDBObjectStore.prototype.put;
+    try{IDBObjectStore.prototype.put=function(){throw new DOMException('quota','QuotaExceededError');};await runtime.importBackup(payload,{confirmed:true});}catch{failed=true;}finally{IDBObjectStore.prototype.put=put;}
+    const afterFailure=await fixture.read(),first=await runtime.importBackup(payload,{confirmed:true}),again=await runtime.importBackup(payload,{confirmed:true}),final=await fixture.read();runtime.close();
+    return {failed,afterFailure,first,again,final,sends,payload};
+  });
+  assert.equal(backupCheck.failed,true);assert.equal(backupCheck.afterFailure.entries.length,0);assert.deepEqual(backupCheck.first,{added:3,duplicates:0});assert.deepEqual(backupCheck.again,{added:0,duplicates:3});assert.deepEqual(backupCheck.final,baseline);assert.equal(backupCheck.sends,0);
+  checks.push('actual IDB pending backup round-trip survives failed atomic import and repeated import preserves all three identities without submission');
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({passed:checks.length,checks,errors,externalRequests:external,productionDataRead:false,networkSubmissions:0,scope:'actual account-local/outbox store/runtime with browser IndexedDB; synthetic transport, no capture/editor integration'},null,2));
 }finally{clearTimeout(deadline);await context.close();await browser.close();}

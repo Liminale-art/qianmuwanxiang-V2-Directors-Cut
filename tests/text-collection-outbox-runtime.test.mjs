@@ -85,3 +85,10 @@ test('failure retiring the source after a confirmed copy still retries one stabl
   f.failUpdate=0;await runtime.keepCopy(source,{confirmed:true});assert.deepEqual(f.sent.at(-1),sent);assert.equal(f.state.entries.length,0);
   const count=f.sent.length;await assert.rejects(runtime.keepCopy(source,{confirmed:true}),{code:'text_collection_sync_local_conflict'});assert.equal(f.sent.length,count);runtime.close();
 });
+
+test('backup import requires consent, merges atomically and never automatically submits restored requests',async()=>{
+  const first=fixture(),runtime=first.runtime();await runtime.enqueue(request());const backup=await runtime.backup();assert.equal(first.sent.length,0);
+  const second=fixture(),restored=second.runtime();await assert.rejects(restored.importBackup(backup.payload),{code:'text_collection_sync_consent'});assert.equal(second.state.entries.length,0);
+  assert.deepEqual(await restored.importBackup(backup.payload,{confirmed:true}),{added:1,duplicates:0});assert.deepEqual(await restored.importBackup(backup.payload,{confirmed:true}),{added:0,duplicates:1});
+  assert.equal(second.sent.length,0);assert.deepEqual(second.state.entries,first.state.entries);runtime.close();restored.close();
+});
