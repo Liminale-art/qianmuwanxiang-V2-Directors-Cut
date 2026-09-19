@@ -1,4 +1,4 @@
-// Isolated real DOM checks only: no ST account, persistence, model or external network.
+// Isolated DOM + real client checks. API responses are synthetic, never a live ST account.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -8,10 +8,21 @@ const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage();
 const checks = [], errors = [], allowed = new Set(['qianmu-text-collection.js', 'qianmu-text-collection-view.js', 'qianmu-notes-sync-contract.js']);
+for(const file of ['capture','session','client','sync-contract'])allowed.add(`qianmu-text-collection-${file}.js`);
+const writes=[];let apiMode='ok',held;
 let external = 0;
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
     const url = new URL(route.request().url());
+    if(url.origin==='https://qianmu.test'&&url.pathname==='/api/plugins/qianmu-tts/text-collections/write'&&route.request().method()==='POST'){
+        const request=route.request().postDataJSON();writes.push(request);
+        assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
+        if(apiMode==='missing')return route.fulfill({status:404,contentType:'application/json',body:'{}'});
+        if(apiMode==='fail')return route.abort('failed');
+        const body=JSON.stringify({ok:true,version:1,expectedAccount:request.expectedAccount,libraryRevision:1,mutationId:request.mutationId,id:apiMode==='wrong'?'wrong-id':request.id,revision:1,updatedAt:request.record.updatedAt});
+        const release=()=>route.fulfill({contentType:'application/json',body}).catch(()=>{});
+        if(apiMode==='hold'){held=release;return;}return release();
+    }
     if (url.origin === 'https://qianmu.test' && route.request().method() === 'GET') {
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><body><button id="floor-bookmark">收藏</button><main id="fixture"></main></body></html>' });
         const file = url.pathname.slice(1);
@@ -187,7 +198,40 @@ try {
     });
     assert.deepEqual(result.opened, [result.original]); assert.equal(result.calls.length, 1); assert.equal(result.rejected, true);
     checks.push('rows freeze input records, suppress detached/disposed click handlers and reject oversized pages without silent truncation');
+    await page.evaluate(async()=>{
+        const {openPersistentTextCollectionCapture}=await import('./qianmu-text-collection-capture.js');
+        fixture.openPersistent=async()=>{
+            fixture.namespace='st-user:alice';fixture.current=true;fixture.completed='pending';
+            fixture.host=document.createElement('section');document.getElementById('fixture').append(fixture.host);
+            fixture.session=await openPersistentTextCollectionCapture({parent:fixture.host,source:fixture.source,resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'})});
+            fixture.session.finished.then(result=>{fixture.completed=result;});
+        };
+    });
+    await page.evaluate(()=>fixture.openPersistent());await action('full').click();await action('save').click();
+    await page.waitForFunction(()=>fixture.completed!=='pending');
+    assert.equal(writes.at(-1).record.text,await page.evaluate(()=>fixture.raw));assert.match(writes.at(-1).expectedAccount,/^st-user:[a-f0-9]{64}$/);
+    assert.equal(await page.evaluate(()=>fixture.completed.id),writes.at(-1).id);
+    checks.push('persistent chooser uses the real same-origin client and closes only after a matching account/operation acknowledgement');
+    apiMode='fail';await page.evaluate(()=>fixture.openPersistent());await action('selection').click();
+    await page.locator('[data-collection-text]').evaluate(input=>{input.focus();const start=input.value.indexOf('记住');input.setSelectionRange(start,start+'记住这一刻😀'.length);input.dispatchEvent(new Event('select'));});
+    await action('save').click();await page.waitForFunction(()=>document.querySelector('[data-collection-status]').textContent.includes('未确认保存成功'));
+    const retryRequest=structuredClone(writes.at(-1));assert.doesNotMatch(JSON.stringify(retryRequest),/未选前文|未选后文/);
+    apiMode='ok';await action('save').click();await page.waitForFunction(()=>fixture.completed!=='pending');assert.deepEqual(writes.at(-1),retryRequest);
+    checks.push('failed selected-text save keeps the same mutation and collection IDs through an explicit UI retry without hidden full text');
+    for(const mode of ['missing','wrong']){
+        apiMode=mode;await page.evaluate(()=>fixture.openPersistent());await action('full').click();await action('save').click();
+        await page.waitForFunction(()=>document.querySelector('[data-collection-status]').textContent.includes('未确认保存成功'));
+        if(mode==='missing')assert.match(await page.locator('[data-collection-status]').textContent(),/安装或更新千幕后端/);
+        assert.equal(await page.evaluate(()=>fixture.completed),'pending');await action('cancel').click();
+    }
+    checks.push('missing backend gives an actionable message and wrong confirmation leaves the draft unsaved');
+    apiMode='hold';held=null;await page.evaluate(()=>fixture.openPersistent());await action('full').click();await action('save').click();
+    await page.waitForFunction(()=>document.querySelector('dialog').getAttribute('aria-busy')==='true');
+    for(let attempt=0;!held&&attempt<50;attempt++)await new Promise(resolve=>setTimeout(resolve,20));assert.equal(typeof held,'function');
+    await page.evaluate(()=>{fixture.namespace='st-user:bob';});await held();await page.waitForFunction(()=>fixture.completed!=='pending');
+    assert.equal(await page.evaluate(()=>fixture.completed),null);assert.equal(await page.locator('dialog').count(),0);
+    checks.push('account change while a persistent save is pending closes the old chooser and discards its late acknowledgement');
     assert.ok(await page.evaluate(() => fixture.selectionEvents) > 0);
     assert.equal(external, 0); assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ checks, count: checks.length, externalRequests: external, productionWrites: false, persistence: 'explicit in-memory save substitute only; account storage and ST entry not connected', pageErrors: errors }, null, 2));
+    console.log(JSON.stringify({ checks, count: checks.length, externalRequests: external, productionWrites: false, persistence: 'capture adapter uses real client with intercepted synthetic API acknowledgements; no ST account or production disk', pageErrors: errors }, null, 2));
 } finally { await context.close(); await browser.close(); }

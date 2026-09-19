@@ -132,10 +132,11 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
             }
             status.textContent = '收藏已保存';
             finish({ id: acknowledgement.id, revision: acknowledgement.revision });
-        } catch (_) {
+        } catch (cause) {
             if (!alive()) return;
             pending = false; controls();
             status.textContent = '未确认保存成功。可重试或取消；重试会沿用本次收藏标识。';
+            if (/^text_collection_sync_[a-z_]+$/.test(cause?.code || '') && typeof cause.message === 'string' && cause.message.length <= 240) status.textContent += ` ${cause.message}`;
             if (mode === 'selection') textarea.setSelectionRange(translateOffset(start, 'source', -1), translateOffset(end, 'source', -1));
         }
     }
