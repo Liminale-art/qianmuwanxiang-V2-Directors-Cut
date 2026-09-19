@@ -48,5 +48,5 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     const floor=typeof raw==='string'&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null,message=Number.isSafeInteger(floor)?getContext().chat?.[floor]:null;
     if(message&&!message.is_system)void open(button,node,floor,message);return true;
   }
-  return Object.freeze({bindRoot,refreshNode,click,disposeFloor});
+  return Object.freeze({bindRoot,refreshNode,click,disposeFloor,get busy(){return entry!==null;}});
 }

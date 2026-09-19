@@ -25491,6 +25491,7 @@ async function exportConfig() {
 
 function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
   return {
+    proseAssistant: collectionFloorTools.assistantBusy===true,
     audioCache: (ownTransfer !== ttsExportAudioCache && ttsExportAudioCache.busy) || (ownTransfer !== ttsImportAudioCache && ttsImportAudioCache.busy),
     voice: ttsRestoreTasks > 0,
     reader: (ownTransfer !== coreadExportData && readerView) || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,

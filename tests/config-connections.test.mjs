@@ -38,6 +38,14 @@ test('excluded imports preserve recipient connections without moving their crede
   incoming.imagegen.connections.comfy.draft.baseUrl='changed';assert.deepEqual(current,before);
 });
 
+test('API-excluded imports preserve the complete local assistant recipient, never attach its key to an imported address',()=>{
+  const current={proseAssistant:{selection:{mode:'custom',transport:'direct',connection:{apiUrl:'https://local.invalid',apiKey:'local-key',model:'m'}}}},foreign={proseAssistant:{systemPrompt:'new prompt',selection:{mode:'custom',transport:'st-proxy',connection:{apiUrl:'https://foreign.invalid',apiKey:'foreign-key',model:'other'}}}};
+  const source=structuredClone(current),restored=policy.restoreConfigConnections(structuredClone(foreign),current);
+  assert.deepEqual(restored.proseAssistant.selection,current.proseAssistant.selection);assert.equal(restored.proseAssistant.systemPrompt,'new prompt');assert.doesNotMatch(JSON.stringify(restored),/foreign-key|foreign.invalid/);
+  restored.proseAssistant.selection.connection.apiKey='edit';assert.deepEqual(current,source);
+  const absent=policy.restoreConfigConnections(structuredClone(foreign),{});assert.equal(absent.proseAssistant.selection,undefined);
+});
+
 test('old excluded packs cannot sneak nested API fields back in and absent target connections stay absent',()=>{
   const pack={version:1,type:'qianmu-config',includeApi:false,settings:settings()};
   const read=policy.readConfigEnvelope(pack);assert.equal(read.preserveConnections,true);
@@ -240,6 +248,8 @@ test('actual activity adapter blocks each independent lane without normalizing o
     storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},exportPinnedNotesBackup:{busy:false},exportTtsFavoritesBackup:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
   c.collectionFloorTools={restoreBusy:false,restoreBackup:()=>{}};
+  c.collectionFloorTools.assistantBusy=true;assert.equal(c.configRestoreActivity().proseAssistant,true);
+  const assistantNotices=[];assert.equal(policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),message=>assistantNotices.push(message))(c.settings),false);assert.match(assistantNotices[0],/关闭正文助手/);c.collectionFloorTools.assistantBusy=false;
   c.collectionFloorTools.restoreBusy=true;assert.equal(c.configRestoreActivity().transfer,true);assert.equal(!!c.configRestoreActivity(true,c.collectionFloorTools.restoreBackup).transfer,false);
   assert.equal(policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),()=>{})(c.settings),false,'configuration restore must respect collection restore ownership');c.collectionFloorTools.restoreBusy=false;
   const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);

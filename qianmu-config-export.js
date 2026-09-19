@@ -1,4 +1,4 @@
-import {omitConfigConnections,readConfigEnvelope,CONFIG_INPUT_LIMITS} from './qianmu-config-connections.js';
+import {omitConfigConnections,omitProseAssistantCredential,readConfigEnvelope,CONFIG_INPUT_LIMITS} from './qianmu-config-connections.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
 
 // An oversized snapshot can still be preserved intact, but never advertised as
@@ -6,7 +6,7 @@ import {parseBoundedJson} from './qianmu-json-input.js';
 export async function exportConfiguration({current,clone,confirm,normalize,isPlainObject,plans,stamp,download,notify}) {
   try {
     const owner=current(),snapshot=clone(owner);
-    const includeApi=await confirm('导出配置','是否包含连接配置与密钥？包含时文件含明文密钥，请勿分享。');
+    const includeApi=await confirm('导出配置','是否包含连接配置与密钥？包含时文件含明文密钥，请勿分享。正文助手专用 Key 始终排除，恢复后需重新填写。');
     const valid=()=>{if(current()===owner)return true;notify('设置已变化，请重新导出。','warning');return false;};
     if(!valid())return {status:'stale'};
     if(isPlainObject(snapshot.imagegen)) {
@@ -15,6 +15,7 @@ export async function exportConfiguration({current,clone,confirm,normalize,isPla
     }
     if(!valid())return {status:'stale'};
     if(!includeApi)omitConfigConnections(snapshot);
+    omitProseAssistantCredential(snapshot);
     const payload={version:2,type:'qianmu-config',includeApi,exportedAt:new Date().toISOString(),settings:snapshot};
     const text=JSON.stringify(payload,null,2),blob=new Blob([text],{type:'application/json'});
     let preservationOnly=false;

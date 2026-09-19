@@ -16,6 +16,24 @@ test('normal export is accepted by the exact import reader and excludes credenti
   const parsed=await readConfigFile(f.downloads[0].blob);assert.equal(readConfigEnvelope(parsed).settings.theme,'moon');assert.equal(parsed.settings.apiKey,undefined);
   assert.deepEqual(f.current,before);assert.equal(f.downloads[0].name,'qianmu-config-fixture.json');assert.equal(f.notes[0][1],'success');
 });
+
+test('assistant dedicated credentials are excluded even from explicitly API-included packs while ordinary API consent is preserved',async()=>{
+  for(const includeApi of [false,true]){
+    const f=fixture({apiKey:'ordinary-key',proseAssistant:{systemPrompt:'keep exact prompt',selection:{mode:'custom',transport:'direct',connection:{apiUrl:'https://assistant.invalid/v1',apiKey:'assistant-private-key',model:'m'}}}}),before=structuredClone(f.current);f.answers=[includeApi];
+    assert.equal((await f.run()).status,'exported');const data=await readConfigFile(f.downloads[0].blob);
+    assert.equal(data.includeApi,includeApi);assert.doesNotMatch(JSON.stringify(data),/assistant-private-key/);assert.equal(data.settings.apiKey,includeApi?'ordinary-key':undefined);
+    assert.equal(data.settings.proseAssistant.systemPrompt,'keep exact prompt');assert.deepEqual(f.current,before);
+    if(includeApi){assert.equal(data.settings.proseAssistant.selection.connection.apiUrl,'https://assistant.invalid/v1');assert.equal(data.settings.proseAssistant.selection.connection.apiKey,undefined);}
+    else assert.equal(data.settings.proseAssistant.selection,undefined);
+  }
+});
+
+test('opaque assistant credentials or authorization embedded in addresses refuse included export rather than leaking',async()=>{
+  for(const connection of [{apiUrl:'https://assistant.invalid/?token=secret'}, {headers:{Authorization:'secret'}}, ['not-a-connection']]){
+    const f=fixture({proseAssistant:{selection:{mode:'custom',connection}}});f.answers=[true];
+    assert.equal((await f.run()).status,'error');assert.equal(f.downloads.length,0);assert.doesNotMatch(JSON.stringify(f.notes),/secret|Authorization|assistant.invalid/);
+  }
+});
 test('non-restorable settings require explicit consent and remain complete in a clearly named preservation copy',async()=>{
   const f=fixture({custom:deep(),apiKey:'private fixture'});f.answers=[false,true];
   assert.deepEqual(await f.run(),{status:'exported',preservationOnly:true});

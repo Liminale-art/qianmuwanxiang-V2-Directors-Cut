@@ -1,6 +1,7 @@
 // Configuration-package policy only. Never scan/rewrite user prose, prompt text or media.
 import {migrateQianmuSettingsV2} from './qianmu-data-migrations.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
+import {assertPortableConnection} from './qianmu-portable-connection.js';
 export const CONFIG_INPUT_LIMITS = Object.freeze({bytes:32*1048576,depth:40,nodes:500000});
 // Session-only form values must not follow a restored connection to another host.
 // Unchanged recipient groups keep typed keys; persistent credential stores are untouched.
@@ -33,6 +34,7 @@ const paths = [
   ['apiPresets'], ...['theaterSettings','theaters'].map(alias => [alias,'apiProfileId']),
   ['tts', 'provider'], ['tts', 'extractApiProfileId'], ['theater', 'apiProfileId'],
   ['coread', 'assistant', 'apiProfileId'], ['coread', 'comic', 'visionApiProfileId'],
+  ['proseAssistant', 'selection'],
   ['coread', 'memory', 'dialogProvider'], ['coread', 'memory', 'dialogApiProfileId'],
   ...['vector', 'rerank', 'summary'].flatMap(kind => ['ApiUrl', 'ApiKey', 'Model', 'Models', 'Profiles', 'ProfileSel'].map(suffix => ['coread', 'memory', kind + suffix])),
   ['imagegen', 'connections'], ['imagegen', 'promptCompiler', 'apiProfileId'], ['imagegen', 'promptCompiler', 'connectionPresetId'],
@@ -66,6 +68,18 @@ export function omitConfigConnections(snapshot) {
   for (const path of connectionPaths(snapshot)) {
     const target = parent(snapshot, path);
     if (target) delete target[path.at(-1)];
+  }
+  return snapshot;
+}
+
+// Dedicated prose-assistant keys never enter downloadable configuration, even
+// when other API settings are explicitly included. Only detached copies enter.
+export function omitProseAssistantCredential(snapshot) {
+  const selection=snapshot?.proseAssistant?.selection;
+  if(record(selection)&&own(selection,'connection')){
+    if(!record(selection.connection))throw Error('正文助手连接格式无效，未导出');
+    delete selection.connection.apiKey;
+    assertPortableConnection(selection.connection);
   }
   return snapshot;
 }
@@ -112,6 +126,7 @@ export function configRestoreGate(owner, activity, notify) {
   const reasons = {reader:'请先退出阅读并完成伴读任务，再恢复配置。',focus:'请先结束本轮专注及语音准备，再恢复配置。',director:'请等待推演或幕外任务完成后恢复配置。',image:'请等待分镜生成与队列完成后恢复配置。',transfer:'请先完成数据清理、备份或恢复，再恢复配置。'};
   return current => {
     const state = activity();
+    reasons.proseAssistant = '请先关闭正文助手，再恢复配置。';
     reasons.voice = '请等待本轮台词提取或配音完成，停止连播后再恢复配置。';
     const key = Object.keys(reasons).find(key => state[key]);
     const reason = key ? reasons[key] : unchanged(current) ? '' : '设置已变化，请重新导入。';
@@ -130,6 +145,7 @@ export function configRestoreSummary(incoming, preserveConnections) {
     '书籍正文、图片、录音等独立原件不会随此配置包恢复或清空。原件请使用对应模块的备份。',
     '专注任务、周期及完成记录保留；导入后计时待启动，不恢复旧锁屏、待播语音或临时重听/清理队列。',
     preserveConnections ? '当前连接与密钥保留。' : '连接与密钥也将以文件中的配置替换。',
+    '正文助手专用 Key 不随配置导出，恢复该连接后需重新填写；不含 API 的恢复仍保留当前连接。',
     '请先保留当前配置的备份。确认恢复？',
   ].join('\n\n');
 }
