@@ -64,6 +64,7 @@
     "qianmu-text-collection-view.js",
     "qianmu-text-collection.css",
     "qianmu-text-collection-sync-contract.js",
+    "qianmu-text-collection-bulk-contract.js",
     "qianmu-text-collection-sync-service.js",
     "qianmu-text-collection-routes.js",
     "vendor/noble-hashes-2.4.0/blake3.js",

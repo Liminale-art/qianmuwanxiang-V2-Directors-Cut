@@ -4,6 +4,7 @@ import {createAccountDocumentFiles} from './qianmu-account-document-files.js';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {textCollectionPreview} from './qianmu-text-collection.js';
 import {validateTextCollectionBackup} from './qianmu-text-collection-backup.js';
+import {textCollectionBulkRequest} from './qianmu-text-collection-bulk-contract.js';
 import {TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncError as error,textCollectionSyncMutation,textCollectionSyncEntry,applyTextCollectionMutation,textCollectionSyncQuery} from './qianmu-text-collection-sync-contract.js';
 
 const schema='qianmu.text-collection-sync.v1',filename='.qianmu-text-collection-v1.json';
@@ -58,15 +59,22 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
     return state;
   }
   const ack=(context,receipt,revision)=>({ok:true,version:1,expectedAccount:context.account.namespace,mutationId:receipt.mutationId,id:receipt.id,revision:receipt.revision,updatedAt:receipt.updatedAt,libraryRevision:revision});
-  async function mutate(context,input){
+  async function mutate(context,inputs){
     return disk.exclusive(context,async()=>{
-      const {state,fingerprint}=await disk.read(context),hash=sha(JSON.stringify(input)),index=state.mutations.findIndex(row=>row.mutationId===input.mutationId);
-      if(index>=0){const receipt=state.mutations[index];if(receipt.hash!==hash)fail('mutation_conflict','收藏操作编号已用于不同内容，未重复保存');return ack(context,receipt,index+1);}
-      const previous=state.entries.find(row=>row.id===input.id)||null;
-      if(!previous&&state.entries.length>=limits.records||state.mutations.length>=limits.mutations)fail('capacity','收藏已达当前容量上限，请先导出管理；未清理或截断内容',507);
-      const entry=applyTextCollectionMutation(previous,input,now()),receipt={mutationId:input.mutationId,hash,id:entry.id,revision:entry.revision,updatedAt:entry.updatedAt,operation:input.operation};
-      const next={...state,revision:state.revision+1,entries:previous?state.entries.map(row=>row.id===entry.id?entry:row):[...state.entries,entry],mutations:[...state.mutations,receipt]};
-      await disk.writeAtomic(context,next,fingerprint);context.guard();return ack(context,receipt,next.revision);
+      const {state,fingerprint}=await disk.read(context),entries=[...state.entries],mutations=[...state.mutations],results=[];
+      const entryIndex=new Map(entries.map((row,index)=>[row.id,index])),receiptIndex=new Map(mutations.map((row,index)=>[row.mutationId,index]));
+      for(const input of inputs){
+        context.guard();const hash=sha(JSON.stringify(input)),index=receiptIndex.get(input.mutationId);
+        if(index!==undefined){const receipt=mutations[index];if(receipt.hash!==hash)fail('mutation_conflict','收藏操作编号已用于不同内容，未重复保存');results.push(ack(context,receipt,index+1));continue;}
+        const position=entryIndex.get(input.id),previous=position===undefined?null:entries[position];
+        if(!previous&&entries.length>=limits.records||mutations.length>=limits.mutations)fail('capacity','收藏已达当前容量上限，请先导出管理；未清理或截断内容',507);
+        const entry=applyTextCollectionMutation(previous,input,now()),receipt={mutationId:input.mutationId,hash,id:entry.id,revision:entry.revision,updatedAt:entry.updatedAt,operation:input.operation};
+        if(position===undefined){entryIndex.set(entry.id,entries.length);entries.push(entry);}else entries[position]=entry;
+        receiptIndex.set(input.mutationId,mutations.length);mutations.push(receipt);results.push(ack(context,receipt,mutations.length));
+      }
+      const next={...state,revision:mutations.length,entries,mutations};
+      if(next.revision!==state.revision)await disk.writeAtomic(context,next,fingerprint);
+      context.guard();return {ok:true,version:1,expectedAccount:context.account.namespace,libraryRevision:next.revision,results};
     });
   }
   async function inspect(context,input,method){
@@ -91,11 +99,11 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
   }
   function track(request,body,options,method){
     let context,input;
-    try{context=capture(request,body,options?.signal);input=method==='write'?textCollectionSyncMutation(body):textCollectionSyncQuery(body,method);if(pending.size>=64)fail('busy','收藏请求过多，请稍后重试',429);}
+    try{context=capture(request,body,options?.signal);input=method==='write-batch'?textCollectionBulkRequest(body):method==='write'?textCollectionSyncMutation(body):textCollectionSyncQuery(body,method);if(pending.size>=64)fail('busy','收藏请求过多，请稍后重试',429);}
     catch(cause){return Promise.reject(cause);}
     const key=context.account.namespace,prior=tails.get(key)||Promise.resolve();
     const task=prior.catch(()=>{}).then(async()=>{
-      try{context.guard();const result=method==='write'?await mutate(context,input):await inspect(context,input,method);context.guard();return result;}
+      try{context.guard();const result=method==='write'?(await mutate(context,[input])).results[0]:method==='write-batch'?await mutate(context,input.mutations):await inspect(context,input,method);context.guard();return result;}
       catch(cause){try{context.guard();}catch(changed){cause=changed;}
         const known=String(cause?.code||'').startsWith('text_collection_sync_')?cause:error('storage','收藏储存暂不可用，请保留当前内容后重试',503);known.writeState=context.writeState;throw known;}
     });
@@ -104,6 +112,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
   return Object.freeze({list:(request,input,options)=>track(request,input,options,'list'),get:(request,input,options)=>track(request,input,options,'get'),
     snapshot:(request,input,options)=>track(request,input,options,'snapshot'),
     inventory:(request,input,options)=>track(request,input,options,'inventory'),
+    'write-batch':(request,input,options)=>track(request,input,options,'write-batch'),
     'restore-info':(request,input,options)=>track(request,input,options,'restore-info'),
     write:(request,input,options)=>track(request,input,options,'write'),async close(){closed=true;await Promise.allSettled([...pending]);}});
 }

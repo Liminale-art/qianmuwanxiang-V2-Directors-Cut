@@ -14,6 +14,7 @@ import {createServer} from 'node:http';
 import {createTextCollectionClient} from '../qianmu-text-collection-client.js';
 import {createTextCollectionSession} from '../qianmu-text-collection-session.js';
 import {createTextCollectionRestoreBatch} from '../qianmu-text-collection-restore-batch.js';
+import {textCollectionBulkResponse} from '../qianmu-text-collection-bulk-contract.js';
 
 const account=handle=>imageServiceAccount({user:{profile:{handle}}}).namespace;
 const request=(folder,handle='alice')=>({user:{profile:{handle},directories:{root:folder}}});
@@ -31,6 +32,38 @@ async function fixture(t,options={}){
   return {root,folder,req,service,build,file:path.join(folder,'.qianmu-text-collection-v1.json'),lock:path.join(folder,'.qianmu-text-collection-v1.lock')};
 }
 const gate=()=>{let release;return {promise:new Promise(resolve=>{release=resolve;}),release:()=>release()};};
+
+test('32 restore copies share one atomic file replacement; durable per-record retries perform no replacement',async t=>{
+  const f=await fixture(t);let replacements=0;const writer=f.build({io:{...fs,rename:async(...args)=>{replacements++;return fs.rename(...args);}}});
+  const source=create().record,mutations=Array.from({length:32},(_,i)=>({...create('restore-'+i),operation:'restore',record:source}));
+  const input={...snapshot(),mutations},result=await writer['write-batch'](f.req,input);
+  textCollectionBulkResponse(result,input);assert.equal(replacements,1);assert.equal(result.libraryRevision,32);assert.equal(result.results.length,32);
+  const original=await fs.readFile(f.file);assert.deepEqual(await writer['write-batch'](f.req,input),result);assert.equal(replacements,1);assert.deepEqual(await fs.readFile(f.file),original);
+  assert.deepEqual(await f.build().write(f.req,mutations[7]),result.results[7]);
+  const remove={...edit('delete',{id:'restore-7'}),mutationId:randomUUID()};await f.service.write(f.req,remove);
+  const replay=await writer['write-batch'](f.req,input);assert.equal(replay.libraryRevision,33);assert.deepEqual(replay.results,result.results);
+  assert.equal((await f.service.get(f.req,detail('restore-7'))).record,null,'old restore batch cannot resurrect deleted copies');
+});
+
+test('one conflict rejects an entire new batch before disk write, while independent existing receipts stay valid',async t=>{
+  const f=await fixture(t);await f.service.write(f.req,create());await f.service.write(f.req,create('collection-2'));
+  const original=await fs.readFile(f.file),a=edit('delete'),b=edit('delete',{id:'collection-2',baseRevision:2}),input={...snapshot(),mutations:[a,b]};
+  await assert.rejects(f.service['write-batch'](f.req,input),{code:'text_collection_sync_conflict',writeState:'not_started'});assert.deepEqual(await fs.readFile(f.file),original);
+  b.baseRevision=1;const removed=await f.service['write-batch'](f.req,input);textCollectionBulkResponse(removed,input);
+  assert.equal((await f.service.inventory(f.req,snapshot())).deletedCount,2);assert.doesNotMatch(await fs.readFile(f.file,'utf8'),/selected|角色|deleted-chat/);
+  const changed={...snapshot(),mutations:[{...a,baseRevision:2}]};await assert.rejects(f.service['write-batch'](f.req,changed),{code:'text_collection_sync_mutation_conflict'});
+});
+
+test('lost batch acknowledgement and account change never report partial success; exact retry confirms once',async t=>{
+  const f=await fixture(t),input={...snapshot(),mutations:[{...create('restore-1'),operation:'restore',record:create().record},{...create('restore-2'),operation:'restore',record:create().record}]};
+  const writer=f.build({io:{...fs,rename:async(...args)=>{await fs.rename(...args);throw Error('lost acknowledgement');}}});
+  await assert.rejects(writer['write-batch'](f.req,input),{writeState:'unconfirmed'});
+  const confirmed=await f.service['write-batch'](f.req,input);assert.equal(confirmed.libraryRevision,2);assert.equal((await f.service.list(f.req,query())).total,2);
+  await assert.rejects(f.service['write-batch']({},input),{status:401});await assert.rejects(f.service['write-batch'](f.req,{...input,expectedAccount:account('bob')}),{status:401});
+  const switching=f.build({io:{...fs,unlink:async file=>{await fs.unlink(file);if(file===f.lock)f.req.user.profile.handle='bob';}}});
+  await assert.rejects(switching['write-batch'](f.req,{...snapshot(),mutations:[edit('delete',{id:'restore-1'}),edit('delete',{id:'restore-2'})]}),{code:'text_collection_sync_account',writeState:'unconfirmed'});
+  f.req.user.profile.handle='alice';assert.equal((await f.service.list(f.req,query())).total,0);
+});
 
 test('inventory reads one verified file, reports UTF-8 originals separately and never returns source text',async t=>{
   const f=await fixture(t),q=snapshot();
@@ -155,6 +188,10 @@ test('actual plugin routes authenticate and return only no-store collection resu
   assert.deepEqual(textCollectionSyncResponse(exported.body,'snapshot',snapshot()).backup.records,[input.record]);
   const foreign=await call('get',{...f.req,body:{...detail(),expectedAccount:account('bob')}});assert.equal(foreign.status,401);assert.doesNotMatch(JSON.stringify(foreign.body),/selected|deleted-chat/);
   const wrong=await call('write',{...f.req,body:{...input,mutationId:randomUUID()}});assert.equal(wrong.status,409);assert.equal(wrong.body.writeState,'not_started');
+  const bulk={...snapshot(),mutations:[edit('delete')]};assert.equal((await call('write-batch',{body:bulk})).status,401);
+  const removed=await call('write-batch',{...f.req,body:bulk});assert.equal(removed.status,200);assert.equal(removed.headers['Cache-Control'],'no-store');
+  assert.equal(textCollectionBulkResponse(removed.body,bulk).results[0].revision,2);
+  assert.equal((await call('get',{...f.req,body:detail()})).body.record,null);
   await exit();assert.equal((await call('get',{...f.req,body:detail()})).status,409);
 });
 
