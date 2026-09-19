@@ -13,7 +13,7 @@ export function openTextCollectionRestore({parent,file,resolveNamespace,isCurren
   const current=()=>!closed&&parent.isConnected&&isCurrent()===true;
   const guard=()=>{check();if(!current())throw Error('收藏恢复页面已关闭');};
   const pending=()=>{const p=batch?.progress;return Boolean(p&&(busy||p.uncertain||p.confirmed>0&&p.confirmed<p.total));};
-  const summary=()=>{const p=batch?.progress;return p?`已确认 ${p.confirmed} / ${p.total} 条${p.uncertain?'；当前条目回执未确认，重试不会重复新增':''}`:'';};
+  const summary=()=>{const p=batch?.progress;return p?`已确认 ${p.confirmed} / ${p.total} 条${p.uncertain?'；当前批次回执未确认，重试不会重复新增':''}`:'';};
   function controls(){dialog.setAttribute('aria-busy',String(busy));runButton.disabled=busy||!batch||batch.progress.confirmed===batch.progress.total;}
   function stop(){
     if(closed)return;closed=true;batch?.close();session?.close();observer.disconnect();view.removeEventListener('pagehide',stop);view.removeEventListener('beforeunload',unload);

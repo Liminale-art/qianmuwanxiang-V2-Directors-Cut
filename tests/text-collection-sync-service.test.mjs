@@ -236,6 +236,9 @@ test('real client and local HTTP plugin handlers round-trip disk originals witho
   assert.deepEqual((await c.snapshot()).backup.records,[copy]);assert.equal(received,13);
   const info=await c.restoreInfo();assert.equal(info.restoreVersion,1);assert.equal(info.remainingRecords,TEXT_COLLECTION_SYNC_LIMITS.records-2);assert.equal(info.remainingMutations,TEXT_COLLECTION_SYNC_LIMITS.mutations-4);assert.equal(received,14);
   const usage=await c.inventory();assert.equal(usage.count,1);assert.equal(usage.deletedCount,1);assert.equal(usage.bytes,(await fs.stat(f.file)).size);assert.equal(usage.textBytes,Buffer.byteLength(copy.text));assert.equal(received,15);
+  const bulkInfo=await c.batchInfo();assert.equal(bulkInfo.maxItems,32);assert.equal(bulkInfo.maxBytes,2097152);assert.equal(received,16);
+  const bulk={...snapshot(),mutations:[edit('delete',{id:restored.id})]};const removed=await c.writeBatch(bulk);assert.equal(removed.results[0].id,restored.id);assert.equal(received,17);
+  assert.equal((await c.inventory()).count,0);assert.equal(received,18);
 });
 
 test('snapshot reads originals once, retains edited metadata and excludes tombstones and receipts',async t=>{
@@ -283,14 +286,14 @@ test('batch retries through the real session and account file resume a lost rece
   const f=await fixture(t),requests=[];let lost=true,id=0;
   const session=await createTextCollectionSession({resolveNamespace:async()=>'st-user:alice',isCurrent:()=>true,fetchImpl:async(url,options)=>{
     const method=url.split('/').at(-1),body=JSON.parse(options.body);requests.push(body);const result=await f.service[method](f.req,body);
-    if(method==='write'&&body.id==='batch-copy-2'&&lost){lost=false;throw Error('response lost after write');}
+    if(method==='write-batch'&&lost){lost=false;throw Error('response lost after write');}
     return new Response(JSON.stringify(result),{headers:{'content-type':'application/json'}});
   }});t.after(()=>session.close());
   const records=[create('source-1').record,create('source-2').record,create('source-3').record];
   const batch=createTextCollectionRestoreBatch({backup:{type:'qianmu-text-collections',version:1,sourceAccount:account('alice'),libraryRevision:3,exportedAt:2,records},session,uid:()=>`batch-copy-${++id}`,check:()=>{},confirm:async()=>true});
-  await assert.rejects(batch.run());assert.equal(batch.progress.confirmed,1);assert.equal(batch.progress.uncertain,true);assert.equal((await session.list()).total,2);
+  await assert.rejects(batch.run());assert.equal(batch.progress.confirmed,0);assert.equal(batch.progress.uncertain,true);assert.equal((await session.list()).total,3);
   assert.equal((await batch.run()).confirmed,3);assert.equal((await session.list()).total,3);
-  const writes=requests.filter(r=>r.operation==='restore');assert.deepEqual(writes.map(r=>r.id),['batch-copy-1','batch-copy-2','batch-copy-2','batch-copy-3']);assert.deepEqual(writes[1],writes[2]);
+  const writes=requests.filter(r=>r.mutations);assert.equal(writes.length,2);assert.deepEqual(writes[0],writes[1]);assert.equal(writes[0].mutations.length,3);
   assert.equal((await f.build().list(f.req,query())).libraryRevision,3);batch.close();
 });
 

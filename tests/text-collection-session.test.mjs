@@ -39,3 +39,21 @@ test('initialization rechecks account after hashing and rejects unavailable secu
   await assert.rejects(createTextCollectionSession(options({cryptoImpl:{}})),{code:'text_collection_sync_setup'});
   await assert.rejects(createTextCollectionSession(options({resolveNamespace:async()=>null})),{code:'text_collection_sync_account'});
 });
+
+test('batch handles preserve identities through loss, reject partial receipts and never fall back to single writes',async()=>{
+  const sent=[];let mode='lost';const s=await createTextCollectionSession(options({fetchImpl:async(url,o)=>{
+    assert.match(url,/\/write-batch$/);const request=JSON.parse(o.body);sent.push(request);if(mode==='lost')throw Error('lost');
+    const results=request.mutations.map((r,i)=>({...ack(r),libraryRevision:2+i}));if(mode==='partial')results.pop();
+    return response({ok:true,version:1,expectedAccount:account,libraryRevision:3,results});
+  }}));
+  const rows=[s.prepareDelete('collection-1',1).request,s.prepareDelete('collection-2',1).request],batch=s.prepareBatch(rows);rows.pop();
+  await assert.rejects(batch.submit(),{writeState:'unconfirmed'});mode='partial';await assert.rejects(batch.submit(),{writeState:'unconfirmed'});
+  mode='ok';assert.equal((await batch.submit()).results.length,2);assert.deepEqual(sent[0],sent[1]);assert.deepEqual(sent[1],sent[2]);s.close();
+  assert.throws(()=>s.prepareBatch(batch.request.mutations));
+});
+
+test('old backend capability failure is read-only and cannot start a restoration',async()=>{
+  const sent=[];const s=await createTextCollectionSession(options({fetchImpl:async(url)=>{sent.push(url);return new Response('',{status:404});}}));
+  await assert.rejects(s.batchInfo(),{code:'text_collection_sync_unavailable',writeState:'not_started'});
+  assert.equal(sent.length,1);assert.match(sent[0],/\/batch-info$/);s.close();
+});

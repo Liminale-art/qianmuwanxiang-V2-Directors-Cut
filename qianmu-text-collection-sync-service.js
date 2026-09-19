@@ -4,7 +4,7 @@ import {createAccountDocumentFiles} from './qianmu-account-document-files.js';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {textCollectionPreview} from './qianmu-text-collection.js';
 import {validateTextCollectionBackup} from './qianmu-text-collection-backup.js';
-import {textCollectionBulkRequest} from './qianmu-text-collection-bulk-contract.js';
+import {textCollectionBulkRequest,textCollectionBulkInfoRequest,TEXT_COLLECTION_BULK_LIMITS} from './qianmu-text-collection-bulk-contract.js';
 import {TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncError as error,textCollectionSyncMutation,textCollectionSyncEntry,applyTextCollectionMutation,textCollectionSyncQuery} from './qianmu-text-collection-sync-contract.js';
 
 const schema='qianmu.text-collection-sync.v1',filename='.qianmu-text-collection-v1.json';
@@ -84,6 +84,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
       return {...base,state:fingerprint?'present':'absent',count,deletedCount:state.entries.length-count,bytes:Number(fingerprint?.size||0),textBytes};
     }
     if(method==='restore-info')return {...base,restoreVersion:1,remainingRecords:limits.records-state.entries.length,remainingMutations:limits.mutations-state.mutations.length};
+    if(method==='batch-info')return {...base,maxItems:TEXT_COLLECTION_BULK_LIMITS.items,maxBytes:TEXT_COLLECTION_BULK_LIMITS.bytes,remainingRecords:limits.records-state.entries.length,remainingMutations:limits.mutations-state.mutations.length};
     // One verified read: a concurrent writer can never mix revisions across exported records.
     if(method==='snapshot')return {...base,backup:validateTextCollectionBackup({type:'qianmu-text-collections',version:1,
       sourceAccount:context.account.namespace,exportedAt:now(),libraryRevision:state.revision,records:state.entries.filter(row=>!row.deleted).map(row=>row.record)})};
@@ -99,7 +100,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
   }
   function track(request,body,options,method){
     let context,input;
-    try{context=capture(request,body,options?.signal);input=method==='write-batch'?textCollectionBulkRequest(body):method==='write'?textCollectionSyncMutation(body):textCollectionSyncQuery(body,method);if(pending.size>=64)fail('busy','收藏请求过多，请稍后重试',429);}
+    try{context=capture(request,body,options?.signal);input=method==='write-batch'?textCollectionBulkRequest(body):method==='batch-info'?textCollectionBulkInfoRequest(body):method==='write'?textCollectionSyncMutation(body):textCollectionSyncQuery(body,method);if(pending.size>=64)fail('busy','收藏请求过多，请稍后重试',429);}
     catch(cause){return Promise.reject(cause);}
     const key=context.account.namespace,prior=tails.get(key)||Promise.resolve();
     const task=prior.catch(()=>{}).then(async()=>{
@@ -113,6 +114,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
     snapshot:(request,input,options)=>track(request,input,options,'snapshot'),
     inventory:(request,input,options)=>track(request,input,options,'inventory'),
     'write-batch':(request,input,options)=>track(request,input,options,'write-batch'),
+    'batch-info':(request,input,options)=>track(request,input,options,'batch-info'),
     'restore-info':(request,input,options)=>track(request,input,options,'restore-info'),
     write:(request,input,options)=>track(request,input,options,'write'),async close(){closed=true;await Promise.allSettled([...pending]);}});
 }

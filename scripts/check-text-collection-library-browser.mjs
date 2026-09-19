@@ -15,7 +15,7 @@ const service=createTextCollectionSyncService({dataRoot:root});
 const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'create',id,baseRevision:0,record:createTextCollection({id,mode:'full',createdAt:Date.UTC(2026,8,19)+Number(id.split('-')[1]||0),
   source:{account:expectedAccount,chatId:'deleted-chat',messageId:0,replyId:'old-reply',charName:'当时角色',userName:'<旧用户>',text:`收藏原文 ${id}\r\n不依赖聊天`}})});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
-const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
+const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['bulk-contract','storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
@@ -25,11 +25,11 @@ await context.route('**/*',async route=>{
     if(url.pathname==='/qianmu-text-collection.css')return route.fulfill({contentType:'text/css',body:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
     const file=url.pathname.slice(1);if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(new URL('../'+file,import.meta.url),'utf8')});
     const action=url.pathname.split('/').at(-1);
-    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','restore-info','inventory','write'].includes(action)&&route.request().method()==='POST'){
+    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','restore-info','inventory','write','write-batch','batch-info'].includes(action)&&route.request().method()==='POST'){
       const input=route.request().postDataJSON();assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
       if(action==='list'&&failListOnce){failListOnce=false;return route.abort('failed');}
-      if(action==='get')reads++;if(action==='write')writes.push(input);
-      try{const result=await service[action](request,input);if(action==='write'&&loseAck){loseAck=false;return route.abort('failed');}return route.fulfill({contentType:'application/json',body:JSON.stringify(result)});}
+      if(action==='get')reads++;if(['write','write-batch'].includes(action))writes.push(input);
+      try{const result=await service[action](request,input);if(['write','write-batch'].includes(action)&&loseAck){loseAck=false;return route.abort('failed');}return route.fulfill({contentType:'application/json',body:JSON.stringify(result)});}
       catch(cause){const error=textCollectionSyncErrorPayload(cause);return route.fulfill({status:error.status,contentType:'application/json',body:JSON.stringify(error.body)});}
     }
   }
@@ -135,10 +135,10 @@ try{
   for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await page.locator('dialog').evaluate(node=>({width:node.getBoundingClientRect().width,scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(size.width<=width&&size.scroll<=size.client+1);}
   const restoreButton=page.locator('[data-collection-restore="run"]'),closeRestore=page.locator('[data-collection-restore="close"]'),beforeRestore=writes.length;
   loseAck=true;await restoreButton.click();await ready();assert.match(await status(),/已确认 0 \/ 2.*回执未确认/);
-  const restoreRequest=structuredClone(writes.at(-1));assert.equal(restoreRequest.operation,'restore');
+  const restoreRequest=structuredClone(writes.at(-1));assert.equal(restoreRequest.mutations.length,2);assert.ok(restoreRequest.mutations.every(r=>r.operation==='restore'));
   await page.evaluate(()=>{fixture.restoreConsent=false;});await closeRestore.click();assert.equal(await page.locator('dialog').count(),1);
   await page.evaluate(()=>{fixture.restoreConsent=true;});await restoreButton.click();await ready();assert.match(await status(),/已确认 2 \/ 2.*恢复完成/);
-  assert.deepEqual(writes[beforeRestore],writes[beforeRestore+1]);assert.equal(writes.length-beforeRestore,3);assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,53);
+  assert.deepEqual(writes[beforeRestore],writes[beforeRestore+1]);assert.equal(writes.length-beforeRestore,2);assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,53);
   assert.equal(await restoreButton.isDisabled(),true);await closeRestore.click();await page.evaluate(()=>fixture.restorePending);
   assert.equal(await page.evaluate(()=>fixture.floorTools.restoreBusy),false);assert.equal(await page.locator('[data-storage-import="collections"]').isDisabled(),false);
   checks.push('restore dialog stays bounded on both layouts, retains lost-ack progress, confirms early exit and retries one identity into exactly two copies');

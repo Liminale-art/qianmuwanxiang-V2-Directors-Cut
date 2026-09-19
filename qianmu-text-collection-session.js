@@ -1,6 +1,7 @@
 import {createTextCollectionClient} from './qianmu-text-collection-client.js';
 import {textCollectionSyncError as error,textCollectionSyncMutation} from './qianmu-text-collection-sync-contract.js';
 import {notesSyncOperationId} from './qianmu-notes-sync-contract.js';
+import {textCollectionBulkRequest} from './qianmu-text-collection-bulk-contract.js';
 
 // One explicit UI session, not an account-global cache or background write queue.
 export async function createTextCollectionSession({resolveNamespace,isCurrent,headers,fetchImpl,timeoutMs,cryptoImpl=globalThis.crypto}={}){
@@ -29,6 +30,12 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
     snapshot:options=>client.snapshot(options),
     inventory:options=>client.inventory(options),
     restoreInfo:options=>client.restoreInfo(options),
+    batchInfo:options=>client.batchInfo(options),
+    prepareBatch(mutations){
+      if(closed||isCurrent()!==true)throw error('cancelled','收藏会话已关闭，未准备新批次');
+      const request=textCollectionBulkRequest({version:1,expectedAccount,mutations});
+      return Object.freeze({request,submit:options=>client.writeBatch(request,options)});
+    },
     prepareCreate:record=>prepare('create',{id:record.id,baseRevision:0,record}),
     prepareRestore:(record,id)=>prepare('restore',{id,baseRevision:0,record}),
     prepareEdit:(id,baseRevision,text)=>prepare('edit',{id,baseRevision,text}),

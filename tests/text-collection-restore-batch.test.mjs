@@ -9,8 +9,9 @@ function fixture(){
   const records=Array.from({length:3},(_,i)=>createTextCollection({id:`source-${i}`,mode:'full',createdAt:1,source:{account:sourceAccount,chatId:'old',messageId:0,replyId:'old',charName:'角色',userName:'读者',text:`收藏${i}`}}));
   const backup={type:'qianmu-text-collections',version:1,sourceAccount,exportedAt:2,libraryRevision:3,records};
   const f={current:true,accepted:true,preflights:0,asks:[],sent:[],saved:new Set(),prepared:[],remainingRecords:100,remainingMutations:100,lost:null,updates:[]};let ids=0;
-  const session={expectedAccount,guard:async()=>{if(!f.current)throw Error('account changed');},restoreInfo:async()=>{f.preflights++;if(f.backendError)throw Error('update backend');return {remainingRecords:f.remainingRecords,remainingMutations:f.remainingMutations};},
-    prepareRestore(record,id){const request=textCollectionSyncMutation({version:1,expectedAccount,mutationId:`mutation-${id}`,operation:'restore',id,baseRevision:0,record});f.prepared.push(request);return {request,submit:async({signal})=>{if(signal.aborted)throw Error('aborted');f.sent.push(request);f.saved.add(request.id);if(f.lost===request.id){f.lost=null;throw Object.assign(Error('lost ack'),{writeState:'unconfirmed'});}return {id};}};}};
+  const session={expectedAccount,guard:async()=>{if(!f.current)throw Error('account changed');},batchInfo:async()=>{f.preflights++;if(f.backendError)throw Error('update backend');return {maxItems:f.maxItems||1,maxBytes:2097152,remainingRecords:f.remainingRecords,remainingMutations:f.remainingMutations};},
+    prepareRestore(record,id){const request=textCollectionSyncMutation({version:1,expectedAccount,mutationId:`mutation-${id}`,operation:'restore',id,baseRevision:0,record});f.prepared.push(request);return {request};},
+    prepareBatch(mutations){return {request:{mutations},submit:async({signal})=>{if(signal.aborted)throw Error('aborted');f.sent.push(...mutations);mutations.forEach(r=>f.saved.add(r.id));if(mutations.some(r=>r.id===f.lost)){f.lost=null;throw Object.assign(Error('lost ack'),{writeState:'unconfirmed'});}return {};}};}};
   f.options={backup,session,check:()=>{if(!f.current)throw Error('page changed');},confirm:async(...args)=>{f.asks.push(args);return f.accepted;},uid:()=>`copy-id-${++ids}`,onProgress:p=>f.updates.push(p)};
   return f;
 }
@@ -46,4 +47,10 @@ test('progress UI failure after a confirmed write retains its receipt position a
   const f=fixture();let first=true;f.options.onProgress=()=>{if(first){first=false;throw Error('view lost');}};
   const batch=createTextCollectionRestoreBatch(f.options);await assert.rejects(batch.run(),/view lost/);assert.equal(batch.progress.confirmed,1);assert.equal(batch.progress.uncertain,false);
   await batch.run();assert.deepEqual(f.sent.map(r=>r.id),['copy-id-1','copy-id-2','copy-id-3']);
+});
+
+test('multi-record progress advances only on whole-batch acknowledgements and retry preserves the batch',async()=>{
+  const f=fixture();f.maxItems=2;f.lost='copy-id-2';const batch=createTextCollectionRestoreBatch(f.options);
+  await assert.rejects(batch.run());assert.equal(f.saved.size,2);assert.equal(batch.progress.confirmed,0);assert.equal(batch.progress.uncertain,true);
+  await batch.run();assert.deepEqual(f.updates.map(p=>p.confirmed),[2,3]);assert.deepEqual(f.sent.map(r=>r.id),['copy-id-1','copy-id-2','copy-id-1','copy-id-2','copy-id-3']);assert.equal(f.saved.size,3);
 });
