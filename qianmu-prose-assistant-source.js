@@ -7,13 +7,13 @@ const split=(value,at)=>value.charCodeAt(at-1)>=0xd800&&value.charCodeAt(at-1)<=
 
 // A borrowed source lifetime, not a permanent chat ID, an API choice, or authority
 // to read other floors. The host supplies rendered plain text only on explicit use.
-export async function captureProseAssistantSource({getContext,epoch,resolveNamespace,isCurrent,readText,floor,range}={}){
+export async function captureProseAssistantSource({getContext,epoch,resolveNamespace,isCurrent,readText,floor,range,signal}={}){
   if(typeof resolveNamespace!=='function'||typeof isCurrent!=='function'||typeof readText!=='function'||!Number.isSafeInteger(floor)||floor<0)fail('正文助手缺少明确的账户、楼层或页面来源');
   const source=captureCurrentChatSource({getContext,epoch});let closed=false,message,raw,swipe,namespace;
-  const close=()=>{closed=true;source.close();message=null;raw=null;};
+  const close=()=>{closed=true;source.close();signal?.removeEventListener('abort',close);message=null;raw=null;};
   function assertCurrent(){
     try{
-      if(closed||isCurrent()!==true)fail('正文助手页面已关闭或切换');source.assertCurrent();
+      if(closed||signal?.aborted||isCurrent()!==true)fail('正文助手页面已关闭或切换');source.assertCurrent();
       if(message&&(getContext().chat[floor]!==message||message.mes!==raw||(message.swipe_id??0)!==swipe||message.is_system))fail('引用楼层已编辑、换回复或移除，请重新选择');
       return true;
     }catch(cause){close();throw cause;}
@@ -23,6 +23,7 @@ export async function captureProseAssistantSource({getContext,epoch,resolveNames
     catch(cause){close();throw cause;}
   }
   try{
+    signal?.addEventListener('abort',close,{once:true});
     assertCurrent();message=getContext().chat[floor];
     if(!message||message.is_system||typeof message.mes!=='string')fail('此楼层没有可引用的正文');
     raw=message.mes;swipe=message.swipe_id??0;if(!Number.isSafeInteger(swipe)||swipe<0)fail('当前回复编号无效');
