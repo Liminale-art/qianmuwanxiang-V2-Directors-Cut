@@ -47,6 +47,7 @@
     "qianmu-notes-sync-contract.js",
     "qianmu-notes-sync-client.js",
     "qianmu-notes-sync-store.js",
+    "qianmu-account-local-store.js",
     "qianmu-notes-sync-runtime.js",
     "qianmu-notes-sync-service.js",
     "qianmu-account-document-files.js",

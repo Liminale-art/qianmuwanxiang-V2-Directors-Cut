@@ -1,5 +1,6 @@
 // Account-scoped durable notes and outbox. Never opens or migrates the legacy notes database.
 import {NOTES_SYNC_LIMITS,notesSyncNoteInput} from './qianmu-notes-sync-contract.js';
+import {createAccountLocalStore} from './qianmu-account-local-store.js';
 export const NOTES_LOCAL_LIMITS = Object.freeze({rows:NOTES_SYNC_LIMITS.notes*2,bytes:NOTES_SYNC_LIMITS.bytes*3,receipts:1000});
 export const notesLocalError = (code,message) => Object.assign(new Error(message),{code:`notes_sync_${code}`});
 export function notesLocalNamespace(value) {
@@ -58,40 +59,5 @@ export function summarizeNotesLocalState(state) {
 }
 
 export function createNotesSyncStore({indexedDB=globalThis.indexedDB,dbName='qianmu-notes-sync',timeoutMs=8000}={}) {
-  let database=null,opening=null,closed=false;const pending=new Set(),timeout=Math.max(100,Math.min(30000,Number(timeoutMs)||8000));
-  const check=guard=>{if(closed)throw notesLocalError('closed','便笺会话已关闭');if(guard()===false)throw notesLocalError('account','便笺账户已变化');};
-  function open(){
-    if(closed)return Promise.reject(notesLocalError('closed','便笺会话已关闭'));
-    if(database)return Promise.resolve(database);if(opening)return opening;
-    const attempt=new Promise((resolve,reject)=>{
-      let request,done=false;const finish=(error,db)=>{if(done){db?.close();return;}done=true;clearTimeout(timer);error?reject(error):resolve(db);};
-      const timer=setTimeout(()=>finish(notesLocalError('timeout','本机便笺打开超时')),timeout);
-      try{request=indexedDB.open(dbName,1);}catch(_){finish(notesLocalError('storage','本机便笺储存不可用，未降级为易丢失的临时保存'));return;}
-      request.onupgradeneeded=()=>{if(done||closed){request.transaction?.abort();return;}request.result.createObjectStore('accounts',{keyPath:'namespace'});};
-      request.onblocked=()=>finish(notesLocalError('storage','便笺库被旧页面占用，请关闭后重试'));
-      request.onerror=()=>finish(notesLocalError('storage','本机便笺打开失败'));
-      request.onsuccess=()=>{const db=request.result;if(done||closed){db.close();finish(notesLocalError('closed','便笺会话已关闭'));return;}
-        database=db;db.onversionchange=()=>{db.close();if(database===db){database=null;opening=null;}};db.onclose=()=>{if(database===db){database=null;opening=null;}};finish(null,db);};
-    });opening=attempt;void attempt.catch(()=>{if(opening===attempt)opening=null;});return attempt;
-  }
-  async function access(namespace,mutator,{guard=()=>true}={}){
-    notesLocalNamespace(namespace);check(guard);const db=await open();check(guard);
-    return new Promise((resolve,reject)=>{
-      let tx,done=false,result,failure;const finish=error=>{if(done)return;done=true;clearTimeout(timer);pending.delete(tx);error?reject(error):resolve(result);};
-      const abort=error=>{failure=error;try{tx?.abort();}catch(_){finish(error);}};
-      const timer=setTimeout(()=>{const error=notesLocalError('timeout','便笺保存结果尚未确认，请保留编辑内容并重读');abort(error);finish(error);},timeout);
-      try{tx=db.transaction('accounts',mutator?'readwrite':'readonly');pending.add(tx);}catch(_){finish(notesLocalError('storage','便笺储存暂不可用'));return;}
-      tx.oncomplete=()=>{try{check(guard);finish();}catch(error){finish(error);}};
-      tx.onabort=()=>finish(failure||notesLocalError('storage','便笺操作未完成，原内容保留'));
-      tx.onerror=()=>{failure ||= notesLocalError('storage','本机便笺保存失败，可能空间不足');};
-      const store=tx.objectStore('accounts'),request=store.get(namespace);
-      request.onsuccess=()=>{try{check(guard);const state=validateNotesLocalState(request.result||emptyNotesLocalState(namespace),namespace);
-        if(mutator){const returned=mutator(state);if(returned?.then)throw notesLocalError('storage','便笺事务不能等待网络');validateNotesLocalState(state,namespace);check(guard);store.put(state);}
-        result=structuredClone(state);
-      }catch(error){abort(error);}};
-    });
-  }
-  return Object.freeze({read:(namespace,options)=>access(namespace,null,options),update:(namespace,mutator,options)=>{
-    if(typeof mutator!=='function')return Promise.reject(notesLocalError('storage','缺少便笺事务'));return access(namespace,mutator,options);
-  },close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
+  return createAccountLocalStore({indexedDB,dbName,timeoutMs,validateNamespace:notesLocalNamespace,validate:validateNotesLocalState,empty:emptyNotesLocalState,error:notesLocalError,label:'便笺'});
 }
