@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-prose-assistant-request.js",
     "qianmu-prose-assistant-session.js",
     "qianmu-prose-assistant-context.js",
     "qianmu-prose-assistant-source.js",
