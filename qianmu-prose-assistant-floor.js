@@ -2,12 +2,12 @@ import {floorCollectionText} from './qianmu-text-collection-floor.js';
 
 // No model/UI imports or document observers until an explicit floor action.
 export function createProseAssistantFloorTools({getContext,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,assistantConfig,confirm,assistantSettings,saveAssistantSettings}={}){
-  let root=null,entry=null,epoch=0;
+  let root=null,entry=null,cleaning=null,epoch=0;
   const current=()=>Boolean(root?.isConnected&&isCurrent()===true);
   function close(record){
     if(!record||record.closed)return;record.closed=true;record.controller.abort();record.panel?.dispose();record.detach?.();record.portal?.remove();if(record.button.isConnected)record.button.disabled=false;if(entry===record)entry=null;
   }
-  function disposeFloor(){epoch++;close(entry);root?.querySelectorAll('[data-qm-prose-assistant]').forEach(button=>button.remove());root=null;}
+  function disposeFloor(){epoch++;cleaning=null;close(entry);root?.querySelectorAll('[data-qm-prose-assistant]').forEach(button=>button.remove());root=null;}
   function bindRoot(value){if(root!==value){disposeFloor();root=value;}if(entry&&!entry.valid())close(entry);}
   function refreshNode(node,floor,message){
     const existing=node.querySelector('[data-qm-prose-assistant]');if(!message||message.is_system){existing?.remove();return;}if(existing)return;
@@ -44,7 +44,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
   }
   function click(event){
     const button=event.target.closest?.('[data-qm-prose-assistant]');if(!button||!root?.contains(button))return false;
-    event.preventDefault();event.stopPropagation();if(!current())return true;if(entry){entry.panel?.element.focus();return true;}
+    event.preventDefault();event.stopPropagation();if(!current())return true;if(cleaning){notify?.('请先结束助手记录清理，再打开正文助手。','warning');return true;}if(entry){entry.panel?.element.focus();return true;}
     const node=button.closest('.mes'),raw=node?.getAttribute('mesid')??node?.dataset?.messageId;
     const floor=typeof raw==='string'&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null,message=Number.isSafeInteger(floor)?getContext().chat?.[floor]:null;
     if(message&&!message.is_system)void open(button,node,floor,message);return true;
@@ -54,5 +54,14 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     try{module=await import('./qianmu-prose-assistant-storage.js');}catch{if(!live())throw Error('助手储存页面已变化');return {status:'unavailable',bytes:null,count:null,error:'助手统计组件未加载，请刷新重试。'};}
     return module.collectProseAssistantStorage({resolveNamespace,isCurrent:live});
   }
-  return Object.freeze({bindRoot,refreshNode,click,disposeFloor,storageSummary,get busy(){return entry!==null;}});
+  async function cleanupStorage(parent,confirm,check,expectedNamespace,otherModules=0){
+    check();if(entry||cleaning)throw Error('请先关闭正文助手或结束清理');const token={};cleaning=token;
+    const valid=()=>cleaning===token&&parent?.isConnected===true&&isCurrent()===true&&!entry;
+    try{
+      const runtime=await import('./qianmu-prose-assistant-storage.js');check();
+      const result=await runtime.cleanupProseAssistantStorage({resolveNamespace,isCurrent:valid,expectedNamespace,check,confirm,otherModules});
+      check();if(valid()&&result.status!=='cancelled')notify?.(result.status==='empty'?'本机没有可清理的助手问答。':`已清空 ${result.clearedConversations} 个助手会话、${result.clearedTurns} 轮问答；版本标记保留。`,'success');return result;
+    }finally{if(cleaning===token)cleaning=null;}
+  }
+  return Object.freeze({bindRoot,refreshNode,click,disposeFloor,storageSummary,cleanupStorage,get busy(){return entry!==null;}});
 }

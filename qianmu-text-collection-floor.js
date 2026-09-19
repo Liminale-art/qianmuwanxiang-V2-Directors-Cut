@@ -115,7 +115,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     }
     return module.collectTextCollectionStorage({resolveNamespace,isCurrent:()=>isCurrent()===true&&valid(),headers});
   };
-  return Object.freeze({refresh,dispose,openLibrary,exportBackup,restoreBackup,cleanupOriginals,storageSummary,assistantStorageSummary:valid=>extraFloorTools.storageSummary(valid),get restoreBusy(){return restoring!==null;},get assistantBusy(){return extraFloorTools?.busy===true;}});
+  return Object.freeze({refresh,dispose,openLibrary,exportBackup,restoreBackup,cleanupOriginals,storageSummary,cleanupAssistant:(...args)=>extraFloorTools.cleanupStorage(...args),assistantStorageSummary:valid=>extraFloorTools.storageSummary(valid),get restoreBusy(){return restoring!==null;},get assistantBusy(){return extraFloorTools?.busy===true;}});
 }
 
 // Save rendered prose as plain text; never collect embedded media or plugin controls.

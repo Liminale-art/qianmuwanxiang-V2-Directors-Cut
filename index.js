@@ -8509,6 +8509,7 @@ function bindStorageManagementEvents(root) {
     try {
       const selected = await openStorageCleanupDialog(inventory); cleanup.check();
       if (!selected?.length) return;
+      if(selected.includes('__assistant__')){await collectionFloorTools.cleanupAssistant(root,confirmDialog,()=>cleanup.check(),inventory?.assistantStorage?.namespace,selected.length-1);cleanup.check();await refreshStorageInventory(true);return;}
       if(selected.some(id=>['__collections__','__collection_pending__'].includes(id))){await collectionFloorTools.cleanupOriginals(root,confirmDialog,()=>cleanup.check(),inventory?.collectionStorage?.namespace,selected.length-1,!selected.includes('__collections__'));cleanup.check();await refreshStorageInventory(true);return;}
       if(selected.includes('__storyboard_restores__')){
         if(selected.length>1){

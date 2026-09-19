@@ -12,9 +12,9 @@ export function storageSettingsSnapshotWithoutDiagnostics(settings){
 }
 
 export function collectionCleanupOptions(data){
-  const collection=data?.collectionStorage,pending=collection?.pending;
+  const collection=data?.collectionStorage,pending=collection?.pending,assistant=data?.assistantStorage;
   return [...(collection?.status==='ready'?[{id:'__collections__',label:'正文收藏原件（当前账户 · 服务器）',bytes:collection.count>0?collection.bytes:0,count:collection.count,
-    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[]),...(pending?.status==='ready'?[{id:'__collection_pending__',label:'收藏待存（当前账户 · 本机）',bytes:pending.bytes,count:pending.count,risk:['不可恢复 · 先备份；不删除或取消服务器保存',true]}]:[])];
+    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[]),...(pending?.status==='ready'?[{id:'__collection_pending__',label:'收藏待存（当前账户 · 本机）',bytes:pending.bytes,count:pending.count,risk:['不可恢复 · 先备份；不删除或取消服务器保存',true]}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'正文助手记录（当前账户 · 本机）',bytes:assistant.bytes,count:assistant.count,risk:['不可恢复 · 请先复制留存；不删正文，版本标记保留',true]}]:[])];
 }
 
 // A detached/hidden chooser is cancellation, never an implicit confirmation.
@@ -145,7 +145,7 @@ ${data.galleryCatalogStorage?.status==='unavailable'?`<p class="sd-storage-press
   ? `${data.collectionStorage.pending.count} 条 · ${htmlEscape(formatStorageBytes(data.collectionStorage.pending.bytes))} 内容及请求记录估算 · 冲突 ${data.collectionStorage.pending.conflicts} 条<br>计入本设备统计，不含服务器原件或其他设备待存。不是可重建缓存；在正文收藏→本机待存中备份、恢复或移除。`
   : `暂未读取 · ${htmlEscape(data.collectionStorage?.pending?.error||'本机待存尚未盘点，当前总计不含此部分。')}`}</p>
 <p class="sd-storage-scope sd-storage-assistant-summary" role="status" style="overflow-wrap:anywhere">正文助手 · 当前账户本机<br>${data.assistantStorage?.status==='ready'
-  ? `${data.assistantStorage.chats} 个会话 · ${data.assistantStorage.count} 轮问答 · ${htmlEscape(formatStorageBytes(data.assistantStorage.bytes))} 逻辑估算<br>完整 ${data.assistantStorage.complete} · 失败 ${data.assistantStorage.failed} · 停止 ${data.assistantStorage.cancelled}；含 ${data.assistantStorage.markers} 份清空版本标记。不含未保存回复、其他账户或设备，非可重建缓存；可在对应聊天的助手面板中清空。`
+  ? `${data.assistantStorage.chats} 个会话 · ${data.assistantStorage.count} 轮问答 · ${htmlEscape(formatStorageBytes(data.assistantStorage.bytes))} 逻辑估算<br>完整 ${data.assistantStorage.complete} · 失败 ${data.assistantStorage.failed} · 停止 ${data.assistantStorage.cancelled}；含 ${data.assistantStorage.markers} 份清空版本标记。不含未保存回复、其他账户或设备，旧版归属未核实的记录不认领；非可重建缓存。可在对应助手面板清空，或选择清理项目中的正文助手记录。`
   : `暂未读取 · ${htmlEscape(data.assistantStorage?.error||'助手本机历史尚未盘点，当前总计不含此部分。')}`}</p>
 ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
 ${data.serviceReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.serviceReceipts.error)}</p>` : ''}
