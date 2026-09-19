@@ -90,9 +90,15 @@ export function updateTextCollection(record, changes, expectedRevision, updatedA
 }
 
 export function textCollectionListLabel(record) {
-    const current = textCollectionRecord(record), date = new Date(current.createdAt);
+    const current = textCollectionRecord(record);
+    return textCollectionDisplayLabel(current.source.charName,current.source.userName,current.createdAt);
+}
+
+export function textCollectionDisplayLabel(charName,userName,createdAt) {
+    if (![charName,userName].every(name => validText(name,TEXT_COLLECTION_LIMITS.name) && name.trim())) fail('label','收藏显示名无效');
+    const date = new Date(timestamp(createdAt));
     const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    return `${current.source.charName} & ${current.source.userName} · ${day}`;
+    return `${charName} & ${userName} · ${day}`;
 }
 
 export function textCollectionPreview(record, maxLength = 100) {
