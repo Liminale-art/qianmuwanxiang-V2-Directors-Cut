@@ -69,6 +69,18 @@ export function replayStoryboardContinuityAt(events,options,target){
   const branch=bound.branches.find(value=>value.id===target.branchId),index=options.paragraphs.findIndex(value=>value.id===target.paragraphId);
   if(!branch||index<0)fail('target','镜头状态时点未属于当前叙事来源');
   const point={paragraphId:target.paragraphId,index,offset:locate(options.paragraphs[index].text,target.evidence)};
+  return replayBound(bound,branch,point);
+}
+
+// A previous floor must contribute its end state, not a selected earlier shot.
+export function replayStoryboardContinuityEnd(events,options,branchId){
+  const bound=bindStoryboardContinuityEvents(events,options),branch=bound.branches.find(value=>value.id===branchId);
+  if(!branch)fail('target','变化分支未属于当前叙事来源');
+  const index=options.paragraphs.length-1,paragraph=options.paragraphs[index];
+  return replayBound(bound,branch,{paragraphId:paragraph.id,index,offset:paragraph.text.length});
+}
+
+function replayBound(bound,branch,point){
   const facts=[],appliedEventIds=[],slots=new Map(),moments=[];
   const expire=at=>{for(const item of moments)if(item.fact.status==='active'&&comparePoints(item.point,at)<0)item.fact.status='expired';};
   for(const event of bound.events){
