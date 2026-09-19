@@ -409,6 +409,7 @@
     "qianmu-service-capabilities.js",
     "qianmu-storyboard-contract.js",
     "qianmu-storyboard-continuity-events.js",
+    "qianmu-storyboard-continuity-source.js",
     "qianmu-storyboard-utils.js",
     "qianmu-storyboard.js",
     "qianmu-theaters.js",
