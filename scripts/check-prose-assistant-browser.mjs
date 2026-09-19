@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
 const checks=[],errors=[];let external=0;
-const allowed=new Set(['qianmu-prose-floor-tools.js','qianmu-text-collection-floor.js','qianmu-plain-text-range.js','qianmu-current-chat-source.js','qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js',...['floor','panel','source','context','session','request','messages','preferences'].map(name=>`qianmu-prose-assistant-${name}.js`)]);
+const allowed=new Set(['qianmu-prose-floor-tools.js','qianmu-text-collection-floor.js','qianmu-plain-text-range.js','qianmu-current-chat-source.js','qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js',...['floor','panel','source','context','session','request','messages','preferences','history-contract'].map(name=>`qianmu-prose-assistant-${name}.js`)]);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{const url=new URL(route.request().url()),file=url.pathname.slice(1);
   if(url.origin==='https://qianmu.test'){

@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext();
-const allowed=new Set(['qianmu-prose-assistant-history.js','qianmu-account-local-store.js','qianmu-chat-file-target.js']),checks=[],errors=[];let external=0;
+const allowed=new Set(['qianmu-prose-assistant-history.js','qianmu-prose-assistant-history-contract.js','qianmu-account-local-store.js','qianmu-chat-file-target.js']),checks=[],errors=[];let external=0;
 const timer=setTimeout(()=>{console.error('Assistant history check exceeded 60 seconds');void browser.close();},60000);
 await context.route('**/*',async route=>{const url=new URL(route.request().url()),file=url.pathname.slice(1);
  if(url.origin==='https://qianmu.test'){
