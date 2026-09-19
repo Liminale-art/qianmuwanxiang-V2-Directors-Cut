@@ -53,23 +53,24 @@ export function captureTextCollectionSource(input) {
     return Object.freeze({ ...source, text: textCollectionText(input.text) });
 }
 
-export function createTextCollection({ id, source, mode, start, end, createdAt } = {}) {
+export function createTextCollection({ id, source, mode, start, end, createdAt, text: editedText } = {}) {
     if (!identifier(id)) fail('id', '收藏编号无效');
     const captured = captureTextCollectionSource(source);
     if (mode !== 'full' && mode !== 'selection') fail('mode', '请选择选段或全文');
     if (mode === 'full' && (start !== undefined || end !== undefined)) fail('range', '全文收藏不能覆盖选段范围');
     const range = mode === 'full' ? offsets(0, captured.text.length, captured.text.length) : offsets(start, end, captured.text.length);
     if (splitSurrogate(captured.text, range.start) || splitSurrogate(captured.text, range.end)) fail('range', '收藏选段不能截断完整字符');
-    const text = textCollectionText(captured.text.slice(range.start, range.end)), time = timestamp(createdAt);
+    const original = textCollectionText(captured.text.slice(range.start, range.end)), text = editedText === undefined ? original : textCollectionText(editedText), time = timestamp(createdAt);
+    const edited = text !== original;
     // Deliberately omit source.text: a selection must not retain unselected prose.
     const origin = Object.freeze({ ...metadata(captured), textLength: captured.text.length });
-    return Object.freeze({ schemaVersion: 1, id, source: origin, mode, range, text, createdAt: time, updatedAt: time, revision: 1 });
+    return Object.freeze({ schemaVersion: edited ? 3 : 1, id, source: origin, mode, range, text, createdAt: time, updatedAt: time, revision: 1, ...(edited ? {captureEdited:true} : {}) });
 }
 
 // Validates serialized records without reloading the original chat or trusting extra fields.
 export function textCollectionRecord(value) {
-    const restored = value?.schemaVersion === 2;
-    if (!keys(value, [...recordKeys, ...(restored ? ['ownerAccount', 'restoredFrom'] : [])]) || ![1, 2].includes(value.schemaVersion) || !identifier(value.id)
+    const restored = value?.schemaVersion === 2, captureEdited = value?.schemaVersion === 3;
+    if (!keys(value, [...recordKeys, ...(restored ? ['ownerAccount', 'restoredFrom'] : captureEdited ? ['captureEdited'] : [])]) || ![1, 2, 3].includes(value.schemaVersion) || captureEdited && value.captureEdited !== true || !identifier(value.id)
         || !keys(value.source, [...sourceKeys, 'textLength']) || !integer(value.source.textLength)
         || value.source.textLength < 1 || value.source.textLength > TEXT_COLLECTION_LIMITS.text
         || !keys(value.range, ['start', 'end']) || !['full', 'selection'].includes(value.mode)
@@ -78,7 +79,7 @@ export function textCollectionRecord(value) {
     const range = offsets(value.range.start, value.range.end, source.textLength), text = textCollectionText(value.text);
     const createdAt = timestamp(value.createdAt), updatedAt = timestamp(value.updatedAt);
     if (updatedAt < createdAt || value.mode === 'full' && (range.start !== 0 || range.end !== source.textLength)
-        || !restored && value.revision === 1 && text.length !== range.end - range.start) fail('record', '收藏来源范围或版本时间不一致');
+        || !restored && !captureEdited && value.revision === 1 && text.length !== range.end - range.start) fail('record', '收藏来源范围或版本时间不一致');
     let provenance = {};
     if (restored) {
         const origin = value.restoredFrom;
@@ -86,14 +87,14 @@ export function textCollectionRecord(value) {
             || !identifier(origin.id) || origin.id === value.id || !integer(origin.revision) || origin.revision < 1) fail('record', '收藏恢复来源无效');
         provenance = { ownerAccount: value.ownerAccount, restoredFrom: Object.freeze({ ...origin, restoredAt: timestamp(origin.restoredAt) }) };
     }
-    return Object.freeze({ schemaVersion: value.schemaVersion, id: value.id, source, mode: value.mode, range, text, createdAt, updatedAt, revision: value.revision, ...provenance });
+    return Object.freeze({ schemaVersion: value.schemaVersion, id: value.id, source, mode: value.mode, range, text, createdAt, updatedAt, revision: value.revision, ...provenance, ...(captureEdited ? {captureEdited:true} : {}) });
 }
 
 // Call with a validated record: ownership and original chat provenance are distinct after restoration.
 export const textCollectionRecordAccount = record => record.schemaVersion === 2 ? record.ownerAccount : record.source.account;
 
 export function restoreTextCollectionCopy(input, { id, ownerAccount, restoredAt, text } = {}) {
-    const original = textCollectionRecord(input);
+    const {captureEdited: _captureEdited, ...original} = textCollectionRecord(input);
     return textCollectionRecord({ ...original, schemaVersion: 2, id, ownerAccount, revision: 1,
         ...(text !== undefined ? { text: textCollectionText(text), updatedAt: Math.max(original.updatedAt, timestamp(restoredAt)) } : {}),
         restoredFrom: { account: textCollectionRecordAccount(original), id: original.id, revision: original.revision, restoredAt } });

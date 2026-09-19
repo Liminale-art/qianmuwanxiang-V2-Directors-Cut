@@ -33,6 +33,14 @@ async function fixture(t,options={}){
 }
 const gate=()=>{let release;return {promise:new Promise(resolve=>{release=resolve;}),release:()=>release()};};
 
+test('edited-at-capture original commits in one transaction and is readable after restart, backup and idempotent retry',async t=>{
+  const f=await fixture(t),input=create();input.record=createTextCollection({id:input.id,mode:'full',source:{...input.record.source,text:'Original source'},createdAt:1,text:'Edited before saving\r\n😀'});
+  const ack=await f.service.write(f.req,input);textCollectionSyncResponse(ack,'write',input);assert.equal(ack.revision,1);assert.equal(ack.libraryRevision,1);
+  const restarted=f.build();assert.deepEqual((await restarted.get(f.req,detail())).record,input.record);const bytes=await fs.readFile(f.file);assert.deepEqual(await restarted.write(f.req,input),ack);assert.deepEqual(await fs.readFile(f.file),bytes);
+  assert.equal((await restarted.snapshot(f.req,snapshot())).backup.records[0].captureEdited,true);assert.equal((await restarted.list(f.req,query())).items[0].preview,'Edited before saving 😀');
+  await assert.rejects(restarted.write(f.req,{...input,record:{...input.record,text:'another text'}}),{code:'text_collection_sync_mutation_conflict'});assert.deepEqual(await fs.readFile(f.file),bytes);
+});
+
 test('conflicting draft can become one independent durable copy without overwriting the original or fabricating provenance',async t=>{
   const f=await fixture(t),captured=create();await f.service.write(f.req,captured);await f.service.write(f.req,edit('edit',{text:'另一端已经修改'}));
   const input={...create('draft-copy-1'),operation:'restore',record:captured.record,text:'保留我的冲突版本\r\n😀'};

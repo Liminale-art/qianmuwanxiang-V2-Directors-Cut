@@ -82,6 +82,15 @@ try{
   });
   assert.equal(backupCheck.failed,true);assert.equal(backupCheck.afterFailure.entries.length,0);assert.deepEqual(backupCheck.first,{added:3,duplicates:0});assert.deepEqual(backupCheck.again,{added:0,duplicates:3});assert.deepEqual(backupCheck.final,baseline);assert.equal(backupCheck.sends,0);
   checks.push('actual IDB pending backup round-trip survives failed atomic import and repeated import preserves all three identities without submission');
+  const editedCapture=await page.evaluate(async()=>{
+    const {createTextCollection}=await import('./qianmu-text-collection.js'),{prepareTextCollectionOutboxBackup,readTextCollectionOutboxBackupFile}=await import('./qianmu-text-collection-outbox-backup.js');
+    const record=createTextCollection({id:'edited-capture',createdAt:5,mode:'full',source:{account:fixture.namespace,chatId:'removed-chat',messageId:5,replyId:'reply-5',charName:'角色',userName:'用户',text:'未保存的原文'},text:'保存修改稿\r\n😀'});
+    const entry=fixture.module.createTextCollectionOutboxEntry({version:1,expectedAccount:fixture.namespace,mutationId:'edited-mutation',operation:'create',id:record.id,baseRevision:0,record},{queuedAt:5});await fixture.store.update(fixture.namespace,state=>state.entries.push(entry));
+    const backup=prepareTextCollectionOutboxBackup(await fixture.read(),{exportedAt:6}),parsed=await readTextCollectionOutboxBackupFile(backup.blob,{check:()=>{}});return {entry,backup:parsed.entries.at(-1)};
+  });
+  assert.deepEqual(editedCapture.entry,editedCapture.backup);await boot(page);assert.deepEqual((await page.evaluate(()=>fixture.read())).entries.at(-1),editedCapture.entry);
+  assert.equal(editedCapture.entry.request.record.captureEdited,true);assert.equal(editedCapture.entry.request.record.source.textLength,'未保存的原文'.length);assert.equal(editedCapture.entry.request.record.text,'保存修改稿\r\n😀');assert.doesNotMatch(JSON.stringify(editedCapture),/未保存的原文/);
+  checks.push('edited-at-capture draft survives real IDB reload and independent pending backup with exact edited text and original source length');
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({passed:checks.length,checks,errors,externalRequests:external,productionDataRead:false,networkSubmissions:0,scope:'actual account-local/outbox store/runtime with browser IndexedDB; synthetic transport, no capture/editor integration'},null,2));
 }finally{clearTimeout(deadline);await context.close();await browser.close();}

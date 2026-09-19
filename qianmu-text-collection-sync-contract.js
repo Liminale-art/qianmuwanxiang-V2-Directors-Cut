@@ -27,7 +27,7 @@ export function textCollectionSyncMutation(value){
   }
   if(value.operation==='create'){
     const item=record(value.record);
-    if(value.baseRevision!==0||item.id!==value.id||item.schemaVersion!==1||item.source.account!==value.expectedAccount||item.revision!==1||item.updatedAt!==item.createdAt)fail('新收藏的账户、编号或初始版本不一致');
+    if(value.baseRevision!==0||item.id!==value.id||![1,3].includes(item.schemaVersion)||item.source.account!==value.expectedAccount||item.revision!==1||item.updatedAt!==item.createdAt)fail('新收藏的账户、编号或初始版本不一致');
     return Object.freeze({...base,record:item});
   }
   if(value.baseRevision<1)fail('只能编辑或删除已确认保存的收藏');
