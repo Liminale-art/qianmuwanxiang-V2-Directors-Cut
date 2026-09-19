@@ -17,7 +17,7 @@ const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'cr
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
 const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['cleanup-batch','bulk-contract','storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
-for(const file of ['qianmu-account-local-store.js','qianmu-text-collection-outbox-store.js','qianmu-text-collection-outbox-runtime.js'])allowed.add(file);
+for(const file of ['qianmu-account-local-store.js','qianmu-text-collection-outbox-store.js','qianmu-text-collection-outbox-runtime.js','qianmu-text-collection-outbox-view.js'])allowed.add(file);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
@@ -187,6 +187,30 @@ try{
   const beforeDispose=writes.length;await page.evaluate(()=>fixture.openCleanup());await ready();await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));await page.evaluate(()=>fixture.cleanupPending);
   assert.equal(writes.length,beforeDispose);assert.equal(await page.locator('[data-qm-text-collection-portal]').count(),0);
   checks.push('runtime cleanup closes the collection cleanup dialog and releases its portal without extra deletion');
+  const pendingSeeds=Array.from({length:51},(_,i)=>make(`collection-${102+i}`));
+  await page.evaluate(async inputs=>{
+    const {createTextCollectionOutboxStore,createTextCollectionOutboxEntry}=await import('./qianmu-text-collection-outbox-store.js');const store=createTextCollectionOutboxStore();
+    try{await store.update(inputs[0].expectedAccount,state=>{for(const [index,input] of inputs.entries())state.entries.push(createTextCollectionOutboxEntry(input,{queuedAt:index+1}));});}finally{store.close();}
+  },pendingSeeds);
+  failListOnce=true;await page.evaluate(()=>fixture.open());await ready();assert.match(await status(),/中断|损坏/);
+  const pendingRoot=page.locator('[data-collection-outbox]'),pendingButton=name=>pendingRoot.locator(`[data-pending-action="${name}"]`);
+  const pendingReady=()=>page.waitForFunction(()=>document.querySelector('[data-collection-outbox]')?.getAttribute('aria-busy')==='false');
+  const beforePending=writes.length;await button('pending').click();await pendingReady();assert.equal(await pendingRoot.locator('[data-pending-id]').count(),50);
+  await pendingButton('next').click();await pendingReady();assert.equal(await pendingRoot.locator('[data-pending-id]').count(),2);await pendingButton('prev').click();await pendingReady();
+  await pendingRoot.locator(`[data-pending-id="${pending[0].request.mutationId}"]`).click();await pendingReady();
+  assert.equal(await pendingButton('retry').isDisabled(),true);assert.equal(await pendingRoot.locator('textarea').inputValue(),'不要丢失的本机修改');
+  await pendingButton('copy').click();await pendingReady();assert.equal(await page.evaluate(()=>fixture.copied),'不要丢失的本机修改');assert.equal(writes.length,beforePending);
+  for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await pendingRoot.evaluate(n=>({scroll:n.scrollWidth,client:n.clientWidth,width:n.getBoundingClientRect().width}));assert.ok(size.width<=width&&size.scroll<=size.client+1);}
+  checks.push('local pending entry remains usable when server list fails, paginates 50 originals, copies conflict text without requests and fits both layouts');
+  await pendingButton('back').click();await pendingReady();const retried=pendingSeeds.at(-1);await pendingRoot.locator(`[data-pending-id="${retried.mutationId}"]`).click();await pendingReady();
+  loseAck=true;await pendingButton('retry').click();await pendingReady();assert.equal(await pendingRoot.locator('textarea').inputValue(),retried.record.text.replace(/\r\n?/g,'\n'));
+  const sent=structuredClone(writes.at(-1));await pendingButton('close').click();await ready();await button('close').click();await page.evaluate(()=>fixture.open());await ready();
+  await button('pending').click();await pendingReady();await pendingRoot.locator(`[data-pending-id="${retried.mutationId}"]`).click();await pendingReady();await pendingButton('retry').click();await pendingReady();
+  assert.deepEqual(writes.at(-1),sent);assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/服务器已确认/);
+  assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,2);
+  checks.push('pending retry after closing and reopening confirms the same real server write exactly once despite a lost acknowledgement');
+  await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
+  checks.push('owner disposal closes both nested pending and library dialogs without removing device originals');
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({count:checks.length,checks,pageErrors:errors,externalRequests:external,productionWrites:false,persistence:'real account-file service in temporary directory; browser transport intercepted; synthetic login, not live ST'},null,2));
 }finally{
