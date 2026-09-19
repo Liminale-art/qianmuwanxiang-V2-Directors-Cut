@@ -62,6 +62,7 @@
     "qianmu-text-collection-library.js",
     "qianmu-text-collection-capture.js",
     "qianmu-text-collection-session.js",
+    "qianmu-text-collection-outbox-store.js",
     "qianmu-text-collection-client.js",
     "qianmu-text-collection-view.js",
     "qianmu-text-collection.css",
