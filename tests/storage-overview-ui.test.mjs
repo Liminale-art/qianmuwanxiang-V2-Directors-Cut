@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection,bindStoragePackageActions} from '../qianmu-storage-backup-view.js';
 import { readFile } from 'node:fs/promises';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
@@ -147,18 +147,19 @@ test('central backup entry binds once and reuses the existing export and restore
   const names = ['storyboard', 'reader', 'favorites', 'audio', 'notes'];
   const exports = names.map(storageExport => node({ storageExport })), picks = names.map(storagePick => node({ storagePick })), imports = names.map(storageImport => node({ storageImport }));
   exports.push(node({storageExport:'collections'}));
+  picks.push(node({storagePick:'collections'}));imports.push(node({storageImport:'collections'}));
   const backup = { dataset: {}, querySelector: selector => ({ '.sd-export-config': configExport, '.sd-import-config': configImport, '.sd-import-config-file': configFile }[selector]
     || imports.find(input => selector === `input[data-storage-import="${input.dataset.storageImport}"]`)),
     querySelectorAll: selector => ({ '[data-storage-export]': exports, '[data-storage-pick]': picks, 'input[data-storage-import]': imports }[selector] || []) };
   const root = { querySelector: selector => selector === '.sd-storage-backup-section' ? backup : null, querySelectorAll: () => [] };
-  const context = vm.createContext({renderStorageBackupSection, exportConfig: () => calls.push('config-export'), importConfig: () => calls.push('config-import'),
+  const context = vm.createContext({renderStorageBackupSection, bindStoragePackageActions, exportConfig: () => calls.push('config-export'), importConfig: () => calls.push('config-import'),
     storyboardExportPackage: options => { assert.equal(options.bundle, true); calls.push('storyboard-export'); },
     storyboardImportAnyPackage: file => { assert.equal(file.name, 'fixture'); calls.push('storyboard-import'); },
     coreadExportData: () => calls.push('reader-export'), coreadImportDataFile: () => calls.push('reader-import'),
     exportTtsFavoritesBackup: button => { assert.equal(button, exports[2]); calls.push('favorites-export'); },
     importTtsFavoritesBackup: () => calls.push('favorites-import'), ttsExportAudioCache: () => calls.push('audio-export'), ttsImportAudioCache: () => calls.push('audio-import'), exportPinnedNotesBackup: () => calls.push('notes-export'), importPinnedNotesBackup: () => calls.push('notes-import') });
   vm.runInContext(section('bindStorageManagementEvents'), context);
-  Object.assign(context,{confirmDialog:()=>{},ttsDownloadBlob:()=>{},createStorageBackupCheck:button=>{assert.equal(button,exports[5]);return 'guard';},collectionFloorTools:{exportBackup:(button,confirm,download,check)=>{assert.equal(button,exports[5]);assert.equal(confirm,context.confirmDialog);assert.equal(download,context.ttsDownloadBlob);assert.equal(check(),'guard');calls.push('collections-export');}}});
+  Object.assign(context,{confirmDialog:()=>{},ttsDownloadBlob:()=>{},createStorageBackupCheck:(button,owner)=>{assert.ok(button===exports[5]||button===imports[5]);if(button===imports[5])assert.equal(owner,context.collectionFloorTools.restoreBackup);return 'guard';},collectionFloorTools:{exportBackup:(button,confirm,download,check)=>{assert.equal(button,exports[5]);assert.equal(confirm,context.confirmDialog);assert.equal(download,context.ttsDownloadBlob);assert.equal(check(),'guard');calls.push('collections-export');},restoreBackup:(file,input,confirm,check)=>{assert.equal(file.name,'fixture');assert.equal(input,imports[5]);assert.equal(confirm,context.confirmDialog);assert.equal(check(),'guard');calls.push('collections-import');}}});
   context.bindStorageManagementEvents(root); context.bindStorageManagementEvents(root);
   assert.deepEqual(calls, [], 'binding controls must never start backup, restore, or generation');
   for (const button of [configExport, configImport, ...exports, ...picks]) assert.equal(button.listeners.click.length, 1);
@@ -167,5 +168,5 @@ test('central backup entry binds once and reuses the existing export and restore
   for (const button of exports) button.listeners.click[0]();
   for (const button of picks) button.listeners.click[0]();
   for (const input of imports) { assert.equal(input.clicks, 1); await input.listeners.change[0]({ target: input, currentTarget: input }); assert.equal(input.value, ''); }
-  assert.deepEqual(calls, ['config-export', 'config-import', 'storyboard-export', 'reader-export', 'favorites-export', 'audio-export', 'notes-export', 'collections-export', 'storyboard-import', 'reader-import', 'favorites-import', 'audio-import', 'notes-import']);
+  assert.deepEqual(calls, ['config-export', 'config-import', 'storyboard-export', 'reader-export', 'favorites-export', 'audio-export', 'notes-export', 'collections-export', 'storyboard-import', 'reader-import', 'favorites-import', 'audio-import', 'notes-import', 'collections-import']);
 });

@@ -13,7 +13,7 @@ test('collection UI dependencies are shipped locally and are not loaded into the
   const source=await readFile(new URL('../qianmu-text-collection-floor.js',import.meta.url),'utf8');
   assert.doesNotMatch(source,/^import /m);assert.match(source,/await import\('\.\/qianmu-text-collection-capture.js'\)/);
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  for(const file of ['floor','capture','session','client','view','library','export','backup'])assert.ok(release.files.includes(`qianmu-text-collection-${file}.js`));
+  for(const file of ['floor','capture','session','client','view','library','export','backup','restore-batch','restore-view'])assert.ok(release.files.includes(`qianmu-text-collection-${file}.js`));
   assert.ok(release.files.includes('qianmu-text-collection.css'));
 });
 test('library entry belongs to floor tools even with no active chat and uses the host confirmation path',async()=>{
@@ -23,8 +23,10 @@ test('library entry belongs to floor tools even with no active chat and uses the
   assert.match(floor,/collectionFloorTools.openLibrary\(root,confirmDialog\)/);
 });
 
-test('central collection export reuses host page guard and downloader without advertising an unavailable restore',async()=>{
+test('central collection export and restore use host page guards and the exclusive restoring owner',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),view=await readFile(new URL('../qianmu-storage-backup-view.js',import.meta.url),'utf8');
-  assert.match(source,/case 'collections': void collectionFloorTools.exportBackup\(button,confirmDialog,ttsDownloadBlob,\(\)=>createStorageBackupCheck\(button,null\)\)/);
-  assert.match(view,/data-storage-export="collections"/);assert.doesNotMatch(view,/data-storage-(pick|import)="collections"/);
+  assert.match(source,/collections:button=>collectionFloorTools.exportBackup\(button,confirmDialog,ttsDownloadBlob,\(\)=>createStorageBackupCheck\(button,null\)\)/);
+  assert.match(view,/storagePackageRow\('collections','正文收藏'/);
+  assert.match(source,/collections:\(file,input\)=>collectionFloorTools.restoreBackup\(file,input,confirmDialog,\(\)=>createStorageBackupCheck\(input,collectionFloorTools.restoreBackup,'导入'\)\)/);
+  assert.match(source,/transfer: \(ownTransfer!==collectionFloorTools.restoreBackup&&collectionFloorTools.restoreBusy\)/);
 });

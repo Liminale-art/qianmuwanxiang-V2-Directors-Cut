@@ -1,6 +1,6 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent}={}){
-  let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null;
+  let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null;
   const floorOf=node=>{const raw=node?.getAttribute('mesid')??node?.dataset?.messageId;return raw!==undefined&&raw!==null&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null;};
   const current=()=>root?.isConnected&&isCurrent()===true;
   const stylesheet=(document=root.ownerDocument)=>{
@@ -63,7 +63,19 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     finally{check?.release?.();if(exporting===entry)exporting=null;button.disabled=disabled;}
   }
   function disposeFloor(){epoch++;root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
-  function dispose(){disposeFloor();closeLibrary(library);if(exporting)exporting.cancelled=true;}
+  async function restoreBackup(file,input,confirm,createCheck){
+    if(restoring){restoring.view?.element.focus();return;}if(!input?.isConnected||isCurrent()!==true)return;
+    const parent=input.closest('.sd-storage-backup-section'),document=input.ownerDocument;if(!parent)return;
+    const portal=document.createElement('section'),entry={portal,view:null,closed:false},disabled=input.disabled;let check,detach;restoring=entry;input.disabled=true;
+    const valid=()=>restoring===entry&&!entry.closed&&parent.isConnected&&isCurrent()===true;
+    try{
+      check=createCheck();check();stylesheet(document);parent.append(portal);detach=mountPortal?.(portal);
+      const runtime=await import('./qianmu-text-collection-restore-view.js');if(!valid())return;
+      entry.view=runtime.openTextCollectionRestore({parent:portal,file,resolveNamespace,isCurrent:valid,headers,confirm,check});await entry.view.finished;
+    }catch(cause){if(valid())notify?.(`收藏恢复暂不可用：${String(cause?.message||cause).slice(0,200)}`,'warning');}
+    finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();check?.release?.();input.disabled=disabled;if(restoring===entry)restoring=null;}
+  }
+  function dispose(){disposeFloor();closeLibrary(library);if(exporting)exporting.cancelled=true;if(restoring){restoring.closed=true;restoring.view?.dispose();restoring.portal.remove();}}
   function refresh(chatRoot){
     if(!chatRoot?.isConnected||isCurrent()!==true)return;
     if(root!==chatRoot){disposeFloor();root=chatRoot;root.addEventListener('click',click);}
@@ -75,7 +87,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       button.innerHTML='<i class="fa-solid fa-bookmark"></i>';toolbar.append(button);applyIcons?.(button);
     }
   }
-  return Object.freeze({refresh,dispose,openLibrary,exportBackup});
+  return Object.freeze({refresh,dispose,openLibrary,exportBackup,restoreBackup,get restoreBusy(){return restoring!==null;}});
 }
 
 // Save rendered prose as plain text; never collect embedded media or plugin controls.

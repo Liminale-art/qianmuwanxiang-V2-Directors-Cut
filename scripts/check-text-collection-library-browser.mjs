@@ -15,7 +15,7 @@ const service=createTextCollectionSyncService({dataRoot:root});
 const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'create',id,baseRevision:0,record:createTextCollection({id,mode:'full',createdAt:Date.UTC(2026,8,19)+Number(id.split('-')[1]||0),
   source:{account:expectedAccount,chatId:'deleted-chat',messageId:0,replyId:'old-reply',charName:'当时角色',userName:'<旧用户>',text:`收藏原文 ${id}\r\n不依赖聊天`}})});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
-const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
+const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
@@ -25,7 +25,7 @@ await context.route('**/*',async route=>{
     if(url.pathname==='/qianmu-text-collection.css')return route.fulfill({contentType:'text/css',body:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
     const file=url.pathname.slice(1);if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(new URL('../'+file,import.meta.url),'utf8')});
     const action=url.pathname.split('/').at(-1);
-    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','write'].includes(action)&&route.request().method()==='POST'){
+    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','restore-info','write'].includes(action)&&route.request().method()==='POST'){
       const input=route.request().postDataJSON();assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
       if(action==='list'&&failListOnce){failListOnce=false;return route.abort('failed');}
       if(action==='get')reads++;if(action==='write')writes.push(input);
@@ -122,6 +122,30 @@ try{
   }
   assert.equal(await page.evaluate(()=>fixture.releases),3);
   checks.push('account change and owner disposal while confirming export release controls without downloading old-account content');
+  const restorePayload={type:'qianmu-text-collections',version:1,sourceAccount:expectedAccount,libraryRevision:2,exportedAt:2,records:[make('collection-101').record,make('collection-102').record]};
+  await page.evaluate(payload=>{
+    fixture.namespace='st-user:alice';fixture.restoreConsent=true;fixture.restoreAsks=[];
+    fixture.openRestore=value=>{
+      const input=document.querySelector('[data-storage-import="collections"]');input.closest('details').open=true;fixture.restoreInput=input;
+      const file=new File([typeof value==='string'?value:JSON.stringify(value)],'<backup>.json',{type:'application/json'});
+      fixture.restorePending=fixture.floorTools.restoreBackup(file,input,async(title,message)=>{fixture.restoreAsks.push({title,message});return fixture.restoreConsent;},()=>{const check=()=>{if(!input.isConnected)throw Error('parent closed');};check.release=()=>fixture.releases++;return check;});
+    };fixture.openRestore(payload);
+  },restorePayload);await ready();
+  assert.equal(await page.evaluate(()=>fixture.floorTools.restoreBusy),true);assert.equal(await page.locator('[data-collection-restore-file]').textContent(),'<backup>.json');
+  for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await page.locator('dialog').evaluate(node=>({width:node.getBoundingClientRect().width,scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(size.width<=width&&size.scroll<=size.client+1);}
+  const restoreButton=page.locator('[data-collection-restore="run"]'),closeRestore=page.locator('[data-collection-restore="close"]'),beforeRestore=writes.length;
+  loseAck=true;await restoreButton.click();await ready();assert.match(await status(),/已确认 0 \/ 2.*回执未确认/);
+  const restoreRequest=structuredClone(writes.at(-1));assert.equal(restoreRequest.operation,'restore');
+  await page.evaluate(()=>{fixture.restoreConsent=false;});await closeRestore.click();assert.equal(await page.locator('dialog').count(),1);
+  await page.evaluate(()=>{fixture.restoreConsent=true;});await restoreButton.click();await ready();assert.match(await status(),/已确认 2 \/ 2.*恢复完成/);
+  assert.deepEqual(writes[beforeRestore],writes[beforeRestore+1]);assert.equal(writes.length-beforeRestore,3);assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,53);
+  assert.equal(await restoreButton.isDisabled(),true);await closeRestore.click();await page.evaluate(()=>fixture.restorePending);
+  assert.equal(await page.evaluate(()=>fixture.floorTools.restoreBusy),false);assert.equal(await page.locator('[data-storage-import="collections"]').isDisabled(),false);
+  checks.push('restore dialog stays bounded on both layouts, retains lost-ack progress, confirms early exit and retries one identity into exactly two copies');
+  const beforeInvalid=writes.length;await page.evaluate(()=>fixture.openRestore('broken json'));await ready();assert.match(await status(),/未开始恢复/);assert.equal(await restoreButton.isDisabled(),true);await closeRestore.click();await page.evaluate(()=>fixture.restorePending);assert.equal(writes.length,beforeInvalid);
+  await page.evaluate(payload=>{fixture.restoreConsent=false;fixture.openRestore(payload);},restorePayload);await ready();await restoreButton.click();await ready();assert.match(await status(),/未开始恢复/);assert.equal(writes.length,beforeInvalid);await closeRestore.click();await page.evaluate(()=>fixture.restorePending);
+  await page.evaluate(payload=>fixture.openRestore(payload),restorePayload);await ready();await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));await page.evaluate(()=>fixture.restorePending);assert.equal(writes.length,beforeInvalid);
+  checks.push('invalid backups, declined restore and owner disposal do not write; all restore portals and busy ownership are released');
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({count:checks.length,checks,pageErrors:errors,externalRequests:external,productionWrites:false,persistence:'real account-file service in temporary directory; browser transport intercepted; synthetic login, not live ST'},null,2));
 }finally{

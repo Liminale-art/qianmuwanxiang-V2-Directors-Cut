@@ -72,6 +72,6 @@ test('production UI keeps only cache policy in voice and centralizes backup impo
   const src=await fs.readFile(new URL('../index.js',import.meta.url),'utf8');
   const view=src.slice(src.indexOf('function renderTtsTab('),src.indexOf('function bindTtsEvents('));
   assert.match(view,/sd-tts-cache-limit/);assert.doesNotMatch(src,/sd-tts-cache-(?:export|import|clear)/);
-  assert.match(src,/case 'audio': void ttsExportAudioCache/);assert.match(src,/case 'audio': await ttsImportAudioCache/);
+  assert.match(src,/bindStoragePackageActions\(backup,[\s\S]*audio:ttsExportAudioCache/);assert.match(src,/imports:[\s\S]*audio:\(_f,_i,e\)=>ttsImportAudioCache\(e\)/);
   assert.match(src,/createReaderPackageWriter\(\{ check \}\)/);assert.doesNotMatch(src.slice(src.indexOf('async function transferAudioCache('),src.indexOf('// 试听某音色：')),/clearAudioCache|\.putAudio\(/);
 });

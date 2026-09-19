@@ -17,7 +17,7 @@ import { runningHubUsageFields, renderRunningHubTaskUsage } from './qianmu-runni
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
-import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime } from './qianmu-storage-backup-view.js';
+import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions } from './qianmu-storage-backup-view.js';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -8486,32 +8486,10 @@ function bindStorageManagementEvents(root) {
     undoButton?.addEventListener('click', () => void undoConfigRestore());
     backup.querySelector('.sd-import-config')?.addEventListener('click', () => backup.querySelector('.sd-import-config-file')?.click());
     backup.querySelector('.sd-import-config-file')?.addEventListener('change', event => void importConfig(event));
-    backup.querySelectorAll('[data-storage-export]').forEach(button=>button.addEventListener('click',()=>{
-      switch(button.dataset.storageExport) {
-        case 'storyboard': void storyboardExportPackage({ bundle: true }); break;
-        case 'reader': void coreadExportData(button); break;
-        case 'favorites': void exportTtsFavoritesBackup(button); break;
-        case 'audio': void ttsExportAudioCache(button); break;
-        case 'notes': void exportPinnedNotesBackup(button); break;
-        case 'collections': void collectionFloorTools.exportBackup(button,confirmDialog,ttsDownloadBlob,()=>createStorageBackupCheck(button,null)); break;
-      }
-    }));
-    backup.querySelectorAll('[data-storage-pick]').forEach(button=>button.addEventListener('click',()=>{
-      backup.querySelector(`input[data-storage-import="${button.dataset.storagePick}"]`)?.click();
-    }));
-    backup.querySelectorAll('input[data-storage-import]').forEach(input=>input.addEventListener('change',async event=>{
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        switch(input.dataset.storageImport) {
-          case 'storyboard': await storyboardImportAnyPackage(file); break;
-          case 'reader': await coreadImportDataFile(file, input); break;
-          case 'favorites': await importTtsFavoritesBackup(event); break;
-          case 'audio': await ttsImportAudioCache(event); break;
-          case 'notes': await importPinnedNotesBackup(event); break;
-        }
-      } finally { input.value = ''; }
-    }));
+    bindStoragePackageActions(backup,{exports:{storyboard:()=>storyboardExportPackage({bundle:true}),reader:coreadExportData,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,notes:exportPinnedNotesBackup,
+      collections:button=>collectionFloorTools.exportBackup(button,confirmDialog,ttsDownloadBlob,()=>createStorageBackupCheck(button,null))},
+      imports:{storyboard:storyboardImportAnyPackage,reader:coreadImportDataFile,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e),
+        collections:(file,input)=>collectionFloorTools.restoreBackup(file,input,confirmDialog,()=>createStorageBackupCheck(input,collectionFloorTools.restoreBackup,'导入'))}});
   }
   const bound = bindStorageManagementEvents.controls ||= new WeakSet();
   const onClick = (button, handler) => { if (button && !bound.has(button)) { bound.add(button); button.addEventListener('click', handler); } };
@@ -25523,7 +25501,7 @@ function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy || (ownTransfer!==focusLibraryRuntime&&focusLibraryRuntime?.busy),
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || (includeCleanup ? storyboardImageService?.busy : storyboardImageService?.busyExcept('manage')) || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: (ownTransfer!==storyboardImportPackage&&(storyboardImportPackage.busy||storyboardBundleReview?.isOpen)) || (ownTransfer!==storyboardExportPackage&&storyboardExportPackage.busy) || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
+    transfer: (ownTransfer!==collectionFloorTools.restoreBackup&&collectionFloorTools.restoreBusy) || (ownTransfer!==storyboardImportPackage&&(storyboardImportPackage.busy||storyboardBundleReview?.isOpen)) || (ownTransfer!==storyboardExportPackage&&storyboardExportPackage.busy) || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
 

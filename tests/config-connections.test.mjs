@@ -239,6 +239,9 @@ test('actual activity adapter blocks each independent lane without normalizing o
     storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
     storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},exportPinnedNotesBackup:{busy:false},exportTtsFavoritesBackup:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
+  c.collectionFloorTools={restoreBusy:false,restoreBackup:()=>{}};
+  c.collectionFloorTools.restoreBusy=true;assert.equal(c.configRestoreActivity().transfer,true);assert.equal(!!c.configRestoreActivity(true,c.collectionFloorTools.restoreBackup).transfer,false);
+  assert.equal(policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),()=>{})(c.settings),false,'configuration restore must respect collection restore ownership');c.collectionFloorTools.restoreBusy=false;
   const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);
   idle();const before=JSON.stringify(c.settings);let cases=0;
   for(const [lane,keys] of Object.entries(lanes))for(const key of keys){c[key]=true;assert.ok(c.configRestoreActivity()[lane],key);c[key]=false;idle();cases++;}
