@@ -28,7 +28,7 @@ function metadata(value) {
         || !validText(value.userName, TEXT_COLLECTION_LIMITS.name) || !value.userName.trim()) fail('source', '收藏来源身份或名称无效');
     return Object.fromEntries(sourceKeys.map(key => [key, value[key]]));
 }
-function body(value) {
+export function textCollectionText(value) {
     if (!validText(value, TEXT_COLLECTION_LIMITS.text) || !value.trim()) fail('text', '收藏文字为空、过长或编码无效；未截断原文');
     return value;
 }
@@ -49,7 +49,7 @@ function splitSurrogate(text, offset) {
 // Only an ephemeral source snapshot contains the full layer. Never persist this value.
 export function captureTextCollectionSource(input) {
     const source = metadata(input);
-    return Object.freeze({ ...source, text: body(input.text) });
+    return Object.freeze({ ...source, text: textCollectionText(input.text) });
 }
 
 export function createTextCollection({ id, source, mode, start, end, createdAt } = {}) {
@@ -59,7 +59,7 @@ export function createTextCollection({ id, source, mode, start, end, createdAt }
     if (mode === 'full' && (start !== undefined || end !== undefined)) fail('range', '全文收藏不能覆盖选段范围');
     const range = mode === 'full' ? offsets(0, captured.text.length, captured.text.length) : offsets(start, end, captured.text.length);
     if (splitSurrogate(captured.text, range.start) || splitSurrogate(captured.text, range.end)) fail('range', '收藏选段不能截断完整字符');
-    const text = body(captured.text.slice(range.start, range.end)), time = timestamp(createdAt);
+    const text = textCollectionText(captured.text.slice(range.start, range.end)), time = timestamp(createdAt);
     // Deliberately omit source.text: a selection must not retain unselected prose.
     const origin = Object.freeze({ ...metadata(captured), textLength: captured.text.length });
     return Object.freeze({ schemaVersion: 1, id, source: origin, mode, range, text, createdAt: time, updatedAt: time, revision: 1 });
@@ -73,7 +73,7 @@ export function textCollectionRecord(value) {
         || !keys(value.range, ['start', 'end']) || !['full', 'selection'].includes(value.mode)
         || !integer(value.revision) || value.revision < 1) fail('record', '收藏记录格式无效');
     const source = Object.freeze({ ...metadata(value.source), textLength: value.source.textLength });
-    const range = offsets(value.range.start, value.range.end, source.textLength), text = body(value.text);
+    const range = offsets(value.range.start, value.range.end, source.textLength), text = textCollectionText(value.text);
     const createdAt = timestamp(value.createdAt), updatedAt = timestamp(value.updatedAt);
     if (updatedAt < createdAt || value.mode === 'full' && (range.start !== 0 || range.end !== source.textLength)
         || value.revision === 1 && text.length !== range.end - range.start) fail('record', '收藏来源范围或版本时间不一致');
@@ -84,7 +84,7 @@ export function updateTextCollection(record, changes, expectedRevision, updatedA
     const current = textCollectionRecord(record);
     if (!integer(expectedRevision) || expectedRevision !== current.revision) fail('conflict', '收藏已被更新，请重新载入后编辑');
     if (!keys(changes, ['text'])) fail('edit', '收藏编辑只能修改文字');
-    const text = body(changes.text), time = timestamp(updatedAt);
+    const text = textCollectionText(changes.text), time = timestamp(updatedAt);
     if (time < current.updatedAt || current.revision === Number.MAX_SAFE_INTEGER) fail('revision', '收藏版本或更新时间无效');
     return Object.freeze({ ...current, text, updatedAt: time, revision: current.revision + 1 });
 }
