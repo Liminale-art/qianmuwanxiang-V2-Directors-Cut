@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-prose-assistant-preferences.js",
     "qianmu-prose-floor-tools.js",
     "qianmu-prose-assistant-floor.js",
     "qianmu-prose-assistant-panel.js",

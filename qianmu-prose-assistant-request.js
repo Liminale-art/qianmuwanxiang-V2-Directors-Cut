@@ -19,6 +19,13 @@ function connection(selection,profiles){
   let apiUrl=normalizeQianmuChatApiRoot(row.apiUrl);if(new URL(apiUrl).pathname==='/')apiUrl+='/v1';
   return Object.freeze({apiUrl,apiKey:row.apiKey.trim(),model:row.model.trim(),temperature,maxTokens,stream});
 }
+// Explicit preference capture shares request validation but never sends a request.
+export function normalizeProseAssistantSelection(selection,profiles){
+  const cfg=connection(selection,profiles);
+  return Object.freeze(selection.mode==='profile'
+    ? {mode:'profile',profileId:selection.profileId,transport:selection.transport}
+    : {mode:'custom',transport:selection.transport,connection:cfg});
+}
 function messagesFrom(value){
   if(!Array.isArray(value)||!value.length||value.length>64)fail('正文助手消息编译未就绪');let size=0;
   return value.map(row=>{

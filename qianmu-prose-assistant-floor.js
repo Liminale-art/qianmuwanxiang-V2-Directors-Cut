@@ -1,7 +1,7 @@
 import {floorCollectionText} from './qianmu-text-collection-floor.js';
 
 // No model/UI imports or document observers until an explicit floor action.
-export function createProseAssistantFloorTools({getContext,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,assistantConfig,confirm}={}){
+export function createProseAssistantFloorTools({getContext,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,assistantConfig,confirm,assistantSettings,saveAssistantSettings}={}){
   let root=null,entry=null,epoch=0;
   const current=()=>Boolean(root?.isConnected&&isCurrent()===true);
   function close(record){
@@ -36,6 +36,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
       };
       record.panel=await runtime.openProseAssistantPanel({parent:portal,source:{getContext,epoch:()=>epoch,resolveNamespace,isCurrent:record.valid,readText,floor,signal:record.controller.signal},
         profiles:config?.profiles||[],selection:config?.selection,systemPrompt:config?.systemPrompt||'',getRequestHeaders:headers,
+        preferences:typeof assistantSettings==='function'?{current:assistantSettings,persist:saveAssistantSettings}:undefined,
         copy:text=>document.defaultView.navigator.clipboard.writeText(text),confirm:text=>confirm('正文助手',text),isCurrent:record.valid});
       if(!record.valid()){record.panel.dispose();return;}await record.panel.finished;
     }catch(_){if(record.valid())notify?.('正文助手未能打开，请核对当前聊天与账户后重试。','warning');}
