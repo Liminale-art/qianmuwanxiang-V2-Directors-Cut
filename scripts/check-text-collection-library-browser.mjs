@@ -15,7 +15,7 @@ const service=createTextCollectionSyncService({dataRoot:root});
 const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'create',id,baseRevision:0,record:createTextCollection({id,mode:'full',createdAt:Date.UTC(2026,8,19)+Number(id.split('-')[1]||0),
   source:{account:expectedAccount,chatId:'deleted-chat',messageId:0,replyId:'old-reply',charName:'当时角色',userName:'<旧用户>',text:`收藏原文 ${id}\r\n不依赖聊天`}})});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
-const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['bulk-contract','storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
+const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['cleanup-batch','bulk-contract','storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
@@ -25,7 +25,7 @@ await context.route('**/*',async route=>{
     if(url.pathname==='/qianmu-text-collection.css')return route.fulfill({contentType:'text/css',body:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
     const file=url.pathname.slice(1);if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(new URL('../'+file,import.meta.url),'utf8')});
     const action=url.pathname.split('/').at(-1);
-    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','restore-info','inventory','write','write-batch','batch-info'].includes(action)&&route.request().method()==='POST'){
+    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','restore-info','inventory','write','write-batch','batch-info','cleanup-plan'].includes(action)&&route.request().method()==='POST'){
       const input=route.request().postDataJSON();assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
       if(action==='list'&&failListOnce){failListOnce=false;return route.abort('failed');}
       if(action==='get')reads++;if(['write','write-batch'].includes(action))writes.push(input);
@@ -154,6 +154,34 @@ try{
   assert.match(await page.locator('#inventory .sd-storage-collection-summary').textContent(),/53 条原件.*不计入浏览器配额/);
   for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await page.locator('#inventory .sd-storage-collection-summary').evaluate(node=>({scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(size.scroll<=size.client+1);}
   checks.push('lazy server inventory shows exact file bytes and tombstone counts without writes or narrow-screen overflow');
+  await page.evaluate(()=>{
+    fixture.cleanupConsent=false;fixture.cleanupAsks=[];fixture.cleanupHost=document.createElement('section');document.body.append(fixture.cleanupHost);
+    fixture.openCleanup=()=>{fixture.cleanupPending=fixture.floorTools.cleanupOriginals(fixture.cleanupHost,async(...args)=>{fixture.cleanupAsks.push(args);return fixture.cleanupConsent;},()=>{if(!fixture.cleanupHost.isConnected)throw Error('closed');},'st-user:alice',2);};fixture.openCleanup();
+  });await ready();assert.equal(await page.locator('dialog').getAttribute('data-collection-operation'),'cleanup');
+  const beforeCleanup=writes.length;await restoreButton.click();await ready();assert.equal(writes.length,beforeCleanup);assert.match(await status(),/未开始清理/);
+  assert.match(await page.locator('dialog main').textContent(),/其他 2 个模块本次不执行/);
+  assert.match(await page.evaluate(()=>fixture.cleanupAsks[0][1]),/不可恢复.*53 条收藏原件/);
+  await closeRestore.click();await page.evaluate(()=>fixture.cleanupPending);
+  checks.push('collection cleanup is separately confirmed with exact account count and skipped-module warnings; declining writes nothing');
+  await page.evaluate(()=>{fixture.cleanupConsent=true;fixture.openCleanup();});await ready();
+  await service.write(request,make('collection-100'));const changed=(await service.get(request,{version:1,expectedAccount,id:'collection-1'})).record;
+  await service.write(request,{version:1,expectedAccount,mutationId:randomUUID(),operation:'edit',id:changed.id,baseRevision:changed.revision,text:'另一端修改，不可强删'});
+  await restoreButton.click();await ready();assert.match(await status(),/其他设备变更/);assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,54);
+  await closeRestore.click();await page.evaluate(()=>fixture.cleanupPending);
+  checks.push('cleanup refuses an edited revision without clearing the batch or adopting newly added originals');
+  await page.evaluate(()=>fixture.openCleanup());await ready();await service.write(request,make('collection-101'));
+  const beforeLoss=writes.length;loseAck=true;await restoreButton.click();await ready();assert.match(await status(),/已确认 0 \/ 54.*当前批次回执未确认/);
+  assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,23);
+  await page.evaluate(()=>{fixture.cleanupConsent=false;});await closeRestore.click();assert.equal(await page.locator('dialog').count(),1);
+  await page.evaluate(()=>{fixture.cleanupConsent=true;});await restoreButton.click();await ready();assert.match(await status(),/已确认 54 \/ 54.*清理完成/);
+  assert.deepEqual(writes[beforeLoss],writes[beforeLoss+1]);assert.equal(writes.length-beforeLoss,3);
+  assert.deepEqual((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).items.map(r=>r.id),['collection-101']);
+  for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await page.locator('dialog').evaluate(n=>({scroll:n.scrollWidth,client:n.clientWidth,width:n.getBoundingClientRect().width}));assert.ok(size.width<=width&&size.scroll<=size.client+1);}
+  await closeRestore.click();await page.evaluate(()=>fixture.cleanupPending);
+  checks.push('lost cleanup acknowledgement retries the identical batch, preserves later additions and shows bounded confirmed progress on both layouts');
+  const beforeDispose=writes.length;await page.evaluate(()=>fixture.openCleanup());await ready();await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));await page.evaluate(()=>fixture.cleanupPending);
+  assert.equal(writes.length,beforeDispose);assert.equal(await page.locator('[data-qm-text-collection-portal]').count(),0);
+  checks.push('runtime cleanup closes the collection cleanup dialog and releases its portal without extra deletion');
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({count:checks.length,checks,pageErrors:errors,externalRequests:external,productionWrites:false,persistence:'real account-file service in temporary directory; browser transport intercepted; synthetic login, not live ST'},null,2));
 }finally{

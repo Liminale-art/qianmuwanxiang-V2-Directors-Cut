@@ -26,6 +26,15 @@ function fixture(result, kind = 'chat') {
 }
 const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
 
+test('selected collection module enters its own explicit dialog and never falls through to other selected deletion',async()=>{
+  const f=fixture({cleared:[],failed:[]},'module');let entered=0,scoped;
+  f.c.storageInventoryState.data.collectionStorage={namespace:'st-user:fixture'};f.c.confirmDialog=()=>{};
+  f.c.openStorageCleanupDialog=async()=>['__collections__','notes','__diagnostics__'];
+  f.c.collectionFloorTools={cleanupOriginals:async(root,confirm,check,namespace,others)=>{check();entered++;assert.equal(root,f.root);assert.equal(confirm,f.c.confirmDialog);scoped=[namespace,others];}};
+  await f.run();assert.equal(entered,1);assert.deepEqual(scoped,['st-user:fixture',2]);assert.equal(f.calls.clear,0);assert.equal(f.calls.save,0);assert.equal(f.c.storageCleanupSession.busy,false);
+  assert.deepEqual(Array.from(f.c.settings.logHistory),['original']);
+});
+
 test('cleanup owns its page watcher through mutation and releases it once without releasing a newer operation',()=>{
   let closed=false,released=0;
   const session=createStorageCleanupSession({owner:()=>1,scope:()=>1,epoch:()=>1,watchView:()=>({check(){if(closed)throw Error('closed and reopened');},release(){released++;}})});

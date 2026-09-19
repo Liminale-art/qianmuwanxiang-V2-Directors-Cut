@@ -1,6 +1,6 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent}={}){
-  let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null;
+  let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   const floorOf=node=>{const raw=node?.getAttribute('mesid')??node?.dataset?.messageId;return raw!==undefined&&raw!==null&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null;};
   const current=()=>root?.isConnected&&isCurrent()===true;
   const stylesheet=(document=root.ownerDocument)=>{
@@ -75,7 +75,19 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     }catch(cause){if(valid())notify?.(`收藏恢复暂不可用：${String(cause?.message||cause).slice(0,200)}`,'warning');}
     finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();check?.release?.();input.disabled=disabled;if(restoring===entry)restoring=null;}
   }
-  function dispose(){disposeFloor();closeLibrary(library);if(exporting)exporting.cancelled=true;if(restoring){restoring.closed=true;restoring.view?.dispose();restoring.portal.remove();}}
+  async function cleanupOriginals(parent,confirm,check,expectedNamespace,otherModules=0){
+    if(cleaning){cleaning.view?.element.focus();return;}check();
+    if(!parent?.isConnected||isCurrent()!==true||!expectedNamespace)throw Error('收藏清理范围已变化，请重新盘点');
+    const portal=parent.ownerDocument.createElement('section'),entry={portal,view:null,closed:false};let detach;cleaning=entry;
+    const valid=()=>cleaning===entry&&!entry.closed&&parent.isConnected&&isCurrent()===true;
+    const account=async()=>{check();const current=await resolveNamespace();check();if(current!==expectedNamespace)throw Error('收藏账户已变化，请重新盘点');return current;};
+    try{
+      stylesheet(parent.ownerDocument);portal.dataset.qmTextCollectionPortal='';parent.append(portal);detach=mountPortal?.(portal);
+      const runtime=await import('./qianmu-text-collection-restore-view.js');check();if(!valid())return;
+      entry.view=runtime.openTextCollectionCleanup({parent:portal,resolveNamespace:account,isCurrent:valid,headers,confirm,check,otherModules});return await entry.view.finished;
+    }finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();if(cleaning===entry)cleaning=null;}
+  }
+  function dispose(){disposeFloor();closeLibrary(library);if(exporting)exporting.cancelled=true;for(const entry of [restoring,cleaning])if(entry){entry.closed=true;entry.view?.dispose();entry.portal.remove();}}
   function refresh(chatRoot){
     if(!chatRoot?.isConnected||isCurrent()!==true)return;
     if(root!==chatRoot){disposeFloor();root=chatRoot;root.addEventListener('click',click);}
@@ -94,7 +106,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     }
     return module.collectTextCollectionStorage({resolveNamespace,isCurrent:()=>isCurrent()===true&&valid(),headers});
   };
-  return Object.freeze({refresh,dispose,openLibrary,exportBackup,restoreBackup,storageSummary,get restoreBusy(){return restoring!==null;}});
+  return Object.freeze({refresh,dispose,openLibrary,exportBackup,restoreBackup,cleanupOriginals,storageSummary,get restoreBusy(){return restoring!==null;}});
 }
 
 // Save rendered prose as plain text; never collect embedded media or plugin controls.

@@ -17,7 +17,7 @@ import { runningHubUsageFields, renderRunningHubTaskUsage } from './qianmu-runni
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
-import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions } from './qianmu-storage-backup-view.js';
+import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, collectionCleanupOptions } from './qianmu-storage-backup-view.js';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -8062,6 +8062,7 @@ function openStorageCleanupDialog(data) {
     { id: '__image_service_receipts__', label: '本机原图领取记录（服务器原图不删）', bytes: Number(data?.serviceReceipts?.bytes) || 0, count: Number(data?.serviceReceipts?.count) || 0 },
     ...(data?.comfyStorage?.scenes?.status==='ready'?[{ id: '__comfy_scenes__', label: 'Comfy 续场记录（当前账户所有聊天）', bytes: data.comfyStorage.scenes.bytes, count: data.comfyStorage.scenes.count }]:[]),
     { id: '__storyboard_restores__', label: '分镜恢复记录（当前账户）', bytes: data?.restoreStorage?.status==='ready'?data.restoreStorage.bytes:0, count: data?.restoreStorage?.count||0 },
+    ...collectionCleanupOptions(data),
   ];
   return new Promise((resolve) => {
     const layer = document.createElement('div');
@@ -8074,9 +8075,9 @@ function openStorageCleanupDialog(data) {
       if (value) layer.style.setProperty(variable, value);
     }
     layer.innerHTML = `<button type="button" class="sd-storage-cleanup-backdrop" aria-label="取消"></button><section class="sd-storage-cleanup-dialog" role="dialog" aria-modal="true" aria-label="选择清理模块">
-      <header><div><h3>选择清理模块</h3><p>这里列出千幕各功能保存的本地项目；带“不可恢复”的内容由你决定是否删除。</p></div><button type="button" class="sd-icon-btn sd-storage-cleanup-close" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button></header>
+      <header><div><h3>选择清理模块</h3><p>这里列出千幕各功能保存的项目；带“不可恢复”的内容由你决定是否删除。</p></div><button type="button" class="sd-icon-btn sd-storage-cleanup-close" title="取消" aria-label="取消"><i class="fa-solid fa-xmark"></i></button></header>
       <div class="sd-storage-cleanup-list">${modules.map((item) => {
-        const [risk, destructive] = STORAGE_ITEM_RISK[item.id] || ['本地项目', true];
+        const [risk, destructive] = item.risk || STORAGE_ITEM_RISK[item.id] || ['本地项目', true];
         return `<label class="${destructive ? 'is-destructive' : ''}"><input type="checkbox" value="${htmlEscape(item.id)}" ${item.bytes > 0 ? '' : 'disabled'}><span><span><b>${htmlEscape(item.label)}</b><em>${htmlEscape(risk)}</em></span><small>${htmlEscape(formatStorageBytes(item.bytes))}${item.count ? ` · ${item.count} 项` : ''}${item.scopeCount ? ` · ${item.scopeCount} 个聊天` : ''}</small></span></label>`;
       }).join('')}</div>
       <div class="sd-storage-backup-actions"><button type="button" class="sd-btn sd-storage-backup-home">先返回资料管理备份</button></div>
@@ -8532,6 +8533,7 @@ function bindStorageManagementEvents(root) {
     try {
       const selected = await openStorageCleanupDialog(inventory); cleanup.check();
       if (!selected?.length) return;
+      if(selected.includes('__collections__')){await collectionFloorTools.cleanupOriginals(root,confirmDialog,()=>cleanup.check(),inventory?.collectionStorage?.namespace,selected.length-1);cleanup.check();await refreshStorageInventory(true);return;}
       if(selected.includes('__storyboard_restores__')){
         if(selected.length>1){
           const proceed=await confirmDialog('先管理恢复记录',`恢复记录需逐条确认。本次不会清理同时勾选的其他 ${selected.length-1} 项；完成后请重新选择。是否进入？`);

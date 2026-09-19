@@ -54,6 +54,7 @@
     "qianmu-text-collection-backup.js",
     "qianmu-text-collection-export.js",
     "qianmu-text-collection-restore-batch.js",
+    "qianmu-text-collection-cleanup-batch.js",
     "qianmu-text-collection-restore-view.js",
     "qianmu-text-collection-floor.js",
     "qianmu-text-collection-storage.js",

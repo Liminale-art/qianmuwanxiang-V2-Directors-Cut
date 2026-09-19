@@ -1,3 +1,9 @@
+export function collectionCleanupOptions(data){
+  const collection=data?.collectionStorage;
+  return collection?.status==='ready'?[{id:'__collections__',label:'正文收藏原件（当前账户 · 服务器）',bytes:collection.count>0?collection.bytes:0,count:collection.count,
+    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[];
+}
+
 // A detached/hidden chooser is cancellation, never an implicit confirmation.
 // Keep listeners only while a chooser is pending; the caller owns the cleanup lock.
 export function bindStorageCleanupLifetime(layer, modal, resolve) {
