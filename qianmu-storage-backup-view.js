@@ -2,9 +2,9 @@ export const STORAGE_CATEGORY_LABELS=Object.freeze({images:'图片',vibes:'参�
 export const STORAGE_CATEGORY_COLORS=Object.freeze({images:'#5aa9ff',vibes:'#b29bc9',characters:'#c985b1',audio:'#ff9f43',video:'#6f8fff',reader:'#9b7cff',notes:'#f2c94c',collections:'#75b6ab',logs:'#ff647c',cache:'#3dc7c9',settings:'#65c466',chat:'#8d94a6',other:'#747b88'});
 
 export function collectionCleanupOptions(data){
-  const collection=data?.collectionStorage;
-  return collection?.status==='ready'?[{id:'__collections__',label:'正文收藏原件（当前账户 · 服务器）',bytes:collection.count>0?collection.bytes:0,count:collection.count,
-    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[];
+  const collection=data?.collectionStorage,pending=collection?.pending;
+  return [...(collection?.status==='ready'?[{id:'__collections__',label:'正文收藏原件（当前账户 · 服务器）',bytes:collection.count>0?collection.bytes:0,count:collection.count,
+    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[]),...(pending?.status==='ready'?[{id:'__collection_pending__',label:'收藏待存（当前账户 · 本机）',bytes:pending.bytes,count:pending.count,risk:['不可恢复 · 先备份；不删除或取消服务器保存',true]}]:[])];
 }
 
 // A detached/hidden chooser is cancellation, never an implicit confirmation.
@@ -111,7 +111,7 @@ export function renderStorageBackupSection(notesStorage, formatBytes = value => 
       <p class="sd-storage-scope sd-storage-gallery-check-status" role="status" style="overflow-wrap:anywhere" hidden></p>
       ${storagePackageRow('reader','伴读资料','application/json,.json')}
       <div class="sd-storage-resource-list">${data ? renderStorageResourceRows(data,formatBytes) : '<p class="sd-storage-scope">资料目录等待盘点；备份与恢复仍可使用。</p>'}</div>
-      <div class="sd-storage-actions sd-storage-manage-actions">${data ? `<button type="button" class="sd-btn sd-primary sd-storage-clean" ${ready && data.manageableBytes > 0 ? '' : 'disabled'}>选择清理项目<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天选择本机记录<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>` : ''}</div>
+      <div class="sd-storage-actions sd-storage-manage-actions">${data ? `<button type="button" class="sd-btn sd-primary sd-storage-clean" ${ready && (data.manageableBytes > 0 || collectionCleanupOptions(data).some(row=>row.bytes>0)) ? '' : 'disabled'}>选择清理项目<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天选择本机记录<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>` : ''}</div>
     </div>
   </details>`;
 }

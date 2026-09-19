@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {collectTextCollectionStorage} from '../qianmu-text-collection-storage.js';
+import {collectTextCollectionStorage,cleanupTextCollectionPending} from '../qianmu-text-collection-storage.js';
 import {textCollectionSyncQuery,textCollectionSyncResponse} from '../qianmu-text-collection-sync-contract.js';
 import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
@@ -71,4 +71,20 @@ test('pending resource row explains local estimates independently of a failed se
   const html=renderStorageBackupSection(null,value=>`${value} B`,{data:{collectionStorage:{status:'unavailable',pending:summarizeTextCollectionOutbox(localState())}}});
   assert.match(html,/收藏待存 · 当前账户本机/);assert.match(html,/1 条 · \d+ B 内容及请求记录估算 · 冲突 0 条/);assert.match(html,/不是可重建缓存/);assert.doesNotMatch(html,/私人待存原文/);
   const failed=renderStorageBackupSection(null,String,{data:{collectionStorage:{pending:{status:'unavailable',error:'<bad>'}}}});assert.match(failed,/&lt;bad&gt;/);assert.doesNotMatch(failed,/0 条 ·/);
+});
+
+test('pending cleanup confirms exact local originals, explains skipped modules and never calls server headers',async()=>{
+  let state=structuredClone(localState()),updates=0,consent=false,message='';state.entries[0].started=true;
+  const store={read:async()=>structuredClone(state),update:async(_account,mutate,{guard})=>{assert.equal(guard(),true);const draft=structuredClone(state);mutate(draft);updates++;state=draft;}};
+  const input={...options,outboxStore:store,check(){},headers:()=>assert.fail('cleanup must not send'),otherModules:2,confirm:async(_title,value)=>{message=value;return consent;}};
+  assert.equal((await cleanupTextCollectionPending(input)).status,'cancelled');assert.equal(updates,0);assert.match(message,/1 条待存文字.*1 条提交结果未知.*其他 2 个模块/);
+  consent=true;assert.deepEqual(await cleanupTextCollectionPending(input),{status:'complete',removed:1,missing:0});assert.equal(state.entries.length,0);assert.equal(updates,1);
+  assert.equal((await cleanupTextCollectionPending(input)).status,'empty');assert.equal(updates,1);
+});
+test('account or page invalidation during cleanup confirmation cannot mutate local content',async()=>{
+  for(const mode of ['account','page']){let namespace='st-user:alice',live=true,writes=0;
+    const result=cleanupTextCollectionPending({resolveNamespace:async()=>namespace,isCurrent:()=>live,check(){if(!live)throw Error('closed');},outboxStore:{read:async()=>localState(),update:async()=>{writes++;}},
+      confirm:async()=>{if(mode==='account')namespace='st-user:bob';else live=false;return true;}});
+    await assert.rejects(result);assert.equal(writes,0);
+  }
 });

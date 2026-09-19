@@ -265,6 +265,18 @@ try{
   await page.evaluate(()=>{fixture.holdConfirm=true;fixture.acceptConfirm=null;});await fileInput.setInputFiles({name:'待存.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(cancelledImport))});await page.waitForFunction(()=>typeof fixture.acceptConfirm==='function');
   await pendingButton('close').click();await page.evaluate(()=>{fixture.acceptConfirm(true);fixture.holdConfirm=false;});await ready();await button('pending').click();await pendingReady();assert.match(await pendingStatus(),/本机待存 50 条/);assert.equal(writes.length,beforeBackup);
   checks.push('account change during export confirmation and closing during import confirmation prevent stale downloads or imports');
+  await page.evaluate(()=>{
+    fixture.localConsent=false;fixture.localAsks=[];fixture.cleanLocal=()=>fixture.floorTools.cleanupOriginals(fixture.host,async(...args)=>{fixture.localAsks.push(args);return fixture.localHold?new Promise(resolve=>{fixture.acceptLocal=resolve;}):fixture.localConsent;},()=>{if(!fixture.host.isConnected)throw Error('closed');},'st-user:alice',2,true);
+  });assert.equal((await page.evaluate(()=>fixture.cleanLocal())).status,'cancelled');assert.equal(writes.length,beforeBackup);
+  assert.match(await page.evaluate(()=>fixture.localAsks.at(-1)[1]),/50 条待存文字.*结果未知.*其他 2 个模块/);
+  await page.evaluate(()=>{fixture.localHold=true;fixture.localResult=null;fixture.localTask=fixture.cleanLocal().then(value=>{fixture.localResult=value;},error=>{fixture.localResult={error:error.message};});});await page.waitForFunction(()=>typeof fixture.acceptLocal==='function');
+  await page.evaluate(async account=>{const {createTextCollectionOutboxStore}=await import('./qianmu-text-collection-outbox-store.js');const store=createTextCollectionOutboxStore();try{await store.update(account,state=>{state.entries[0].started=!state.entries[0].started;});}finally{store.close();}fixture.acceptLocal(true);await fixture.localTask;},expectedAccount);
+  assert.match(await page.evaluate(()=>fixture.localResult.error),/状态已在另一页面变化/);await pendingButton('refresh').click();await pendingReady();assert.match(await pendingStatus(),/本机待存 50 条/);
+  await page.evaluate(()=>{fixture.acceptLocal=null;fixture.localResult=null;fixture.localTask=fixture.cleanLocal().then(value=>{fixture.localResult=value;},error=>{fixture.localResult={error:error.message};});});await page.waitForFunction(()=>typeof fixture.acceptLocal==='function');
+  await page.evaluate(async input=>{const {createTextCollectionOutboxStore,createTextCollectionOutboxEntry}=await import('./qianmu-text-collection-outbox-store.js');const store=createTextCollectionOutboxStore();try{await store.update(input.expectedAccount,state=>{state.entries.push(createTextCollectionOutboxEntry(input,{queuedAt:99}));});}finally{store.close();}fixture.acceptLocal(true);await fixture.localTask;},make('collection-600'));
+  assert.deepEqual(await page.evaluate(()=>fixture.localResult),{status:'complete',removed:50,missing:0});assert.equal(writes.length,beforeBackup);assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,3);
+  await pendingButton('refresh').click();await pendingReady();assert.match(await pendingStatus(),/本机待存 1 条/);
+  checks.push('central local cleanup declines safely, rejects one changed snapshot atomically and removes only the 50 confirmed rows while preserving later additions and all server originals');
   await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
   checks.push('owner disposal closes both nested pending and library dialogs without removing device originals');
   assert.equal(external,0);assert.deepEqual(errors,[]);

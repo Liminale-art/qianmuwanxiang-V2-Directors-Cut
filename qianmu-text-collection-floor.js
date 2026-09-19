@@ -75,7 +75,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     }catch(cause){if(valid())notify?.(`收藏恢复暂不可用：${String(cause?.message||cause).slice(0,200)}`,'warning');}
     finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();check?.release?.();input.disabled=disabled;if(restoring===entry)restoring=null;}
   }
-  async function cleanupOriginals(parent,confirm,check,expectedNamespace,otherModules=0){
+  async function cleanupOriginals(parent,confirm,check,expectedNamespace,otherModules=0,local=false){
     if(cleaning){cleaning.view?.element.focus();return;}check();
     if(!parent?.isConnected||isCurrent()!==true||!expectedNamespace)throw Error('收藏清理范围已变化，请重新盘点');
     const portal=parent.ownerDocument.createElement('section'),entry={portal,view:null,closed:false};let detach;cleaning=entry;
@@ -83,6 +83,11 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     const account=async()=>{check();const current=await resolveNamespace();check();if(current!==expectedNamespace)throw Error('收藏账户已变化，请重新盘点');return current;};
     try{
       stylesheet(parent.ownerDocument);portal.dataset.qmTextCollectionPortal='';parent.append(portal);detach=mountPortal?.(portal);
+      if(local){
+        const runtime=await import('./qianmu-text-collection-storage.js');check();if(!valid())return;
+        const result=await runtime.cleanupTextCollectionPending({resolveNamespace:account,isCurrent:valid,headers,confirm,check,otherModules});
+        if(valid()&&result.status!=='cancelled')notify?.(result.status==='empty'?'本机没有待存收藏。':`已移除 ${result.removed} 条本机待存，未删除服务器收藏。${result.missing?`另有 ${result.missing} 条此前已不存在。`:''}`,'success');return result;
+      }
       const runtime=await import('./qianmu-text-collection-restore-view.js');check();if(!valid())return;
       entry.view=runtime.openTextCollectionCleanup({parent:portal,resolveNamespace:account,isCurrent:valid,headers,confirm,check,otherModules});return await entry.view.finished;
     }finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();if(cleaning===entry)cleaning=null;}

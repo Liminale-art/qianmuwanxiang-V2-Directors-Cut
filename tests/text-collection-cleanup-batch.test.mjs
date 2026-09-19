@@ -31,4 +31,5 @@ test('module option exposes only verified current originals, never zero-original
   assert.deepEqual(collectionCleanupOptions({collectionStorage:{status:'unavailable',bytes:null}}),[]);
   const [item]=collectionCleanupOptions({collectionStorage:{status:'ready',count:3,bytes:999}});assert.equal(item.id,'__collections__');assert.equal(item.bytes,999);assert.equal(item.risk[1],true);assert.equal('checked' in item,false);
   assert.equal(collectionCleanupOptions({collectionStorage:{status:'ready',count:0,bytes:999}})[0].bytes,0);
+  const [pending]=collectionCleanupOptions({collectionStorage:{status:'unavailable',pending:{status:'ready',count:2,bytes:321}}});assert.equal(pending.id,'__collection_pending__');assert.equal(pending.risk[1],true);assert.equal('checked' in pending,false);assert.equal(pending.bytes,321);
 });

@@ -92,3 +92,17 @@ test('backup import requires consent, merges atomically and never automatically 
   assert.deepEqual(await restored.importBackup(backup.payload,{confirmed:true}),{added:1,duplicates:0});assert.deepEqual(await restored.importBackup(backup.payload,{confirmed:true}),{added:0,duplicates:1});
   assert.equal(second.sent.length,0);assert.deepEqual(second.state.entries,first.state.entries);runtime.close();restored.close();
 });
+
+test('bulk local removal validates every snapshot before one atomic write and preserves later additions',async()=>{
+  const f=fixture(),runtime=f.runtime(),a=await runtime.enqueue(request()),b=await runtime.enqueue({...request(),mutationId:'mutation-2'});
+  await assert.rejects(runtime.removeMany([a,b]),{code:'text_collection_sync_consent'});await runtime.enqueue({...request(),mutationId:'mutation-3'});
+  const result=await runtime.removeMany([a,b],{confirmed:true});assert.deepEqual(result,{removed:2,missing:0});assert.equal(f.state.entries[0].request.mutationId,'mutation-3');assert.equal(f.sent.length,0);
+  assert.deepEqual(await runtime.removeMany([a,b],{confirmed:true}),{removed:0,missing:2});runtime.close();
+});
+test('one stale snapshot, quota failure or duplicate ID cannot partially remove a pending batch',async()=>{
+  for(const mode of ['changed','quota','duplicate']){
+    const f=fixture(),runtime=f.runtime(),a=await runtime.enqueue(request()),b=await runtime.enqueue({...request(),mutationId:'mutation-2'});
+    if(mode==='changed'){f.mode='lost';await assert.rejects(runtime.submit(b.request.mutationId));}if(mode==='quota')f.failUpdate=3;
+    const before=f.state;await assert.rejects(runtime.removeMany(mode==='duplicate'?[a,a]:[a,b],{confirmed:true,acceptUnconfirmed:true}));assert.deepEqual(f.state,before);runtime.close();
+  }
+});

@@ -1,4 +1,4 @@
-import {createTextCollectionOutboxStore,createTextCollectionOutboxEntry,textCollectionOutboxEntry,textCollectionOutboxAccount,summarizeTextCollectionOutbox} from './qianmu-text-collection-outbox-store.js';
+import {createTextCollectionOutboxStore,createTextCollectionOutboxEntry,textCollectionOutboxEntry,textCollectionOutboxAccount,summarizeTextCollectionOutbox,validateTextCollectionOutbox} from './qianmu-text-collection-outbox-store.js';
 import {textCollectionSyncError as error,textCollectionSyncResponse,textCollectionSyncMutation} from './qianmu-text-collection-sync-contract.js';
 import {prepareTextCollectionOutboxBackup,mergeTextCollectionOutboxBackup} from './qianmu-text-collection-outbox-backup.js';
 
@@ -80,17 +80,20 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
       throw cause;
     }
   }
-  async function remove(input,{confirmed=false,acceptUnconfirmed=false}={}){
-    const snapshot=textCollectionOutboxEntry(input,namespace),id=snapshot.request.mutationId;let removed=false;
+  async function removeMany(inputs,{confirmed=false,acceptUnconfirmed=false}={}){
+    validateTextCollectionOutbox({version:1,namespace,entries:inputs},namespace);
+    const snapshots=new Map(inputs.map(row=>{const value=textCollectionOutboxEntry(row,namespace);return [value.request.mutationId,value];}));let removed=0;
     if(confirmed!==true)throw error('consent','请确认只移除此机待存原件');
-    if(snapshot.started&&snapshot.state!=='conflict'&&acceptUnconfirmed!==true)throw error('consent','原提交结果未知；移除本机待存不会取消或删除服务器保存');
+    if(inputs.some(row=>row.started&&row.state!=='conflict')&&acceptUnconfirmed!==true)throw error('consent','原提交结果未知；移除本机待存不会取消或删除服务器保存');
     await update(state=>{
-      if(active.has(id))throw error('busy','此待存仍在提交中，请等待后重新查看');
-      const at=state.entries.findIndex(row=>row.request.mutationId===id);if(at<0)return;
-      if(!same(state.entries[at],snapshot))throw error('local_conflict','待存状态已在另一页面变化，未移除；请刷新核对');
-      state.entries.splice(at,1);removed=true;
-    });return Object.freeze({removed});
+      for(const id of snapshots.keys())if(active.has(id))throw error('busy','此待存仍在提交中，请等待后重新查看');
+      for(const row of state.entries){const snapshot=snapshots.get(row.request.mutationId);if(!snapshot)continue;
+        if(!same(row,snapshot))throw error('local_conflict','待存状态已在另一页面变化，未移除；请刷新核对');removed++;
+      }
+      state.entries=state.entries.filter(row=>!snapshots.has(row.request.mutationId));
+    });return Object.freeze({removed,missing:snapshots.size-removed});
   }
+  async function remove(input,options){const result=await removeMany([input],options);return Object.freeze({removed:result.removed===1});}
   async function keepCopy(input,{confirmed=false,signal}={}){
     if(confirmed!==true)throw error('consent','请确认将冲突内容保留为独立新副本');
     const source=textCollectionOutboxEntry(input,namespace);await check();const request=await textCollectionConflictCopy(source,cryptoImpl);
@@ -111,6 +114,6 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
     await update(state=>{result=mergeTextCollectionOutboxBackup(state,payload);state.entries=result.state.entries;});
     return Object.freeze({added:result.added,duplicates:result.duplicates});
   }
-  return Object.freeze({namespace,enqueue,submit,save,remove,keepCopy,importBackup,backup:async()=>prepareTextCollectionOutboxBackup(await read(),{exportedAt:now()}),list:async()=>structuredClone((await read()).entries),summary:async()=>summarizeTextCollectionOutbox(await read()),
+  return Object.freeze({namespace,enqueue,submit,save,remove,removeMany,keepCopy,importBackup,backup:async()=>prepareTextCollectionOutboxBackup(await read(),{exportedAt:now()}),list:async()=>structuredClone((await read()).entries),summary:async()=>summarizeTextCollectionOutbox(await read()),
     close(){closed=true;for(const controller of controllers)controller.abort();if(ownsStore)store.close();}});
 }

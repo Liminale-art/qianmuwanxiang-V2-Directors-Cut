@@ -8526,7 +8526,7 @@ function bindStorageManagementEvents(root) {
     try {
       const selected = await openStorageCleanupDialog(inventory); cleanup.check();
       if (!selected?.length) return;
-      if(selected.includes('__collections__')){await collectionFloorTools.cleanupOriginals(root,confirmDialog,()=>cleanup.check(),inventory?.collectionStorage?.namespace,selected.length-1);cleanup.check();await refreshStorageInventory(true);return;}
+      if(selected.some(id=>['__collections__','__collection_pending__'].includes(id))){await collectionFloorTools.cleanupOriginals(root,confirmDialog,()=>cleanup.check(),inventory?.collectionStorage?.namespace,selected.length-1,!selected.includes('__collections__'));cleanup.check();await refreshStorageInventory(true);return;}
       if(selected.includes('__storyboard_restores__')){
         if(selected.length>1){
           const proceed=await confirmDialog('先管理恢复记录',`恢复记录需逐条确认。本次不会清理同时勾选的其他 ${selected.length-1} 项；完成后请重新选择。是否进入？`);
