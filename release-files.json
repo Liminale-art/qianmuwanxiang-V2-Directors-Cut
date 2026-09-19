@@ -49,6 +49,7 @@
     "qianmu-notes-sync-store.js",
     "qianmu-notes-sync-runtime.js",
     "qianmu-notes-sync-service.js",
+    "qianmu-account-document-files.js",
     "vendor/noble-hashes-2.4.0/blake3.js",
     "vendor/noble-hashes-2.4.0/blake2.js",
     "vendor/noble-hashes-2.4.0/_blake.js",
