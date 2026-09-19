@@ -14,7 +14,7 @@ await context.route('**/*',async route=>{const url=new URL(route.request().url()
 });
 async function boot(page){page.on('pageerror',error=>errors.push(error.message));await page.goto('https://qianmu.test/');await page.evaluate(async()=>{
  const {createProseAssistantHistoryStore}=await import('./qianmu-prose-assistant-history.js'),account='st-user:'+'a'.repeat(64),other='st-user:'+'b'.repeat(64);
- const key=(a=account,chatId='A')=>JSON.stringify(['qianmu-prose-assistant-v1',a,'char:A.png',{kind:'character',chatId,avatar:'A.png'},null]);
+ const key=(a=account,chatId='A')=>JSON.stringify(['qianmu-prose-assistant-v2',a,'char:A.png',{kind:'character',chatId,avatar:'A.png'},null]);
  const store=createProseAssistantHistoryStore();window.fixture={account,other,key,store,row(n=1){return {id:n,user:'问题\r\n😀',assistant:'<b>纯文本</b>',status:'complete',reference:{floor:0,replyId:'swipe:0',mode:'floor',range:{start:0,end:4}}};},read(){return store.read(account,key());},write(rev,rows,options){return store.write(account,key(),rev,rows,options);}};
  });}
 try{
@@ -62,16 +62,20 @@ try{
   fixture.rawPut=async value=>{const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('qianmu-prose-assistant-history',1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});try{await new Promise((resolve,reject)=>{const tx=db.transaction('accounts','readwrite');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);tx.objectStore('accounts').put(value);});}finally{db.close();}};
   // A corrupt foreign document must not even be visited by this account scan.
   await fixture.rawPut({namespace:fixture.key(fixture.other),privateText:'FOREIGN PRIVATE',invalid:true});
+  fixture.legacyKey=fixture.key().replace('assistant-v2','assistant-v1');await fixture.rawPut({version:1,namespace:fixture.legacyKey,revision:1,updatedAt:1,rows:[{...fixture.row(),assistant:'LEGACY UNKNOWN OWNER'}]});
   const originals=[await fixture.read(),await fixture.store.read(fixture.account,key)],expected=originals.reduce((sum,row)=>sum+new TextEncoder().encode(JSON.stringify(row)).byteLength,0),put=IDBObjectStore.prototype.put;
   try{IDBObjectStore.prototype.put=function(){throw Error('read-only inventory must not write');};return {summary:await fixture.store.usage(fixture.account),expected};}finally{IDBObjectStore.prototype.put=put;}
  });
  assert.equal(usage.summary.bytes,usage.expected);assert.equal(usage.summary.records,2);assert.equal(usage.summary.chats,1);assert.equal(usage.summary.markers,1);assert.equal(usage.summary.count,3);for(const name of ['complete','failed','cancelled'])assert.equal(usage.summary[name],1);
  assert.equal(usage.summary.estimated,true);assert.equal(usage.summary.scope,'current-account-local');assert.doesNotMatch(JSON.stringify(usage.summary),/FOREIGN|PRIVATE|问题|纯文本|Chat|apiKey/);
  checks.push('bounded read-only usage scans only the exact account prefix, counts UTF-8 records including clear markers, and returns no dialogue or file identifiers');
+ const legacy=await page.evaluate(async()=>{const db=await new Promise(resolve=>{const request=indexedDB.open('qianmu-prose-assistant-history',1);request.onsuccess=()=>resolve(request.result);});try{return await new Promise((resolve,reject)=>{const request=db.transaction('accounts','readonly').objectStore('accounts').get(fixture.legacyKey);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}finally{db.close();}});
+ assert.equal(legacy.rows[0].assistant,'LEGACY UNKNOWN OWNER');assert.deepEqual((await page.evaluate(()=>fixture.read())).rows,[]);
+ checks.push('legacy v1 raw-handle records are retained untouched but never adopted or counted as verified v2 digest ownership');
  const scannerCases=await page.evaluate(async()=>{
   const {createAccountLocalStore}=await import('./qianmu-account-local-store.js'),contract=await import('./qianmu-prose-assistant-history-contract.js');
   const scanner=createAccountLocalStore({dbName:'qianmu-prose-assistant-history',validateNamespace:contract.proseAssistantHistoryKey,validate:contract.validateProseAssistantHistory,empty:contract.emptyProseAssistantHistory,error:contract.proseAssistantHistoryError,label:'助手历史'});
-  const prefix=JSON.stringify(['qianmu-prose-assistant-v1',fixture.account]).slice(0,-1)+',',range=IDBKeyRange.bound(prefix,prefix+'\uffff'),codes=[];
+  const prefix=JSON.stringify(['qianmu-prose-assistant-v2',fixture.account]).slice(0,-1)+',',range=IDBKeyRange.bound(prefix,prefix+'\uffff'),codes=[];
   for(const mode of ['limit','guard','async','throw','close']){let live=true;try{await scanner.scan({range,limit:mode==='limit'?1:100,visit(){if(mode==='guard')live=false;if(mode==='async')return Promise.resolve();if(mode==='throw')throw Object.assign(Error(),{code:'test-visit'});if(mode==='close')scanner.close();}},{guard:()=>live});codes.push('unexpected success');}catch(error){codes.push(error.code);}}
   scanner.close();return codes;
  });

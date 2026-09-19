@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {captureProseAssistantSource as capture,PROSE_ASSISTANT_SOURCE_LIMIT} from '../qianmu-prose-assistant-source.js';
+import {createHash} from 'node:crypto';
+import {captureProseAssistantSource as capture,PROSE_ASSISTANT_SOURCE_LIMIT,proseAssistantAccountForNamespace} from '../qianmu-prose-assistant-source.js';
+import {resolveImageAccountNamespace} from '../qianmu-image-admission.js';
+import {proseAssistantHistoryKey} from '../qianmu-prose-assistant-history-contract.js';
 
 function fixture(){
   let account='st-user:alice',epoch=1,live=true;const emitter=new EventEmitter(),reads=[];
@@ -10,6 +13,26 @@ function fixture(){
   const options={getContext:()=>context,epoch:()=>epoch,resolveNamespace:async()=>account,isCurrent:()=>live,floor:0,readText:(message,floor)=>{reads.push(floor);assert.equal(message,context.chat[floor]);return '未选择\r\n正文😀\r\n后文不选';}};
   return {context,options,reads,emitter,set account(value){account=value;},set live(value){live=value;},changeEpoch(){epoch++;},listeners:()=>emitter.eventNames().reduce((n,type)=>n+emitter.listenerCount(type),0)};
 }
+
+test('actual host namespace resolver produces a handle which is explicitly digested before history partitioning',async()=>{
+ const namespace=await resolveImageAccountNamespace({loadUser:async()=>({currentUser:{handle:'普通用户'}}),fetchImpl:()=>assert.fail('verified handle needs no request')});assert.equal(namespace,'st-user:普通用户');
+ const f=fixture();f.account=namespace;const source=await capture(f.options),expected='st-user:'+createHash('sha256').update('普通用户').digest('hex');
+ assert.equal(source.scope.namespace,expected);assert.equal(proseAssistantHistoryKey(source.key,expected),source.key);assert.equal(JSON.parse(source.key)[0],'qianmu-prose-assistant-v2');assert.doesNotMatch(JSON.stringify(source),/普通用户/);source.close();assert.equal(f.listeners(),0);
+});
+
+test('literal hexadecimal handles are hashed exactly once as handles, never guessed to be existing fingerprints or legacy ownership',async()=>{
+ const hash=createHash('sha256').update('alice').digest('hex');assert.equal(await proseAssistantAccountForNamespace('st-user:alice'),'st-user:'+hash);
+ assert.equal(await proseAssistantAccountForNamespace('st-user:'+hash),'st-user:'+createHash('sha256').update(hash).digest('hex'));
+ assert.notEqual(await proseAssistantAccountForNamespace('st-user: alice '),await proseAssistantAccountForNamespace('st-user:alice'),'no handle normalization merges accounts');
+ const f=fixture(),source=await capture(f.options);assert.throws(()=>proseAssistantHistoryKey(source.key.replace('assistant-v2','assistant-v1')));source.close();
+});
+
+test('missing or failing crypto and scope changes while digesting fail closed and release borrowed listeners',async()=>{
+ for(const cryptoImpl of [null,{subtle:{digest:async()=>{throw Error('private crypto detail');}}},{subtle:{digest:async()=>new ArrayBuffer(1)}}]){
+  const f=fixture();await assert.rejects(capture({...f.options,cryptoImpl}),error=>{assert.equal(error.code,'prose_assistant_source');assert.doesNotMatch(error.message,/private/);return true;});assert.equal(f.listeners(),0);
+ }
+ const f=fixture();await assert.rejects(capture({...f.options,cryptoImpl:{subtle:{digest:async()=>{f.account='st-user:bob';return new ArrayBuffer(32);}}}}));assert.equal(f.listeners(),0);
+});
 test('explicit selection retains only supplied rendered text and immutable provenance, without scanning other floors or metadata',async()=>{
   const f=fixture(),before=structuredClone(f.context.chatMetadata),s=await capture({...f.options,range:{start:5,end:9}});
   assert.equal(s.reference.text,'正文😀');assert.deepEqual(f.reads,[0]);assert.equal(s.reference.replyId,'swipe:1');assert.equal(s.reference.mode,'selection');

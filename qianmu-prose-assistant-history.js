@@ -8,7 +8,7 @@ export function createProseAssistantHistoryStore({indexedDB=globalThis.indexedDB
   return Object.freeze({
     read(namespace,key,options){proseAssistantHistoryKey(key,namespace);return store.read(key,options);},
     async usage(namespace,{guard=()=>true}={}){
-      proseAssistantHistoryAccount(namespace);const prefix=JSON.stringify(['qianmu-prose-assistant-v1',namespace]).slice(0,-1)+',';let range;
+      proseAssistantHistoryAccount(namespace);const prefix=JSON.stringify(['qianmu-prose-assistant-v2',namespace]).slice(0,-1)+',';let range;
       try{range=keyRange.bound(prefix,prefix+'\uffff');}catch(_){throw error('storage','助手历史盘点不可用，未按零占用处理');}
       const summary={namespace,status:'ready',scope:'current-account-local',bytes:0,count:0,records:0,chats:0,markers:0,complete:0,failed:0,cancelled:0,estimated:true};
       await store.scan({range,limit:10000,visit(state,key){

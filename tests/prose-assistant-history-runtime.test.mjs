@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {openProseAssistantHistory as open} from '../qianmu-prose-assistant-history-runtime.js';
 import {emptyProseAssistantHistory,validateProseAssistantHistory} from '../qianmu-prose-assistant-history-contract.js';
-const account='st-user:'+'a'.repeat(64),key=JSON.stringify(['qianmu-prose-assistant-v1',account,'char:A.png',{kind:'character',chatId:'A',avatar:'A.png'},null]);
+const account='st-user:'+'a'.repeat(64),key=JSON.stringify(['qianmu-prose-assistant-v2',account,'char:A.png',{kind:'character',chatId:'A',avatar:'A.png'},null]);
 const row=(id=1)=>({id,user:'问题',assistant:'答案',status:'complete',reference:{floor:0,replyId:'swipe:0',mode:'floor',range:{start:0,end:2}}});
 const snapshot=(rows=[row()])=>({key,busy:false,rows});
 const deferred=()=>{let resolve;return {promise:new Promise(r=>{resolve=r;}),resolve};};

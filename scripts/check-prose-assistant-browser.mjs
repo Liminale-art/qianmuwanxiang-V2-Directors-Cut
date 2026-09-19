@@ -22,7 +22,7 @@ try{
     const listeners=new Map(),host={chatId:'A',characterId:0,characters:[{avatar:'A.png',chat:'A'}],chatMetadata:{},chat:[{mes:'前文',is_user:true},{mes:'未选\r\n正文😀\r下一行\r\n不选'}],
       eventSource:{on(type,handler){if(!listeners.has(type))listeners.set(type,new Set());listeners.get(type).add(handler);},removeListener(type,handler){listeners.get(type)?.delete(handler);}}};
     const fixture=window.fixture={host,listeners,live:true,mode:'ok',sent:[],copies:[],confirm:true};
-    fixture.source={getContext:()=>host,epoch:()=>0,resolveNamespace:async()=>'st-user:'+'a'.repeat(64),isCurrent:()=>fixture.live,readText:m=>m.mes,floor:1};
+    fixture.source={getContext:()=>host,epoch:()=>0,resolveNamespace:async()=>'st-user:fixture',isCurrent:()=>fixture.live,readText:m=>m.mes,floor:1};
     fixture.open=async(prompt='fixture-only prompt')=>{document.querySelector('#entry').focus();fixture.panel=await openProseAssistantPanel({parent:document.querySelector('#fixture'),source:fixture.source,
       profiles:[{id:'chosen',name:'Fixture <b>预设</b>',apiUrl:'https://model.invalid/v1',apiKey:'fixture-key',model:'fixture-model'}],systemPrompt:prompt,isCurrent:()=>fixture.live,
       getRequestHeaders:()=>({'X-CSRF-Token':'fixture'}),copy:async text=>{fixture.copies.push(text);},confirm:async()=>fixture.confirm,

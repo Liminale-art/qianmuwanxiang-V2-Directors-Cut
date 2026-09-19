@@ -12,7 +12,7 @@ const account=value=>{if(typeof value!=='string'||!/^st-user:[a-f0-9]{64}$/.test
 export function proseAssistantHistoryKey(value,namespace){
   if(typeof value!=='string'||value.length>4096)fail();let tuple;
   try{tuple=JSON.parse(value);}catch(_){fail();}
-  if(!Array.isArray(tuple)||tuple.length!==5||tuple[0]!=='qianmu-prose-assistant-v1')fail();
+  if(!Array.isArray(tuple)||tuple.length!==5||tuple[0]!=='qianmu-prose-assistant-v2')fail();
   const [,ownerAccount,owner,raw,integrity]=tuple;account(ownerAccount);if(namespace!==undefined&&ownerAccount!==account(namespace))fail();
   let target;try{target=chatFileTarget(raw);}catch(_){fail();}
   if(target.kind==='character'?owner!=='char:'+target.avatar:!text(owner,518)||!/^group:.+/.test(owner)||/[\u0000-\u001f\u007f]/.test(owner))fail();

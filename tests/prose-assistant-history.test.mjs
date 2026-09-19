@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {proseAssistantHistoryKey as key,emptyProseAssistantHistory as empty,validateProseAssistantHistory as validate,createProseAssistantHistoryStore as create} from '../qianmu-prose-assistant-history.js';
 import {measureProseAssistantHistory as measure} from '../qianmu-prose-assistant-history-contract.js';
 const account='st-user:'+'a'.repeat(64),other='st-user:'+'b'.repeat(64);
-const id=(accountId=account,owner='char:A.png',target={kind:'character',chatId:'Chat A',avatar:'A.png'},integrity=null)=>JSON.stringify(['qianmu-prose-assistant-v1',accountId,owner,target,integrity]);
+const id=(accountId=account,owner='char:A.png',target={kind:'character',chatId:'Chat A',avatar:'A.png'},integrity=null)=>JSON.stringify(['qianmu-prose-assistant-v2',accountId,owner,target,integrity]);
 const row=()=>({id:1,user:'问题\r\n😀',assistant:'<b>纯文本回复</b>',status:'complete',reference:{floor:0,replyId:'swipe:1',mode:'selection',range:{start:3,end:5}}});
 const state=()=>({...empty(id()),revision:1,updatedAt:1,rows:[row()]});
 test('exact account/owner/file/integrity partition is stable while same-name roles, group zero and cloned files remain separate',()=>{
@@ -11,6 +11,7 @@ test('exact account/owner/file/integrity partition is stable while same-name rol
  for(const value of [id(other),id(account,'char:B.png',{kind:'character',chatId:'Chat A',avatar:'B.png'}),id(account,'char:A.png',{kind:'character',chatId:'Chat B',avatar:'A.png'}),id(account,'char:A.png',undefined,'integrity')])assert.notEqual(value,id());
  assert.throws(()=>key(id(other),account));assert.throws(()=>key(id(account,'char:wrong.png')));assert.throws(()=>key(id(account,'group:',{kind:'group',chatId:'Chat A'})));
  assert.throws(()=>key(id().replace('null]','null,1]')));assert.throws(()=>key(id().replace('"kind":"character"','"kind":"character","kind":"character"')));
+ assert.throws(()=>key(id().replace('qianmu-prose-assistant-v2','qianmu-prose-assistant-v1')),'legacy raw-handle keys cannot be adopted as hashed ownership');
 });
 test('completed and stopped records preserve literal Unicode and references without automatically resuming a running request',()=>{
  const value=state();value.rows.push({...row(),id:3,assistant:'半截',status:'cancelled'}, {...row(),id:4,assistant:'',status:'failed',reference:null});assert.equal(validate(value,id()),value);

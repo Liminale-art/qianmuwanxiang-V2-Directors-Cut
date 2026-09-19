@@ -45,7 +45,7 @@ test('malformed reader results and invalid bounds fail closed; snapshots survive
 });
 
 test('late changes to caller history cannot rewrite the already captured reference summary',async()=>{
-  const f=fixture(),seed=await capture(f.options),history={key:seed.key,turns:[{user:'Q',assistant:'A'}]};seed.close();let calls=0;
-  const s=await capture({...f.options,history,resolveNamespace:async()=>{if(++calls===3)history.turns.length=0;return 'st-user:alice';}});
+  const f=fixture(),seed=await capture(f.options),history={key:seed.key,turns:[{user:'Q',assistant:'A'}]};seed.close();let previousRead=false;
+  const s=await capture({...f.options,history,readText:(message,floor)=>{if(floor<8)previousRead=true;return f.options.readText(message,floor);},resolveNamespace:async()=>{if(previousRead)history.turns.length=0;return 'st-user:alice';}});
   assert.equal(s.history.length,1);assert.equal(s.summary.historyPairs,1);assert.equal(s.summary.historyOmitted,0);s.close();
 });
