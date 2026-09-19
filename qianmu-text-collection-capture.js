@@ -22,6 +22,7 @@ export async function openPersistentTextCollectionCapture({parent,source,resolve
         // Account loss closes the old chooser; ordinary connection errors retain
         // the draft so an explicit retry can confirm the same operation.
         try{await session.guard();}catch{chooser?.stop();}
+        if(record.schemaVersion===3&&cause?.code==='text_collection_sync_contract')cause.message='后端未接受编辑收录格式，请确认已同步更新千幕后端；本机稿件保留，勿清库或降级丢弃修改。';
         throw cause;
       }
     }});

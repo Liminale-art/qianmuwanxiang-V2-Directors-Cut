@@ -21,6 +21,7 @@ await context.route('**/*', async route => {
         assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
         if(apiMode==='missing')return route.fulfill({status:404,contentType:'application/json',body:'{}'});
         if(apiMode==='fail')return route.abort('failed');
+        if(apiMode==='legacy')return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({ok:false,version:1,code:'text_collection_sync_contract',message:'收藏记录无效',writeState:'not_started'})});
         const body=JSON.stringify({ok:true,version:1,expectedAccount:request.expectedAccount,libraryRevision:1,mutationId:request.mutationId,id:apiMode==='wrong'?'wrong-id':request.id,revision:1,updatedAt:request.record.updatedAt});
         const release=()=>route.fulfill({contentType:'application/json',body}).catch(()=>{});
         if(apiMode==='hold'){held=release;return;}return release();
@@ -157,12 +158,29 @@ try {
     await page.evaluate(() => { fixture.source = fixture.originalSource; });
     checks.push('a selection crossing multiple CRLFs and a lone CR preserves exact original line breaks');
 
+    await page.evaluate(()=>{fixture.mode='ok';fixture.open();});await action('full').click();await action('edit').click();
+    assert.equal(await page.getByLabel('编辑收藏文字').getAttribute('readonly'),null);await action('save').click();await page.waitForFunction(()=>fixture.completed!=='pending');
+    assert.equal(await page.evaluate(()=>fixture.writes[0].schemaVersion),1);assert.equal(await page.evaluate(()=>fixture.writes[0].text),await page.evaluate(()=>fixture.raw));
+    checks.push('opening full-text editor without changing content preserves original CRLF and legacy unedited schema');
+    await page.evaluate(()=>{fixture.mode='fail';fixture.open();});await action('selection').click();assert.equal(await action('edit').isDisabled(),true);
+    await page.locator('[data-collection-text]').evaluate(input=>{input.focus();const start=input.value.indexOf('记住');input.setSelectionRange(start,start+'记住这一刻😀'.length);input.dispatchEvent(new Event('select'));});
+    await action('edit').click();assert.equal(await page.getByLabel('编辑收藏文字').inputValue(),'记住这一刻😀');await page.getByLabel('编辑收藏文字').fill('  ');assert.equal(await action('save').isDisabled(),true);
+    await page.getByLabel('编辑收藏文字').fill('改写后的珍藏\n😀<b>仅文本</b>');await action('save').click();await page.waitForFunction(()=>document.querySelector('[data-collection-status]').textContent.includes('稿件已锁定'));
+    const editedDraft=await page.evaluate(()=>fixture.writes[0]);assert.equal(editedDraft.schemaVersion,3);assert.equal(editedDraft.text,'改写后的珍藏\n😀<b>仅文本</b>');assert.deepEqual(editedDraft.range,{start:6,end:13});assert.doesNotMatch(JSON.stringify(editedDraft),/未选前文|未选后文/);
+    assert.equal(await page.getByLabel('编辑收藏文字').evaluate(node=>node.readOnly),true);assert.equal(await action('back').isDisabled(),true);assert.equal(await page.locator('dialog b').count(),0);
+    await page.evaluate(()=>{fixture.mode='ok';document.querySelector('[data-collection-text]').value='script change must not replace pending draft';});await action('save').click();await page.waitForFunction(()=>fixture.completed!=='pending');assert.deepEqual(await page.evaluate(()=>fixture.writes[1]),editedDraft);
+    checks.push('selection editor saves only edited plaintext with original range, rejects blanks and locks failed submission to the exact same draft and ID');
+    await page.evaluate(()=>fixture.open());await action('full').click();await action('edit').click();await page.getByLabel('编辑收藏文字').fill('discard this draft');assert.equal(await action('back').textContent(),'放弃重选');await action('back').click();await action('full').click();await action('save').click();await page.waitForFunction(()=>fixture.completed!=='pending');assert.equal(await page.evaluate(()=>fixture.writes[0].text),await page.evaluate(()=>fixture.raw));
+    checks.push('explicit abandon-and-reselect discards only the unsent edited copy and never changes the captured source');
+
     for (const width of [320, 393, 1280]) {
         await page.setViewportSize({ width, height: 850 });
         await page.evaluate(() => { fixture.mode = 'ok'; fixture.open(); });
         await action('selection').click();
         const layout = await page.locator('dialog').evaluate(node => ({ width: node.getBoundingClientRect().width, scroll: node.scrollWidth, client: node.clientWidth }));
         assert.ok(layout.width <= width && layout.scroll <= layout.client + 1, JSON.stringify(layout));
+        await action('back').click();await action('full').click();await action('edit').click();await page.getByLabel('编辑收藏文字').fill('修改稿😀'.repeat(100));
+        const editorLayout=await page.locator('dialog').evaluate(node=>({width:node.getBoundingClientRect().width,scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(editorLayout.width<=width&&editorLayout.scroll<=editorLayout.client+1,JSON.stringify(editorLayout));
         await action('cancel').click();
         await page.evaluate(() => {
             document.getElementById('fixture').replaceChildren();
@@ -225,6 +243,11 @@ try {
     apiMode='ok';await action('save').click();await page.waitForFunction(()=>fixture.completed!=='pending');assert.deepEqual(writes.at(-1),retryRequest);
     assert.equal((await page.evaluate(account=>fixture.readPending(account),retryRequest.expectedAccount)).length,0);
     checks.push('failed selected-text save keeps the same mutation and collection IDs through an explicit UI retry without hidden full text');
+    apiMode='legacy';await page.evaluate(()=>fixture.openPersistent());await action('full').click();await action('edit').click();await page.getByLabel('编辑收藏文字').fill('旧后端也不能丢掉的编辑稿😀');await action('save').click();
+    await page.waitForFunction(()=>document.querySelector('[data-collection-status]').textContent.includes('同步更新千幕后端'));const editedRequest=structuredClone(writes.at(-1));assert.equal(editedRequest.record.schemaVersion,3);assert.match(await page.locator('[data-collection-status]').textContent(),/本机待存已保留/);
+    assert.deepEqual((await page.evaluate(account=>fixture.readPending(account),editedRequest.expectedAccount))[0].request,editedRequest);
+    apiMode='ok';await action('save').click();await page.waitForFunction(()=>fixture.completed!=='pending');assert.deepEqual(writes.at(-1),editedRequest);assert.equal((await page.evaluate(account=>fixture.readPending(account),editedRequest.expectedAccount)).length,0);
+    checks.push('older backend refusal retains the edited pending original, explains updating, and explicit retry sends identical edited schema without downgrade');
     for(const mode of ['missing','wrong']){
         apiMode=mode;await page.evaluate(()=>fixture.openPersistent());await action('full').click();await action('save').click();
         await page.waitForFunction(()=>document.querySelector('[data-collection-status]').textContent.includes('未确认保存成功'));

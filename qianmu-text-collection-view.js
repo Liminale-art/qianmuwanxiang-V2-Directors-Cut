@@ -1,4 +1,4 @@
-import { captureTextCollectionSource, createTextCollection, textCollectionRecord, textCollectionListLabel, textCollectionPreview } from './qianmu-text-collection.js';
+import { captureTextCollectionSource, createTextCollection, textCollectionRecord, textCollectionListLabel, textCollectionPreview, textCollectionText } from './qianmu-text-collection.js';
 import { notesSyncOperationId } from './qianmu-notes-sync-contract.js';
 import { createPlainTextRangeMapper } from './qianmu-plain-text-range.js';
 
@@ -15,7 +15,7 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
     dialog.setAttribute('aria-label', '收藏正文');
     const controller = new view.AbortController();
     const previouslyFocused = document.activeElement;
-    let closed = false, pending = false, mode = null, draft = null, start = 0, end = 0, resolve;
+    let closed = false, pending = false, mode = null, draft = null, editing = false, start = 0, end = 0, resolve;
     const finished = new Promise(done => { resolve = done; });
     const listeners = [];
     const listen = (target, name, handler) => {
@@ -46,8 +46,8 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
     main.append(choices, preview);
     const footer = element('footer'), status = element('p'), actions = element('div', undefined, 'qm-text-collection-actions');
     status.dataset.collectionStatus = ''; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-    const back = button('返回选择', 'back'), save = button('保存收藏', 'save');
-    save.className = 'qm-text-collection-save'; actions.append(back, save); actions.hidden = true;
+    const back = button('返回选择', 'back'), edit = button('编辑收藏', 'edit'), save = button('保存收藏', 'save');
+    save.className = 'qm-text-collection-save'; actions.append(back, edit, save); actions.hidden = true;
     footer.append(status, actions); dialog.append(header, main, footer);
 
     function finish(result) {
@@ -73,12 +73,19 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
         return mode && Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end <= captured.text.length && end > start && rangeMapper.isBoundary(start) && rangeMapper.isBoundary(end) && captured.text.slice(start, end).trim().length > 0;
     }
     function controls() {
-        save.disabled = pending || !rangeValid();
-        back.disabled = pending; textarea.disabled = pending;
+        let valid=true;if(editing)try{textCollectionText(editedValue());}catch{valid=false;}
+        save.disabled = pending || !rangeValid() || !valid;
+        edit.disabled=pending||Boolean(draft)||!rangeValid();edit.hidden=editing;
+        back.disabled = pending || Boolean(draft); textarea.disabled = pending;textarea.readOnly=!editing||Boolean(draft);
         dialog.setAttribute('aria-busy', String(pending));
     }
+    function editedValue(){
+        const original=captured.text.slice(start,end);
+        // Textareas normalize line endings; merely opening the editor is not an edit.
+        return textarea.value===original.replace(/\r\n?/g,'\n')?original:textarea.value;
+    }
     function captureSelection() {
-        if (!alive() || pending || mode !== 'selection') return;
+        if (!alive() || pending || editing || draft || mode !== 'selection') return;
         // Mobile selection handles may collapse after a button takes focus.
         // Only the focused textarea can change the cached range; saving uses
         // that cache after focus leaves it instead of replacing it on blur.
@@ -90,7 +97,8 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
         controls();
     }
     function choose(nextMode) {
-        mode = nextMode; draft = null; start = 0; end = mode === 'full' ? captured.text.length : 0;
+        mode = nextMode; draft = null; editing = false; start = 0; end = mode === 'full' ? captured.text.length : 0;
+        back.textContent='返回选择';textarea.setAttribute('aria-label','正文纯文本');
         choices.hidden = true; preview.hidden = false; actions.hidden = false;
         textarea.value = captured.text;
         instruction.textContent = mode === 'full' ? '将保存本层全文；原文保持不变。' : '在下方正文中选择需要收藏的文字。';
@@ -103,7 +111,7 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
         // pointer activation already captured the range before focus moved.
         captureSelection(); if (!rangeValid()) return;
         try {
-            draft ??= createTextCollection({ id: notesSyncOperationId(view.crypto), source: captured, mode, ...(mode === 'selection' ? { start, end } : {}), createdAt: Date.now() });
+            draft ??= createTextCollection({ id: notesSyncOperationId(view.crypto), source: captured, mode, ...(mode === 'selection' ? { start, end } : {}), ...(editing ? {text:editedValue()} : {}), createdAt: Date.now() });
         } catch (_) { status.textContent = '无法创建收藏，请重新选择后重试。'; return; }
         pending = true; controls(); status.textContent = '正在保存…';
         try {
@@ -120,17 +128,22 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
             status.textContent = '未确认保存成功。可重试或取消；重试会沿用本次收藏标识。';
             if (cause?.localSaved === true) status.textContent = '服务器未确认保存成功；本机待存已保留，刷新后仍在此设备。可重试，关闭不会删除待存。';
             if (/^text_collection_sync_[a-z_]+$/.test(cause?.code || '') && typeof cause.message === 'string' && cause.message.length <= 240) status.textContent += ` ${cause.message}`;
-            if (mode === 'selection') textarea.setSelectionRange(rangeMapper.toDisplay(start), rangeMapper.toDisplay(end));
+            status.textContent+=' 本次稿件已锁定，重试沿用同一内容；仍可复制文字。';
+            if (!editing && mode === 'selection') textarea.setSelectionRange(rangeMapper.toDisplay(start), rangeMapper.toDisplay(end));
         }
     }
     listen(dialog, 'click', event => {
         const action = event.target.closest?.('[data-collection-action]')?.dataset.collectionAction;
         if (action === 'cancel') { stop(); return; }
         if (!alive() || pending) return;
-        if (action === 'full' || action === 'selection') choose(action);
+        if (action === 'full' || action === 'selection') {if(!draft)choose(action);}
         else if (action === 'save') void submit();
-        else if (action === 'back') {
-            mode = null; draft = null; start = 0; end = 0;
+        else if (action === 'edit' && !draft && !editing) {
+            captureSelection();if(!rangeValid())return;editing=true;textarea.value=captured.text.slice(start,end);textarea.setAttribute('aria-label','编辑收藏文字');
+            instruction.textContent='只修改收藏副本，不改变正文或原选段范围。返回重选会放弃本次修改。';back.textContent='放弃重选';controls();textarea.focus({preventScroll:true});textarea.setSelectionRange(0,0);
+        }
+        else if (action === 'back' && !draft) {
+            mode = null; draft = null; editing = false; start = 0; end = 0;
             choices.hidden = false; preview.hidden = true; actions.hidden = true;
             textarea.value = ''; status.textContent = '';
             choices.querySelector('button').focus({ preventScroll: true });
@@ -140,6 +153,8 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
     // No preventDefault or propagation suppression is applied to these events.
     for (const name of ['select', 'keyup', 'pointerup', 'touchend']) listen(textarea, name, captureSelection);
     listen(save, 'pointerdown', captureSelection);
+    listen(edit, 'pointerdown', captureSelection);
+    listen(textarea,'input',()=>{if(alive()&&!pending&&editing&&!draft){status.textContent='';controls();}});
     listen(dialog, 'cancel', event => { event.preventDefault(); stop(); });
     listen(dialog, 'close', stop); listen(view, 'pagehide', stop);
     const observer = new view.MutationObserver(() => { if (!parent.isConnected || !dialog.isConnected) stop(); });
