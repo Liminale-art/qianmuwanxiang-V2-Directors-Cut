@@ -45,7 +45,8 @@ try{
   await page.evaluate(async()=>{
     const {createTextCollectionFloorTools}=await import('./qianmu-text-collection-floor.js');
     window.fixture={namespace:'st-user:alice',current:true,consent:true,copied:null,escaped:0};
-    fixture.floorTools=createTextCollectionFloorTools({getContext:()=>({chat:[]}),getChatKey:()=>{throw Error('library must not need a chat');},names:()=>{throw Error('library must not borrow current names');},resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'})});
+    fixture.pendingDownloads=[];
+    fixture.floorTools=createTextCollectionFloorTools({getContext:()=>({chat:[]}),getChatKey:()=>{throw Error('library must not need a chat');},names:()=>{throw Error('library must not borrow current names');},resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'}),download:async(blob,name)=>fixture.pendingDownloads.push({name,payload:JSON.parse(await blob.text())})});
     fixture.open=async()=>{fixture.namespace='st-user:alice';fixture.current=true;fixture.host=document.createElement('section');document.getElementById('fixture').append(fixture.host);
       fixture.host.addEventListener('keydown',event=>{if(event.key==='Escape'){fixture.escaped++;fixture.host.remove();}});
       fixture.ui=await fixture.floorTools.openLibrary(fixture.host,async(...args)=>{fixture.lastConfirm=args;return fixture.holdConfirm?new Promise(resolve=>{fixture.acceptConfirm=resolve;}):fixture.consent;},async text=>{fixture.copied=text;});};
@@ -236,6 +237,31 @@ try{
   const newCopy=(await service.get(request,{version:1,expectedAccount,id:copyRequest.id})).record;assert.equal(newCopy.text,'不要丢失的本机修改');assert.equal(newCopy.restoredFrom.revision,2);assert.equal(newCopy.restoredFrom.id,'collection-50');assert.equal(newCopy.createdAt,pending[0].base.createdAt);assert.equal(newCopy.source.charName,pending[0].base.source.charName);
   assert.equal((await service.get(request,{version:1,expectedAccount,id:'collection-50'})).record,null);assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,3);
   checks.push('explicit conflict copy preserves draft/source/date through old-backend rejection and lost receipts, creates only one copy and never resurrects the deleted original');
+  const pendingStatus=()=>pendingRoot.locator('[data-pending-status]').textContent(),beforeBackup=writes.length;
+  await page.evaluate(()=>{fixture.consent=false;});await pendingButton('export').click();await pendingReady();assert.match(await pendingStatus(),/未导出/);assert.equal(await page.evaluate(()=>fixture.pendingDownloads.length),0);
+  assert.match(await page.evaluate(()=>fixture.lastConfirm[1]),/私人正文.*未加密.*不是服务器已确认/);
+  await page.evaluate(()=>{fixture.consent=true;});await pendingButton('export').click();await pendingReady();assert.match(await pendingStatus(),/已发起.*请确认浏览器/);
+  const localBackup=await page.evaluate(()=>fixture.pendingDownloads[0]);assert.match(localBackup.name,/^qianmu-text-collection-outbox-.*\.json$/);assert.equal(localBackup.payload.entries.length,49);assert.equal(localBackup.payload.type,'qianmu-text-collection-outbox');assert.equal(writes.length,beforeBackup);
+  checks.push('pending export requires privacy confirmation and starts a distinct plain-text backup without removing local originals or submitting');
+  const fileInput=pendingRoot.locator('input[type="file"]');
+  const choosePending=async value=>{await fileInput.setInputFiles({name:'待存.json',mimeType:'application/json',buffer:Buffer.from(typeof value==='string'?value:JSON.stringify(value))});await pendingReady();};
+  await choosePending('{');assert.match(await pendingStatus(),/备份未导入/);
+  await choosePending({...localBackup.payload,namespace:'st-user:'+'b'.repeat(64),entries:[]});assert.match(await pendingStatus(),/另一账户/);
+  await page.evaluate(()=>{fixture.consent=false;});await choosePending(localBackup.payload);assert.match(await pendingStatus(),/未导入/);
+  await page.evaluate(()=>{fixture.consent=true;});await choosePending(localBackup.payload);assert.match(await pendingStatus(),/已导入本机待存 0 条，已有 49 条；未向服务器提交/);
+  await choosePending(localBackup.payload);assert.match(await pendingStatus(),/已有 49 条/);assert.equal(writes.length,beforeBackup);
+  const newPendingPayload={...localBackup.payload,entries:[{request:make('collection-500'),base:null,queuedAt:1,started:false,state:'pending'}]};
+  await choosePending(newPendingPayload);assert.match(await pendingStatus(),/已导入本机待存 1 条，已有 0 条/);assert.equal(await pendingRoot.locator('[data-pending-id]').count(),50);assert.equal(writes.length,beforeBackup);
+  checks.push('pending import rejects invalid or foreign backups, honors cancellation and repeated same-account import adds no duplicates or submissions');
+  for(const width of [320,393,1280]){await page.setViewportSize({width,height:650});const size=await pendingRoot.evaluate(n=>({width:n.getBoundingClientRect().width,scroll:n.scrollWidth,client:n.clientWidth}));assert.ok(size.width<=width&&size.scroll<=size.client+1);assert.ok(await pendingButton('export').isVisible());}
+  checks.push('pending backup controls remain visible without horizontal overflow on narrow and desktop layouts');
+  await page.evaluate(()=>{fixture.holdConfirm=true;fixture.acceptConfirm=null;});await pendingButton('export').click();await page.waitForFunction(()=>typeof fixture.acceptConfirm==='function');
+  await page.evaluate(()=>{fixture.namespace='st-user:bob';fixture.acceptConfirm(true);fixture.holdConfirm=false;});await page.waitForFunction(()=>!document.querySelector('[data-collection-outbox]'));assert.equal(await page.evaluate(()=>fixture.pendingDownloads.length),1);
+  await button('close').click();await page.evaluate(()=>fixture.open());await ready();await button('pending').click();await pendingReady();
+  const cancelledImport={...newPendingPayload,entries:[{...newPendingPayload.entries[0],request:make('collection-501')}]};
+  await page.evaluate(()=>{fixture.holdConfirm=true;fixture.acceptConfirm=null;});await fileInput.setInputFiles({name:'待存.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(cancelledImport))});await page.waitForFunction(()=>typeof fixture.acceptConfirm==='function');
+  await pendingButton('close').click();await page.evaluate(()=>{fixture.acceptConfirm(true);fixture.holdConfirm=false;});await ready();await button('pending').click();await pendingReady();assert.match(await pendingStatus(),/本机待存 50 条/);assert.equal(writes.length,beforeBackup);
+  checks.push('account change during export confirmation and closing during import confirmation prevent stale downloads or imports');
   await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
   checks.push('owner disposal closes both nested pending and library dialogs without removing device originals');
   assert.equal(external,0);assert.deepEqual(errors,[]);

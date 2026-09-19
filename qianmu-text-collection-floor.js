@@ -1,5 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent}={}){
+export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   const floorOf=node=>{const raw=node?.getAttribute('mesid')??node?.dataset?.messageId;return raw!==undefined&&raw!==null&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null;};
   const current=()=>root?.isConnected&&isCurrent()===true;
@@ -42,7 +42,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     try{
       stylesheet(document);portal.dataset.qmTextCollectionPortal='';parent.append(portal);entry.detach=mountPortal?.(portal);
       const runtime=await import('./qianmu-text-collection-library.js');if(!valid()){closeLibrary(entry);return null;}
-      entry.view=await runtime.openTextCollectionLibrary({parent:portal,resolveNamespace,isCurrent:valid,headers,confirm,copy});
+      entry.view=await runtime.openTextCollectionLibrary({parent:portal,resolveNamespace,isCurrent:valid,headers,confirm,copy,download});
       entry.view.finished.then(()=>closeLibrary(entry));return entry.view;
     }catch(cause){if(valid())notify?.(String(cause?.message||'收藏管理暂不可用').slice(0,240),'warning');closeLibrary(entry);return null;}
   }

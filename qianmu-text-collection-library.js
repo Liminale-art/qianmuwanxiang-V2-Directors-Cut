@@ -3,7 +3,7 @@ import {createTextCollectionOutboxRuntime} from './qianmu-text-collection-outbox
 import {textCollectionDisplayLabel,textCollectionListLabel,textCollectionRecord,TEXT_COLLECTION_LIMITS} from './qianmu-text-collection.js';
 
 // Account originals only. Browsing never loads a chat, resolves a character or fetches every text body.
-export async function openTextCollectionLibrary({parent,resolveNamespace,isCurrent,headers,confirm,copy}={}){
+export async function openTextCollectionLibrary({parent,resolveNamespace,isCurrent,headers,confirm,copy,download}={}){
   const document=parent?.ownerDocument,view=document?.defaultView;
   if(!parent?.isConnected||typeof isCurrent!=='function'||typeof confirm!=='function')throw TypeError('收藏管理环境不可用');
   let closed=false,busy=false,record=null,operation=null,pendingText=null,pendingView=null,pageIndex=0,cursors=[null],nextCursor=null,searchValue='',resolve;
@@ -67,7 +67,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     await run(async()=>{
       if(action==='pending'){
         const module=await import('./qianmu-text-collection-outbox-view.js');if(!current())return;
-        pendingView=module.openTextCollectionOutbox({parent,session,outbox,isCurrent:current,copy,confirm});
+        pendingView=module.openTextCollectionOutbox({parent,session,outbox,isCurrent:current,copy,confirm,download});
         try{await pendingView.finished;}finally{pendingView?.dispose();pendingView=null;}
         if(current())status.textContent='待存查看已关闭；可刷新服务器列表核对已确认的收藏';return;
       }
