@@ -52,6 +52,7 @@
     "qianmu-account-document-files.js",
     "qianmu-text-collection.js",
     "qianmu-text-collection-floor.js",
+    "qianmu-text-collection-library.js",
     "qianmu-text-collection-capture.js",
     "qianmu-text-collection-session.js",
     "qianmu-text-collection-client.js",

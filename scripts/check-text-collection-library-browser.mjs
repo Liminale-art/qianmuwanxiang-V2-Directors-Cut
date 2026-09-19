@@ -15,13 +15,14 @@ const service=createTextCollectionSyncService({dataRoot:root});
 const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'create',id,baseRevision:0,record:createTextCollection({id,mode:'full',createdAt:Date.UTC(2026,8,19)+Number(id.split('-')[1]||0),
   source:{account:expectedAccount,chatId:'deleted-chat',messageId:0,replyId:'old-reply',charName:'当时角色',userName:'<旧用户>',text:`收藏原文 ${id}\r\n不依赖聊天`}})});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
-const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js',...['library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
+const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js',...['floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'){
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><main id="fixture"></main>'});
+    if(url.pathname==='/qianmu-text-collection.css')return route.fulfill({contentType:'text/css',body:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
     const file=url.pathname.slice(1);if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(new URL('../'+file,import.meta.url),'utf8')});
     const action=url.pathname.split('/').at(-1);
     if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','write'].includes(action)&&route.request().method()==='POST'){
@@ -38,15 +39,18 @@ const button=name=>page.locator(`[data-collection-manage="${name}"]`),status=()=
 const ready=()=>page.waitForFunction(()=>document.querySelector('dialog')?.getAttribute('aria-busy')==='false');
 try{
   for(let i=0;i<51;i++)await service.write(request,make(`collection-${i}`));
-  await page.goto('https://qianmu.test/');await page.addStyleTag({content:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
+  await page.goto('https://qianmu.test/');await page.addStyleTag({content:await fs.readFile(new URL('../style.css',import.meta.url),'utf8')});await page.addStyleTag({content:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
   await page.evaluate(async()=>{
-    const {openTextCollectionLibrary}=await import('./qianmu-text-collection-library.js');
-    window.fixture={namespace:'st-user:alice',current:true,consent:true,copied:null};
+    const {createTextCollectionFloorTools}=await import('./qianmu-text-collection-floor.js');
+    window.fixture={namespace:'st-user:alice',current:true,consent:true,copied:null,escaped:0};
+    fixture.floorTools=createTextCollectionFloorTools({getContext:()=>({chat:[]}),getChatKey:()=>{throw Error('library must not need a chat');},names:()=>{throw Error('library must not borrow current names');},resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'})});
     fixture.open=async()=>{fixture.namespace='st-user:alice';fixture.current=true;fixture.host=document.createElement('section');document.getElementById('fixture').append(fixture.host);
-      fixture.ui=await openTextCollectionLibrary({parent:fixture.host,resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'}),confirm:async()=>fixture.consent,copy:async text=>{fixture.copied=text;}});};
+      fixture.host.addEventListener('keydown',event=>{if(event.key==='Escape'){fixture.escaped++;fixture.host.remove();}});
+      fixture.ui=await fixture.floorTools.openLibrary(fixture.host,async()=>fixture.consent,async text=>{fixture.copied=text;});};
     await fixture.open();
   });await ready();
   assert.equal(await page.locator('[data-collection-id]').count(),50);assert.equal(reads,0);assert.match(await status(),/51.*第 1 页/);
+  await page.evaluate(()=>fixture.floorTools.openLibrary(fixture.host,async()=>true));assert.equal(await page.locator('dialog').count(),1);
   await button('next').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),1);assert.equal(await button('next').isDisabled(),true);
   await button('prev').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),50);
   checks.push('50-item pages use summary-only reads with correct previous/next controls');
@@ -63,6 +67,7 @@ try{
   await button('save').click();await ready();assert.match(await status(),/其他设备变更/);assert.equal(await page.locator('[data-collection-editor]').inputValue(),'不要丢失的本机修改');
   await page.evaluate(()=>{fixture.consent=false;});await button('reload').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'不要丢失的本机修改');
   await button('close').click();assert.equal(await page.locator('dialog').count(),1);
+  await page.locator('[data-collection-editor]').focus();await page.keyboard.press('Escape');assert.equal(await page.locator('dialog').count(),1);assert.equal(await page.evaluate(()=>fixture.escaped),0);
   await page.evaluate(()=>{fixture.consent=true;});await button('reload').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'另一端修改');
   checks.push('revision conflicts preserve the local draft and explicit discard confirmation gates reload or close');
   await button('delete').click();await ready();assert.match(await status(),/已删除收藏/);
@@ -86,6 +91,11 @@ try{
   await page.evaluate(()=>{fixture.namespace='st-user:bob';});await button('refresh').click();await page.waitForFunction(()=>!document.querySelector('dialog'));
   await page.evaluate(()=>fixture.open());await ready();await page.evaluate(()=>fixture.host.remove());await page.waitForFunction(()=>!document.querySelector('dialog'));
   checks.push('account change and parent disposal close the old library without adopting another account');
+  await page.evaluate(()=>fixture.open());await ready();
+  await page.evaluate(()=>{const chat=document.createElement('div');document.body.append(chat);fixture.floorTools.refresh(chat);});assert.equal(await page.locator('dialog').count(),1);
+  await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
+  assert.equal(await page.locator('[data-qm-text-collection-portal]').count(),0);
+  checks.push('floor-tools launcher works with no chat, deduplicates opens, isolates Escape, survives chat-root replacement and cleans up on owner disposal');
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({count:checks.length,checks,pageErrors:errors,externalRequests:external,productionWrites:false,persistence:'real account-file service in temporary directory; browser transport intercepted; synthetic login, not live ST'},null,2));
 }finally{

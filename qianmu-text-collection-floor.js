@@ -1,10 +1,9 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent}={}){
-  let root=null,active=null,host=null,opening=false,epoch=0;
+  let root=null,active=null,host=null,opening=false,epoch=0,library=null;
   const floorOf=node=>{const raw=node?.getAttribute('mesid')??node?.dataset?.messageId;return raw!==undefined&&raw!==null&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null;};
   const current=()=>root?.isConnected&&isCurrent()===true;
-  const stylesheet=()=>{
-    const document=root.ownerDocument;
+  const stylesheet=(document=root.ownerDocument)=>{
     if(document.querySelector('link[data-qm-text-collections]'))return;
     const link=document.createElement('link');link.rel='stylesheet';link.dataset.qmTextCollections='';
     link.href=new URL('./qianmu-text-collection.css',import.meta.url).href;document.head.append(link);
@@ -32,10 +31,26 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     }catch(cause){if(current()&&epoch===token)notify?.(String(cause?.message||'收藏未保存，请重试').slice(0,240),'warning');}
     finally{chooser?.dispose();detach?.();portal?.remove();if(host===portal)host=null;if(active===chooser)active=null;if(epoch===token)opening=false;if(button.isConnected)button.disabled=false;}
   }
-  function dispose(){epoch++;root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
+  function closeLibrary(entry){
+    if(!entry||entry.closed)return;entry.closed=true;entry.view?.dispose();entry.detach?.();entry.portal.remove();if(library===entry)library=null;
+  }
+  async function openLibrary(parent,confirm,copy){
+    if(library){library.view?.element.focus();return library.view;}
+    if(!parent?.isConnected||isCurrent()!==true)return null;
+    const document=parent.ownerDocument,portal=document.createElement('section'),entry={portal,view:null,closed:false};library=entry;
+    const valid=()=>library===entry&&!entry.closed&&parent.isConnected&&isCurrent()===true;
+    try{
+      stylesheet(document);portal.dataset.qmTextCollectionPortal='';parent.append(portal);entry.detach=mountPortal?.(portal);
+      const runtime=await import('./qianmu-text-collection-library.js');if(!valid()){closeLibrary(entry);return null;}
+      entry.view=await runtime.openTextCollectionLibrary({parent:portal,resolveNamespace,isCurrent:valid,headers,confirm,copy});
+      entry.view.finished.then(()=>closeLibrary(entry));return entry.view;
+    }catch(cause){if(valid())notify?.(String(cause?.message||'收藏管理暂不可用').slice(0,240),'warning');closeLibrary(entry);return null;}
+  }
+  function disposeFloor(){epoch++;root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
+  function dispose(){disposeFloor();closeLibrary(library);}
   function refresh(chatRoot){
     if(!chatRoot?.isConnected||isCurrent()!==true)return;
-    if(root!==chatRoot){dispose();root=chatRoot;root.addEventListener('click',click);}
+    if(root!==chatRoot){disposeFloor();root=chatRoot;root.addEventListener('click',click);}
     for(const node of root.querySelectorAll('.mes')){
       const floor=floorOf(node),message=Number.isInteger(floor)?getContext().chat?.[floor]:null,existing=node.querySelector('[data-qm-collect-floor]');
       if(!message||message.is_system){existing?.remove();continue;}if(existing)continue;
@@ -44,7 +59,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       button.innerHTML='<i class="fa-solid fa-bookmark"></i>';toolbar.append(button);applyIcons?.(button);
     }
   }
-  return Object.freeze({refresh,dispose});
+  return Object.freeze({refresh,dispose,openLibrary});
 }
 
 // Save rendered prose as plain text; never collect embedded media or plugin controls.

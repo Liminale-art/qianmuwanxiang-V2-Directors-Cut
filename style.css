@@ -685,6 +685,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav h3 { margin: 0 0 4px; font-family: Georgia, 'Times New Roman', serif; font-size: 19px; letter-spacing: .08em; color: var(--sd-text); }
 #story-director-floor-nav header p { margin: 0; color: var(--sd-muted); font-size: 12px; }
 #story-director-floor-nav .sd-floor-close { width: 34px; height: 34px; flex: 0 0 34px; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 50%; background: var(--sd-glass-weak); color: inherit; }
+#story-director-floor-nav .sd-floor-collections { width: 34px; height: 34px; flex: 0 0 34px; padding: 0; border: 1px solid var(--sd-hairline); border-radius: var(--qm-button-radius, 8px); background: var(--sd-glass-weak); color: inherit; }
 #story-director-floor-nav .sd-floor-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-glass-weak); }
 #story-director-floor-nav .sd-floor-tabs button { min-height: 36px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); transition: background .18s ease, color .18s ease, box-shadow .18s ease; }
 #story-director-floor-nav .sd-floor-tabs button.is-active { background: var(--sd-card); color: var(--sd-text); box-shadow: 0 1px 0 rgba(255, 255, 255, .24) inset, 0 4px 14px rgba(0, 0, 0, .08); }

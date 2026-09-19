@@ -22,7 +22,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   }
   function stop(){
     if(closed)return;closed=true;session.close();observer.disconnect();view.removeEventListener('pagehide',stop);
-    dialog.removeEventListener('click',click);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('close',stop);
+    dialog.removeEventListener('click',click);dialog.removeEventListener('keydown',stopEscape);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('close',stop);
     if(dialog.open)dialog.close();dialog.remove();
     if(focused?.isConnected&&document.visibilityState!=='hidden')focused.focus({preventScroll:true});resolve(null);
   }
@@ -83,8 +83,9 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     });
   }
   const cancel=event=>{event.preventDefault();void discard().then(ok=>{if(ok)stop();});};
+  const stopEscape=event=>{if(event.key==='Escape')event.stopPropagation();};
   const observer=new view.MutationObserver(()=>{if(!parent.isConnected||!dialog.isConnected)stop();});
-  dialog.addEventListener('click',click);dialog.addEventListener('cancel',cancel);dialog.addEventListener('close',stop);view.addEventListener('pagehide',stop);
+  dialog.addEventListener('click',click);dialog.addEventListener('keydown',stopEscape);dialog.addEventListener('cancel',cancel);dialog.addEventListener('close',stop);view.addEventListener('pagehide',stop);
   parent.append(dialog);observer.observe(document.documentElement,{childList:true,subtree:true});
   try{await session.guard();dialog.showModal();void run(()=>loadPage(0,true));}catch(cause){stop();throw cause;}
   return {element:dialog,finished,stop,dispose:stop};

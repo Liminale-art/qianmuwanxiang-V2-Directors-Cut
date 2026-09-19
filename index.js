@@ -5730,7 +5730,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
     <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层与正文排版">
-        <header><div><h3>楼层工具</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+        <header><div><h3>楼层工具</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-collections" aria-label="正文收藏" title="正文收藏"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
         <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">楼层跳转</button><button type="button" role="tab" data-floor-tab="layout">正文排版</button></nav>
         <section class="sd-floor-view" data-floor-view="jump">
           <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump">跳转</button></div>
@@ -5747,6 +5747,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
   root.querySelector('.sd-floor-backdrop')?.addEventListener('click', close);
   root.querySelector('.sd-floor-close')?.addEventListener('click', close);
+  root.querySelector('.sd-floor-collections')?.addEventListener('click',()=>void collectionFloorTools.openLibrary(root,confirmDialog));
   const setView = (view) => {
     floorNavigatorView = view === 'layout' ? 'layout' : 'jump';
     root.querySelectorAll('[data-floor-tab]').forEach((button) => {

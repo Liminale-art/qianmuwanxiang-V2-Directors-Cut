@@ -13,6 +13,12 @@ test('collection UI dependencies are shipped locally and are not loaded into the
   const source=await readFile(new URL('../qianmu-text-collection-floor.js',import.meta.url),'utf8');
   assert.doesNotMatch(source,/^import /m);assert.match(source,/await import\('\.\/qianmu-text-collection-capture.js'\)/);
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  for(const file of ['floor','capture','session','client','view'])assert.ok(release.files.includes(`qianmu-text-collection-${file}.js`));
+  for(const file of ['floor','capture','session','client','view','library'])assert.ok(release.files.includes(`qianmu-text-collection-${file}.js`));
   assert.ok(release.files.includes('qianmu-text-collection.css'));
+});
+test('library entry belongs to floor tools even with no active chat and uses the host confirmation path',async()=>{
+  const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
+  const floor=source.slice(source.indexOf('function openFloorNavigator('),source.indexOf('async function runQuickWheelCommand('));
+  assert.match(floor,/class="sd-floor-collections" aria-label="正文收藏"/);
+  assert.match(floor,/collectionFloorTools.openLibrary\(root,confirmDialog\)/);
 });
