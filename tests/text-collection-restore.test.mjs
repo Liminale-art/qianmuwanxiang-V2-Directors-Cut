@@ -43,3 +43,15 @@ test('restore acknowledgements bind the new ID and original modification date, n
   assert.deepEqual(textCollectionSyncResponse(value,'write',request),value);assert.throws(()=>textCollectionSyncResponse({...value,updatedAt:10},'write',request));
   assert.equal(textCollectionSyncResponse({ok:true,version:1,expectedAccount:target,libraryRevision:1,record:entry.record},'get',{version:1,expectedAccount:target,id:entry.id}).record.source.account,account);
 });
+
+test('draft copies carry replacement text explicitly without inventing an accepted source revision',()=>{
+  const request={...input(),text:'本机冲突修改\r\n保留😀'},copy=applyTextCollectionMutation(null,request,30).record;
+  assert.equal(copy.text,request.text);assert.equal(copy.revision,1);assert.equal(copy.updatedAt,30);assert.equal(copy.createdAt,10);
+  assert.deepEqual(copy.source,request.record.source);assert.deepEqual(copy.range,request.record.range);assert.equal(copy.restoredFrom.revision,request.record.revision);assert.equal(copy.restoredFrom.id,request.record.id);
+  assert.deepEqual(textCollectionSyncMutation(request),request);assert.notEqual(request.record.text,request.text);
+  const response={ok:true,version:1,expectedAccount:target,mutationId:request.mutationId,id:copy.id,revision:1,updatedAt:30,libraryRevision:1};
+  textCollectionSyncResponse(response,'write',request);assert.throws(()=>textCollectionSyncResponse({...response,updatedAt:19},'write',request));
+  for(const text of ['',null,undefined,'\ud800','x'.repeat(200001)])assert.throws(()=>textCollectionSyncMutation({...request,text}));
+  assert.throws(()=>applyTextCollectionMutation({id:copy.id,revision:1,updatedAt:copy.updatedAt,deleted:false,record:copy},request,31),{code:'text_collection_sync_conflict'});
+  assert.equal(applyTextCollectionMutation(null,request,1).record.updatedAt,request.record.updatedAt);
+});

@@ -92,9 +92,10 @@ export function textCollectionRecord(value) {
 // Call with a validated record: ownership and original chat provenance are distinct after restoration.
 export const textCollectionRecordAccount = record => record.schemaVersion === 2 ? record.ownerAccount : record.source.account;
 
-export function restoreTextCollectionCopy(input, { id, ownerAccount, restoredAt } = {}) {
+export function restoreTextCollectionCopy(input, { id, ownerAccount, restoredAt, text } = {}) {
     const original = textCollectionRecord(input);
     return textCollectionRecord({ ...original, schemaVersion: 2, id, ownerAccount, revision: 1,
+        ...(text !== undefined ? { text: textCollectionText(text), updatedAt: Math.max(original.updatedAt, timestamp(restoredAt)) } : {}),
         restoredFrom: { account: textCollectionRecordAccount(original), id: original.id, revision: original.revision, restoredAt } });
 }
 

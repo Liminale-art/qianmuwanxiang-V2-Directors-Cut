@@ -33,6 +33,16 @@ async function fixture(t,options={}){
 }
 const gate=()=>{let release;return {promise:new Promise(resolve=>{release=resolve;}),release:()=>release()};};
 
+test('conflicting draft can become one independent durable copy without overwriting the original or fabricating provenance',async t=>{
+  const f=await fixture(t),captured=create();await f.service.write(f.req,captured);await f.service.write(f.req,edit('edit',{text:'另一端已经修改'}));
+  const input={...create('draft-copy-1'),operation:'restore',record:captured.record,text:'保留我的冲突版本\r\n😀'};
+  const result=await f.service.write(f.req,input);textCollectionSyncResponse(result,'write',input);assert.equal(result.revision,1);
+  const restored=(await f.service.get(f.req,detail(input.id))).record;assert.equal(restored.text,input.text);assert.equal(restored.restoredFrom.revision,1);assert.equal(restored.restoredFrom.id,captured.id);assert.equal(restored.createdAt,captured.record.createdAt);
+  assert.equal((await f.service.get(f.req,detail())).record.text,'另一端已经修改');const disk=await fs.readFile(f.file);
+  assert.deepEqual(await f.build().write(f.req,input),result);assert.deepEqual(await fs.readFile(f.file),disk);assert.equal((await f.service.list(f.req,query())).total,2);
+  await assert.rejects(f.service.write(f.req,{...input,text:'相同编号不能改写内容'}),{code:'text_collection_sync_mutation_conflict'});assert.deepEqual(await fs.readFile(f.file),disk);
+});
+
 test('cleanup manifest reads one snapshot without originals or writes and excludes tombstones',async t=>{
   const f=await fixture(t);const empty=await f.service['cleanup-plan'](f.req,snapshot());assert.equal(empty.total,0);assert.deepEqual(await fs.readdir(f.folder),[]);
   await f.service.write(f.req,create());await f.service.write(f.req,edit());await f.service.write(f.req,create('collection-2'));await f.service.write(f.req,edit('delete',{id:'collection-2'}));

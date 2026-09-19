@@ -66,6 +66,11 @@ test('durable pending handles resume unchanged in a new account session and reje
   second.close();assert.throws(()=>second.resumePending(saved));
 });
 
+test('explicit draft-copy preparation carries the original base and replacement text separately',async()=>{
+  const sent=[],s=await createTextCollectionSession(options({fetchImpl:async(_,o)=>{const input=JSON.parse(o.body);sent.push(input);return response({...ack(input),updatedAt:5});}}));
+  const base=item(),op=s.prepareDraftCopy(base,'draft-copy-1','我的本机修改');await op.submit();assert.deepEqual(sent[0].record,base);assert.equal(sent[0].text,'我的本机修改');assert.equal(sent[0].operation,'restore');assert.equal(sent[0].baseRevision,0);s.close();
+});
+
 test('cleanup manifest can carry all bounded IDs without fetching originals or sending mutations',async()=>{
   let calls=0;const items=Array.from({length:10000},(_,i)=>({id:('collection-'+i).padEnd(120,'x'),revision:1}));
   const s=await createTextCollectionSession(options({fetchImpl:async(url,o)=>{

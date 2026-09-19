@@ -45,6 +45,7 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
     },
     prepareCreate:record=>prepare('create',{id:record.id,baseRevision:0,record}),
     prepareRestore:(record,id)=>prepare('restore',{id,baseRevision:0,record}),
+    prepareDraftCopy:(record,id,text)=>prepare('restore',{id,baseRevision:0,record,text}),
     prepareEdit:(id,baseRevision,text)=>prepare('edit',{id,baseRevision,text}),
     prepareDelete:(id,baseRevision)=>prepare('delete',{id,baseRevision}),
     close(){closed=true;client.close();}});

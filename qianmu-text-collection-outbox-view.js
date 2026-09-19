@@ -13,7 +13,7 @@ export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy,c
   const q=selector=>dialog.querySelector(selector),list=q('[data-pending-list]'),detail=q('[data-pending-detail]'),editor=q('textarea'),status=q('[data-pending-status]');
   const localActions=document.createElement('div');localActions.className='qm-text-collection-actions';localActions.hidden=true;localActions.style.marginTop='8px';
   localActions.innerHTML='<button type="button" data-pending-action="remove">移除此机待存</button>';q('footer').append(localActions);
-  const text=row=>row.request.operation==='edit'?row.request.text:row.request.record.text;
+  const text=row=>Object.hasOwn(row.request,'text')?row.request.text:row.request.record.text;
   const original=row=>row.base||row.request.record;
   const label=row=>{const item=original(row);return textCollectionDisplayLabel(item.source.charName,item.source.userName,item.createdAt);};
   const stateLabel=row=>row.state==='conflict'?'版本冲突':row.started?'结果待核对':'待提交';
