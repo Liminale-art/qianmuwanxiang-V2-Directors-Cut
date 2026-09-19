@@ -17,7 +17,8 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     event.preventDefault();event.stopPropagation();
     const token=epoch,chatKey=String(getChatKey()||''),raw=message.mes,swipe=message.swipe_id??0;
     const capturedNames=names();
-    const source={chatId:chatKey,messageId:floor,replyId:`swipe:${swipe}`,charName:String(!message.is_user&&message.name||capturedNames.charName||''),userName:String(message.is_user&&message.name||capturedNames.userName||''),text:floorCollectionText(node.querySelector('.mes_text'))};
+    const displayName=(value,missing)=>{const name=String(value??'');return name.trim()?name:missing;};
+    const source={chatId:chatKey,messageId:floor,replyId:`swipe:${swipe}`,charName:displayName(!message.is_user&&message.name||capturedNames.charName,'CHAR 名未记录'),userName:displayName(message.is_user&&message.name||capturedNames.userName,'USER 名未记录'),text:floorCollectionText(node.querySelector('.mes_text'))};
     const valid=()=>current()&&epoch===token&&node.isConnected&&String(getChatKey()||'')===chatKey&&getContext().chat?.[floor]===message&&message.mes===raw&&(message.swipe_id??0)===swipe;
     opening=true;button.disabled=true;let portal,chooser,detach;
     try{

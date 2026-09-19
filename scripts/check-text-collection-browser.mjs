@@ -248,7 +248,8 @@ try {
         fixture.chat.innerHTML='<div class="mes" mesid="0"><div class="mes_text"><p>第一段</p><p>第二段</p><div data-qianmu-transient="storyboard">不收录的图注<button>重绘</button></div><script type="text/plain">不收录的脚本</script><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></div><div class="mes_buttons"><div class="extraMesButtons"></div></div></div><div class="mes" mesid="1"><div class="mes_buttons"></div></div><div class="mes" mesid="2"><div class="mes_text">用户内容</div><div class="mes_buttons"></div></div>';
         document.body.append(fixture.chat);
         const hidden=document.createElement('p');hidden.style.display='none';hidden.textContent='主题隐藏的推理不收录';fixture.chat.querySelector('.mes_text').append(hidden);
-        fixture.floorTools=createTextCollectionFloorTools({getContext:()=>({chat:fixture.messages}),getChatKey:()=>fixture.chatKey,names:()=>({charName:'当前角色',userName:'当前用户'}),resolveNamespace:async()=>fixture.namespace,
+        fixture.names={charName:'当前角色',userName:'当前用户'};
+        fixture.floorTools=createTextCollectionFloorTools({getContext:()=>({chat:fixture.messages}),getChatKey:()=>fixture.chatKey,names:()=>fixture.names,resolveNamespace:async()=>fixture.namespace,
             isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'}),applyIcons:()=>{},mountPortal:()=>()=>{fixture.detached++;},notify:(...args)=>fixture.notice.push(args)});
         fixture.floorTools.refresh(fixture.chat);fixture.floorTools.refresh(fixture.chat);
         injectStoryboardMessageButtons(fixture.chat,{floorOf:node=>Number(node.getAttribute('mesid')),getContext:()=>({chat:fixture.messages}),getState:()=>({}),planForMessage:()=>null,applyIcons:()=>{}});
@@ -264,6 +265,10 @@ try {
     await page.evaluate(()=>{fixture.messages[0].mes='另一条回复';fixture.messages[0].swipe_id=2;});await held();await page.waitForFunction(()=>!document.querySelector('dialog'));
     assert.equal(await page.evaluate(()=>fixture.notice.length),1);
     checks.push('edited or swiped floor never adopts a late save notification as a new source');
+    apiMode='ok';await page.evaluate(()=>{fixture.messages[0].name='';fixture.names={charName:'',userName:'  '};});
+    await page.locator('.mes[mesid="0"] [data-qm-collect-floor]').click();await action('full').click();await action('save').click();await page.waitForFunction(()=>!document.querySelector('dialog'));
+    assert.equal(writes.at(-1).record.source.charName,'CHAR 名未记录');assert.equal(writes.at(-1).record.source.userName,'USER 名未记录');assert.equal(writes.at(-1).record.source.chatId,'chat-floor');assert.equal(writes.at(-1).record.source.replyId,'swipe:2');
+    checks.push('missing display names receive explicit unknown labels without guessing people, changing identity or blocking an otherwise valid collection');
     await page.evaluate(()=>fixture.floorTools.dispose());assert.equal(await page.locator('[data-qm-collect-floor]').count(),0);assert.equal(await page.locator('.sd-storyboard-message-action').count(),2);
     await page.evaluate(()=>fixture.floorTools.refresh(fixture.chat));assert.equal(await page.locator('[data-qm-collect-floor]').count(),2);
     await page.locator('.mes[mesid="2"] [data-qm-collect-floor]').click();await action('full').click();await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
