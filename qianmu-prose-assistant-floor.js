@@ -49,5 +49,10 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     const floor=typeof raw==='string'&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null,message=Number.isSafeInteger(floor)?getContext().chat?.[floor]:null;
     if(message&&!message.is_system)void open(button,node,floor,message);return true;
   }
-  return Object.freeze({bindRoot,refreshNode,click,disposeFloor,get busy(){return entry!==null;}});
+  async function storageSummary(valid){
+    const live=()=>isCurrent()===true&&valid();let module;
+    try{module=await import('./qianmu-prose-assistant-storage.js');}catch{if(!live())throw Error('助手储存页面已变化');return {status:'unavailable',bytes:null,count:null,error:'助手统计组件未加载，请刷新重试。'};}
+    return module.collectProseAssistantStorage({resolveNamespace,isCurrent:live});
+  }
+  return Object.freeze({bindRoot,refreshNode,click,disposeFloor,storageSummary,get busy(){return entry!==null;}});
 }

@@ -1,5 +1,15 @@
-export const STORAGE_CATEGORY_LABELS=Object.freeze({images:'图片',vibes:'参考素材',characters:'角色资料',audio:'音频',video:'影片',reader:'伴读资料',notes:'便笺',collections:'收藏待存',logs:'日志与记录',cache:'临时缓存',settings:'设置与预设',chat:'当前聊天数据',other:'其他'});
-export const STORAGE_CATEGORY_COLORS=Object.freeze({images:'#5aa9ff',vibes:'#b29bc9',characters:'#c985b1',audio:'#ff9f43',video:'#6f8fff',reader:'#9b7cff',notes:'#f2c94c',collections:'#75b6ab',logs:'#ff647c',cache:'#3dc7c9',settings:'#65c466',chat:'#8d94a6',other:'#747b88'});
+export const STORAGE_CATEGORY_LABELS=Object.freeze({images:'图片',vibes:'参考素材',characters:'角色资料',audio:'音频',video:'影片',reader:'伴读资料',notes:'便笺',collections:'收藏待存',assistant:'正文助手',logs:'日志与记录',cache:'临时缓存',settings:'设置与预设',chat:'当前聊天数据',other:'其他'});
+export const STORAGE_CATEGORY_COLORS=Object.freeze({images:'#5aa9ff',vibes:'#b29bc9',characters:'#c985b1',audio:'#ff9f43',video:'#6f8fff',reader:'#9b7cff',notes:'#f2c94c',collections:'#75b6ab',assistant:'#ce9f72',logs:'#ff647c',cache:'#3dc7c9',settings:'#65c466',chat:'#8d94a6',other:'#747b88'});
+
+// Pure accounting snapshots extracted from the entry without changing contents.
+export function storageDiagnosticSnapshot(settings){
+  const storyboard=settings?.imagegen||{};
+  return {apiLogs:Array.isArray(settings?.logHistory)?settings.logHistory:[],storyboardLogs:Array.isArray(storyboard.logs)?storyboard.logs:[],storyboardPipelineLogs:Array.isArray(storyboard.pipelineLogs)?storyboard.pipelineLogs:[]};
+}
+export function storageSettingsSnapshotWithoutDiagnostics(settings){
+  const storyboard=settings?.imagegen||{};
+  return {...settings,logHistory:[],logOpenState:{},imagegen:{...storyboard,logs:[],pipelineLogs:[]}};
+}
 
 export function collectionCleanupOptions(data){
   const collection=data?.collectionStorage,pending=collection?.pending;
@@ -134,6 +144,9 @@ ${data.galleryCatalogStorage?.status==='unavailable'?`<p class="sd-storage-press
 <p class="sd-storage-scope sd-storage-collection-pending-summary" role="status" style="overflow-wrap:anywhere">收藏待存 · 当前账户本机<br>${data.collectionStorage?.pending?.status==='ready'
   ? `${data.collectionStorage.pending.count} 条 · ${htmlEscape(formatStorageBytes(data.collectionStorage.pending.bytes))} 内容及请求记录估算 · 冲突 ${data.collectionStorage.pending.conflicts} 条<br>计入本设备统计，不含服务器原件或其他设备待存。不是可重建缓存；在正文收藏→本机待存中备份、恢复或移除。`
   : `暂未读取 · ${htmlEscape(data.collectionStorage?.pending?.error||'本机待存尚未盘点，当前总计不含此部分。')}`}</p>
+<p class="sd-storage-scope sd-storage-assistant-summary" role="status" style="overflow-wrap:anywhere">正文助手 · 当前账户本机<br>${data.assistantStorage?.status==='ready'
+  ? `${data.assistantStorage.chats} 个会话 · ${data.assistantStorage.count} 轮问答 · ${htmlEscape(formatStorageBytes(data.assistantStorage.bytes))} 逻辑估算<br>完整 ${data.assistantStorage.complete} · 失败 ${data.assistantStorage.failed} · 停止 ${data.assistantStorage.cancelled}；含 ${data.assistantStorage.markers} 份清空版本标记。不含未保存回复、其他账户或设备，非可重建缓存；可在对应聊天的助手面板中清空。`
+  : `暂未读取 · ${htmlEscape(data.assistantStorage?.error||'助手本机历史尚未盘点，当前总计不含此部分。')}`}</p>
 ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
 ${data.serviceReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.serviceReceipts.error)}</p>` : ''}
 ${data.comfyReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.comfyReceipts.error)}</p>` : ''}
