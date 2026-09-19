@@ -82,6 +82,15 @@ test('snapshot accepts complete originals beyond summary limits but rejects over
   }
 });
 
+test('restore preflight rejects unsupported, foreign or impossible capacity responses before any write',async()=>{
+  const info={ok:true,version:1,expectedAccount,libraryRevision:0,restoreVersion:1,remainingRecords:10000,remainingMutations:100000};
+  for(const change of [{restoreVersion:2},{remainingRecords:-1},{remainingMutations:99999},{expectedAccount:`st-user:${'b'.repeat(64)}`}]){
+    let calls=0;const c=client({fetchImpl:async(url)=>{assert.ok(url.endsWith('/restore-info'));calls++;return response({...info,...change});}});
+    await assert.rejects(c.restoreInfo(),e=>e.writeState==='not_started');assert.equal(calls,1);c.close();
+  }
+  const c=client({fetchImpl:async()=>response({},404)});await assert.rejects(c.restoreInfo(),{code:'text_collection_sync_unavailable',writeState:'not_started'});c.close();
+});
+
 test('input records are frozen before asynchronous work and explicit retries retain the same mutation identity',async()=>{
   const held=gate(),entered=gate(),sent=[];let first=true;
   const c=client({headers:()=>{entered.release();return held.promise;},fetchImpl:async(url,options)=>{sent.push(JSON.parse(options.body));if(first){first=false;throw Error('ack lost');}return response(ack());}});

@@ -12,6 +12,8 @@ import {textCollectionSyncResponse,textCollectionSyncErrorPayload,textCollection
 import {init,exit} from '../server-plugin.js';
 import {createServer} from 'node:http';
 import {createTextCollectionClient} from '../qianmu-text-collection-client.js';
+import {createTextCollectionSession} from '../qianmu-text-collection-session.js';
+import {createTextCollectionRestoreBatch} from '../qianmu-text-collection-restore-batch.js';
 
 const account=handle=>imageServiceAccount({user:{profile:{handle}}}).namespace;
 const request=(folder,handle='alice')=>({user:{profile:{handle},directories:{root:folder}}});
@@ -179,6 +181,7 @@ test('real client and local HTTP plugin handlers round-trip disk originals witho
   const restored={...input,operation:'restore',mutationId:randomUUID(),id:'restored-http',record:updateTextCollection(input.record,{text:'恢复副本文本'},1,2)};
   assert.equal((await c.write(restored)).revision,1);const copy=(await c.get(restored.id)).record;assert.equal(copy.text,'恢复副本文本');assert.equal(copy.schemaVersion,2);
   assert.deepEqual((await c.snapshot()).backup.records,[copy]);assert.equal(received,13);
+  const info=await c.restoreInfo();assert.equal(info.restoreVersion,1);assert.equal(info.remainingRecords,TEXT_COLLECTION_SYNC_LIMITS.records-2);assert.equal(info.remainingMutations,TEXT_COLLECTION_SYNC_LIMITS.mutations-4);assert.equal(received,14);
 });
 
 test('snapshot reads originals once, retains edited metadata and excludes tombstones and receipts',async t=>{
@@ -220,6 +223,21 @@ test('restore is an owned durable copy, retries remain idempotent after deletion
   await service.write(f.req,edit('edit',{id:input.id,text:'再次修改'}));await service.write(f.req,edit('delete',{id:input.id,baseRevision:2}));
   assert.deepEqual(await f.build().write(f.req,input),ack);assert.equal((await service.get(f.req,detail(input.id))).record,null);
   assert.doesNotMatch(await fs.readFile(f.file,'utf8'),/不同长度|再次修改|source-record|deleted-chat|ownerAccount/);
+});
+
+test('batch retries through the real session and account file resume a lost receipt without duplicate copies',async t=>{
+  const f=await fixture(t),requests=[];let lost=true,id=0;
+  const session=await createTextCollectionSession({resolveNamespace:async()=>'st-user:alice',isCurrent:()=>true,fetchImpl:async(url,options)=>{
+    const method=url.split('/').at(-1),body=JSON.parse(options.body);requests.push(body);const result=await f.service[method](f.req,body);
+    if(method==='write'&&body.id==='batch-copy-2'&&lost){lost=false;throw Error('response lost after write');}
+    return new Response(JSON.stringify(result),{headers:{'content-type':'application/json'}});
+  }});t.after(()=>session.close());
+  const records=[create('source-1').record,create('source-2').record,create('source-3').record];
+  const batch=createTextCollectionRestoreBatch({backup:{type:'qianmu-text-collections',version:1,sourceAccount:account('alice'),libraryRevision:3,exportedAt:2,records},session,uid:()=>`batch-copy-${++id}`,check:()=>{},confirm:async()=>true});
+  await assert.rejects(batch.run());assert.equal(batch.progress.confirmed,1);assert.equal(batch.progress.uncertain,true);assert.equal((await session.list()).total,2);
+  assert.equal((await batch.run()).confirmed,3);assert.equal((await session.list()).total,3);
+  const writes=requests.filter(r=>r.operation==='restore');assert.deepEqual(writes.map(r=>r.id),['batch-copy-1','batch-copy-2','batch-copy-2','batch-copy-3']);assert.deepEqual(writes[1],writes[2]);
+  assert.equal((await f.build().list(f.req,query())).libraryRevision,3);batch.close();
 });
 
 test('search is read-only across saved names and actual selected text, with query-bound summary pagination',async t=>{

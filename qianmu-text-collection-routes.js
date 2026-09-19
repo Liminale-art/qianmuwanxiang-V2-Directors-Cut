@@ -5,7 +5,7 @@ import {textCollectionSyncError,textCollectionSyncErrorPayload} from './qianmu-t
 // Paths and storage root are fixed by the host; request bodies cannot select a service or file.
 export function installTextCollectionRoutes(router,{dataRoot,register,serviceOptions={}}){
   let service;
-  for(const action of ['list','get','snapshot','write'])router.post(`/text-collections/${action}`,async(req,res)=>{
+  for(const action of ['list','get','snapshot','restore-info','write'])router.post(`/text-collections/${action}`,async(req,res)=>{
     res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');
     const controller=new AbortController(),onClose=()=>{if(!res.writableEnded)controller.abort();};res.once?.('close',onClose);
     try{
