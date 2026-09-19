@@ -14,6 +14,21 @@ export function textCollectionBulkInfoResponse(value,input){
   return Object.freeze({...value});
 }
 
+// A read-only, one-revision deletion manifest. Never return original prose or
+// infer a future "delete all" scope: only these exact IDs/revisions may be selected.
+export function textCollectionCleanupPlanResponse(value,input){
+  const request=textCollectionBulkInfoRequest(input);
+  if(!exact(value,['ok','version','expectedAccount','libraryRevision','total','items'])||value.ok!==true||value.version!==1||value.expectedAccount!==request.expectedAccount
+    ||!Number.isSafeInteger(value.libraryRevision)||value.libraryRevision<0||value.libraryRevision>TEXT_COLLECTION_SYNC_LIMITS.mutations
+    ||!Array.isArray(value.items)||value.items.length>TEXT_COLLECTION_SYNC_LIMITS.records||value.total!==value.items.length||value.total>value.libraryRevision)fail('收藏清理范围不完整或账户不一致，未删除');
+  const ids=new Set(),items=Array.from(value.items,item=>{
+    if(!exact(item,['id','revision'])||typeof item.id!=='string'||!/^[A-Za-z0-9_-]{8,120}$/.test(item.id)||ids.has(item.id)
+      ||!Number.isSafeInteger(item.revision)||item.revision<1||item.revision>value.libraryRevision)fail('收藏清理条目或版本无效，未删除');
+    ids.add(item.id);return Object.freeze({...item});
+  });
+  return Object.freeze({...value,items:Object.freeze(items)});
+}
+
 // A bounded atomic batch of distinct records. Per-record mutation IDs and durable
 // receipts remain the identity for retries; no second batch journal/file format.
 export function textCollectionBulkRequest(value){

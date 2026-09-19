@@ -31,6 +31,7 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
     inventory:options=>client.inventory(options),
     restoreInfo:options=>client.restoreInfo(options),
     batchInfo:options=>client.batchInfo(options),
+    cleanupPlan:options=>client.cleanupPlan(options),
     prepareBatch(mutations){
       if(closed||isCurrent()!==true)throw error('cancelled','收藏会话已关闭，未准备新批次');
       const request=textCollectionBulkRequest({version:1,expectedAccount,mutations});

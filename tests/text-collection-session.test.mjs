@@ -57,3 +57,12 @@ test('old backend capability failure is read-only and cannot start a restoration
   await assert.rejects(s.batchInfo(),{code:'text_collection_sync_unavailable',writeState:'not_started'});
   assert.equal(sent.length,1);assert.match(sent[0],/\/batch-info$/);s.close();
 });
+
+test('cleanup manifest can carry all bounded IDs without fetching originals or sending mutations',async()=>{
+  let calls=0;const items=Array.from({length:10000},(_,i)=>({id:('collection-'+i).padEnd(120,'x'),revision:1}));
+  const s=await createTextCollectionSession(options({fetchImpl:async(url,o)=>{
+    calls++;assert.match(url,/\/cleanup-plan$/);assert.deepEqual(JSON.parse(o.body),{version:1,expectedAccount:account});
+    return response({ok:true,version:1,expectedAccount:account,libraryRevision:10000,total:10000,items});
+  }}));
+  const plan=await s.cleanupPlan();assert.equal(plan.items.length,10000);assert.equal(calls,1);s.close();
+});

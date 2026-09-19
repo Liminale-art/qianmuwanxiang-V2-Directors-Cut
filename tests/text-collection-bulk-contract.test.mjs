@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {textCollectionBulkRequest,textCollectionBulkResponse,textCollectionBulkInfoResponse,partitionTextCollectionMutations,TEXT_COLLECTION_BULK_LIMITS} from '../qianmu-text-collection-bulk-contract.js';
+import {textCollectionBulkRequest,textCollectionBulkResponse,textCollectionBulkInfoResponse,textCollectionCleanupPlanResponse,partitionTextCollectionMutations,TEXT_COLLECTION_BULK_LIMITS} from '../qianmu-text-collection-bulk-contract.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 const account='st-user:'+'a'.repeat(64),other='st-user:'+'b'.repeat(64);
 const mutation=(id='collection-1')=>({version:1,expectedAccount:account,mutationId:'mutation-'+id,operation:'delete',id,baseRevision:1});
@@ -45,4 +45,12 @@ test('partition respects both record count and exact escaped UTF-8 wire bytes wi
   const split=partitionTextCollectionMutations([a,b],{expectedAccount:account,maxItems:32,maxBytes:bytes-1});assert.deepEqual(split.map(p=>p.length),[1,1]);
   for(const part of split)assert.ok(new TextEncoder().encode(JSON.stringify(batch(part))).byteLength<=bytes-1);
   assert.throws(()=>partitionTextCollectionMutations([a],{expectedAccount:account,maxItems:32,maxBytes:100}),/单条收藏超过/);
+});
+
+test('cleanup manifest is exact account-bound IDs/revisions, not partial lists or embedded originals',()=>{
+  const input={version:1,expectedAccount:account},value={ok:true,...input,libraryRevision:4,total:2,items:[{id:'collection-1',revision:2},{id:'collection-2',revision:1}]};
+  assert.deepEqual(textCollectionCleanupPlanResponse(value,input),value);
+  for(const patch of [{total:3},{expectedAccount:other},{libraryRevision:1},{items:[...value.items,{id:'collection-1',revision:2}],total:3},
+    {items:[{id:'collection-1',revision:2,text:'private'},value.items[1]]},{items:[{id:'collection-1',revision:0},value.items[1]]},{items:Array(2)},{source:'hidden'}])assert.throws(()=>textCollectionCleanupPlanResponse({...value,...patch},input));
+  const accepted=textCollectionCleanupPlanResponse(value,input);assert.ok(Object.isFrozen(accepted.items[0]));
 });

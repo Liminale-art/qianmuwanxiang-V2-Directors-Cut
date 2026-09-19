@@ -14,7 +14,7 @@ import {createServer} from 'node:http';
 import {createTextCollectionClient} from '../qianmu-text-collection-client.js';
 import {createTextCollectionSession} from '../qianmu-text-collection-session.js';
 import {createTextCollectionRestoreBatch} from '../qianmu-text-collection-restore-batch.js';
-import {textCollectionBulkResponse} from '../qianmu-text-collection-bulk-contract.js';
+import {textCollectionBulkResponse,textCollectionCleanupPlanResponse} from '../qianmu-text-collection-bulk-contract.js';
 
 const account=handle=>imageServiceAccount({user:{profile:{handle}}}).namespace;
 const request=(folder,handle='alice')=>({user:{profile:{handle},directories:{root:folder}}});
@@ -32,6 +32,24 @@ async function fixture(t,options={}){
   return {root,folder,req,service,build,file:path.join(folder,'.qianmu-text-collection-v1.json'),lock:path.join(folder,'.qianmu-text-collection-v1.lock')};
 }
 const gate=()=>{let release;return {promise:new Promise(resolve=>{release=resolve;}),release:()=>release()};};
+
+test('cleanup manifest reads one snapshot without originals or writes and excludes tombstones',async t=>{
+  const f=await fixture(t);const empty=await f.service['cleanup-plan'](f.req,snapshot());assert.equal(empty.total,0);assert.deepEqual(await fs.readdir(f.folder),[]);
+  await f.service.write(f.req,create());await f.service.write(f.req,edit());await f.service.write(f.req,create('collection-2'));await f.service.write(f.req,edit('delete',{id:'collection-2'}));
+  let reads=0;const service=f.build({io:{...fs,open:async(...args)=>{reads++;return fs.open(...args);}}}),original=await fs.readFile(f.file);
+  const plan=await service['cleanup-plan'](f.req,snapshot());assert.equal(reads,1);assert.equal(plan.libraryRevision,4);assert.deepEqual(plan.items,[{id:'collection-1',revision:2}]);
+  textCollectionCleanupPlanResponse(plan,snapshot());assert.doesNotMatch(JSON.stringify(plan),/selected|edited|角色|deleted-chat|collection-2/);assert.deepEqual(await fs.readFile(f.file),original);
+  await assert.rejects(service['cleanup-plan']({},snapshot()),{status:401});await assert.rejects(service['cleanup-plan'](f.req,{...snapshot(),expectedAccount:account('bob')}),{status:401});
+});
+
+test('cleanup only deletes the confirmed versions; edits conflict and later additions are never swept in',async t=>{
+  const f=await fixture(t);await f.service.write(f.req,create());await f.service.write(f.req,create('collection-2'));
+  const plan=await f.service['cleanup-plan'](f.req,snapshot()),mutations=plan.items.map(({id,revision})=>edit('delete',{id,baseRevision:revision}));
+  await f.service.write(f.req,create('collection-3'));await f.service.write(f.req,edit('edit',{id:'collection-2'}));const original=await fs.readFile(f.file);
+  await assert.rejects(f.service['write-batch'](f.req,{...snapshot(),mutations}),{code:'text_collection_sync_conflict',writeState:'not_started'});assert.deepEqual(await fs.readFile(f.file),original);
+  await f.service['write-batch'](f.req,{...snapshot(),mutations:[mutations[0]]});
+  assert.equal((await f.service.get(f.req,detail('collection-2'))).record.text,edit().text);assert.notEqual((await f.service.get(f.req,detail('collection-3'))).record,null);
+});
 
 test('32 restore copies share one atomic file replacement; durable per-record retries perform no replacement',async t=>{
   const f=await fixture(t);let replacements=0;const writer=f.build({io:{...fs,rename:async(...args)=>{replacements++;return fs.rename(...args);}}});
@@ -239,6 +257,7 @@ test('real client and local HTTP plugin handlers round-trip disk originals witho
   const bulkInfo=await c.batchInfo();assert.equal(bulkInfo.maxItems,32);assert.equal(bulkInfo.maxBytes,2097152);assert.equal(received,16);
   const bulk={...snapshot(),mutations:[edit('delete',{id:restored.id})]};const removed=await c.writeBatch(bulk);assert.equal(removed.results[0].id,restored.id);assert.equal(received,17);
   assert.equal((await c.inventory()).count,0);assert.equal(received,18);
+  const plan=await c.cleanupPlan();assert.equal(plan.total,0);assert.equal(plan.libraryRevision,5);assert.equal(received,19);
 });
 
 test('snapshot reads originals once, retains edited metadata and excludes tombstones and receipts',async t=>{

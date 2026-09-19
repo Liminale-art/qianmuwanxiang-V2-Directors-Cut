@@ -1,7 +1,7 @@
 import {textCollectionSyncError as error,textCollectionSyncMutation,textCollectionSyncQuery,textCollectionSyncResponse} from './qianmu-text-collection-sync-contract.js';
 import {TEXT_COLLECTION_BACKUP_LIMITS} from './qianmu-text-collection-backup.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
-import {textCollectionBulkRequest,textCollectionBulkResponse,textCollectionBulkInfoRequest,textCollectionBulkInfoResponse} from './qianmu-text-collection-bulk-contract.js';
+import {textCollectionBulkRequest,textCollectionBulkResponse,textCollectionBulkInfoRequest,textCollectionBulkInfoResponse,textCollectionCleanupPlanResponse} from './qianmu-text-collection-bulk-contract.js';
 
 const base='/api/plugins/qianmu-tts/text-collections';
 // Same transport boundaries as notes sync; reuse the collection contracts, never the notes database.
@@ -11,7 +11,7 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
   const origin=globalThis.location?.origin,pending=new Set();let closed=false;
   if(origin!==undefined&&!/^https?:\/\//.test(origin))throw error('setup','请在当前 ST 站点中使用收藏',503);
   async function call(method,input,{signal}={}){
-    const payload=method==='write-batch'?textCollectionBulkRequest(input):method==='batch-info'?textCollectionBulkInfoRequest({version:1,expectedAccount,...input}):method==='write'?textCollectionSyncMutation(input):textCollectionSyncQuery({version:1,expectedAccount,...input},method);
+    const payload=method==='write-batch'?textCollectionBulkRequest(input):['batch-info','cleanup-plan'].includes(method)?textCollectionBulkInfoRequest({version:1,expectedAccount,...input}):method==='write'?textCollectionSyncMutation(input):textCollectionSyncQuery({version:1,expectedAccount,...input},method);
     if(payload.expectedAccount!==expectedAccount)throw error('account','收藏请求与当前账户不一致',401);
     const path=`${base}/${method}`,controller=new AbortController();let reader,response,started=false,rejectCancellation;
     const writeState=()=>['write','write-batch'].includes(method)&&started?'unconfirmed':'not_started';
@@ -37,7 +37,7 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
         if(response.url){const actual=new URL(response.url);if(actual.pathname!==path||actual.search||actual.hash||origin&&actual.origin!==origin)throw error('response','收藏返回不是当前 ST 接口',502);}
         if([404,405,501].includes(response.status))throw error('unavailable','请安装或更新千幕后端并重启 ST；本次收藏尚未确认保存',503);
         if([401,403].includes(response.status))throw error('account','收藏登录或校验已失效，请刷新 ST 后重试',401);
-        const limit=method==='snapshot'?TEXT_COLLECTION_BACKUP_LIMITS.bytes+1024:method==='get'?2*1024*1024:256*1024;
+        const limit=method==='snapshot'?TEXT_COLLECTION_BACKUP_LIMITS.bytes+1024:['get','cleanup-plan'].includes(method)?2*1024*1024:256*1024;
         if(!/^application\/json\b/i.test(response.headers?.get?.('content-type')||'')||Number(response.headers.get('content-length'))>limit)throw error('response','收藏返回格式不兼容或过大，未采用部分内容',502);
         reader=response.body?.getReader?.();if(!reader)throw error('response','收藏返回不完整',502);
         const decoder=new TextDecoder('utf-8',{fatal:true});let body='',bytes=0;
@@ -47,7 +47,7 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
           const known=value?.ok===false&&value.version===1&&/^text_collection_sync_[a-z_]+$/.test(value.code||'')&&typeof value.message==='string'&&value.message.length<=240;
           throw error(known?value.code.slice('text_collection_sync_'.length):'service',known?value.message:'收藏服务暂不可用，请保留当前内容',response.status);
         }
-        const parsed=method==='write-batch'?textCollectionBulkResponse(value,payload):method==='batch-info'?textCollectionBulkInfoResponse(value,payload):textCollectionSyncResponse(value,method,payload);await check();return parsed;
+        const parsed=method==='write-batch'?textCollectionBulkResponse(value,payload):method==='batch-info'?textCollectionBulkInfoResponse(value,payload):method==='cleanup-plan'?textCollectionCleanupPlanResponse(value,payload):textCollectionSyncResponse(value,method,payload);await check();return parsed;
       })(),cancellation]);
     }catch(cause){
       const known=String(cause?.code||'').startsWith('text_collection_sync_')?cause:error('connection','收藏连接中断或返回损坏，请保留内容并核对原操作',503);
@@ -63,6 +63,7 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
     inventory:options=>call('inventory',{},options),
     restoreInfo:options=>call('restore-info',{},options),
     batchInfo:options=>call('batch-info',{},options),
+    cleanupPlan:options=>call('cleanup-plan',{},options),
     writeBatch:(input,options)=>call('write-batch',input,options),
     close(){closed=true;for(const abort of pending)abort();pending.clear();}});
 }

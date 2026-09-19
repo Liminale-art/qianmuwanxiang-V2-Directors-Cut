@@ -85,6 +85,9 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
     }
     if(method==='restore-info')return {...base,restoreVersion:1,remainingRecords:limits.records-state.entries.length,remainingMutations:limits.mutations-state.mutations.length};
     if(method==='batch-info')return {...base,maxItems:TEXT_COLLECTION_BULK_LIMITS.items,maxBytes:TEXT_COLLECTION_BULK_LIMITS.bytes,remainingRecords:limits.records-state.entries.length,remainingMutations:limits.mutations-state.mutations.length};
+    if(method==='cleanup-plan'){
+      const items=state.entries.filter(row=>!row.deleted).map(({id,revision})=>({id,revision}));return {...base,total:items.length,items};
+    }
     // One verified read: a concurrent writer can never mix revisions across exported records.
     if(method==='snapshot')return {...base,backup:validateTextCollectionBackup({type:'qianmu-text-collections',version:1,
       sourceAccount:context.account.namespace,exportedAt:now(),libraryRevision:state.revision,records:state.entries.filter(row=>!row.deleted).map(row=>row.record)})};
@@ -100,7 +103,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
   }
   function track(request,body,options,method){
     let context,input;
-    try{context=capture(request,body,options?.signal);input=method==='write-batch'?textCollectionBulkRequest(body):method==='batch-info'?textCollectionBulkInfoRequest(body):method==='write'?textCollectionSyncMutation(body):textCollectionSyncQuery(body,method);if(pending.size>=64)fail('busy','收藏请求过多，请稍后重试',429);}
+    try{context=capture(request,body,options?.signal);input=method==='write-batch'?textCollectionBulkRequest(body):['batch-info','cleanup-plan'].includes(method)?textCollectionBulkInfoRequest(body):method==='write'?textCollectionSyncMutation(body):textCollectionSyncQuery(body,method);if(pending.size>=64)fail('busy','收藏请求过多，请稍后重试',429);}
     catch(cause){return Promise.reject(cause);}
     const key=context.account.namespace,prior=tails.get(key)||Promise.resolve();
     const task=prior.catch(()=>{}).then(async()=>{
@@ -115,6 +118,7 @@ export function createTextCollectionSyncService({dataRoot,io,now=Date.now,proces
     inventory:(request,input,options)=>track(request,input,options,'inventory'),
     'write-batch':(request,input,options)=>track(request,input,options,'write-batch'),
     'batch-info':(request,input,options)=>track(request,input,options,'batch-info'),
+    'cleanup-plan':(request,input,options)=>track(request,input,options,'cleanup-plan'),
     'restore-info':(request,input,options)=>track(request,input,options,'restore-info'),
     write:(request,input,options)=>track(request,input,options,'write'),async close(){closed=true;await Promise.allSettled([...pending]);}});
 }
