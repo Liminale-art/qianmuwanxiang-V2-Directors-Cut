@@ -1,0 +1,90 @@
+dialog.qm-text-collection-dialog {
+    box-sizing: border-box;
+    width: min(560px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--sd-hairline, #8886);
+    border-radius: var(--qm-card-radius, 10px);
+    background: var(--sd-sticky-bg, var(--SmartThemeBlurTintColor, #292b2f));
+    color: var(--sd-text, var(--SmartThemeBodyColor, #f0f0f0));
+    font: inherit;
+    font-size: 14px;
+    overflow: hidden;
+}
+dialog.qm-text-collection-dialog[open] { display: flex; flex-direction: column; }
+dialog.qm-text-collection-dialog::backdrop { background: #0007; }
+.qm-text-collection-dialog *, .qm-text-collection-row { box-sizing: border-box; }
+.qm-text-collection-dialog [hidden] { display: none !important; }
+.qm-text-collection-dialog > header, .qm-text-collection-dialog > footer { padding: 12px; flex: none; }
+.qm-text-collection-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.qm-text-collection-dialog > main { padding: 0 12px; min-height: 0; overflow: auto; }
+.qm-text-collection-dialog p { margin: 0 0 10px; line-height: 1.5; overflow-wrap: anywhere; text-align: start; }
+.qm-text-collection-dialog [data-collection-status]:empty { display: none; }
+.qm-text-collection-dialog [data-collection-status] { color: var(--sd-muted, inherit); font-size: 12px; }
+.qm-text-collection-choices, .qm-text-collection-actions { display: flex; gap: 8px; }
+.qm-text-collection-choices > button, .qm-text-collection-actions > button { flex: 1; }
+.qm-text-collection-dialog button {
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 12px;
+    border: 1px solid var(--sd-hairline, #8886);
+    border-radius: var(--qm-button-radius, 8px);
+    color: inherit;
+    background: var(--qm-surface, #8882);
+    font: inherit;
+    line-height: 1.4;
+    cursor: pointer;
+}
+.qm-text-collection-dialog button:disabled { opacity: .5; cursor: default; }
+.qm-text-collection-dialog button:focus-visible, .qm-text-collection-row:focus-visible { outline: 2px solid var(--qm-accent, #a7c4b5); outline-offset: -2px; }
+.qm-text-collection-dialog .qm-text-collection-save { border-color: var(--qm-accent, #a7c4b5); }
+.qm-text-collection-dialog textarea {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: clamp(150px, 40vh, 360px);
+    min-height: 120px;
+    margin: 0;
+    padding: 10px;
+    resize: vertical;
+    border: 1px solid var(--sd-hairline, #8886);
+    border-radius: var(--qm-button-radius, 8px);
+    background: var(--qm-surface, #8882);
+    color: inherit;
+    font: inherit;
+    font-size: 16px;
+    line-height: 1.6;
+    text-align: start;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    touch-action: auto;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.qm-text-collection-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0 0 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--sd-hairline, #8886);
+    border-radius: var(--qm-card-radius, 8px);
+    background: var(--qm-surface, #8881);
+    color: var(--sd-text, var(--SmartThemeBodyColor, inherit));
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+.qm-text-collection-row > span, .qm-text-collection-row > small { display: block; width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qm-text-collection-row > span { font-size: 14px; font-weight: 600; }
+.qm-text-collection-row > small { font-size: 12px; color: var(--sd-muted, inherit); opacity: .8; }
+@media (max-height: 420px) {
+    .qm-text-collection-dialog > header, .qm-text-collection-dialog > footer { padding: 8px 12px; }
+    .qm-text-collection-dialog textarea { height: 120px; min-height: 80px; }
+}
