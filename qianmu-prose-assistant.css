@@ -29,4 +29,5 @@ dialog.qm-prose-assistant-dialog[open] { display:flex;flex-direction:column; }
 .qm-prose-assistant-dialog small,.qm-prose-assistant-dialog .qm-pa-notice,.qm-prose-assistant-dialog [data-pa-status] { font-size:12px;color:var(--sd-muted,#aaa); }
 .qm-prose-assistant-dialog [data-pa-status]:empty { display:none; }
 .qm-prose-assistant-dialog [data-pa-scope]:empty { display:none; }
+.qm-prose-assistant-dialog [data-pa-history] { font-size:12px;color:var(--sd-muted,#aaa); }
 @media (max-height:480px) { .qm-prose-assistant-dialog > header,.qm-prose-assistant-dialog > footer { padding:8px; }.qm-prose-assistant-dialog [data-pa-question] { height:60px; } }
