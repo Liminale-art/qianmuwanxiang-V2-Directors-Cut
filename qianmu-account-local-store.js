@@ -35,7 +35,29 @@ export function createAccountLocalStore({indexedDB=globalThis.indexedDB,dbName,t
       }catch(error){abort(error);}};
     });
   }
-  return Object.freeze({read:(namespace,options)=>access(namespace,null,options),update:(namespace,mutator,options)=>{
+  // Bounded read-only range walk. Namespace partitioning belongs to the caller;
+  // each actual key/document still passes the same schema checks as direct reads.
+  async function scan({range,limit,visit}={}, {guard=()=>true}={}){
+    if(!range||typeof range.lower!=='string'||typeof range.upper!=='string'||range.lower>=range.upper||!Number.isInteger(limit)||limit<1||limit>10000||typeof visit!=='function')throw fail('storage','账户资料盘点范围无效');
+    check(guard);const db=await open();check(guard);
+    return new Promise((resolve,reject)=>{
+      let tx,done=false,count=0,failure;const finish=error=>{if(done)return;done=true;clearTimeout(timer);pending.delete(tx);error?reject(error):resolve(count);};
+      const abort=error=>{failure=error;try{tx?.abort();}catch(_){finish(error);}};
+      const timer=setTimeout(()=>{const error=fail('timeout','账户资料盘点超时，未返回部分统计');abort(error);finish(error);},timeout);
+      try{
+        tx=db.transaction('accounts','readonly');pending.add(tx);
+        tx.oncomplete=()=>{try{check(guard);finish();}catch(error){finish(error);}};tx.onabort=()=>finish(failure||fail('storage','账户资料盘点未完成'));
+        tx.onerror=()=>{failure ||= fail('storage','账户资料盘点失败');};
+        const request=tx.objectStore('accounts').openCursor(range);
+        request.onsuccess=()=>{try{
+          check(guard);const cursor=request.result;if(!cursor)return;if(++count>limit)throw fail('capacity','账户资料超过单次盘点上限，未返回部分统计');
+          const key=cursor.primaryKey;validateNamespace(key);const result=visit(validate(cursor.value,key),key);
+          if(result?.then)throw fail('storage','账户资料盘点不能等待网络');check(guard);cursor.continue();
+        }catch(error){abort(error);}};
+      }catch(_){const error=fail('storage','账户资料盘点暂不可用');if(tx)abort(error);else finish(error);}
+    });
+  }
+  return Object.freeze({read:(namespace,options)=>access(namespace,null,options),scan,update:(namespace,mutator,options)=>{
     if(typeof mutator!=='function')return Promise.reject(fail('storage','缺少账户资料事务'));return access(namespace,mutator,options);
   },close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
 }

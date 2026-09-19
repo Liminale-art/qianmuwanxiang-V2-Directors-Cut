@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {proseAssistantHistoryKey as key,emptyProseAssistantHistory as empty,validateProseAssistantHistory as validate,createProseAssistantHistoryStore as create} from '../qianmu-prose-assistant-history.js';
+import {measureProseAssistantHistory as measure} from '../qianmu-prose-assistant-history-contract.js';
 const account='st-user:'+'a'.repeat(64),other='st-user:'+'b'.repeat(64);
 const id=(accountId=account,owner='char:A.png',target={kind:'character',chatId:'Chat A',avatar:'A.png'},integrity=null)=>JSON.stringify(['qianmu-prose-assistant-v1',accountId,owner,target,integrity]);
 const row=()=>({id:1,user:'问题\r\n😀',assistant:'<b>纯文本回复</b>',status:'complete',reference:{floor:0,replyId:'swipe:1',mode:'selection',range:{start:3,end:5}}});
@@ -24,4 +25,20 @@ test('storage is lazy and isolated; mismatched accounts or invalid snapshots fai
  let opened=0;const store=create({indexedDB:{open(name){opened++;assert.equal(name,'qianmu-prose-assistant-history');throw Error('private internal');}}});assert.equal(opened,0);
  assert.throws(()=>store.read(other,id()));assert.throws(()=>store.write(account,id(),0,[{...row(),status:'running'}]));assert.equal(opened,0);
  await assert.rejects(store.read(account,id()),{code:'prose_assistant_history_storage'});assert.equal(opened,1);store.close();await assert.rejects(store.read(account,id()),{code:'prose_assistant_history_closed'});
+});
+
+test('usage measures exact persisted UTF-8 including metadata but exposes no dialogue, file names or credentials',()=>{
+ const value=state();value.rows.push({...row(),id:2,status:'failed',assistant:'半截'}, {...row(),id:3,status:'cancelled',assistant:''});const copy=structuredClone(value),size=measure(value,id(),account);
+ assert.deepEqual(size,{bytes:new TextEncoder().encode(JSON.stringify(value)).byteLength,count:3,complete:1,failed:1,cancelled:1});assert.deepEqual(value,copy);
+ assert.doesNotMatch(JSON.stringify(size),/问题|半截|Chat A|apiKey|st-user:/);assert.ok(Object.isFrozen(size));
+ const marker=measure({...empty(id()),revision:2},id(),account);assert.equal(marker.count,0);assert.ok(marker.bytes>0,'clear revision markers occupy metadata even with no dialogue');
+});
+
+test('usage cannot account a foreign or damaged document as a successful partial summary',()=>{
+ assert.throws(()=>measure(state(),id(),other));assert.throws(()=>measure({...state(),extra:'secret'},id(),account));assert.throws(()=>measure(state(),id()));
+});
+
+test('usage validates account/range capability before opening and never reports unavailable storage as zero',async()=>{
+ let opens=0;const store=create({indexedDB:{open(){opens++;throw Error();}},keyRange:null});assert.equal(opens,0);
+ await assert.rejects(store.usage(other+'suffix'),{code:'prose_assistant_history_invalid'});await assert.rejects(store.usage(account),{code:'prose_assistant_history_storage'});assert.equal(opens,0);store.close();
 });

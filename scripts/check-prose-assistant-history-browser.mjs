@@ -56,5 +56,32 @@ try{
  const conflict=await page.evaluate(async()=>{const other=await fixture.openRuntime();await other.save({key:fixture.key(),busy:false,rows:[]});other.close();try{await fixture.runtime.save({key:fixture.key(),busy:false,rows:[fixture.row(6)]});}catch(error){return {code:error.code,status:fixture.runtime.status()};}});
  assert.equal(conflict.code,'prose_assistant_history_conflict');assert.equal(conflict.status.canRetry,false);assert.deepEqual((await page.evaluate(()=>fixture.read())).rows,[]);await page.evaluate(()=>fixture.runtime.close());
  checks.push('coordinator respects another page clear and refuses both silent rebasing and automatic resurrection');
+ const usage=await page.evaluate(async()=>{
+  const key=fixture.key(fixture.account,'B'),rows=[fixture.row(),{...fixture.row(2),status:'failed'},{...fixture.row(3),status:'cancelled'}];await fixture.store.write(fixture.account,key,0,rows,{now:9});
+  await fixture.store.write(fixture.other,fixture.key(fixture.other),0,[fixture.row()],{now:10});
+  fixture.rawPut=async value=>{const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('qianmu-prose-assistant-history',1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});try{await new Promise((resolve,reject)=>{const tx=db.transaction('accounts','readwrite');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);tx.objectStore('accounts').put(value);});}finally{db.close();}};
+  // A corrupt foreign document must not even be visited by this account scan.
+  await fixture.rawPut({namespace:fixture.key(fixture.other),privateText:'FOREIGN PRIVATE',invalid:true});
+  const originals=[await fixture.read(),await fixture.store.read(fixture.account,key)],expected=originals.reduce((sum,row)=>sum+new TextEncoder().encode(JSON.stringify(row)).byteLength,0),put=IDBObjectStore.prototype.put;
+  try{IDBObjectStore.prototype.put=function(){throw Error('read-only inventory must not write');};return {summary:await fixture.store.usage(fixture.account),expected};}finally{IDBObjectStore.prototype.put=put;}
+ });
+ assert.equal(usage.summary.bytes,usage.expected);assert.equal(usage.summary.records,2);assert.equal(usage.summary.chats,1);assert.equal(usage.summary.markers,1);assert.equal(usage.summary.count,3);for(const name of ['complete','failed','cancelled'])assert.equal(usage.summary[name],1);
+ assert.equal(usage.summary.estimated,true);assert.equal(usage.summary.scope,'current-account-local');assert.doesNotMatch(JSON.stringify(usage.summary),/FOREIGN|PRIVATE|问题|纯文本|Chat|apiKey/);
+ checks.push('bounded read-only usage scans only the exact account prefix, counts UTF-8 records including clear markers, and returns no dialogue or file identifiers');
+ const scannerCases=await page.evaluate(async()=>{
+  const {createAccountLocalStore}=await import('./qianmu-account-local-store.js'),contract=await import('./qianmu-prose-assistant-history-contract.js');
+  const scanner=createAccountLocalStore({dbName:'qianmu-prose-assistant-history',validateNamespace:contract.proseAssistantHistoryKey,validate:contract.validateProseAssistantHistory,empty:contract.emptyProseAssistantHistory,error:contract.proseAssistantHistoryError,label:'助手历史'});
+  const prefix=JSON.stringify(['qianmu-prose-assistant-v1',fixture.account]).slice(0,-1)+',',range=IDBKeyRange.bound(prefix,prefix+'\uffff'),codes=[];
+  for(const mode of ['limit','guard','async','throw','close']){let live=true;try{await scanner.scan({range,limit:mode==='limit'?1:100,visit(){if(mode==='guard')live=false;if(mode==='async')return Promise.resolve();if(mode==='throw')throw Object.assign(Error(),{code:'test-visit'});if(mode==='close')scanner.close();}},{guard:()=>live});codes.push('unexpected success');}catch(error){codes.push(error.code);}}
+  scanner.close();return codes;
+ });
+ assert.deepEqual(scannerCases,['prose_assistant_history_capacity','prose_assistant_history_account','prose_assistant_history_storage','test-visit','prose_assistant_history_closed']);
+ assert.deepEqual(await page.evaluate(()=>fixture.store.usage(fixture.account)),usage.summary);
+ checks.push('range walk rejects cap overflow, stale guard, asynchronous visitors, visitor failure and close without publishing partial statistics or altering originals');
+ const inaccessible=await page.evaluate(async()=>{const cursor=IDBObjectStore.prototype.openCursor;try{IDBObjectStore.prototype.openCursor=function(){throw Error('private scan failure');};return await fixture.store.usage(fixture.account);}catch(error){return {code:error.code,message:error.message};}finally{IDBObjectStore.prototype.openCursor=cursor;}});
+ assert.equal(inaccessible.code,'prose_assistant_history_storage');assert.doesNotMatch(inaccessible.message,/private/);assert.deepEqual(await page.evaluate(()=>fixture.store.usage(fixture.account)),usage.summary);
+ checks.push('cursor failures remain explicit unavailable errors rather than a successful zero, and a later read can recover');
+ await page.evaluate(()=>fixture.rawPut({namespace:fixture.key(fixture.account,'broken'),invalid:true}));await assert.rejects(page.evaluate(()=>fixture.store.usage(fixture.account)));
+ checks.push('damaged own-account history rejects the entire summary instead of silently excluding its unknown occupancy');
  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,count:checks.length,externalRequests:external,pageErrors:errors,productionWrites:false,scope:'isolated real IndexedDB only; no host panel, ST sync or model'},null,2));
 }finally{clearTimeout(timer);await context.close();await browser.close();}

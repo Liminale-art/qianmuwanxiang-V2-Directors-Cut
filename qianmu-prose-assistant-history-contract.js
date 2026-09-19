@@ -39,4 +39,9 @@ export function validateProseAssistantHistory(value,key){
   rowsValid(value.rows);if(value.revision===0&&(value.rows.length||value.updatedAt!==0))fail();
   if(new TextEncoder().encode(JSON.stringify(value)).byteLength>PROSE_ASSISTANT_HISTORY_LIMITS.bytes)throw error('capacity','助手历史超过本机记录上限，未截断原文');return value;
 }
-export {error as proseAssistantHistoryError};
+export function measureProseAssistantHistory(value,key,namespace){
+  proseAssistantHistoryKey(key,account(namespace));const state=validateProseAssistantHistory(value,key);
+  return Object.freeze({bytes:new TextEncoder().encode(JSON.stringify(state)).byteLength,count:state.rows.length,
+    complete:state.rows.filter(row=>row.status==='complete').length,failed:state.rows.filter(row=>row.status==='failed').length,cancelled:state.rows.filter(row=>row.status==='cancelled').length});
+}
+export {error as proseAssistantHistoryError,account as proseAssistantHistoryAccount};
