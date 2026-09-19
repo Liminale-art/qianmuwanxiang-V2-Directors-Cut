@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createTextCollectionOutboxRuntime} from '../qianmu-text-collection-outbox-runtime.js';
+import {createTextCollectionOutboxRuntime,textCollectionConflictCopy} from '../qianmu-text-collection-outbox-runtime.js';
 import {createTextCollectionOutboxEntry,emptyTextCollectionOutbox,validateTextCollectionOutbox} from '../qianmu-text-collection-outbox-store.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 import {textCollectionSyncError as error} from '../qianmu-text-collection-sync-contract.js';
@@ -68,4 +68,20 @@ test('local removal needs explicit consent, checks the viewed snapshot and never
 test('failed local removal and an invalidated account leave all originals untouched',async()=>{
   for(const mode of ['quota','account']){const f=fixture(),runtime=f.runtime(),row=await runtime.enqueue(request());if(mode==='quota')f.failUpdate=2;else f.valid=false;
     await assert.rejects(runtime.remove(row,{confirmed:true}));assert.deepEqual(f.state.entries,[row]);assert.equal(f.sent.length,0);runtime.close();}
+});
+
+test('conflict copies derive one identity across reopen and lost acknowledgements without inventing source versions',async()=>{
+  const f=fixture(),runtime=f.runtime(),base=original(),request={version:1,expectedAccount:namespace,mutationId:'mutation-1',operation:'edit',id:base.id,baseRevision:1,text:'本机的冲突修改'};
+  await runtime.enqueue(request,{base});f.mode='conflict';await assert.rejects(runtime.submit(request.mutationId));const source=(await runtime.list())[0];
+  await assert.rejects(runtime.keepCopy(source),{code:'text_collection_sync_consent'});assert.equal(f.state.entries.length,1);
+  const prepared=await textCollectionConflictCopy(source);assert.deepEqual(prepared,await textCollectionConflictCopy(structuredClone(source)));assert.deepEqual(prepared.record,base);assert.equal(prepared.text,request.text);
+  f.mode='lost';await assert.rejects(runtime.keepCopy(source,{confirmed:true}));assert.equal(f.state.entries.length,2);const sent=f.sent.at(-1);runtime.close();
+  f.mode='ok';const resumed=f.runtime();await resumed.keepCopy(source,{confirmed:true});assert.deepEqual(f.sent.at(-1),sent);assert.equal(f.state.entries.length,0);resumed.close();
+});
+test('failure retiring the source after a confirmed copy still retries one stable copy; stale sources cannot make another',async()=>{
+  const f=fixture(),runtime=f.runtime(),base=original(),request={version:1,expectedAccount:namespace,mutationId:'mutation-1',operation:'edit',id:base.id,baseRevision:1,text:'修改'};
+  await runtime.enqueue(request,{base});f.mode='conflict';await assert.rejects(runtime.submit(request.mutationId));const source=(await runtime.list())[0];
+  f.mode='ok';f.failUpdate=7;await assert.rejects(runtime.keepCopy(source,{confirmed:true}));assert.deepEqual(f.state.entries,[source]);const sent=f.sent.at(-1);
+  f.failUpdate=0;await runtime.keepCopy(source,{confirmed:true});assert.deepEqual(f.sent.at(-1),sent);assert.equal(f.state.entries.length,0);
+  const count=f.sent.length;await assert.rejects(runtime.keepCopy(source,{confirmed:true}),{code:'text_collection_sync_local_conflict'});assert.equal(f.sent.length,count);runtime.close();
 });

@@ -16,7 +16,7 @@ const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'cr
   source:{account:expectedAccount,chatId:'deleted-chat',messageId:0,replyId:'old-reply',charName:'当时角色',userName:'<旧用户>',text:`收藏原文 ${id}\r\n不依赖聊天`}})});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
 const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['cleanup-batch','bulk-contract','storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
-const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
+const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false,rejectDraftCopy=false;
 for(const file of ['qianmu-account-local-store.js','qianmu-text-collection-outbox-store.js','qianmu-text-collection-outbox-runtime.js','qianmu-text-collection-outbox-view.js'])allowed.add(file);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
@@ -30,6 +30,7 @@ await context.route('**/*',async route=>{
       const input=route.request().postDataJSON();assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
       if(action==='list'&&failListOnce){failListOnce=false;return route.abort('failed');}
       if(action==='get')reads++;if(['write','write-batch'].includes(action))writes.push(input);
+      if(action==='write'&&rejectDraftCopy&&input.operation==='restore'&&Object.hasOwn(input,'text'))return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({ok:false,version:1,code:'text_collection_sync_contract',message:'旧版本不支持此格式',writeState:'not_started'})});
       try{const result=await service[action](request,input);if(['write','write-batch'].includes(action)&&loseAck){loseAck=false;return route.abort('failed');}return route.fulfill({contentType:'application/json',body:JSON.stringify(result)});}
       catch(cause){const error=textCollectionSyncErrorPayload(cause);return route.fulfill({status:error.status,contentType:'application/json',body:JSON.stringify(error.body)});}
     }
@@ -223,6 +224,18 @@ try{
   await page.evaluate(()=>{fixture.holdConfirm=true;});await pendingButton('remove').click();await page.waitForFunction(()=>typeof fixture.acceptConfirm==='function');await pendingButton('close').click();await page.evaluate(()=>{fixture.acceptConfirm(true);fixture.holdConfirm=false;});await ready();
   await button('pending').click();await pendingReady();assert.equal(await pendingRoot.locator(`[data-pending-id="${closed.mutationId}"]`).count(),1);assert.equal(await pendingRoot.locator(`[data-pending-id="${stale.mutationId}"]`).count(),1);assert.equal(writes.length,beforeLocalRemove);
   checks.push('changed snapshots and closing while confirmation is pending preserve the original local rows');
+  await pendingRoot.locator(`[data-pending-id="${pending[0].request.mutationId}"]`).click();await pendingReady();const beforeCopy=writes.length;
+  await page.evaluate(()=>{fixture.consent=false;});await pendingButton('keep-copy').click();await pendingReady();assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/未创建副本/);assert.equal(writes.length,beforeCopy);
+  await page.evaluate(()=>{fixture.consent=true;});rejectDraftCopy=true;await pendingButton('keep-copy').click();await pendingReady();assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/后端未接受副本格式.*本机内容仍保留/);assert.equal(await pendingRoot.locator('textarea').inputValue(),'不要丢失的本机修改');
+  const copyRequest=structuredClone(writes.at(-1));assert.equal(copyRequest.record.revision,2);assert.equal(copyRequest.text,'不要丢失的本机修改');
+  rejectDraftCopy=false;loseAck=true;await pendingButton('keep-copy').click();await pendingReady();assert.deepEqual(writes.at(-1),copyRequest);
+  await pendingButton('close').click();await ready();await button('pending').click();await pendingReady();
+  await pendingRoot.locator(`[data-pending-id="${pending[0].request.mutationId}"]`).click();await pendingReady();await pendingButton('keep-copy').click();await pendingReady();assert.deepEqual(writes.at(-1),copyRequest);
+  assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/新副本已保存，原收藏未覆盖/);
+  assert.equal(await pendingRoot.locator(`[data-pending-id="${pending[0].request.mutationId}"]`).count(),0);assert.equal(await pendingRoot.locator(`[data-pending-id="${copyRequest.mutationId}"]`).count(),0);
+  const newCopy=(await service.get(request,{version:1,expectedAccount,id:copyRequest.id})).record;assert.equal(newCopy.text,'不要丢失的本机修改');assert.equal(newCopy.restoredFrom.revision,2);assert.equal(newCopy.restoredFrom.id,'collection-50');assert.equal(newCopy.createdAt,pending[0].base.createdAt);assert.equal(newCopy.source.charName,pending[0].base.source.charName);
+  assert.equal((await service.get(request,{version:1,expectedAccount,id:'collection-50'})).record,null);assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,3);
+  checks.push('explicit conflict copy preserves draft/source/date through old-backend rejection and lost receipts, creates only one copy and never resurrects the deleted original');
   await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
   checks.push('owner disposal closes both nested pending and library dialogs without removing device originals');
   assert.equal(external,0);assert.deepEqual(errors,[]);

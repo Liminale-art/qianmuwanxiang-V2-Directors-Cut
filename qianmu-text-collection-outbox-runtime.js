@@ -1,9 +1,21 @@
 import {createTextCollectionOutboxStore,createTextCollectionOutboxEntry,textCollectionOutboxEntry,textCollectionOutboxAccount,summarizeTextCollectionOutbox} from './qianmu-text-collection-outbox-store.js';
-import {textCollectionSyncError as error,textCollectionSyncResponse} from './qianmu-text-collection-sync-contract.js';
+import {textCollectionSyncError as error,textCollectionSyncResponse,textCollectionSyncMutation} from './qianmu-text-collection-sync-contract.js';
+
+// Stable identity belongs to this exact conflicted save, not to an editor session.
+// Keep the domain and canonical payload stable across refreshes and future versions.
+export async function textCollectionConflictCopy(input,cryptoImpl=globalThis.crypto){
+  const row=textCollectionOutboxEntry(input,input?.request?.expectedAccount);
+  if(row.state!=='conflict')throw error('conflict','仅对已确认的版本冲突创建独立副本');
+  if(!cryptoImpl?.subtle?.digest)throw error('setup','无法安全识别副本操作；请使用 HTTPS 或本机地址',503);
+  const data='qianmu-text-collection-conflict-copy-v1\n'+JSON.stringify({request:row.request,base:row.base});
+  const hash=Array.from(new Uint8Array(await cryptoImpl.subtle.digest('SHA-256',new TextEncoder().encode(data))),byte=>byte.toString(16).padStart(2,'0')).join('');
+  return textCollectionSyncMutation({version:1,expectedAccount:row.request.expectedAccount,mutationId:'copy-save-'+hash,operation:'restore',id:'copy-'+hash,baseRevision:0,
+    record:row.base||row.request.record,text:Object.hasOwn(row.request,'text')?row.request.text:row.request.record.text});
+}
 
 // Explicitly queued saves only. No timers, automatic retry, deferred deletion or
 // revision rebasing. The same durable request is safe to resume after a lost ack.
-export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=()=>true,now=Date.now}={}){
+export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=()=>true,now=Date.now,cryptoImpl=globalThis.crypto}={}){
   const namespace=textCollectionOutboxAccount(session?.expectedAccount),ownsStore=!store;
   if(typeof session.guard!=='function'||typeof session.resumePending!=='function'||typeof isCurrent!=='function')throw error('setup','收藏待存环境未就绪',503);
   store ||= createTextCollectionOutboxStore();let closed=false;const active=new Map(),controllers=new Set();
@@ -78,6 +90,21 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
       state.entries.splice(at,1);removed=true;
     });return Object.freeze({removed});
   }
-  return Object.freeze({namespace,enqueue,submit,save,remove,list:async()=>structuredClone((await read()).entries),summary:async()=>summarizeTextCollectionOutbox(await read()),
+  async function keepCopy(input,{confirmed=false,signal}={}){
+    if(confirmed!==true)throw error('consent','请确认将冲突内容保留为独立新副本');
+    const source=textCollectionOutboxEntry(input,namespace);await check();const request=await textCollectionConflictCopy(source,cryptoImpl);
+    await update(state=>{
+      const row=state.entries.find(entry=>entry.request.mutationId===source.request.mutationId);
+      if(!row||!same(row,source))throw error('local_conflict','原冲突记录已变化，未创建副本，请刷新核对');
+      const prior=state.entries.find(entry=>entry.request.mutationId===request.mutationId);
+      if(prior){if(!same(prior.request,request))throw error('local_conflict','副本编号关联了其他内容，未覆盖');}
+      else state.entries.push(createTextCollectionOutboxEntry(request,{queuedAt:now()}));
+    });
+    const result=await submit(request.mutationId,{signal});
+    await update(state=>{const at=state.entries.findIndex(entry=>entry.request.mutationId===source.request.mutationId);
+      if(at>=0&&same(state.entries[at],source))state.entries.splice(at,1);
+    });return result;
+  }
+  return Object.freeze({namespace,enqueue,submit,save,remove,keepCopy,list:async()=>structuredClone((await read()).entries),summary:async()=>summarizeTextCollectionOutbox(await read()),
     close(){closed=true;for(const controller of controllers)controller.abort();if(ownsStore)store.close();}});
 }
