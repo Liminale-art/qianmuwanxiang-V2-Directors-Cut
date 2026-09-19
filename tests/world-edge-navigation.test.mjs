@@ -50,7 +50,7 @@ for (const [semantic, glyph] of Object.entries({ backstage: 'feather', 'floor-to
 }
 assert.match(source, /id: 'theater'[^\n]*qm-regular-tv/);
 assert.match(source, /id: 'imagegen'[^\n]*qm-regular-aperture/);
-assert.match(source, /button\.innerHTML = '<i class="fa-solid fa-video" data-qm-icon="qm-regular-aperture"/);
+assert.match(await readFile(new URL('../qianmu-text-collection-floor.js',import.meta.url),'utf8'), /button\.innerHTML\s*=\s*'<i class="fa-solid fa-video" data-qm-icon="qm-regular-aperture"/);
 assert.match(css, /\.sd-world-viewport \{[^}]*min-height: 0/);
 assert.doesNotMatch(css.match(/\.sd-world-edge \{[^}]*}/)?.[0] || '', /top: 50%/);
 assert.match(css, /\.sd-tab.active \{[^}]*background: transparent !important;[^}]*box-shadow: none !important;/);

@@ -8,7 +8,7 @@ const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage();
 const checks = [], errors = [], allowed = new Set(['qianmu-text-collection.js', 'qianmu-text-collection-view.js', 'qianmu-notes-sync-contract.js']);
-for(const file of ['capture','session','client','sync-contract'])allowed.add(`qianmu-text-collection-${file}.js`);
+for(const file of ['floor','capture','session','client','sync-contract'])allowed.add(`qianmu-text-collection-${file}.js`);
 const writes=[];let apiMode='ok',held;
 let external = 0;
 page.on('pageerror', error => errors.push(error.message));
@@ -26,6 +26,7 @@ await context.route('**/*', async route => {
     if (url.origin === 'https://qianmu.test' && route.request().method() === 'GET') {
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><body><button id="floor-bookmark">收藏</button><main id="fixture"></main></body></html>' });
         const file = url.pathname.slice(1);
+        if(file==='qianmu-text-collection.css')return route.fulfill({contentType:'text/css',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
         if (allowed.has(file)) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
     }
     external++; return route.abort();
@@ -231,6 +232,36 @@ try {
     await page.evaluate(()=>{fixture.namespace='st-user:bob';});await held();await page.waitForFunction(()=>fixture.completed!=='pending');
     assert.equal(await page.evaluate(()=>fixture.completed),null);assert.equal(await page.locator('dialog').count(),0);
     checks.push('account change while a persistent save is pending closes the old chooser and discards its late acknowledgement');
+    apiMode='ok';
+    await page.evaluate(async()=>{
+        const {createTextCollectionFloorTools,injectStoryboardMessageButtons}=await import('./qianmu-text-collection-floor.js');
+        fixture.current=true;fixture.chatKey='chat-floor';fixture.namespace='st-user:alice';fixture.notice=[];fixture.detached=0;
+        fixture.messages=[{mes:'第一段\n\n第二段',name:'当时角色',swipe_id:1},{mes:'system',is_system:true},{mes:'用户内容',name:'当时用户',is_user:true}];
+        fixture.chat=document.createElement('div');fixture.chat.id='chat';
+        fixture.chat.innerHTML='<div class="mes" mesid="0"><div class="mes_text"><p>第一段</p><p>第二段</p><div data-qianmu-transient="storyboard">不收录的图注<button>重绘</button></div><script type="text/plain">不收录的脚本</script><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></div><div class="mes_buttons"><div class="extraMesButtons"></div></div></div><div class="mes" mesid="1"><div class="mes_buttons"></div></div><div class="mes" mesid="2"><div class="mes_text">用户内容</div><div class="mes_buttons"></div></div>';
+        document.body.append(fixture.chat);
+        const hidden=document.createElement('p');hidden.style.display='none';hidden.textContent='主题隐藏的推理不收录';fixture.chat.querySelector('.mes_text').append(hidden);
+        fixture.floorTools=createTextCollectionFloorTools({getContext:()=>({chat:fixture.messages}),getChatKey:()=>fixture.chatKey,names:()=>({charName:'当前角色',userName:'当前用户'}),resolveNamespace:async()=>fixture.namespace,
+            isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'}),applyIcons:()=>{},mountPortal:()=>()=>{fixture.detached++;},notify:(...args)=>fixture.notice.push(args)});
+        fixture.floorTools.refresh(fixture.chat);fixture.floorTools.refresh(fixture.chat);
+        injectStoryboardMessageButtons(fixture.chat,{floorOf:node=>Number(node.getAttribute('mesid')),getContext:()=>({chat:fixture.messages}),getState:()=>({}),planForMessage:()=>null,applyIcons:()=>{}});
+    });
+    assert.equal(await page.locator('[data-qm-collect-floor]').count(),2);assert.equal(await page.locator('.sd-storyboard-message-action').count(),2);
+    await page.locator('.mes[mesid="0"] [data-qm-collect-floor]').click();await action('full').click();await action('save').click();
+    await page.waitForFunction(()=>fixture.notice.length===1);
+    assert.equal(writes.at(-1).record.text,'第一段\n\n第二段');assert.equal(writes.at(-1).record.source.charName,'当时角色');assert.equal(writes.at(-1).record.source.userName,'当前用户');
+    assert.equal(writes.at(-1).record.source.replyId,'swipe:1');assert.equal(await page.evaluate(()=>fixture.detached),1);
+    checks.push('ST-shaped toolbar entries are idempotent, exclude system rows, coexist with storyboard and capture rendered prose without media or controls');
+    apiMode='hold';held=null;await page.locator('.mes[mesid="0"] [data-qm-collect-floor]').click();await action('full').click();await action('save').click();
+    for(let attempt=0;!held&&attempt<50;attempt++)await new Promise(resolve=>setTimeout(resolve,20));assert.equal(typeof held,'function');
+    await page.evaluate(()=>{fixture.messages[0].mes='另一条回复';fixture.messages[0].swipe_id=2;});await held();await page.waitForFunction(()=>!document.querySelector('dialog'));
+    assert.equal(await page.evaluate(()=>fixture.notice.length),1);
+    checks.push('edited or swiped floor never adopts a late save notification as a new source');
+    await page.evaluate(()=>fixture.floorTools.dispose());assert.equal(await page.locator('[data-qm-collect-floor]').count(),0);assert.equal(await page.locator('.sd-storyboard-message-action').count(),2);
+    await page.evaluate(()=>fixture.floorTools.refresh(fixture.chat));assert.equal(await page.locator('[data-qm-collect-floor]').count(),2);
+    await page.locator('.mes[mesid="2"] [data-qm-collect-floor]').click();await action('full').click();await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
+    assert.equal(await page.locator('[data-qm-text-collection-portal]').count(),0);
+    checks.push('disable/hot cleanup removes only collection entries and portals; reinitialization works without duplicated handlers');
     assert.ok(await page.evaluate(() => fixture.selectionEvents) > 0);
     assert.equal(external, 0); assert.deepEqual(errors, []);
     console.log(JSON.stringify({ checks, count: checks.length, externalRequests: external, productionWrites: false, persistence: 'capture adapter uses real client with intercepted synthetic API acknowledgements; no ST account or production disk', pageErrors: errors }, null, 2));

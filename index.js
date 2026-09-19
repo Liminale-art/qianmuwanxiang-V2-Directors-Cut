@@ -1,4 +1,5 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
+import {createTextCollectionFloorTools,injectStoryboardMessageButtons} from './qianmu-text-collection-floor.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js';
@@ -262,6 +263,7 @@ let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,st
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
+const collectionFloorTools=createTextCollectionFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(),headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root),notify:toast,isCurrent:()=>initialized&&isRuntimeOwner()});
 const featureRuntime = createFeatureRuntime({
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.202') },
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.202') },
@@ -21205,23 +21207,7 @@ function storyboardInlineAnchorNode(text, records) {
 }
 
 function storyboardInjectMessageButtons(chatRoot) {
-  chatRoot.querySelectorAll('.mes').forEach((message) => {
-    const floor = storyboardMessageFloor(message);
-    const chatMessage = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
-    if (!chatMessage || chatMessage.is_system || message.querySelector('.sd-storyboard-message-action')) return;
-    const toolbar = message.querySelector('.mes_buttons .extraMesButtons, .mes_buttons .mes_buttons_inner, .mes_buttons');
-    if (!toolbar) return;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'mes_button interactable sd-storyboard-message-action';
-    button.dataset.storyboardChatAction = 'capture-floor';
-    const plan = storyboardPlanForMessage(storyboardState(), floor, chatMessage);
-    button.title = plan?.shots?.some((shot) => shot.hasPrompt || String(shot.prompt || '').trim()) ? `重新提取第 ${floor} 层生成词` : `提取第 ${floor} 层生成词`;
-    button.setAttribute('aria-label', button.title);
-    button.innerHTML = '<i class="fa-solid fa-video" data-qm-icon="qm-regular-aperture"></i>';
-    toolbar.appendChild(button);
-    applyQianmuIcons(button);
-  });
+  injectStoryboardMessageButtons(chatRoot,{floorOf:storyboardMessageFloor,getContext:ctx,getState:storyboardState,planForMessage:storyboardPlanForMessage,applyIcons:applyQianmuIcons});
 }
 
 const STORYBOARD_INLINE_MARK = '<svg viewBox="0 0 256 256" aria-hidden="true"><path d="M208 144a15.78 15.78 0 0 1-10.42 14.94L146 178l-19 51.62a15.92 15.92 0 0 1-29.88 0L78 178l-51.62-19a15.92 15.92 0 0 1 0-29.88L78 110l19-51.62a15.92 15.92 0 0 1 29.88 0L146 110l51.62 19A15.78 15.78 0 0 1 208 144Zm-56-96h16v16a8 8 0 0 0 16 0V48h16a8 8 0 0 0 0-16h-16V16a8 8 0 0 0-16 0v16h-16a8 8 0 0 0 0 16Zm88 32h-8v-8a8 8 0 0 0-16 0v8h-8a8 8 0 0 0 0 16h8v8a8 8 0 0 0 16 0v-8h8a8 8 0 0 0 0-16Z"/></svg>';
@@ -21394,6 +21380,7 @@ function storyboardDisposeInlineWrapper(wrapper) {
 function storyboardRenderInlineImages(targetFloor = null) {
   const chatRoot = document.getElementById('chat');
   if (!chatRoot) return;
+  collectionFloorTools.refresh(chatRoot);
   if (!storyboardState().enabled) {
     storyboardReleaseInlineVideoPlaybacks();
     chatRoot.querySelectorAll('.sd-storyboard-inline, .sd-storyboard-message-action').forEach((node) => node.remove());
@@ -36160,6 +36147,7 @@ function cleanupRuntime(resetSettings = false) {
   cancelStartupFallback();
   if (!isRuntimeOwner()) return;
   initialized = false;
+  collectionFloorTools.dispose();
   directorRun?.controller.abort(); directorLiveLog = null;
   const clean = (label, callback) => {
     try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }

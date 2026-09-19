@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+test('collection toolbar refresh runs independently before storyboard enable gate and is disposed with the owner runtime',async()=>{
+  const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
+  const render=source.slice(source.indexOf('function storyboardRenderInlineImages('),source.indexOf('function storyboardScheduleInlineRender('));
+  assert.ok(render.indexOf('collectionFloorTools.refresh(chatRoot)')>=0);
+  assert.ok(render.indexOf('collectionFloorTools.refresh(chatRoot)')<render.indexOf('if (!storyboardState().enabled)'));
+  assert.match(source.slice(source.indexOf('function cleanupRuntime(')),/initialized = false;\s+collectionFloorTools.dispose\(\)/);
+  assert.match(source,/isCurrent:\(\)=>initialized&&isRuntimeOwner\(\)/);
+});
+test('collection UI dependencies are shipped locally and are not loaded into the light toolbar before an explicit click',async()=>{
+  const source=await readFile(new URL('../qianmu-text-collection-floor.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/^import /m);assert.match(source,/await import\('\.\/qianmu-text-collection-capture.js'\)/);
+  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
+  for(const file of ['floor','capture','session','client','view'])assert.ok(release.files.includes(`qianmu-text-collection-${file}.js`));
+  assert.ok(release.files.includes('qianmu-text-collection.css'));
+});

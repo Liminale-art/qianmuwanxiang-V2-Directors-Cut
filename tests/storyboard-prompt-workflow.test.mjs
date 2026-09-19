@@ -62,7 +62,7 @@ assert.doesNotMatch(source, /<span>提示词预处理<\/span>/);
 // The default path is an unobtrusive two-stage automatic flow; manual capture remains an escape hatch.
 assert.match(source, /sd-storyboard-capsule-switch[\s\S]*自动提取生成词[\s\S]*自动生图/);
 assert.doesNotMatch(source, /sd-storyboard-auto-flow/);
-assert.match(source, /dataset\.storyboardChatAction = 'capture-floor'/);
+assert.match(fs.readFileSync(path.join(root, 'qianmu-text-collection-floor.js'), 'utf8'), /dataset\.storyboardChatAction = 'capture-floor'/);
 assert.match(source, /button\.dataset\.storyboardChatAction === 'capture-floor'[\s\S]*storyboardChooseCaptureMode[\s\S]*storyboardCompilePrompt\(null, \{ plan, quiet: false \}\)[\s\S]*manualSupplement[\s\S]*storyboardGenerate\(null, \{ plan, automatic: false \}\)/);
 assert.match(source, /function storyboardHandleAutomaticCapture/);
 
