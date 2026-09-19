@@ -15,7 +15,7 @@ const service=createTextCollectionSyncService({dataRoot:root});
 const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'create',id,baseRevision:0,record:createTextCollection({id,mode:'full',createdAt:Date.UTC(2026,8,19)+Number(id.split('-')[1]||0),
   source:{account:expectedAccount,chatId:'deleted-chat',messageId:0,replyId:'old-reply',charName:'当时角色',userName:'<旧用户>',text:`收藏原文 ${id}\r\n不依赖聊天`}})});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
-const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js',...['backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
+const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
@@ -25,7 +25,7 @@ await context.route('**/*',async route=>{
     if(url.pathname==='/qianmu-text-collection.css')return route.fulfill({contentType:'text/css',body:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
     const file=url.pathname.slice(1);if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(new URL('../'+file,import.meta.url),'utf8')});
     const action=url.pathname.split('/').at(-1);
-    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','write'].includes(action)&&route.request().method()==='POST'){
+    if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','write'].includes(action)&&route.request().method()==='POST'){
       const input=route.request().postDataJSON();assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
       if(action==='list'&&failListOnce){failListOnce=false;return route.abort('failed');}
       if(action==='get')reads++;if(action==='write')writes.push(input);
@@ -102,6 +102,26 @@ try{
   await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
   assert.equal(await page.locator('[data-qm-text-collection-portal]').count(),0);
   checks.push('floor-tools launcher works with no chat, deduplicates opens, isolates Escape, survives chat-root replacement and cleans up on owner disposal');
+  await page.evaluate(async()=>{
+    const {renderStorageBackupSection}=await import('./qianmu-storage-backup-view.js');const host=document.createElement('section');host.innerHTML=renderStorageBackupSection();document.body.append(host);
+    fixture.exportButton=host.querySelector('[data-storage-export="collections"]');fixture.downloads=[];fixture.exportAsks=0;fixture.releases=0;
+    fixture.runExport=()=>fixture.floorTools.exportBackup(fixture.exportButton,async()=>{fixture.exportAsks++;return new Promise(resolve=>{fixture.acceptExport=resolve;});},async(blob,name)=>fixture.downloads.push({payload:JSON.parse(await blob.text()),name}),()=>{const check=()=>{if(!host.isConnected)throw Error('closed');};check.release=()=>fixture.releases++;return check;});
+    fixture.exportPending=fixture.runExport();
+  });await page.waitForFunction(()=>fixture.exportAsks===1);
+  assert.equal(await page.locator('[data-storage-export="collections"]').isDisabled(),true);
+  await page.evaluate(()=>fixture.runExport());assert.equal(await page.evaluate(()=>fixture.exportAsks),1);
+  await page.evaluate(async()=>{fixture.acceptExport(true);await fixture.exportPending;});
+  const exported=await page.evaluate(()=>fixture.downloads);assert.equal(exported.length,1);assert.equal(exported[0].payload.records.length,51);
+  assert.ok(exported[0].payload.records.every(r=>r.id!=='collection-50'&&r.id!=='collection-99'));assert.equal(await page.evaluate(()=>fixture.releases),1);
+  assert.equal(await page.locator('[data-storage-export="collections"]').isDisabled(),false);
+  checks.push('central export row starts one complete account snapshot download after confirmation without tombstones or duplicate clicks');
+  for(const mode of ['account','dispose']){
+    await page.evaluate(()=>{fixture.namespace='st-user:alice';fixture.acceptExport=null;fixture.exportPending=fixture.runExport();});await page.waitForFunction(()=>fixture.acceptExport!==null);
+    await page.evaluate(async mode=>{if(mode==='account')fixture.namespace='st-user:bob';else fixture.floorTools.dispose();fixture.acceptExport(true);await fixture.exportPending;},mode);
+    assert.equal(await page.evaluate(()=>fixture.downloads.length),1);assert.equal(await page.locator('[data-storage-export="collections"]').isDisabled(),false);
+  }
+  assert.equal(await page.evaluate(()=>fixture.releases),3);
+  checks.push('account change and owner disposal while confirming export release controls without downloading old-account content');
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({count:checks.length,checks,pageErrors:errors,externalRequests:external,productionWrites:false,persistence:'real account-file service in temporary directory; browser transport intercepted; synthetic login, not live ST'},null,2));
 }finally{

@@ -79,6 +79,8 @@ export function renderStorageBackupSection(notesStorage, formatBytes = value => 
       <div class="sd-storage-backup-row"><span>配置</span><button type="button" class="sd-btn sd-export-config">导出</button><button type="button" class="sd-btn sd-import-config">导入</button><input type="file" class="sd-import-config-file" accept="application/json,.json" hidden></div>
       <button type="button" class="sd-btn sd-undo-config" hidden>撤回本次恢复</button>
       ${[['notes','便笺','application/json,.json'],['favorites','语音收藏','application/json,.json'],['audio','音频缓存','application/json,.json']].map(([key,label,accept])=>storagePackageRow(key,label,accept)).join('')}
+      <div class="sd-storage-backup-row"><span>正文收藏</span><button type="button" class="sd-btn" data-storage-export="collections" aria-label="导出正文收藏">导出</button></div>
+      <p class="sd-storage-scope">正文收藏备份读取当前 ST 账户的服务器原件，不含已删除条目；与聊天及本机缓存清理独立。恢复入口尚未开放，请保留服务器原件。</p>
       <div class="sd-storage-backup-row"><span>专注语音原件</span><button type="button" class="sd-btn sd-storage-focus-library">管理</button></div>
       <p class="sd-storage-scope">音频缓存是本浏览器当前 ST 站点的本机记录，可含多个聊天；旧记录没有可靠账户归属，不代表当前账户专属，也不自动跨端。清理请在本卡选择「音频缓存」，不会删除语音收藏。重新合成可能收费。</p>
       <p class="sd-storage-scope sd-storage-notes-summary" role="status">${notesInfo} 所有便笺都保存，常驻不影响备份范围。</p>

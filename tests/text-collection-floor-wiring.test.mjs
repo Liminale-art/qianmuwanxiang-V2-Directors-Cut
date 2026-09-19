@@ -13,7 +13,7 @@ test('collection UI dependencies are shipped locally and are not loaded into the
   const source=await readFile(new URL('../qianmu-text-collection-floor.js',import.meta.url),'utf8');
   assert.doesNotMatch(source,/^import /m);assert.match(source,/await import\('\.\/qianmu-text-collection-capture.js'\)/);
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  for(const file of ['floor','capture','session','client','view','library'])assert.ok(release.files.includes(`qianmu-text-collection-${file}.js`));
+  for(const file of ['floor','capture','session','client','view','library','export','backup'])assert.ok(release.files.includes(`qianmu-text-collection-${file}.js`));
   assert.ok(release.files.includes('qianmu-text-collection.css'));
 });
 test('library entry belongs to floor tools even with no active chat and uses the host confirmation path',async()=>{
@@ -21,4 +21,10 @@ test('library entry belongs to floor tools even with no active chat and uses the
   const floor=source.slice(source.indexOf('function openFloorNavigator('),source.indexOf('async function runQuickWheelCommand('));
   assert.match(floor,/class="sd-floor-collections" aria-label="正文收藏"/);
   assert.match(floor,/collectionFloorTools.openLibrary\(root,confirmDialog\)/);
+});
+
+test('central collection export reuses host page guard and downloader without advertising an unavailable restore',async()=>{
+  const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),view=await readFile(new URL('../qianmu-storage-backup-view.js',import.meta.url),'utf8');
+  assert.match(source,/case 'collections': void collectionFloorTools.exportBackup\(button,confirmDialog,ttsDownloadBlob,\(\)=>createStorageBackupCheck\(button,null\)\)/);
+  assert.match(view,/data-storage-export="collections"/);assert.doesNotMatch(view,/data-storage-(pick|import)="collections"/);
 });

@@ -1,6 +1,6 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent}={}){
-  let root=null,active=null,host=null,opening=false,epoch=0,library=null;
+  let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null;
   const floorOf=node=>{const raw=node?.getAttribute('mesid')??node?.dataset?.messageId;return raw!==undefined&&raw!==null&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null;};
   const current=()=>root?.isConnected&&isCurrent()===true;
   const stylesheet=(document=root.ownerDocument)=>{
@@ -46,8 +46,24 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       entry.view.finished.then(()=>closeLibrary(entry));return entry.view;
     }catch(cause){if(valid())notify?.(String(cause?.message||'收藏管理暂不可用').slice(0,240),'warning');closeLibrary(entry);return null;}
   }
+  async function exportBackup(button,confirm,download,createCheck){
+    if(exporting||!button?.isConnected||isCurrent()!==true)return;
+    const entry={cancelled:false},disabled=button.disabled;exporting=entry;button.disabled=true;let check;
+    const valid=()=>exporting===entry&&!entry.cancelled&&button.isConnected&&isCurrent()===true;
+    try{
+      check=createCheck();check();
+      const runtime=await import('./qianmu-text-collection-export.js');
+      const result=await runtime.exportTextCollectionBackup({resolveNamespace,isCurrent:valid,headers,confirm,download,check:()=>{check();if(!valid())throw Error('收藏导出页面已关闭，未下载备份');}});
+      if(valid()){
+        if(result.status==='empty')notify?.('没有可导出的正文收藏。','info');
+        if(result.status==='download-started')notify?.(`已发起 ${result.count} 条收藏的备份下载，请确认浏览器已保存文件。`,'success');
+      }
+      return result;
+    }catch(cause){if(valid())notify?.(`收藏导出未完成：${String(cause?.message||cause).slice(0,200)}`,'warning');}
+    finally{check?.release?.();if(exporting===entry)exporting=null;button.disabled=disabled;}
+  }
   function disposeFloor(){epoch++;root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
-  function dispose(){disposeFloor();closeLibrary(library);}
+  function dispose(){disposeFloor();closeLibrary(library);if(exporting)exporting.cancelled=true;}
   function refresh(chatRoot){
     if(!chatRoot?.isConnected||isCurrent()!==true)return;
     if(root!==chatRoot){disposeFloor();root=chatRoot;root.addEventListener('click',click);}
@@ -59,7 +75,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       button.innerHTML='<i class="fa-solid fa-bookmark"></i>';toolbar.append(button);applyIcons?.(button);
     }
   }
-  return Object.freeze({refresh,dispose,openLibrary});
+  return Object.freeze({refresh,dispose,openLibrary,exportBackup});
 }
 
 // Save rendered prose as plain text; never collect embedded media or plugin controls.

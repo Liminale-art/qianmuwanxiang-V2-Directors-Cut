@@ -8493,6 +8493,7 @@ function bindStorageManagementEvents(root) {
         case 'favorites': void exportTtsFavoritesBackup(button); break;
         case 'audio': void ttsExportAudioCache(button); break;
         case 'notes': void exportPinnedNotesBackup(button); break;
+        case 'collections': void collectionFloorTools.exportBackup(button,confirmDialog,ttsDownloadBlob,()=>createStorageBackupCheck(button,null)); break;
       }
     }));
     backup.querySelectorAll('[data-storage-pick]').forEach(button=>button.addEventListener('click',()=>{
