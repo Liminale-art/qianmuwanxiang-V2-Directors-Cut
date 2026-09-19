@@ -17,6 +17,7 @@ const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'cr
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
 const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['cleanup-batch','bulk-contract','storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false;
+for(const file of ['qianmu-account-local-store.js','qianmu-text-collection-outbox-store.js','qianmu-text-collection-outbox-runtime.js'])allowed.add(file);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
@@ -71,11 +72,15 @@ try{
   await button('edit').click();await ready();await page.locator('[data-collection-editor]').fill('不要丢失的本机修改');
   await service.write(request,{version:1,expectedAccount,mutationId:randomUUID(),operation:'edit',id:'collection-50',baseRevision:2,text:'另一端修改'});
   await button('save').click();await ready();assert.match(await status(),/其他设备变更/);assert.equal(await page.locator('[data-collection-editor]').inputValue(),'不要丢失的本机修改');
+  assert.match(await status(),/本机待存/);
   await page.evaluate(()=>{fixture.consent=false;});await button('reload').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'不要丢失的本机修改');
   await button('close').click();assert.equal(await page.locator('dialog').count(),1);
   await page.locator('[data-collection-editor]').focus();await page.keyboard.press('Escape');assert.equal(await page.locator('dialog').count(),1);assert.equal(await page.evaluate(()=>fixture.escaped),0);
   await page.evaluate(()=>{fixture.consent=true;});await button('reload').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'另一端修改');
   checks.push('revision conflicts preserve the local draft and explicit discard confirmation gates reload or close');
+  const pending=await page.evaluate(async account=>{const {createTextCollectionOutboxStore}=await import('./qianmu-text-collection-outbox-store.js');const store=createTextCollectionOutboxStore();try{return (await store.read(account)).entries;}finally{store.close();}},expectedAccount);
+  assert.equal(pending.length,1);assert.equal(pending[0].state,'conflict');assert.equal(pending[0].request.text,'不要丢失的本机修改');assert.equal(pending[0].base.text,'我编辑的收藏');
+  checks.push('editor conflict preserves both local draft and captured base in real IndexedDB even after explicitly reloading the server original');
   await button('delete').click();await ready();assert.match(await status(),/已删除收藏/);
   assert.equal((await service.get(request,{version:1,expectedAccount,id:'collection-50'})).record,null);
   assert.equal(await page.locator('[data-collection-id]').count(),50);

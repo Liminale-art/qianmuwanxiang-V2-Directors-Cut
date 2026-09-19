@@ -55,6 +55,18 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
     if(active.has(mutationId))return active.get(mutationId);
     const promise=send(mutationId,options).finally(()=>active.delete(mutationId));active.set(mutationId,promise);return promise;
   }
-  return Object.freeze({namespace,enqueue,submit,list:async()=>structuredClone((await read()).entries),summary:async()=>summarizeTextCollectionOutbox(await read()),
+  async function save(request,{base=null,signal}={}){
+    await enqueue(request,{base});
+    try{return (await submit(request.mutationId,{signal})).receipt;}
+    catch(cause){
+      const state=await read(),row=state.entries.find(entry=>entry.request.mutationId===request.mutationId);
+      if(row&&same(row.request,request)){
+        const failure=cause instanceof Error?cause:error('connection','收藏服务器保存未确认',503);
+        Object.assign(failure,{localSaved:true,localMutationId:request.mutationId,localState:row.state});throw failure;
+      }
+      throw cause;
+    }
+  }
+  return Object.freeze({namespace,enqueue,submit,save,list:async()=>structuredClone((await read()).entries),summary:async()=>summarizeTextCollectionOutbox(await read()),
     close(){closed=true;for(const controller of controllers)controller.abort();if(ownsStore)store.close();}});
 }

@@ -8,7 +8,8 @@ const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage();
 const checks = [], errors = [], allowed = new Set(['qianmu-text-collection.js', 'qianmu-text-collection-view.js', 'qianmu-notes-sync-contract.js', 'qianmu-text-collection-backup.js', 'qianmu-json-input.js']);
-for(const file of ['floor','capture','session','client','sync-contract','bulk-contract'])allowed.add(`qianmu-text-collection-${file}.js`);
+for(const file of ['floor','capture','session','client','sync-contract','bulk-contract','outbox-store','outbox-runtime'])allowed.add(`qianmu-text-collection-${file}.js`);
+allowed.add('qianmu-account-local-store.js');
 const writes=[];let apiMode='ok',held;
 let external = 0;
 page.on('pageerror', error => errors.push(error.message));
@@ -201,6 +202,7 @@ try {
     checks.push('rows freeze input records, suppress detached/disposed click handlers and reject oversized pages without silent truncation');
     await page.evaluate(async()=>{
         const {openPersistentTextCollectionCapture}=await import('./qianmu-text-collection-capture.js');
+        fixture.readPending=async account=>{const {createTextCollectionOutboxStore}=await import('./qianmu-text-collection-outbox-store.js');const store=createTextCollectionOutboxStore();try{return (await store.read(account)).entries;}finally{store.close();}};
         fixture.openPersistent=async()=>{
             fixture.namespace='st-user:alice';fixture.current=true;fixture.completed='pending';
             fixture.host=document.createElement('section');document.getElementById('fixture').append(fixture.host);
@@ -217,7 +219,10 @@ try {
     await page.locator('[data-collection-text]').evaluate(input=>{input.focus();const start=input.value.indexOf('记住');input.setSelectionRange(start,start+'记住这一刻😀'.length);input.dispatchEvent(new Event('select'));});
     await action('save').click();await page.waitForFunction(()=>document.querySelector('[data-collection-status]').textContent.includes('未确认保存成功'));
     const retryRequest=structuredClone(writes.at(-1));assert.doesNotMatch(JSON.stringify(retryRequest),/未选前文|未选后文/);
+    assert.match(await page.locator('[data-collection-status]').textContent(),/本机待存已保留/);
+    const pending=await page.evaluate(account=>fixture.readPending(account),retryRequest.expectedAccount);assert.deepEqual(pending[0].request,retryRequest);
     apiMode='ok';await action('save').click();await page.waitForFunction(()=>fixture.completed!=='pending');assert.deepEqual(writes.at(-1),retryRequest);
+    assert.equal((await page.evaluate(account=>fixture.readPending(account),retryRequest.expectedAccount)).length,0);
     checks.push('failed selected-text save keeps the same mutation and collection IDs through an explicit UI retry without hidden full text');
     for(const mode of ['missing','wrong']){
         apiMode=mode;await page.evaluate(()=>fixture.openPersistent());await action('full').click();await action('save').click();
@@ -226,6 +231,8 @@ try {
         assert.equal(await page.evaluate(()=>fixture.completed),'pending');await action('cancel').click();
     }
     checks.push('missing backend gives an actionable message and wrong confirmation leaves the draft unsaved');
+    const retained=await page.evaluate(account=>fixture.readPending(account),retryRequest.expectedAccount);assert.equal(retained.length,2);
+    checks.push('capture durably queues before submission, distinguishes device-only status and closing failed saves preserves both pending originals');
     apiMode='hold';held=null;await page.evaluate(()=>fixture.openPersistent());await action('full').click();await action('save').click();
     await page.waitForFunction(()=>document.querySelector('dialog').getAttribute('aria-busy')==='true');
     for(let attempt=0;!held&&attempt<50;attempt++)await new Promise(resolve=>setTimeout(resolve,20));assert.equal(typeof held,'function');

@@ -136,6 +136,7 @@ export function openTextCollectionCapture({ parent, source, onSave, isCurrent = 
             if (!alive()) return;
             pending = false; controls();
             status.textContent = '未确认保存成功。可重试或取消；重试会沿用本次收藏标识。';
+            if (cause?.localSaved === true) status.textContent = '服务器未确认保存成功；本机待存已保留，刷新后仍在此设备。可重试，关闭不会删除待存。';
             if (/^text_collection_sync_[a-z_]+$/.test(cause?.code || '') && typeof cause.message === 'string' && cause.message.length <= 240) status.textContent += ` ${cause.message}`;
             if (mode === 'selection') textarea.setSelectionRange(translateOffset(start, 'source', -1), translateOffset(end, 'source', -1));
         }

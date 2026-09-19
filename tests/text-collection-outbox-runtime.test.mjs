@@ -47,3 +47,12 @@ test('cancellation and close retain pending requests; shared store remains usabl
   await assert.rejects(runtime.submit('mutation-1',{signal:controller.signal}));assert.equal(f.sent.length,0);runtime.close();await assert.rejects(runtime.list());
   assert.deepEqual(f.state.entries,[createTextCollectionOutboxEntry(request(),{queuedAt:2})]);assert.equal((await f.runtime().list()).length,1);
 });
+
+test('save adapter reports local durability only after readback and never fabricates a server receipt',async()=>{
+  const f=fixture(),runtime=f.runtime();f.mode='lost';await assert.rejects(runtime.save(request()),cause=>cause.localSaved===true&&cause.localMutationId==='mutation-1'&&!Object.hasOwn(cause,'revision'));
+  f.mode='ok';const result=await runtime.save(request());assert.equal(result.id,'collection-1');assert.equal(result.revision,1);assert.deepEqual(f.sent[0],f.sent[1]);assert.equal(f.state.entries.length,0);runtime.close();
+});
+test('save adapter cannot claim retained content when local writes fail or account changes',async()=>{
+  for(const mode of ['quota','switch']){const f=fixture(),runtime=f.runtime();if(mode==='quota')f.failUpdate=1;else f.mode='switch';
+    await assert.rejects(runtime.save(request()),cause=>cause.localSaved!==true);assert.equal(f.sent.length,mode==='quota'?0:1);runtime.close();}
+});
