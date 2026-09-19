@@ -116,12 +116,20 @@ try {
             title: currentModal?.querySelector('.sd-storyboard-titlebar [role="heading"]')?.textContent || '',
           });
         }
+        const expectedTitles = {
+          create: 'STORYBOARD', characters: 'CHARACTERS', assets: 'TAG LIBRARY',
+          gallery: 'SCREENING ROOM', logs: 'LOGS',
+        };
+        const storyboardNavValid = storyboardNavViews.length === navViews.length
+          && storyboardNavViews.every(item => item.active === item.view && item.title === expectedTitles[item.view]);
+        if (!storyboardNavValid) throw new Error('storyboard navigation matrix mismatch');
         observed = {
           frontEndLoaded: true,
           floatRendered: Boolean(button.isConnected),
           modalRendered: Boolean(modal),
           storyboardMode: Boolean(modal?.classList.contains('sd-storyboard-mode')),
           storyboardNavViews,
+          storyboardNavValid,
           chatLength: context.chat.length,
           storyboardImageCount: context.chatMetadata?.story_director_liminale?.storyboardImages?.length || 0,
           storyboardCollectionCount: context.chatMetadata?.story_director_liminale?.storyboardCollections?.length || 0,

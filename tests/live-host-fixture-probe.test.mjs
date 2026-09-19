@@ -24,6 +24,8 @@ test('live fixture probe replaces and restores chat, metadata and writers withou
   assert.match(source, /temporaryChat/);
   assert.match(source, /storyboardImages/);
   assert.match(source, /storyboardNavViews/);
+  assert.match(source, /storyboardNavValid/);
+  assert.match(source, /storyboard navigation matrix mismatch/);
   assert.match(source, /missing storyboard navigation view/);
   assert.match(source, /restoreProperty\('chat'/);
   assert.match(source, /restoreProperty\('chatMetadata'/);
