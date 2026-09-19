@@ -10,6 +10,8 @@ import {createTextCollectionSyncService} from '../qianmu-text-collection-sync-se
 import {TEXT_COLLECTION_SYNC_LIMITS} from '../qianmu-text-collection-sync-contract.js';
 import {textCollectionSyncResponse,textCollectionSyncErrorPayload} from '../qianmu-text-collection-sync-contract.js';
 import {init,exit} from '../server-plugin.js';
+import {createServer} from 'node:http';
+import {createTextCollectionClient} from '../qianmu-text-collection-client.js';
 
 const account=handle=>imageServiceAccount({user:{profile:{handle}}}).namespace;
 const request=(folder,handle='alice')=>({user:{profile:{handle},directories:{root:folder}}});
@@ -145,4 +147,28 @@ test('response validation refuses stale acknowledgements, wrong accounts, partia
   const found=await f.service.get(f.req,detail());assert.throws(()=>textCollectionSyncResponse(found,'get',{...detail(),id:'another-id'}));
   assert.deepEqual(textCollectionSyncResponse({...found,record:null},'get',detail()).record,null);
   const payload=textCollectionSyncErrorPayload(Error('private path and credential'));assert.equal(payload.status,503);assert.doesNotMatch(JSON.stringify(payload),/private path|credential/);
+});
+
+test('real client and local HTTP plugin handlers round-trip disk originals without a live ST account',async t=>{
+  const f=await fixture(t),routes=new Map(),router={get:(p,h)=>routes.set(`GET ${p}`,h),post:(p,h)=>routes.set(`POST ${p}`,h)};
+  await init(router,{dataRoot:f.root});t.after(exit);let received=0;
+  const server=createServer(async(req,res)=>{
+    try{
+      assert.equal(req.headers['x-csrf-token'],'fixture-csrf');assert.equal(req.headers.authorization,undefined);received++;
+      const chunks=[];for await(const chunk of req)chunks.push(chunk);
+      req.user=f.req.user;req.body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      res.set=(k,v)=>{res.setHeader(k,v);return res;};res.status=n=>{res.statusCode=n;return res;};res.json=value=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));return res;};
+      const handler=routes.get(`${req.method} ${req.url.replace('/api/plugins/qianmu-tts','')}`);assert.equal(typeof handler,'function');await handler(req,res);
+    }catch{res.statusCode=500;res.end('{}');}
+  });
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+  t.after(()=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);}));
+  const origin=`http://127.0.0.1:${server.address().port}`;
+  const c=createTextCollectionClient({expectedAccount:account('alice'),guard:()=>true,headers:()=>({'x-csrf-token':'fixture-csrf',Authorization:'never forward'}),
+    fetchImpl:(url,options)=>fetch(new URL(url,origin),options)});t.after(()=>c.close());
+  assert.equal((await c.list()).total,0);const input=create();assert.equal((await c.write(input)).revision,1);
+  assert.deepEqual((await c.get(input.id)).record,input.record);assert.equal((await c.list()).items[0].charName,'角色');
+  assert.equal((await c.write(edit())).revision,2);await assert.rejects(c.write(edit()),{code:'text_collection_sync_conflict'});
+  assert.equal((await c.write(edit('delete',{baseRevision:2}))).revision,3);assert.equal((await c.get(input.id)).record,null);assert.equal((await c.list()).total,0);
+  assert.equal(received,9);assert.doesNotMatch(await fs.readFile(f.file,'utf8'),/selected|edited|角色/);
 });
