@@ -7,8 +7,8 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.238';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.238';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.239';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.239';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -262,12 +262,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.238';
+} from './qianmu-storyboard.js?v=1.59.239';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.238';
+const VERSION = '1.59.239';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -320,7 +320,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.238'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.239'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -540,9 +540,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.238'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.239'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.238')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.239')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -18901,19 +18901,20 @@ async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGu
   return reports.length === 1 ? reports[0] : reports;
 }
 
-async function storyboardCompilePrompt(root, { plan = null, quiet = false, automatic = false, stream = null, onPrepared = null } = {}) {
+async function storyboardCompilePrompt(root, { plan = null, quiet = false, automatic = false, stream = null, onPrepared = null, onStreamOutcome = null } = {}) {
+  const report=status=>{if(stream&&typeof onStreamOutcome==='function')try{onStreamOutcome({status});}catch(_){}return false;};
   if(stream){if(root||plan||typeof onPrepared!=='function'||!Number.isSafeInteger(stream.floor)||stream.floor<0||Object.hasOwn(stream,'complete')&&typeof stream.complete!=='boolean'||Object.hasOwn(stream,'namespace')&&(typeof stream.namespace!=='string'||!/^st-user:.{1,504}$/.test(stream.namespace)))return false;automatic=true;stream={floor:stream.floor,signal:stream.signal,complete:stream.complete===true,...(stream.namespace?{namespace:stream.namespace}:{})};}
   else if(onPrepared)return false;
-  if (storyboardCompilerBusy) return false;
+  if (storyboardCompilerBusy) return report('busy');
   const { state, profile } = storyboardCaptureWorkbench(root);
-  if (!state.enabled) { toast('请先启用分镜。', 'warning'); return false; }
+  if (!state.enabled) { toast('请先启用分镜。', 'warning'); return report('cancelled'); }
   try { resolveStoryboardProfileBinding(state.source, profile); }
-  catch (error) { toast(error.message, 'warning'); return false; }
+  catch (error) { toast(error.message, 'warning'); return report('failed'); }
   const floor = stream?.floor ?? storyboardTargetFloor(state);
-  if (floor < 0 || !ctx().chat?.[floor]) { toast('当前没有可用于自动取景的正文。', 'warning'); return false; }
+  if (floor < 0 || !ctx().chat?.[floor]) { toast('当前没有可用于自动取景的正文。', 'warning'); return report('cancelled'); }
   let inputGuard;
   try { inputGuard = storyboardCreatePreparationGuard(state, { plan, requireCompiler: true, freshComfy: true, stream }); }
-  catch (error) { toast(error.message, 'warning'); return false; }
+  catch (error) { toast(error.message, 'warning'); return report('failed'); }
   storyboardCompilerBusy = true;
   storyboardSetPlanStatus(plan, 'compiling');
   if(!stream)renderModal();
@@ -18997,7 +18998,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       ...(contractRequest.promptFormats?.length ? {promptFormats:contractRequest.promptFormats,maxOutputTokens:contractRequest.maxTokens} : {}),
       messages: contractRequest.messages,
     };
-    if(stream){await onPrepared({...await contract.prepareStoryboardStreamHandoff(result,context,inputGuard.streamFrame),context,compilerInput,inputGuard});inputGuard.assertCurrent();return result.shouldGenerate===true&&!result.manualRequired;}
+    if(stream){await onPrepared({...await contract.prepareStoryboardStreamHandoff(result,context,inputGuard.streamFrame),context,compilerInput,inputGuard});inputGuard.assertCurrent();report(result.manualRequired?'failed':result.shouldGenerate?'ready':'waiting');return result.shouldGenerate===true&&!result.manualRequired;}
     if (!result.shouldGenerate) {
       state.prompt = '';
       state.negative = '';
@@ -19085,7 +19086,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     if (!quiet) toast(manualRequired ? '自动整理未通过校验；已停止自动生图并保留一份待确认草稿。' : '生成词已提取，可继续修改或手动生成。', manualRequired ? 'warning' : 'success');
     return !manualRequired;
   } catch (error) {
-    if(stream&&error?.code==='storyboard_stream_wait')return false;
+    if(stream&&error?.code==='storyboard_stream_wait')return report('waiting');
     if (error?.code === 'storyboard_input_changed' || !resultAccepted && !inputGuard.isCurrent()) {
       if (plan?.status === 'compiling') {
         const error = '取景输入已变化，请重新提取';
@@ -19094,13 +19095,13 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
         else Object.assign(plan, { status: 'stale', error, updatedAt: Date.now() });
       }
       if (!quiet && inputGuard.ownsCurrentContext()) toast('取景输入已变化，旧结果未写回；请重新提取', 'info');
-      return false;
+      return report('cancelled');
     }
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
     if(!resultAccepted)inputGuard.compilerAttempt?.fail(error,{store:storyboardStoreLog,archive:id=>storyboardArchivePipelineLog(id,state)});
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
     if (!quiet||inputGuard.compilerAttempt||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
-    return false;
+    return report('failed');
   } finally {
     inputGuard.dispose();
     storyboardCompilerBusy = false;

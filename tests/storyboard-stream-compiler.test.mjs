@@ -10,6 +10,7 @@ import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuation-host.js';
+import {createStoryboardStreamScheduler,runStoryboardStreamPass} from '../qianmu-storyboard-stream-scheduler.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -67,6 +68,24 @@ test('actual streaming compiler prepares an alternate floor without touching wor
 test('actual streaming wait leaves existing manual prompts and compiler stages intact without persisting provisional events',async()=>{
   const f=await fixture({wait:true});assert.equal(await f.run(),false);assert.equal(f.prepared.result.shouldGenerate,false);
   assert.deepEqual(editable(f.state),f.initial);assert.deepEqual(f.counts,{requests:1,hostSaves:0,saves:0,renders:0,wakes:1});assert.deepEqual(f.state.logs,[]);f.assertReleased();
+});
+
+for(const mode of ['waiting','busy','failed','cancelled'])test(`actual compiler reports ${mode} distinctly without altering its existing boolean API`,async()=>{
+  const f=await fixture(mode==='waiting'?{text:'<think>private reasoning</think>\n\nUnfinished'}:{}),outcomes=[];
+  if(mode==='busy')f.context.storyboardCompilerBusy=true;
+  if(mode==='failed')f.context.storyboardCallCompiler=async()=>{throw Error('simulated failure');};
+  if(mode==='cancelled')f.modelHook=()=>{f.state.prompt='USER EDIT';};
+  assert.equal(await f.run({onStreamOutcome:value=>outcomes.push(value.status)}),false);
+  assert.deepEqual(outcomes,[mode]);assert.deepEqual(f.jobs,[]);if(mode==='busy')f.context.storyboardCompilerBusy=false;f.assertReleased();
+});
+
+test('a throwing optional stream outcome observer cannot turn a prepared success into a failure',async()=>{
+  const f=await fixture();assert.equal(await f.run({onStreamOutcome:()=>{throw Error('observer only');}}),true);assert.ok(f.prepared);f.assertReleased();
+});
+
+test('ordinary extraction does not invoke the stream-only outcome observer',async()=>{
+  const f=await fixture({text:'Alice reads a letter in the kitchen.'});f.state.target='floor';f.state.floor='0';
+  assert.equal(await f.run({stream:null,onPrepared:null,automatic:true,onStreamOutcome:()=>assert.fail('ordinary observer')}),true);f.assertReleased();
 });
 
 test('actual ordinary focused extraction saves the same compact narrative moment in its draft and normalized shot metadata',async()=>{
@@ -551,6 +570,33 @@ function installFinalNotifications(f){
     messageRef:createStoryboardMessageReference({message:f.host.chat[0],chatKey:'chat-a',floor:0})});
   return {run:()=>f.context.storyboardPerformAutomaticCapture(ticket()),finish:()=>f.context.storyboardFinishStreamCapture(ticket()),ticket};
 }
+
+function installPassScheduler(f){
+  const final=installFinalNotifications(f),timers=new Map(),outcomes=[];let seq=0,completion=null,finishes=0;
+  const scheduler=createStoryboardStreamScheduler({isCurrent:()=>f.host.chatId==='chat-a'&&!f.controller.signal.aborted,busy:()=>f.context.storyboardCompilerBusy,
+    read:()=>f.host.chat[0].mes,setTimer:fn=>{const id=++seq;timers.set(id,fn);return id;},clearTimer:id=>timers.delete(id),
+    run:async({signal})=>{try{const outcome=await runStoryboardStreamPass({compile:f.context.storyboardCompilePrompt,submit:f.context.storyboardSubmitStreamPrepared},{floor:0,signal});outcomes.push(outcome);return outcome;}finally{completion?.resolve();}},
+    finish:async()=>{finishes++;return final.run();}});
+  return{scheduler,outcomes,timers,get finishes(){return finishes;},async pass(){completion=deferred();const [id,fn]=timers.entries().next().value;timers.delete(id);fn();await completion.promise;for(let i=0;i<8;i++)await Promise.resolve();}};
+}
+
+test('actual scheduler serializes growing prefixes and final capture through one original plan and paid-admission ledger',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f),loop=installPassScheduler(f);useShotSet(f,[0]);
+  for(let i=0;i<1000;i++)loop.scheduler.pulse('unused raw token');assert.equal(loop.timers.size,1);await loop.pass();assert.equal(q.queue.length,1);
+  const original=copy(q.queue[0]);f.host.chat[0].mes=threeParagraphs;useShotSet(f,[0,1,2]);loop.scheduler.pulse();await loop.pass();assert.equal(q.queue.length,3);
+  f.host.chat[0].mes=threeParagraphs.replace('\n\nUnfinished','');assert.equal(await loop.scheduler.finalize(),false,'the final pass has no remaining pictures to queue');
+  assert.equal(await loop.scheduler.finalize(),false);assert.equal(loop.finishes,1);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);assert.equal(q.queue.length,3);
+  assert.deepEqual(loop.outcomes.map(row=>row.status),['advanced','advanced']);assert.equal(loop.scheduler.status.queued,3);assert.deepEqual(copy(q.queue[0]),original);
+  assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete');loop.scheduler.close();f.assertReleased();
+});
+
+test('actual failed incremental extraction cannot launch a fresh final LLM pass or mutate the workbench',async()=>{
+  const f=await fixture(),q=installStreamQueue(f),loop=installPassScheduler(f),before=editable(f.state);let attempts=0;
+  f.context.storyboardCallCompiler=async()=>{attempts++;throw Error('simulated offline');};loop.scheduler.pulse();await loop.pass();
+  assert.equal(loop.outcomes[0].status,'failed');f.host.chat[0].mes+='\n\nAnother paragraph.';loop.scheduler.pulse();assert.equal(loop.timers.size,0);
+  assert.equal(await loop.scheduler.finalize(),false);assert.equal(loop.finishes,0);assert.equal(attempts,1);assert.equal(q.queue.length,0);assert.deepEqual(editable(f.state),before);
+  loop.scheduler.close();f.assertReleased();
+});
 
 async function ordinaryPlanFixture({indexes=[0],text=threeParagraphs.split('\n\n').slice(0,2).join('\n\n')}={}){
   const f=await fixture({text}),q=installStreamQueue(f);useShotSet(f,indexes);
