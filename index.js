@@ -260,12 +260,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.229';
+} from './qianmu-storyboard.js?v=1.59.230';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.229';
+const VERSION = '1.59.230';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -318,7 +318,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.228'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.230'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -538,7 +538,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.228'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.230'),
   },
   storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.229')},
   theaterCatalog: {
@@ -13251,7 +13251,7 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
         }
         const record = clone(raw);
         const resolved = record.messageRef?.messageKey
-          ? resolveStoryboardMessageReference(record.messageRef, chat, { chatKey: expectedChatKey })
+          ? resolveStoryboardMessageReference(record.messageRef, chat, { chatKey: expectedChatKey,metadata:ctx().chatMetadata })
           : null;
         if (resolved?.state === 'active') {
           record.floor = resolved.floor;
@@ -13550,7 +13550,7 @@ function storyboardReconcileShotPlans() {
   let changed = false;
   for (const plan of state.shotPlans || []) {
     if (!plan?.messageRef?.messageKey || plan.chatKey !== chatKey) continue;
-    const resolved = resolveStoryboardMessageReference(plan.messageRef, chat, { chatKey });
+    const resolved = resolveStoryboardMessageReference(plan.messageRef, chat, { chatKey,metadata:ctx().chatMetadata });
     const previousFloor = plan.floor;
     const previousState = plan.linkState || '';
     if (['active', 'stale', 'inactive_swipe'].includes(resolved.state)) {
@@ -13614,7 +13614,7 @@ function storyboardReconcileGalleryLinks({ persist = true } = {}) {
       if (recovered) { record.messageRef = recovered; changed = true; }
     }
     if (!record.messageRef?.messageKey) continue;
-    const resolved = resolveStoryboardMessageReference(record.messageRef, chat, { chatKey });
+    const resolved = resolveStoryboardMessageReference(record.messageRef, chat, { chatKey,metadata:ctx().chatMetadata });
     const previousFloor = record.floor;
     const previousState = record.linkState || '';
     if (resolved.state === 'active' || resolved.state === 'stale' || resolved.state === 'inactive_swipe') {
@@ -19188,7 +19188,7 @@ async function storyboardImageAdmissionRuntime() {
   const module = await featureRuntime.load('imageAdmission');
   if (epoch !== storyboardAdmissionEpoch) throw new Error('分镜会话已结束，未提交生图');
   storyboardAdmission ||= module.createImageAdmission({ confirm: confirmDialog,
-    resolveSource: job=>resolveStoryboardMessageReference(job.messageRef,ctx().chat,{chatKey:getChatKey()}),
+    resolveSource: job=>resolveStoryboardMessageReference(job.messageRef,ctx().chat,{chatKey:getChatKey(),metadata:ctx().chatMetadata}),
     resolveHistoryReviews: async (scope, seeds) => (await storyboardImageServiceRuntime()).historyReviews(scope, seeds),
   });
   return storyboardAdmission;
@@ -20313,7 +20313,7 @@ async function storyboardReprepareComfyLog(log,{isCurrent=()=>true}={}) {
   let inputGuard,job,accepted=false,resolved=false;
   const valid=()=>isCurrent()&&storyboardState()===state&&state.enabled&&epoch===storyboardAdmissionEpoch&&String(getChatKey()||'')===chatKey
     &&original.chatKey===chatKey&&state.logs.includes(log)&&log.status==='failed'&&JSON.stringify(log.preparation)===serialized
-    &&resolveStoryboardMessageReference(original.messageRef,ctx().chat||[],{chatKey}).state==='active';
+    &&resolveStoryboardMessageReference(original.messageRef,ctx().chat||[],{chatKey,metadata:ctx().chatMetadata}).state==='active';
   const assert=()=>{if(!valid())throw Object.assign(new Error('原镜头、聊天或准备记录已变化，未继续生成'),{code:'storyboard_input_changed'});};
   storyboardPreparationRetries.add(log.id);
   try {
@@ -20323,7 +20323,7 @@ async function storyboardReprepareComfyLog(log,{isCurrent=()=>true}={}) {
     inputGuard.assertCurrent();
     if(!await confirmDialog('重新准备本镜','保留原镜头内容与插入位置，使用当前 Comfy 候选方案和连接重新选择，成功后仅生成这一镜；不会重新提取或重跑其他镜头。'))return false;
     inputGuard.assertCurrent();
-    const floor=resolveStoryboardMessageReference(original.messageRef,ctx().chat||[],{chatKey}).floor;
+    const floor=resolveStoryboardMessageReference(original.messageRef,ctx().chat||[],{chatKey,metadata:ctx().chatMetadata}).floor;
     const current={...state,source:'comfy',comfyAutoEnabled:true,target:original.target,floor:String(floor),inlineByDefault:original.inlineByDefault,
       paragraphMode:'automatic',pendingParagraphSelection:original.paragraphSelection,compositionPolicy:original.compositionPolicy,
       prompt:original.prompt,negative:original.negative,pendingCompilerStages:[]};
@@ -20609,7 +20609,7 @@ function storyboardValidatedAnchor(job) {
   let floor = job.target === 'gallery' ? null : job.floor;
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
   if (job.target !== 'gallery' && job.messageRef?.messageKey) {
-    const resolved = resolveStoryboardMessageReference(job.messageRef, chat, { chatKey: String(getChatKey() || '') });
+    const resolved = resolveStoryboardMessageReference(job.messageRef, chat, { chatKey: String(getChatKey() || ''),metadata:ctx().chatMetadata });
     const valid = resolved.state === 'active';
     return { floor: valid ? resolved.floor : null, message: valid ? resolved.message : null, valid, linkState: resolved.state, relocated: resolved.relocated };
   }
@@ -21100,7 +21100,7 @@ function storyboardInlinePlaceholderMarkup(plan) {
 function storyboardCurrentInlineTasks() {
   const state = storyboardState();
   return buildStoryboardInlineTasks(state.taskStates, {
-    chatKey: String(getChatKey() || ''), chat: ctx().chat || [], logs: state.logs || [], records: storyboardGalleryRecords(),
+    chatKey: String(getChatKey() || ''), chat: ctx().chat || [], metadata:ctx().chatMetadata,logs: state.logs || [], records: storyboardGalleryRecords(),
     activeIds: new Set(storyboardActiveJobs.keys()), waitingIds: new Set(storyboardQueue.map(job => job.id)),
   });
 }
@@ -21874,7 +21874,7 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
         record.snapshot = sanitizeStoryboardSnapshot(record.snapshot || {}, { source: record.source, prompt: record.prompt, negative: record.negative });
         const floor = Number.isInteger(record.floor) ? record.floor : null, message = messages[floor];
         const reference = record.messageRef ? { ...record.messageRef, chatKey: initial.chatKey } : null;
-        const resolved = reference?.messageKey ? resolveStoryboardMessageReference(reference, messages, { chatKey: initial.chatKey }) : null;
+        const resolved = reference?.messageKey ? resolveStoryboardMessageReference(reference, messages, { chatKey: initial.chatKey,metadata:{[MODULE_NAME]:initial.store} }) : null;
         const anchorValid = resolved ? resolved.state === 'active' : message && (!record.messageHash || record.messageHash === hashText(String(message.mes || ''))) && Number(record.swipeId || 0) === Number(message.swipe_id || 0);
         if (resolved?.state === 'active') { record.floor = resolved.floor; record.linkState = 'active'; record.messageRef = reference; }
         else if (!anchorValid) { record.lastKnownFloor = floor; record.floor = null; record.linkState = resolved?.state || 'orphaned'; }

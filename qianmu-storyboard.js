@@ -1,4 +1,5 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture} from './qianmu-storyboard-stream-reference.js?v=1.59.228';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture} from './qianmu-storyboard-stream-reference.js?v=1.59.230';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.230';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -486,7 +487,7 @@ export function normalizeStoryboardComfyPreparation(value) {
   }catch(_){return null;}
 }
 
-export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], logs = [], activeIds = new Set(), waitingIds = new Set(), records = [] } = {}) {
+export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], logs = [], activeIds = new Set(), waitingIds = new Set(), records = [], metadata } = {}) {
   if (!chatKey || !Array.isArray(chat)) return [];
   const latest = new Map(), logIndex = new Map(logs.map(log => [log.id, log]));
   const delivered = new Set(records.map(record => record.taskId).filter(Boolean));
@@ -505,7 +506,7 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
     if(referenceProof)delete referenceProof.moment; // Same source prefix may serve several distinct visual subjects.
     const messageKey = JSON.stringify([task.messageRef.messageKey, task.messageRef.revisionId, task.messageRef.swipeId, task.messageRef.lastKnownFloor,
       referenceProof]);
-    if (!resolvedMessages.has(messageKey)) resolvedMessages.set(messageKey, resolveStoryboardMessageReference(task.messageRef, chat, { chatKey }));
+    if (!resolvedMessages.has(messageKey)) resolvedMessages.set(messageKey, resolveStoryboardMessageReference(task.messageRef, chat, { chatKey,metadata }));
     const resolved = resolvedMessages.get(messageKey);
     if (resolved.state !== 'active') continue;
     if (task.status !== 'failed' && delivered.has(task.id)) continue;
@@ -2298,7 +2299,8 @@ export function resolveStoryboardMessageReference(value, chat, options = {}) {
     return { state: 'foreign', floor: null, message: null, reference, relocated: false };
   }
   const messages = Array.isArray(chat) ? chat : [];
-  if(hasStoryboardStreamReference(reference))return resolveStoryboardStreamReference(reference,messages,createStoryboardMessageReference);
+  if(hasStoryboardStreamReference(reference))return resolveStoryboardStreamReference(reference,messages,createStoryboardMessageReference,
+    {...options,continuationLinks:Object.hasOwn(options,'continuationLinks')?options.continuationLinks:readStoryboardContinuationLinks(options.metadata?.story_director_liminale)});
   const candidates = [];
   messages.forEach((message, floor) => {
     if (!obj(message)) return;
