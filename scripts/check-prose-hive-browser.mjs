@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
 let external=0;const errors=[];page.on('pageerror',error=>errors.push(error.message));
-await context.route('**/*',async route=>{const url=new URL(route.request().url());if(url.origin==='https://qianmu.test'&&url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><button id="tile" style="position:fixed;left:60px;top:120px;width:48px;height:56px">助手</button>'});if(url.origin==='https://qianmu.test'&&url.pathname==='/qianmu-prose-hive.js')return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../qianmu-prose-hive.js',import.meta.url),'utf8')});external++;await route.abort();});
+await context.route('**/*',async route=>{const url=new URL(route.request().url());if(url.origin==='https://qianmu.test'&&url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><button id="tile" style="position:fixed;left:60px;top:120px;width:48px;height:56px">助手</button>'});if(url.origin==='https://qianmu.test'&&/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url),'utf8')});external++;await route.abort();});
 try{
  await page.setViewportSize({width:393,height:760});await page.goto('https://qianmu.test/');await page.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')});
  await page.evaluate(async()=>{
@@ -17,6 +17,7 @@ try{
  await page.mouse.move(84,148);await page.mouse.down();await page.mouse.move(210,300,{steps:8});await page.mouse.up();
  assert.equal(await page.evaluate(()=>hive.detached),true);assert.equal(await page.evaluate(()=>fixture.opened),0);
  let entry=page.locator('.qm-prose-hive-layer button'),box=await entry.boundingBox();assert.ok(Math.abs(box.height-64)<1);assert.ok(Math.abs(box.width-64*.866)<1);
+ assert.equal(await entry.locator('svg.qm-glyph-svg').count(),1);assert.equal(await entry.locator('svg.qm-glyph-svg').getAttribute('data-qm-glyph'),'qm-duotone-chats');
  await entry.click();assert.equal(await page.evaluate(()=>fixture.opened),1);
  await page.evaluate(()=>{fixture.height=40;hive.render();});box=await entry.boundingBox();assert.ok(Math.abs(box.height-40)<1);
  await page.setViewportSize({width:240,height:320});await page.waitForFunction(()=>{const rect=document.querySelector('.qm-prose-hive-layer button')?.getBoundingClientRect();return rect&&rect.bottom<=320&&rect.right<=240;});box=await entry.boundingBox();assert.ok(box.x>=0&&box.y>=0&&box.x+box.width<=240&&box.y+box.height<=320);

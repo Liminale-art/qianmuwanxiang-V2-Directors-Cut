@@ -4,7 +4,7 @@ export {PROSE_ASSISTANT_HISTORY_LIMITS,proseAssistantHistoryKey,validateProseAss
 const fail=()=>{throw error('invalid','助手历史格式或来源不一致，未覆盖原记录');};
 
 export function createProseAssistantHistoryStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-prose-assistant-history',timeoutMs=8000}={}){
-  const store=createAccountLocalStore({indexedDB,dbName,timeoutMs,validateNamespace:proseAssistantHistoryKey,validate:validateProseAssistantHistory,empty:emptyProseAssistantHistory,error,label:'正文助手历史'});
+  const store=createAccountLocalStore({indexedDB,dbName,timeoutMs,validateNamespace:proseAssistantHistoryKey,validate:validateProseAssistantHistory,empty:emptyProseAssistantHistory,error,label:'场外特助历史'});
   const rangeFor=namespace=>{proseAssistantHistoryAccount(namespace);const prefix=JSON.stringify(['qianmu-prose-assistant-v2',namespace]).slice(0,-1)+',';
     try{return keyRange.bound(prefix,prefix+'\uffff');}catch(_){throw error('storage','助手历史盘点不可用，未按零占用处理');}};
   return Object.freeze({

@@ -10,6 +10,12 @@ function fixture(){
     readText:(message,floor)=>{reads.push(floor);return message.mes;}};
   return {context,options,reads,listeners:()=>emitter.eventNames().reduce((n,type)=>n+emitter.listenerCount(type),0)};
 }
+
+test('zero references never read prose; no-chat references are disabled and use a distinct offstage conversation',async()=>{
+ const f=fixture(),options={...f.options,readText:()=>assert.fail('reference disabled must not read any prose'),referenceFloors:0};
+ const scoped=await capture(options);assert.equal(scoped.reference,null);assert.deepEqual(scoped.previous,[]);assert.equal(scoped.summary.referenceMode,'none');const chatKey=scoped.key;scoped.close();
+ f.context.chatId='';const outside=await capture({...options,referenceFloors:9});assert.equal(outside.reference,null);assert.notEqual(outside.key,chatKey);assert.equal(outside.scope.offstage,true);outside.close();
+});
 test('bounded context includes only selected text, preceding window and chronological pairs; no future or world material',async()=>{
   const f=fixture(),s=await capture(f.options);assert.deepEqual(f.reads,[8,7,6]);assert.equal(s.reference.text,'正文');
   assert.deepEqual(s.previous.map(r=>[r.floor,r.role]),[[6,'user'],[7,'character']]);assert.deepEqual(s.summary.previousWindow,{start:6,end:8});

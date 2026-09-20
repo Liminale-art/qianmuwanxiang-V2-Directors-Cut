@@ -24,7 +24,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
       const runtime=await import('./qianmu-prose-assistant-panel.js');if(!record.valid()){close(record);return null;}
       const config=typeof assistantConfig==='function'?assistantConfig():{};
       const readText=(selected,index)=>{
-        if(!record.valid()||getContext().chat[index]!==selected)throw Error('正文助手来源已变化');
+        if(!record.valid()||getContext().chat[index]!==selected)throw Error('场外特助来源已变化');
         const candidates=root?.querySelectorAll(`.mes[mesid="${index}"], .mes[data-message-id="${index}"]`)||[];
         if(candidates.length>1)throw Error('参考前文未能唯一定位');const candidate=candidates[0];
         // No fallback to raw HTML, hidden reasoning or an unrendered whole chat.
@@ -32,13 +32,13 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
       };
       const source={getContext,epoch:()=>epoch,resolveNamespace,isCurrent:record.valid,readText,signal:record.controller.signal};
       record.panel=await runtime.openProseAssistantPanel({parent:portal,source,sourceFactory:referenceFloors=>{
-        if(!record.valid())throw Error('正文助手聊天已变化');
-        const floor=getContext().chat.findLastIndex(message=>message&&!message.is_system);return {...source,floor,previousFloors:referenceFloors-1};
+        if(!record.valid())throw Error('场外特助聊天已变化');
+        const floor=getContext().chat?.findLastIndex(message=>message&&!message.is_system)??-1;return {...source,floor,referenceFloors,previousFloors:Math.max(0,referenceFloors-1)};
       },profiles:config?.profiles||[],selection:config?.selection,referenceFloors:config?.referenceFloors,systemPrompt:config?.systemPrompt||'',getRequestHeaders:headers,applyIcons,historyFactory:assistantHistoryFactory,
         preferences:typeof assistantSettings==='function'?{current:assistantSettings,persist:saveAssistantSettings}:undefined,
-        copy:text=>document.defaultView.navigator.clipboard.writeText(text),confirm:text=>confirm('正文助手',text),isCurrent:record.valid});
+        copy:text=>document.defaultView.navigator.clipboard.writeText(text),confirm:text=>confirm('场外特助',text),isCurrent:record.valid});
       if(!record.valid()){close(record);return null;}void record.panel.finished.finally(()=>close(record));return record.panel;
-    }catch(_){if(record.valid())notify?.('正文助手未能打开，请核对当前聊天与账户后重试。','warning');close(record);return null;}
+    }catch(_){if(record.valid())notify?.('场外特助未能打开，请核对当前账户后重试。','warning');close(record);return null;}
   }
   function click(event){
     return false;
@@ -49,7 +49,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     return module.collectProseAssistantStorage({resolveNamespace,isCurrent:live});
   }
   async function cleanupStorage(parent,confirm,check,expectedNamespace,otherModules=0){
-    check();if(entry||cleaning)throw Error('请先关闭正文助手或结束清理');const token={};cleaning=token;
+    check();if(entry||cleaning)throw Error('请先关闭场外特助或结束清理');const token={};cleaning=token;
     const valid=()=>cleaning===token&&parent?.isConnected===true&&isCurrent()===true&&!entry;
     try{
       const runtime=await import('./qianmu-prose-assistant-storage.js');check();

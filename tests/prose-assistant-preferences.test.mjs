@@ -1,12 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {saveProseAssistantConnection as save} from '../qianmu-prose-assistant-preferences.js';
+import {saveProseAssistantConnection as save,createProseAssistantAutosave} from '../qianmu-prose-assistant-preferences.js';
 const custom=()=>({mode:'custom',transport:'direct',connection:{apiUrl:'https://fixture.invalid/api/v3/chat/completions',apiKey:'private-key',model:'m',stream:false,ignored:'not saved'}});
 function fixture(){const f={owner:{apiProfiles:[{id:'p',apiUrl:'https://profile.invalid/v1',apiKey:'profile-key',model:'pm'}],proseAssistant:{systemPrompt:'keep exact'},other:{value:1}},calls:0,live:true};f.options={selection:custom(),current:()=>f.owner,persist:()=>{f.calls++;},guard:async()=>true,isCurrent:()=>f.live};return f;}
 
 test('reference floor count is saved with connection settings and invalid ranges do not mutate preferences',async()=>{
  const f=fixture();delete f.options.selection.transport;await save({...f.options,referenceFloors:3});assert.equal(f.owner.proseAssistant.referenceFloors,3);assert.equal(f.owner.proseAssistant.selection.transport,'st-proxy');
- for(const referenceFloors of [0,10,2.5,NaN]){const before=structuredClone(f.owner);await assert.rejects(save({...f.options,referenceFloors}));assert.deepEqual(f.owner,before);}
+ await save({...f.options,referenceFloors:0});assert.equal(f.owner.proseAssistant.referenceFloors,0);
+ for(const referenceFloors of [-1,10,2.5,NaN]){const before=structuredClone(f.owner);await assert.rejects(save({...f.options,referenceFloors}));assert.deepEqual(f.owner,before);}
+});
+
+test('autosaved partial connection and optional persona survive reopen without bypassing strict request validation',async()=>{
+ const f=fixture();f.options.selection={mode:'custom',connection:{apiUrl:'https:',apiKey:'',model:''}};
+ await save({...f.options,allowIncomplete:true,referenceFloors:0,systemPrompt:''});assert.deepEqual(f.owner.proseAssistant.selection.connection,{apiUrl:'https:',apiKey:'',model:''});assert.equal(f.owner.proseAssistant.systemPrompt,'');
+ await assert.rejects(save({...f.options,allowIncomplete:false}),{code:'prose_assistant_connection'});
+});
+
+test('autosave coalesces bursts and close flush waits for the latest edit made during an active save',async()=>{
+ let value='A',release;const writes=[];const autosave=createProseAssistantAutosave({read:()=>value,isCurrent:()=>true,delayMs:10000,save:async draft=>{writes.push(draft);if(writes.length===1)await new Promise(resolve=>{release=resolve;});return {status:'applied'};}});
+ autosave.change();value='B';autosave.change();const flushing=autosave.flush();await Promise.resolve();await Promise.resolve();value='C';autosave.change();release();assert.equal(await flushing,true);assert.deepEqual(writes,['B','C']);assert.equal(autosave.state().dirty,false);autosave.close();
+});
+
+test('failed autosave retains latest dirty input and retries without claiming a successful save',async()=>{
+ let value='draft',fail=true;const autosave=createProseAssistantAutosave({read:()=>value,isCurrent:()=>true,delayMs:10000,save:async()=>({status:fail?'reverted':'applied'})});autosave.change();assert.equal(await autosave.flush(),false);assert.equal(autosave.state().dirty,true);assert.equal(autosave.state().failed,true);
+ value='latest';autosave.change();fail=false;assert.equal(await autosave.flush(),true);assert.equal(autosave.state().dirty,false);autosave.close();
 });
 test('explicit custom save schedules only whitelisted connection settings and never claims durable acknowledgement',async()=>{
  const f=fixture(),other=f.owner.other,input=structuredClone(f.options.selection);const result=await save(f.options);

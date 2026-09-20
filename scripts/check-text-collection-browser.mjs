@@ -11,11 +11,12 @@ const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHAN
 const artifactDirectory=process.env.QIANMU_CAPTURE_ARTIFACTS==='1'?await mkdtemp(path.join(os.tmpdir(),'qianmu-collection-picker-')):null;
 const context = await browser.newContext(), page = await context.newPage();
 const checks = [], errors = [], allowed = new Set(['qianmu-text-collection.js', 'qianmu-text-collection-view.js', 'qianmu-notes-sync-contract.js', 'qianmu-text-collection-backup.js', 'qianmu-json-input.js']);
-for(const file of ['floor','capture','session','client','sync-contract','bulk-contract','outbox-store','outbox-runtime','outbox-backup'])allowed.add(`qianmu-text-collection-${file}.js`);
+for(const file of ['floor','floor-status','capture','session','client','sync-contract','bulk-contract','outbox-store','outbox-runtime','outbox-backup'])allowed.add(`qianmu-text-collection-${file}.js`);
 allowed.add('qianmu-account-local-store.js');
 allowed.add('qianmu-plain-text-range.js');
 allowed.add('qianmu-icon-renderer.js');allowed.add('qianmu-text-collection-paragraphs.js');
 allowed.add('qianmu-st-account-storage.js');
+allowed.add('qianmu-text-collection-presentation.js');
 const writes=[];let apiMode='ok',held;
 let external = 0;
 page.on('pageerror', error => errors.push(error.message));
@@ -76,6 +77,7 @@ try {
     await page.locator('#floor-bookmark').click();
     assert.equal(await page.locator('[data-collection-text]').isVisible(), false);
     await action('full').click();
+    assert.equal(await page.locator('[data-collection-paragraph][aria-pressed="true"]').count(),0,'full text preview does not show a selected paragraph background');
     assert.equal(await page.locator('[data-collection-paragraph]').count(),3);
     await action('save').click();
     await page.waitForFunction(() => fixture.completed !== 'pending');
@@ -294,6 +296,7 @@ try {
     apiMode='ok';
     await page.evaluate(async()=>{
         const {createTextCollectionFloorTools,injectStoryboardMessageButtons}=await import('./qianmu-text-collection-floor.js');
+        const {applyQianmuIcons}=await import('./qianmu-icon-renderer.js');
         fixture.current=true;fixture.chatKey='chat-floor';fixture.namespace='st-user:alice';fixture.notice=[];fixture.detached=0;
         fixture.messages=[{mes:'第一段\n\n第二段',name:'当时角色',swipe_id:1},{mes:'system',is_system:true},{mes:'用户内容',name:'当时用户',is_user:true}];
         fixture.chat=document.createElement('div');fixture.chat.id='chat';
@@ -302,7 +305,8 @@ try {
         const hidden=document.createElement('p');hidden.style.display='none';hidden.textContent='主题隐藏的推理不收录';fixture.chat.querySelector('.mes_text').append(hidden);
         fixture.names={charName:'当前角色',userName:'当前用户'};
         fixture.floorTools=createTextCollectionFloorTools({getContext:()=>({chat:fixture.messages}),getChatKey:()=>fixture.chatKey,names:()=>fixture.names,resolveNamespace:async()=>fixture.namespace,
-            isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'}),applyIcons:()=>{},mountPortal:()=>()=>{fixture.detached++;},notify:(...args)=>fixture.notice.push(args)});
+            isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'}),applyIcons:applyQianmuIcons,mountPortal:()=>()=>{fixture.detached++;},notify:(...args)=>fixture.notice.push(args),
+            statusSessionFactory:async()=>({expectedAccount:'fixture-status-only',snapshot:async()=>({backup:{sourceAccount:'fixture-status-only',records:[]}}),close(){}})});
         fixture.floorTools.refresh(fixture.chat);fixture.floorTools.refresh(fixture.chat);
         injectStoryboardMessageButtons(fixture.chat,{floorOf:node=>Number(node.getAttribute('mesid')),getContext:()=>({chat:fixture.messages}),getState:()=>({}),planForMessage:()=>null,applyIcons:()=>{}});
     });

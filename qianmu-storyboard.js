@@ -908,7 +908,7 @@ export function restoreStoryboardCompositionPolicy(value = {}) {
 
 export function normalizeStoryboardParagraphSelection(value) {
   const raw = obj(value) ? value : {};
-  const indexes = [...new Set((Array.isArray(raw.indexes) ? raw.indexes : []).map((item) => int(item, 0, Number.MAX_SAFE_INTEGER, -1)).filter((item) => item >= 0))].sort((a, b) => a - b).slice(0, 80);
+  const indexes = [...new Set((Array.isArray(raw.indexes) ? raw.indexes : []).map((item) => int(item, 0, Number.MAX_SAFE_INTEGER, -1)).filter((item) => item >= 0))].sort((a, b) => a - b);
   const paragraphIds = indexes.map((index) => `p${index + 1}`);
   return {
     version: 1,
@@ -1227,7 +1227,9 @@ export function normalizeStoryboardShotSpec(value = {}) {
           : 'mixed';
   const subjectKind = STORYBOARD_SUBJECT_KINDS.includes(raw.subjectKind || raw.subject_kind) ? (raw.subjectKind || raw.subject_kind) : inferredSubjectKind;
   const evidenceRaw = obj(raw.evidence) ? raw.evidence : {};
-  const evidenceParagraphIds = ids(evidenceRaw.paragraphIds || evidenceRaw.paragraph_ids || raw.sourceParagraphIds || raw.source_paragraph_ids, 80);
+  // Manual supplements retain every selected source; the outbound contract owns
+  // count/byte validation. Re-normalizing a saved shot must not drop its anchors.
+  const evidenceParagraphIds = ids(evidenceRaw.paragraphIds || evidenceRaw.paragraph_ids || raw.sourceParagraphIds || raw.source_paragraph_ids, Infinity);
   const evidenceType = STORYBOARD_EVIDENCE_TYPES.includes(evidenceRaw.type || evidenceRaw.claimType || evidenceRaw.claim_type)
     ? (evidenceRaw.type || evidenceRaw.claimType || evidenceRaw.claim_type)
     : 'explicit';

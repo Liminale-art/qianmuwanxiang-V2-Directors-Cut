@@ -12,6 +12,9 @@ const account=value=>{if(typeof value!=='string'||!/^st-user:[a-f0-9]{64}$/.test
 export function proseAssistantHistoryKey(value,namespace){
   if(typeof value!=='string'||value.length>4096)fail();let tuple;
   try{tuple=JSON.parse(value);}catch(_){fail();}
+  if(Array.isArray(tuple)&&tuple.length===2&&tuple[0]==='qianmu-prose-assistant-offstage-v1'){
+    account(tuple[1]);if(namespace!==undefined&&tuple[1]!==account(namespace)||JSON.stringify(tuple)!==value)fail();return value;
+  }
   if(!Array.isArray(tuple)||tuple.length!==5||tuple[0]!=='qianmu-prose-assistant-v2')fail();
   const [,ownerAccount,owner,raw,integrity]=tuple;account(ownerAccount);if(namespace!==undefined&&ownerAccount!==account(namespace))fail();
   let target;try{target=chatFileTarget(raw);}catch(_){fail();}
@@ -27,7 +30,7 @@ function rowsValid(rows){
     if(row.reference!==null){const r=row.reference;
       if(!exact(r,['floor','replyId','mode','range'])||!Number.isSafeInteger(r.floor)||r.floor<0||typeof r.replyId!=='string'||!/^swipe:(0|[1-9][0-9]*)$/.test(r.replyId)||!Number.isSafeInteger(Number(r.replyId.slice(6)))
         ||!['floor','selection'].includes(r.mode)||!exact(r.range,['start','end'])||!Number.isSafeInteger(r.range.start)||!Number.isSafeInteger(r.range.end)||r.range.start<0||r.mode==='floor'&&r.range.start!==0||r.range.end<=r.range.start||r.range.end>200000)fail();
-    }else if(row.status==='complete')fail();
+    }
     last=row.id;characters+=row.user.length+row.assistant.length;if(characters>limit.characters)throw error('capacity','助手历史达到单会话容量上限，未截断或覆盖原记录');
   }
 }

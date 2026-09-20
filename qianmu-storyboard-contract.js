@@ -8,6 +8,7 @@ import {
   normalizeStoryboardShotSpec,
 } from './qianmu-storyboard.js';
 import { characterCastingInput } from './qianmu-character-casting.js';
+import {completeStoryboardText,assertStoryboardInputBudget} from './qianmu-storyboard-complete-context.js';
 import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings, storyboardPromptFormatBudget, STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS } from './qianmu-prompt-formats.js';
 export { bindStoryboardPromptRenderings, remapStoryboardPromptRenderings, storyboardPromptFormatBudget } from './qianmu-prompt-formats.js';
 
@@ -373,7 +374,8 @@ function validateShot(value, index, options, errors) {
   ];
   const renderingKeys = options.promptFormats.length ? ['prompt_renderings'] : [];
   if (!exactKeys(value, [...keys,'primary_subject_id',...renderingKeys], [...keys,...(options.requirePrimarySubject ? ['primary_subject_id'] : []),...renderingKeys], path, errors)) return;
-  const paragraphIds = stringArray(value.source_paragraph_ids, `${path}.source_paragraph_ids`, errors, { min: 1, max: 80, itemMax: 160 });
+  const manualSourceCount = options.manualSupplement ? options.requiredSourceParagraphIds.size : 0;
+  const paragraphIds = stringArray(value.source_paragraph_ids, `${path}.source_paragraph_ids`, errors, { min: manualSourceCount || 1, max: manualSourceCount || 80, itemMax: 160 });
   const insertAfter = stringValue(value.insert_after, `${path}.insert_after`, errors, { max: 160 });
   for (const paragraphId of paragraphIds) {
     if (options.allowedParagraphIds.size && !options.allowedParagraphIds.has(paragraphId)) {
@@ -390,6 +392,10 @@ function validateShot(value, index, options, errors) {
     issue(errors, 'manual_insert_anchor', `${path}.insert_after`, `手动补画必须插在 ${options.requiredInsertAfter} 后`);
   }
   if (options.manualSupplement && options.requiredSourceParagraphIds.size) {
+    if (new Set(paragraphIds).size !== paragraphIds.length) issue(errors, 'manual_duplicate_paragraph', `${path}.source_paragraph_ids`, '手动补画引用段落不得重复');
+    for (const paragraphId of paragraphIds) {
+      if (!options.requiredSourceParagraphIds.has(paragraphId)) issue(errors, 'manual_extra_paragraph', `${path}.source_paragraph_ids`, `手动补画不得额外引用未选择段落 ${paragraphId}`);
+    }
     for (const paragraphId of options.requiredSourceParagraphIds) {
       if (!paragraphIds.includes(paragraphId)) {
         issue(errors, 'manual_source_paragraph', `${path}.source_paragraph_ids`, `手动补画必须引用已选择段落 ${paragraphId}`);
@@ -786,7 +792,7 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
   const maxShots = Math.max(1, Math.min(4, Number(config.maxShots) || 1));
   const manualSupplement = config.manualSupplement === true;
   const forcedIndexes = Array.isArray(context.forcedParagraphIndexes)
-    ? context.forcedParagraphIndexes.filter((index) => Number.isInteger(index) && index >= 0 && index < paragraphIds.length)
+    ? [...new Set(context.forcedParagraphIndexes.filter((index) => Number.isInteger(index) && index >= 0 && index < paragraphIds.length))].sort((a, b) => a - b)
     : [];
   const fallbackForcedIndex = Number.isInteger(context.forcedParagraphIndex)
     ? Math.max(0, Math.min(Math.max(0, paragraphIds.length - 1), context.forcedParagraphIndex))
@@ -881,15 +887,15 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
         prompt_rendering_scope: 'representation_only_no_new_facts_no_artist_syntax_no_routing_or_content_authority' } : {}),
     },
     target_paragraphs: (Array.isArray(context.paragraphs) ? context.paragraphs : []).map((text, index) => ({
-      id: paragraphIds[index], text: clippedText(text),
+      id: paragraphIds[index], text: completeStoryboardText(text),
     })),
     recent_messages: (Array.isArray(context.messages) ? context.messages : []).map((item) => ({
       floor: Number.isInteger(item?.floor) ? item.floor : null,
       role: item?.role === 'user' ? 'user' : 'character',
-      text: clippedText(item?.text, 6000),
+      text: completeStoryboardText(item?.text),
     })),
-    character_setting: clippedText(context.currentCharacter, 10000),
-    user_persona: clippedText(context.persona, 8000),
+    character_setting: completeStoryboardText(context.currentCharacter),
+    user_persona: completeStoryboardText(context.persona),
     character_archive: {
       catalogue_is_cast: false,
       appearance_priority: 'explicit_target_text_over_archive',
@@ -898,12 +904,19 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
       candidates: characterCastingInput(context.characterCasting),
       ...(requirePrimarySubject ? {primary_subject_id:'one_visible_character_id_or_empty_for_no_character',reference_policy:'primary_subject_only'} : {}),
     },
-    selected_worldbook: clippedText(context.world, 16000),
+    selected_worldbook: completeStoryboardText(context.world),
   };
+  const payloadText=JSON.stringify(payload);assertStoryboardInputBudget(system+payloadText);
   return {
-    messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(payload) }],
-    schema: requirePrimarySubject || promptFormats.length ? (() => {
+    messages: [{ role: 'system', content: system }, { role: 'user', content: payloadText }],
+    schema: requirePrimarySubject || promptFormats.length || manualSupplement && requiredParagraphIds.length ? (() => {
       const schema = JSON.parse(JSON.stringify(STORYBOARD_PLAN_RESPONSE_SCHEMA));
+      if (manualSupplement && requiredParagraphIds.length) {
+        schema.properties.shots.items.properties.source_paragraph_ids = {
+          type:'array', minItems:requiredParagraphIds.length, maxItems:requiredParagraphIds.length,
+          items:{type:'string',enum:requiredParagraphIds},
+        };
+      }
       if (requirePrimarySubject) {
         schema.properties.shots.items.properties.primary_subject_id = {type:'string',description:'ID of the primary visible character in this shot; empty for a shot without characters.'};
         schema.properties.shots.items.required.push('primary_subject_id');

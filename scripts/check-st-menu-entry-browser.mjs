@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
+const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),page=await browser.newPage();const errors=[];let external=0;
+page.on('pageerror',error=>errors.push(error.message));
+await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.origin==='https://qianmu.test'&&url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><style>#options{color:rgb(123,145,167)}</style><button id="options_button">menu</button><section id="extensionsMenu"><div id="entry">old</div></section><div id="options"><div class="options-content"></div></div><textarea id="send_textarea"></textarea>'});if(url.origin==='https://qianmu.test'&&/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url),'utf8')});external++;await route.abort();});
+try{await page.goto('https://qianmu.test/');await page.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')});
+ const result=await page.evaluate(async()=>{const {renderQianmuStMenuEntry:render}=await import('/qianmu-st-menu-entry.js');let opened=0,toggled=0;document.querySelector('#options_button').onclick=()=>{toggled++;document.querySelector('#options').style.display='none';};
+  const options={id:'entry',fallbackId:'fallback',enabled:true,onOpen:()=>opened++};const a=render(options),b=render(options);
+  const mounted=a===b&&a.parentElement.matches('#options .options-content')&&!document.querySelector('#extensionsMenu #entry');
+  const shape=a.querySelector('path'),color=getComputedStyle(shape).fill,logo=!!a.querySelector('svg');a.click();a.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  render({...options,enabled:false});const removed=!document.getElementById('entry');document.querySelector('#options').remove();const missing=render(options)===null&&!document.querySelector('#fallback');return {mounted,color,logo,opened,toggled,removed,missing};});
+ assert.deepEqual(result,{mounted:true,color:'rgb(123, 145, 167)',logo:true,opened:2,toggled:1,removed:true,missing:true});
+ const paragraphs=await page.evaluate(async()=>{const {completeStoryboardParagraphs:split}=await import('/qianmu-storyboard-complete-context.js');return {mixed:split('开场<div>中间<p>段一</p><blockquote><p>段二</p></blockquote>收束</div>尾声'),long:split(Array.from({length:281},(_,i)=>`<p>段${i}</p>`).join('')),inert:split('<script>bad()</script><think>hidden</think>可见<img src="https://forbidden.invalid/x">')};});
+ assert.deepEqual(paragraphs.mixed,['开场','中间','段一','段二','收束','尾声']);assert.equal(paragraphs.long.length,281);assert.equal(paragraphs.long.at(-1),'段280');assert.deepEqual(paragraphs.inert,['可见']);
+ assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks:10,external,pageErrors:errors,productionWrites:false}));
+}finally{await browser.close();}

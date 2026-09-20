@@ -1,6 +1,9 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js';
+import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
+import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
+import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js';
@@ -162,7 +165,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.202';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.202';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.209';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.210';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -259,7 +262,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.209';
+const VERSION = '1.59.210';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -295,7 +298,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.202') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.202') },
   historicalRestore: { label: '历史聊天分镜恢复', load: () => import('./qianmu-historical-restore.js?v=1.59.204') },
-  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.209') },
+  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.210') },
   storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.202') },
   storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.202') },
   storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.202') },
@@ -4487,7 +4490,7 @@ function normalizeQuickWheelSettings() {
     const key = String(item?.key || '').trim();
     const selector = String(item?.selector || '').trim();
     const shadowPath = quickDockNormalizePath(item?.shadowPath);
-    if (!key || (!selector && !shadowPath.length) || seenDockKeys.has(key)) return false;
+    if (!key || (!selector && !shadowPath.length) || seenDockKeys.has(key) || isQianmuOwnedDockDescriptor(item)) return false;
     seenDockKeys.add(key);
     return true;
   }).slice(0, QUICK_HIVE_SAFETY_LIMIT);
@@ -4712,6 +4715,7 @@ function quickDockActivatorForHost(host, preferred = null) {
 function quickDockCandidate(event) {
   const path = typeof event?.composedPath === 'function' ? event.composedPath() : [event?.target];
   const elements = path.filter((node) => node instanceof Element);
+  if (elements.some(node=>node.closest?.(QIANMU_DETACHED_OWNED_SELECTOR))) return null;
   if (!elements.length) return null;
   if (elements.some((node) => node.matches?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #${NOTES_FLOAT_LAYER_ID}, #${NOTES_PANEL_LAYER_ID}, #sd-reader-portal, .sd-toast`)
     || node.closest?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #${NOTES_FLOAT_LAYER_ID}, #${NOTES_PANEL_LAYER_ID}, #sd-reader-portal, .sd-toast`))) return null;
@@ -4830,6 +4834,7 @@ function quickDockSetOriginState(record, state) {
 }
 
 function quickDockAttach(host, activator, descriptor = null, fromRestore = false) {
+  if (!host?.isConnected || host.closest?.(QIANMU_DETACHED_OWNED_SELECTOR) || isQianmuOwnedDockDescriptor(descriptor)) return false;
   if (!(host instanceof Element) || quickDockComposedAncestors(host).some((node) => node.matches?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #${NOTES_FLOAT_LAYER_ID}, #${NOTES_PANEL_LAYER_ID}, #sd-reader-portal`))) return false;
   normalizeQuickWheelSettings();
   const shadowPath = quickDockNormalizePath(descriptor?.shadowPath).length
@@ -4959,6 +4964,7 @@ function quickDockRun(key) {
 
 function quickDockScanStored() {
   normalizeQuickWheelSettings();
+  for (const [key,record] of quickDockRuntime) if (record.host?.closest?.(QIANMU_DETACHED_OWNED_SELECTOR) || isQianmuOwnedDockDescriptor(record)) { quickDockSetOriginState(record,'normal');quickDockRuntime.delete(key); }
   for (const item of settings.quickWheelDockedPlugins) {
     const current = quickDockRuntime.get(item.key);
     if (current?.host?.isConnected) continue;
@@ -5100,7 +5106,7 @@ function quickDockOnPointerUp(event) {
   if (!quickDockDrag || event.pointerId !== quickDockDrag.pointerId) return;
   const drag = quickDockDrag;
   quickDockClearDrag();
-  if (drag.moved && drag.ready) setTimeout(() => quickDockAttach(drag.host, drag.activator), 0);
+  if (drag.moved && drag.ready && !qianmuDockingSurfaceBusy()) setTimeout(() => { if(!qianmuDockingSurfaceBusy())quickDockAttach(drag.host, drag.activator); }, 0);
 }
 
 function bindQuickDockCapture() {
@@ -13787,7 +13793,7 @@ async function storyboardWarmCompilerWorldEntries({ rerender = false, force = fa
       storyboardWorldEntryCache.books = books;
       storyboardWorldEntryCache.rows = rows.slice(0, 1000);
       storyboardWorldEntryCache.error = '';
-      state.promptCompiler.worldBookNames = (state.promptCompiler.worldBookNames || []).filter((name) => names.includes(name));
+      // Keep explicit choices on a failed/stale directory response; compile checks missing entries.
       if (state.promptCompiler.worldBookView && !names.includes(state.promptCompiler.worldBookView)) state.promptCompiler.worldBookView = '';
       saveSettings();
       return storyboardWorldEntryCache.rows;
@@ -17098,12 +17104,7 @@ function renderStoryboardParameterPresets(state) {
 }
 
 function storyboardMessageParagraphs(value) {
-  const raw = String(value || '');
-  const holder = document.createElement('div');
-  holder.innerHTML = raw.replace(/<br\s*\/?>/gi, '\n');
-  const blockRows = Array.from(holder.querySelectorAll('p,li,blockquote')).map((node) => storyboardCleanMessageText(node.textContent));
-  const source = blockRows.length > 1 ? blockRows : String(holder.textContent || raw).split(/\n{2,}|\r?\n/).map(storyboardCleanMessageText);
-  return source.filter(Boolean).slice(0, 240);
+  return completeStoryboardParagraphs(value,{document,clean:storyboardCleanMessageText});
 }
 
 function storyboardParagraphTokenSet(value) {
@@ -18597,18 +18598,19 @@ function storyboardTargetFloor(state) {
 }
 
 async function storyboardCompilerWorldText(state) {
-  const rows = await storyboardWarmCompilerWorldEntries();
-  for (const book of state.promptCompiler.worldBookNames || []) await storyboardLoadCompilerWorldBook(book);
-  const availableRows = storyboardWorldEntryCache.rows.length ? storyboardWorldEntryCache.rows : rows;
   const requestedBooks = new Set(state.promptCompiler.worldBookNames || []);
   const requested = new Set(state.promptCompiler.worldEntryIds || []);
+  const rows = await storyboardWarmCompilerWorldEntries();
+  for (const book of requestedBooks) await storyboardLoadCompilerWorldBook(book);
+  const availableRows = storyboardWorldEntryCache.rows.length ? storyboardWorldEntryCache.rows : rows;
   const selected = availableRows.filter((row) => requestedBooks.has(row.book) && requested.has(row.id));
+  if([...requested].some(id=>[...requestedBooks].some(book=>id.startsWith(book+'::'))&&!selected.some(row=>row.id===id)))throw Object.assign(new Error('部分已选世界书条目未能读取，请刷新后重试；未发送不完整上下文。'),{code:'storyboard_context_unavailable'});
   const resolved = [];
-  for (const row of selected.slice(0, 20)) {
-    const content = cleanContextText(await resolveMacro(String(row.item?.content || ''))).slice(0, 5000);
+  for (const row of selected) {
+    const content = storyboardCleanMessageText(await resolveMacro(String(row.item?.content || '')));
     if (content) resolved.push(`【${row.book} · ${row.title}】\n${content}`);
   }
-  return { text: resolved.join('\n\n').slice(0, 18000), rows: selected, fallback: false };
+  return { text: resolved.join('\n\n'), rows: selected, fallback: false };
 }
 
 function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = true, upstreamGuard = null, requireCompiler = false, freshComfy = false } = {}) {
@@ -18718,13 +18720,13 @@ async function storyboardCompilerContext(state, inputGuard) {
     const item = chat[index];
     if (!item || item.is_system) continue;
     const cleanSource = storyboardCleanWithTagRules(item.mes, state);
-    const text = storyboardCleanMessageText(cleanSource).slice(0, 6000);
+    const text = storyboardCleanMessageText(cleanSource);
     if (text) messages.push({ floor: index, role: item.is_user ? 'user' : 'character', text });
   }
   const currentCharacter = state.promptCompiler.includeCharacterCards
-    ? cleanContextText(await resolveMacro(getCharacterDescription())).slice(0, 10000) : '';
+    ? storyboardCleanMessageText(await resolveMacro(getCharacterDescription())) : '';
   const persona = state.promptCompiler.includeUserPersona
-    ? cleanContextText(await resolveMacro(getPersonaDescription())).slice(0, 8000) : '';
+    ? storyboardCleanMessageText(await resolveMacro(getPersonaDescription())) : '';
   const targetMessage = Number.isInteger(floor) ? chat[floor] : null;
   const paragraphs = storyboardMessageParagraphs(storyboardCleanWithTagRules(targetMessage?.mes || '', state));
   const pendingSelection = state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
@@ -19258,7 +19260,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
     if(error?.code==='storyboard_contract_failed')state.pendingCompilerStages=[{id:uid('stage-compiler'),type:'prompt_compiler',status:'failed',startedAt,finishedAt:Date.now(),output:error.diagnostic,error:error.message}];
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
-    if (!quiet||error?.code==='storyboard_contract_failed') toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
+    if (!quiet||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return false;
   } finally {
     inputGuard.dispose();
@@ -23251,7 +23253,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
   if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
-    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.209').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.210').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
       root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
       apply: value => storyboardSetArtistPreview(root, value), notify: toast,
     })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });
@@ -35673,53 +35675,14 @@ async function importTheaterScripts(event) {
 }
 
 function renderInputMenuEntry() {
-  const existingEntry = document.getElementById(INPUT_ENTRY_ID);
-  const existingButton = document.getElementById(INPUT_BUTTON_ID);
-  if (!settings.enabled) {
-    existingEntry?.remove();
-    existingButton?.remove();
-    startInputMenuObserver();
-    return;
-  }
-  if (existingEntry?.isConnected || existingButton?.isConnected) {
-    startInputMenuObserver();
-    return;
-  }
-
-  const menu = document.querySelector('#extensionsMenu, #extensions_menu, #input_extra_menu, #send_form_menu, .extensionsMenu');
-  if (menu) {
-    const entry = document.createElement('div');
-    entry.id = INPUT_ENTRY_ID;
-    entry.className = 'list-group-item flex-container flexGap5 interactable story-director-input-entry';
-    entry.tabIndex = 0;
-    entry.innerHTML = `<div class="fa-solid fa-clapperboard extensionsMenuExtensionButton" data-qm-icon="qm-duotone-film-slate"></div><span>${EXTENSION_NAME}</span>`;
-    entry.addEventListener('click', () => openModal());   // 恢复上次 tab
-    menu.appendChild(entry);
-    applyQianmuIcons(entry);
-    startInputMenuObserver();
-    return;
-  }
-
-  const sendForm = document.querySelector('#send_form, #form_sheld, #chat-input, .send_form');
-  const textarea = document.querySelector('#send_textarea, textarea#send_textarea');
-  const parent = sendForm || textarea?.parentElement;
-  if (!parent || parent.querySelector(`#${INPUT_BUTTON_ID}`)) return;
-  const button = document.createElement('button');
-  button.id = INPUT_BUTTON_ID;
-  button.type = 'button';
-  button.title = EXTENSION_NAME;
-  button.innerHTML = '<i class="fa-solid fa-clapperboard" data-qm-icon="qm-duotone-film-slate"></i>';
-  button.addEventListener('click', () => openModal());   // 恢复上次 tab
-  if (textarea && textarea.parentElement === parent) parent.insertBefore(button, textarea);
-  else parent.insertBefore(button, parent.firstChild);
-  applyQianmuIcons(button);
+  renderQianmuStMenuEntry({enabled:settings.enabled,id:INPUT_ENTRY_ID,fallbackId:INPUT_BUTTON_ID,onOpen:()=>openModal()});
   startInputMenuObserver();
 }
 
 function inputMenuObservationRoot() {
   const sendForm = document.querySelector('#send_form, #form_sheld, #chat-input, .send_form');
-  const menu = document.querySelector('#extensionsMenu, #extensions_menu, #input_extra_menu, #send_form_menu, .extensionsMenu');
-  return sendForm || menu?.parentElement || document.body;
+  const menu = document.querySelector('#options');
+  return menu || sendForm || document.body;
 }
 
 function startInputMenuObserver() {

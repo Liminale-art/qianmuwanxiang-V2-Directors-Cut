@@ -16,7 +16,8 @@ test('exact account/owner/file/integrity partition is stable while same-name rol
 test('completed and stopped records preserve literal Unicode and references without automatically resuming a running request',()=>{
  const value=state();value.rows.push({...row(),id:3,assistant:'半截',status:'cancelled'}, {...row(),id:4,assistant:'',status:'failed',reference:null});assert.equal(validate(value,id()),value);
  assert.equal(value.rows[0].user,'问题\r\n😀');assert.equal(value.rows[0].assistant,'<b>纯文本回复</b>');assert.deepEqual(empty(id()).rows,[]);
- for(const patch of [{status:'running'},{status:'complete',assistant:''},{status:'complete',reference:null},{user:'\ud800'},{reference:{...row().reference,replyId:'swipe:01'}},{reference:{...row().reference,range:{start:1,end:200001}}}])assert.throws(()=>validate({...state(),rows:[{...row(),...patch}]},id()));
+ assert.equal(validate({...state(),rows:[{...row(),reference:null}]},id()).rows[0].reference,null,'zero-reference completed questions need no fabricated prose range');
+ for(const patch of [{status:'running'},{status:'complete',assistant:''},{user:'\ud800'},{reference:{...row().reference,replyId:'swipe:01'}},{reference:{...row().reference,range:{start:1,end:200001}}}])assert.throws(()=>validate({...state(),rows:[{...row(),...patch}]},id()));
 });
 test('strict schema rejects credential fields, unknown content and corrupt versions without silently dropping original data',()=>{
  for(const patch of [{apiKey:'secret'},{namespace:id(other)},{revision:0},{revision:-1},{updatedAt:NaN},{rows:[row(),row()]},{rows:[{...row(),apiKey:'secret'}]},{rows:Array(1)},{rows:[{...row(),reference:{...row().reference,text:'extra unselected text'}}]}])assert.throws(()=>validate({...state(),...patch},id()));

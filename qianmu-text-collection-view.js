@@ -2,6 +2,7 @@ import { captureTextCollectionSource, createTextCollection, textCollectionRecord
 import { notesSyncOperationId } from './qianmu-notes-sync-contract.js';
 import { qianmuIconElement } from './qianmu-icon-renderer.js';
 import { textCollectionParagraphs, textCollectionParagraphSelection } from './qianmu-text-collection-paragraphs.js';
+import { applyCollectionProseStyle } from './qianmu-text-collection-presentation.js';
 
 // Paragraph selection is local; account setup may finish later, but is always
 // verified before a record is created or written. No document selection hooks.
@@ -13,12 +14,9 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
     const captured = resolveSource ? Object.freeze({ ...source, text: textCollectionText(source?.text) }) : captureTextCollectionSource(source);
     const paragraphs = textCollectionParagraphs(captured.text), selected = new Set();
     const dialog = document.createElement('dialog');
-    dialog.className = 'qm-text-collection-dialog';
+    dialog.className = 'qm-text-collection-dialog qm-text-collection-panel';
     dialog.setAttribute('aria-label', '收藏正文');
-    const prose = sourceElement?.isConnected && sourceElement.ownerDocument === document ? sourceElement : parent;
-    const type = view.getComputedStyle(prose);
-    dialog.style.setProperty('--qm-collection-prose-size', type.fontSize);
-    dialog.style.setProperty('--qm-collection-prose-font', type.fontFamily);
+    applyCollectionProseStyle(dialog, sourceElement, parent);
     const controller = new view.AbortController();
     const previouslyFocused = document.activeElement;
     let closed = false, pending = false, mode = null, draft = null, editing = false, selection = null, resolve;
@@ -92,7 +90,7 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
         save.disabled = pending || !rangeValid() || !valid;
         edit.disabled=pending||Boolean(draft)||!rangeValid();edit.hidden=editing;
         back.disabled = pending || Boolean(draft); textarea.disabled = pending;textarea.readOnly=!editing||Boolean(draft);
-        paragraphButtons.forEach((node, index) => { node.disabled = pending || Boolean(draft) || mode === 'full'; node.setAttribute('aria-pressed', String(mode === 'full' || selected.has(index))); });
+        paragraphButtons.forEach((node, index) => { node.disabled = pending || Boolean(draft) || mode === 'full'; node.setAttribute('aria-pressed', String(mode === 'selection' && selected.has(index))); });
         dialog.setAttribute('aria-busy', String(pending));
     }
     function editedValue(){

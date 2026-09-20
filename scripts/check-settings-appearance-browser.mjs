@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from '../qianmu-hive-commands.js';
+import {isQianmuOwnedDockDescriptor} from '../qianmu-hive-ownership.js';
 
 const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const declarations = ['FLOAT_SIZE_MIN', 'FLOAT_SIZE_MAX', 'LOG_LIMIT', 'QUICK_HIVE_SAFETY_LIMIT', 'LOG_STATUS_LABELS', 'LOG_KIND_LABELS'].map(name => {
     const found = index.match(new RegExp('^const ' + name + ' = .+;', 'm')); assert.ok(found, name); return found[0];
 });
-declarations.push(`const QUICK_COMMANDS = ${JSON.stringify(QIANMU_HIVE_COMMANDS)};`,upgradeProseHiveCommands.toString(), 'const QUICK_COMMAND_IDS = QUICK_COMMANDS.map(item => item.id);');
+declarations.push(`const QUICK_COMMANDS = ${JSON.stringify(QIANMU_HIVE_COMMANDS)};`,upgradeProseHiveCommands.toString(),isQianmuOwnedDockDescriptor.toString(), 'const QUICK_COMMAND_IDS = QUICK_COMMANDS.map(item => item.id);');
 const names = ['renderActiveTab', 'renderPlugTab', 'renderQuickWheelSettings', 'normalizeQuickWheelSettings',
     'renderStoryboardVideoConnectionCard', 'renderStoryboardVideoBudgetCard', 'storyboardVideoBudgetPolicy', 'storyboardVideoRegion',
     'renderLogEntry', 'renderStorageServiceStatus', 'formatStorageBytes', 'optionalServiceLabel', 'optionalServiceDetail', 'renderStorageManagementCard'];

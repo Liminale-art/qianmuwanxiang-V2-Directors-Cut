@@ -483,6 +483,7 @@ export const QIANMU_ICON_ROOT_SELECTOR = [
   '.sd-tts-popup',
   '.sd-tts-glue',
   '.sd-storyboard-message-action',
+  '.qm-text-collection-floor',
   '.sd-storyboard-inline',
   '.sd-storyboard-lightbox',
   '.sd-storyboard-video-viewer',

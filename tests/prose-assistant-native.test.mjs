@@ -8,11 +8,11 @@ const raw='st-user:alice',account='st-user:'+createHash('sha256').update('alice'
 const key=JSON.stringify(['qianmu-prose-assistant-v2',account,'char:A.png',{kind:'character',chatId:'A',avatar:'A.png'},null]);
 const row=(text='回答')=>({id:1,user:'问题',assistant:text,status:'complete',reference:{floor:0,replyId:'swipe:0',mode:'floor',range:{start:0,end:2}}});
 const history=(revision=1,rows=[row()])=>({version:1,namespace:key,revision,updatedAt:revision?20:0,rows});
-function fixture(local=emptyProseAssistantHistory(key)){
+function fixture(local=emptyProseAssistantHistory(key),scopeKey=key){
  const f={files:new Map(),writes:0,localReads:0,localClosed:0,closed:0,live:true,lost:false,nativeAccount:raw,local};
  const check=async options=>{if(options?.guard&&await options.guard()!==true)throw Error('scope');};
- f.options={source:{key,scope:{namespace:account},assertCurrent:()=>f.live,guard:async()=>f.live},isCurrent:()=>f.live,now:()=>30,
-  legacyFactory:()=>({async read(ns,k){assert.equal(ns,account);assert.equal(k,key);f.localReads++;return structuredClone(f.local);},close(){f.localClosed++;}}),
+ f.options={source:{key:scopeKey,scope:{namespace:account},assertCurrent:()=>f.live,guard:async()=>f.live},isCurrent:()=>f.live,now:()=>30,
+  legacyFactory:()=>({async read(ns,k){assert.equal(ns,account);assert.equal(k,scopeKey);f.localReads++;return structuredClone(f.local);},close(){f.localClosed++;}}),
   storageFactory:async()=>({namespace:f.nativeAccount,
    async read(slot,options){await check(options);const found=f.files.get(slot);return found?{exists:true,value:structuredClone(found.value),fingerprint:found.fingerprint}:{exists:false,value:null,fingerprint:null};},
    async write(slot,value,{expectedFingerprint,...options}){await check(options);if(f.race){f.files.set(slot,{value:history(4,[row('其他设备')]),fingerprint:'race'});f.race=false;}
@@ -61,4 +61,15 @@ test('wrong account, chat, corrupt remote or scope invalidation never overwrites
  await assert.rejects(store.read(account,key.replace('A.png','B.png')),{code:'prose_assistant_history_scope'});
  [...f.files.values()][0].value.rows[0].assistant='';await assert.rejects(store.read(account,key),{code:'prose_assistant_history_invalid'});assert.equal(f.writes,before);
  f.live=false;await assert.rejects(store.write(account,key,1,[]));assert.equal(f.writes,before);store.close();
+});
+
+test('account offstage history persists reference-free replies in a different native slot than real chat history',async()=>{
+ const offstageKey=JSON.stringify(['qianmu-prose-assistant-offstage-v1',account]);
+ const f=fixture(emptyProseAssistantHistory(offstageKey),offstageKey),offstage=await create(f.options);
+ await offstage.read(account,offstageKey);await offstage.write(account,offstageKey,0,[{...row('场外回答'),reference:null}]);offstage.close();
+ const offstageSlot=[...f.files.keys()][0],chatFixture=fixture();chatFixture.files=f.files;
+ const chat=await create(chatFixture.options);assert.deepEqual((await chat.read(account,key)).rows,[]);await chat.write(account,key,0,[row('聊天回答')]);chat.close();
+ assert.equal(f.files.size,2);assert.equal(f.files.get(offstageSlot).value.rows[0].assistant,'场外回答');
+ const reopened=await open(f.options);assert.equal(reopened.initialHistory().rows[0].assistant,'场外回答');reopened.close();
+ const guarded=await create(f.options);await assert.rejects(guarded.read(account,key),{code:'prose_assistant_history_scope'});guarded.close();
 });

@@ -20,7 +20,7 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
   const expectedAccount='st-user:'+Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
   await guard();
   const factory=isStAccountStorageConfigured()&&!fetchImpl?(await import('./qianmu-text-collection-native.js')).createNativeTextCollectionClient:createTextCollectionClient;
-  const client=factory({expectedAccount,guard,headers,fetchImpl,timeoutMs});
+  const client=factory({expectedAccount,guard,isCurrent:()=>!closed&&isCurrent()===true,headers,fetchImpl,timeoutMs});
   function prepare(operation,value){
     if(closed||isCurrent()!==true)throw error('cancelled','收藏会话已关闭，未准备新操作');
     const request=textCollectionSyncMutation({version:1,expectedAccount,mutationId:notesSyncOperationId(cryptoImpl),operation,...value});
@@ -28,7 +28,7 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
     // a new handle; neither a lost acknowledgement nor a conflict rebases it.
     return Object.freeze({request,submit:options=>client.write(request,options)});
   }
-  return Object.freeze({expectedAccount,namespace,guard,list:(input,options)=>client.list(input,options),get:(id,options)=>client.get(id,options),
+  return Object.freeze({expectedAccount,namespace,guard,invalidateReadCache:()=>client.invalidateReadCache?.(),list:(input,options)=>client.list(input,options),get:(id,options)=>client.get(id,options),
     snapshot:options=>client.snapshot(options),
     inventory:options=>client.inventory(options),
     restoreInfo:options=>client.restoreInfo(options),

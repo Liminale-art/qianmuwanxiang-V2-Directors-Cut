@@ -101,6 +101,41 @@ dialog.qm-text-collection-dialog::backdrop { background: #0007; }
 .qm-text-collection-row > small { font-size: 12px; color: var(--sd-muted, inherit); opacity: .8; }
 .qm-text-collection-search { display: flex; gap: 6px; margin-bottom: 10px; }
 .qm-text-collection-search input { flex: 1; min-width: 0; width: 0; box-sizing: border-box; min-height: 36px; padding: 6px 8px; font: inherit; color: inherit; background: var(--sd-input-bg, #8882); border: 1px solid var(--sd-hairline, #8886); border-radius: var(--qm-button-radius, 8px); }
+/* Same fixed viewport geometry as the main Qianmu window. Contents scroll,
+   not the dialog; lists, long excerpts and edits never resize the shell. */
+dialog.qm-text-collection-panel {
+    width: min(940px, calc(100vw - 28px));
+    height: min(760px, calc(100vh - 28px));
+    height: min(760px, calc(100dvh - 28px));
+    max-width: calc(100vw - 28px);
+    max-height: calc(100dvh - 28px);
+    border-radius: 22px;
+}
+.qm-text-collection-panel > main { flex: 1 1 auto; }
+.qm-text-collection-panel > header > strong { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.qm-text-collection-header-tools { flex: none; }
+.qm-text-collection-library > main { display: flex; flex-direction: column; overflow: hidden; }
+.qm-text-collection-search { flex: none; }
+.qm-text-collection-library [data-collection-list], .qm-text-collection-library [data-collection-detail] { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.qm-text-collection-library [data-collection-detail] { display: flex; flex-direction: column; }
+.qm-text-collection-library .qm-text-collection-prose { padding: 5px 8px; font-family: var(--qm-collection-prose-font, inherit); font-size: var(--qm-collection-prose-size, 16px); line-height: var(--qm-collection-prose-line, 1.6); }
+.qm-text-collection-prose > p { margin: 0 0 var(--qm-collection-prose-gap, 4px); font: inherit; line-height: inherit; white-space: pre-wrap; }
+.qm-text-collection-panel textarea { resize: none; }
+.qm-text-collection-library textarea { flex: 1 1 auto; min-height: 80px; height: auto; line-height: var(--qm-collection-prose-line, 1.6); }
+.qm-text-collection-dialog .qm-text-collection-detail-actions { align-items: center; justify-content: space-between; }
+.qm-text-collection-dialog .qm-text-collection-paging { justify-content: space-between; }
+.qm-text-collection-dialog .qm-text-collection-row.is-selected,
+.qm-text-collection-dialog [data-collection-manage="select"][aria-pressed="true"] { border-color: var(--qm-accent, #a7c4b5); background: color-mix(in srgb, var(--qm-accent, #a7c4b5) 14%, transparent); }
+.qm-text-collection-panel .qm-text-collection-paragraphs { max-height: none; }
+.qm-text-collection-panel button.qm-text-collection-paragraph { line-height: var(--qm-collection-prose-line, 1.6); margin-block-end: var(--qm-collection-prose-gap, 0px); }
+.qm-text-collection-image-export > main { display: flex; flex-direction: column; gap: 12px; }
+.qm-text-collection-image-export label { display: flex; flex-direction: column; gap: 6px; flex: none; font-size: 12px; color: var(--sd-muted, inherit); }
+.qm-text-collection-image-export input { width: 100%; min-width: 0; height: 36px; border: 1px solid var(--sd-hairline, #8886); border-radius: 8px; padding: 6px 8px; color: var(--sd-text, inherit); background: var(--sd-input-bg, #8882); font: inherit; }
+.qm-text-collection-image-export textarea { flex: 1 1 auto; min-height: 100px; height: auto; }
+.qm-text-collection-image-export [data-collection-manage="image-save"] { margin-inline-start: auto; }
+@media (max-width: 760px) {
+    dialog.qm-text-collection-panel { width: calc(100vw - 32px); max-width: calc(100vw - 32px); height: calc(100vh - 108px); height: calc(100dvh - 108px); max-height: calc(100dvh - 108px); border-radius: 16px; }
+}
 @media (max-height: 420px) {
     .qm-text-collection-dialog > header, .qm-text-collection-dialog > footer { padding: 8px 12px; }
     .qm-text-collection-dialog textarea { height: 120px; min-height: 80px; }

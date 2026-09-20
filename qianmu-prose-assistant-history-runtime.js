@@ -3,7 +3,7 @@ import {proseAssistantHistoryKey,validateProseAssistantHistory,proseAssistantHis
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const safe=cause=>{
- const name=String(cause?.code||'').replace(/^prose_assistant_history_/,''),messages={conflict:'助手历史已在另一页面变化，未覆盖；请复制本页新内容后重新打开',capacity:'助手历史超过单会话容量，未截断原内容',invalid:'助手历史格式或确认结果不一致，未覆盖原记录',scope:'正文助手来源已变化，原保存未确认',closed:'正文助手历史已关闭',busy:'请等待当前历史保存完成',pending:'尚有未确认的助手历史，请先重试保存或复制后重新打开'};
+ const name=String(cause?.code||'').replace(/^prose_assistant_history_/,''),messages={conflict:'助手历史已在另一页面变化，未覆盖；请复制本页新内容后重新打开',capacity:'助手历史超过单会话容量，未截断原内容',invalid:'助手历史格式或确认结果不一致，未覆盖原记录',scope:'场外特助来源已变化，原保存未确认',closed:'场外特助历史已关闭',busy:'请等待当前历史保存完成',pending:'尚有未确认的助手历史，请先重试保存或复制后重新打开'};
  return Object.hasOwn(messages,name)?error(name,messages[name]):error('storage','助手历史保存未确认，请保留本页内容并重试');
 };
 

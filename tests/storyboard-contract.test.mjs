@@ -17,7 +17,7 @@ import {
   validateStoryboardPlanContract,
   validateStoryboardSafetyContract,
 } from '../qianmu-storyboard-contract.js';
-import { compileStoryboardPrompt } from '../qianmu-storyboard.js';
+import { compileStoryboardPrompt, normalizeStoryboardShotSpec } from '../qianmu-storyboard.js';
 
 const character = (id, x, overrides = {}) => ({
   character_id: id,
@@ -334,7 +334,10 @@ const contractRequest = buildStoryboardPlanContractRequest({
   extraInstructions: '优先表现动作变化。',
 });
 assert.equal(contractRequest.schemaId, STORYBOARD_PLAN_RESPONSE_SCHEMA_ID);
-assert.equal(contractRequest.schema, STORYBOARD_PLAN_RESPONSE_SCHEMA);
+assert.notEqual(contractRequest.schema, STORYBOARD_PLAN_RESPONSE_SCHEMA);
+assert.deepEqual(contractRequest.schema.properties.shots.items.properties.source_paragraph_ids, {
+  type:'array',minItems:2,maxItems:2,items:{type:'string',enum:['P1','P3']},
+});
 assert.equal(contractRequest.maxShots, 1);
 assert.deepEqual(contractRequest.paragraphIds, ['P1', 'P2', 'P3']);
 assert.deepEqual(contractRequest.requiredSourceParagraphIds, ['P1', 'P3']);
@@ -363,6 +366,24 @@ const smartRequest = buildStoryboardPlanContractRequest({ paragraphs: ['单人�
 });
 assert.match(smartRequest.messages[0].content, /不得按单人竖幅\/多人横幅机械映射/);
 assert.match(smartRequest.messages[0].content, /16:9 只是主画幅偏好，不是强制值/);
+assert.equal(smartRequest.schema,STORYBOARD_PLAN_RESPONSE_SCHEMA);
+assert.equal(smartRequest.schema.properties.shots.items.properties.source_paragraph_ids.maxItems,80);
+
+for(const count of [1,80,81,281]){
+  const paragraphs=Array.from({length:count+1},(_,i)=>'段落'+i),ids=paragraphs.slice(0,count).map((_,i)=>'P'+(i+1));
+  const request=buildStoryboardPlanContractRequest({paragraphs,forcedParagraphIndexes:[...Array(count).keys(),0].reverse()},{manualSupplement:true});
+  const schema=request.schema.properties.shots.items.properties.source_paragraph_ids;
+  assert.equal(schema.minItems,count);assert.equal(schema.maxItems,count);assert.equal(schema.uniqueItems,undefined);assert.deepEqual(schema.items.enum,ids);assert.equal(request.requiredInsertAfter,ids.at(-1));
+  const options={...validationOptions,...request,allowedParagraphIds:request.paragraphIds};
+  const response=refs=>plan({shots:[shot({source_paragraph_ids:refs,insert_after:ids.at(-1)})],continuity_updates:[]});
+  assert.equal(validateStoryboardPlanContract(response(ids),options).ok,true);
+  const adapted=adaptStoryboardPlanContract(response(ids),options).shots[0].shotSpec;
+  assert.deepEqual(adapted.sourceParagraphIds,ids);assert.deepEqual(adapted.evidence.paragraphIds,ids);
+  assert.deepEqual(normalizeStoryboardShotSpec(adapted).sourceParagraphIds,ids);assert.equal(adapted.insertAfter,ids.at(-1));
+  assert.equal(validateStoryboardPlanContract(response(ids.slice(1)),options).ok,false);
+  assert.ok(validateStoryboardPlanContract(response([...ids,ids[0]]),options).errors.some(row=>row.code==='manual_duplicate_paragraph'));
+  assert.ok(validateStoryboardPlanContract(response([...ids,'P'+(count+1)]),options).errors.some(row=>row.code==='manual_extra_paragraph'));
+}
 
 assert.match(formatStoryboardContractErrors(wrongParagraph.errors, 1), /^\$\.shots\[0\]/);
 

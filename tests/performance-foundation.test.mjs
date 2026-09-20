@@ -23,7 +23,7 @@ assert.doesNotMatch(initSource, /seedBuiltinTheaters\(\)/, 'startup must not par
 assert.doesNotMatch(initSource, /hydrateNotesRuntime\(/, 'startup must not scan account notes before the notes workspace is opened');
 assert.match(source, /function openNotesPanel\(\)[\s\S]*renderNotesPanelPortal\(\)[\s\S]*hydrateNotesRuntime\(true\)/, 'each independent notes opening must refresh its local account records before synchronization');
 assert.match(source, /function runtimeHealthSnapshot\(\)[\s\S]*featureRuntime\.snapshot\(\)[\s\S]*lazyFeatures/, 'session diagnostics must expose feature chunk state without persisting it');
-assert.match(source, /function inputMenuObservationRoot\(\)[\s\S]*return sendForm \|\| menu\?\.parentElement \|\| document\.body/, 'the input entry observer must prefer the narrow input-shell boundary');
+assert.match(source, /function inputMenuObservationRoot\(\)[\s\S]*return menu \|\| sendForm \|\| document\.body/, 'the relocated input entry observer must prefer the narrow ST menu boundary');
 assert.match(source, /inputMenuObserverTarget = target;[\s\S]*inputMenuObserver\.observe\(target, \{ childList: true, subtree: true \}\)/, 'the input entry observer must not remain hard-wired to the entire document body');
 assert.match(source, /storyboardCheckConnection[\s\S]*await directImageRuntime\(\)[\s\S]*directImage\.checkDirectImageConnection/, 'connection tests must enter the lazy image boundary');
 assert.match(source, /storyboardRunJob[\s\S]*await directImageRuntime\(\)[\s\S]*directImage\.generateDirectImage/, 'generation jobs must enter the lazy image boundary');

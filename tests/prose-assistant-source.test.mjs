@@ -24,6 +24,12 @@ test('chat panel account changes during capture fail closed without reading or m
  const f=fixture();let calls=0;await assert.rejects(captureProseAssistantChatSource({...f.options,resolveNamespace:async()=>++calls===1?'st-user:alice':'st-user:bob'}));assert.deepEqual(f.reads,[]);assert.equal(f.listeners(),0);
 });
 
+test('offstage source has a separate account-bound key and cannot silently fall back from a broken real chat',async()=>{
+ const f=fixture(),chat=await captureProseAssistantChatSource(f.options);chat.close();f.context.chatId='';
+ const offstage=await captureProseAssistantChatSource(f.options);assert.equal(offstage.scope.offstage,true);assert.notEqual(offstage.key,chat.key);assert.deepEqual(JSON.parse(offstage.key).slice(0,1),['qianmu-prose-assistant-offstage-v1']);assert.equal(proseAssistantHistoryKey(offstage.key,offstage.scope.namespace),offstage.key);assert.deepEqual(f.reads,[]);
+ f.context.chatId='Chat A';assert.throws(offstage.assertCurrent);f.context.characterId=999;await assert.rejects(captureProseAssistantChatSource(f.options));
+});
+
 test('actual host namespace resolver produces a handle which is explicitly digested before history partitioning',async()=>{
  const namespace=await resolveImageAccountNamespace({loadUser:async()=>({currentUser:{handle:'普通用户'}}),fetchImpl:()=>assert.fail('verified handle needs no request')});assert.equal(namespace,'st-user:普通用户');
  const f=fixture();f.account=namespace;const source=await capture(f.options),expected='st-user:'+createHash('sha256').update('普通用户').digest('hex');

@@ -1,8 +1,32 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools}={}){
+export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
+  let floorStatus=null,statusLoading=null,detachStatus=null;
   const floorOf=node=>{const raw=node?.getAttribute('mesid')??node?.dataset?.messageId;return raw!==undefined&&raw!==null&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null;};
   const current=()=>root?.isConnected&&isCurrent()===true;
+  function paintStatus(){
+    if(!current())return;
+    for(const button of root.querySelectorAll('[data-qm-collect-floor]')){
+      const saved=floorStatus?.status(floorOf(button.closest('.mes')))??null;
+      button.classList.toggle('is-collected',saved===true);button.dataset.qmCollectionState=saved===null?'unknown':saved?'saved':'empty';
+      button.title=saved===true?'本层已有收藏（含其他回复版本），点击继续收藏正文':saved===false?'收藏正文':'收藏正文（收藏状态正在确认或暂不可读取）';
+      button.setAttribute('aria-label',button.title);
+    }
+  }
+  function refreshStatus(force=false){
+    if(!current()||!root.querySelector('[data-qm-collect-floor]'))return;
+    if(floorStatus){void floorStatus.refresh({force});return;}
+    if(statusLoading)return;
+    const token=epoch,document=root.ownerDocument;
+    statusLoading=import('./qianmu-text-collection-floor-status.js').then(({createTextCollectionFloorStatus})=>{
+      if(!current()||epoch!==token)return;
+      floorStatus=createTextCollectionFloorStatus({getScope:()=>({chatId:String(getChatKey()||''),chat:getContext().chat}),resolveNamespace,isCurrent:()=>!!current(),headers,onChange:paintStatus,...(statusSessionFactory?{sessionFactory:statusSessionFactory}:{})});
+      const changed=()=>refreshStatus(true),visible=()=>{if(document.visibilityState==='visible')changed();};
+      document.addEventListener('qianmu-text-collections-changed',changed);document.addEventListener('visibilitychange',visible);document.defaultView.addEventListener('focus',changed);
+      detachStatus=()=>{document.removeEventListener('qianmu-text-collections-changed',changed);document.removeEventListener('visibilitychange',visible);document.defaultView.removeEventListener('focus',changed);};
+      return floorStatus.refresh();
+    }).catch(()=>{if(current()&&epoch===token)paintStatus();}).finally(()=>{if(epoch===token)statusLoading=null;});
+  }
   const stylesheet=(document=root.ownerDocument)=>{
     if(document.querySelector('link[data-qm-text-collections]'))return;
     const link=document.createElement('link');link.rel='stylesheet';link.dataset.qmTextCollections='';
@@ -29,7 +53,10 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       chooser=await runtime.openPersistentTextCollectionCapture({parent:portal,source,sourceElement:node.querySelector('.mes_text'),resolveNamespace,isCurrent:valid,headers});
       active=chooser;opening=false;
       const result=await chooser.finished;
-      if(result&&valid())notify?.('收藏已保存','success');
+      if(result&&valid()){
+        notify?.('收藏已保存','success');
+        root.ownerDocument.dispatchEvent(new root.ownerDocument.defaultView.Event('qianmu-text-collections-changed'));
+      }
     }catch(cause){if(current()&&epoch===token)notify?.(String(cause?.message||'收藏未保存，请重试').slice(0,240),'warning');}
     finally{chooser?.dispose();detach?.();portal?.remove();if(host===portal)host=null;if(active===chooser)active=null;if(epoch===token)opening=false;if(button.isConnected)button.disabled=false;}
   }
@@ -64,7 +91,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     }catch(cause){if(valid())notify?.(`收藏导出未完成：${String(cause?.message||cause).slice(0,200)}`,'warning');}
     finally{check?.release?.();if(exporting===entry)exporting=null;button.disabled=disabled;}
   }
-  function disposeFloor(){epoch++;extraFloorTools?.disposeFloor();root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
+  function disposeFloor(){epoch++;detachStatus?.();detachStatus=null;floorStatus?.dispose();floorStatus=null;statusLoading=null;extraFloorTools?.disposeFloor();root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
   async function restoreBackup(file,input,confirm,createCheck){
     if(restoring){restoring.view?.element.focus();return;}if(!input?.isConnected||isCurrent()!==true)return;
     const parent=input.closest('.sd-storage-backup-section'),document=input.ownerDocument;if(!parent)return;
@@ -75,7 +102,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       const runtime=await import('./qianmu-text-collection-restore-view.js');if(!valid())return;
       entry.view=runtime.openTextCollectionRestore({parent:portal,file,resolveNamespace,isCurrent:valid,headers,confirm,check});await entry.view.finished;
     }catch(cause){if(valid())notify?.(`收藏恢复暂不可用：${String(cause?.message||cause).slice(0,200)}`,'warning');}
-    finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();check?.release?.();input.disabled=disabled;if(restoring===entry)restoring=null;}
+    finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();check?.release?.();input.disabled=disabled;if(restoring===entry)restoring=null;refreshStatus(true);}
   }
   async function cleanupOriginals(parent,confirm,check,expectedNamespace,otherModules=0,local=false){
     if(cleaning){cleaning.view?.element.focus();return;}check();
@@ -92,7 +119,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       }
       const runtime=await import('./qianmu-text-collection-restore-view.js');check();if(!valid())return;
       entry.view=runtime.openTextCollectionCleanup({parent:portal,resolveNamespace:account,isCurrent:valid,headers,confirm,check,otherModules});return await entry.view.finished;
-    }finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();if(cleaning===entry)cleaning=null;}
+    }finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();if(cleaning===entry)cleaning=null;refreshStatus(true);}
   }
   function dispose(){disposeFloor();closeLibrary(library);if(exporting)exporting.cancelled=true;for(const entry of [restoring,cleaning])if(entry){entry.closed=true;entry.view?.dispose();entry.portal.remove();}}
   function refresh(chatRoot){
@@ -105,8 +132,9 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       if(!message||message.is_system){existing?.remove();continue;}if(existing)continue;
       const toolbar=node.querySelector('.mes_buttons .extraMesButtons, .mes_buttons .mes_buttons_inner, .mes_buttons');if(!toolbar)continue;
       const button=root.ownerDocument.createElement('button');button.type='button';button.className='mes_button interactable qm-text-collection-floor';button.dataset.qmCollectFloor='';button.title='收藏正文';button.setAttribute('aria-label',button.title);
-      button.innerHTML='<i class="fa-solid fa-bookmark"></i>';toolbar.append(button);applyIcons?.(button);
+      button.innerHTML='<i class="fa-regular fa-star" data-qm-icon="qm-regular-star"></i>';toolbar.append(button);applyIcons?.(button);
     }
+    paintStatus();refreshStatus();
   }
   const storageSummary=async valid=>{
     let module;try{module=await import('./qianmu-text-collection-storage.js');}catch{

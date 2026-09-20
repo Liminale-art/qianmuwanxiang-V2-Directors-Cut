@@ -18,7 +18,9 @@ const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL|
 const artifactDirectory=process.env.QIANMU_CAPTURE_ARTIFACTS==='1'?await fs.mkdtemp(path.join(os.tmpdir(),'qianmu-collection-library-visual-')):null;
 const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['cleanup-batch','bulk-contract','storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false,rejectDraftCopy=false;
+let heldSearch=null,searchEntered=null;
 allowed.add('qianmu-st-account-storage.js');
+for(const file of ['qianmu-icon-renderer.js','qianmu-text-collection-presentation.js','qianmu-text-collection-paragraphs.js','qianmu-text-collection-image-export.js'])allowed.add(file);
 for(const file of ['qianmu-account-local-store.js','qianmu-text-collection-outbox-store.js','qianmu-text-collection-outbox-runtime.js','qianmu-text-collection-outbox-view.js','qianmu-text-collection-outbox-backup.js'])allowed.add(file);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
@@ -30,6 +32,7 @@ await context.route('**/*',async route=>{
     const action=url.pathname.split('/').at(-1);
     if(url.pathname.startsWith('/api/plugins/qianmu-tts/text-collections/')&&['list','get','snapshot','restore-info','inventory','write','write-batch','batch-info','cleanup-plan'].includes(action)&&route.request().method()==='POST'){
       const input=route.request().postDataJSON();assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
+      if(action==='list'&&input.search==='延迟查询')await new Promise(resolve=>{heldSearch=resolve;searchEntered?.();});
       if(action==='list'&&failListOnce){failListOnce=false;return route.abort('failed');}
       if(action==='get')reads++;if(['write','write-batch'].includes(action))writes.push(input);
       if(action==='write'&&rejectDraftCopy&&input.operation==='restore'&&Object.hasOwn(input,'text'))return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({ok:false,version:1,code:'text_collection_sync_contract',message:'旧版本不支持此格式',writeState:'not_started'})});
@@ -47,6 +50,7 @@ try{
   await page.evaluate(async()=>{
     const {createTextCollectionFloorTools}=await import('./qianmu-text-collection-floor.js');
     window.fixture={namespace:'st-user:alice',current:true,consent:true,copied:null,escaped:0};
+    const chat=document.createElement('section');chat.id='chat';chat.innerHTML='<div class="mes_text" style="font-size:19px;line-height:28px"><p style="margin-bottom:3px">当前正文</p></div>';document.body.append(chat);
     fixture.pendingDownloads=[];
     fixture.floorTools=createTextCollectionFloorTools({getContext:()=>({chat:[]}),getChatKey:()=>{throw Error('library must not need a chat');},names:()=>{throw Error('library must not borrow current names');},resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'}),download:async(blob,name)=>fixture.pendingDownloads.push({name,payload:JSON.parse(await blob.text())})});
     fixture.open=async()=>{fixture.namespace='st-user:alice';fixture.current=true;fixture.host=document.createElement('section');document.getElementById('fixture').append(fixture.host);
@@ -85,12 +89,19 @@ try{
   if(artifactDirectory){await page.setViewportSize({width:393,height:850});await page.screenshot({path:path.join(artifactDirectory,'collection_library_narrow.png')});}
   const search=page.locator('input[aria-label="搜索收藏"]');await search.fill('COLLECTION-4');await search.press('Enter');await ready();
   assert.equal(await page.locator('[data-collection-id]').count(),11);assert.equal(reads,0);assert.equal(await button('next').isDisabled(),true);
-  await search.fill('不存在');await button('search').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),0);
-  await search.fill('旧用户');await button('search').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),50);await button('next').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),1);
-  await button('clear-search').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),50);assert.equal(await search.inputValue(),'');
-  checks.push('explicit library-wide search finds prose or captured names without eager body reads and resets pagination on query changes');
+  const entered=new Promise(resolve=>{searchEntered=resolve;});await search.fill('延迟查询');await entered;await search.fill('COLLECTION-4');await search.press('Enter');heldSearch();await page.waitForFunction(()=>document.querySelector('dialog')?.getAttribute('aria-busy')==='false'&&document.querySelectorAll('[data-collection-id]').length===11);assert.equal(await search.inputValue(),'COLLECTION-4');
+  checks.push('typing while an older search is in flight keeps the newest query and drains it after the old response');
+  await search.fill('不存在');await page.waitForFunction(()=>document.querySelectorAll('[data-collection-id]').length===0);await ready();
+  await search.fill('旧用户');await page.waitForFunction(()=>document.querySelectorAll('[data-collection-id]').length===50);await ready();await button('next').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),1);
+  await search.fill('');await page.waitForFunction(()=>document.querySelectorAll('[data-collection-id]').length===50);await ready();assert.equal(await search.inputValue(),'');
+  assert.equal(await button('search').count(),0);assert.equal(await button('clear-search').count(),0);assert.equal(await search.getAttribute('placeholder'),'搜索关键词');
+  checks.push('debounced live search finds prose or names without a search/clear button and resets pagination on query changes');
   await page.locator('[data-collection-id="collection-50"]').click();await ready();assert.equal(reads,1);
   assert.match(await page.locator('[data-collection-title]').textContent(),/当时角色 & <旧用户>.*2026-09-19/);
+  const proseStyle=await page.locator('[data-collection-prose] p').first().evaluate(node=>({font:getComputedStyle(node).fontSize,line:getComputedStyle(node).lineHeight,gap:getComputedStyle(node).marginBottom}));assert.deepEqual(proseStyle,{font:'19px',line:'28px',gap:'3px'});
+  await button('image').click();await page.waitForFunction(()=>document.querySelector('dialog[aria-label="收藏存图"]'));assert.equal(await page.locator('[data-image-text]').inputValue(),'收藏原文 collection-50\n不依赖聊天');await page.locator('[data-collection-manage="image-close"]').click();assert.equal(await page.locator('dialog').count(),1);await ready();
+  if(artifactDirectory){await page.setViewportSize({width:393,height:850});await page.screenshot({path:path.join(artifactDirectory,'collection_detail_narrow.png')});}
+  checks.push('detail follows the current prose font/line gap and its one export editor closes back to the same detail');
   await button('copy').click();await ready();assert.equal(await page.evaluate(()=>fixture.copied),'收藏原文 collection-50\n不依赖聊天');
   await button('edit').click();await ready();await page.locator('[data-collection-editor]').fill('我编辑的收藏');
   loseAck=true;await button('save').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'我编辑的收藏');
@@ -101,30 +112,31 @@ try{
   await service.write(request,{version:1,expectedAccount,mutationId:randomUUID(),operation:'edit',id:'collection-50',baseRevision:2,text:'另一端修改'});
   await button('save').click();await ready();assert.match(await status(),/其他设备变更/);assert.equal(await page.locator('[data-collection-editor]').inputValue(),'不要丢失的本机修改');
   assert.match(await status(),/当前内容已保留/);
-  await page.evaluate(()=>{fixture.consent=false;});await button('reload').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'不要丢失的本机修改');
-  await button('close').click();assert.equal(await page.locator('dialog').count(),1);
-  await page.locator('[data-collection-editor]').focus();await page.keyboard.press('Escape');assert.equal(await page.locator('dialog').count(),1);assert.equal(await page.evaluate(()=>fixture.escaped),0);
-  await page.evaluate(()=>{fixture.consent=true;});await button('reload').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'另一端修改');
-  checks.push('revision conflicts preserve the local draft and explicit discard confirmation gates reload or close');
+  assert.equal(await button('reload').count(),0);assert.equal(await button('delete').count(),0);
+  await page.evaluate(()=>{fixture.consent=false;});await button('close').click();assert.equal(await page.locator('dialog').count(),0);
+  await page.evaluate(()=>fixture.open());await ready();await page.locator('[data-collection-id="collection-50"]').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'另一端修改');
+  await button('edit').click();await ready();await page.locator('[data-collection-editor]').fill('unsaved local edit');await page.keyboard.press('Escape');assert.equal(await page.locator('dialog').count(),0);assert.equal(await page.evaluate(()=>fixture.escaped),0);
+  await page.evaluate(()=>{fixture.consent=true;return fixture.open();});await ready();
+  checks.push('conflict draft is retained in the outbox while ordinary close/back/edit do not add a second confirmation');
   const pending=await page.evaluate(async account=>{const {createTextCollectionOutboxStore}=await import('./qianmu-text-collection-outbox-store.js');const store=createTextCollectionOutboxStore();try{return (await store.read(account)).entries;}finally{store.close();}},expectedAccount);
   assert.equal(pending.length,1);assert.equal(pending[0].state,'conflict');assert.equal(pending[0].request.text,'不要丢失的本机修改');assert.equal(pending[0].base.text,'我编辑的收藏');
   checks.push('editor conflict preserves both local draft and captured base in real IndexedDB even after explicitly reloading the server original');
-  await button('delete').click();await ready();assert.match(await status(),/已删除收藏/);
+  await button('select').click();await page.locator('[data-collection-id="collection-50"]').click();await page.locator('[data-collection-id="collection-49"]').click();await page.locator('[data-collection-id="collection-49"]').click();loseAck=true;await button('delete-selected').click();await ready();assert.match(await status(),/已删除 0 条/);const lostDelete=structuredClone(writes.at(-1));await button('delete-selected').click();await ready();assert.deepEqual(writes.at(-1),lostDelete);assert.match(await status(),/已删除 1 条收藏/);assert.equal((await service.get(request,{version:1,expectedAccount,id:'collection-49'})).record.id,'collection-49');await button('select').click();
   assert.equal((await service.get(request,{version:1,expectedAccount,id:'collection-50'})).record,null);
   assert.equal(await page.locator('[data-collection-id]').count(),50);
   const disk=await fs.readFile(path.join(folder,'.qianmu-text-collection-v1.json'),'utf8');assert.doesNotMatch(disk,/另一端修改|我编辑的收藏/);
-  checks.push('deletion clears only the chosen original and its old text, leaving the remaining library intact');
+  checks.push('multi-select deletion leaves deselected rows intact and lost receipts retry the exact selected revision/mutation');
   for(const width of [320,393,1280]){
-    await page.setViewportSize({width,height:850});const bounds=await page.locator('dialog').evaluate(node=>({width:node.getBoundingClientRect().width,scroll:node.scrollWidth,client:node.clientWidth}));
-    assert.ok(bounds.width<=width&&bounds.scroll<=bounds.client+1,JSON.stringify(bounds));
+    await page.setViewportSize({width,height:850});const bounds=await page.locator('dialog').evaluate(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height,scroll:node.scrollWidth,client:node.clientWidth}));
+    assert.ok(bounds.width<=width&&bounds.scroll<=bounds.client+1,JSON.stringify(bounds));assert.equal(bounds.height,width<=760?742:760);
   }
   checks.push('320/393/1280px library lists stay inside the viewport with bounded scrolling');
   await service.write(request,make('collection-99'));await button('refresh').click();await ready();
   await service.write(request,make('collection-98'));await button('next').click();await ready();assert.match(await status(),/变更|刷新/);
   await button('refresh').click();await ready();assert.match(await status(),/52/);
   checks.push('concurrent library changes reject stale cursors and recover only by explicit refresh');
-  await page.locator('[data-collection-id="collection-99"]').click();await ready();failListOnce=true;
-  await button('delete').click();await ready();assert.match(await status(),/收藏已删除，列表暂未刷新/);assert.equal(await button('refresh').isVisible(),true);
+  await button('select').click();await page.locator('[data-collection-id="collection-99"]').click();await service.write(request,{version:1,expectedAccount,mutationId:randomUUID(),operation:'edit',id:'collection-99',baseRevision:1,text:'更新后不能被旧勾选强删'});await button('delete-selected').click();await ready();assert.match(await status(),/其他设备变更/);assert.equal((await service.get(request,{version:1,expectedAccount,id:'collection-99'})).record.text,'更新后不能被旧勾选强删');await button('refresh').click();await ready();await page.locator('[data-collection-id="collection-99"]').click();failListOnce=true;
+  await button('delete-selected').click();await ready();assert.match(await status(),/收藏已删除，列表暂未刷新/);assert.equal(await button('refresh').isVisible(),true);await button('select').click();
   await button('refresh').click();await ready();assert.match(await status(),/51/);
   checks.push('confirmed deletion stays truthful when the following list read fails and retains an actionable refresh path');
   await page.evaluate(()=>{fixture.namespace='st-user:bob';});await button('refresh').click();await page.waitForFunction(()=>!document.querySelector('dialog'));

@@ -14,7 +14,7 @@ export async function cleanupProseAssistantStorage({resolveNamespace,isCurrent,e
     const plan=await store.planCleanup(account,{guard:current});await guard();
     if(!plan.entries.length)return {status:'empty'};
     const turns=plan.entries.reduce((sum,row)=>sum+row.count,0);
-    const accepted=await confirm('清理正文助手记录',`将不可恢复地清空本浏览器当前账户的 ${plan.entries.length} 个会话、${turns} 轮助手问答（含失败或停止时已保存的内容）。需要的文字请先在对应助手面板复制留存；不删除正文、收藏、连接设置或其他设备记录。保留防止旧页面写回的版本标记，不保证磁盘占用归零；旧版归属未核实的记录不处理。${otherModules>0?`同时勾选的其他 ${otherModules} 个模块本次不执行，需重新选择。`:''}确认期间记录变化会使整批停止，之后新增记录不清。确定清理吗？`);
+    const accepted=await confirm('清理场外特助记录',`将不可恢复地清空本浏览器当前账户的 ${plan.entries.length} 个会话、${turns} 轮助手问答（含失败或停止时已保存的内容）。需要的文字请先在对应助手面板复制留存；不删除正文、收藏、连接设置或其他设备记录。保留防止旧页面写回的版本标记，不保证磁盘占用归零；旧版归属未核实的记录不处理。${otherModules>0?`同时勾选的其他 ${otherModules} 个模块本次不执行，需重新选择。`:''}确认期间记录变化会使整批停止，之后新增记录不清。确定清理吗？`);
     await guard();if(accepted!==true)return {status:'cancelled'};
     const result=await store.clearPlan(account,plan,{confirmed:true,guard:current});await guard();return result;
   }catch(cause){

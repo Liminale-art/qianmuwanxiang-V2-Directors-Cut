@@ -1,3 +1,5 @@
+import {qianmuIconMarkup} from './qianmu-icon-renderer.js';
+import {QIANMU_HIVE_COMMANDS} from './qianmu-hive-commands.js';
 // A detachable entry, not another assistant session. Geometry stays on this device.
 export function createProseHive({open,geometry,clamp,palette,theme,outline,applyIcons,mount,canDock,closeWheel,document=globalThis.document,window=globalThis.window}={}) {
   const key='qianmu-prose-hive-device-v1';let state={detached:false,position:null,tone:'dark',edge:0},layer=null,unmount=null,disposed=false;
@@ -11,8 +13,9 @@ export function createProseHive({open,geometry,clamp,palette,theme,outline,apply
     layer=document.createElement('div');layer.className=`qm-prose-hive-layer sd-hive-theme-${theme()}`;layer.dataset.qianmuTransient='';
     const entry=document.createElement('button');entry.type='button';entry.className=`sd-detached-notes-entry is-glass-${tone}`;
     entry.dataset.hiveTone=tone;entry.dataset.hiveEdgeIndex=String(Math.max(0,Math.trunc(Number(state.edge)||0)));
-    entry.title='正文助手（拖回千幕归巢）';entry.setAttribute('aria-label','打开正文助手');
-    entry.innerHTML=`<i class="fa-solid fa-comments"></i>${outline}`;
+    entry.title='场外特助（拖回千幕归巢）';entry.setAttribute('aria-label','打开场外特助');
+    const command=QIANMU_HIVE_COMMANDS.find(item=>item.id==='assistant');
+    entry.innerHTML=qianmuIconMarkup(command.glyph)+(outline||'');
     for(const [name,value] of Object.entries({'left':`${position.x}px`,'top':`${position.y}px`,'--sd-notes-entry-width':`${size.width}px`,'--sd-notes-entry-height':`${size.height}px`,'--sd-wheel-glass-fill':colors[tone+'Fill'],'--sd-wheel-icon':colors[tone+'Icon'],'--sd-wheel-edge':colors.edges[Math.max(0,Math.trunc(Number(state.edge)||0))%colors.edges.length]}))entry.style.setProperty(name,value);
     layer.append(entry);document.body.append(layer);applyIcons?.(layer);unmount=mount?.(layer);
     for(const type of ['mousedown','touchstart','click'])entry.addEventListener(type,isolate);

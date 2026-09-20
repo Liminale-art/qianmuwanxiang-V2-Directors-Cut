@@ -11,7 +11,7 @@ export function createCollectionAutosave({resolveNamespace,isCurrent,headers,win
     if(!current()||document.hidden||window.navigator?.onLine===false||running)return running;
     window.clearTimeout(timer);timer=null;queuedDuringRun=false;
     running=(async()=>{
-      let failed=false,remaining=false,accountLost=false;
+      let failed=false,remaining=false,accountLost=false,confirmed=false;
       const report=cause=>{failed=true;try{onError(cause);}catch{}};
       const invalidAccount=cause=>/^(?:text_collection_sync|st_account_storage)_(?:account|scope|cancelled)$/.test(cause?.code||'');
       try{
@@ -25,6 +25,7 @@ export function createCollectionAutosave({resolveNamespace,isCurrent,headers,win
             // The real runtime confirms or throws; retained/nonfinal states must
             // also receive a later wake, never be mistaken for an emptied queue.
             if(result?.status!=='confirmed')throw Object.assign(new Error('收藏保存尚未确认'),{code:'text_collection_sync_unconfirmed'});
+            confirmed=true;
             if(row.state==='conflict'&&current())try{notify('收藏存在两处修改，已另存副本。','info');}catch{}
           }catch(cause){
             report(cause);if(invalidAccount(cause)||!current()){accountLost=true;break;}
@@ -36,6 +37,7 @@ export function createCollectionAutosave({resolveNamespace,isCurrent,headers,win
       }catch(cause){if(current()){report(cause);accountLost=invalidAccount(cause);}}
       finally{
         outbox?.close();outbox=null;session?.close();session=null;running=null;
+        if(confirmed&&current()&&!accountLost)try{document.dispatchEvent(new (window.Event||globalThis.Event)('qianmu-text-collections-changed'));}catch{}
         if(!current()||accountLost){window.clearTimeout(timer);timer=null;queuedDuringRun=false;}
         else{
           if(queuedDuringRun){failures=0;schedule(3000);}

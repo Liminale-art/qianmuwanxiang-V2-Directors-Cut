@@ -3,7 +3,7 @@ export const QIANMU_HIVE_COMMANDS = Object.freeze([
   { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', glyph: 'qm-duotone-film-slate' },
   { id: 'focus', label: '专注', icon: 'fa-hourglass-half', glyph: 'focus' },
   { id: 'notes', label: '便笺', icon: 'fa-note-sticky', glyph: 'qm-regular-note-pencil' },
-  { id: 'assistant', label: '正文助手', icon: 'fa-comments' },
+  { id: 'assistant', label: '场外特助', icon: 'fa-comments', glyph:'qm-duotone-chats' },
   { id: 'collections', label: '正文收藏', icon: 'fa-bookmark' },
   { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', glyph: 'tasks' },
   { id: 'castworld', label: '世界', icon: 'fa-earth-asia', glyph: 'world' },

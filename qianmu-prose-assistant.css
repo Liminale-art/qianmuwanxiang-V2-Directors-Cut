@@ -26,6 +26,6 @@
 .qm-prose-assistant-dialog p,.qm-prose-assistant-dialog pre { margin:0 0 6px;font:inherit;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;text-align:start; }
 .qm-prose-assistant-dialog small,.qm-prose-assistant-dialog [data-pa-status],.qm-prose-assistant-dialog [data-pa-history] { font-size:12px;color:var(--sd-muted,#aaa); }
 .qm-prose-assistant-dialog small:empty,.qm-prose-assistant-dialog [data-pa-status]:empty,.qm-prose-assistant-dialog [data-pa-history]:empty { display:none; }
-.qm-prose-assistant-dialog [data-pa-resize] { position:absolute;bottom:0;right:0;width:20px;height:20px;padding:2px;cursor:nwse-resize;touch-action:none;opacity:.55; }
+.qm-prose-assistant-dialog [data-pa-resize] { position:absolute;bottom:0;right:0;width:16px;height:16px;cursor:nwse-resize;touch-action:none; }
 .qm-prose-assistant-dialog [data-pa-resize] i,.qm-prose-assistant-dialog [data-pa-resize] svg { width:13px;height:13px; }
 @media (max-width:620px) { .qm-prose-assistant-dialog input,.qm-prose-assistant-dialog select,.qm-prose-assistant-dialog textarea { font-size:16px; }.qm-prose-assistant-dialog > header { padding:6px 8px; } }
