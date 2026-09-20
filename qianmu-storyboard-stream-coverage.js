@@ -1,5 +1,7 @@
-import {normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.235';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.235';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.236';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.236';
+import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.236';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.236';
 import {assertStoryboardStreamMoment,createStoryboardStreamMoment,storyboardStreamMomentsOverlap} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 const coverages=new WeakMap();
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -11,22 +13,50 @@ const occupied=row=>Boolean(row.url)||['queued','generating','success','complete
 // Use compact references retained in both logs and archived gallery indices.
 // Completed, accepted and uncertain work all occupies its original slot. This
 // is a planner view of the existing admission ledger, not a parallel counter.
-export async function readStoryboardStreamCoverage(window,rows,{message,namespace,resolve,continuationLinks,plans=[]}={}){
-  window.assertCurrent();if(!Array.isArray(rows)||rows.length>2000||!Array.isArray(plans)||plans.length>300)fail();
+export async function readStoryboardStreamCoverage(window,rows,{message,namespace,resolve,continuationLinks,plans=[],pipelineLogs=[],sourceParagraphs}={}){
+  window.assertCurrent();if(!Array.isArray(rows)||rows.length>2000||!Array.isArray(plans)||plans.length>300||!Array.isArray(pipelineLogs)||pipelineLogs.length>2000)fail();
+  const pipelineById=new Map(),pipelineByTask=new Map();
+  for(const pipeline of pipelineLogs){
+    if(!pipeline?.id)continue;
+    const ids=pipelineById.get(pipeline.id)||[];ids.push(pipeline);pipelineById.set(pipeline.id,ids);
+    if(pipeline.taskId){const values=pipelineByTask.get(pipeline.taskId)||[];values.push(pipeline);pipelineByTask.set(pipeline.taskId,values);}
+  }
+  const stagesFor=(job,row)=>{
+    if(job.shotSpec&&Object.hasOwn(job.shotSpec,'narrativeMoment'))return [];
+    const taskId=row.snapshot?job.id||row.taskId:row.taskId,candidates=row.pipelineId?pipelineById.get(row.pipelineId)||[]:pipelineByTask.get(taskId)||[];
+    if(candidates.length>1||candidates[0]&&taskId&&candidates[0].taskId!==taskId)fail();
+    return candidates[0]?.stages||[];
+  };
   const current=window.current.messageRef,lineage=createStoryboardStreamLineage(current,message,continuationLinks,namespace),pins=new Map();let family=null;
+  const matches=ref=>hasStoryboardStreamReference(ref)?lineage.matches(ref):lineage.matchesOrdinary(ref);
+  const budget=ref=>hasStoryboardStreamReference(ref)?storyboardStreamBudgetReference(ref,namespace):ref;
+  const verify=ref=>hasStoryboardStreamReference(ref)?verifyStoryboardStreamReference(ref,()=>resolve(ref))
+    :verifyStoryboardOrdinaryContinuation(ref,()=>resolve(ref),{namespace,required:true});
+  const originalWindows=new Map();
+  const originalWindow=ref=>{
+    const key=JSON.stringify([ref.messageKey,ref.revisionId]);
+    if(!originalWindows.has(key)){
+      const source=resolve(ref),length=source?.continuations?.[0]?.length;
+      if(source?.state!=='active'||!Number.isSafeInteger(length)||typeof sourceParagraphs!=='function')fail();
+      const paragraphs=sourceParagraphs(length);if(!Array.isArray(paragraphs)||!paragraphs.length||paragraphs.length>2000)fail();
+      originalWindows.set(key,{current:{paragraphs}});
+    }
+    return originalWindows.get(key);
+  };
   const remember=ref=>{
-    const root=storyboardStreamBudgetReference(ref,namespace);
+    const root=budget(ref);
     if(family&&(family.messageKey!==root.messageKey||family.revisionId!==root.revisionId))fail();
-    if(!family)family={namespace,chatKey:root.chatKey,messageKey:root.messageKey,revisionId:root.revisionId,generationKey:root.stream.generationKey,reference:copy(root)};
+    if(!family)family={namespace,chatKey:root.chatKey,messageKey:root.messageKey,revisionId:root.revisionId,generationKey:root.stream?.generationKey||'',reference:copy(root)};
     return root;
   };
-  let matchingPlans=0;const selectedPlans=[],coveredSlots=new Set(),unsubmittedSlots=new Set();
+  let matchingPlans=0;const selectedPlans=[],planProofs=new Map(),coveredSlots=new Set(),unsubmittedSlots=new Set(),pendingMoments=[];
   for(const plan of plans){
-    if(plan?.origin!=='automatic'||!lineage.matches(plan.messageRef))continue;
-    const root=storyboardStreamBudgetReference(plan.messageRef,namespace);
-    if(++matchingPlans>1||plan.chatKey!==current.chatKey||plan.id!==`stream-${root.stream.generationKey}`||plan.revisionId!==root.revisionId
+    if(plan?.origin!=='automatic'||!matches(plan.messageRef))continue;
+    const root=budget(plan.messageRef);
+    if(++matchingPlans>1||plan.chatKey!==current.chatKey||!plan.id||root.stream&&plan.id!==`stream-${root.stream.generationKey}`||plan.revisionId!==root.revisionId
       ||plan.status==='cancelled'||plan.promptLocked||plan.manualReviewRequired)fail();
-    await window.guard();await verifyStoryboardStreamReference(plan.messageRef,()=>resolve(plan.messageRef));window.assertCurrent();remember(plan.messageRef);
+    planProofs.set(plan,JSON.stringify(plan));
+    await window.guard();await verify(plan.messageRef);window.assertCurrent();remember(plan.messageRef);family.planId=plan.id;
     selectedPlans.push(plan);
   }
   for(const row of rows){
@@ -34,25 +64,29 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
     const job=row.snapshot||row,ref=job.messageRef||row.messageRef,admission=job.imageAdmission||row.imageAdmission;
     const slot=job.planId&&job.planShotId?JSON.stringify([job.planId,job.planShotId]):'';
     if(!occupied(row)){
-      if(slot&&row.submissionState==='not_submitted'&&['failed','cancelled'].includes(row.status)&&lineage.matches(ref)){
-        await verifyStoryboardStreamReference(ref,()=>resolve(ref));window.assertCurrent();unsubmittedSlots.add(slot);
+      if(slot&&row.submissionState==='not_submitted'&&['failed','cancelled'].includes(row.status)&&matches(ref)){
+        await verify(ref);window.assertCurrent();unsubmittedSlots.add(slot);
       }
       continue;
     }
-    if(!lineage.matches(ref))continue;
-    const proof=normalizeStoryboardStreamReference(ref);
+    if(!matches(ref))continue;
+    const proof=hasStoryboardStreamReference(ref)?normalizeStoryboardStreamReference(ref):null;
     if(admission?.automaticSlot===false||job.automatic===false&&admission?.automaticSlot!==true)continue;
-    const root=storyboardStreamBudgetReference(ref,namespace);
+    const root=budget(ref);
     if(admission?.version!==1||admission.automaticSlot!==true||admission.namespace!==namespace||admission.chatKey!==root.chatKey||admission.messageKey!==root.messageKey
       ||admission.revisionId!==root.revisionId||!/^[a-f0-9]{64}$/.test(admission.logicalShotId||''))fail();
     if(!pins.size)await window.guard();
-    await verifyStoryboardStreamReference(ref,()=>resolve(ref));window.assertCurrent();
-    const moment=assertStoryboardStreamMoment(proof.moment,window),id=admission.logicalShotId,old=pins.get(id);
+    await verify(ref);window.assertCurrent();
+    const oldWindow=proof?null:originalWindow(ref);
+    const moment=proof?assertStoryboardStreamMoment(proof.moment,window):readStoryboardOrdinaryMoment(job,oldWindow,stagesFor(job,row)),id=admission.logicalShotId,old=pins.get(id);
+    if(moment)assertStoryboardStreamMoment(moment,window);
+    remember(ref);
+    if(slot)coveredSlots.add(slot);
+    if(!moment){pendingMoments.push({id,spec:job.shotSpec,oldWindow});continue;}
     if(old&&JSON.stringify(old.moment)!==JSON.stringify(moment))fail();
     pins.set(id,{id,moment});if(pins.size>4)fail();
-    if(slot)coveredSlots.add(slot);
-    remember(ref);
   }
+  for(const {id,spec,oldWindow} of pendingMoments){const pin=pins.get(id);if(!pin)fail();assertStoryboardOrdinaryMomentSpec(pin.moment,spec);assertStoryboardStreamMoment(pin.moment,oldWindow);}
   // A retained plan with missing delivery/log evidence is not an empty budget.
   // Keep the plan and stop; never reinterpret archive loss as permission to draw.
   for(const plan of selectedPlans)for(const shot of plan.shots||[]){
@@ -60,7 +94,10 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
     const activeOrDelivered=shot.resultIds?.length||['queued','generating','completed','success'].includes(shot.status);
     if(!coveredSlots.has(slot)&&(activeOrDelivered||Number(shot.attempt)>0&&(!unsubmittedSlots.has(slot)||Number(shot.attempt)>1)))fail();
   }
-  window.assertCurrent();if(!family)return null;await window.guard();
+  window.assertCurrent();if(!family)return null;
+  if(!family.reference.stream&&!family.planId)fail();
+  await window.guard();
+  if(selectedPlans.some(plan=>!plans.includes(plan)||JSON.stringify(plan)!==planProofs.get(plan)))fail();
   // A budget family is NOT proof for the text of a later new shot. Its creator
   // must capture a fresh prefix/final source proof before image admission.
   const coverage=freeze({version:1,scope:family,pins:[...pins.values()]});coverages.set(coverage,window);return coverage;

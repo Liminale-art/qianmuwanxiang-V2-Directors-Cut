@@ -10,7 +10,7 @@ import {
 import { characterCastingInput } from './qianmu-character-casting.js';
 import {completeStoryboardText,assertStoryboardInputBudget} from './qianmu-storyboard-complete-context.js';
 import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings, storyboardPromptFormatBudget, STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS } from './qianmu-prompt-formats.js';
-import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.235';
+import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.236';
 export {createStoryboardCompilerAttempt} from './qianmu-storyboard-compiler-diagnostics.js?v=1.59.217';
 export {callStoryboardCompiler} from './qianmu-storyboard-compiler-transport.js?v=1.59.217';
 // Pass the shared contract helpers explicitly, avoiding a circular versioned
@@ -1398,8 +1398,8 @@ export function adaptStoryboardPlanContract(value, options = {}) {
     decisions: value.decisions,
   };
 }
-export {captureStoryboardCompilerSources,openStoryboardCompilerContinuity,captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference,captureStoryboardStreamCoverage,prepareStoryboardStreamHandoff,createStoryboardFinalStreamReference} from './qianmu-storyboard-compiler-sources.js?v=1.59.235';
-export {resolveStoryboardCompilerResult} from './qianmu-storyboard-compiler-result.js?v=1.59.225';
-export {submitStoryboardStreamPrepared} from './qianmu-storyboard-stream-jobs.js?v=1.59.235';
-export {finishStoryboardStreamCapture} from './qianmu-storyboard-stream-final.js?v=1.59.235';
-export {captureStoryboardContinuation,prepareStoryboardContinuation,saveStoryboardContinuation} from './qianmu-storyboard-continuation.js?v=1.59.235';
+export {captureStoryboardCompilerSources,openStoryboardCompilerContinuity,captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference,captureStoryboardStreamCoverage,prepareStoryboardStreamHandoff,createStoryboardFinalStreamReference} from './qianmu-storyboard-compiler-sources.js?v=1.59.236';
+export {resolveStoryboardCompilerResult} from './qianmu-storyboard-compiler-result.js?v=1.59.236';
+export {submitStoryboardStreamPrepared} from './qianmu-storyboard-stream-jobs.js?v=1.59.236';
+export {finishStoryboardStreamCapture} from './qianmu-storyboard-stream-final.js?v=1.59.236';
+export {captureStoryboardContinuation,prepareStoryboardContinuation,saveStoryboardContinuation} from './qianmu-storyboard-continuation.js?v=1.59.236';

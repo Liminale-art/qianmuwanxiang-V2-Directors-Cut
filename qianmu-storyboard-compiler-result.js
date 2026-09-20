@@ -1,5 +1,6 @@
 // Lazy compiler-result adapter. It owns no host state, event subscriptions or
 // storage; the caller supplies guarded dependencies and retains draft ownership.
+import {createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 export async function resolveStoryboardCompilerResult(raw, context, capabilities, state, contractRequest, inputGuard, dependencies) {
   const {featureRuntime,storyboardCallCompiler,STORYBOARD_RATIOS,getStoryboardGenerationPolicy,STORYBOARD_PLAN_SCHEMA,extractJson,normalizeStoryboardShotSpec,storyboardProviderProfile,compileStoryboardPrompt,uid}=dependencies;
   inputGuard?.assertCurrent();
@@ -89,6 +90,7 @@ export async function resolveStoryboardCompilerResult(raw, context, capabilities
     });
     if(focused)for(const [index,shot] of object.shots.entries()){
       shot.shotSpec.continuityUpdates.facts=focused.trace.shotFacts[index];
+      shot.shotSpec.narrativeMoment=createStoryboardStreamMoment(focused.trace.narrative.shots[index],context.compilerSources);
       const rendering=shot.promptRenderings?.[state.source==='novel'?'tags':'natural_language']||Object.values(shot.promptRenderings||{})[0];
       if(rendering){shot.prompt=[rendering.global,...rendering.characters.map(row=>row.positive)].filter(Boolean).join(', ');shot.negative=rendering.negative;}
     }

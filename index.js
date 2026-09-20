@@ -261,12 +261,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.235';
+} from './qianmu-storyboard.js?v=1.59.236';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.235';
+const VERSION = '1.59.236';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -319,7 +319,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.235'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.236'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -539,9 +539,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.235'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.236'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.235')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.236')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -18931,7 +18931,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     inputGuard.assertCurrent();
     const contract = await featureRuntime.load('storyboardContract');
     inputGuard.assertCurrent();
-    if(automatic||stream)context.streamCoverage=await contract.captureStoryboardStreamCoverage(context.compilerSources,[...state.logs,...storyboardGalleryRecords()],state.shotPlans);
+    if(automatic||stream)context.streamCoverage=await contract.captureStoryboardStreamCoverage(context.compilerSources,[...state.logs,...storyboardGalleryRecords()],state.shotPlans,state.pipelineLogs);
     inputGuard.compilerAttempt=contract.createStoryboardCompilerAttempt({call:storyboardCallCompiler,guard:()=>inputGuard.assertCurrent(),uid,sanitize:sanitizeStoryboardDiagnosticData,startedAt,floor,
       model:(settings.apiProfiles||[]).find(item=>item.id===state.promptCompiler.apiProfileId)?.model||(settings.providerMode==='external'?settings.model:'')||''});
     // In a mixed batch, request only reachable closed-model expressions alongside pinned Comfy formats.

@@ -1,24 +1,27 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.235';
-import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.235';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.235';
-import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.235';
-import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.235';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.236';
+import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.236';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.236';
+import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.236';
+import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.236';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
 import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
-import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.235';
+import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.236';
 import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
-export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.235';
+export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.236';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
 const windows = new WeakMap();
-export async function captureStoryboardStreamCoverage(window,rows,plans=[]){
+export async function captureStoryboardStreamCoverage(window,rows,plans=[],pipelineLogs=[]){
   if(!Array.isArray(rows)||!Array.isArray(plans)||rows.length>2000||plans.length>300)throw changed();
-  if(![...rows,...plans].some(row=>hasStoryboardStreamReference(row?.snapshot?.messageRef||row?.messageRef)))return null;
   const scope=windows.get(window);if(!scope)throw changed();window.assertCurrent();
-  return readStoryboardStreamCoverage(window,rows,{message:scope.getContext().chat[window.floor],namespace:scope.namespace,plans,
-    continuationLinks:readStoryboardContinuationLinks(scope.getContext().chatMetadata?.story_director_liminale),
+  const links=readStoryboardContinuationLinks(scope.getContext().chatMetadata?.story_director_liminale);
+  if(links===undefined&&![...rows,...plans].some(row=>hasStoryboardStreamReference(row?.snapshot?.messageRef||row?.messageRef)))return null;
+  return readStoryboardStreamCoverage(window,rows,{message:scope.getContext().chat[window.floor],namespace:scope.namespace,plans,pipelineLogs,
+    continuationLinks:links,
+    sourceParagraphs:length=>{window.assertCurrent();const message=scope.getContext().chat[window.floor];
+      const paragraphs=scope.readParagraphs({...message,mes:message.mes.slice(0,length)},window.floor);window.assertCurrent();return paragraphs;},
     resolve:ref=>resolveStoryboardMessageReference(ref,scope.getContext().chat,{chatKey:window.current.messageRef.chatKey,namespace:scope.namespace,metadata:scope.getContext().chatMetadata})});
 }
 async function bindCoverageReference(reference,window,coverage){
@@ -183,7 +186,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
     }
     handle=Object.freeze({floor,referenceFloors,messages:Object.freeze(messages),sources:Object.freeze([...sources]),
       paragraphs:Object.freeze(current.paragraphs.map(row=>row.text)),current,guard,assertCurrent,close,...(streamScope?{stream:streamScope}:{})});
-    windows.set(handle,{getContext,host,namespace});
+    windows.set(handle,{getContext,host,namespace,readParagraphs});
     return handle;
   } catch (error) {
     close();

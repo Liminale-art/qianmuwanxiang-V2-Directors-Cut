@@ -68,6 +68,14 @@ test('actual streaming wait leaves existing manual prompts and compiler stages i
   assert.deepEqual(editable(f.state),f.initial);assert.deepEqual(f.counts,{requests:1,hostSaves:0,saves:0,renders:0,wakes:1});assert.deepEqual(f.state.logs,[]);f.assertReleased();
 });
 
+test('actual ordinary focused extraction saves the same compact narrative moment in its draft and normalized shot metadata',async()=>{
+  const f=await fixture({text:'Alice reads a letter in the kitchen.'});f.state.target='floor';f.state.floor='0';
+  assert.equal(await f.run({stream:null,onPrepared:null,automatic:true}),true,JSON.stringify(f.errors));
+  const moment=f.state.promptDraft.shots[0].shotSpec.narrativeMoment;
+  assert.equal(moment.paragraphId,'P1');assert.equal(moment.quote,'Alice reads a letter in the kitchen.');
+  assert.equal(moment.subject,'Alice reads a letter');assert.equal(moment.start,0);f.assertReleased();
+});
+
 for(const final of [false,true])test(`actual ${final?'finished-floor':'later streaming'} compiler consumes existing submitted moments before expression`,async()=>{
   const f=await fixture();assert.equal(await f.run(),true);
   const ref=copy(f.prepared.shotReferences[0]);

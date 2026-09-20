@@ -68,7 +68,11 @@ function environment({automatic=false}={}) {
     storyboardResolveRoutingProfile:(s,route)=>({...s.profiles[route.providerId],...(s.parameterPresets.find(p=>p.id===route.parameterPresetId)?.profile||{})}),
     storyboardCompilerContext:async()=>{calls.push('context');return {floor:0,messages:[],worldRows:[]};},
     storyboardRequestHeaders:()=>({}),storyboardGalleryRecords:()=>[],
-    featureRuntime:{load:async key=>{calls.push(key);return key==='comfyPreflight'?preflight:key==='comfyTargets'?{requireTrustedComfyConnection:async()=>calls.push('trust-check')}:{...contract,buildStoryboardPlanContractRequest:()=>({messages:[],schema:{},schemaId:'test'})};}},
+    featureRuntime:{load:async key=>{calls.push(key);return key==='comfyPreflight'?preflight:key==='comfyTargets'?{requireTrustedComfyConnection:async()=>calls.push('trust-check')}:{...contract,
+      // This routing-preflight fixture deliberately stubs source capture and has
+      // no source window or history. Real coverage ownership has separate tests.
+      captureStoryboardStreamCoverage:async(_window,rows,plans)=>{assert.equal(rows.length,0);assert.equal(plans.length,0);return null;},
+      buildStoryboardPlanContractRequest:()=>({messages:[],schema:{},schemaId:'test'})};}},
     storyboardCompilerRequestConfig:()=>({}),storyboardCallCompiler:async()=>{calls.push('llm');return '{}';},
     storyboardCompilerResult:async()=>({shouldGenerate:false,skipReason:'no shot'}),sanitizeStoryboardDiagnosticData:value=>value,
     uid:()=> 'test-id',toast:message=>notices.push(message),MODULE_NAME:'test',console:{error:()=>{}},
