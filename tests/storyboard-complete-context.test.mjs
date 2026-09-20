@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import vm from 'node:vm';
-import {buildStoryboardPlanContractRequest,captureStoryboardCompilerSources} from '../qianmu-storyboard-contract.js';
+import {buildStoryboardPlanContractRequest,captureStoryboardCompilerSources,openStoryboardCompilerContinuity} from '../qianmu-storyboard-contract.js';
 import {assertStoryboardInputBudget,STORYBOARD_INPUT_MAX_BYTES} from '../qianmu-storyboard-complete-context.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 import {normalizeStoryboardParagraphSelection} from '../qianmu-storyboard.js';
@@ -30,12 +30,30 @@ test('runtime compiler keeps selected floor range and complete tail without enla
  const host={chatId:'chat',characterId:0,characters:[{avatar:'Alice.png',chat:'chat'}],chatMetadata:{},chat};
  const guard={isCurrent:()=>true,assertCurrent(){this.compilerSources?.assertCurrent();}};
  const context=vm.createContext({ctx:()=>host,storyboardAdmissionEpoch:0,
-  featureRuntime:{load:async key=>key==='storyboardContract'?{captureStoryboardCompilerSources}:{resolveImageAccountNamespace:async()=> 'st-user:test'}},
+  featureRuntime:{load:async key=>key==='storyboardContract'?{captureStoryboardCompilerSources,openStoryboardCompilerContinuity}:{resolveImageAccountNamespace:async()=> 'st-user:test'}},
   storyboardTargetFloor:()=>3,storyboardCleanWithTagRules:x=>x,storyboardCleanMessageText:x=>x,
   cleanContextText:x=>x,resolveMacro:async x=>x,getCharacterDescription:()=>tail,getPersonaDescription:()=>tail,storyboardMessageParagraphs:x=>[x],
   storyboardCompilerWorldText:async()=>({text:tail,rows:[]}),storyboardUsesComfyCharacters:()=>false,storyboardCompilerCharacterCasting:async()=>({prepared:{}})});
  vm.runInContext(storyboardFunctionSource('storyboardCompilerContext'),context);const out=await context.storyboardCompilerContext(state,guard);
  assert.deepEqual(Array.from(out.messages,x=>x.floor),[1,2,3]);assert.equal(out.messages[2].text,tail);assert.equal(out.currentCharacter,tail);assert.equal(out.persona,tail);
- guard.compilerSources.close();
+ guard.continuityStore.close();guard.compilerSources.close();
  const source=await readFile(new URL('../index.js',import.meta.url),'utf8');const parser=source.slice(source.indexOf('function storyboardMessageParagraphs('),source.indexOf('function storyboardParagraphTokenSet('));assert.doesNotMatch(parser,/slice\(0,\s*240\)/);
+});
+
+test('actual compiler context publishes through its guarded ST session and reopens only revalidated event records',async()=>{
+ const host={chatId:'chat',characterId:0,characters:[{avatar:'Alice.png',chat:'chat'}],chatMetadata:{story_director_liminale:{}},chat:[{mes:'Alice removed her coat.',name:'Alice',send_date:'one'}]};
+ let saved='',writes=0;host.saveMetadata=async()=>{saved=JSON.stringify(host.chatMetadata);writes++;};
+ const state={promptCompiler:{includeRecentFloors:0,includeCharacterCards:false,includeUserPersona:false},profiles:{},paragraphMode:'auto'};
+ const context=vm.createContext({ctx:()=>host,storyboardAdmissionEpoch:0,
+  featureRuntime:{load:async key=>key==='storyboardContract'?{captureStoryboardCompilerSources,openStoryboardCompilerContinuity}:{resolveImageAccountNamespace:async()=> 'st-user:test'}},
+  storyboardTargetFloor:()=>0,storyboardCleanWithTagRules:x=>x,storyboardCleanMessageText:x=>x,resolveMacro:async x=>x,
+  getCharacterDescription:()=>'',getPersonaDescription:()=>'',storyboardMessageParagraphs:x=>[x],
+  storyboardCompilerWorldText:async()=>({text:'',rows:[]}),storyboardUsesComfyCharacters:()=>false,storyboardCompilerCharacterCasting:async()=>({prepared:null,assertCurrent:async()=>{}})});
+ vm.runInContext(storyboardFunctionSource('storyboardCompilerContext'),context);
+ const makeGuard=()=>({isCurrent:()=>true,assertCurrent(){this.compilerSources?.assertCurrent();},dispose(){this.continuityStore?.close();this.compilerSources?.close();}});
+ const first=makeGuard();assert.equal((await context.storyboardCompilerContext(state,first)).continuity.records.length,0);assert.equal(writes,0);
+ const proposal={floor:0,roster:{branches:[{id:'now',layer:'present'}],subjectIds:['Alice']},events:[{id:'coat',branchId:'now',paragraphId:'P1',subjectId:'Alice',category:'outfit',key:'coat',value:'removed',persistence:'persistent',evidence:host.chat[0].mes}]};
+ assert.equal((await first.continuityStore.publish([proposal])).status,'host_returned');first.dispose();host.chatMetadata=JSON.parse(saved);
+ const second=makeGuard(),output=await context.storyboardCompilerContext(state,second);assert.equal(output.continuity.records[0].events[0].value,'removed');assert.equal(writes,1);
+ assert.doesNotMatch(JSON.stringify(buildStoryboardPlanContractRequest(output).messages),/st-user:test|continuity-store|paragraphDigest/,'host identity and cache storage headers are never dumped into legacy model messages');second.dispose();
 });

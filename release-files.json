@@ -427,6 +427,7 @@
     "qianmu-service-capabilities.js",
     "qianmu-storyboard-contract.js",
     "qianmu-storyboard-compiler-sources.js",
+    "qianmu-storyboard-continuity-store.js",
     "qianmu-storyboard-continuity-events.js",
     "qianmu-storyboard-continuity-source.js",
     "qianmu-storyboard-continuity-link.js",

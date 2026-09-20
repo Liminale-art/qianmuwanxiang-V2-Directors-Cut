@@ -263,7 +263,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.213';
+const VERSION = '1.59.214';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -536,7 +536,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.213'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.214'),
   },
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
@@ -18624,6 +18624,7 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
       error.code = 'storyboard_input_changed'; throw error;
     },
     dispose() {
+      this.continuityStore?.close();
       this.compilerSources?.close();
       this.comfyBatch?.close();this.comfyAuto?.close();this.comfyReadiness?.close();
       baseline = null;
@@ -18668,6 +18669,8 @@ async function storyboardCompilerContext(state, inputGuard) {
     readParagraphs:item=>storyboardMessageParagraphs(storyboardCleanWithTagRules(item.mes, state)).map((text,index)=>({id:`P${index+1}`,text})),
   });
   inputGuard.compilerSources = sources;
+  const continuityStore = inputGuard.continuityStore = runtime.openStoryboardCompilerContinuity(sources);
+  const continuity = await continuityStore.read();
   const {messages,paragraphs} = sources;
   const currentCharacter = state.promptCompiler.includeCharacterCards
     ? storyboardCleanMessageText(await resolveMacro(getCharacterDescription())) : '';
@@ -18688,7 +18691,7 @@ async function storyboardCompilerContext(state, inputGuard) {
   const casting = await storyboardCompilerCharacterCasting(paragraphs.join('\n'), inputGuard, includeReferences, includeComfy);
   await sources.guard();
   return {
-    floor, messages, currentCharacter, persona, world: worldResult.text,
+    floor, messages, currentCharacter, persona, world: worldResult.text, continuity,
     worldRows: worldResult.rows, worldFallback: worldResult.fallback,
     paragraphs, forcedParagraphIndex, forcedParagraphIndexes,
     characterCasting: casting.prepared, casting:{...casting,assertCurrent:async()=>{await sources.guard();await casting.assertCurrent();sources.assertCurrent();}},

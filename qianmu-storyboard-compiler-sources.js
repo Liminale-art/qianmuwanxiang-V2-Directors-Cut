@@ -1,8 +1,17 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
+import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
+const windows = new WeakMap();
+
+export function openStoryboardCompilerContinuity(window,options={}) {
+  const scope=windows.get(window);
+  if(!scope)throw changed();
+  window.assertCurrent();
+  return createStoryboardContinuityStoreSession({...scope,window,timeoutMs:options.timeoutMs});
+}
 
 // One borrowed window for the actual compiler, not another history cache. Never
 // scan outside the user's selected raw ST floor range or retain prose globally.
@@ -14,8 +23,8 @@ export async function captureStoryboardCompilerSources({floor,referenceFloors,ge
   const host = captureCurrentChatSource({getContext,epoch});
   const start = Math.max(0,floor-referenceFloors), slots = [], sources = [], messages = [], listeners = [];
   const emitter = getContext().eventSource, remove = typeof emitter?.removeListener === 'function' ? emitter.removeListener : emitter?.off;
-  let closed = false, namespace;
-  const close = () => { closed = true; host.close(); for (const source of sources) source.close(); signal?.removeEventListener('abort',close);
+  let closed = false, namespace, handle;
+  const close = () => { closed = true; windows.delete(handle); host.close(); for (const source of sources) source.close(); signal?.removeEventListener('abort',close);
     for (const [type,handler] of listeners.splice(0)) { try { remove.call(emitter,type,handler); } catch (_) {} } };
   const assertCurrent = () => {
     try {
@@ -93,8 +102,10 @@ export async function captureStoryboardCompilerSources({floor,referenceFloors,ge
       catch (_) { close(); throw changed(); }
     };
     await guard();
-    return Object.freeze({floor,referenceFloors,messages:Object.freeze(messages),sources:Object.freeze([...sources]),
+    handle=Object.freeze({floor,referenceFloors,messages:Object.freeze(messages),sources:Object.freeze([...sources]),
       paragraphs:Object.freeze(current.paragraphs.map(row=>row.text)),current,guard,assertCurrent,close});
+    windows.set(handle,{getContext,host,namespace});
+    return handle;
   } catch (error) {
     close();
     if (error?.code === 'storyboard_continuity_scope') throw Object.assign(new Error('所选正文超过变化追踪单次容量，未截断或发送，请减少参考范围或正文长度'), {code:'storyboard_input_capacity'});
