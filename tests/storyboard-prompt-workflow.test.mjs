@@ -90,7 +90,7 @@ assert.equal(normalized.promptCompiler.worldMode, 'selected');
 assert.doesNotMatch(source, /storyboardWorldEntryScore/);
 assert.match(source, /function storyboardCleanWithTagRules[\s\S]*action === 'extract'[\s\S]*action === 'remove'/);
 assert.match(source, /storyboardCleanWithTagRules\(item\.mes, state\)/);
-assert.match(source, /storyboardCleanWithTagRules\(targetMessage\?\.mes \|\| '', state\)/);
+assert.match(source, /readParagraphs:item=>storyboardMessageParagraphs\(storyboardCleanWithTagRules\(item\.mes, state\)\)/);
 
 // Artist strings remain entirely user-controlled and lead the provider prompt at request time.
 assert.match(contractSource, /画师串由用户另行管理，任何字段都不得写画师名/);

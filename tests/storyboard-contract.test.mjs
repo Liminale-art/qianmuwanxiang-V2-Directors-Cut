@@ -388,7 +388,7 @@ for(const count of [1,80,81,281]){
 assert.match(formatStoryboardContractErrors(wrongParagraph.errors, 1), /^\$\.shots\[0\]/);
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /storyboardContract:[\s\S]*import\('\.\/qianmu-storyboard-contract\.js\?v=1\.59\.202'\)/, 'the contract validator must stay outside the startup graph');
+assert.match(indexSource, /storyboardContract:\s*\{\s*label:[^\n]+\s*load:\s*\(\)\s*=>\s*import\('\.\/qianmu-storyboard-contract\.js\?v=\d+\.\d+\.\d+'\)/, 'the contract validator must stay outside the startup graph');
 assert.match(indexSource, /buildStoryboardPlanContractRequest\(context, storyboardCompilerRequestConfig\(state, profile, expressionRoutes\)\)/, 'the first planning call must use the strict request contract and verified Comfy plus reachable closed-model formats');
 assert.match(indexSource, /storyboardCallCompiler\(contractRequest\.messages[\s\S]*jsonSchema: contractRequest\.schema[\s\S]*jsonSchemaStrict: true/, 'capable external channels must receive the structured response schema');
 assert.match(indexSource, /if \(contractRequest \|\| declaresPlanContract\)/, 'new requests must validate strictly while versioned legacy responses remain supported');

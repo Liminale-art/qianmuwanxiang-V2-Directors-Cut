@@ -263,7 +263,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.212';
+const VERSION = '1.59.213';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -536,7 +536,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.202'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.213'),
   },
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
@@ -18619,11 +18619,12 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
     isCurrent,
     ownsCurrentContext: () => state === storyboardState() && chatKey === String(getChatKey() || ''),
     assertCurrent() {
-      if (isCurrent()) return;
+      if (isCurrent()) { this.compilerSources?.assertCurrent(); return; }
       const error = new Error('分镜配置或正文已变化，已忽略旧结果，请按当前设置重试');
       error.code = 'storyboard_input_changed'; throw error;
     },
     dispose() {
+      this.compilerSources?.close();
       this.comfyBatch?.close();this.comfyAuto?.close();this.comfyReadiness?.close();
       baseline = null;
       if (typeof document !== 'undefined') {
@@ -18657,24 +18658,21 @@ async function storyboardCompilerCharacterCasting(text, inputGuard, includeRefer
 
 async function storyboardCompilerContext(state, inputGuard) {
   const floor = storyboardTargetFloor(state);
-  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
   const recentSetting = Number(state.promptCompiler.includeRecentFloors);
-  const recentCount = Math.max(0, Math.min(20, Number.isFinite(recentSetting) ? recentSetting : 2));
-  const start = Math.max(0, floor - recentCount);
-  const messages = [];
-  for (let index = start; index <= floor && index < chat.length; index++) {
-    const item = chat[index];
-    if (!item || item.is_system) continue;
-    const cleanSource = storyboardCleanWithTagRules(item.mes, state);
-    const text = storyboardCleanMessageText(cleanSource);
-    if (text) messages.push({ floor: index, role: item.is_user ? 'user' : 'character', text });
-  }
+  const recentCount = Math.max(0, Math.min(20, Number.isFinite(recentSetting) ? Math.trunc(recentSetting) : 2));
+  const [runtime, identity] = await Promise.all([featureRuntime.load('storyboardContract'),featureRuntime.load('imageAdmission')]);
+  inputGuard.assertCurrent();
+  const sources = await runtime.captureStoryboardCompilerSources({floor,referenceFloors:recentCount,getContext:ctx,
+    epoch:()=>storyboardAdmissionEpoch,resolveNamespace:identity.resolveImageAccountNamespace,isCurrent:inputGuard.isCurrent,
+    readText:item=>storyboardCleanMessageText(storyboardCleanWithTagRules(item.mes, state)),
+    readParagraphs:item=>storyboardMessageParagraphs(storyboardCleanWithTagRules(item.mes, state)).map((text,index)=>({id:`P${index+1}`,text})),
+  });
+  inputGuard.compilerSources = sources;
+  const {messages,paragraphs} = sources;
   const currentCharacter = state.promptCompiler.includeCharacterCards
     ? storyboardCleanMessageText(await resolveMacro(getCharacterDescription())) : '';
   const persona = state.promptCompiler.includeUserPersona
     ? storyboardCleanMessageText(await resolveMacro(getPersonaDescription())) : '';
-  const targetMessage = Number.isInteger(floor) ? chat[floor] : null;
-  const paragraphs = storyboardMessageParagraphs(storyboardCleanWithTagRules(targetMessage?.mes || '', state));
   const pendingSelection = state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
   const forcedParagraphIndexes = pendingSelection?.mode === 'manual_supplement'
     ? pendingSelection.indexes.filter((index) => index < paragraphs.length)
@@ -18688,11 +18686,12 @@ async function storyboardCompilerContext(state, inputGuard) {
     && (state.source === 'novel' || state.routing?.enabled && state.routing.rules.some(rule => rule.enabled !== false && rule.target?.providerId === 'novel'));
   const includeComfy = storyboardUsesComfyCharacters(state, inputGuard?.comfyRoutes, inputGuard?.freshComfy);
   const casting = await storyboardCompilerCharacterCasting(paragraphs.join('\n'), inputGuard, includeReferences, includeComfy);
+  await sources.guard();
   return {
     floor, messages, currentCharacter, persona, world: worldResult.text,
     worldRows: worldResult.rows, worldFallback: worldResult.fallback,
     paragraphs, forcedParagraphIndex, forcedParagraphIndexes,
-    characterCasting: casting.prepared, casting,
+    characterCasting: casting.prepared, casting:{...casting,assertCurrent:async()=>{await sources.guard();await casting.assertCurrent();sources.assertCurrent();}},
   };
 }
 

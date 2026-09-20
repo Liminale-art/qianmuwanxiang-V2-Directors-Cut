@@ -1383,3 +1383,4 @@ export function adaptStoryboardPlanContract(value, options = {}) {
     decisions: value.decisions,
   };
 }
+export {captureStoryboardCompilerSources} from './qianmu-storyboard-compiler-sources.js';

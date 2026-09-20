@@ -203,10 +203,11 @@ function compilerRuntime({changeAccount=false,ambiguous=false,references=false}=
   state.enabled=true;state.source='novel';state.profiles.novel.model='nai-diffusion-5-full';if(ambiguous)e.documents.set('bob',doc('Bob','char',['Alice']));
   if (references) Object.assign(state.profiles.novel,{model:'nai-diffusion-4-5-full',characterReferenceEnabled:true});
   const calls=[],notices=[],errors=[];let namespace='st-user:test';
-  const guard={assertCurrent(){},isCurrent:()=>true,ownsCurrentContext:()=>true,dispose(){}};
+  const host={chatId:'chat-a',characterId:0,characters:[{avatar:'Alice.png',chat:'chat-a'}],chatMetadata:{},chat:[{mes:'Alice holds a spoon without a coat.'}]};
+  const guard={assertCurrent(){this.compilerSources?.assertCurrent();},isCurrent:()=>true,ownsCurrentContext:()=>true,dispose(){this.compilerSources?.close();}};
   const context=vm.createContext({...storyboard,clone:structuredClone,Date,JSON,Number,Object,Map,Set,
     storyboardCompilerBusy:false,storyboardCaptureWorkbench:()=>({state,profile:state.profiles.novel}),storyboardTargetFloor:()=>0,
-    ctx:()=>({chatId:'chat-a',chat:[{mes:'Alice holds a spoon without a coat.'}]}),getChatKey:()=> 'chat-a',storyboardCreatePreparationGuard:()=>guard,
+    ctx:()=>host,storyboardAdmissionEpoch:0,getChatKey:()=> 'chat-a',storyboardCreatePreparationGuard:()=>guard,
     storyboardCharacterArchiveContext:async()=>({chatKey:'chat-a',subjects:e.subjects}),
     storyboardCleanWithTagRules:value=>value,storyboardCleanMessageText:value=>value,cleanContextText:value=>value,resolveMacro:async value=>value,
     getCharacterDescription:()=> 'Alice',getPersonaDescription:()=> 'Player',storyboardMessageParagraphs:value=>[value],

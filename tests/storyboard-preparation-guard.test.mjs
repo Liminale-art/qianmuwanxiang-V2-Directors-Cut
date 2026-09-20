@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import {EventEmitter} from 'node:events';
 import * as storyboard from '../qianmu-storyboard.js';
 import * as contractRuntime from '../qianmu-storyboard-contract.js';
 
@@ -53,6 +54,32 @@ function environment() {
   };
   return { state, context, calls, notices, plan, chat, events, dispatchInput };
 }
+
+test('actual context and preparation lifecycle invalidate restored dependency edits before repair/save and release borrowed sources',async()=>{
+  for(const invalidate of [false,true]){
+    const e=environment(),emitter=new EventEmitter(),host={chat:e.chat,chatId:'chat-a',characterId:0,
+      characters:[{avatar:'A.png',chat:'chat-a'}],chatMetadata:{story_director_liminale:{}},eventSource:emitter,mainApi:'openai'};
+    e.chat.unshift({mes:'prior state',is_user:true,swipe_id:0});e.plan.floor=1;
+    Object.assign(e.context,{ctx:()=>host,storyboardAdmissionEpoch:0,storyboardTargetFloor:()=>1,
+      storyboardCleanWithTagRules:text=>text,storyboardCleanMessageText:text=>text,resolveMacro:async text=>text,
+      storyboardMessageParagraphs:text=>[text],storyboardCompilerWorldText:async()=>({text:'',rows:[]}),
+      storyboardCompilerCharacterCasting:async()=>({prepared:null,assertCurrent:async()=>{},apply:shot=>({shot,warnings:[]})}),
+      featureRuntime:{load:async key=>key==='storyboardContract'?contractRuntime:{resolveImageAccountNamespace:async()=> 'st-user:test'}},
+    });
+    vm.runInContext(section('storyboardCompilerContext'),e.context);
+    let captured;
+    const create=e.context.storyboardCreatePreparationGuard;e.context.storyboardCreatePreparationGuard=(...args)=>captured=create(...args);
+    e.context.storyboardCallCompiler=async()=>{
+      e.calls.push('llm');assert.ok(captured.compilerSources);assert.equal(captured.compilerSources.sources.length,2);
+      if(invalidate){const old=e.chat[0].mes;e.chat[0].mes='temporary';emitter.emit('message_edited',0);e.chat[0].mes=old;}
+      return 'synthetic response';
+    };
+    assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.plan}),!invalidate,JSON.stringify(e.notices));
+    assert.equal(e.calls.includes('save'),!invalidate);assert.equal(e.plan.status,invalidate?'stale':'prompt_ready');
+    assert.equal(emitter.eventNames().reduce((sum,type)=>sum+emitter.listenerCount(type),0),0);
+    assert.throws(captured.compilerSources.assertCurrent,{code:'storyboard_input_changed'});
+  }
+});
 
 test('missing or duplicate compiler profiles stop extraction before preparation, with a clear notice and no busy latch',async()=>{
   for(const change of [e=>e.context.settings.apiProfiles=[],e=>e.context.settings.apiProfiles.push({...e.context.settings.apiProfiles[0],apiUrl:'https://other.example'})]){

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import vm from 'node:vm';
-import {buildStoryboardPlanContractRequest} from '../qianmu-storyboard-contract.js';
+import {buildStoryboardPlanContractRequest,captureStoryboardCompilerSources} from '../qianmu-storyboard-contract.js';
 import {assertStoryboardInputBudget,STORYBOARD_INPUT_MAX_BYTES} from '../qianmu-storyboard-complete-context.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 import {normalizeStoryboardParagraphSelection} from '../qianmu-storyboard.js';
@@ -27,10 +27,15 @@ test('missing selected world entries stop compilation without interpreting a fai
 test('runtime compiler keeps selected floor range and complete tail without enlarging the selection',async()=>{
  const tail='甲'.repeat(7000)+'拿起杯子',chat=[{mes:'outside'},{mes:tail},{mes:tail,is_user:true},{mes:tail}];
  const state={promptCompiler:{includeRecentFloors:2,includeCharacterCards:true,includeUserPersona:true},profiles:{},paragraphMode:'auto'};
- const context=vm.createContext({ctx:()=>({chat}),storyboardTargetFloor:()=>3,storyboardCleanWithTagRules:x=>x,storyboardCleanMessageText:x=>x,
+ const host={chatId:'chat',characterId:0,characters:[{avatar:'Alice.png',chat:'chat'}],chatMetadata:{},chat};
+ const guard={isCurrent:()=>true,assertCurrent(){this.compilerSources?.assertCurrent();}};
+ const context=vm.createContext({ctx:()=>host,storyboardAdmissionEpoch:0,
+  featureRuntime:{load:async key=>key==='storyboardContract'?{captureStoryboardCompilerSources}:{resolveImageAccountNamespace:async()=> 'st-user:test'}},
+  storyboardTargetFloor:()=>3,storyboardCleanWithTagRules:x=>x,storyboardCleanMessageText:x=>x,
   cleanContextText:x=>x,resolveMacro:async x=>x,getCharacterDescription:()=>tail,getPersonaDescription:()=>tail,storyboardMessageParagraphs:x=>[x],
   storyboardCompilerWorldText:async()=>({text:tail,rows:[]}),storyboardUsesComfyCharacters:()=>false,storyboardCompilerCharacterCasting:async()=>({prepared:{}})});
- vm.runInContext(storyboardFunctionSource('storyboardCompilerContext'),context);const out=await context.storyboardCompilerContext(state);
+ vm.runInContext(storyboardFunctionSource('storyboardCompilerContext'),context);const out=await context.storyboardCompilerContext(state,guard);
  assert.deepEqual(Array.from(out.messages,x=>x.floor),[1,2,3]);assert.equal(out.messages[2].text,tail);assert.equal(out.currentCharacter,tail);assert.equal(out.persona,tail);
+ guard.compilerSources.close();
  const source=await readFile(new URL('../index.js',import.meta.url),'utf8');const parser=source.slice(source.indexOf('function storyboardMessageParagraphs('),source.indexOf('function storyboardParagraphTokenSet('));assert.doesNotMatch(parser,/slice\(0,\s*240\)/);
 });
