@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
+import {storyboardFocusedCatalogue,storyboardFocusedRepairContext} from '../qianmu-storyboard-focused-input.js';
 import {STORYBOARD_NARRATIVE_SCHEMA as NARRATIVE,STORYBOARD_EXPRESSION_SCHEMA as EXPRESSION} from '../qianmu-storyboard-focused-extraction.js';
 import {response as basePlan,compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 
@@ -23,7 +24,8 @@ async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],p
   const context={floor,messages:window.messages,paragraphs:window.paragraphs,currentCharacter:'Alice stable appearance',persona:'user description',world:'selected world',
     compilerSources:window,continuity:await store.read()};
   const config={focused:true,providerId,promptFormats,maxShots,minShots:1,allowedRatioIds:['3:2'],groupLabel:'obsolete three beats',groupInstruction:'MUST split the scene into three narrative acts'};
-  const request=contract.buildStoryboardPlanContractRequest(context,config);
+  let request;
+  try{request=contract.buildStoryboardPlanContractRequest(context,config);}catch(error){store.close();window.close();throw error;}
   const first=basePlan().shots[0];delete first.prompt_atoms;delete first.prompt_renderings;
   first.state_point={branchId:'now',paragraphId:'P1',evidence:window.paragraphs[0]};
   const narrative={schema:NARRATIVE,should_generate:true,skip_reason:'',shots:[first],source_states:texts.map((_,index)=>record(index)),continuity_links:[],decisions:[]};
@@ -160,4 +162,79 @@ test('actual compiler uses one selected API for both stages, persists metadata a
   assert.ok(e.context.ctx().chatMetadata.story_director_liminale.storyboardContinuity);
   const shot=e.state.promptDraft.shots[0];assert.equal(shot.shotSpec.promptRenderingPack.renderings.tags.characters[0].character_id,'archive:alice');
   assert.match(shot.prompt,/^tag-scene-0/);assert.equal(shot.shotSpec.continuityUpdates.facts.length,0);
+});
+
+test('compact source catalogue reconstructs every character, including gaps, repeated paragraphs and supplementary Unicode',()=>{
+  const text='  first α😀\r\n\r\nrepeat\t repeat\n最后一句  ';
+  const paragraphs=[{id:'P1',text:'first α😀'},{id:'P2',text:'repeat'},{id:'P3',text:'repeat'},{id:'P4',text:'最后一句'}];
+  const window={messages:[{floor:3,role:'user',text}],sources:[{messageRef:{lastKnownFloor:3},paragraphs}]};
+  const [row]=storyboardFocusedCatalogue(window);assert.equal(row.passages.map(item=>item.text).join(''),text);
+  assert.deepEqual(row.passages.filter(item=>item.paragraph_id).map(item=>[item.paragraph_id,item.text]),paragraphs.map(item=>[item.id,item.text]));
+  assert.equal(row.role,'user');assert.equal(row.full_text,undefined);assert.deepEqual(storyboardFocusedCatalogue(window,[99]),[]);
+  window.messages[0].text='encoded &amp; content';window.sources[0].paragraphs=[{id:'P1',text:'encoded & content'}];
+  const fallback=storyboardFocusedCatalogue(window)[0];assert.equal(fallback.full_text,window.messages[0].text);assert.equal(fallback.paragraphs[0].text,'encoded & content');
+});
+
+test('the actual first request contains each normal source once and retains all selected configuration/context fields',async()=>{
+  const f=await fixture({texts:['unique earlier prose','unique current prose']});
+  const payload=JSON.parse(f.request.messages[1].content);
+  for(const text of ['unique earlier prose','unique current prose'])assert.equal(f.request.messages[1].content.split(text).length-1,1);
+  assert.equal(payload.character_setting,'Alice stable appearance');assert.equal(payload.user_persona,'user description');assert.equal(payload.selected_worldbook,'selected world');
+  assert.equal(payload.target_paragraphs,undefined);assert.deepEqual(payload.target_paragraph_ids,['P1']);
+  assert.deepEqual(payload.recent_messages,[{floor:0,role:'character'},{floor:1,role:'user'}]);f.close();
+});
+
+test('input capacity applies to the compact final request, not an unused duplicated legacy intermediate',async()=>{
+  const texts=Array.from({length:5},(_,index)=>`${index}-`+'x'.repeat(179998));
+  const f=await fixture({texts});assert.ok(Buffer.byteLength(JSON.stringify(f.request.messages))<1024*1024);
+  assert.throws(()=>contract.buildStoryboardPlanContractRequest(f.context,{...f.config,focused:false}),{code:'storyboard_input_capacity'});
+  const payload=JSON.parse(f.request.messages[1].content);assert.deepEqual(payload.source_catalogue.map(row=>row.passages.map(item=>item.text).join('')),texts);f.close();
+  await assert.rejects(fixture({texts:[...texts,'y'.repeat(180000)]}),{code:'storyboard_input_capacity'});
+});
+
+test('grounding repair receives only the affected original floor, not unrelated history, persona or worldbook',async()=>{
+  const f=await fixture({texts:['A removes the coat.','UNRELATED middle floor','A continues chatting.']});
+  f.narrative.source_states[0].events=[event({evidence:'fabricated evidence'})];let repairCalls=0;
+  const result=await f.run({call:async(messages,definition)=>{
+    if(definition.schemaId===EXPRESSION)return JSON.stringify(f.expression());
+    repairCalls++;const payload=JSON.parse(messages[1].content);
+    assert.equal(payload.errors[0].code,'source_evidence');assert.equal(payload.errors[0].path,'$.source_states[0]');
+    assert.deepEqual(payload.context.evidence_sources.map(row=>row.floor),[0]);
+    assert.equal(payload.context.evidence_sources[0].passages[0].text,'A removes the coat.');
+    assert.doesNotMatch(JSON.stringify(payload.context),/UNRELATED|user description|selected world|st-user:synthetic/);
+    const corrected=plain(f.narrative);corrected.source_states[0].events=[event()];return JSON.stringify(corrected);
+  }});
+  assert.equal(repairCalls,1);assert.equal(result.meta.repairCalls,1);assert.equal(f.saves,1);f.close();
+});
+
+test('expression repair receives the verified plan/state and cannot choose a new shot, scene or character',async()=>{
+  const f=await fixture();f.narrative.source_states[0].events=[event()];let calls=0;
+  const result=await f.run({call:async(messages)=>{
+    calls++;if(calls===1){const value=f.expression();value.shots[0].prompt_renderings.tags.characters=[];return JSON.stringify(value);}
+    const payload=JSON.parse(messages[1].content),handoff=payload.context.verified_handoff;
+    assert.deepEqual(handoff.shots[0].plan,f.narrative.shots[0]);assert.equal(handoff.shots[0].active_state[0].value,'removed');
+    assert.equal(handoff.shots[0].shot_id,'S1');assert.doesNotMatch(JSON.stringify(handoff),/selected world|user description/);
+    return JSON.stringify(f.expression());
+  }});
+  assert.equal(calls,2);assert.equal(result.meta.repairCalls,1);f.close();
+});
+
+test('forged repair floor references cannot expand the original source selection; syntax repair gets IDs without a full prose resend',async()=>{
+  const f=await fixture({texts:['SECRET earlier','CURRENT text']});
+  const result={errors:[{path:'$.continuity_links[0]'}],repairFloors:[-1,88]},data={continuity_links:[{from_floor:-1,to_floor:88,facts:[{source_floor:9000}]}]};
+  const isolated=storyboardFocusedRepairContext({name:'narrative',result,data,context:f.context,request:f.request,definition:f.request});
+  assert.deepEqual(isolated.evidence_sources,[]);
+  const syntax=storyboardFocusedRepairContext({name:'narrative',result:{errors:[{path:'$',code:'json_syntax'}]},context:f.context,request:f.request,definition:f.request});
+  assert.doesNotMatch(JSON.stringify(syntax),/SECRET|CURRENT|selected world/);assert.deepEqual(syntax.paragraph_catalogue.map(row=>row.floor),[0,1]);f.close();
+});
+
+test('oversized evidence repair and cancellation before dispatch do not consume a request',async()=>{
+  const texts=Array.from({length:5},(_,index)=>`${index}-`+'z'.repeat(198998)),f=await fixture({texts});let calls=0;
+  // The valid initial input fits; repairing this malformed response with every
+  // missing state floor would exceed the final wire budget. Never clip evidence.
+  await assert.rejects(f.run({raw:JSON.stringify({padding:'p'.repeat(60000)}),call:async()=>{calls++;return '{}';}}),{code:'storyboard_input_capacity'});
+  assert.equal(calls,0);assert.equal(f.saves,0);f.close();
+  const g=await fixture();let checks=0;
+  await assert.rejects(g.run({raw:'invalid',guard:async()=>{if(++checks===3)g.active=false;await g.window.guard();},call:async()=>{calls++;return '{}';}}),{code:'storyboard_input_changed'});
+  assert.equal(calls,0);assert.equal(g.saves,0);g.close();
 });

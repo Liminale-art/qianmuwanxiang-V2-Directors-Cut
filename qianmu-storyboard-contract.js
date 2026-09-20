@@ -10,7 +10,7 @@ import {
 import { characterCastingInput } from './qianmu-character-casting.js';
 import {completeStoryboardText,assertStoryboardInputBudget} from './qianmu-storyboard-complete-context.js';
 import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings, storyboardPromptFormatBudget, STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS } from './qianmu-prompt-formats.js';
-import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.215';
+import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.216';
 // Pass the shared contract helpers explicitly, avoiding a circular versioned
 // import during lazy load or hot replacement.
 function focusedContractApi(){return {buildStoryboardPlanContractRequest,parseStoryboardContractJson,validateStoryboardPlanContract,
@@ -913,7 +913,9 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
     },
     selected_worldbook: completeStoryboardText(context.world),
   };
-  const payloadText=JSON.stringify(payload);assertStoryboardInputBudget(system+payloadText);
+  // The focused builder checks the final compact wire payload, not this
+  // intermediate legacy representation which repeats target paragraphs.
+  const payloadText=JSON.stringify(payload);if(config.deferInputBudget!==true)assertStoryboardInputBudget(system+payloadText);
   return {
     messages: [{ role: 'system', content: system }, { role: 'user', content: payloadText }],
     schema: requirePrimarySubject || promptFormats.length || manualSupplement && requiredParagraphIds.length ? (() => {
@@ -1156,6 +1158,7 @@ export async function repairStoryboardContract({raw,validation=null,request,opti
 }
 
 const contractFailureReasons = Object.freeze({
+  source_evidence: '变化来源或原句无法核对', continuity_link: '连续场景承接无法核对', state_point: '镜头时点或人物分支无法核对',
   expression_request_failed: '表达请求失败，未提交生图',
   json_syntax: '返回不是有效 JSON', ambiguous_json: '返回包含多个 JSON 对象',
   empty: '返回为空或缺少内容', max_bytes: '返回超过大小上限',

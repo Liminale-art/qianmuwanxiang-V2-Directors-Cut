@@ -429,6 +429,7 @@
     "qianmu-storyboard-compiler-sources.js",
     "qianmu-storyboard-continuity-store.js",
     "qianmu-storyboard-focused-extraction.js",
+    "qianmu-storyboard-focused-input.js",
     "qianmu-storyboard-continuity-events.js",
     "qianmu-storyboard-continuity-source.js",
     "qianmu-storyboard-continuity-link.js",
