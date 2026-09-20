@@ -7,7 +7,7 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.237';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -261,12 +261,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.236';
+} from './qianmu-storyboard.js?v=1.59.237';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.236';
+const VERSION = '1.59.237';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -319,7 +319,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.236'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.237'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -539,9 +539,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.236'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.237'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.236')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.237')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -13072,6 +13072,7 @@ function storyboardPlanLightweightSummary(plan, key) {
       status: shot.status, resultIds: clone(shot.resultIds || []), error: String(shot.error || '').slice(0, 400),
       partialFailureCount: shot.partialFailureCount, attempt: shot.attempt,
       paragraphAnchor: clone(shot.paragraphAnchor || null), paragraphSelection: clone(shot.paragraphSelection || null),
+      ...(shot.narrativeMoment||shot.shotSpec?.narrativeMoment?{narrativeMoment:clone(shot.narrativeMoment||shot.shotSpec.narrativeMoment)}:{}),
       shotSpec: null, compiledPrompt: null, compositionDecision: null,
       sensitive: Boolean(shot.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), safetyMethod: String(shot.safetyMethod || '').slice(0, 40), userEdited: Boolean(shot.userEdited),
       promptLocked: Boolean(shot.promptLocked), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation),
@@ -13490,6 +13491,7 @@ function storyboardSyncTaskState(job, status, { error = '', resultIds = null, fl
   const base = current || createStoryboardTaskState({
     id: job.id, planId: job.planId, shotId: job.planShotId, logId: job.logId,
     chatKey: job.chatKey, floor: targetFloor, messageRef: job.messageRef,
+    ...(job.shotSpec?.narrativeMoment?{narrativeMoment:job.shotSpec.narrativeMoment}:{}),
     paragraphAnchor: job.paragraphAnchor, paragraphSelection: job.paragraphSelection,
     inlineOrder: job.inlineOrder, attempt: job.attempt, messageHash: job.messageHash, swipeId: job.swipeId,
     uiVisible: Boolean(job.inlineByDefault && job.target !== 'gallery' && Number.isInteger(targetFloor)), status: 'queued',
@@ -13497,6 +13499,7 @@ function storyboardSyncTaskState(job, status, { error = '', resultIds = null, fl
   const next = transitionStoryboardTaskState(base, status, {
     planId: job.planId, shotId: job.planShotId, logId: job.logId,
     chatKey: job.chatKey, floor: targetFloor, messageRef: job.messageRef,
+    ...(job.shotSpec?.narrativeMoment?{narrativeMoment:job.shotSpec.narrativeMoment}:{}),
     paragraphAnchor: job.paragraphAnchor, paragraphSelection: job.paragraphSelection,
     inlineOrder: job.inlineOrder, attempt: job.attempt, messageHash: job.messageHash, swipeId: job.swipeId,
     uiVisible: current?.uiVisible ?? Boolean(job.inlineByDefault && job.target !== 'gallery' && Number.isInteger(targetFloor)),
@@ -14789,7 +14792,7 @@ async function storyboardDeleteVibe(item, {onDeleted} = {}) {
 
 function storyboardUpdateGalleryNarrative() {
   return storyboardGalleryNarrative.update({ owner: ctx().chatMetadata, chatKey: String(getChatKey() || ''), epoch: storyboardAdmissionEpoch,
-    records: storyboardGalleryRecords(), messages: ctx().chat || [], paragraphs: storyboardLinkReviewParagraphs });
+    records: storyboardGalleryRecords(), plans:storyboardState().shotPlans, messages: ctx().chat || [], paragraphs: storyboardLinkReviewParagraphs });
 }
 
 function storyboardBindGalleryNarrative(root) {
@@ -20637,6 +20640,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     paragraphSelection: clone(job.paragraphSelection || null),
     origin: job.paragraphSelection?.mode === 'manual_supplement' ? 'manual_supplement' : (job.automatic ? 'automatic' : 'manual'),
     shotSpec: clone(job.shotSpec || null), compiledPrompt: clone(job.compiledPrompt || null), compositionDecision: clone(job.compositionDecision || null),
+    ...(job.shotSpec?.narrativeMoment?{narrativeMoment:clone(job.shotSpec.narrativeMoment)}:{}),
     productionContext: production.productionContext, sourceLabel: production.sourceLabel,
     messageRef: job.messageRef ? clone(job.messageRef) : null,
     imageAdmission: job.imageAdmission ? clone(job.imageAdmission) : null,
@@ -21222,7 +21226,7 @@ function storyboardRenderInlineImages(targetFloor = null) {
     const text = message?.querySelector('.mes_text');
     if (!message || !text) continue;
     const anchorGroups = new Map();
-    const displayIndexes = storyboardInlineDisplayIndexes([...group.records,...group.tasks]);
+    const displayIndexes = storyboardInlineDisplayIndexes([...group.records,...group.tasks],{plans:storyboardState().shotPlans});
     for (const [record, kind] of [...group.records.map(record => [record, 'records']), ...group.tasks.map(task => [task, 'tasks'])]) {
       const index = Number(record.paragraphAnchor?.paragraphIndex ?? record.paragraphSelection?.insertAfterIndex ?? -1);
       const key = Number.isInteger(index) ? index : -1;
@@ -21237,8 +21241,8 @@ function storyboardRenderInlineImages(targetFloor = null) {
     }
     const anchorTails = new Map();
     for (const [paragraphIndex, items] of [...anchorGroups.entries()].sort((a, b) => a[0] - b[0])) {
-      items.records = sortStoryboardInlineRecords(items.records);
-      const entries = sortStoryboardInlineRecords([...items.records, ...items.tasks]);
+      items.records = sortStoryboardInlineRecords(items.records,{plans:storyboardState().shotPlans});
+      const entries = sortStoryboardInlineRecords([...items.records, ...items.tasks],{plans:storyboardState().shotPlans});
       const taskEntries = new Set(items.tasks);
       const markup = `${items.records.length ? `<button type="button" class="sd-storyboard-inline-title" data-storyboard-chat-action="expand" title="展开正文插图" hidden><span class="sd-storyboard-inline-mark">${STORYBOARD_INLINE_MARK}</span><span class="sd-storyboard-inline-rule"></span><b>刻瞬于光</b><small>${items.records.length > 1 ? `${items.records.length} 幅画面` : '画面已折叠'}</small></button>` : ''}${entries.length ? `<div class="sd-storyboard-inline-reel">${entries.map(entry => taskEntries.has(entry) ? storyboardInlineTaskMarkup(entry, displayIndexes.get(entry)) : storyboardInlineRecordMarkup(entry)).join('')}</div>` : ''}${items.plans.map(storyboardInlinePlaceholderMarkup).join('')}`;
       const signature = JSON.stringify([markup, storyboardCollapsedInlineFloors.has(floor)]);

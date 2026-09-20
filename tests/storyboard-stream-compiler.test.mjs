@@ -231,7 +231,7 @@ test('stream job preparation waits without touching plans when narrative request
   assert.deepEqual(q.outcomes,[{queued:0,failed:0,prepared:0}]);assert.equal(f.state.shotPlans.length,0);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);f.assertReleased();
 });
 
-function useShotSet(f,indexes){
+function useShotSet(f,indexes,after){
   f.modelHook=({reply,payload,options})=>{
     if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
       reply.shots=indexes.map(index=>{
@@ -245,6 +245,7 @@ function useShotSet(f,indexes){
       const shot=response().shots.find(shot=>shot.subject===item.plan.subject);
       return {shot_id:item.shot_id,prompt_atoms:shot.prompt_atoms,prompt_renderings:Object.fromEntries(options.promptFormats.map(format=>[format,shot.prompt_renderings[format]]))};
     });
+    after?.({reply,payload,options});
   };
 }
 const threeParagraphs='Alice reads a letter in the kitchen.\n\nA mountain valley stretches into the sunlight.\n\nA broken cup rests on the table.\n\nUnfinished';
@@ -549,6 +550,114 @@ function installFinalNotifications(f){
     messageRef:createStoryboardMessageReference({message:f.host.chat[0],chatKey:'chat-a',floor:0})});
   return {run:()=>f.context.storyboardPerformAutomaticCapture(ticket()),finish:()=>f.context.storyboardFinishStreamCapture(ticket()),ticket};
 }
+
+async function ordinaryPlanFixture({indexes=[0],text=threeParagraphs.split('\n\n').slice(0,2).join('\n\n')}={}){
+  const f=await fixture({text}),q=installStreamQueue(f);useShotSet(f,indexes);
+  Object.assign(f.state,{target:'floor',floor:'0'});
+  const ref=createStoryboardMessageReference({message:f.host.chat[0],chatKey:'chat-a',floor:0});
+  const plan=f.context.createStoryboardWorkflowTicket({id:'ordinary-original',chatKey:'chat-a',floor:0,messageRef:ref,origin:'automatic',autoGenerate:true});
+  f.state.shotPlans=[plan];
+  assert.equal(await f.run({stream:null,onPrepared:null,plan,automatic:true}),true,JSON.stringify(f.errors));
+  assert.equal(await f.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify(f.notices));
+  assert.equal(q.queue.length,indexes.length);assert.equal(q.queue[0].messageRef.stream,undefined);
+  return {f,q,plan};
+}
+
+test('actual ordinary plan continues into fresh v3 jobs under the same original plan and automatic budget',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture(),old=copy(q.queue[0]),id=plan.id;
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');useShotSet(f,[0,1,2]);
+  const final=installFinalNotifications(f);assert.equal(await final.run(),true,JSON.stringify({errors:f.errors,notices:f.notices}));
+  assert.equal(f.state.shotPlans.length,1);assert.equal(plan.id,id);assert.equal(q.queue.length,3);assert.equal(q.rows.size,1);
+  assert.deepEqual(copy(q.queue[0]),old);assert.equal(plan.messageRef.stream,undefined);
+  for(const job of q.queue.slice(1)){assert.equal(job.messageRef.stream.version,3);assert.equal(job.imageAdmission.revisionId,old.imageAdmission.revisionId);await q.admission.beforeSubmit(job);}
+  assert.equal(f.calls[2].payload.constraints.committed_images.occupied,1);assert.equal(plan.streamFinalCapture.status,'complete');
+  const requests=f.counts.requests;assert.equal(await final.run(),false);assert.equal(f.counts.requests,requests);f.assertReleased();
+});
+
+test('ordinary plan continuation with a full original quota records the final state without another expression or image task',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture();f.state.generationPolicy.maxImages=1;
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');useShotSet(f,[0]);
+  const final=installFinalNotifications(f);assert.equal(await final.run(),false,JSON.stringify(f.errors));
+  assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);assert.equal(f.counts.requests,3);assert.equal(plan.streamFinalCapture.status,'complete');
+  assert.equal(f.calls[2].payload.constraints.max_shots,0);f.assertReleased();
+});
+
+test('ordinary continuation keeps the workbench untouched and refuses cancelled, locked or manually reviewed original plans',async()=>{
+  for(const property of ['status','promptLocked','manualReviewRequired']){
+    const {f,q,plan}=await ordinaryPlanFixture();await continueHost(f,f.host.chat[0].mes+'\n\nNew ending.');
+    plan[property]=property==='status'?'cancelled':true;const before=editable(f.state),final=installFinalNotifications(f);
+    assert.equal(await final.run(),false);assert.equal(q.queue.length,1);assert.equal(f.counts.requests,2);assert.deepEqual(editable(f.state),before);f.assertReleased();
+  }
+});
+
+test('continued ordinary jobs and old waiting markers sort by prose using compact positions through normalization and archive summaries',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture({indexes:[1]});const original=copy(q.queue[0]);
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');useShotSet(f,[0,1,2]);
+  const final=installFinalNotifications(f);assert.equal(await final.run(),true,JSON.stringify(f.errors));
+  const state=normalizeStoryboardState(copy(f.state)),entries=buildStoryboardInlineTasks(state.taskStates,{chatKey:'chat-a',chat:f.host.chat,metadata:f.host.chatMetadata,
+    logs:state.logs,waitingIds:new Set(q.queue.map(job=>job.id))});
+  const sorted=sortStoryboardInlineRecords(entries,{plans:state.shotPlans});
+  assert.deepEqual(sorted.map(row=>row.inlineOrder.shotIndex),[1,0,2]);
+  const numbers=storyboardInlineDisplayIndexes(entries,{plans:state.shotPlans});assert.deepEqual(sorted.map(row=>numbers.get(row)),[0,1,2]);
+  const summary=f.context.storyboardPlanLightweightSummary(plan,'archive');
+  assert.equal(summary.shots[0].narrativeMoment.paragraphId,'P2');assert.deepEqual(copy(q.queue[0]),original);
+  delete entries.find(row=>row.inlineOrder.shotIndex===0).narrativeMoment; // Pre-field task marker: use verified plan metadata.
+  assert.deepEqual(sortStoryboardInlineRecords(entries,{plans:[summary]}).map(row=>row.inlineOrder.shotIndex),[1,0,2]);f.assertReleased();
+});
+
+test('legacy ordinary pipeline evidence survives real log normalization and is retained as plan presentation metadata without changing old requests',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture({indexes:[1]});
+  delete q.queue[0].shotSpec.narrativeMoment;delete f.state.logs[0].snapshot.shotSpec.narrativeMoment;delete plan.shots[0].shotSpec.narrativeMoment;
+  for(const task of f.state.taskStates)delete task.narrativeMoment;
+  const old=copy(q.queue[0]);Object.assign(f.state,normalizeStoryboardState(copy(f.state)));const current=f.state.shotPlans[0];
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');useShotSet(f,[0,1,2]);
+  const final=installFinalNotifications(f);assert.equal(await final.run(),true,JSON.stringify({errors:f.errors,notices:f.notices}));
+  assert.equal(q.queue.length,3);assert.equal(current.shots[0].narrativeMoment.paragraphId,'P2');assert.deepEqual(copy(q.queue[0]),old);
+  assert.equal(f.state.logs.find(log=>log.snapshot?.planShotId===old.planShotId).snapshot.shotSpec.narrativeMoment,undefined);
+  const entries=buildStoryboardInlineTasks(f.state.taskStates,{chatKey:'chat-a',chat:f.host.chat,metadata:f.host.chatMetadata,logs:f.state.logs,waitingIds:new Set(q.queue.map(job=>job.id))});
+  assert.deepEqual(sortStoryboardInlineRecords(entries,{plans:f.state.shotPlans}).map(row=>row.inlineOrder.shotIndex),[1,0,2]);f.assertReleased();
+});
+
+test('a continued ordinary archive is restored before adding new shots and keeps its original recovery copy',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture(),final=installFinalNotifications(f);plan.archiveRef='ordinary-archive';plan.status='completed';
+  const archive=copy(plan),summary=f.context.storyboardPlanLightweightSummary(plan,plan.archiveRef);f.state.shotPlans=[summary];let restored=0;
+  f.context.storyboardPlansForPortableExport=async()=>{restored++;return [copy(archive)];};
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');useShotSet(f,[0,1,2]);
+  assert.equal(await final.run(),true,JSON.stringify(f.errors));assert.equal(restored,1);assert.equal(summary.shots.length,3);assert.equal(summary.archiveRef,undefined);
+  assert.equal(archive.archiveRef,'ordinary-archive');assert.equal(summary.shots[0].prompt,archive.shots[0].prompt);assert.equal(q.rows.size,1);f.assertReleased();
+});
+
+test('ordinary continuation with missing occupied evidence stops before another model call or automatic reservation',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture();f.state.logs=[];f.state.pipelineLogs=[];
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');useShotSet(f,[0,1,2]);
+  assert.equal(await installFinalNotifications(f).run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);
+  assert.equal(plan.shots.length,1);assert.equal(plan.streamFinalCapture.status,'failed');f.assertReleased();
+});
+
+test('ordinary continued planning cannot overwrite a user edit arriving before queue handoff',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture();await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');useShotSet(f,[0,1,2]);
+  let edited=false;f.preparedHook=async value=>{f.state.prompt='USER EDIT';edited=true;await f.context.storyboardSubmitStreamPrepared(value);};
+  // Direct scoped handoff exercises the same source/workbench guard before queue publication.
+  assert.equal(await f.run({stream:{floor:0,complete:true}}),false);assert.equal(edited,true);assert.equal(f.state.prompt,'USER EDIT');assert.equal(q.queue.length,1);
+  assert.equal(plan.shots.length,1);f.assertReleased();
+});
+
+test('multiple ordinary continuations retain one plan and quota after final markers and source keys change again',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture({text:threeParagraphs.split('\n\n')[0]}),final=installFinalNotifications(f);
+  await continueHost(f,f.host.chat[0].mes+'\n\nA mountain valley stretches into the sunlight.');useShotSet(f,[0,1]);
+  assert.equal(await final.run(),true,JSON.stringify(f.errors));const firstMarker=copy(plan.streamFinalCapture),old=copy(q.queue[0]);
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');useShotSet(f,[0,1,2]);
+  assert.equal(await final.run(),true,JSON.stringify(f.errors));assert.equal(plan.shots.length,3);assert.equal(q.rows.size,1);assert.equal(q.queue.length,3);
+  assert.notEqual(plan.streamFinalCapture.sourceRevisionId,firstMarker.sourceRevisionId);assert.deepEqual(copy(q.queue[0]),old);
+  assert.equal(q.queue[2].messageRef.stream.family.reference.stream,undefined);assert.equal(q.queue[2].imageAdmission.revisionId,old.imageAdmission.revisionId);f.assertReleased();
+});
+
+test('removing an ordinary continuation proof during expression leaves the original plan and requests intact',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture(),before=copy(plan.shots),old=copy(q.queue[0]);
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');
+  useShotSet(f,[0,1,2],({options})=>{if(options.jsonSchemaName==='qianmu.storyboard.expression.v1')delete f.host.chatMetadata.story_director_liminale.storyboardContinuations;});
+  assert.equal(await installFinalNotifications(f).run(),false);assert.equal(q.queue.length,1);assert.deepEqual(copy(plan.shots),before);assert.deepEqual(copy(q.queue[0]),old);f.assertReleased();
+});
 
 test('actual finished-floor automatic entry supplements a stream plan once without creating an ordinary second budget or replacing the workbench',async()=>{
   const f=await fixture(),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);const final=installFinalNotifications(f);

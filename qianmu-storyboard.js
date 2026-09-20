@@ -1,7 +1,7 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.236';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.237';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.236';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.236';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.237';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.237';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -22,8 +22,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.236';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.236';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.237';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.237';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -522,7 +522,8 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
     entries.push({ id: `inline-task:${task.id}`, taskId: task.id, logId: task.logId, planId: task.planId,
       slotKey, inlineOrder: normalizeStoryboardInlineOrder(task.inlineOrder), floor: resolved.floor, chatKey,
       messageHash: task.messageHash || '', swipeId: task.messageRef.swipeId,
-      ...(hasStoryboardStreamReference(task.messageRef) ? {messageRef:normalizeStoryboardMessageReference(task.messageRef)} : {}),
+      messageRef:normalizeStoryboardMessageReference(task.messageRef),planShotId:task.shotId,
+      ...(task.narrativeMoment?{narrativeMoment:normalizeStoryboardStreamMoment(task.narrativeMoment)||{version:1,invalid:true}}:{}),
       paragraphAnchor: task.paragraphAnchor, paragraphSelection: task.paragraphSelection,
       imageIndex: Number.MAX_SAFE_INTEGER, createdAt: Number(task.requestedAt || 0),
       status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? (preparation?'本镜待选工作流':task.stage==='queue'&&log?.submissionState==='not_submitted'?'本镜尚未提交':'本镜生成失败') : status === 'queued' ? '等待生图' : stageLabel,
@@ -534,17 +535,46 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
   return entries;
 }
 
-function storyboardInlineStreamPosition(record, order) {
+const storyboardInlineFamilyKey=(record,order)=>JSON.stringify([record.chatKey||'',record.floor??null,record.swipeId??0,record.planId||order.batchId]);
+function storyboardInlineOrdinaryFamilies(records,plans){
+  const families=new Map();let planIndex=null;
+  for(const record of records){
+    const order=normalizeStoryboardInlineOrder(record?.inlineOrder),ref=record?.messageRef;
+    if(!order||!hasStoryboardStreamReference(ref))continue;
+    const proof=normalizeStoryboardStreamReference(ref);if(proof.invalid||proof.version!==3)continue;
+    const root=proof.family.reference,key=storyboardInlineFamilyKey(record,order),prior=families.get(key);
+    if(families.has(key)&&(!prior||prior.root.messageKey!==root.messageKey||prior.root.revisionId!==root.revisionId
+      ||prior.order.batchId!==order.batchId||prior.order.batchStartedAt!==order.batchStartedAt)){families.set(key,null);continue;}
+    if(!planIndex){planIndex=new Map();for(const plan of plans){if(!plan?.id)continue;const rows=planIndex.get(plan.id)||[];rows.push(plan);planIndex.set(plan.id,rows);}}
+    const matches=(planIndex.get(order.batchId)||[]).filter(plan=>plan.chatKey===root.chatKey&&plan.origin==='automatic'
+      &&plan.revisionId===root.revisionId&&plan.messageRef?.messageKey===root.messageKey&&plan.messageRef?.swipeId===root.swipeId);
+    families.set(key,{root,order:{batchId:order.batchId,batchStartedAt:order.batchStartedAt},plan:matches.length===1?matches[0]:null});
+  }
+  return families;
+}
+function storyboardInlineStreamPosition(record, order, families=new Map()) {
   const ref=record.messageRef;
-  if(!order||!hasStoryboardStreamReference(ref))return null;
+  if(!order)return null;
+  const family=families.get(storyboardInlineFamilyKey(record,order));
+  if(!hasStoryboardStreamReference(ref)){
+    if(!family||!ref||['chatKey','messageKey','revisionId','swipeId','role','name'].some(key=>ref[key]!==family.root[key])
+      ||record.chatKey!==ref.chatKey||Number(record.swipeId||0)!==ref.swipeId)return null;
+    const shot=family.plan?.shots?.find(shot=>shot.id===record.planShotId);
+    const moment=normalizeStoryboardStreamMoment(record.narrativeMoment||shot?.narrativeMoment);
+    const match=/^P([1-9]\d{0,5})$/.exec(moment?.paragraphId||'');if(!match)return null;
+    // Ordinary jobs used independent batch IDs before continuations existed.
+    // Project display grouping only; persistent retry slots remain untouched.
+    return {scope:JSON.stringify([ref.chatKey,ref.messageKey,ref.swipeId,ref.revisionId]),paragraph:Number(match[1]),start:moment.start,end:moment.end,
+      order:{...order,...family.order}};
+  }
   const proof=normalizeStoryboardStreamReference(ref),moment=proof.moment;
   const root=proof.invalid?null:storyboardStreamBudgetReference(ref);
   // P1…Pn are program-assigned source catalogue positions, never chronological
   // dates or a model's guessed timeline. Flashbacks keep their place in the prose.
   const match=/^P([1-9]\d{0,5})$/.exec(moment?.paragraphId||'');
-  if(proof.invalid||!match||!root.stream||order.batchId!==`stream-${root.stream.generationKey}`
+  if(proof.invalid||!match||(root.stream?order.batchId!==`stream-${root.stream.generationKey}`:!family)
     ||record.chatKey!==ref.chatKey||Number(record.swipeId||0)!==ref.swipeId)return null;
-  return {scope:JSON.stringify([root.chatKey,root.messageKey,root.swipeId,root.stream.generationKey]),
+  return {scope:JSON.stringify([root.chatKey,root.messageKey,root.swipeId,root.stream?.generationKey||root.revisionId]),
     paragraph:Number(match[1]),start:moment.start,end:moment.end};
 }
 
@@ -578,13 +608,14 @@ function storyboardOrderStreamInlineGroups(groups) {
   return groups;
 }
 
-export function sortStoryboardInlineRecords(records) {
+export function sortStoryboardInlineRecords(records,{plans=[]}={}) {
   const groups = new Map();
+  const families=storyboardInlineOrdinaryFamilies(Array.isArray(records)?records:[],Array.isArray(plans)?plans:[]);
   const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
   for (const [index, record] of (Array.isArray(records) ? records : []).entries()) {
     if (!obj(record)) continue;
-    const order = normalizeStoryboardInlineOrder(record.inlineOrder);
-    const position = storyboardInlineStreamPosition(record,order);
+    const originalOrder = normalizeStoryboardInlineOrder(record.inlineOrder);
+    const position = storyboardInlineStreamPosition(record,originalOrder,families),order=position?.order||originalOrder;
     // Keep different messages/batches separate even when old imported ids collide.
     const scope = [record.chatKey || '', record.floor ?? null, record.swipeId ?? 0,
       position ? ['stream',position.scope] : record.messageHash || ''];
@@ -608,12 +639,13 @@ export function sortStoryboardInlineRecords(records) {
   }).map(item => item.record));
 }
 
-export function storyboardInlineDisplayIndexes(records) {
+export function storyboardInlineDisplayIndexes(records,{plans=[]}={}) {
   const result=new Map(),batches=new Map();
   if(!Array.isArray(records)||!records.some(record=>hasStoryboardStreamReference(record?.messageRef)))return result;
-  for(const record of sortStoryboardInlineRecords(records)){
-    const order=normalizeStoryboardInlineOrder(record.inlineOrder);
-    const position=storyboardInlineStreamPosition(record,order);
+  const families=storyboardInlineOrdinaryFamilies(records,Array.isArray(plans)?plans:[]);
+  for(const record of sortStoryboardInlineRecords(records,{plans})){
+    const originalOrder=normalizeStoryboardInlineOrder(record.inlineOrder);
+    const position=storyboardInlineStreamPosition(record,originalOrder,families),order=position?.order||originalOrder;
     if(!position)continue;
     const key=JSON.stringify([record.floor,position.scope,order.batchId,order.batchStartedAt]);
     if(!batches.has(key))batches.set(key,new Map());
@@ -1952,6 +1984,7 @@ export function normalizeStoryboardTaskState(value) {
     id: cleanId(raw.id), planId: cleanId(raw.planId), shotId: cleanId(raw.shotId), logId: cleanId(raw.logId),
     chatKey: str(raw.chatKey || raw.messageRef?.chatKey, 512), floor,
     messageRef: raw.messageRef ? normalizeStoryboardMessageReference(raw.messageRef) : null,
+    ...(Object.hasOwn(raw,'narrativeMoment')?{narrativeMoment:normalizeStoryboardStreamMoment(raw.narrativeMoment)||{version:1,invalid:true}}:{}),
     messageHash: str(raw.messageHash, 160), swipeId: int(raw.swipeId ?? raw.messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0),
     paragraphAnchor: raw.paragraphAnchor ? normalizeStoryboardParagraphAnchor(raw.paragraphAnchor) : null,
     paragraphSelection: raw.paragraphSelection ? normalizeStoryboardParagraphSelection(raw.paragraphSelection) : null,
@@ -2017,6 +2050,7 @@ function shotPlans(value, state = {}) {
         error: str(shot.error, 4000), partialFailureCount: int(shot.partialFailureCount, 0, 20, 0), attempt: int(shot.attempt, 0, 20, 0),
         paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null,
         paragraphSelection: shot.paragraphSelection ? normalizeStoryboardParagraphSelection(shot.paragraphSelection) : null,
+        ...(Object.hasOwn(shot,'narrativeMoment')?{narrativeMoment:normalizeStoryboardStreamMoment(shot.narrativeMoment)||{version:1,invalid:true}}:{}),
         shotSpec, compiledPrompt: safeData(shot.compiledPrompt, 10) || null, compositionDecision: safeData(shot.compositionDecision, 6) || null,
         sensitive: Boolean(shot.sensitive || shotSpec?.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited),
         promptLocked: Boolean(shot.promptLocked || shot.userEdited), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation),

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {normalizeStoryboardContinuationLinks,storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.236';
-import {storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.236';
+import {normalizeStoryboardContinuationLinks,storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.237';
+import {storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.237';
 import {verifyStoryboardOrdinaryContinuation as verify} from '../qianmu-storyboard-ordinary-continuation.js';
 import {createImageAdmission,createImageAdmissionIdentity} from '../qianmu-image-admission.js';
 import {beginImageAttempt,continueImageAttempt,claimImageAttempt,importImageAttempts,settleImageAttempt,imageAttemptScopeKey} from '../qianmu-image-attempts.js';
@@ -162,10 +162,10 @@ test('actual inline records, queued indicators and source resolver consume the s
   assert.deepEqual(job,before);f.host.chatMetadata={story_director_liminale:{}};assert.equal(c.storyboardValidatedAnchor(job).valid,false);assert.equal(c.storyboardCurrentInlineTasks().length,0);
 });
 
-test('actual automatic entry does not mistake a continued ordinary plan for an unrelated fresh budget before its coverage adapter is ready',async()=>{
+test('actual automatic entry never turns missing ordinary plan provenance into an unrelated fresh budget',async()=>{
   const f=await fixture(),state=core.createStoryboardDefaults(),notices=[];
   Object.assign(state,{enabled:true});Object.assign(state.automation,{autoCapture:true,autoGenerate:true});state.promptCompiler.enabled=true;
-  state.shotPlans=[{...core.createStoryboardWorkflowTicket({id:'old-ordinary-plan',chatKey:'chat',floor:0,messageRef:copy(f.ref),origin:'automatic',autoGenerate:true}),status:'completed',shots:[]}];
+  state.logs=[{id:'old-ordinary-log',status:'success',snapshot:{messageRef:copy(f.ref)}}];
   const before=copy(state),context=vm.createContext({...core,storyboardAutomaticEpoch:0,ctx:()=>f.host,getChatKey:()=>f.host.chatId,storyboardState:()=>state,
     storyboardGalleryRecords:()=>[],storyboardCompilePrompt:()=>assert.fail('must not call the model'),storyboardSubmitStreamPrepared:()=>assert.fail('must not queue'),
     storyboardEnsurePlan:()=>assert.fail('must not create a second plan'),uid:()=> 'test',saveSettings:()=>assert.fail('must not change state'),
@@ -173,7 +173,7 @@ test('actual automatic entry does not mistake a continued ordinary plan for an u
     featureRuntime:{load:async key=>key==='storyboardContract'?{finishStoryboardStreamCapture}:{resolveImageAccountNamespace:async()=>f.namespace}}});
   vm.runInContext(['storyboardAutomaticTicketFloor','storyboardFinishStreamCapture','storyboardPlanForMessage','storyboardPerformAutomaticCapture'].map(section).join('\n'),context);
   const ticket={state,epoch:0,chatKey:'chat',floor:0,message:f.message,messageRef:core.createStoryboardMessageReference({message:f.message,chatKey:'chat',floor:0}),createdAt:Date.now(),autoGenerate:true};
-  assert.equal(await context.storyboardPerformAutomaticCapture(ticket),false);assert.match(notices.at(-1),/旧版镜头计划/);assert.deepEqual(state,before);
+  assert.equal(await context.storyboardPerformAutomaticCapture(ticket),false);assert.match(notices.at(-1),/原流式计划缺失或重复/);assert.deepEqual(state,before);
 });
 
 test('ordinary admission without saved lineage uses the actual metadata-only fast path and never scans chat prose',async()=>{

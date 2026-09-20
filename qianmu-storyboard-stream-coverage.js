@@ -1,7 +1,7 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.236';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.236';
-import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.236';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.236';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.237';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.237';
+import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.237';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.237';
 import {assertStoryboardStreamMoment,createStoryboardStreamMoment,storyboardStreamMomentsOverlap} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 const coverages=new WeakMap();
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -49,7 +49,7 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
     if(!family)family={namespace,chatKey:root.chatKey,messageKey:root.messageKey,revisionId:root.revisionId,generationKey:root.stream?.generationKey||'',reference:copy(root)};
     return root;
   };
-  let matchingPlans=0;const selectedPlans=[],planProofs=new Map(),coveredSlots=new Set(),unsubmittedSlots=new Set(),pendingMoments=[];
+  let matchingPlans=0;const selectedPlans=[],planProofs=new Map(),coveredSlots=new Set(),unsubmittedSlots=new Set(),pendingMoments=[],pinSlots=new Map();
   for(const plan of plans){
     if(plan?.origin!=='automatic'||!matches(plan.messageRef))continue;
     const root=budget(plan.messageRef);
@@ -81,7 +81,7 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
     const moment=proof?assertStoryboardStreamMoment(proof.moment,window):readStoryboardOrdinaryMoment(job,oldWindow,stagesFor(job,row)),id=admission.logicalShotId,old=pins.get(id);
     if(moment)assertStoryboardStreamMoment(moment,window);
     remember(ref);
-    if(slot)coveredSlots.add(slot);
+    if(slot){coveredSlots.add(slot);const slots=pinSlots.get(id)||new Map();slots.set(slot,{planId:job.planId,shotId:job.planShotId});pinSlots.set(id,slots);}
     if(!moment){pendingMoments.push({id,spec:job.shotSpec,oldWindow});continue;}
     if(old&&JSON.stringify(old.moment)!==JSON.stringify(moment))fail();
     pins.set(id,{id,moment});if(pins.size>4)fail();
@@ -100,7 +100,7 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
   if(selectedPlans.some(plan=>!plans.includes(plan)||JSON.stringify(plan)!==planProofs.get(plan)))fail();
   // A budget family is NOT proof for the text of a later new shot. Its creator
   // must capture a fresh prefix/final source proof before image admission.
-  const coverage=freeze({version:1,scope:family,pins:[...pins.values()]});coverages.set(coverage,window);return coverage;
+  const coverage=freeze({version:1,scope:family,pins:[...pins.values()].map(pin=>({...pin,slots:[...(pinSlots.get(pin.id)?.values()||[])]}))});coverages.set(coverage,window);return coverage;
 }
 
 export function configureStoryboardStreamCoverage(context,payload,config){

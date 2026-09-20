@@ -121,7 +121,8 @@ test('generation freezes one batch before asynchronous adaptation and rendering 
   assert.ok(generate.indexOf('const inlineBatch =') < generate.indexOf('await storyboardAdaptShotForModel'));
   assert.match(generate, /inlineOrder: \{ \.\.\.inlineBatch, shotIndex: index, requestIndex: request.requestIndex \}/);
   assert.match(section('storyboardCreateJob'), /inlineOrder: normalizeStoryboardInlineOrder\(inlineOrder\)/);
-  assert.ok(render.indexOf('storyboardInlineRecordValid(record)') < render.indexOf('sortStoryboardInlineRecords(items.records)'));
+  const guard=render.indexOf('storyboardInlineRecordValid(record)'),sort=render.indexOf('sortStoryboardInlineRecords(items.records,');
+  assert.ok(guard>=0&&sort>guard);
   assert.doesNotMatch(render, /storyboardHydrateGallerySnapshots|storyboardReadSnapshotForRecord/);
   assert.match(section('storyboardInlineRecordValid'), /inactive|\['active', 'stale'\]/);
 });

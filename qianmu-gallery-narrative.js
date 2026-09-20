@@ -1,4 +1,4 @@
-import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js';
+import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.237';
 import { hashText } from './qianmu-storyboard-utils.js';
 
 const text = value => String(value ?? '');
@@ -79,7 +79,7 @@ export function buildGalleryNarrative({ records = [], messages = [], chatKey = '
  * a changed reply keeps an empty, explicit stale selection until the user clears it.
  */
 export function createGalleryNarrativeSession() {
-    let owner, chatKey, epoch, model, floorKey = '', paragraphKey = '', query = '', page = 0, open = false;
+    let owner, chatKey, epoch, model, plans = [], floorKey = '', paragraphKey = '', query = '', page = 0, open = false;
     function currentFloor() { return model?.floors.find(row => row.key === floorKey); }
     function selection() {
         if (!floorKey) return null;
@@ -90,20 +90,20 @@ export function createGalleryNarrativeSession() {
         return { ids: paragraph ? paragraph.ids : floor.ids, label: `第 ${floor.floor + 1} 层${paragraph ? ` · 第 ${paragraph.index + 1} 段` : ' · 全部静帧'}` };
     }
     return Object.freeze({
-        reset() { owner = undefined; chatKey = undefined; epoch = undefined; model = undefined; floorKey = ''; paragraphKey = ''; query = ''; page = 0; open = false; },
+        reset() { owner = undefined; chatKey = undefined; epoch = undefined; model = undefined; plans = []; floorKey = ''; paragraphKey = ''; query = ''; page = 0; open = false; },
         update(input) {
             if (input.owner !== owner || input.chatKey !== chatKey || input.epoch !== epoch) {
                 owner = input.owner; chatKey = input.chatKey; epoch = input.epoch;
                 floorKey = ''; paragraphKey = ''; query = ''; page = 0; open = false;
             }
-            model = buildGalleryNarrative(input); return this;
+            plans = Array.isArray(input.plans) ? input.plans : []; model = buildGalleryNarrative(input); return this;
         },
         get owner() { return owner; }, get chatKey() { return chatKey; }, get epoch() { return epoch; },
         get selected() { return selection(); }, get sourceCount() { return model?.floors.length || 0; },
         filter(records) { const selected = selection(); return selected ? records.filter(row => selected.ids.has(text(row.id))) : records; },
         orderGroups(groups) {
             if (!floorKey || floorKey === GALLERY_UNPLACED || selection()?.stale) return groups;
-            const ordered = sortStoryboardInlineRecords(groups.map(group => group.variants[0]));
+            const ordered = sortStoryboardInlineRecords(groups.map(group => group.variants[0]),{plans});
             const rank = new Map(ordered.map((record, index) => [record, index]));
             const paragraph = group => model.sources.get(text(group.variants[0]?.id))?.paragraphIndex ?? Number.MAX_SAFE_INTEGER;
             return [...groups].sort((a, b) => paragraph(a) - paragraph(b) || rank.get(a.variants[0]) - rank.get(b.variants[0]));

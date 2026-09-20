@@ -1,7 +1,8 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.236';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.237';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.237';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -52,10 +53,13 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
         || ref.chatKey !== chatKey || ref.stream.prefixDigest !== messageRef.stream.prefixDigest
         || JSON.stringify(ref.stream.family)!==JSON.stringify(messageRef.stream.family)) throw stop('流式镜头来源不一致，未提交');
     }
-    const planId = `stream-${budgetRef.stream.generationKey}`;
+    const originalScope=storyboardStreamCoverageScope(context.streamCoverage,context.compilerSources);
+    if(originalScope&&(originalScope.chatKey!==chatKey||originalScope.messageKey!==budgetRef.messageKey||originalScope.revisionId!==budgetRef.revisionId))throw stop('原计划与数量归属不一致，未提交');
+    const planId = budgetRef.stream?`stream-${budgetRef.stream.generationKey}`:originalScope?.planId;
+    if(!planId)throw stop('原普通计划缺少已核对身份，未另建自动任务');
     plan = state.shotPlans.find(row=>row.id===planId);
     if (!plan&&(context.streamCoverage||messageRef.stream.family))throw stop('原流式计划缺失，未另建自动任务');
-    if (plan && (plan.chatKey !== chatKey || plan.revisionId !== budgetRef.revisionId || plan.origin !== 'automatic')) throw stop('流式任务归属不一致，未提交');
+    if (plan && (plan.chatKey !== chatKey || plan.revisionId !== budgetRef.revisionId || plan.messageRef?.messageKey!==budgetRef.messageKey || plan.origin !== 'automatic')) throw stop('流式任务归属不一致，未提交');
     existing=Boolean(plan);
     if (existing) planSnapshot=JSON.stringify(plan);
     if (plan?.archiveRef) {
@@ -64,6 +68,12 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     }
     const offset = plan?.shots?.length || 0;
     if (offset + planned.length > 20) throw stop('本层任务记录已满，请从已有镜头记录中重试，未新增请求');
+    const oldMoments=new Map();
+    for(const pin of context.streamCoverage?.pins||[])for(const slot of pin.slots||[]){
+      if(slot.planId!==planId)continue;
+      if(oldMoments.has(slot.shotId)&&JSON.stringify(oldMoments.get(slot.shotId))!==JSON.stringify(pin.moment))throw stop('原镜头叙事位置冲突，未新增请求');
+      oldMoments.set(slot.shotId,pin.moment);
+    }
     // Do not evict queued/running plans to make room. Follow normal retention for
     // terminal plans only, and do not prune anything until all jobs are prepared.
     const dropped = !existing && state.shotPlans.length >= 300
@@ -71,6 +81,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     if (!existing && state.shotPlans.length-dropped.length >= 300) throw stop('任务记录暂满，请等待已有任务结束，未提交');
     plan ||= d.createStoryboardWorkflowTicket({id:planId,messageRef:budgetRef,chatKey,floor:context.floor,origin:'automatic',autoGenerate:true,createdAt:Date.now()});
     const newShots = planned.map((shot,index)=>({id:shot.id,title:shot.title || `镜头 ${offset+index+1}`,shotType:shot.shotType || 'custom',
+      narrativeMoment:copy(refs.get(shot.id).stream.moment),
       role:shot.role || 'custom',purpose:shot.purpose || '',prompt:String(shot.prompt || ''),negative:String(shot.negative || ''),
       // Only the existing queue may promote this row to queued. If preparation
       // is cancelled between mirrors, unsubmitted rows must not look in flight.
@@ -124,7 +135,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       if (dropped.length) void Promise.resolve(d.storyboardDeletePlanArchives(dropped)).catch(()=>{});
     }
     Object.assign(plan,{messageRef:copy(budgetRef),floor:context.floor,status:'prompt_ready',autoGenerate:true,
-      shots:[...(restored?.shots || plan.shots || []),...newShots],updatedAt:Date.now(),
+      shots:[...(restored?.shots || plan.shots || []).map(shot=>oldMoments.has(shot.id)?{...shot,narrativeMoment:copy(oldMoments.get(shot.id))}:shot),...newShots],updatedAt:Date.now(),
       continuityLedger:copy(coverage.continuityLedger || {}),continuityLedgerLayer:coverage.continuityLedgerLayer});
     // Retain the previous archive as recovery data until the next terminal
     // archive replaces it. Never delete the only full copy during preparation.
