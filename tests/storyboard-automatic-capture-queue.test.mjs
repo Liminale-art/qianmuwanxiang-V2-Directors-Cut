@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import * as board from '../qianmu-storyboard.js';
+import {repairStoryboardContract, storyboardContractFailure} from '../qianmu-storyboard-contract.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {
@@ -197,4 +198,37 @@ test('preparation rejection and early compiler refusal terminate their plans wit
     assert.equal(await e.context.storyboardHandleAutomaticCapture(0), false);
     assert.deepEqual(e.calls, []);
   }
+});
+
+test('an exhausted format-repair batch stays terminal on duplicate host events while the next floor still runs', async () => {
+  const e = environment(), requests = [];
+  e.chat.push({mes: 'second independent scene', send_date: 'second-floor'});
+  e.context.storyboardCompilePrompt = async (_root, {plan}) => {
+    const floor = plan.floor;
+    requests.push(['extract', floor]);
+    plan.status = 'compiling';
+    if (floor === 0) {
+      const result = await repairStoryboardContract({raw: '{ invalid', request: async () => {
+        requests.push(['repair', floor]); return '{ invalid';
+      }});
+      assert.equal(result.repairCalls, 3);
+      plan.status = 'failed';
+      plan.error = storyboardContractFailure(result).message;
+      return false;
+    }
+    plan.status = 'prompt_ready'; return true;
+  };
+  await e.context.storyboardHandleAutomaticCapture(0);
+  await e.context.storyboardHandleAutomaticCapture(1);
+  await e.flush();
+  assert.deepEqual(requests, [['extract', 0], ['repair', 0], ['repair', 0], ['repair', 0], ['extract', 1]]);
+  assert.deepEqual(e.calls, [['generate', 1, true]], 'failed extraction must never submit a picture');
+  assert.equal(e.state.shotPlans.find(plan => plan.floor === 0).status, 'failed');
+  assert.match(e.state.shotPlans.find(plan => plan.floor === 0).error, /已修复3次/);
+  for (let n = 0; n < 5; n++) assert.equal(await e.context.storyboardHandleAutomaticCapture(0), false);
+  e.context.storyboardScheduleAutomaticCapture(); await e.flush();
+  assert.equal(requests.length, 5, 'repeated receipts and a compiler wakeup cannot buy another repair budget');
+  assert.equal(e.context.storyboardAutomaticPending.size, 0);
+  assert.equal(e.context.storyboardAutomaticCurrent, null);
+  assert.equal(e.timers.size, 0);
 });
