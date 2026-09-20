@@ -4,6 +4,7 @@ import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-comma
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
+import {renderQianmuMainTabs,keepQianmuTabVisible,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js';
@@ -165,7 +166,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.202';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.202';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.210';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.211';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -262,7 +263,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.210';
+const VERSION = '1.59.211';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -298,7 +299,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.202') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.202') },
   historicalRestore: { label: '历史聊天分镜恢复', load: () => import('./qianmu-historical-restore.js?v=1.59.204') },
-  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.210') },
+  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.211') },
   storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.202') },
   storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.202') },
   storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.202') },
@@ -6836,9 +6837,7 @@ function renderModal() {
           <button class="sd-close" title="关闭"><i class="fa-solid fa-xmark"></i></button>
         </div>
       </header>
-      <nav class="sd-tabs">
-        ${tabs.map(([id, label]) => `<button class="sd-tab ${activeTab === id ? 'active' : ''}" data-tab="${id}">${label}</button>`).join('')}
-      </nav>
+      ${renderQianmuMainTabs(tabs,activeTab)}
       ${activeTab === 'castworld' && !editorLayout ? '<div class="sd-world-viewport">' : ''}
       <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'context'].includes(activeTab) || (activeTab === 'castworld' && worldPage === 'front') ? (!editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()) : renderActiveTab()}</main>
       ${activeTab === 'castworld' && !editorLayout ? `${renderWorldPageEdges()}</div>` : ''}
@@ -6906,7 +6905,7 @@ function renderModal() {
   const tabsBar = modal.querySelector('.sd-tabs');
   if (tabsBar) {
     tabsBar.scrollLeft = prevTabScroll;
-    tabsBar.querySelector('.sd-tab.active')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    keepQianmuTabVisible(tabsBar);
     updateTabsFade(tabsBar);
     if (!tabsBar.dataset.fadeBound) {
       tabsBar.dataset.fadeBound = '1';
@@ -6925,66 +6924,6 @@ function renderModal() {
   performanceRuntime.rendersByTab[activeTab || 'dashboard'] = (performanceRuntime.rendersByTab[activeTab || 'dashboard'] || 0) + 1;
 }
 
-// 标签栏横向滚动增强：滚轮纵→横、PC 鼠标按住拖动。移动端触摸滑动由 CSS overflow-x 原生承担，不在此干预。
-function bindTabsScrollControls(bar) {
-  // 滚轮：竖直滚轮转为横向滚动（横向滚轮/触控板横扫保持原生）
-  bar.addEventListener('wheel', (e) => {
-    if (e.deltaY === 0) return;
-    const max = bar.scrollWidth - bar.clientWidth;
-    if (max <= 2) return;   // 无可滚动内容则让滚轮冒泡给页面
-    bar.scrollLeft += e.deltaY;
-    e.preventDefault();
-  }, { passive: false });
-
-  // 鼠标按住拖动（仅鼠标；触摸交给原生）。拖动超阈值时吞掉随后的 click，避免误触切标签。
-  let dragging = false;
-  let startX = 0;
-  let startScroll = 0;
-  let moved = 0;
-  bar.addEventListener('pointerdown', (e) => {
-    if (e.pointerType !== 'mouse' || e.button !== 0) return;
-    dragging = true;
-    moved = 0;
-    startX = e.clientX;
-    startScroll = bar.scrollLeft;
-  });
-  bar.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const dx = e.clientX - startX;
-    moved = Math.max(moved, Math.abs(dx));
-    bar.scrollLeft = startScroll - dx;
-    if (moved > 3) {
-      bar.classList.add('sd-tabs-dragging');
-      if (bar.hasPointerCapture?.(e.pointerId) === false) { try { bar.setPointerCapture(e.pointerId); } catch (_) {} }
-      e.preventDefault();
-    }
-  });
-  const endDrag = (e) => {
-    if (!dragging) return;
-    dragging = false;
-    bar.classList.remove('sd-tabs-dragging');
-    try { bar.releasePointerCapture?.(e.pointerId); } catch (_) {}
-    if (moved > 3) {
-      // 抑制本次拖动末尾触发的 click（捕获阶段一次性拦截）
-      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
-      bar.addEventListener('click', swallow, { capture: true, once: true });
-      // 若拖动后未产生 click（极少数），下一帧自动移除该一次性监听，避免误吞下一次真实点击
-      setTimeout(() => bar.removeEventListener('click', swallow, { capture: true }), 0);
-    }
-  };
-  bar.addEventListener('pointerup', endDrag);
-  bar.addEventListener('pointercancel', endDrag);
-  bar.addEventListener('pointerleave', endDrag);
-}
-
-// 标签栏两端渐隐：仅在该侧确有可滚动内容时才加雾化遮罩，提示「这边还能滑」，滑到尽头则隐去该侧
-function updateTabsFade(bar) {
-  const max = bar.scrollWidth - bar.clientWidth;
-  const x = bar.scrollLeft;
-  const overflowing = max > 2;
-  bar.classList.toggle('sd-tabs-fade-left', overflowing && x > 2);
-  bar.classList.toggle('sd-tabs-fade-right', overflowing && x < max - 2);
-}
 
 function currentPlan() {
   return getChatStore().plan;
@@ -7218,8 +7157,8 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     const title = `${factions[a].name} · ${rel.kind} · ${factions[b].name}${rel.note ? `\n${rel.note}` : ''}`;
     edgeMeta.push({ rel, d, key });
     return `<g class="sd-geo-edge sd-geo-edge-${kindCls} ${primary ? 'sd-geo-edge-primary' : 'sd-geo-edge-secondary'}${selectedKinds.has(rel.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(rel.kind)}" data-ea="${htmlEscape(rel.a)}" data-eb="${htmlEscape(rel.b)}">`
-      + `<path class="sd-geo-edge-base" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none"${marker}><title>${htmlEscape(title)}</title></path>`
-      + `<path class="sd-geo-edge-flow" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none" pathLength="100"></path></g>`;
+      + `<path class="sd-geo-edge-base" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none"><title>${htmlEscape(title)}</title></path>`
+      + `<path class="sd-geo-edge-flow" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none"${marker}></path></g>`;
   }).join('');
 
   const eventPulses = activeEvents.map((event, eventIndex) => {
@@ -7227,7 +7166,7 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     const involved = factions.filter((f) => text.includes(f.name)).map((f) => f.id);
     const edge = edgeMeta.find(({ rel }) => involved.includes(rel.a) && involved.includes(rel.b));
     const stage = EVENT_STAGE_CLS[sanitizeEventStage(event.stage)] || 'brew';
-    if (edge) return `<path class="sd-geo-event-pulse sd-geo-event-pulse-${stage}" d="${edge.d}" pathLength="100" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></path>`;
+    if (edge) return `<path class="sd-geo-event-pulse sd-geo-event-pulse-${stage}${selectedKinds.has(edge.rel.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(edge.rel.kind)}" d="${edge.d}"><title>${htmlEscape(event.title || '世界事件')}</title></path>`;
     if (involved[0] && points.get(involved[0])) {
       const p = points.get(involved[0]);
       return `<circle class="sd-geo-event-node-pulse sd-geo-event-pulse-${stage}" cx="${p.x}" cy="${p.y}" r="18" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></circle>`;
@@ -7509,7 +7448,7 @@ function bindGeopoliticsTabEvents(root) {
       const active = selected.has(kind);
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
-      root.querySelectorAll('.sd-geo-edge[data-kind], .sd-geo-list-rel[data-kind]').forEach((item) => {
+      root.querySelectorAll('.sd-geo-edge[data-kind], .sd-geo-event-pulse[data-kind], .sd-geo-list-rel[data-kind]').forEach((item) => {
         if (item.getAttribute('data-kind') === kind) item.classList.toggle('sd-kind-hidden', !active);
       });
       hidePop();
@@ -8619,7 +8558,7 @@ function renderCastWorldTab() {
 
 function renderWorldPageEdges() {
   const store = getChatStore();
-  const hasContent = !!(store.factions?.length || store.worldEvents?.length);
+  const hasContent = !!(store.factions?.some((item) => String(item?.name || '').trim()) || store.worldEvents?.some((item) => String(item?.title || item?.essence || '').trim()));
   const available = settings.geopoliticsEnabled || worldPage === 'geopolitics';
   if (!available) return '';
   const label = worldPage === 'geopolitics' ? '返回世界正面' : '查看世界格局';
@@ -23253,7 +23192,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
   if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
-    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.210').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.211').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
       root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
       apply: value => storyboardSetArtistPreview(root, value), notify: toast,
     })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });
@@ -36002,7 +35941,7 @@ function init() {
       const btn = document.getElementById(FLOAT_ID);
       if (btn) applyFloatPosition(btn);
       const tabsBar = document.getElementById(MODAL_ID)?.querySelector('.sd-tabs');
-      if (tabsBar) updateTabsFade(tabsBar);
+      if (tabsBar) { keepQianmuTabVisible(tabsBar); updateTabsFade(tabsBar); }
       renderFloatingNotes();
       if (notesPanelOpen) syncNotesPanelSizeToViewport();
     };

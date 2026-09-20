@@ -5,6 +5,7 @@
   "files": [
     "qianmu-hive-ownership.js",
     "qianmu-idle-preload.js",
+    "qianmu-main-tabs.js",
     "qianmu-st-menu-entry.js",
     "qianmu-storyboard-complete-context.js",
     "qianmu-text-collection-presentation.js",

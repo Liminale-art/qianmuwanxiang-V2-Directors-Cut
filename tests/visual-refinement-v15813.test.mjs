@@ -8,7 +8,7 @@ const focusView = await readFile(new URL('qianmu-focus-view.js', root), 'utf8');
 const styles = await readFile(new URL('style.css', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
 
-assert.equal(manifest.version, '1.59.210');
+assert.equal(manifest.version, '1.59.211');
 assert.match(styles, /v1\.58\.13 · 精调视觉标尺与独立便笺工作层/);
 assert.match(styles, /--qm-type-card-title: 13px;[\s\S]*--qm-type-body: 12px;[\s\S]*--qm-type-label: 11px;[\s\S]*--qm-control-height: 30px;/, 'visual hierarchy must use the refined compact scale');
 assert.match(styles, /\.sd-tabs button \{ font-size: 13\.5px !important; \}/, 'main tabs must gain one visual step');
@@ -17,7 +17,7 @@ assert.match(styles, /input:not\([\s\S]*height: var\(--qm-control-height\);[\s\S
 assert.match(styles, /button:not\(\.sd-backdrop\):not\(\.sd-world-edge\) \{ border-radius: 9px !important; \}/, 'ordinary buttons must be rounded rectangles rather than circles');
 assert.match(styles, /\.sd-storyboard-shortcut :is\(i, \.qm-glyph-icon\)[\s\S]*width: 20px !important;[\s\S]*scale\(1\.08\)/, 'the optically small storyboard camera must be enlarged');
 
-const header = source.slice(source.indexOf('<header class="sd-header">'), source.indexOf('<nav class="sd-tabs">'));
+const header = source.slice(source.indexOf('<header class="sd-header">'), source.indexOf('${renderQianmuMainTabs(tabs,activeTab)}'));
 assert.match(header, /<h2>\$\{EXTENSION_NAME\}<\/h2>/, 'the header retains the title');
 assert.doesNotMatch(header, /一蝶振翅|万象入幕/, 'the compact header no longer includes the decorative slogan');
 assert.match(header, /qianmuVersionBadgeMarkup\(\)/, 'the header must render the real update-state badge');

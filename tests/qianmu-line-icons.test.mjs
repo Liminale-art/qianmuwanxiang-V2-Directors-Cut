@@ -71,7 +71,7 @@ await assert.rejects(access(new URL('assets/PHOSPHOR-LICENSE.txt', rootUrl)));
 assert.match(thirdPartyNotices, /Lucide Static `1\.39\.0`/);
 assert.match(thirdPartyNotices, /ISC License[\s\S]*Lucide Icons and Contributors/);
 
-assert.equal(manifest.version, '1.59.210');
+assert.equal(manifest.version, '1.59.211');
 assert.equal(packageJson.version, manifest.version);
 assert.equal(manifest.js, `index.js?v=${manifest.version}`);
 assert.equal(manifest.css, `style.css?v=${manifest.version}`);

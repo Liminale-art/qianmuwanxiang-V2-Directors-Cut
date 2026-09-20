@@ -26,10 +26,11 @@ assert.match(source, /settings\.geopoliticsRelationKinds = FACTION_RELATION_KIND
 assert.match(source, /settings\.geopoliticsView = view[\s\S]*saveSettings\(\)/);
 assert.match(source, /function renderFactionListView[\s\S]*sd-geo-list-card[\s\S]*sd-geo-list-rel/);
 
-// 活跃事件通过脉冲进入星图；减弱动态偏好必须关闭这些动画。
+// 活跃事件保留静态柔光，不再形成与实线不同步的游动脉冲。
 assert.match(source, /renderFactionStarMap\(factions, rels, activeEvents\)/);
 assert.match(source, /sd-geo-event-pulse-[^`]*stage/);
-assert.match(css, /@keyframes sd-geo-event-travel/);
+assert.doesNotMatch(css, /@keyframes sd-geo-event-travel/);
+assert.match(css, /\.sd-geo-event-pulse \{ stroke-dasharray: none; \}/);
 assert.match(css, /prefers-reduced-motion:[\s\S]*sd-geo-event-pulse/);
 
 // 本单元只调整可视化，不得改写原有世界格局的生成、合并与注入入口。

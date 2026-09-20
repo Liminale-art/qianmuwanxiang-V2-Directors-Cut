@@ -1229,15 +1229,30 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-theme-menu :is(.sd-theme-opt, .sd-theme-color):focus-visible { outline: 2px solid var(--sd-accent); outline-offset: -2px; }
 
 /* ---------- 6. 标签页 ---------- */
+#story-director-modal .sd-tabs-shell {
+  --qm-tab-page: var(--sd-sticky-bg);
+  --qm-tab-rail: color-mix(in srgb, var(--sd-text) 7%, var(--sd-sticky-bg));
+  flex: 0 0 auto;
+  min-width: 0;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  overflow: hidden;
+  padding: 6px 16px 0;
+  background: linear-gradient(to top, var(--qm-tab-page) 3px, transparent 3px), var(--qm-tab-rail);
+}
 #story-director-modal .sd-tabs {
   flex: 0 0 auto;
   display: flex;
   justify-content: safe center;          /* 整排标签居中于界面；safe 保证窄屏溢出时起点仍可滚到、不裁切 */
   gap: 4px;
   overflow-x: auto;
-  padding: 9px 16px 0;
-  border-bottom: 1px solid var(--sd-hairline);
-  background: var(--sd-glass-weak);
+  min-width: 0;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  border: 0;
+  background: transparent;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;                 /* 隐藏横向滚动条，改用两端渐隐提示可滑动 */
   -ms-overflow-style: none;
   /* 两端渐隐遮罩：默认不遮，按可滚动方向由 JS 加 .sd-tabs-fade-left/right 开启对应一侧 */
@@ -1253,7 +1268,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-tabs.sd-tabs-fade-right { --sd-fade-r: 28px; }
 
 #story-director-modal .sd-tab {
+  position: relative;
+  isolation: isolate;
   flex: 0 0 auto;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  min-height: 42px;
   border: none !important;
   border-radius: 11px 11px 0 0 !important;
   padding: 9px 15px !important;
@@ -1275,6 +1295,18 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   background: transparent !important;
   box-shadow: none !important;
 }
+#story-director-modal .sd-tab::before,
+#story-director-modal .sd-tab::after { content: ''; position: absolute; pointer-events: none; opacity: 0; }
+#story-director-modal .sd-tab.active::before,
+#story-director-modal .sd-tab.active::after { opacity: 1; }
+/* Classic: a raised, softly shouldered folder tab and a short ink marker. */
+#story-director-modal .sd-tab::before {
+  inset: 0; z-index: -1; background: var(--qm-tab-page);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 42' preserveAspectRatio='none'%3E%3Cpath d='M0 42C14 42 6 2 28 2H72C94 2 86 42 100 42Z'/%3E%3C/svg%3E") center/100% 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 42' preserveAspectRatio='none'%3E%3Cpath d='M0 42C14 42 6 2 28 2H72C94 2 86 42 100 42Z'/%3E%3C/svg%3E") center/100% 100% no-repeat;
+}
+#story-director-modal .sd-tab::after { bottom: 6px; left: calc(50% - 10px); width: 20px; height: 2px; border-radius: 2px; background: currentColor; }
+#story-director-modal .sd-tab:focus-visible { outline: 2px solid var(--sd-accent) !important; outline-offset: -3px !important; }
 
 /* ---------- 7. 内容区 / 卡片 / 表单 ---------- */
 #story-director-modal .sd-body {
@@ -3621,8 +3653,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal button.sd-geo-chip:not(.active) { opacity: .42; filter: saturate(.35); }
 #story-director-modal button.sd-geo-chip.active { border-color: color-mix(in srgb, var(--sd-accent) 48%, transparent); background: color-mix(in srgb, var(--sd-accent) 10%, var(--sd-glass-weak)); }
 
-/* 势面板：仅「星轨图卡」(.sd-geo-stage) 走恒暗星图皮肤，态势带/世界事件/详情等随主题。
-   事件卡在星轨卡之外、随主题，故五阶段配色挂在 .sd-geo-tab 上跨组件共用（饱和中间调，明暗皆可读）。 */
+/* 格局五阶段语义色跨星图与事件卡共用，星图自身随日夜模式切换。 */
 #story-director-modal .sd-geo-tab {
   --sd-geo-stage-brew: #d39a3c;
   --sd-geo-stage-erupt: #d2603f;
@@ -3630,17 +3661,41 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   --sd-geo-stage-fade: #7d869a;
   --sd-geo-stage-settle: #5a9e72;
 }
-/* 星轨图卡：恒暗星图皮肤（仅此卡不跟随主题，稳住星轨质感）。
-   覆盖核心语义变量 → 卡内图例/提示/详情面板随之变暗；势力语义色用提亮版保对比。 */
+/* 白昼保留纸面色温，夜间使用冷色深底；详情与星图共享一套可读色阶。 */
 #story-director-modal .sd-geo-stage {
-  --sd-text: #e9e7e2;
-  --sd-muted: rgba(233, 231, 226, .58);
-  --sd-border: rgba(233, 231, 226, .14);
-  --sd-hairline: rgba(233, 231, 226, .08);
-  --sd-card: rgba(255, 255, 255, .045);
-  --sd-glass: rgba(255, 255, 255, .06);
-  --sd-glass-weak: rgba(255, 255, 255, .035);
-  --sd-pre: rgba(0, 0, 0, .3);
+  --sd-text: var(--sd-geo-skin-text);
+  --sd-muted: var(--sd-geo-skin-muted);
+  --sd-border: var(--sd-geo-skin-border);
+  --sd-hairline: var(--sd-geo-skin-border);
+  --sd-card: var(--sd-geo-skin-card);
+  --sd-glass: var(--sd-geo-skin-card);
+  --sd-glass-weak: var(--sd-geo-skin-card);
+  --sd-pre: var(--sd-geo-skin-card);
+  --sd-accent: #486980;
+  --sd-geo-conflict: #a53e28;
+  --sd-geo-ally: #286a47;
+  --sd-geo-tension: #8c641a;
+  --sd-geo-neutral: #7b827f;
+  --sd-geo-vassal: #71609a;
+  --sd-geo-stable: #496c8b;
+  --sd-geo-decline: #77726c;
+  --sd-geo-clue-blue: #087996;
+  --sd-geo-skin-card: #ffffff60;
+  --sd-geo-skin-border: #52657233;
+  --sd-geo-skin-text: #293c49;
+  --sd-geo-skin-muted: #526371;
+  --sd-geo-skin-line: #617f9166;
+  --sd-geo-skin-axis: #557c91b3;
+  --sd-geo-skin-clue: #65818dcc;
+  --sd-geo-skin-glow: #89aeb529;
+  --sd-geo-skin-pop: #f8faf9;
+  --sd-geo-skin-bg: color-mix(in srgb, var(--qm-surface, #f6f4ed) 94%, #8bb4bd);
+  color: var(--sd-geo-skin-text);
+  padding: 10px 16px 14px; border-radius: 14px;
+  border: 1px solid var(--sd-geo-skin-border);
+  background: radial-gradient(100% 80% at 50% 15%, var(--sd-geo-skin-glow), transparent 72%), var(--sd-geo-skin-bg);
+}
+#story-director-modal:is(.sd-theme-dark:not([data-qm-mode="light"]), [data-qm-mode="dark"]) .sd-geo-stage {
   --sd-accent: #9fb8d6;
   --sd-geo-conflict: #e0795a;
   --sd-geo-ally: #79c294;
@@ -3654,18 +3709,13 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   --sd-geo-skin-card: rgba(15, 16, 22, .82);
   --sd-geo-skin-border: rgba(233, 231, 226, .12);
   --sd-geo-skin-text: #e9e7e2;
-  --sd-geo-skin-muted: rgba(233, 231, 226, .58);
+  --sd-geo-skin-muted: #acb7c5;
   --sd-geo-skin-line: rgba(186, 196, 220, .5);
   --sd-geo-skin-axis: rgba(200, 210, 235, .7);
   --sd-geo-skin-clue: rgba(214, 222, 240, .9);
   --sd-geo-skin-glow: rgba(70, 84, 120, .22);
   --sd-geo-skin-pop: rgba(28, 30, 38, .97);
-  color: var(--sd-geo-skin-text);
-  padding: 10px 16px 14px; border-radius: 14px;
-  border: 1px solid var(--sd-geo-skin-border);
-  background:
-    radial-gradient(120% 80% at 50% -10%, rgba(60, 72, 104, .18), transparent 60%),
-    #0c0d12;
+  --sd-geo-skin-bg: color-mix(in srgb, var(--qm-surface, #131820) 94%, #506b88);
 }
 #story-director-modal .sd-geo-stage-head { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 2px 0 4px; }
 #story-director-modal .sd-geo-view-switch { display: inline-grid; grid-template-columns: repeat(2, 1fr); gap: 2px; padding: 2px; border: 1px solid var(--sd-geo-skin-border); border-radius: 99px; background: rgba(255,255,255,.035); }
@@ -3681,69 +3731,54 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
     radial-gradient(58% 50% at 50% 49%, var(--sd-geo-skin-glow), transparent 72%);
   border-radius: 14px;
 }
-/* 背景星轨床：多条倾斜椭圆，各自恒定旋转、彼此交错（世界持续运转） */
+/* 静态星轨床：保留确定布局与层次，不让节点/连线依赖各自动画。 */
 #story-director-modal .sd-geo-bed { pointer-events: none; }
-#story-director-modal .sd-geo-orbit { transform-origin: center; animation: sd-geo-spin var(--dur, 140s) linear infinite; }
+#story-director-modal .sd-geo-orbit { transform-origin: center; }
 #story-director-modal .sd-geo-orbit-rev { animation-direction: reverse; }
 #story-director-modal .sd-geo-orbit ellipse {
   fill: none; stroke: var(--sd-geo-skin-line); stroke-width: 1; opacity: .5;
 }
-/* 环上随机散落的小星点，随环一同旋转、各自明灭 */
+/* 环上散落的小星点保持静止，避免与关系层产生相对运动。 */
 #story-director-modal .sd-geo-bed-dot {
   fill: var(--sd-geo-skin-clue); opacity: .5;
-  animation: sd-geo-bed-twinkle 5s ease-in-out infinite; animation-delay: var(--d, 0s);
 }
-@keyframes sd-geo-bed-twinkle { 0%, 100% { opacity: .25; } 50% { opacity: .65; } }
-@keyframes sd-geo-spin { to { transform: rotate(360deg); } }
-/* 中央轴心：呼吸大小的星 + 呼吸光环 */
+/* 中央轴心：静态星核与柔光环。 */
 #story-director-modal .sd-geo-axis { pointer-events: none; }
 #story-director-modal .sd-geo-axis-star {
   fill: var(--sd-geo-skin-axis); transform-origin: center;
-  animation: sd-geo-axis-breathe 4.6s ease-in-out infinite;
 }
-@keyframes sd-geo-axis-breathe { 0%, 100% { transform: scale(.62); opacity: .65; } 50% { transform: scale(1.18); opacity: 1; } }
 #story-director-modal .sd-geo-axis-halo {
   fill: none; stroke: var(--sd-geo-skin-axis); stroke-width: 1; opacity: .4;
-  transform-origin: center; animation: sd-geo-ring-breathe 6s ease-in-out infinite;
+  transform-origin: center;
 }
-@keyframes sd-geo-ring-breathe { 0%, 100% { opacity: .12; } 50% { opacity: .42; } }
 
-/* 关联线：极淡定位底线 + 一束流光顺线掠过（取消虚线、改流光感）。
-   线用 pathLength=100 归一化 → dasharray/keyframe 走固定值，普适地动起来 */
+/* 同一条贝塞尔路径形成柔化的液态边缘与实色线芯；无位移/流动动画。 */
 #story-director-modal .sd-geo-edge { transition: opacity .25s ease; }
 #story-director-modal .sd-geo-edge-secondary { opacity: 0; pointer-events: none; }
 #story-director-modal .sd-kind-hidden { display: none !important; }
-#story-director-modal .sd-geo-edge-base { stroke-width: 1.1; stroke-linecap: round; opacity: .3; }
+#story-director-modal .sd-geo-edge-base { stroke-width: 5; stroke-linecap: round; opacity: .27; filter: blur(1.4px); }
 #story-director-modal .sd-geo-edge-flow {
-  stroke-width: 1.6; stroke-linecap: round; opacity: .95; mix-blend-mode: screen;
-  stroke-dasharray: 22 100; stroke-dashoffset: 100;
-  animation: sd-geo-flow 2.6s linear infinite;
+  stroke-width: 1.7; stroke-linecap: round; opacity: .86;
+  stroke-dasharray: none; stroke-dashoffset: 0;
 }
-@keyframes sd-geo-flow { to { stroke-dashoffset: -22; } }
-/* 各关系基调：流速/底线浓淡各异 */
-#story-director-modal .sd-geo-edge-conflict .sd-geo-edge-flow { animation-duration: 1.4s; }
+/* 各关系只改变色彩与浓淡，不再用速度编码。 */
 #story-director-modal .sd-geo-edge-conflict .sd-geo-edge-base { opacity: .4; }
-#story-director-modal .sd-geo-edge-ally .sd-geo-edge-flow { animation-duration: 3.4s; }
-#story-director-modal .sd-geo-edge-tension .sd-geo-edge-flow { animation-duration: 2s; }
 #story-director-modal .sd-geo-edge-neutral .sd-geo-edge-base { opacity: .2; }
-#story-director-modal .sd-geo-edge-neutral .sd-geo-edge-flow { opacity: .6; animation-duration: 3.8s; }
-#story-director-modal .sd-geo-edge-vassal .sd-geo-edge-flow { animation-duration: 2.4s; }
+#story-director-modal .sd-geo-edge-neutral .sd-geo-edge-flow { opacity: .6; }
 
-/* 进行中的世界事件只以脉冲提示“哪里正在变化”，不额外常驻文字，避免再占用图面。 */
+/* 进行中的世界事件保留静态柔光，不再有与实线脱离的移动脉冲。 */
 #story-director-modal .sd-geo-event-pulses { pointer-events: none; }
 #story-director-modal .sd-geo-event-pulse,
 #story-director-modal .sd-geo-event-node-pulse {
-  fill: none; stroke: var(--sd-geo-stage-brew); stroke-width: 2; opacity: 0;
-  filter: drop-shadow(0 0 3px currentColor); animation-delay: var(--pulse-delay, 0s);
+  fill: none; stroke: var(--sd-geo-stage-brew); stroke-width: 4; opacity: .28;
+  filter: blur(1.8px); pointer-events: none;
 }
-#story-director-modal .sd-geo-event-pulse { stroke-dasharray: 10 90; animation: sd-geo-event-travel 3.2s ease-in-out infinite; }
-#story-director-modal .sd-geo-event-node-pulse { transform-box: fill-box; transform-origin: center; animation: sd-geo-event-ring 3.2s ease-out infinite; }
+#story-director-modal .sd-geo-event-pulse { stroke-dasharray: none; }
+#story-director-modal .sd-geo-event-node-pulse { stroke-width: 2; }
 #story-director-modal .sd-geo-event-pulse-erupt { stroke: var(--sd-geo-stage-erupt); }
 #story-director-modal .sd-geo-event-pulse-spread { stroke: var(--sd-geo-stage-spread); }
 #story-director-modal .sd-geo-event-pulse-fade { stroke: var(--sd-geo-stage-fade); }
 #story-director-modal .sd-geo-event-pulse-settle { stroke: var(--sd-geo-stage-settle); }
-@keyframes sd-geo-event-travel { 0%, 16% { opacity: 0; stroke-dashoffset: 100; } 35%, 72% { opacity: .85; } 100% { opacity: 0; stroke-dashoffset: -15; } }
-@keyframes sd-geo-event-ring { 0%, 12% { opacity: 0; transform: scale(.58); } 35% { opacity: .8; } 100% { opacity: 0; transform: scale(1.7); } }
 
 /* 势力主点：彩色状态点（同线索星点风格、更大）+ 上方小标签。主点一律不透明、无装饰 */
 #story-director-modal .sd-geo-node { cursor: pointer; outline: none; transition: opacity .25s ease; }
@@ -3775,9 +3810,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-node-rising .sd-geo-tag-text { fill: var(--sd-geo-ally); }
 #story-director-modal .sd-geo-node-turbulent .sd-geo-tag-text { fill: var(--sd-geo-conflict); }
 
-/* 线索星点：环绕势力局部轨道、荧光蓝、明灭、明显大于装饰点；透明大命中圈保移动端可点 */
-/* 线索星点：环绕势力局部轨道、明显大于装饰点；透明大命中圈保移动端可点。
-   动态＝缩小中的白点 ↔ 放大中的荧光蓝（放大时不透明、盖住轨道线交叠处，免透底不美观） */
+/* 线索星点明显大于装饰点；保留透明大命中圈，聚焦时才展开交互。 */
 #story-director-modal .sd-geo-clue-orbit { fill: none; stroke: var(--sd-geo-clue-blue); stroke-width: .9; opacity: .35; pointer-events: none; }
 #story-director-modal .sd-geo-clues { opacity: 0; pointer-events: none; }
 #story-director-modal .sd-geo-clue-hit { fill: transparent; cursor: pointer; pointer-events: none; }
@@ -3786,11 +3819,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   filter: drop-shadow(0 0 2px var(--sd-geo-clue-blue));
   transform-box: fill-box; transform-origin: center;
   transition: transform .2s ease, fill .2s ease;
-  animation: sd-geo-clue-pulse 4s ease-in-out infinite; animation-delay: var(--d, 0s);
-}
-@keyframes sd-geo-clue-pulse {
-  0%, 100% { transform: scale(.5); fill: #ffffff; }
-  50% { transform: scale(1.15); fill: var(--sd-geo-clue-blue); }
 }
 #story-director-modal .sd-geo-clue-hit:hover + .sd-geo-clue { transform: scale(1.25); fill: var(--sd-geo-clue-blue); animation-play-state: paused; }
 #story-director-modal .sd-geo-clue.sd-on { fill: var(--sd-geo-clue-blue); transform: scale(1.25); animation: none; filter: drop-shadow(0 0 5px var(--sd-geo-clue-blue)); }
@@ -3804,7 +3832,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-on { opacity: 1; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-near { opacity: .42; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-node-dot { stroke: rgba(255,255,255,.7); stroke-width: 1.2; filter: drop-shadow(0 0 5px currentColor); }
-#story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-node-focus-ring { opacity: .9; animation: sd-geo-focus-ring 2.8s linear infinite; filter: drop-shadow(0 0 3px currentColor); }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-node-focus-ring { opacity: .9; filter: drop-shadow(0 0 3px currentColor); }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-clues { opacity: 1; pointer-events: auto; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-clue-hit { pointer-events: all; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-dim .sd-geo-clue,
@@ -3812,7 +3840,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-on .sd-geo-edge-flow { stroke-width: 2.6; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-on .sd-geo-edge-base { opacity: .55; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-near .sd-geo-edge-flow { stroke-width: 1.3; opacity: .62; }
-@keyframes sd-geo-focus-ring { to { stroke-dashoffset: -20; } }
 
 /* 线索短句气泡 */
 #story-director-modal .sd-geo-cluepop {
@@ -7068,20 +7095,22 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-world-flip-shell { position: relative; grid-column: 1 / -1; width: 100%; min-height: 100%; touch-action: pan-y pinch-zoom; }
 #story-director-modal .sd-world-page { min-width: 0; }
 #story-director-modal .sd-world-edge {
-  position: absolute; z-index: 8; top: 12px; bottom: 12px; width: 24px; min-width: 0; height: auto; margin: 0; padding: 0; border: 0;
+  --sd-world-glow: color-mix(in srgb, var(--sd-accent) 62%, #00876f);
+  position: absolute; z-index: 8; top: 0; bottom: 0; width: 24px; min-width: 0; height: auto; margin: 0; padding: 0; border: 0;
   color: var(--sd-accent) !important; background: transparent !important; box-shadow: none !important; cursor: pointer;
   display: grid; place-items: center; touch-action: pan-y pinch-zoom;
 }
 #story-director-modal .sd-world-edge::before {
   content: ''; position: absolute; top: 0; bottom: 0; width: 1.5px; border-radius: 3px; pointer-events: none;
-  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--sd-accent) 12%, transparent) 8%, color-mix(in srgb, var(--sd-accent) 55%, transparent) 20%, var(--sd-accent) 36%, var(--sd-accent) 64%, color-mix(in srgb, var(--sd-accent) 55%, transparent) 80%, color-mix(in srgb, var(--sd-accent) 12%, transparent) 92%, transparent); opacity: .4;
-  filter: drop-shadow(0 0 2px var(--sd-text)) drop-shadow(0 0 5px var(--sd-accent));
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--sd-world-glow) 8%, transparent) 10%, color-mix(in srgb, var(--sd-world-glow) 40%, transparent) 25%, var(--sd-world-glow) 46%, var(--sd-world-glow) 54%, color-mix(in srgb, var(--sd-world-glow) 40%, transparent) 75%, color-mix(in srgb, var(--sd-world-glow) 8%, transparent) 90%, transparent); opacity: 0;
+  filter: drop-shadow(0 0 2px var(--sd-world-glow)) drop-shadow(0 0 6px var(--sd-world-glow));
 }
-#story-director-modal .sd-world-edge.has-content::before { animation: sd-world-edge-breathe 2.8s ease-in-out infinite; }
-#story-director-modal .sd-world-edge-left { left: 0; border-radius: 0; }
-#story-director-modal .sd-world-edge-right { right: 0; border-radius: 0; }
-#story-director-modal .sd-world-edge-left::before { left: 2px; }
-#story-director-modal .sd-world-edge-right::before { right: 2px; }
+#story-director-modal:is(.sd-theme-dark:not([data-qm-mode="light"]), [data-qm-mode="dark"]) .sd-world-edge { --sd-world-glow: color-mix(in srgb, var(--sd-accent) 55%, #70ffdc); }
+#story-director-modal .sd-world-edge.has-content::before { opacity: .88; animation: sd-world-edge-breathe 2.8s ease-in-out infinite; }
+#story-director-modal .sd-world-edge-left { left: -1px; border-radius: 0; }
+#story-director-modal .sd-world-edge-right { right: -1px; border-radius: 0; }
+#story-director-modal .sd-world-edge-left::before { left: 0; }
+#story-director-modal .sd-world-edge-right::before { right: 0; }
 #story-director-modal .sd-world-edge i { font-size: 12px; opacity: .6; }
 #story-director-modal .sd-world-edge:is(:hover, :focus-visible) i { opacity: 1; }
 #story-director-modal .sd-world-edge:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: -2px; }

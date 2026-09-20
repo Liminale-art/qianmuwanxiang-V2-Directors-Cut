@@ -33,7 +33,8 @@ assert.doesNotMatch(source, /点选势力查看两层牵连，再点一次收起
 assert.doesNotMatch(source, /<h3>势力格局<\/h3>/);
 assert.match(source, /sd-geo-node-focus-ring/);
 assert.doesNotMatch(css, /\.sd-geo-focused \.sd-geo-node\.sd-on \.sd-geo-node-dot\s*\{[^}]*transform:/);
-assert.match(css, /\.sd-geo-focused \.sd-geo-node\.sd-on \.sd-geo-node-focus-ring\s*\{[^}]*stroke-dashoffset|@keyframes sd-geo-focus-ring/);
+assert.match(css, /\.sd-geo-focused \.sd-geo-node\.sd-on \.sd-geo-node-focus-ring\s*\{[^}]*opacity: \.9/);
+assert.doesNotMatch(css, /@keyframes sd-geo-focus-ring/);
 
 // 任务仅变更叙述人称：四个任务视角锚点一致为第三人称，原有核心约束仍在。
 const systemPrompt = source.slice(source.indexOf('const DEFAULT_SYSTEM_PROMPT'), source.indexOf('const JSON_SCHEMA_TEXT'));
