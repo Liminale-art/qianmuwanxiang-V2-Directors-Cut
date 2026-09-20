@@ -1,13 +1,29 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js';
+import {hasStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.224';
+import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences} from './qianmu-storyboard-stream-coverage.js?v=1.59.224';
+import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.224';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
 import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
-import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.223';
+import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.224';
 import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
-export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.223';
+export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.224';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
 const windows = new WeakMap();
+export async function captureStoryboardStreamCoverage(window,rows){
+  if(!Array.isArray(rows))throw changed();
+  if(!rows.some(row=>hasStoryboardStreamReference(row?.snapshot?.messageRef||row?.messageRef)))return null;
+  const scope=windows.get(window);if(!scope)throw changed();window.assertCurrent();
+  return readStoryboardStreamCoverage(window,rows,{message:scope.getContext().chat[window.floor],namespace:scope.namespace,
+    resolve:ref=>resolveStoryboardMessageReference(ref,scope.getContext().chat,{chatKey:window.current.messageRef.chatKey})});
+}
+export async function prepareStoryboardStreamHandoff(result,context,frame){
+  if(!windows.has(context.compilerSources))throw changed();
+  const messageRef=result.shouldGenerate?await createStoryboardStreamMessageReference(frame):null;
+  return {result,messageRef,shotReferences:bindStoryboardStreamShotReferences(messageRef,result,context.compilerSources)};
+}
 const exact = (value,keys) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).length === keys.length && Object.keys(value).every(key=>keys.includes(key));
 

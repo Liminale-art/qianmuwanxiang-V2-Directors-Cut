@@ -10,7 +10,7 @@ import {
 import { characterCastingInput } from './qianmu-character-casting.js';
 import {completeStoryboardText,assertStoryboardInputBudget} from './qianmu-storyboard-complete-context.js';
 import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings, storyboardPromptFormatBudget, STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS } from './qianmu-prompt-formats.js';
-import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.221';
+import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.224';
 export {createStoryboardCompilerAttempt} from './qianmu-storyboard-compiler-diagnostics.js?v=1.59.217';
 export {callStoryboardCompiler} from './qianmu-storyboard-compiler-transport.js?v=1.59.217';
 // Pass the shared contract helpers explicitly, avoiding a circular versioned
@@ -1162,6 +1162,7 @@ export async function repairStoryboardContract({raw,validation=null,request,opti
 const contractFailureReasons = Object.freeze({
   source_evidence: '变化来源或原句无法核对', continuity_link: '连续场景承接无法核对', state_point: '镜头时点或人物分支无法核对',
   stream_readiness: '提前画面的人物、场景或内容依据无法核对',
+  stream_coverage: '已提交画面的叙事落点无法核对', stream_budget: '补充画面超过本层剩余额度',
   expression_request_failed: '表达请求失败，未提交生图',
   json_syntax: '返回不是有效 JSON', ambiguous_json: '返回包含多个 JSON 对象',
   empty: '返回为空或缺少内容', max_bytes: '返回超过大小上限',
@@ -1397,4 +1398,4 @@ export function adaptStoryboardPlanContract(value, options = {}) {
     decisions: value.decisions,
   };
 }
-export {captureStoryboardCompilerSources,openStoryboardCompilerContinuity,captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-compiler-sources.js?v=1.59.223';
+export {captureStoryboardCompilerSources,openStoryboardCompilerContinuity,captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference,captureStoryboardStreamCoverage,prepareStoryboardStreamHandoff} from './qianmu-storyboard-compiler-sources.js?v=1.59.224';

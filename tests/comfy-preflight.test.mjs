@@ -67,7 +67,7 @@ function environment({automatic=false}={}) {
     storyboardScheduleAutomaticCapture:()=>{},storyboardScheduleInlineRender:()=>{},storyboardSchedulePlanArchive:()=>{},
     storyboardResolveRoutingProfile:(s,route)=>({...s.profiles[route.providerId],...(s.parameterPresets.find(p=>p.id===route.parameterPresetId)?.profile||{})}),
     storyboardCompilerContext:async()=>{calls.push('context');return {floor:0,messages:[],worldRows:[]};},
-    storyboardRequestHeaders:()=>({}),
+    storyboardRequestHeaders:()=>({}),storyboardGalleryRecords:()=>[],
     featureRuntime:{load:async key=>{calls.push(key);return key==='comfyPreflight'?preflight:key==='comfyTargets'?{requireTrustedComfyConnection:async()=>calls.push('trust-check')}:{...contract,buildStoryboardPlanContractRequest:()=>({messages:[],schema:{},schemaId:'test'})};}},
     storyboardCompilerRequestConfig:()=>({}),storyboardCallCompiler:async()=>{calls.push('llm');return '{}';},
     storyboardCompilerResult:async()=>({shouldGenerate:false,skipReason:'no shot'}),sanitizeStoryboardDiagnosticData:value=>value,

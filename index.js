@@ -259,12 +259,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.223';
+} from './qianmu-storyboard.js?v=1.59.224';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.223';
+const VERSION = '1.59.224';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -317,7 +317,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.223'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.224'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -537,7 +537,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.223'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.224'),
   },
   storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.219')},
   theaterCatalog: {
@@ -19054,6 +19054,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     inputGuard.assertCurrent();
     const contract = await featureRuntime.load('storyboardContract');
     inputGuard.assertCurrent();
+    if(automatic||stream)context.streamCoverage=await contract.captureStoryboardStreamCoverage(context.compilerSources,[...state.logs,...storyboardGalleryRecords()]);
     inputGuard.compilerAttempt=contract.createStoryboardCompilerAttempt({call:storyboardCallCompiler,guard:()=>inputGuard.assertCurrent(),uid,sanitize:sanitizeStoryboardDiagnosticData,startedAt,floor,
       model:(settings.apiProfiles||[]).find(item=>item.id===state.promptCompiler.apiProfileId)?.model||(settings.providerMode==='external'?settings.model:'')||''});
     // In a mixed batch, request only reachable closed-model expressions alongside pinned Comfy formats.
@@ -19114,7 +19115,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       ...(contractRequest.promptFormats?.length ? {promptFormats:contractRequest.promptFormats,maxOutputTokens:contractRequest.maxTokens} : {}),
       messages: contractRequest.messages,
     };
-    if(stream){const messageRef=result.shouldGenerate?await contract.createStoryboardStreamMessageReference(inputGuard.streamFrame):null;await onPrepared({result,context,compilerInput,inputGuard,messageRef});inputGuard.assertCurrent();return result.shouldGenerate===true&&!result.manualRequired;}
+    if(stream){await onPrepared({...await contract.prepareStoryboardStreamHandoff(result,context,inputGuard.streamFrame),context,compilerInput,inputGuard});inputGuard.assertCurrent();return result.shouldGenerate===true&&!result.manualRequired;}
     if (!result.shouldGenerate) {
       state.prompt = '';
       state.negative = '';

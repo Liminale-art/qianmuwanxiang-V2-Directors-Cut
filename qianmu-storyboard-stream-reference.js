@@ -1,6 +1,7 @@
 // Persist only a bounded source proof, never a second copy of private prose.
 // The cheap fingerprint is for synchronous UI linking. Paid dispatch verifies
 // both SHA-256 proofs again against the actual selected ST message.
+import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 const fail=()=>{throw Object.assign(new Error('流式原文或回复身份已变化，未继续提交'),{code:'storyboard_stream_source'});};
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const fields=['sentAt','startedAt','id','activeSentAt','activeId'];
@@ -27,9 +28,11 @@ export function normalizeStoryboardStreamReference(ref){
     ||!/^[a-f0-9]{8}$/.test(proof.prefixHash||'')||ref.revisionHash!==proof.prefixHash
     ||ref.revisionId!==`stream:${proof.generationKey}`||!ref.chatKey||!ref.messageKey
     ||ref.role!=='assistant'||!(ref.baseSendDate||ref.baseGenerationId)
-    ||!Number.isSafeInteger(ref.swipeId)||ref.swipeId<0||ref.swipeId>10000)return {version:1,invalid:true};
+    ||!Number.isSafeInteger(ref.swipeId)||ref.swipeId<0||ref.swipeId>10000
+    ||Object.hasOwn(proof,'moment')&&!normalizeStoryboardStreamMoment(proof.moment))return {version:1,invalid:true};
   return {version:1,generation:Object.fromEntries(fields.map(key=>[key,g[key]])),generationKey:proof.generationKey,
-    prefixLength:proof.prefixLength,prefixHash:proof.prefixHash,prefixDigest:proof.prefixDigest};
+    prefixLength:proof.prefixLength,prefixHash:proof.prefixHash,prefixDigest:proof.prefixDigest,
+    ...(Object.hasOwn(proof,'moment')?{moment:normalizeStoryboardStreamMoment(proof.moment)}:{})};
 }
 
 export function resolveStoryboardStreamReference(reference,messages,createReference){

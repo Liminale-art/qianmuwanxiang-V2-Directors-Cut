@@ -32,7 +32,7 @@ async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nSh
         const {prompt_atoms,prompt_renderings,...shot}=response().shots[0];
         const anchor={floor,branch_id:'present',paragraph_id:'P1',quote:first};
         reply={schema:options.jsonSchemaName,should_generate:!wait,skip_reason:wait?'等待人物在场明确':'',decisions:[],shots:wait?[]:[{...shot,
-          state_point:{branchId:'present',paragraphId:'P1',evidence:first},stream_support:{scene:anchor,content:anchor,presence:[{character_id:'A',source:anchor}]}}],
+          state_point:{branchId:'present',paragraphId:'P1',evidence:first},...(payload.constraints.streaming?{stream_support:{scene:anchor,content:anchor,presence:[{character_id:'A',source:anchor}]}}:{})}],
           source_states:payload.required_state_floors.map(floor=>({floor,roster:{branches:[{id:'present',layer:'present'}],subjectIds:['A']},events:[]})),continuity_links:[]};
       }else reply={schema:options.jsonSchemaName,shots:[{shot_id:'S1',prompt_atoms:response().shots[0].prompt_atoms,
         prompt_renderings:Object.fromEntries(options.promptFormats.map(format=>[format,response().shots[0].prompt_renderings[format]]))}]};
@@ -56,11 +56,25 @@ test('actual streaming compiler prepares an alternate floor without touching wor
   assert.deepEqual(f.prepared.context.compilerSources.stream.stableParagraphIds,['P1']);assert.match(JSON.stringify(f.calls[0].payload),/She reaches/);
   assert.doesNotMatch(JSON.stringify(f.calls[1].payload),/She reaches/);assert.throws(()=>f.prepared.inputGuard.assertCurrent(),{code:'storyboard_input_changed'});f.assertReleased();
   assert.match(f.prepared.messageRef.revisionId,/^stream:[a-f0-9]{64}$/);assert.ok(f.prepared.messageRef.stream.prefixLength>0);
+  assert.equal(f.prepared.shotReferences.length,1);assert.equal(f.prepared.shotReferences[0].stream.moment.paragraphId,'P1');
 });
 
 test('actual streaming wait leaves existing manual prompts and compiler stages intact without persisting provisional events',async()=>{
   const f=await fixture({wait:true});assert.equal(await f.run(),false);assert.equal(f.prepared.result.shouldGenerate,false);
   assert.deepEqual(editable(f.state),f.initial);assert.deepEqual(f.counts,{requests:1,hostSaves:0,saves:0,renders:0,wakes:1});assert.deepEqual(f.state.logs,[]);f.assertReleased();
+});
+
+for(const final of [false,true])test(`actual ${final?'finished-floor':'later streaming'} compiler consumes existing submitted moments before expression`,async()=>{
+  const f=await fixture();assert.equal(await f.run(),true);
+  const ref=copy(f.prepared.shotReferences[0]);
+  f.state.logs.push({id:'occupied',status:'queued',snapshot:{messageRef:ref,chatKey:ref.chatKey,automatic:true,
+    imageAdmission:{version:1,namespace:'st-user:route-test',chatKey:ref.chatKey,messageKey:ref.messageKey,revisionId:ref.revisionId,logicalShotId:'a'.repeat(64),automaticSlot:true,attemptId:'occupied'}}});
+  assert.equal(await f.run(final?{stream:null,onPrepared:null,automatic:true}:{}),false,JSON.stringify(f.errors));
+  assert.equal(f.counts.requests,3);assert.equal(f.calls[2].payload.committed_images.length,1);
+  assert.equal(f.calls[2].payload.constraints.committed_images.occupied,1);assert.deepEqual(f.jobs,[]);
+  if(!final){assert.deepEqual(editable(f.state),f.initial);assert.equal(f.prepared.shotReferences.length,0);assert.equal(f.counts.hostSaves,0);}
+  else assert.equal(f.counts.hostSaves,1);
+  f.assertReleased();
 });
 
 test('no closed visible prose waits before any model request, including paragraphs removed by extraction rules',async()=>{
