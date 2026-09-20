@@ -8,14 +8,17 @@ import * as capture from '../qianmu-storyboard-floor-capture.js';
 import {migrateQianmuChatStoreV2} from '../qianmu-data-migrations.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.233';
+import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.233';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
 const ref=core.createStoryboardMessageReference({chatKey:'chat',floor:0,message:{mes:'Alice cooks.',send_date:'synthetic',swipe_id:0}});
 const baseline=()=>({id:'old',chatKey:'chat',floor:0,messageRef:copy(ref),swipeId:0,inline:true,url:'/old.png',snapshot:{prompt:'original recipe'}});
-function prepared({count=3,old=[baseline()],id='take',time=100,pending=[],history=[]}={}) {
-  const plan={...core.createStoryboardWorkflowTicket({id,chatKey:'chat',floor:0,messageRef:ref}),shots:Array.from({length:count},(_,i)=>({id:`s${i}`}))};
-  plan.floorTake={...takes.createStoryboardFloorTake(plan,old,row=>row.inline,pending,history),startedAt:time};
-  const jobs=plan.shots.map((shot,i)=>({id:`${id}-job-${i}`,planId:id,planShotId:shot.id,chatKey:'chat',floor:0,messageRef:copy(ref),inlineByDefault:true,
+function prepared({count=3,old=[baseline()],id='take',time=100,pending=[],history=[],reference=ref,messageKeys=null}={}) {
+  const plan={...core.createStoryboardWorkflowTicket({id,chatKey:'chat',floor:0,messageRef:reference}),shots:Array.from({length:count},(_,i)=>({id:`s${i}`}))};
+  plan.floorTake={...takes.createStoryboardFloorTake(plan,old,row=>row.inline,pending,history,messageKeys),startedAt:time};
+  const jobs=plan.shots.map((shot,i)=>({id:`${id}-job-${i}`,planId:id,planShotId:shot.id,chatKey:'chat',floor:0,messageRef:copy(reference),inlineByDefault:true,
     profile:{count:'1'},inlineOrder:{version:1,batchId:id,batchStartedAt:time,shotIndex:i,requestIndex:1}}));
   takes.bindStoryboardFloorTakeJobs(plan,jobs);
   return {plan,jobs,old};
@@ -120,6 +123,120 @@ async function entryFixture(){
     click:()=>e.context.storyboardOnChatClick({target:{closest:()=>button},preventDefault(){},stopPropagation(){}}),
     deliver:job=>e.context.storyboardDeliverGatewayResult(job,null,{images:[{url:'/synthetic.png'}]},{service:true})};
 }
+
+async function continuedEntryFixture(){
+  const e=await entryFixture(),host=e.context.ctx(),message=host.chat[0];
+  Object.assign(message,{name:'Alice',send_date:'day-1',gen_started:'generation-1',swipe_id:0});
+  const options={getContext:()=>host,epoch:()=>0,resolveNamespace:async()=>'st-user:route-test',isCurrent:()=>true,floor:0,createReference:core.createStoryboardMessageReference};
+  const source=async()=>{const frame=await captureStoryboardStreamFrame(options);try{return await createStoryboardStreamMessageReference(frame);}finally{frame.close();}};
+  message.mes+='\n\n';const original=await source();e.gallery[0].messageRef=copy(original);e.gallery[0].taskId='original-delivered';
+  Object.assign(e.oldPlan,{messageRef:copy(original),revisionId:original.revisionId});
+  const handle=captureStoryboardContinuation({...options,type:'continue'});message.mes+='The light dims.\n\n';
+  Object.assign(message,{send_date:'day-2',gen_started:'generation-2',swipe_info:[{send_date:'day-2',gen_started:'generation-2',extra:{}}]});
+  try{await saveStoryboardContinuation(handle,options.resolveNamespace,host.chatMetadata.story_director_liminale,async()=>{});}finally{handle.close();}
+  const resolve=reference=>core.resolveStoryboardMessageReference(reference,host.chat,{chatKey:'chat-a',namespace:'st-user:route-test',metadata:host.chatMetadata});
+  const continued=await bindStoryboardStreamBudgetFamily(await source(),original,'st-user:route-test',resolve);
+  // ST trims terminal whitespace at completion; the simplified compiler fixture
+  // treats every split segment as a paragraph and must not invent an empty one.
+  message.mes=message.mes.trimEnd();
+  e.gallery.push({...copy(e.gallery[0]),id:'continued-image',taskId:'continued-delivered',messageRef:copy(continued),snapshot:{prompt:'continued recipe'}});
+  const pending=(id,reference)=>({id,chatKey:'chat-a',messageRef:copy(reference),status:'generating',uiVisible:true,inlineByDefault:true,target:'floor',planId:e.oldPlan.id});
+  e.context.storyboardQueue.push(pending('original-pending',original));e.context.storyboardActiveJobs.set('continued-pending',pending('continued-pending',continued));
+  e.context.storyboardInlineRecordValid=row=>row.inline&&resolve(row.messageRef).state==='active';
+  e.context.storyboardValidatedAnchor=job=>{const result=resolve(job.messageRef);return {...result,valid:result.state==='active'};};
+  return {...e,host,message,original,continued,resolve};
+}
+
+test('actual continued floor retake captures both key generations, commits together and preserves all old recipes',async()=>{
+  const e=await continuedEntryFixture(),old=e.gallery.map(copy);assert.equal(await e.click(),true,JSON.stringify(e.notices));
+  const take=e.jobs[0].floorTake;assert.equal(take.version,2);assert.deepEqual(take.messageKeys,[e.continued.messageKey,e.original.messageKey]);
+  assert.deepEqual(take.baselineIds,['previous-image','continued-image']);
+  assert.deepEqual(new Set(take.baselineTaskIds),new Set(['original-delivered','continued-delivered','original-pending','continued-pending']));
+  await e.deliver(e.jobs[2]);await e.deliver(e.jobs[0]);assert.ok(e.gallery.slice(0,2).every(row=>row.inline));
+  await e.deliver(e.jobs[1]);assert.ok(e.gallery.slice(0,2).every(row=>!row.inline));assert.equal(e.gallery.filter(row=>row.inline).length,3);
+  assert.deepEqual(e.gallery.slice(0,2).map(row=>({...copy(row),inline:true})),old);
+  assert.equal(e.history.length,2);assert.ok(e.history.every(row=>row.version===1&&!Object.hasOwn(row,'messageKeys')));
+  assert.deepEqual(new Set(e.history.map(row=>row.messageKey)),new Set(take.messageKeys));
+});
+
+test('late old-key and continued-key receipts remain gallery-only after deleting the whole replacement, while new user work stays independent',async()=>{
+  const e=await continuedEntryFixture();assert.equal(await e.click(),true);for(const job of e.jobs)await e.deliver(job);
+  e.gallery.splice(2);e.history.splice(0,e.history.length,...copy(e.history));
+  for(const [id,reference] of [['original-pending',e.original],['continued-pending',e.continued]]){
+    const late={...copy(e.jobs[0]),id,planId:e.oldPlan.id,messageRef:copy(reference)};delete late.floorTake;
+    await e.deliver(late);assert.equal(e.gallery.find(row=>row.taskId===id).inline,false);
+    const fresh={...copy(late),id:`new-user-${id}`};await e.deliver(fresh);assert.equal(e.gallery.find(row=>row.taskId===fresh.id).inline,true);
+  }
+});
+
+test('failed save of a continued replacement rolls back all key receipts and keeps both old generations readable',async()=>{
+  const e=await continuedEntryFixture();assert.equal(await e.click(),true);await e.deliver(e.jobs[0]);await e.deliver(e.jobs[1]);
+  e.setSaveFailure(true);await assert.rejects(e.deliver(e.jobs[2]),/metadata save failed/);
+  assert.equal(e.history.length,0);assert.ok(e.gallery.slice(0,2).every(row=>row.inline));assert.ok(e.gallery.slice(2).every(row=>!row.inline));
+  e.setSaveFailure(false);await e.deliver(e.jobs[2]);assert.equal(e.history.length,2);assert.ok(e.gallery.slice(0,2).every(row=>!row.inline));
+});
+
+test('corrupt or foreign-account continuation ownership stops the actual retake before plan creation or any model request',async()=>{
+  for(const field of ['digest','id','namespace']){
+    const e=await continuedEntryFixture(),row=e.host.chatMetadata.story_director_liminale.storyboardContinuations[0],before=copy(e.gallery),plans=e.state.shotPlans.length;
+    row[field]=field==='namespace'?'st-user:other':'a'.repeat(64);
+    assert.equal(await e.click(),false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);assert.equal(e.state.shotPlans.length,plans);assert.deepEqual(e.gallery,before);
+  }
+});
+
+test('host identity changing while the retake chooser is open cancels even when prose and swipe are unchanged',async()=>{
+  const e=await continuedEntryFixture(),before=copy(e.gallery);
+  e.context.storyboardChooseCaptureMode=async()=>{e.message.gen_started='another-generation';return {mode:'auto'};};
+  assert.equal(await e.click(),false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);assert.deepEqual(e.gallery,before);
+});
+
+test('multi-key take manifests survive normalizers and retries but malformed or downgraded aliases never become a one-key take',()=>{
+  const current={...ref,messageKey:'continued',revisionId:'new-revision'},f=prepared({reference:current,messageKeys:['continued',ref.messageKey]});
+  const normalized=core.normalizeStoryboardState({shotPlans:[f.plan]}).shotPlans[0];assert.deepEqual(normalized.floorTake,f.plan.floorTake);
+  assert.deepEqual(core.sanitizeStoryboardSnapshot({...f.jobs[0],source:'novel'}).floorTake,f.plan.floorTake);
+  takes.applyStoryboardFloorTakeToJob(normalized,f.jobs[0]);
+  for(const mutate of [take=>take.version=1,take=>take.version=99,take=>delete take.messageKeys,take=>take.messageKeys=[],
+    take=>take.messageKeys=['other',ref.messageKey],take=>take.messageKeys=['continued','continued'],take=>take.messageKeys=['continued','bad\nkey'],
+    take=>take.messageKeys=['continued',...Array.from({length:33},(_,n)=>`old-${n}`)]]){
+    const bad=copy(f.plan.floorTake);mutate(bad);assert.equal(takes.normalizeStoryboardFloorTake(bad).invalid,true);
+    assert.throws(()=>receipts.mergeStoryboardFloorTakeReceipts([],[bad]));assert.equal(takes.storyboardFloorTakeInitialInline({...f.jobs[0],floorTake:bad}),false);
+  }
+});
+
+test('successive multi-key takes dominate older committed/late groups across aliases without deleting any image',async()=>{
+  const b={...ref,messageKey:'b',revisionId:'rev-b'},c={...ref,messageKey:'c',revisionId:'rev-c'};
+  const first=prepared({id:'take-b',count:1,time:100,reference:b,messageKeys:['b',ref.messageKey]}),rows=[...first.old,image(first.jobs[0])],history=[];
+  await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);
+  const second=prepared({id:'take-c',count:1,time:200,reference:c,messageKeys:['c',ref.messageKey,'b'],old:rows,history});
+  rows.push(image(second.jobs[0]));await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);
+  const late=image(first.jobs[0],{id:'late-old-take'});rows.push(late);await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);
+  assert.equal(rows.length,4);assert.equal(late.inline,false);assert.equal(rows.filter(row=>row.inline).length,1);assert.equal(rows.find(row=>row.inline).planId,'take-c');
+  assert.equal(history.length,3);assert.ok(history.every(row=>row.id==='take-c'));assert.equal(rows[0].snapshot.prompt,'original recipe');
+});
+
+test('alias keys identify old baselines but never authorize new retake jobs or receipts to use an ancestor source',()=>{
+  const current={...ref,messageKey:'continued',revisionId:'new-revision'},f=prepared({count:1,reference:current,messageKeys:['continued',ref.messageKey]});
+  const bad=copy(f.jobs[0]);bad.messageRef.messageKey=ref.messageKey;
+  assert.throws(()=>takes.bindStoryboardFloorTakeJobs(f.plan,[bad]),/未提交/);
+  assert.throws(()=>takes.applyStoryboardFloorTakeToJob(f.plan,bad),/未重试/);
+  const rows=[...f.old,image(bad)];takes.settleStoryboardFloorTakes(rows);assert.equal(rows[0].inline,true);assert.equal(rows[1].inline,false);
+});
+
+test('multi-key pruning protects earlier-key in-flight originals before and after receipt persistence',async()=>{
+  const current={...ref,messageKey:'new',revisionId:'new-revision'},pending={id:'old-pending',messageRef:copy(ref),inlineByDefault:true,target:'floor'};
+  const f=prepared({count:1,reference:current,messageKeys:['new',ref.messageKey],old:[],pending:[pending]});
+  for(const committed of [false,true]){
+    const history=committed?receipts.mergeStoryboardFloorTakeReceipts([],[f.plan.floorTake]):[],late={id:'late',taskId:pending.id,messageRef:copy(ref)};
+    const rows=[late,...Array.from({length:400},(_,n)=>({id:`unrelated-${n}`}))];
+    takes.pruneStoryboardRetakeGallery(rows,[],committed?[]:[f.plan.floorTake],history);assert.equal(rows.length,400);assert.equal(rows[0],late);
+  }
+});
+
+test('alias receipt expansion obeys the existing storage cap before the actual extraction, without clearing older receipts',async()=>{
+  const e=await continuedEntryFixture();
+  e.history.push(...Array.from({length:399},(_,n)=>({version:1,id:`old-${n}`,chatKey:'chat-a',messageKey:`foreign-${n}`,swipeId:0,startedAt:100,baselineTaskIds:[]})));
+  const before=copy(e.history);assert.equal(await e.click(),false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);assert.deepEqual(e.history,before);
+});
 
 test('actual floor action → two-step extraction → mixed-route jobs → receipt saves performs a new full take and preserves archived previous plans',async()=>{
   const e=await entryFixture(),before=copy(e.oldPlan);assert.equal(await e.click(),true,JSON.stringify(e.notices));assert.equal(e.llmCalls.length,2);assert.equal(e.jobs.length,3);

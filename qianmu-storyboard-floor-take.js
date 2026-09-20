@@ -1,7 +1,8 @@
 // A floor retake is an immutable receipt attached to the original jobs/images.
 // It neither deletes assets nor authorizes a request. Only a fully saved take
 // changes inline visibility; the gallery remains the source of originals.
-import {normalizeStoryboardFloorTakeReceipts,mergeStoryboardFloorTakeReceipts,storyboardFloorTakeReceiptSupersedes} from './qianmu-storyboard-floor-take-receipt.js?v=1.59.229';
+import {normalizeStoryboardFloorTakeReceipts,mergeStoryboardFloorTakeReceipts,storyboardFloorTakeReceiptSupersedes} from './qianmu-storyboard-floor-take-receipt.js?v=1.59.233';
+import {storyboardFloorTakeMessageKeys,storyboardFloorTakeScopesOverlap} from './qianmu-storyboard-floor-take-scope.js?v=1.59.233';
 const obj=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max?value:'';
 const integer=(value,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max;
@@ -40,7 +41,7 @@ export function createStoryboardCaptureReservation(state) {
 }
 export function normalizeStoryboardFloorTake(value) {
   if(value==null)return null;
-  if(!obj(value)||value.version!==1||!text(value.id,160)||!text(value.chatKey,512)||!text(value.messageKey,160)||!text(value.revisionId,80)
+  if(!obj(value)||!storyboardFloorTakeMessageKeys(value)||!text(value.id,160)||!text(value.chatKey,512)||!text(value.messageKey,160)||!text(value.revisionId,80)
     ||!integer(value.swipeId,0,Number.MAX_SAFE_INTEGER)||!integer(value.floor,0,Number.MAX_SAFE_INTEGER)
     ||!integer(value.startedAt,1,Number.MAX_SAFE_INTEGER)||!Array.isArray(value.baselineIds)||value.baselineIds.length>400
     ||value.baselineIds.some(id=>!text(id,160))||new Set(value.baselineIds).size!==value.baselineIds.length
@@ -53,21 +54,28 @@ export function normalizeStoryboardFloorTake(value) {
     const key=JSON.stringify([slot.shotId,slot.requestIndex]);if(seen.has(key))return invalid();seen.add(key);
     slots.push({shotId:slot.shotId,requestIndex:slot.requestIndex,imageCount:slot.imageCount});
   }
-  return {version:1,id:value.id,chatKey:value.chatKey,messageKey:value.messageKey,revisionId:value.revisionId,swipeId:value.swipeId,floor:value.floor,
+  return {version:value.version,id:value.id,chatKey:value.chatKey,messageKey:value.messageKey,revisionId:value.revisionId,swipeId:value.swipeId,floor:value.floor,
     startedAt:value.startedAt,baselineIds:[...value.baselineIds],slots,
+    ...(value.version===2?{messageKeys:storyboardFloorTakeMessageKeys(value)}:{}),
     ...(Object.hasOwn(value,'baselineTaskIds')?{baselineTaskIds:[...value.baselineTaskIds]}:{})};
 }
 const scope=take=>JSON.stringify([take.chatKey,take.messageKey,take.swipeId]);
 const order=(left,right)=>left.startedAt-right.startedAt||left.id.localeCompare(right.id);
+const sameTakeSource=(record,take)=>scope(record?.messageRef||{})===scope(take)&&record.messageRef.revisionId===take.revisionId;
 function sameFloor(record,take) {
   const ref=record?.messageRef;
-  if(ref?.messageKey)return ref.chatKey===take.chatKey&&ref.messageKey===take.messageKey&&ref.swipeId===take.swipeId;
+  if(ref?.messageKey)return ref.chatKey===take.chatKey&&Boolean(storyboardFloorTakeMessageKeys(take)?.includes(ref.messageKey))&&ref.swipeId===take.swipeId;
   return (!record?.chatKey||record.chatKey===take.chatKey)&&record?.floor===take.floor&&Number(record.swipeId||0)===take.swipeId;
 }
-export function createStoryboardFloorTake(plan,records,visible,pending=[],receipts=[]) {
+export function createStoryboardFloorTake(plan,records,visible,pending=[],receipts=[],messageKeys=null) {
   const ref=plan.messageRef;
   const take={version:1,id:plan.id,chatKey:plan.chatKey,messageKey:ref?.messageKey,revisionId:ref?.revisionId,
     swipeId:ref?.swipeId,floor:plan.floor,startedAt:Date.now(),baselineIds:[],slots:[]};
+  if(messageKeys!==null){
+    if(!Array.isArray(messageKeys)||messageKeys[0]!==ref?.messageKey)throw new Error('原楼层关联标识无效，未开始重拍');
+    if(messageKeys.length>1)Object.assign(take,{version:2,messageKeys:[...messageKeys]});
+  }
+  if(!storyboardFloorTakeMessageKeys(take))throw new Error('原楼层关联标识无效，未开始重拍');
   const baseline=records.filter(record=>sameFloor(record,take)&&visible(record));
   take.baselineIds=baseline.map(record=>record.id);
   if(!Array.isArray(pending)||pending.length>1000)throw new Error('在途分镜记录无法核对，未开始重拍');
@@ -81,8 +89,8 @@ export function createStoryboardFloorTake(plan,records,visible,pending=[],receip
     if(inline&&task.id)taskIds.add(task.id);
   }
   take.baselineTaskIds=[...taskIds];
-  for(const record of records){const older=normalizeStoryboardFloorTake(record.floorTake);if(older&&!older.invalid&&scope(older)===scope(take))take.startedAt=Math.max(take.startedAt,older.startedAt+1);}
-  for(const older of normalizeStoryboardFloorTakeReceipts(receipts))if(scope(older)===scope(take))take.startedAt=Math.max(take.startedAt,older.startedAt+1);
+  for(const record of records){const older=normalizeStoryboardFloorTake(record.floorTake);if(older&&!older.invalid&&storyboardFloorTakeScopesOverlap(older,take))take.startedAt=Math.max(take.startedAt,older.startedAt+1);}
+  for(const older of normalizeStoryboardFloorTakeReceipts(receipts))if(storyboardFloorTakeScopesOverlap(older,take))take.startedAt=Math.max(take.startedAt,older.startedAt+1);
   mergeStoryboardFloorTakeReceipts(receipts,[take]); // Capacity/shape preflight before extraction or paid generation.
   const normalized=normalizeStoryboardFloorTake(take);if(normalized?.invalid)throw new Error('原楼层画面版本无法核对，未开始重拍');return normalized;
 }
@@ -97,14 +105,14 @@ export function bindStoryboardFloorTakeJobs(plan,jobs) {
     for(const job of requests)slots.push({shotId:shot.id,requestIndex:job.inlineOrder?.requestIndex,imageCount:Number(job.profile?.count||1)});
   }
   const next=normalizeStoryboardFloorTake({...take,slots});
-  if(!next||next.invalid||!next.slots.length||jobs.some(job=>job.planId!==plan.id||job.chatKey!==take.chatKey||job.messageRef?.revisionId!==take.revisionId))throw new Error('整层重拍的镜头清单不完整，未提交');
+  if(!next||next.invalid||!next.slots.length||jobs.some(job=>job.planId!==plan.id||job.chatKey!==take.chatKey||!sameTakeSource(job,take)))throw new Error('整层重拍的镜头清单不完整，未提交');
   plan.floorTake=next;
   for(const job of jobs)job.floorTake=clone(next);
 }
 export function applyStoryboardFloorTakeToJob(plan,job) {
   if(!plan?.floorTake)return;
   const take=normalizeStoryboardFloorTake(plan.floorTake);
-  if(!take||take.invalid||take.id!==job.planId||take.chatKey!==job.chatKey||take.revisionId!==job.messageRef?.revisionId||!sameFloor(job,take)
+  if(!take||take.invalid||take.id!==job.planId||take.chatKey!==job.chatKey||!sameTakeSource(job,take)
     ||!take.slots.some(slot=>slot.shotId===job.planShotId&&slot.requestIndex===job.inlineOrder?.requestIndex&&slot.imageCount===Number(job.profile?.count||1)))throw new Error('原整层重拍清单已变化，未重试');
   job.floorTake=clone(take);
 }
@@ -112,13 +120,13 @@ function supersededBy(record,take) {
   if(!sameFloor(record,take)||record.planId===take.id)return false;
   const older=normalizeStoryboardFloorTake(record.floorTake);
   return take.baselineIds.includes(record.id)||(take.baselineTaskIds||[]).includes(record.taskId||record.id)
-    ||Boolean(older&&!older.invalid&&scope(older)===scope(take)&&order(older,take)<0);
+    ||Boolean(older&&!older.invalid&&storyboardFloorTakeScopesOverlap(older,take)&&order(older,take)<0);
 }
 function floorTakeGroups(records) {
   const groups=new Map();
   for(const record of records){
     const take=normalizeStoryboardFloorTake(record?.floorTake);if(!take||take.invalid||!take.slots.length)continue;
-    if(record.planId!==take.id||record.messageRef?.revisionId!==take.revisionId||!sameFloor(record,take))continue;
+    if(record.planId!==take.id||!sameTakeSource(record,take))continue;
     const key=JSON.stringify([scope(take),take.id]),signature=JSON.stringify(take);
     if(!groups.has(key))groups.set(key,{take,signature,rows:[],invalid:false});
     const group=groups.get(key);if(group.signature!==signature)group.invalid=true;
@@ -142,8 +150,10 @@ export function pruneStoryboardRetakeGallery(records,received=[],pendingTakes=[]
   const keep=new Set(received.map(record=>record.id)),tasks=new Map();
   const protect=take=>{
     for(const id of take.baselineIds||[])keep.add(id);
-    if(!tasks.has(scope(take)))tasks.set(scope(take),new Set());
-    for(const id of take.baselineTaskIds||[])tasks.get(scope(take)).add(id);
+    for(const messageKey of storyboardFloorTakeMessageKeys(take)||[]){
+      const key=scope({...take,messageKey});if(!tasks.has(key))tasks.set(key,new Set());
+      for(const id of take.baselineTaskIds||[])tasks.get(key).add(id);
+    }
   };
   for(const pending of pendingTakes){const take=normalizeStoryboardFloorTake(pending);if(take&&!take.invalid)protect(take);}
   for(const receipt of receipts)protect(receipt);
@@ -166,7 +176,7 @@ export function settleStoryboardFloorTakes(records,eligible=()=>true,receipts=[]
     const {take,rows}=group;
     if(storyboardFloorTakeReceiptSupersedes(rows[0],receipts))continue;
     // A later completed retake wins even if an older failed request is retried late.
-    if(ordered.some(other=>scope(other.take)===scope(take)&&order(other.take,take)>0&&other.rows.some(row=>row.floorTakeCommittedAt>0)))continue;
+    if(ordered.some(other=>storyboardFloorTakeScopesOverlap(other.take,take)&&order(other.take,take)>0&&other.rows.some(row=>row.floorTakeCommittedAt>0)))continue;
     if(!rows.some(row=>row.floorTakeCommittedAt>0)&&!rows.every(eligible))continue;
     const complete=take.slots.every(slot=>{
       const images=new Set(rows.filter(row=>row.floorTakeEligible===true&&row.url&&row.planShotId===slot.shotId

@@ -4,6 +4,7 @@ const hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const stop=()=>{throw Object.assign(new Error('续写来源未能完整核对，未沿用旧任务身份'),{code:'storyboard_continuation'});};
 const fields=['sentAt','startedAt','id','activeSentAt','activeId'];
 const provisional=new WeakMap();
+export const storyboardContinuationSavePending=store=>Boolean(store&&provisional.has(store));
 export function readStoryboardContinuationLinks(store){
   return store&&provisional.has(store)?provisional.get(store).before:store?.storyboardContinuations;
 }
