@@ -1,4 +1,4 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.230';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.231';
 
 // Finished host notifications share the existing automatic-capture queue. A
 // persisted final-pass marker prevents repeated notifications/reloads from

@@ -1,6 +1,6 @@
 import { createImageAttemptStore } from './qianmu-image-attempt-store.js';
 import { imageAttemptScopeKey } from './qianmu-image-attempts.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.230';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.231';
 
 const error = (code, message) => Object.assign(new Error(message), { code: `image_attempt_${code}` });
 const MESSAGES = {
@@ -52,15 +52,16 @@ export async function manageImageAdmissionStorage(options = {}) {
 export async function createImageAdmissionIdentity(job, namespace) {
   const ref = job.messageRef;
   if(hasStoryboardStreamReference(ref)&&(normalizeStoryboardStreamReference(ref).invalid||ref.chatKey!==job.chatKey))throw error('identity','流式原文身份无效，未授权生图');
+  const budgetRef=hasStoryboardStreamReference(ref)?storyboardStreamBudgetReference(ref,namespace):ref;
   let scope;
-  if (ref?.messageKey && ref?.revisionId) {
-    scope = { namespace, chatKey: job.chatKey, messageKey: ref.messageKey, revisionId: ref.revisionId };
+  if (budgetRef?.messageKey && budgetRef?.revisionId) {
+    scope = { namespace, chatKey: job.chatKey, messageKey: budgetRef.messageKey, revisionId: budgetRef.revisionId };
   } else if (job.target === 'gallery' && !job.automatic) {
     scope = { namespace, chatKey: job.chatKey || 'gallery', messageKey: 'gallery-only', revisionId: 'manual' };
   } else throw error('identity', '缺少原正文身份，未授权生图');
   imageAttemptScopeKey(scope);
   const old = job.imageAdmission;
-  const sameScope = old?.version === 1 && old.chatKey === scope.chatKey && old.messageKey === scope.messageKey && old.revisionId === scope.revisionId;
+  const sameScope = old?.version === 1 && old.namespace === namespace && old.chatKey === scope.chatKey && old.messageKey === scope.messageKey && old.revisionId === scope.revisionId;
   const spec = job.shotSpec || {};
   const logicalShotId = sameScope && /^[a-f0-9]{64}$/.test(old.logicalShotId || '') ? old.logicalShotId : await digest({
     paragraph: job.paragraphSelection || job.paragraphAnchor || null,
@@ -80,8 +81,17 @@ export async function createImageHistorySeeds(rows, identity) {
     if (row.url && coveredImages.has(row.id)) continue;
     const job = { ...row, ...(row.snapshot || {}) };
     const ref = job.messageRef || row.messageRef;
-    if (String(job.chatKey || row.chatKey || '') !== identity.scope.chatKey
-      || ref?.messageKey !== identity.scope.messageKey || ref?.revisionId !== identity.scope.revisionId) continue;
+    if (String(job.chatKey || row.chatKey || '') !== identity.scope.chatKey) continue;
+    // Cross-device reconstruction uses the same original family as the live
+    // ledger. Deleting/reloading a browser must not create fresh continuation slots.
+    const proof=hasStoryboardStreamReference(ref)?normalizeStoryboardStreamReference(ref):null;
+    if(proof?.invalid){
+      if(ref.messageKey===identity.scope.messageKey||ref.stream?.family?.reference?.messageKey===identity.scope.messageKey)throw error('history','原流式数量记录不完整，未新增自动额度');
+      continue;
+    }
+    const budgetRef=proof?storyboardStreamBudgetReference(ref):ref;
+    if(budgetRef?.messageKey!==identity.scope.messageKey||budgetRef?.revisionId!==identity.scope.revisionId)continue;
+    if(proof?.family&&proof.family.namespace!==identity.scope.namespace)throw error('history','原流式数量记录账户不一致，未新增自动额度');
     const state = row.status === 'success' || row.status === 'completed' || row.url ? 'succeeded'
       : ['unknown', 'accepted'].includes(row.submissionState) ? row.submissionState
         : ['generating', 'queued'].includes(row.status) || (!row.submissionState && ['failed', 'cancelled'].includes(row.status) && Number(row.startedAt) > 0) ? 'unknown' : null;
@@ -160,10 +170,12 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       if (await account() !== receipt.scope.namespace) throw error('account_changed', 'ST 账户已变化，未继续提交');
       if(hasStoryboardStreamReference(job.messageRef))await verifyStoryboardStreamReference(job.messageRef,resolveSource&&(()=>resolveSource(job)));
       current(valid);
+      if(receipt.streamReference&&canonical(job.messageRef)!==receipt.streamReference)throw error('identity','流式任务来源已变化，未提交');
       const decision = await store[receipt.begun ? 'continue' : 'begin'](receipt.scope, receipt);
       if (!decision.ok) throw error(decision.code, '生图授权已失效，未继续提交');
       receipt.begun = true;
       current(valid);
+      if(receipt.streamReference&&canonical(job.messageRef)!==receipt.streamReference)throw error('identity','流式任务来源已变化，未提交');
     },
     async settle(job, outcome) {
       const receipt = receipts.get(job);

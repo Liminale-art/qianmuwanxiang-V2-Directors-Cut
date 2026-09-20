@@ -2,7 +2,7 @@
 // The cheap fingerprint is for synchronous UI linking. Paid dispatch verifies
 // both SHA-256 proofs again against the actual selected ST message.
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.230';
+import {storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.231';
 const fail=()=>{throw Object.assign(new Error('流式原文或回复身份已变化，未继续提交'),{code:'storyboard_stream_source'});};
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const fields=['sentAt','startedAt','id','activeSentAt','activeId'];
@@ -36,7 +36,7 @@ export function storyboardStreamParagraphBoundary(text,length){
 }
 export function normalizeStoryboardStreamReference(ref){
   const proof=ref?.stream,g=proof?.generation;
-  if(!plain(proof)||proof.version!==1||!plain(g)||Object.keys(g).length!==fields.length
+  if(!plain(proof)||![1,2].includes(proof.version)||!plain(g)||Object.keys(g).length!==fields.length
     ||fields.some(key=>typeof g[key]!=='string'||g[key].length>160||/[\u0000-\u001f\u007f]/.test(g[key]))
     ||!(g.startedAt||g.id||g.activeId)||!hex(proof.generationKey)||!hex(proof.prefixDigest)
     ||!Number.isSafeInteger(proof.prefixLength)||proof.prefixLength<1||proof.prefixLength>200000
@@ -47,11 +47,55 @@ export function normalizeStoryboardStreamReference(ref){
     ||Object.hasOwn(proof,'complete')&&proof.complete!==true
     ||Object.hasOwn(proof,'closedParagraph')&&(proof.closedParagraph!==true||Object.hasOwn(proof,'complete'))
     ||Object.hasOwn(proof,'moment')&&!normalizeStoryboardStreamMoment(proof.moment))return {version:1,invalid:true};
-  return {version:1,generation:Object.fromEntries(fields.map(key=>[key,g[key]])),generationKey:proof.generationKey,
+  let family;
+  if(proof.version===1&&Object.hasOwn(proof,'family'))return {version:1,invalid:true};
+  if(proof.version===2){
+    const value=proof.family,root=value?.reference;
+    if(!plain(value)||value.version!==1||typeof value.namespace!=='string'||!/^st-user:.+/.test(value.namespace)||!value.namespace.slice(8).trim()
+      ||value.namespace.length>512||/[\u0000-\u001f\u007f]/.test(value.namespace)
+      ||!plain(root)||root.version!==1||root.stream?.version!==1
+      ||!['chatKey','messageKey','name','baseSendDate','baseGenerationId','revisionHash','revisionId'].every(key=>typeof root[key]==='string'&&root[key].length<=(key==='chatKey'?512:160))
+      ||!['createdAt','updatedAt'].every(key=>Number.isSafeInteger(root[key])&&root[key]>=0)
+      ||root.lastKnownFloor!==null&&(!Number.isSafeInteger(root.lastKnownFloor)||root.lastKnownFloor<0)
+      ||normalizeStoryboardStreamReference(root).invalid
+      ||root.chatKey!==ref.chatKey||root.role!==ref.role||root.name!==ref.name||root.swipeId!==ref.swipeId
+      ||root.stream.generationKey===proof.generationKey||root.stream.prefixLength>proof.prefixLength)return {version:1,invalid:true};
+    // A single original root, never recursively nested copies of every continue.
+    // Whitelist the compact reference so arbitrary imported payloads are not saved.
+    family={version:1,namespace:value.namespace,reference:storyboardStreamCompactRoot(root)};
+  }
+  return {version:proof.version,generation:Object.fromEntries(fields.map(key=>[key,g[key]])),generationKey:proof.generationKey,
     prefixLength:proof.prefixLength,prefixHash:proof.prefixHash,prefixDigest:proof.prefixDigest,
     ...(proof.complete===true?{complete:true}:{}),
     ...(proof.closedParagraph===true?{closedParagraph:true}:{}),
-    ...(Object.hasOwn(proof,'moment')?{moment:normalizeStoryboardStreamMoment(proof.moment)}:{})};
+    ...(Object.hasOwn(proof,'moment')?{moment:normalizeStoryboardStreamMoment(proof.moment)}:{}),...(family?{family}:{})};
+}
+
+function storyboardStreamCompactRoot(ref){
+  const proof=normalizeStoryboardStreamReference(ref),root={};
+  for(const key of ['version','chatKey','messageKey','role','name','baseSendDate','baseGenerationId','swipeId','revisionHash','revisionId','lastKnownFloor','createdAt','updatedAt']){
+    if(Object.hasOwn(ref,key))root[key]=ref[key];
+  }
+  delete proof.moment;root.stream=proof;return root;
+}
+
+// Budget provenance is separate from the fresh source prefix. This is a compact
+// identity projection, not permission to submit; admission still verifies both
+// source proofs and the explicitly saved append path before claiming a slot.
+export function storyboardStreamBudgetReference(ref,namespace){
+  const proof=normalizeStoryboardStreamReference(ref);if(proof.invalid)fail();
+  if(proof.family&&namespace!==undefined&&namespace!==proof.family.namespace)fail();
+  return proof.family?.reference||ref;
+}
+
+export async function bindStoryboardStreamBudgetFamily(reference,root,namespace,resolve){
+  const proof=normalizeStoryboardStreamReference(reference);if(proof.invalid||proof.version!==1)fail();
+  root=storyboardStreamBudgetReference(root,namespace);
+  if(root.chatKey===reference.chatKey&&root.messageKey===reference.messageKey&&root.revisionId===reference.revisionId)return reference;
+  const result={...reference,stream:{...proof,version:2,family:{version:1,namespace,reference:storyboardStreamCompactRoot(root)}}};
+  if(normalizeStoryboardStreamReference(result).invalid||typeof resolve!=='function')fail();
+  await verifyStoryboardStreamReference(result,()=>resolve(result));
+  return result;
 }
 
 export function resolveStoryboardStreamReference(reference,messages,createReference,options={}){
@@ -82,8 +126,18 @@ export function resolveStoryboardStreamReference(reference,messages,createRefere
     ||proof.closedParagraph===true&&!storyboardStreamParagraphBoundary(message.mes,proof.prefixLength)
     ||storyboardStreamFingerprint(message.mes.slice(0,proof.prefixLength))!==proof.prefixHash
     ||bridges.some(link=>message.mes.length<link.length||storyboardStreamFingerprint(message.mes.slice(0,link.length))!==link.hash))state='stale';
+  let family;
+  if(state==='active'&&proof.family){
+    if(options.namespace!==undefined&&options.namespace!==proof.family.namespace)return empty('stale');
+    family=resolveStoryboardStreamReference(proof.family.reference,messages,createReference,{...options,namespace:proof.family.namespace});
+    // Both roots resolving somewhere in this chat is not enough: the recorded
+    // original path must pass through this new source's exact reply generation.
+    const target=(family.continuations||[]).find(link=>link.to.messageKey===reference.messageKey&&link.to.swipeId===reference.swipeId
+      &&JSON.stringify(link.to.generation)===JSON.stringify(proof.generation));
+    if(family.state!=='active'||family.message!==message||family.floor!==floor||!target)state='stale';
+  }
   return {state,floor,message,reference,current:{...reference,lastKnownFloor:floor},relocated:floor!==reference.lastKnownFloor,
-    ...(bridges.length?{continuations:bridges}:{})};
+    ...(bridges.length?{continuations:bridges}:{}),...(state==='active'&&family?{family}:{})};
 }
 
 export async function verifyStoryboardStreamReference(ref,resolve){
@@ -98,6 +152,7 @@ export async function verifyStoryboardStreamReference(ref,resolve){
     if(await storyboardStreamDigest(prefix)!==link.digest
       ||await storyboardStreamDigest(JSON.stringify([link.namespace,link.chatKey,link.from,link.to,link.digest]))!==link.id)fail();
   }
+  if(proof.family)await verifyStoryboardStreamReference(proof.family.reference,()=>resolve()?.family);
   const after=resolve();
   if(after?.state!=='active'||after.message!==before.message||after.floor!==before.floor||after.message.mes.slice(0,proof.prefixLength)!==prefix
     ||JSON.stringify(after.continuations||[])!==JSON.stringify(before.continuations||[])
