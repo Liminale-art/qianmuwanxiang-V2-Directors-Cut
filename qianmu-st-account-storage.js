@@ -6,7 +6,7 @@ import {parseBoundedJson} from './qianmu-json-input.js';
 export const ST_ACCOUNT_STORAGE_LIMITS=Object.freeze({bytes:8*1024*1024,maxBytes:64*1024*1024,timeoutMs:15000,slots:96});
 const schema='qianmu.st-account-document.v1',headSchema='qianmu.st-account-head.v1',queues=new Map();
 const hashPattern=/^[a-f0-9]{64}$/;
-let configured=null,configurationEpoch=0;
+let configured=null,configurationEpoch=0,readScope=null;
 const error=(code,message)=>Object.assign(new Error(message),{code:`st_account_storage_${code}`,writeState:'not_started'});
 const fail=(code,message)=>{throw error(code,message);};
 const exact=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
@@ -37,8 +37,10 @@ const base64=text=>{const bytes=utf8.encode(text),parts=[];for(let at=0;at<bytes
 function configuration(options){
   if(!options||typeof options.resolveNamespace!=='function'||typeof options.isCurrent!=='function'||typeof options.headers!=='function')fail('setup','ST 储存环境尚未就绪');return {...options};
 }
-export function configureStAccountStorage(options){configured=configuration(options);configurationEpoch++;}
+export function configureStAccountStorage(options){configured=configuration(options);configurationEpoch++;readScope=Object.freeze({});}
 export function isStAccountStorageConfigured(){return configured!==null;}
+// An opaque lifetime token, never an account id or a substitute for a guard.
+export function getStAccountStorageReadScope(){return readScope;}
 export function createConfiguredStAccountStorage(options={}){
   if(!configured)fail('setup','ST 储存环境尚未就绪');const epoch=configurationEpoch,base=configured;
   // A caller cannot replace the account resolver with another account by override.

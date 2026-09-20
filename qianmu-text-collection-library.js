@@ -1,7 +1,7 @@
 import {createTextCollectionSession} from './qianmu-text-collection-session.js';
 import {createTextCollectionOutboxRuntime} from './qianmu-text-collection-outbox-runtime.js';
 import {textCollectionDisplayLabel,textCollectionListLabel,textCollectionRecord,TEXT_COLLECTION_LIMITS} from './qianmu-text-collection.js';
-import {applyCollectionProseStyle,collectionIconButton} from './qianmu-text-collection-presentation.js';
+import {applyCollectionProseStyle,collectionIconButton,collectionEditorText,collectionEditorValue} from './qianmu-text-collection-presentation.js';
 import {textCollectionParagraphs} from './qianmu-text-collection-paragraphs.js';
 
 // Account originals only. Browsing never loads a chat or resolves its character.
@@ -9,7 +9,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   const document=parent?.ownerDocument,view=document?.defaultView;
   if(!parent?.isConnected||typeof isCurrent!=='function')throw TypeError('收藏管理环境不可用');
   let closed=false,busy=false,record=null,operation=null,pageIndex=0,cursors=[null],nextCursor=null,searchValue='',resolve,session,outbox;
-  let selecting=false,searchTimer=null,pendingSearch=null,exporter=null;
+  let selecting=false,searchTimer=null,pendingSearch=null,exporter=null,viewEpoch=0,backgroundReading=null,listSignature='';
   const selected=new Map(),deletions=new Map();
   const current=()=>!closed&&parent.isConnected&&isCurrent()===true;
   const announceChange=()=>document.dispatchEvent(new view.Event('qianmu-text-collections-changed'));
@@ -33,7 +33,8 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   actions.append(icon('back','返回列表','arrow-left'),right);
   editor.maxLength=TEXT_COLLECTION_LIMITS.text;editor.spellcheck=false;applyCollectionProseStyle(dialog,sourceElement,parent);
   const finished=new Promise(done=>{resolve=done;}),focused=document.activeElement;
-  const dirty=()=>record&&!editor.readOnly&&editor.value!==record.text.replace(/\r\n?/g,'\n');
+  const editorText=()=>record?collectionEditorValue(record.text,editor.value):editor.value;
+  const dirty=()=>record&&!editor.readOnly&&editorText()!==record.text;
   function controls(){
     dialog.setAttribute('aria-busy',String(busy));editor.disabled=busy;
     for(const button of dialog.querySelectorAll('button'))button.disabled=busy&&button.dataset.collectionManage!=='close';
@@ -55,15 +56,15 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     if(focused?.isConnected&&document.visibilityState!=='hidden')focused.focus({preventScroll:true});resolve(null);
   }
   async function run(work){
-    if(busy||!current())return;busy=true;controls();status.textContent='正在读取…';
+    if(busy||!current())return;busy=true;viewEpoch++;controls();if(!list.children.length&&!record)status.textContent='正在读取…';
     try{await setup();await session.guard();await work();}
-    catch(cause){if(!current()){stop();return;}if(session)try{await session.guard();}catch{stop();return;}
+    catch(cause){if(!current()||['st_account_storage_account','text_collection_sync_account'].includes(cause?.code)){stop();return;}if(session)try{await session.guard();}catch{stop();return;}
       status.textContent=/^text_collection_/.test(cause?.code||'')?String(cause.message).slice(0,240):'读取未完成，请点击刷新重试';}
     finally{busy=false;if(!closed){controls();if(pendingSearch!==null&&!record){const query=pendingSearch;pendingSearch=null;void run(()=>loadPage(0,true,query));}}}
   }
   function displayRecord(){
     title.textContent=textCollectionListLabel(record);title.title=title.textContent;
-    editor.value=record.text;editor.readOnly=true;editor.hidden=true;prose.hidden=false;
+    editor.value=collectionEditorText(record.text);editor.readOnly=true;editor.hidden=true;prose.hidden=false;
     const fragment=document.createDocumentFragment();
     for(const item of textCollectionParagraphs(record.text)){const paragraph=document.createElement('p');paragraph.textContent=item.text;fragment.append(paragraph);}
     prose.replaceChildren(fragment);applyCollectionProseStyle(dialog,sourceElement,parent);
@@ -72,8 +73,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     title.textContent='正文收藏';title.removeAttribute('title');list.hidden=false;detail.hidden=true;searchRow.hidden=false;
     q('[data-collection-pages]').hidden=false;actions.hidden=true;
   }
-  async function loadPage(index=0,reset=false,query=searchValue){
-    const cursor=reset?null:cursors[index],page=await session.list({cursor,limit:50,...query?{search:query}:{}});if(!current())return;
+  function displayPage(page,index,reset,query){
     searchValue=query;if(reset)cursors=[null];pageIndex=index;nextCursor=page.nextCursor;record=null;operation=null;editor.value='';
     selected.clear();deletions.clear();
     const fragment=document.createDocumentFragment();
@@ -82,11 +82,32 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
       const label=document.createElement('span'),preview=document.createElement('small');
       label.textContent=textCollectionDisplayLabel(item.charName,item.userName,item.createdAt);preview.textContent=item.preview;row.title=label.textContent;row.append(label,preview);fragment.append(row);
     }
-    list.replaceChildren(fragment);showList();
+    list.replaceChildren(fragment);listSignature=JSON.stringify(page);showList();
     status.textContent=`共 ${page.total} 条收藏${page.total?` · 第 ${pageIndex+1} 页`:''}`;
   }
+  function revalidatePage(input,index,query){
+    if(backgroundReading||!session.readCacheNeedsRefresh?.())return;
+    const token=viewEpoch;
+    backgroundReading=(async()=>{
+      try{
+        const page=await session.list(input,{revalidate:true});
+        if(!current()||token!==viewEpoch||record||selecting||busy||search.value.trim()!==query)return;
+        if(JSON.stringify(page)!==listSignature){displayPage(page,index,false,query);controls();}
+      }catch(cause){
+        if(!current())return;
+        if(['st_account_storage_account','text_collection_sync_account'].includes(cause?.code)){stop();return;}
+        try{await session.guard();}catch{stop();return;}
+        if(token===viewEpoch&&!record)status.textContent='已显示本次会话的收藏，后台更新未完成；可点击刷新';
+      }finally{backgroundReading=null;}
+    })();
+  }
+  async function loadPage(index=0,reset=false,query=searchValue){
+    const cursor=reset?null:cursors[index],input={cursor,limit:50,...query?{search:query}:{}};
+    const page=await session.list(input,{preferCache:true});if(!current())return;
+    displayPage(page,index,reset,query);revalidatePage(input,index,query);
+  }
   async function openRecord(id){
-    const result=await session.get(id);if(!current())return;
+    const result=await session.get(id,{preferCache:true});if(!current())return;
     if(!result.record){status.textContent='此收藏已被删除，请刷新列表';return;}
     record=result.record;operation=null;displayRecord();list.hidden=true;detail.hidden=false;searchRow.hidden=true;
     q('[data-collection-pages]').hidden=true;actions.hidden=false;status.textContent='';
@@ -125,14 +146,14 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
       if(!record)return;
       if(action==='edit'){editor.readOnly=false;editor.hidden=false;prose.hidden=true;status.textContent='';editor.focus();return;}
       if(action==='back'){pendingSearch=null;return loadPage(pageIndex);}
-      if(action==='copy'){await (copy||((text)=>view.navigator.clipboard.writeText(text)))(editor.value);await session.guard();status.textContent='已复制';return;}
+      if(action==='copy'){await (copy||((text)=>view.navigator.clipboard.writeText(text)))(editorText());await session.guard();status.textContent='已复制';return;}
       if(action==='image'){
         const {openTextCollectionImageExport}=await import('./qianmu-text-collection-image-export.js');if(!current())return;
-        exporter=openTextCollectionImageExport({parent:dialog,record:{...record,text:editor.value},isCurrent:current,guard:session.guard,download});status.textContent='';return;
+        exporter=openTextCollectionImageExport({parent:dialog,record:{...record,text:editorText()},isCurrent:current,guard:session.guard,download});status.textContent='';return;
       }
       if(action==='save'){
         if(!dirty()){displayRecord();operation=null;status.textContent='内容未改变';return;}
-        if(operation?.request.operation!=='edit'||operation.request.text!==editor.value)operation=session.prepareEdit(record.id,record.revision,editor.value);
+        if(operation?.request.operation!=='edit'||operation.request.text!==editorText())operation=session.prepareEdit(record.id,record.revision,editorText());
         let ack;try{ack=await outbox.save(operation.request,{base:record});}
         catch(cause){if(cause?.localSaved===true){status.textContent=`保存未完成，当前内容已保留。${/^text_collection_sync_/.test(cause?.code||'')?String(cause.message).slice(0,160):'请重试。'}`;return;}throw cause;}
         if(!current())return;

@@ -186,12 +186,17 @@ try {
     for (const width of [320, 393, 1280]) {
         await page.setViewportSize({ width, height: 850 });
         await page.evaluate(() => { fixture.mode = 'ok'; fixture.open(); });
+        const choiceBox=await page.locator('dialog').boundingBox();assert.ok(choiceBox.height<220&&choiceBox.width<=420,JSON.stringify(choiceBox));
+        if(width===393&&artifactDirectory)await page.screenshot({path:path.join(artifactDirectory,'collection_choice_compact.png')});
         await action('selection').click();
         if(width===393&&artifactDirectory){await page.locator('[data-collection-paragraph="1"]').click();await page.screenshot({path:path.join(artifactDirectory,'collection_picker_narrow.png')});}
         const layout = await page.locator('dialog').evaluate(node => ({ width: node.getBoundingClientRect().width, scroll: node.scrollWidth, client: node.clientWidth }));
         assert.ok(layout.width <= width && layout.scroll <= layout.client + 1, JSON.stringify(layout));
         await action('back').click();await action('full').click();await action('edit').click();await page.getByLabel('编辑收藏文字').fill('修改稿😀'.repeat(100));
         const editorLayout=await page.locator('dialog').evaluate(node=>({width:node.getBoundingClientRect().width,scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(editorLayout.width<=width&&editorLayout.scroll<=editorLayout.client+1,JSON.stringify(editorLayout));
+        const editorBox=await page.getByLabel('编辑收藏文字').boundingBox(),mainBox=await page.locator('dialog > main').boundingBox();
+        assert.ok(Math.abs(editorBox.x-mainBox.x-12)<2&&Math.abs(editorBox.width-(mainBox.width-24))<2,'editor aligns with reader content column');
+        assert.ok(editorBox.height>mainBox.height-2,'editor fills the reading area rather than retaining 40vh height');
         assert.equal(await action('save').evaluate(n=>Math.round(n.getBoundingClientRect().right)),await page.locator('.qm-text-collection-capture-actions').evaluate(n=>Math.round(n.getBoundingClientRect().right)),'save remains bottom-right after the edit icon is hidden');
         await action('cancel').click();
         await page.evaluate(() => {
@@ -214,6 +219,13 @@ try {
         await row.click(); assert.equal(await page.evaluate(() => fixture.opened), 'saved-row');
         checks.push(`${width}px: bounded dialog and two-line name/date plus ellipsis rows render without overflow or markup execution`);
     }
+    await page.evaluate(()=>{fixture.source=fixture.captureTextCollectionSource({...fixture.source,text:'\n\n第一段。\r\n\r\n\n \n第二段。\n\n\n'});fixture.mode='ok';fixture.open();});
+    await action('full').click();await action('edit').click();assert.equal(await page.getByLabel('编辑收藏文字').inputValue(),'第一段。\n\n第二段。');
+    if(artifactDirectory){await page.setViewportSize({width:393,height:850});await page.screenshot({path:path.join(artifactDirectory,'collection_edit_normalized.png')});}
+    await action('save').click();await page.waitForFunction(()=>fixture.completed!=='pending');
+    assert.equal(await page.evaluate(()=>fixture.writes[0].text),'\n\n第一段。\r\n\r\n\n \n第二段。\n\n\n');
+    await page.evaluate(()=>{fixture.source=fixture.originalSource;});
+    checks.push('redundant captured blank runs display as regular paragraphs, but untouched edit-save preserves exact original bytes');
     result = await page.evaluate(() => {
         const mutable = JSON.parse(JSON.stringify(fixture.record)), original = mutable.text;
         const opened = [], calls = [];

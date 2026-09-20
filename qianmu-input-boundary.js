@@ -23,6 +23,8 @@ export function mountQianmuInputBoundary(root) {
     if (!root || typeof root.addEventListener !== 'function' || typeof root.removeEventListener !== 'function') return () => {};
     const prior = mounted.get(root);
     if (prior) return prior;
+    const previousMarker = root.getAttribute?.('data-qm-input-boundary');
+    root.setAttribute?.('data-qm-input-boundary', '');
     const keyboard = event => event.stopPropagation();
     const editor = event => { if (isEditorTarget(event, root)) event.stopPropagation(); };
     for (const type of KEY_EVENTS) root.addEventListener(type, keyboard);
@@ -33,6 +35,8 @@ export function mountQianmuInputBoundary(root) {
         active = false;
         for (const type of KEY_EVENTS) root.removeEventListener(type, keyboard);
         for (const type of EDITOR_EVENTS) root.removeEventListener(type, editor);
+        if (previousMarker == null) root.removeAttribute?.('data-qm-input-boundary');
+        else root.setAttribute?.('data-qm-input-boundary', previousMarker);
         if (mounted.get(root) === off) mounted.delete(root);
     };
     mounted.set(root, off);

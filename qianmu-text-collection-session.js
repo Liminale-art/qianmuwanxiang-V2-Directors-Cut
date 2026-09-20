@@ -4,7 +4,8 @@ import {notesSyncOperationId} from './qianmu-notes-sync-contract.js';
 import {textCollectionBulkRequest} from './qianmu-text-collection-bulk-contract.js';
 import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
 
-// One explicit UI session, not an account-global cache or background write queue.
+// One explicit UI session. Native read snapshots may outlive a panel, but every
+// use still checks its account; mutations never use them as a write baseline.
 export async function createTextCollectionSession({resolveNamespace,isCurrent,headers,fetchImpl,timeoutMs,cryptoImpl=globalThis.crypto}={}){
   if(typeof resolveNamespace!=='function'||typeof isCurrent!=='function')throw error('setup','收藏账户环境尚未就绪',503);
   let closed=false;
@@ -28,7 +29,7 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
     // a new handle; neither a lost acknowledgement nor a conflict rebases it.
     return Object.freeze({request,submit:options=>client.write(request,options)});
   }
-  return Object.freeze({expectedAccount,namespace,guard,invalidateReadCache:()=>client.invalidateReadCache?.(),list:(input,options)=>client.list(input,options),get:(id,options)=>client.get(id,options),
+  return Object.freeze({expectedAccount,namespace,guard,invalidateReadCache:()=>client.invalidateReadCache?.(),readCacheNeedsRefresh:()=>client.readCacheNeedsRefresh?.()===true,list:(input,options)=>client.list(input,options),get:(id,options)=>client.get(id,options),
     snapshot:options=>client.snapshot(options),
     inventory:options=>client.inventory(options),
     restoreInfo:options=>client.restoreInfo(options),

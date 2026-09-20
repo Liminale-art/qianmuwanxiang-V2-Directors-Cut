@@ -1040,8 +1040,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   min-height: 64px;
   gap: 12px;
   padding: 13px 16px 12px 28px !important;
-  border-bottom: 1px solid var(--sd-hairline);
-  background: var(--sd-glass-weak);
+  border-bottom: 0;
+  background: transparent;
 }
 
 #story-director-modal .sd-titlebox {
@@ -1237,8 +1237,10 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   box-sizing: border-box !important;
   margin: 0 !important;
   overflow: hidden;
-  padding: 6px 16px 0;
-  background: linear-gradient(to top, var(--qm-tab-page) 3px, transparent 3px), var(--qm-tab-rail);
+  padding: 6px 8px 0;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--qm-tab-rail) 36%, transparent) 44%, var(--qm-tab-rail) 100%);
 }
 #story-director-modal .sd-tabs {
   flex: 0 0 auto;
@@ -1264,8 +1266,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-tabs::-webkit-scrollbar { height: 0; display: none; }
 #story-director-modal .sd-tabs.sd-tabs-dragging { cursor: grabbing; user-select: none; }
 #story-director-modal .sd-tabs.sd-tabs-dragging .sd-tab { cursor: grabbing; }
-#story-director-modal .sd-tabs.sd-tabs-fade-left { --sd-fade-l: 28px; }
-#story-director-modal .sd-tabs.sd-tabs-fade-right { --sd-fade-r: 28px; }
+#story-director-modal .sd-tabs.sd-tabs-fade-left { --sd-fade-l: 10px; }
+#story-director-modal .sd-tabs.sd-tabs-fade-right { --sd-fade-r: 10px; }
 
 #story-director-modal .sd-tab {
   position: relative;
@@ -1276,7 +1278,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   min-height: 42px;
   border: none !important;
   border-radius: 11px 11px 0 0 !important;
-  padding: 9px 15px !important;
+  padding: 9px 12px !important;
   background: transparent !important;
   color: var(--sd-muted) !important;
   font: inherit !important;
@@ -1285,7 +1287,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   white-space: nowrap;
   writing-mode: horizontal-tb !important;
   box-shadow: none !important;
-  transition: color .15s ease, background .15s ease;
+  transition: color .26s ease, background .26s ease;
 }
 
 #story-director-modal .sd-tab:hover { color: var(--sd-text) !important; }
@@ -1302,11 +1304,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* Classic: a raised, softly shouldered folder tab and a short ink marker. */
 #story-director-modal .sd-tab::before {
   inset: 0; z-index: -1; background: var(--qm-tab-page);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 42' preserveAspectRatio='none'%3E%3Cpath d='M0 42C14 42 6 2 28 2H72C94 2 86 42 100 42Z'/%3E%3C/svg%3E") center/100% 100% no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 42' preserveAspectRatio='none'%3E%3Cpath d='M0 42C14 42 6 2 28 2H72C94 2 86 42 100 42Z'/%3E%3C/svg%3E") center/100% 100% no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 42' preserveAspectRatio='none'%3E%3Cpath d='M0 42C9 42 2 2 18 2H82C98 2 91 42 100 42Z'/%3E%3C/svg%3E") center/100% 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 42' preserveAspectRatio='none'%3E%3Cpath d='M0 42C9 42 2 2 18 2H82C98 2 91 42 100 42Z'/%3E%3C/svg%3E") center/100% 100% no-repeat;
 }
 #story-director-modal .sd-tab::after { bottom: 6px; left: calc(50% - 10px); width: 20px; height: 2px; border-radius: 2px; background: currentColor; }
 #story-director-modal .sd-tab:focus-visible { outline: 2px solid var(--sd-accent) !important; outline-offset: -3px !important; }
+@media (prefers-reduced-motion: reduce) { #story-director-modal .sd-tab { transition: none; } }
 
 /* ---------- 7. 内容区 / 卡片 / 表单 ---------- */
 #story-director-modal .sd-body {
@@ -2029,7 +2032,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-note-tools-toggle:hover,
 #story-director-modal .sd-note-item-tools button:hover,
 #story-director-modal .sd-note-item-tools button.active { background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-notes-card)) !important; color: var(--sd-accent) !important; }
-#story-director-modal .sd-note-item-tools { position: absolute; z-index: 3; right: 34px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+#story-director-modal .sd-note-item-tools { position: static; order: -1; display: flex; flex: none; gap: 2px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 #story-director-modal .sd-note-item-tools[hidden] { display: none; }
 #story-director-modal .sd-note-editor { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; padding: 0; background: var(--sd-notes-surface); }
 #story-director-modal .sd-note-editor .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 16px !important; border: 0 !important; border-radius: 0 !important; outline: 0; background: var(--sd-notes-surface) !important; color: var(--sd-text) !important; font: inherit; font-size: var(--sd-note-editor-font-size, 14px); line-height: 1.72; box-shadow: none !important; }
@@ -3671,25 +3674,25 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   --sd-glass: var(--sd-geo-skin-card);
   --sd-glass-weak: var(--sd-geo-skin-card);
   --sd-pre: var(--sd-geo-skin-card);
-  --sd-accent: #486980;
-  --sd-geo-conflict: #a53e28;
-  --sd-geo-ally: #286a47;
-  --sd-geo-tension: #8c641a;
-  --sd-geo-neutral: #7b827f;
-  --sd-geo-vassal: #71609a;
-  --sd-geo-stable: #496c8b;
-  --sd-geo-decline: #77726c;
-  --sd-geo-clue-blue: #087996;
-  --sd-geo-skin-card: #ffffff60;
-  --sd-geo-skin-border: #52657233;
-  --sd-geo-skin-text: #293c49;
-  --sd-geo-skin-muted: #526371;
-  --sd-geo-skin-line: #617f9166;
-  --sd-geo-skin-axis: #557c91b3;
-  --sd-geo-skin-clue: #65818dcc;
-  --sd-geo-skin-glow: #89aeb529;
-  --sd-geo-skin-pop: #f8faf9;
-  --sd-geo-skin-bg: color-mix(in srgb, var(--qm-surface, #f6f4ed) 94%, #8bb4bd);
+  --sd-accent: #2479a3;
+  --sd-geo-conflict: #c64554;
+  --sd-geo-ally: #137c65;
+  --sd-geo-tension: #ac6a0c;
+  --sd-geo-neutral: #738797;
+  --sd-geo-vassal: #8564bc;
+  --sd-geo-stable: #2581bb;
+  --sd-geo-decline: #72839b;
+  --sd-geo-clue-blue: #168fab;
+  --sd-geo-skin-card: #ffffffb8;
+  --sd-geo-skin-border: #3489ac38;
+  --sd-geo-skin-text: #264459;
+  --sd-geo-skin-muted: #496777;
+  --sd-geo-skin-line: #61a7c466;
+  --sd-geo-skin-axis: #229dc3b3;
+  --sd-geo-skin-clue: #2ea4c6cc;
+  --sd-geo-skin-glow: #70d3e323;
+  --sd-geo-skin-pop: #ffffff;
+  --sd-geo-skin-bg: color-mix(in srgb, var(--qm-surface, #f6f4ed) 55%, #f7fdff);
   color: var(--sd-geo-skin-text);
   padding: 10px 16px 14px; border-radius: 14px;
   border: 1px solid var(--sd-geo-skin-border);
@@ -3731,26 +3734,30 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
     radial-gradient(58% 50% at 50% 49%, var(--sd-geo-skin-glow), transparent 72%);
   border-radius: 14px;
 }
-/* 静态星轨床：保留确定布局与层次，不让节点/连线依赖各自动画。 */
+/* 装饰星轨轻缓旋转，人物节点及关系线锚点始终不动。 */
 #story-director-modal .sd-geo-bed { pointer-events: none; }
-#story-director-modal .sd-geo-orbit { transform-origin: center; }
+#story-director-modal .sd-geo-orbit { transform-origin: center; animation: sd-geo-orbit-turn var(--dur, 160s) linear infinite; }
 #story-director-modal .sd-geo-orbit-rev { animation-direction: reverse; }
 #story-director-modal .sd-geo-orbit ellipse {
   fill: none; stroke: var(--sd-geo-skin-line); stroke-width: 1; opacity: .5;
 }
-/* 环上散落的小星点保持静止，避免与关系层产生相对运动。 */
+/* 星光仅调亮度，不改动交互层、节点或连线路径。 */
 #story-director-modal .sd-geo-bed-dot {
-  fill: var(--sd-geo-skin-clue); opacity: .5;
+  fill: var(--sd-geo-skin-clue); opacity: .65; animation: sd-geo-star-breathe 5.6s ease-in-out infinite; animation-delay: var(--d, 0s);
 }
-/* 中央轴心：静态星核与柔光环。 */
+/* 中央轴心仅柔光呼吸，不绕动实际关系节点。 */
 #story-director-modal .sd-geo-axis { pointer-events: none; }
 #story-director-modal .sd-geo-axis-star {
-  fill: var(--sd-geo-skin-axis); transform-origin: center;
+  fill: var(--sd-geo-skin-axis); transform-origin: center; animation: sd-geo-star-breathe 7s ease-in-out infinite;
 }
 #story-director-modal .sd-geo-axis-halo {
   fill: none; stroke: var(--sd-geo-skin-axis); stroke-width: 1; opacity: .4;
   transform-origin: center;
+  animation: sd-geo-halo-breathe 7s ease-in-out infinite;
 }
+@keyframes sd-geo-orbit-turn { to { transform: rotate(360deg); } }
+@keyframes sd-geo-star-breathe { 0%,100% { opacity: .45; } 50% { opacity: .95; } }
+@keyframes sd-geo-halo-breathe { 0%,100% { opacity: .2; } 50% { opacity: .5; } }
 
 /* 同一条贝塞尔路径形成柔化的液态边缘与实色线芯；无位移/流动动画。 */
 #story-director-modal .sd-geo-edge { transition: opacity .25s ease; }
@@ -7095,24 +7102,23 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-world-flip-shell { position: relative; grid-column: 1 / -1; width: 100%; min-height: 100%; touch-action: pan-y pinch-zoom; }
 #story-director-modal .sd-world-page { min-width: 0; }
 #story-director-modal .sd-world-edge {
-  --sd-world-glow: color-mix(in srgb, var(--sd-accent) 62%, #00876f);
+  --sd-world-glow: color-mix(in srgb, var(--sd-accent) 28%, #008da2);
   position: absolute; z-index: 8; top: 0; bottom: 0; width: 24px; min-width: 0; height: auto; margin: 0; padding: 0; border: 0;
   color: var(--sd-accent) !important; background: transparent !important; box-shadow: none !important; cursor: pointer;
   display: grid; place-items: center; touch-action: pan-y pinch-zoom;
 }
 #story-director-modal .sd-world-edge::before {
-  content: ''; position: absolute; top: 0; bottom: 0; width: 1.5px; border-radius: 3px; pointer-events: none;
+  content: ''; position: absolute; top: 0; bottom: 0; width: 2px; border-radius: 3px; pointer-events: none;
   background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--sd-world-glow) 8%, transparent) 10%, color-mix(in srgb, var(--sd-world-glow) 40%, transparent) 25%, var(--sd-world-glow) 46%, var(--sd-world-glow) 54%, color-mix(in srgb, var(--sd-world-glow) 40%, transparent) 75%, color-mix(in srgb, var(--sd-world-glow) 8%, transparent) 90%, transparent); opacity: 0;
   filter: drop-shadow(0 0 2px var(--sd-world-glow)) drop-shadow(0 0 6px var(--sd-world-glow));
 }
 #story-director-modal:is(.sd-theme-dark:not([data-qm-mode="light"]), [data-qm-mode="dark"]) .sd-world-edge { --sd-world-glow: color-mix(in srgb, var(--sd-accent) 55%, #70ffdc); }
+#story-director-modal:is(.sd-theme-dark:not([data-qm-mode="light"]), [data-qm-mode="dark"]) .sd-world-edge::before { width: 1.5px; }
 #story-director-modal .sd-world-edge.has-content::before { opacity: .88; animation: sd-world-edge-breathe 2.8s ease-in-out infinite; }
 #story-director-modal .sd-world-edge-left { left: -1px; border-radius: 0; }
 #story-director-modal .sd-world-edge-right { right: -1px; border-radius: 0; }
 #story-director-modal .sd-world-edge-left::before { left: 0; }
 #story-director-modal .sd-world-edge-right::before { right: 0; }
-#story-director-modal .sd-world-edge i { font-size: 12px; opacity: .6; }
-#story-director-modal .sd-world-edge:is(:hover, :focus-visible) i { opacity: 1; }
 #story-director-modal .sd-world-edge:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: -2px; }
 
 #story-director-modal .sd-term { max-height: min(52vh, 720px); }
@@ -8864,7 +8870,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #qianmu-notes-panel-layer .sd-note-tools-toggle,
 #qianmu-notes-panel-layer .sd-note-item-tools button { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); }
 #qianmu-notes-panel-layer .sd-note-pinned-mark[hidden] { display: none; }
-#qianmu-notes-panel-layer .sd-note-item-tools { position: absolute; z-index: 3; right: 31px; top: 50%; transform: translateY(-50%); display: flex; gap: 1px; }
+#qianmu-notes-panel-layer .sd-note-item-tools { position: static; order: -1; display: flex; flex: none; gap: 1px; }
 #qianmu-notes-panel-layer .sd-note-item-tools[hidden] { display: none; }
 #qianmu-notes-panel-layer .sd-note-item-tools button:hover,
 #qianmu-notes-panel-layer .sd-note-item-tools button.active { background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-notes-card)); color: var(--sd-accent); }
@@ -10834,6 +10840,13 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-focus-actions .sd-focus-lock.active { color:var(--sd-accent);background:color-mix(in srgb,var(--sd-accent) 16%,transparent); }
 .sd-storyboard-task-usage { min-width:0;max-width:100%;overflow-wrap:anywhere;text-align:left;font-size:var(--sd-font-small,12px);color:var(--sd-text-muted); }
 
+/* Text editing keeps the resting field boundary: no extra focus ring/glow.
+   Scoped to owned surfaces; buttons, tabs, toggles and host ST fields keep focus cues. */
+html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-boundary], [data-qm-text-collection-portal], .qm-text-collection-dialog, .qm-prose-assistant-dialog)
+  :is(textarea, [contenteditable="true"], input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"])):is(:focus, :focus-visible) {
+  outline: none !important; box-shadow: none !important;
+}
+
 /* Current-chat narrative lookup. Shared skin tokens, no changes to the panel shell. */
 #story-director-modal .sd-gallery-narrative { padding:12px;min-width:0; }
 #story-director-modal .sd-gallery-narrative summary { cursor:pointer;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;list-style:none;font-weight:600; }
@@ -10862,15 +10875,9 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-gallery-page:has(.sd-gallery-narrative) .sd-storyboard-gallery-new-folder { grid-column:3;grid-row:1; }
   #story-director-modal .sd-storyboard-gallery-page:has(.sd-gallery-narrative) .sd-storyboard-gallery-search { grid-column:1/-1;grid-row:2; }
 }
-#qianmu-notes-panel-layer .sd-notes-sync {
-  display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
-  padding: 5px 14px; font-size: 11px; color: var(--sd-muted); min-width: 0;
-}
-#qianmu-notes-panel-layer .sd-notes-sync-status { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-#qianmu-notes-panel-layer .sd-notes-sync button { border: 0; background: transparent; color: var(--sd-accent); font: inherit; cursor: pointer; padding: 4px; white-space: nowrap; }
-#qianmu-notes-panel-layer .sd-notes-sync button[hidden] { display: none; }
-#qianmu-notes-panel-layer .sd-notes-sync button:disabled { opacity: .5; cursor: default; }
-#qianmu-notes-panel-layer .sd-notes-sync[data-state="error"] .sd-notes-sync-status { color: var(--sd-text); }
+#qianmu-notes-panel-layer .sd-note-legacy { border: 0; background: transparent; color: var(--sd-accent); font: inherit; font-size: 10px; cursor: pointer; padding: 4px; white-space: nowrap; margin-left: auto; }
+#qianmu-notes-panel-layer .sd-note-legacy[hidden] { display: none; }
+#qianmu-notes-panel-layer .sd-note-legacy:disabled { opacity: .5; cursor: default; }
 #qianmu-notes-panel-layer .sd-note-legacy-review { position: absolute; inset: 12px; z-index: 2; display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--sd-notes-surface, var(--sd-card)); border: 1px solid var(--sd-border); color: var(--sd-text); border-radius: inherit; min-height: 0; }
 #qianmu-notes-panel-layer .sd-note-legacy-review p { font-size: 12px; margin: 0; }
 #qianmu-notes-panel-layer .sd-note-legacy-review textarea { flex: 1; min-height: 50px; width: 100%; resize: none; }

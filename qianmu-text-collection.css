@@ -78,6 +78,9 @@ dialog.qm-text-collection-dialog::backdrop { background: #0007; }
     touch-action: auto;
     user-select: text;
     -webkit-user-select: text;
+    box-sizing: border-box !important;
+    transform: none !important;
+    text-indent: 0;
 }
 .qm-text-collection-row {
     display: flex;
@@ -112,13 +115,17 @@ dialog.qm-text-collection-panel {
     border-radius: 22px;
 }
 .qm-text-collection-panel > main { flex: 1 1 auto; }
+.qm-text-collection-capture-dialog > main { display: flex; flex-direction: column; overflow: hidden; }
+.qm-text-collection-capture-dialog .qm-text-collection-capture { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.qm-text-collection-capture-dialog .qm-text-collection-paragraphs { flex: 1 1 auto; min-height: 0; }
+.qm-text-collection-capture-dialog.is-editing textarea { flex: 1 1 auto; min-height: 80px; height: auto; line-height: var(--qm-collection-prose-line, 1.6); }
 .qm-text-collection-panel > header > strong { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .qm-text-collection-header-tools { flex: none; }
 .qm-text-collection-library > main { display: flex; flex-direction: column; overflow: hidden; }
 .qm-text-collection-search { flex: none; }
 .qm-text-collection-library [data-collection-list], .qm-text-collection-library [data-collection-detail] { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .qm-text-collection-library [data-collection-detail] { display: flex; flex-direction: column; }
-.qm-text-collection-library .qm-text-collection-prose { padding: 5px 8px; font-family: var(--qm-collection-prose-font, inherit); font-size: var(--qm-collection-prose-size, 16px); line-height: var(--qm-collection-prose-line, 1.6); }
+.qm-text-collection-library .qm-text-collection-prose { padding: 10px; font-family: var(--qm-collection-prose-font, inherit); font-size: var(--qm-collection-prose-size, 16px); line-height: var(--qm-collection-prose-line, 1.6); }
 .qm-text-collection-prose > p { margin: 0 0 var(--qm-collection-prose-gap, 4px); font: inherit; line-height: inherit; white-space: pre-wrap; }
 .qm-text-collection-panel textarea { resize: none; }
 .qm-text-collection-library textarea { flex: 1 1 auto; min-height: 80px; height: auto; line-height: var(--qm-collection-prose-line, 1.6); }
@@ -131,11 +138,23 @@ dialog.qm-text-collection-panel {
 .qm-text-collection-image-export > main { display: flex; flex-direction: column; gap: 12px; }
 .qm-text-collection-image-export label { display: flex; flex-direction: column; gap: 6px; flex: none; font-size: 12px; color: var(--sd-muted, inherit); }
 .qm-text-collection-image-export input { width: 100%; min-width: 0; height: 36px; border: 1px solid var(--sd-hairline, #8886); border-radius: 8px; padding: 6px 8px; color: var(--sd-text, inherit); background: var(--sd-input-bg, #8882); font: inherit; }
-.qm-text-collection-image-export textarea { flex: 1 1 auto; min-height: 100px; height: auto; }
+.qm-text-collection-image-export .qm-text-collection-annotation { flex-direction: row; align-items: center; font-size: 14px; color: inherit; }
+.qm-text-collection-image-export .qm-text-collection-annotation input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--qm-accent, #a7c4b5); }
+.qm-text-collection-image-export [role="status"]:empty { display: none; }
 .qm-text-collection-image-export [data-collection-manage="image-save"] { margin-inline-start: auto; }
 @media (max-width: 760px) {
     dialog.qm-text-collection-panel { width: calc(100vw - 32px); max-width: calc(100vw - 32px); height: calc(100vh - 108px); height: calc(100dvh - 108px); max-height: calc(100dvh - 108px); border-radius: 16px; }
 }
+/* The choice and export dialogs are actions, not a second full reading page. */
+dialog.qm-text-collection-chooser, dialog.qm-text-collection-image-export {
+    width: min(420px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    height: fit-content;
+    max-height: calc(100dvh - 32px);
+    border-radius: 14px;
+}
+dialog.qm-text-collection-chooser > main, dialog.qm-text-collection-image-export > main { flex: 0 1 auto; }
+dialog.qm-text-collection-chooser > footer:has([data-collection-status]:empty) { padding-block: 6px; }
 @media (max-height: 420px) {
     .qm-text-collection-dialog > header, .qm-text-collection-dialog > footer { padding: 8px 12px; }
     .qm-text-collection-dialog textarea { height: 120px; min-height: 80px; }

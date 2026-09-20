@@ -21,7 +21,7 @@ async function fixture({latency=false}={}){
   const seed=await createStAccountStorage(config);
   await seed.write('collections',{version:1,expectedAccount:account,revision:1,entries:[{id:record.id,revision:1,updatedAt:record.updatedAt,deleted:false,record}],receipts:[]},{expectedFingerprint:null});seed.close();
   const guard=async()=>{if(!live||await resolveNamespace()!==namespace||!live)throw Error('account changed');return true;};
-  const make=()=>createNativeTextCollectionClient({expectedAccount:account,guard,isCurrent:()=>live,storageFactory:options=>createStAccountStorage({...config,...options}),legacyFactory:()=>({snapshot:()=>assert.fail('existing native file must not read the legacy service'),close(){}}),now:()=>clock});
+  const make=(options={})=>createNativeTextCollectionClient({expectedAccount:account,guard,isCurrent:()=>live,storageFactory:options=>createStAccountStorage({...config,...options}),legacyFactory:()=>({snapshot:()=>assert.fail('existing native file must not read the legacy service'),close(){}}),now:()=>clock,...options});
   identity=get=post=0;
   return {make,record,config,files,counts:()=>({identity,get,post}),reset(){identity=get=post=0;},setAccount(value){owner=value;},setCurrent(value){live=value;},setRequestHook(value){onRequest=value;},advance(value){clock+=value;}};
 }
@@ -96,5 +96,79 @@ test('lifecycle-only nested guard still delegates transport-time account fencing
     const pending=mode==='read'?client.get(f.record.id,{forceRefresh:true}):client.write(edit(f.record,1,'不应提交','mutation-scope01'));
     await assert.rejects(pending,{code:'st_account_storage_account'});
     assert.equal(f.counts().post,0);client.close();
+  }
+});
+
+test('verified browsing state survives panel close, with zero file reads on warm list/detail/search',async()=>{
+  const f=await fixture(),readScope={},first=f.make({readScope});await first.list();first.close();f.reset();
+  const reopened=f.make({readScope});assert.equal((await reopened.list({cursor:null,limit:50},{preferCache:true})).total,1);
+  assert.equal((await reopened.get(f.record.id,{preferCache:true})).record.text,f.record.text);
+  assert.equal((await reopened.list({cursor:null,limit:50,search:'原文'},{preferCache:true})).total,1);
+  assert.equal(f.counts().get,0);assert.equal(f.counts().post,0);assert.equal(reopened.readCacheNeedsRefresh(),false);reopened.close();
+});
+
+test('stale-first browsing stays usable while a background refresh is waiting, then sees the remote result',async()=>{
+  const f=await fixture(),readScope={},first=f.make({readScope});await first.list();first.close();
+  const remote=f.make();await remote.write(edit(f.record,1,'另一端最新正文','mutation-remote01'));remote.close();f.advance(60000);f.reset();
+  const current=f.make({readScope});assert.equal((await current.get(f.record.id,{preferCache:true})).record.text,f.record.text);assert.equal(f.counts().get,0);assert.equal(current.readCacheNeedsRefresh(),true);
+  let release,entered;const gate=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{entered=resolve;});let hold=true;
+  f.setRequestHook(async()=>{if(hold){hold=false;entered();await gate;}});
+  const refreshing=current.list({cursor:null,limit:50},{revalidate:true});await started;
+  assert.equal((await current.get(f.record.id,{preferCache:true})).record.text,f.record.text,'background refresh must not evict the visible cached body');
+  release();await refreshing;assert.equal((await current.get(f.record.id,{preferCache:true})).record.text,'另一端最新正文');assert.equal(current.readCacheNeedsRefresh(),false);current.close();
+});
+
+test('shared read state publishes confirmed mutations, invalidates failures and never bypasses account guards',async()=>{
+  const f=await fixture(),readScope={},a=f.make({readScope}),b=f.make({readScope});await a.list();await b.list();
+  await b.write(edit(f.record,1,'已确认修改','mutation-shared01'));f.reset();assert.equal((await a.get(f.record.id,{preferCache:true})).record.text,'已确认修改');assert.equal(f.counts().get,0);
+  f.setAccount('st-user:someone-else');await assert.rejects(a.get(f.record.id,{preferCache:true}));f.setAccount(namespace);f.reset();
+  await b.get(f.record.id,{preferCache:true});assert.equal(f.counts().get,2,'an identity failure invalidates the shared snapshot');
+  b.invalidateReadCache();f.reset();await a.list();assert.equal(f.counts().get,2);a.close();b.close();
+});
+
+test('new storage lifetime never reuses an earlier configuration snapshot',async()=>{
+  const f=await fixture(),a=f.make({readScope:{}});await a.list();a.close();f.reset();
+  const b=f.make({readScope:{}});await b.list({cursor:null,limit:50},{preferCache:true});assert.equal(f.counts().get,2);b.close();
+});
+
+test('authentication rejection revokes shared cached clients, while ordinary offline errors retain a readable snapshot',async()=>{
+  for(const code of ['st_account_storage_account','st_account_storage_unavailable']){
+    const f=await fixture(),readScope={},a=f.make({readScope}),b=f.make({readScope});await a.list();await b.list();
+    f.setRequestHook(()=>{throw Object.assign(Error('synthetic failure'),{code});});
+    await assert.rejects(a.list({cursor:null,limit:50},{revalidate:true}),{code});
+    if(code==='st_account_storage_account'){
+      await assert.rejects(a.get(f.record.id,{preferCache:true}),{code:'text_collection_sync_account'});
+      await assert.rejects(b.get(f.record.id,{preferCache:true}),{code:'text_collection_sync_account'});
+      f.setRequestHook(null);f.reset();const fresh=f.make({readScope});await fresh.list();assert.equal(f.counts().get,2);fresh.close();
+    }else assert.equal((await b.get(f.record.id,{preferCache:true})).record.text,f.record.text);
+    a.close();b.close();
+  }
+});
+
+test('a closing panel late read cannot revoke another live panel sharing its snapshot',async()=>{
+  const f=await fixture(),readScope={},record=f.record;let wait=null,entered;
+  const value={version:1,expectedAccount:account,revision:1,entries:[{id:record.id,revision:1,updatedAt:record.updatedAt,deleted:false,record}],receipts:[]};
+  const storageFactory=async()=>({read:async()=>{if(wait){const pending=wait;wait=null;entered();await pending;}return {exists:true,value:structuredClone(value)};},close(){}});
+  const a=f.make({readScope,storageFactory});await a.list();let release;
+  wait=new Promise(resolve=>{release=resolve;});const started=new Promise(resolve=>{entered=resolve;});
+  const refresh=assert.rejects(a.list({cursor:null,limit:50},{revalidate:true}),{code:'text_collection_sync_account'});
+  await started;a.close();const b=f.make({readScope,storageFactory});assert.equal((await b.list()).total,1);
+  release();await refresh;assert.equal((await b.get(record.id,{preferCache:true})).record.text,record.text);b.close();
+});
+
+test('a late background read returns confirmed edits or deletions, not its older response',async()=>{
+  for(const operation of ['edit','delete']){
+  const f=await fixture(),readScope={},record=f.record;let value={version:1,expectedAccount:account,revision:1,entries:[{id:record.id,revision:1,updatedAt:record.updatedAt,deleted:false,record}],receipts:[]},wait=null,entered=null;
+  const storageFactory=async()=>({read:async()=>{const captured=structuredClone(value);if(wait){const pending=wait;wait=null;entered();await pending;}return {exists:true,value:captured};},update:async(_slot,transform)=>{value=transform(structuredClone(value));return {exists:true,value};},close(){}});
+  const a=f.make({readScope,storageFactory}),b=f.make({readScope,storageFactory});await a.list();await b.list();
+  // Ensure b owns its transport before delaying a's refresh response.
+  await b.get(record.id,{forceRefresh:true});await a.get(record.id,{forceRefresh:true});
+  let release;wait=new Promise(resolve=>{release=resolve;});const started=new Promise(resolve=>{entered=resolve;});
+  const refreshing=a.list({cursor:null,limit:50},{revalidate:true});await started;
+  await b.write(operation==='edit'?edit(record,1,'并发保存的新版本','mutation-late001'):{version:1,expectedAccount:account,mutationId:'mutation-late001',operation:'delete',id:record.id,baseRevision:1});release();
+  const refreshed=await refreshing,detail=await a.get(record.id);
+  if(operation==='edit'){assert.equal(refreshed.items[0].preview,'并发保存的新版本');assert.equal(detail.record.text,'并发保存的新版本');}
+  else{assert.equal(refreshed.items.length,0);assert.equal(detail.record,null);}
+  a.close();b.close();
   }
 });

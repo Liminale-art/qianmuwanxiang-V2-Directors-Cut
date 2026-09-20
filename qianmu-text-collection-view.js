@@ -2,7 +2,7 @@ import { captureTextCollectionSource, createTextCollection, textCollectionRecord
 import { notesSyncOperationId } from './qianmu-notes-sync-contract.js';
 import { qianmuIconElement } from './qianmu-icon-renderer.js';
 import { textCollectionParagraphs, textCollectionParagraphSelection } from './qianmu-text-collection-paragraphs.js';
-import { applyCollectionProseStyle } from './qianmu-text-collection-presentation.js';
+import { applyCollectionProseStyle, collectionEditorText, collectionEditorValue } from './qianmu-text-collection-presentation.js';
 
 // Paragraph selection is local; account setup may finish later, but is always
 // verified before a record is created or written. No document selection hooks.
@@ -14,7 +14,7 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
     const captured = resolveSource ? Object.freeze({ ...source, text: textCollectionText(source?.text) }) : captureTextCollectionSource(source);
     const paragraphs = textCollectionParagraphs(captured.text), selected = new Set();
     const dialog = document.createElement('dialog');
-    dialog.className = 'qm-text-collection-dialog qm-text-collection-panel';
+    dialog.className = 'qm-text-collection-dialog qm-text-collection-panel qm-text-collection-capture-dialog qm-text-collection-chooser';
     dialog.setAttribute('aria-label', '收藏正文');
     applyCollectionProseStyle(dialog, sourceElement, parent);
     const controller = new view.AbortController();
@@ -94,12 +94,11 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
         dialog.setAttribute('aria-busy', String(pending));
     }
     function editedValue(){
-        const original=selection.text;
-        // Textareas normalize line endings; merely opening the editor is not an edit.
-        return textarea.value===original.replace(/\r\n?/g,'\n')?original:textarea.value;
+        return collectionEditorValue(selection.text, textarea.value);
     }
     function choose(nextMode) {
         mode = nextMode; draft = null; editing = false; selected.clear(); selection = mode === 'full' ? { start: 0, end: captured.text.length, text: captured.text } : null;
+        dialog.classList.remove('qm-text-collection-chooser');
         back.title='返回选择';back.setAttribute('aria-label',back.title);back.hidden=false;textarea.setAttribute('aria-label','正文纯文本');
         choices.hidden = true; preview.hidden = false; actions.hidden = false; paragraphList.hidden = false; textarea.hidden = true;
         instruction.textContent = mode === 'full' ? '' : '点击段落，可多选'; instruction.hidden = mode === 'full';
@@ -145,11 +144,13 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
         if (action === 'full' || action === 'selection') {if(!draft)choose(action);}
         else if (action === 'save') void submit();
         else if (action === 'edit' && !draft && !editing) {
-            if(!rangeValid())return;editing=true;textarea.value=selection.text;textarea.hidden=false;paragraphList.hidden=true;textarea.setAttribute('aria-label','编辑收藏文字');
+            if(!rangeValid())return;editing=true;textarea.value=collectionEditorText(selection.text);textarea.hidden=false;paragraphList.hidden=true;textarea.setAttribute('aria-label','编辑收藏文字');
+            dialog.classList.add('is-editing');
             instruction.hidden=true;back.title='放弃修改并返回选择';back.setAttribute('aria-label',back.title);controls();textarea.focus({preventScroll:true});textarea.setSelectionRange(0,0);
         }
         else if (action === 'back' && !draft) {
             mode = null; draft = null; editing = false; selection = null; selected.clear(); back.hidden = true;
+            dialog.classList.remove('is-editing');dialog.classList.add('qm-text-collection-chooser');
             choices.hidden = false; preview.hidden = true; actions.hidden = true;
             textarea.value = ''; status.textContent = '';
             choices.querySelector('button').focus({ preventScroll: true });

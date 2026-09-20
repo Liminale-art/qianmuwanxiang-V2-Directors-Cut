@@ -18,9 +18,11 @@ await context.route('**/*', async route => {
 });
 try {
     await page.goto('https://qianmu.test/');
+    await page.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')+'\n'+await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')+'\ntextarea:focus{outline:4px solid red!important;box-shadow:0 0 3px red!important}'});
     await page.evaluate(async () => {
         const { mountQianmuInputBoundary } = await import('/qianmu-input-boundary.js');
         const root = document.querySelector('#root'), editor = document.querySelector('#editor'), host = document.querySelector('#host');
+        root.dataset.qmTheme='editorial';root.style.setProperty('--qm-ink','#333');
         window.result = { hostKeys: 0, hostInputs: 0, ownKeys: 0, ownInputs: 0, rootKeys: 0, hostClipboard: 0 };
         document.addEventListener('keydown', event => { window.result.hostKeys++; if (event.ctrlKey && event.key === 'Enter') host.focus(); });
         for (const type of ['beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend']) document.addEventListener(type, () => window.result.hostInputs++);
@@ -33,6 +35,7 @@ try {
         editor.focus();
     });
     await page.locator('#editor').press('Control+Enter');
+    assert.deepEqual(await page.locator('#editor').evaluate(node=>({outline:getComputedStyle(node).outlineStyle,shadow:getComputedStyle(node).boxShadow})),{outline:'none',shadow:'none'});
     assert.equal(await page.evaluate(() => document.activeElement.id), 'editor');
     await page.keyboard.insertText('中文输入不串到正文');
     assert.equal(await page.locator('#editor').inputValue(), '中文输入不串到正文');
@@ -50,12 +53,14 @@ try {
     });
     assert.ok(events.every(event => event.accepted && !event.defaultPrevented));
     await page.locator('#own-button').press('Control+Enter');
+    assert.equal(await page.locator('#own-button').evaluate(node=>getComputedStyle(node).outlineWidth),'2px','buttons retain keyboard focus, unlike text editors');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'own-button');
     const isolated = await page.evaluate(() => ({ ...window.result, sameOff: window.sameOff }));
     assert.equal(isolated.hostKeys, 0); assert.equal(isolated.hostInputs, 0); assert.equal(isolated.hostClipboard, 0);
     assert.ok(isolated.ownKeys > 0 && isolated.ownInputs > 0 && isolated.rootKeys > isolated.ownKeys);
     assert.equal(isolated.sameOff, true);
     await page.locator('#host').fill('宿主仍正常');
+    assert.equal(await page.locator('#host').evaluate(node=>getComputedStyle(node).outlineWidth),'4px','host ST editor focus remains untouched');
     assert.ok(await page.evaluate(() => window.result.hostInputs > 0));
     await page.evaluate(() => { window.offBoundary(); window.offBoundary(); });
     await page.locator('#editor').press('Control+Enter');

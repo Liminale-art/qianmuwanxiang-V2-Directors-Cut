@@ -59,6 +59,7 @@ assert.doesNotMatch(fn('renderStoryboardArtistLibrary'), /<h3>ARTIST LIBRARY<\/h
 assert.doesNotMatch(fn('renderStoryboardLogs'), /GENERATION LOG|<h3>分镜日志<\/h3>/);
 assert.doesNotMatch(fn('renderStoryboardPresetLibrary'), /<header><b>\$\{editingItem/);
 assert.match(css, /\.sd-storyboard-root \{ --qm-control-height: 40px;/);
-assert.match(css, /\.sd-world-edge::before \{[^}]*width: 1\.5px;[^}]*linear-gradient\(to bottom, transparent/);
+assert.match(css, /\.sd-world-edge::before \{[^}]*width: 2px;[^}]*linear-gradient\(to bottom, transparent/);
+assert.match(css, /\[data-qm-mode="dark"\]\) \.sd-world-edge::before \{ width: 1\.5px; \}/, 'night edge keeps its accepted thin contour');
 assert.match(css, /\.sd-header-actions[^}]*color: inherit !important;/);
 console.log('Storyboard dynamic titles, draft/scroll preservation and scoped form baseline OK');

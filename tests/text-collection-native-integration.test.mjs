@@ -42,9 +42,16 @@ function fixture(t,{legacyStatus=404,legacySnapshot=null}={}){
     const sessions=[];
     const open=async()=>{const session=await createTextCollectionSession({resolveNamespace:config.resolveNamespace,isCurrent:config.isCurrent,headers:config.headers,cryptoImpl:webcrypto});sessions.push(session);return session;};
     t.after(()=>sessions.forEach(session=>session.close()));
-    return {files,calls,open,get uploads(){return calls.filter(call=>call.path==='/api/files/upload').length;},
+    return {files,calls,open,reconfigure:()=>configureStAccountStorage(config),get uploads(){return calls.filter(call=>call.path==='/api/files/upload').length;},
         loseHeadAck(){dropNextHeadAck=true;},setAccount(value){liveNamespace=value;}};
 }
+
+test('reconfiguring native storage rejects a cached read from the old client lifetime',async t=>{
+    const f=fixture(t),session=await f.open();await session.prepareCreate(record()).submit();await session.list({cursor:null,limit:50});
+    f.reconfigure();const count=f.calls.length;
+    await assert.rejects(session.list({cursor:null,limit:50},{preferCache:true}),{code:'text_collection_sync_account'});assert.equal(f.calls.length,count);
+    const next=await f.open();assert.equal((await next.list({cursor:null,limit:50})).total,1);
+});
 
 test('configured real session uses native ST files without an installed backend and new clients can read, edit and delete',async t=>{
     const f=fixture(t),first=await f.open();assert.equal(first.expectedAccount,account);

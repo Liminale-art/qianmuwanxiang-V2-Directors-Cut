@@ -98,11 +98,11 @@ try{
   checks.push('debounced live search finds prose or names without a search/clear button and resets pagination on query changes');
   await page.locator('[data-collection-id="collection-50"]').click();await ready();assert.equal(reads,1);
   assert.match(await page.locator('[data-collection-title]').textContent(),/当时角色 & <旧用户>.*2026-09-19/);
-  const proseStyle=await page.locator('[data-collection-prose] p').first().evaluate(node=>({font:getComputedStyle(node).fontSize,line:getComputedStyle(node).lineHeight,gap:getComputedStyle(node).marginBottom}));assert.deepEqual(proseStyle,{font:'19px',line:'28px',gap:'3px'});
-  await button('image').click();await page.waitForFunction(()=>document.querySelector('dialog[aria-label="收藏存图"]'));assert.equal(await page.locator('[data-image-text]').inputValue(),'收藏原文 collection-50\n不依赖聊天');await page.locator('[data-collection-manage="image-close"]').click();assert.equal(await page.locator('dialog').count(),1);await ready();
+  const proseStyle=await page.locator('[data-collection-prose] p').first().evaluate(node=>({font:getComputedStyle(node).fontSize,line:getComputedStyle(node).lineHeight,gap:parseFloat(getComputedStyle(node).marginBottom)}));assert.equal(proseStyle.font,'19px');assert.equal(proseStyle.line,'28px');assert.ok(proseStyle.gap>=11.3);
+  await button('image').click();await page.waitForFunction(()=>document.querySelector('dialog[aria-label="收藏存图"]'));assert.equal(await page.locator('[data-image-text]').count(),0);await page.locator('[data-collection-manage="image-close"]').click();assert.equal(await page.locator('dialog').count(),1);await ready();
   if(artifactDirectory){await page.setViewportSize({width:393,height:850});await page.screenshot({path:path.join(artifactDirectory,'collection_detail_narrow.png')});}
   checks.push('detail follows the current prose font/line gap and its one export editor closes back to the same detail');
-  await button('copy').click();await ready();assert.equal(await page.evaluate(()=>fixture.copied),'收藏原文 collection-50\n不依赖聊天');
+  await button('copy').click();await ready();assert.equal(await page.evaluate(()=>fixture.copied),'收藏原文 collection-50\r\n不依赖聊天');
   await button('edit').click();await ready();await page.locator('[data-collection-editor]').fill('我编辑的收藏');
   loseAck=true;await button('save').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'我编辑的收藏');
   assert.match(await status(),/未完成|中断|损坏/);const first=structuredClone(writes.at(-1));await button('save').click();await ready();

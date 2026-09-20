@@ -30,14 +30,15 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   range.type='number';range.min='0';range.max='9';range.step='1';range.value=String(Number.isSafeInteger(referenceFloors)&&referenceFloors>=0&&referenceFloors<=9?referenceFloors:3);range.setAttribute('aria-label','参考楼层数');
   const custom=node('div');custom.className='qm-pa-custom';const url=node('input'),model=node('input'),key=node('input'),keyRow=node('div'),eye=button('显示 Key','eye');
   url.type='url';url.placeholder='https://…/v1';url.setAttribute('aria-label','助手API地址');model.setAttribute('aria-label','助手模型');key.type='password';key.autocomplete='off';key.setAttribute('aria-label','助手API Key');keyRow.className='qm-pa-key';keyRow.append(key,eye);custom.append(field('API 地址',url),field('模型',model),field('API Key',keyRow));
-  const persona=node('textarea');persona.value=systemPrompt;persona.rows=5;persona.maxLength=20000;persona.setAttribute('aria-label','人格前置词');
-  grid.append(field('API 预设',profile),custom,field('参考楼层（含USER，0为不发送）',range),field('人格前置词',persona));config.append(grid);
+  const persona=node('textarea');persona.value=systemPrompt;persona.rows=5;persona.maxLength=20000;persona.setAttribute('aria-label','助手提示词');
+  grid.append(field('API 预设',profile),custom,field('参考楼层（含USER，0为不发送）',range));config.append(grid);
   if(selection?.mode==='profile')profile.value='profile:'+selection.profileId;
   if(selection?.mode==='custom'){profile.value='custom';url.value=selection.connection?.apiUrl||'';model.value=selection.connection?.model||'';key.value=selection.connection?.apiKey||'';}custom.hidden=profile.value!=='custom';
-  const footer=node('footer'),question=node('textarea'),status=node('p'),historyNotice=node('p'),retry=button('重试保存','retry-history','retry'),clear=button('清空对话','clear'),send=button('发送','send'),composer=node('div');
+  const footer=node('footer'),question=node('textarea'),status=node('p'),historyNotice=node('p'),retry=button('重试保存','retry-history','retry'),clear=button('清空当前对话记录','clear'),send=button('发送','send'),composer=node('div');
+  clear.textContent='清空当前对话记录';grid.append(clear,field('助手提示词',persona));
   question.rows=1;question.maxLength=20000;question.setAttribute('aria-label','向场外特助提问');question.dataset.paQuestion='';
   status.dataset.paStatus='';status.setAttribute('role','status');status.setAttribute('aria-live','polite');historyNotice.dataset.paHistory='';historyNotice.setAttribute('role','status');retry.hidden=true;
-  composer.className='qm-pa-composer';composer.append(question,send);config.append(clear);footer.append(historyNotice,retry,status,composer);
+  composer.className='qm-pa-composer';composer.append(question,send);footer.append(historyNotice,retry,status,composer);
   const resize=node('span');resize.dataset.paResize='';resize.tabIndex=0;resize.setAttribute('role','separator');resize.setAttribute('aria-label','调整窗口大小');dialog.append(header,main,config,footer,resize);
   function dispose(){if(closed)return;const restoreFocus=dialog.contains(document.activeElement);closed=true;sequence++;autosave?.close();session?.close();history?.close();seed.close();disposeWindow?.();observer?.disconnect();listeners.splice(0).forEach(remove=>remove());key.value='';question.value='';rows.clear();dialog.remove();if(restoreFocus&&previousFocus?.isConnected)previousFocus.focus({preventScroll:true});resolve(null);}
   function alive(){if(closed)return false;try{seed.assertCurrent();if(isCurrent()!==true||!parent.isConnected||!dialog.isConnected)throw Error();return true;}catch(_){dispose();return false;}}

@@ -4,7 +4,7 @@ import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-comma
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
-import {renderQianmuMainTabs,keepQianmuTabVisible,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
+import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js';
@@ -165,8 +165,8 @@ import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.202';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.202';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.211';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.212';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.212';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -263,7 +263,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.211';
+const VERSION = '1.59.212';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -299,7 +299,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.202') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.202') },
   historicalRestore: { label: '历史聊天分镜恢复', load: () => import('./qianmu-historical-restore.js?v=1.59.204') },
-  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.211') },
+  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.212') },
   storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.202') },
   storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.202') },
   storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.202') },
@@ -6256,6 +6256,8 @@ async function hydrateNotesRuntime(force = false) {
     const root = document.getElementById(NOTES_PANEL_LAYER_ID), editor = root?.querySelector('.sd-note-body');
     const kept = notesRuntime.filter(note => notesSaveTimers.has(note.id) || note.id === notesActiveId && editor === document.activeElement);
     const keepIds = new Set(kept.map(note => note.id));
+    const displayFields = ['id', 'title', 'body', 'pinned', 'updatedAt', 'syncConflictOf'];
+    const previousDisplay = notesRuntime.map(note => displayFields.map(key => note[key])), previousActive = notesActiveId, previouslyLoaded = notesLoaded;
     notesRuntime = mergeNotesRefresh(notesRuntime, notes, baseline, keepIds);
     notesSortRuntime();
     notesZCounter = Math.max(1, ...notesRuntime.map((note) => Number(note.zOrder) || 0)) + 1;
@@ -6264,7 +6266,7 @@ async function hydrateNotesRuntime(force = false) {
     if (notesPanelOpen && editor && notesFind(notesActiveId)) {
       if (editor !== document.activeElement) editor.value = notesFind(notesActiveId).body;
       notesSyncPanel?.paint();
-    } else if (notesPanelOpen) renderNotesPanelPortal();
+    } else if (notesPanelOpen && (!previouslyLoaded || previousActive !== notesActiveId || previousDisplay.length !== notesRuntime.length || notesRuntime.some((note, index) => displayFields.some((key, field) => note[key] !== previousDisplay[index]?.[field])))) renderNotesPanelPortal();
     return notesRuntime;
   }).catch((error) => {
     console.warn(`[${MODULE_NAME}] notes load failed`, error);
@@ -6307,7 +6309,7 @@ function openNotesPanel() {
   notesPanelOpen = true;
   renderNotesPanelPortal();
   renderFloatingNotes();
-  void hydrateNotesRuntime(true).then(() => notesSyncControls().sync());
+  void hydrateNotesRuntime().then(() => notesSyncControls().sync());
 }
 
 function closeNotesPanel() {
@@ -6649,13 +6651,13 @@ function bindNotesPanelEvents(root) {
         .then(() => toast(pinned ? '便笺已设为常驻' : '已取消常驻，内容仍自动保存', 'success'))
         .catch((error) => console.warn(`[${MODULE_NAME}] note pin save failed`, error));
     });
-    item.querySelector('.sd-note-delete')?.addEventListener('click', async () => {
+    item.querySelector('.sd-note-delete')?.addEventListener('click', async event => {
       const note = notesFind(item.dataset.noteId);
       if (!note) return;
-      const epoch = notesViewEpoch;
+      const epoch = notesViewEpoch, button = event.currentTarget;
+      button.disabled = true;
       try {
         if (notesSaveTimers.has(note.id)) return toast('这条便笺尚未完成本机保存，请先重试保存再删除。', 'warning');
-        if (!await confirmDialog('删除便笺', '此操作会同步删除同一 ST 账户其他设备上的这条便笺。是否继续？')) return;
         if (epoch !== notesViewEpoch || !item.isConnected) return;
         await deleteQianmuNote(note.id, { namespace: note._notesAccount, localRevision: note.localRevision });
         if (epoch !== notesViewEpoch) return;
@@ -6663,10 +6665,12 @@ function bindNotesPanelEvents(root) {
         notesSaveTimers.delete(note.id);
         notesRuntime = notesRuntime.filter((entry) => entry.id !== note.id);
         if (notesActiveId === note.id) notesActiveId = '';
+        if (notesPanelOpen) renderNotesPanelPortal();
         await notesLoading;
         if (epoch !== notesViewEpoch) return;
         await hydrateNotesRuntime(true);
       } catch (error) { toast(error.message || '便笺未删除，请重新核对。', 'warning'); }
+      finally { if (button.isConnected) button.disabled = false; }
     });
   });
   const editor = root.querySelector('.sd-note-editor');
@@ -6801,6 +6805,7 @@ function renderModal() {
   const prevScroll = previousStoryboardScroller?.scrollTop ?? modal.querySelector('.sd-body')?.scrollTop ?? 0;
   const prevTheaterScroll = modal.querySelector('.sd-theater-reader-scroll')?.scrollTop ?? 0;
   const prevTabScroll = modal.querySelector('.sd-tabs')?.scrollLeft ?? 0;
+  const prevSelectedTab = modal.querySelector('.sd-tab.active')?.dataset.tab;
   snapshotAccState(modal);
   const tabs = [
     ['dashboard', '审片'],
@@ -6904,9 +6909,11 @@ function renderModal() {
   // 保留标签栏横向滚动位置，并确保激活标签可见；两端按可滚动方向显隐渐隐遮罩
   const tabsBar = modal.querySelector('.sd-tabs');
   if (tabsBar) {
+    sizeQianmuTabs(tabsBar);
     tabsBar.scrollLeft = prevTabScroll;
     keepQianmuTabVisible(tabsBar);
     updateTabsFade(tabsBar);
+    animateQianmuTabSelection(tabsBar, prevSelectedTab);
     if (!tabsBar.dataset.fadeBound) {
       tabsBar.dataset.fadeBound = '1';
       tabsBar.addEventListener('scroll', () => updateTabsFade(tabsBar), { passive: true });
@@ -8562,7 +8569,7 @@ function renderWorldPageEdges() {
   const available = settings.geopoliticsEnabled || worldPage === 'geopolitics';
   if (!available) return '';
   const label = worldPage === 'geopolitics' ? '返回世界正面' : '查看世界格局';
-  return ['left', 'right'].map((side) => `<button type="button" class="sd-world-edge sd-world-edge-${side}${hasContent ? ' has-content' : ''}" title="${label}" aria-label="${label}"><i class="fa-solid ${side === 'left' ? 'fa-chevron-left' : 'fa-chevron-right'}"></i></button>`).join('');
+  return ['left', 'right'].map((side) => `<button type="button" class="sd-world-edge sd-world-edge-${side}${hasContent ? ' has-content' : ''}" title="${label}" aria-label="${label}"></button>`).join('');
 }
 
 function renderCastWorldFront() {
@@ -23192,7 +23199,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
   if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
-    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.211').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.212').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
       root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
       apply: value => storyboardSetArtistPreview(root, value), notify: toast,
     })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });

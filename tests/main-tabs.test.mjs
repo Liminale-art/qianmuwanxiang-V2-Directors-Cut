@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {renderQianmuMainTabs,keepQianmuTabVisible,updateTabsFade,bindTabsScrollControls} from '../qianmu-main-tabs.js';
+import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,updateTabsFade,bindTabsScrollControls} from '../qianmu-main-tabs.js';
 
 test('main tabs have a separate fixed shell; labels and ids are escaped; only the active page is marked',()=>{
  const html=renderQianmuMainTabs([['one','审片'],['two','专注'],['bad"','<img>']], 'two');
@@ -36,4 +36,19 @@ test('mouse focus cannot change the drag baseline; keyboard focus still reveals 
  listeners.get('pointermove')({clientX:226,preventDefault(){}});assert.equal(bar.scrollLeft,2);
  listeners.get('pointerup')({pointerId:1});bar.scrollLeft=0;
  listeners.get('focusin')(focus);assert.equal(bar.scrollLeft,40);
+});
+
+test('overflow tabs fit complete equal slots, then clear sizing on a wide viewport',()=>{
+ const old=globalThis.getComputedStyle;globalThis.getComputedStyle=()=>({font:'13.5px sans-serif',gap:'4px',columnGap:'4px'});
+ try{const tabs=Array.from({length:8},()=>({style:{},getBoundingClientRect:()=>({width:54})})),bar={children:tabs,clientWidth:344,scrollLeft:17,dataset:{}};
+  sizeQianmuTabs(bar);assert.equal(tabs[0].style.flexBasis,'65.6px');assert.equal(bar.scrollLeft,17);assert.equal(tabs[0].style.flexBasis,tabs[7].style.flexBasis);
+  bar.clientWidth=780;sizeQianmuTabs(bar);assert.ok(tabs.every(tab=>tab.style.flexBasis===''));
+ }finally{if(old)globalThis.getComputedStyle=old;else delete globalThis.getComputedStyle;}
+});
+
+test('tab contour animation never transforms buttons on engines without pseudo support',()=>{
+ const old=globalThis.matchMedia;globalThis.matchMedia=()=>({matches:false});let cancelled=0,calls=0;
+ const before={dataset:{tab:'a'},getBoundingClientRect:()=>({left:0})},next={dataset:{tab:'b'},getBoundingClientRect:()=>({left:60}),animate(){calls++;return {effect:{pseudoElement:null},cancel(){cancelled++;}};}},bar={children:[before,next],querySelector:()=>next};
+ try{animateQianmuTabSelection(bar,'a');assert.equal(cancelled,2);assert.equal(calls,2);next.animate=()=>{throw Error('Not supported');};assert.doesNotThrow(()=>animateQianmuTabSelection(bar,'a'));globalThis.matchMedia=()=>({matches:true});next.animate=()=>assert.fail('reduced motion');animateQianmuTabSelection(bar,'a');}
+ finally{if(old)globalThis.matchMedia=old;else delete globalThis.matchMedia;}
 });

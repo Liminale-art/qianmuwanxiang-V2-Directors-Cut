@@ -26,25 +26,23 @@ export function mergeNotesRefresh(current, incoming, baseline, keep = new Set())
 }
 
 export function createNotesPanelSync({ getRoot, refresh, retryLocal, hasUnsaved = () => false, confirm, download, notify, document = globalThis.document, window = globalThis.window } = {}) {
-  let timer, refreshing, active = false, disposed = false, localFailure = '', writes = 0, legacy = [], legacyRead = false;
+  let timer, refreshing, active = false, disposed = false, localFailure = '', lastNotice = '', writes = 0, legacy = [], legacyRead = false;
   function paint() {
     const root = getRoot(); if (!root) return;
-    let bar = root.querySelector('.sd-notes-sync');
-    if (!bar) {
-      bar = document.createElement('div'); bar.className = 'sd-notes-sync';
-      const status = document.createElement('span'); status.className = 'sd-notes-sync-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-      const old = document.createElement('button'); old.type = 'button'; old.className = 'sd-note-legacy'; old.textContent = '旧便笺'; old.onclick = () => void showLegacy();
-      bar.append(status, old); root.querySelector('.sd-notes-panel > header')?.after(bar);
-    }
     const state = qianmuNotesState();
     const failure = localFailure || (!writes && hasUnsaved() ? '请重试保存，或先复制保留编辑区的内容。' : '');
     const message = failure ? `保存未完成：${failure}` : state.error ? '暂未保存到 ST，连接恢复后会自动重试'
-      : writes || state.state === 'syncing' || state.pending ? '正在保存…' : state.state === 'synced' ? '' : '正在读取…';
-    bar.querySelector('.sd-notes-sync-status').textContent = message;
-    bar.title = state.conflicts ? `发现 ${state.conflicts} 条冲突，两个版本均已保留，请核对带有冲突标记的便笺。` : message;
-    bar.dataset.state = failure || state.error ? 'error' : state.state;
-    const old = bar.querySelector('.sd-note-legacy'); old.hidden = !legacy.length; old.textContent = `旧便笺 (${legacy.length})`;
-    bar.hidden = !message && !legacy.length;
+      : '';
+    // Normal saves stay quiet; a failed save is never silently hidden with the status strip.
+    if (message && message !== lastNotice) notify?.(message, 'warning');
+    lastNotice = message;
+    let old = root.querySelector('.sd-note-legacy');
+    if (legacy.length && !old) {
+      old = document.createElement('button'); old.type = 'button'; old.className = 'sd-note-legacy'; old.onclick = () => void showLegacy();
+      const header = root.querySelector('.sd-notes-panel > header'), close = header?.querySelector('.sd-notes-close');
+      if (close) close.before(old); else header?.append(old);
+    }
+    if (old) { old.hidden = !legacy.length; old.textContent = `旧便笺 (${legacy.length})`; }
   }
   async function sync({ quiet = true } = {}) {
     if (disposed || refreshing || writes) return refreshing;

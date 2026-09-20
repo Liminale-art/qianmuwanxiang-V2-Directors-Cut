@@ -469,6 +469,7 @@ export const QIANMU_ICON_ROOT_SELECTOR = [
   '#story-director-quick-wheel',
   '#story-director-floor-nav',
   '#qianmu-notes-float-layer',
+  '#qianmu-notes-panel-layer',
   '#story-director-input-entry',
   '#story-director-input-button',
   '#sd-reader-portal',
