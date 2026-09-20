@@ -15,12 +15,13 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],providerId='novel',promptFormats,maxShots=3,metadata,stream=false}={}){
   let active=true,saves=0,account='st-user:synthetic',saveHook=null;
   const host={chatId:'synthetic',characterId:0,characters:[{avatar:'A.png',chat:'synthetic'}],chatMetadata:metadata||{story_director_liminale:{}},
-    chat:texts.map((mes,index)=>({mes,name:'A',is_user:index%2===1,send_date:String(index)})),async saveMetadata(){saves++;if(saveHook)await saveHook();}};
+    chat:texts.map((mes,index)=>({mes,name:'A',is_user:index%2===1,send_date:String(index),...(stream?{gen_started:`stream-${index}`}:{})})),async saveMetadata(){saves++;if(saveHook)await saveHook();}};
   const floor=texts.length-1;
   const sourceOptions={floor,referenceFloors:floor,getContext:()=>host,epoch:()=>0,
     isCurrent:()=>active,resolveNamespace:async()=>account,readText:message=>message.mes,
     readParagraphs:message=>message.mes.split('\n\n').filter(text=>text.trim()).map((text,index)=>({id:`P${index+1}`,text}))};
   const streamFrame=stream?await contract.captureStoryboardStreamFrame(sourceOptions):null;
+  if(stream)assert.ok(streamFrame,'stream fixture must not silently fall back to a completed-floor window');
   const window=await contract.captureStoryboardCompilerSources({...sourceOptions,streamFrame});
   const store=contract.openStoryboardCompilerContinuity(window);
   const context={floor,messages:window.messages,paragraphs:window.paragraphs,currentCharacter:'Alice stable appearance',persona:'user description',world:'selected world',

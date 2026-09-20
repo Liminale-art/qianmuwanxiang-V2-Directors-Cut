@@ -54,7 +54,8 @@ test('actual streaming compiler prepares an alternate floor without touching wor
   assert.equal(f.prepared.context.floor,2);assert.deepEqual(f.prepared.context.compilerSources.messages.map(row=>row.floor),[0,1,2]);
   assert.equal(f.prepared.result.shots[0].shotSpec.characters[0].id,'archive:alice');assert.equal(f.prepared.result.shots[0].shotSpec.promptRenderingPack.renderings.tags.characters[0].character_id,'archive:alice');
   assert.deepEqual(f.prepared.context.compilerSources.stream.stableParagraphIds,['P1']);assert.match(JSON.stringify(f.calls[0].payload),/She reaches/);
-  assert.doesNotMatch(JSON.stringify(f.calls[1].payload),/She reaches/);assert.throws(f.prepared.inputGuard.assertCurrent);f.assertReleased();
+  assert.doesNotMatch(JSON.stringify(f.calls[1].payload),/She reaches/);assert.throws(()=>f.prepared.inputGuard.assertCurrent(),{code:'storyboard_input_changed'});f.assertReleased();
+  assert.match(f.prepared.messageRef.revisionId,/^stream:[a-f0-9]{64}$/);assert.ok(f.prepared.messageRef.stream.prefixLength>0);
 });
 
 test('actual streaming wait leaves existing manual prompts and compiler stages intact without persisting provisional events',async()=>{

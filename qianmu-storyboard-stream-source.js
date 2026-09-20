@@ -1,5 +1,6 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
 import {createStoryboardMessageReference} from './qianmu-storyboard.js';
+import {storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.223';
 
 export const STORYBOARD_STREAM_SOURCE_LIMIT=200000;
 const frames=new WeakMap();
@@ -74,6 +75,8 @@ export async function captureStoryboardStreamFrame({getContext,epoch,resolveName
     prefix=raw.slice(0,stableLength);reference=createStoryboardMessageReference({message,chatKey:host.source.chatKey,floor});
     if(!reference.baseSendDate&&!reference.baseGenerationId){close();return null;} // No guessed text-only identity.
     identity=readIdentity(message);const snapshot=snapshotMessage(message);
+    const generation=storyboardStreamGeneration(snapshot);
+    if(!generation.startedAt&&!generation.id&&!generation.activeId){close();return null;}
     if(typeof emitter?.on==='function'&&typeof remove==='function'){
       const types=context.eventTypes||{};
       for(const [name,fallback] of [['MESSAGE_EDITED','message_edited'],['MESSAGE_SWIPED','message_swiped'],['MESSAGE_DELETED','message_deleted']]){
@@ -102,4 +105,15 @@ export function borrowStoryboardStreamFrame(frame,{getContext,epoch,resolveNames
   entry.claim();
   return {getContext:entry.getView,assertCurrent:frame.assertCurrent,guard:frame.guard,close:frame.close,proof:frame.proof,
     stableParagraphs:read=>read({...entry.snapshot,mes:entry.prefix},floor)};
+}
+
+export async function createStoryboardStreamMessageReference(frame){
+  const entry=frames.get(frame);if(!entry)fail('流式片段已关闭或并非当前来源');
+  await frame.guard();
+  const generation=storyboardStreamGeneration(entry.snapshot),ref={...frame.proof.messageRef};
+  const generationKey=await storyboardStreamDigest(storyboardStreamGenerationInput(ref,generation));
+  ref.revisionHash=storyboardStreamFingerprint(entry.prefix);ref.revisionId=`stream:${generationKey}`;
+  ref.stream={version:1,generation,generationKey,prefixLength:frame.proof.stableLength,prefixDigest:frame.proof.prefixDigest,prefixHash:ref.revisionHash};
+  if(normalizeStoryboardStreamReference(ref).invalid)fail('当前回复缺少稳定的生成身份，等待正文完成');
+  await frame.guard();return frozen(ref);
 }

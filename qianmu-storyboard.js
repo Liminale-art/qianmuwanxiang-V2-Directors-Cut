@@ -1,3 +1,4 @@
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.223';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -2220,6 +2221,7 @@ export function normalizeStoryboardMessageReference(value) {
     swipeId: int(ref.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), revisionHash: str(ref.revisionHash, 32), revisionId: str(ref.revisionId, 80),
     lastKnownFloor: Number.isInteger(ref.lastKnownFloor) ? ref.lastKnownFloor : null,
     createdAt: pos(ref.createdAt), updatedAt: pos(ref.updatedAt),
+    ...(hasStoryboardStreamReference(ref)?{stream:normalizeStoryboardStreamReference(ref)}:{}),
   };
 }
 
@@ -2230,6 +2232,7 @@ export function resolveStoryboardMessageReference(value, chat, options = {}) {
     return { state: 'foreign', floor: null, message: null, reference, relocated: false };
   }
   const messages = Array.isArray(chat) ? chat : [];
+  if(hasStoryboardStreamReference(reference))return resolveStoryboardStreamReference(reference,messages,createStoryboardMessageReference);
   const candidates = [];
   messages.forEach((message, floor) => {
     if (!obj(message)) return;
