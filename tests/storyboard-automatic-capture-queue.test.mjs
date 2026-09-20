@@ -26,6 +26,7 @@ function environment() {
     storyboardPlanCompilerSignature: () => 'compiler', storyboardDeletePlanArchives: async () => {}, uid: () => `id-${++seq}`,
     saveSettings: () => {}, storyboardScheduleInlineRender: () => {}, toast: message => notices.push(message), console: { warn: (...args) => errors.push(args) },
     storyboardReleasePlanArchive: async plan => { delete plan.archiveRef; },
+    storyboardFinishStreamCapture: async () => null,
     storyboardCompilePrompt: async (_root, { plan }) => { calls.push(['compile', Number(state.floor)]); plan.status = 'prompt_ready'; return true; },
     storyboardGenerate: async (_root, { plan, automatic }) => { calls.push(['generate', plan.floor, automatic]); plan.status = 'queued'; return true; },
     setTimeout: (fn, ms) => { assert.equal(ms, 0, 'no busy-poll interval'); const id = ++seq; timers.set(id, fn); return id; },
@@ -48,6 +49,14 @@ test('duplicate notifications queue once, preserve the received floor and yield 
   await e.flush();
   assert.deepEqual(e.calls, [['compile', 0], ['generate', 0, true]]);
   assert.equal(await e.context.storyboardHandleAutomaticCapture(0), false, 'queued plan is not re-extracted');
+});
+
+test('manual ownership acquired while checking stream history is rechecked before reserving an ordinary automatic plan',async()=>{
+  const e=environment();e.context.storyboardFinishStreamCapture=async()=>{
+    e.context.storyboardEnsurePlan(e.state,0,e.chat[0],{origin:'manual'});return null;
+  };
+  assert.equal(await e.context.storyboardHandleAutomaticCapture(0),true);await e.flush();
+  assert.deepEqual(e.calls,[]);assert.equal(e.state.shotPlans[0].origin,'manual');assert.equal(e.state.shotPlans[0].status,'idle');
 });
 
 test('busy compiler stores bounded tickets without timers and completion starts one drain', async () => {

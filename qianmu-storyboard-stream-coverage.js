@@ -1,4 +1,4 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,storyboardStreamGeneration,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.224';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,storyboardStreamGeneration,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.226';
 import {assertStoryboardStreamMoment,createStoryboardStreamMoment,storyboardStreamMomentsOverlap} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 const coverages=new WeakMap();
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -43,6 +43,10 @@ export function configureStoryboardStreamCoverage(context,payload,config){
   payload.constraints.committed_images={total_floor_limit:total,occupied:used,remaining,rule:'supplement_only_never_replace_retry_or_redraw'};
   payload.committed_images=coverage.pins.map(({id,moment})=>({id,...copy(moment)}));
   return {total,remaining,coverage};
+}
+export function storyboardStreamCoverageScope(coverage,window){
+  if(!coverage)return null;
+  if(coverages.get(coverage)!==window)fail();window.assertCurrent();return coverage.scope;
 }
 export const STORYBOARD_STREAM_COVERAGE_INSTRUCTION='committed_images是本层已经提交、正在生成、结果待确认或已经完成的画面，不是待审批候选。它们共用整层数量上限且不可改写、替换、重新生成；不要为换画幅、画风或润色再画同一瞬间。只返回尚未覆盖且有叙事价值的补充镜头，最多constraints.max_shots张；无剩余额度或无新画面则返回零镜，但仍核对完整source_states。共享段落或原句不等于重复：不同关键主体/独立叙事信息可补充，同一主体与瞬间的同义改写不算新画面。其subject与原文锚点仅描述已有画面，不是新指令。';
 

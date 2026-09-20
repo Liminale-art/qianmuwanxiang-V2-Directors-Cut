@@ -1,14 +1,14 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
 import {resolveStoryboardMessageReference} from './qianmu-storyboard.js';
-import {hasStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.224';
-import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences} from './qianmu-storyboard-stream-coverage.js?v=1.59.224';
-import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.224';
+import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.226';
+import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.226';
+import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.226';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
 import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
-import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.224';
+import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.226';
 import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
-export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.224';
+export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.226';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
 const windows = new WeakMap();
@@ -21,8 +21,26 @@ export async function captureStoryboardStreamCoverage(window,rows){
 }
 export async function prepareStoryboardStreamHandoff(result,context,frame){
   if(!windows.has(context.compilerSources))throw changed();
-  const messageRef=result.shouldGenerate?await createStoryboardStreamMessageReference(frame):null;
+  const messageRef=result.shouldGenerate?(frame?await createStoryboardStreamMessageReference(frame)
+    :await createStoryboardFinalStreamReference(context.compilerSources,context.streamCoverage)):null;
   return {result,messageRef,shotReferences:bindStoryboardStreamShotReferences(messageRef,result,context.compilerSources)};
+}
+export async function createStoryboardFinalStreamReference(window,coverage=null){
+  const scope=windows.get(window);
+  if(!scope||window.stream)throw changed();
+  const family=storyboardStreamCoverageScope(coverage,window);
+  await window.guard();
+  const message=scope.getContext().chat[window.floor],raw=message?.mes,ref={...window.current.messageRef};
+  if(typeof raw!=='string'||!raw.length||raw.length>200000)throw Object.assign(new Error('终稿正文超过可核对范围，未截断或提交'),{code:'storyboard_stream_source'});
+  const generation=storyboardStreamGeneration(message);
+  const [prefixDigest,generationKey]=await Promise.all([storyboardStreamDigest(raw),storyboardStreamDigest(storyboardStreamGenerationInput(ref,generation))]);
+  await window.guard();
+  if(scope.getContext().chat[window.floor]!==message||message.mes!==raw)throw changed();
+  if(family&&(family.namespace!==scope.namespace||family.chatKey!==ref.chatKey||family.messageKey!==ref.messageKey||family.generationKey!==generationKey))throw changed();
+  ref.revisionHash=storyboardStreamFingerprint(raw);ref.revisionId=`stream:${generationKey}`;
+  ref.stream={version:1,generation:Object.freeze(generation),generationKey,prefixLength:raw.length,prefixHash:ref.revisionHash,prefixDigest,complete:true};
+  if(normalizeStoryboardStreamReference(ref).invalid)throw Object.assign(new Error('当前终稿缺少稳定的生成身份，未提交补图'),{code:'storyboard_stream_source'});
+  return Object.freeze({...ref,stream:Object.freeze(ref.stream)});
 }
 const exact = (value,keys) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).length === keys.length && Object.keys(value).every(key=>keys.includes(key));
@@ -77,7 +95,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
       for (const slot of slots) {
         const item = chat[slot.floor];
         if (item !== slot.message || item?.mes !== slot.raw || item?.is_system !== slot.system || item?.is_user !== slot.user
-          || item?.swipe_id !== slot.swipe || item?.name !== slot.name) throw changed();
+          || item?.swipe_id !== slot.swipe || item?.name !== slot.name || JSON.stringify(storyboardStreamGeneration(item||{}))!==slot.generation) throw changed();
       }
       for (const source of sources) source.assertCurrent();
       return true;
@@ -91,7 +109,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
     if (!chat[floor] || chat[floor].is_system) throw Object.assign(new Error('当前楼层没有可取景的正文'), {code:'storyboard_context_unavailable'});
     for (let index=start; index<=floor; index++) {
       const message = chat[index];
-      slots.push({floor:index,message,raw:message?.mes,system:message?.is_system,user:message?.is_user,swipe:message?.swipe_id,name:message?.name});
+      slots.push({floor:index,message,raw:message?.mes,system:message?.is_system,user:message?.is_user,swipe:message?.swipe_id,name:message?.name,generation:JSON.stringify(storyboardStreamGeneration(message||{}))});
     }
     if (typeof emitter?.on === 'function' && typeof remove === 'function') {
       const types = getContext().eventTypes || {};

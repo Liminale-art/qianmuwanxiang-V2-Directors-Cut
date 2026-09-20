@@ -4,6 +4,8 @@ import {EventEmitter} from 'node:events';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {normalizeStoryboardMessageReference,sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
 import {createStoryboardStreamMoment} from '../qianmu-storyboard-stream-moment.js?v=1.59.224';
+import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.226';
+import {resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
 import {response as sample} from './helpers/comfy-compiler-fixture.mjs';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const defaultTexts=['Alice reads a letter.','A mountain valley.','A broken cup.'];
@@ -51,6 +53,38 @@ test('complete-floor planning sees occupied stream pictures, sends the full sour
   assert.deepEqual(result.trace.narrative.shots.map(row=>row.insert_after),['P2','P3']);assert.equal(f.calls.length,1);
   assert.deepEqual(f.calls[0].payload.shots.map(row=>row.plan.insert_after),['P2','P3']);assert.equal(f.saves,1);
   assert.equal(JSON.parse(result.raw).shots.length,2);assert.equal(record.status,'success');f.close();
+});
+
+test('a final proof covers the entire current prose, keeps the old budget family and remains strict on later append',async()=>{
+  const f=await fixture();await f.prepare([f.history(0)]);
+  const ref=await contract.createStoryboardFinalStreamReference(f.window,f.context.streamCoverage);
+  assert.equal(ref.revisionId,f.base.revisionId);assert.equal(ref.stream.complete,true);assert.equal(ref.stream.prefixLength,f.host.chat[0].mes.length);
+  assert.ok(Object.isFrozen(ref.stream.generation));assert.deepEqual(normalizeStoryboardMessageReference(copy(ref)),ref);
+  assert.deepEqual(sanitizeStoryboardSnapshot({source:'novel',messageRef:ref}).messageRef,ref);
+  const resolve=value=>resolveStoryboardMessageReference(value,f.host.chat,{chatKey:ref.chatKey});
+  f.close();await verifyStoryboardStreamReference(ref,()=>resolve(ref));f.host.chat[0].mes+='New ending';
+  assert.equal(resolve(ref).state,'stale');await assert.rejects(verifyStoryboardStreamReference(ref,()=>resolve(ref)),{code:'storyboard_stream_source'});
+  assert.equal(resolve(f.base).state,'active','earlier accepted prefixes retain their append-tolerant identity');
+});
+
+test('final proof creation cannot borrow a partial source window or cloned coverage ownership',async()=>{
+  const partial=await fixture({stream:true});await assert.rejects(contract.createStoryboardFinalStreamReference(partial.window),{code:'storyboard_input_changed'});partial.close();
+  const f=await fixture();await f.prepare([f.history(0)]);
+  await assert.rejects(contract.createStoryboardFinalStreamReference(f.window,copy(f.context.streamCoverage)),{code:'storyboard_stream_coverage'});f.close();
+});
+
+test('final proof rejects an unavailable identity, account change or edited source instead of recycling earlier prefix authority',async()=>{
+  const first=await fixture();delete first.host.chat[0].gen_started;
+  await assert.rejects(contract.createStoryboardFinalStreamReference(first.window));first.close();
+  const second=await fixture();second.account='st-user:another';await assert.rejects(contract.createStoryboardFinalStreamReference(second.window));second.close();
+  const third=await fixture();await third.prepare([third.history(0)]);third.host.chat[0].mes+='new text';
+  await assert.rejects(contract.createStoryboardFinalStreamReference(third.window,third.context.streamCoverage));third.close();
+});
+
+test('an invalid explicit completion marker cannot normalize into a looser prefix reference',async()=>{
+  const f=await fixture(),ref=await contract.createStoryboardFinalStreamReference(f.window);
+  for(const complete of [false,'true',1,null])assert.equal(normalizeStoryboardMessageReference({...copy(ref),stream:{...copy(ref.stream),complete}}).stream.invalid,true);
+  f.close();
 });
 
 test('later partial frames also avoid committed moments; zero new scenes means no expression call or provisional ST write',async()=>{

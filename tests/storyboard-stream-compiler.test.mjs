@@ -5,7 +5,7 @@ import {EventEmitter} from 'node:events';
 import {compilerEnvironment,casting,response} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {applyCharacterCasting} from '../qianmu-character-casting.js';
-import {resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
+import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState} from '../qianmu-storyboard.js';
 import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 
@@ -250,6 +250,53 @@ test('later stream frames append one new shot to the same plan and ledger withou
   assert.equal(q.queue[0].imageAdmission.revisionId,q.queue[1].imageAdmission.revisionId);assert.equal(f.counts.requests,4);f.assertReleased();
 });
 
+test('actual final handoff fills only new scenes, persists final state and queues whole-prose proofs in the original automatic budget',async()=>{
+  const f=await fixture({text:'Alice reads a letter in the kitchen.\n\nA mountain'}),q=installStreamQueue(f);useShotSet(f,[0]);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));const first=copy(q.queue[0]),manual=editable(f.state);delete manual.shotPlans;
+  f.host.chat[0].mes=threeParagraphs.replace('\n\nUnfinished','');useShotSet(f,[0,1,2]);
+  assert.equal(await f.run({stream:{floor:0,complete:true}}),true,JSON.stringify(f.errors));assert.equal(q.queue.length,3);assert.equal(q.rows.size,1);
+  assert.deepEqual(copy(q.queue[0]),first);assert.equal(f.counts.hostSaves,1);assert.equal(f.counts.requests,4);
+  for(const job of q.queue.slice(1)){
+    assert.equal(job.messageRef.stream.complete,true);assert.equal(job.messageRef.stream.prefixLength,f.host.chat[0].mes.length);
+    assert.equal(job.imageAdmission.revisionId,first.imageAdmission.revisionId);assert.equal(job.imageAdmission.automaticSlot,true);
+    assert.notEqual(job.messageRef.stream.prefixDigest,first.messageRef.stream.prefixDigest);
+  }
+  assert.equal(f.calls[2].payload.constraints.streaming,undefined);assert.ok(f.calls[2].payload.source_catalogue[0].passages.some(p=>p.text==='A broken cup rests on the table.'));
+  assert.deepEqual(q.queue.map(job=>job.messageRef.stream.moment.paragraphId),['P1','P2','P3']);
+  const after=editable(f.state);delete after.shotPlans;assert.deepEqual(after,manual);f.assertReleased();
+  f.host.chat[0].mes+=' Another sentence.';
+  await assert.rejects(q.admission.beforeSubmit(q.queue[1]),{code:'storyboard_stream_source'});
+  await q.admission.beforeSubmit(q.queue[0]);
+});
+
+test('final scoped preparation works when no partial image was ready and the last paragraph has no blank-line terminator',async()=>{
+  const f=await fixture({text:'Alice reads a letter in the kitchen.'}),q=installStreamQueue(f);
+  assert.equal(await f.run({stream:{floor:0,complete:true}}),true,JSON.stringify(f.errors));assert.equal(q.queue.length,1);assert.equal(f.counts.hostSaves,1);
+  assert.equal(q.queue[0].messageRef.stream.complete,true);assert.equal(q.queue[0].messageRef.stream.prefixLength,f.host.chat[0].mes.length);f.assertReleased();
+});
+
+test('a fully occupied final pass still publishes continuity without expression or additional image requests',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);f.state.generationPolicy.maxImages=1;useShotSet(f,[0]);assert.equal(await f.run(),true);
+  assert.equal(await f.run({stream:{floor:0,complete:true}}),false,JSON.stringify(f.errors));assert.equal(q.queue.length,1);assert.equal(f.counts.hostSaves,1);assert.equal(f.counts.requests,3);
+  assert.deepEqual(q.outcomes.at(-1),{queued:0,failed:0,prepared:0});f.assertReleased();
+});
+
+for(const complete of [false,true])test(`${complete?'final':'partial'} isolated automatic preparation ignores, but preserves, the workbench's manual paragraph selection`,async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);
+  f.state.paragraphMode='manual';f.state.manualParagraphIndex=2;f.state.pendingParagraphSelection={mode:'manual_supplement',indexes:[2],paragraphIds:['P3'],insertAfterIndex:2};
+  const before=editable(f.state);delete before.shotPlans;
+  assert.equal(await f.run({stream:{floor:0,complete}}),true,JSON.stringify(f.errors));assert.equal(q.queue.length,1);
+  assert.equal(q.queue[0].messageRef.stream.moment.paragraphId,'P1');assert.equal(q.queue[0].manualSupplement,false);
+  const after=editable(f.state);delete after.shotPlans;assert.deepEqual(after,before);f.assertReleased();
+});
+
+test('any terminal text edit or append during the final model call cancels the isolated result before image submission',async()=>{
+  for(const append of [true,false]){
+    const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);f.modelHook=()=>{f.host.chat[0].mes=append?f.host.chat[0].mes+' later':'changed';};
+    assert.equal(await f.run({stream:{floor:0,complete:true}}),false);assert.equal(q.queue.length,0);assert.equal(f.counts.requests,1);assert.equal(f.counts.hostSaves,0);f.assertReleased();
+  }
+});
+
 test('streaming shot group preserves original proof association even when duplicate coverage removes an earlier draft',async()=>{
   const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0,1,2]);
   const prepare=f.context.storyboardPrepareDraftGroup;
@@ -340,6 +387,77 @@ test('a concurrent archive replacement during preparation cannot append jobs to 
   f.context.storyboardAdaptShotForModel=async(...args)=>{f.state.shotPlans[0]=replacement;return adapt(...args);};useShotSet(f,[1]);
   assert.equal(await f.run(),false);assert.equal(q.queue.length,1);assert.equal(replacement.shots.length,1);assert.equal(old.shots.length,1);
   assert.match(q.errors.at(-1).message,/归档或替换/);f.assertReleased();
+});
+
+function installFinalNotifications(f){
+  f.state.promptCompiler.enabled=true;f.context.storyboardAutomaticEpoch=0;
+  vm.runInContext(['storyboardAutomaticTicketFloor','storyboardFinishStreamCapture','storyboardPlanForMessage','storyboardPerformAutomaticCapture',
+    'storyboardPlanLightweightSummary'].map(section).join('\n'),f.context);
+  const ticket=()=>({state:f.state,epoch:0,chatKey:'chat-a',floor:0,message:f.host.chat[0],createdAt:Date.now(),autoGenerate:true,
+    messageRef:createStoryboardMessageReference({message:f.host.chat[0],chatKey:'chat-a',floor:0})});
+  return {run:()=>f.context.storyboardPerformAutomaticCapture(ticket()),finish:()=>f.context.storyboardFinishStreamCapture(ticket()),ticket};
+}
+
+test('actual finished-floor automatic entry supplements a stream plan once without creating an ordinary second budget or replacing the workbench',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+  f.host.chat[0].mes=threeParagraphs.replace('\n\nUnfinished','');useShotSet(f,[0,1,2]);const initial=editable(f.state);delete initial.shotPlans;
+  assert.equal(await final.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,3);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);
+  const plan=f.state.shotPlans[0];assert.equal(plan.streamFinalCapture.status,'complete');assert.equal(plan.streamFinalCapture.sourceRevisionId,final.ticket().messageRef.revisionId);
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,4);assert.equal(q.queue.length,3);
+  const after=editable(f.state);delete after.shotPlans;assert.deepEqual(after,initial);assert.equal(f.counts.renders,0);f.assertReleased();
+});
+
+test('normalization and lightweight plan archives preserve terminal-pass idempotency after restart',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,3);const marker=copy(f.state.shotPlans[0].streamFinalCapture);
+  assert.equal(marker.status,'complete');
+  f.state.shotPlans=normalizeStoryboardState(f.state).shotPlans;assert.deepEqual(f.state.shotPlans[0].streamFinalCapture,marker);
+  f.state.shotPlans[0]=f.context.storyboardPlanLightweightSummary(f.state.shotPlans[0],'archive-only-test');
+  assert.deepEqual(copy(f.state.shotPlans[0].streamFinalCapture),marker);assert.equal(await final.run(),false);
+  assert.equal(f.counts.requests,3);assert.equal(q.queue.length,1);f.assertReleased();
+});
+
+test('a failed final LLM call does not replay on another host notification or erase already submitted stream jobs',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+  f.modelHook=()=>{throw Error('synthetic model failure');};assert.equal(await final.run(),false);
+  assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'failed');const count=f.counts.requests;
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,count);assert.equal(q.queue.length,1);assert.equal(f.state.shotPlans[0].shots[0].status,'queued');f.assertReleased();
+});
+
+test('terminal continuation with lost, duplicated or malformed plan provenance stops instead of minting an ordinary free budget',async()=>{
+  for(const mode of ['missing','duplicate','invalid-marker']){
+    const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+    if(mode==='missing')f.state.shotPlans=[];
+    if(mode==='duplicate')f.state.shotPlans.push({...copy(f.state.shotPlans[0]),id:'duplicate'});
+    if(mode==='invalid-marker')f.state.shotPlans[0].streamFinalCapture={version:1,invalid:true};
+    assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);
+    assert.ok(f.notices.some(text=>/未重复提交|未重新自动生成/.test(text)));f.assertReleased();
+  }
+});
+
+test('turning off automatic generation prevents a final continuation and ordinary generations keep the legacy path',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+  f.state.automation.autoGenerate=false;assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);
+  f.state.automation.autoGenerate=true;f.host.chat[0].gen_started='different-generation';
+  assert.equal(await final.finish(),null);assert.equal(f.counts.requests,2);f.assertReleased();
+});
+
+test('a generation or account switch during terminal preparation cannot finalize the old pass in a new context',async()=>{
+  for(const change of [f=>{f.host.chat[0].gen_started='new-generation';},f=>f.setAccount('st-user:other')]){
+    const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+    f.modelHook=()=>change(f);assert.equal(await final.run(),false);
+    assert.equal(q.queue.length,1);assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'preparing');f.assertReleased();
+  }
+});
+
+test('a changed namespace between final-pass reservation and compiler source capture stops before the first model call',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+  const load=f.context.featureRuntime.load;let reads=0;
+  f.context.featureRuntime.load=async key=>{
+    const runtime=await load(key);return key==='imageAdmission'?{...runtime,resolveImageAccountNamespace:async()=>++reads===1?'st-user:route-test':'st-user:other'}:runtime;
+  };
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);
+  assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'preparing');f.assertReleased();
 });
 
 test('a deferred Comfy stream mirror records its own frozen proof and global slot while eligible neighbors continue',async()=>{

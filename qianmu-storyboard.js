@@ -1,4 +1,4 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.224';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture} from './qianmu-storyboard-stream-reference.js?v=1.59.226';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -1967,6 +1967,7 @@ function shotPlans(value, state = {}) {
       hasContinuityLedger: Boolean(plan.hasContinuityLedger || continuityInput),
       autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked),
       ...(Object.hasOwn(plan,'generationStarted')?{generationStarted:plan.generationStarted===true}:{}),
+      ...(Object.hasOwn(plan,'streamFinalCapture')?{streamFinalCapture:normalizeStoryboardStreamFinalCapture(plan.streamFinalCapture)}:{}),
       manualReviewRequired: Boolean(plan.manualReviewRequired || shots.some((shot) => shot.requiresManualConfirmation)),
       status: workflowState(plan.status), linkState: str(plan.linkState, 40), shots,
       archiveRef, archiveVersion: archiveRef ? int(plan.archiveVersion, 1, 100, 1) : 0, archivedAt: archiveRef ? pos(plan.archivedAt) : 0,

@@ -7,6 +7,12 @@ const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const fields=['sentAt','startedAt','id','activeSentAt','activeId'];
 const scalar=value=>value instanceof Date?value.toISOString():String(value??'');
 const hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+export function normalizeStoryboardStreamFinalCapture(value){
+  if(!plain(value)||value.version!==1||typeof value.sourceRevisionId!=='string'||!value.sourceRevisionId||value.sourceRevisionId.length>160
+    ||typeof value.requestId!=='string'||!value.requestId||value.requestId.length>160
+    ||!['preparing','complete','failed','cancelled'].includes(value.status)||!Number.isSafeInteger(value.updatedAt)||value.updatedAt<1)return {version:1,invalid:true};
+  return {version:1,sourceRevisionId:value.sourceRevisionId,requestId:value.requestId,status:value.status,updatedAt:value.updatedAt};
+}
 export const hasStoryboardStreamReference=ref=>plain(ref)&&(Object.hasOwn(ref,'stream')||String(ref.revisionId||'').startsWith('stream:'));
 export function storyboardStreamGeneration(message){
   const active=message.swipe_info?.[message.swipe_id||0]||{};
@@ -29,9 +35,11 @@ export function normalizeStoryboardStreamReference(ref){
     ||ref.revisionId!==`stream:${proof.generationKey}`||!ref.chatKey||!ref.messageKey
     ||ref.role!=='assistant'||!(ref.baseSendDate||ref.baseGenerationId)
     ||!Number.isSafeInteger(ref.swipeId)||ref.swipeId<0||ref.swipeId>10000
+    ||Object.hasOwn(proof,'complete')&&proof.complete!==true
     ||Object.hasOwn(proof,'moment')&&!normalizeStoryboardStreamMoment(proof.moment))return {version:1,invalid:true};
   return {version:1,generation:Object.fromEntries(fields.map(key=>[key,g[key]])),generationKey:proof.generationKey,
     prefixLength:proof.prefixLength,prefixHash:proof.prefixHash,prefixDigest:proof.prefixDigest,
+    ...(proof.complete===true?{complete:true}:{}),
     ...(Object.hasOwn(proof,'moment')?{moment:normalizeStoryboardStreamMoment(proof.moment)}:{})};
 }
 
@@ -52,6 +60,7 @@ export function resolveStoryboardStreamReference(reference,messages,createRefere
   if(meta.swipeId!==reference.swipeId)state='inactive_swipe';
   else if(JSON.stringify(storyboardStreamGeneration(message))!==JSON.stringify(proof.generation)
     ||typeof message.mes!=='string'||message.mes.length<proof.prefixLength
+    ||proof.complete===true&&message.mes.length!==proof.prefixLength
     ||storyboardStreamFingerprint(message.mes.slice(0,proof.prefixLength))!==proof.prefixHash)state='stale';
   return {state,floor,message,reference,current:{...reference,lastKnownFloor:floor},relocated:floor!==reference.lastKnownFloor};
 }

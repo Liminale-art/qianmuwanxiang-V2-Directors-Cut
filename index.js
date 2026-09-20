@@ -259,12 +259,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.224';
+} from './qianmu-storyboard.js?v=1.59.226';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.225';
+const VERSION = '1.59.226';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -317,7 +317,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.224'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.226'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -537,7 +537,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.225'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.226'),
   },
   storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.219')},
   theaterCatalog: {
@@ -13056,6 +13056,7 @@ function storyboardPlanLightweightSummary(plan, key) {
     continuityLedgerLayer: plan.continuityLedgerLayer || '',
     autoGenerate: Boolean(plan.autoGenerate), promptLocked: Boolean(plan.promptLocked), manualReviewRequired: Boolean(plan.manualReviewRequired),
     ...(Object.hasOwn(plan,'generationStarted')?{generationStarted:plan.generationStarted===true}:{}),
+    ...(Object.hasOwn(plan,'streamFinalCapture')?{streamFinalCapture:clone(plan.streamFinalCapture)}:{}),
     status: plan.status, linkState: plan.linkState || '',
     shots: (plan.shots || []).map((shot) => ({
       id: shot.id, shotType: shot.shotType, role: shot.role, title: shot.title, purpose: '',
@@ -13151,6 +13152,7 @@ async function storyboardPlansForPortableExport(plans = [], { strict = false } =
         origin: summary.origin, paragraphSelection: clone(summary.paragraphSelection || null), autoGenerate: summary.autoGenerate,
         promptLocked: summary.promptLocked, manualReviewRequired: summary.manualReviewRequired,
         ...(Object.hasOwn(summary,'generationStarted')?{generationStarted:summary.generationStarted===true}:{}),
+        ...(Object.hasOwn(summary,'streamFinalCapture')?{streamFinalCapture:clone(summary.streamFinalCapture)}:{}),
         status: summary.status, linkState: summary.linkState || '', createdAt: summary.createdAt, updatedAt: summary.updatedAt,
       });
       const currentShots = new Map((summary.shots || []).map((shot) => [String(shot.id || ''), shot]));
@@ -18594,7 +18596,7 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
       pools: state.artistPools, vibes: state.selectedVibeIds,
       llm: { id: api.id, mode: settings.providerMode, apiUrl: api.apiUrl, apiKey: api.apiKey, model: api.model, temperature: api.temperature, structuredOutputMode: api.structuredOutputMode },
       character: getCharacterDescription(), persona: getPersonaDescription(), mainApi: ctx().mainApi,
-      messages: chat.slice(Math.max(0, floor - recent), floor + 1).map((item,index,rows) => ({ text: stream && index===rows.length-1 ? undefined : item?.mes, swipe: item?.swipe_id, user: item?.is_user, system: item?.is_system })),
+      messages: chat.slice(Math.max(0, floor - recent), floor + 1).map((item,index,rows) => ({ text: stream && !stream.complete && index===rows.length-1 ? undefined : item?.mes, swipe: item?.swipe_id, user: item?.is_user, system: item?.is_system })),
     };
   };
   const floor = stream?.floor ?? storyboardTargetFloor(state), message = ctx().chat?.[floor];
@@ -18664,12 +18666,16 @@ async function storyboardCompilerContext(state, inputGuard) {
   const [runtime, identity] = await Promise.all([featureRuntime.load('storyboardContract'),featureRuntime.load('imageAdmission')]);
   inputGuard.assertCurrent();
   const sourceOptions={floor,referenceFloors:recentCount,getContext:ctx,
-    epoch:()=>storyboardAdmissionEpoch,resolveNamespace:identity.resolveImageAccountNamespace,isCurrent:inputGuard.isCurrent,
+    epoch:()=>storyboardAdmissionEpoch,resolveNamespace:inputGuard.stream?.namespace?async()=>{
+      const namespace=await identity.resolveImageAccountNamespace();
+      if(namespace!==inputGuard.stream.namespace)throw Object.assign(new Error('取景账户已变化，未提交'),{code:'storyboard_input_changed'});
+      return namespace;
+    }:identity.resolveImageAccountNamespace,isCurrent:inputGuard.isCurrent,
     signal:inputGuard.stream?.signal,
     readText:item=>storyboardCleanMessageText(storyboardCleanWithTagRules(item.mes, state)),
     readParagraphs:item=>storyboardMessageParagraphs(storyboardCleanWithTagRules(item.mes, state)).map((text,index)=>({id:`P${index+1}`,text})),
   };
-  if(inputGuard.stream){
+  if(inputGuard.stream&&!inputGuard.stream.complete){
     sourceOptions.streamFrame=inputGuard.streamFrame=await runtime.captureStoryboardStreamFrame(sourceOptions);
     if(!sourceOptions.streamFrame)throw Object.assign(new Error('等待完整段落'),{code:'storyboard_stream_wait'});
   }
@@ -18682,11 +18688,11 @@ async function storyboardCompilerContext(state, inputGuard) {
     ? storyboardCleanMessageText(await resolveMacro(getCharacterDescription())) : '';
   const persona = state.promptCompiler.includeUserPersona
     ? storyboardCleanMessageText(await resolveMacro(getPersonaDescription())) : '';
-  const pendingSelection = state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
+  const pendingSelection = !inputGuard.stream && state.pendingParagraphSelection ? normalizeStoryboardParagraphSelection(state.pendingParagraphSelection) : null;
   const forcedParagraphIndexes = pendingSelection?.mode === 'manual_supplement'
     ? pendingSelection.indexes.filter((index) => index < paragraphs.length)
     : [];
-  const forcedParagraphIndex = forcedParagraphIndexes.length ? forcedParagraphIndexes.at(-1) : state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
+  const forcedParagraphIndex = forcedParagraphIndexes.length ? forcedParagraphIndexes.at(-1) : !inputGuard.stream && state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
     ? Math.max(0, Math.min(Math.max(0, paragraphs.length - 1), state.manualParagraphIndex))
     : null;
   const worldResult = await storyboardCompilerWorldText(state);
@@ -18790,6 +18796,7 @@ async function storyboardPrepareComfyRoutes(state, inputGuard, requestedRoutes =
   const [runtime, identity] = await Promise.all([featureRuntime.load('comfyRoutes'), featureRuntime.load('imageAdmission')]);
   inputGuard.assertCurrent();
   const namespace = await identity.resolveImageAccountNamespace(); inputGuard.assertCurrent();
+  if(inputGuard.stream?.namespace&&namespace!==inputGuard.stream.namespace)throw Object.assign(new Error('取景账户已变化，未准备工作流'),{code:'storyboard_input_changed'});
   const guard = async () => {
     inputGuard.assertCurrent();
     if (epoch !== storyboardAdmissionEpoch || namespace !== await identity.resolveImageAccountNamespace() || epoch !== storyboardAdmissionEpoch) throw Object.assign(new Error('账户或分工已变化，请重新准备'), { code: 'storyboard_input_changed' });
@@ -18883,7 +18890,7 @@ async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGu
 }
 
 async function storyboardCompilePrompt(root, { plan = null, quiet = false, automatic = false, stream = null, onPrepared = null } = {}) {
-  if(stream){if(root||plan||typeof onPrepared!=='function'||!Number.isSafeInteger(stream.floor)||stream.floor<0)return false;automatic=true;stream={floor:stream.floor,signal:stream.signal};}
+  if(stream){if(root||plan||typeof onPrepared!=='function'||!Number.isSafeInteger(stream.floor)||stream.floor<0||Object.hasOwn(stream,'complete')&&typeof stream.complete!=='boolean'||Object.hasOwn(stream,'namespace')&&(typeof stream.namespace!=='string'||!/^st-user:.{1,504}$/.test(stream.namespace)))return false;automatic=true;stream={floor:stream.floor,signal:stream.signal,complete:stream.complete===true,...(stream.namespace?{namespace:stream.namespace}:{})};}
   else if(onPrepared)return false;
   if (storyboardCompilerBusy) return false;
   const { state, profile } = storyboardCaptureWorkbench(root);
@@ -18930,7 +18937,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       ])]),
     } : inputGuard.comfyRoutes;
     const contractRequest = {
-      ...contract.buildStoryboardPlanContractRequest(context, storyboardCompilerRequestConfig(state, profile, expressionRoutes)),
+      ...contract.buildStoryboardPlanContractRequest(context, storyboardCompilerRequestConfig(stream?{...state,pendingParagraphSelection:null}:state, profile, expressionRoutes)),
       runtime: contract,
     };
     await context.casting?.assertCurrent();
@@ -35607,13 +35614,25 @@ async function storyboardHandleAutomaticCapture(messageIndex) {
   return true;
 }
 
+async function storyboardFinishStreamCapture(ticket) {
+  const runtime=await featureRuntime.load('storyboardContract');
+  return runtime.finishStoryboardStreamCapture(ticket,{storyboardAutomaticTicketFloor,storyboardGalleryRecords,storyboardCompilePrompt,
+    storyboardSubmitStreamPrepared,uid,saveSettings,toast,sanitizeStoryboardDiagnosticData,
+    resolveNamespace:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace()});
+}
+
 async function storyboardPerformAutomaticCapture(ticket) {
   const floor = storyboardAutomaticTicketFloor(ticket);
   if (floor < 0) return false;
   const { state, message } = ticket;
   const existing = storyboardPlanForMessage(state, floor, message);
   if (existing && (existing.status !== 'idle' || existing.origin !== 'automatic' || existing.promptLocked || existing.manualReviewRequired)) return false;
-  const plan = existing || storyboardEnsurePlan(state, floor, message, {
+  const streamResult=await storyboardFinishStreamCapture(ticket);
+  if(streamResult!==null)return streamResult;
+  if(storyboardAutomaticTicketFloor(ticket)!==floor)return false;
+  const latest=storyboardPlanForMessage(state,floor,message);
+  if(latest&&(latest.status!=='idle'||latest.origin!=='automatic'||latest.promptLocked||latest.manualReviewRequired))return false;
+  const plan = latest || storyboardEnsurePlan(state, floor, message, {
     origin: 'automatic', autoGenerate: ticket.autoGenerate && state.automation.autoGenerate,
   });
   ticket.plan = plan;
