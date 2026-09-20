@@ -10,7 +10,7 @@ await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'){
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<div id="story-director-modal"><div id="fixture-root"></div></div>'});
-    if(['/qianmu-config-connections.js','/qianmu-config-export.js','/qianmu-json-input.js','/qianmu-config-apply.js','/qianmu-data-migrations.js','/qianmu-config-undo.js','/qianmu-config-undo-action.js','/qianmu-storage-backup-view.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+    if(['/qianmu-config-connections.js','/qianmu-config-export.js','/qianmu-portable-connection.js','/qianmu-json-input.js','/qianmu-config-apply.js','/qianmu-data-migrations.js','/qianmu-config-undo.js','/qianmu-config-undo-action.js','/qianmu-storage-backup-view.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   }
   external++;return route.abort();
 });
@@ -53,6 +53,11 @@ try{
       storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
       storyboardAdmissionEpoch:0,storyboardDraftApiKeys:new Map(),storyboardConnectionStatus:new Map(),storyboardCredentialRevision:0,
       storyboardPlansForPortableExport:async value=>value,seedBuiltinTheaters(){},saveSettings:()=>saved++,storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){}});
+    // The shared storage binder now registers other package adapters eagerly.
+    // They must exist, but this configuration-only probe must never invoke them.
+    for(const name of ['coreadExportData','exportTtsFavoritesBackup','ttsExportAudioCache','exportPinnedNotesBackup','storyboardImportAnyPackage','coreadImportDataFile']){
+      window[name]=()=>{throw Error(`Out-of-scope package adapter called: ${name}`);};
+    }
     // Execute the same entry adapters called by the storage card, only host services are stubs.
     new Function(source+';window.runExport=exportConfig;window.runImport=importConfig;window.renderModal=()=>{document.getElementById("fixture-root").innerHTML=renderStorageBackupSection();bindStorageManagementEvents(document);};renderModal();')();
   },['ttsDownloadBlob','exportConfig','importConfig','configApplyOptions','undoConfigRestore','bindStorageManagementEvents'].map(section).join('\n'));
@@ -150,12 +155,12 @@ try{
       const root=document.querySelector('.sd-storage-card'),body=document.querySelector('.sd-body');
       const rows=[...root.querySelectorAll('.sd-storage-backup-row')].map(row=>{
         const box=row.getBoundingClientRect(),controls=[...row.querySelectorAll('button')].map(el=>el.getBoundingClientRect());
-        return {contained:controls.every(b=>b.left>=box.left-1&&b.right<=box.right+1),aligned:controls.length<2||Math.abs(controls[0].height-controls[1].height)<1,label:row.querySelector('span').getBoundingClientRect().width,heights:controls.map(b=>b.height)};
+        return {name:row.querySelector('span').textContent,contained:controls.every(b=>b.left>=box.left-1&&b.right<=box.right+1),aligned:controls.length<2||Math.abs(controls[0].height-controls[1].height)<1,label:row.querySelector('span').getBoundingClientRect().width,heights:controls.map(b=>b.height)};
       });
       return {rows,noOverflow:root.scrollWidth<=root.clientWidth+1&&body.scrollWidth<=body.clientWidth+1,
         filesHidden:[...root.querySelectorAll('input[type=file]')].every(el=>el.getClientRects().length===0)};
     });
-    assert.equal(layout.rows.length,7);assert.equal(layout.noOverflow,true,`overflow at ${width}/${theme}/${recoverable}`);
+    assert.equal(layout.rows.length,8);assert.equal(layout.rows.filter(row=>row.name==='正文收藏').length,1,'collection backup remains present alongside existing modules');assert.equal(layout.noOverflow,true,`overflow at ${width}/${theme}/${recoverable}`);
     assert.ok(layout.rows.every(row=>row.contained&&row.aligned&&row.label>0),`controls at ${width}/${theme}/${recoverable}: ${JSON.stringify(layout.rows)}`);
     assert.equal(layout.filesHidden,true);assert.equal(await page.locator('.sd-undo-config').isVisible(),recoverable);
     await page.locator('.sd-storage-backup-section > summary').press('Enter');
