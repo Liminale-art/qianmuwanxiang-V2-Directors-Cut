@@ -205,7 +205,7 @@ function compilerRuntime({changeAccount=false,ambiguous=false,references=false}=
   const calls=[],notices=[],errors=[];let namespace='st-user:test';
   const host={chatId:'chat-a',characterId:0,characters:[{avatar:'Alice.png',chat:'chat-a'}],chatMetadata:{},chat:[{mes:'Alice holds a spoon without a coat.'}]};
   const guard={assertCurrent(){this.compilerSources?.assertCurrent();},isCurrent:()=>true,ownsCurrentContext:()=>true,dispose(){this.compilerSources?.close();}};
-  const context=vm.createContext({...storyboard,clone:structuredClone,Date,JSON,Number,Object,Map,Set,
+  const context=vm.createContext({...storyboard,clone:structuredClone,Date,JSON,Number,Object,Map,Set,settings:{apiProfiles:[]},
     storyboardCompilerBusy:false,storyboardCaptureWorkbench:()=>({state,profile:state.profiles.novel}),storyboardTargetFloor:()=>0,
     ctx:()=>host,storyboardAdmissionEpoch:0,getChatKey:()=> 'chat-a',storyboardCreatePreparationGuard:()=>guard,
     storyboardCharacterArchiveContext:async()=>({chatKey:'chat-a',subjects:e.subjects}),

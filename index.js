@@ -258,12 +258,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.202';
+} from './qianmu-storyboard.js?v=1.59.217';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.216';
+const VERSION = '1.59.217';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -536,7 +536,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.216'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.217'),
   },
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
@@ -17473,6 +17473,8 @@ function storyboardLogText(log) {
 const STORYBOARD_PIPELINE_STAGE_LABELS = Object.freeze({
   context: '上下文',
   prompt_compiler: '镜头规划',
+  compiler_narrative:'叙事取景请求',compiler_expression:'提示表达请求',compiler_legacy:'镜头规划请求',
+  compiler_narrative_repair:'叙事取景修复',compiler_expression_repair:'提示表达修复',compiler_legacy_repair:'镜头规划修复',compiler_validation:'提取校验',
   world_confirmation: '造物之眼确认',
   world_prompt_rendering: '世界提示整理',
   safety_adaptation: '安全适配',
@@ -17524,6 +17526,7 @@ function storyboardRestoreSnapshotConnection(state, snap, sourceId) {
 }
 
 function storyboardLoadLogToWorkbench(log) {
+  if(log?.kind==='prompt_compiler')return false;
   if(log?.kind==='comfy_preparation')return toast('本条是待选择工作流的草稿，请使用“重新准备本镜”；没有完整生图参数可载入','info');
   if (!log?.snapshot) return false;
   const state = storyboardState();
@@ -17627,7 +17630,7 @@ async function storyboardLoadRecordToWorkbench(record) {
 
 function storyboardLogPresentation(log, pipeline) {
   const tone=log.status==='success'?'green':log.status==='failed'?'red':['generating','running','queued'].includes(log.status)?'yellow':'grey';
-  const kind=log.kind==='comfy_preparation'?'准备':log.kind==='video'?'视频':'生图';
+  const kind=log.kind==='prompt_compiler'?'取景':log.kind==='comfy_preparation'?'准备':log.kind==='video'?'视频':'生图';
   const stages=pipeline?.stages||[];
   const raw=String(sanitizeStoryboardDiagnosticData(log.error||[...stages].reverse().find(stage=>stage.error)?.error||'')).trim();
   let reason=raw.split(/\r?\n/)[0].replace(/\s+/g,' ');
@@ -17680,7 +17683,8 @@ function renderStoryboardLogs(state) {
   // Old persisted filters no longer hide records; this is presentation-only, not a history migration.
   const logs = state.logs;
   const rows = logs.map((log) => {
-    const source = STORYBOARD_SOURCES[log.source]?.label || log.source;
+    const compiler=log.kind==='prompt_compiler';
+    const source = compiler?'取景 API':STORYBOARD_SOURCES[log.source]?.label || log.source;
     const statusLabel = log.kind==='comfy_preparation' ? (log.status==='success'?'准备完成':log.status==='cancelled'?'已替换':'准备失败') : log.status === 'success' ? '完成' : log.status === 'failed' ? '失败' : log.status === 'cancelled' ? '已放弃' : log.status === 'queued' ? '等待' : '生成中';
     const pipeline = storyboardPipelineForLog(log, state);
     const presentation=storyboardLogPresentation(log,pipeline);
@@ -17688,7 +17692,7 @@ function renderStoryboardLogs(state) {
       const label = STORYBOARD_PIPELINE_STAGE_LABELS[stage.type] || stage.type;
       return `<li class="${stage.status}"><button type="button" class="sd-storyboard-stage-toggle" data-storyboard-stage="${htmlEscape(stage.id)}" aria-expanded="false" aria-label="查看${htmlEscape(label)}详情"><span>${htmlEscape(label)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : '进行中')}</b><i class="fa-solid fa-eye" aria-hidden="true"></i></button>${stage.error ? `<small>${htmlEscape(storyboardLogPresentation({error:stage.error},null).reason)}</small>` : ''}</li>`;
     }).join('');
-    const runAction = log.kind==='comfy_preparation'
+    const runAction = compiler?'':log.kind==='comfy_preparation'
       ? `<button type="button" class="sd-btn sd-storyboard-retry-log" ${log.status==='failed'&&log.preparation?.version===1?'':'disabled'}>重新准备本镜</button>`
       : log.status === 'queued'
       ? '<button type="button" class="sd-btn sd-storyboard-cancel-queued-log">移出等待</button>'
@@ -17696,14 +17700,14 @@ function renderStoryboardLogs(state) {
     return `<details class="sd-card sd-storyboard-log ${htmlEscape(log.status)}" data-tone="${presentation.tone}" data-storyboard-log="${htmlEscape(log.id)}">
       <summary><span class="sd-storyboard-log-status">${statusLabel}</span><span class="sd-storyboard-log-kind">${presentation.kind}</span><time>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</time></summary>
       <div class="sd-storyboard-log-body">
-        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${presentation.tokens}</span><span>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span><span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
+        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${presentation.tokens}</span><span>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span>${compiler?'':`<span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>`}${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
         ${renderRunningHubTaskUsage(log)}${presentation.reason?`<p class="sd-storyboard-log-reason">${htmlEscape(presentation.reason)}</p>`:''}
         <section class="sd-storyboard-log-exchange" data-log-exchange="input"><header>↑ 发送</header><pre></pre></section>
         <section class="sd-storyboard-log-exchange" data-log-exchange="output"><header>↓ 返回</header><pre></pre></section>
         ${log.params?.sceneStyle ? `<div class="sd-storyboard-log-meta"><span>风格来源 · ${htmlEscape(log.params.sceneStyle)}</span><span>${htmlEscape(log.params.comfyRouteBinding?.name || '')}</span></div>` : ''}
         ${stageRows ? `<ol class="sd-storyboard-pipeline-stages">${stageRows}</ol>` : ''}
         ${stageRows ? '<section class="sd-storyboard-stage-detail" hidden><header><b></b><button type="button" class="sd-icon-btn sd-storyboard-copy-stage" title="复制当前阶段" aria-label="复制当前阶段"><i class="fa-solid fa-copy"></i></button></header><pre></pre></section>' : ''}
-        <div class="sd-storyboard-log-actions${storyboardCanReceiveComfyLog(log) ? ' sd-storyboard-comfy-log-actions' : ''}"><button type="button" class="sd-btn sd-storyboard-load-log">载入镜头台</button>${log.snapshot?.serviceTask?.attemptId ? '<button type="button" class="sd-btn sd-storyboard-receive-log">领取原图</button><button type="button" class="sd-btn sd-storyboard-review-log">核查原请求</button>' : ''}${storyboardCanReceiveComfyLog(log) ? '<button type="button" class="sd-btn sd-storyboard-receive-comfy" title="领取原任务图片，不重新生成">领取原图</button>' : ''}${runAction}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
+        <div class="sd-storyboard-log-actions${storyboardCanReceiveComfyLog(log) ? ' sd-storyboard-comfy-log-actions' : ''}">${compiler?'':'<button type="button" class="sd-btn sd-storyboard-load-log">载入镜头台</button>'}${log.snapshot?.serviceTask?.attemptId ? '<button type="button" class="sd-btn sd-storyboard-receive-log">领取原图</button><button type="button" class="sd-btn sd-storyboard-review-log">核查原请求</button>' : ''}${storyboardCanReceiveComfyLog(log) ? '<button type="button" class="sd-btn sd-storyboard-receive-comfy" title="领取原任务图片，不重新生成">领取原图</button>' : ''}${runAction}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
       </div>
     </details>`;
   }).join('');
@@ -18732,34 +18736,8 @@ function storyboardCompilerRequestConfig(state, profile, preparedRoutes = null) 
 }
 
 async function storyboardCallCompiler(messages, profileId, requestOptions = {}) {
-  const matches = profileId ? (settings.apiProfiles || []).filter((item) => item.id === profileId) : [];
-  if (profileId && matches.length !== 1) throw new Error('取景 API 档案已失效或编号重复，请重新选择；未改用其他连接');
-  const apiProfile = matches[0] || null;
-  const temperatureSource = requestOptions.temperature ?? apiProfile?.temperature ?? 0.35;
-  const temperature = Number.isFinite(Number(temperatureSource)) ? Number(temperatureSource) : 0.35;
-  const formatCount = requestOptions.promptFormats?.length ? normalizeStoryboardPromptFormats(requestOptions.promptFormats).length : 0;
-  const focused=/^qianmu\.storyboard\.(narrative|expression)\.v1$/.test(requestOptions.jsonSchemaName || '');
-  const maxTokens = Math.max(256, Math.min(formatCount || focused ? 16384 : 4000, Number(requestOptions.maxTokens) || 2200));
-  if (apiProfile || settings.providerMode === 'external') {
-    const cfg = apiProfile ? {
-      apiUrl: apiProfile.apiUrl, apiKey: apiProfile.apiKey, model: apiProfile.model,
-      temperature, stream: false, maxTokens,
-      structuredOutputMode: apiProfile.structuredOutputMode,
-      jsonSchema: requestOptions.jsonSchema,
-      jsonSchemaName: requestOptions.jsonSchemaName,
-      jsonSchemaStrict: requestOptions.jsonSchemaStrict,
-    } : {
-      temperature, stream: false, maxTokens,
-      structuredOutputMode: settings.structuredOutputMode,
-      jsonSchema: requestOptions.jsonSchema,
-      jsonSchemaName: requestOptions.jsonSchemaName,
-      jsonSchemaStrict: requestOptions.jsonSchemaStrict,
-    };
-    return callExternalApi(messages, null, cfg, new AbortController());
-  }
-  return callSillyTavernModel(messages.at(-1)?.content || '', messages[0]?.content || '', null, {
-    stream_response: false, max_tokens: maxTokens, temperature,
-  });
+  const runtime=await featureRuntime.load('storyboardContract');
+  return runtime.callStoryboardCompiler(messages,profileId,requestOptions,{settings,normalizeStoryboardPromptFormats,callExternalApi,callSillyTavernModel});
 }
 
 async function storyboardCompilerResult(raw, context, capabilities, state, contractRequest = null, inputGuard = null) {
@@ -18770,7 +18748,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
     focused=await contract.completeStoryboardFocusedExtraction({raw,context,request:contractRequest,
       guard:async()=>{inputGuard.assertCurrent();await context.casting?.assertCurrent();await inputGuard.comfyRoutes?.assertCurrent();inputGuard.assertCurrent();},
       publish:records=>inputGuard.continuityStore.publish(records),
-      call:(messages,options)=>storyboardCallCompiler(messages,state.promptCompiler.apiProfileId,{maxTokens:options.maxTokens,promptFormats:contractRequest.promptFormats,temperature:options.temperature,
+      call:(messages,options)=>inputGuard.compilerAttempt.call(messages,state.promptCompiler.apiProfileId,{maxTokens:options.maxTokens,promptFormats:contractRequest.promptFormats,temperature:options.temperature,repair:options.repair,
         jsonSchema:options.schema,jsonSchemaName:options.schemaId,jsonSchemaStrict:true}),
     });
     raw=focused.raw;contractRequest={...focused.legacyRequest,runtime:contract};
@@ -18814,7 +18792,8 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
         await inputGuard?.comfyRoutes?.assertCurrent();
         inputGuard?.assertCurrent();
         repairMessages = messages;
-        return storyboardCallCompiler(messages, state.promptCompiler.apiProfileId, {
+        return (inputGuard?.compilerAttempt?.call||storyboardCallCompiler)(messages, state.promptCompiler.apiProfileId, {
+          repair:true,
           temperature: 0,
           maxTokens: contractRequest?.maxTokens || 1800,
           ...(contractRequest?.promptFormats?.length ? {promptFormats:contractRequest.promptFormats} : {}),
@@ -19071,6 +19050,8 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     inputGuard.assertCurrent();
     const contract = await featureRuntime.load('storyboardContract');
     inputGuard.assertCurrent();
+    inputGuard.compilerAttempt=contract.createStoryboardCompilerAttempt({call:storyboardCallCompiler,guard:()=>inputGuard.assertCurrent(),uid,sanitize:sanitizeStoryboardDiagnosticData,startedAt,floor,
+      model:(settings.apiProfiles||[]).find(item=>item.id===state.promptCompiler.apiProfileId)?.model||(settings.providerMode==='external'?settings.model:'')||''});
     // In a mixed batch, request only reachable closed-model expressions alongside pinned Comfy formats.
     // Otherwise a natural-language-only workflow could leave the same batch's NAI mirrors without tags.
     const expressionRoutes = inputGuard.comfyRoutes?.promptFormats?.length ? {
@@ -19087,7 +19068,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     await context.casting?.assertCurrent();
     inputGuard.assertCurrent();
     await inputGuard.comfyRoutes?.assertCurrent();
-    const raw = await storyboardCallCompiler(contractRequest.messages, state.promptCompiler.apiProfileId, {
+    const raw = await inputGuard.compilerAttempt.call(contractRequest.messages, state.promptCompiler.apiProfileId, {
       maxTokens:contractRequest.maxTokens,
       ...(contractRequest.promptFormats?.length ? {promptFormats:contractRequest.promptFormats} : {}),
       jsonSchema: contractRequest.schema,
@@ -19227,9 +19208,9 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       return false;
     }
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
-    if(error?.code==='storyboard_contract_failed')state.pendingCompilerStages=[{id:uid('stage-compiler'),type:'prompt_compiler',status:'failed',startedAt,finishedAt:Date.now(),output:error.diagnostic,error:error.message}];
+    if(!resultAccepted)inputGuard.compilerAttempt?.fail(error,{store:storyboardStoreLog,archive:id=>storyboardArchivePipelineLog(id,state)});
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
-    if (!quiet||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
+    if (!quiet||inputGuard.compilerAttempt||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return false;
   } finally {
     inputGuard.dispose();
@@ -19296,7 +19277,7 @@ function storyboardBindTagCompletion(root) {
 }
 
 function storyboardJobFromLog(log) {
-  if (log?.kind==='comfy_preparation'||!log?.snapshot) return null;
+  if (['prompt_compiler','comfy_preparation'].includes(log?.kind)||!log?.snapshot) return null;
   const snap = clone(log.snapshot);
   // Missing historical inputs require explicit workbench confirmation, not today's settings.
   if (!Object.hasOwn(STORYBOARD_PROVIDER_REGISTRY, snap.source) || !snap.profile || typeof snap.payload?.prompt !== 'string' || !snap.payload.prompt.trim()
@@ -20405,6 +20386,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
 }
 
 async function storyboardRetryLog(log, { isCurrent = () => true } = {}) {
+  if(log?.kind==='prompt_compiler')return false;
   if(log?.kind==='comfy_preparation')return storyboardReprepareComfyLog(log,{isCurrent});
   if (!isCurrent()) return false;
   const state = storyboardState(), chatKey = getChatKey(), snapshot = JSON.stringify(log?.snapshot);

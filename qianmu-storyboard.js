@@ -2420,6 +2420,7 @@ function legacyLogs(value) {
     const raw=originals.get(log.id);
     const cloudUsage=readRunningHubTaskUsage(raw?.cloudUsage);if(cloudUsage)log.cloudUsage=cloudUsage;
     if(raw?.kind==='comfy_preparation'){log.kind='comfy_preparation';log.preparation=normalizeStoryboardComfyPreparation(raw.preparation);log.snapshot=null;}
+    if(raw?.kind==='prompt_compiler'){log.kind='prompt_compiler';log.source='compiler';log.snapshot=null;log.submissionState='not_submitted';log.params={};log.recordId='';log.recordIds=[];}
   }
   return normalized.map((log, index) => ({ log, index, activityAt: log.finishedAt || log.startedAt || log.queuedAt })).sort((a, b) => b.activityAt - a.activityAt || a.index - b.index).slice(0, STORYBOARD_PIPELINE_LOG_LIMIT).map(({ log }) => log);
 }

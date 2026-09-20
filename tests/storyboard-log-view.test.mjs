@@ -1,17 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
-import {renderRunningHubTaskUsage} from '../qianmu-runninghub-usage.js';
-import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
-const names=['storyboardLogPresentation','storyboardLogExchangeText','bindStoryboardLogExchange','renderStoryboardLogs'];
-const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-export function logFixture(){
-  const state={logs:[],pipelineLogs:[],logFilter:'failed'},context=vm.createContext({...core,renderRunningHubTaskUsage,htmlEscape:escape,formatDateTime:()=> '2026/9/7 23:10:00',
-    STORYBOARD_PIPELINE_STAGE_LABELS:{provider_request:'模型请求',prompt_compiler:'镜头规划'},storyboardActiveJobs:new Map(),storyboardQueue:[],
-    storyboardState:()=>state,storyboardCanReceiveComfyLog:log=>Boolean(log.comfyReceipt),storyboardPipelineForLog:log=>state.pipelineLogs.find(p=>p.id===log.pipelineId)});
-  vm.runInContext(names.map(section).join('\n'),context);return {state,context};
-}
+import {logFixture} from './helpers/storyboard-log-fixture.mjs';
 test('all records render despite persisted old filter, initially folded with four statuses and no empty cards',()=>{
   const {state,context:c}=logFixture();assert.doesNotMatch(c.renderStoryboardLogs(state),/sd-card sd-storyboard-log|sd-storyboard-empty|sd-storyboard-log-head|log-filters/);
   state.logs=['success','failed','queued','generating','cancelled'].map((status,i)=>({id:'log'+i,status,source:'novel',model:'<unsafe model>',params:{}}));

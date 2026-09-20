@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as runtime from '../qianmu-comfy-route.js';
 import * as core from '../qianmu-storyboard.js';
+import {createStoryboardCompilerAttempt} from '../qianmu-storyboard-compiler-diagnostics.js';
 import { retainComfyRoutePromptLayer } from '../qianmu-comfy-route-contract.js';
 import { renderComfyRoutePicker } from '../qianmu-comfy-route-view.js';
 import { recipesFixture, routeEnvironment, namespace, graph } from './helpers/comfy-route-fixture.mjs';
@@ -134,7 +135,7 @@ test('actual compiler prepares fixed routes before LLM and rejects an account ch
       storyboardCallCompiler:async()=>{llm++;if(scenario==='account')e.setAccount('st-user:other');return '{}';},
       storyboardSchedulePlanArchive(){},storyboardScheduleInlineRender(){},storyboardScheduleAutomaticCapture(){},MODULE_NAME:'qa',console:{error(){}},
     });
-    e.context.featureRuntime.load=async key=>key==='storyboardContract'?{buildStoryboardPlanContractRequest:()=>({messages:[],schema:{},schemaId:'test'})}:load(key);
+    e.context.featureRuntime.load=async key=>key==='storyboardContract'?{createStoryboardCompilerAttempt,buildStoryboardPlanContractRequest:()=>({messages:[],schema:{},schemaId:'test'})}:load(key);
     vm.runInContext(section('storyboardCompilePrompt'),e.context);
     await e.context.storyboardCompilePrompt(null,{plan});
     assert.equal(llm,scenario==='missing'?0:1);assert.equal(e.context.storyboardCompilerBusy,false);

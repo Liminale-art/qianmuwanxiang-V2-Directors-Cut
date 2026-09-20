@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import {EventEmitter} from 'node:events';
 import * as storyboard from '../qianmu-storyboard.js';
 import * as contractRuntime from '../qianmu-storyboard-contract.js';
+import {installCompilerDiagnosticsFixture} from './helpers/compiler-diagnostics-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {
@@ -42,13 +43,14 @@ function environment() {
       removeEventListener: (name, handler) => events.get(name)?.delete(handler),
     },
     storyboardCompilerContext: async () => ({ floor: 0, paragraphs: ['original floor'], messages: [], worldRows: [] }),
-    featureRuntime: { load: async () => ({ buildStoryboardPlanContractRequest: () => ({ messages: [{ content: 'test contract' }], schema: {}, schemaId: 'test' }) }) },
+    featureRuntime: { load: async () => ({ ...contractRuntime,buildStoryboardPlanContractRequest: () => ({ messages: [{ content: 'test contract' }], schema: {}, schemaId: 'test' }) }) },
     storyboardCompilerRequestConfig: () => ({}),
     storyboardCallCompiler: async () => { calls.push('llm'); return 'old response'; },
     storyboardCompilerResult: async () => ({ shouldGenerate: true, prompt: 'extracted prompt', negative: '', shots: [{ prompt: 'extracted prompt', sensitive: false }] }),
     storyboardProviderProfile: (_state, id = state.source) => state.profiles[id],
   });
   vm.runInContext(['storyboardPrepareComfyRoutes','storyboardUsesComfyCharacters','storyboardCreatePreparationGuard', 'storyboardCompilePrompt', 'storyboardAdaptShotForModel'].map(section).join('\n'), context);
+  installCompilerDiagnosticsFixture(context);
   const dispatchInput = (className = 'sd-storyboard-field') => {
     for (const handler of events.get('input') || []) handler({ target: { className, type: 'text', matches: () => true, closest: () => ({}) } });
   };
@@ -228,7 +230,7 @@ for (const phase of ['before repair request', 'during repair request']) {
       },
       createStoryboardContractManualFallback: () => assert.fail('stale result must not produce a fallback'),
     };
-    e.context.featureRuntime.load = async () => contract;
+    e.context.featureRuntime.load = async () => ({...contractRuntime,...contract});
     e.context.storyboardCallCompiler = async () => {
       llmCalls++;
       if (llmCalls === 2 && phase === 'during repair request') { reached.resolve(); await gate.promise; }
@@ -264,10 +266,12 @@ test('actual extraction stops after three failed repairs with a concise notice, 
  vm.runInContext(section('storyboardCompilerResult'),e.context);
  assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.plan,quiet:true}),false);
  assert.equal(calls,4,'one initial extraction plus at most three format repairs');assert.equal(e.plan.status,'failed');assert.equal(e.state.prompt,'original prompt');
- assert.match(e.notices.at(-1),/已修复3次/);assert.equal(e.state.pendingCompilerStages[0].output.repairCalls,3);assert.equal(e.plan.shots.length,0);assert.equal(e.plan.manualReviewRequired,undefined);
+ const output=e.state.pipelineLogs[0].stages.at(-1).output.diagnostic;
+ assert.match(e.notices.at(-1),/已修复3次/);assert.equal(output.repairCalls,3);assert.equal(e.plan.shots.length,0);assert.equal(e.plan.manualReviewRequired,undefined);
  assert.match(e.notices.at(-1),/返回不是有效 JSON/);
- assert.equal(e.state.pendingCompilerStages[0].output.stopReason,'budget_exhausted');
- assert.deepEqual([...e.state.pendingCompilerStages[0].output.reasonCodes],['json_syntax']);
+ assert.equal(output.stopReason,'budget_exhausted');
+ assert.deepEqual([...output.reasonCodes],['json_syntax']);
+ assert.equal(e.state.pendingCompilerStages,undefined);assert.equal(e.state.logs[0].kind,'prompt_compiler');
 });
 
 test('an actual post-acceptance implementation failure is not disguised as stale input', async () => {

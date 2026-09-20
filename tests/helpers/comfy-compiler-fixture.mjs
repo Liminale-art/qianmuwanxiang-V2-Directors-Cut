@@ -3,6 +3,7 @@ import * as contract from '../../qianmu-storyboard-contract.js';
 import * as prompts from '../../qianmu-comfy-prompt.js';
 import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../../qianmu-character-casting.js';
 import {routeEnvironment} from './comfy-route-fixture.mjs';
+import {installCompilerDiagnosticsFixture} from './compiler-diagnostics-fixture.mjs';
 import {storyboardFunctionSource as section} from './storyboard-form-fixture.mjs';
 const plain=value=>JSON.parse(JSON.stringify(value));
 export const casting={schema:CHARACTER_CASTING_SCHEMA,entries:[{identity:{subjectId:'archive:alice',archiveId:'alice',archiveVersion:1,category:'char',name:'Alice',appearance:'silver hair',aliases:[]},negative:''}],unboundNames:[]};
@@ -18,6 +19,7 @@ export const response=()=>({schema:contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,s
 })});
 export async function compilerEnvironment(){
   const e=await routeEnvironment({formats:['tags','natural_language']}),calls=[],errors=[];
+  installCompilerDiagnosticsFixture(e.context);
   const load=e.context.featureRuntime.load;
   e.context.featureRuntime.load=async key=>key==='storyboardContract'?contract:key==='comfyPrompt'?prompts:load(key);
   const scene=response(),chat=[{mes:'Alice reads a letter.\n\nA mountain valley.\n\nA broken cup.',is_user:false}];

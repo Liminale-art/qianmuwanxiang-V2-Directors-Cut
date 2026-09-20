@@ -58,7 +58,8 @@ assert.match(source, /return callExternalModel\(messages, onDelta, cfg/);
 assert.match(external, /if \(!stream && cfg\?\.jsonSchema\)[\s\S]*body\.response_format = responseFormat/, '结构化字段只能在明确提供 Schema 的非流式请求中出现');
 assert.match(source, /structuredOutputMode: 'none'/, '全新安装必须默认兼容模式');
 assert.match(source, /profile\.structuredOutputMode[\s\S]*normalizeQianmuStructuredOutputMode/, 'API 预设必须独立保存能力声明');
-assert.match(source, /storyboardCallCompiler[\s\S]*jsonSchema: requestOptions\.jsonSchema/, '分镜编译器必须具备传入严格 Schema 的能力门面');
+assert.match(source, /return runtime\.callStoryboardCompiler\(messages,profileId,requestOptions/, '编译器能力门面保持在按需模块');
+assert.match(await readFile(new URL('../qianmu-storyboard-compiler-transport.js',import.meta.url),'utf8'), /jsonSchema:requestOptions\.jsonSchema/, '分镜编译器必须传入严格 Schema');
 assert.match(source, /custom_url: normalizeQianmuChatApiRoot\(url\)/, 'ST 代理生成前必须消除完整端点重复拼接');
 assert.match(source, /qianmuChatCompletionError\(data\)/, 'ST 代理返回 200 错误包时不得继续伪装成功');
 

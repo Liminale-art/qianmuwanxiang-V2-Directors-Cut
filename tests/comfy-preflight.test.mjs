@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
 import * as preflight from '../qianmu-comfy-preflight.js';
+import * as contract from '../qianmu-storyboard-contract.js';
 import * as references from '../qianmu-comfy-references.js';
 import * as roles from '../qianmu-comfy-character-plan.js';
 import {job as roleJob,namespace as roleNamespace} from './helpers/comfy-character-fixture.mjs';
@@ -59,7 +60,7 @@ function environment({automatic=false}={}) {
   Object.assign(state.profiles.comfy,{model:'comfy-workflow',comfyWorkflow:JSON.stringify(graph()),comfyOutputNodeId:'save',width:'832',height:'1216'});
   const plan={origin:'automatic',autoGenerate:automatic,status:'screening'},calls=[],notices=[];let current=true;
   const guard={assertCurrent:()=>{if(!current)throw Object.assign(Error('changed'),{code:'storyboard_input_changed'});},isCurrent:()=>current,ownsCurrentContext:()=>current,dispose:()=>{}};
-  const context=vm.createContext({...storyboard,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},
+  const context=vm.createContext({...storyboard,settings:{apiProfiles:[]},STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},
     storyboardState:()=>state,storyboardCompilerBusy:false,storyboardCaptureWorkbench:()=>({state,profile:state.profiles[state.source]}),
     storyboardTargetFloor:()=>0,ctx:()=>({chat:[{mes:'story'}]}),storyboardCreatePreparationGuard:()=>guard,
     storyboardSetPlanStatus:(p,status,extra={})=>Object.assign(p||{}, {status,...extra}),renderModal:()=>{},saveSettings:()=>{},
@@ -67,7 +68,7 @@ function environment({automatic=false}={}) {
     storyboardResolveRoutingProfile:(s,route)=>({...s.profiles[route.providerId],...(s.parameterPresets.find(p=>p.id===route.parameterPresetId)?.profile||{})}),
     storyboardCompilerContext:async()=>{calls.push('context');return {floor:0,messages:[],worldRows:[]};},
     storyboardRequestHeaders:()=>({}),
-    featureRuntime:{load:async key=>{calls.push(key);return key==='comfyPreflight'?preflight:key==='comfyTargets'?{requireTrustedComfyConnection:async()=>calls.push('trust-check')}:{buildStoryboardPlanContractRequest:()=>({messages:[],schema:{},schemaId:'test'})};}},
+    featureRuntime:{load:async key=>{calls.push(key);return key==='comfyPreflight'?preflight:key==='comfyTargets'?{requireTrustedComfyConnection:async()=>calls.push('trust-check')}:{...contract,buildStoryboardPlanContractRequest:()=>({messages:[],schema:{},schemaId:'test'})};}},
     storyboardCompilerRequestConfig:()=>({}),storyboardCallCompiler:async()=>{calls.push('llm');return '{}';},
     storyboardCompilerResult:async()=>({shouldGenerate:false,skipReason:'no shot'}),sanitizeStoryboardDiagnosticData:value=>value,
     uid:()=> 'test-id',toast:message=>notices.push(message),MODULE_NAME:'test',console:{error:()=>{}},
