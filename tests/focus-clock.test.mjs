@@ -21,7 +21,7 @@ for (const name of ['light.mp3', 'daylight.mp3', 'silver-bell.mp3', 'bright.mp3'
 assert.match(source, /focusClock:\s*\{[\s\S]*phase: 'focus'[\s\S]*status: 'idle'[\s\S]*endsAt: 0[\s\S]*history: \[\]/, '专注状态必须独立存入全局轻量设置');
 assert.match(source, /\['focus', '专注'\]/, '专注时钟必须拥有独立顶层标签');
 assert.match(source, /\['tts', '配音'\],\s*\['focus', '专注'\]/, '专注标签必须排列在配音之后');
-assert.match(source, /id: 'focus', label: '专注', icon: 'fa-hourglass-half'/, '蜂巢入口列表必须包含专注时钟');
+assert.match(await readFile(new URL('../qianmu-hive-commands.js',import.meta.url),'utf8'), /id: 'focus', label: '专注', icon: 'fa-hourglass-half'/, '蜂巢入口列表必须包含专注时钟');
 assert.match(source, /case 'focus': return renderFocusClockTab\(\)/, '专注标签必须接入统一路由');
 
 assert.match(source, /function focusClockRemainingMs[\s\S]*state\.endsAt - now/, '运行态必须按绝对截止时间计算，避免后台节流导致计时漂移');

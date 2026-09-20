@@ -1,5 +1,6 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js';
+import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js';
@@ -161,7 +162,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.202';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.202';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.208';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.209';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -258,7 +259,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.208';
+const VERSION = '1.59.209';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -294,7 +295,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.202') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.202') },
   historicalRestore: { label: '历史聊天分镜恢复', load: () => import('./qianmu-historical-restore.js?v=1.59.204') },
-  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.208') },
+  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.209') },
   storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.202') },
   storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.202') },
   storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.202') },
@@ -4238,22 +4239,7 @@ function revealFloatButton(btn, { temporary = true } = {}) {
   return true;
 }
 
-const QUICK_COMMANDS = Object.freeze([
-  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', glyph: 'qm-duotone-film-slate' },
-  { id: 'focus', label: '专注', icon: 'fa-hourglass-half', glyph: 'focus' },
-  { id: 'notes', label: '便笺', icon: 'fa-note-sticky', glyph: 'qm-regular-note-pencil' },
-  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', glyph: 'tasks' },
-  { id: 'castworld', label: '世界', icon: 'fa-earth-asia', glyph: 'world' },
-  { id: 'context', label: '取材', icon: 'fa-box-archive', glyph: 'context' },
-  { id: 'settings', label: '幕后', icon: 'fa-feather-pointed', glyph: 'backstage' },
-  { id: 'theater', label: '幕外', icon: 'fa-masks-theater', glyph: 'qm-regular-tv' },
-  { id: 'tts', label: '配音', icon: 'fa-microphone-lines', glyph: 'qm-duotone-microphone-stage' },
-  { id: 'coread', label: '书架', icon: 'fa-book-open', glyph: 'coread-entry' },
-  { id: 'geopolitics', label: '世界格局', icon: 'fa-atom', glyph: 'world-map' },
-  { id: 'plug', label: 'API与日志', icon: 'fa-gear', glyph: 'qm-duotone-gear' },
-  { id: 'imagegen', label: '分镜', icon: 'fa-video', glyph: 'qm-regular-aperture' },
-  { id: 'floor', label: '楼层跳转', icon: 'fa-layer-group', glyph: 'floor-tools' },
-]);
+const QUICK_COMMANDS = QIANMU_HIVE_COMMANDS;
 const QUICK_COMMAND_IDS = QUICK_COMMANDS.map((item) => item.id);
 const QUICK_ICON_OPTICAL_SCALE = Object.freeze({
   tts: 1.16,
@@ -4486,6 +4472,7 @@ function quickDockApplyResolvedLabel(key, label) {
 }
 
 function normalizeQuickWheelSettings() {
+  upgradeProseHiveCommands(settings);
   // 旧版“默认方案”只在迁移时存在；更新后直接沿用用户已经勾选的自定义入口。
   settings.quickWheelScheme = 'custom';
   const order = Array.isArray(settings.quickWheelCustomOrder) ? settings.quickWheelCustomOrder : [];
@@ -4525,7 +4512,7 @@ function normalizeQuickWheelSettings() {
 function quickWheelPrimaryItems() {
   normalizeQuickWheelSettings();
   const ids = settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id)
-    && !(id === 'notes' && settings?.notes?.detached));
+    && !(id === 'notes' && settings?.notes?.detached) && !(id === 'assistant' && collectionFloorTools.assistantDetached));
   return ids.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
 }
 
@@ -5730,7 +5717,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
     <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层与正文排版">
-        <header><div><h3>楼层工具</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-collections" aria-label="正文收藏" title="正文收藏"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+        <header><div><h3>楼层工具</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
         <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">楼层跳转</button><button type="button" role="tab" data-floor-tab="layout">正文排版</button></nav>
         <section class="sd-floor-view" data-floor-view="jump">
           <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump">跳转</button></div>
@@ -5747,7 +5734,6 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
   root.querySelector('.sd-floor-backdrop')?.addEventListener('click', close);
   root.querySelector('.sd-floor-close')?.addEventListener('click', close);
-  root.querySelector('.sd-floor-collections')?.addEventListener('click',()=>void collectionFloorTools.openLibrary(root,confirmDialog));
   const setView = (view) => {
     floorNavigatorView = view === 'layout' ? 'layout' : 'jump';
     root.querySelectorAll('[data-floor-tab]').forEach((button) => {
@@ -5786,6 +5772,8 @@ async function runQuickWheelCommand(id) {
   }
   if (id === 'floor') return openFloorNavigator();
   if (id === 'notes') return openNotesPanel();
+  if (id === 'assistant') return collectionFloorTools.openAssistant();
+  if (id === 'collections') return collectionFloorTools.openLibrary(document.body,confirmDialog);
   if (id === 'geopolitics') return openModal('geopolitics');
   if (QUICK_COMMAND_IDS.includes(id)) return openModal(id);
 }
@@ -5871,6 +5859,7 @@ function openQuickWheel(btn) {
     button.innerHTML = `${iconMarkup}${QUICK_HEX_BORDER_SVG}`;
     holder.appendChild(button);
     if (item.id === 'notes') bindNotesHiveDetachDrag(button, item, layout);
+    collectionFloorTools.bindHive(button,item,layout);
     if (item.external) {
       quickDockBindIconFallback(button, item);
       bindQuickWheelUndockDrag(button, item, layout);
@@ -6476,6 +6465,7 @@ function clampDetachedNotesEntry(position = {}) {
 }
 
 function renderFloatingNotes() {
+  collectionFloorTools.renderHive();
   document.getElementById(NOTES_FLOAT_LAYER_ID)?.remove();
   const noteSettings = notesFeatureSettings();
   if (!noteSettings.enabled || !noteSettings.detached || notesPanelOpen) return;
@@ -6578,7 +6568,7 @@ function detachedNoteCanReturnHome(entry) {
   if (!(logo instanceof Element)) return false;
   const noteRect = entry.getBoundingClientRect();
   const logoRect = logo.getBoundingClientRect();
-  const pixelTolerance = 2;
+  const pixelTolerance = Math.max(6, Math.min(12, Math.min(logoRect.width, logoRect.height) * .18));
   return noteRect.left >= logoRect.left - pixelTolerance
     && noteRect.right <= logoRect.right + pixelTolerance
     && noteRect.top >= logoRect.top - pixelTolerance
@@ -23261,7 +23251,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
   if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
-    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.208').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.209').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
       root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
       apply: value => storyboardSetArtistPreview(root, value), notify: toast,
     })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });
@@ -30540,7 +30530,7 @@ function coreadShowRefillChooser(bookId) {
       </div>
     </div>`;
   const cleanup = () => {
-    document.removeEventListener('keydown', onKeydown);
+    overlay.removeEventListener('keydown', onKeydown);
     viewport?.removeEventListener('resize', syncViewport);
     viewport?.removeEventListener('scroll', syncViewport);
     window.removeEventListener('orientationchange', syncViewport);
@@ -30559,7 +30549,7 @@ function coreadShowRefillChooser(bookId) {
     await coreadHandleImportFiles(files, bookId);
   });
   coreadRefillChooserCleanup = cleanup;
-  document.addEventListener('keydown', onKeydown);
+  overlay.addEventListener('keydown', onKeydown);
   // 必须直挂 body：千幕主面板带 transform / overflow 时，内部 fixed 会退化成相对面板定位，
   // 正是窄屏弹层被推到视口外的根因。主题变量从主面板复制，不以牺牲外观换定位正确。
   const themeSource = document.getElementById('story-director-modal');
@@ -30574,6 +30564,7 @@ function coreadShowRefillChooser(bookId) {
   applyQianmuIcons(overlay);
   syncViewport();
   appearanceSession.mountPortal(overlay);
+  overlay.querySelector('.sd-reader-refill-cancel')?.focus({ preventScroll: true });
   viewport?.addEventListener('resize', syncViewport);
   viewport?.addEventListener('scroll', syncViewport);
   window.addEventListener('orientationchange', syncViewport);
@@ -36034,7 +36025,9 @@ function init() {
       .catch((error) => console.warn(`[${MODULE_NAME}] persona initialization failed`, error));
     applyProseLayout();
     renderSettingsPanel();
+    collectionFloorTools.configureHive({geometry:detachedNotesGeometry,clamp:clampDetachedNotesEntry,palette:currentHivePalette,theme:currentHiveThemeKey,outline:QUICK_HEX_BORDER_SVG,mount:root=>appearanceSession.mountHive(root),canDock:entry=>!collectionFloorTools.assistantBusy&&detachedNoteCanReturnHome(entry),closeWheel:closeQuickWheel});
     renderFloatButton();
+    collectionFloorTools.renderHive();
     bindQuickDockCapture();
     restoreQuickDockedPlugins();
     storyboardBindChat();

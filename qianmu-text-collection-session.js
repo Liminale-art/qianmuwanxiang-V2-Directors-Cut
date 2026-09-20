@@ -2,6 +2,7 @@ import {createTextCollectionClient} from './qianmu-text-collection-client.js';
 import {textCollectionSyncError as error,textCollectionSyncMutation} from './qianmu-text-collection-sync-contract.js';
 import {notesSyncOperationId} from './qianmu-notes-sync-contract.js';
 import {textCollectionBulkRequest} from './qianmu-text-collection-bulk-contract.js';
+import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
 
 // One explicit UI session, not an account-global cache or background write queue.
 export async function createTextCollectionSession({resolveNamespace,isCurrent,headers,fetchImpl,timeoutMs,cryptoImpl=globalThis.crypto}={}){
@@ -18,7 +19,8 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
   const digest=await cryptoImpl.subtle.digest('SHA-256',new TextEncoder().encode(namespace.slice(8)));
   const expectedAccount='st-user:'+Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
   await guard();
-  const client=createTextCollectionClient({expectedAccount,guard,headers,fetchImpl,timeoutMs});
+  const factory=isStAccountStorageConfigured()&&!fetchImpl?(await import('./qianmu-text-collection-native.js')).createNativeTextCollectionClient:createTextCollectionClient;
+  const client=factory({expectedAccount,guard,headers,fetchImpl,timeoutMs});
   function prepare(operation,value){
     if(closed||isCurrent()!==true)throw error('cancelled','收藏会话已关闭，未准备新操作');
     const request=textCollectionSyncMutation({version:1,expectedAccount,mutationId:notesSyncOperationId(cryptoImpl),operation,...value});

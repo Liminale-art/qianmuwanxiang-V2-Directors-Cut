@@ -95,7 +95,7 @@ try {
     await sync(a); await sync(b);
     assert.equal((await list(b))[0].body, saved.body);
     assert.equal((await list(b))[0].pinned, false);
-    checks.push('manual sync transfers complete unpinned prose across independent browser storage contexts');
+    checks.push('the internal sync drain transfers complete unpinned prose across independent browser storage contexts (no UI sync button)');
 
     await a.evaluate(async () => { const current = (await runtime.list())[0]; await runtime.save({ ...current, pinned: true }); await runtime.sync(); await runtime.save({ ...(await runtime.list())[0], pinned: false }); await runtime.sync(); });
     await sync(b); assert.equal((await list(b))[0].pinned, false); assert.equal((await list(b))[0].body, saved.body);

@@ -41,6 +41,20 @@ dialog.qm-text-collection-dialog::backdrop { background: #0007; }
 .qm-text-collection-dialog button:disabled { opacity: .5; cursor: default; }
 .qm-text-collection-dialog button:focus-visible, .qm-text-collection-row:focus-visible { outline: 2px solid var(--qm-accent, #a7c4b5); outline-offset: -2px; }
 .qm-text-collection-dialog .qm-text-collection-save { border-color: var(--qm-accent, #a7c4b5); }
+.qm-text-collection-header-tools { display: flex; gap: 6px; align-items: center; }
+.qm-text-collection-dialog button.qm-text-collection-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 8px; }
+.qm-text-collection-dialog .qm-text-collection-icon svg { width: 20px; height: 20px; flex: none; }
+.qm-text-collection-capture-actions { justify-content: space-between; }
+.qm-text-collection-capture-actions .qm-text-collection-save { margin-inline-start: auto; }
+.qm-text-collection-paragraphs { display: flex; flex-direction: column; gap: 3px; max-height: min(54dvh, 480px); overflow: auto; }
+.qm-text-collection-dialog button.qm-text-collection-paragraph {
+    display: block; flex: none; width: 100%; min-height: 0; margin: 0; padding: 5px 8px;
+    border: 1px solid transparent; border-radius: 6px; background: transparent; text-align: start;
+    white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--qm-collection-prose-font, inherit);
+    font-size: var(--qm-collection-prose-size, 16px); line-height: 1.5;
+}
+.qm-text-collection-dialog button.qm-text-collection-paragraph[aria-pressed="true"] { border-color: var(--qm-accent, #a7c4b5); background: color-mix(in srgb, var(--qm-accent, #a7c4b5) 12%, transparent); }
+.qm-text-collection-dialog button.qm-text-collection-paragraph:disabled { opacity: 1; }
 .qm-text-collection-dialog textarea {
     display: block;
     width: 100%;
@@ -55,7 +69,8 @@ dialog.qm-text-collection-dialog::backdrop { background: #0007; }
     background: var(--qm-surface, #8882);
     color: inherit;
     font: inherit;
-    font-size: 16px;
+    font-family: var(--qm-collection-prose-font, inherit);
+    font-size: var(--qm-collection-prose-size, 16px);
     line-height: 1.6;
     text-align: start;
     white-space: pre-wrap;

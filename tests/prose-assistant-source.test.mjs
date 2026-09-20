@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
-import {captureProseAssistantSource as capture,PROSE_ASSISTANT_SOURCE_LIMIT,proseAssistantAccountForNamespace} from '../qianmu-prose-assistant-source.js';
+import {captureProseAssistantSource as capture,captureProseAssistantChatSource,PROSE_ASSISTANT_SOURCE_LIMIT,proseAssistantAccountForNamespace} from '../qianmu-prose-assistant-source.js';
 import {resolveImageAccountNamespace} from '../qianmu-image-admission.js';
 import {proseAssistantHistoryKey} from '../qianmu-prose-assistant-history-contract.js';
 
@@ -13,6 +13,16 @@ function fixture(){
   const options={getContext:()=>context,epoch:()=>epoch,resolveNamespace:async()=>account,isCurrent:()=>live,floor:0,readText:(message,floor)=>{reads.push(floor);assert.equal(message,context.chat[floor]);return '未选择\r\n正文😀\r\n后文不选';}};
   return {context,options,reads,emitter,set account(value){account=value;},set live(value){live=value;},changeEpoch(){epoch++;},listeners:()=>emitter.eventNames().reduce((n,type)=>n+emitter.listenerCount(type),0)};
 }
+
+test('chat-level panel source reads no prose and stays alive when an old floor changes or new prose arrives',async()=>{
+ const f=fixture(),chat=await captureProseAssistantChatSource(f.options),floor=await capture(f.options);assert.equal(chat.key,floor.key);floor.close();f.reads.length=0;
+ f.context.chat[0].mes='edited';f.context.chat.push({mes:'new user reply',is_user:true});assert.equal(await chat.guard(),true);assert.deepEqual(f.reads,[]);
+ f.emitter.emit('chat_changed');assert.throws(chat.assertCurrent);assert.equal(f.listeners(),0);
+});
+
+test('chat panel account changes during capture fail closed without reading or moving history',async()=>{
+ const f=fixture();let calls=0;await assert.rejects(captureProseAssistantChatSource({...f.options,resolveNamespace:async()=>++calls===1?'st-user:alice':'st-user:bob'}));assert.deepEqual(f.reads,[]);assert.equal(f.listeners(),0);
+});
 
 test('actual host namespace resolver produces a handle which is explicitly digested before history partitioning',async()=>{
  const namespace=await resolveImageAccountNamespace({loadUser:async()=>({currentUser:{handle:'普通用户'}}),fetchImpl:()=>assert.fail('verified handle needs no request')});assert.equal(namespace,'st-user:普通用户');

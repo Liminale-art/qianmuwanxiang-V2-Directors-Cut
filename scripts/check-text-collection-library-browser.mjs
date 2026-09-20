@@ -15,8 +15,10 @@ const service=createTextCollectionSyncService({dataRoot:root});
 const make=id=>({version:1,expectedAccount,mutationId:randomUUID(),operation:'create',id,baseRevision:0,record:createTextCollection({id,mode:'full',createdAt:Date.UTC(2026,8,19)+Number(id.split('-')[1]||0),
   source:{account:expectedAccount,chatId:'deleted-chat',messageId:0,replyId:'old-reply',charName:'当时角色',userName:'<旧用户>',text:`收藏原文 ${id}\r\n不依赖聊天`}})});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
+const artifactDirectory=process.env.QIANMU_CAPTURE_ARTIFACTS==='1'?await fs.mkdtemp(path.join(os.tmpdir(),'qianmu-collection-library-visual-')):null;
 const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.js','qianmu-json-input.js','qianmu-storage-backup-view.js',...['cleanup-batch','bulk-contract','storage','restore-view','restore-batch','export','backup','floor','library','session','client','sync-contract'].map(name=>`qianmu-text-collection-${name}.js`)]);
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false,rejectDraftCopy=false;
+allowed.add('qianmu-st-account-storage.js');
 for(const file of ['qianmu-account-local-store.js','qianmu-text-collection-outbox-store.js','qianmu-text-collection-outbox-runtime.js','qianmu-text-collection-outbox-view.js','qianmu-text-collection-outbox-backup.js'])allowed.add(file);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
@@ -50,13 +52,37 @@ try{
     fixture.open=async()=>{fixture.namespace='st-user:alice';fixture.current=true;fixture.host=document.createElement('section');document.getElementById('fixture').append(fixture.host);
       fixture.host.addEventListener('keydown',event=>{if(event.key==='Escape'){fixture.escaped++;fixture.host.remove();}});
       fixture.ui=await fixture.floorTools.openLibrary(fixture.host,async(...args)=>{fixture.lastConfirm=args;return fixture.holdConfirm?new Promise(resolve=>{fixture.acceptConfirm=resolve;}):fixture.consent;},async text=>{fixture.copied=text;});};
+    // The old manual outbox is no longer a user-facing library action. Preserve
+    // its recovery-contract regressions through a direct isolated harness.
+    fixture.openLegacyPending=async()=>{
+      const [{createTextCollectionSession},{createTextCollectionOutboxRuntime},{openTextCollectionOutbox}]=await Promise.all([import('./qianmu-text-collection-session.js'),import('./qianmu-text-collection-outbox-runtime.js'),import('./qianmu-text-collection-outbox-view.js')]);
+      const current=()=>fixture.current&&fixture.ui.element.isConnected;
+      const session=await createTextCollectionSession({resolveNamespace:async()=>fixture.namespace,isCurrent:current,headers:()=>({'X-CSRF-Token':'fixture-only'})}),outbox=createTextCollectionOutboxRuntime({session,isCurrent:current});
+      const recovery=openTextCollectionOutbox({parent:fixture.host,session,outbox,isCurrent:current,copy:async text=>{fixture.copied=text;},confirm:async(...args)=>{fixture.lastConfirm=args;return fixture.holdConfirm?new Promise(resolve=>{fixture.acceptConfirm=resolve;}):fixture.consent;},download:async(blob,name)=>fixture.pendingDownloads.push({name,payload:JSON.parse(await blob.text())})});
+      fixture.ui.finished.then(()=>recovery.dispose());recovery.finished.then(()=>{outbox.close();session.close();});
+    };
+    fixture.openDelayedLibrary=async mode=>{
+      const {openTextCollectionLibrary}=await import('./qianmu-text-collection-library.js');
+      const host=document.createElement('section');document.getElementById('fixture').append(host);
+      fixture.rejectAccount=mode==='fail';const gate=mode==='slow'?new Promise(resolve=>{fixture.releaseAccount=resolve;}):Promise.resolve();
+      fixture.delayedLibrary=await openTextCollectionLibrary({parent:host,resolveNamespace:async()=>{await gate;if(fixture.rejectAccount)throw Error('fixture unavailable');return fixture.namespace;},isCurrent:()=>fixture.current,headers:()=>({'X-CSRF-Token':'fixture-only'}),confirm:async()=>true});
+    };
     await fixture.open();
   });await ready();
+  assert.equal(await button('pending').count(),0,'the library no longer makes users manage a local pending area');
+  await button('close').click();await page.evaluate(()=>fixture.openDelayedLibrary('slow'));
+  assert.equal(await page.locator('dialog').isVisible(),true);assert.equal(await page.locator('dialog').getAttribute('aria-busy'),'true');
+  await button('close').click();await page.evaluate(async()=>{fixture.releaseAccount();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});assert.equal(await page.locator('dialog').count(),0);
+  checks.push('library shell appears before delayed account initialization and closing it prevents late reopening');
+  await page.evaluate(()=>fixture.openDelayedLibrary('fail'));await ready();assert.match(await status(),/读取未完成/);assert.equal(await button('refresh').isDisabled(),false);
+  await page.evaluate(()=>{fixture.rejectAccount=false;});await button('refresh').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),50);await button('close').click();await page.evaluate(()=>fixture.open());await ready();
+  checks.push('library initialization failure remains visible with a working refresh retry, not an empty success state');
   assert.equal(await page.locator('[data-collection-id]').count(),50);assert.equal(reads,0);assert.match(await status(),/51.*第 1 页/);
   await page.evaluate(()=>fixture.floorTools.openLibrary(fixture.host,async()=>true));assert.equal(await page.locator('dialog').count(),1);
   await button('next').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),1);assert.equal(await button('next').isDisabled(),true);
   await button('prev').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),50);
   checks.push('50-item pages use summary-only reads with correct previous/next controls');
+  if(artifactDirectory){await page.setViewportSize({width:393,height:850});await page.screenshot({path:path.join(artifactDirectory,'collection_library_narrow.png')});}
   const search=page.locator('input[aria-label="搜索收藏"]');await search.fill('COLLECTION-4');await search.press('Enter');await ready();
   assert.equal(await page.locator('[data-collection-id]').count(),11);assert.equal(reads,0);assert.equal(await button('next').isDisabled(),true);
   await search.fill('不存在');await button('search').click();await ready();assert.equal(await page.locator('[data-collection-id]').count(),0);
@@ -68,13 +94,13 @@ try{
   await button('copy').click();await ready();assert.equal(await page.evaluate(()=>fixture.copied),'收藏原文 collection-50\n不依赖聊天');
   await button('edit').click();await ready();await page.locator('[data-collection-editor]').fill('我编辑的收藏');
   loseAck=true;await button('save').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'我编辑的收藏');
-  assert.match(await status(),/未确认|中断|损坏/);const first=structuredClone(writes.at(-1));await button('save').click();await ready();
+  assert.match(await status(),/未完成|中断|损坏/);const first=structuredClone(writes.at(-1));await button('save').click();await ready();
   assert.deepEqual(writes.at(-1),first);assert.match(await status(),/修改已保存/);
   checks.push('detail loads only its original, copy stays text, and lost acknowledgement retry confirms the identical disk write');
   await button('edit').click();await ready();await page.locator('[data-collection-editor]').fill('不要丢失的本机修改');
   await service.write(request,{version:1,expectedAccount,mutationId:randomUUID(),operation:'edit',id:'collection-50',baseRevision:2,text:'另一端修改'});
   await button('save').click();await ready();assert.match(await status(),/其他设备变更/);assert.equal(await page.locator('[data-collection-editor]').inputValue(),'不要丢失的本机修改');
-  assert.match(await status(),/本机待存/);
+  assert.match(await status(),/当前内容已保留/);
   await page.evaluate(()=>{fixture.consent=false;});await button('reload').click();await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'不要丢失的本机修改');
   await button('close').click();assert.equal(await page.locator('dialog').count(),1);
   await page.locator('[data-collection-editor]').focus();await page.keyboard.press('Escape');assert.equal(await page.locator('dialog').count(),1);assert.equal(await page.evaluate(()=>fixture.escaped),0);
@@ -200,17 +226,17 @@ try{
   failListOnce=true;await page.evaluate(()=>fixture.open());await ready();assert.match(await status(),/中断|损坏/);
   const pendingRoot=page.locator('[data-collection-outbox]'),pendingButton=name=>pendingRoot.locator(`[data-pending-action="${name}"]`);
   const pendingReady=()=>page.waitForFunction(()=>document.querySelector('[data-collection-outbox]')?.getAttribute('aria-busy')==='false');
-  const beforePending=writes.length;await button('pending').click();await pendingReady();assert.equal(await pendingRoot.locator('[data-pending-id]').count(),50);
+  const beforePending=writes.length;await page.evaluate(()=>fixture.openLegacyPending());await pendingReady();assert.equal(await pendingRoot.locator('[data-pending-id]').count(),50);
   await pendingButton('next').click();await pendingReady();assert.equal(await pendingRoot.locator('[data-pending-id]').count(),2);await pendingButton('prev').click();await pendingReady();
   await pendingRoot.locator(`[data-pending-id="${pending[0].request.mutationId}"]`).click();await pendingReady();
   assert.equal(await pendingButton('retry').isDisabled(),true);assert.equal(await pendingRoot.locator('textarea').inputValue(),'不要丢失的本机修改');
   await pendingButton('copy').click();await pendingReady();assert.equal(await page.evaluate(()=>fixture.copied),'不要丢失的本机修改');assert.equal(writes.length,beforePending);
   for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await pendingRoot.evaluate(n=>({scroll:n.scrollWidth,client:n.clientWidth,width:n.getBoundingClientRect().width}));assert.ok(size.width<=width&&size.scroll<=size.client+1);}
-  checks.push('local pending entry remains usable when server list fails, paginates 50 originals, copies conflict text without requests and fits both layouts');
+  checks.push('internal legacy-recovery harness remains usable when server list fails, paginates 50 originals and copies conflict text; no library pending entry is exposed');
   await pendingButton('back').click();await pendingReady();const retried=pendingSeeds.at(-1);await pendingRoot.locator(`[data-pending-id="${retried.mutationId}"]`).click();await pendingReady();
   loseAck=true;await pendingButton('retry').click();await pendingReady();assert.equal(await pendingRoot.locator('textarea').inputValue(),retried.record.text.replace(/\r\n?/g,'\n'));
   const sent=structuredClone(writes.at(-1));await pendingButton('close').click();await ready();await button('close').click();await page.evaluate(()=>fixture.open());await ready();
-  await button('pending').click();await pendingReady();await pendingRoot.locator(`[data-pending-id="${retried.mutationId}"]`).click();await pendingReady();await pendingButton('retry').click();await pendingReady();
+  await page.evaluate(()=>fixture.openLegacyPending());await pendingReady();await pendingRoot.locator(`[data-pending-id="${retried.mutationId}"]`).click();await pendingReady();await pendingButton('retry').click();await pendingReady();
   assert.deepEqual(writes.at(-1),sent);assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/服务器已确认/);
   assert.equal((await service.list(request,{version:1,expectedAccount,cursor:null,limit:50})).total,2);
   checks.push('pending retry after closing and reopening confirms the same real server write exactly once despite a lost acknowledgement');
@@ -226,14 +252,14 @@ try{
   await pendingButton('remove').click();await pendingReady();assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/状态已在另一页面变化/);
   await pendingButton('back').click();await pendingReady();await pendingRoot.locator(`[data-pending-id="${closed.mutationId}"]`).click();await pendingReady();
   await page.evaluate(()=>{fixture.holdConfirm=true;});await pendingButton('remove').click();await page.waitForFunction(()=>typeof fixture.acceptConfirm==='function');await pendingButton('close').click();await page.evaluate(()=>{fixture.acceptConfirm(true);fixture.holdConfirm=false;});await ready();
-  await button('pending').click();await pendingReady();assert.equal(await pendingRoot.locator(`[data-pending-id="${closed.mutationId}"]`).count(),1);assert.equal(await pendingRoot.locator(`[data-pending-id="${stale.mutationId}"]`).count(),1);assert.equal(writes.length,beforeLocalRemove);
+  await page.evaluate(()=>fixture.openLegacyPending());await pendingReady();assert.equal(await pendingRoot.locator(`[data-pending-id="${closed.mutationId}"]`).count(),1);assert.equal(await pendingRoot.locator(`[data-pending-id="${stale.mutationId}"]`).count(),1);assert.equal(writes.length,beforeLocalRemove);
   checks.push('changed snapshots and closing while confirmation is pending preserve the original local rows');
   await pendingRoot.locator(`[data-pending-id="${pending[0].request.mutationId}"]`).click();await pendingReady();const beforeCopy=writes.length;
   await page.evaluate(()=>{fixture.consent=false;});await pendingButton('keep-copy').click();await pendingReady();assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/未创建副本/);assert.equal(writes.length,beforeCopy);
   await page.evaluate(()=>{fixture.consent=true;});rejectDraftCopy=true;await pendingButton('keep-copy').click();await pendingReady();assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/后端未接受副本格式.*本机内容仍保留/);assert.equal(await pendingRoot.locator('textarea').inputValue(),'不要丢失的本机修改');
   const copyRequest=structuredClone(writes.at(-1));assert.equal(copyRequest.record.revision,2);assert.equal(copyRequest.text,'不要丢失的本机修改');
   rejectDraftCopy=false;loseAck=true;await pendingButton('keep-copy').click();await pendingReady();assert.deepEqual(writes.at(-1),copyRequest);
-  await pendingButton('close').click();await ready();await button('pending').click();await pendingReady();
+  await pendingButton('close').click();await ready();await page.evaluate(()=>fixture.openLegacyPending());await pendingReady();
   await pendingRoot.locator(`[data-pending-id="${pending[0].request.mutationId}"]`).click();await pendingReady();await pendingButton('keep-copy').click();await pendingReady();assert.deepEqual(writes.at(-1),copyRequest);
   assert.match(await pendingRoot.locator('[data-pending-status]').textContent(),/新副本已保存，原收藏未覆盖/);
   assert.equal(await pendingRoot.locator(`[data-pending-id="${pending[0].request.mutationId}"]`).count(),0);assert.equal(await pendingRoot.locator(`[data-pending-id="${copyRequest.mutationId}"]`).count(),0);
@@ -260,10 +286,10 @@ try{
   checks.push('pending backup controls remain visible without horizontal overflow on narrow and desktop layouts');
   await page.evaluate(()=>{fixture.holdConfirm=true;fixture.acceptConfirm=null;});await pendingButton('export').click();await page.waitForFunction(()=>typeof fixture.acceptConfirm==='function');
   await page.evaluate(()=>{fixture.namespace='st-user:bob';fixture.acceptConfirm(true);fixture.holdConfirm=false;});await page.waitForFunction(()=>!document.querySelector('[data-collection-outbox]'));assert.equal(await page.evaluate(()=>fixture.pendingDownloads.length),1);
-  await button('close').click();await page.evaluate(()=>fixture.open());await ready();await button('pending').click();await pendingReady();
+  await button('close').click();await page.evaluate(()=>fixture.open());await ready();await page.evaluate(()=>fixture.openLegacyPending());await pendingReady();
   const cancelledImport={...newPendingPayload,entries:[{...newPendingPayload.entries[0],request:make('collection-501')}]};
   await page.evaluate(()=>{fixture.holdConfirm=true;fixture.acceptConfirm=null;});await fileInput.setInputFiles({name:'待存.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(cancelledImport))});await page.waitForFunction(()=>typeof fixture.acceptConfirm==='function');
-  await pendingButton('close').click();await page.evaluate(()=>{fixture.acceptConfirm(true);fixture.holdConfirm=false;});await ready();await button('pending').click();await pendingReady();assert.match(await pendingStatus(),/本机待存 50 条/);assert.equal(writes.length,beforeBackup);
+  await pendingButton('close').click();await page.evaluate(()=>{fixture.acceptConfirm(true);fixture.holdConfirm=false;});await ready();await page.evaluate(()=>fixture.openLegacyPending());await pendingReady();assert.match(await pendingStatus(),/本机待存 50 条/);assert.equal(writes.length,beforeBackup);
   checks.push('account change during export confirmation and closing during import confirmation prevent stale downloads or imports');
   await page.evaluate(()=>{
     fixture.localConsent=false;fixture.localAsks=[];fixture.cleanLocal=()=>fixture.floorTools.cleanupOriginals(fixture.host,async(...args)=>{fixture.localAsks.push(args);return fixture.localHold?new Promise(resolve=>{fixture.acceptLocal=resolve;}):fixture.localConsent;},()=>{if(!fixture.host.isConnected)throw Error('closed');},'st-user:alice',2,true);
@@ -280,7 +306,7 @@ try{
   await page.evaluate(()=>fixture.floorTools.dispose());await page.waitForFunction(()=>!document.querySelector('dialog'));
   checks.push('owner disposal closes both nested pending and library dialogs without removing device originals');
   assert.equal(external,0);assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({count:checks.length,checks,pageErrors:errors,externalRequests:external,productionWrites:false,persistence:'real account-file service in temporary directory; browser transport intercepted; synthetic login, not live ST'},null,2));
+  console.log(JSON.stringify({count:checks.length,checks,pageErrors:errors,externalRequests:external,productionWrites:false,artifactDirectory,persistence:'real account-file service in temporary directory; browser transport intercepted; synthetic login, not live ST'},null,2));
 }finally{
   await context.close();await browser.close();await service.close();const real=await fs.realpath(root);assert.equal(path.dirname(real),temporary);assert.match(path.basename(real),/^qianmu-collection-library-/);await fs.rm(real,{recursive:true});
 }

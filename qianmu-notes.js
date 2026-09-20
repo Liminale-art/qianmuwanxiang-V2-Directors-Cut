@@ -35,7 +35,13 @@ async function notesSession(expectedNamespace, admittedEpoch) {
       if (token !== epoch || namespace !== await configuration.resolveNamespace() || token !== epoch) throw changed();
     };
     await guard();
-    const client = configuration.createRuntime ? null : (await import('./qianmu-notes-sync-client.js')).createNotesSyncClient({ namespace, headers: configuration.headers, guard });
+    let client=null;
+    if(!configuration.createRuntime){
+      const native=await import('./qianmu-st-account-storage.js');
+      client=native.isStAccountStorageConfigured()
+        ?await(await import('./qianmu-notes-native-client.js')).createNotesNativeClient({namespace,headers:configuration.headers,guard})
+        :(await import('./qianmu-notes-sync-client.js')).createNotesSyncClient({namespace,headers:configuration.headers,guard});
+    }
     await guard();
     const runtime = createNotesSyncRuntime({ namespace, client, guard,
       onChange: event => { if (token === epoch && session?.namespace === namespace) configuration.onChange?.(event); } });

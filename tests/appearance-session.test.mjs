@@ -11,6 +11,13 @@ function element() {
     };
 }
 const preference = { version: 1, family: 'glass', mode: 'light' };
+function eventElement() {
+    const root = element(), listeners = new Map();
+    root.addEventListener = (type, fn) => { const group = listeners.get(type) || new Set(); group.add(fn); listeners.set(type, group); };
+    root.removeEventListener = (type, fn) => listeners.get(type)?.delete(fn);
+    root.listenerCount = type => listeners.get(type)?.size || 0;
+    return root;
+}
 function fixture() {
     let settings = { theme: 'light' }, loads = [], errors = [];
     const session = createQianmuAppearanceSession({ readSettings: () => settings, onError: error => errors.push(error), loadStyles: () => {
@@ -24,6 +31,19 @@ test('classic mounts are inert, idempotent and do not request the optional skin'
     assert.equal(f.session.status,'idle');
     assert.equal(f.session.mount(root), off); await f.session.sync(); assert.equal(f.loads.length, 0); assert.equal(f.session.size, 1); assert.equal(root.getAttribute('data-qm-theme'), null);
     off(); off(); assert.equal(f.session.size, 0); f.session.reset();
+});
+
+test('owned mounts isolate input once and release it on unmount, detach, role changes and reset', async () => {
+    const f = fixture(), root = eventElement(), portal = eventElement();
+    const off = f.session.mount(root); f.session.mount(root);
+    assert.equal(root.listenerCount('keydown'), 1);
+    f.session.mount(root, { role: 'notes-entry' }); off(); assert.equal(root.listenerCount('keydown'), 1);
+    const releasePortal = f.session.mountPortal(portal); assert.equal(portal.listenerCount('paste'), 1);
+    releasePortal(); releasePortal(); assert.equal(portal.listenerCount('paste'), 0);
+    root.isConnected = false; await f.session.sync(); assert.equal(root.listenerCount('keydown'), 0);
+    root.isConnected = true; f.session.mount(root); f.session.mountPortal(portal);
+    f.session.reset(); assert.equal(root.listenerCount('keydown'), 0); assert.equal(portal.listenerCount('paste'), 0);
+    f.session.mount(root); assert.equal(root.listenerCount('keydown'), 1); f.session.reset();
 });
 
 test('skin load is shared and new colors are applied only after successful loading', async () => {

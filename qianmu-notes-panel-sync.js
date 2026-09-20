@@ -33,25 +33,23 @@ export function createNotesPanelSync({ getRoot, refresh, retryLocal, hasUnsaved 
     if (!bar) {
       bar = document.createElement('div'); bar.className = 'sd-notes-sync';
       const status = document.createElement('span'); status.className = 'sd-notes-sync-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-      const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'sd-note-sync-retry'; retry.textContent = '同步'; retry.onclick = () => void sync({ quiet: false });
       const old = document.createElement('button'); old.type = 'button'; old.className = 'sd-note-legacy'; old.textContent = '旧便笺'; old.onclick = () => void showLegacy();
-      bar.append(status, retry, old); root.querySelector('.sd-notes-panel > header')?.after(bar);
+      bar.append(status, old); root.querySelector('.sd-notes-panel > header')?.after(bar);
     }
     const state = qianmuNotesState();
     const failure = localFailure || (!writes && hasUnsaved() ? '请重试保存，或先复制保留编辑区的内容。' : '');
-    const message = failure ? `本机保存未完成：${failure}` : writes ? '正在保存到本机…'
-      : state.state === 'synced' ? '已同步' : state.state === 'syncing' ? '本机已保存 · 正在同步…'
-        : state.error ? `本机内容保留 · ${state.error}` : state.pending ? `本机已保存 · ${state.pending} 条待同步` : state.namespace ? '本机内容已保留 · 尚未同步' : '正在确认账户…';
+    const message = failure ? `保存未完成：${failure}` : state.error ? '暂未保存到 ST，连接恢复后会自动重试'
+      : writes || state.state === 'syncing' || state.pending ? '正在保存…' : state.state === 'synced' ? '' : '正在读取…';
     bar.querySelector('.sd-notes-sync-status').textContent = message;
     bar.title = state.conflicts ? `发现 ${state.conflicts} 条冲突，两个版本均已保留，请核对带有冲突标记的便笺。` : message;
     bar.dataset.state = failure || state.error ? 'error' : state.state;
-    bar.querySelector('.sd-note-sync-retry').disabled = Boolean(refreshing || writes);
     const old = bar.querySelector('.sd-note-legacy'); old.hidden = !legacy.length; old.textContent = `旧便笺 (${legacy.length})`;
+    bar.hidden = !message && !legacy.length;
   }
   async function sync({ quiet = true } = {}) {
     if (disposed || refreshing || writes) return refreshing;
     refreshing = (async () => {
-      try { if (!quiet && (localFailure || hasUnsaved())) await retryLocal?.(); await syncQianmuNotes(); if (!disposed) await refresh(); }
+      try { if (localFailure || hasUnsaved()) await retryLocal?.(); await syncQianmuNotes(); if (!disposed) await refresh(); }
       catch (error) { if (!disposed) { paint(); if (!quiet) notify?.(error.message || '便笺暂未同步，本机内容保留。', 'warning'); } }
       finally { refreshing = null; if (!disposed) paint(); }
     })();

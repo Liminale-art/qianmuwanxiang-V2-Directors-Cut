@@ -28,7 +28,7 @@ assert.match(notesSource,/current\.runtime\.save\(note\)/,'all notes delegate to
 
 assert.match(storeSource, /DB_VERSION = 15[\s\S]*STORE_NOTES = 'notes'/, 'notes keep an isolated database store');
 assert.match(storeSource, /STORE_NOTES.*recoverable: false/, 'unowned legacy originals must not enter safe cleanup');
-assert.match(source, /id: 'notes', label: '便笺'[\s\S]*qm-regular-note-pencil/, 'the hive owns a local bundled note icon');
+assert.match(await readFile(new URL('../qianmu-hive-commands.js',import.meta.url),'utf8'), /id: 'notes', label: '便笺'[\s\S]*qm-regular-note-pencil/, 'the hive owns a local bundled note icon');
 assert.match(source, /function bindNotesHiveDetachDrag[\s\S]*noteSettings\.detached = true/, 'dragging the hive cell out detaches the entry itself');
 assert.match(source, /noteSettings\.appearance = \{[\s\S]*hiveTone[\s\S]*hiveEdgeIndex/, 'detaching must preserve the source hive cell tone and edge choice');
 assert.match(source, /sd-detached-notes-entry[\s\S]*noteSettings\.detached = false/, 'dropping the detached entry into Qianmu returns it to the hive');

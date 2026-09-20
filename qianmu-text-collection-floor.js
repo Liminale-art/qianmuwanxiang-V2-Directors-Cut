@@ -26,7 +26,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       stylesheet();portal=root.ownerDocument.createElement('section');portal.dataset.qmTextCollectionPortal='';root.ownerDocument.body.append(portal);host=portal;detach=mountPortal?.(portal);
       const runtime=await import('./qianmu-text-collection-capture.js');
       if(!valid())throw Error('楼层或页面已变化，请重新点击收藏');
-      chooser=await runtime.openPersistentTextCollectionCapture({parent:portal,source,resolveNamespace,isCurrent:valid,headers});
+      chooser=await runtime.openPersistentTextCollectionCapture({parent:portal,source,sourceElement:node.querySelector('.mes_text'),resolveNamespace,isCurrent:valid,headers});
       active=chooser;opening=false;
       const result=await chooser.finished;
       if(result&&valid())notify?.('收藏已保存','success');

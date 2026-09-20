@@ -16,11 +16,11 @@ test('collection UI dependencies are shipped locally and are not loaded into the
   for(const file of ['floor','capture','session','client','view','library','export','backup','restore-batch','restore-view'])assert.ok(release.files.includes(`qianmu-text-collection-${file}.js`));
   assert.ok(release.files.includes('qianmu-text-collection.css'));
 });
-test('library entry belongs to floor tools even with no active chat and uses the host confirmation path',async()=>{
+test('library belongs to the hive independently of chat; floor button only captures',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
   const floor=source.slice(source.indexOf('function openFloorNavigator('),source.indexOf('async function runQuickWheelCommand('));
-  assert.match(floor,/class="sd-floor-collections" aria-label="正文收藏"/);
-  assert.match(floor,/collectionFloorTools.openLibrary\(root,confirmDialog\)/);
+  assert.doesNotMatch(floor,/sd-floor-collections/);
+  assert.match(source,/id === 'collections'\) return collectionFloorTools.openLibrary\(document.body,confirmDialog\)/);
 });
 
 test('central collection export and restore use host page guards and the exclusive restoring owner',async()=>{

@@ -5,15 +5,16 @@ const fail=()=>{throw Object.assign(new Error('助手设置或来源已变化，
 
 // Host `persist` is a synchronous scheduling callback, NOT a durable receipt.
 // Credential-bearing copies live only here/the dedicated settings, never in results.
-export async function saveProseAssistantConnection({selection,current,persist,guard,isCurrent}={}){
+export async function saveProseAssistantConnection({selection,referenceFloors,current,persist,guard,isCurrent}={}){
   if(typeof current!=='function'||typeof persist!=='function'||typeof guard!=='function'||typeof isCurrent!=='function')fail();
+  if(referenceFloors!==undefined&&(!Number.isSafeInteger(referenceFloors)||referenceFloors<1||referenceFloors>9))fail();
   const owner=current();if(!object(owner)||isCurrent()!==true)fail();
   const previous=owner.proseAssistant,had=Object.hasOwn(owner,'proseAssistant');
   if(previous!==undefined&&!object(previous))fail();
   const baseline=JSON.stringify(previous),selected=normalizeProseAssistantSelection(selection,owner.apiProfiles);
   if(await guard()!==true||current()!==owner||isCurrent()!==true||owner.proseAssistant!==previous||JSON.stringify(previous)!==baseline)fail();
   // Recheck the chosen preset after the asynchronous identity check.
-  const value=normalizeProseAssistantSelection(selected,owner.apiProfiles),next={...previous,selection:structuredClone(value)};
+  const value=normalizeProseAssistantSelection(selected,owner.apiProfiles),next={...previous,selection:structuredClone(value),...(referenceFloors===undefined?{}:{referenceFloors})};
   let touched=false,requested=false;
   try{
     owner.proseAssistant=next;touched=true;requested=true;persist();

@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import {saveProseAssistantConnection as save} from '../qianmu-prose-assistant-preferences.js';
 const custom=()=>({mode:'custom',transport:'direct',connection:{apiUrl:'https://fixture.invalid/api/v3/chat/completions',apiKey:'private-key',model:'m',stream:false,ignored:'not saved'}});
 function fixture(){const f={owner:{apiProfiles:[{id:'p',apiUrl:'https://profile.invalid/v1',apiKey:'profile-key',model:'pm'}],proseAssistant:{systemPrompt:'keep exact'},other:{value:1}},calls:0,live:true};f.options={selection:custom(),current:()=>f.owner,persist:()=>{f.calls++;},guard:async()=>true,isCurrent:()=>f.live};return f;}
+
+test('reference floor count is saved with connection settings and invalid ranges do not mutate preferences',async()=>{
+ const f=fixture();delete f.options.selection.transport;await save({...f.options,referenceFloors:3});assert.equal(f.owner.proseAssistant.referenceFloors,3);assert.equal(f.owner.proseAssistant.selection.transport,'st-proxy');
+ for(const referenceFloors of [0,10,2.5,NaN]){const before=structuredClone(f.owner);await assert.rejects(save({...f.options,referenceFloors}));assert.deepEqual(f.owner,before);}
+});
 test('explicit custom save schedules only whitelisted connection settings and never claims durable acknowledgement',async()=>{
  const f=fixture(),other=f.owner.other,input=structuredClone(f.options.selection);const result=await save(f.options);
  assert.deepEqual(result,{status:'applied',persistence:'requested'});assert.equal(f.calls,1);assert.equal(f.owner.other,other);assert.equal(f.owner.proseAssistant.systemPrompt,'keep exact');

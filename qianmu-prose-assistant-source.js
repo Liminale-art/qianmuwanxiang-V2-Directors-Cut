@@ -14,6 +14,23 @@ export async function proseAssistantAccountForNamespace(namespace,{cryptoImpl=gl
   catch(_){fail('助手账户摘要未能确认，请稍后重试');}
 }
 
+// Panel/history lifetime follows the chat, not one rendered message. Opening a
+// conversation does not read prose; each send captures its own bounded snapshot.
+export async function captureProseAssistantChatSource({getContext,epoch,resolveNamespace,isCurrent,signal,cryptoImpl=globalThis.crypto}={}){
+  if(typeof resolveNamespace!=='function'||typeof isCurrent!=='function')fail('正文助手聊天来源尚未就绪');
+  const source=captureCurrentChatSource({getContext,epoch});let closed=false,namespace;
+  const close=()=>{closed=true;source.close();signal?.removeEventListener('abort',close);};
+  function assertCurrent(){try{if(closed||signal?.aborted||isCurrent()!==true)fail('正文助手聊天已变化');return source.assertCurrent();}catch(cause){close();throw cause;}}
+  async function guard(){try{assertCurrent();const actual=await resolveNamespace();assertCurrent();if(actual!==namespace)fail('正文助手账户已变化');return true;}catch(cause){close();throw cause;}}
+  try{
+    signal?.addEventListener('abort',close,{once:true});assertCurrent();namespace=await resolveNamespace();assertCurrent();
+    const account=await proseAssistantAccountForNamespace(namespace,{cryptoImpl});await guard();
+    const scope=Object.freeze({namespace:account,ownerKey:source.source.ownerKey,target:source.target,integrity:source.integrity});
+    const key=JSON.stringify(['qianmu-prose-assistant-v2',account,scope.ownerKey,scope.target,scope.integrity]);
+    return Object.freeze({scope,key,guard,assertCurrent,close});
+  }catch(cause){close();throw cause;}
+}
+
 // A borrowed source lifetime, not a permanent chat ID, an API choice, or authority
 // to read other floors. The host supplies rendered plain text only on explicit use.
 export async function captureProseAssistantSource({getContext,epoch,resolveNamespace,isCurrent,readText,floor,range,signal,cryptoImpl=globalThis.crypto}={}){

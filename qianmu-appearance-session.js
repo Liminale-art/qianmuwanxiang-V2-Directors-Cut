@@ -2,6 +2,7 @@ import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceRuntime } from './qianmu-appearance-runtime.js';
 import { prepareQianmuPortalBaseline, createQianmuClassicPainter } from './qianmu-appearance-portals.js';
 import { THEME_KEYS } from './qianmu-classic-palettes.js';
+import { mountQianmuInputBoundary } from './qianmu-input-boundary.js';
 
 const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-reader-scroll,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-viewer > aside,.sd-storyboard-video-draft-body,.sd-storyboard-video-draft-picker-grid,.sd-video-confirmation-body,.sd-storyboard-film-viewer > aside,.sd-storyboard-film-viewer-segments,.sd-storyboard-film-source-grid,dialog.sd-bundle-dialog > main,.sd-focus-voice-menu,.sd-focus-library-body,.sd-focus-voice-drawer-list,.sd-comfy-route-picker,.sd-comfy-route-dialog .popup-content,textarea';
 
@@ -25,11 +26,18 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
     readCoverAccent, loadStyles = () => loadQianmuAppearanceStyles(document, styleUrl), onError = () => {}, WeakReference = globalThis.WeakRef } = {}) {
     if (typeof readSettings !== 'function' || typeof loadStyles !== 'function' || typeof onError !== 'function') throw new TypeError('Appearance session callbacks are required.');
     let ready = false, loading = null, failed = false, epoch = 0, mounted = new WeakMap();
+    // Weak ownership preserves the existing detached-portal collection behavior.
+    const roots = new Set();
     const createRuntime = () => createQianmuAppearanceRuntime({
         readSettings: () => ready ? readSettings() : { theme: readSettings()?.theme }, readCoverAccent, WeakReference,
     });
     let runtime = createRuntime();
     function sync() {
+        for (const reference of roots) {
+            const root = reference.deref();
+            if (!root) roots.delete(reference);
+            else if (!root.isConnected) mounted.get(root)?.off();
+        }
         runtime.sync();
         if (!runtime.supported || ready || failed || readAppearancePreferences(readSettings()).family === 'classic') return Promise.resolve(ready);
         if (!loading) {
@@ -58,8 +66,10 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         const release = runtime.register(root, { role, tone, edgeIndex,
             scrollTargets: () => [root, ...root.querySelectorAll(SCROLL_TARGETS)],
         });
+        const releaseInput = mountQianmuInputBoundary(root), reference = new WeakReference(root);
+        roots.add(reference);
         let active = true;
-        const entry = { signature, off() { if (!active) return; active = false; release(); if (mounted.get(root) === entry) mounted.delete(root); } };
+        const entry = { signature, off() { if (!active) return; active = false; releaseInput(); release(); roots.delete(reference); if (mounted.get(root) === entry) mounted.delete(root); } };
         mounted.set(root, entry); if (!ready) void sync(); return entry.off;
     }
     function mountNotes(ownerDocument) {
@@ -93,6 +103,10 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
             }
         },
         retry() { if (failed) { failed = false; loading?.cancel(); loading = null; } return sync(); },
-        reset() { epoch++; runtime.dispose(); loading?.cancel(); loading = null; ready = false; failed = false; mounted = new WeakMap(); runtime = createRuntime(); },
+        reset() {
+            epoch++;
+            for (const reference of roots) { const root = reference.deref(); if (root) mounted.get(root)?.off(); }
+            roots.clear(); runtime.dispose(); loading?.cancel(); loading = null; ready = false; failed = false; mounted = new WeakMap(); runtime = createRuntime();
+        },
     });
 }

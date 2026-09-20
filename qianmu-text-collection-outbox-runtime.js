@@ -32,7 +32,11 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
       const prior=state.entries.find(row=>row.request.mutationId===incoming.request.mutationId);
       if(prior){if(!same(prior.request,incoming.request)||!same(prior.base,incoming.base))throw error('local_conflict','待存编号已关联其他内容，原件未覆盖');saved=prior;}
       else{state.entries.push(incoming);saved=incoming;}
-    });return structuredClone(saved);
+    });
+    // Payload-free wakeup: UI saves are still immediate; recovery waits briefly
+    // and becomes dormant as soon as the durable queue is empty.
+    if(typeof globalThis.dispatchEvent==='function'&&typeof globalThis.Event==='function')globalThis.dispatchEvent(new Event('qianmu-collection-save-queued'));
+    return structuredClone(saved);
   }
   async function send(mutationId,{signal}={}){
     const controller=new AbortController(),abort=()=>controller.abort();controllers.add(controller);signal?.addEventListener('abort',abort,{once:true});

@@ -5,13 +5,13 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
+import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from '../qianmu-hive-commands.js';
 
 const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const declarations = ['FLOAT_SIZE_MIN', 'FLOAT_SIZE_MAX', 'LOG_LIMIT', 'QUICK_HIVE_SAFETY_LIMIT', 'LOG_STATUS_LABELS', 'LOG_KIND_LABELS'].map(name => {
     const found = index.match(new RegExp('^const ' + name + ' = .+;', 'm')); assert.ok(found, name); return found[0];
 });
-declarations.push(index.match(/const QUICK_COMMANDS = Object\.freeze\(\[[\s\S]*?\]\);/)[0], 'const QUICK_COMMAND_IDS = QUICK_COMMANDS.map(item => item.id);');
-declarations.push(index.slice(index.indexOf('const STORAGE_CATEGORY_LABELS'), index.indexOf('function renderStorageManagementCard')));
+declarations.push(`const QUICK_COMMANDS = ${JSON.stringify(QIANMU_HIVE_COMMANDS)};`,upgradeProseHiveCommands.toString(), 'const QUICK_COMMAND_IDS = QUICK_COMMANDS.map(item => item.id);');
 const names = ['renderActiveTab', 'renderPlugTab', 'renderQuickWheelSettings', 'normalizeQuickWheelSettings',
     'renderStoryboardVideoConnectionCard', 'renderStoryboardVideoBudgetCard', 'storyboardVideoBudgetPolicy', 'storyboardVideoRegion',
     'renderLogEntry', 'renderStorageServiceStatus', 'formatStorageBytes', 'optionalServiceLabel', 'optionalServiceDetail', 'renderStorageManagementCard'];
@@ -39,15 +39,16 @@ await context.route('**/*', async route => {
 try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async source => {
-        const [utils, { renderStorageBackupSection }, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }] = await Promise.all([
+        const [utils, storageView, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }] = await Promise.all([
             import('/qianmu-storyboard-utils.js'), import('/qianmu-storage-backup-view.js'), import('/qianmu-appearance-session.js'),
             import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
         ]);
         for (const name of ['htmlEscape', 'uniqueClean', 'infoTag', 'estimateTokens', 'isPlainObject']) window[name] = utils[name];
+        Object.assign(window,storageView);
         window.renderModelDiagnostics = (await import('/qianmu-director-live.js')).renderModelDiagnostics;
         Object.assign(window, {
             settings: { theme: 'dark' }, activeTab: 'plug', editorView: null, calls: 0,
-            getFloatSize: () => 48, notesFeatureEnabled: () => true, renderStorageBackupSection, applyQianmuIcons,
+            getFloatSize: () => 48, notesFeatureEnabled: () => true, applyQianmuIcons,
             storyboardVideoCredentialKnown: () => fixtureMode !== 'error', storyboardVideoGatewayKnown: () => optionalServiceState.status === 'ready',
             runtimeHealthSnapshot: () => healthFixture, blobStore: { classifyStoragePressure: () => ({ level: 'normal' }) },
         });
@@ -109,7 +110,7 @@ try {
             ok(label + ' all original settings areas and controls remain', await page.evaluate(() =>
                 document.querySelectorAll('.sd-save-api,.sd-test-api,.sd-fetch-models,.sd-video-h3-check,.sd-video-budget-save,.sd-storage-service-refresh,.sd-storage-refresh').length === 7
                 && !document.querySelector('.sd-runtime-health-card') && document.querySelector('.sd-storage-card > :last-child').classList.contains('sd-storage-service')
-                && document.querySelectorAll('[data-widget-toggle]').length === 4 && document.querySelectorAll('.sd-wheel-command-toggle').length === 14 && document.querySelectorAll('.sd-log-entry').length === 5));
+                && document.querySelectorAll('[data-widget-toggle]').length === 4 && document.querySelectorAll('.sd-wheel-command-toggle').length === 16 && document.querySelectorAll('.sd-log-entry').length === 5));
             ok(label + ' paid automation remains locked behind its existing policy', await page.evaluate(() => {
                 const policy = storyboardVideoBudgetPolicy(); return policy.automatic.enabled === false && policy.manual.requireCostConfirmation && policy.highResolution.requireExplicitConfirmation;
             }));

@@ -10,6 +10,11 @@ function fixture(transport='direct',extra={}){
     fetchImpl:async(url,init)=>{calls.push({url,init});return json();},...extra};
   return {options,profiles,selection,calls,input:{context:{key:'private-scope'},question:'question',guard:async()=>true,onText:()=>{}}};
 }
+
+test('a user connection without transport automatically uses same-origin ST forwarding',async()=>{
+ const f=fixture();delete f.options.selection.transport;const adapter=create(f.options);await adapter.send(f.input);
+ assert.equal(adapter.review.transport,'st-proxy');assert.equal(f.calls[0].url,'/api/backends/chat-completions/generate');assert.equal(f.calls[0].init.credentials,'same-origin');
+});
 test('missing, duplicate or incomplete explicit profiles fail before requests without borrowing a default connection',()=>{
   for(const patch of [{selection:null},{selection:{mode:'profile',profileId:'missing',transport:'direct'}},{profiles:[profile(),profile()]},{profiles:[{...profile(),apiKey:''}]},{profiles:[{...profile(),apiUrl:'https://user:password@example.invalid/v1'}]},
     {profiles:[{...profile(),apiUrl:'https://example.invalid/v1?api_key=secret'}]},{profiles:[{...profile(),apiKey:'key\r\nInjected: yes'}]},{profiles:[{...profile(),temperature:NaN}]}]){

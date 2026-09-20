@@ -6,7 +6,7 @@ const failure=(code,message)=>Object.assign(new Error(message),{code});
 const fail=message=>{throw failure('prose_assistant_connection',message);};
 const field=(value,max)=>typeof value==='string'&&value.trim()&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);
 function connection(selection,profiles){
-  if(!selection||!['st-proxy','direct'].includes(selection.transport))fail('请选择明确的正文助手连接路径');
+  if(!selection||!['st-proxy','direct'].includes(selection.transport??'st-proxy'))fail('正文助手连接配置无效');
   let row;
   if(selection.mode==='profile'){
     if(!field(selection.profileId,512)||!Array.isArray(profiles))fail('请选择正文助手API预设');
@@ -23,8 +23,8 @@ function connection(selection,profiles){
 export function normalizeProseAssistantSelection(selection,profiles){
   const cfg=connection(selection,profiles);
   return Object.freeze(selection.mode==='profile'
-    ? {mode:'profile',profileId:selection.profileId,transport:selection.transport}
-    : {mode:'custom',transport:selection.transport,connection:cfg});
+    ? {mode:'profile',profileId:selection.profileId,transport:selection.transport??'st-proxy'}
+    : {mode:'custom',transport:selection.transport??'st-proxy',connection:cfg});
 }
 function messagesFrom(value){
   if(!Array.isArray(value)||!value.length||value.length>64)fail('正文助手消息编译未就绪');let size=0;
@@ -37,7 +37,7 @@ function messagesFrom(value){
 // Create on explicit send: credentials stay in this short-lived closure, never in
 // a conversation, review object or error. The formal prompt compiler is injected.
 export function createProseAssistantRequest({selection,profiles,compileMessages,getRequestHeaders,fetchImpl=globalThis.fetch,timeoutMs=120000}={}){
-  const cfg=connection(selection,profiles),transport=selection.transport;
+  const cfg=connection(selection,profiles),transport=selection.transport??'st-proxy';
   if(typeof compileMessages!=='function'||typeof fetchImpl!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>600000||transport==='st-proxy'&&typeof getRequestHeaders!=='function')fail('正文助手请求环境尚未就绪');
   const review=Object.freeze({mode:selection.mode,profileId:selection.mode==='profile'?selection.profileId:null,transport,model:cfg.model,stream:cfg.stream});
   async function send({context,question,signal,guard,onText}={}){

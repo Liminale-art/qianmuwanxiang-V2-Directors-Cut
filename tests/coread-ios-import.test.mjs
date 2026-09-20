@@ -23,6 +23,9 @@ assert.doesNotMatch(shelfMarkup, /sd-reader-import-input[^>]*multiple/, '书架�
 assert.doesNotMatch(refillChooser, /sd-reader-refill-input[^>]*multiple/, '跨设备补全不得启用多文件选择');
 assert.doesNotMatch(refillChooser, /\.click\(\)/, '补正文入口不得再以脚本模拟文件控件点击');
 assert.match(openBook, /coreadShowRefillChooser\(bookId\)/, '正文未缓存时必须打开 iOS 兼容的补正文选择层');
+assert.match(refillChooser, /overlay\.addEventListener\('keydown', onKeydown\)/, 'Esc must stay local to the owned input boundary');
+assert.match(refillChooser, /overlay\.removeEventListener\('keydown', onKeydown\)/);
+assert.doesNotMatch(refillChooser, /document\.addEventListener\('keydown'/);
 assert.doesNotMatch(openBook, /confirmDialog[\s\S]*coreadTriggerImport/, '正文未缓存路径不得等待确认后再触发文件选择');
 assert.match(css, /\.sd-reader-refill-overlay\s*\{[^}]*position:\s*fixed[^}]*z-index:/, '补正文选择层必须覆盖当前书架界面');
 assert.match(refillChooser, /document\.body\.appendChild\(overlay\)/, '补正文弹层必须脱离带 transform 的千幕面板，直挂页面视口');

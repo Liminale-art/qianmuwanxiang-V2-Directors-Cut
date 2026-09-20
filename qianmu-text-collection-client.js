@@ -35,7 +35,7 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
         await check();
         if(response.redirected||response.type==='opaqueredirect'||response.status>=300&&response.status<400)throw error('response','收藏接口发生跳转，未采用返回内容',502);
         if(response.url){const actual=new URL(response.url);if(actual.pathname!==path||actual.search||actual.hash||origin&&actual.origin!==origin)throw error('response','收藏返回不是当前 ST 接口',502);}
-        if([404,405,501].includes(response.status))throw error('unavailable','请安装或更新千幕后端并重启 ST；本次收藏尚未确认保存',503);
+        if([404,405,501].includes(response.status))throw Object.assign(error('unavailable','请安装或更新千幕后端并重启 ST；本次收藏尚未确认保存',503),{upstreamStatus:response.status});
         if([401,403].includes(response.status))throw error('account','收藏登录或校验已失效，请刷新 ST 后重试',401);
         const limit=method==='snapshot'?TEXT_COLLECTION_BACKUP_LIMITS.bytes+1024:['get','cleanup-plan'].includes(method)?2*1024*1024:256*1024;
         if(!/^application\/json\b/i.test(response.headers?.get?.('content-type')||'')||Number(response.headers.get('content-length'))>limit)throw error('response','收藏返回格式不兼容或过大，未采用部分内容',502);

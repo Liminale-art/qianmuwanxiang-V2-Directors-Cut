@@ -37,7 +37,7 @@ export function validateProseAssistantHistory(value,key){
   if(!exact(value,['version','namespace','revision','updatedAt','rows'])||value.version!==1||value.namespace!==key||!Number.isSafeInteger(value.revision)||value.revision<0
     ||!Number.isSafeInteger(value.updatedAt)||value.updatedAt<0||value.updatedAt>253402214400000)fail();
   rowsValid(value.rows);if(value.revision===0&&(value.rows.length||value.updatedAt!==0))fail();
-  if(new TextEncoder().encode(JSON.stringify(value)).byteLength>PROSE_ASSISTANT_HISTORY_LIMITS.bytes)throw error('capacity','助手历史超过本机记录上限，未截断原文');return value;
+  if(new TextEncoder().encode(JSON.stringify(value)).byteLength>PROSE_ASSISTANT_HISTORY_LIMITS.bytes)throw error('capacity','助手历史超过单会话记录上限，未截断原文');return value;
 }
 export function measureProseAssistantHistory(value,key,namespace){
   proseAssistantHistoryKey(key,account(namespace));const state=validateProseAssistantHistory(value,key);

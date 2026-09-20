@@ -23,7 +23,7 @@ try {
   await page.goto('https://qianmu.test/');
   await page.addStyleTag({ content: await readFile(new URL('../style.css', import.meta.url), 'utf8') });
   await page.evaluate(async source => {
-    for (const file of ['qianmu-notes', 'qianmu-notes-panel-sync', 'qianmu-notes-device']) Object.assign(window, await import(`./${file}.js`));
+    for (const file of ['qianmu-notes', 'qianmu-notes-panel-sync', 'qianmu-notes-device', 'qianmu-input-boundary']) Object.assign(window, await import(`./${file}.js`));
     const configure = configureQianmuNotes, { createNotesSyncRuntime } = await import('./qianmu-notes-sync-runtime.js');
     window.configureQianmuNotes = options => configure({ ...options, createRuntime: input => createNotesSyncRuntime({ ...input, client: null }) });
     const notes = { enabled: true, detached: false, position: { x: 15, y: 40 }, panelSize: { width: 430, height: 420 }, editorFontSize: 13, appearance: { tone: 'dark', edgeIndex: 0 } };
@@ -35,10 +35,13 @@ try {
       mergeDefaults: (target, defaults) => { for (const [key, value] of Object.entries(defaults)) if (target[key] === undefined) target[key] = structuredClone(value); },
       featureRuntime: { load: async () => ({ resolveImageAccountNamespace: async () => 'st-user:fixture-ui' }) }, storyboardRequestHeaders: () => ({}),
       toast: (...args) => fixture.notices.push(args), confirmDialog: async () => fixture.confirm, ttsDownloadBlob: (blob, name) => fixture.downloads.push({ blob, name }),
-      coreadCopyText: async () => {}, saveSettings: () => fixture.settingsSaves++, renderFloatingNotes() {}, closeQuickWheel() {}, applyQianmuIcons() {}, syncNotesTheme() {},
+      coreadCopyText: async () => {}, saveSettings: () => fixture.settingsSaves++, renderFloatingNotes() {}, closeQuickWheel() {}, applyQianmuIcons() {},
+      syncNotesTheme() { mountQianmuInputBoundary(document.getElementById(NOTES_PANEL_LAYER_ID)); },
       htmlEscape: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     });
     new Function(source + ';Object.assign(window,{' + source.match(/(?:async )?function (\w+)\(/g).map(match => match.match(/function (\w+)/)[1]).join(',') + '});')();
+    fixture.hostKeys = 0;
+    document.addEventListener('keydown', () => fixture.hostKeys++);
     openNotesPanel();
   }, names.map(section).join('\n'));
   await page.waitForFunction(() => notesLoaded);
@@ -48,6 +51,11 @@ try {
   let result = await page.evaluate(async () => ({ notes: await listQianmuNotes(), editor: document.querySelector('.sd-note-body').value }));
   assert.equal(result.notes.length, 1); assert.equal(result.notes[0].pinned, false); assert.equal(result.notes[0].body, result.editor);
   checks.push('actual create/editor input persists an unpinned original to native IndexedDB');
+  assert.equal(await page.locator('.sd-note-sync-retry,.sd-note-sync-now').count(), 0, 'routine persistence does not require manual sync controls');
+  await page.locator('.sd-note-body').press('Control+Enter');
+  assert.equal(await page.evaluate(() => fixture.hostKeys), 0);
+  assert.equal(await page.evaluate(() => document.activeElement.classList.contains('sd-note-body')), true);
+  checks.push('the shared input boundary retains the notes editor and keeps modifier hotkeys away from the host');
   await page.evaluate(async () => {
     const input = document.querySelector('.sd-note-body'); input.focus(); input.setSelectionRange(2, 5, 'backward'); fixture.input = input;
     await notesSyncControls().sync();
@@ -61,13 +69,13 @@ try {
   checks.push('twelve immediate queued inputs retain only the latest body without losing revision continuity');
   await page.evaluate(() => { fixture.put = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = function (...args) { if (this.name === 'accounts') throw new DOMException('synthetic full', 'QuotaExceededError'); return fixture.put.apply(this, args); }; });
   await page.locator('.sd-note-body').fill('保存失败也不能丢掉的最后正文');
-  await page.waitForFunction(() => document.querySelector('.sd-notes-sync-status').textContent.includes('本机保存未完成'));
+  await page.waitForFunction(() => document.querySelector('.sd-notes-sync-status').textContent.includes('保存未完成'));
   assert.equal(await page.locator('.sd-note-body').inputValue(), '保存失败也不能丢掉的最后正文');
-  await page.evaluate(() => { IDBObjectStore.prototype.put = fixture.put; });
-  await page.locator('.sd-note-sync-retry').click();
+  assert.ok(await page.evaluate(() => notesSaveTimers.size > 0), 'a failed draft must remain pending, not be announced as saved');
+  await page.evaluate(() => { IDBObjectStore.prototype.put = fixture.put; window.dispatchEvent(new Event('online')); });
   await page.waitForFunction(() => notesSaveTimers.size === 0);
   assert.equal(await page.evaluate(async () => (await listQianmuNotes())[0].body), '保存失败也不能丢掉的最后正文');
-  checks.push('quota failure keeps the editor, shows honest status, and explicit retry durably saves the draft');
+  checks.push('quota failure keeps the editor and pending draft, shows honest status, and the automatic online wake durably recovers without a sync button');
   await page.locator('.sd-notes-list').click();
   await page.locator('.sd-note-tools-toggle').click(); await page.locator('.sd-note-pin').click();
   await page.waitForFunction(async () => (await listQianmuNotes())[0].pinned);

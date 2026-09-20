@@ -14,6 +14,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const utilsSource = await readFile(new URL('../qianmu-storyboard-utils.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const classic = await readFile(new URL('../qianmu-classic-palettes.js', import.meta.url), 'utf8');
+const quickCommands = await readFile(new URL('../qianmu-hive-commands.js', import.meta.url), 'utf8');
 
 // 更新后只沿用用户自定义入口，全部千幕 tab 均可自由选择，不设置可见的产品上限。
 assert.match(source, /quickWheelCustomOrder/);
@@ -21,9 +22,8 @@ assert.match(source, /quickWheelCustomEnabled/);
 assert.match(source, /quickWheelScheme: 'custom'/);
 assert.match(source, /<h3>小组件<\/h3>[\s\S]*>快捷盘<\/span>[\s\S]*>蜂巢收纳<\/span>/, '快捷盘和第三方收纳必须改为同排标签态开关');
 for (const id of ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
-  assert.match(source, new RegExp(`id: '${id}'`));
+  assert.match(quickCommands, new RegExp(`id: '${id}'`));
 }
-const quickCommands = source.slice(source.indexOf('const QUICK_COMMANDS'), source.indexOf('const QUICK_COMMAND_IDS'));
 assert.doesNotMatch(quickCommands, /id: 'blueprint'/, '编剧已并入幕后，不得继续占用蜂巢入口');
 assert.match(quickCommands, /id: 'settings', label: '幕后', icon: 'fa-feather-pointed'/, '幕后蜂巢入口必须改用羽毛笔');
 assert.match(source, /QUICK_HIVE_SAFETY_LIMIT = 24/, '仅保留异常配置安全阀，不得再把八格当作产品限制');
