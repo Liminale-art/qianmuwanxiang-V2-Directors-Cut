@@ -441,6 +441,7 @@
     "qianmu-storyboard-compiler-diagnostics.js",
     "qianmu-storyboard-compiler-transport.js",
     "qianmu-storyboard-floor-take.js",
+    "qianmu-storyboard-floor-take-receipt.js",
     "qianmu-storyboard-floor-capture.js",
     "qianmu-storyboard-continuity-events.js",
     "qianmu-storyboard-continuity-source.js",

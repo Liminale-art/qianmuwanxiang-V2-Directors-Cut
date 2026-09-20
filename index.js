@@ -260,12 +260,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.228';
+} from './qianmu-storyboard.js?v=1.59.229';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.228';
+const VERSION = '1.59.229';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -540,7 +540,7 @@ const featureRuntime = createFeatureRuntime({
     label: '分镜返回协议',
     load: () => import('./qianmu-storyboard-contract.js?v=1.59.228'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.219')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.229')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -12829,6 +12829,11 @@ async function storyboardMountVibeWorkbenchPreviews(root) {
   }catch(_){/* Keep the named selection usable when optional previews are unavailable. */}
 }
 
+function storyboardFloorTakeReceipts() {
+  const store=getChatStore();
+  if(!Object.hasOwn(store,'storyboardFloorTakeReceipts'))store.storyboardFloorTakeReceipts=[];
+  return store.storyboardFloorTakeReceipts;
+}
 function storyboardGalleryRecords() {
   const store = getChatStore();
   if (!Array.isArray(store.storyboardImages)) store.storyboardImages = [];
@@ -13223,7 +13228,7 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
     }
     if (!deliveries.size || String(getChatKey() || '') !== expectedChatKey) return 0;
     const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-    const gallery = storyboardGalleryRecords();
+    const gallery = storyboardGalleryRecords(),takeReceipts=storyboardFloorTakeReceipts();
     const knownIds = new Set(gallery.map((item) => String(item.id || '')));
     const galleryById = new Map(gallery.map((item) => [String(item.id || ''), item]));
     const state = storyboardState();
@@ -13250,7 +13255,7 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
           : null;
         if (resolved?.state === 'active') {
           record.floor = resolved.floor;
-          record.inline = record.requestedInline !== false&&storyboardFloorTakeInitialInline(record);
+          record.inline = record.requestedInline !== false&&storyboardFloorTakeInitialInline(record,gallery,takeReceipts);
           if(record.floorTake)record.floorTakeEligible=true;
           record.messageHash = hashText(String(resolved.message?.mes || ''));
           record.swipeId = Number(resolved.message?.swipe_id || 0);
@@ -13280,8 +13285,8 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
         linkState: deliveryLinkState,
       }));
     }
-    const prunedRecords = pruneStoryboardRetakeGallery(gallery,receivedRecords,(state.shotPlans||[]).map(plan=>plan.floorTake));
-    await saveStoryboardFloorTakes(gallery,saveMetadata,record=>storyboardValidatedAnchor(record).valid,()=>String(getChatKey()||'')===expectedChatKey&&gallery===storyboardGalleryRecords());
+    const prunedRecords = pruneStoryboardRetakeGallery(gallery,receivedRecords,(state.shotPlans||[]).map(plan=>plan.floorTake),takeReceipts);
+    await saveStoryboardFloorTakes(gallery,saveMetadata,record=>storyboardValidatedAnchor(record).valid,()=>String(getChatKey()||'')===expectedChatKey&&gallery===storyboardGalleryRecords(),takeReceipts);
     void storyboardArchiveGallerySnapshots(receivedRecords);
     if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
     if (String(getChatKey() || '') !== expectedChatKey) return 0;
@@ -20626,7 +20631,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
     artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', artistRerollCount: Math.max(0, Number(job.artistRerollCount) || 0), contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
-    chatKey: String(job.chatKey || ''), floor, requestedInline: Boolean(job.inlineByDefault), inline: Boolean(job.inlineByDefault && Number.isInteger(floor)&&storyboardFloorTakeInitialInline(job)), paragraphAnchor: clone(job.paragraphAnchor || null),
+    chatKey: String(job.chatKey || ''), floor, requestedInline: Boolean(job.inlineByDefault), inline: Boolean(job.inlineByDefault && Number.isInteger(floor)&&storyboardFloorTakeInitialInline(job,storyboardGalleryRecords(),storyboardFloorTakeReceipts())), paragraphAnchor: clone(job.paragraphAnchor || null),
     paragraphSelection: clone(job.paragraphSelection || null),
     origin: job.paragraphSelection?.mode === 'manual_supplement' ? 'manual_supplement' : (job.automatic ? 'automatic' : 'manual'),
     shotSpec: clone(job.shotSpec || null), compiledPrompt: clone(job.compiledPrompt || null), compositionDecision: clone(job.compositionDecision || null),
@@ -20679,14 +20684,14 @@ async function storyboardDeliverGatewayResult(job, log, data, { service = false,
   const resultLinkState = job.target === 'gallery' ? '' : anchorState.linkState;
   if (currentOwnsResult) {
     if (service && typeof ctx().saveMetadata !== 'function') throw new Error('当前聊天无法确认保存，原图已保留');
-    const gallery = storyboardGalleryRecords();
+    const gallery = storyboardGalleryRecords(),takeReceipts=storyboardFloorTakeReceipts();
     for (const record of records) {
       // A retry after a page close reuses the exact result, never creates a copy.
-      if (service) Object.assign(record, { floor: job.originalOnly ? null : anchorState.floor, inline: Boolean(!job.originalOnly && job.inlineByDefault && anchorState.valid&&(record.floorTakeCommittedAt>0||storyboardFloorTakeInitialInline(job))),...(job.floorTake?{floorTakeEligible:anchorState.valid===true}:{}), linkState: anchorState.valid && !job.originalOnly ? 'active' : resultLinkState || 'orphaned' });
+      if (service) Object.assign(record, { floor: job.originalOnly ? null : anchorState.floor, inline: Boolean(!job.originalOnly && job.inlineByDefault && anchorState.valid&&storyboardFloorTakeInitialInline(record,gallery,takeReceipts)),...(job.floorTake?{floorTakeEligible:anchorState.valid===true}:{}), linkState: anchorState.valid && !job.originalOnly ? 'active' : resultLinkState || 'orphaned' });
       if (!gallery.some(item => item.id === record.id)) gallery.push(record);
     }
-    const prunedRecords = pruneStoryboardRetakeGallery(gallery,records,(storyboardState().shotPlans||[]).map(plan=>plan.floorTake));
-    await saveStoryboardFloorTakes(gallery,saveMetadata,record=>storyboardValidatedAnchor(record).valid,()=>gallery===storyboardGalleryRecords()&&(!job.chatKey||job.chatKey===String(getChatKey()||'')));
+    const prunedRecords = pruneStoryboardRetakeGallery(gallery,records,(storyboardState().shotPlans||[]).map(plan=>plan.floorTake),takeReceipts);
+    await saveStoryboardFloorTakes(gallery,saveMetadata,record=>storyboardValidatedAnchor(record).valid,()=>gallery===storyboardGalleryRecords()&&(!job.chatKey||job.chatKey===String(getChatKey()||'')),takeReceipts);
     void storyboardArchiveGallerySnapshots(records);
     if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
     storyboardSetPlanStatus(plan, 'generating', { job, floor: anchorState.floor, stage: 'attachment', progress: 0.92, deliveryState, linkState: resultLinkState });
@@ -22449,6 +22454,8 @@ async function storyboardOnChatClick(event) {
       namespace:async()=>{const identity=await featureRuntime.load('imageAdmission');return identity.resolveImageAccountNamespace();},
       choose:storyboardChooseCaptureMode,planFor:storyboardPlanForMessage,ensurePlan:storyboardEnsurePlan,
       records:()=>{storyboardReconcileGalleryLinks();return storyboardGalleryRecords();},visible:storyboardInlineRecordValid,
+      pending:()=>[...(storyboardState().taskStates||[]),...storyboardQueue,...storyboardActiveJobs.values()],
+      receipts:storyboardFloorTakeReceipts,
       compile:plan=>storyboardCompilePrompt(null,{plan,quiet:false}),generate:plan=>storyboardGenerate(null,{plan,automatic:false}),
       save:saveSettings,render:floor=>storyboardScheduleInlineRender(20,floor),toast,
     });

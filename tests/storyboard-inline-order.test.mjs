@@ -80,7 +80,7 @@ test('record and log projections retain the order outside the removable heavy sn
   const state = core.createStoryboardDefaults(), context = vm.createContext({ ...core,
     clone: structuredClone, uid: () => 'generated', storyboardState: () => state,
     storyboardItemCollectionIds: () => [], uniqueClean: value => value, hashText: () => 'hash',
-    storyboardPipelineArchiveCache: new Map(), saveSettings() {},
+    storyboardPipelineArchiveCache: new Map(), storyboardGalleryRecords:()=>[],storyboardFloorTakeReceipts:()=>[],saveSettings() {},
   });
   vm.runInContext([section('storyboardCreateRecord'), section('storyboardStoreLog'), section('storyboardStartLog')].join('\n'), context);
   const job = { id: 'job', source: 'novel', profile: { model: 'nai-diffusion-5-full' }, payload: { prompt: 'quiet garden' },

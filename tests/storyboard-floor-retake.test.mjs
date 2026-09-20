@@ -3,22 +3,24 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
 import * as takes from '../qianmu-storyboard-floor-take.js';
+import * as receipts from '../qianmu-storyboard-floor-take-receipt.js';
 import * as capture from '../qianmu-storyboard-floor-capture.js';
+import {migrateQianmuChatStoreV2} from '../qianmu-data-migrations.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
 const ref=core.createStoryboardMessageReference({chatKey:'chat',floor:0,message:{mes:'Alice cooks.',send_date:'synthetic',swipe_id:0}});
 const baseline=()=>({id:'old',chatKey:'chat',floor:0,messageRef:copy(ref),swipeId:0,inline:true,url:'/old.png',snapshot:{prompt:'original recipe'}});
-function prepared({count=3,old=[baseline()],id='take',time=100}={}) {
+function prepared({count=3,old=[baseline()],id='take',time=100,pending=[],history=[]}={}) {
   const plan={...core.createStoryboardWorkflowTicket({id,chatKey:'chat',floor:0,messageRef:ref}),shots:Array.from({length:count},(_,i)=>({id:`s${i}`}))};
-  plan.floorTake={...takes.createStoryboardFloorTake(plan,old,row=>row.inline),startedAt:time};
+  plan.floorTake={...takes.createStoryboardFloorTake(plan,old,row=>row.inline,pending,history),startedAt:time};
   const jobs=plan.shots.map((shot,i)=>({id:`${id}-job-${i}`,planId:id,planShotId:shot.id,chatKey:'chat',floor:0,messageRef:copy(ref),inlineByDefault:true,
     profile:{count:'1'},inlineOrder:{version:1,batchId:id,batchStartedAt:time,shotIndex:i,requestIndex:1}}));
   takes.bindStoryboardFloorTakeJobs(plan,jobs);
   return {plan,jobs,old};
 }
-const image=(job,extra={})=>({id:job.id+'-image',planId:job.planId,planShotId:job.planShotId,chatKey:job.chatKey,floor:0,messageRef:copy(job.messageRef),
+const image=(job,extra={})=>({id:job.id+'-image',taskId:job.id,planId:job.planId,planShotId:job.planShotId,chatKey:job.chatKey,floor:0,messageRef:copy(job.messageRef),
   inlineOrder:copy(job.inlineOrder),imageIndex:0,url:'/new.png',requestedInline:true,inline:takes.storyboardFloorTakeInitialInline(job),
   floorTake:copy(job.floorTake),floorTakeEligible:true,...extra});
 
@@ -99,12 +101,12 @@ test('an unrelated receipt cannot prune an active retake baseline before its fir
 
 async function entryFixture(){
   const e=await compilerEnvironment(),message=e.context.ctx().chat[0],reference=core.createStoryboardMessageReference({chatKey:'chat-a',floor:0,message});
-  const gallery=[{id:'previous-image',chatKey:'chat-a',floor:0,messageRef:reference,swipeId:0,inline:true,url:'/old.png',snapshot:{prompt:'old recipe'}}];
+  const gallery=[{id:'previous-image',chatKey:'chat-a',floor:0,messageRef:reference,swipeId:0,inline:true,url:'/old.png',snapshot:{prompt:'old recipe'}}],history=[];
   const oldPlan={...core.createStoryboardWorkflowTicket({id:'old-plan',chatKey:'chat-a',floor:0,messageRef:reference}),status:'completed',shots:[{id:'old-shot',prompt:'old',status:'completed'}],archiveRef:'untouched-archive'};
   e.state.shotPlans=[oldPlan];e.state.prompt='old valid draft';e.state.promptDraft.compiled='old valid draft';
   e.context.storyboardAdmissionEpoch=0;let choice={mode:'auto',paragraphIndex:null,selection:null},saveFailure=false;
   const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='storyboardFloorCapture'?capture:key==='imageAdmission'?{resolveImageAccountNamespace:async()=> 'st-user:route-test'}:load(key);
-  Object.assign(e.context,{storyboardMessageFloor:()=>0,storyboardChooseCaptureMode:async()=>choice,storyboardGalleryRecords:()=>gallery,
+  Object.assign(e.context,{storyboardMessageFloor:()=>0,storyboardChooseCaptureMode:async()=>choice,storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:()=>history,
     storyboardProductionDeliveryPolicy:core.storyboardProductionDeliveryPolicy,
     storyboardReconcileGalleryLinks:()=>{},storyboardInlineRecordValid:r=>r.inline,storyboardDeletePlanArchives:async()=>{},storyboardPlanCompilerSignature:()=> 'same compiler',
     storyboardPlanForJob:job=>e.state.shotPlans.find(p=>p.id===job.planId),storyboardItemCollectionIds:()=>[],uniqueClean:v=>v,
@@ -114,7 +116,7 @@ async function entryFixture(){
   });
   vm.runInContext(['storyboardPlanForMessage','storyboardEnsurePlan','storyboardOnChatClick','storyboardCreateRecord','storyboardDeliverGatewayResult'].map(section).join('\n'),e.context);
   const button={dataset:{storyboardChatAction:'capture-floor'},closest:()=>({})};
-  return {...e,gallery,oldPlan,setChoice:value=>choice=value,setSaveFailure:value=>saveFailure=value,
+  return {...e,gallery,history,oldPlan,setChoice:value=>choice=value,setSaveFailure:value=>saveFailure=value,
     click:()=>e.context.storyboardOnChatClick({target:{closest:()=>button},preventDefault(){},stopPropagation(){}}),
     deliver:job=>e.context.storyboardDeliverGatewayResult(job,null,{images:[{url:'/synthetic.png'}]},{service:true})};
 }
@@ -189,4 +191,173 @@ test('cross-chat cold delivery preserves originals until committed and a failed 
 test('a source edit after partial receipt cannot activate the uncommitted retake; a single-image redraw clears its whole-take manifest',()=>{
   const f=prepared({count:1}),rows=[...f.old,image(f.jobs[0])];takes.settleStoryboardFloorTakes(rows,()=>false);assert.equal(rows[0].inline,true);assert.equal(rows[1].inline,false);
   assert.match(section('storyboardRedrawRecord'),/delete snapshot\.floorTake;[\s\S]*storyboardJobFromLog/);
+});
+
+const pendingTask=(id='early',extra={})=>({id,planId:'stream-plan',chatKey:'chat',floor:0,messageRef:copy(ref),uiVisible:true,status:'generating',...extra});
+const lateImage=(task,rows=[],history=[])=>({id:`image-${task.id}`,taskId:task.id,planId:task.planId,messageRef:copy(task.messageRef),url:'/late.png',
+  inline:takes.storyboardFloorTakeInitialInline(task,rows,history),...(task.floorTake?{floorTake:copy(task.floorTake)}:{})});
+
+test('retake freezes exact pending task ids, not broad batches, other floors or later user intent',()=>{
+  const old={...baseline(),taskId:'old-task'},pending=[pendingTask(),pendingTask(),pendingTask('queued',{uiVisible:false,inlineByDefault:true,target:'floor'}),
+    pendingTask('done',{status:'completed'}),pendingTask('gallery',{uiVisible:false,inlineByDefault:false,target:'gallery'}),
+    pendingTask('foreign',{messageRef:{...ref,chatKey:'other'}}),pendingTask('other-swipe',{messageRef:{...ref,swipeId:1}}),
+    pendingTask('other-floor',{messageRef:{...ref,messageKey:'another-message'}}),pendingTask('legacy',{messageRef:null})];
+  const f=prepared({old:[old],pending});assert.deepEqual(f.plan.floorTake.baselineTaskIds,['old-task','early','queued']);
+  assert.equal(pending[0].status,'generating');assert.deepEqual(core.normalizeStoryboardState({shotPlans:[f.plan]}).shotPlans[0].floorTake.baselineTaskIds,['old-task','early','queued']);
+  assert.deepEqual(core.sanitizeStoryboardSnapshot(f.jobs[0]).floorTake.baselineTaskIds,['old-task','early','queued']);
+});
+
+test('old in-flight images arriving before or after full retake stay archived while explicit later supplements remain inline',async()=>{
+  for(const timing of ['before','after']){
+    const task=pendingTask(),f=prepared({count:1,pending:[task]}),rows=[...f.old],history=[];
+    if(timing==='before')rows.push(lateImage(task,rows,history));
+    rows.push(image(f.jobs[0]));await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);
+    if(timing==='after')rows.push(lateImage(task,rows,history));
+    await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);
+    assert.equal(rows.find(r=>r.taskId==='early').inline,false);assert.equal(rows.find(r=>r.planId==='take').inline,true);
+    assert.equal(history.length,1);assert.deepEqual(history[0].baselineTaskIds,['early']);
+    const later=pendingTask('user-redraw',{inlineOrder:{batchId:'same-old-stream-batch'}});assert.equal(takes.storyboardFloorTakeInitialInline(later,rows,history),true);
+    assert.equal(takes.storyboardFloorTakeInitialInline(pendingTask('early',{messageRef:{...ref,chatKey:'foreign'}}),rows,history),true);
+  }
+});
+
+test('pending originals are sufficient to hold a first retake until complete, without hiding an old result on a partial failure',async()=>{
+  const task=pendingTask(),f=prepared({count:2,old:[],pending:[task]}),rows=[image(f.jobs[0])],history=[];
+  assert.equal(rows[0].inline,false);await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);
+  assert.deepEqual(history,[]);const late=lateImage(task,rows,history);assert.equal(late.inline,true);rows.push(late);
+  await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);assert.equal(late.inline,true);
+});
+
+test('a saved compact receipt survives deleting every new image and cold JSON restoration; old retries cannot reactivate',async()=>{
+  const task=pendingTask(),f=prepared({count:1,pending:[task]}),rows=[...f.old,image(f.jobs[0])],history=[];
+  await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);rows.splice(1);
+  const restored=copy(history),late=lateImage(task,rows,restored);assert.equal(late.inline,false);rows.push(late);
+  const older=prepared({count:1,id:'older-take',time:99}),olderImage=image(older.jobs[0]);rows.push(olderImage);
+  await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,restored);
+  assert.equal(olderImage.inline,false);assert.equal(olderImage.floorTakeCommittedAt,undefined);assert.equal(rows[0].inline,false);
+  assert.deepEqual(restored,history);assert.deepEqual(Object.keys(restored[0]).sort(),['baselineTaskIds','chatKey','id','messageKey','startedAt','swipeId','version']);
+});
+
+test('deleting one committed image never invalidates an already saved replacement and late old output cannot appear during a failed save',async()=>{
+  const task=pendingTask(),f=prepared({count:2,pending:[task]}),rows=[...f.old,...f.jobs.map(job=>image(job))],history=[];
+  await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);rows.splice(1,1);
+  const late=lateImage(task,rows,history);rows.push(late);assert.equal(late.inline,false);
+  await assert.rejects(takes.saveStoryboardFloorTakes(rows,async()=>{throw Error('save failed');},()=>true,()=>true,history),/save failed/);
+  assert.equal(late.inline,false);assert.equal(rows[0].inline,false);assert.equal(history.length,1);
+});
+
+test('failed replacement save rolls back its receipt and visibility; an arrival during that failure is not permanently retired',async()=>{
+  const task=pendingTask(),f=prepared({count:1,pending:[task]}),rows=[...f.old,image(f.jobs[0])],history=[],gate=deferred(),started=deferred();
+  const write=takes.saveStoryboardFloorTakes(rows,async()=>{started.resolve();await gate.promise;throw Error('failed');},()=>true,()=>true,history);
+  const rejection=assert.rejects(write,/failed/);await started.promise;
+  const late=lateImage(task,rows,history);rows.push(late);assert.equal(late.inline,true,'uncommitted metadata is not authority');
+  gate.resolve();await rejection;assert.deepEqual(history,[]);assert.equal(rows[0].inline,true);assert.equal(late.inline,true);
+  await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>false,()=>true,history);assert.equal(late.inline,true);assert.deepEqual(history,[]);
+});
+
+test('replacement receipts serialize across gallery array replacement and retain the prior receipt after a newer save fails',async()=>{
+  const task=pendingTask(),f=prepared({count:1,pending:[task]}),rows=[...f.old,image(f.jobs[0])],history=[];
+  await takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);const original=copy(history);
+  const newer=prepared({count:1,id:'next',time:200,pending:[pendingTask('other')]}),next=[...rows,image(newer.jobs[0])];
+  const gate=deferred(),started=deferred(),events=[];
+  const first=takes.saveStoryboardFloorTakes(next,async()=>{events.push('first');started.resolve();await gate.promise;throw Error('new failed');},()=>true,()=>true,history);
+  const rejected=assert.rejects(first,/new failed/);await started.promise;
+  const second=takes.saveStoryboardFloorTakes([...rows],async()=>events.push('second'),()=>true,()=>true,history);
+  await Promise.resolve();assert.deepEqual(events,['first']);gate.resolve();await rejected;await second;
+  assert.deepEqual(events,['first','second']);assert.deepEqual(history,original);
+});
+
+test('successive receipt merges retain earlier retired ids, use one row per floor and never read a recipe',()=>{
+  const f=prepared({count:1,pending:[pendingTask('a')]}),next=prepared({count:1,id:'next',time:200,pending:[pendingTask('b')]});
+  let history=receipts.mergeStoryboardFloorTakeReceipts([],[f.plan.floorTake]);history=receipts.mergeStoryboardFloorTakeReceipts(history,[next.plan.floorTake]);
+  history=receipts.mergeStoryboardFloorTakeReceipts(history,[f.plan.floorTake]);assert.equal(history.length,1);assert.equal(history[0].id,'next');assert.deepEqual(history[0].baselineTaskIds,['a','b']);
+  const job=pendingTask('a');Object.defineProperty(job,'snapshot',{get(){assert.fail('heavy recipe read');}});
+  assert.equal(takes.storyboardFloorTakeInitialInline(job,[],history),false);
+});
+
+test('receipt validation fails closed for malformed/future data, duplicates and capacity, without clearing metadata',async()=>{
+  const f=prepared({count:1}),valid=receipts.mergeStoryboardFloorTakeReceipts([],[f.plan.floorTake])[0];
+  for(const history of [null,{},[{...valid,version:2}],[valid,valid],[{...valid,baselineTaskIds:['same','same']}],[{...valid,baselineTaskIds:['bad\nid']}],
+    [{...valid,baselineTaskIds:Array.from({length:401},(_,i)=>`task-${i}`)}],Array.from({length:401},(_,i)=>({...valid,messageKey:`floor-${i}`}))]){
+    const before=copy(history),rows=[baseline()];assert.equal(takes.storyboardFloorTakeInitialInline(pendingTask(),rows,history),false);
+    await assert.rejects(takes.saveStoryboardFloorTakes(rows,async()=>assert.fail('invalid save'),()=>true,()=>true,history),/换版记录/);
+    assert.deepEqual(history,before);assert.equal(rows[0].inline,true);
+  }
+  const full=Array.from({length:400},(_,i)=>({...valid,messageKey:`floor-${i}`}));
+  assert.throws(()=>takes.createStoryboardFloorTake(f.plan,[],()=>true,[],full),/换版记录/);
+  const large=Array.from({length:20},(_,i)=>({...valid,messageKey:`floor-${i}`,baselineTaskIds:Array.from({length:400},(_,n)=>`${n}-${'a'.repeat(150)}`)}));
+  assert.throws(()=>receipts.normalizeStoryboardFloorTakeReceipts(large),/换版记录/);
+});
+
+test('durable retired-task protection retains late originals during gallery pruning after all replacement images were deleted',()=>{
+  const task=pendingTask(),f=prepared({count:1,pending:[task]}),history=receipts.mergeStoryboardFloorTakeReceipts([],[f.plan.floorTake]);
+  const late=lateImage(task,[],history),rows=[late,...Array.from({length:400},(_,i)=>({id:`other-${i}`}))];
+  const removed=takes.pruneStoryboardRetakeGallery(rows,[],[],history);assert.equal(rows.length,400);assert.equal(rows[0],late);assert.equal(removed.length,1);
+  const before=copy(rows);rows.push({id:'extra'});assert.deepEqual(takes.pruneStoryboardRetakeGallery(rows,[],[],null),[]);assert.equal(rows.length,before.length+1);
+});
+
+test('actual retake captures task-state, queue and active ids; saved metadata retires their late arrivals without blocking a new redraw',async()=>{
+  const e=await entryFixture(),reference=e.gallery[0].messageRef;
+  const task=id=>pendingTask(id,{chatKey:'chat-a',messageRef:copy(reference)});
+  e.state.taskStates=[task('task-state')];e.context.storyboardQueue.push(task('queued'));
+  e.context.storyboardActiveJobs.set('active',task('active'));
+  assert.equal(await e.click(),true);assert.deepEqual([...e.jobs[0].floorTake.baselineTaskIds],['task-state','queued','active']);
+  for(const job of e.jobs)await e.deliver(job);assert.equal(e.history.length,1);
+  e.gallery.splice(1);const old={...e.jobs[0],id:'active',planId:'stream-plan'};delete old.floorTake;
+  await e.deliver(old);assert.equal(e.gallery.at(-1).inline,false);assert.equal(e.gallery.at(-1).taskId,'active');
+  await e.deliver({...old,id:'new-user-redraw'});assert.equal(e.gallery.at(-1).inline,true);
+});
+
+test('actual invalid or full receipt metadata stops before extraction and does not silently reset user history',async()=>{
+  for(const malformed of [true,false]){
+    const e=await entryFixture(),reference=e.gallery[0].messageRef;
+    e.history.push(...(malformed?[{version:99}]:Array.from({length:400},(_,i)=>({version:1,id:`take-${i}`,chatKey:'chat-a',messageKey:`other-${i}`,swipeId:0,startedAt:100,baselineTaskIds:[]}))));
+    const before=copy(e.history);assert.equal(await e.click(),false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);
+    assert.deepEqual(e.history,before);assert.equal(e.gallery[0].inline,true);assert.match(e.notices.at(-1),/换版记录/);assert.ok(reference);
+  }
+});
+
+test('cold inbox late output remains gallery-only after replacement deletion and survives failed receipt save for retry',async()=>{
+  const e=await entryFixture(),reference=e.gallery[0].messageRef,task=pendingTask('late-inbox',{chatKey:'chat-a',messageRef:copy(reference)});
+  e.state.taskStates=[task];assert.equal(await e.click(),true);for(const job of e.jobs)await e.deliver(job);e.gallery.splice(1);
+  const inbox=new Map([[task.id,{taskId:task.id,chatKey:'chat-a',target:'floor',records:[{...lateImage(task),requestedInline:true}]}]]);
+  e.history.splice(0,e.history.length,...copy(e.history));
+  Object.assign(e.context,{storyboardDeliveryDrainPromise:null,storyboardVolatileDeliveries:new Map(),rerenderIfOpen(){},
+    blobStore:{listStoryboardDeliveries:async()=>[...inbox.values()],deleteStoryboardDelivery:async id=>inbox.delete(id)}});
+  vm.runInContext(['storyboardValidatedAnchor','storyboardDrainPendingDeliveries'].map(section).join('\n'),e.context);
+  e.setSaveFailure(true);await assert.rejects(e.context.storyboardDrainPendingDeliveries('chat-a'),/metadata save failed/);
+  assert.equal(inbox.size,1);assert.equal(e.gallery.at(-1).inline,false);assert.equal(e.history.length,1);
+  e.setSaveFailure(false);await e.context.storyboardDrainPendingDeliveries('chat-a');assert.equal(inbox.size,0);assert.equal(e.gallery.length,2);assert.equal(e.gallery.at(-1).inline,false);
+});
+
+test('chat metadata migration and the real getter preserve receipts across reload without clearing malformed fields',()=>{
+  const f=prepared({count:1,pending:[pendingTask()]}),history=receipts.mergeStoryboardFloorTakeReceipts([],[f.plan.floorTake]);
+  let store=migrateQianmuChatStoreV2({storyboardFloorTakeReceipts:copy(history)}).value;
+  const c=vm.createContext({getChatStore:()=>store});vm.runInContext(section('storyboardFloorTakeReceipts'),c);
+  const first=c.storyboardFloorTakeReceipts();assert.deepEqual(first,history);assert.equal(c.storyboardFloorTakeReceipts(),first);
+  store=migrateQianmuChatStoreV2(copy(store)).value;assert.deepEqual(c.storyboardFloorTakeReceipts(),history);
+  store.storyboardFloorTakeReceipts=null;assert.equal(c.storyboardFloorTakeReceipts(),null);
+  delete store.storyboardFloorTakeReceipts;assert.deepEqual(copy(c.storyboardFloorTakeReceipts()),[]);
+});
+
+test('completed but not yet delivered cross-chat tasks are captured; delivered completions do not broaden the pending baseline',()=>{
+  const f=prepared({pending:[pendingTask('pending',{status:'completed',deliveryState:'pending_chat'}),
+    pendingTask('volatile',{status:'completed',deliveryState:'volatile_pending'}),pendingTask('delivered',{status:'completed',deliveryState:'delivered'})]});
+  assert.deepEqual(f.plan.floorTake.baselineTaskIds,['pending','volatile']);
+});
+
+test('legacy manifests remain compatible while malformed pending identities and excessive capture metadata are rejected',()=>{
+  const f=prepared({count:1}),legacy=copy(f.plan.floorTake);delete legacy.baselineTaskIds;
+  assert.equal(Object.hasOwn(takes.normalizeStoryboardFloorTake(legacy),'baselineTaskIds'),false);
+  for(const ids of [null,['x','x'],['bad\nid'],Array.from({length:401},(_,i)=>String(i))])assert.deepEqual(takes.normalizeStoryboardFloorTake({...legacy,baselineTaskIds:ids}),{invalid:true});
+  assert.throws(()=>takes.createStoryboardFloorTake(f.plan,[],()=>true,Array.from({length:1001},()=>pendingTask())),/在途分镜/);
+  assert.throws(()=>takes.createStoryboardFloorTake(f.plan,[],()=>true,[pendingTask('bad\nid')]),/换版记录/);
+});
+
+test('an arrival during a successful save is retired by the saved receipt even if replacement images were then deleted',async()=>{
+  const task=pendingTask(),f=prepared({count:1,pending:[task]}),rows=[...f.old,image(f.jobs[0])],history=[],started=deferred(),gate=deferred();
+  const write=takes.saveStoryboardFloorTakes(rows,async()=>{started.resolve();await gate.promise;},()=>true,()=>true,history);
+  await started.promise;const late=lateImage(task,rows,history);rows.push(late);assert.equal(late.inline,true);
+  const received=takes.saveStoryboardFloorTakes(rows,async()=>{},()=>true,()=>true,history);
+  rows.splice(1,1);gate.resolve();await write;await received;assert.equal(late.inline,false);assert.equal(history.length,1);
 });

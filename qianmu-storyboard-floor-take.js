@@ -1,21 +1,32 @@
 // A floor retake is an immutable receipt attached to the original jobs/images.
 // It neither deletes assets nor authorizes a request. Only a fully saved take
 // changes inline visibility; the gallery remains the source of originals.
+import {normalizeStoryboardFloorTakeReceipts,mergeStoryboardFloorTakeReceipts,storyboardFloorTakeReceiptSupersedes} from './qianmu-storyboard-floor-take-receipt.js?v=1.59.229';
 const obj=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max?value:'';
 const integer=(value,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max;
 const clone=value=>structuredClone(value);
 const invalid=()=>({invalid:true});
 const saving=new WeakMap();
-export async function saveStoryboardFloorTakes(records,save,eligible=()=>true,current=()=>true) {
-  const previous=saving.get(records);
+const provisionalReceipts=new WeakMap();
+export async function saveStoryboardFloorTakes(records,save,eligible=()=>true,current=()=>true,receipts=undefined) {
+  const key=Array.isArray(receipts)?receipts:records,previous=saving.get(key);
   const pending=(previous?previous.catch(()=>{}):Promise.resolve()).then(async()=>{
     if(!current())throw new Error('收片聊天已切换，原结果保留待恢复');
-    const update=settleStoryboardFloorTakes(records,eligible);
-    try{await save();}catch(error){update.rollback();throw error;}
+    const history=normalizeStoryboardFloorTakeReceipts(receipts===undefined?[]:receipts),update=settleStoryboardFloorTakes(records,eligible,history);
+    let installed;
+    try{
+      const next=mergeStoryboardFloorTakeReceipts(history,update.committed);
+      if(receipts){provisionalReceipts.set(receipts,history);receipts.splice(0,receipts.length,...next);installed=JSON.stringify(receipts);}
+      await save();
+    }catch(error){
+      update.rollback();
+      if(receipts&&installed===JSON.stringify(receipts))receipts.splice(0,receipts.length,...history);
+      throw error;
+    }finally{if(receipts)provisionalReceipts.delete(receipts);}
   });
-  saving.set(records,pending);
-  try{await pending;}finally{if(saving.get(records)===pending)saving.delete(records);}
+  saving.set(key,pending);
+  try{await pending;}finally{if(saving.get(key)===pending)saving.delete(key);}
 }
 export function createStoryboardCaptureReservation(state) {
   const controls=()=>({target:state.target,floor:state.floor,inlineByDefault:state.inlineByDefault,paragraphMode:state.paragraphMode,
@@ -33,7 +44,9 @@ export function normalizeStoryboardFloorTake(value) {
     ||!integer(value.swipeId,0,Number.MAX_SAFE_INTEGER)||!integer(value.floor,0,Number.MAX_SAFE_INTEGER)
     ||!integer(value.startedAt,1,Number.MAX_SAFE_INTEGER)||!Array.isArray(value.baselineIds)||value.baselineIds.length>400
     ||value.baselineIds.some(id=>!text(id,160))||new Set(value.baselineIds).size!==value.baselineIds.length
-    ||!Array.isArray(value.slots)||value.slots.length>40)return invalid();
+    ||!Array.isArray(value.slots)||value.slots.length>40
+    ||Object.hasOwn(value,'baselineTaskIds')&&(!Array.isArray(value.baselineTaskIds)||value.baselineTaskIds.length>400
+      ||value.baselineTaskIds.some(id=>!text(id,160)||/[\u0000-\u001f\u007f]/.test(id))||new Set(value.baselineTaskIds).size!==value.baselineTaskIds.length))return invalid();
   const slots=[],seen=new Set();
   for(const slot of value.slots) {
     if(!obj(slot)||!text(slot.shotId,160)||!integer(slot.requestIndex,1,8)||!integer(slot.imageCount,1,8))return invalid();
@@ -41,7 +54,8 @@ export function normalizeStoryboardFloorTake(value) {
     slots.push({shotId:slot.shotId,requestIndex:slot.requestIndex,imageCount:slot.imageCount});
   }
   return {version:1,id:value.id,chatKey:value.chatKey,messageKey:value.messageKey,revisionId:value.revisionId,swipeId:value.swipeId,floor:value.floor,
-    startedAt:value.startedAt,baselineIds:[...value.baselineIds],slots};
+    startedAt:value.startedAt,baselineIds:[...value.baselineIds],slots,
+    ...(Object.hasOwn(value,'baselineTaskIds')?{baselineTaskIds:[...value.baselineTaskIds]}:{})};
 }
 const scope=take=>JSON.stringify([take.chatKey,take.messageKey,take.swipeId]);
 const order=(left,right)=>left.startedAt-right.startedAt||left.id.localeCompare(right.id);
@@ -50,12 +64,26 @@ function sameFloor(record,take) {
   if(ref?.messageKey)return ref.chatKey===take.chatKey&&ref.messageKey===take.messageKey&&ref.swipeId===take.swipeId;
   return (!record?.chatKey||record.chatKey===take.chatKey)&&record?.floor===take.floor&&Number(record.swipeId||0)===take.swipeId;
 }
-export function createStoryboardFloorTake(plan,records,visible) {
+export function createStoryboardFloorTake(plan,records,visible,pending=[],receipts=[]) {
   const ref=plan.messageRef;
   const take={version:1,id:plan.id,chatKey:plan.chatKey,messageKey:ref?.messageKey,revisionId:ref?.revisionId,
     swipeId:ref?.swipeId,floor:plan.floor,startedAt:Date.now(),baselineIds:[],slots:[]};
-  take.baselineIds=records.filter(record=>sameFloor(record,take)&&visible(record)).map(record=>record.id);
+  const baseline=records.filter(record=>sameFloor(record,take)&&visible(record));
+  take.baselineIds=baseline.map(record=>record.id);
+  if(!Array.isArray(pending)||pending.length>1000)throw new Error('在途分镜记录无法核对，未开始重拍');
+  // Freeze only work already known at this explicit retake. A later user
+  // supplement/redraw owns a new task id and must not be hidden by a time cutoff.
+  const taskIds=new Set(baseline.map(record=>record.taskId).filter(Boolean));
+  for(const task of pending){
+    if(!task?.messageRef?.messageKey||!sameFloor(task,take)||task.planId===plan.id)continue;
+    const inline=task.uiVisible===true&&(task.status!=='completed'||['pending_chat','volatile_pending'].includes(task.deliveryState))
+      ||task.inlineByDefault===true&&task.target!=='gallery';
+    if(inline&&task.id)taskIds.add(task.id);
+  }
+  take.baselineTaskIds=[...taskIds];
   for(const record of records){const older=normalizeStoryboardFloorTake(record.floorTake);if(older&&!older.invalid&&scope(older)===scope(take))take.startedAt=Math.max(take.startedAt,older.startedAt+1);}
+  for(const older of normalizeStoryboardFloorTakeReceipts(receipts))if(scope(older)===scope(take))take.startedAt=Math.max(take.startedAt,older.startedAt+1);
+  mergeStoryboardFloorTakeReceipts(receipts,[take]); // Capacity/shape preflight before extraction or paid generation.
   const normalized=normalizeStoryboardFloorTake(take);if(normalized?.invalid)throw new Error('原楼层画面版本无法核对，未开始重拍');return normalized;
 }
 export function bindStoryboardFloorTakeJobs(plan,jobs) {
@@ -80,26 +108,15 @@ export function applyStoryboardFloorTakeToJob(plan,job) {
     ||!take.slots.some(slot=>slot.shotId===job.planShotId&&slot.requestIndex===job.inlineOrder?.requestIndex&&slot.imageCount===Number(job.profile?.count||1)))throw new Error('原整层重拍清单已变化，未重试');
   job.floorTake=clone(take);
 }
-export function storyboardFloorTakeInitialInline(job) {
-  if(job.floorTake==null)return true;
-  const take=normalizeStoryboardFloorTake(job.floorTake);
-  return Boolean(take&&!take.invalid&&take.slots.length&&!take.baselineIds.length);
+function supersededBy(record,take) {
+  if(!sameFloor(record,take)||record.planId===take.id)return false;
+  const older=normalizeStoryboardFloorTake(record.floorTake);
+  return take.baselineIds.includes(record.id)||(take.baselineTaskIds||[]).includes(record.taskId||record.id)
+    ||Boolean(older&&!older.invalid&&scope(older)===scope(take)&&order(older,take)<0);
 }
-export function pruneStoryboardRetakeGallery(records,received=[],pendingTakes=[]) {
-  const keep=new Set(received.map(record=>record.id));
-  for(const pending of pendingTakes){const take=normalizeStoryboardFloorTake(pending);if(take&&!take.invalid)for(const id of take.baselineIds)keep.add(id);}
-  for(const record of records){const take=normalizeStoryboardFloorTake(record.floorTake);if(take&&!take.invalid){keep.add(record.id);for(const id of take.baselineIds)keep.add(id);}}
-  const removed=[];
-  for(let index=0;records.length>400&&index<records.length;) {
-    if(keep.has(records[index].id)){index++;continue;}
-    removed.push(...records.splice(index,1));
-  }
-  return removed;
-}
-export function settleStoryboardFloorTakes(records,eligible=()=>true) {
-  const groups=new Map(),changes=[];
-  const change=(record,key,value)=>{if(record[key]===value)return;changes.push({record,key,had:Object.hasOwn(record,key),before:record[key],value});record[key]=value;};
-  for(const record of records) {
+function floorTakeGroups(records) {
+  const groups=new Map();
+  for(const record of records){
     const take=normalizeStoryboardFloorTake(record?.floorTake);if(!take||take.invalid||!take.slots.length)continue;
     if(record.planId!==take.id||record.messageRef?.revisionId!==take.revisionId||!sameFloor(record,take))continue;
     const key=JSON.stringify([scope(take),take.id]),signature=JSON.stringify(take);
@@ -107,9 +124,47 @@ export function settleStoryboardFloorTakes(records,eligible=()=>true) {
     const group=groups.get(key);if(group.signature!==signature)group.invalid=true;
     group.rows.push(record);
   }
-  const ordered=[...groups.values()].filter(group=>!group.invalid).sort((a,b)=>order(a.take,b.take));
+  return [...groups.values()].filter(group=>!group.invalid).sort((a,b)=>order(a.take,b.take));
+}
+export function storyboardFloorTakeInitialInline(job,records=[],receipts=[]) {
+  // Apply an already saved replacement before inserting a late result. Even
+  // if this new receipt's save fails, rollback must not revive a superseded image.
+  try{if(storyboardFloorTakeReceiptSupersedes(job,normalizeStoryboardFloorTakeReceipts(provisionalReceipts.get(receipts)||receipts)))return false;}catch{return false;}
+  if(!provisionalReceipts.has(receipts)&&floorTakeGroups(records).some(group=>group.rows.some(row=>row.floorTakeCommittedAt>0)&&supersededBy(job,group.take)))return false;
+  if(job.floorTake==null)return true;
+  const take=normalizeStoryboardFloorTake(job.floorTake);
+  return Boolean(take&&!take.invalid&&take.slots.length&&(job.floorTakeCommittedAt>0||!take.baselineIds.length&&!take.baselineTaskIds?.length));
+}
+export function pruneStoryboardRetakeGallery(records,received=[],pendingTakes=[],receipts=[]) {
+  // Never prune when the ownership ledger is unreadable. Delivery will report
+  // the error, while the already received original remains recoverable.
+  try{receipts=normalizeStoryboardFloorTakeReceipts(receipts);}catch{return [];}
+  const keep=new Set(received.map(record=>record.id)),tasks=new Map();
+  const protect=take=>{
+    for(const id of take.baselineIds||[])keep.add(id);
+    if(!tasks.has(scope(take)))tasks.set(scope(take),new Set());
+    for(const id of take.baselineTaskIds||[])tasks.get(scope(take)).add(id);
+  };
+  for(const pending of pendingTakes){const take=normalizeStoryboardFloorTake(pending);if(take&&!take.invalid)protect(take);}
+  for(const receipt of receipts)protect(receipt);
+  for(const record of records){const take=normalizeStoryboardFloorTake(record.floorTake);if(take&&!take.invalid){keep.add(record.id);protect(take);}}
+  for(const record of records)if(record.messageRef?.messageKey&&tasks.get(scope(record.messageRef))?.has(record.taskId))keep.add(record.id);
+  const removed=[];
+  for(let index=0;records.length>400&&index<records.length;) {
+    if(keep.has(records[index].id)){index++;continue;}
+    removed.push(...records.splice(index,1));
+  }
+  return removed;
+}
+export function settleStoryboardFloorTakes(records,eligible=()=>true,receipts=[]) {
+  receipts=normalizeStoryboardFloorTakeReceipts(receipts);
+  const changes=[],committed=[];
+  const change=(record,key,value)=>{if(record[key]===value)return;changes.push({record,key,had:Object.hasOwn(record,key),before:record[key],value});record[key]=value;};
+  for(const record of records)if(storyboardFloorTakeReceiptSupersedes(record,receipts))change(record,'inline',false);
+  const ordered=floorTakeGroups(records);
   for(const group of ordered) {
     const {take,rows}=group;
+    if(storyboardFloorTakeReceiptSupersedes(rows[0],receipts))continue;
     // A later completed retake wins even if an older failed request is retried late.
     if(ordered.some(other=>scope(other.take)===scope(take)&&order(other.take,take)>0&&other.rows.some(row=>row.floorTakeCommittedAt>0)))continue;
     if(!rows.some(row=>row.floorTakeCommittedAt>0)&&!rows.every(eligible))continue;
@@ -118,16 +173,15 @@ export function settleStoryboardFloorTakes(records,eligible=()=>true) {
         &&row.inlineOrder?.requestIndex===slot.requestIndex&&integer(row.imageIndex,0,slot.imageCount-1)).map(row=>row.imageIndex));
       return images.size===slot.imageCount;
     });
-    if(!complete)continue;
+    if(!complete&&!rows.some(row=>row.floorTakeCommittedAt>0))continue;
+    committed.push(take);
     const committedAt=rows.find(row=>row.floorTakeCommittedAt>0)?.floorTakeCommittedAt||Date.now();
     for(const record of records) {
-      if(!sameFloor(record,take)||record.planId===take.id)continue;
-      const older=normalizeStoryboardFloorTake(record.floorTake);
-      if(take.baselineIds.includes(record.id)||(older&&!older.invalid&&scope(older)===scope(take)&&order(older,take)<0))change(record,'inline',false);
+      if(supersededBy(record,take))change(record,'inline',false);
     }
     for(const record of rows)if(!record.floorTakeCommittedAt&&record.floorTakeEligible===true) {
       change(record,'inline',record.requestedInline===true);change(record,'floorTakeCommittedAt',committedAt);
     }
   }
-  return {changed:changes.length>0,rollback(){for(const item of [...changes].reverse())if(item.record[item.key]===item.value){if(item.had)item.record[item.key]=item.before;else delete item.record[item.key];}}};
+  return {changed:changes.length>0,committed,rollback(){for(const item of [...changes].reverse())if(item.record[item.key]===item.value){if(item.had)item.record[item.key]=item.before;else delete item.record[item.key];}}};
 }

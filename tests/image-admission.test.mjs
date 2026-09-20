@@ -245,7 +245,7 @@ function liveHarness({ failure = '', confirm = async () => true } = {}) {
     clone: structuredClone, storyboardAdmission: runtime, storyboardImageAdmissionRuntime: async () => runtime, storyboardState: () => state,
     getChatKey: () => 'chat-a', storyboardValidatedAnchor: () => ({ valid: true, floor: 0 }),
     STORYBOARD_QUEUE_LIMIT: 8, storyboardQueue: waiting, storyboardActiveJobs: new Map(),
-    getStoryboardGenerationPolicy: () => ({ maxImages: 1 }), storyboardGalleryRecords: () => gallery,
+    getStoryboardGenerationPolicy: () => ({ maxImages: 1 }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:()=>[],
     resolveStoryboardJobModelIdentity: () => ({ modelFamily: 'openai' }),
     storyboardStartLog: value => { const log = { id: `log-${state.logs.length}`, status: 'queued', snapshot: structuredClone(value) }; state.logs.push(log); return log; },
     storyboardSetPlanStatus: () => {}, storyboardPlanForJob: () => null, storyboardPumpQueue: () => {},

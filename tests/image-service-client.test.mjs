@@ -273,7 +273,7 @@ function deliverySetup({ foreign = false, failSave = false } = {}) {
   const context = vm.createContext({ ...floorTakes, runningHubUsageFields, clone: structuredClone, sanitizeStoryboardSnapshot, storyboardPlanForJob: () => null, storyboardValidatedAnchor: () => ({ valid: !foreign, floor: foreign ? null : 2, linkState: foreign ? 'foreign' : 'active' }),
     storyboardSetPlanStatus() {}, storyboardPipelineStage() {}, storyboardFinishLog: (_log, status) => { log.status = status; },
     storyboardPersistGatewayImage: async () => { writes++; return '/user/images/a.png'; }, storyboardCreateRecord: (job, _log, url, index) => ({ id: 'new', taskId: job.id, imageIndex: index, url }),
-    getChatKey: () => foreign ? 'other' : 'chat-a', ctx: () => ({ saveMetadata() {} }), storyboardGalleryRecords: () => gallery,storyboardState:()=>({shotPlans:[]}),
+    getChatKey: () => foreign ? 'other' : 'chat-a', ctx: () => ({ saveMetadata() {} }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:()=>[],storyboardState:()=>({shotPlans:[]}),
     saveMetadata: async () => { saved++; if (failSave && saved === 1) throw Error('metadata failed'); }, storyboardArchiveGallerySnapshots: async () => {},
     storyboardStoreDeferredDelivery: async (_job, records) => { rows.push(...records); return 'pending_chat'; }, toast: message => notices.push(message),
   });

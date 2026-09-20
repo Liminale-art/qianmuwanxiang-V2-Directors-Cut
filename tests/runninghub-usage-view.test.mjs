@@ -29,7 +29,7 @@ test('real delivery checkpoints and deferred/current galleries keep the same tas
       storyboardValidatedAnchor:()=>({valid:true,floor:2}),
       storyboardCreateRecord:(_job,_log,url,index)=>({id:'unused',imageIndex:index,url}),
       sanitizeStoryboardSnapshot:()=>({}),getChatKey:()=>foreign?'other':'chat',ctx:()=>({saveMetadata(){}}),
-      storyboardGalleryRecords:()=>gallery,saveMetadata:async()=>{},storyboardArchiveGallerySnapshots:()=>{},storyboardDeleteRecordSnapshots:()=>{},
+      storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:()=>[],saveMetadata:async()=>{},storyboardArchiveGallerySnapshots:()=>{},storyboardDeleteRecordSnapshots:()=>{},
       storyboardStoreDeferredDelivery:async(_job,records)=>{deferred=structuredClone(records);return 'pending_chat';},
       storyboardFinishLog:(_log,_status,details)=>finished.push(details),toast:()=>{},
     });

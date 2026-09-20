@@ -44,7 +44,7 @@ export async function routeEnvironment(options={}) {
   const context=vm.createContext({...storyboard,projectNewComfyExecution,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},clone:structuredClone,settings:{apiProfiles:[]},storyboardState:()=>state,
     getChatKey:()=> 'chat-a',ctx:()=>({chat:[]}),getCharacterDescription:()=>'',getPersonaDescription:()=>'',
     storyboardCompilerBusy:false,storyboardTargetFloor:()=>-1,storyboardCredentialRevision:0,storyboardAdmissionEpoch:1,storyboardDraftApiKeys:new Map(),
-    storyboardSelectedArtistPreset:()=>null,storyboardGalleryRecords:()=>[],STORYBOARD_NAI_QUALITY_DEFAULTS:{},STORYBOARD_NAI_NEGATIVE_DEFAULTS:{},STORYBOARD_GENERIC_PROMPT_DEFAULTS:{positive:'global quality',negative:'global negative'},
+    storyboardSelectedArtistPreset:()=>null,storyboardGalleryRecords:()=>[],storyboardFloorTakeReceipts:()=>[],STORYBOARD_NAI_QUALITY_DEFAULTS:{},STORYBOARD_NAI_NEGATIVE_DEFAULTS:{},STORYBOARD_GENERIC_PROMPT_DEFAULTS:{positive:'global quality',negative:'global negative'},
     storyboardProductionDeliveryPolicy:(_shot,policy)=>policy,storyboardProductionContext:()=>({}),storyboardAnchorForMessage:()=>null,
     storyboardCredentialId:()=> 'fixture-key',hashText,sanitizeStoryboardDiagnosticData:value=>value,uid:()=>`id-${++sequence}`,uniqueClean:items=>[...new Set(items.filter(Boolean))],
     saveSettings(){},renderModal(){},toast:message=>{notices.push(message);return false;},
