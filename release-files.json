@@ -431,6 +431,8 @@
     "qianmu-storyboard-stream-reference.js",
     "qianmu-storyboard-stream-moment.js",
     "qianmu-storyboard-stream-coverage.js",
+  "qianmu-storyboard-compiler-result.js",
+  "qianmu-storyboard-stream-jobs.js",
     "qianmu-storyboard-stream-readiness.js",
     "qianmu-storyboard-continuity-store.js",
     "qianmu-storyboard-focused-extraction.js",

@@ -5,6 +5,9 @@ import {EventEmitter} from 'node:events';
 import {compilerEnvironment,casting,response} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {applyCharacterCasting} from '../qianmu-character-casting.js';
+import {resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
+import {createImageAdmission} from '../qianmu-image-admission.js';
+import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -36,7 +39,7 @@ async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nSh
           source_states:payload.required_state_floors.map(floor=>({floor,roster:{branches:[{id:'present',layer:'present'}],subjectIds:['A']},events:[]})),continuity_links:[]};
       }else reply={schema:options.jsonSchemaName,shots:[{shot_id:'S1',prompt_atoms:response().shots[0].prompt_atoms,
         prompt_renderings:Object.fromEntries(options.promptFormats.map(format=>[format,response().shots[0].prompt_renderings[format]]))}]};
-      if(modelHook)await modelHook({requests,messages,options});return JSON.stringify(reply);
+      if(modelHook)await modelHook({requests,messages,options,reply,payload});return JSON.stringify(reply);
     },
   });
   vm.runInContext(section('storyboardCompilerContext'),e.context);
@@ -143,4 +146,210 @@ test('streaming Comfy preparation always uses automatic preflight even if a call
   const f=await fixture();f.state.source='comfy';let checked=0;
   f.context.storyboardPreflightComfyForCompiler=async(_state,_profile,_plan,_guard,automatic)=>{assert.equal(automatic,true);checked++;throw Object.assign(Error('unverified custom workflow'),{comfyPreflight:true});};
   assert.equal(await f.run({automatic:false}),false);assert.equal(checked,1);assert.equal(f.counts.requests,0);assert.equal(f.prepared,undefined);assert.deepEqual(f.jobs,[]);f.assertReleased();
+});
+
+function installStreamQueue(f){
+  const rows=new Map(),now=Date.now(),run=(scope,fn)=>{const key=imageAttemptScopeKey(scope),value=fn(rows.get(key));rows.set(key,copy(value.ledger));return value;};
+  const store={close(){},claim:async(scope,input,seeds=[])=>run(scope,value=>claimImageAttempt(importImageAttempts(value,scope,seeds,now),scope,input,now)),
+    begin:async(scope,input)=>run(scope,value=>beginImageAttempt(value,scope,input,now)),continue:async(scope,input)=>run(scope,value=>continueImageAttempt(value,scope,input,now)),
+    settle:async(scope,input)=>run(scope,value=>settleImageAttempt(value,scope,input,now))};
+  const resolve=job=>resolveStoryboardMessageReference(job.messageRef,f.host.chat,{chatKey:'chat-a'});
+  const admission=createImageAdmission({store,account:async()=> 'st-user:route-test',ownerId:'stream-page',resolveSource:resolve});
+  f.state.automation.autoCapture=true;f.state.automation.autoGenerate=true;f.state.connections.novel.draft.baseUrl='https://image.invalid';
+  Object.assign(f.context,{STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardPlansForPortableExport:async plans=>copy(plans),storyboardDeletePlanArchives:async()=>{},
+    storyboardValidatedAnchor:job=>({valid:resolve(job).state==='active'}),storyboardPumpQueue(){},
+    storyboardImageAdmissionRuntime:async()=>admission,storyboardSettleImageAdmission:(job,status)=>admission.settle(job,status)});
+  vm.runInContext(['storyboardSubmitStreamPrepared','storyboardChooseComfyGenerationRoutes','storyboardQueueJob','storyboardStartLog','storyboardFinishLog',
+    'storyboardRecordPreparedJobFailure','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus'].map(section).join('\n'),f.context);
+  const outcomes=[],errors=[];
+  f.preparedHook=async value=>{try{outcomes.push(await f.context.storyboardSubmitStreamPrepared(value));}catch(error){errors.push(error);throw error;}};
+  return {rows,admission,outcomes,errors,queue:f.context.storyboardQueue};
+}
+
+test('real stream compiler constructs and admits NAI jobs into the existing queue without borrowing the workbench',async()=>{
+  const f=await fixture(),q=installStreamQueue(f),before=editable(f.state);delete before.shotPlans;
+  assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,jobErrors:q.errors.map(e=>e.message),notices:f.notices}));
+  assert.deepEqual(q.outcomes,[{queued:1,failed:0,prepared:1}]);assert.equal(q.queue.length,1);const job=q.queue[0];
+  assert.equal(job.automatic,true);assert.equal(job.profile.count,'1');assert.equal(job.floor,0);assert.equal(job.target,'floor');
+  assert.equal(job.messageRef.stream.moment.paragraphId,'P1');assert.equal(job.imageAdmission.revisionId,job.messageRef.revisionId);
+  assert.equal(job.imageAdmission.automaticSlot,true);assert.equal(job.promptLocked,false);assert.equal(f.state.shotPlans[0].shots[0].status,'queued');
+  assert.equal(f.state.logs[0].snapshot.messageRef.stream.prefixDigest,job.messageRef.stream.prefixDigest);
+  assert.equal(f.state.logs[0].snapshot.compilerStages?.[0]?.input?.owned,undefined);
+  const after=editable(f.state);delete after.shotPlans;assert.deepEqual(after,before);assert.equal(f.counts.renders,0);f.assertReleased();
+  f.host.chat[0].mes+=' more prose after compiler disposal';await q.admission.beforeSubmit(job);
+  assert.equal(q.rows.size,1);await q.admission.settle(job,'succeeded');
+  assert.equal(await f.run(),false,JSON.stringify(f.errors));assert.equal(q.queue.length,1);assert.equal(f.counts.requests,3);
+});
+
+test('stream queue refuses source rewrites before any provider POST even after preparation lifetime ended',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  f.host.chat[0].mes='Bob arrives.\n\nOther';await assert.rejects(q.admission.beforeSubmit(q.queue[0]),{code:'storyboard_stream_source'});f.assertReleased();
+});
+
+test('a single live handoff cannot be submitted twice, and a closed handoff cannot be replayed',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);let second;
+  f.preparedHook=async value=>{await f.context.storyboardSubmitStreamPrepared(value);try{await f.context.storyboardSubmitStreamPrepared(value);}catch(error){second=error;}};
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(second.code,'storyboard_stream_jobs');assert.equal(q.queue.length,1);
+  await assert.rejects(f.context.storyboardSubmitStreamPrepared(f.prepared),{code:'storyboard_input_changed'});f.assertReleased();
+});
+
+test('queue capacity is checked before publishing stream plans, logs or reservations',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);f.context.STORYBOARD_QUEUE_LIMIT=0;
+  assert.equal(await f.run(),false);assert.equal(q.errors[0].code,'storyboard_stream_jobs');assert.equal(q.queue.length,0);
+  assert.equal(f.state.shotPlans.length,0);assert.equal(f.state.logs.length,0);assert.equal(q.rows.size,0);f.assertReleased();
+});
+
+test('stream plan retention never drops a still active plan to submit another request',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);f.state.shotPlans=Array.from({length:300},(_,index)=>({id:`active-${index}`,status:'generating'}));
+  assert.equal(await f.run(),false);assert.match(q.errors[0].message,/任务记录暂满/);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);
+  assert.equal(f.state.shotPlans.length,300);assert.equal(f.state.shotPlans[0].id,'active-0');f.assertReleased();
+});
+
+test('deactivating automatic generation after extraction cannot dispatch a stream request',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);f.preparedHook=async value=>{f.state.automation.autoGenerate=false;await f.context.storyboardSubmitStreamPrepared(value);};
+  assert.equal(await f.run(),false);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);assert.equal(f.state.shotPlans.length,0);f.assertReleased();
+});
+
+test('a queue hook exception after acceptance reports the already accepted image rather than safe-to-repeat zero',async()=>{
+  const f=await fixture(),q=installStreamQueue(f),queue=f.context.storyboardQueueJob;
+  f.context.storyboardQueueJob=async(...args)=>{const accepted=await queue(...args);if(accepted)throw Error('post-queue observer interrupted');return accepted;};
+  assert.equal(await f.run(),false);assert.deepEqual(q.errors[0].streamOutcome,{queued:1,failed:0,prepared:1});
+  assert.equal(q.queue.length,1);assert.equal(f.state.logs.length,1);assert.equal(f.state.logs[0].status,'queued');f.assertReleased();
+});
+
+test('stream job preparation waits without touching plans when narrative requests no image',async()=>{
+  const f=await fixture({wait:true}),q=installStreamQueue(f);assert.equal(await f.run(),false);
+  assert.deepEqual(q.outcomes,[{queued:0,failed:0,prepared:0}]);assert.equal(f.state.shotPlans.length,0);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);f.assertReleased();
+});
+
+function useShotSet(f,indexes){
+  f.modelHook=({reply,payload,options})=>{
+    if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
+      reply.shots=indexes.map(index=>{
+        const {prompt_atoms,prompt_renderings,...shot}=response().shots[index],id=`P${index+1}`;
+        const quote=payload.source_catalogue.find(row=>row.floor===0).passages.find(row=>row.paragraph_id===id).text;
+        const anchor={floor:0,branch_id:'present',paragraph_id:id,quote};
+        return {...shot,state_point:{branchId:'present',paragraphId:id,evidence:quote},
+          ...(payload.constraints.streaming?{stream_support:{scene:anchor,content:anchor,presence:shot.characters.map(character=>({character_id:character.character_id,source:anchor}))}}:{})};
+      });
+    }else reply.shots=payload.shots.map(item=>{
+      const shot=response().shots.find(shot=>shot.subject===item.plan.subject);
+      return {shot_id:item.shot_id,prompt_atoms:shot.prompt_atoms,prompt_renderings:Object.fromEntries(options.promptFormats.map(format=>[format,shot.prompt_renderings[format]]))};
+    });
+  };
+}
+const threeParagraphs='Alice reads a letter in the kitchen.\n\nA mountain valley stretches into the sunlight.\n\nA broken cup rests on the table.\n\nUnfinished';
+
+test('later stream frames append one new shot to the same plan and ledger without replacing accepted shots',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0]);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));const first=copy(q.queue[0]);
+  useShotSet(f,[0,1]);assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  assert.equal(q.queue.length,2);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);assert.equal(f.state.shotPlans[0].shots.length,2);
+  assert.deepEqual(copy(q.queue[0]),first);assert.equal(q.queue[1].messageRef.stream.moment.paragraphId,'P2');
+  assert.equal(q.queue[0].inlineOrder.batchId,q.queue[1].inlineOrder.batchId);assert.deepEqual(q.queue.map(job=>job.inlineOrder.shotIndex),[0,1]);
+  assert.equal(q.queue[0].imageAdmission.revisionId,q.queue[1].imageAdmission.revisionId);assert.equal(f.counts.requests,4);f.assertReleased();
+});
+
+test('streaming shot group preserves original proof association even when duplicate coverage removes an earlier draft',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0,1,2]);
+  const prepare=f.context.storyboardPrepareDraftGroup;
+  f.context.storyboardPrepareDraftGroup=(...args)=>{const group=prepare(...args);group.planned=group.planned.slice(1);return group;};
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,2);
+  assert.deepEqual(q.queue.map(job=>job.messageRef.stream.moment.paragraphId),['P2','P3']);f.assertReleased();
+});
+
+test('one later mirror configuration failure aborts all unsubmitted stream jobs before any fee reservation',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0,1]);let calls=0;
+  const create=f.context.storyboardCreateJob;f.context.storyboardCreateJob=(...args)=>{if(++calls===2)throw Error('second mirror model is unavailable');return create(...args);};
+  assert.equal(await f.run(),false);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);assert.equal(f.state.shotPlans.length,0);
+  assert.deepEqual(q.errors[0].streamOutcome,{queued:0,failed:0,prepared:0});f.assertReleased();
+});
+
+test('a refused middle stream mirror records only that unsubmitted mirror while its neighbors enter the queue',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0,1,2]);
+  const admit=q.admission.admit.bind(q.admission);q.admission.admit=async(job,...args)=>{if(job.inlineOrder.shotIndex===1)throw Error('isolated reservation failure');return admit(job,...args);};
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.deepEqual(q.outcomes,[{queued:2,failed:1,prepared:3}]);
+  assert.deepEqual(q.queue.map(job=>job.inlineOrder.shotIndex),[0,2]);assert.deepEqual(f.state.shotPlans[0].shots.map(shot=>shot.status),['queued','failed','queued']);
+  const failed=f.state.logs.find(log=>log.status==='failed');assert.equal(failed.submissionState,'not_submitted');assert.equal(failed.snapshot.messageRef.stream.moment.paragraphId,'P2');f.assertReleased();
+});
+
+test('an account or source interruption after first acceptance cannot submit later mirrors or erase the accepted result',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0,1,2]);
+  const queue=f.context.storyboardQueueJob;f.context.storyboardQueueJob=async(...args)=>{const ok=await queue(...args);if(ok)f.controller.abort();return ok;};
+  assert.equal(await f.run(),false);assert.equal(q.queue.length,1);assert.deepEqual(q.errors[0].streamOutcome,{queued:1,failed:0,prepared:3});
+  assert.equal(f.state.logs.length,1);assert.equal(f.state.logs[0].status,'queued');
+  assert.deepEqual(f.state.shotPlans[0].shots.map(shot=>shot.status),['queued','cancelled','cancelled']);f.assertReleased();
+});
+
+test('pinned mixed Comfy/NAI stream jobs keep their own workflow, model prompt format and single-image count',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0,1,2]);f.state.routing.enabled=true;
+  f.state.connections.comfy.draft.baseUrl='https://comfy.invalid';
+  f.context.storyboardPreflightComfyForCompiler=async()=>[]; // No real Comfy endpoint: readiness is outside this isolated queue test.
+  f.context.storyboardConfirmComfyExecution=async()=>true;
+  f.context.storyboardParseWorkflow=value=>typeof value==='string'?JSON.parse(value):value;
+  assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message),notices:f.notices}));
+  assert.deepEqual(q.queue.map(job=>job.source),['comfy','comfy','novel'],JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.profile.count),['1','1','1']);
+  assert.deepEqual(q.queue.map(job=>job.messageRef.stream.moment.paragraphId),['P1','P2','P3']);
+  assert.equal(q.queue[0].profile.comfyRouteBinding.id,'portrait');assert.equal(q.queue[1].profile.comfyRouteBinding.id,'landscape');
+  assert.equal(q.queue[0].profile.comfyRoutePromptFormat,'tags');assert.equal(q.queue[1].profile.comfyRoutePromptFormat,'natural_language');
+  assert.equal(q.queue[2].payload.compiledPrompt.promptFormat,'tags');assert.equal(q.rows.size,1);f.assertReleased();
+});
+
+test('terminal retention removes only the oldest terminal plan after successful stream preparation',async()=>{
+  const f=await fixture(),q=installStreamQueue(f),removed=[];
+  f.state.shotPlans=Array.from({length:300},(_,index)=>({id:`old-${index}`,status:index===299?'completed':'generating'}));
+  f.context.storyboardPlanIsTerminal=plan=>plan?.status==='completed';f.context.storyboardDeletePlanArchives=async plans=>removed.push(...plans.map(plan=>plan.id));
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,1);assert.equal(f.state.shotPlans.length,300);
+  assert.deepEqual(removed,['old-299']);assert.ok(f.state.shotPlans.some(plan=>plan.id==='old-298'));f.assertReleased();
+});
+
+test('reopening an archived generation restores its full earlier shots before appending and retains the archived recovery copy',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0]);
+  assert.equal(await f.run(),true);const plan=f.state.shotPlans[0];plan.status='completed';plan.shots[0].status='completed';plan.shots[0].resultIds=['kept-image'];plan.archiveRef='old-archive';
+  const archive=copy(plan);plan.shots[0].prompt='';plan.shots[0].shotSpec=null;let loaded=0;
+  f.context.storyboardPlansForPortableExport=async(plans,options)=>{assert.equal(plans[0],plan);assert.equal(options.strict,true);loaded++;return [copy(archive)];};
+  useShotSet(f,[1]);assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(loaded,1);assert.equal(f.state.shotPlans.length,1);
+  assert.equal(plan.archiveRef,undefined);assert.equal(archive.archiveRef,'old-archive');assert.equal(plan.shots[0].prompt,archive.shots[0].prompt);
+  assert.deepEqual(plan.shots[0].shotSpec,archive.shots[0].shotSpec);assert.equal(plan.shots[0].status,'completed');
+  assert.deepEqual(plan.shots[0].resultIds,['kept-image']);assert.equal(plan.shots[1].status,'queued');assert.equal(q.queue.length,2);f.assertReleased();
+});
+
+test('auto-selected stream Comfy jobs attach the captured selection and close the batch with the compiler',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);f.state.routing.enabled=true;f.state.connections.comfy.draft.baseUrl='https://comfy.invalid';
+  f.context.storyboardPreflightComfyForCompiler=async()=>[];f.context.storyboardConfirmComfyExecution=async()=>true;f.context.storyboardParseWorkflow=value=>value;
+  let attached=0,closed=0;
+  f.context.storyboardChooseComfyGenerationRoutes=async(_state,guard,planned,routes)=>{
+    const batch={attach:async(job)=>{attached++;assert.ok(job.messageRef.stream.moment);},close:()=>closed++};guard.comfyBatch=batch;
+    return {routes,choices:new Map([[0,{candidateId:'portrait',target:routes[0]}]]),failures:new Map(),batch};
+  };
+  f.preparedHook=async value=>{value.inputGuard.comfyAuto={close(){}};q.outcomes.push(await f.context.storyboardSubmitStreamPrepared(value));};
+  assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,notices:f.notices}));assert.equal(attached,1);assert.equal(closed,1);
+  assert.equal(q.queue[0].comfyAutoSelected,true);assert.ok(q.queue[0].compilerStages.some(row=>row.type==='comfy_selection'));f.assertReleased();
+});
+
+test('a missing archived plan blocks only the new stream batch and preserves its original archive marker',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+  const plan=f.state.shotPlans[0];plan.archiveRef='missing';const original=copy(plan);
+  f.context.storyboardPlansForPortableExport=async()=>{throw Error('archive missing');};useShotSet(f,[1]);
+  assert.equal(await f.run(),false);assert.equal(q.queue.length,1);assert.deepEqual(copy(plan),original);f.assertReleased();
+});
+
+test('a concurrent archive replacement during preparation cannot append jobs to a detached plan object',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+  const old=f.state.shotPlans[0],replacement=copy(old),adapt=f.context.storyboardAdaptShotForModel;
+  f.context.storyboardAdaptShotForModel=async(...args)=>{f.state.shotPlans[0]=replacement;return adapt(...args);};useShotSet(f,[1]);
+  assert.equal(await f.run(),false);assert.equal(q.queue.length,1);assert.equal(replacement.shots.length,1);assert.equal(old.shots.length,1);
+  assert.match(q.errors.at(-1).message,/归档或替换/);f.assertReleased();
+});
+
+test('a deferred Comfy stream mirror records its own frozen proof and global slot while eligible neighbors continue',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+  const recorded=[];f.context.storyboardRecordComfyPreparationFailure=(preparation,message)=>recorded.push({preparation,message});
+  f.context.storyboardChooseComfyGenerationRoutes=async(_state,_guard,planned,routes,_coverage,plan)=>({routes,choices:new Map(),
+    failures:new Map([[0,{preparation:{planId:plan.id,planShotId:plan.shots[0].id,messageRef:{invalid:true}},message:'no eligible workflow',diagnostics:[]}]]),batch:{}});
+  f.preparedHook=async value=>{value.inputGuard.comfyAuto={close(){}};q.outcomes.push(await f.context.storyboardSubmitStreamPrepared(value));};
+  useShotSet(f,[1,2]);assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,2);assert.equal(recorded.length,1);
+  assert.equal(recorded[0].preparation.messageRef.stream.moment.paragraphId,'P2');assert.equal(recorded[0].preparation.inlineOrder.shotIndex,1);
+  assert.equal(q.queue[1].inlineOrder.shotIndex,2);assert.equal(q.queue[1].messageRef.stream.moment.paragraphId,'P3');
+  assert.deepEqual(q.outcomes.at(-1),{queued:1,failed:1,prepared:1});f.assertReleased();
 });

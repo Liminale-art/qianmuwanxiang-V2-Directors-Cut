@@ -151,12 +151,14 @@ assert.match(fallback.prompt, /湿透的信/);
 assert.doesNotMatch(JSON.stringify(fallback), /still invalid|offline/, '手动草稿只能来自可信正文，不能复用失败模型输出');
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /initial\.ok \? initial : focused\s*\?[\s\S]*: await contract\.repairStoryboardContract\(/, 'the focused stages cannot fall through to a second independent repair budget');
+const resultSource = await readFile(new URL('../qianmu-storyboard-compiler-result.js', import.meta.url), 'utf8');
+assert.match(indexSource, /return runtime\.resolveStoryboardCompilerResult\(raw,context,capabilities,state,contractRequest,inputGuard,/, 'the actual compiler delegates to the lazy result processor');
+assert.match(resultSource, /initial\.ok \? initial : focused\s*\?[\s\S]*: await contract\.repairStoryboardContract\(/, 'the focused stages cannot fall through to a second independent repair budget');
 assert.match(await readFile(new URL('../qianmu-storyboard-compiler-transport.js',import.meta.url),'utf8'), /source=requestOptions\.temperature\?\?profile\?\.temperature\?\?0\.35/, 'ordinary compiler calls must retain the saved profile temperature');
-assert.match(indexSource, /request: async \(messages\) => \{[\s\S]*await context\.casting\?\.assertCurrent\(\);[\s\S]*repairMessages = messages;\s*return \(inputGuard\?\.compilerAttempt\?\.call\|\|storyboardCallCompiler\)\(messages,[\s\S]*temperature: 0,[\s\S]*maxTokens: contractRequest\?\.maxTokens \|\| 1800/, 'paid repair verifies identity, retains messages and passes through request diagnostics');
-assert.match(indexSource, /initialErrors:[\s\S]*finalErrors:/, 'repair diagnostics must remain attached to the compiler stage');
-assert.match(indexSource, /localNormalization: \(result\.normalization \|\| \[\]\)\.slice\(0, 8\)/, 'deterministic local repairs must be visible in bounded diagnostics');
-assert.match(indexSource, /if \(!result\.ok\) throw contract\.storyboardContractFailure\(result\)/, '格式失败明确停止，不将失败结果伪装为静帧候选');
+assert.match(resultSource, /request: async \(messages\) => \{[\s\S]*await context\.casting\?\.assertCurrent\(\);[\s\S]*repairMessages = messages;\s*return \(inputGuard\?\.compilerAttempt\?\.call\|\|storyboardCallCompiler\)\(messages,[\s\S]*temperature: 0,[\s\S]*maxTokens: contractRequest\?\.maxTokens \|\| 1800/, 'paid repair verifies identity, retains messages and passes through request diagnostics');
+assert.match(resultSource, /initialErrors:[\s\S]*finalErrors:/, 'repair diagnostics must remain attached to the compiler stage');
+assert.match(resultSource, /localNormalization: \(result\.normalization \|\| \[\]\)\.slice\(0, 8\)/, 'deterministic local repairs must be visible in bounded diagnostics');
+assert.match(resultSource, /if \(!result\.ok\) throw contract\.storyboardContractFailure\(result\)/, '格式失败明确停止，不将失败结果伪装为静帧候选');
 assert.match(indexSource, /plan\.manualReviewRequired = manualRequired[\s\S]*plan\.autoGenerate = false/, '合同失败不得继续自动生图');
 assert.match(indexSource, /return !manualRequired/, '自动调用方必须收到停止信号');
 
