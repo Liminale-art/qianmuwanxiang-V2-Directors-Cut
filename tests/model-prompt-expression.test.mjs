@@ -124,7 +124,7 @@ test('structured and local safety replacements explicitly retire old expressions
 test('real prose compiler creates one multi-format plan and mixed NAI/Comfy generation consumes each correct expression in narrative order',async()=>{
   const e=await compilerEnvironment();e.state.routing.rules[0].target={providerId:'novel',modelId:'nai-diffusion-4-5-full',capabilityModelId:'nai-diffusion-4-5-full'};
   assert.equal(await e.context.storyboardCompilePrompt(null),true,JSON.stringify(e.errors));
-  assert.equal(await e.context.storyboardGenerate(null),true,JSON.stringify(e.notices));assert.equal(e.llmCalls.length,1);assert.equal(e.jobs.length,3);
+  assert.equal(await e.context.storyboardGenerate(null),true,JSON.stringify(e.notices));assert.equal(e.llmCalls.length,2);assert.equal(e.jobs.length,3);
   assert.deepEqual(e.jobs.map(job=>job.source),['novel','comfy','novel']);
   assert.match(e.jobs[0].payload.prompt,/tag-scene-0/);assert.match(e.jobs[1].payload.prompt,/Natural scene 1/);assert.match(e.jobs[2].payload.prompt,/tag-scene-2/);
   assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);

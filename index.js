@@ -263,7 +263,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.214';
+const VERSION = '1.59.215';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -536,7 +536,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.214'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.215'),
   },
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
@@ -18691,7 +18691,7 @@ async function storyboardCompilerContext(state, inputGuard) {
   const casting = await storyboardCompilerCharacterCasting(paragraphs.join('\n'), inputGuard, includeReferences, includeComfy);
   await sources.guard();
   return {
-    floor, messages, currentCharacter, persona, world: worldResult.text, continuity,
+    floor, messages, currentCharacter, persona, world: worldResult.text, continuity, compilerSources:sources,
     worldRows: worldResult.rows, worldFallback: worldResult.fallback,
     paragraphs, forcedParagraphIndex, forcedParagraphIndexes,
     characterCasting: casting.prepared, casting:{...casting,assertCurrent:async()=>{await sources.guard();await casting.assertCurrent();sources.assertCurrent();}},
@@ -18711,6 +18711,7 @@ function storyboardCompilerRequestConfig(state, profile, preparedRoutes = null) 
     ? [state.compositionPolicy.fixedRatioId]
     : state.compositionPolicy?.allowedRatioIds || STORYBOARD_RATIOS.map((item) => item.id);
   return {
+    focused:true,
     providerId: state.source,
     providerLabel: provider?.label || state.source,
     modelId: resolveStoryboardProfileBinding(state.source, profile).capabilityModelId,
@@ -18737,7 +18738,8 @@ async function storyboardCallCompiler(messages, profileId, requestOptions = {}) 
   const temperatureSource = requestOptions.temperature ?? apiProfile?.temperature ?? 0.35;
   const temperature = Number.isFinite(Number(temperatureSource)) ? Number(temperatureSource) : 0.35;
   const formatCount = requestOptions.promptFormats?.length ? normalizeStoryboardPromptFormats(requestOptions.promptFormats).length : 0;
-  const maxTokens = Math.max(256, Math.min(formatCount ? 16384 : 4000, Number(requestOptions.maxTokens) || 2200));
+  const focused=/^qianmu\.storyboard\.(narrative|expression)\.v1$/.test(requestOptions.jsonSchemaName || '');
+  const maxTokens = Math.max(256, Math.min(formatCount || focused ? 16384 : 4000, Number(requestOptions.maxTokens) || 2200));
   if (apiProfile || settings.providerMode === 'external') {
     const cfg = apiProfile ? {
       apiUrl: apiProfile.apiUrl, apiKey: apiProfile.apiKey, model: apiProfile.model,
@@ -18762,6 +18764,17 @@ async function storyboardCallCompiler(messages, profileId, requestOptions = {}) 
 
 async function storyboardCompilerResult(raw, context, capabilities, state, contractRequest = null, inputGuard = null) {
   inputGuard?.assertCurrent();
+  let focused=null;
+  if(contractRequest?.focused){
+    const contract=contractRequest.runtime;
+    focused=await contract.completeStoryboardFocusedExtraction({raw,context,request:contractRequest,
+      guard:async()=>{inputGuard.assertCurrent();await context.casting?.assertCurrent();await inputGuard.comfyRoutes?.assertCurrent();inputGuard.assertCurrent();},
+      publish:records=>inputGuard.continuityStore.publish(records),
+      call:(messages,options)=>storyboardCallCompiler(messages,state.promptCompiler.apiProfileId,{maxTokens:options.maxTokens,promptFormats:contractRequest.promptFormats,temperature:options.temperature,
+        jsonSchema:options.schema,jsonSchemaName:options.schemaId,jsonSchemaStrict:true}),
+    });
+    raw=focused.raw;contractRequest={...focused.legacyRequest,runtime:contract};
+  }
   let object = null;
   let contractMeta = null;
   let contractTrace = null;
@@ -18792,7 +18805,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
     };
     const initial = contract.parseStoryboardContractResponse(rawText, contractOptions);
     let repairMessages = [];
-    const result = initial.ok ? initial : await contract.repairStoryboardContract({
+    const result = initial.ok ? initial : focused ? {...initial,repairCalls:focused.meta.repairCalls,repairBudgetUsed:focused.meta.repairBudgetUsed} : await contract.repairStoryboardContract({
       raw: rawText,
       validation: initial,
       options: contractOptions,
@@ -18813,14 +18826,16 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
     });
     inputGuard?.assertCurrent();
     contractMeta = {
+      ...(focused?.meta||{}),
       schema: STORYBOARD_PLAN_SCHEMA,
-      repairAttempted: result.repairAttempted === true,
-      repairCalls: Number(result.repairCalls || 0),
+      repairAttempted: Boolean(focused?.meta.repairCalls || result.repairAttempted === true),
+      repairCalls: Number(focused?.meta.repairCalls || result.repairCalls || 0),
       localNormalization: (result.normalization || []).slice(0, 8),
       initialErrors: (result.originalErrors || []).slice(0, 24),
       finalErrors: (result.errors || []).slice(0, 24),
     };
     contractTrace = {
+      ...(focused?.trace||{}),
       initialResponse: rawText,
       repairMessages,
       repairResponse: String(result.repairedRaw || ''),
@@ -18832,6 +18847,11 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
       fallbackParagraphIndex: context.forcedParagraphIndex,
       ...(contractRequest?.promptFormats?.length ? {promptFormats:contractRequest.promptFormats} : {}),
     });
+    if(focused)for(const [index,shot] of object.shots.entries()){
+      shot.shotSpec.continuityUpdates.facts=focused.trace.shotFacts[index];
+      const rendering=shot.promptRenderings?.[state.source==='novel'?'tags':'natural_language']||Object.values(shot.promptRenderings||{})[0];
+      if(rendering){shot.prompt=[rendering.global,...rendering.characters.map(row=>row.positive)].filter(Boolean).join(', ');shot.negative=rendering.negative;}
+    }
   } else {
     let parsed = null;
     try { parsed = extractJson(rawText); } catch (_) {}
@@ -19068,7 +19088,8 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     inputGuard.assertCurrent();
     await inputGuard.comfyRoutes?.assertCurrent();
     const raw = await storyboardCallCompiler(contractRequest.messages, state.promptCompiler.apiProfileId, {
-      ...(contractRequest.promptFormats?.length ? {promptFormats:contractRequest.promptFormats,maxTokens:contractRequest.maxTokens} : {}),
+      maxTokens:contractRequest.maxTokens,
+      ...(contractRequest.promptFormats?.length ? {promptFormats:contractRequest.promptFormats} : {}),
       jsonSchema: contractRequest.schema,
       jsonSchemaName: contractRequest.schemaId,
       jsonSchemaStrict: true,

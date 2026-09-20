@@ -116,7 +116,7 @@ test('one unselectable mirror preserves a distinct draft and actual independent 
     const original=JSON.stringify(log.preparation),before=e.context.storyboardQueue.map(job=>job.id);
     e.repair();e.state.connections.comfy.draft.baseUrl='https://new-comfy.test/api';e.state.source='novel';e.state.comfyAutoEnabled=false;
     assert.equal(await e.context.storyboardRetryLog(log),true,JSON.stringify(e.notices));
-    assert.equal(e.llmCalls.length,1);assert.equal(e.admissions(),3);assert.equal(e.context.storyboardQueue.length,3);
+    assert.equal(e.llmCalls.length,2);assert.equal(e.admissions(),3);assert.equal(e.context.storyboardQueue.length,3);
     assert.deepEqual(e.context.storyboardQueue.slice(0,2).map(job=>job.id),before);
     const retry=e.context.storyboardQueue[2];assert.equal(retry.inlineOrder.shotIndex,1);assert.deepEqual(retry.inlineOrder,log.preparation.inlineOrder);
     assert.equal(retry.connection.baseUrl,'https://new-comfy.test/api');assert.equal(retry.profile.comfyRouteBinding.id,'landscape');assert.equal(retry.profile.count,'1');
@@ -201,7 +201,7 @@ test('mixed closed/fixed-Comfy routes continue while an automatic mirror is unse
     const log=e.state.logs.find(row=>row.kind==='comfy_preparation');assert.equal(log.preparation.inlineOrder.shotIndex,2);e.repair();
     assert.equal(await e.context.storyboardRetryLog(log),true,JSON.stringify(e.notices));
     assert.deepEqual(e.context.storyboardQueue.slice(0,2).map(job=>({id:job.id,source:job.source,profile:copy(job.profile)})),before);
-    assert.equal(e.context.storyboardQueue[2].inlineOrder.shotIndex,2);assert.equal(e.llmCalls.length,1);
+    assert.equal(e.context.storyboardQueue[2].inlineOrder.shotIndex,2);assert.equal(e.llmCalls.length,2);
   }finally{await e.close();}
 });
 
@@ -225,7 +225,7 @@ test('actual one-shot extraction negotiates candidates, then routes, freezes and
     assert.equal(await e.context.storyboardCompilePrompt(null,{plan:p}),true,JSON.stringify(e.errors));
     assert.deepEqual(e.llmCalls[0].options.promptFormats,['tags','natural_language']);core.normalizeStoryboardState(e.state);
     assert.equal(await e.context.storyboardGenerate(null,{plan:p,automatic:true}),true,JSON.stringify({notices:e.notices,errors:e.errors}));
-    assert.equal(e.llmCalls.length,1);assert.equal(e.jobs.length,3);assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);
+    assert.equal(e.llmCalls.length,2);assert.equal(e.jobs.length,3);assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);
     assert.deepEqual(e.jobs.map(job=>job.profile.comfyRouteBinding.id),['portrait','landscape','portrait']);
     assert.ok(e.jobs.every(job=>job.comfyAutoSelected&&job.comfySceneClaim&&job.comfyExecution.automatic&&job.profile.count==='1'));
     assert.match(e.jobs[0].payload.prompt,/^tag-scene-0/);assert.match(e.jobs[1].payload.prompt,/^Natural scene 1/);
@@ -258,7 +258,7 @@ test('a current compiled draft consumes the explicitly linked previous-floor sty
     assert.equal(await e.context.storyboardGenerate(null,{plan:p,automatic:false}),true,JSON.stringify(e.notices));
     assert.equal(e.jobs.length,3);assert.equal(e.jobs[1].profile.comfyRouteBinding.id,'portrait');assert.match(e.jobs[1].payload.prompt,/tag-scene-1/);
     assert.equal((await e.manager.inspect(target)).pending,1);assert.equal((await e.manager.inspect(target)).styleOrigin.sourceFloor,0);
-    assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);assert.equal(e.llmCalls.length,1);
+    assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);assert.equal(e.llmCalls.length,2);
   }finally{await e.close();}
 });
 
@@ -313,7 +313,7 @@ test('lost nodes or scope changes stop actual preparation without queued images 
       assert.equal(await e.context.storyboardCompilePrompt(null,{plan:p}),true,JSON.stringify(e.errors));
       if(failure==='nodes')e.setMissing('EmptyImage');else e.setAfterRequest(async()=>{if(failure==='account')e.setAccount('st-user:other');else e.state.comfyAutoEnabled=false;});
       assert.equal(await e.context.storyboardGenerate(null,{plan:p,automatic:true}),false);assert.equal(e.jobs.length,0);assert.equal(e.writes.length,0);
-      assert.ok(e.notices.length||e.errors.length);assert.equal(e.llmCalls.length,1);
+      assert.ok(e.notices.length||e.errors.length);assert.equal(e.llmCalls.length,2);
     }finally{await e.close();}
   }
 });
@@ -323,7 +323,7 @@ test('invalid candidate binding fails before compiler request; disabling automat
   try{
     e.state.comfyPoolSelection={invalid:true};assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(e.llmCalls.length,0);
     e.state.comfyAutoEnabled=false;for(const shot of e.response.shots)delete shot.prompt_renderings;
-    assert.equal(await e.context.storyboardCompilePrompt(null),true,JSON.stringify(e.errors));assert.equal(e.llmCalls.length,1);
+    assert.equal(await e.context.storyboardCompilePrompt(null),true,JSON.stringify(e.errors));assert.equal(e.llmCalls.length,2);
     assert.equal(await e.context.storyboardGenerate(null),true,JSON.stringify(e.notices));assert.ok(e.jobs.every(job=>!job.comfyAutoSelected));assert.equal(e.writes.length,0);
   }finally{await e.close();}
 });

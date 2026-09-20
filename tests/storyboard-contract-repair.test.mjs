@@ -151,7 +151,7 @@ assert.match(fallback.prompt, /湿透的信/);
 assert.doesNotMatch(JSON.stringify(fallback), /still invalid|offline/, '手动草稿只能来自可信正文，不能复用失败模型输出');
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-assert.match(indexSource, /initial\.ok \? initial : await contract\.repairStoryboardContract\(/);
+assert.match(indexSource, /initial\.ok \? initial : focused\s*\?[\s\S]*: await contract\.repairStoryboardContract\(/, 'the focused stages cannot fall through to a second independent repair budget');
 assert.match(indexSource, /temperatureSource = requestOptions\.temperature \?\? apiProfile\?\.temperature \?\? 0\.35/, 'ordinary compiler calls must retain the saved profile temperature');
 assert.match(indexSource, /request: async \(messages\) => \{[\s\S]*await context\.casting\?\.assertCurrent\(\);[\s\S]*repairMessages = messages;[\s\S]*return storyboardCallCompiler\(messages,[\s\S]*temperature: 0,[\s\S]*maxTokens: 1800/, 'paid repair must verify identity and preserve exact messages before the sole repair call');
 assert.match(indexSource, /initialErrors:[\s\S]*finalErrors:/, 'repair diagnostics must remain attached to the compiler stage');

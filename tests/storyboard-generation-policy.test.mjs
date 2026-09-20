@@ -44,7 +44,11 @@ test('shared-frame composition does not silently cap the number of grounded, dis
   const duplicate=board.prepareStoryboardShotGroup({shots:[shots[0],shots[0]],maxShots:4});
   assert.equal(duplicate.shots.length,1);assert.equal(duplicate.skipped[0].reason,'duplicate_coverage');
 });
-test('compiler constraints use same budget without requiring a shot group; minimum is a target, supplement stays one',()=>{
+test('compiler constraints use same budget without requiring a shot group; minimum is a target, supplement stays one',async()=>{
+  const {captureStoryboardCompilerSources}=await import('../qianmu-storyboard-contract.js');
+  const host={chatId:'policy',characterId:0,characters:[{avatar:'A.png',chat:'policy'}],chatMetadata:{story_director_liminale:{}},chat:[{mes:'garden'}]};
+  const compilerSources=await captureStoryboardCompilerSources({floor:0,referenceFloors:0,getContext:()=>host,epoch:()=>0,isCurrent:()=>true,
+    resolveNamespace:async()=> 'st-user:policy',readText:message=>message.mes,readParagraphs:message=>[{id:'P1',text:message.mes}]});
   const state=board.createStoryboardDefaults();state.generationPolicy={minImages:2,maxImages:4,concurrency:2};
   const context=vm.createContext({...board});vm.runInContext(fn('storyboardCompilerRequestConfig'),context);
   for(const enabled of [false,true]){
@@ -53,11 +57,13 @@ test('compiler constraints use same budget without requiring a shot group; minim
     assert.equal(config.minShots,2);assert.equal(config.maxShots,4);
     if(!enabled)assert.equal(config.groupInstruction,'');
     for(const manualSupplement of [false,true]){
-      const request=buildStoryboardPlanContractRequest({paragraphs:['garden']},{...config,manualSupplement});
+      assert.equal(config.focused,true);
+      const request=buildStoryboardPlanContractRequest({floor:0,paragraphs:['garden'],compilerSources},{...config,manualSupplement});
       const constraints=JSON.parse(request.messages[1].content).constraints;
       assert.equal(constraints.max_shots,manualSupplement?1:4);assert.equal(constraints.min_shots_target,manualSupplement?1:2);
     }
   }
+  compilerSources.close();
 });
 test('real policy handlers keep min/max coherent and reject detached old-page edits',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8');

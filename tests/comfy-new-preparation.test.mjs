@@ -71,7 +71,7 @@ test('actual fresh extraction and mixed generation use one policy even when save
   assert.equal(await e.context.storyboardCompilePrompt(null),true,JSON.stringify(e.errors));
   assert.equal(await e.context.storyboardGenerate(null,{automatic:true}),true,JSON.stringify(e.notices));
   assert.ok(seen.length>=2);assert.ok(seen.every(value=>value===true));
-  assert.equal(e.llmCalls.length,1);assert.equal(e.calls.includes('comfyCharacters'),false);
+  assert.equal(e.llmCalls.length,2);assert.equal(e.calls.includes('comfyCharacters'),false);
   assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);
   for(const job of e.jobs.filter(job=>job.source==='comfy')){
     assert.equal(job.profile.comfyCharacterEnabled,false);

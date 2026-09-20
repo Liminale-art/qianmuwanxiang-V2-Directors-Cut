@@ -45,12 +45,14 @@ function applyLink(prior,now,options,link,qualified){
 // Recompute a bounded chain from validated raw sources, never trust a saved
 // effective-fact array. Every hop names the immediate previous revision, while
 // selected facts name original floor + revision so reused local IDs cannot clash.
-export function replayStoryboardContinuityChain(steps,target){
+export function replayStoryboardContinuityChain(steps,target){return replayChain(steps,target,false);}
+export function replayStoryboardContinuityChainEnd(steps){return replayChain(steps,null,true);}
+function replayChain(steps,target,end){
   if(!Array.isArray(steps)||!steps.length||steps.length>STORYBOARD_CONTINUITY_CHAIN_LIMIT)fail('连续来源链超出参考范围，未截断');
   let result=null,lastRef=null;
   for(let index=0;index<steps.length;index++){
     const step=steps[index];if(!exact(step,['source','branchId','link'])||index===0&&step.link!=null)fail('连续来源链首项或字段无效');
-    const now=index===steps.length-1?replayStoryboardContinuityAt(step.source?.events,step.source?.options,target):replayStoryboardContinuityEnd(step.source?.events,step.source?.options,step.branchId);
+    const now=index===steps.length-1&&!end?replayStoryboardContinuityAt(step.source?.events,step.source?.options,target):replayStoryboardContinuityEnd(step.source?.events,step.source?.options,step.branchId);
     if(now.branchId!==step.branchId||lastRef&&(now.messageRef.chatKey!==lastRef.chatKey||now.messageRef.lastKnownFloor<=lastRef.lastKnownFloor))fail('连续来源链乱序或分支不符');
     result=applyLink(result,now,step.source.options,step.link,true);lastRef=now.messageRef;
   }

@@ -10,6 +10,12 @@ import {
 import { characterCastingInput } from './qianmu-character-casting.js';
 import {completeStoryboardText,assertStoryboardInputBudget} from './qianmu-storyboard-complete-context.js';
 import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings, storyboardPromptFormatBudget, STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS } from './qianmu-prompt-formats.js';
+import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.215';
+// Pass the shared contract helpers explicitly, avoiding a circular versioned
+// import during lazy load or hot replacement.
+function focusedContractApi(){return {buildStoryboardPlanContractRequest,parseStoryboardContractJson,validateStoryboardPlanContract,
+  createStoryboardRepairBudget,storyboardContractFailure,STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,STORYBOARD_CONTRACT_REPAIR_MAX_BYTES};}
+export function completeStoryboardFocusedExtraction(options){return completeFocusedExtraction(options,focusedContractApi());}
 export { bindStoryboardPromptRenderings, remapStoryboardPromptRenderings, storyboardPromptFormatBudget } from './qianmu-prompt-formats.js';
 
 // LLM 返回协议只负责“把原始 JSON 变成可信结构”，不发请求，也不猜测缺失内容。
@@ -786,6 +792,7 @@ function orientationForRatioId(ratioId) {
  * 本函数不发请求，便于独立回归与后续替换模型渠道。
  */
 export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
+  if(config.focused===true)return buildStoryboardFocusedRequest(context,config,focusedContractApi());
   const promptFormats = normalizeStoryboardPromptFormats(config.promptFormats);
   const requirePrimarySubject = context.characterCasting?.referenceMode === 'novel-primary';
   const paragraphIds = paragraphIdsForContext(context);
@@ -1149,6 +1156,7 @@ export async function repairStoryboardContract({raw,validation=null,request,opti
 }
 
 const contractFailureReasons = Object.freeze({
+  expression_request_failed: '表达请求失败，未提交生图',
   json_syntax: '返回不是有效 JSON', ambiguous_json: '返回包含多个 JSON 对象',
   empty: '返回为空或缺少内容', max_bytes: '返回超过大小上限',
   root_type: '返回顶层不是对象', schema: '返回协议版本不匹配',
@@ -1176,7 +1184,7 @@ export function storyboardContractFailure(result){
     .slice(0, 24).map(error => Object.hasOwn(contractFailureReasons, error?.code) ? error.code : 'invalid_contract'))].slice(0, 12));
   const calls = count(result?.repairCalls);
   const reasonCodes = codes(result?.errors);
-  const stopReason = reasonCodes.includes('repair_request_failed') ? 'request_failed'
+  const stopReason = reasonCodes.some(code=>['repair_request_failed','expression_request_failed'].includes(code)) ? 'request_failed'
     : result?.repairSkipped === 'unsafe_or_oversized' ? 'repair_unsafe'
     : result?.repairExhausted ? 'budget_exhausted' : 'invalid_contract';
   const reason = stopReason === 'repair_unsafe' ? '返回为空或超出修复上限'
