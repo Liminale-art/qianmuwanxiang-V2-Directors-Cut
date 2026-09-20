@@ -238,6 +238,9 @@ test('actual extraction stops after three failed repairs with a concise notice, 
  assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.plan,quiet:true}),false);
  assert.equal(calls,4,'one initial extraction plus at most three format repairs');assert.equal(e.plan.status,'failed');assert.equal(e.state.prompt,'original prompt');
  assert.match(e.notices.at(-1),/已修复3次/);assert.equal(e.state.pendingCompilerStages[0].output.repairCalls,3);assert.equal(e.plan.shots.length,0);assert.equal(e.plan.manualReviewRequired,undefined);
+ assert.match(e.notices.at(-1),/返回不是有效 JSON/);
+ assert.equal(e.state.pendingCompilerStages[0].output.stopReason,'budget_exhausted');
+ assert.deepEqual([...e.state.pendingCompilerStages[0].output.reasonCodes],['json_syntax']);
 });
 
 test('an actual post-acceptance implementation failure is not disguised as stale input', async () => {

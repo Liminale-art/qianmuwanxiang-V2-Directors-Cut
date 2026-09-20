@@ -1135,12 +1135,44 @@ export async function repairStoryboardContract({raw,validation=null,request,opti
     repairBudgetUsed:budget.used,repairBudgetLimit:budget.limit,repairExhausted:!result.ok&&budget.remaining===0};
 }
 
+const contractFailureReasons = Object.freeze({
+  json_syntax: '返回不是有效 JSON', ambiguous_json: '返回包含多个 JSON 对象',
+  empty: '返回为空或缺少内容', max_bytes: '返回超过大小上限',
+  root_type: '返回顶层不是对象', schema: '返回协议版本不匹配',
+  required: '返回缺少必需字段', additional_property: '返回包含协议外字段',
+  type: '返回字段类型不正确', enum: '返回包含不支持的选项', range: '返回数值超出范围',
+  min_items: '返回条目不足', max_items: '返回条目过多', max_length: '返回字段过长',
+  character_cross_assignment: '角色特征归属不明确', duplicate_character: '角色重复',
+  global_character_pollution: '角色特征混入全局描述', overlapping_characters: '角色特征发生混用',
+  missing_character_state: '返回缺少角色状态', missing_character_update: '返回缺少角色更新',
+  missing_prompt_character: '画面描述缺少角色', unknown_character: '返回包含未定义角色',
+  unknown_prompt_character: '画面描述包含未定义角色', unknown_paragraph: '返回引用无效段落',
+  unknown_insert_anchor: '返回插入位置无效', insert_anchor_not_sourced: '插入位置不属于取景段落',
+  manual_insert_anchor: '补图插入位置不正确', manual_source_paragraph: '补图引用段落不正确',
+  manual_must_generate: '补图未返回画面', manual_single_shot: '补图返回镜头数不正确',
+  ratio_orientation: '画面比例与方向不匹配', skip_reason: '未说明跳过原因',
+  unexpected_shots: '跳过生成时仍返回了镜头', repair_request_failed: '格式修复请求失败',
+  invalid_contract: '提取格式未通过校验',
+});
+
+// Do not persist parser messages or paths: unexpected property names and JSON
+// syntax messages can contain the model's original prose or transport secrets.
 export function storyboardContractFailure(result){
-  const calls=Math.max(0,Math.min(3,Number(result?.repairCalls)||0));
-  const message=result?.errors?.some(error=>error.code==='repair_request_failed')?'格式修复请求失败，已停止提取'
-    :result?.repairSkipped==='unsafe_or_oversized'?'返回为空或超出修复上限，已停止提取'
-    :`提取格式未通过校验（已修复${calls}次），请检查模型或预设后重试`;
-  return Object.assign(new Error(message),{code:'storyboard_contract_failed',repairCalls:calls,repairBudgetUsed:result?.repairBudgetUsed||0});
+  const count = value => Number.isSafeInteger(value) ? Math.max(0, Math.min(3, value)) : 0;
+  const codes = errors => Object.freeze([...new Set((Array.isArray(errors) ? errors : [])
+    .slice(0, 24).map(error => Object.hasOwn(contractFailureReasons, error?.code) ? error.code : 'invalid_contract'))].slice(0, 12));
+  const calls = count(result?.repairCalls);
+  const reasonCodes = codes(result?.errors);
+  const stopReason = reasonCodes.includes('repair_request_failed') ? 'request_failed'
+    : result?.repairSkipped === 'unsafe_or_oversized' ? 'repair_unsafe'
+    : result?.repairExhausted ? 'budget_exhausted' : 'invalid_contract';
+  const reason = stopReason === 'repair_unsafe' ? '返回为空或超出修复上限'
+    : contractFailureReasons[reasonCodes[0] || 'invalid_contract'];
+  const diagnostic = Object.freeze({ repairCalls: calls, repairBudgetUsed: count(result?.repairBudgetUsed),
+    stopReason, reasonCodes, initialReasonCodes: codes(result?.originalErrors) });
+  const message = `${reason}（已修复${calls}次），已停止提取`;
+  return Object.assign(new Error(message), { code: 'storyboard_contract_failed', repairCalls: calls,
+    repairBudgetUsed: diagnostic.repairBudgetUsed, diagnostic });
 }
 
 export function createStoryboardContractManualFallback(context = {}, options = {}) {

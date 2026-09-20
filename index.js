@@ -19266,7 +19266,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       return false;
     }
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
-    if(error?.code==='storyboard_contract_failed')state.pendingCompilerStages=[{id:uid('stage-compiler'),type:'prompt_compiler',status:'failed',startedAt,finishedAt:Date.now(),output:{repairCalls:error.repairCalls},error:error.message}];
+    if(error?.code==='storyboard_contract_failed')state.pendingCompilerStages=[{id:uid('stage-compiler'),type:'prompt_compiler',status:'failed',startedAt,finishedAt:Date.now(),output:error.diagnostic,error:error.message}];
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
     if (!quiet||error?.code==='storyboard_contract_failed') toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return false;

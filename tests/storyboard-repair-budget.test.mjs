@@ -22,3 +22,27 @@ test('invalid budgets cannot bypass the cap and a spent budget does not invoke t
  for(const value of [-1,4,1.5,'3'])assert.throws(()=>budget(value));await assert.rejects(repair({raw:broken,budget:{remaining:99},request:()=>assert.fail()}));
  assert.equal((await repair({raw:broken,budget:budget(0),request:()=>assert.fail()})).repairCalls,0);
 });
+
+test('failure diagnostics explain validation without retaining model prose, property names or transport details',async()=>{
+ const privateText='private-narrative-or-key';
+ const error=failure({repairCalls:3,repairBudgetUsed:3,repairExhausted:true,
+  errors:[{code:'required',path:`$.${privateText}`,message:privateText},{code:privateText,message:privateText}],
+  originalErrors:[{code:'json_syntax',message:privateText}]});
+ assert.match(error.message,/缺少必需字段.*已修复3次/);
+ assert.deepEqual(error.diagnostic,{repairCalls:3,repairBudgetUsed:3,stopReason:'budget_exhausted',
+  reasonCodes:['required','invalid_contract'],initialReasonCodes:['json_syntax']});
+ assert.doesNotMatch(JSON.stringify(error),/private-narrative-or-key/);
+ assert.equal(Object.isFrozen(error.diagnostic),true);assert.equal(Object.isFrozen(error.diagnostic.reasonCodes),true);
+ const requestFailure=await repair({raw:broken,request:async()=>{throw new Error(privateText);}});
+ assert.equal(failure(requestFailure).diagnostic.stopReason,'request_failed');
+ assert.equal(failure(await repair({raw:'',request:()=>assert.fail()})).diagnostic.stopReason,'repair_unsafe');
+});
+
+test('diagnostic values are bounded and unknown codes including object prototype names stay generic',()=>{
+ for(const code of ['__proto__','constructor','toString',null,undefined]){
+  const error=failure({errors:[{code}],repairCalls:Infinity,repairBudgetUsed:'3'});
+  assert.deepEqual(error.diagnostic.reasonCodes,['invalid_contract']);assert.equal(error.repairCalls,0);assert.equal(error.repairBudgetUsed,0);
+ }
+ assert.deepEqual(failure({errors:Array.from({length:1000},()=>({code:'required'}))}).diagnostic.reasonCodes,['required']);
+ assert.match(failure().message,/未通过校验/);
+});
