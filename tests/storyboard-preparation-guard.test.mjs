@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
+import * as contractRuntime from '../qianmu-storyboard-contract.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {
@@ -193,7 +194,7 @@ for (const phase of ['before repair request', 'during repair request']) {
     const contract = {
       buildStoryboardPlanContractRequest: () => ({ messages: [], schema: {}, schemaId: 'test' }),
       parseStoryboardContractResponse: () => ({ ok: false, errors: ['invalid'] }),
-      repairStoryboardContractOnce: async ({ request }) => {
+      repairStoryboardContract: async ({ request }) => {
         if (phase === 'before repair request') { reached.resolve(); await gate.promise; }
         await request([]);
         return { ok: false };
@@ -229,6 +230,14 @@ test('safety repair cannot call a second LLM after a configuration change', asyn
   await tick(); e.state.promptCompiler.instructionPresetId = 'different'; gate.resolve();
   assert.equal((await work).safetyAborted, true);
   assert.equal(llmCalls, 1); guard.dispose();
+});
+
+test('actual extraction stops after three failed repairs with a concise notice, no candidate and unchanged previous draft',async()=>{
+ const e=environment();let calls=0;e.context.featureRuntime.load=async()=>contractRuntime;e.context.storyboardCallCompiler=async()=>{calls++;return '{ invalid';};
+ vm.runInContext(section('storyboardCompilerResult'),e.context);
+ assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.plan,quiet:true}),false);
+ assert.equal(calls,4,'one initial extraction plus at most three format repairs');assert.equal(e.plan.status,'failed');assert.equal(e.state.prompt,'original prompt');
+ assert.match(e.notices.at(-1),/已修复3次/);assert.equal(e.state.pendingCompilerStages[0].output.repairCalls,3);assert.equal(e.plan.shots.length,0);assert.equal(e.plan.manualReviewRequired,undefined);
 });
 
 test('an actual post-acceptance implementation failure is not disguised as stale input', async () => {

@@ -18852,7 +18852,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
     };
     const initial = contract.parseStoryboardContractResponse(rawText, contractOptions);
     let repairMessages = [];
-    const result = initial.ok ? initial : await contract.repairStoryboardContractOnce({
+    const result = initial.ok ? initial : await contract.repairStoryboardContract({
       raw: rawText,
       validation: initial,
       options: contractOptions,
@@ -18886,14 +18886,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
       repairResponse: String(result.repairedRaw || ''),
       parsedStructure: result.data || null,
     };
-    if (!result.ok) {
-      const fallback = contract.createStoryboardContractManualFallback(context, {
-        ratioId: state.compositionPolicy?.mode === 'fixed' ? state.compositionPolicy.fixedRatioId : '',
-      });
-      fallback.contractMeta = { ...contractMeta, fallback: 'manual_single' };
-      fallback.contractTrace = contractTrace;
-      return fallback;
-    }
+    if (!result.ok) throw contract.storyboardContractFailure(result);
     object = contract.adaptStoryboardPlanContract(result.data, {
       paragraphIndexById,
       fallbackParagraphIndex: context.forcedParagraphIndex,
@@ -19273,8 +19266,9 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       return false;
     }
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
+    if(error?.code==='storyboard_contract_failed')state.pendingCompilerStages=[{id:uid('stage-compiler'),type:'prompt_compiler',status:'failed',startedAt,finishedAt:Date.now(),output:{repairCalls:error.repairCalls},error:error.message}];
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
-    if (!quiet) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
+    if (!quiet||error?.code==='storyboard_contract_failed') toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return false;
   } finally {
     inputGuard.dispose();

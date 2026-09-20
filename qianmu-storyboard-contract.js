@@ -1108,6 +1108,41 @@ export async function repairStoryboardContractOnce({ raw, validation = null, req
   };
 }
 
+const repairBudgets=new WeakSet();
+export function createStoryboardRepairBudget(limit=3){
+  if(!Number.isSafeInteger(limit)||limit<0||limit>3)throw new Error('格式修复预算必须为0至3次');
+  let used=0;
+  const budget=Object.freeze({limit,get used(){return used;},get remaining(){return limit-used;},take(){if(used>=limit)return false;used++;return true;}});
+  repairBudgets.add(budget);return budget;
+}
+
+// Shared by focused extraction stages. Reserve synchronously before dispatch;
+// transport failures are not permission to retry a possibly accepted request.
+export async function repairStoryboardContract({raw,validation=null,request,options={},budget=createStoryboardRepairBudget()}={}){
+  if(!repairBudgets.has(budget))throw new Error('格式修复缺少有效共享预算');
+  const initial=validation||parseStoryboardContractResponse(raw,options);
+  let result=initial,source=String(raw||''),calls=0,repairedRaw='';
+  while(!result.ok&&budget.remaining>0){
+    result=await repairStoryboardContractOnce({raw:source,validation:result,options,request:typeof request==='function'?async messages=>{
+      if(!budget.take())throw new Error('格式修复预算已用尽');
+      return request(messages);
+    }:undefined});
+    calls+=result.repairCalls||0;
+    if(result.repairAttempted){repairedRaw=result.repairedRaw||'';source=repairedRaw;}
+    if(!result.repairAttempted||result.errors?.some(error=>error.code==='repair_request_failed'))break;
+  }
+  return {...result,requiresRepair:false,repairAttempted:calls>0,repairCalls:calls,originalErrors:initial.errors||[],repairedRaw,
+    repairBudgetUsed:budget.used,repairBudgetLimit:budget.limit,repairExhausted:!result.ok&&budget.remaining===0};
+}
+
+export function storyboardContractFailure(result){
+  const calls=Math.max(0,Math.min(3,Number(result?.repairCalls)||0));
+  const message=result?.errors?.some(error=>error.code==='repair_request_failed')?'格式修复请求失败，已停止提取'
+    :result?.repairSkipped==='unsafe_or_oversized'?'返回为空或超出修复上限，已停止提取'
+    :`提取格式未通过校验（已修复${calls}次），请检查模型或预设后重试`;
+  return Object.assign(new Error(message),{code:'storyboard_contract_failed',repairCalls:calls,repairBudgetUsed:result?.repairBudgetUsed||0});
+}
+
 export function createStoryboardContractManualFallback(context = {}, options = {}) {
   const paragraphs = Array.isArray(context.paragraphs)
     ? context.paragraphs.map((item) => String(item || '').trim().slice(0, 12000))
