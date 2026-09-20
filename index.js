@@ -222,6 +222,7 @@ import {
   normalizeStoryboardInlineOrder,
   normalizeStoryboardComfyPreparation,
   sortStoryboardInlineRecords,
+  storyboardInlineDisplayIndexes,
   storyboardInlineSlotKey,
   buildStoryboardInlineTasks,
   assertCharacterCastingSnapshots,
@@ -259,12 +260,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.226';
+} from './qianmu-storyboard.js?v=1.59.227';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.226';
+const VERSION = '1.59.227';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -21099,9 +21100,9 @@ function storyboardCurrentInlineTasks() {
   });
 }
 
-function storyboardInlineTaskMarkup(entry) {
+function storyboardInlineTaskMarkup(entry, displayIndex = entry.inlineOrder.shotIndex) {
   const order = entry.inlineOrder;
-  const position = `第 ${order.shotIndex + 1} 镜${order.requestIndex > 1 ? ` · 变体 ${order.requestIndex}` : ''}`;
+  const position = `第 ${displayIndex + 1} 镜${order.requestIndex > 1 ? ` · 变体 ${order.requestIndex}` : ''}`;
   return `<figure class="sd-storyboard-inline-task is-${htmlEscape(entry.status)}" data-storyboard-inline-slot="${htmlEscape(entry.slotKey)}" data-storyboard-task="${htmlEscape(entry.taskId)}" aria-busy="${['queued', 'generating'].includes(entry.status)}">
     <small>${htmlEscape(position)}</small><b role="status">${htmlEscape(entry.label)}</b>${entry.detail ? `<span>${htmlEscape(entry.detail)}</span>` : ''}
     <div class="sd-storyboard-inline-task-actions">${entry.action ? `<button type="button" data-storyboard-chat-action="${entry.action}">${entry.action === 'reprepare-task' ? '重新准备本镜' : entry.action === 'retry-task' ? '重试本镜' : '移出等待'}</button>` : ''}<button type="button" data-storyboard-chat-action="task-log">查看日志</button></div>
@@ -21214,6 +21215,7 @@ function storyboardRenderInlineImages(targetFloor = null) {
     const text = message?.querySelector('.mes_text');
     if (!message || !text) continue;
     const anchorGroups = new Map();
+    const displayIndexes = storyboardInlineDisplayIndexes([...group.records,...group.tasks]);
     for (const [record, kind] of [...group.records.map(record => [record, 'records']), ...group.tasks.map(task => [task, 'tasks'])]) {
       const index = Number(record.paragraphAnchor?.paragraphIndex ?? record.paragraphSelection?.insertAfterIndex ?? -1);
       const key = Number.isInteger(index) ? index : -1;
@@ -21231,7 +21233,7 @@ function storyboardRenderInlineImages(targetFloor = null) {
       items.records = sortStoryboardInlineRecords(items.records);
       const entries = sortStoryboardInlineRecords([...items.records, ...items.tasks]);
       const taskEntries = new Set(items.tasks);
-      const markup = `${items.records.length ? `<button type="button" class="sd-storyboard-inline-title" data-storyboard-chat-action="expand" title="展开正文插图" hidden><span class="sd-storyboard-inline-mark">${STORYBOARD_INLINE_MARK}</span><span class="sd-storyboard-inline-rule"></span><b>刻瞬于光</b><small>${items.records.length > 1 ? `${items.records.length} 幅画面` : '画面已折叠'}</small></button>` : ''}${entries.length ? `<div class="sd-storyboard-inline-reel">${entries.map(entry => taskEntries.has(entry) ? storyboardInlineTaskMarkup(entry) : storyboardInlineRecordMarkup(entry)).join('')}</div>` : ''}${items.plans.map(storyboardInlinePlaceholderMarkup).join('')}`;
+      const markup = `${items.records.length ? `<button type="button" class="sd-storyboard-inline-title" data-storyboard-chat-action="expand" title="展开正文插图" hidden><span class="sd-storyboard-inline-mark">${STORYBOARD_INLINE_MARK}</span><span class="sd-storyboard-inline-rule"></span><b>刻瞬于光</b><small>${items.records.length > 1 ? `${items.records.length} 幅画面` : '画面已折叠'}</small></button>` : ''}${entries.length ? `<div class="sd-storyboard-inline-reel">${entries.map(entry => taskEntries.has(entry) ? storyboardInlineTaskMarkup(entry, displayIndexes.get(entry)) : storyboardInlineRecordMarkup(entry)).join('')}</div>` : ''}${items.plans.map(storyboardInlinePlaceholderMarkup).join('')}`;
       const signature = JSON.stringify([markup, storyboardCollapsedInlineFloors.has(floor)]);
       const old = previous.get(JSON.stringify([String(floor), String(paragraphIndex)]));
       const sameOwner = old?.dataset.storyboardChatKey === currentChatKey;

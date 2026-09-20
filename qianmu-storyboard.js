@@ -501,7 +501,10 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
   for (const task of latest.values()) {
     const slotKey = storyboardInlineSlotKey(task.inlineOrder);
     if (!['queued', 'generating', 'failed'].includes(task.status)) continue;
-    const messageKey = JSON.stringify([task.messageRef.messageKey, task.messageRef.revisionId, task.messageRef.swipeId, task.messageRef.lastKnownFloor]);
+    const referenceProof=hasStoryboardStreamReference(task.messageRef)?normalizeStoryboardStreamReference(task.messageRef):null;
+    if(referenceProof)delete referenceProof.moment; // Same source prefix may serve several distinct visual subjects.
+    const messageKey = JSON.stringify([task.messageRef.messageKey, task.messageRef.revisionId, task.messageRef.swipeId, task.messageRef.lastKnownFloor,
+      referenceProof]);
     if (!resolvedMessages.has(messageKey)) resolvedMessages.set(messageKey, resolveStoryboardMessageReference(task.messageRef, chat, { chatKey }));
     const resolved = resolvedMessages.get(messageKey);
     if (resolved.state !== 'active') continue;
@@ -516,6 +519,7 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
     entries.push({ id: `inline-task:${task.id}`, taskId: task.id, logId: task.logId, planId: task.planId,
       slotKey, inlineOrder: normalizeStoryboardInlineOrder(task.inlineOrder), floor: resolved.floor, chatKey,
       messageHash: task.messageHash || '', swipeId: task.messageRef.swipeId,
+      ...(hasStoryboardStreamReference(task.messageRef) ? {messageRef:normalizeStoryboardMessageReference(task.messageRef)} : {}),
       paragraphAnchor: task.paragraphAnchor, paragraphSelection: task.paragraphSelection,
       imageIndex: Number.MAX_SAFE_INTEGER, createdAt: Number(task.requestedAt || 0),
       status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? (preparation?'本镜待选工作流':task.stage==='queue'&&log?.submissionState==='not_submitted'?'本镜尚未提交':'本镜生成失败') : status === 'queued' ? '等待生图' : stageLabel,
@@ -527,32 +531,93 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
   return entries;
 }
 
+function storyboardInlineStreamPosition(record, order) {
+  const ref=record.messageRef;
+  if(!order||!hasStoryboardStreamReference(ref))return null;
+  const proof=normalizeStoryboardStreamReference(ref),moment=proof.moment;
+  // P1…Pn are program-assigned source catalogue positions, never chronological
+  // dates or a model's guessed timeline. Flashbacks keep their place in the prose.
+  const match=/^P([1-9]\d{0,5})$/.exec(moment?.paragraphId||'');
+  if(proof.invalid||!match||order.batchId!==`stream-${proof.generationKey}`
+    ||record.chatKey!==ref.chatKey||Number(record.swipeId||0)!==ref.swipeId)return null;
+  return {scope:JSON.stringify([ref.chatKey,ref.messageKey,ref.swipeId,proof.generationKey]),
+    paragraph:Number(match[1]),start:moment.start,end:moment.end};
+}
+
+function storyboardOrderStreamInlineGroups(groups) {
+  if(!groups.some(group=>group.records.some(item=>item.position)))return groups;
+  const batches=new Map();
+  for(const [index,group] of groups.entries()){
+    if(!group.order)continue;
+    const row=group.records[0].record;
+    const key=JSON.stringify([row.chatKey||'',row.floor??null,row.swipeId??0,group.order.batchId,group.order.batchStartedAt]);
+    if(!batches.has(key))batches.set(key,[]);
+    batches.get(key).push({index,group});
+  }
+  for(const slots of batches.values()){
+    // Validate the whole bucket before reordering. A pairwise fallback comparator
+    // can be non-transitive when one old/imported shot has no source position.
+    let scope=null;
+    const valid=slots.every(({group})=>{
+      const first=group.records[0].position;if(!first)return false;
+      scope??=first.scope;
+      return first.scope===scope&&group.records.every(({position})=>position&&position.scope===scope
+        &&position.paragraph===first.paragraph&&position.start===first.start&&position.end===first.end);
+    });
+    if(!valid)continue;
+    const ordered=slots.map(({group})=>group).sort((a,b)=>{
+      const left=a.records[0].position,right=b.records[0].position;
+      return left.paragraph-right.paragraph||left.start-right.start||left.end-right.end||a.order.shotIndex-b.order.shotIndex;
+    });
+    slots.forEach(({index},position)=>{groups[index]=ordered[position];});
+  }
+  return groups;
+}
+
 export function sortStoryboardInlineRecords(records) {
   const groups = new Map();
   const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
   for (const [index, record] of (Array.isArray(records) ? records : []).entries()) {
     if (!obj(record)) continue;
     const order = normalizeStoryboardInlineOrder(record.inlineOrder);
+    const position = storyboardInlineStreamPosition(record,order);
     // Keep different messages/batches separate even when old imported ids collide.
-    const scope = [record.chatKey || '', record.floor ?? null, record.swipeId ?? 0, record.messageHash || ''];
+    const scope = [record.chatKey || '', record.floor ?? null, record.swipeId ?? 0,
+      position ? ['stream',position.scope] : record.messageHash || ''];
     const key = JSON.stringify([...scope, ...(order ? ['batch', order.batchId, order.shotIndex]
       : ['legacy', record.variantRootId || record.planShotId || record.groupId || record.id || index])]);
     if (!groups.has(key)) groups.set(key, { order, index, records: [] });
-    groups.get(key).records.push({ record, order, index });
+    groups.get(key).records.push({ record, order, index, position });
   }
-  return [...groups.values()].sort((left, right) => {
+  return storyboardOrderStreamInlineGroups([...groups.values()].sort((left, right) => {
     // Missing historical intent is not guessed from model, image or current plan. Keep those
     // groups in their existing order; newly frozen batches follow them in preparation order.
     if (!left.order || !right.order) return Number(Boolean(left.order)) - Number(Boolean(right.order)) || left.index - right.index;
     return left.order.batchStartedAt - right.order.batchStartedAt
       || compareText(left.order.batchId, right.order.batchId) || left.order.shotIndex - right.order.shotIndex;
-  }).flatMap(group => group.records.sort((left, right) => {
+  })).flatMap(group => group.records.sort((left, right) => {
     if (!group.order) return left.index - right.index;
     return left.order.requestIndex - right.order.requestIndex
       || (Number(left.record.imageIndex) || 0) - (Number(right.record.imageIndex) || 0)
       || (Number(left.record.createdAt) || 0) - (Number(right.record.createdAt) || 0)
       || compareText(String(left.record.id || ''), String(right.record.id || '')) || left.index - right.index;
   }).map(item => item.record));
+}
+
+export function storyboardInlineDisplayIndexes(records) {
+  const result=new Map(),batches=new Map();
+  if(!Array.isArray(records)||!records.some(record=>hasStoryboardStreamReference(record?.messageRef)))return result;
+  for(const record of sortStoryboardInlineRecords(records)){
+    const order=normalizeStoryboardInlineOrder(record.inlineOrder);
+    const position=storyboardInlineStreamPosition(record,order);
+    if(!position)continue;
+    const key=JSON.stringify([record.floor,position.scope,order.batchId,order.batchStartedAt]);
+    if(!batches.has(key))batches.set(key,new Map());
+    const shots=batches.get(key);
+    if(!shots.has(order.shotIndex))shots.set(order.shotIndex,shots.size);
+    result.set(record,shots.get(order.shotIndex));
+  }
+  return result;
 }
 
 function entityProfiles(value) {

@@ -5,7 +5,7 @@ import {EventEmitter} from 'node:events';
 import {compilerEnvironment,casting,response} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {applyCharacterCasting} from '../qianmu-character-casting.js';
-import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState} from '../qianmu-storyboard.js';
+import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState,sortStoryboardInlineRecords,buildStoryboardInlineTasks,storyboardInlineDisplayIndexes,storyboardProductionDeliveryPolicy} from '../qianmu-storyboard.js';
 import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 
@@ -267,6 +267,31 @@ test('actual final handoff fills only new scenes, persists final state and queue
   f.host.chat[0].mes+=' Another sentence.';
   await assert.rejects(q.admission.beforeSubmit(q.queue[1]),{code:'storyboard_stream_source'});
   await q.admission.beforeSubmit(q.queue[0]);
+});
+
+test('real early and final jobs deliver in prose order with normalized task markers and stable original queue identities',async()=>{
+  const f=await fixture({text:'Alice reads a letter in the kitchen.\n\nA mountain valley stretches into the sunlight.\n\nA broken'}),q=installStreamQueue(f);
+  Object.assign(f.context,{storyboardProductionDeliveryPolicy,storyboardItemCollectionIds:()=>[],uniqueClean:value=>value});
+  vm.runInContext(section('storyboardCreateRecord')+'\n'+section('storyboardInlineTaskMarkup'),f.context);
+  useShotSet(f,[1]);assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  const initial=q.queue[0],image=f.context.storyboardCreateRecord(initial,f.state.logs[0],'/user/images/early.png',0,{floor:0,message:f.host.chat[0],valid:true},{});
+  f.host.chat[0].mes=threeParagraphs.replace('\n\nUnfinished','');useShotSet(f,[0,1,2]);
+  assert.equal(await f.run({stream:{floor:0,complete:true}}),true,JSON.stringify(f.errors));
+  assert.deepEqual(q.queue.map(job=>job.messageRef.stream.moment.paragraphId),['P2','P1','P3']);
+  assert.deepEqual(q.queue.map(job=>job.inlineOrder.shotIndex),[0,1,2]);
+  const tasks=normalizeStoryboardState(copy(f.state)).taskStates;
+  const entries=buildStoryboardInlineTasks(tasks,{chatKey:'chat-a',chat:f.host.chat,records:[image],logs:f.state.logs,waitingIds:new Set(q.queue.map(job=>job.id))});
+  assert.equal(entries.length,2);
+  const sorted=sortStoryboardInlineRecords([image,...entries]);
+  assert.deepEqual(sorted.map(row=>row.messageRef.stream.moment.paragraphId),['P1','P2','P3']);
+  const indexes=storyboardInlineDisplayIndexes([image,...entries]);
+  assert.match(f.context.storyboardInlineTaskMarkup(sorted[0],indexes.get(sorted[0])),/第 1 镜/);
+  assert.equal(sorted[0].inlineOrder.shotIndex,1);assert.equal(initial.inlineOrder.shotIndex,0);
+  const last=q.queue[2],lastImage=f.context.storyboardCreateRecord(last,f.state.logs.find(log=>log.taskId===last.id),'/user/images/last.png',0,{floor:0,message:f.host.chat[0],valid:true},{});
+  assert.notEqual(image.messageHash,lastImage.messageHash);
+  delete image.snapshot;delete lastImage.snapshot;
+  assert.deepEqual(sortStoryboardInlineRecords([lastImage,image,sorted[0]]).map(row=>row.messageRef.stream.moment.paragraphId),['P1','P2','P3']);
+  assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);f.assertReleased();
 });
 
 test('final scoped preparation works when no partial image was ready and the last paragraph has no blank-line terminator',async()=>{
