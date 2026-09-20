@@ -8,6 +8,7 @@ import {applyCharacterCasting} from '../qianmu-character-casting.js';
 import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState,sortStoryboardInlineRecords,buildStoryboardInlineTasks,storyboardInlineDisplayIndexes,storyboardProductionDeliveryPolicy} from '../qianmu-storyboard.js';
 import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
+import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -153,7 +154,7 @@ function installStreamQueue(f){
   const store={close(){},claim:async(scope,input,seeds=[])=>run(scope,value=>claimImageAttempt(importImageAttempts(value,scope,seeds,now),scope,input,now)),
     begin:async(scope,input)=>run(scope,value=>beginImageAttempt(value,scope,input,now)),continue:async(scope,input)=>run(scope,value=>continueImageAttempt(value,scope,input,now)),
     settle:async(scope,input)=>run(scope,value=>settleImageAttempt(value,scope,input,now))};
-  const resolve=job=>resolveStoryboardMessageReference(job.messageRef,f.host.chat,{chatKey:'chat-a'});
+  const resolve=job=>resolveStoryboardMessageReference(job.messageRef,f.host.chat,{chatKey:'chat-a',namespace:'st-user:route-test',metadata:f.host.chatMetadata});
   const admission=createImageAdmission({store,account:async()=> 'st-user:route-test',ownerId:'stream-page',resolveSource:resolve});
   f.state.automation.autoCapture=true;f.state.automation.autoGenerate=true;f.state.connections.novel.draft.baseUrl='https://image.invalid';
   Object.assign(f.context,{STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardPlansForPortableExport:async plans=>copy(plans),storyboardDeletePlanArchives:async()=>{},
@@ -239,6 +240,124 @@ function useShotSet(f,indexes){
   };
 }
 const threeParagraphs='Alice reads a letter in the kitchen.\n\nA mountain valley stretches into the sunlight.\n\nA broken cup rests on the table.\n\nUnfinished';
+async function continueHost(f,text,{floor=0}={}){
+  const message=f.host.chat[floor],handle=captureStoryboardContinuation({type:'continue',getContext:()=>f.host,epoch:()=>0,createReference:createStoryboardMessageReference});
+  assert.ok(handle);assert.ok(text.startsWith(message.mes));message.mes=text;
+  message.gen_started+='-continue';message.send_date+='-continue';message.swipe_info=[{send_date:message.send_date,gen_started:message.gen_started,extra:{}}];
+  try{await saveStoryboardContinuation(handle,async()=>'st-user:route-test',f.host.chatMetadata.story_director_liminale,f.host.saveMetadata);}finally{handle.close();}
+}
+
+test('explicit continue reuses actual plan, occupied moments and admission budget while queue jobs keep fresh source proofs',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f);useShotSet(f,[0]);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));const old=copy(q.queue[0]),plan=f.state.shotPlans[0],planId=plan.id;
+  await continueHost(f,threeParagraphs.split('\n\n').slice(0,2).join('\n\n')+'\n\n');useShotSet(f,[0,1]);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,2);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);
+  const next=q.queue[1];assert.equal(plan.id,planId);assert.equal(plan.shots.length,2);assert.equal(new Set(plan.shots.map(row=>row.id)).size,2);assert.deepEqual(copy(q.queue[0]),old);
+  assert.equal(next.messageRef.stream.version,2);assert.notEqual(next.messageRef.messageKey,old.messageRef.messageKey);
+  assert.equal(next.messageRef.stream.family.reference.messageKey,old.messageRef.messageKey);assert.equal(next.imageAdmission.revisionId,old.imageAdmission.revisionId);
+  assert.equal(f.calls[2].payload.committed_images.length,1);assert.equal(f.calls[2].payload.constraints.committed_images.remaining,2);
+  await q.admission.beforeSubmit(next);await q.admission.beforeSubmit(q.queue[0]);f.assertReleased();
+});
+
+test('multiple explicit continues retain one original plan and sort actual normalized waiting entries by prose, not generation identity',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n').slice(0,2).join('\n\n')+'\n\n'}),q=installStreamQueue(f);useShotSet(f,[1]);
+  assert.equal(await f.run(),true);const original=copy(q.queue[0]);
+  await continueHost(f,threeParagraphs.replace('Unfinished','An ending.'));useShotSet(f,[0,1]);
+  assert.equal(await f.run({stream:{floor:0,complete:true}}),true,JSON.stringify(f.errors));
+  await continueHost(f,f.host.chat[0].mes+'\n\nLater.');useShotSet(f,[0,1,2]);
+  assert.equal(await f.run({stream:{floor:0,complete:true}}),true,JSON.stringify(f.errors));
+  assert.equal(q.queue.length,3);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);
+  assert.deepEqual(q.queue.map(row=>row.messageRef.stream.moment.paragraphId),['P2','P1','P3']);
+  const entries=buildStoryboardInlineTasks(normalizeStoryboardState(copy(f.state)).taskStates,{chatKey:'chat-a',chat:f.host.chat,metadata:f.host.chatMetadata,
+    logs:f.state.logs,records:[],waitingIds:new Set(q.queue.map(row=>row.id))});
+  assert.equal(entries.length,3);assert.deepEqual(sortStoryboardInlineRecords(entries).map(row=>row.messageRef.stream.moment.paragraphId),['P1','P2','P3']);
+  assert.deepEqual(copy(q.queue[0]),original);assert.equal(q.queue[2].messageRef.stream.family.reference.stream.version,1);
+  assert.equal(q.queue[2].messageRef.stream.family.reference.messageKey,original.messageRef.messageKey);f.assertReleased();
+});
+
+test('finished continuation discovers old-key stream history before the ordinary automatic path and remains notification-idempotent',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+  const final=installFinalNotifications(f);assert.equal(await final.run(),false);const previous=copy(f.state.shotPlans[0].streamFinalCapture);
+  await continueHost(f,threeParagraphs.replace('\n\nUnfinished',''));useShotSet(f,[0,1,2]);
+  assert.equal(await final.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,3);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);
+  assert.notEqual(f.state.shotPlans[0].streamFinalCapture.sourceRevisionId,previous.sourceRevisionId);assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete');
+  const count=f.counts.requests;assert.equal(await final.run(),false);assert.equal(f.counts.requests,count);f.assertReleased();
+});
+
+test('a fully occupied original budget still blocks continued shots before expression without creating another plan',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f);f.state.generationPolicy.maxImages=1;useShotSet(f,[0]);assert.equal(await f.run(),true);
+  await continueHost(f,threeParagraphs.replace('\n\nUnfinished',''));useShotSet(f,[0]);const final=installFinalNotifications(f);
+  assert.equal(await final.run(),false,JSON.stringify(f.errors));assert.equal(f.counts.requests,3);assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);
+  assert.equal(f.calls[2].payload.constraints.max_shots,0);assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete');
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,3);f.assertReleased();
+});
+
+test('an original plan survives explicitly unsubmitted failure even with zero occupied slots, but missing delivery evidence is not free capacity',async()=>{
+  for(const missing of [false,true]){
+    const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+    const plan=f.state.shotPlans[0],id=plan.id;
+    if(missing)f.state.logs=[];
+    else{const old=q.queue.shift();await q.admission.settle(old,'not_submitted');Object.assign(f.state.logs[0],{status:'failed',submissionState:'not_submitted'});plan.shots[0].status='failed';plan.status='failed';}
+    await continueHost(f,threeParagraphs.split('\n\n').slice(0,2).join('\n\n')+'\n\n');useShotSet(f,[1]);
+    assert.equal(await f.run(),!missing,JSON.stringify(f.errors));assert.equal(f.state.shotPlans.length,1);assert.equal(plan.id,id);assert.equal(q.rows.size,1);
+    if(!missing){assert.equal(q.queue.at(-1).messageRef.stream.version,2);assert.equal(plan.shots.length,2);assert.equal(f.calls[2].payload.constraints.committed_images.occupied,0);}
+    else{assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);}
+    f.assertReleased();
+  }
+});
+
+test('continuation with missing, duplicate, corrupt or manually cancelled original plan cannot fall back to a new automatic plan',async()=>{
+  for(const mode of ['missing','duplicate','cancelled','bad-id','bad-digest']){
+    const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+    await continueHost(f,threeParagraphs.replace('\n\nUnfinished',''));useShotSet(f,[0,1]);const final=installFinalNotifications(f);
+    if(mode==='missing')f.state.shotPlans=[];
+    if(mode==='duplicate')f.state.shotPlans.push({...copy(f.state.shotPlans[0]),id:'duplicate'});
+    if(mode==='cancelled')f.state.shotPlans[0].status='cancelled';
+    if(mode==='bad-id')f.state.shotPlans[0].id='unrelated-plan';
+    if(mode==='bad-digest')f.host.chatMetadata.story_director_liminale.storyboardContinuations[0].digest='a'.repeat(64);
+    assert.equal(await final.run(),false,JSON.stringify(f.errors));assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);f.assertReleased();
+  }
+});
+
+test('changing the saved append relation during expression cannot submit a new continuation job or replace the old plan',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+  const before=copy(f.state.shotPlans[0]);await continueHost(f,threeParagraphs.split('\n\n').slice(0,2).join('\n\n')+'\n\n');useShotSet(f,[1]);
+  f.modelHook=({reply,payload,options})=>{
+    if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
+      const {prompt_atoms,prompt_renderings,...shot}=response().shots[1],quote=payload.source_catalogue[0].passages[1].text,anchor={floor:0,branch_id:'present',paragraph_id:'P2',quote};
+      reply.shots=[{...shot,state_point:{branchId:'present',paragraphId:'P2',evidence:quote},stream_support:{scene:anchor,content:anchor,presence:[]}}];
+    }else{reply.shots=payload.shots.map(row=>({shot_id:row.shot_id,prompt_atoms:response().shots[1].prompt_atoms,prompt_renderings:response().shots[1].prompt_renderings}));delete f.host.chatMetadata.story_director_liminale.storyboardContinuations;}
+  };
+  assert.equal(await f.run(),false);assert.equal(q.queue.length,1);assert.deepEqual(copy(f.state.shotPlans[0]),before);f.assertReleased();
+});
+
+test('continued planning respects a locked/manual-review original plan before making another model request',async()=>{
+  for(const flag of ['promptLocked','manualReviewRequired']){
+    const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f);assert.equal(await f.run(),true);
+    await continueHost(f,threeParagraphs.split('\n\n').slice(0,2).join('\n\n')+'\n\n');f.state.shotPlans[0][flag]=true;useShotSet(f,[1]);
+    assert.equal(await f.run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);f.assertReleased();
+  }
+});
+
+test('serialized and lightweight archived original plans keep their identity when continued jobs are prepared',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+  const final=installFinalNotifications(f),original=copy(f.state.shotPlans[0]),archive='original-stream-archive';
+  f.state.shotPlans=[f.context.storyboardPlanLightweightSummary(original,archive)];f.state.shotPlans=normalizeStoryboardState(copy(f.state)).shotPlans;
+  f.context.storyboardPlansForPortableExport=async()=>[copy(original)];
+  await continueHost(f,threeParagraphs.replace('\n\nUnfinished',''));useShotSet(f,[0,1,2]);
+  assert.equal(await final.run(),true,JSON.stringify(f.errors));const plan=f.state.shotPlans[0];
+  assert.equal(plan.id,original.id);assert.equal(plan.revisionId,original.revisionId);assert.equal(plan.shots.length,3);assert.equal(plan.shots[0].prompt,original.shots[0].prompt);
+  assert.equal(q.rows.size,1);assert.equal(q.queue[1].messageRef.stream.version,2);f.assertReleased();
+});
+
+test('actual continuation coverage on a high-floor chat reads only the selected context and target source, not unrelated prose',async()=>{
+  const f=await fixture({floor:3999,text:'Alice reads a letter in the kitchen.\n\n'}),q=installStreamQueue(f);
+  for(let n=0;n<3997;n++)Object.defineProperty(f.host.chat[n],'mes',{get(){assert.fail('unselected earlier prose read');}});
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  await continueHost(f,f.host.chat[3999].mes+'A new scene.\n\n',{floor:3999});
+  assert.equal(await f.run(),false,JSON.stringify(f.errors));assert.equal(f.counts.requests,3);assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);
+  assert.deepEqual(f.calls[2].payload.source_catalogue.map(row=>row.floor),[3997,3998,3999]);f.assertReleased();
+});
 
 test('later stream frames append one new shot to the same plan and ledger without replacing accepted shots',async()=>{
   const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0]);

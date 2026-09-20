@@ -1,4 +1,5 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,storyboardStreamGeneration,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.231';
+import {normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.232';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.232';
 import {assertStoryboardStreamMoment,createStoryboardStreamMoment,storyboardStreamMomentsOverlap} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 const coverages=new WeakMap();
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -10,26 +11,56 @@ const occupied=row=>Boolean(row.url)||['queued','generating','success','complete
 // Use compact references retained in both logs and archived gallery indices.
 // Completed, accepted and uncertain work all occupies its original slot. This
 // is a planner view of the existing admission ledger, not a parallel counter.
-export async function readStoryboardStreamCoverage(window,rows,{message,namespace,resolve}={}){
-  window.assertCurrent();if(!Array.isArray(rows)||rows.length>2000)fail();
-  const current=window.current.messageRef,generation=JSON.stringify(storyboardStreamGeneration(message)),pins=new Map();let family=null;
+export async function readStoryboardStreamCoverage(window,rows,{message,namespace,resolve,continuationLinks,plans=[]}={}){
+  window.assertCurrent();if(!Array.isArray(rows)||rows.length>2000||!Array.isArray(plans)||plans.length>300)fail();
+  const current=window.current.messageRef,lineage=createStoryboardStreamLineage(current,message,continuationLinks,namespace),pins=new Map();let family=null;
+  const remember=ref=>{
+    const root=storyboardStreamBudgetReference(ref,namespace);
+    if(family&&(family.messageKey!==root.messageKey||family.revisionId!==root.revisionId))fail();
+    if(!family)family={namespace,chatKey:root.chatKey,messageKey:root.messageKey,revisionId:root.revisionId,generationKey:root.stream.generationKey,reference:copy(root)};
+    return root;
+  };
+  let matchingPlans=0;const selectedPlans=[],coveredSlots=new Set(),unsubmittedSlots=new Set();
+  for(const plan of plans){
+    if(plan?.origin!=='automatic'||!lineage.matches(plan.messageRef))continue;
+    const root=storyboardStreamBudgetReference(plan.messageRef,namespace);
+    if(++matchingPlans>1||plan.chatKey!==current.chatKey||plan.id!==`stream-${root.stream.generationKey}`||plan.revisionId!==root.revisionId
+      ||plan.status==='cancelled'||plan.promptLocked||plan.manualReviewRequired)fail();
+    await window.guard();await verifyStoryboardStreamReference(plan.messageRef,()=>resolve(plan.messageRef));window.assertCurrent();remember(plan.messageRef);
+    selectedPlans.push(plan);
+  }
   for(const row of rows){
-    if(!row||!occupied(row))continue;
+    if(!row)continue;
     const job=row.snapshot||row,ref=job.messageRef||row.messageRef,admission=job.imageAdmission||row.imageAdmission;
-    if(!hasStoryboardStreamReference(ref)||ref.chatKey!==current.chatKey||ref.messageKey!==current.messageKey)continue;
-    const proof=normalizeStoryboardStreamReference(ref);if(proof.invalid)fail();
-    if(JSON.stringify(proof.generation)!==generation)continue;
-    if(admission?.automaticSlot===false||job.automatic===false)continue;
-    if(admission?.version!==1||admission.automaticSlot!==true||admission.namespace!==namespace||admission.chatKey!==ref.chatKey||admission.messageKey!==ref.messageKey
-      ||admission.revisionId!==ref.revisionId||!/^[a-f0-9]{64}$/.test(admission.logicalShotId||''))fail();
+    const slot=job.planId&&job.planShotId?JSON.stringify([job.planId,job.planShotId]):'';
+    if(!occupied(row)){
+      if(slot&&row.submissionState==='not_submitted'&&['failed','cancelled'].includes(row.status)&&lineage.matches(ref)){
+        await verifyStoryboardStreamReference(ref,()=>resolve(ref));window.assertCurrent();unsubmittedSlots.add(slot);
+      }
+      continue;
+    }
+    if(!lineage.matches(ref))continue;
+    const proof=normalizeStoryboardStreamReference(ref);
+    if(admission?.automaticSlot===false||job.automatic===false&&admission?.automaticSlot!==true)continue;
+    const root=storyboardStreamBudgetReference(ref,namespace);
+    if(admission?.version!==1||admission.automaticSlot!==true||admission.namespace!==namespace||admission.chatKey!==root.chatKey||admission.messageKey!==root.messageKey
+      ||admission.revisionId!==root.revisionId||!/^[a-f0-9]{64}$/.test(admission.logicalShotId||''))fail();
     if(!pins.size)await window.guard();
     await verifyStoryboardStreamReference(ref,()=>resolve(ref));window.assertCurrent();
     const moment=assertStoryboardStreamMoment(proof.moment,window),id=admission.logicalShotId,old=pins.get(id);
     if(old&&JSON.stringify(old.moment)!==JSON.stringify(moment))fail();
     pins.set(id,{id,moment});if(pins.size>4)fail();
-    if(!family)family={namespace,chatKey:ref.chatKey,messageKey:ref.messageKey,revisionId:ref.revisionId,generationKey:proof.generationKey};
+    if(slot)coveredSlots.add(slot);
+    remember(ref);
   }
-  window.assertCurrent();if(!pins.size)return null;await window.guard();
+  // A retained plan with missing delivery/log evidence is not an empty budget.
+  // Keep the plan and stop; never reinterpret archive loss as permission to draw.
+  for(const plan of selectedPlans)for(const shot of plan.shots||[]){
+    const slot=JSON.stringify([plan.id,shot.id]);
+    const activeOrDelivered=shot.resultIds?.length||['queued','generating','completed','success'].includes(shot.status);
+    if(!coveredSlots.has(slot)&&(activeOrDelivered||Number(shot.attempt)>0&&(!unsubmittedSlots.has(slot)||Number(shot.attempt)>1)))fail();
+  }
+  window.assertCurrent();if(!family)return null;await window.guard();
   // A budget family is NOT proof for the text of a later new shot. Its creator
   // must capture a fresh prefix/final source proof before image admission.
   const coverage=freeze({version:1,scope:family,pins:[...pins.values()]});coverages.set(coverage,window);return coverage;

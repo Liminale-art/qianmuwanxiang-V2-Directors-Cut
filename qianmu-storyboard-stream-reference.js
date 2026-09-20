@@ -2,7 +2,7 @@
 // The cheap fingerprint is for synchronous UI linking. Paid dispatch verifies
 // both SHA-256 proofs again against the actual selected ST message.
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.231';
+import {storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.232';
 const fail=()=>{throw Object.assign(new Error('流式原文或回复身份已变化，未继续提交'),{code:'storyboard_stream_source'});};
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const fields=['sentAt','startedAt','id','activeSentAt','activeId'];

@@ -1,5 +1,5 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture} from './qianmu-storyboard-stream-reference.js?v=1.59.231';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.231';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.232';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.232';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -536,12 +536,13 @@ function storyboardInlineStreamPosition(record, order) {
   const ref=record.messageRef;
   if(!order||!hasStoryboardStreamReference(ref))return null;
   const proof=normalizeStoryboardStreamReference(ref),moment=proof.moment;
+  const root=proof.invalid?null:storyboardStreamBudgetReference(ref);
   // P1…Pn are program-assigned source catalogue positions, never chronological
   // dates or a model's guessed timeline. Flashbacks keep their place in the prose.
   const match=/^P([1-9]\d{0,5})$/.exec(moment?.paragraphId||'');
-  if(proof.invalid||!match||order.batchId!==`stream-${proof.generationKey}`
+  if(proof.invalid||!match||order.batchId!==`stream-${root.stream.generationKey}`
     ||record.chatKey!==ref.chatKey||Number(record.swipeId||0)!==ref.swipeId)return null;
-  return {scope:JSON.stringify([ref.chatKey,ref.messageKey,ref.swipeId,proof.generationKey]),
+  return {scope:JSON.stringify([root.chatKey,root.messageKey,root.swipeId,root.stream.generationKey]),
     paragraph:Number(match[1]),start:moment.start,end:moment.end};
 }
 

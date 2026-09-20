@@ -1,34 +1,45 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.231';
-import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.231';
-import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.231';
-import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.231';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.232';
+import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.232';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.232';
+import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.232';
+import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.232';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
 import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
-import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.231';
+import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.232';
 import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
-export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.231';
+export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.232';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
 const windows = new WeakMap();
-export async function captureStoryboardStreamCoverage(window,rows){
-  if(!Array.isArray(rows))throw changed();
-  if(!rows.some(row=>hasStoryboardStreamReference(row?.snapshot?.messageRef||row?.messageRef)))return null;
+export async function captureStoryboardStreamCoverage(window,rows,plans=[]){
+  if(!Array.isArray(rows)||!Array.isArray(plans)||rows.length>2000||plans.length>300)throw changed();
+  if(![...rows,...plans].some(row=>hasStoryboardStreamReference(row?.snapshot?.messageRef||row?.messageRef)))return null;
   const scope=windows.get(window);if(!scope)throw changed();window.assertCurrent();
-  return readStoryboardStreamCoverage(window,rows,{message:scope.getContext().chat[window.floor],namespace:scope.namespace,
+  return readStoryboardStreamCoverage(window,rows,{message:scope.getContext().chat[window.floor],namespace:scope.namespace,plans,
+    continuationLinks:readStoryboardContinuationLinks(scope.getContext().chatMetadata?.story_director_liminale),
     resolve:ref=>resolveStoryboardMessageReference(ref,scope.getContext().chat,{chatKey:window.current.messageRef.chatKey,namespace:scope.namespace,metadata:scope.getContext().chatMetadata})});
+}
+async function bindCoverageReference(reference,window,coverage){
+  const scope=windows.get(window),family=storyboardStreamCoverageScope(coverage,window);
+  if(!scope)throw changed();
+  if(!family)return reference;
+  if(family.namespace!==scope.namespace||family.chatKey!==reference.chatKey)throw changed();
+  const result=await bindStoryboardStreamBudgetFamily(reference,family.reference,scope.namespace,
+    ref=>resolveStoryboardMessageReference(ref,scope.getContext().chat,{chatKey:reference.chatKey,namespace:scope.namespace,metadata:scope.getContext().chatMetadata}));
+  await window.guard();return Object.freeze({...result,stream:Object.freeze(result.stream)});
 }
 export async function prepareStoryboardStreamHandoff(result,context,frame){
   if(!windows.has(context.compilerSources))throw changed();
-  const messageRef=result.shouldGenerate?(frame?await createStoryboardStreamMessageReference(frame)
+  const messageRef=result.shouldGenerate?(frame?await bindCoverageReference(await createStoryboardStreamMessageReference(frame),context.compilerSources,context.streamCoverage)
     :await createStoryboardFinalStreamReference(context.compilerSources,context.streamCoverage)):null;
   return {result,messageRef,shotReferences:bindStoryboardStreamShotReferences(messageRef,result,context.compilerSources)};
 }
 export async function createStoryboardFinalStreamReference(window,coverage=null){
   const scope=windows.get(window);
   if(!scope||window.stream)throw changed();
-  const family=storyboardStreamCoverageScope(coverage,window);
+  storyboardStreamCoverageScope(coverage,window);
   await window.guard();
   const message=scope.getContext().chat[window.floor],raw=message?.mes,ref={...window.current.messageRef};
   if(typeof raw!=='string'||!raw.length||raw.length>200000)throw Object.assign(new Error('终稿正文超过可核对范围，未截断或提交'),{code:'storyboard_stream_source'});
@@ -36,11 +47,10 @@ export async function createStoryboardFinalStreamReference(window,coverage=null)
   const [prefixDigest,generationKey]=await Promise.all([storyboardStreamDigest(raw),storyboardStreamDigest(storyboardStreamGenerationInput(ref,generation))]);
   await window.guard();
   if(scope.getContext().chat[window.floor]!==message||message.mes!==raw)throw changed();
-  if(family&&(family.namespace!==scope.namespace||family.chatKey!==ref.chatKey||family.messageKey!==ref.messageKey||family.generationKey!==generationKey))throw changed();
   ref.revisionHash=storyboardStreamFingerprint(raw);ref.revisionId=`stream:${generationKey}`;
   ref.stream={version:1,generation:Object.freeze(generation),generationKey,prefixLength:raw.length,prefixHash:ref.revisionHash,prefixDigest,complete:true};
   if(normalizeStoryboardStreamReference(ref).invalid)throw Object.assign(new Error('当前终稿缺少稳定的生成身份，未提交补图'),{code:'storyboard_stream_source'});
-  return Object.freeze({...ref,stream:Object.freeze(ref.stream)});
+  return bindCoverageReference(Object.freeze({...ref,stream:Object.freeze(ref.stream)}),window,coverage);
 }
 const exact = (value,keys) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).length === keys.length && Object.keys(value).every(key=>keys.includes(key));

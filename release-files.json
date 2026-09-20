@@ -429,6 +429,7 @@
     "qianmu-storyboard-compiler-sources.js",
     "qianmu-storyboard-stream-source.js",
     "qianmu-storyboard-stream-reference.js",
+    "qianmu-storyboard-stream-lineage.js",
     "qianmu-storyboard-stream-moment.js",
     "qianmu-storyboard-stream-coverage.js",
   "qianmu-storyboard-compiler-result.js",

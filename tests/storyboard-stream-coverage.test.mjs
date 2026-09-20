@@ -4,7 +4,7 @@ import {EventEmitter} from 'node:events';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {normalizeStoryboardMessageReference,sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
 import {createStoryboardStreamMoment} from '../qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.231';
+import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.232';
 import {resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
 import {response as sample} from './helpers/comfy-compiler-fixture.mjs';
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -112,6 +112,14 @@ test('manual work, rejected unsubmitted work and another chat or generation do n
   const f=await fixture(),manual=f.history(0,{automaticSlot:false}),rejected=f.history(1,{status:'failed',submissionState:'not_submitted'}),foreign=f.history(2);
   foreign.snapshot.messageRef.chatKey='elsewhere';const old=f.history(0);old.snapshot.messageRef.stream.generation.startedAt='older';
   assert.equal(await contract.captureStoryboardStreamCoverage(f.window,[manual,rejected,foreign,old]),null);f.close();
+});
+
+test('manual redraw of an originally automatic shot still represents its existing slot, not a new manual slot or free capacity',async()=>{
+  const f=await fixture(),original=f.history(0),redraw=copy(original);redraw.id='manual-redraw';redraw.snapshot.automatic=false;
+  redraw.snapshot.imageAdmission.attemptId='manual-attempt';
+  const coverage=await contract.captureStoryboardStreamCoverage(f.window,[original,redraw]);assert.equal(coverage.pins.length,1);
+  const retained=await contract.captureStoryboardStreamCoverage(f.window,[redraw]);assert.equal(retained.pins.length,1);
+  redraw.snapshot.imageAdmission.automaticSlot=false;assert.equal(await contract.captureStoryboardStreamCoverage(f.window,[redraw]),null);f.close();
 });
 
 test('source proof, moment, account and compact receipt mismatches fail before any compiler call, not a new free budget',async()=>{

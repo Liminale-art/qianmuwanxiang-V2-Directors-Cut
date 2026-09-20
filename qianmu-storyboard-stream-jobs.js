@@ -1,6 +1,7 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.232';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -18,7 +19,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
   let plan, existing=false, restored=null, planSnapshot='';
   const valid = () => inputGuard.isCurrent() && state === d.storyboardState() && state.enabled
     && state.automation.autoCapture && state.automation.autoGenerate && chatKey === String(d.getChatKey() || '')
-    && plan?.status !== 'cancelled';
+    && plan?.status !== 'cancelled' && !plan?.promptLocked && !plan?.manualReviewRequired;
   const check = async () => {
     inputGuard.assertCurrent();
     if (!valid()) throw stop('自动生成或当前任务已变化，未继续提交');
@@ -40,6 +41,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
         startedAt:Date.now(),finishedAt:Date.now(),input:prepared.compilerInput,
         output:{contract:result.contractMeta,trace:result.contractTrace,streaming:true},decisions:result.decisions || [],error:''})],
     };
+    const budgetRef=storyboardStreamBudgetReference(messageRef);
     const refs = new Map(result.shots.map((shot,index)=>[shot.id,shotReferences[index]]));
     if (refs.size !== result.shots.length) throw stop('流式镜头编号重复，未提交');
     const {planned,coverage} = d.storyboardPrepareDraftGroup(projected);
@@ -47,11 +49,13 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     for (const shot of planned) {
       const ref=refs.get(shot.id);
       if (!ref?.stream?.moment || ref.revisionId !== messageRef.revisionId || ref.messageKey !== messageRef.messageKey
-        || ref.chatKey !== chatKey || ref.stream.prefixDigest !== messageRef.stream.prefixDigest) throw stop('流式镜头来源不一致，未提交');
+        || ref.chatKey !== chatKey || ref.stream.prefixDigest !== messageRef.stream.prefixDigest
+        || JSON.stringify(ref.stream.family)!==JSON.stringify(messageRef.stream.family)) throw stop('流式镜头来源不一致，未提交');
     }
-    const planId = `stream-${messageRef.stream.generationKey}`;
+    const planId = `stream-${budgetRef.stream.generationKey}`;
     plan = state.shotPlans.find(row=>row.id===planId);
-    if (plan && (plan.chatKey !== chatKey || plan.revisionId !== messageRef.revisionId || plan.origin !== 'automatic')) throw stop('流式任务归属不一致，未提交');
+    if (!plan&&(context.streamCoverage||messageRef.stream.family))throw stop('原流式计划缺失，未另建自动任务');
+    if (plan && (plan.chatKey !== chatKey || plan.revisionId !== budgetRef.revisionId || plan.origin !== 'automatic')) throw stop('流式任务归属不一致，未提交');
     existing=Boolean(plan);
     if (existing) planSnapshot=JSON.stringify(plan);
     if (plan?.archiveRef) {
@@ -65,7 +69,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     const dropped = !existing && state.shotPlans.length >= 300
       ? [...state.shotPlans].reverse().filter(d.storyboardPlanIsTerminal).slice(0,state.shotPlans.length-299) : [];
     if (!existing && state.shotPlans.length-dropped.length >= 300) throw stop('任务记录暂满，请等待已有任务结束，未提交');
-    plan ||= d.createStoryboardWorkflowTicket({id:planId,messageRef,chatKey,floor:context.floor,origin:'automatic',autoGenerate:true,createdAt:Date.now()});
+    plan ||= d.createStoryboardWorkflowTicket({id:planId,messageRef:budgetRef,chatKey,floor:context.floor,origin:'automatic',autoGenerate:true,createdAt:Date.now()});
     const newShots = planned.map((shot,index)=>({id:shot.id,title:shot.title || `镜头 ${offset+index+1}`,shotType:shot.shotType || 'custom',
       role:shot.role || 'custom',purpose:shot.purpose || '',prompt:String(shot.prompt || ''),negative:String(shot.negative || ''),
       // Only the existing queue may promote this row to queued. If preparation
@@ -119,7 +123,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       state.shotPlans=[plan,...state.shotPlans.filter(row=>!removed.has(row))];
       if (dropped.length) void Promise.resolve(d.storyboardDeletePlanArchives(dropped)).catch(()=>{});
     }
-    Object.assign(plan,{messageRef:copy(messageRef),floor:context.floor,status:'prompt_ready',autoGenerate:true,
+    Object.assign(plan,{messageRef:copy(budgetRef),floor:context.floor,status:'prompt_ready',autoGenerate:true,
       shots:[...(restored?.shots || plan.shots || []),...newShots],updatedAt:Date.now(),
       continuityLedger:copy(coverage.continuityLedger || {}),continuityLedgerLayer:coverage.continuityLedgerLayer});
     // Retain the previous archive as recovery data until the next terminal
