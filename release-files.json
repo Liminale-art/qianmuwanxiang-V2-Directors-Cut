@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-storyboard-source-proof.js",
     "qianmu-hive-ownership.js",
     "qianmu-idle-preload.js",
     "qianmu-main-tabs.js",
