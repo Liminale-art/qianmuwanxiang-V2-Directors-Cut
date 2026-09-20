@@ -3,6 +3,18 @@ const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=m
 const hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const stop=()=>{throw Object.assign(new Error('续写来源未能完整核对，未沿用旧任务身份'),{code:'storyboard_continuation'});};
 const fields=['sentAt','startedAt','id','activeSentAt','activeId'];
+const sourceFields=['messageKey','revisionId','revisionHash','swipeId','baseSendDate','baseGenerationId'];
+export function storyboardContinuationSource(reference){
+  const source=Object.fromEntries(sourceFields.map(key=>[key,reference?.[key]]));
+  if(!text(source.messageKey,80)||!Number.isSafeInteger(source.swipeId)||source.swipeId<0||source.swipeId>10000
+    ||!['revisionId','revisionHash'].every(key=>/^[a-f0-9]{8}$/.test(source[key]||''))
+    ||typeof source.baseSendDate!=='string'||source.baseSendDate.length>160||typeof source.baseGenerationId!=='string'||source.baseGenerationId.length>120
+    ||!(source.baseSendDate||source.baseGenerationId)||/[\u0000-\u001f\u007f]/.test(source.baseSendDate+source.baseGenerationId))stop();
+  return source;
+}
+export const storyboardContinuationIdentityInput=row=>JSON.stringify([row.namespace,row.chatKey,row.from,row.to,row.digest,...(row.version===2?[row.source]:[])]);
+export const storyboardContinuationSourceMatches=(ref,row)=>row.version===2&&ref?.role==='assistant'&&ref.chatKey===row.chatKey&&ref.name===row.name
+  &&sourceFields.every(key=>ref[key]===row.source[key]);
 const provisional=new WeakMap();
 export const storyboardContinuationSavePending=store=>Boolean(store&&provisional.has(store));
 export function readStoryboardContinuationLinks(store){
@@ -30,13 +42,20 @@ export function normalizeStoryboardContinuationLinks(value){
   if(!Array.isArray(value)||value.length>400)stop();
   const ids=new Set(),outgoing=new Set();
   const rows=value.map(raw=>{
-    if(!object(raw)||raw.version!==1||!hex(raw.id)||!text(raw.chatKey,512)||!text(raw.namespace,512)||!raw.namespace.startsWith('st-user:')||!raw.namespace.slice(8).trim()
+    if(!object(raw)||![1,2].includes(raw.version)||!hex(raw.id)||!text(raw.chatKey,512)||!text(raw.namespace,512)||!raw.namespace.startsWith('st-user:')||!raw.namespace.slice(8).trim()
       ||typeof raw.name!=='string'||raw.name.length>120||!Number.isSafeInteger(raw.createdAt)||raw.createdAt<1
       ||!Number.isSafeInteger(raw.length)||raw.length<1||raw.length>200000||!hex(raw.digest)||!/^[a-f0-9]{8}$/.test(raw.hash||''))stop();
     const from=storyboardContinuationEndpoint(raw.from),to=storyboardContinuationEndpoint(raw.to),key=JSON.stringify([raw.namespace,raw.chatKey,storyboardContinuationSignature(from)]);
     if(from.swipeId!==to.swipeId||storyboardContinuationSignature(from)===storyboardContinuationSignature(to)||ids.has(raw.id)||outgoing.has(key))stop();
+    let source;
+    if(raw.version===1&&Object.hasOwn(raw,'source'))stop();
+    if(raw.version===2){
+      if(!object(raw.source)||Object.keys(raw.source).length!==sourceFields.length||Object.keys(raw.source).some(key=>!sourceFields.includes(key)))stop();
+      source=storyboardContinuationSource(raw.source);
+      if(source.messageKey!==from.messageKey||source.swipeId!==from.swipeId||source.revisionHash!==raw.hash)stop();
+    }
     ids.add(raw.id);outgoing.add(key);
-    return {version:1,id:raw.id,namespace:raw.namespace,chatKey:raw.chatKey,name:raw.name,from,to,length:raw.length,hash:raw.hash,digest:raw.digest,createdAt:raw.createdAt};
+    return {version:raw.version,id:raw.id,namespace:raw.namespace,chatKey:raw.chatKey,name:raw.name,from,to,length:raw.length,hash:raw.hash,digest:raw.digest,createdAt:raw.createdAt,...(source?{source}:{})};
   });
   if(new TextEncoder().encode(JSON.stringify(rows)).length>524288)stop();
   return rows;

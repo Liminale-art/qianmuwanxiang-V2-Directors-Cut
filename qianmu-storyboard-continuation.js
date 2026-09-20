@@ -1,9 +1,9 @@
 // Only an observed host "continue" may bridge reply generations. No text-only
 // guessing, changes to ST's timestamps/body, copied prose in metadata or HTTP.
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {normalizeStoryboardContinuationLinks,storyboardContinuationEndpoint as endpoint,storyboardContinuationSignature as signature,stageStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.233';
-export {normalizeStoryboardContinuationLinks,storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.233';
-import {storyboardStreamGeneration,storyboardStreamDigest,storyboardStreamFingerprint} from './qianmu-storyboard-stream-reference.js?v=1.59.233';
+import {normalizeStoryboardContinuationLinks,storyboardContinuationEndpoint as endpoint,storyboardContinuationSignature as signature,stageStoryboardContinuationLinks,storyboardContinuationSource,storyboardContinuationIdentityInput} from './qianmu-storyboard-continuation-proof.js?v=1.59.234';
+export {normalizeStoryboardContinuationLinks,storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.234';
+import {storyboardStreamGeneration,storyboardStreamDigest,storyboardStreamFingerprint} from './qianmu-storyboard-stream-reference.js?v=1.59.234';
 const handles=new WeakMap(),writers=new WeakMap();
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);
@@ -43,7 +43,7 @@ export function captureStoryboardContinuation({type,dryRun=false,signal,getConte
       }
     }
     check();handle=Object.freeze({floor,close,assertCurrent:check});
-    handles.set(handle,{host,getContext,createReference,message,raw,name,from,check});return handle;
+    handles.set(handle,{host,getContext,createReference,message,raw,name,from,source:storyboardContinuationSource(before),check});return handle;
   }catch(error){close();throw error;}
 }
 
@@ -56,9 +56,9 @@ export async function prepareStoryboardContinuation(handle,resolveNamespace){
   const to=endpoint({messageKey:ref.messageKey,swipeId:ref.swipeId,generation:storyboardStreamGeneration(source.message)});
   if(signature(source.from)===signature(to))return null; // Host has not updated the generation yet.
   const digest=await storyboardStreamDigest(source.raw);source.check();
-  const row={version:1,namespace,chatKey:source.host.source.chatKey,name:source.name,from:copy(source.from),to,
+  const row={version:2,namespace,chatKey:source.host.source.chatKey,name:source.name,from:copy(source.from),to,source:copy(source.source),
     length:source.raw.length,hash:storyboardStreamFingerprint(source.raw),digest,createdAt:Date.now()};
-  row.id=await storyboardStreamDigest(JSON.stringify([namespace,row.chatKey,row.from,to,digest]));source.check();
+  row.id=await storyboardStreamDigest(storyboardContinuationIdentityInput(row));source.check();
   if(signature(to)!==signature({messageKey:source.createReference({message:source.message,chatKey:row.chatKey,floor:handle.floor}).messageKey,
     swipeId:source.message.swipe_id??0,generation:storyboardStreamGeneration(source.message)}))stop();
   if(namespace!==await resolveNamespace())stop();source.check();

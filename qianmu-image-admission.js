@@ -1,6 +1,7 @@
 import { createImageAttemptStore } from './qianmu-image-attempt-store.js';
 import { imageAttemptScopeKey } from './qianmu-image-attempts.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.233';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.234';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.234';
 
 const error = (code, message) => Object.assign(new Error(message), { code: `image_attempt_${code}` });
 const MESSAGES = {
@@ -112,7 +113,7 @@ export async function createImageHistorySeeds(rows, identity) {
 }
 
 export function createImageAdmission({ store = createImageAttemptStore(), account = resolveImageAccountNamespace,
-  ownerId = globalThis.crypto?.randomUUID?.(), confirm = async () => false, resolveHistoryReviews = async (_scope, seeds) => seeds, resolveSource } = {}) {
+  ownerId = globalThis.crypto?.randomUUID?.(), confirm = async () => false, resolveHistoryReviews = async (_scope, seeds) => seeds, resolveSource, resolveContinuation=resolveSource } = {}) {
   const receipts = new WeakMap(), preparing = new WeakSet(), live = new Set();
   let closed = false;
   const current = (valid) => { if (closed || !valid()) throw error('cancelled', '生图上下文已变化，未继续提交'); };
@@ -122,10 +123,11 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       preparing.add(job);
       let receipt;
       try {
-        const streamReference=hasStoryboardStreamReference(job.messageRef)?canonical(job.messageRef):'';
+        const sourceReference=job.messageRef?.messageKey?canonical(job.messageRef):'';
         current(valid);
         if(hasStoryboardStreamReference(job.messageRef))await verifyStoryboardStreamReference(job.messageRef,resolveSource&&(()=>resolveSource(job)));
         const identity = await createImageAdmissionIdentity(job, await account());
+        const continuedSource=!hasStoryboardStreamReference(job.messageRef)&&await verifyStoryboardOrdinaryContinuation(job.messageRef,resolveContinuation&&(()=>resolveContinuation(job)),{namespace:identity.scope.namespace});
         let seeds = await createImageHistorySeeds(history, identity);
         if (seeds.some(seed => seed.serviceBacked && ['unknown','accepted'].includes(seed.status))) {
           seeds = await resolveHistoryReviews(identity.scope, seeds);
@@ -147,9 +149,11 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
           }
         }
         if (!decision.ok) throw error(decision.code, MESSAGES[decision.code] || '未取得本次生图授权，请核查原任务');
-        receipt = { ...identity, attemptId: input.attemptId, ownerId, begun: false, streamReference };
+        receipt = { ...identity, attemptId: input.attemptId, ownerId, begun: false, sourceReference, continuedSource };
         current(valid);
-        if(streamReference&&canonical(job.messageRef)!==streamReference)throw error('identity','流式任务来源已变化，未提交');
+        if(continuedSource)await verifyStoryboardOrdinaryContinuation(job.messageRef,()=>resolveContinuation(job),{namespace:identity.scope.namespace,required:true});
+        current(valid);
+        if(sourceReference&&canonical(job.messageRef)!==sourceReference)throw error('identity','生图任务来源已变化，未提交');
         receipts.set(job, receipt);
         live.add(job);
         job.imageAdmission = { version: 1, ...identity.scope, logicalShotId: identity.logicalShotId,
@@ -166,16 +170,19 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       const receipt = receipts.get(job);
       current(valid);
       if (!receipt) throw error('missing_reservation', '生图请求缺少有效授权，未继续提交');
-      if(receipt.streamReference&&canonical(job.messageRef)!==receipt.streamReference)throw error('identity','流式任务来源已变化，未提交');
+      if(receipt.sourceReference&&canonical(job.messageRef)!==receipt.sourceReference)throw error('identity','生图任务来源已变化，未提交');
       if (await account() !== receipt.scope.namespace) throw error('account_changed', 'ST 账户已变化，未继续提交');
       if(hasStoryboardStreamReference(job.messageRef))await verifyStoryboardStreamReference(job.messageRef,resolveSource&&(()=>resolveSource(job)));
+      else receipt.continuedSource=await verifyStoryboardOrdinaryContinuation(job.messageRef,resolveContinuation&&(()=>resolveContinuation(job)),{namespace:receipt.scope.namespace,required:receipt.continuedSource});
       current(valid);
-      if(receipt.streamReference&&canonical(job.messageRef)!==receipt.streamReference)throw error('identity','流式任务来源已变化，未提交');
+      if(receipt.sourceReference&&canonical(job.messageRef)!==receipt.sourceReference)throw error('identity','生图任务来源已变化，未提交');
       const decision = await store[receipt.begun ? 'continue' : 'begin'](receipt.scope, receipt);
       if (!decision.ok) throw error(decision.code, '生图授权已失效，未继续提交');
       receipt.begun = true;
       current(valid);
-      if(receipt.streamReference&&canonical(job.messageRef)!==receipt.streamReference)throw error('identity','流式任务来源已变化，未提交');
+      if(receipt.continuedSource)await verifyStoryboardOrdinaryContinuation(job.messageRef,()=>resolveContinuation(job),{namespace:receipt.scope.namespace,required:true});
+      current(valid);
+      if(receipt.sourceReference&&canonical(job.messageRef)!==receipt.sourceReference)throw error('identity','生图任务来源已变化，未提交');
     },
     async settle(job, outcome) {
       const receipt = receipts.get(job);

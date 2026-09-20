@@ -1,5 +1,6 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.233';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.233';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.234';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.234';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.234';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -20,8 +21,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.233';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.233';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.234';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.234';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -2293,6 +2294,13 @@ export function normalizeStoryboardMessageReference(value) {
   };
 }
 
+export function resolveStoryboardOrdinaryMessageContinuation(value,chat,options={}) {
+  const reference=normalizeStoryboardMessageReference(value);
+  if(reference.chatKey&&options.chatKey&&reference.chatKey!==options.chatKey)return {state:'foreign'};
+  return resolveStoryboardOrdinaryContinuation(reference,Array.isArray(chat)?chat:[],createStoryboardMessageReference,
+    {...options,continuationLinks:Object.hasOwn(options,'continuationLinks')?options.continuationLinks:readStoryboardContinuationLinks(options.metadata?.story_director_liminale)});
+}
+
 export function resolveStoryboardMessageReference(value, chat, options = {}) {
   const reference = normalizeStoryboardMessageReference(value);
   const currentChatKey = str(options.chatKey, 512);
@@ -2302,6 +2310,8 @@ export function resolveStoryboardMessageReference(value, chat, options = {}) {
   const messages = Array.isArray(chat) ? chat : [];
   if(hasStoryboardStreamReference(reference))return resolveStoryboardStreamReference(reference,messages,createStoryboardMessageReference,
     {...options,continuationLinks:Object.hasOwn(options,'continuationLinks')?options.continuationLinks:readStoryboardContinuationLinks(options.metadata?.story_director_liminale)});
+  const continued=resolveStoryboardOrdinaryMessageContinuation(reference,messages,options);
+  if(continued)return continued;
   const candidates = [];
   messages.forEach((message, floor) => {
     if (!obj(message)) return;

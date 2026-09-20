@@ -1,7 +1,7 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.233';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.233';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.233';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.233';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.234';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.234';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.234';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.234';
 
 // Finished host notifications share the existing automatic-capture queue. A
 // persisted final-pass marker prevents repeated notifications/reloads from
@@ -15,10 +15,14 @@ export async function finishStoryboardStreamCapture(ticket,d){
   let outcome=null,attemptError=null,attempted=false,marker,plan,namespace;
   try{
     const refs=[...state.shotPlans.map(row=>row.messageRef),...state.logs.map(row=>row.snapshot?.messageRef),...d.storyboardGalleryRecords().map(row=>row.messageRef)];
-    if(!refs.some(ref=>hasStoryboardStreamReference(ref)&&ref.chatKey===ticket.chatKey))return null;
     if(refs.length>2000||state.shotPlans.length>300)throw Error('流式任务记录超过核对范围，未新增自动生成');
     const links=()=>readStoryboardContinuationLinks(d.getContext().chatMetadata?.story_director_liminale);
-    const candidates=refs.filter(createStoryboardStreamLineage(messageRef,message,links()).matches);
+    const currentLineage=createStoryboardStreamLineage(messageRef,message,links());
+    // Ordinary old revisions are now readable, but their plan/coverage adapter
+    // is separate. Never interpret one as a fresh automatic floor budget.
+    if(refs.some(ref=>!hasStoryboardStreamReference(ref)&&currentLineage.matchesOrdinary(ref)))throw Error('本层续写关联旧版镜头计划，自动补景尚未接妥；旧图保留，未另开额度');
+    if(!refs.some(ref=>hasStoryboardStreamReference(ref)&&ref.chatKey===ticket.chatKey))return null;
+    const candidates=refs.filter(currentLineage.matches);
     if(!candidates.length)return null; // Ordinary finished-floor behavior remains unchanged.
     if(!ticket.autoGenerate||!state.automation.autoGenerate)return false;
     namespace=await d.resolveNamespace();

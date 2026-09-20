@@ -6,7 +6,7 @@ import * as core from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {captureStoryboardContinuation as capture,prepareStoryboardContinuation as prepare,saveStoryboardContinuation as save,normalizeStoryboardContinuationLinks as normalize,storyboardContinuationPath as path} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardMessageReference as reference,resolveStoryboardMessageReference as resolve,normalizeStoryboardMessageReference as normalizeRef} from '../qianmu-storyboard.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.233';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.234';
 import {storyboardStreamGeneration as generation,storyboardStreamDigest as digest,storyboardStreamFingerprint as fingerprint,storyboardStreamGenerationInput,verifyStoryboardStreamReference as verify} from '../qianmu-storyboard-stream-reference.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
@@ -91,12 +91,14 @@ test('explicit recorded lineage resolves old stream images after send-date and g
   assert.equal(f.resolve(restored,links).continuations.length,1);f.message.mes='X'+f.message.mes.slice(1);assert.equal(f.resolve(restored,links).state,'stale');
 });
 
-test('ordinary completed references remain strict while an explicitly continued complete stream proof may retain its original prefix',async()=>{
+test('saved v2 bridges retain both exact ordinary revisions and complete stream proofs; v1 never invents ordinary ownership',async()=>{
   const f=fixture(),ordinary=reference({message:f.message,chatKey:'chat',floor:0}),full=copy(ordinary),raw=f.message.mes;
   const g=generation(f.message),key=await digest(storyboardStreamGenerationInput(full,g));full.revisionHash=fingerprint(raw);full.revisionId=`stream:${key}`;
   full.stream={version:1,generation:g,generationKey:key,prefixLength:raw.length,prefixHash:full.revisionHash,prefixDigest:await digest(raw),complete:true};
   const handle=f.capture();f.advance();await f.save(handle);handle.close();assert.equal(f.resolve(full).state,'active');await verify(full,()=>f.resolve(full));
-  assert.notEqual(f.resolve(ordinary).state,'active');assert.notEqual(f.resolve(full,[]).state,'active');
+  assert.equal(f.resolve(ordinary).state,'active');assert.notEqual(f.resolve(full,[]).state,'active');
+  const legacy=copy(f.store.storyboardContinuations);for(const row of legacy){row.version=1;delete row.source;row.id=await digest(JSON.stringify([row.namespace,row.chatKey,row.from,row.to,row.digest]));}
+  assert.notEqual(f.resolve(ordinary,legacy).state,'active');assert.equal(f.resolve(full,legacy).state,'active');await verify(full,()=>f.resolve(full,legacy));
 });
 
 test('multiple explicit continuations preserve one source lineage without relaxing edits, namespace or swipe boundaries',async()=>{
@@ -115,7 +117,7 @@ test('weak UI fingerprints never authorize a tampered digest, link id, or changi
 
 test('duplicate, shrinking, cyclic, future and excessive link histories stop instead of guessing or clearing',async()=>{
   const f=fixture(),ref=await f.stream(),handle=f.capture();f.advance();const link=await prepare(handle,f.account);handle.close();
-  for(const links of [null,{},[link,link],[{...link,version:2}],[{...link,length:200001}],[{...link,to:{...link.to,swipeId:1}}],
+  for(const links of [null,{},[link,link],[{...link,version:99}],[{...link,length:200001}],[{...link,to:{...link.to,swipeId:1}}],
     [{...link,to:link.from}],[{...link,namespace:''}],Array.from({length:401},()=>link)])assert.throws(()=>normalize(links));
   assert.throws(()=>path(ref,[{...link,length:1}]));
   assert.throws(()=>path(ref,[link,{...link,id:'a'.repeat(64),from:link.to,to:link.from}]));

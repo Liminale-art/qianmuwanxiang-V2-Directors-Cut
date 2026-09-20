@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStoryboardMessageReference as reference} from '../qianmu-storyboard.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {stageStoryboardContinuationLinks} from '../qianmu-storyboard-continuation-proof.js?v=1.59.233';
+import {stageStoryboardContinuationLinks} from '../qianmu-storyboard-continuation-proof.js?v=1.59.234';
 import {readStoryboardFloorTakeSourceKeys as read} from '../qianmu-storyboard-floor-take-source.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve};};
@@ -72,6 +72,6 @@ test('prefix edits and forged SHA or bridge identity fail before final account I
     const f=await fixture(),link=f.host.chatMetadata.story_director_liminale.storyboardContinuations[0];
     f.api.namespace=()=>assert.fail('bad proof must fail first');
     if(field==='text')f.message.mes=f.message.mes.replace('Alice','Carol');else link[field]='a'.repeat(field==='hash'?8:64);
-    await assert.rejects(f.read(),{code:'storyboard_retake_source'});
+    await assert.rejects(f.read(),{code:field==='hash'?'storyboard_continuation':'storyboard_retake_source'});
   }
 });

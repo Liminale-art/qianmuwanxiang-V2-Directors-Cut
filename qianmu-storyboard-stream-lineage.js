@@ -1,5 +1,5 @@
-import {normalizeStoryboardContinuationLinks,storyboardContinuationSignature as signature} from './qianmu-storyboard-continuation-proof.js?v=1.59.233';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.233';
+import {normalizeStoryboardContinuationLinks,storyboardContinuationSignature as signature,storyboardContinuationSourceMatches} from './qianmu-storyboard-continuation-proof.js?v=1.59.234';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.234';
 const fail=()=>{throw Object.assign(new Error('续写任务的原始归属无法唯一核对，未新增自动生成'),{code:'storyboard_stream_lineage'});};
 
 // A bounded metadata-only candidate index. This is deliberately not source or
@@ -18,7 +18,7 @@ export function createStoryboardStreamLineage(current,message,links,namespace){
     if(following&&row.length>following.length||endpoints.has(signature(row.from)))fail();
     endpoint=row.from;following=row;path.push(row);endpoints.add(signature(endpoint));keys.add(endpoint.messageKey);
   }
-  return Object.freeze({namespace,links:Object.freeze(path.reverse()),matches(ref){
+  return Object.freeze({namespace,links:Object.freeze(path.reverse()),matchesOrdinary:ref=>path.some(row=>storyboardContinuationSourceMatches(ref,row)),matches(ref){
     if(!hasStoryboardStreamReference(ref)||ref.chatKey!==current.chatKey||ref.name!==current.name||ref.role!=='assistant'||!keys.has(ref.messageKey))return false;
     const proof=normalizeStoryboardStreamReference(ref);if(proof.invalid)fail();
     return endpoints.has(signature({messageKey:ref.messageKey,swipeId:ref.swipeId,generation:proof.generation}));

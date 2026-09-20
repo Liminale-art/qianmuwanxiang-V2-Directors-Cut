@@ -9,8 +9,8 @@ import {migrateQianmuChatStoreV2} from '../qianmu-data-migrations.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.233';
-import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.233';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.234';
+import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.234';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
 const ref=core.createStoryboardMessageReference({chatKey:'chat',floor:0,message:{mes:'Alice cooks.',send_date:'synthetic',swipe_id:0}});
@@ -124,18 +124,19 @@ async function entryFixture(){
     deliver:job=>e.context.storyboardDeliverGatewayResult(job,null,{images:[{url:'/synthetic.png'}]},{service:true})};
 }
 
-async function continuedEntryFixture(){
+async function continuedEntryFixture(ordinary=false){
   const e=await entryFixture(),host=e.context.ctx(),message=host.chat[0];
   Object.assign(message,{name:'Alice',send_date:'day-1',gen_started:'generation-1',swipe_id:0});
   const options={getContext:()=>host,epoch:()=>0,resolveNamespace:async()=>'st-user:route-test',isCurrent:()=>true,floor:0,createReference:core.createStoryboardMessageReference};
   const source=async()=>{const frame=await captureStoryboardStreamFrame(options);try{return await createStoryboardStreamMessageReference(frame);}finally{frame.close();}};
-  message.mes+='\n\n';const original=await source();e.gallery[0].messageRef=copy(original);e.gallery[0].taskId='original-delivered';
+  message.mes+='\n\n';const original=ordinary?core.createStoryboardMessageReference({message,chatKey:'chat-a',floor:0}):await source();e.gallery[0].messageRef=copy(original);e.gallery[0].taskId='original-delivered';
   Object.assign(e.oldPlan,{messageRef:copy(original),revisionId:original.revisionId});
   const handle=captureStoryboardContinuation({...options,type:'continue'});message.mes+='The light dims.\n\n';
   Object.assign(message,{send_date:'day-2',gen_started:'generation-2',swipe_info:[{send_date:'day-2',gen_started:'generation-2',extra:{}}]});
   try{await saveStoryboardContinuation(handle,options.resolveNamespace,host.chatMetadata.story_director_liminale,async()=>{});}finally{handle.close();}
   const resolve=reference=>core.resolveStoryboardMessageReference(reference,host.chat,{chatKey:'chat-a',namespace:'st-user:route-test',metadata:host.chatMetadata});
-  const continued=await bindStoryboardStreamBudgetFamily(await source(),original,'st-user:route-test',resolve);
+  if(ordinary)message.mes=message.mes.trimEnd();
+  const continued=ordinary?core.createStoryboardMessageReference({message,chatKey:'chat-a',floor:0}):await bindStoryboardStreamBudgetFamily(await source(),original,'st-user:route-test',resolve);
   // ST trims terminal whitespace at completion; the simplified compiler fixture
   // treats every split segment as a paragraph and must not invent an empty one.
   message.mes=message.mes.trimEnd();
@@ -157,6 +158,14 @@ test('actual continued floor retake captures both key generations, commits toget
   assert.deepEqual(e.gallery.slice(0,2).map(row=>({...copy(row),inline:true})),old);
   assert.equal(e.history.length,2);assert.ok(e.history.every(row=>row.version===1&&!Object.hasOwn(row,'messageKeys')));
   assert.deepEqual(new Set(e.history.map(row=>row.messageKey)),new Set(take.messageKeys));
+});
+
+test('actual ordinary-source continued retake preserves old-generation originals until all new images have been saved',async()=>{
+  const e=await continuedEntryFixture(true),before=e.gallery.map(copy);assert.equal(e.resolve(e.original).ordinaryContinuation,true);
+  assert.equal(await e.click(),true,JSON.stringify(e.notices));assert.deepEqual(e.jobs[0].floorTake.baselineIds,['previous-image','continued-image']);
+  await e.deliver(e.jobs[0]);assert.ok(e.gallery.slice(0,2).every(row=>row.inline));
+  await e.deliver(e.jobs[2]);await e.deliver(e.jobs[1]);assert.ok(e.gallery.slice(0,2).every(row=>!row.inline));
+  assert.deepEqual(e.gallery.slice(0,2).map(row=>({...copy(row),inline:true})),before);assert.equal(e.history.length,2);
 });
 
 test('late old-key and continued-key receipts remain gallery-only after deleting the whole replacement, while new user work stays independent',async()=>{

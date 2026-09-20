@@ -2,7 +2,7 @@
 // The cheap fingerprint is for synchronous UI linking. Paid dispatch verifies
 // both SHA-256 proofs again against the actual selected ST message.
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.233';
+import {storyboardContinuationPath,storyboardContinuationIdentityInput} from './qianmu-storyboard-continuation-proof.js?v=1.59.234';
 const fail=()=>{throw Object.assign(new Error('流式原文或回复身份已变化，未继续提交'),{code:'storyboard_stream_source'});};
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const fields=['sentAt','startedAt','id','activeSentAt','activeId'];
@@ -150,7 +150,7 @@ export async function verifyStoryboardStreamReference(ref,resolve){
     ||await storyboardStreamDigest(storyboardStreamGenerationInput(ref,proof.generation))!==proof.generationKey)fail();
   for(const {link,prefix} of bridges){
     if(await storyboardStreamDigest(prefix)!==link.digest
-      ||await storyboardStreamDigest(JSON.stringify([link.namespace,link.chatKey,link.from,link.to,link.digest]))!==link.id)fail();
+      ||await storyboardStreamDigest(storyboardContinuationIdentityInput(link))!==link.id)fail();
   }
   if(proof.family)await verifyStoryboardStreamReference(proof.family.reference,()=>resolve()?.family);
   const after=resolve();
