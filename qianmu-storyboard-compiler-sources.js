@@ -49,7 +49,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
   }
   const host = captureCurrentChatSource({getContext,epoch});
   const start = Math.max(0,floor-referenceFloors), slots = [], sources = [], messages = [], listeners = [];
-  const emitter = getContext().eventSource, remove = typeof emitter?.removeListener === 'function' ? emitter.removeListener : emitter?.off;
+  let emitter,remove;
   let closed = false, namespace, handle;
   const close = () => { closed = true; windows.delete(handle); host.close(); for (const source of sources) source.close(); signal?.removeEventListener('abort',close);stream?.close();
     for (const [type,handler] of listeners.splice(0)) { try { remove.call(emitter,type,handler); } catch (_) {} } };
@@ -68,6 +68,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
     } catch (_) { close(); throw changed(); }
   };
   try {
+    emitter=getContext().eventSource;remove=typeof emitter?.removeListener==='function'?emitter.removeListener:emitter?.off;
     signal?.addEventListener('abort',close,{once:true});
     assertCurrent();
     const chat = getContext().chat;

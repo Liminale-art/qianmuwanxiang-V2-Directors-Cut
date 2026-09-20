@@ -428,6 +428,7 @@
     "qianmu-storyboard-contract.js",
     "qianmu-storyboard-compiler-sources.js",
     "qianmu-storyboard-stream-source.js",
+    "qianmu-storyboard-stream-readiness.js",
     "qianmu-storyboard-continuity-store.js",
     "qianmu-storyboard-focused-extraction.js",
     "qianmu-storyboard-focused-input.js",

@@ -12,14 +12,16 @@ const record=(floor,events=[])=>({floor,roster:roster(),events});
 const link=(from,to,facts=[{source_floor:from,event_id:'coat',subject_id:'A'}])=>({from_floor:from,from_branch:'now',to_floor:to,to_branch:'now',evidence:{paragraph_id:'P1',quote:'A continues chatting.'},facts});
 const plain=value=>JSON.parse(JSON.stringify(value));
 
-async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],providerId='novel',promptFormats,maxShots=3,metadata}={}){
+async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],providerId='novel',promptFormats,maxShots=3,metadata,stream=false}={}){
   let active=true,saves=0,account='st-user:synthetic',saveHook=null;
   const host={chatId:'synthetic',characterId:0,characters:[{avatar:'A.png',chat:'synthetic'}],chatMetadata:metadata||{story_director_liminale:{}},
     chat:texts.map((mes,index)=>({mes,name:'A',is_user:index%2===1,send_date:String(index)})),async saveMetadata(){saves++;if(saveHook)await saveHook();}};
   const floor=texts.length-1;
-  const window=await contract.captureStoryboardCompilerSources({floor,referenceFloors:floor,getContext:()=>host,epoch:()=>0,
+  const sourceOptions={floor,referenceFloors:floor,getContext:()=>host,epoch:()=>0,
     isCurrent:()=>active,resolveNamespace:async()=>account,readText:message=>message.mes,
-    readParagraphs:message=>message.mes.split('\n\n').map((text,index)=>({id:`P${index+1}`,text}))});
+    readParagraphs:message=>message.mes.split('\n\n').filter(text=>text.trim()).map((text,index)=>({id:`P${index+1}`,text}))};
+  const streamFrame=stream?await contract.captureStoryboardStreamFrame(sourceOptions):null;
+  const window=await contract.captureStoryboardCompilerSources({...sourceOptions,streamFrame});
   const store=contract.openStoryboardCompilerContinuity(window);
   const context={floor,messages:window.messages,paragraphs:window.paragraphs,currentCharacter:'Alice stable appearance',persona:'user description',world:'selected world',
     compilerSources:window,continuity:await store.read()};
@@ -51,6 +53,105 @@ test('actual two steps retain full selected input once, lock all shot facts and 
   assert.equal(f.request.schema.properties.shots.maxItems,3);assert.ok(Object.isFrozen(result.trace.narrative));
   const final=JSON.parse(result.raw);assert.equal(final.schema,contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID);
   assert.deepEqual(final.shots[0].composition,before.shots[0].composition);assert.deepEqual(final.shots[0].characters,before.shots[0].characters);f.close();
+});
+
+const streamAnchor=(floor,quote,paragraph_id='P1',branch_id='now')=>({floor,branch_id,paragraph_id,quote});
+function streamSupport(f,{scene,content,presence}={}){
+  const quote=f.window.paragraphs[0],anchor=streamAnchor(f.context.floor,quote);
+  f.narrative.shots[0].stream_support={scene:scene||anchor,content:content||anchor,presence:presence||[{character_id:'A',source:anchor}]};
+}
+
+test('streaming director keeps the complete input but only releases closed grounded moments to expression',async()=>{
+  const f=await fixture({stream:true,texts:['A removes the coat in the kitchen.\n\nA reaches toward']});streamSupport(f);
+  const payload=JSON.parse(f.request.messages[1].content);
+  assert.match(f.request.messages[1].content,/A reaches toward/);assert.deepEqual(payload.constraints.streaming.closed_target_paragraph_ids,['P1']);
+  assert.equal(payload.constraints.min_shots_target,0);assert.equal(payload.constraints.max_shots,3);
+  assert.ok(f.request.schema.properties.shots.items.required.includes('stream_support'));
+  f.host.chat[0].mes+=' the cup.';
+  const result=await f.run();assert.equal(f.calls.length,1);assert.equal(f.saves,0);assert.equal(result.meta.persistence.status,'deferred');
+  assert.equal(result.trace.narrative.shots[0].stream_support.content.quote,'A removes the coat in the kitchen.');
+  assert.equal(JSON.parse(result.raw).shots[0].stream_support,undefined);assert.equal(JSON.parse(f.calls[0].messages[1].content).shots[0].plan.stream_support,undefined);
+  assert.doesNotMatch(f.calls[0].messages[1].content,/A reaches toward/);f.close();
+});
+
+test('uncertain streaming scenes can wait with zero shots, no expression request, no repair and no provisional ST write',async()=>{
+  const f=await fixture({stream:true,texts:['Someone pauses.\n\nThey might be']});
+  Object.assign(f.narrative,{should_generate:false,skip_reason:'人物在场尚不明确，等待后续正文',shots:[]});
+  const result=await f.run();assert.equal(result.meta.repairCalls,0);assert.equal(f.calls.length,0);assert.equal(f.saves,0);
+  assert.equal(JSON.parse(result.raw).should_generate,false);assert.equal(result.meta.persistence.status,'deferred');f.close();
+});
+
+test('streaming still life is independent of a cast roster but still requires current content and scene evidence',async()=>{
+  const f=await fixture({stream:true,texts:['A broken cup rests on the kitchen table.\n\nSomeone enters']});
+  f.narrative.shots[0].characters=[];streamSupport(f,{presence:[]});
+  const result=await f.run();assert.equal(JSON.parse(result.raw).shots[0].characters.length,0);assert.equal(f.calls.length,1);f.close();
+});
+
+for(const [name,change] of [
+  ['unfinished source',f=>{f.narrative.shots[0].source_paragraph_ids.push('P2');}],
+  ['unfinished insertion',f=>{f.narrative.shots[0].insert_after='P2';f.narrative.shots[0].source_paragraph_ids.push('P2');}],
+  ['tail presence',f=>{f.narrative.shots[0].stream_support.presence[0].source=streamAnchor(0,'A reaches','P2');}],
+  ['tail scene',f=>{f.narrative.shots[0].stream_support.scene=streamAnchor(0,'A reaches','P2');}],
+  ['fabricated content',f=>{f.narrative.shots[0].stream_support.content.quote='not in captured source';}],
+  ['missing person',f=>{f.narrative.shots[0].stream_support.presence=[];}],
+  ['extra person',f=>{f.narrative.shots[0].stream_support.presence.push({character_id:'B',source:streamAnchor(0,'A cooks.')});}],
+  ['foreign person',f=>{f.narrative.shots[0].stream_support.presence[0].character_id='B';}],
+  ['foreign branch',f=>{f.narrative.shots[0].stream_support.scene.branch_id='past';}],
+  ['foreign floor',f=>{f.narrative.shots[0].stream_support.content.floor=999;}],
+  ['later in same paragraph',f=>{f.narrative.shots[0].state_point.evidence='A cooks.';}],
+])test(`streaming ${name} never reaches expression or image planning`,async()=>{
+  const f=await fixture({stream:true,texts:['A cooks. A stands in the kitchen.\n\nA reaches']});streamSupport(f);change(f);let calls=0;
+  await assert.rejects(f.run({call:async(_messages,definition)=>{calls++;assert.equal(definition.schemaId,NARRATIVE);return JSON.stringify(f.narrative);}}),error=>{
+    assert.equal(error.code,'storyboard_contract_failed');assert.equal(error.diagnostic.repairCalls,3);assert.equal(error.diagnostic.stage,'narrative');return true;
+  });assert.equal(calls,3);assert.equal(f.saves,0);f.close();
+});
+
+test('streaming earlier scene and presence need an explicit same-branch continuity chain; matching names alone do not qualify',async()=>{
+  for(const linked of [false,true]){
+    const f=await fixture({stream:true,texts:['A is in the kitchen.','USER asks about dinner.','A continues chatting.\n\nA reaches']});
+    streamSupport(f,{scene:streamAnchor(0,'A is in the kitchen.'),presence:[{character_id:'A',source:streamAnchor(0,'A is in the kitchen.')}]});
+    if(linked)f.narrative.continuity_links=[link(0,2,[])];
+    if(linked){assert.equal((await f.run()).meta.repairCalls,0);assert.equal(f.calls.length,1);}
+    else await assert.rejects(f.run({call:async()=>JSON.stringify(f.narrative)}),{code:'storyboard_contract_failed'});
+    assert.equal(f.saves,0);f.close();
+  }
+});
+
+test('streaming duplicate quotes cannot prove a unique moment, and manual supplement cannot borrow partial-floor authority',async()=>{
+  const f=await fixture({stream:true,texts:['A cooks. A cooks.\n\nA reaches']});streamSupport(f);
+  f.narrative.shots[0].stream_support.presence[0].source=streamAnchor(0,'A cooks.');
+  await assert.rejects(f.run({call:async()=>JSON.stringify(f.narrative)}),{code:'storyboard_contract_failed'});
+  assert.throws(()=>contract.buildStoryboardPlanContractRequest(f.context,{...f.config,manualSupplement:true}),{code:'storyboard_stream_readiness'});f.close();
+});
+
+test('streaming evidence repair receives the allowed stable IDs and original selected prose, without a second whole-context call',async()=>{
+  const f=await fixture({stream:true});streamSupport(f);f.narrative.shots[0].stream_support.content.quote='invented';let repairs=0;
+  const result=await f.run({call:async(messages,definition)=>{
+    if(definition.schemaId===EXPRESSION)return JSON.stringify(f.expression());
+    repairs++;const input=JSON.parse(messages[1].content);
+    assert.equal(input.errors[0].code,'stream_readiness');assert.deepEqual(input.context.constraints.streaming.closed_target_paragraph_ids,['P1']);
+    assert.equal(input.context.evidence_sources[0].floor,0);assert.doesNotMatch(JSON.stringify(input.context),/selected world|user description/);
+    streamSupport(f);return JSON.stringify(f.narrative);
+  }});assert.equal(repairs,1);assert.equal(result.meta.repairCalls,1);assert.equal(f.saves,0);f.close();
+});
+
+test('ordinary completed-floor extraction retains its original schema and does not acquire streaming fields or zero-minimum rules',async()=>{
+  const f=await fixture(),payload=JSON.parse(f.request.messages[1].content);
+  assert.equal(f.request.schema.properties.shots.items.properties.stream_support,undefined);assert.equal(payload.constraints.streaming,undefined);
+  assert.equal(payload.constraints.min_shots_target,1);assert.doesNotMatch(f.request.messages[0].content,/流式提前取景/);f.close();
+});
+
+test('streaming cancellation or prefix rewrite during expression cannot return a late usable plan',async()=>{
+  for(const mode of ['cancel','rewrite','account']){
+    const f=await fixture({stream:true});streamSupport(f);let calls=0;
+    await assert.rejects(f.run({call:async()=>{calls++;if(mode==='cancel')f.active=false;else if(mode==='account')f.account='st-user:other';else f.host.chat[0].mes='changed prefix\n\nnew tail';return JSON.stringify(f.expression());}}),{code:'storyboard_input_changed'});
+    assert.equal(calls,1);assert.equal(f.saves,0);f.close();
+  }
+});
+
+test('streaming readiness diagnostic names the missing proof, without quoting private prose',()=>{
+  const error=contract.storyboardContractFailure({errors:[{code:'stream_readiness',path:'$.shots[0].stream_support',message:'SECRET prose'}]});
+  assert.match(error.message,/提前画面/);assert.doesNotMatch(error.message,/SECRET/);
 });
 
 test('all-prose changes publish even without a picture, and are reused after serialized host metadata reopen',async()=>{

@@ -43,6 +43,12 @@ test('invalid ranges do not read sources or register listeners',async()=>{
   for(const value of [-1,21,1.5,'2',NaN]){const f=fixture();await assert.rejects(capture({...f.options,referenceFloors:value}),{code:'storyboard_context_unavailable'});assert.deepEqual(f.reads,[]);assert.equal(f.listenerCount(),0);}
 });
 
+test('host lookup failure after compiler host listeners were acquired releases them without reading prose',async()=>{
+  const f=fixture(),read=f.options.getContext;let calls=0;
+  await assert.rejects(capture({...f.options,getContext:()=>{if(++calls===2)throw Error('host unavailable');return read();}}),/host unavailable/);
+  assert.equal(f.listenerCount(),0);assert.deepEqual(f.reads,[]);
+});
+
 test('blank/system floors retain their places but are excluded from outbound context and cannot silently become new input',async()=>{
   const f=fixture(['hidden','','visible']);f.options.referenceFloors=2;f.context.chat[0].is_system=true;
   const window=await capture(f.options);assert.deepEqual(window.messages.map(row=>row.floor),[2]);assert.deepEqual(f.reads,[1,2]);
