@@ -85,8 +85,9 @@ export function storyboardFloorTakeInitialInline(job) {
   const take=normalizeStoryboardFloorTake(job.floorTake);
   return Boolean(take&&!take.invalid&&take.slots.length&&!take.baselineIds.length);
 }
-export function pruneStoryboardRetakeGallery(records,received=[]) {
+export function pruneStoryboardRetakeGallery(records,received=[],pendingTakes=[]) {
   const keep=new Set(received.map(record=>record.id));
+  for(const pending of pendingTakes){const take=normalizeStoryboardFloorTake(pending);if(take&&!take.invalid)for(const id of take.baselineIds)keep.add(id);}
   for(const record of records){const take=normalizeStoryboardFloorTake(record.floorTake);if(take&&!take.invalid){keep.add(record.id);for(const id of take.baselineIds)keep.add(id);}}
   const removed=[];
   for(let index=0;records.length>400&&index<records.length;) {

@@ -91,6 +91,12 @@ test('legacy gallery trimming cannot drop a retake baseline or the just-received
   const removed=takes.pruneStoryboardRetakeGallery(rows,[rows.at(-1)]);assert.equal(rows.length,400);assert.equal(rows[0].id,'old');assert.equal(removed.length,1);assert.notEqual(removed[0].id,'old');
 });
 
+test('an unrelated receipt cannot prune an active retake baseline before its first new image arrives',()=>{
+  const f=prepared({count:1}),received={id:'unrelated-receipt'},rows=[...f.old,...Array.from({length:399},(_,i)=>({id:`legacy-${i}`})),received];
+  takes.pruneStoryboardRetakeGallery(rows,[received],[f.plan.floorTake]);
+  assert.equal(rows.length,400);assert.equal(rows.some(row=>row.id==='old'),true);assert.equal(rows.includes(received),true);
+});
+
 async function entryFixture(){
   const e=await compilerEnvironment(),message=e.context.ctx().chat[0],reference=core.createStoryboardMessageReference({chatKey:'chat-a',floor:0,message});
   const gallery=[{id:'previous-image',chatKey:'chat-a',floor:0,messageRef:reference,swipeId:0,inline:true,url:'/old.png',snapshot:{prompt:'old recipe'}}];
@@ -125,6 +131,12 @@ test('actual failed full-floor extraction retains draft, target and previous suc
   const e=await entryFixture();e.state.target='gallery';e.state.floor='';const before=copy(e.state.promptDraft),old=copy(e.oldPlan);
   e.context.storyboardCallCompiler=async()=>'{ invalid';assert.equal(await e.click(),false);
   assert.equal(e.jobs.length,0);assert.equal(e.state.target,'gallery');assert.equal(e.state.floor,'');assert.equal(e.state.prompt,'old valid draft');assert.deepEqual(copy(e.state.promptDraft),before);assert.deepEqual(e.oldPlan,old);assert.equal(e.gallery[0].inline,true);
+});
+
+test('actual unrelated delivery reads pending plan protection before the retake has received an image',async()=>{
+  const e=await entryFixture();assert.equal(await e.click(),true);e.gallery.push(...Array.from({length:399},(_,i)=>({id:`older-${i}`,inline:false})));
+  const unrelated={...e.jobs[0],id:'independent-job',planId:'independent-plan'};delete unrelated.floorTake;
+  await e.deliver(unrelated);assert.equal(e.gallery.length,400);assert.equal(e.gallery.some(row=>row.id==='previous-image'&&row.inline),true);assert.equal(e.gallery.some(row=>row.taskId==='independent-job'),true);
 });
 
 test('actual supplement only appends; cancel/double-click/stale dialog cannot buy a retake; busy compiler blocks manual generation',async()=>{

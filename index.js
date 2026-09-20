@@ -259,12 +259,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.218';
+} from './qianmu-storyboard.js?v=1.59.219';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.218';
+const VERSION = '1.59.219';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -539,7 +539,7 @@ const featureRuntime = createFeatureRuntime({
     label: '分镜返回协议',
     load: () => import('./qianmu-storyboard-contract.js?v=1.59.217'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.218')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.219')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -13277,7 +13277,7 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
         linkState: deliveryLinkState,
       }));
     }
-    const prunedRecords = pruneStoryboardRetakeGallery(gallery,receivedRecords);
+    const prunedRecords = pruneStoryboardRetakeGallery(gallery,receivedRecords,(state.shotPlans||[]).map(plan=>plan.floorTake));
     await saveStoryboardFloorTakes(gallery,saveMetadata,record=>storyboardValidatedAnchor(record).valid,()=>String(getChatKey()||'')===expectedChatKey&&gallery===storyboardGalleryRecords());
     void storyboardArchiveGallerySnapshots(receivedRecords);
     if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
@@ -20787,7 +20787,7 @@ async function storyboardDeliverGatewayResult(job, log, data, { service = false,
       if (service) Object.assign(record, { floor: job.originalOnly ? null : anchorState.floor, inline: Boolean(!job.originalOnly && job.inlineByDefault && anchorState.valid&&(record.floorTakeCommittedAt>0||storyboardFloorTakeInitialInline(job))),...(job.floorTake?{floorTakeEligible:anchorState.valid===true}:{}), linkState: anchorState.valid && !job.originalOnly ? 'active' : resultLinkState || 'orphaned' });
       if (!gallery.some(item => item.id === record.id)) gallery.push(record);
     }
-    const prunedRecords = pruneStoryboardRetakeGallery(gallery,records);
+    const prunedRecords = pruneStoryboardRetakeGallery(gallery,records,(storyboardState().shotPlans||[]).map(plan=>plan.floorTake));
     await saveStoryboardFloorTakes(gallery,saveMetadata,record=>storyboardValidatedAnchor(record).valid,()=>gallery===storyboardGalleryRecords()&&(!job.chatKey||job.chatKey===String(getChatKey()||'')));
     void storyboardArchiveGallerySnapshots(records);
     if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
