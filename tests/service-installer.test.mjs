@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
+import { PassThrough } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repository='https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git';
@@ -13,10 +14,16 @@ const powershell=win?path.join(path.dirname(process.execPath),'../../native/powe
 const bash=win?'C:/Program Files/Git/bin/bash.exe':'sh';
 const original='port: 8000\nenableServerPlugins: false # keep this\nother: preserved\n';
 const hostCoreFiles=['public/img/logo.png','public/index.html','public/locales/zh-cn.json','public/scripts/openai.js','public/scripts/power-user.js','public/scripts/world-info.js'];
+function collectCommandOutput(streams) {
+  let output='';
+  // Keep decoder state per stream: a Chinese character may span pipe chunks.
+  for(const stream of streams)stream.setEncoding('utf8').on('data',text=>{output+=text;});
+  return ()=>output;
+}
 async function command(binary,args,{cwd,env={}}={}) {
   const child=spawn(binary,args,{cwd,env:{...process.env,...env},windowsHide:true,stdio:['ignore','pipe','pipe']});
-  let output='';for(const stream of [child.stdout,child.stderr])stream.on('data',bytes=>{output+=bytes;});
-  return new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',code=>resolve({code,output}));});
+  const output=collectCommandOutput([child.stdout,child.stderr]);
+  return new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',code=>resolve({code,output:output()}));});
 }
 async function fixture(t,{docker=false,config=original}={}) {
   const parent=await fs.realpath(os.tmpdir()),root=await fs.mkdtemp(path.join(parent,'qianmu-installer-test-'));
@@ -138,4 +145,15 @@ for(const engine of win?['powershell','shell']:['shell']) {
 test('shell Docker path preserves other config and prints manual startup without invoking Docker',async t=>{
   const f=await fixture(t,{docker:true}),result=await run(f,'shell');assert.equal(result.code,0,result.output);
   assert.equal(await fs.readFile(f.configFile,'utf8'),original.replace('false','true'));assert.match(result.output,/没有重启容器/);assert.match(result.output,/docker compose start sillytavern/);
+});
+
+test('installer diagnostics preserve Chinese and emoji across separate stdout/stderr byte boundaries',()=>{
+  const stdout=new PassThrough(),stderr=new PassThrough(),output=collectCommandOutput([stdout,stderr]);
+  const first='配置在写入前发生变化，未覆盖。😀\n',second='保留用户修改。\n';
+  const bytes=Buffer.from(first);
+  stdout.write(bytes.subarray(0,1));
+  for(const byte of Buffer.from(second))stderr.write(Buffer.from([byte]));
+  for(const byte of bytes.subarray(1))stdout.write(Buffer.from([byte]));
+  stdout.end();stderr.end();
+  assert.equal(output(),second+first,'each pipe retains its own partial character without corrupting failure evidence');
 });
