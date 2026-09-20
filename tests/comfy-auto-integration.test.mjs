@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
+import {createStoryboardFloorTake} from '../qianmu-storyboard-floor-take.js';
 import * as auto from '../qianmu-comfy-auto-runtime.js';
 import * as routes from '../qianmu-comfy-route.js';
 import * as direct from '../qianmu-image-direct.js';
@@ -123,6 +124,20 @@ test('one unselectable mirror preserves a distinct draft and actual independent 
     assert.equal(retry.attempt,2);assert.equal(log.status,'success');assert.equal(JSON.stringify(log.preparation),original);
     assert.equal(e.state.source,'novel');assert.equal(e.state.comfyAutoEnabled,false,'explicit recovery must not toggle the workbench mode');
     assert.equal(await e.context.storyboardRetryLog(log),false);assert.equal(e.admissions(),3);
+  }finally{await e.close();}
+});
+
+test('a full-floor retake keeps its missing Comfy slot in the saved manifest and fills only that slot on recovery',async()=>{
+  const e=await recoveryEnvironment();
+  try{
+    e.p.floorTake=createStoryboardFloorTake(e.p,[{id:'old-take-image',chatKey:'chat-a',messageRef:e.p.messageRef,inline:true}],row=>row.inline);
+    assert.equal(await e.context.storyboardGenerate(null,{plan:e.p,automatic:false}),true,JSON.stringify(e.notices));
+    assert.equal(e.context.storyboardQueue.length,2);assert.equal(e.p.floorTake.slots.length,3);
+    const pending=e.state.logs.find(row=>row.kind==='comfy_preparation');assert.deepEqual(pending.preparation.floorTake,e.p.floorTake);
+    const saved=core.normalizeStoryboardState(copy(e.state));Object.assign(e.state,saved);
+    const log=e.state.logs.find(row=>row.id===pending.id);e.repair();assert.equal(await e.context.storyboardRetryLog(log),true,JSON.stringify(e.notices));
+    const retry=e.context.storyboardQueue.at(-1);assert.deepEqual(copy(retry.floorTake),copy(log.preparation.floorTake));assert.equal(retry.planShotId,log.preparation.planShotId);
+    assert.equal(e.context.storyboardQueue.length,3);assert.equal(e.admissions(),3);assert.equal(e.llmCalls.length,2);
   }finally{await e.close();}
 });
 

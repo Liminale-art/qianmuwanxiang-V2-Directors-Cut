@@ -70,9 +70,11 @@ test('longest normalized plan identities retain both legacy and immutable varian
   }
 });
 
-test('retry and re-extraction release machine-local archives before mutation', () => {
+test('retry releases its own machine-local archive; a new full take leaves the previous archive intact', async () => {
   assert.match(source, /async function storyboardRetryPlan[\s\S]*if \(plan\.archiveRef\) await storyboardReleasePlanArchive\(plan\)[\s\S]*plan\.status = 'screening'/);
-  assert.match(source, /dataset\.storyboardChatAction === 'capture-floor'[\s\S]*if \(plan\.archiveRef\) await storyboardReleasePlanArchive\(plan\)/);
+  const capture=await readFile(new URL('../qianmu-storyboard-floor-capture.js',import.meta.url),'utf8');
+  assert.match(capture,/ensurePlan[\s\S]*forceNew:true/);
+  assert.doesNotMatch(capture,/storyboardReleasePlanArchive|deletePlanArchives/);
   assert.match(source, /async function storyboardHandleAutomaticCapture[\s\S]*if \(plan\.archiveRef\) await storyboardReleasePlanArchive\(plan\)/);
   assert.match(source, /shot\.hasPrompt \|\| String\(shot\.prompt \|\| ''\)\.trim\(\)/);
 });

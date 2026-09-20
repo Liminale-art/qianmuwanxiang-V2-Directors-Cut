@@ -432,6 +432,8 @@
     "qianmu-storyboard-focused-input.js",
     "qianmu-storyboard-compiler-diagnostics.js",
     "qianmu-storyboard-compiler-transport.js",
+    "qianmu-storyboard-floor-take.js",
+    "qianmu-storyboard-floor-capture.js",
     "qianmu-storyboard-continuity-events.js",
     "qianmu-storyboard-continuity-source.js",
     "qianmu-storyboard-continuity-link.js",

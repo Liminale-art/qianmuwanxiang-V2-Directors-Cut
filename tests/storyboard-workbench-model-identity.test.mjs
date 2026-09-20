@@ -21,7 +21,7 @@ function environment(capability = V3, model = alias, extra = {}) {
   state.connections.novel.draft = { id: 'draft-a', credentialId: 'key-ref', baseUrl: 'https://relay.example', model: V5 };
   const notices = [], saved = [];
   const context = vm.createContext({
-    ...storyboard, clone: structuredClone, parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders,
+    ...storyboard, storyboardCompilerBusy:false, clone: structuredClone, parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders,
     settings: { apiProfiles: [] }, storyboardState: () => state, getChatKey: () => 'chat-a', ctx: () => ({ chat: [] }),
     storyboardTargetFloor: () => -1, storyboardCredentialRevision: 0, getCharacterDescription: () => '', getPersonaDescription: () => '',
     storyboardSelectedArtistPreset: () => null, storyboardGalleryRecords: () => [],

@@ -18,6 +18,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.218';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.218';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -475,6 +477,7 @@ export function normalizeStoryboardComfyPreparation(value) {
     }
     return {version:1,pool,styleLock:value.styleLock,scope,chatKey:str(value.chatKey,512),floor:value.floor,target:value.target,
       inlineByDefault:value.inlineByDefault===true,messageRef,inlineOrder:order,planId:cleanId(value.planId),planShotId:cleanId(value.planShotId),
+      ...(Object.hasOwn(value,'floorTake')?{floorTake:normalizeStoryboardFloorTake(value.floorTake)}:{}),
       paragraphAnchor:value.paragraphAnchor?normalizeStoryboardParagraphAnchor(value.paragraphAnchor):null,
       paragraphSelection:value.paragraphSelection?normalizeStoryboardParagraphSelection(value.paragraphSelection):null,
       compositionPolicy:normalizeStoryboardCompositionPolicy(value.compositionPolicy),shotSpec,
@@ -1956,6 +1959,7 @@ function shotPlans(value, state = {}) {
       swipeId: int(plan.swipeId ?? messageRef?.swipeId, 0, Number.MAX_SAFE_INTEGER, 0), messageRef,
       revisionId: str(plan.revisionId || messageRef?.revisionId, 80), idempotencyKey: str(plan.idempotencyKey, 80),
       origin: ['manual', 'automatic', 'manual_supplement'].includes(plan.origin) ? plan.origin : 'manual',
+      ...(Object.hasOwn(plan,'floorTake')?{floorTake:normalizeStoryboardFloorTake(plan.floorTake)}:{}),
       paragraphSelection: plan.paragraphSelection ? normalizeStoryboardParagraphSelection(plan.paragraphSelection) : null,
       continuityLedger: archivedSummary && !continuityInput ? null : normalizeContinuity(continuityInput),
       continuityLedgerLayer: plan.continuityLedgerLayer ? (STORYBOARD_NARRATIVE_LAYERS.includes(plan.continuityLedgerLayer)?plan.continuityLedgerLayer:'[invalid]') : '',
@@ -2456,6 +2460,7 @@ function snapshot(value, fallback = {}) {
     } else if (!result.ok && !profile.comfyWorkflowNotice) profile.comfyWorkflowNotice = result.message;
   }
   if (obj(safe)) {
+    if(Object.hasOwn(raw,'floorTake'))safe.floorTake=normalizeStoryboardFloorTake(raw.floorTake);
     if (Object.hasOwn(raw, 'comfySceneOrigin')) safe.comfySceneOrigin = retainComfySceneOrigin(raw.comfySceneOrigin);
     delete safe.comfySceneClaim;
     if (Object.hasOwn(raw, 'inlineOrder')) safe.inlineOrder = normalizeStoryboardInlineOrder(raw.inlineOrder);

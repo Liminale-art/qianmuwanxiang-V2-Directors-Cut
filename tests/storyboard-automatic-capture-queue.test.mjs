@@ -200,6 +200,14 @@ test('preparation rejection and early compiler refusal terminate their plans wit
   }
 });
 
+test('automatic extraction failure retains the accepted draft and restores the prior workbench target',async()=>{
+  const e=environment();Object.assign(e.state,{target:'gallery',floor:'',prompt:'accepted draft',negative:'accepted negative'});
+  e.state.promptDraft.compiled='accepted draft';const draft=structuredClone(e.state.promptDraft);
+  e.context.storyboardCompilePrompt=async()=>false;
+  await e.context.storyboardHandleAutomaticCapture(0);await e.flush();
+  assert.equal(e.state.target,'gallery');assert.equal(e.state.floor,'');assert.equal(e.state.prompt,'accepted draft');assert.equal(e.state.negative,'accepted negative');assert.deepEqual(e.state.promptDraft,draft);assert.deepEqual(e.calls,[]);
+});
+
 test('an exhausted format-repair batch stays terminal on duplicate host events while the next floor still runs', async () => {
   const e = environment(), requests = [];
   e.chat.push({mes: 'second independent scene', send_date: 'second-floor'});

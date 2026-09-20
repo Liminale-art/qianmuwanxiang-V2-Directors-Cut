@@ -63,7 +63,7 @@ assert.match(css, /figure\.actions-open \.sd-storyboard-inline-actions/);
 assert.match(source, /原楼层原地编辑时保留已接受的旧图/);
 assert.match(source, /function storyboardRedrawRecord[\s\S]*snapshot\.promptMode = 'manual'[\s\S]*snapshot\.promptLocked = true/);
 assert.doesNotMatch(source, /shouldRecompile = !promptLocked/);
-assert.match(source, /function storyboardChooseCaptureMode[\s\S]*智能提取[\s\S]*手动选段补图/);
+assert.match(source, /function storyboardChooseCaptureMode[\s\S]*本层重新提取[\s\S]*手动选段补图/);
 assert.match(source, /原正文楼层已删除，未发起生图请求/);
 assert.match(source, /linkState === 'inactive_swipe'/);
 

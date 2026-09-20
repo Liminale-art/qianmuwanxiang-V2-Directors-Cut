@@ -206,6 +206,7 @@ import {
   createStoryboardMessageReference,
   createStoryboardTaskState,
   createStoryboardWorkflowTicket,
+  normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,pruneStoryboardRetakeGallery,
   getStoryboardBuiltinParameterPresets,
   getStoryboardCapabilities,
   getStoryboardModel,
@@ -258,12 +259,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.217';
+} from './qianmu-storyboard.js?v=1.59.218';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.217';
+const VERSION = '1.59.218';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -538,6 +539,7 @@ const featureRuntime = createFeatureRuntime({
     label: '分镜返回协议',
     load: () => import('./qianmu-storyboard-contract.js?v=1.59.217'),
   },
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.218')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -13212,7 +13214,7 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
     try { durable = await blobStore.listStoryboardDeliveries(expectedChatKey); }
     catch (error) { console.warn(`[${MODULE_NAME}] storyboard delivery inbox read failed`, error); }
     const deliveries = new Map();
-    for (const item of durable) if (item?.taskId) deliveries.set(String(item.taskId), item);
+    for (const item of durable) if (item?.taskId && item.chatKey===expectedChatKey) deliveries.set(String(item.taskId), item);
     for (const item of storyboardVolatileDeliveries.values()) {
       if (item?.chatKey === expectedChatKey && item.taskId) deliveries.set(String(item.taskId), item);
     }
@@ -13245,7 +13247,8 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
           : null;
         if (resolved?.state === 'active') {
           record.floor = resolved.floor;
-          record.inline = record.requestedInline !== false;
+          record.inline = record.requestedInline !== false&&storyboardFloorTakeInitialInline(record);
+          if(record.floorTake)record.floorTakeEligible=true;
           record.messageHash = hashText(String(resolved.message?.mes || ''));
           record.swipeId = Number(resolved.message?.swipe_id || 0);
           record.linkState = 'active';
@@ -13274,19 +13277,8 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
         linkState: deliveryLinkState,
       }));
     }
-    if (!received) {
-      if (changedTasks.size) {
-        state.taskStates = state.taskStates.map((task) => changedTasks.get(task.id) || task);
-        saveSettings();
-      }
-      for (const delivery of deliveries.values()) {
-        storyboardVolatileDeliveries.delete(delivery.taskId);
-        try { await blobStore.deleteStoryboardDelivery(delivery.taskId); } catch (_) {}
-      }
-      return 0;
-    }
-    const prunedRecords = gallery.length > 400 ? gallery.splice(0, gallery.length - 400) : [];
-    await saveMetadata();
+    const prunedRecords = pruneStoryboardRetakeGallery(gallery,receivedRecords);
+    await saveStoryboardFloorTakes(gallery,saveMetadata,record=>storyboardValidatedAnchor(record).valid,()=>String(getChatKey()||'')===expectedChatKey&&gallery===storyboardGalleryRecords());
     void storyboardArchiveGallerySnapshots(receivedRecords);
     if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
     if (String(getChatKey() || '') !== expectedChatKey) return 0;
@@ -13300,7 +13292,7 @@ async function storyboardDrainPendingDeliveries(chatKey = String(getChatKey() ||
     if (touchedFloors.size) touchedFloors.forEach((floor) => storyboardScheduleInlineRender(40, floor));
     else storyboardScheduleInlineRender(40);
     rerenderIfOpen();
-    toast(`已接收 ${received} 张跨聊天完成的分镜。`, 'success');
+    if(received)toast(`已接收 ${received} 张跨聊天完成的分镜。`, 'success');
     return received;
   };
   const scheduledDrain = (previousDrain ? previousDrain.catch(() => 0) : Promise.resolve()).then(runDrain);
@@ -17332,6 +17324,7 @@ function storyboardStartLog(job,{preparationError=''}={}) {
       connection: job.connection, payload: job.payload,
       inlineOrder: normalizeStoryboardInlineOrder(job.inlineOrder),
       planId: job.planId || '', planShotId: job.planShotId || '',
+      ...(job.floorTake?{floorTake:normalizeStoryboardFloorTake(job.floorTake)}:{}),
       imageAdmission: job.imageAdmission,
       ...(Object.hasOwn(job,'comfySceneOrigin') ? {comfySceneOrigin:job.comfySceneOrigin} : {}),
       ...(job.source === 'comfy' ? { comfyExecution: job.comfyExecution, comfyAudit: job.comfyAudit } : {}),
@@ -19674,6 +19667,7 @@ async function storyboardQueueJob(job, preparationCurrent = () => true, onFailur
   const refuse=message=>{const detail=String(message||'本镜未能入队');onFailure(detail);toast(detail,'warning');return false;};
   if (!job?.payload?.prompt?.trim()) return refuse('请先写下画面描述。');
   try {
+    applyStoryboardFloorTakeToJob({floorTake:job.floorTake},job);
     for (const spec of [job.shotSpec, job.snapshot?.shotSpec, job.payload?.shotSpec]) {
       if (spec?.characters?.some(character => character.archiveSnapshot)) assertCharacterCastingSnapshots(spec);
     }
@@ -20179,6 +20173,7 @@ async function storyboardChooseComfyGenerationRoutes(state,inputGuard,planned,ro
 }
 
 async function storyboardGenerate(root, { plan = null, automatic = false, productionGuard = null } = {}) {
+  if(storyboardCompilerBusy)return toast('正在提取，请等待完成后再生成','info');
   const preparationKey = JSON.stringify([String(getChatKey() || ''), storyboardTargetFloor(storyboardState())]);
   if (storyboardGenerationPreparing.has(preparationKey)) return toast('本层画面正在准备，请勿重复生成', 'info');
   storyboardGenerationPreparing.add(preparationKey);
@@ -20333,6 +20328,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
         return toast(`当前队列只剩 ${Math.max(0, remainingSlots)} 个空位，请先完成或移除部分任务。`, 'warning');
       }
       const generationDemand = summarizeStoryboardGenerationDemand(jobs);
+      if(plan?.floorTake&&storyboardGalleryRecords().length+generationDemand.imageCount>400)return toast('当前聊天的图库索引空间不足，未提交整层重拍；旧图保留','warning');
       const requiresPlanConfirmation = generationDemand.requestCount > 1 && state.routing.confirmMultipleRequests !== false;
       const requiresCountConfirmation = generationDemand.hasMultiImageRequest;
       if (!automatic && (requiresPlanConfirmation || requiresCountConfirmation)) {
@@ -20343,7 +20339,8 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
         if (!await confirmDialog('确认生成数量', `本次将发起 ${detail}。是否继续？`)) return false;
       }
       inputGuard.assertCurrent();
-      for(const failure of autoSelection?.failures.values()||[])storyboardRecordComfyPreparationFailure(failure.preparation,failure.message,failure.diagnostics);
+      bindStoryboardFloorTakeJobs(plan,jobs);
+      for(const failure of autoSelection?.failures.values()||[])storyboardRecordComfyPreparationFailure({...failure.preparation,...(plan?.floorTake?{floorTake:plan.floorTake}:{})},failure.message,failure.diagnostics);
       if(autoSelection?.failures.size)toast(`${autoSelection.failures.size} 镜待选工作流；可从正文或日志重新准备本镜${jobs.length?'，其余镜头继续':'，尚无可入队镜头'}`,'warning');
       for (const job of jobs) {
         await inputGuard.comfyRoutes?.assertCurrent();
@@ -20441,6 +20438,7 @@ async function storyboardReprepareComfyLog(log,{isCurrent=()=>true}={}) {
       modelId:selected.modelId,capabilityModelId:profile.capabilityModelId,connectionPresetId:selected.connectionPresetId,
       planId:original.planId,planShotId:original.planShotId,inlineOrder:original.inlineOrder,attempt:Number(log.attempt||1)+1,routeTarget:selected,preparedRoutes:inputGuard.comfyRoutes,freshComfy:inputGuard.freshComfy});
     job.paragraphAnchor=clone(original.paragraphAnchor);job.automatic=false;
+    applyStoryboardFloorTakeToJob({floorTake:original.floorTake},job);
     Object.defineProperty(job,'comfyAutoSelected',{value:true,enumerable:false});
     await batch.attach(job,choice);await guard();
     job.compilerStages=[{id:uid('stage-selection'),type:'comfy_selection',status:'success',startedAt:Date.now(),finishedAt:Date.now(),
@@ -20726,10 +20724,11 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   return {
     id: uid('shot'), taskId: job.id, groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
     inlineOrder: normalizeStoryboardInlineOrder(job.inlineOrder),
+    ...(job.floorTake?{floorTake:normalizeStoryboardFloorTake(job.floorTake),floorTakeEligible:anchorState.valid===true}:{}),
     collectionId: job.collectionId || '', collectionIds: storyboardItemCollectionIds(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
     artistString: job.artistString || job.payload?.artistString || '', artistPresetId: job.artistPresetId || '', artistPoolId: job.artistPoolId || '', artistRouteSource: job.artistRouteSource || '', artistRerollCount: Math.max(0, Number(job.artistRerollCount) || 0), contentRating: job.contentRating || 'sfw',
     negative: job.negative, effectiveNegative: job.payload?.negative || '', source: job.source,
-    chatKey: String(job.chatKey || ''), floor, requestedInline: Boolean(job.inlineByDefault), inline: Boolean(job.inlineByDefault && Number.isInteger(floor)), paragraphAnchor: clone(job.paragraphAnchor || null),
+    chatKey: String(job.chatKey || ''), floor, requestedInline: Boolean(job.inlineByDefault), inline: Boolean(job.inlineByDefault && Number.isInteger(floor)&&storyboardFloorTakeInitialInline(job)), paragraphAnchor: clone(job.paragraphAnchor || null),
     paragraphSelection: clone(job.paragraphSelection || null),
     origin: job.paragraphSelection?.mode === 'manual_supplement' ? 'manual_supplement' : (job.automatic ? 'automatic' : 'manual'),
     shotSpec: clone(job.shotSpec || null), compiledPrompt: clone(job.compiledPrompt || null), compositionDecision: clone(job.compositionDecision || null),
@@ -20785,11 +20784,11 @@ async function storyboardDeliverGatewayResult(job, log, data, { service = false,
     const gallery = storyboardGalleryRecords();
     for (const record of records) {
       // A retry after a page close reuses the exact result, never creates a copy.
-      if (service) Object.assign(record, { floor: job.originalOnly ? null : anchorState.floor, inline: Boolean(!job.originalOnly && job.inlineByDefault && anchorState.valid), linkState: anchorState.valid && !job.originalOnly ? 'active' : resultLinkState || 'orphaned' });
+      if (service) Object.assign(record, { floor: job.originalOnly ? null : anchorState.floor, inline: Boolean(!job.originalOnly && job.inlineByDefault && anchorState.valid&&(record.floorTakeCommittedAt>0||storyboardFloorTakeInitialInline(job))),...(job.floorTake?{floorTakeEligible:anchorState.valid===true}:{}), linkState: anchorState.valid && !job.originalOnly ? 'active' : resultLinkState || 'orphaned' });
       if (!gallery.some(item => item.id === record.id)) gallery.push(record);
     }
-    const prunedRecords = gallery.length > 400 ? gallery.splice(0, gallery.length - 400) : [];
-    await saveMetadata();
+    const prunedRecords = pruneStoryboardRetakeGallery(gallery,records);
+    await saveStoryboardFloorTakes(gallery,saveMetadata,record=>storyboardValidatedAnchor(record).valid,()=>gallery===storyboardGalleryRecords()&&(!job.chatKey||job.chatKey===String(getChatKey()||'')));
     void storyboardArchiveGallerySnapshots(records);
     if (prunedRecords.length) void storyboardDeleteRecordSnapshots(prunedRecords);
     storyboardSetPlanStatus(plan, 'generating', { job, floor: anchorState.floor, stage: 'attachment', progress: 0.92, deliveryState, linkState: resultLinkState });
@@ -22220,6 +22219,7 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined, artist
   synchronizeStoryboardCaptionBase(snapshot.payload);
   snapshot.promptMode = 'manual';
   snapshot.promptLocked = true;
+  delete snapshot.floorTake; // A single-image redraw is not a retry of the entire take.
 
   if (world) {
     // A redraw is a new variant of the approved image, not a new factual/prose event.
@@ -22248,7 +22248,7 @@ async function storyboardChooseCaptureMode(floor, message, { reextract = false }
   if (context.Popup && context.POPUP_TYPE) {
     const wrap = document.createElement('div');
     wrap.className = 'sd-storyboard-capture-dialog';
-    wrap.innerHTML = `<div class="sd-storyboard-capture-dialog-head"><b>${reextract ? '重新提取生成词' : '提取生成词'}</b><small>智能提取只更新生成词；手动补图会在选中范围末尾直接生成一幅新画面。</small></div><div class="sd-storyboard-capture-choices"><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="auto" checked><span>智能提取</span></label><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="manual_supplement" ${paragraphs.length ? '' : 'disabled'}><span>手动选段补图</span></label></div><section class="sd-storyboard-capture-paragraphs" hidden><header><span>点选一个或多个段落</span><b>已选 <em>0</em> 段</b></header><div class="sd-storyboard-capture-paragraph-list sd-scroll">${paragraphs.map((item, index) => `<label class="sd-storyboard-capture-paragraph-row"><input type="checkbox" value="${index}"><span><b>${index + 1}</b><span>${htmlEscape(item)}</span></span></label>`).join('')}</div></section>`;
+    wrap.innerHTML = `<div class="sd-storyboard-capture-dialog-head"><b>本层插画</b><small>重新提取会重拍整层并生成新版，可能产生费用；新版完整保存后替换正文，旧作保留阅片室。补图只追加一幅。</small></div><div class="sd-storyboard-capture-choices"><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="auto" checked><span>本层重新提取</span></label><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="manual_supplement" ${paragraphs.length ? '' : 'disabled'}><span>手动选段补图</span></label></div><section class="sd-storyboard-capture-paragraphs" hidden><header><span>点选一个或多个段落</span><b>已选 <em>0</em> 段</b></header><div class="sd-storyboard-capture-paragraph-list sd-scroll">${paragraphs.map((item, index) => `<label class="sd-storyboard-capture-paragraph-row"><input type="checkbox" value="${index}"><span><b>${index + 1}</b><span>${htmlEscape(item)}</span></span></label>`).join('')}</div></section>`;
     const paragraphPanel = wrap.querySelector('.sd-storyboard-capture-paragraphs');
     const count = paragraphPanel.querySelector('header em');
     const rows = [...wrap.querySelectorAll('.sd-storyboard-capture-paragraph-row input')];
@@ -22278,7 +22278,7 @@ async function storyboardChooseCaptureMode(floor, message, { reextract = false }
       return { mode, paragraphIndex: mode === 'manual_supplement' ? indexes.at(-1) : null, selection: mode === 'manual_supplement' ? normalizeStoryboardParagraphSelection({ mode, indexes, createdAt: Date.now() }) : null };
     } catch (_) { return null; }
   }
-  const mode = String(await promptInput(reextract ? '重新提取生成词' : '提取生成词', '输入 auto 智能提取，或用逗号分隔要补图的段落序号。', 'auto') ?? '').trim();
+  const mode = String(await promptInput('本层插画', '输入 auto 重新拍摄整层并生成新版（可能产生费用，旧作保留），或输入要补图的段落序号。', 'auto') ?? '').trim();
   if (!mode) return null;
   if (mode.toLowerCase() === 'auto') return { mode: 'auto', paragraphIndex: null, selection: null };
   const indexes = [...new Set(mode.split(/[,，\s]+/).map((item) => Number(item) - 1).filter((item) => Number.isInteger(item) && item >= 0 && item < paragraphs.length))].sort((a, b) => a - b);
@@ -22542,37 +22542,17 @@ async function storyboardOnChatClick(event) {
   }
   event.preventDefault(); event.stopPropagation();
   if (button.dataset.storyboardChatAction === 'capture-floor') {
-    const message = button.closest('.mes');
-    const floor = storyboardMessageFloor(message);
-    const chatMessage = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
-    if (!chatMessage || chatMessage.is_system) return toast('这一层当前不可用于分镜。', 'warning');
-    const state = storyboardState();
-    const existingPlan = storyboardPlanForMessage(state, floor, chatMessage);
-    if (['screening', 'compiling', 'queued', 'generating'].includes(existingPlan?.status)) return toast('这一层的分镜任务正在进行。', 'info');
-    const reextract = existingPlan?.status === 'prompt_ready' || existingPlan?.shots?.some((shot) => shot.hasPrompt || String(shot.prompt || '').trim());
-    const choice = await storyboardChooseCaptureMode(floor, chatMessage, { reextract });
-    if (!choice) return;
-    const manualSupplement = choice.mode === 'manual_supplement';
-    const plan = storyboardEnsurePlan(state, floor, chatMessage, {
-      origin: manualSupplement ? 'manual_supplement' : 'manual', autoGenerate: false,
-      forceNew: manualSupplement, paragraphSelection: choice.selection,
+    const floor=storyboardMessageFloor(button.closest('.mes')),message=ctx().chat?.[floor],epoch=storyboardAdmissionEpoch,chatKey=getChatKey();
+    const runtime=await featureRuntime.load('storyboardFloorCapture');
+    if(epoch!==storyboardAdmissionEpoch||chatKey!==getChatKey())return;
+    return runtime.captureStoryboardFloor(floor,message,{
+      state:storyboardState,chat:()=>ctx().chat,chatKey:()=>String(getChatKey()||''),epoch:()=>storyboardAdmissionEpoch,busy:()=>storyboardCompilerBusy,
+      namespace:async()=>{const identity=await featureRuntime.load('imageAdmission');return identity.resolveImageAccountNamespace();},
+      choose:storyboardChooseCaptureMode,planFor:storyboardPlanForMessage,ensurePlan:storyboardEnsurePlan,
+      records:()=>{storyboardReconcileGalleryLinks();return storyboardGalleryRecords();},visible:storyboardInlineRecordValid,
+      compile:plan=>storyboardCompilePrompt(null,{plan,quiet:false}),generate:plan=>storyboardGenerate(null,{plan,automatic:false}),
+      save:saveSettings,render:floor=>storyboardScheduleInlineRender(20,floor),toast,
     });
-    if (plan.archiveRef) await storyboardReleasePlanArchive(plan);
-    state.target = 'floor'; state.floor = String(floor); state.paragraphMode = manualSupplement ? 'manual' : 'auto'; state.manualParagraphIndex = choice.paragraphIndex;
-    state.pendingParagraphSelection = choice.selection;
-    state.promptCompiler.enabled = true;
-    state.promptMode = 'auto'; state.prompt = ''; state.negative = '';
-    state.promptDraft.compiled = ''; state.promptDraft.negative = '';
-    state.promptDraft.shots = []; state.promptDraft.userEditedCompiled = false; state.promptDraft.userEditedNegative = false;
-    state.promptDraft.artistPositiveBaked = false; state.promptDraft.artistNegativeBaked = false;
-    plan.origin = manualSupplement ? 'manual_supplement' : 'manual'; plan.paragraphSelection = clone(choice.selection); plan.autoGenerate = false; plan.status = 'screening'; plan.updatedAt = Date.now();
-    saveSettings(); storyboardScheduleInlineRender(20, floor);
-    const compiled = await storyboardCompilePrompt(null, { plan, quiet: false });
-    if (compiled && manualSupplement) {
-      const generated = await storyboardGenerate(null, { plan, automatic: false });
-      if (generated) { state.pendingParagraphSelection = null; saveSettings(); }
-    }
-    return;
   }
   if (button.dataset.storyboardChatAction === 'expand') {
     const wrapper = button.closest('.sd-storyboard-inline');
@@ -35759,24 +35739,18 @@ async function storyboardPerformAutomaticCapture(ticket) {
   plan.origin = 'automatic';
   plan.autoGenerate = Boolean(ticket.autoGenerate && state.automation.autoGenerate);
   plan.updatedAt = Date.now();
+  const reservation=createStoryboardCaptureReservation(state);
   state.target = 'floor';
   state.floor = String(floor);
   state.paragraphMode = 'auto';
   state.manualParagraphIndex = null;
   state.pendingParagraphSelection = null;
   state.promptMode = 'auto';
-  state.prompt = '';
-  state.negative = '';
-  state.promptDraft.compiled = '';
-  state.promptDraft.negative = '';
-  state.promptDraft.shots = [];
-  state.promptDraft.userEditedCompiled = false;
-  state.promptDraft.userEditedNegative = false;
-  state.promptDraft.artistPositiveBaked = false;
-  state.promptDraft.artistNegativeBaked = false;
+  reservation.seal();
   saveSettings();
   storyboardScheduleInlineRender(20, floor);
   const compiled = await storyboardCompilePrompt(null, { plan, quiet: true, automatic: plan.autoGenerate });
+  if(!compiled&&storyboardAutomaticTicketFloor(ticket)===floor&&reservation.restore())saveSettings();
   if (!compiled && plan.status === 'screening') {
     Object.assign(plan, { status: 'failed', error: '取景未启动，请核对配置后手动重试', updatedAt: Date.now() });
     if (storyboardAutomaticTicketFloor(ticket) >= 0) saveSettings();

@@ -63,7 +63,7 @@ assert.doesNotMatch(source, /<span>提示词预处理<\/span>/);
 assert.match(source, /sd-storyboard-capsule-switch[\s\S]*自动提取生成词[\s\S]*自动生图/);
 assert.doesNotMatch(source, /sd-storyboard-auto-flow/);
 assert.match(fs.readFileSync(path.join(root, 'qianmu-text-collection-floor.js'), 'utf8'), /dataset\.storyboardChatAction = 'capture-floor'/);
-assert.match(source, /button\.dataset\.storyboardChatAction === 'capture-floor'[\s\S]*storyboardChooseCaptureMode[\s\S]*storyboardCompilePrompt\(null, \{ plan, quiet: false \}\)[\s\S]*manualSupplement[\s\S]*storyboardGenerate\(null, \{ plan, automatic: false \}\)/);
+assert.match(source, /button\.dataset\.storyboardChatAction === 'capture-floor'[\s\S]*captureStoryboardFloor[\s\S]*choose:storyboardChooseCaptureMode[\s\S]*compile:plan=>storyboardCompilePrompt\(null,\{plan,quiet:false\}\)[\s\S]*generate:plan=>storyboardGenerate\(null,\{plan,automatic:false\}\)/);
 assert.match(source, /function storyboardHandleAutomaticCapture/);
 
 // A take preset is a dedicated ordered-list workspace; there is no one-off instruction field on the workbench.

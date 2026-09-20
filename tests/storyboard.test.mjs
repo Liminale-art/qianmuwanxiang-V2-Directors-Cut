@@ -94,7 +94,7 @@ assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');
 assert.match(source, /function storyboardInjectMessageButtons[\s\S]*injectStoryboardMessageButtons\(chatRoot/, '正文半自动取景入口仍须接入共享工具条');
 assert.match(await readFile(new URL('../qianmu-text-collection-floor.js',import.meta.url),'utf8'), /dataset\.storyboardChatAction = 'capture-floor'/, '正文每层必须提供半自动取景快捷入口');
-assert.match(source, /function storyboardChooseCaptureMode[\s\S]*智能提取[\s\S]*手动选段补图/, '正文取景入口必须支持智能提取与多段手动补图');
+assert.match(source, /function storyboardChooseCaptureMode[\s\S]*本层重新提取[\s\S]*手动选段补图/, '正文取景入口必须支持整层重拍与多段手动补图');
 assert.match(source, /storyboardParameterPresets[\s\S]*保存分镜样式[\s\S]*parameterPresetSelection/, '分镜参数样式必须可按模型保存和切换');
 assert.match(source, /rememberStoryboardModelProfile\(state\.modelProfiles, providerId, \{ \.\.\.captured, model: previousModel \}\)[\s\S]*getStoryboardRememberedProfile\(state\.modelProfiles, providerId, binding\.remoteModelId, binding\.capabilityModelId\)/, '每个具体模型必须通过隔离读写入口记住最后一次参数修改');
 assert.doesNotMatch(source, /sd-storyboard-reuse-record|sd-storyboard-lightbox-reuse/, '阅片室不得保留复用或重新生成入口');
@@ -118,7 +118,8 @@ assert.match(source, /storyboardFilteredGalleryRecords[\s\S]*storyboardGalleryVi
 assert.match(source, /storyboardGallerySelection[\s\S]*删除选中图片/, '阅片室必须具备批量管理');
 assert.match(source, /storyboardExportPackage[\s\S]*type: 'qianmu-storyboard'[\s\S]*credentialsIncluded: false/, '分镜数据包不得包含 API 密钥');
 assert.match(source, /storyboardImportPackage[\s\S]*saveBase64AsFile[\s\S]*messageHash/, '跨端导入须将内嵌图片交给 ST 落盘并重新校验正文锚点');
-assert.match(source, /gallery\.length > 400 \? gallery\.splice\(0, gallery\.length - 400\)/, '聊天成片元数据必须有容量上限');
+assert.match(source, /pruneStoryboardRetakeGallery\(gallery,records\)/, '成片索引修剪必须保留本轮回执和旧作');
+assert.match(source, /plan\?\.floorTake&&storyboardGalleryRecords\(\)\.length\+generationDemand\.imageCount>400/, '整层重拍超出索引空间须在生图前停止');
 assert.match(source, /sd-reader-native-file sd-storyboard-pack-file/, 'iOS 导入必须保留真实文件控件，不得用 hidden 切断用户手势链');
 assert.match(source, /const saveDraft[\s\S]*setTimeout[\s\S]*storyboardCaptureWorkbench\(root, sourceAtBind\)/, '镜头台长文与参数草稿必须延迟自动保存');
 assert.match(source, /function closeModal\(\)[\s\S]*storyboardCaptureWorkbench\(storyboardRoot\)[\s\S]*storyboardCloseLightbox\(\)/, '关闭面板必须先保存草稿并收掉独立看图层');

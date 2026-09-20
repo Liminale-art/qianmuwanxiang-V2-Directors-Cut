@@ -20,7 +20,7 @@ assert.doesNotMatch(source, /正文已更改 · 原图保留/);
 assert.match(source, /record\?\.linkState === 'stale'\) return Number\.isInteger\(record\?\.floor\)/);
 assert.match(source, /function storyboardRedrawRecord[\s\S]*snapshot\.payload\.prompt = finalPrompt[\s\S]*snapshot\.promptMode = 'manual'[\s\S]*snapshot\.promptLocked = true/);
 assert.doesNotMatch(source, /shouldRecompile = !promptLocked|explicit-redraw-after-edit/);
-assert.match(source, /function storyboardChooseCaptureMode[\s\S]*重新提取生成词/);
+assert.match(source, /function storyboardChooseCaptureMode[\s\S]*本层重新提取/);
 assert.match(source, /record\.promptLocked = true/);
 assert.match(source, /promptMode: state\.promptMode[\s\S]*promptLocked: Boolean\(state\.promptDraft\?\.userEditedCompiled\)/);
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {normalizeStoryboardState} from '../qianmu-storyboard.js';
+import {normalizeStoryboardState,pruneStoryboardRetakeGallery,saveStoryboardFloorTakes,storyboardFloorTakeInitialInline} from '../qianmu-storyboard.js';
 import {readRunningHubTaskUsage, runningHubUsageFields, renderRunningHubTaskUsage} from '../qianmu-runninghub-usage.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
@@ -23,7 +23,7 @@ test('persisted log summary is scoped to an original task, preserves decimal pre
 test('real delivery checkpoints and deferred/current galleries keep the same task report on each variant without multiplying it',async()=>{
   for(const foreign of [false,true])for(const originalOnly of [false,true]) {
     const gallery=[],checkpoints=[],finished=[];let deferred=[];
-    const context=vm.createContext({runningHubUsageFields,clone:structuredClone,
+    const context=vm.createContext({runningHubUsageFields,clone:structuredClone,pruneStoryboardRetakeGallery,saveStoryboardFloorTakes,storyboardFloorTakeInitialInline,
       storyboardPlanForJob:()=>null,storyboardSetPlanStatus:()=>{},storyboardPipelineStage:()=>{},
       storyboardPersistGatewayImage:async(_image,_job,index)=>`/local-${index}.png`,
       storyboardValidatedAnchor:()=>({valid:true,floor:2}),

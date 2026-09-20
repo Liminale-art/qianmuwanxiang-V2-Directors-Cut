@@ -106,7 +106,7 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
   const ledger=adaptProductionPacketToNarrativeLedgerEntry(packet);
   const candidate=scoreNarrativeDirectorCandidate(ledger,{chatKey:'chat-a',viewerId:'user'});
   let account=e.namespace,chat='chat-a';const calls=[],notices=[],chatData=[{mes:'unrelated prose'}];
-  Object.assign(context,{projectNewComfyExecution,storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardGenerationPreparing:new Set(),directorNarrativeBridgeEpoch:1,
+  Object.assign(context,{storyboardCompilerBusy:false,projectNewComfyExecution,storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardGenerationPreparing:new Set(),directorNarrativeBridgeEpoch:1,
     directorProductionPacketState:{chatKey:chat,packets:[packet]},directorCandidatePoolState:{chatKey:chat,ledger:{entries:[ledger]},pool:{candidates:[candidate]}},
     getChatKey:()=>chat,storyboardTargetFloor:()=>0,ctx:()=>({chat:chatData,Popup:class{},POPUP_TYPE:{CONFIRM:1}}),
     getCharacterDescription:()=>'',getPersonaDescription:()=>'',storyboardCharacterArchiveContext:async()=>({chatKey:chat,subjects:e.subjects}),
