@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import vm from 'node:vm';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.226';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.228';
 import {createStoryboardMessageReference,normalizeStoryboardMessageReference,resolveStoryboardMessageReference,sanitizeStoryboardSnapshot,createStoryboardWorkflowTicket} from '../qianmu-storyboard.js';
-import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.226';
+import {verifyStoryboardStreamReference,storyboardStreamFingerprint,storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.228';
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt,summarizeImageAttempts} from '../qianmu-image-attempts.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
@@ -34,6 +34,53 @@ test('growing frames share one generation identity; archived proofs accept appen
   assert.equal(f.context.eventSource.eventNames().length,0);assert.doesNotMatch(JSON.stringify(first),/Alice cooks|She reaches/);
   assert.deepEqual(normalizeStoryboardMessageReference(clone(first)),first);
   assert.deepEqual(sanitizeStoryboardSnapshot(job(first)).messageRef,first);assert.deepEqual(createStoryboardWorkflowTicket({messageRef:first}).messageRef,first);
+});
+
+test('serialized closed-paragraph proof survives terminal whitespace cleanup but is still strict on its content',async()=>{
+  const f=fixture();f.context.chat[0].mes='Alice cooks.\r\n \t\r\n\t';
+  const ref=normalizeStoryboardMessageReference(clone(await f.capture()));
+  assert.equal(ref.stream.closedParagraph,true);assert.equal(ref.stream.prefixLength,'Alice cooks.'.length);
+  f.context.chat[0].mes=f.context.chat[0].mes.trimEnd();assert.equal(f.resolve(ref).state,'active');assert.equal(await f.verify(ref),true);
+  f.context.chat[0].mes='Alice cooks!';assert.equal(f.resolve(ref).state,'stale');await assert.rejects(f.verify(ref));
+});
+
+test('archived closed paragraphs reject joined continuations but accept a new separate paragraph',async()=>{
+  const f=fixture(),ref=await f.capture();
+  for(const suffix of [' More words','\nMore words','\r\nMore words','More words']){
+    f.context.chat[0].mes='Alice cooks.'+suffix;assert.equal(f.resolve(ref).state,'stale');await assert.rejects(f.verify(ref));
+  }
+  for(const suffix of ['', ' \t', '\n', '\n\nNext', ' \r\n \t\r\nNext']){
+    f.context.chat[0].mes='Alice cooks.'+suffix;assert.equal(f.resolve(ref).state,'active');await f.verify(ref);
+  }
+});
+
+test('invalid boundary markers and a mixed partial/complete proof cannot normalize into a looser reference',async()=>{
+  const f=fixture(),ref=await f.capture();
+  for(const marker of [false,1,'true',null]){
+    const bad=clone(ref);bad.stream.closedParagraph=marker;
+    assert.equal(normalizeStoryboardMessageReference(bad).stream.invalid,true);await assert.rejects(f.verify(bad));
+  }
+  const mixed=clone(ref);mixed.stream.complete=true;assert.equal(normalizeStoryboardMessageReference(mixed).stream.invalid,true);
+});
+
+test('older exact-prefix proofs remain strict; the new cleanup rule is not retroactively guessed for them',async()=>{
+  const f=fixture();f.context.chat[0].mes='Alice cooks.\n\n';
+  const old=clone(await f.capture()),prefix=f.context.chat[0].mes;delete old.stream.closedParagraph;
+  old.revisionHash=storyboardStreamFingerprint(prefix);Object.assign(old.stream,{prefixLength:prefix.length,prefixHash:old.revisionHash,prefixDigest:await storyboardStreamDigest(prefix)});
+  assert.equal(await f.verify(old),true);f.context.chat[0].mes=prefix.trimEnd();assert.equal(f.resolve(old).state,'stale');await assert.rejects(f.verify(old));
+});
+
+test('a reserved request cannot drop its closed-paragraph marker and then submit a joined continuation',async()=>{
+  const f=fixture(),ref=clone(await f.capture()),runtime=createImageAdmission({store:store(),account:async()=>'st-user:test',ownerId:'page',resolveSource:j=>f.resolve(j.messageRef)});
+  const a=job(ref);await runtime.admit(a,{maxAutomatic:3});
+  f.context.chat[0].mes='Alice cooks.\n\n';f.context.chat[0].mes=f.context.chat[0].mes.trimEnd();await runtime.beforeSubmit(a);
+  f.context.chat[0].mes+=' but this is a dream';delete a.messageRef.stream.closedParagraph;
+  await assert.rejects(runtime.beforeSubmit(a),{code:'image_attempt_identity'});
+});
+
+test('a paragraph joined during asynchronous proof verification cannot pass its final source guard',async()=>{
+  const f=fixture(),ref=await f.capture();let calls=0;
+  await assert.rejects(verifyStoryboardStreamReference(ref,()=>{if(calls++)f.context.chat[0].mes='Alice cooks.\nShe reaches';return f.resolve(ref);}));
 });
 
 for(const [label,change,state] of [

@@ -25,6 +25,14 @@ export async function storyboardStreamDigest(text){
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)))].map(byte=>byte.toString(16).padStart(2,'0')).join('');
 }
 export const storyboardStreamGenerationInput=(ref,generation)=>JSON.stringify([ref.chatKey,ref.messageKey,ref.swipeId,generation]);
+// A completed paragraph may lose only its trailing whitespace at host finish.
+// If more content follows, it must remain a separate paragraph, not a newly
+// joined continuation of the sentence whose visual meaning was already used.
+export function storyboardStreamParagraphBoundary(text,length){
+  if(typeof text!=='string'||!Number.isSafeInteger(length)||length<1||text.length<length)return false;
+  const tail=text.slice(length);
+  return /^\s*$/.test(tail)||/^[^\S\r\n]*\r?\n[^\S\r\n]*\r?\n/.test(tail);
+}
 export function normalizeStoryboardStreamReference(ref){
   const proof=ref?.stream,g=proof?.generation;
   if(!plain(proof)||proof.version!==1||!plain(g)||Object.keys(g).length!==fields.length
@@ -36,10 +44,12 @@ export function normalizeStoryboardStreamReference(ref){
     ||ref.role!=='assistant'||!(ref.baseSendDate||ref.baseGenerationId)
     ||!Number.isSafeInteger(ref.swipeId)||ref.swipeId<0||ref.swipeId>10000
     ||Object.hasOwn(proof,'complete')&&proof.complete!==true
+    ||Object.hasOwn(proof,'closedParagraph')&&(proof.closedParagraph!==true||Object.hasOwn(proof,'complete'))
     ||Object.hasOwn(proof,'moment')&&!normalizeStoryboardStreamMoment(proof.moment))return {version:1,invalid:true};
   return {version:1,generation:Object.fromEntries(fields.map(key=>[key,g[key]])),generationKey:proof.generationKey,
     prefixLength:proof.prefixLength,prefixHash:proof.prefixHash,prefixDigest:proof.prefixDigest,
     ...(proof.complete===true?{complete:true}:{}),
+    ...(proof.closedParagraph===true?{closedParagraph:true}:{}),
     ...(Object.hasOwn(proof,'moment')?{moment:normalizeStoryboardStreamMoment(proof.moment)}:{})};
 }
 
@@ -61,6 +71,7 @@ export function resolveStoryboardStreamReference(reference,messages,createRefere
   else if(JSON.stringify(storyboardStreamGeneration(message))!==JSON.stringify(proof.generation)
     ||typeof message.mes!=='string'||message.mes.length<proof.prefixLength
     ||proof.complete===true&&message.mes.length!==proof.prefixLength
+    ||proof.closedParagraph===true&&!storyboardStreamParagraphBoundary(message.mes,proof.prefixLength)
     ||storyboardStreamFingerprint(message.mes.slice(0,proof.prefixLength))!==proof.prefixHash)state='stale';
   return {state,floor,message,reference,current:{...reference,lastKnownFloor:floor},relocated:floor!==reference.lastKnownFloor};
 }

@@ -1,6 +1,6 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
 import {createStoryboardMessageReference} from './qianmu-storyboard.js';
-import {storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.226';
+import {storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,storyboardStreamParagraphBoundary} from './qianmu-storyboard-stream-reference.js?v=1.59.228';
 
 export const STORYBOARD_STREAM_SOURCE_LIMIT=200000;
 const frames=new WeakMap();
@@ -58,7 +58,7 @@ export async function captureStoryboardStreamFrame({getContext,epoch,resolveName
       if(closed||signal?.aborted||isCurrent()!==true)fail('流式来源已关闭或切换');host.assertCurrent();
       const current=getContext().chat[floor];
       if(message&&(current!==message||current.is_user||current.is_system||typeof current.mes!=='string'
-        ||!current.mes.startsWith(prefix)||readIdentity(current)!==identity))fail('已确认片段或回复版本已变化');
+        ||!current.mes.startsWith(prefix)||!storyboardStreamParagraphBoundary(current.mes,prefix.length)||readIdentity(current)!==identity))fail('已确认片段或回复版本已变化');
       return true;
     }catch(error){close();throw error;}
   };
@@ -70,9 +70,11 @@ export async function captureStoryboardStreamFrame({getContext,epoch,resolveName
     if(!message||message.is_user||message.is_system||typeof message.mes!=='string')fail('流式取景仅接受当前角色正文');
     if(message.mes.length>STORYBOARD_STREAM_SOURCE_LIMIT)fail('流式正文超过单次容量，未截断或发送');
     if(!Number.isSafeInteger(message.swipe_id??0)||(message.swipe_id??0)<0||(message.swipe_id??0)>10000)fail('流式回复编号无效');
-    raw=message.mes;const stableLength=storyboardStableStreamBoundary(raw);
+    raw=message.mes;const paragraphLength=storyboardStableStreamBoundary(raw);
+    if(!paragraphLength){close();return null;}
+    prefix=raw.slice(0,paragraphLength).trimEnd();const stableLength=prefix.length;
     if(!stableLength){close();return null;}
-    prefix=raw.slice(0,stableLength);reference=createStoryboardMessageReference({message,chatKey:host.source.chatKey,floor});
+    reference=createStoryboardMessageReference({message,chatKey:host.source.chatKey,floor});
     if(!reference.baseSendDate&&!reference.baseGenerationId){close();return null;} // No guessed text-only identity.
     identity=readIdentity(message);const snapshot=snapshotMessage(message);
     const generation=storyboardStreamGeneration(snapshot);
@@ -94,7 +96,7 @@ export async function captureStoryboardStreamFrame({getContext,epoch,resolveName
     const getView=()=>{assertCurrent();return {...getContext(),chat:view};};
     const proof=frozen({version:1,floor,stableLength,snapshotLength:raw.length,prefixDigest:digest,messageRef:{...reference}});
     await guard();handle=Object.freeze({proof,assertCurrent,guard,close});
-    frames.set(handle,{getContext,epoch,resolveNamespace,getView,snapshot,prefix,claim(){assertCurrent();if(borrowed)fail('流式片段已被另一次取景借用');borrowed=true;}});
+    frames.set(handle,{getContext,epoch,resolveNamespace,getView,snapshot,prefix,paragraphLength,claim(){assertCurrent();if(borrowed)fail('流式片段已被另一次取景借用');borrowed=true;}});
     return handle;
   }catch(error){close();throw error;}
 }
@@ -104,7 +106,7 @@ export function borrowStoryboardStreamFrame(frame,{getContext,epoch,resolveNames
   if(!entry||entry.getContext!==getContext||entry.epoch!==epoch||entry.resolveNamespace!==resolveNamespace||frame.proof.floor!==floor)fail('流式片段不属于当前取景会话');
   entry.claim();
   return {getContext:entry.getView,assertCurrent:frame.assertCurrent,guard:frame.guard,close:frame.close,proof:frame.proof,
-    stableParagraphs:read=>read({...entry.snapshot,mes:entry.prefix},floor)};
+    stableParagraphs:read=>read({...entry.snapshot,mes:entry.snapshot.mes.slice(0,entry.paragraphLength)},floor)};
 }
 
 export async function createStoryboardStreamMessageReference(frame){
@@ -113,7 +115,7 @@ export async function createStoryboardStreamMessageReference(frame){
   const generation=storyboardStreamGeneration(entry.snapshot),ref={...frame.proof.messageRef};
   const generationKey=await storyboardStreamDigest(storyboardStreamGenerationInput(ref,generation));
   ref.revisionHash=storyboardStreamFingerprint(entry.prefix);ref.revisionId=`stream:${generationKey}`;
-  ref.stream={version:1,generation,generationKey,prefixLength:frame.proof.stableLength,prefixDigest:frame.proof.prefixDigest,prefixHash:ref.revisionHash};
+  ref.stream={version:1,generation,generationKey,prefixLength:frame.proof.stableLength,prefixDigest:frame.proof.prefixDigest,prefixHash:ref.revisionHash,closedParagraph:true};
   if(normalizeStoryboardStreamReference(ref).invalid)fail('当前回复缺少稳定的生成身份，等待正文完成');
   await frame.guard();return frozen(ref);
 }

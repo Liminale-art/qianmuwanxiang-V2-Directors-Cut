@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
 import {captureStoryboardStreamFrame as frame,captureStoryboardCompilerSources as capture,openStoryboardCompilerContinuity as open,storyboardStableStreamBoundary as boundary} from '../qianmu-storyboard-compiler-sources.js';
-import {borrowStoryboardStreamFrame} from '../qianmu-storyboard-stream-source.js?v=1.59.226';
+import {borrowStoryboardStreamFrame} from '../qianmu-storyboard-stream-source.js?v=1.59.228';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
@@ -40,6 +40,32 @@ test('the actual compiler window receives the complete snapshot, marks only clos
   f.context.chat[1].mes+='\n\nBob arrives.';assert.equal(window.assertCurrent(),true);await window.guard();
   assert.deepEqual(f.context.chat[0],original[0]);assert.equal(f.context.chat[1].mes,snapshot+' for a cup.\n\nBob arrives.');
   window.close();assert.equal(f.listeners(),0);assert.throws(scope.assertCurrent);await assert.rejects(window.guard());
+});
+
+for(const newline of ['\n','\r\n'])test(`host trimming terminal ${JSON.stringify(newline)} whitespace keeps the closed visible paragraph and original complete snapshot`,async()=>{
+  const f=fixture(),text='Alice puts down her coat.',raw=text+` \t${newline} \t${newline}${newline}`;
+  f.context.chat[1].mes=raw;
+  const scope=await frame(f.options),window=await capture({...f.options,streamFrame:scope});
+  assert.equal(scope.proof.stableLength,text.length);assert.equal(scope.proof.snapshotLength,raw.length);
+  assert.deepEqual(window.stream.stableParagraphIds,['P1']);assert.equal(window.messages.at(-1).text,raw);
+  f.context.chat[1].mes=raw.trimEnd();await window.guard();assert.equal(window.assertCurrent(),true);
+  assert.equal(window.messages.at(-1).text,raw);assert.equal(f.saves,0);window.close();assert.equal(f.listeners(),0);
+});
+
+test('removing the paragraph separator before further prose invalidates the live frame, not just changed prefix letters',async()=>{
+  for(const separator of ['', ' ', '\n', '\r\n']){
+    const f=fixture(),scope=await frame(f.options);
+    f.context.chat[1].mes='Alice puts down her coat.'+separator+'She reaches';
+    assert.throws(scope.assertCurrent,{code:'storyboard_stream_source'});assert.equal(f.listeners(),0);
+  }
+});
+
+test('tail cleanup while account resolution is pending does not require recapturing or shorten the input snapshot',async()=>{
+  const f=fixture(),raw='Alice puts down her coat.\n\n',gate=deferred();let calls=0;
+  f.context.chat[1].mes=raw;f.lookup=()=>++calls===1?gate.promise:'st-user:alice';
+  const pending=frame(f.options);f.context.chat[1].mes=raw.trimEnd();gate.resolve('st-user:alice');
+  const scope=await pending,window=await capture({...f.options,streamFrame:scope});
+  assert.equal(window.messages.at(-1).text,raw);await window.guard();window.close();assert.equal(f.listeners(),0);
 });
 
 test('a partial frame may read prior state but cannot publish provisional events as a finished floor or invoke ST saving',async()=>{

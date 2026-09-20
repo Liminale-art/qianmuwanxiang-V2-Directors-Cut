@@ -432,6 +432,22 @@ test('actual finished-floor automatic entry supplements a stream plan once witho
   const after=editable(f.state);delete after.shotPlans;assert.deepEqual(after,initial);assert.equal(f.counts.renders,0);f.assertReleased();
 });
 
+test('host terminal whitespace cleanup preserves the actual admitted picture and finishes coverage without duplicate expression or a second budget',async()=>{
+  const raw='Alice reads a letter in the kitchen.\n\n',f=await fixture({text:raw}),q=installStreamQueue(f);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue[0].messageRef.stream.closedParagraph,true);
+  const sent=f.calls[0].payload.source_catalogue.find(row=>row.floor===0);assert.match(JSON.stringify(sent),/Alice reads a letter/);
+  f.host.chat[0].mes=raw.trimEnd();await q.admission.beforeSubmit(q.queue[0]);
+  const final=installFinalNotifications(f);assert.equal(await final.run(),false,JSON.stringify(f.errors));
+  assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete');assert.equal(f.counts.requests,3);assert.equal(f.counts.hostSaves,1);
+  assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);assert.equal(await final.run(),false);assert.equal(f.counts.requests,3);f.assertReleased();
+});
+
+test('a joined continuation after actual stream queue admission cannot be dispatched as the old completed paragraph',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);
+  f.host.chat[0].mes='Alice reads a letter in the kitchen. She only imagined it.';
+  await assert.rejects(q.admission.beforeSubmit(q.queue[0]),{code:'storyboard_stream_source'});assert.equal(q.queue.length,1);f.assertReleased();
+});
+
 test('normalization and lightweight plan archives preserve terminal-pass idempotency after restart',async()=>{
   const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
   assert.equal(await final.run(),false);assert.equal(f.counts.requests,3);const marker=copy(f.state.shotPlans[0].streamFinalCapture);
