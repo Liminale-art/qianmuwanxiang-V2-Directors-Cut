@@ -10,7 +10,7 @@ const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'ut
 const readme = await readFile(new URL('README.md', root), 'utf8');
 const license = await readFile(new URL('LICENSE', root), 'utf8');
 
-assert.equal(manifest.version, '1.59.237');
+assert.equal(manifest.version, '1.59.238');
 assert.equal(packageJson.version, manifest.version, 'manifest 与 package 版本必须一致');
 assert.equal(packageJson.license, 'PolyForm-Noncommercial-1.0.0');
 assert.equal(manifest.js, `index.js?v=${manifest.version}`, '入口脚本必须按版本破除浏览器模块缓存');
@@ -92,7 +92,7 @@ for (const removedPath of ['qianmu-icons.js', 'assets/qianmu-phosphor-icons.svg'
   await assert.rejects(access(new URL(removedPath, root)), undefined, `${removedPath} 不得出现在稳定版`);
 }
 assert.match(source, /qianmu-icon-renderer\.js\?v=1\.59\.212/, '稳定版必须按版本加载局部图标渲染器');
-assert.match(source, /qianmu-storyboard\.js\?v=1\.59\.237/, '分镜数据契约必须随发布版本破除子模块缓存');
+assert.match(source, /qianmu-storyboard\.js\?v=1\.59\.238/, '分镜数据契约必须随发布版本破除子模块缓存');
 assert.doesNotMatch(source, /qianmu-icons\.js|installQianmuIconSystem/, '稳定版不得恢复旧图标系统');
 assert.doesNotMatch(iconRendererSource, /\bMutationObserver\b/, '局部图标渲染器不得观察全页 DOM');
 

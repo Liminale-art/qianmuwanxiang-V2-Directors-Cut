@@ -7,7 +7,8 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.237';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.238';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.238';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -261,12 +262,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.237';
+} from './qianmu-storyboard.js?v=1.59.238';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.237';
+const VERSION = '1.59.238';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -319,7 +320,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.237'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.238'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -539,9 +540,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.237'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.238'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.237')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.238')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -1433,6 +1434,7 @@ const storyboardAutomaticPending = new Map(); // Bounded notification tickets; n
 let storyboardAutomaticCurrent = null;
 let storyboardAutomaticTimer = null;
 let storyboardAutomaticEpoch = 0;
+let storyboardContinuationRuntime = null;
 let storyboardCredentialRevision = 0;
 let storyboardWorldEntryCache = { key: '', names: [], boundNames: [], books: {}, rows: [], loading: null, error: '' }; // 分镜独立选择，读取链路与「取材」共用
 const storyboardActiveJobs = new Map(); // 正在生成的任务；放弃时不取消可能已计费的上游请求，只丢弃回传
@@ -35550,6 +35552,7 @@ let resizeHandler = null;
 let eventBindings = [];
 
 function storyboardResetAutomaticCapture() {
+  storyboardContinuationRuntime?.reset();
   storyboardAutomaticEpoch++;
   storyboardAutomaticPending.clear();
   if (storyboardAutomaticTimer !== null) clearTimeout(storyboardAutomaticTimer);
@@ -35605,13 +35608,15 @@ async function storyboardDrainAutomaticCapture() {
   }
 }
 
-async function storyboardHandleAutomaticCapture(messageIndex) {
+async function storyboardHandleAutomaticCapture(messageIndex, generationType) {
   const state = storyboardState();
   if (!state.enabled || !state.automation?.autoCapture || !state.promptCompiler?.enabled) return false;
   const receivedIndex = typeof messageIndex === 'string' && /^\d+$/.test(messageIndex) ? Number(messageIndex) : messageIndex;
   const floor = Number.isInteger(receivedIndex) ? receivedIndex : storyboardCurrentAssistantFloor();
   const message = floor >= 0 ? ctx().chat?.[floor] : null;
   if (!message || message.is_user || message.is_system || !String(message.mes || '').trim()) return false;
+  const epoch=storyboardAutomaticEpoch,autoGenerate=Boolean(state.automation.autoGenerate),gate=storyboardContinuationRuntime?.beforeAutomatic(floor,message,generationType);
+  if(gate!=null&&(!await gate||epoch!==storyboardAutomaticEpoch||state!==storyboardState()||ctx().chat?.[floor]!==message))return false;
   const existing = storyboardPlanForMessage(state, floor, message);
   // A repeated host event is not authorization to retry a failed/uncertain paid request.
   if (existing && (existing.status !== 'idle' || existing.origin !== 'automatic' || existing.promptLocked || existing.manualReviewRequired)) return false;
@@ -35624,7 +35629,7 @@ async function storyboardHandleAutomaticCapture(messageIndex) {
     toast('自动取景等待已满，本层可稍后手动提取', 'info');
     return false;
   }
-  storyboardAutomaticPending.set(key, { key, epoch: storyboardAutomaticEpoch, state, chatKey, floor, message, messageRef, createdAt: Date.now(), autoGenerate: Boolean(state.automation.autoGenerate) });
+  storyboardAutomaticPending.set(key, { key, epoch: storyboardAutomaticEpoch, state, chatKey, floor, message, messageRef, createdAt: Date.now(), autoGenerate });
   storyboardScheduleAutomaticCapture();
   return true;
 }
@@ -35684,6 +35689,7 @@ async function storyboardPerformAutomaticCapture(ticket) {
 }
 
 function unbindEvents() {
+  storyboardContinuationRuntime?.close();storyboardContinuationRuntime=null;
   const source = ctx().eventSource;
   if (source?.off) {
     for (const [type, handler] of eventBindings) source.off(type, handler);
@@ -35699,6 +35705,9 @@ function bindEvents() {
   const types = context.event_types || {};
   if (!source?.on) return;
   eventBound = true;
+  storyboardContinuationRuntime=createStoryboardContinuationHost({getContext:()=>({...ctx(),eventTypes:ctx().event_types}),epoch:()=>storyboardAutomaticEpoch,
+    enabled:()=>settings.enabled&&storyboardState().enabled,ensureStore:getChatStore,createReference:createStoryboardMessageReference,notify:message=>toast(message,'warning'),onSaved:floor=>storyboardScheduleInlineRender(0,floor),
+    resolveNamespace:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace()});
   // 自动推演触发：每有新角色回复（MESSAGE_RECEIVED）就照实数一遍——以 lastPlanIdx 为基准，统计其后真正新增的
   // 角色回复层，满阈值即刻推演、读取当下完整聊天。重 roll 同层改写不新增索引、天然不计；删楼则把基准夹回当前末尾自动重算。
   const runBackgroundDirectorRefresh = async () => {
@@ -35730,10 +35739,10 @@ function bindEvents() {
       console.warn(`[${MODULE_NAME}] auto refresh handler failed`, error);
     }
   };
-  const refreshHandler = (messageIndex) => {
+  const refreshHandler = (messageIndex, generationType) => {
     resetDirectorNarrativeBridge();
     storyboardScheduleInlineRender(120);
-    void storyboardHandleAutomaticCapture(messageIndex).catch((error) => console.warn(`[${MODULE_NAME}] automatic storyboard capture failed`, error));
+    void storyboardHandleAutomaticCapture(messageIndex,generationType).catch((error) => console.warn(`[${MODULE_NAME}] automatic storyboard capture failed`, error));
     queueMicrotask(() => void runBackgroundDirectorRefresh());
   };
   const rerenderHandler = async () => {

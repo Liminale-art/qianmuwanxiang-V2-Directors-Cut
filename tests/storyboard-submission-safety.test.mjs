@@ -202,6 +202,7 @@ test('failed, cancelled, successful and manually owned plans do not auto-retry o
     { status: 'idle', origin: 'manual' }, { status: 'idle', origin: 'automatic', promptLocked: true }, { status: 'idle', origin: 'automatic', manualReviewRequired: true },
   ]) {
     const capture = vm.runInNewContext(`${section('storyboardHandleAutomaticCapture')}\nstoryboardHandleAutomaticCapture`, {
+      storyboardContinuationRuntime:null,storyboardAutomaticEpoch:0,
       storyboardState: () => ({ enabled: true, automation: { autoCapture: true }, promptCompiler: { enabled: true } }),
       storyboardCurrentAssistantFloor: () => 0, ctx: () => ({ chat: [{ mes: 'garden' }] }), storyboardPlanForMessage: () => plan,
     });

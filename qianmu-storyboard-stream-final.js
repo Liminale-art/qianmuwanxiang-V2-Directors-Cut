@@ -1,8 +1,8 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.237';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.237';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.237';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.237';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.237';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.238';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.238';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.238';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.238';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.238';
 
 // Finished host notifications share the existing automatic-capture queue. A
 // persisted final-pass marker prevents repeated notifications/reloads from
@@ -21,7 +21,10 @@ export async function finishStoryboardStreamCapture(ticket,d){
     const currentLineage=createStoryboardStreamLineage(messageRef,message,links());
     const matchesSource=(lineage,ref)=>hasStoryboardStreamReference(ref)?lineage.matches(ref):lineage.matchesOrdinary(ref);
     const candidates=refs.filter(ref=>matchesSource(currentLineage,ref));
-    if(!candidates.length)return null; // Ordinary finished-floor behavior remains unchanged.
+    if(!candidates.length){
+      if(currentLineage.links.length)throw Error('本次续写未找到可核对的原自动计划，请手动重新提取；未另开额度');
+      return null; // An ordinary NEW floor keeps its existing automatic path.
+    }
     if(!ticket.autoGenerate||!state.automation.autoGenerate)return false;
     namespace=await d.resolveNamespace();
     if(typeof namespace!=='string'||!namespace.startsWith('st-user:')||!namespace.slice(8).trim())throw Error('无法确认终稿所属账户，未自动补图');

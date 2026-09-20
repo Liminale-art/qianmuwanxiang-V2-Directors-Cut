@@ -20,7 +20,7 @@ function environment() {
   const chat = [{ mes: 'first garden', send_date: '2026-09-06T01:00:00Z', swipe_id: 0 }];
   let chatKey = 'chat-a', seq = 0; const timers = new Map(), calls = [], notices = [], errors = [];
   const context = vm.createContext({
-    ...board, MODULE_NAME: 'test', STORYBOARD_QUEUE_LIMIT: 8,
+    ...board, MODULE_NAME: 'test', STORYBOARD_QUEUE_LIMIT: 8,storyboardContinuationRuntime:null,
     storyboardAutomaticPending: new Map(), storyboardAutomaticCurrent: null, storyboardAutomaticTimer: null, storyboardAutomaticEpoch: 0, storyboardCompilerBusy: false,
     storyboardState: () => state, getChatKey: () => chatKey, ctx: () => ({ chat }), storyboardCurrentAssistantFloor: () => chat.length - 1,
     storyboardPlanCompilerSignature: () => 'compiler', storyboardDeletePlanArchives: async () => {}, uid: () => `id-${++seq}`,
@@ -49,6 +49,26 @@ test('duplicate notifications queue once, preserve the received floor and yield 
   await e.flush();
   assert.deepEqual(e.calls, [['compile', 0], ['generate', 0, true]]);
   assert.equal(await e.context.storyboardHandleAutomaticCapture(0), false, 'queued plan is not re-extracted');
+});
+
+test('actual automatic entry waits for a continuation save barrier before reserving any task and does not expand an extraction-only authorization',async()=>{
+  const e=environment(),gate=deferred(),seen=[];e.state.automation.autoGenerate=false;
+  e.context.storyboardContinuationRuntime={beforeAutomatic:(floor,message,type)=>{seen.push([floor,message===e.chat[0],type]);return gate.promise;}};
+  const pending=e.context.storyboardHandleAutomaticCapture(0,'continue');assert.equal(e.context.storyboardAutomaticPending.size,0);assert.equal(e.calls.length,0);
+  e.state.automation.autoGenerate=true;gate.resolve(true);assert.equal(await pending,true);await e.flush();
+  assert.deepEqual(seen,[[0,true,'continue']]);assert.deepEqual(e.calls,[['compile',0]]);
+});
+
+test('a failed continuation barrier stops the actual automatic path without an ordinary fallback',async()=>{
+  const e=environment();e.context.storyboardContinuationRuntime={beforeAutomatic:()=>Promise.resolve(false)};
+  assert.equal(await e.context.storyboardHandleAutomaticCapture(0,'continue'),false);await e.flush();assert.equal(e.state.shotPlans.length,0);assert.deepEqual(e.calls,[]);
+});
+
+test('source changes or manual takeover while awaiting a continuation save cannot reserve an automatic plan',async()=>{
+  for(const change of [e=>e.context.storyboardAutomaticEpoch++,e=>e.chat[0]={...e.chat[0]},e=>e.context.storyboardEnsurePlan(e.state,0,e.chat[0],{origin:'manual'})]){
+    const e=environment(),gate=deferred();e.context.storyboardContinuationRuntime={beforeAutomatic:()=>gate.promise};
+    const pending=e.context.storyboardHandleAutomaticCapture(0,'continue');change(e);gate.resolve(true);assert.equal(await pending,false);await e.flush();assert.deepEqual(e.calls,[]);
+  }
 });
 
 test('manual ownership acquired while checking stream history is rechecked before reserving an ordinary automatic plan',async()=>{

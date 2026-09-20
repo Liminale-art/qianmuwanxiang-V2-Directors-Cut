@@ -9,6 +9,7 @@ import {resolveStoryboardMessageReference,createStoryboardMessageReference,norma
 import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
+import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuation-host.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -562,6 +563,47 @@ async function ordinaryPlanFixture({indexes=[0],text=threeParagraphs.split('\n\n
   assert.equal(q.queue.length,indexes.length);assert.equal(q.queue[0].messageRef.stream,undefined);
   return {f,q,plan};
 }
+
+for(const mode of ['saved','failed save','hot reload'])test(`actual host ${mode} hands off to ordinary continuation only after its original source is saved`,async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture(),old=copy(q.queue[0]);installFinalNotifications(f);
+  Object.assign(f.context,{storyboardAutomaticPending:new Map(),storyboardAutomaticCurrent:null});
+  const runtime=createStoryboardContinuationHost({getContext:()=>f.host,epoch:()=>f.context.storyboardAutomaticEpoch,enabled:()=>f.state.enabled,
+    createReference:createStoryboardMessageReference,resolveNamespace:async()=>'st-user:route-test',notify:message=>f.notices.push(message)});
+  f.context.storyboardContinuationRuntime=runtime;vm.runInContext(section('storyboardHandleAutomaticCapture'),f.context);
+  const gate=deferred(),started=deferred();let writes=0;f.host.saveMetadata=async()=>{writes++;started.resolve();await gate.promise;if(mode==='failed save')throw Error('simulated save failure');};
+  try{
+    if(mode!=='hot reload')f.events.emit('generation_after_commands','continue',{},false);
+    const message=f.host.chat[0];message.mes+='\n\nA broken cup rests on the table.';message.gen_started+='-continue';message.send_date+='-continue';
+    message.swipe_info=[{send_date:message.send_date,gen_started:message.gen_started,extra:{}}];useShotSet(f,[0,1,2]);
+    f.events.emit('message_received',0,'continue');const pending=f.context.storyboardHandleAutomaticCapture(0,'continue');
+    if(mode!=='hot reload')await started.promise;
+    assert.equal(f.context.storyboardAutomaticPending.size,0);assert.equal(q.queue.length,1);assert.equal(f.counts.requests,2);
+    gate.resolve();assert.equal(await pending,mode==='saved',JSON.stringify(f.notices));
+    if(mode==='saved'){
+      assert.equal(writes,1,'one continuation metadata save before automatic extraction is allowed');
+      const ticket=[...f.context.storyboardAutomaticPending.values()][0];assert.ok(ticket);assert.equal(await f.context.storyboardPerformAutomaticCapture(ticket),true,JSON.stringify(f.errors));
+      assert.equal(q.queue.length,3);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans[0],plan);assert.equal(f.state.shotPlans.length,1);
+      assert.equal(q.queue[2].imageAdmission.revisionId,old.imageAdmission.revisionId);assert.equal(writes,2,'the later final extraction also saves its continuity-state result');
+    }else{assert.equal(f.state.shotPlans.length,1);assert.equal(plan.shots.length,1);assert.equal(f.counts.requests,2);assert.equal(writes,mode==='failed save'?1:0);}
+    assert.deepEqual(copy(q.queue[0]),old);
+  }finally{runtime.close();f.assertReleased();}
+});
+
+test('a later valid continuation cannot hide a lost earlier link and mint an ordinary fresh allowance',async()=>{
+  const {f,q,plan}=await ordinaryPlanFixture();
+  // The previous continue was never observed/saved (for example after reload).
+  const message=f.host.chat[0];message.mes+='\n\nA broken cup rests on the table.';message.gen_started+='-lost';message.send_date+='-lost';
+  message.swipe_info=[{send_date:message.send_date,gen_started:message.gen_started,extra:{}}];
+  await continueHost(f,message.mes+'\n\nLater light fills the kitchen.');useShotSet(f,[0,1,2]);
+  assert.equal(await installFinalNotifications(f).run(),false);assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);assert.equal(plan.shots.length,1);assert.equal(f.counts.requests,2);
+  assert.match(f.notices.at(-1),/未找到可核对的原自动计划/);f.assertReleased();
+});
+
+test('a saved continue without any prior automatic plan requires explicit extraction rather than a new automatic allowance',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n')[0]}),q=installStreamQueue(f);
+  await continueHost(f,f.host.chat[0].mes+'\n\nA broken cup rests on the table.');
+  assert.equal(await installFinalNotifications(f).run(),false);assert.equal(f.counts.requests,0);assert.equal(q.queue.length,0);assert.equal(f.state.shotPlans.length,0);f.assertReleased();
+});
 
 test('actual ordinary plan continues into fresh v3 jobs under the same original plan and automatic budget',async()=>{
   const {f,q,plan}=await ordinaryPlanFixture(),old=copy(q.queue[0]),id=plan.id;
