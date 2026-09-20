@@ -2,20 +2,47 @@ import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
 import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
+import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.220';
+import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
+export {captureStoryboardStreamFrame,storyboardStableStreamBoundary} from './qianmu-storyboard-stream-source.js?v=1.59.220';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
 const windows = new WeakMap();
+const exact = (value,keys) => value && typeof value === 'object' && !Array.isArray(value)
+  && Object.keys(value).length === keys.length && Object.keys(value).every(key=>keys.includes(key));
 
 export function openStoryboardCompilerContinuity(window,options={}) {
   const scope=windows.get(window);
   if(!scope)throw changed();
   window.assertCurrent();
-  return createStoryboardContinuityStoreSession({...scope,window,timeoutMs:options.timeoutMs});
+  const session=createStoryboardContinuityStoreSession({...scope,window,timeoutMs:options.timeoutMs});
+  if(!window.stream)return session;
+  let closed=false;
+  const check=()=>{if(closed)throw changed();window.assertCurrent();};
+  return Object.freeze({read:session.read,close(){closed=true;session.close();},get pending(){return false;},async publish(proposals){
+    check();
+    if(!Array.isArray(proposals)||!proposals.length||proposals.length>window.sources.length)throw changed();
+    const seen=new Set();
+    for(const proposal of proposals){
+      if(!exact(proposal,['floor','roster','events'])||!exact(proposal.roster,['branches','subjectIds']))throw changed();
+      const source=window.sources.find(row=>row.messageRef.lastKnownFloor===proposal?.floor);
+      if(!source||seen.has(proposal.floor))throw changed();seen.add(proposal.floor);
+      bindStoryboardContinuityEvents(proposal.events,{messageRef:source.messageRef,chatKey:source.messageRef.chatKey,paragraphs:source.paragraphs,...proposal.roster});
+    }
+    await window.guard();check();return Object.freeze({status:'deferred',reason:'streaming_source'});
+  }});
+}
+
+export async function captureStoryboardCompilerSources(options={}){
+  if(options.streamFrame==null)return captureSources(options);
+  const borrowed=borrowStoryboardStreamFrame(options.streamFrame,options);
+  try{return await captureSources({...options,getContext:borrowed.getContext,isCurrent:()=>{borrowed.assertCurrent();return options.isCurrent();}},borrowed);}
+  catch(error){borrowed.close();throw error;}
 }
 
 // One borrowed window for the actual compiler, not another history cache. Never
 // scan outside the user's selected raw ST floor range or retain prose globally.
-export async function captureStoryboardCompilerSources({floor,referenceFloors,getContext,epoch,resolveNamespace,isCurrent,readParagraphs,readText,signal}={}) {
+async function captureSources({floor,referenceFloors,getContext,epoch,resolveNamespace,isCurrent,readParagraphs,readText,signal}={},stream=null) {
   if (!Number.isSafeInteger(floor) || floor < 0 || !Number.isSafeInteger(referenceFloors) || referenceFloors < 0 || referenceFloors > 20
     || typeof readText !== 'function' || typeof readParagraphs !== 'function' || typeof isCurrent !== 'function') {
     throw Object.assign(new Error('取景来源范围无效，未读取或发送正文'), {code:'storyboard_context_unavailable'});
@@ -24,7 +51,7 @@ export async function captureStoryboardCompilerSources({floor,referenceFloors,ge
   const start = Math.max(0,floor-referenceFloors), slots = [], sources = [], messages = [], listeners = [];
   const emitter = getContext().eventSource, remove = typeof emitter?.removeListener === 'function' ? emitter.removeListener : emitter?.off;
   let closed = false, namespace, handle;
-  const close = () => { closed = true; windows.delete(handle); host.close(); for (const source of sources) source.close(); signal?.removeEventListener('abort',close);
+  const close = () => { closed = true; windows.delete(handle); host.close(); for (const source of sources) source.close(); signal?.removeEventListener('abort',close);stream?.close();
     for (const [type,handler] of listeners.splice(0)) { try { remove.call(emitter,type,handler); } catch (_) {} } };
   const assertCurrent = () => {
     try {
@@ -102,8 +129,14 @@ export async function captureStoryboardCompilerSources({floor,referenceFloors,ge
       catch (_) { close(); throw changed(); }
     };
     await guard();
+    let streamScope;
+    if(stream){
+      const stable=stream.stableParagraphs(readParagraphs);
+      if(!Array.isArray(stable)||!stable.length||stable.some((row,index)=>row.id!==current.paragraphs[index]?.id||row.text!==current.paragraphs[index]?.text))throw changed();
+      await stream.guard();assertCurrent();streamScope=Object.freeze({...stream.proof,stableParagraphIds:Object.freeze(stable.map(row=>row.id))});
+    }
     handle=Object.freeze({floor,referenceFloors,messages:Object.freeze(messages),sources:Object.freeze([...sources]),
-      paragraphs:Object.freeze(current.paragraphs.map(row=>row.text)),current,guard,assertCurrent,close});
+      paragraphs:Object.freeze(current.paragraphs.map(row=>row.text)),current,guard,assertCurrent,close,...(streamScope?{stream:streamScope}:{})});
     windows.set(handle,{getContext,host,namespace});
     return handle;
   } catch (error) {

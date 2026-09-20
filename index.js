@@ -264,7 +264,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.219';
+const VERSION = '1.59.220';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -537,7 +537,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.217'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.220'),
   },
   storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.219')},
   theaterCatalog: {
