@@ -264,7 +264,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.221';
+const VERSION = '1.59.222';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -537,7 +537,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.221'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.222'),
   },
   storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.219')},
   theaterCatalog: {
@@ -18556,7 +18556,7 @@ async function storyboardCompilerWorldText(state) {
   return { text: resolved.join('\n\n'), rows: selected, fallback: false };
 }
 
-function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = true, upstreamGuard = null, requireCompiler = false, freshComfy = false } = {}) {
+function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = true, upstreamGuard = null, requireCompiler = false, freshComfy = false, stream = null } = {}) {
   const chatKey = String(getChatKey() || '');
   const copy = (value) => Array.isArray(value) ? value.map(copy)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copy(item)])) : value;
@@ -18568,7 +18568,7 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
   };
   // Only preparation inputs: no gallery, logs, media bytes or parameter-memory archive. Strings are not serialized/copied.
   const read = () => {
-    const floor = storyboardTargetFloor(state);
+    const floor = stream?.floor ?? storyboardTargetFloor(state);
     const recent = Math.max(0, Math.min(20, Number(state.promptCompiler.includeRecentFloors) || 0));
     const chat = ctx().chat || [];
     const selectedPreset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
@@ -18577,7 +18577,7 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
     if (requireCompiler && profileId && matches.length !== 1) throw new Error('取景 API 档案已失效或编号重复，请重新选择；未改用其他连接');
     const api = matches[0] || settings;
     return {
-      enabled: state.enabled, source: state.source, target: state.target, floor, floorValue: state.floor,
+      enabled: state.enabled, automation:state.automation, source: state.source, target: state.target, floor, floorValue: state.floor,
       profiles: Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => {
         const { loaded, ...effectiveProfile } = storyboardProviderProfile(state, id);
         return [id, effectiveProfile];
@@ -18594,10 +18594,10 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
       pools: state.artistPools, vibes: state.selectedVibeIds,
       llm: { id: api.id, mode: settings.providerMode, apiUrl: api.apiUrl, apiKey: api.apiKey, model: api.model, temperature: api.temperature, structuredOutputMode: api.structuredOutputMode },
       character: getCharacterDescription(), persona: getPersonaDescription(), mainApi: ctx().mainApi,
-      messages: chat.slice(Math.max(0, floor - recent), floor + 1).map((item) => ({ text: item?.mes, swipe: item?.swipe_id, user: item?.is_user, system: item?.is_system })),
+      messages: chat.slice(Math.max(0, floor - recent), floor + 1).map((item,index,rows) => ({ text: stream && index===rows.length-1 ? undefined : item?.mes, swipe: item?.swipe_id, user: item?.is_user, system: item?.is_system })),
     };
   };
-  const floor = storyboardTargetFloor(state), message = ctx().chat?.[floor];
+  const floor = stream?.floor ?? storyboardTargetFloor(state), message = ctx().chat?.[floor];
   let baseline = copy(read()), invalidated = false;
   // Input events also invalidate edit-and-restore (A → B → A), without cancelling on scrolling or library searches.
   const onInput = (event) => {
@@ -18609,13 +18609,15 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
     document.addEventListener('input', onInput, true);
     document.addEventListener('change', onInput, true);
   }
-  const isCurrent = () => !invalidated && baseline !== null && (!upstreamGuard || upstreamGuard.isCurrent()) && state === storyboardState()
+  const isCurrent = () => !invalidated && !stream?.signal?.aborted && baseline !== null && (!upstreamGuard || upstreamGuard.isCurrent()) && state === storyboardState()
     && chatKey === String(getChatKey() || '') && plan?.status !== 'cancelled' && ctx().chat?.[floor] === message && equal(baseline, read());
   return {
+    stream,
     get freshComfy() { return freshComfy === true; },
     isCurrent,
     ownsCurrentContext: () => state === storyboardState() && chatKey === String(getChatKey() || ''),
     assertCurrent() {
+      try{this.streamFrame?.assertCurrent();}catch(error){throw Object.assign(error,{code:'storyboard_input_changed'});}
       if (isCurrent()) { this.compilerSources?.assertCurrent(); return; }
       const error = new Error('分镜配置或正文已变化，已忽略旧结果，请按当前设置重试');
       error.code = 'storyboard_input_changed'; throw error;
@@ -18623,6 +18625,7 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
     dispose() {
       this.continuityStore?.close();
       this.compilerSources?.close();
+      this.streamFrame?.close();
       this.comfyBatch?.close();this.comfyAuto?.close();this.comfyReadiness?.close();
       baseline = null;
       if (typeof document !== 'undefined') {
@@ -18655,16 +18658,22 @@ async function storyboardCompilerCharacterCasting(text, inputGuard, includeRefer
 }
 
 async function storyboardCompilerContext(state, inputGuard) {
-  const floor = storyboardTargetFloor(state);
+  const floor = inputGuard.stream?.floor ?? storyboardTargetFloor(state);
   const recentSetting = Number(state.promptCompiler.includeRecentFloors);
   const recentCount = Math.max(0, Math.min(20, Number.isFinite(recentSetting) ? Math.trunc(recentSetting) : 2));
   const [runtime, identity] = await Promise.all([featureRuntime.load('storyboardContract'),featureRuntime.load('imageAdmission')]);
   inputGuard.assertCurrent();
-  const sources = await runtime.captureStoryboardCompilerSources({floor,referenceFloors:recentCount,getContext:ctx,
+  const sourceOptions={floor,referenceFloors:recentCount,getContext:ctx,
     epoch:()=>storyboardAdmissionEpoch,resolveNamespace:identity.resolveImageAccountNamespace,isCurrent:inputGuard.isCurrent,
+    signal:inputGuard.stream?.signal,
     readText:item=>storyboardCleanMessageText(storyboardCleanWithTagRules(item.mes, state)),
     readParagraphs:item=>storyboardMessageParagraphs(storyboardCleanWithTagRules(item.mes, state)).map((text,index)=>({id:`P${index+1}`,text})),
-  });
+  };
+  if(inputGuard.stream){
+    sourceOptions.streamFrame=inputGuard.streamFrame=await runtime.captureStoryboardStreamFrame(sourceOptions);
+    if(!sourceOptions.streamFrame)throw Object.assign(new Error('等待完整段落'),{code:'storyboard_stream_wait'});
+  }
+  const sources = await runtime.captureStoryboardCompilerSources(sourceOptions);
   inputGuard.compilerSources = sources;
   const continuityStore = inputGuard.continuityStore = runtime.openStoryboardCompilerContinuity(sources);
   const continuity = await continuityStore.read();
@@ -19010,20 +19019,22 @@ async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGu
   return reports.length === 1 ? reports[0] : reports;
 }
 
-async function storyboardCompilePrompt(root, { plan = null, quiet = false, automatic = false } = {}) {
+async function storyboardCompilePrompt(root, { plan = null, quiet = false, automatic = false, stream = null, onPrepared = null } = {}) {
+  if(stream){if(root||plan||typeof onPrepared!=='function'||!Number.isSafeInteger(stream.floor)||stream.floor<0)return false;automatic=true;stream={floor:stream.floor,signal:stream.signal};}
+  else if(onPrepared)return false;
   if (storyboardCompilerBusy) return false;
   const { state, profile } = storyboardCaptureWorkbench(root);
   if (!state.enabled) { toast('请先启用分镜。', 'warning'); return false; }
   try { resolveStoryboardProfileBinding(state.source, profile); }
   catch (error) { toast(error.message, 'warning'); return false; }
-  const floor = storyboardTargetFloor(state);
+  const floor = stream?.floor ?? storyboardTargetFloor(state);
   if (floor < 0 || !ctx().chat?.[floor]) { toast('当前没有可用于自动取景的正文。', 'warning'); return false; }
   let inputGuard;
-  try { inputGuard = storyboardCreatePreparationGuard(state, { plan, requireCompiler: true, freshComfy: true }); }
+  try { inputGuard = storyboardCreatePreparationGuard(state, { plan, requireCompiler: true, freshComfy: true, stream }); }
   catch (error) { toast(error.message, 'warning'); return false; }
   storyboardCompilerBusy = true;
   storyboardSetPlanStatus(plan, 'compiling');
-  renderModal();
+  if(!stream)renderModal();
   const startedAt = Date.now();
   let resultAccepted = false;
   try {
@@ -19103,6 +19114,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       ...(contractRequest.promptFormats?.length ? {promptFormats:contractRequest.promptFormats,maxOutputTokens:contractRequest.maxTokens} : {}),
       messages: contractRequest.messages,
     };
+    if(stream){await onPrepared({result,context,compilerInput,inputGuard});inputGuard.assertCurrent();return result.shouldGenerate===true&&!result.manualRequired;}
     if (!result.shouldGenerate) {
       state.prompt = '';
       state.negative = '';
@@ -19190,6 +19202,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     if (!quiet) toast(manualRequired ? '自动整理未通过校验；已停止自动生图并保留一份待确认草稿。' : '生成词已提取，可继续修改或手动生成。', manualRequired ? 'warning' : 'success');
     return !manualRequired;
   } catch (error) {
+    if(stream&&error?.code==='storyboard_stream_wait')return false;
     if (error?.code === 'storyboard_input_changed' || !resultAccepted && !inputGuard.isCurrent()) {
       if (plan?.status === 'compiling') {
         const error = '取景输入已变化，请重新提取';
@@ -19209,7 +19222,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     inputGuard.dispose();
     storyboardCompilerBusy = false;
     storyboardScheduleAutomaticCapture();
-    renderModal();
+    if(!stream)renderModal();
   }
 }
 

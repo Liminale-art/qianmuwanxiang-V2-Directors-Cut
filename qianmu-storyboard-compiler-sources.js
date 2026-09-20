@@ -133,7 +133,8 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
     let streamScope;
     if(stream){
       const stable=stream.stableParagraphs(readParagraphs);
-      if(!Array.isArray(stable)||!stable.length||stable.some((row,index)=>row.id!==current.paragraphs[index]?.id||row.text!==current.paragraphs[index]?.text))throw changed();
+      if(Array.isArray(stable)&&!stable.length)throw Object.assign(new Error('等待完整可见段落'),{code:'storyboard_stream_wait'});
+      if(!Array.isArray(stable)||stable.some((row,index)=>row.id!==current.paragraphs[index]?.id||row.text!==current.paragraphs[index]?.text))throw changed();
       await stream.guard();assertCurrent();streamScope=Object.freeze({...stream.proof,stableParagraphIds:Object.freeze(stable.map(row=>row.id))});
     }
     handle=Object.freeze({floor,referenceFloors,messages:Object.freeze(messages),sources:Object.freeze([...sources]),
