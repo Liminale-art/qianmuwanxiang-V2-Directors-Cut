@@ -9138,6 +9138,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 
 /* v1.58.28 · 第二摄影机候选与导演轨媒体标识。 */
 #story-director-modal .sd-storyboard-production-card .sd-storyboard-card-body { padding: 8px 10px 10px; }
+#story-director-modal .sd-storyboard-world-controls { align-items: end; }
+#story-director-modal .sd-storyboard-world-controls > .sd-option-chip { box-sizing: border-box; min-height: var(--qm-control-height); height: var(--qm-control-height); border-radius: var(--qm-control-radius); }
 #story-director-modal .sd-storyboard-production-list { display: grid; gap: 5px; }
 #story-director-modal .sd-storyboard-production-item {
   min-width: 0;

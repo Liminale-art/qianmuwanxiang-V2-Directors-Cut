@@ -7,9 +7,9 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.254';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.254';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.254';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.255';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.255';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.255';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -264,12 +264,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.254';
+} from './qianmu-storyboard.js?v=1.59.255';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.254';
+const VERSION = '1.59.255';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -322,7 +322,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.254'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.255'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -358,11 +358,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.254'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.255'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.254'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.255'),
+  },
+  worldAutomaticHost: {
+    label: '造物之眼自动排程',
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.255'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -454,11 +458,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.254'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.255'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.254'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.255'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -546,9 +550,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.254'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.255'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.254')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.255')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -641,6 +645,7 @@ function bindDirectorWorldEntryLinks(root) {
 let directorCandidatePoolState = { chatKey: '', updatedAt: '', ledger: null, pool: null, error: '' };
 let directorNarrativeBridgeEpoch = 0;
 function resetDirectorNarrativeBridge() {
+  storyboardResetWorldAutomatic();
   directorNarrativeBridgeEpoch++;
   directorWorldSourceRefreshKey = '';
   directorWorldEntryLinks = new Map();
@@ -1435,7 +1440,8 @@ let focusClockVoiceDrawer = null;  // 专注抽屉控制器；DOM 所有权留�
 let focusLibraryRuntime = null;
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
 let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
-let storyboardCompilerBusy = false;  // 自动取景是独立的一次 LLM 请求，不与正文生成共用返回
+let storyboardCompilerBusy = false;  // true 为正文取景；世界自动准备持有独立对象凭据，二者串行使用取景 API。
+let storyboardWorldAutomaticRuntime = null, storyboardWorldAutomaticEpoch = 0;
 const storyboardAutomaticPending = new Map(); // Bounded notification tickets; never rediscover a later floor after waiting.
 let storyboardAutomaticCurrent = null;
 let storyboardAutomaticTimer = null;
@@ -3824,7 +3830,6 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     store.planAtLen = Array.isArray(ctx().chat) ? ctx().chat.length : 0;            // 记下推演时的聊天长度：若日后删楼回退到此长度之前，则注入的暗线已悬空，自动清空待下次推演
     if (settings.geopoliticsEnabled) mergeGeopolitics(store, newPlan);   // 活幕·势：承接势力格局/世界事件档案
     delete newPlan.factions; delete newPlan.faction_relations; delete newPlan.world_events;   // 已并入 store（唯一真源），从 plan 剔除避免重复注入
-    void refreshDirectorProductionPackets(newPlan, { chatKey: getChatKey(), floor: store.lastPlanIdx, sceneId: newPlan.story_status?.title || '', time: newPlan.story_status?.cycle || '' });
     // 历史快照须在剔除活档案字段之后再 clone：world 格局/伏笔是跨幕累积的活档案，绝不能随「载入历史」回滚复活，
     // 否则旧 factions/world_events/threads 会被重新塞回 store.plan、经【上次审片状态】喂回模型，导致清空后仍复刻旧格局。
     store.history = [{ id: uid('hist'), createdAt: now, directorPlanRevisionId:store.directorPlanRevisionId, plan: clone(newPlan) }, ...(Array.isArray(store.history) ? store.history : [])].slice(0, 5);
@@ -3832,10 +3837,12 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     await saveMetadata();
     await guard();
     await applyDirectorInjection();
+    await guard();
     log.status = 'success';
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     saveSettings();
     if (showSuccessToast) toast('推演完成，下一幕已就位。', 'success');
+    void storyboardQueueNewWorldPlan(newPlan,{store,chatKey:key,namespace}).catch(()=>console.warn('[千幕] 造物之眼排程未就绪，本次推演结果保留。'));
   } catch (error) {
     if (error?.modelResponse) updateResponse(error.modelResponse);
     const msg = error?.name === 'AbortError' ? 'USER_CANCELLED' : (error?.message || String(error));
@@ -13851,7 +13858,6 @@ function renderStoryboardProductionSources(state) {
   const available = !directorProductionPacketState.chatKey || directorProductionPacketState.chatKey === currentChatKey;
   const packets = available ? (directorProductionPacketState.packets || []) : [];
   const selectedId = storyboardProductionContext(state.promptDraft?.shots?.[0] || {}).packetId;
-  if (!packets.length && !directorProductionPacketState.error) return '';
   const rows = packets.map((packet) => {
     const label = storyboardProductionSourceLabel(packet);
     const title = storyboardProductionPacketTitle(packet);
@@ -13865,10 +13871,13 @@ function renderStoryboardProductionSources(state) {
   }).join('');
   const body = directorProductionPacketState.error
     ? `<div class="sd-storyboard-empty-inline">${htmlEscape(directorProductionPacketState.error)}</div>`
-    : rows;
+    : rows || '<small>推演完成后，可在此查看世界素材。</small>';
   return `<details class="sd-card sd-storyboard-production-card" data-storyboard-card="production" ${state.collapsedCards.production ? '' : 'open'}>
-    <summary><span><b>造物之眼</b><small>${packets.length} 个候选</small></span></summary>
-    <div class="sd-storyboard-card-body"><div class="sd-storyboard-production-list">${body}</div></div>
+    <summary><span><b>造物之眼</b><small>${packets.length} 个来源</small></span></summary>
+    <div class="sd-storyboard-card-body"><div class="sd-storyboard-grid sd-storyboard-grid-two sd-storyboard-world-controls">
+      <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-world-auto" ${state.directorBridge.worldAutoGenerate?'checked':''} ${!state.enabled?'disabled':''}><span>自动创作</span></label>
+      <label><span>每次推演最多画面</span><select class="text_pole sd-storyboard-world-limit" ${!state.enabled||!state.directorBridge.worldAutoGenerate?'disabled':''}>${[1,2,3,4].map(n=>`<option value="${n}" ${n===state.directorBridge.worldAutoMaxImages?'selected':''}>${n}</option>`).join('')}</select></label>
+    </div><small>仅新完成的推演；每条素材一张，不自动制作视频。</small><div class="sd-storyboard-production-list">${body}</div></div>
   </details>`;
 }
 
@@ -19744,9 +19753,10 @@ async function storyboardAdaptShotForModel(shot, sourceId, modelId, state = stor
   };
 }
 
-async function storyboardGenerateProductionPacket(root, packetId, {automatic=false}={}) {
+async function storyboardGenerateProductionPacket(root, packetId, {automatic=false,repairBudget,expectedNamespace='',upstreamGuard=null}={}) {
   const state = storyboardState();
   if(automatic&&(root||state.directorBridge?.worldAutoGenerate!==true))return false;
+  if(automatic&&storyboardCompilerBusy)return false;
   if (!state.directorBridge?.worldSideShotsEnabled) return toast('请先启用造物之眼。', 'warning');
   const currentChatKey = String(getChatKey() || '');
   if (!currentChatKey || directorProductionPacketState.chatKey !== currentChatKey || directorCandidatePoolState.chatKey !== currentChatKey) return toast('这条导演素材不属于当前聊天。', 'warning');
@@ -19762,22 +19772,26 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
   const preparationKey = JSON.stringify([currentChatKey, 'world-creation']);
   if (storyboardGenerationPreparing.has(preparationKey)) return toast('正在核对造物之眼画面，请勿重复操作', 'info');
   storyboardGenerationPreparing.add(preparationKey);
+  const compilerLease=automatic?Object.freeze({worldAutomatic:true}):null;
   const sourceValue = () => JSON.stringify([
     directorProductionPacketState.packets?.find(item=>item.packetId===packetId),
     ...(directorProductionPacketState.sourceSignature ? [directorWorldPlanSignature()] : []),
     directorCandidatePoolState.ledger?.entries?.find(item=>item.entryId===ledgerEntry.entryId),
     directorCandidatePoolState.pool?.candidates?.find(item=>item.candidateId===candidate.candidateId),
   ]);
-  const sourceSnapshot = sourceValue();
+  let sourceSnapshot;
   const productionGuard = {
     isCurrent: () => state === storyboardState() && state.enabled && state.directorBridge?.worldSideShotsEnabled
       &&(!automatic||state.directorBridge.worldAutoGenerate===true)
+      &&(!upstreamGuard||upstreamGuard.isCurrent())
       && currentChatKey === String(getChatKey() || '') && actionEpoch === directorNarrativeBridgeEpoch
       && admissionEpoch === storyboardAdmissionEpoch && sourceSnapshot === sourceValue(),
     assertCurrent() { if (!this.isCurrent()) throw Object.assign(new Error('导演素材、聊天或配置已变化，请重新确认'), {code:'storyboard_input_changed'}); },
   };
   let preparationGuard,automaticRuntime,automaticAttempt,accepted=false,automaticOutcome='failed';
   try {
+    sourceSnapshot=sourceValue();
+    if(compilerLease)storyboardCompilerBusy=compilerLease;
     productionGuard.assertCurrent();
     storyboardCaptureWorkbench(root);
     preparationGuard = storyboardCreatePreparationGuard(state, {upstreamGuard:productionGuard,freshComfy:true});
@@ -19798,6 +19812,7 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
     if(automatic){
       automaticRuntime=await featureRuntime.load('worldAutomatic');assertCurrent();
       const identity=await featureRuntime.load('imageAdmission'),namespace=await identity.resolveImageAccountNamespace();assertCurrent();
+      if(expectedNamespace&&expectedNamespace!==namespace)throw new Error('ST账户已变化，未自动创作');
       automaticAttempt=await automaticRuntime.beginWorldAutomaticAttempt({namespace,source:packet.sourceRef?.worldSource,
         guard:()=>productionGuard.isCurrent()&&preparationGuard.isCurrent()});assertCurrent();
     }
@@ -19869,7 +19884,7 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
         if(renderingStages.length>4)renderingStages.shift();
       }
     };
-    const autoPrepared=automatic?await automaticRuntime.prepareAutomaticWorldShot({shot:prepared.shot,promptFormats,prepareRenderings,guard:confirmationGuard,useReference}):null;
+    const autoPrepared=automatic?await automaticRuntime.prepareAutomaticWorldShot({shot:prepared.shot,promptFormats,prepareRenderings,guard:confirmationGuard,useReference,repairBudget}):null;
     const shotSpec = automatic?autoPrepared.shot:await worldRuntime.openWorldShotConfirmation({shot:prepared.shot,warnings:prepared.warnings,title,
       model:usesAuto?'自动选择工作流':finalProfile.model,useReference,context,promptFormats,prepareRenderings,guard:confirmationGuard});
     if (!shotSpec) return false;
@@ -19888,7 +19903,7 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
     const productionHandoff=worldRuntime.createWorldGenerationHandoff(state,{shotSpec,prompt,negative:compiled.negative,title,stages});
     const handoffGuard={isCurrent:()=>productionGuard.isCurrent()&&preparationGuard.isCurrent()&&root?.isConnected!==false,
       assertCurrent,verify:async()=>{await confirmationGuard();await productionGuard.verify();}};
-    accepted=(await storyboardGenerate(null, { automatic, productionGuard:handoffGuard, productionHandoff }))===true;
+    accepted=(await storyboardGenerate(null, { automatic, productionGuard:handoffGuard, productionHandoff,compilerLease }))===true;
     return accepted;
   } catch (error) {
     automaticOutcome=error?.code==='storyboard_input_changed'?'cancelled':'failed';
@@ -19901,6 +19916,7 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
       finally{automaticAttempt.close();}
     }
     preparationGuard?.dispose();storyboardGenerationPreparing.delete(preparationKey);
+    if(compilerLease&&storyboardCompilerBusy===compilerLease){storyboardCompilerBusy=false;storyboardScheduleAutomaticCapture();}
   }
 }
 
@@ -20004,8 +20020,9 @@ async function storyboardChooseComfyGenerationRoutes(state,inputGuard,planned,ro
   return {routes:resolved,choices:chosen,batch,failures};
 }
 
-async function storyboardGenerate(root, { plan = null, automatic = false, productionGuard = null, productionHandoff = null } = {}) {
-  if(storyboardCompilerBusy)return toast('正在提取，请等待完成后再生成','info');
+async function storyboardGenerate(root, { plan = null, automatic = false, productionGuard = null, productionHandoff = null,compilerLease=null } = {}) {
+  const ownsWorldCompiler=automatic&&productionHandoff&&compilerLease&&typeof compilerLease==='object'&&storyboardCompilerBusy===compilerLease;
+  if(storyboardCompilerBusy&&!ownsWorldCompiler)return toast('正在提取，请等待完成后再生成','info');
   if(productionHandoff&&(!productionGuard||plan||root||automatic&&storyboardState().directorBridge?.worldAutoGenerate!==true))return toast('世界画面交接不属于已授权批次，未提交','warning');
   const preparationKey = JSON.stringify([String(getChatKey() || ''), productionHandoff?'world-submit':storyboardTargetFloor(storyboardState())]);
   if (storyboardGenerationPreparing.has(preparationKey)) return toast('本层画面正在准备，请勿重复生成', 'info');
@@ -22622,6 +22639,13 @@ function bindStoryboardTabEvents(root) {
         chatKey: getChatKey(), floor: store.lastPlanIdx, sceneId: plan.story_status?.title || '', time: plan.story_status?.cycle || '',
       }).then(() => rerenderIfOpen());
     }
+  });
+  root.querySelector('.sd-storyboard-world-auto')?.addEventListener('change', event=>{
+    state.directorBridge.worldAutoGenerate=Boolean(event.target.checked);storyboardResetWorldAutomatic();saveSettings();renderModal();
+  });
+  root.querySelector('.sd-storyboard-world-limit')?.addEventListener('change', event=>{
+    const n=Number(event.target.value);state.directorBridge.worldAutoMaxImages=[1,2,3,4].includes(n)?n:1;
+    storyboardResetWorldAutomatic();saveSettings();renderModal();
   });
   if (state.view === 'create') {
     const sourceAtBind = state.source;
@@ -35433,9 +35457,46 @@ function storyboardAutomaticTicketFloor(ticket) {
   return current.messageKey === ticket.messageRef.messageKey && current.revisionId === ticket.messageRef.revisionId ? floor : -1;
 }
 
+function storyboardResetWorldAutomatic(){
+  storyboardWorldAutomaticEpoch++;storyboardWorldAutomaticRuntime?.close();storyboardWorldAutomaticRuntime=null;
+}
+
+async function storyboardQueueNewWorldPlan(plan,{store,chatKey,namespace}={}){
+  const state=storyboardState(),epoch=storyboardWorldAutomaticEpoch;
+  if(!settings.enabled||!state.enabled||!state.directorBridge?.worldSideShotsEnabled||!chatKey||!namespace||getChatStore()!==store||store.plan!==plan)return false;
+  const context={chatKey,floor:store.lastPlanIdx,sceneId:plan.story_status?.title||'',time:plan.story_status?.cycle||''};
+  if(state.directorBridge.worldAutoGenerate!==true){await refreshDirectorProductionPackets(plan,context);return false;}
+  const revision=store.directorPlanRevisionId,signature=directorWorldPlanSignature();let guard,transferred=false;
+  const current=()=>epoch===storyboardWorldAutomaticEpoch&&state===storyboardState()&&settings.enabled&&state.enabled
+    &&state.directorBridge.worldSideShotsEnabled&&state.directorBridge.worldAutoGenerate===true&&getChatKey()===chatKey
+    &&getChatStore()===store&&store.plan===plan&&store.directorPlanRevisionId===revision&&directorWorldPlanSignature()===signature&&(!guard||guard.isCurrent());
+  try{
+    if(!revision||!current())return false;
+    guard=storyboardCreatePreparationGuard(state,{includeDraft:false,requireCompiler:true});
+    const runtime=await featureRuntime.load('worldAutomaticHost');if(!current())return false;
+    storyboardWorldAutomaticRuntime||=runtime.createWorldAutomaticHost({
+      busy:()=>storyboardCompilerBusy||storyboardAutomaticCurrent||storyboardAutomaticPending.size||storyboardAutomaticTimer!==null||storyboardGenerationPreparing.size,
+      notify:message=>toast(message,'info'),idle:()=>storyboardScheduleAutomaticCapture(),
+    });
+    transferred=storyboardWorldAutomaticRuntime.offer({key:JSON.stringify([namespace,chatKey,revision]),current,limit:state.directorBridge.worldAutoMaxImages,
+      prepare:async()=>{
+        const identity=await featureRuntime.load('imageAdmission');
+        if(namespace!==await identity.resolveImageAccountNamespace()||!current())throw new Error('世界素材归属已变化');
+        await refreshDirectorProductionPackets(plan,context);if(!current())throw new Error('世界素材已变化');
+        if(directorProductionPacketState.sourceSignature!==signature||directorCandidatePoolState.chatKey!==chatKey||directorCandidatePoolState.error)throw new Error('世界素材未就绪');
+        return runtime.selectWorldAutomaticPackets({packets:directorProductionPacketState.packets,ledger:directorCandidatePoolState.ledger,
+          pool:directorCandidatePoolState.pool,media:storyboardGalleryRecords(),chatKey,limit:state.directorBridge.worldAutoMaxImages});
+      },
+      run:(packetId,repairBudget)=>storyboardGenerateProductionPacket(null,packetId,{automatic:true,repairBudget,expectedNamespace:namespace,upstreamGuard:{isCurrent:current}}),
+      dispose:()=>guard.dispose(),
+    });return transferred;
+  }catch(_){if(current())toast('造物之眼自动准备未就绪，本次未提交','warning');return false;}
+  finally{if(!transferred)guard?.dispose();}
+}
+
 function storyboardScheduleAutomaticCapture() {
   storyboardStreamRuntime?.wake();
-  if (!storyboardAutomaticPending.size || storyboardAutomaticCurrent || storyboardCompilerBusy || storyboardAutomaticTimer !== null) return;
+  if (!storyboardAutomaticPending.size || storyboardAutomaticCurrent || storyboardCompilerBusy || storyboardAutomaticTimer !== null) {storyboardWorldAutomaticRuntime?.wake();return;}
   // One event-loop handoff, not a repeating timer. Compiler completion wakes the queue.
   storyboardAutomaticTimer = setTimeout(() => {
     storyboardAutomaticTimer = null;

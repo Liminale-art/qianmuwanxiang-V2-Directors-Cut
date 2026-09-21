@@ -90,8 +90,9 @@ function bridgeHarness() {
   const runtime={...packets,buildWorldSourceIndex:async(...args)=>{builds++;return sources.buildWorldSourceIndex(...args);}};
   const context=vm.createContext({console,Map,JSON,Date,activeTab:'castworld',getChatStore:()=>store,getChatKey:()=>chatKey,storyboardState:()=>state,
     featureRuntime:{load:async()=>{loads++;return runtime;}},refreshDirectorCandidatePool:async()=>{},storyboardGalleryRecords:()=>store.storyboardImages||[],rerenderIfOpen:()=>{},
+    storyboardWorldAutomaticRuntime:null,storyboardWorldAutomaticEpoch:0,
     htmlEscape:value=>String(value),directorProductionPacketState:{packets:[]},directorCandidatePoolState:{},directorNarrativeBridgeEpoch:0,directorWorldSourceRefreshKey:'',directorWorldEntryLinks:new Map()});
-  vm.runInContext(['directorWorldPlanRevision','directorWorldPlanSignature','resetDirectorNarrativeBridge','refreshDirectorProductionPackets','prepareDirectorWorldEntryLinks','renderDirectorWorldEntryLink','bindDirectorWorldEntryLinks'].map(functionOnly).join('\n'),context);
+  vm.runInContext(['directorWorldPlanRevision','directorWorldPlanSignature','storyboardResetWorldAutomatic','resetDirectorNarrativeBridge','refreshDirectorProductionPackets','prepareDirectorWorldEntryLinks','renderDirectorWorldEntryLink','bindDirectorWorldEntryLinks'].map(functionOnly).join('\n'),context);
   return {store,state,context,runtime,setChat:key=>{chatKey=key;},counts:()=>({loads,builds}),refresh:()=>context.refreshDirectorProductionPackets(store.plan,{chatKey})};
 }
 test('actual bridge is dormant when disabled, refreshes on entry, and builds no media bytes',async()=>{

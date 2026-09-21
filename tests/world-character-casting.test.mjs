@@ -17,6 +17,10 @@ import {normalizeQianmuProductionPacket} from '../qianmu-production-packet.js';
 import {newCharacterArchive,normalizeCharacterArchive} from '../qianmu-character-archive.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import * as worldAutomatic from '../qianmu-world-automatic.js';
+import * as worldAutomaticHost from '../qianmu-world-automatic-host.js';
+import * as productionPackets from '../qianmu-production-packet.js';
+import * as ledgerRuntime from '../qianmu-narrative-ledger.js';
+import * as candidateRuntime from '../qianmu-director-candidate.js';
 import {buildWorldSourceIndex} from '../qianmu-world-source.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createImageAdmission} from '../qianmu-image-admission.js';
@@ -113,7 +117,7 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
   let account=e.namespace,chat='chat-a';const calls=[],notices=[],chatData=[{mes:'unrelated prose'}];
   Object.assign(context,{storyboardCompilerBusy:false,projectNewComfyExecution,storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardGenerationPreparing:new Set(),directorNarrativeBridgeEpoch:1,
     directorProductionPacketState:{chatKey:chat,packets:[packet]},directorCandidatePoolState:{chatKey:chat,ledger:{entries:[ledger]},pool:{candidates:[candidate]}},
-    getChatKey:()=>chat,storyboardTargetFloor:()=>0,ctx:()=>({chat:chatData,Popup:class{},POPUP_TYPE:{CONFIRM:1}}),
+    getChatKey:()=>chat,storyboardTargetFloor:()=>0,storyboardScheduleAutomaticCapture(){},ctx:()=>({chat:chatData,Popup:class{},POPUP_TYPE:{CONFIRM:1}}),
     getCharacterDescription:()=>'',getPersonaDescription:()=>'',storyboardCharacterArchiveContext:async()=>({chatKey:chat,subjects:e.subjects}),
     storyboardCaptureWorkbench:()=>{calls.push('capture');return {state,profile:state.profiles[state.source]};},
     storyboardResolveRoutingProfile:(_,route)=>context.storyboardProviderProfile(state,route.providerId),
@@ -152,8 +156,8 @@ async function automaticWorldHarness({comfy=false}={}){
   }:load(key);
   e.context.storyboardCallCompiler=async(messages,profile,options)=>{
     e.calls.push('llm');e.lastRequest={messages,profile,options};
-    const claim=[...transport.files.values()].map(JSON.parse).find(row=>row.value?.schema==='qianmu.world-automatic-attempt.v1');
-    assert.equal(claim?.value?.record.status,'preparing','model must not run ahead of durable preparation');
+    const claims=[...transport.files.values()].map(JSON.parse).filter(row=>row.value?.schema==='qianmu.world-automatic-attempt.v1');
+    assert.ok(claims.some(row=>row.value.record.status==='preparing'),'model must not run ahead of durable preparation');
     return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats)});
   };
   const run=(scope,apply)=>{const key=imageAttemptScopeKey(scope),result=apply(rows.get(key));rows.set(key,structuredClone(result.ledger));return result;};
@@ -176,6 +180,79 @@ async function automaticWorldHarness({comfy=false}={}){
 
 const renderingsFor=(shot,requested)=>Object.fromEntries(requested.map(format=>[format,{global:'kitchen, soft light',negative:'blurred details',
   characters:shot.characters.map(row=>({character_id:row.id,positive:'blue hair, no coat, stirs soup'}))}]));
+
+async function completedWorldHarness(){
+  const e=await automaticWorldHarness(),store={plan:{npc_updates:[{name:'Alice',next_action:'stirs soup'}]},directorPlanRevisionId:'completed-1',lastPlanIdx:0};
+  const load=e.context.featureRuntime.load;e.context.settings.enabled=true;
+  Object.assign(e.context,{storyboardWorldAutomaticRuntime:null,storyboardWorldAutomaticEpoch:0,storyboardAutomaticCurrent:null,
+    storyboardAutomaticPending:new Map(),storyboardAutomaticTimer:null,storyboardStreamRuntime:null,getChatStore:()=>store,
+    console:{warn(){}},directorWorldSourceRefreshKey:'',directorWorldEntryLinks:new Map()});
+  e.context.featureRuntime.load=async key=>({worldAutomaticHost,productionPacket:productionPackets,narrativeLedger:ledgerRuntime,directorCandidates:candidateRuntime}[key]||load(key));
+  vm.runInContext(['directorWorldPlanRevision','directorWorldPlanSignature','storyboardResetWorldAutomatic','resetDirectorNarrativeBridge',
+    'refreshDirectorCandidatePool','refreshDirectorProductionPackets','storyboardQueueNewWorldPlan','storyboardScheduleAutomaticCapture'].map(name=>section(name).split(/\r?\n\}/)[0]+'\n}').join('\n'),e.context);
+  const schedule=()=>e.context.storyboardQueueNewWorldPlan(store.plan,{store,chatKey:'chat-a',namespace:e.namespace});
+  const idle=async()=>{for(let i=0;i<200;i++){
+    await new Promise(resolve=>setTimeout(resolve,5));const status=e.context.storyboardWorldAutomaticRuntime?.snapshot();
+    if(!status||!status.active&&!status.waiting&&!status.scheduled)return;
+  }assert.fail('world batch did not finish');};
+  return {...e,store,schedule,idle,close:async()=>{e.context.storyboardResetWorldAutomatic();await e.admission.close();}};
+}
+
+test('actual completed-plan host builds sources and saved attempts, then uses the actual gallery queue once',async()=>{
+  const e=await completedWorldHarness();try{
+    assert.equal(await e.schedule(),true);await e.idle();assert.equal(e.context.storyboardQueue.length,1,e.notices.join(';'));
+    assert.equal(e.calls.filter(v=>v==='llm').length,1);assert.equal(e.context.storyboardCompilerBusy,false);assert.equal(e.state.prompt,'original');
+    assert.equal(await e.schedule(),false);await e.idle();assert.equal(e.context.storyboardQueue.length,1);
+  }finally{await e.close();}
+});
+
+test('actual completed-plan host is dormant for auto-off, disabled master, unadopted plan or changed account',async()=>{
+  for(const kind of ['auto','master','plan','account']){
+    const e=await completedWorldHarness();try{
+      if(kind==='auto')e.state.directorBridge.worldAutoGenerate=false;
+      if(kind==='master')e.state.enabled=false;
+      if(kind==='account')e.setAccount('st-user:other');
+      if(kind==='plan')await e.context.storyboardQueueNewWorldPlan({}, {store:e.store,chatKey:'chat-a',namespace:e.namespace});else await e.schedule();
+      await e.idle();assert.equal(e.calls.includes('llm'),false);assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.transport.calls.length,0);
+    }finally{await e.close();}
+  }
+});
+
+test('actual world completion waits for the ordinary compiler and only resumes through its shared wake',async()=>{
+  const e=await completedWorldHarness();try{
+    e.context.storyboardCompilerBusy=true;await e.schedule();await new Promise(setImmediate);assert.equal(e.calls.includes('llm'),false);assert.equal(e.transport.calls.length,0);
+    e.context.storyboardCompilerBusy=false;e.context.storyboardScheduleAutomaticCapture();await e.idle();assert.equal(e.context.storyboardQueue.length,1,e.notices.join(';'));
+  }finally{await e.close();}
+});
+
+test('world expression holds the actual compiler exclusively and releases only its own lease',async()=>{
+  const e=await completedWorldHarness(),call=e.context.storyboardCallCompiler;let checked=false;try{
+    vm.runInContext(section('storyboardCompilePrompt'),e.context);
+    e.context.storyboardCallCompiler=async(...args)=>{
+      assert.equal(typeof e.context.storyboardCompilerBusy,'object');checked=true;
+      assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(await e.runAutomatic(),false);
+      return call(...args);
+    };
+    await e.schedule();await e.idle();assert.equal(checked,true);assert.equal(e.context.storyboardCompilerBusy,false);assert.equal(e.context.storyboardQueue.length,1,e.notices.join(';'));
+  }finally{await e.close();}
+});
+
+test('actual batch-wide expression budget is three repairs across two independent world sources',async()=>{
+  const e=await completedWorldHarness();let calls=0;try{
+    e.state.directorBridge.worldAutoMaxImages=2;e.store.plan.world_updates=[{title:'Weather',content:'rain in garden'}];
+    e.context.storyboardCallCompiler=async()=>{calls++;return 'invalid';};await e.schedule();await e.idle();
+    assert.equal(calls,5,e.notices.join(';'));assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.context.storyboardCompilerBusy,false);
+    assert.equal(await e.schedule(),false);assert.equal(calls,5);
+  }finally{await e.close();}
+});
+
+test('resetting the actual automatic world host during expression never queues late results or strands its compiler lease',async()=>{
+  const e=await completedWorldHarness(),call=e.context.storyboardCallCompiler;let mark;const reached=new Promise(resolve=>{mark=resolve;});try{
+    e.context.storyboardCallCompiler=async(...args)=>{const result=await call(...args);e.context.storyboardResetWorldAutomatic();mark();return result;};
+    await e.schedule();await reached;for(let i=0;i<100&&e.context.storyboardCompilerBusy!==false;i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.context.storyboardCompilerBusy,false);assert.equal(e.state.prompt,'original');
+  }finally{await e.close();}
+});
 
 for(const comfy of [false,true])test(`automatic world ${comfy?'fixed Comfy':'NAI'} reaches the real gallery queue without dialogs, public draft mutation or prose opt-in`,async()=>{
   const e=await automaticWorldHarness({comfy});try{

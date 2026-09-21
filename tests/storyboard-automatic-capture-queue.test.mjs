@@ -20,7 +20,7 @@ function environment() {
   const chat = [{ mes: 'first garden', send_date: '2026-09-06T01:00:00Z', swipe_id: 0 }];
   let chatKey = 'chat-a', seq = 0; const timers = new Map(), calls = [], notices = [], errors = [];
   const context = vm.createContext({
-    ...board, MODULE_NAME: 'test', STORYBOARD_QUEUE_LIMIT: 8,storyboardContinuationRuntime:null,storyboardStreamRuntime:null,
+    ...board, MODULE_NAME: 'test', STORYBOARD_QUEUE_LIMIT: 8,storyboardContinuationRuntime:null,storyboardStreamRuntime:null,storyboardWorldAutomaticRuntime:null,
     storyboardAutomaticPending: new Map(), storyboardAutomaticCurrent: null, storyboardAutomaticTimer: null, storyboardAutomaticEpoch: 0, storyboardCompilerBusy: false,
     storyboardState: () => state, getChatKey: () => chatKey, ctx: () => ({ chat }), storyboardCurrentAssistantFloor: () => chat.length - 1,
     storyboardPlanCompilerSignature: () => 'compiler', storyboardDeletePlanArchives: async () => {}, uid: () => `id-${++seq}`,

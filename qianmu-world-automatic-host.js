@@ -72,7 +72,7 @@ export function createWorldAutomaticHost({busy=()=>false,notify=()=>{},idle=()=>
         if(await batch.ticket.run(id,batch.repairs)===true)batch.accepted++;
       }
       if(current(batch)&&batch.ids.length)tell(`造物之眼：${batch.accepted}/${batch.ids.length} 个画面已入队`);
-    }catch(_){if(current(batch))tell('造物之眼本批已停止；已入队画面保留，请查看分镜日志');}
+    }catch(_){if(current(batch))tell('造物之眼本批已停止；已入队画面保留，未继续提交');}
     finally{
       if(!deferred)dispose(batch);
       if(active===batch)active=null;

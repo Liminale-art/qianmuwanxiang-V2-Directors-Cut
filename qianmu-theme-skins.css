@@ -147,6 +147,9 @@
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, button.sd-btn, .sd-option-chip) {
   border-radius: 999px !important;
 }
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-world-controls > .sd-option-chip {
+  border-radius: var(--qm-control-radius, 9px) !important;
+}
 /* Editorial is a rectangular control system, including late-mounted dialogs,
    detached notes and label-based upload buttons. The duplicated root in :is()
    matches the legacy two-ID mobile rules without touching the host document.

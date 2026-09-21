@@ -10,13 +10,14 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 function fixture(){
   let store={plan:{original:true}},context={chat:[]},account='st-user:a',calls=0,repairs=0,saves=0,injects=0,invocation;
   const gate=deferred(),sent=deferred();
-  const c={busy:false,cancelRequested:false,abortController:null,directorRun:null,directorLiveLog:null,activeTab:'dashboard',MODAL_ID:'panel',
+  const c={worldCompletions:[],busy:false,cancelRequested:false,abortController:null,directorRun:null,directorLiveLog:null,activeTab:'dashboard',MODAL_ID:'panel',
     settings:{enabled:true,providerMode:'external',streamEnabled:true,logHistory:[]},document:{getElementById:()=>null},AbortController,Date,console,
     validateApiSettings:()=>true,toast:()=>{},apiToast:()=>{},uid:()=>String(Math.random()),getChatStore:()=>store,getChatKey:()=>context.chatId||'one',ctx:()=>context,
     featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account})},renderBusyState:()=>{},buildPrompt:async()=>'fixture',DEFAULT_SYSTEM_PROMPT:'system',
     pushLog:log=>{c.settings.logHistory.push(log);return log;},saveSettings:()=>{},clone:structuredClone,normalizePlan:x=>x,parseDirectorFinal,
     directorDedupePlan:()=>[],repairDirectorPlanQuality:async()=>{repairs++;return {repaired:false,needs:{},removed:[],raw:'',error:''};},
     saveMetadata:async()=>saves++,applyDirectorInjection:async()=>injects++,refreshDirectorProductionPackets:async()=>{},injectSelection:new Set(),
+    storyboardQueueNewWorldPlan:async(plan,owner)=>{assert.equal(saves,1);assert.equal(injects,1);assert.equal(plan,store.plan);assert.equal(owner.store,store);assert.equal(owner.namespace,account);c.worldCompletions.push({plan,owner});},
     renderModal:()=>{},renderFloatButton:()=>{},rerenderIfOpen:()=>{},paintModelLog,renderDirectorLive,
     callExternalApi:async(messages,onDelta,cfg,controller)=>{calls++;invocation={messages,onDelta,cfg,controller};sent.resolve();return gate.promise;},
   };
@@ -32,6 +33,7 @@ test('actual director streams into its own log, stages complete cards, and commi
   assert.match(renderDirectorLive(e.c.directorLiveLog),/complete card/);
   const raw=prefix+']}';e.request.cfg.onResponse({text:raw,reasoning:'separate thoughts',finishReason:'stop',complete:true});e.gate.resolve(raw);await run;
   assert.equal(e.store.plan.quests[0].title,'first');assert.equal(e.saves,1);assert.equal(e.injects,1);assert.equal(e.calls,1);
+  assert.equal(e.c.worldCompletions.length,1);
   const log=e.c.settings.logHistory[0];assert.equal(log.response,raw);assert.equal(log.reasoning,'separate thoughts');assert.equal(log.completion.finishReason,'stop');assert.equal(log.status,'success');
   assert.equal(e.c.busy,false);
 });
@@ -41,6 +43,7 @@ test('actual truncation retains received cards and raw prose without repair requ
   const raw='{"quests":[{"title":"kept"},{"title":"partial';
   e.request.onDelta(raw);e.gate.reject(Object.assign(new Error('length limit'),{code:'MODEL_OUTPUT_INCOMPLETE',modelResponse:{text:raw,reasoning:'thought',finishReason:'length',complete:false,interrupted:true}}));await run;
   assert.equal(e.store.plan.original,true);assert.equal(e.repairs,0);assert.equal(e.saves,0);assert.equal(e.injects,0);
+  assert.equal(e.c.worldCompletions.length,0);
   const log=e.c.settings.logHistory[0];assert.equal(log.response,raw);assert.equal(log.status,'error');assert.equal(log.completion.finishReason,'length');assert.match(renderDirectorLive(log),/>kept</);assert.doesNotMatch(renderDirectorLive(log),/>partial</);
 });
 
@@ -54,6 +57,7 @@ for(const kind of ['chat','account','cancel'])test(`actual ${kind} change blocks
   if(kind==='chat')e.switchChat();else if(kind==='account')e.switchAccount();else{e.c.stopGeneration();assert.equal(e.c.busy,true);await e.run();assert.equal(e.calls,1);}
   e.gate.resolve('{"quests":[{"title":"late"}]}');await run;
   assert.equal(e.saves,0);assert.equal(e.injects,0);assert.equal(e.repairs,0);assert.ok(!e.store.plan.quests);assert.equal(e.c.busy,false);
+  assert.equal(e.c.worldCompletions.length,0);
 });
 
 test('late old finalizer cannot clear a replacement request admitted after runtime teardown',async()=>{

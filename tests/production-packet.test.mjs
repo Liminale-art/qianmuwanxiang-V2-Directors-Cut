@@ -62,7 +62,7 @@ assert.doesNotMatch(JSON.stringify(mediaSafe), /SHOULD_NOT_SURVIVE|imageData|byt
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 assert.match(indexSource, /productionPacket:[\s\S]*import\('\.\/qianmu-production-packet\.js\?v=1\.59\.202'\)/, '第二摄影机适配器必须保持按需加载');
-assert.match(indexSource, /void refreshDirectorProductionPackets\(newPlan/, '制片包失败不得阻塞或回滚推演结果');
+assert.match(indexSource, /void storyboardQueueNewWorldPlan\(newPlan,[^\n]+\.catch\(/, '世界排程保持异步隔离，失败不得阻塞或回滚推演结果');
 assert.match(indexSource, /productionPackets:\s*directorProductionPacketState\.packets\.length/, '开发诊断必须能核对会话内制片包缓存');
 
 console.log('Second-camera production packet contract OK');
