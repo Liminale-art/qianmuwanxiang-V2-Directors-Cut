@@ -1,9 +1,9 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.275';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.275';
-import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.275';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.276';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.276';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.276';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -84,7 +84,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     plan ||= d.createStoryboardWorkflowTicket({id:planId,messageRef:budgetRef,chatKey,floor:context.floor,origin:'automatic',autoGenerate:true,createdAt:Date.now()});
     const newShots = planned.map((shot,index)=>({id:shot.id,title:shot.title || `镜头 ${offset+index+1}`,shotType:shot.shotType || 'custom',
       narrativeMoment:copy(refs.get(shot.id).stream.moment),
-      role:shot.role || 'custom',purpose:shot.purpose || '',prompt:String(shot.prompt || ''),negative:String(shot.negative || ''),
+      role:shot.role || 'custom',purpose:shot.purpose || '',prompt:String(shot.prompt || ''),negative:String(shot.negative || ''),tags:[...(shot.tags||[])],
       // Only the existing queue may promote this row to queued. If preparation
       // is cancelled between mirrors, unsubmitted rows must not look in flight.
       status:'cancelled',resultIds:[],error:'本镜尚未提交',partialFailureCount:0,attempt:0,sensitive:Boolean(shot.sensitive),promptLocked:false,userEdited:false}));

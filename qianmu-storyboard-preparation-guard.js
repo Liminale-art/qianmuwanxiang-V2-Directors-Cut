@@ -27,7 +27,7 @@ export function createStoryboardPreparationGuard(state, { plan = null, includeDr
         return [id, effectiveProfile];
       })), connections: state.connections, credentialRevision: host.credentialRevision,
       draftKeys: [...host.draftApiKeys.entries()],ensembleRevision:host.ensembleRevision,
-      compiler: state.promptCompiler, preset: selectedPreset, composition: state.compositionPolicy, routing: state.routing, generation: state.generationPolicy,
+      compiler: state.promptCompiler, preset: selectedPreset, galleryKeywords:state.galleryKeywords, composition: state.compositionPolicy, routing: state.routing, generation: state.generationPolicy,
       comfyPoolSelection: state.comfyPoolSelection,
       comfyAutoEnabled: state.comfyAutoEnabled,
       parameterPresets: state.parameterPresets, paragraphMode: state.paragraphMode, manualParagraphIndex: state.manualParagraphIndex,

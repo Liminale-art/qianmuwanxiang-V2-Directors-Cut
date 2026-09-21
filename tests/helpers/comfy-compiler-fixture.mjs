@@ -37,7 +37,7 @@ export async function compilerEnvironment(){
     storyboardCallCompiler:async(messages,id,options)=>{
       calls.push({messages:plain(messages),id,options:plain(options)});
       if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1')return JSON.stringify({schema:options.jsonSchemaName,should_generate:scene.should_generate,skip_reason:scene.skip_reason,decisions:scene.decisions,
-        shots:scene.shots.map(({prompt_atoms,prompt_renderings,...shot},index)=>({...shot,state_point:{branchId:shot.narrative_layer,paragraphId:`P${index+1}`,evidence:chat[0].mes.split('\n\n')[index]}})),
+        shots:scene.shots.map(({prompt_atoms,prompt_renderings,...shot},index)=>({...shot,...(options.jsonSchema.properties.shots.items.properties.gallery_keywords?{gallery_keywords:shot.gallery_keywords||[]}:{}),state_point:{branchId:shot.narrative_layer,paragraphId:`P${index+1}`,evidence:chat[0].mes.split('\n\n')[index]}})),
         source_states:[{floor:0,roster:{branches:[...new Set(scene.shots.map(shot=>shot.narrative_layer))].map(layer=>({id:layer,layer})),subjectIds:['A']},events:[]}],continuity_links:[]});
       if(options.jsonSchemaName==='qianmu.storyboard.expression.v1')return JSON.stringify({schema:options.jsonSchemaName,shots:scene.shots.map((shot,index)=>({shot_id:`S${index+1}`,prompt_atoms:shot.prompt_atoms,
         ...(options.promptFormats?.length?{prompt_renderings:Object.fromEntries(options.promptFormats.filter(format=>shot.prompt_renderings?.[format]).map(format=>[format,shot.prompt_renderings[format]]))}:{})}))});

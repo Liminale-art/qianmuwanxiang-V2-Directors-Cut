@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
 import * as service from '../qianmu-service-capabilities.js';
+import {uniqueClean} from '../qianmu-storyboard-utils.js';
 import { normalizeOpenAIImageCompatibility, parseOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
 import { generateImage, imageGatewayCapabilities } from '../qianmu-image-gateway.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
@@ -21,7 +22,7 @@ function stateFor(family='banana') {
 }
 function harness(state=stateFor(),extra={}) {
   const notices=[],persisted=[],rendered=[];
-  const context=vm.createContext({...storyboard,...service,normalizeOpenAIImageCompatibility,parseOpenAICompatibleHeaders,
+  const context=vm.createContext({...storyboard,...service,uniqueClean,normalizeOpenAIImageCompatibility,parseOpenAICompatibleHeaders,
     clone:structuredClone,URL,JSON,storyboardState:()=>state,STORYBOARD_SOURCES:storyboard.STORYBOARD_PROVIDER_REGISTRY,
     ctx:()=>({chat:[]}),getChatKey:()=> 'chat-a',uid:(()=>{let n=0;return()=>`unit-${++n}`;})(),hashText:()=> 'hash',
     storyboardDraftApiKeys:new Map([[state.source,'typed-local-key']]),storyboardConnectionStatus:new Map(),

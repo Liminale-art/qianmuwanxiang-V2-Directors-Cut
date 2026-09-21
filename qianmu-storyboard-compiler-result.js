@@ -1,7 +1,7 @@
 // Lazy compiler-result adapter. It owns no host state, event subscriptions or
 // storage; the caller supplies guarded dependencies and retains draft ownership.
 import {createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {attachEnsembleCompilerResult} from './qianmu-ensemble-handoff.js?v=1.59.275';
+import {attachEnsembleCompilerResult} from './qianmu-ensemble-handoff.js?v=1.59.276';
 export async function resolveStoryboardCompilerResult(raw, context, capabilities, state, contractRequest, inputGuard, dependencies) {
   const {featureRuntime,storyboardCallCompiler,STORYBOARD_RATIOS,getStoryboardGenerationPolicy,STORYBOARD_PLAN_SCHEMA,extractJson,normalizeStoryboardShotSpec,storyboardProviderProfile,compileStoryboardPrompt,uid}=dependencies;
   inputGuard?.assertCurrent();
@@ -93,6 +93,7 @@ export async function resolveStoryboardCompilerResult(raw, context, capabilities
     if(focused)for(const [index,shot] of object.shots.entries()){
       shot.shotSpec.continuityUpdates.facts=focused.trace.shotFacts[index];
       shot.shotSpec.narrativeMoment=createStoryboardStreamMoment(focused.trace.narrative.shots[index],context.compilerSources);
+      shot.tags=[...new Set(focused.trace.narrative.shots[index].gallery_keywords||[])];
       const rendering=shot.promptRenderings?.[state.source==='novel'?'tags':'natural_language']||Object.values(shot.promptRenderings||{})[0];
       if(rendering){shot.prompt=[rendering.global,...rendering.characters.map(row=>row.positive)].filter(Boolean).join(', ');shot.negative=rendering.negative;}
     }
@@ -128,7 +129,7 @@ export async function resolveStoryboardCompilerResult(raw, context, capabilities
     const prompt = rawPrompt || compileStoryboardPrompt({ providerId: state.source, remoteModelId: profile.model, capabilityModelId: profile.capabilityModelId, shot: shotSpec }).prompt;
     if (!prompt) return null;
     return {
-      id: uid('shotdraft'), prompt,
+      id: uid('shotdraft'), prompt, tags:focused?[...(item.tags||[])]:[],
       title: String(item?.title || `镜头 ${index + 1}`).trim().slice(0, 120),
       role: allowedRoles.has(item?.shot_role) ? item.shot_role : 'custom',
       purpose: String(item?.purpose || '').trim().slice(0, 500),

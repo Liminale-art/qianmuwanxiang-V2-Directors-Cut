@@ -23,7 +23,7 @@ function styles({format='tags',styleLock=true}={}){
   return {session,selection,library};
 }
 
-async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],providerId='novel',promptFormats,maxShots=3,metadata,stream=false,styleSession}={}){
+async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],providerId='novel',promptFormats,maxShots=3,metadata,stream=false,styleSession,galleryKeywords}={}){
   let active=true,saves=0,account='st-user:synthetic',saveHook=null;
   const host={chatId:'synthetic',characterId:0,characters:[{avatar:'A.png',chat:'synthetic'}],chatMetadata:metadata||{story_director_liminale:{}},
     chat:texts.map((mes,index)=>({mes,name:'A',is_user:index%2===1,send_date:String(index),...(stream?{gen_started:`stream-${index}`}:{})})),async saveMetadata(){saves++;if(saveHook)await saveHook();}};
@@ -37,7 +37,7 @@ async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],p
   const store=contract.openStoryboardCompilerContinuity(window);
   const context={floor,messages:window.messages,paragraphs:window.paragraphs,currentCharacter:'Alice stable appearance',persona:'user description',world:'selected world',
     compilerSources:window,continuity:await store.read()};
-  const config={focused:true,providerId,promptFormats,maxShots,minShots:1,allowedRatioIds:['3:2'],groupLabel:'obsolete three beats',groupInstruction:'MUST split the scene into three narrative acts',styleSession};
+  const config={focused:true,providerId,promptFormats,maxShots,minShots:1,allowedRatioIds:['3:2'],groupLabel:'obsolete three beats',groupInstruction:'MUST split the scene into three narrative acts',styleSession,galleryKeywords};
   let request;
   try{request=contract.buildStoryboardPlanContractRequest(context,config);}catch(error){store.close();window.close();throw error;}
   const first=basePlan().shots[0];delete first.prompt_atoms;delete first.prompt_renderings;
@@ -51,6 +51,24 @@ async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],p
   return {host,window,store,context,config,request,narrative,expression,calls,options,get saves(){return saves;},set active(value){active=value;},set account(value){account=value;},set saveHook(value){saveHook=value;},
     run:overrides=>contract.completeStoryboardFocusedExtraction({...options,raw:JSON.stringify(narrative),...overrides}),close(){store.close();window.close();}};
 }
+
+for(const stream of [false,true])test(`gallery keywords remain narrative metadata and never enter the expression contract, streaming ${stream}`,async()=>{
+  const f=await fixture({stream,galleryKeywords:['暖光','独处']});try{
+    f.narrative.shots[0].gallery_keywords=['暖光'];if(stream)streamSupport(f);
+    assert.deepEqual(f.request.schema.properties.shots.items.properties.gallery_keywords.items.enum,['暖光','独处']);
+    const result=await f.run();assert.deepEqual(result.trace.narrative.shots[0].gallery_keywords,['暖光']);
+    assert.equal(JSON.parse(result.raw).shots[0].gallery_keywords,undefined);assert.doesNotMatch(f.calls[0].messages[1].content,/gallery_keywords|gallery_keyword_vocabulary|暖光|独处/);
+  }finally{f.close();}
+});
+test('invented gallery keyword uses the existing repair budget and repair receives only the selected vocabulary',async()=>{
+  const f=await fixture({galleryKeywords:['暖光']});try{
+    f.narrative.shots[0].gallery_keywords=['造词'];const calls=[];
+    const result=await f.run({call:async(messages,definition)=>{calls.push({messages,definition});if(definition.repair){const corrected=plain(f.narrative);corrected.shots[0].gallery_keywords=['暖光'];return JSON.stringify(corrected);}return JSON.stringify(f.expression());}});
+    assert.equal(result.meta.repairCalls,1);assert.equal(calls.length,2);
+    assert.deepEqual(JSON.parse(calls[0].messages[1].content).context.constraints.gallery_keyword_vocabulary,['暖光']);
+    assert.deepEqual(result.trace.narrative.shots[0].gallery_keywords,['暖光']);
+  }finally{f.close();}
+});
 
 for(const stream of [false,true])test(`authored still guidance is injected once into its own real stage, streaming ${stream}`,async()=>{
   const f=await fixture({stream,promptFormats:['tags','natural_language','character_blocks']});

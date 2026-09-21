@@ -139,16 +139,19 @@ test('source-scoped groups follow verified paragraph order and frozen shot order
     assert.deepEqual(f.session.orderGroups(groups).map(row => row.variants[0].id), [first.id, early.id, late.id, last.id]);
 });
 
-test('real gallery filter ignores saved model preference while retaining search, track and collection intersection', () => {
+test('real gallery filter ignores saved model preference while retaining search, track and collection intersection', async () => {
+    const {galleryTagsMatch}=await import('../qianmu-gallery-keywords.js');
     const records = [{ id: 'a', source: 'novel', prompt: 'coast', collectionIds: ['c'], track: 'main_camera' },
         { id: 'b', source: 'comfy', prompt: 'coast', collectionIds: [], track: 'main_camera' },
         { id: 'c', source: 'comfy', prompt: 'woods', collectionIds: ['c'], track: 'second_camera' }];
-    const sandbox = vm.createContext({ storyboardUpdateGalleryNarrative: () => ({ filter: value => value }), storyboardGalleryRecords: () => records,
+    const sandbox = vm.createContext({ galleryTagsMatch,storyboardUpdateGalleryNarrative: () => ({ filter: value => value }), storyboardGalleryRecords: () => records,
         storyboardProductionDeliveryPolicy: record => ({ track: record.track, sourceLabel: '' }), storyboardGalleryOpenCollectionId: '',
         storyboardItemCollectionIds: record => record.collectionIds, STORYBOARD_SOURCES: {} });
     vm.runInContext(storyboardFunctionSource('storyboardFilteredGalleryRecords'), sandbox);
     const state = { gallerySource: 'novel', gallerySearch: '', galleryTrack: 'all' }, ids = () => [...sandbox.storyboardFilteredGalleryRecords(state)].map(row => row.id);
-    assert.deepEqual(ids(), ['c', 'b', 'a']); state.gallerySearch = 'coast'; assert.deepEqual(ids(), ['b', 'a']);
+    records[0].tags=['night','together'];records[1].tags=['night'];records[2].tags=['forest'];
+    assert.deepEqual(ids(), ['c', 'b', 'a']);state.galleryTagFilters=['night','together'];assert.deepEqual(ids(),['a']);state.galleryTagFilters=[];
+    state.gallerySearch = 'coast'; assert.deepEqual(ids(), ['b', 'a']);
     sandbox.storyboardGalleryOpenCollectionId = 'c'; assert.deepEqual(ids(), ['a']); state.galleryTrack = 'second_camera'; assert.deepEqual(ids(), []);
 });
 

@@ -50,7 +50,7 @@ async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nSh
         const first=(catalogue.find(row=>row.floor===floor)||catalogue.at(-1)).passages.find(row=>row.paragraph_id==='P1').text;
         const {prompt_atoms,prompt_renderings,...shot}=response().shots[0];
         const anchor={floor,branch_id:'present',paragraph_id:'P1',quote:first};
-        reply={schema:options.jsonSchemaName,should_generate:!wait,skip_reason:wait?'等待人物在场明确':'',decisions:[],shots:wait?[]:[{...shot,
+        reply={schema:options.jsonSchemaName,should_generate:!wait,skip_reason:wait?'等待人物在场明确':'',decisions:[],shots:wait?[]:[{...shot,...(options.jsonSchema.properties.shots.items.properties.gallery_keywords?{gallery_keywords:[]}:{}),
           state_point:{branchId:'present',paragraphId:'P1',evidence:first},...(input.constraints.streaming?{stream_support:{scene:anchor,content:anchor,presence:[{character_id:'A',source:anchor}]}}:{})}],
           source_states:input.required_state_floors.map(floor=>({floor,roster:{branches:[{id:'present',layer:'present'}],subjectIds:['A']},events:[]})),continuity_links:[]};
       }else reply={schema:options.jsonSchemaName,shots:[{shot_id:'S1',prompt_atoms:response().shots[0].prompt_atoms,
@@ -208,6 +208,14 @@ function installStreamQueue(f){
   return {rows,admission,outcomes,errors,queue:f.context.storyboardQueue};
 }
 
+test('stream keywords follow their own shot into real plan, queue and saved snapshot, not expression prompts',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);f.state.galleryKeywords=['夜色','相伴'];
+  f.modelHook=({reply,options})=>{if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1')reply.shots[0].gallery_keywords=['相伴'];};
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.deepEqual(copy(q.queue[0].tags),['相伴']);
+  assert.deepEqual(copy(f.state.shotPlans[0].shots[0].tags),['相伴']);assert.deepEqual(copy(f.state.logs[0].snapshot.tags),['相伴']);
+  assert.doesNotMatch(JSON.stringify(f.calls[1].payload),/gallery_keywords|相伴/);assert.equal(f.counts.requests,2);f.assertReleased();
+});
+
 test('real stream compiler constructs and admits NAI jobs into the existing queue without borrowing the workbench',async()=>{
   const f=await fixture(),q=installStreamQueue(f),before=editable(f.state);delete before.shotPlans;
   assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,jobErrors:q.errors.map(e=>e.message),notices:f.notices}));
@@ -272,7 +280,7 @@ function useShotSet(f,indexes,after){
         const {prompt_atoms,prompt_renderings,...shot}=response().shots[index],id=`P${index+1}`;
         const quote=payload.source_catalogue.find(row=>row.floor===0).passages.find(row=>row.paragraph_id===id).text;
         const anchor={floor:0,branch_id:'present',paragraph_id:id,quote};
-        return {...shot,state_point:{branchId:'present',paragraphId:id,evidence:quote},
+        return {...shot,...(options.jsonSchema.properties.shots.items.properties.gallery_keywords?{gallery_keywords:[]}:{}),state_point:{branchId:'present',paragraphId:id,evidence:quote},
           ...(payload.constraints.streaming?{stream_support:{scene:anchor,content:anchor,presence:shot.characters.map(character=>({character_id:character.character_id,source:anchor}))}}:{})};
       });
     }else reply.shots=payload.shots.map(item=>{
@@ -283,6 +291,15 @@ function useShotSet(f,indexes,after){
   };
 }
 const threeParagraphs='Alice reads a letter in the kitchen.\n\nA mountain valley stretches into the sunlight.\n\nA broken cup rests on the table.\n\nUnfinished';
+
+test('covered stream shots keep old tags and a later surviving mirror keeps its own keywords',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);f.state.galleryKeywords=['人物','物件'];
+  const assign=({reply,options})=>{if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1')reply.shots.forEach(shot=>shot.gallery_keywords=[shot.characters.length?'人物':'物件']);};
+  useShotSet(f,[0],assign);assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  useShotSet(f,[0,2],assign);assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  assert.deepEqual(q.queue.map(job=>copy(job.tags)),[['人物'],['物件']]);
+  assert.deepEqual(f.state.shotPlans[0].shots.map(shot=>copy(shot.tags)),[['人物'],['物件']]);f.assertReleased();
+});
 
 async function installEnsembleChoices(f){
   f.state.connections.comfy.draft.baseUrl='https://comfy.invalid';
@@ -417,7 +434,7 @@ test('changing the saved append relation during expression cannot submit a new c
   f.modelHook=({reply,payload,options})=>{
     if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
       const {prompt_atoms,prompt_renderings,...shot}=response().shots[1],quote=payload.source_catalogue[0].passages[1].text,anchor={floor:0,branch_id:'present',paragraph_id:'P2',quote};
-      reply.shots=[{...shot,state_point:{branchId:'present',paragraphId:'P2',evidence:quote},stream_support:{scene:anchor,content:anchor,presence:[]}}];
+      reply.shots=[{...shot,gallery_keywords:[],state_point:{branchId:'present',paragraphId:'P2',evidence:quote},stream_support:{scene:anchor,content:anchor,presence:[]}}];
     }else{reply.shots=payload.shots.map(row=>({shot_id:row.shot_id,prompt_atoms:response().shots[1].prompt_atoms,prompt_renderings:response().shots[1].prompt_renderings}));delete f.host.chatMetadata.story_director_liminale.storyboardContinuations;}
   };
   assert.equal(await f.run(),false);assert.equal(q.queue.length,1);assert.deepEqual(copy(f.state.shotPlans[0]),before);f.assertReleased();
@@ -1290,7 +1307,7 @@ for(const linked of [true,false])test(`actual new-floor compiler ${linked?'inher
       if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
         const quote=(payload.source_catalogue||payload.evidence_sources).find(row=>row.floor===2).passages.find(row=>row.paragraph_id==='P1').text;
         const {prompt_atoms,prompt_renderings,...shot}=response().shots[2],anchor={floor:2,branch_id:'present',paragraph_id:'P1',quote};
-        reply.shots=[{...shot,source_paragraph_ids:['P1'],insert_after:'P1',scene:copy(response().shots[0].scene),scene_predecessor:'E1',state_point:{branchId:'present',paragraphId:'P1',evidence:quote},
+        reply.shots=[{...shot,gallery_keywords:[],source_paragraph_ids:['P1'],insert_after:'P1',scene:copy(response().shots[0].scene),scene_predecessor:'E1',state_point:{branchId:'present',paragraphId:'P1',evidence:quote},
           stream_support:{scene:anchor,content:anchor,presence:[]}}];
         reply.continuity_links=linked?[{from_floor:0,from_branch:'present',to_floor:2,to_branch:'present',evidence:{paragraph_id:'P1',quote},facts:[]}]:[];
       }else{

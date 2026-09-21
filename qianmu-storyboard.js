@@ -1,11 +1,13 @@
 import {retainEnsembleRecoveryRecord} from './qianmu-ensemble-record.js';
+import {DEFAULT_GALLERY_KEYWORDS} from './qianmu-gallery-keywords.js';
+export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.275';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.275';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.276';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.276';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.275';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.275';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.275';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.276';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.276';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.276';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -26,8 +28,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.275';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.275';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.276';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.276';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -384,7 +386,7 @@ export function createStoryboardDefaults() {
     comfyAutoEnabled: false,
     characterArchive: { schemaVersion: 1, collapsed: {} },
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])), generationPolicy: normalizeStoryboardGenerationPolicy(),
-    promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,
+    promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,galleryKeywords:[...DEFAULT_GALLERY_KEYWORDS],
     artistPresets: [], artistCollections: [], artistCollectionId: '', selectedArtistPresetId: '', artistSearch: '', editingArtistPresetId: '',
     artistPools: [], selectedArtistPoolId: '',
     tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], taskStates: [], collapsedCards: { model: true, context: true, worldbook: true, prompt: true, params: true, composition: true, production: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
@@ -833,6 +835,7 @@ export function normalizeStoryboardState(value) {
   state.connections = connections(state.connections);
   delete state.characters; delete state.entities; delete state.selectedCharacterId; delete state.characterView;
   delete state.selectedCharacters; delete state.castPickerOpen; delete state.consistencyModes;
+  state.galleryTagFilters=uniqueStrings(state.galleryTagFilters,200,80);
   state.promptPresets = promptPresets(state.promptPresets); state.artistCollections = artistCollections(state.artistCollections); state.artistPresets = artistPresets(state.artistPresets); const knownArtistCollections = new Set(state.artistCollections.map((item) => item.id)); for (const artist of state.artistPresets) { artist.collectionIds = artist.collectionIds.filter((id) => knownArtistCollections.has(id)); artist.collectionId = artist.collectionIds[0] || ''; } if (!knownArtistCollections.has(state.artistCollectionId)) state.artistCollectionId = ''; state.selectedArtistPresetId = state.artistPresets.some((item) => item.id === state.selectedArtistPresetId) ? cleanId(state.selectedArtistPresetId) : ''; if (state.editingArtistPresetId !== 'new' && !state.artistPresets.some((item) => item.id === state.editingArtistPresetId)) state.editingArtistPresetId = ''; const knownArtistIds = new Set(state.artistPresets.map((item) => item.id)); state.artistPools = artistPools(state.artistPools, knownArtistIds); state.selectedArtistPoolId = state.artistPools.some((item) => item.id === state.selectedArtistPoolId) ? cleanId(state.selectedArtistPoolId) : ''; state.tagLibrary = tags(state.tagLibrary); state.vibeLibrary = vibes(state.vibeLibrary);
   const knownTagIds = new Set(state.tagLibrary.map((tag) => tag.id));
   for (const preset of state.promptPresets) preset.tagIds = preset.tagIds.filter((id) => knownTagIds.has(id));
@@ -872,7 +875,7 @@ function promptPresets(value) {
     const presetId = cleanId(preset.id);
     const sourceItems = Array.isArray(preset.items) ? preset.items : (str(preset.instruction, 24000) ? [{ id: `${presetId}-legacy`, name: '基础指令', instruction: preset.instruction }] : []);
     const items = dedupeById(sourceItems.filter(obj).map((item, index) => ({ id: cleanId(item.id || `${presetId}-item-${index + 1}`), name: str(item.name || `条目 ${index + 1}`, 80) || `条目 ${index + 1}`, instruction: str(item.instruction || item.content, 12000) })).filter((item) => item.id && item.instruction)).slice(0, 50);
-    return { id: presetId, name: str(preset.name || '未命名方案', 80) || '未命名方案', mode: STORYBOARD_PROMPT_MODES[preset.mode] ? preset.mode : 'combined', items, instruction: items.map((item) => item.instruction).join('\n\n').slice(0, 24000), positiveTemplate: str(preset.positiveTemplate, 24000), negativeTemplate: str(preset.negativeTemplate, 12000), providerIds: providers(preset.providerIds), tagIds: ids(preset.tagIds, 300), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) };
+    return { id: presetId, name: str(preset.name || '未命名方案', 80) || '未命名方案', mode: STORYBOARD_PROMPT_MODES[preset.mode] ? preset.mode : 'combined', items, instruction: items.map((item) => item.instruction).join('\n\n').slice(0, 24000), positiveTemplate: str(preset.positiveTemplate, 24000), negativeTemplate: str(preset.negativeTemplate, 12000), providerIds: providers(preset.providerIds), tagIds: ids(preset.tagIds, 300), ...(Object.hasOwn(preset,'galleryKeywords')?{galleryKeywords:safeData(preset.galleryKeywords,2)}:{}), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) };
   }).filter((preset) => preset.id);
   return dedupeById(normalized).slice(0, 200);
 }
@@ -2057,7 +2060,7 @@ function shotPlans(value, state = {}) {
       return {
         id: cleanId(shot.id), shotType: str(shot.shotType || shotSpec?.shotScale || 'custom', 60), role: str(shot.role || shotSpec?.shotRole, 60),
         title: str(shot.title, 120), purpose: str(shot.purpose || shotSpec?.narrativePurpose, 500), prompt: str(shot.prompt, 24000), safePrompt: str(shot.safePrompt, 24000), negative: str(shot.negative, 12000), hasPrompt,
-        providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20),
+        providerId, connectionPresetId, parameterPresetId, routeRuleId: cleanId(shot.routeRuleId), status: workflowState(shot.status), resultIds: ids(shot.resultIds, 20), tags:uniqueStrings(shot.tags,30,80),
         ...(providerId === 'comfy' && Object.hasOwn(shot,'comfyRouteBinding') ? { comfyRouteBinding: retainComfyRouteBinding(shot.comfyRouteBinding) } : {}),
         error: str(shot.error, 4000), partialFailureCount: int(shot.partialFailureCount, 0, 20, 0), attempt: int(shot.attempt, 0, 20, 0),
         paragraphAnchor: shot.paragraphAnchor ? normalizeStoryboardParagraphAnchor(shot.paragraphAnchor) : null,
