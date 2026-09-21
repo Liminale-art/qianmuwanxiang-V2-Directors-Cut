@@ -7,9 +7,9 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.268';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.268';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.268';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.269';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.269';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.269';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -264,12 +264,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.268';
+} from './qianmu-storyboard.js?v=1.59.269';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.268';
+const VERSION = '1.59.269';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -322,7 +322,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.268'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.269'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -358,15 +358,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.268'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.269'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.268'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.269'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.268'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.269'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -458,11 +458,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.268'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.269'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.268'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.269'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -550,9 +550,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.268'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.269'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.268')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.269')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -13050,6 +13050,7 @@ function storyboardPlanLightweightSummary(plan, key) {
     ...(Object.hasOwn(plan,'streamFinalCapture')?{streamFinalCapture:clone(plan.streamFinalCapture)}:{}),
     ...(Object.hasOwn(plan,'streamAttempt')?{streamAttempt:clone(plan.streamAttempt)}:{}),
     ...(Object.hasOwn(plan,'ensembleRecovery')?{ensembleRecovery:clone(plan.ensembleRecovery)}:{}),
+    ...(plan.ensembleRecoveryRetired===true?{ensembleRecoveryRetired:true}:{}),
     status: plan.status, linkState: plan.linkState || '',
     shots: (plan.shots || []).map((shot) => ({
       id: shot.id, shotType: shot.shotType, role: shot.role, title: shot.title, purpose: '',
@@ -13148,9 +13149,11 @@ async function storyboardPlansForPortableExport(plans = [], { strict = false } =
         ...(Object.hasOwn(summary,'generationStarted')?{generationStarted:summary.generationStarted===true}:{}),
         ...(Object.hasOwn(summary,'streamFinalCapture')?{streamFinalCapture:clone(summary.streamFinalCapture)}:{}),
         ...(Object.hasOwn(summary,'ensembleRecovery')?{ensembleRecovery:clone(summary.ensembleRecovery)}:{}),
+        ...(summary.ensembleRecoveryRetired===true?{ensembleRecoveryRetired:true}:{}),
         status: summary.status, linkState: summary.linkState || '', createdAt: summary.createdAt, updatedAt: summary.updatedAt,
       });
       const currentShots = new Map((summary.shots || []).map((shot) => [String(shot.id || ''), shot]));
+      if(summary.ensembleRecoveryRetired!==true)delete output.ensembleRecoveryRetired;
       output.shots = (archived.shots || []).map((shot) => {
         const current = currentShots.get(String(shot.id || ''));
         return current ? { ...shot, status: current.status, resultIds: clone(current.resultIds || []), error: current.error, attempt: current.attempt, partialFailureCount: current.partialFailureCount } : shot;
@@ -18558,6 +18561,7 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
     && chatKey === String(getChatKey() || '') && plan?.status !== 'cancelled' && ctx().chat?.[floor] === message && equal(baseline, read());
   return {
     stream,
+    bindPlan(value){this.assertCurrent();if(plan&&plan!==value||!state.shotPlans.includes(value)||value.chatKey!==chatKey)throw Object.assign(new Error('准备计划归属已变化'),{code:'storyboard_input_changed'});plan=value;this.assertCurrent();},
     get freshComfy() { return freshComfy === true; },
     isCurrent,
     ownsCurrentContext: () => state === storyboardState() && chatKey === String(getChatKey() || ''),
@@ -18833,13 +18837,14 @@ async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGu
   return reports.length === 1 ? reports[0] : reports;
 }
 
-function storyboardEnsembleHost(){return {storyboardState,ctx,getChatKey,featureRuntime,storyboardProviderProfile,storyboardResolveRoutingProfile,storyboardPrepareComfyRoutes,storyboardPreflightComfyForCompiler,uid};}
+function storyboardEnsembleHost(){return {storyboardState,ctx,getChatKey,featureRuntime,storyboardProviderProfile,storyboardResolveRoutingProfile,storyboardPrepareComfyRoutes,storyboardPreflightComfyForCompiler,uid,storyboardTargetFloor,createPlan:data=>createStoryboardWorkflowTicket({...data,compilerSignature:storyboardPlanCompilerSignature()})};}
 
 async function storyboardCompilePrompt(root, { plan = null, quiet = false, automatic = false, stream = null, onPrepared = null, onStreamOutcome = null } = {}) {
   let streamAttempt,streamStatus;const report=async status=>{streamStatus=await streamAttempt?.finish(status)||status;if(streamStatus==='failed'&&status!==streamStatus)toast('取景检查点保存未确认，已暂停提前取景；已入队画面保留。','warning');if(stream&&typeof onStreamOutcome==='function')try{const result=onStreamOutcome({status:streamStatus});result?.catch?.(()=>{});}catch(_){}return false;};
   if(stream){if(root||plan||typeof onPrepared!=='function'||!Number.isSafeInteger(stream.floor)||stream.floor<0||Object.hasOwn(stream,'complete')&&typeof stream.complete!=='boolean'||Object.hasOwn(stream,'namespace')&&(typeof stream.namespace!=='string'||!/^st-user:.{1,504}$/.test(stream.namespace)))return false;automatic=true;stream={floor:stream.floor,signal:stream.signal,complete:stream.complete===true,trackAttempt:stream.trackAttempt===true,...(stream.namespace?{namespace:stream.namespace}:{})};}
   else if(onPrepared)return false;
   if (storyboardCompilerBusy) return report('busy');
+  if(plan&&Object.hasOwn(plan,'ensembleRecovery')&&storyboardPlanHasGeneration(plan)){toast('本轮已有画面任务，请用本层重新提取开启新一轮；旧任务保留','info');return report('cancelled');}
   const { state, profile } = storyboardCaptureWorkbench(root);
   if (!state.enabled) { toast('请先启用分镜。', 'warning'); return report('cancelled'); }
   try { resolveStoryboardProfileBinding(state.source, profile); }
@@ -18928,7 +18933,9 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       delete shot.promptRenderings;
     }
     if(result.ensembleRequired)await contract.sealEnsembleCompilerResult(result,async()=>{inputGuard.assertCurrent();await context.casting?.assertCurrent();await inputGuard.comfyRoutes?.assertCurrent();inputGuard.assertCurrent();});
-    if(result.ensembleRequired&&!stream)await contract.persistStoryboardEnsemblePlan(result,context,plan,inputGuard,storyboardEnsembleHost());
+    if(!stream&&(result.ensembleRequired||Object.hasOwn(plan||{},'ensembleRecovery')))plan=await contract.finalizeStoryboardEnsemblePlan(result,context,plan,inputGuard,storyboardEnsembleHost(),{automatic});
+    inputGuard.assertCurrent();
+    if(!stream&&!result.ensembleRequired&&!result.manualRequired&&Object.hasOwn(plan||{},'ensembleRecovery'))plan.ensembleRecoveryRetired=true;
     resultAccepted = true;
     const compilerInput = {
       floor: context.floor,
@@ -18945,7 +18952,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
         compiled: '', negative: '', compiledAt: Date.now(),
         compiledBy: state.promptCompiler.apiProfileId || 'current-api', userEditedCompiled: false,
         userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false,
-        sourceSummary: [`第 ${context.floor} 层`, '已判断无需配图'], shots: [], ensembleRequired:false,
+        sourceSummary: [`第 ${context.floor} 层`, '已判断无需配图'], shots: [], ensembleRequired:false, planId:plan?.id||'',
       });
       if (plan) {
         plan.floor = context.floor;
@@ -20034,7 +20041,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     if (!state.enabled) return toast('请先启用分镜。', 'warning');
     try { resolveStoryboardProfileBinding(state.source, profile); }
     catch (error) { return toast(error.message, 'warning'); }
-    if (state.routing.enabled&&!state.promptDraft?.ensembleRequired&&!Object.hasOwn(plan||{},'ensembleRecovery')) {
+    if (state.routing.enabled&&!state.promptDraft?.ensembleRequired&&(!Object.hasOwn(plan||{},'ensembleRecovery')||plan.ensembleRecoveryRetired===true)) {
       try {
         for (const rule of state.routing.rules.filter((item) => item.enabled)) {
           try { if (rule.target?.providerId !== 'comfy' || rule.target.comfyWorkflowBinding == null) storyboardResolveRoutingProfile(state, rule.target); }
@@ -20063,6 +20070,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       }
       deliveryPolicy = storyboardProductionDeliveryPolicy(productionDraft || {}, { target: state.target, inlineByDefault: state.inlineByDefault });
       targetFloor = deliveryPolicy.target === 'gallery' ? null : storyboardTargetFloor(state);
+      if(!plan&&state.promptDraft?.ensembleRequired){const draft=JSON.stringify([state.prompt,state.negative,state.promptDraft]),runtime=await featureRuntime.load('storyboardContract');preparationGuard.assertCurrent();plan=runtime.resolveStoryboardEnsembleDraftPlan(state,storyboardEnsembleHost(),draft);preparationGuard.bindPlan(plan);}
       if (!plan && deliveryPolicy.target !== 'gallery' && Number.isInteger(targetFloor) && ctx().chat?.[targetFloor]) {
         plan = storyboardEnsurePlan(state, targetFloor, ctx().chat[targetFloor], { origin: automatic ? 'automatic' : 'manual', autoGenerate: automatic });
       }
@@ -20078,6 +20086,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       }
       preparationGuard.assertCurrent();
     } catch (error) {
+      if(error?.code==='ensemble_host'){if(preparationGuard.ownsCurrentContext())toast(error.message,'warning');return false;}
       if (error?.code !== 'storyboard_input_changed') throw error;
       if (!automatic && preparationGuard.ownsCurrentContext()) toast('生图设置已变化，已停止本次准备；请按当前设置重试', 'info');
       return false;
@@ -20115,7 +20124,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     let queued=0,queueFailures=0;
     try {
       let selectedRoutes = planned.map(shot => routingEnabled ? routeStoryboardShot(shot, state.routing) : state.routing.single);
-      if(state.promptDraft?.ensembleRequired||Object.hasOwn(plan||{},'ensembleRecovery')){
+      if(state.promptDraft?.ensembleRequired||Object.hasOwn(plan||{},'ensembleRecovery')&&plan.ensembleRecoveryRetired!==true){
         const runtime=await featureRuntime.load('storyboardContract');inputGuard.assertCurrent();
         inputGuard.ensemble=await runtime.restoreStoryboardEnsemblePlan(state,plan,planned,inputGuard,storyboardEnsembleHost());selectedRoutes=inputGuard.ensemble.routes;
       }else await storyboardPrepareComfyRoutes(state, inputGuard, selectedRoutes);

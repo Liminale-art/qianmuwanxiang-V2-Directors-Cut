@@ -130,3 +130,19 @@ test('actual lightweight summary, archive export and config restore retain descr
   const [exported]=await exportPlans([summary],{strict:true});assert.deepEqual(exported.ensembleRecovery,newer);assert.equal(exported.shots[0].prompt,'private prompt');assert.equal(Object.hasOwn(exported,'archiveRef'),false);
   assert.equal(cache.get('archive').ensembleRecovery.selectionRevision,'r1','portable export must not overwrite the historical original');
 });
+
+test('retired recovery stays descriptive through normalization, lightweight archives and portable restore without reviving an older archived flag',async()=>{
+  const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
+  const summaryCode=source.slice(source.indexOf('function storyboardPlanLightweightSummary('),source.indexOf('async function storyboardArchiveShotPlans('));
+  const summarize=Function('clone',summaryCode+';return storyboardPlanLightweightSummary;')(clone);
+  const plan=normalizeStoryboardState({shotPlans:[{id:'plan',chatKey:'private-chat',status:'completed',ensembleRecovery:record(),ensembleRecoveryRetired:true,shots:[{id:'shot',prompt:'retained'}]}]}).shotPlans[0];
+  const summary=summarize(plan,'archive');assert.equal(summary.ensembleRecoveryRetired,true);
+  const prepared=prepareConfigRestore({imagegen:{shotPlans:[summary]}},{},{},true,{clone,mergeDefaults,normalizeStoryboardState});
+  assert.equal(prepared.imagegen.shotPlans[0].ensembleRecoveryRetired,true);assert.deepEqual(prepared.imagegen.shotPlans[0].ensembleRecovery,plan.ensembleRecovery);
+  const exportCode=source.slice(source.indexOf('async function storyboardPlansForPortableExport('),source.indexOf('async function storyboardDeletePlanArchives('));
+  const cache=new Map([['archive',copy(plan)]]),exportPlans=Function('clone','storyboardPlanArchiveCache','blobStore',exportCode+';return storyboardPlansForPortableExport;')(clone,cache,{blobStoreAvailable:()=>false});
+  assert.equal((await exportPlans([summary],{strict:true}))[0].ensembleRecoveryRetired,true);
+  delete summary.ensembleRecoveryRetired;assert.equal(Object.hasOwn((await exportPlans([summary],{strict:true}))[0],'ensembleRecoveryRetired'),false);
+  assert.equal(cache.get('archive').ensembleRecoveryRetired,true);
+  for(const value of [false,'true',1,{},null])assert.equal(Object.hasOwn(normalizeStoryboardState({shotPlans:[{...plan,ensembleRecoveryRetired:value}]}).shotPlans[0],'ensembleRecoveryRetired'),false);
+});

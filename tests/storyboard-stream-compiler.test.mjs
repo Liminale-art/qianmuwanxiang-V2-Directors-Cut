@@ -1139,7 +1139,7 @@ test('actual manual edit between token batches preserves admitted pictures and b
 
 async function ordinaryEnsembleFixture(){
   const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);Object.assign(f.state,{target:'floor',floor:'0'});
-  vm.runInContext(section('storyboardEnsembleHost'),f.context);
+  vm.runInContext(['storyboardCompilerTagRules','storyboardPlanCompilerSignature','storyboardEnsembleHost'].map(section).join('\n'),f.context);
   const binding=await installEnsembleChoices(f),store=await createEnsembleStorage({namespace:binding.library.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>binding.library.namespace});
   await store.saveLibrary(binding.library,await store.readLibrary());await store.saveSelection(binding.selection,await store.readSelection());store.close();
   const messageRef=createStoryboardMessageReference({message:f.host.chat[0],chatKey:'chat-a',floor:0});
@@ -1352,6 +1352,126 @@ test('actual ordinary compiler durably stores style choices and the later genera
     assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','novel']);assert.equal(q.queue[0].profile.comfyRouteBinding.id,'portrait');assert.equal(q.queue[1].artistPresetId,'style-artist');
     assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2]);assert.equal(f.counts.requests,2);assert.ok(q.queue.every(row=>row.imageAdmission.automaticSlot&&row.profile.count==='1'));
     assert.equal(f.storage.calls.slice(start).filter(row=>row.path.includes('-ensemble-plan-')).length,10,'entry/final verification plus one check before each submission, without a redundant host read');f.assertReleased();
+  }finally{binding.close();}
+});
+
+for(const target of ['floor','gallery'])test(`actual manual ensemble extraction owns a new plan and ${target} generation resolves that exact draft plan`,async()=>{
+  const {f,q,binding}=await ordinaryEnsembleFixture();f.state.shotPlans=[];f.state.target=target;
+  try{assert.equal(await f.run({stream:null,onPrepared:null,automatic:false}),true,JSON.stringify(f.errors));
+    assert.equal(f.state.shotPlans.length,1);const plan=f.state.shotPlans[0];assert.equal(plan.origin,'manual');assert.equal(plan.autoGenerate,false);
+    assert.equal(f.state.promptDraft.planId,plan.id);assert.equal(plan.ensembleRecovery.scope.planId,plan.id);assert.equal(q.queue.length,0);
+    binding.close();Object.assign(f.state,normalizeStoryboardState(copy(f.state)));
+    assert.equal(await f.context.storyboardGenerate(null),true,JSON.stringify(f.notices));assert.equal(q.queue.length,3);assert.ok(q.queue.every(job=>job.planId===plan.id));
+    assert.deepEqual(q.queue.map(job=>job.source),['comfy','novel','novel']);assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('manual ensemble failed save removes only its owned provisional plan and keeps the previous draft',async()=>{
+  const {f,q,binding,plan}=await ordinaryEnsembleFixture(),before=copy(f.state.promptDraft);let created;
+  f.storage.hook=({path})=>{if(path==='/api/files/upload'){created=f.state.shotPlans.find(row=>row!==plan);throw Error('lost acknowledgement');}};
+  try{assert.equal(await f.run({stream:null,onPrepared:null}),false);assert.ok(created);assert.deepEqual(f.state.shotPlans.map(row=>row.id),[plan.id]);
+    assert.deepEqual(copy(f.state.promptDraft),before);assert.equal(q.queue.length,0);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('a full manual ensemble plan list is retained without evicting any old record',async()=>{
+  const {f,q,binding}=await ordinaryEnsembleFixture();f.state.shotPlans=Array.from({length:300},(_,i)=>({id:`kept-${i}`,status:'generating'}));const before=copy(f.state.shotPlans),writes=f.storage.calls.length;
+  try{assert.equal(await f.run({stream:null,onPrepared:null}),false);assert.deepEqual(copy(f.state.shotPlans),before);assert.equal(q.queue.length,0);
+    assert.equal(f.storage.calls.slice(writes).filter(row=>row.method==='POST').length,0);assert.match(f.notices.at(-1),/计划记录暂满/);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('cancellation during a new manual plan save cannot delete a different plan added meanwhile',async()=>{
+  const {f,q,binding}=await ordinaryEnsembleFixture();f.state.shotPlans=[];let created;const added={id:'new-user-owned',status:'idle'},draft=copy(f.state.promptDraft);
+  f.storage.hook=({path})=>{if(path==='/api/files/upload'){created=f.state.shotPlans[0];created.status='cancelled';f.state.shotPlans.push(added);}};
+  try{assert.equal(await f.run({stream:null,onPrepared:null}),false);assert.ok(created);assert.deepEqual(f.state.shotPlans,[added]);assert.equal(q.queue.length,0);assert.deepEqual(copy(f.state.promptDraft),draft);f.assertReleased();}
+  finally{binding.close();}
+});
+
+test('implicit ensemble plan lookup rejects missing, duplicate, retired, cancelled, foreign or another-floor ownership before image admission',async()=>{
+  for(const kind of ['missing','duplicate','retired','cancelled','foreign','floor']){
+    const {f,q,binding,plan,compile}=await ordinaryEnsembleFixture();
+    try{assert.equal(await compile(),true);binding.close();
+      if(kind==='missing')f.state.shotPlans=[];if(kind==='duplicate')f.state.shotPlans.push(copy(plan));
+      if(kind==='retired')plan.ensembleRecoveryRetired=true;if(kind==='cancelled')plan.status='cancelled';
+      if(kind==='foreign')plan.chatKey='other-chat';if(kind==='floor')plan.floor=1;
+      assert.equal(await f.context.storyboardGenerate(null),false,JSON.stringify(f.notices));assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);assert.equal(f.counts.requests,2);f.assertReleased();
+    }finally{binding.close();}
+  }
+});
+
+function withoutEnsemble(f){const original=f.context.storyboardCompilerRequestConfig;f.context.storyboardCompilerRequestConfig=(...args)=>{const {styleSession,...config}=original(...args);return config;};useShotSet(f,[0]);return ()=>{f.context.storyboardCompilerRequestConfig=original;};}
+
+test('successful ordinary re-extraction retires but retains the old style record through reload and uses the current engine',async()=>{
+  const {f,q,binding,plan,compile}=await ordinaryEnsembleFixture();
+  try{assert.equal(await compile(),true,JSON.stringify(f.errors));const original=copy(plan.ensembleRecovery),before=[...f.storage.files];withoutEnsemble(f);
+    assert.equal(await compile(),true,JSON.stringify(f.errors));assert.equal(plan.ensembleRecoveryRetired,true);assert.deepEqual(copy(plan.ensembleRecovery),original);
+    assert.deepEqual([...f.storage.files],before);binding.close();Object.assign(f.state,normalizeStoryboardState(copy(f.state)));
+    assert.equal(f.state.shotPlans[0].ensembleRecoveryRetired,true);assert.equal(f.state.promptDraft.ensembleRequired,false);
+    assert.equal(await f.context.storyboardGenerate(null,{plan:f.state.shotPlans[0],automatic:true}),true,JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.source),['novel']);
+    assert.equal(q.queue[0].ensembleStyleOrigin,undefined);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('re-enabling and re-extracting an unstarted retired ensemble plan verifies and replaces its exact saved record',async()=>{
+  const {f,q,binding,plan,compile,generate}=await ordinaryEnsembleFixture();
+  try{assert.equal(await compile(),true);const original=copy(plan.ensembleRecovery),restore=withoutEnsemble(f);assert.equal(await compile(),true);assert.equal(plan.ensembleRecoveryRetired,true);
+    restore();useInheritedEnsembleShots(f,[0],{style:'ink'});assert.equal(await compile(),true,JSON.stringify(f.errors));assert.equal(Object.hasOwn(plan,'ensembleRecoveryRetired'),false);
+    assert.notDeepEqual(copy(plan.ensembleRecovery),original);binding.close();assert.equal(await generate(),true,JSON.stringify(f.notices));assert.equal(q.queue[0].ensembleStyleOrigin.schemeId,'ink');f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('failed non-ensemble re-extraction does not retire the previous valid recipe or overwrite the draft',async()=>{
+  const {f,q,binding,plan,compile}=await ordinaryEnsembleFixture();
+  try{assert.equal(await compile(),true);const original=copy(plan.ensembleRecovery),draft=copy(f.state.promptDraft);withoutEnsemble(f);f.modelHook=()=>{throw Error('synthetic extraction failure');};
+    assert.equal(await compile(),false);assert.equal(Object.hasOwn(plan,'ensembleRecoveryRetired'),false);assert.deepEqual(copy(plan.ensembleRecovery),original);assert.deepEqual(copy(f.state.promptDraft),draft);
+    assert.equal(q.queue.length,0);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('a late user edit at the final non-ensemble adoption boundary keeps the old recipe active and the new user text untouched',async()=>{
+  const {f,q,binding,plan,compile}=await ordinaryEnsembleFixture();
+  try{assert.equal(await compile(),true);withoutEnsemble(f);const original=copy(plan.ensembleRecovery),load=f.context.featureRuntime.load;
+    f.context.featureRuntime.load=async key=>{const runtime=await load(key);return key==='storyboardContract'?{...runtime,finalizeStoryboardEnsemblePlan:async(...args)=>{
+      const value=await runtime.finalizeStoryboardEnsemblePlan(...args);f.state.prompt='LATEST USER EDIT';return value;
+    }}:runtime;};
+    assert.equal(await compile(),false);assert.equal(plan.ensembleRecoveryRetired,undefined);assert.deepEqual(copy(plan.ensembleRecovery),original);
+    assert.equal(f.state.prompt,'LATEST USER EDIT');assert.equal(q.queue.length,0);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('a verified no-picture result retires the previous ensemble recipe without deleting its stored record',async()=>{
+  const {f,q,binding,plan,compile}=await ordinaryEnsembleFixture();
+  try{assert.equal(await compile(),true);withoutEnsemble(f);const original=copy(plan.ensembleRecovery),files=[...f.storage.files];
+    f.modelHook=({reply})=>{reply.should_generate=false;reply.skip_reason='no new picture';reply.shots=[];};
+    assert.equal(await compile(),false,JSON.stringify(f.errors));assert.equal(plan.status,'skipped');assert.equal(plan.ensembleRecoveryRetired,true);
+    assert.deepEqual(copy(plan.ensembleRecovery),original);assert.deepEqual([...f.storage.files],files);assert.equal(f.state.promptDraft.planId,plan.id);
+    assert.equal(f.state.promptDraft.ensembleRequired,false);assert.equal(f.state.prompt,'');assert.equal(q.queue.length,0);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('a submitted ensemble plan cannot be overwritten by another extraction while its original images remain owned',async()=>{
+  const {f,q,binding,plan,compile,generate}=await ordinaryEnsembleFixture();
+  try{assert.equal(await compile(),true);binding.close();assert.equal(await generate(),true);const before=copy(plan),jobs=copy(q.queue),calls=f.counts.requests;
+    assert.equal(await compile(),false);assert.deepEqual(copy(plan),before);assert.deepEqual(copy(q.queue),jobs);assert.equal(f.counts.requests,calls);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('implicit plan adoption cannot silently generate a newer draft edited during lazy runtime loading',async()=>{
+  const {f,q,binding,compile}=await ordinaryEnsembleFixture();
+  try{assert.equal(await compile(),true);binding.close();const load=f.context.featureRuntime.load;
+    f.context.featureRuntime.load=async key=>{const runtime=await load(key);if(key==='storyboardContract')f.state.prompt='NEW USER DRAFT';return runtime;};
+    assert.equal(await f.context.storyboardGenerate(null),false);assert.equal(f.state.prompt,'NEW USER DRAFT');assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);f.assertReleased();
+  }finally{binding.close();}
+});
+
+for(const selected of [false,true])test(`ordinary recovery ${selected?'stops a selected broken workflow':'ignores an unused broken optional workflow without changing the saved style'}`,async()=>{
+  const {f,q,binding,compile,generate}=await ordinaryEnsembleFixture();useInheritedEnsembleShots(f,[0],{style:selected?'cg':'ink'});
+  try{assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();f.state.routing.rules[0].target.comfyWorkflowBinding.revision='missing-revision';
+    vm.runInContext(section('storyboardPrepareComfyRoutes'),f.context);
+    assert.equal(await generate(),!selected,JSON.stringify(f.notices));assert.equal(q.queue.length,selected?0:1);
+    if(!selected){assert.equal(q.queue[0].source,'novel');assert.equal(q.queue[0].ensembleStyleOrigin.schemeId,'ink');}
+    assert.equal(f.counts.requests,2);f.assertReleased();
   }finally{binding.close();}
 });
 
