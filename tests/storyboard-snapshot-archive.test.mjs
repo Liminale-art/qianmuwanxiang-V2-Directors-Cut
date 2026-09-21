@@ -27,6 +27,9 @@ test('inline snapshots win during migration and are stripped only after durable 
   const archive = source.slice(source.indexOf('async function storyboardArchiveGallerySnapshots'), source.indexOf('async function storyboardHydrateGallerySnapshots'));
   const writeAt=archive.indexOf('await preserveCapturedSnapshotArchives');
   assert.ok(writeAt >= 0 && writeAt < archive.indexOf('delete item.record.snapshot'));
+  assert.match(archive, /const confirmed = captures\.filter\(item => references\.has\(item\.record\)\)/);
+  assert.match(archive, /preserveCapturedSnapshotArchives\(confirmed,/);
+  assert.match(archive, /await saveMetadata\(\)[\s\S]*?await server\.guardIdentity\(\)/);
   assert.match(archive, /item\.record\.snapshot !== item\.source/);
   assert.match(archive, /await saveMetadata\(\)[\s\S]*?item\.record\.snapshot = item\.source/);
   assert.match(archive, /epoch !== storyboardSnapshotEpoch/);

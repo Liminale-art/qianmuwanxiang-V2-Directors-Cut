@@ -114,5 +114,8 @@ function createRecipeArchiveClient({source,getGallery,sourceSummary,verifyRecord
   }
   return Object.freeze({...writable?{preserve:(record,options)=>call('preserve',record,options)}:{},read:(record,options)=>call('read',record,options),
     guard:options=>bounded(async(signal,alive)=>{await unchanged(alive);await check();alive();return true;},options),
+    // After the caller installs acknowledged refs, its own gallery digest has
+    // changed. Recheck identity/lifecycle only; this is NOT saved-content proof.
+    guardIdentity:options=>bounded(async()=>true,options),
     close(){closed=true;source.close();for(const abort of pending)abort();rows=null;}});
 }

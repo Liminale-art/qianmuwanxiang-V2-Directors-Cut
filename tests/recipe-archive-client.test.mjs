@@ -138,12 +138,79 @@ test('actual explicit edit saves inline first and publishes a separate server re
   assert.equal((await entry(e).c.storyboardReadSnapshotForRecord(e.rows[0])).prompt,'edited');
 });
 
-test('actual old-backend fallback keeps local recipes; metadata failure restores inline and its original reference',async t=>{
+test('actual old-backend failure retains the full ST recipe; metadata failure restores inline and its original reference',async t=>{
   const e=await recipeClientFixture(t),a=entry(e,{fetchImpl:async()=>new Response('old',{status:404})});
-  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(e.rows[0].snapshotServerRef,undefined);assert.equal((await a.c.storyboardReadSnapshotForRecord(e.rows[0])).prompt,'original');
+  const before=await fs.readFile(e.file);assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);
+  assert.equal(e.rows[0].snapshotServerRef,undefined);assert.equal(e.rows[0].snapshotRef,undefined);assert.equal(a.writes,0);assert.equal(a.saves,0);
+  assert.deepEqual(await fs.readFile(e.file),before);const saved=JSON.parse(before.toString().split('\n')[0]).chat_metadata.story_director_liminale.storyboardImages[0];
+  const fresh=entry(e,{fetchImpl:async()=>assert.fail('inline read needs neither network nor the old device')});fresh.c.blobStore.blobStoreAvailable=()=>false;
+  assert.deepEqual(await fresh.c.storyboardReadSnapshotForRecord(saved),recipe());
   e.rows[0].snapshot=recipe('retry');await e.save();const b=entry(e);b.c.saveMetadata=async()=>{throw Error('save failed');};
   assert.equal(await b.c.storyboardArchiveGallerySnapshots(),0);assert.equal(e.rows[0].snapshot.prompt,'retry');assert.equal(e.rows[0].snapshotServerRef,undefined);
   const c=entry(e);assert.equal(await c.c.storyboardArchiveGallerySnapshots(),1);assert.ok(e.rows[0].snapshotServerRef);
+});
+
+test('server outage, timeout, malformed response and oversized-source setup never replace ST inline data with local-only pointers',async t=>{
+  for(const mode of ['offline','timeout','malformed','source-limit']){
+    const e=await recipeClientFixture(t),original=structuredClone(e.rows[0]),before=await fs.readFile(e.file);
+    const a=entry(e,{timeoutMs:100,fetchImpl:async()=>{
+      if(mode==='timeout')return new Promise(()=>{});if(mode==='offline')throw Error('offline');return Response.json({ok:true,reference:{id:'forged'}});
+    }});
+    if(mode==='source-limit')a.c.storyboardRecipeArchiveClient=async()=>{throw Error('source exceeds aggregate budget');};
+    assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0,mode);assert.deepEqual(e.rows[0],original);assert.deepEqual(await fs.readFile(e.file),before);
+    assert.equal(a.writes,0);assert.equal(a.saves,0);assert.equal(a.c.storyboardSnapshotArchiveBusy,0);
+  }
+});
+
+test('partial server success strips only confirmed rows and retries the remaining inline rows without touching the first recipe',async t=>{
+  const e=await recipeClientFixture(t),base=e.rows[0];e.rows=[base,...[2,3].map(i=>({...structuredClone(base),id:'image-'+i,createdAt:i,snapshot:recipe('recipe-'+i)}))];await e.save();
+  const originals=structuredClone(e.rows);let calls=0;const a=entry(e,{fetchImpl:async(url,options)=>++calls===1?e.fetch(url,options):new Response('offline',{status:503})});
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(a.local.size,1);assert.equal(a.saves,1);assert.equal(e.rows[0].snapshot,undefined);
+  assert.deepEqual(e.rows.slice(1),originals.slice(1));const reference=e.rows[0].snapshotServerRef,first=await fs.readFile(e.archive+'/'+reference.id+'.json');
+  const b=entry(e);assert.equal(await b.c.storyboardArchiveGallerySnapshots(),2);assert.equal(b.local.size,2);assert.deepEqual(e.rows[0].snapshotServerRef,reference);
+  assert.deepEqual(await fs.readFile(e.archive+'/'+reference.id+'.json'),first);
+  assert.ok(e.rows.every(row=>!row.snapshot&&row.snapshotServerRef));assert.equal((await fs.readdir(e.archive)).filter(name=>name.endsWith('.json')).length,3);
+});
+
+test('batch deadline retains not-yet-confirmed recipes inline instead of caching and stripping them',async t=>{
+  const e=await recipeClientFixture(t);e.rows.push({...structuredClone(e.rows[0]),id:'second',createdAt:2});await e.save();let now=0;
+  const second=structuredClone(e.rows[1]),a=entry(e,{fetchImpl:async(url,options)=>{const result=await e.fetch(url,options);now=16000;return result;}});a.c.Date={now:()=>now};
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.deepEqual(e.rows[1],second);assert.equal(a.local.size,1);
+});
+
+test('failed ST metadata save restores all previous reference fields, including absent properties',async t=>{
+  for(const existing of [false,true]){
+    const e=await recipeClientFixture(t);
+    if(existing){const client=e.client();e.rows[0].snapshotServerRef=(await client.preserve(e.rows[0])).reference;client.close();e.rows[0].snapshotRef='old-local';e.rows[0].snapshotVersion=0;}
+    else delete e.rows[0].chatKey;
+    e.rows[0].snapshot=recipe('new inline');await e.save();const before=await fs.readFile(e.file),original=structuredClone(e.rows[0]),a=entry(e);
+    a.c.saveMetadata=async()=>{throw Error('ST save failed');};assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);
+    assert.deepEqual(e.rows[0],original);assert.deepEqual(await fs.readFile(e.file),before);
+    const retry=entry(e);assert.equal(await retry.c.storyboardArchiveGallerySnapshots(),1);assert.ok(e.rows[0].snapshotServerRef);
+  }
+});
+
+test('account and epoch changes during ST save cannot report successful archival or mutate the new session',async t=>{
+  for(const mode of ['account','epoch']){
+    const e=await recipeClientFixture(t),original=structuredClone(e.rows[0]),a=entry(e);
+    a.c.saveMetadata=async()=>{await e.save();if(mode==='account')e.account='st-user:bob';else a.c.storyboardSnapshotEpoch++;};
+    assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows[0],original);assert.equal(a.c.storyboardSnapshotArchiveBusy,0);
+  }
+});
+
+test('a newer inline edit or new reference during failed save is never overwritten by archival rollback',async t=>{
+  for(const mode of ['inline','reference']){
+    const e=await recipeClientFixture(t),a=entry(e),newer=recipe('newer edit'),newRef={id:'newer-operation'};
+    a.c.saveMetadata=async()=>{if(mode==='inline')e.rows[0].snapshot=newer;else e.rows[0].snapshotServerRef=newRef;throw Error('late failed save');};
+    assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);
+    if(mode==='inline')assert.equal(e.rows[0].snapshot,newer);else {assert.equal(e.rows[0].snapshotServerRef,newRef);assert.equal(e.rows[0].snapshot,undefined);}
+  }
+});
+
+test('identity-only post-install guard is not content proof and still rejects account changes',async t=>{
+  const e=await recipeClientFixture(t),client=e.client();t.after(()=>client.close());e.rows[0].snapshot.prompt='changed by caller';
+  assert.equal(await client.guardIdentity(),true);await assert.rejects(client.guard(),/已变化/);assert.equal(e.calls.length,0);
+  e.account='st-user:bob';await assert.rejects(client.guardIdentity(),/账户已切换/);
 });
 
 test('actual late local writes after account/source changes cannot publish refs or discard inline',async t=>{
