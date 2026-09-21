@@ -1,9 +1,9 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.273';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.273';
-import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.273';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.274';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.274';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.274';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -119,6 +119,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       // Replace ordinary full-message identity before admission, logs or queue.
       job.messageRef=copy(refs.get(shot.id)); job.automatic=true; job.manualSupplement=false;
       if(ensemble)job.ensembleStyleOrigin=ensemble.origins[index];
+      if(ensemble?.stages?.[index])job.compilerStages.push(copy(ensemble.stages[index]));
       if (job.artistPresetId) artists.push(job.artistPresetId);
       Object.assign(newShots[index],{providerId:sourceId,connectionPresetId:route.connectionPresetId || '',parameterPresetId:route.parameterPresetId || '',routeRuleId:route.ruleId || '',
         safetyAdapted:effective.safetyAdapted,safetyMethod:effective.safetyMethod || '',shotSpec:copy(job.shotSpec),compiledPrompt:copy(job.compiledPrompt),

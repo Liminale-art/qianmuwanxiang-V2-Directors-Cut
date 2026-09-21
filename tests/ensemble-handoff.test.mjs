@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.273';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.274';
 const copy=value=>JSON.parse(JSON.stringify(value));
 function fixture(){
   let live=true,hook=null;const calls=[];
@@ -22,6 +22,7 @@ test('model S ids bind to exact newly minted draft ids; coverage may drop earlie
   await resolved.assertCurrent();assert.deepEqual(f.calls,['S1','S2','S3','S2','S3']);
   assert.deepEqual(resolved.origins.map(row=>[row.shotId,row.schemeId,row.revision,row.bindingKey]),[['S2','S2','r1','2'.repeat(64)],['S3','S3','r1','3'.repeat(64)]]);
   assert.ok(Object.isFrozen(resolved.origins[0]));assert.equal(resolved.origins[0].executionAuthorized,false);
+  assert.deepEqual(resolved.stages.map(row=>row.input.shot),['S2','S3']);assert.deepEqual(resolved.stages.map(row=>row.output.schemeId),['S2','S3']);
 });
 test('serialized, cloned and forged marked results cannot be promoted to a live handoff',async()=>{
   const f=fixture();f.bind();await f.seal();for(const result of [copy(f.result),{...f.result},{shouldGenerate:true,shots:f.result.shots,ensembleRequired:true}]){

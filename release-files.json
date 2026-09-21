@@ -322,6 +322,7 @@
     "qianmu-ensemble-storage.js",
     "qianmu-ensemble-bindings.js",
     "qianmu-ensemble-handoff.js",
+    "qianmu-ensemble-diagnostics.js",
     "qianmu-ensemble-editor.js",
     "qianmu-ensemble-view.js",
     "qianmu-ensemble-recovery.js",

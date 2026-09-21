@@ -1,5 +1,6 @@
 import {storyboardPromptRenderingSource} from './qianmu-prompt-formats.js';
 import {ensembleStyleOrigins} from './qianmu-ensemble-origin.js';
+import {ensembleSelectionStages} from './qianmu-ensemble-diagnostics.js';
 const records=new WeakMap();
 const fail=message=>{throw Object.assign(Error(message),{code:'ensemble_handoff',submissionState:'not_submitted'});};
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
@@ -65,6 +66,7 @@ export async function resolveEnsembleCompiledRoutes(result,planned,{guard}={}){
     if(JSON.stringify(selected())!==JSON.stringify(indices))fail('风格核对期间镜头列表已变化');}
   return Object.freeze({routes:freeze(assignments.map(row=>row.route)),artistPresetIds:freeze(assignments.map(row=>row.artistPresetId)),
     origins:ensembleStyleOrigins(record.receipt,indices.map(index=>`S${index+1}`)),
+    stages:ensembleSelectionStages(record.receipt,record.session.catalogue,indices.map(index=>`S${index+1}`)),
     schemes:freeze(assignments.map(row=>({shotId:row.shotId,schemeId:row.schemeId,bindingKey:row.bindingKey}))),executionAuthorized:false,
     async assertCurrent(){await check();if(JSON.stringify(selected())!==JSON.stringify(indices))fail('镜组待画列表已变化');},
   });

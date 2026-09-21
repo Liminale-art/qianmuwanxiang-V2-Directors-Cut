@@ -1381,6 +1381,8 @@ function assertEnsembleOrigins(f,q,expected){
     const log=f.state.logs.find(row=>row.id===job.logId),saved=reload.logs.find(row=>row.id===job.logId);
     assert.equal(log.status,'queued');assert.ok(job.queueAccepted&&job.imageAdmission.automaticSlot);
     assert.deepEqual(copy(log.snapshot.ensembleStyleOrigin),copy(origin));assert.deepEqual(saved.snapshot.ensembleStyleOrigin,copy(origin));
+    const stage=job.compilerStages.find(row=>row.type==='ensemble_style');assert.ok(stage);assert.equal(stage.output.schemeId,origin.schemeId);assert.equal(stage.input.shot,origin.shotId);
+    assert.deepEqual(reload.pipelineLogs.find(row=>row.id===log.pipelineId).stages.find(row=>row.type==='ensemble_style'),copy(stage));
     assert.deepEqual(sanitizeStoryboardSnapshot(log.snapshot).ensembleStyleOrigin,copy(origin));
     const image=f.context.storyboardCreateRecord(job,log,'/user/images/synthetic-style.png',0,{floor:job.floor,message:f.host.chat[job.floor],valid:true},{});
     assert.equal(image.taskId,job.id);assert.deepEqual(copy(image.snapshot.ensembleStyleOrigin),copy(origin));

@@ -27,6 +27,7 @@ import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,settleImageAttempt} from '../qianmu-image-attempts.js';
 import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
 import {planCharacterReference,assertCharacterReferencePlan,characterReferenceNotice} from '../qianmu-character-reference.js';
+import {installWorldComfyAuto} from './helpers/world-comfy-auto-fixture.mjs';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 export function worldEnvironment() {
@@ -327,11 +328,85 @@ for(const mode of ['closed','artist','comfy'])test(`native world ${mode} style i
     assert.equal(e.calls.filter(value=>value==='llm').length,1);assert.equal(e.context.storyboardQueue.length,1);
     const job=e.context.storyboardQueue[0];assert.equal(job.source,mode==='comfy'?'comfy':mode==='artist'?'novel':'banana');
     assert.equal(job.ensembleStyleOrigin.schemeId,'alternative');assert.equal(job.target,'gallery');assert.match(job.imageAdmission.messageKey,/^world-item:/);
+    assert.deepEqual(copy(job.compilerStages.find(row=>row.type==='ensemble_style').output),{schemeId:'alternative',name:'世界画风',reason:'突出已确认世界画面的氛围'});
     if(mode==='artist')assert.equal(job.artistPresetId,'world-artist');
     if(mode==='comfy')assert.deepEqual(copy(job.profile.comfyRouteBinding),copy(e.recipe.binding));
     const sent=JSON.parse(e.lastRequest.messages[1].content);assert.deepEqual(sent.style_catalogue.map(row=>row.id),['current','alternative']);
     assert.doesNotMatch(JSON.stringify(sent),/apiKey|baseUrl|comfyWorkflow|PRIVATE-QUALIFICATION|original/);
     assert.deepEqual(e.state.promptDraft,before);assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,1);
+  }finally{await e.admission.close();}
+});
+
+for(const styleLock of [false,true])test(`native world current style resolves its actual automatic Comfy pool before queueing, style lock ${styleLock}`,async()=>{
+  const e=await nativeWorldEnsembleHarness({comfy:true}),auto=await installWorldComfyAuto(e,{styleLock});
+  try{
+    const call=e.context.storyboardCallCompiler;e.context.storyboardCallCompiler=async(...args)=>{
+      const value=JSON.parse(await call(...args));value.style_selections=[{shot_id:'S1',scheme_id:'current',reason:'沿用当前世界画风'}];return JSON.stringify(value);
+    };
+    const original=copy(e.state.promptDraft);assert.equal(e.state.profiles.comfy.comfyWorkflow,'');
+    assert.equal(await e.runAutomatic(),true,e.notices.join(';')+' '+JSON.stringify(e.state.pipelineLogs));
+    assert.equal(e.calls.filter(row=>row==='llm').length,1);assert.equal(e.context.storyboardQueue.length,1);
+    const job=e.context.storyboardQueue[0];assert.equal(job.ensembleStyleOrigin.schemeId,'current');assert.equal(job.source,'comfy');
+    assert.equal(job.profile.comfyRouteBinding.id,e.recipe.binding.id);assert.equal(job.target,'gallery');assert.equal(job.inlineByDefault,false);
+    assert.ok(job.comfyAutoSelected);assert.ok(auto.network.length>0);assert.ok(auto.network.every(row=>row.method==='GET'));
+    assert.equal(job.compilerStages.filter(row=>row.type==='comfy_selection').length,1);assert.equal(job.compilerStages.filter(row=>row.type==='ensemble_style').length,1);
+    assert.deepEqual(e.state.promptDraft,original);assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,1);
+  }finally{await auto.close();await e.admission.close();}
+});
+
+test('native world fixed style bypasses current auto-pool selection but still checks its real Comfy graph',async()=>{
+  const e=await nativeWorldEnsembleHarness({comfy:true}),auto=await installWorldComfyAuto(e);
+  try{
+    assert.equal(await e.runAutomatic(),true,e.notices.join(';'));const job=e.context.storyboardQueue[0];
+    assert.equal(job.ensembleStyleOrigin.schemeId,'alternative');assert.equal(job.comfyAutoSelected,undefined);assert.ok(auto.network.length>0);
+    assert.equal(job.compilerStages.filter(row=>row.type==='comfy_selection').length,0);assert.equal(job.profile.comfyRouteBinding.id,e.recipe.binding.id);
+  }finally{await auto.close();await e.admission.close();}
+});
+
+for(const emptyChat of [false,true])test(`native world missing Comfy node stops without a prose retry, empty chat ${emptyChat}`,async()=>{
+  const e=await nativeWorldEnsembleHarness({comfy:true}),auto=await installWorldComfyAuto(e,{missing:'EmptyImage'});
+  try{
+    if(emptyChat)e.context.ctx().chat.splice(0);
+    const call=e.context.storyboardCallCompiler;e.context.storyboardCallCompiler=async(...args)=>{
+      const value=JSON.parse(await call(...args));value.style_selections=[{shot_id:'S1',scheme_id:'current',reason:'沿用当前世界画风'}];return JSON.stringify(value);
+    };
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,0);assert.ok(auto.network.length>0);
+    assert.match(e.notices.join(';'),/工作流|Comfy|节点/);assert.equal(e.calls.filter(row=>row==='llm').length,1);
+    assert.equal(e.state.logs.some(row=>row.kind==='comfy_preparation'),false,'world failures must not borrow an unrelated prose floor retry');
+    const log=e.state.logs.find(row=>row.promptOrigin==='world');assert.ok(log);assert.equal(log.snapshot,null);assert.equal(log.floor,null);
+    const last=e.state.pipelineLogs.find(row=>row.id===log.pipelineId).stages.at(-1);assert.equal(last.type,'world_workflow_preparation');
+    assert.equal(last.output.code,'world_workflow_preparation');assert.match(JSON.stringify(last.output.diagnostics),/EmptyImage/);
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.calls.filter(row=>row==='llm').length,1);assert.equal(e.state.prompt,'original');
+  }finally{await auto.close();await e.admission.close();}
+});
+
+test('native world account departure during actual node checks rejects the late result and never queues',async()=>{
+  const e=await nativeWorldEnsembleHarness({comfy:true}),auto=await installWorldComfyAuto(e,{afterRead:()=>e.setAccount('st-user:departed')});
+  try{
+    const call=e.context.storyboardCallCompiler;e.context.storyboardCallCompiler=async(...args)=>{
+      const value=JSON.parse(await call(...args));value.style_selections=[{shot_id:'S1',scheme_id:'current',reason:'沿用当前世界画风'}];return JSON.stringify(value);
+    };
+    assert.equal(await e.runAutomatic(),false);assert.ok(auto.network.length);assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.state.prompt,'original');
+    assert.equal(e.calls.filter(row=>row==='llm').length,1);assert.equal(e.state.logs.some(row=>row.kind==='comfy_preparation'),false);
+  }finally{await auto.close();await e.admission.close();}
+});
+
+for(const unavailable of ['disabled','archived','connection'])test(`native world ${unavailable} alternative is excluded without reviving legacy routing`,async()=>{
+  const e=await nativeWorldEnsembleHarness();try{
+    e.state.routing.enabled=true;
+    e.state.routing.rules[0].shotTypes=['portrait','custom','environment'];
+    if(unavailable==='disabled')e.state.routing.rules[0].enabled=false;
+    if(unavailable==='connection')e.state.routing.rules[0].target.connectionPresetId='missing';
+    if(unavailable==='archived'){
+      const store=await createEnsembleStorage({namespace:e.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>e.namespace});
+      try{const library=await store.readLibrary(),value=copy(library.value);Object.assign(value.schemes[0],{archived:true,revision:'r2'});await store.saveLibrary(value,library);}finally{store.close();}
+    }
+    e.context.storyboardCallCompiler=async(messages,_profile,options)=>{e.calls.push('llm');const payload=JSON.parse(messages[1].content);
+      assert.equal(payload.style_catalogue,undefined);
+      return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(payload.shot,options.promptFormats)});
+    };
+    assert.equal(await e.runAutomatic(),true,e.notices.join(';'));assert.equal(e.context.storyboardQueue[0].source,'novel');
+    assert.equal(e.context.storyboardQueue[0].ensembleStyleOrigin,undefined);assert.equal(e.notices.filter(row=>row.includes('1 个风格方案暂不可用，本次已排除')).length,1);
   }finally{await e.admission.close();}
 });
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
 import {ENSEMBLE_LIBRARY_SCHEMA,ENSEMBLE_SELECTION_SCHEMA} from '../qianmu-ensemble-selection.js';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult} from '../qianmu-ensemble-handoff.js?v=1.59.273';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult} from '../qianmu-ensemble-handoff.js?v=1.59.274';
 import {normalizeEnsembleRecoveryRecord,createEnsembleRecoveryRecord,restoreEnsembleRecoveryRecord} from '../qianmu-ensemble-recovery.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 import {routeEnvironment,namespace} from './helpers/comfy-route-fixture.mjs';
@@ -42,6 +42,8 @@ test('coverage may omit a mirror without shifting its original style or narrativ
   assert.deepEqual(restored.schemes.map(row=>row.shotId),['S2','S3']);assert.deepEqual(restored.artistPresetIds,['','ink']);
   assert.deepEqual(restored.origins.map(row=>[row.shotId,row.schemeId,row.revision,row.bindingKey]),f.record.shots.slice(1).map(row=>[row.shotId,row.schemeId,row.revision,row.bindingKey]));
   assert.equal(restored.origins[0].selectionRevision,f.record.selectionRevision);assert.equal(restored.origins[0].executionAuthorized,false);
+  assert.deepEqual(restored.stages.map(row=>row.input.shot),['S2','S3']);assert.deepEqual(restored.stages.map(row=>row.output.name),['当前方案','Ink']);
+  assert.equal(restored.stages[1].output.reason,'静谧留白');
 });
 test('recovery cannot substitute another account, chat, plan, message or revision',async()=>{
   for(const key of ['namespace','chatKey','planId','messageKey','revisionId']){const f=await fixture();await assert.rejects(restoreEnsembleRecoveryRecord(f.record,{...f.options,scope:{...f.scope,[key]:key==='namespace'?'st-user:other':'other'}}),{code:'ensemble_recovery'});assert.equal(f.jobs.length,0);}

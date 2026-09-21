@@ -1,7 +1,7 @@
 // World-camera preparation only. No autonomous inference, archive mutation or media submission.
-export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.273';
+export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.274';
 import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js';
-import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.273';
+import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.274';
 import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js';
 import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyboardPromptRenderingSource,
   storyboardPromptFormatBudget,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings,resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
@@ -13,7 +13,7 @@ const stagedStyles = new WeakMap();
 
 export async function prepareWorldStyleSelection(state,inputGuard,dependencies,options){
   if(state.routing?.styleLibrary!==true)return null;
-  const runtime=await import('./qianmu-world-ensemble.js?v=1.59.273');inputGuard.assertCurrent();
+  const runtime=await import('./qianmu-world-ensemble.js?v=1.59.274');inputGuard.assertCurrent();
   return runtime.prepareWorldStyleSelection(state,inputGuard,dependencies,options);
 }
 export async function bindWorldGenerationStyles(handoff,owner,selection,guard){

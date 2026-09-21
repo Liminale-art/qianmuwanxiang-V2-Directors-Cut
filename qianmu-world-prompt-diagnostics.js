@@ -41,8 +41,8 @@ export function createWorldPromptAttempt({call,guard,uid,sanitize,startedAt,mode
   function failure(error) {
     const finishedAt=now(),id=uid('world-prompt-log'),reason=clean(text(error?.message||'画面提示整理失败')).slice(0,1600);
     const pipeline={id:uid('world-prompt-pipeline'),taskId:id,status:'failed',providerId:'',model,startedAt,finishedAt,
-      durationMs:Math.max(0,finishedAt-startedAt),stages:[...clean(stages),{id:uid('world-prompt-result'),type:'world_prompt_rendering',status:'failed',startedAt:finishedAt,finishedAt,
-        input:{},output:{code:text(error?.code).slice(0,80),notice:'本次世界画面未入队；未改动正文草稿、原图或角色档案。'},decisions:[],error:reason}],migrated:false};
+      durationMs:Math.max(0,finishedAt-startedAt),stages:[...clean(stages),{id:uid('world-prompt-result'),type:error?.code==='world_workflow_preparation'?'world_workflow_preparation':'world_prompt_rendering',status:'failed',startedAt:finishedAt,finishedAt,
+        input:{},output:{code:text(error?.code).slice(0,80),...(error?.code==='world_workflow_preparation'?{diagnostics:clean(error.worldWorkflowDiagnostics||[])}:{}),notice:'本次世界画面未入队；未改动正文草稿、原图或角色档案。'},decisions:[],error:reason}],migrated:false};
     const log={id,kind:'prompt_compiler',promptOrigin:'world',status:'failed',source:'compiler',model,floor:null,queuedAt:startedAt,startedAt,finishedAt,
       durationMs:pipeline.durationMs,submissionState:'not_submitted',snapshot:null,params:{},error:reason,pipelineId:pipeline.id,recordId:'',recordIds:[],attempt:1};
     return {log,pipeline};
