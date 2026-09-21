@@ -12,6 +12,7 @@ import {
   captureStoryboardArtistPromptLayer, resolveStoryboardArtistPromptBase,
   createStoryboardMessageReference,
   captureStoryboardVibeRecipe,
+  storyboardArtDirectionDefaults,
 } from '../qianmu-storyboard.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
 import { generateImage } from '../qianmu-image-gateway.js';
@@ -45,6 +46,7 @@ function runtime(state = createStoryboardDefaults(), extra = {}, names = []) {
     planCharacterReference, characterReferenceChoice,
     captureStoryboardArtistPromptLayer, resolveStoryboardArtistPromptBase,
     captureStoryboardVibeRecipe,
+    storyboardArtDirectionDefaults,
     STORYBOARD_GENERIC_PROMPT_DEFAULTS: { positive: 'generic quality', negative: 'generic exclusions' },
     STORYBOARD_NAI_QUALITY_DEFAULTS: { [V3]: 'quality v3', [V45]: 'quality v45', [V5]: 'quality v5' },
     STORYBOARD_NAI_NEGATIVE_DEFAULTS: { [V3]: 'negative v3', [V45]: 'negative v45', [V5]: 'negative v5' },

@@ -373,6 +373,7 @@
     "qianmu-world-gallery-keywords.js",
     "qianmu-composition-schemes.js",
     "qianmu-composition-schemes-view.js",
+    "qianmu-art-directions.js",
     "qianmu-world-ensemble.js",
     "qianmu-world-prompt-diagnostics.js",
     "qianmu-world-source.js",

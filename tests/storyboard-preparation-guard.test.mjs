@@ -143,6 +143,7 @@ test('missing compiler choice stays visible instead of looking like an implicitl
 
 for (const [name, mutate] of [
   ['model', (e) => { e.state.profiles.novel.model = 'nai-diffusion-3'; }],
+  ['built-in art direction', (e) => { e.state.profiles.novel.artDirection = 'cg'; }],
   ['capability', (e) => { e.state.profiles.novel.capabilityModelId = 'nai-diffusion-3'; }],
   ['character reference toggle', (e) => { e.state.profiles.novel.characterReferenceEnabled = true; }],
   ['series', (e) => { e.state.source = 'openai'; }],
