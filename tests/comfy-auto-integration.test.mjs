@@ -68,6 +68,7 @@ async function recoveryEnvironment(options={}){
   e.state.shotPlans=[p];e.state.target='floor';e.state.floor='0';let rejected=true,admissions=0;
   const probe=e.context.storyboardProbeComfyCandidate;
   if(options.sameScene)for(const shot of e.response.shots){shot.scene.location='kitchen';shot.composition.continuity_key='one-scene';}
+  for(const shot of e.response.shots)shot.gallery_keywords=['风景'];
   e.context.storyboardProbeComfyCandidate=async(...args)=>{const request=args[3];if(rejected&&request.shot.subject.includes(options.failedText||'mountain'))throw Error('temporary node unavailable');return probe(...args);};
   Object.assign(e.context,{storyboardPumpQueue(){},storyboardValidatedAnchor:()=>({valid:true}),storyboardImageAdmissionRuntime:async()=>({admit:async()=>{admissions++;}}),
     storyboardSettleImageAdmission:(job,outcome)=>e.manager.settle(job,outcome)});
@@ -112,6 +113,7 @@ test('one unselectable mirror preserves a distinct draft and actual independent 
     assert.deepEqual(e.p.shots.map(shot=>shot.status),['queued','failed','queued']);
     const saved=core.normalizeStoryboardState(copy(e.state)),persisted=saved.logs.find(row=>row.id===log.id);
     assert.equal(persisted.snapshot,null);assert.deepEqual(persisted.preparation,copy(log.preparation));
+    assert.deepEqual(persisted.preparation.tags,['风景']);
     const entry=core.buildStoryboardInlineTasks(e.state.taskStates,{chatKey:'chat-a',chat:e.context.ctx().chat,logs:e.state.logs,waitingIds:new Set(e.context.storyboardQueue.map(job=>job.id))}).find(row=>row.status==='failed');
     assert.equal(entry.label,'本镜待选工作流');assert.equal(entry.action,'reprepare-task');
     const original=JSON.stringify(log.preparation),before=e.context.storyboardQueue.map(job=>job.id);
@@ -120,6 +122,7 @@ test('one unselectable mirror preserves a distinct draft and actual independent 
     assert.equal(e.llmCalls.length,2);assert.equal(e.admissions(),3);assert.equal(e.context.storyboardQueue.length,3);
     assert.deepEqual(e.context.storyboardQueue.slice(0,2).map(job=>job.id),before);
     const retry=e.context.storyboardQueue[2];assert.equal(retry.inlineOrder.shotIndex,1);assert.deepEqual(retry.inlineOrder,log.preparation.inlineOrder);
+    assert.deepEqual(copy(retry.tags),['风景']);assert.deepEqual(copy(e.state.logs.find(row=>row.id===retry.logId).snapshot.tags),['风景']);
     assert.equal(retry.connection.baseUrl,'https://new-comfy.test/api');assert.equal(retry.profile.comfyRouteBinding.id,'landscape');assert.equal(retry.profile.count,'1');
     assert.equal(retry.attempt,2);assert.equal(log.status,'success');assert.equal(JSON.stringify(log.preparation),original);
     assert.equal(e.state.source,'novel');assert.equal(e.state.comfyAutoEnabled,false,'explicit recovery must not toggle the workbench mode');

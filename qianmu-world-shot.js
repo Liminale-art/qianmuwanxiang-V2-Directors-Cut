@@ -1,9 +1,11 @@
 // World-camera preparation only. No autonomous inference, archive mutation or media submission.
-export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.276';
+export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.277';
 import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js';
-import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.276';
+import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.277';
 import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js';
 import {STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,STORYBOARD_WORLD_STILL_INSTRUCTION,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js';
+import {galleryKeywordSchema,GALLERY_KEYWORD_INSTRUCTION} from './qianmu-gallery-keywords.js';
+import {rememberWorldGalleryKeywords,worldGalleryKeywords,carryWorldGalleryKeywords} from './qianmu-world-gallery-keywords.js';
 import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyboardPromptRenderingSource,
   storyboardPromptFormatBudget,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings,resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -14,7 +16,7 @@ const stagedStyles = new WeakMap();
 
 export async function prepareWorldStyleSelection(state,inputGuard,dependencies,options){
   if(state.routing?.styleLibrary!==true)return null;
-  const runtime=await import('./qianmu-world-ensemble.js?v=1.59.276');inputGuard.assertCurrent();
+  const runtime=await import('./qianmu-world-ensemble.js?v=1.59.277');inputGuard.assertCurrent();
   return runtime.prepareWorldStyleSelection(state,inputGuard,dependencies,options);
 }
 export async function bindWorldGenerationStyles(handoff,owner,selection,guard){
@@ -37,7 +39,7 @@ export function createWorldGenerationHandoff(state,{shotSpec,prompt,negative='',
   if(!shotSpec?.productionContext?.packetId || typeof prompt!=='string' || !prompt.trim()) fail('世界画面缺少已确认的提示');
   const shot={id:shotSpec.id,title,purpose:shotSpec.narrativePurpose || title,role:shotSpec.shotRole || 'custom',
     shotType:shotSpec.subjectKind==='character'?'portrait':shotSpec.subjectKind==='environment'?'environment':'custom',
-    prompt:prompt.trim(),negative:String(negative),safePrompt:'',sensitive:Boolean(shotSpec.sensitive),shotSpec:copy(shotSpec),userEdited:false,promptLocked:false};
+    prompt:prompt.trim(),negative:String(negative),safePrompt:'',tags:worldGalleryKeywords(shotSpec),sensitive:Boolean(shotSpec.sensitive),shotSpec:copy(shotSpec),userEdited:false,promptLocked:false};
   const draft={...state,prompt:shot.prompt,negative:shot.negative,promptMode:'manual',target:'gallery',floor:'',inlineByDefault:false,
     pendingParagraphSelection:null,manualParagraphIndex:null,pendingParagraphIndex:null,pendingShotType:'',
     routing:copy(state.routing),
@@ -150,28 +152,34 @@ export async function openWorldShotConfirmation({shot,context,guard=async()=>{},
 }
 
 export const WORLD_RENDERING_SCHEMA='qianmu.world.renderings.v1';
-export function buildWorldPromptRenderingRequest(shot,formatsInput,{styleSelection=null}={}){
+export function buildWorldPromptRenderingRequest(shot,formatsInput,{styleSelection=null,galleryKeywords}={}){
   const formats=normalizeStoryboardPromptFormats(formatsInput);if(!formats.length)fail('工作流尚未声明提示格式');
   const source=storyboardPromptRenderingSource(shot);
   const schema={type:'object',additionalProperties:false,required:['schema','prompt_renderings'],properties:{
     schema:{type:'string',enum:[WORLD_RENDERING_SCHEMA]},prompt_renderings:storyboardPromptRenderingsSchema(formats)}};
   const styles=styleSelection?.request();
   if(styles){schema.required.push('style_selections');schema.properties.style_selections=styles.schema;}
+  const keywords=galleryKeywordSchema(galleryKeywords);
+  if(keywords){schema.required.push('gallery_keywords');schema.properties.gallery_keywords=keywords;}
   // Use the same self-contained visual-expression guidance as ordinary stills,
   // without introducing narrative planning, another request or prose context.
-  return {schema,schemaId:WORLD_RENDERING_SCHEMA,formats,maxTokens:storyboardPromptFormatBudget(formats,1)+(styles?500:0),messages:[
+  return {schema,schemaId:WORLD_RENDERING_SCHEMA,formats,maxTokens:storyboardPromptFormatBudget(formats,1)+(styles?500:0)+(keywords?250:0),messages:[
     {role:'system',content:JSON.stringify({contract:WORLD_RENDERING_SCHEMA,operation:'render_confirmed_visual_facts',source_mutation:false,
       instructions:[STORYBOARD_WORLD_STILL_INSTRUCTION,...STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,storyboardStillFormatInstructions(formats),
+        ...(keywords?[GALLERY_KEYWORD_INSTRUCTION]:[]),
         ...(styles?['每镜仅从style_catalogue选择一个S1方案并填写style_selections及简短reason，按本画面表现增益选择，不按配额轮换；没有明确增益选current。不改变人物、状态、事实或构图；不把艺术家名、方案元数据、路线或工作流参数抄入提示。']:[])],output_schema:schema})},
-    {role:'user',content:JSON.stringify({source_kind:'director_work_order',truth_mode:'speculative',shot:source,...(styles?{style_catalogue:styles.catalogue}:{})})},
+    {role:'user',content:JSON.stringify({source_kind:'director_work_order',truth_mode:'speculative',shot:source,...(styles?{style_catalogue:styles.catalogue}:{}),...(keywords?{gallery_keyword_vocabulary:keywords.items.enum}:{})})},
   ]};
 }
-export function parseWorldPromptRenderings(raw,shot,formats,{styleSelection=null}={}){
+export function parseWorldPromptRenderings(raw,shot,formats,{styleSelection=null,galleryKeywords}={}){
   if(typeof raw!=='string'||new TextEncoder().encode(raw).byteLength>96*1024)fail('整理返回过长或无效，可手动填写');
   let parsed;try{parsed=JSON.parse(raw.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i,'$1'));}catch(_){fail('整理未返回有效 JSON，可手动填写或重新整理');}
-  if(!parsed||Array.isArray(parsed)||parsed.schema!==WORLD_RENDERING_SCHEMA||Object.keys(parsed).some(key=>!['schema','prompt_renderings',...(styleSelection?['style_selections']:[])].includes(key)))fail('整理返回格式不匹配，可手动填写');
+  const keywords=galleryKeywordSchema(galleryKeywords);
+  if(!parsed||Array.isArray(parsed)||parsed.schema!==WORLD_RENDERING_SCHEMA||Object.keys(parsed).some(key=>!['schema','prompt_renderings',...(styleSelection?['style_selections']:[]),...(keywords?['gallery_keywords']:[])].includes(key)))fail('整理返回格式不匹配，可手动填写');
   const checked=validateStoryboardPromptRenderings(parsed.prompt_renderings,{formats,characterIds:shot.characters.map(row=>row.id)});
-  if(!checked.ok)fail(checked.errors[0].message);styleSelection?.accept(parsed.style_selections,shot);return checked.data;
+  if(!checked.ok)fail(checked.errors[0].message);
+  rememberWorldGalleryKeywords(checked.data,parsed.gallery_keywords,galleryKeywords);
+  styleSelection?.accept(parsed.style_selections,shot);return checked.data;
 }
 const formatNames={tags:'标签表达',natural_language:'自然语言',character_blocks:'人物分块'};
 export function renderWorldPromptRenderingEditor(shot,formatsInput,values={},message=''){
@@ -184,15 +192,15 @@ export function renderWorldPromptRenderingEditor(shot,formatsInput,values={},mes
     </div></details>`).join('')}<p role="status">${escape(message)}</p></div>`;
 }
 export async function openWorldPromptRenderingEditor({shot,promptFormats,context,guard=async()=>{},prepareRenderings,manual=false,useManualStyle}){
-  const formats=normalizeStoryboardPromptFormats(promptFormats);let values={},message='',expanded=[],scrollTop=0,manualStyle=manual;
+  const formats=normalizeStoryboardPromptFormats(promptFormats);let values={},keywordSource=null,message='',expanded=[],scrollTop=0,manualStyle=manual;
   if(!formats.length)fail('工作流尚未声明提示格式');
   const prepare=async()=>{
     await guard();try{
       const result=await prepareRenderings(copy(shot));await guard();
       const checked=validateStoryboardPromptRenderings(result,{formats,characterIds:shot.characters.map(row=>row.id)});
       if(!checked.ok)fail(checked.errors[0].message);
-      values=checked.data;message='';manualStyle=false;
-    }catch(error){await guard();manualStyle=true;message=String(error?.message||'整理失败，可手动填写').slice(0,240)+(useManualStyle?'；手动填写将使用当前方案。':'');}await guard();
+      values=checked.data;keywordSource=result;message='';manualStyle=false;
+    }catch(error){await guard();keywordSource=null;manualStyle=true;message=String(error?.message||'整理失败，可手动填写').slice(0,240)+(useManualStyle?'；手动填写将使用当前方案。':'');}await guard();
   };
   if(!manual)await prepare();
   for(;;){
@@ -209,7 +217,7 @@ export async function openWorldPromptRenderingEditor({shot,promptFormats,context
     }];}));
     expanded=[...wrap.querySelectorAll('[data-world-format]')].map(row=>[row.dataset.worldFormat,row.open]);scrollTop=wrap.querySelector('.sd-world-shot-dialog').scrollTop;
     if(String(result)==='2'){await prepare();continue;}
-    try{const promptRenderingPack=await bindStoryboardPromptRenderings(shot,values,{formats,guard});if(manualStyle)await useManualStyle?.(shot);return {...copy(shot),promptRenderingPack};}
+    try{const promptRenderingPack=await bindStoryboardPromptRenderings(shot,values,{formats,guard});if(manualStyle)await useManualStyle?.(shot);return carryWorldGalleryKeywords({...copy(shot),promptRenderingPack},keywordSource);}
     catch(error){await guard();message=error.message;}
   }
 }

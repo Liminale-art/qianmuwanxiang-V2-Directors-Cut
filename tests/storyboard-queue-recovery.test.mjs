@@ -11,7 +11,7 @@ async function fixture(){
   const e=await compilerEnvironment(),chat=e.context.ctx().chat,reference=core.createStoryboardMessageReference({message:chat[0],chatKey:'chat-a',floor:0});
   const plan=core.createStoryboardWorkflowTicket({messageRef:reference,chatKey:'chat-a',floor:0});
   e.state.shotPlans=[plan];e.state.source='novel';e.state.routing.enabled=false;e.state.target='floor';e.state.floor='0';e.state.connections.novel.draft.baseUrl='https://image.test';
-  for(const shot of e.response.shots)delete shot.prompt_renderings.natural_language; // NAI negotiates only tags; no Comfy route in this fixture.
+  for(const shot of e.response.shots){delete shot.prompt_renderings.natural_language;shot.gallery_keywords=['相伴'];} // NAI negotiates only tags; no Comfy route in this fixture.
   let attempts=0,fail=true,postAdmission=()=>{};
   Object.assign(e.context,{hashText,STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardPipelineArchiveCache:new Map(),blobStore:{deleteStoryboardPipelineLogs:async()=>{}},
     storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>e.state.pipelineLogs.find(p=>p.id===log.pipelineId),storyboardPlanIsTerminal:()=>false,
@@ -40,6 +40,8 @@ test('real preparation/queue stores a failed unsubmitted middle mirror and retry
   e.repair();const original=JSON.stringify(failed.snapshot);e.state.profiles.novel.model='a-totally-different-current-model';
   assert.equal(await e.context.storyboardRetryLog(failed),true);assert.equal(queue.length,1);assert.equal(e.attempts(),4);
   const retry=queue[0];assert.deepEqual(retry.inlineOrder,failed.snapshot.inlineOrder);assert.equal(retry.attempt,2);assert.equal(retry.profile.model,failed.snapshot.profile.model);
+  assert.deepEqual(copy(failed.snapshot.tags),['相伴']);assert.deepEqual(copy(retry.tags),['相伴']);
+  assert.deepEqual(copy(e.state.logs.find(row=>row.id===retry.logId).snapshot.tags),['相伴']);
   assert.equal(JSON.stringify(failed.snapshot),original);assert.equal(e.plan.shots[0].resultIds[0],'image-0');assert.equal(e.plan.shots[2].resultIds[0],'image-2');
   assert.doesNotMatch(JSON.stringify(retry),/queueAccepted/);
   e.context.storyboardSetPlanStatus(e.plan,'completed',{job:retry,resultIds:['recovered-image']});

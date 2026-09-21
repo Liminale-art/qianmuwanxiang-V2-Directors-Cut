@@ -165,7 +165,7 @@ async function automaticWorldHarness({comfy=false}={}){
     e.calls.push('llm');e.lastRequest={messages,profile,options};
     const claims=[...transport.files.values()].map(JSON.parse).filter(row=>row.value?.schema==='qianmu.world-automatic-attempt.v1');
     assert.ok(claims.some(row=>row.value.record.status==='preparing'),'model must not run ahead of durable preparation');
-    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats)});
+    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats),...(options.jsonSchema.properties.gallery_keywords?{gallery_keywords:[]}:{} )});
   };
   const run=(scope,apply)=>{const key=imageAttemptScopeKey(scope),result=apply(rows.get(key));rows.set(key,structuredClone(result.ledger));return result;};
   const admission=createImageAdmission({account:async()=>e.namespace,ownerId:'world-page',
@@ -206,6 +206,33 @@ async function nativeWorldEnsembleHarness({comfy=false,artist=false}={}){
 
 const renderingsFor=(shot,requested)=>Object.fromEntries(requested.map(format=>[format,{global:'kitchen, soft light',negative:'blurred details',
   characters:shot.characters.map(row=>({character_id:row.id,positive:'blue hair, no coat, stirs soup'}))}]));
+
+for(const comfy of [false,true])test(`actual ${comfy?'Comfy':'NAI'} world host uses preset keywords once and retains them in job, log, retry and gallery metadata`,async()=>{
+  const e=await automaticWorldHarness({comfy});try{
+    e.state.galleryKeywords=['未选全局词'];e.state.promptPresets=[{id:'world-keywords',items:[],galleryKeywords:['夜色','相伴']}];e.state.promptCompiler.instructionPresetId='world-keywords';
+    const call=e.context.storyboardCallCompiler;e.context.storyboardCallCompiler=async(...args)=>{
+      const result=JSON.parse(await call(...args)),payload=JSON.parse(args[0][1].content);
+      assert.deepEqual(payload.gallery_keyword_vocabulary,['夜色','相伴']);assert.equal(payload.shot.gallery_keywords,undefined);
+      result.gallery_keywords=['夜色','相伴'];return JSON.stringify(result);
+    };
+    Object.assign(e.context,{STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardItemCollectionIds:()=>[]});
+    vm.runInContext(['storyboardStartLog','storyboardCreateRecord','storyboardJobFromLog'].map(section).join('\n'),e.context);
+    assert.equal(await e.runAutomatic(),true,e.notices.join(';'));assert.equal(e.calls.filter(row=>row==='llm').length,1);
+    const job=e.context.storyboardQueue[0],log=e.state.logs.find(row=>row.id===job.logId);
+    assert.deepEqual(copy(job.tags),['夜色','相伴']);assert.deepEqual(copy(log.snapshot.tags),['夜色','相伴']);
+    const restored=core.normalizeStoryboardState(copy(e.state)).logs.find(row=>row.id===log.id),retry=e.context.storyboardJobFromLog(restored);
+    assert.deepEqual(copy(retry.tags),['夜色','相伴']);assert.doesNotMatch(JSON.stringify(job.payload),/夜色|相伴/);
+    const record=e.context.storyboardCreateRecord(job,log,'https://world.invalid/image',0,{floor:null,message:null},{});
+    assert.deepEqual(copy(record.tags),['夜色','相伴']);assert.equal(record.floor,null);assert.equal(record.inline,false);
+  }finally{await e.admission.close();}
+});
+
+test('world keyword changes during a model reply cancel the result before any image job is created',async()=>{
+  const e=await automaticWorldHarness();try{
+    const call=e.context.storyboardCallCompiler;e.context.storyboardCallCompiler=async(...args)=>{const result=await call(...args);e.state.galleryKeywords=['changed'];return result;};
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.calls.filter(row=>row==='llm').length,1);
+  }finally{await e.admission.close();}
+});
 
 async function completedWorldHarness(){
   const e=await automaticWorldHarness(),store={plan:{npc_updates:[{name:'Alice',next_action:'stirs soup'}]},directorPlanRevisionId:'completed-1',lastPlanIdx:0};
@@ -403,7 +430,7 @@ for(const unavailable of ['disabled','archived','connection'])test(`native world
     }
     e.context.storyboardCallCompiler=async(messages,_profile,options)=>{e.calls.push('llm');const payload=JSON.parse(messages[1].content);
       assert.equal(payload.style_catalogue,undefined);
-      return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(payload.shot,options.promptFormats)});
+      return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(payload.shot,options.promptFormats),...(options.jsonSchema.properties.gallery_keywords?{gallery_keywords:[]}:{} )});
     };
     assert.equal(await e.runAutomatic(),true,e.notices.join(';'));assert.equal(e.context.storyboardQueue[0].source,'novel');
     assert.equal(e.context.storyboardQueue[0].ensembleStyleOrigin,undefined);assert.equal(e.notices.filter(row=>row.includes('1 个风格方案暂不可用，本次已排除')).length,1);
@@ -576,7 +603,7 @@ async function classifiedWorld({confirm,format='tags'}={}){
   const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...comfyRoutes,prepareComfyRouteRecipes:options=>comfyRoutes.prepareComfyRouteRecipes({...options,createStore:f.createStore})}:load(key);
   e.context.storyboardCallCompiler=async(messages,profile,options)=>{
     e.calls.push('llm');e.lastRequest={messages,profile,options};
-    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats)});
+    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats),...(options.jsonSchema.properties.gallery_keywords?{gallery_keywords:[]}:{} )});
   };
   vm.runInContext(['storyboardProfileSnapshot','storyboardResolveRoutingProfile'].map(section).join('\n'),e.context);
   return {...e,f,recipe};
@@ -652,7 +679,7 @@ test('each closed world entry uses its exact expression format through the real 
     }});
     e.context.storyboardCallCompiler=async(messages,profile,options)=>{
       calls++;assert.deepEqual([...options.promptFormats],[expected]);assert.equal(options.jsonSchemaStrict,true);
-      return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats)});
+      return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats),...(options.jsonSchema.properties.gallery_keywords?{gallery_keywords:[]}:{} )});
     };
     assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(calls,1);assert.equal(e.state.source,family);
     assert.match(e.context.worldDraft.prompt,/kitchen, soft light/);assert.doesNotMatch(e.context.worldDraft.prompt,/厨房/);

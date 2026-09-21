@@ -1,8 +1,9 @@
-import {createWorldAutomaticStorage} from './qianmu-world-automatic-storage.js?v=1.59.276';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.276';
+import {createWorldAutomaticStorage} from './qianmu-world-automatic-storage.js?v=1.59.277';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.277';
 import {normalizeStoryboardPromptFormats,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings} from './qianmu-prompt-formats.js';
 import {characterReferenceChoice} from './qianmu-character-reference.js';
-import {createWorldAutomaticRepairBudget} from './qianmu-world-automatic-host.js?v=1.59.276';
+import {carryWorldGalleryKeywords} from './qianmu-world-gallery-keywords.js';
+import {createWorldAutomaticRepairBudget} from './qianmu-world-automatic-host.js?v=1.59.277';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'world_automatic_preparation'});};
 export async function beginWorldAutomaticAttempt({namespace,source,guard,createStorage}={}){
@@ -45,7 +46,7 @@ export async function prepareAutomaticWorldShot({shot,promptFormats,prepareRende
       const checked=validateStoryboardPromptRenderings(values,{formats,characterIds:prepared.characters.map(row=>row.id)});
       if(!checked.ok)throw Object.assign(Error(checked.errors[0].message),{code:'storyboard_prompt_format'});
       const promptRenderingPack=await bindStoryboardPromptRenderings(prepared,checked.data,{formats,guard});await guard();
-      return {shot:{...prepared,promptRenderingPack},warnings,repairs:repairAttempt};
+      return {shot:carryWorldGalleryKeywords({...prepared,promptRenderingPack},values),warnings,repairs:repairAttempt};
     }catch(error){
       await guard();
       if(!['world_shot_preparation','storyboard_prompt_format'].includes(error?.code))throw error;

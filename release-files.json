@@ -370,6 +370,7 @@
     "qianmu-character-chat-draft.js",
     "qianmu-character-chat-batch.js",
     "qianmu-world-shot.js",
+    "qianmu-world-gallery-keywords.js",
     "qianmu-world-ensemble.js",
     "qianmu-world-prompt-diagnostics.js",
     "qianmu-world-source.js",

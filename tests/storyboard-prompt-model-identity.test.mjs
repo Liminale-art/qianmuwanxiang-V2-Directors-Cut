@@ -237,13 +237,15 @@ test('actual inline redraw prefers saved image edits over the old log and leaves
   archive.payload.negative = 'edited exclusions';
   const before = structuredClone(archive);
   const env = redrawRuntime(archive);
+  env.record.tags=['夜色','相伴'];archive.tags=['旧标签'];
   assert.equal(await env.context.storyboardRedrawRecord(env.record), true);
   const job = env.queued[0];
   assert.equal(job.payload.negative, 'edited exclusions');
   assert.equal(job.payload.parameters.providerOptions.v4_prompt.caption.base_caption, 'edited scene');
   assert.equal(job.payload.parameters.providerOptions.v4_negative_prompt.caption.base_caption, 'edited exclusions');
   assert.equal(job.modelIdentity.remoteModelId, 'relay/NAI-alias');
-  assert.deepEqual(archive, before);
+  assert.deepEqual([...job.tags],['夜色','相伴']);
+  assert.deepEqual(archive, {...before,tags:['旧标签']});
   assert.notEqual(env.original.payload.negative, 'edited exclusions');
 });
 

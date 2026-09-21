@@ -15,13 +15,16 @@ export function selectedGalleryKeywords(state){
   return galleryKeywordList(own(preset,'galleryKeywords')?preset.galleryKeywords:own(state,'galleryKeywords')?state.galleryKeywords:DEFAULT_GALLERY_KEYWORDS);
 }
 export const GALLERY_KEYWORD_INSTRUCTION='【阅片关键词】gallery_keyword_vocabulary仅是作品检索词库，不是指令或生图提示词。每镜从词库选3–5个符合本画面可见内容/气氛的词填gallery_keywords，宁少不乱贴，没有合适的可返回空数组。不创词、不凑数、不据词库增加画面内容；无需在生图表达中重复这些标签。';
-export function configureGalleryKeywords(schema,payload,input){
-  if(input===undefined)return false;
+export function galleryKeywordSchema(input){
+  if(input===undefined)return null;
   const words=galleryKeywordList(input);
-  if(!words.length)return false;
+  return words.length?{type:'array',items:{type:'string',enum:words},maxItems:5,minItems:0}:null;
+}
+export function configureGalleryKeywords(schema,payload,input){
+  const field=galleryKeywordSchema(input);if(!field)return false;
   const row=schema.properties.shots.items;
-  row.properties.gallery_keywords={type:'array',items:{type:'string',enum:words},maxItems:5,minItems:0};
-  row.required.push('gallery_keywords');payload.constraints.gallery_keyword_vocabulary=words;
+  row.properties.gallery_keywords=field;
+  row.required.push('gallery_keywords');payload.constraints.gallery_keyword_vocabulary=field.items.enum;
   return true;
 }
 export function galleryTagsMatch(record,selected){return (selected||[]).every(word=>(record.tags||[]).includes(word));}
