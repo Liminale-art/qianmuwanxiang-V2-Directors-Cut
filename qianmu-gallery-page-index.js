@@ -72,6 +72,7 @@ function manifest(value,expectedScope){
 // Detached JSON capture rejects getters/toJSON, symbols, unsafe keys, missing
 // array entries and lossy scalar conversions before any caller code can run.
 function capture(value,maxBytes){
+  if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>LIMIT.recordBytes)fail('分页目录读取预算无效');
   const seen=new Set();let nodes=0,characters=0;
   function visit(item,depth=0){
     if(++nodes>100000||depth>24)fail('分页目录结构过大');
@@ -97,6 +98,9 @@ function capture(value,maxBytes){
   if(utf8.encode(content).length>maxBytes)fail('分页目录超过单页上限，未裁剪');
   return JSON.parse(content);
 }
+// Shared strict JSON capture for the separately staged record store. It does
+// not validate ownership, recipe availability, storage receipts or file paths.
+export const captureGalleryArchiveJson=capture;
 async function encode(value,maxBytes){
   const content=JSON.stringify(value),bytes=utf8.encode(content).length;if(bytes>maxBytes)fail('分页目录超过单页上限，未裁剪');
   return {text:content,reference:{sha256:await vibeDigest(content),bytes}};
