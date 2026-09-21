@@ -20,7 +20,7 @@ assert.deepEqual(Object.keys(STORYBOARD_SHOT_GROUP_TEMPLATES), ['smart', 'threeB
 
 const defaults = createStoryboardDefaults();
 assert.equal(defaults.enabled, false, 'the master switch remains off until the user enables storyboard generation');
-assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true }, 'once enabled, new installations use the unobtrusive automatic flow');
+assert.deepEqual(defaults.automation, { autoGenerate: true }, 'once enabled, new installations use the unobtrusive automatic flow');
 assert.equal(defaults.promptCompiler.enabled, true);
 assert.equal(defaults.routing.templateId, 'smart');
 assert.equal(defaults.generationPolicy.maxImages, 3);
@@ -36,7 +36,7 @@ const preservedManualMode = normalizeStoryboardState({
     rules: [{ id: 'legacy', sensitive: true, shotTypes: ['portrait'], target: { providerId: 'openai', modelId: 'gpt-image-2' } }],
   },
 });
-assert.deepEqual(preservedManualMode.automation, { autoCapture: false, autoGenerate: false }, 'upgrades must not silently start paid requests for existing manual users');
+assert.deepEqual(preservedManualMode.automation, { autoGenerate: false }, 'upgrades must not silently start paid requests for existing manual users');
 assert.equal(preservedManualMode.routing.templateId, 'dialogue');
 assert.equal(Object.hasOwn(preservedManualMode.routing.rules[0], 'sensitive'), false);
 

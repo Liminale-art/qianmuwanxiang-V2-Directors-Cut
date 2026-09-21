@@ -7,8 +7,8 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.243';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.243';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.244';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.244';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -262,12 +262,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.243';
+} from './qianmu-storyboard.js?v=1.59.244';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.243';
+const VERSION = '1.59.244';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -320,7 +320,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.243'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.244'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -540,9 +540,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.243'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.244'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.243')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.244')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -8388,10 +8388,7 @@ function bindStorageManagementEvents(root) {
   if (serviceRefresh) serviceRefresh.onclick = () => {
     const modal = document.getElementById(MODAL_ID);
     if (!serviceRefresh.isConnected || !modal?.classList.contains('open') || !modal.contains(serviceRefresh) || optionalServiceState.status === 'checking') return;
-    void refreshOptionalServiceState(true).then(() => {
-      const current = document.getElementById(MODAL_ID);
-      if (current?.classList.contains('open')) void storyboardPaintVideoConnectionState(current).catch(() => {});
-    });
+    void refreshOptionalServiceState(true);
   };
   const backup = root.querySelector('.sd-storage-backup-section');
   const undoButton = backup?.querySelector('.sd-undo-config');
@@ -12030,33 +12027,6 @@ function storyboardVideoBudgetPolicy() {
   };
 }
 
-function renderStoryboardVideoBudgetCard() {
-  const policy = storyboardVideoBudgetPolicy();
-  return `<section class="sd-card sd-video-budget-card">
-    <div class="sd-field-head"><h3>动态费用保护</h3><span class="sd-summary-note">USD · 预估上限</span></div>
-    <label><span>每日总额提醒线</span><input class="text_pole sd-video-budget-total" type="number" min="0" step="0.01" value="${htmlEscape(policy.totalDailyLimitUnits)}"></label>
-    <div class="sd-video-budget-locks"><span><i class="fa-solid fa-shield-halved"></i>每次手动生成均确认</span><span><i class="fa-solid fa-check-double"></i>2K 单独确认</span></div>
-    <details class="sd-plain-fold sd-video-budget-automatic"><summary><b>自动化预设</b><span class="sd-summary-note">尚未开放</span></summary><div class="sd-video-budget-grid"><label><span>单次上限</span><input class="text_pole sd-video-budget-per-task" type="number" min="0" step="0.01" value="${htmlEscape(policy.automatic.maxPerTaskUnits)}"></label><label><span>自动每日上限</span><input class="text_pole sd-video-budget-daily" type="number" min="0" step="0.01" value="${htmlEscape(policy.automatic.dailyLimitUnits)}"></label><label><span>单聊天每日上限</span><input class="text_pole sd-video-budget-chat" type="number" min="0" step="0.01" value="${htmlEscape(policy.automatic.perChatDailyLimitUnits)}"></label><label><span>最长时长</span><select class="text_pole sd-video-budget-duration">${[4, 5, 6, 8, 10, 12, 15].map((seconds) => `<option value="${seconds}" ${policy.automatic.maxDurationSeconds === seconds ? 'selected' : ''}>${seconds} 秒</option>`).join('')}</select></label></div></details>
-    <p class="sd-muted">0 表示不设置该提醒线。价格来自公开快照，不能替代供应商余额或最终账单。</p>
-    <button type="button" class="sd-btn sd-video-budget-save"><i class="fa-solid fa-floppy-disk"></i>保存费用保护</button>
-  </section>`;
-}
-
-function renderStoryboardVideoConnectionCard() {
-  const configured = storyboardVideoCredentialKnown();
-  const gatewayReady = storyboardVideoGatewayKnown();
-  const serviceLabel = optionalServiceState.status === 'checking'
-    ? '检查中'
-    : gatewayReady ? '网关已连接' : optionalServiceState.status === 'idle' ? '尚未检查' : '网关未就绪';
-  return `<section class="sd-card sd-video-channel-card">
-    <div class="sd-field-head"><h3>动态渠道</h3><span class="sd-video-channel-badge ${configured && gatewayReady ? 'ready' : ''}">${configured && gatewayReady ? '已准备' : '待配置'}</span></div>
-    <div class="sd-video-channel-grid"><label><span>渠道</span><select class="text_pole" disabled><option>MiniMax H3</option></select></label><label><span>服务区域</span><select class="text_pole sd-video-h3-region"><option value="global" ${storyboardVideoRegion() === 'global' ? 'selected' : ''}>全球区</option><option value="china" ${storyboardVideoRegion() === 'china' ? 'selected' : ''}>中国区</option></select></label></div>
-    <label><span>API Key</span><input class="text_pole sd-video-h3-secret" type="password" autocomplete="new-password" value=""></label>
-    <div class="sd-video-channel-state"><span data-video-channel-state="gateway" data-status="${htmlEscape(optionalServiceState.status)}"><i class="fa-solid fa-plug-circle-check"></i><b>${htmlEscape(serviceLabel)}</b></span><span data-video-channel-state="credential" data-status="${configured ? 'ready' : 'missing'}"><i class="fa-solid fa-shield-halved"></i><b>${configured ? '凭据已保存' : '凭据未配置'}</b></span></div>
-    <p class="sd-muted sd-video-channel-detail">网关检测不会向 MiniMax 发起任务，也不能代替首次生成时的授权校验。</p>
-    <div class="sd-button-row sd-video-channel-actions"><button type="button" class="sd-btn sd-video-h3-check"><i class="fa-solid fa-rotate"></i>检查网关</button><button type="button" class="sd-btn sd-primary sd-video-h3-save"><i class="fa-solid fa-floppy-disk"></i>保存连接</button><button type="button" class="sd-icon-btn sd-danger sd-video-h3-forget" ${configured ? '' : 'disabled'} title="删除 H3 凭据" aria-label="删除 H3 凭据"><i class="fa-solid fa-trash-can"></i></button></div>
-  </section>`;
-}
 
 function renderPlugTab() {
   const isExternal = settings.providerMode === 'external';
@@ -12096,8 +12066,6 @@ function renderPlugTab() {
         </div>
       </div>
     </section>
-    ${renderStoryboardVideoConnectionCard()}
-    ${renderStoryboardVideoBudgetCard()}
     <section class="sd-card sd-widget-card">
       <h3>小组件</h3>
       <div class="sd-widget-toggle-row" role="group" aria-label="小组件开关">
@@ -13789,8 +13757,7 @@ function renderStoryboardAutomationCard(state) {
   return `<section class="sd-card sd-storyboard-automation-card">
     <div class="sd-storyboard-automation-head"><b>启用分镜</b><label class="sd-storyboard-capsule-switch"><input type="checkbox" role="switch" aria-label="启用分镜" class="sd-storyboard-enabled" ${state.enabled ? 'checked' : ''}><span aria-hidden="true"></span></label></div>
     <div class="sd-storyboard-automation-options">
-      <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-auto-capture" ${state.automation.autoCapture ? 'checked' : ''} ${!state.enabled ? 'disabled' : ''}><span>自动提取生成词</span></label>
-      <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-auto-generate" ${state.automation.autoGenerate ? 'checked' : ''} ${!state.enabled || !state.automation.autoCapture ? 'disabled' : ''}><span>自动生图</span></label>
+      <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-auto-generate" ${state.automation.autoGenerate ? 'checked' : ''} ${!state.enabled ? 'disabled' : ''}><span>自动生图</span></label>
       <label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-world-side" ${state.directorBridge.worldSideShotsEnabled ? 'checked' : ''} ${!state.enabled ? 'disabled' : ''}><span>造物之眼</span></label>
     </div>
   </section>`;
@@ -18002,65 +17969,6 @@ async function storyboardResolveVideoCredential() {
   return '';
 }
 
-async function storyboardRememberVideoCredential(value) {
-  const secret = String(value || '').trim();
-  if (!secret) return false;
-  let stored = storyboardWriteBrowserCredential(STORYBOARD_VIDEO_H3_CREDENTIAL_ID, secret);
-  storyboardApiKeys.set(STORYBOARD_VIDEO_H3_CREDENTIAL_ID, secret);
-  try {
-    const secrets = await storyboardSecretModule();
-    if (typeof secrets.writeSecret === 'function') {
-      await secrets.writeSecret(STORYBOARD_VIDEO_H3_CREDENTIAL_ID, secret, '千幕 · 动态 · MiniMax H3');
-      stored = true;
-      storyboardSecrets = secrets.secret_state || storyboardSecrets;
-    }
-  } catch (error) {
-    console.warn(`[${MODULE_NAME}] video credential persistence unavailable`, error);
-  }
-  if (!stored) storyboardApiKeys.delete(STORYBOARD_VIDEO_H3_CREDENTIAL_ID);
-  return stored;
-}
-
-async function storyboardForgetVideoCredential() {
-  storyboardApiKeys.delete(STORYBOARD_VIDEO_H3_CREDENTIAL_ID);
-  storyboardWriteBrowserCredential(STORYBOARD_VIDEO_H3_CREDENTIAL_ID, '');
-  delete storyboardSecrets[STORYBOARD_VIDEO_H3_CREDENTIAL_ID];
-  try {
-    const secrets = await storyboardSecretModule();
-    if (typeof secrets.deleteSecret === 'function') await secrets.deleteSecret(STORYBOARD_VIDEO_H3_CREDENTIAL_ID);
-    storyboardSecrets = secrets.secret_state || storyboardSecrets;
-  } catch (error) {
-    console.warn(`[${MODULE_NAME}] video credential removal unavailable`, error);
-  }
-}
-
-async function storyboardPaintVideoConnectionState(root = document.getElementById(MODAL_ID)) {
-  if (!root || activeTab !== 'plug') return;
-  const configured = await storyboardVideoCredentialConfigured();
-  if (!root.isConnected || activeTab !== 'plug') return;
-  const gatewayReady = storyboardVideoGatewayKnown();
-  const badge = root.querySelector('.sd-video-channel-badge');
-  if (badge) {
-    badge.textContent = configured && gatewayReady ? '已准备' : '待配置';
-    badge.classList.toggle('ready', configured && gatewayReady);
-  }
-  const gateway = root.querySelector('[data-video-channel-state="gateway"]');
-  if (gateway) {
-    gateway.dataset.status = optionalServiceState.status;
-    const label = gateway.querySelector('b');
-    if (label) label.textContent = optionalServiceState.status === 'checking'
-      ? '检查中'
-      : gatewayReady ? '网关已连接' : optionalServiceState.status === 'idle' ? '尚未检查' : '网关未就绪';
-  }
-  const credential = root.querySelector('[data-video-channel-state="credential"]');
-  if (credential) {
-    credential.dataset.status = configured ? 'ready' : 'missing';
-    const label = credential.querySelector('b');
-    if (label) label.textContent = configured ? '凭据已保存' : '凭据未配置';
-  }
-  const remove = root.querySelector('.sd-video-h3-forget');
-  if (remove) remove.disabled = !configured;
-}
 
 async function storyboardResolveApiKey(providerId, requestedCredentialId = '', { exact = false } = {}) {
   const state = storyboardState();
@@ -19602,7 +19510,7 @@ async function storyboardQueueJob(job, preparationCurrent = () => true, onFailur
   const state = storyboardState(), chatKey = String(getChatKey() || '');
   const valid = () => storyboardState() === state && state.enabled && !job.discardRequested
     && String(getChatKey() || '') === chatKey && preparationCurrent()
-    && (!job.automatic || (state.automation?.autoCapture !== false && state.automation?.autoGenerate !== false))
+    && (!job.automatic || (state.automation?.autoGenerate !== false))
     && (job.target === 'gallery' || storyboardValidatedAnchor(job).valid)
     && storyboardQueue.length + storyboardActiveJobs.size < STORYBOARD_QUEUE_LIMIT;
   try {
@@ -20458,7 +20366,7 @@ async function storyboardPrepareGatewayAssets(job, { apiKey, log } = {}) {
       if(epoch!==storyboardAdmissionEpoch||job.discardRequested||!storyboardState().enabled||originalVibeIdentity!==vibeIdentity()
         ||job.imageAdmission?.namespace&&job.imageAdmission.namespace!==namespace||namespace!==await identity.resolveImageAccountNamespace())throw new Error('Vibe 任务或账户已变化，未提交生成');
       if(epoch!==storyboardAdmissionEpoch||job.discardRequested||!storyboardState().enabled||originalVibeIdentity!==vibeIdentity())throw new Error('Vibe 任务已变化，未提交生成');
-      if(job.automatic&&(storyboardState().automation?.autoCapture===false||storyboardState().automation?.autoGenerate===false))throw new Error('已停止自动生图，未继续编码');
+      if(job.automatic&&(storyboardState().automation?.autoGenerate===false))throw new Error('已停止自动生图，未继续编码');
       if(job.target!=='gallery'&&job.messageRef?.messageKey){const anchor=storyboardValidatedAnchor(job);if(!anchor.valid&&anchor.linkState!=='foreign')throw new Error('原正文已变化，未继续编码');}
     };
     await vibeGuard();
@@ -20744,7 +20652,7 @@ async function storyboardRunJob(job, log) {
     if(job.profile?.comfyCharacterEnabled===true||job.payload?.comfyCharacterPlan)await storyboardPrepareComfyCharacterJob(job,{valid:()=>!job.discardRequested&&storyboardState().enabled});
     if (job.source === 'comfy' && (Object.hasOwn(job.profile || {},'comfyRoutePromptFormat') || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding'))) await storyboardPrepareComfyPromptJob(job,{valid:()=>!job.discardRequested&&storyboardState().enabled});
     if(job.source!=='comfy' && job.payload?.compiledPrompt?.promptFormat)await verifyStoryboardModelPromptJob(job,{guard:async()=>{if(job.discardRequested || !storyboardState().enabled)throw new Error('已停止本镜生成');}});
-    if (job.discardRequested || !state.enabled || (job.automatic && (state.automation?.autoCapture === false || state.automation?.autoGenerate === false))) {
+    if (job.discardRequested || !state.enabled || (job.automatic && (state.automation?.autoGenerate === false))) {
       throw Object.assign(new Error('已停止后续生图提交'), { code: 'storyboard_submission_cancelled', submissionState: job.submissionState || 'not_submitted' });
     }
     if (job.target !== 'gallery' && job.messageRef?.messageKey && !anchor.valid && anchor.linkState !== 'foreign') {
@@ -20752,11 +20660,11 @@ async function storyboardRunJob(job, log) {
     }
     try {
       await storyboardAdmission.beforeSubmit(job, () => !job.discardRequested && storyboardState().enabled
-        && (!job.automatic || (storyboardState().automation?.autoCapture !== false && storyboardState().automation?.autoGenerate !== false))
+        && (!job.automatic || (storyboardState().automation?.autoGenerate !== false))
         && (job.target === 'gallery' || storyboardValidatedAnchor(job).valid || storyboardValidatedAnchor(job).linkState === 'foreign'));
       await channelTicket?.beforeSubmit();
       if(job.comfySceneClaim)await (await storyboardComfySceneRuntime()).beforeSubmit(job,()=>!job.discardRequested&&storyboardState().enabled
-        &&(!job.automatic||(storyboardState().automation?.autoCapture!==false&&storyboardState().automation?.autoGenerate!==false))
+        &&(!job.automatic||(storyboardState().automation?.autoGenerate!==false))
         &&(job.target==='gallery'||storyboardValidatedAnchor(job).valid||storyboardValidatedAnchor(job).linkState==='foreign'));
     } catch (error) {
       throw Object.assign(new Error(error?.message || '生图授权已失效'), { code: 'storyboard_submission_cancelled', submissionState: job.submissionState || 'not_submitted' });
@@ -20893,7 +20801,7 @@ async function storyboardRunJob(job, log) {
         automatic: Boolean(job.automatic), confirmedAttempts: job.confirmedImageAttempts || [], confirm: confirmDialog,
         serviceReviewRequired: job.connection?.imageTransport === 'service',
         valid: () => !job.discardRequested && storyboardState().enabled
-          && (!job.automatic || (storyboardState().automation?.autoCapture !== false && storyboardState().automation?.autoGenerate !== false))
+          && (!job.automatic || (storyboardState().automation?.autoGenerate !== false))
           && (job.target === 'gallery' || storyboardValidatedAnchor(job).valid || storyboardValidatedAnchor(job).linkState === 'foreign'),
         onAcquired: () => storyboardPipelineStage(log, 'channel_queue', 'success', {}, { acquired: true }),
         onWarning: () => toast('NAI 连接记录未完成结算；再次生图前请核对渠道记录', 'warning'),
@@ -22672,17 +22580,8 @@ function bindStoryboardTabEvents(root) {
     storyboardRenderInlineImages();
     renderModal();
   });
-  root.querySelector('.sd-storyboard-auto-capture')?.addEventListener('change', (event) => {
-    state.automation.autoCapture = Boolean(event.target.checked);
-    if (!state.automation.autoCapture) {
-      state.automation.autoGenerate = false;
-      storyboardResetAutomaticCapture();
-    }
-    state.promptCompiler.enabled = true;
-    saveSettings(); renderModal();
-  });
   root.querySelector('.sd-storyboard-auto-generate')?.addEventListener('change', (event) => {
-    state.automation.autoGenerate = state.automation.autoCapture && Boolean(event.target.checked);
+    state.automation.autoGenerate = Boolean(event.target.checked);
     if (!state.automation.autoGenerate) {
       for (const ticket of storyboardAutomaticPending.values()) ticket.autoGenerate = false;
       if (storyboardAutomaticCurrent) {
@@ -24600,74 +24499,7 @@ function bindActiveTabEvents(root) {
   if (activeTab === 'plug') {
     bindStorageManagementEvents(root);
     void refreshStorageInventory(false);
-    void refreshOptionalServiceState(false).finally(() => void storyboardPaintVideoConnectionState(root));
-    void storyboardPaintVideoConnectionState(root);
-    root.querySelector('.sd-video-h3-check')?.addEventListener('click', async (event) => {
-      const button = event.currentTarget;
-      button.disabled = true;
-      try {
-        await refreshOptionalServiceState(true);
-        await storyboardPaintVideoConnectionState(root);
-        toast(storyboardVideoGatewayKnown() ? 'MiniMax H3 同源网关已连接。' : 'MiniMax H3 同源网关尚未就绪。', storyboardVideoGatewayKnown() ? 'success' : 'warning');
-      } finally {
-        if (button.isConnected) button.disabled = false;
-      }
-    });
-    root.querySelector('.sd-video-h3-save')?.addEventListener('click', async (event) => {
-      const button = event.currentTarget;
-      const input = root.querySelector('.sd-video-h3-secret');
-      const secret = String(input?.value || '').trim();
-      const alreadyConfigured = await storyboardVideoCredentialConfigured();
-      if (!secret && !alreadyConfigured) return toast('请先填写 MiniMax H3 API Key。', 'warning');
-      button.disabled = true;
-      try {
-        if (secret && !await storyboardRememberVideoCredential(secret)) return toast('凭据保存失败，请保留输入内容后重试。', 'error');
-        settings.videoH3 = { region: root.querySelector('.sd-video-h3-region')?.value === 'china' ? 'china' : 'global' };
-        saveSettings();
-        if (input) input.value = '';
-        await storyboardPaintVideoConnectionState(root);
-        toast('MiniMax H3 连接设置已保存。', 'success');
-      } finally {
-        if (button.isConnected) button.disabled = false;
-      }
-    });
-    root.querySelector('.sd-video-h3-forget')?.addEventListener('click', async () => {
-      const yes = await confirmDialog('删除动态渠道凭据', '确认删除已保存的 MiniMax H3 API Key？区域设置和本地草稿不会受影响。');
-      if (!yes) return;
-      await storyboardForgetVideoCredential();
-      await storyboardPaintVideoConnectionState(root);
-      toast('MiniMax H3 凭据已删除。', 'success');
-    });
-    root.querySelector('.sd-video-budget-save')?.addEventListener('click', async (event) => {
-      const button = event.currentTarget;
-      button.disabled = true;
-      try {
-        const budgetRuntime = await featureRuntime.load('videoBudget');
-        const value = (selector) => Math.max(0, Number(root.querySelector(selector)?.value) || 0);
-        const normalized = budgetRuntime.normalizeVideoBudgetPolicy({
-          unit: 'usd',
-          timezoneOffsetMinutes: -new Date().getTimezoneOffset(),
-          totalDailyLimitUnits: value('.sd-video-budget-total'),
-          automatic: {
-            enabled: false,
-            maxPerTaskUnits: value('.sd-video-budget-per-task'),
-            dailyLimitUnits: value('.sd-video-budget-daily'),
-            perChatDailyLimitUnits: value('.sd-video-budget-chat'),
-            maxDurationSeconds: Number(root.querySelector('.sd-video-budget-duration')?.value || 8),
-          },
-          manual: { requireCostConfirmation: true },
-          highResolution: { requireExplicitConfirmation: true },
-        });
-        settings.videoH3 ||= { region: 'global' };
-        settings.videoH3.budgetPolicy = normalized;
-        saveSettings();
-        toast('动态费用保护已保存；自动生成仍未开放。', 'success');
-      } catch (_) {
-        toast('费用保护保存失败，请稍后重试。', 'error');
-      } finally {
-        if (button.isConnected) button.disabled = false;
-      }
-    });
+    void refreshOptionalServiceState(false);
   }
   root.querySelector('.sd-edit-injection')?.addEventListener('click', (event) => {
     event.preventDefault();
@@ -35573,7 +35405,7 @@ function storyboardAutomaticTicketFloor(ticket) {
   if (!ticket || ticket.epoch !== storyboardAutomaticEpoch || ticket.state !== storyboardState()
     || ticket.chatKey !== String(getChatKey() || '') || Date.now() - ticket.createdAt > 5 * 60_000) return -1;
   const state = ticket.state;
-  if (!state.enabled || !state.automation?.autoCapture || !state.promptCompiler?.enabled) return -1;
+  if (!state.enabled || !state.promptCompiler?.enabled) return -1;
   const chat = ctx().chat || [];
   const floor = chat[ticket.floor] === ticket.message ? ticket.floor : chat.indexOf(ticket.message);
   if (floor < 0 || ticket.message.is_user || ticket.message.is_system) return -1;
@@ -35614,7 +35446,7 @@ async function storyboardDrainAutomaticCapture() {
 
 async function storyboardHandleAutomaticCapture(messageIndex, generationType) {
   const state = storyboardState();
-  if (!state.enabled || !state.automation?.autoCapture || !state.promptCompiler?.enabled) return false;
+  if (!state.enabled || !state.promptCompiler?.enabled) return false;
   const receivedIndex = typeof messageIndex === 'string' && /^\d+$/.test(messageIndex) ? Number(messageIndex) : messageIndex;
   const floor = Number.isInteger(receivedIndex) ? receivedIndex : storyboardCurrentAssistantFloor();
   const message = floor >= 0 ? ctx().chat?.[floor] : null;

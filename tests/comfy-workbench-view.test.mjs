@@ -41,10 +41,11 @@ test('both workbenches have exactly one global capture configuration, outside ei
   for(const family of ['novel','banana','comfy']) {
     const fixture=createStoryboardFormFixture({family,workflow:graph});
     const html=fixture.content;
-    for(const className of ['sd-storyboard-enabled','sd-storyboard-auto-capture','sd-storyboard-auto-generate','sd-storyboard-compiler-api','sd-storyboard-prompt-preset']) {
+    for(const className of ['sd-storyboard-enabled','sd-storyboard-auto-generate','sd-storyboard-compiler-api','sd-storyboard-prompt-preset']) {
       assert.equal((html.match(new RegExp(`class="[^"]*\\b${className}\\b[^"]*"`,'g'))||[]).length,1,className);
     }
     assert.equal((html.match(/data-generation-field="minImages"/g)||[]).length,1);
+    assert.doesNotMatch(html,/sd-storyboard-auto-capture|自动提取生成词/);
     assert.ok(html.indexOf('sd-storyboard-capture-settings')<html.indexOf('sd-storyboard-engine-modes'));
     const own=family==='comfy'?fixture.context.renderStoryboardComfyCreate(fixture.state):fixture.context.renderStoryboardModelCreate(fixture.state);
     assert.doesNotMatch(own,/sd-storyboard-automation-card|sd-storyboard-compiler-api|sd-storyboard-context-depth|sd-storyboard-prompt-preset|data-generation-field|sd-storyboard-composition-mode/);

@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const entry=await fs.readFile(new URL('../index.js',import.meta.url),'utf8');
 const logs=entry.slice(entry.indexOf('const LOG_STATUS_LABELS ='),entry.indexOf('\nfunction renderTtsVoiceMapRows'));
-const config=entry.slice(entry.indexOf('<section class="sd-card sd-model-config">'),entry.indexOf('    ${renderStoryboardVideoConnectionCard()}',entry.indexOf('function renderPlugTab()')));
+const config=entry.slice(entry.indexOf('<section class="sd-card sd-model-config">'),entry.indexOf('    <section class="sd-card sd-widget-card">',entry.indexOf('function renderPlugTab()')));
 const liveActions=entry.slice(entry.indexOf('function refreshDirectorLiveUI()'),entry.indexOf('async function generateDirectorPlan('));
 const css=await fs.readFile(new URL('../style.css',import.meta.url),'utf8');
 let requests=0,external=0;const errors=[],checks=[];

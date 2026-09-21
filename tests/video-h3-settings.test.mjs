@@ -12,28 +12,24 @@ function section(start, end) {
   return source.slice(from, to);
 }
 
-test('H3 settings persist only non-sensitive regional preferences', () => {
+test('retired H3 cards are absent while legacy non-sensitive regional data remains readable', () => {
   const defaults = section('const DEFAULT_SETTINGS', 'let settings = null');
-  const card = section('function renderStoryboardVideoConnectionCard', 'function renderPlugTab');
   assert.match(defaults, /videoH3: \{[\s\S]*?region: 'global'/);
-  assert.match(card, /sd-video-h3-region/);
-  assert.match(card, /sd-video-h3-secret/);
-  assert.match(card, /value=""/);
+  assert.doesNotMatch(source, /renderStoryboardVideoConnectionCard|sd-video-h3-(region|secret|check|save|forget)|sd-video-channel-card/);
   assert.doesNotMatch(defaults, /videoH3[^\n]*(apiKey|secret|credential)/i);
 });
 
-test('H3 credentials use a dedicated secret id and are never rendered back into the field', () => {
+test('legacy H3 credentials can still be read but card removal does not delete or overwrite them', () => {
   const credentials = section("const STORYBOARD_VIDEO_H3_CREDENTIAL_ID", 'async function storyboardResolveApiKey');
   assert.match(credentials, /qianmu_video_minimax_h3/);
-  assert.match(credentials, /writeSecret\(STORYBOARD_VIDEO_H3_CREDENTIAL_ID/);
-  assert.match(credentials, /deleteSecret\(STORYBOARD_VIDEO_H3_CREDENTIAL_ID/);
+  assert.match(credentials, /readStoredSecret\(STORYBOARD_VIDEO_H3_CREDENTIAL_ID/);
+  assert.doesNotMatch(credentials, /writeSecret\(|deleteSecret\(|storyboardWriteBrowserCredential\(/);
   assert.doesNotMatch(credentials, /settings\.videoH3\.(apiKey|secret|credential)/i);
 });
 
-test('the visible H3 test checks same-origin capability without creating a paid task', () => {
+test('API page keeps storage and shared service refresh without probing a retired credential card', () => {
   const bindings = section("if (activeTab === 'plug')", "root.querySelector('.sd-edit-injection')");
-  assert.match(bindings, /sd-video-h3-check/);
-  assert.match(bindings, /refreshOptionalServiceState\(true\)/);
-  assert.match(bindings, /不能代替首次生成时的授权校验|同源网关/);
-  assert.doesNotMatch(bindings, /video\/minimax\/create|videoCoordinator|createTask|submit\(/i);
+  assert.match(bindings, /bindStorageManagementEvents\(root\)/);
+  assert.match(bindings, /refreshOptionalServiceState\(false\)/);
+  assert.doesNotMatch(bindings, /storyboardVideoCredential|storyboardPaintVideoConnectionState|video\/minimax\/create|videoCoordinator|createTask|submit\(/i);
 });

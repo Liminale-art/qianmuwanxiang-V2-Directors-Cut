@@ -11,7 +11,7 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 const defaults = createStoryboardDefaults();
-assert.deepEqual(defaults.automation, { autoCapture: true, autoGenerate: true });
+assert.deepEqual(defaults.automation, { autoGenerate: true });
 assert.equal(defaults.promptCompiler.enabled, true);
 const normalized = normalizeStoryboardState({
   schemaVersion: 4,
@@ -69,11 +69,11 @@ assert.match(source, /linkState === 'inactive_swipe'/);
 
 // New installations expose two compact automation tags under one capsule master switch.
 assert.match(source, /sd-storyboard-capsule-switch/);
-assert.match(source, /sd-storyboard-auto-capture[\s\S]*自动提取生成词/);
+assert.doesNotMatch(source, /sd-storyboard-auto-capture|自动提取生成词/);
 assert.match(source, /sd-storyboard-auto-generate[\s\S]*自动生图/);
 assert.doesNotMatch(source, /sd-storyboard-auto-flow/);
 assert.match(source, /function storyboardHandleAutomaticCapture/);
-assert.match(source, /state\.enabled \|\| !state\.automation\?\.autoCapture \|\| !state\.promptCompiler\?\.enabled/);
+assert.match(source, /state\.enabled \|\| !state\.promptCompiler\?\.enabled/);
 assert.match(source, /storyboardGenerate\(null, \{ plan, automatic: true \}\)/);
 assert.match(source, /data-storyboard-chat-action="edit"/);
 assert.match(source, /data-storyboard-chat-action="redraw"/);

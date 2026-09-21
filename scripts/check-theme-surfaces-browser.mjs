@@ -32,7 +32,7 @@ try{
    input.value='正式表单未保存草稿';input.focus();input.setSelectionRange(2,6,'backward');
    const scroll=root.querySelector('.sd-storyboard-scroll');scroll.scrollTop=80;
    window.fixture={root,notes,entry,dialog,input,scroll,offMain,originalStyle:entry.getAttribute('style'),noteSettings:{position:{x:80,y:160},detached:true},saves:0};
-   Object.assign(window,{clampDetachedNotesEntry:value=>value,detachedNoteCanReturnHome:()=>false,notesFeatureSettings:()=>fixture.noteSettings,saveSettings:()=>fixture.saves++,renderFloatingNotes:()=>{throw Error('theme rebuilt floating entry');},toast(){},openNotesPanel(){}});
+   Object.assign(window,{clampDetachedNotesEntry:value=>value,detachedNoteCanReturnHome:()=>false,notesFeatureSettings:()=>fixture.noteSettings,persistNotesDevice:()=>fixture.saves++,saveSettings:()=>{throw Error('device geometry must not write account settings');},renderFloatingNotes:()=>{throw Error('theme rebuilt floating entry');},toast(){},openNotesPanel(){}});
    new Function(dragSource+';window.bindFloating=bindFloatingNoteEvents;')();bindFloating(document.getElementById('qianmu-notes-float-layer'));
   },{content:form.content,nav:form.nav,dragSource:storyboardFunctionSource('bindFloatingNoteEvents')});
   for(const width of [393,1280])for(const theme of ['editorial','glass'])for(const mode of ['light','dark']){
@@ -41,14 +41,19 @@ try{
     const {root,input,scroll,notes,entry,dialog}=fixture;input.focus();input.setSelectionRange(2,6,'backward');
     const before={scroll:scroll.scrollTop,left:entry.style.left,top:entry.style.top,classes:root.className,controls:root.querySelectorAll('input,textarea,select,button').length};
     const snapshot=controller.setTheme({theme,mode,accent:'#5c79d3'});
+    const optionRow=root.querySelector('.sd-storyboard-automation-options'),options=[...optionRow.querySelectorAll('.sd-option-chip')].map(node=>node.getBoundingClientRect());
     return {same:root.contains(input),focused:document.activeElement===input,value:input.value,selection:[input.selectionStart,input.selectionEnd,input.selectionDirection],scroll:scroll.scrollTop,
      left:entry.style.left,top:entry.style.top,classes:root.className,controls:root.querySelectorAll('input,textarea,select,button').length,before,
      tokens:[root,notes,dialog].map(n=>getComputedStyle(n).getPropertyValue('--sd-text').trim()),expected:snapshot.tokens['--sd-text'],
-     hive:entry.style.getPropertyValue('--sd-wheel-icon'),expectedHive:snapshot.hive.dark.icon,background:getComputedStyle(entry).backgroundColor};
+     hive:entry.style.getPropertyValue('--sd-wheel-icon'),expectedHive:snapshot.hive.dark.icon,background:getComputedStyle(entry).backgroundColor,
+     automation:{count:options.length,equal:options.length===2&&Math.abs(options[0].width-options[1].width)<1&&Math.abs(options[0].top-options[1].top)<1,
+       fits:optionRow.scrollWidth<=optionRow.clientWidth+1,retired:!!root.querySelector('.sd-storyboard-auto-capture')}};
    },{theme,mode});
    assert.equal(result.same,true);assert.equal(result.focused,true);assert.equal(result.value,'正式表单未保存草稿');assert.deepEqual(result.selection,[2,6,'backward']);
    for(const key of ['scroll','left','top','classes','controls'])assert.equal(result[key],result.before[key]);
    assert.ok(result.tokens.every(v=>v===result.expected));assert.equal(result.hive,result.expectedHive);assert.match(result.background,/color\(srgb|rgba/);
+   assert.deepEqual(result.automation,{count:2,equal:true,fits:true,retired:false});
+   checks.push(`${family} ${width} ${theme} ${mode}: two equal automation options without retired extraction gate`);
    checks.push(`${family} ${width} ${theme} ${mode}: real form and portals retain state`);
   }
   // Theme patching must leave real captured-pointer drag and the single position save intact.
@@ -69,5 +74,5 @@ try{
   });
   assert.deepEqual(late,{themed:'glass',same:true,focus:true,restored:true,main:false,size:0});checks.push(`${family}: panel absent, late dialog, classic restoration, clean disposal`);
  }
- assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({passed:checks.length,checks,errors,external,productionDataRead:false,scope:'real renderers with isolated data; adapter not yet wired to production'}));
+ assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({passed:checks.length,checks,errors,external,productionDataRead:false,scope:'production renderers and drag handler with isolated data; no real ST data or deployment'}));
 }finally{await context.close();await browser.close();}

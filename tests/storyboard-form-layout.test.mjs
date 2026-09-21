@@ -17,7 +17,8 @@ test('actual automation renderer keeps an accessible native switch for both save
     assert.ok(input); assert.match(input, /type="checkbox"/); assert.match(input, /role="switch"/);
     assert.match(input, /aria-label="启用分镜"/);
     assert.equal(/\bchecked\b/.test(input), enabled); assert.doesNotMatch(input, /\bdisabled\b/);
-    for (const name of ['auto-capture','auto-generate','world-side']) {
+    assert.doesNotMatch(content,/sd-storyboard-auto-capture/);
+    for (const name of ['auto-generate','world-side']) {
       const option = content.match(new RegExp(`<input[^>]+class="sd-storyboard-${name}"[^>]*>`))?.[0];
       assert.ok(option); assert.equal(/\bdisabled\b/.test(option), !enabled);
     }

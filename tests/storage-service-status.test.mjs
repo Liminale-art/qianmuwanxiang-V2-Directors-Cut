@@ -45,7 +45,7 @@ test('repeated binding and clicks coalesce; completion only updates live footer 
   const pending = f.context.optionalServiceProbePromise;
   f.resolve({status: 'ready', services: ['doubao-tts'], version: 'fixture', checkedAt: Date.now()}); await pending;
   assert.equal(f.label.textContent, '可用 · vfixture'); assert.equal(f.label.title, '豆包语音网关');
-  await flush(); assert.equal(f.counters.video, 1, 'same-page video status is refreshed locally');
+  await flush(); assert.equal(f.counters.video, 0, 'retired video settings are not probed by the shared service footer');
   assert.equal(f.attributes['aria-busy'], 'false'); assert.equal(f.attributes['aria-disabled'], 'false');
   await f.context.refreshOptionalServiceState(false); assert.equal(f.counters.probe, 1, 'fresh result remains cached');
   f.context.bindStorageManagementEvents(f.modal); f.button.onclick(); await flush();

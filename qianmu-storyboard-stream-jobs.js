@@ -1,8 +1,8 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.243';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.243';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.244';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.244';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -19,7 +19,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
   const state = d.storyboardState(), chatKey = messageRef.chatKey;
   let plan, existing=false, restored=null, planSnapshot='';
   const valid = () => inputGuard.isCurrent() && state === d.storyboardState() && state.enabled
-    && state.automation.autoCapture && state.automation.autoGenerate && chatKey === String(d.getChatKey() || '')
+    && state.automation.autoGenerate && chatKey === String(d.getChatKey() || '')
     && plan?.status !== 'cancelled' && !plan?.promptLocked && !plan?.manualReviewRequired;
   const check = async () => {
     inputGuard.assertCurrent();

@@ -51,8 +51,8 @@ assert.equal(resolveStoryboardMessageReference(ref, [], { chatKey: 'chat-a' }).s
 assert.equal(resolveStoryboardMessageReference(ref, shiftedChat, { chatKey: 'chat-b' }).state, 'foreign');
 for (const state of ['active', 'stale', 'inactive_swipe', 'orphaned', 'foreign']) assert.ok(STORYBOARD_MESSAGE_LINK_STATES.includes(state));
 
-assert.deepEqual(normalizeStoryboardAutomation({ autoCapture: false, autoGenerate: true }), { autoCapture: false, autoGenerate: false });
-assert.deepEqual(normalizeStoryboardAutomation({ autoCapture: true, autoGenerate: true }), { autoCapture: true, autoGenerate: true });
+assert.deepEqual(normalizeStoryboardAutomation({ autoCapture: false, autoGenerate: true }), { autoGenerate: false });
+assert.deepEqual(normalizeStoryboardAutomation({ autoCapture: true, autoGenerate: true }), { autoGenerate: true });
 const ticket = createStoryboardWorkflowTicket({ messageRef: ref, chatKey: 'chat-a', origin: 'automatic', autoGenerate: true, compilerSignature: 'preset-a', createdAt: 200 });
 const duplicate = createStoryboardWorkflowTicket({ messageRef: ref, chatKey: 'chat-a', origin: 'automatic', autoGenerate: true, compilerSignature: 'preset-a', createdAt: 300 });
 assert.equal(ticket.idempotencyKey, duplicate.idempotencyKey, 'one message revision and compiler setup may run only once');
@@ -74,7 +74,7 @@ const upgraded = normalizeStoryboardState({
 assert.equal(upgraded.enabled, true);
 assert.equal(upgraded.logs.length, STORYBOARD_PIPELINE_LOG_LIMIT);
 assert.equal(upgraded.pipelineLogs.length, STORYBOARD_PIPELINE_LOG_LIMIT);
-assert.deepEqual(upgraded.automation, { autoCapture: false, autoGenerate: false });
+assert.deepEqual(upgraded.automation, { autoGenerate: false });
 assert.equal(upgraded.shotPlans[0].status, 'prompt_ready');
 assert.equal(upgraded.shotPlans[0].shots[0].status, 'generating');
 

@@ -16,7 +16,7 @@ function deferred() { let resolve; const promise = new Promise(yes => { resolve 
 async function tick() { for (let n = 0; n < 40; n++) await Promise.resolve(); }
 function environment() {
   const state = board.createStoryboardDefaults(); state.enabled = true; state.initialized = true;
-  Object.assign(state.automation, { autoCapture: true, autoGenerate: true }); state.promptCompiler.enabled = true;
+  Object.assign(state.automation, { autoGenerate: true }); state.promptCompiler.enabled = true;
   const chat = [{ mes: 'first garden', send_date: '2026-09-06T01:00:00Z', swipe_id: 0 }];
   let chatKey = 'chat-a', seq = 0; const timers = new Map(), calls = [], notices = [], errors = [];
   const context = vm.createContext({
@@ -49,6 +49,12 @@ test('duplicate notifications queue once, preserve the received floor and yield 
   await e.flush();
   assert.deepEqual(e.calls, [['compile', 0], ['generate', 0, true]]);
   assert.equal(await e.context.storyboardHandleAutomaticCapture(0), false, 'queued plan is not re-extracted');
+});
+
+test('a migrated old extraction-off account extracts the new floor once without auto-generating images',async()=>{
+  const e=environment();e.state.automation=board.normalizeStoryboardAutomation({autoCapture:false,autoGenerate:true});
+  assert.equal(await e.context.storyboardHandleAutomaticCapture(0),true);await e.flush();
+  assert.deepEqual(e.calls,[['compile',0]]);assert.equal(await e.context.storyboardHandleAutomaticCapture(0),false);
 });
 
 test('actual automatic entry waits for a continuation save barrier before reserving any task and does not expand an extraction-only authorization',async()=>{
@@ -100,7 +106,7 @@ for (const [name, change] of [
   ['source deletion', e => { e.chat.splice(0, 1); }],
   ['replacement with a similar message', e => { e.chat[0] = { ...e.chat[0] }; }],
   ['master switch off', e => { e.state.enabled = false; }],
-  ['capture switch off', e => { e.state.automation.autoCapture = false; }],
+  ['compiler unavailable', e => { e.state.promptCompiler.enabled = false; }],
   ['settings object replaced', e => { e.context.storyboardState = () => ({ ...e.state }); }],
   ['expired pending notification', e => { for (const ticket of e.context.storyboardAutomaticPending.values()) ticket.createdAt -= 6 * 60_000; }],
 ]) test(`${name} invalidates waiting capture without targeting a different scene`, async () => {

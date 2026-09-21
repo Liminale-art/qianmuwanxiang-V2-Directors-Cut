@@ -14,7 +14,7 @@ const declarations = ['FLOAT_SIZE_MIN', 'FLOAT_SIZE_MAX', 'LOG_LIMIT', 'QUICK_HI
 });
 declarations.push(`const QUICK_COMMANDS = ${JSON.stringify(QIANMU_HIVE_COMMANDS)};`,upgradeProseHiveCommands.toString(),isQianmuOwnedDockDescriptor.toString(), 'const QUICK_COMMAND_IDS = QUICK_COMMANDS.map(item => item.id);');
 const names = ['renderActiveTab', 'renderPlugTab', 'renderQuickWheelSettings', 'normalizeQuickWheelSettings',
-    'renderStoryboardVideoConnectionCard', 'renderStoryboardVideoBudgetCard', 'storyboardVideoBudgetPolicy', 'storyboardVideoRegion',
+    'storyboardVideoBudgetPolicy',
     'renderLogEntry', 'renderStorageServiceStatus', 'formatStorageBytes', 'optionalServiceLabel', 'optionalServiceDetail', 'renderStorageManagementCard'];
 const source = declarations.join('\n') + '\n' + names.map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n'
@@ -108,8 +108,9 @@ try {
             const label = `${family}/${mode}/${width}/${state}`;
             await page.setViewportSize({ width, height: width === 320 ? 568 : 898 });
             await page.evaluate(async ({ family, mode, state }) => { await setAppearance(family, mode); renderSettingsFixture(state); }, { family, mode, state });
-            ok(label + ' all original settings areas and controls remain', await page.evaluate(() =>
-                document.querySelectorAll('.sd-save-api,.sd-test-api,.sd-fetch-models,.sd-video-h3-check,.sd-video-budget-save,.sd-storage-service-refresh,.sd-storage-refresh').length === 7
+            ok(label + ' active settings remain without retired dynamic-channel cards', await page.evaluate(() =>
+                document.querySelectorAll('.sd-save-api,.sd-test-api,.sd-fetch-models,.sd-storage-service-refresh,.sd-storage-refresh').length === 5
+                && !document.querySelector('.sd-video-channel-card,.sd-video-budget-card,.sd-video-h3-check,.sd-video-budget-save')
                 && !document.querySelector('.sd-runtime-health-card') && document.querySelector('.sd-storage-card > :last-child').classList.contains('sd-storage-service')
                 && document.querySelectorAll('[data-widget-toggle]').length === 4 && document.querySelectorAll('.sd-wheel-command-toggle').length === 16 && document.querySelectorAll('.sd-log-entry').length === 5));
             ok(label + ' paid automation remains locked behind its existing policy', await page.evaluate(() => {
@@ -118,7 +119,7 @@ try {
             ok(label + ' model source and storage failure/partial meanings are preserved', await page.evaluate(state => {
                 if (state === 'host') return document.querySelector('.sd-api-external-fields').hidden && document.querySelector('.sd-provider-select').value === 'sillytavern'
                     && !document.querySelector('.sd-save-api').getClientRects().length && document.querySelector('.sd-stream-toggle').getClientRects().length;
-                if (state === 'error') return document.querySelector('.sd-storage-card').textContent.includes('盘点失败') && !document.querySelector('.sd-storage-hero') && document.querySelector('.sd-video-h3-forget').disabled;
+                if (state === 'error') return document.querySelector('.sd-storage-card').textContent.includes('盘点失败') && !document.querySelector('.sd-storage-hero');
                 if (state === 'partial') return document.querySelector('.sd-storage-card').textContent.includes('统计尚不完整') && !!document.querySelector('.is-critical') && document.querySelector('.sd-storage-legend').textContent.includes('未盘点站点数据');
                 return document.querySelector('.sd-storage-hero b').textContent === '400 MB';
             }, state));
@@ -141,9 +142,9 @@ try {
             ok(label + ' hot swap does not reset draft/folds/scroll or mutate snapshots: ' + JSON.stringify(stable), Object.values(stable).every(Boolean));
             ok(label + ' diagnostics and logs cannot insert untrusted images', await page.locator('.sd-body img').count() === 0);
             if (family !== 'classic') {
-                const over = await page.locator('.sd-storage-card,.sd-storage-service,.sd-storage-service-status,.sd-storage-pressure,.sd-storage-card p[role=status],.sd-video-channel-detail').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).map(node => ({ className: node.className, width: node.clientWidth, scroll: node.scrollWidth })).filter(node => node.scroll > node.width + 1));
+                const over = await page.locator('.sd-storage-card,.sd-storage-service,.sd-storage-service-status,.sd-storage-pressure,.sd-storage-card p[role=status]').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).map(node => ({ className: node.className, width: node.clientWidth, scroll: node.scrollWidth })).filter(node => node.scroll > node.width + 1));
                 ok(label + ' diagnostic text fits narrow cards: ' + JSON.stringify(over.slice(0, 2)), over.length === 0);
-                const ratios = await page.locator('.sd-structured-output-toggle.active,.sd-widget-toggle.active,.sd-video-channel-badge.ready,.sd-video-channel-state > span[data-status=ready]').evaluateAll(nodes => nodes.map(contrast));
+                const ratios = await page.locator('.sd-structured-output-toggle.active,.sd-widget-toggle.active').evaluateAll(nodes => nodes.map(contrast));
                 ok(label + ' log/status and selected widget labels stay readable: ' + JSON.stringify(ratios), ratios.every(value => value >= 4.5));
                 ok(label + ' log folds use theme corners', await page.locator('.sd-log-entry').first().evaluate((node, family) => getComputedStyle(node).borderTopLeftRadius === (family === 'glass' ? '22px' : '0px'), family));
                 ok(label + ' log text retains scrolling without visible bars', await page.locator('.sd-term').evaluateAll(nodes => nodes.every(node => getComputedStyle(node).scrollbarWidth === 'none')));

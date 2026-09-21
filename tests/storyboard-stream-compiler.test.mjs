@@ -130,7 +130,7 @@ for(const [label,change] of [
   ['edit and restore',f=>f.events.emit('message_edited',0)],['chat switch notification',f=>f.events.emit('chat_changed','other')],
   ['metadata replacement',f=>{f.host.chatMetadata={};}],['lifecycle epoch',f=>{f.context.storyboardAdmissionEpoch++;}],
   ['abort',f=>f.controller.abort()],['account change',f=>f.setAccount('st-user:other')],
-  ['automation toggle',f=>{f.state.automation.autoCapture=!f.state.automation.autoCapture;}],
+  ['automation toggle',f=>{f.state.automation.autoGenerate=!f.state.automation.autoGenerate;}],
 ])test(`streaming ${label} during the first request cannot produce a handoff or replace an existing draft`,async()=>{
   const f=await fixture();f.modelHook=()=>change(f);
   assert.equal(await f.run(),false,JSON.stringify(f.errors));assert.equal(f.prepared,undefined);assert.equal(f.counts.requests,1);assert.equal(f.counts.hostSaves,0);
@@ -186,7 +186,7 @@ function installStreamQueue(f){
     settle:async(scope,input)=>run(scope,value=>settleImageAttempt(value,scope,input,now))};
   const resolve=job=>resolveStoryboardMessageReference(job.messageRef,f.host.chat,{chatKey:'chat-a',namespace:'st-user:route-test',metadata:f.host.chatMetadata});
   const admission=createImageAdmission({store,account:async()=> 'st-user:route-test',ownerId:'stream-page',resolveSource:resolve});
-  f.state.automation.autoCapture=true;f.state.automation.autoGenerate=true;f.state.connections.novel.draft.baseUrl='https://image.invalid';
+  f.state.automation.autoGenerate=true;f.state.connections.novel.draft.baseUrl='https://image.invalid';
   Object.assign(f.context,{STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardPlansForPortableExport:async plans=>copy(plans),storyboardDeletePlanArchives:async()=>{},
     storyboardValidatedAnchor:job=>({valid:resolve(job).state==='active'}),storyboardPumpQueue(){},
     storyboardImageAdmissionRuntime:async()=>admission,storyboardSettleImageAdmission:(job,status)=>admission.settle(job,status)});

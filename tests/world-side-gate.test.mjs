@@ -60,7 +60,7 @@ test('the workbench exposes one compact switch and hides stale director material
   assert.match(card, /class="sd-storyboard-world-side"[\s\S]*<span>造物之眼<\/span>/);
   const production = source.slice(source.indexOf('function renderStoryboardProductionSources'), source.indexOf('function renderStoryboardCreate'));
   assert.match(production, /if \(!state\.directorBridge\?\.worldSideShotsEnabled\) return ''/);
-  assert.match(styles, /sd-storyboard-automation-options[^\n]*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /sd-storyboard-automation-options[^\n]*repeat\(2, minmax\(0, 1fr\)\)/);
 });
 
 test('production packets become director-only ledger possibilities', () => {
