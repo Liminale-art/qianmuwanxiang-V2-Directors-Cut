@@ -7,6 +7,28 @@ import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyb
 const copy = value => JSON.parse(JSON.stringify(value));
 const fail = message => { throw Object.assign(new Error(message),{code:'world_shot_preparation'}); };
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const pendingGenerations = new WeakMap();
+
+// A single-use, page-local handoff. Keep the editable workbench untouched;
+// only the existing image queue may persist the resulting job and its trace.
+export function createWorldGenerationHandoff(state,{shotSpec,prompt,negative='',title='',stages=[]}) {
+  if(!shotSpec?.productionContext?.packetId || typeof prompt!=='string' || !prompt.trim()) fail('世界画面缺少已确认的提示');
+  const shot={id:shotSpec.id,title,purpose:shotSpec.narrativePurpose || title,role:shotSpec.shotRole || 'custom',
+    shotType:shotSpec.subjectKind==='character'?'portrait':shotSpec.subjectKind==='environment'?'environment':'custom',
+    prompt:prompt.trim(),negative:String(negative),safePrompt:'',sensitive:Boolean(shotSpec.sensitive),shotSpec:copy(shotSpec),userEdited:false,promptLocked:false};
+  const draft={...state,prompt:shot.prompt,negative:shot.negative,promptMode:'manual',target:'gallery',floor:'',inlineByDefault:false,
+    pendingParagraphSelection:null,manualParagraphIndex:null,pendingParagraphIndex:null,pendingShotType:'',
+    routing:copy(state.routing),
+    promptDraft:{...state.promptDraft,planId:'',compiled:shot.prompt,negative:shot.negative,compiledAt:Date.now(),compiledBy:'director-work-order',
+      userEditedCompiled:false,userEditedNegative:false,artistPositiveBaked:false,artistNegativeBaked:false,sourceSummary:['导演工作单',title],shots:[shot]},
+    pendingCompilerStages:copy(stages)};
+  const handoff=Object.freeze({});pendingGenerations.set(handoff,{owner:state,draft});return handoff;
+}
+export function consumeWorldGenerationHandoff(handoff,owner) {
+  const pending=pendingGenerations.get(handoff);
+  if(!pending || pending.owner!==owner)fail('世界画面已交接或所属设置已变化，未重复提交');
+  pendingGenerations.delete(handoff);return pending.draft;
+}
 
 function parts(values,count,length,label) {
   const rows=[];

@@ -116,12 +116,21 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
       calls.push(key);
       return {directorDecision:decisions,directorWorkOrders:orders,imageAdmission:{resolveImageAccountNamespace:async()=>account},
         characterCasting:{...casting,readCharacterCasting:options=>casting.prepareCharacterCasting({...options,store:e.store})},
-        worldShot:{...world,openWorldShotConfirmation:async options=>{await options.guard();calls.push('confirm');return confirm(options);}}}[key];
+        worldShot:{...world,createWorldGenerationHandoff:(owner,options)=>{
+          // Inspect a second pure projection; the production handoff stays unconsumed.
+          context.worldDraft=world.consumeWorldGenerationHandoff(world.createWorldGenerationHandoff(owner,options),owner);
+          return world.createWorldGenerationHandoff(owner,options);
+        },openWorldShotConfirmation:async options=>{await options.guard();calls.push('confirm');return confirm(options);}}}[key];
     }},saveSettings:()=>calls.push('save'),sanitizeStoryboardDiagnosticData:value=>value,toast:(text)=>{notices.push(text);return false;},
     storyboardGenerate:async(root,options)=>{options.productionGuard.assertCurrent();context.lastProductionOptions=options;calls.push('generate');assert.equal(root,null);assert.equal(options.automatic,false);return true;},
   });
   vm.runInContext(['storyboardPrepareComfyRoutes','storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
   return {...e,state,context,calls,notices,packet,candidate,run:()=>context.storyboardGenerateProductionPacket({isConnected:true},'packet-a'),setAccount:value=>{account=value;},setChat:value=>{chat=value;}};
+}
+function useActualWorldGeneration(e,functions) {
+  vm.runInContext(functions.map(section).join('\n'),e.context);
+  const generate=e.context.storyboardGenerate;
+  e.context.storyboardGenerate=(root,options)=>{e.context.lastProductionOptions=options;return generate(root,options);};
 }
 
 const renderingsFor=(shot,requested)=>Object.fromEntries(requested.map(format=>[format,{global:'kitchen, soft light',negative:'blurred details',
@@ -166,18 +175,17 @@ async function classifiedWorld({confirm,format='tags'}={}){
 }
 
 test('classified world confirmation prepares exact expressions and the real shared Comfy job consumes them without rewriting visual facts',async()=>{
-  const e=await classifiedWorld();assert.equal(await e.run(),true,e.notices.join(';'));
-  assert.equal(e.calls.filter(row=>row==='llm').length,1);
-  const stages=e.state.pendingCompilerStages;assert.equal(stages[1].type,'world_prompt_rendering');assert.equal(stages[1].status,'success');
-  assert.doesNotMatch(JSON.stringify(stages),/PRIVATE-QUALIFICATION/);
-  const shot=e.state.promptDraft.shots[0].shotSpec;await world.verifyWorldPromptRenderings(shot,['tags']);
-  assert.equal(shot.subject,'厨房');assert.equal(shot.characters[0].identity[0],'Alice silver hair');
+  const e=await classifiedWorld();
   const jobs=[];Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,
-    storyboardQueueJob:async job=>{assert.deepEqual(formats.storyboardPromptRenderingSource(core.normalizeStoryboardShotSpec(job.payload.shotSpec)),formats.storyboardPromptRenderingSource(shot));await prepareComfyPromptJob(job,{prepare:true,namespace:e.namespace});await prepareComfyPromptJob(job,{namespace:e.namespace});jobs.push(job);return true;},
+    storyboardQueueJob:async job=>{assert.deepEqual(formats.storyboardPromptRenderingSource(core.normalizeStoryboardShotSpec(job.payload.shotSpec)),formats.storyboardPromptRenderingSource(e.context.worldDraft.promptDraft.shots[0].shotSpec));await prepareComfyPromptJob(job,{prepare:true,namespace:e.namespace});await prepareComfyPromptJob(job,{namespace:e.namespace});jobs.push(job);return true;},
     storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],storyboardAdaptShotForModel:async shot=>shot,
     confirmDialog:async()=>true,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',environment:'',custom:''}});
-  vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
-  assert.equal(await e.context.storyboardGenerate(null,e.context.lastProductionOptions),true,e.notices.join(';'));
+  useActualWorldGeneration(e,['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate']);
+  assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.calls.filter(row=>row==='llm').length,1);
+  const stages=e.context.worldDraft.pendingCompilerStages;assert.equal(stages[1].type,'world_prompt_rendering');assert.equal(stages[1].status,'success');
+  assert.doesNotMatch(JSON.stringify(stages),/PRIVATE-QUALIFICATION/);
+  const shot=e.context.worldDraft.promptDraft.shots[0].shotSpec;await world.verifyWorldPromptRenderings(shot,['tags']);
+  assert.equal(shot.subject,'厨房');assert.equal(shot.characters[0].identity[0],'Alice silver hair');
   assert.equal(jobs.length,1);const job=jobs[0];assert.equal(job.target,'gallery');assert.equal(job.payload.promptRendering.format,'tags');
   assert.match(job.payload.prompt,/^kitchen, soft light/);assert.match(job.payload.prompt,/"Alice":/);
   assert.doesNotMatch(job.payload.prompt,/厨房|silver hair/);assert.match(job.payload.prompt,/blue hair, no coat, stirs soup/);
@@ -204,8 +212,8 @@ test('invalid world rendering can be manually repaired after explicit retry; tra
   }});
   e.context.storyboardCallCompiler=async()=>{e.calls.push('llm');return 'not json';};
   assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.calls.filter(row=>row==='llm').length,6);
-  assert.equal(e.state.pendingCompilerStages.length,5);assert.ok(e.state.pendingCompilerStages.slice(1).every(row=>row.status==='failed'&&row.output.raw==='not json'));
-  const logs=core.pruneStoryboardPipelineLogs([{id:'world-log',status:'success',stages:e.state.pendingCompilerStages}]);
+  assert.equal(e.context.worldDraft.pendingCompilerStages.length,5);assert.ok(e.context.worldDraft.pendingCompilerStages.slice(1).every(row=>row.status==='failed'&&row.output.raw==='not json'));
+  const logs=core.pruneStoryboardPipelineLogs([{id:'world-log',status:'success',stages:e.context.worldDraft.pendingCompilerStages}]);
   assert.equal(logs[0].stages[1].type,'world_prompt_rendering');assert.equal(logs[0].stages[1].status,'failed');
   const missing=await classifiedWorld({confirm:async options=>options.shot});assert.equal(await missing.run(),false);assert.equal(missing.calls.includes('generate'),false);
 });
@@ -224,7 +232,7 @@ test('world auto candidates determine both prompt format union and casting, inde
     candidates:[{id:'a',target:{comfyCharacterEnabled:false}},{id:'b',target:{comfyCharacterEnabled:true}}],promptFormats:['tags','natural_language'],close:()=>{closed++;},
   })}:load(key);
   assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.state.source,'novel');assert.equal(closed,1);
-  assert.deepEqual(Object.keys(e.state.promptDraft.shots[0].shotSpec.promptRenderingPack.renderings),['tags','natural_language']);
+  assert.deepEqual(Object.keys(e.context.worldDraft.promptDraft.shots[0].shotSpec.promptRenderingPack.renderings),['tags','natural_language']);
 });
 
 test('each closed world entry uses its exact expression format through the real compiler callback and explicit confirmation',async()=>{
@@ -239,16 +247,17 @@ test('each closed world entry uses its exact expression format through the real 
       return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats)});
     };
     assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(calls,1);assert.equal(e.state.source,family);
-    assert.match(e.state.prompt,/kitchen, soft light/);assert.doesNotMatch(e.state.prompt,/厨房/);
-    assert.equal(e.state.pendingCompilerStages[1].status,'success');
+    assert.match(e.context.worldDraft.prompt,/kitchen, soft light/);assert.doesNotMatch(e.context.worldDraft.prompt,/厨房/);
+    assert.equal(e.context.worldDraft.pendingCompilerStages[1].status,'success');assert.equal(e.state.prompt,'original');
   }
 });
 test('real entry awaits explicit confirmation, uses shared visible casting and hands one approved draft to the normal pipeline',async()=>{
   const e=harness();e.state.pendingCompilerStages=[{type:'prompt_compiler',input:'previous prose'}];assert.equal(await e.run(),true);assert.deepEqual(e.reads,['alice']);
   assert.ok(e.calls.indexOf('confirm')<e.calls.indexOf('generate'));assert.equal(e.calls.filter(x=>x==='generate').length,1);
-  assert.equal(e.state.promptDraft.shots[0].shotSpec.characters[0].id,'archive:alice');
-  assert.equal(e.state.promptDraft.shots[0].shotSpec.directorDecision.outputs.film,false);assert.equal(e.context.storyboardGenerationPreparing.size,0);
-  assert.equal(e.state.pendingCompilerStages[0].type,'world_confirmation');assert.doesNotMatch(JSON.stringify(e.state.pendingCompilerStages),/previous prose|PRIVATE-QUALIFICATION/);
+  assert.equal(e.context.worldDraft.promptDraft.shots[0].shotSpec.characters[0].id,'archive:alice');
+  assert.equal(e.context.worldDraft.promptDraft.shots[0].shotSpec.directorDecision.outputs.film,false);assert.equal(e.context.storyboardGenerationPreparing.size,0);
+  assert.equal(e.context.worldDraft.pendingCompilerStages[0].type,'world_confirmation');assert.doesNotMatch(JSON.stringify(e.context.worldDraft.pendingCompilerStages),/previous prose|PRIVATE-QUALIFICATION/);
+  assert.equal(e.state.prompt,'original');assert.equal(e.state.promptDraft.shots[0].id,'old-shot');assert.equal(e.state.pendingCompilerStages[0].input,'previous prose');assert.ok(!e.calls.includes('save'));
 });
 test('cancel preserves the prior prose draft and never compiles, saves it, or generates',async()=>{
   const e=harness({confirm:async()=>null}),before=copy(e.state.promptDraft);assert.equal(await e.run(),false);
@@ -269,7 +278,7 @@ test('duplicate clicks open one confirmation and release the lock after cancella
 test('the final routed engine determines private casting fields, not the visible workbench mode',async()=>{
   const e=harness();e.state.routing.enabled=true;e.state.profiles.comfy.comfyCharacterEnabled=true;
   e.context.routeStoryboardShot=()=>({providerId:'comfy',modelId:'comfy-workflow'});
-  assert.equal(await e.run(),true);const snapshot=e.state.promptDraft.shots[0].shotSpec.characters[0].archiveSnapshot;
+  assert.equal(await e.run(),true);const snapshot=e.context.worldDraft.promptDraft.shots[0].shotSpec.characters[0].archiveSnapshot;
   assert.equal(snapshot.comfyImplementation,undefined);assert.equal(snapshot.imageReference,undefined);
   assert.equal(snapshot.archiveId,'alice');
 });
@@ -298,35 +307,60 @@ for(const invalid of [false,true])test(`world fixed workflow ${invalid?'fails be
   if(invalid)f.rows[0].archived=true;
   const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...comfyRoutes,prepareComfyRouteRecipes:options=>comfyRoutes.prepareComfyRouteRecipes({...options,createStore:f.createStore})}:load(key);
   vm.runInContext(['storyboardProfileSnapshot','storyboardResolveRoutingProfile'].map(section).join('\n'),e.context);
-  assert.equal(await e.run(),!invalid,e.notices.join(';'));
-  if(invalid){assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.includes('generate'),false);return;}
+  if(invalid){assert.equal(await e.run(),false,e.notices.join(';'));assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.includes('generate'),false);return;}
   const queued=[];Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,storyboardQueueJob:async job=>{queued.push(job);return true;},
     storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],storyboardAdaptShotForModel:async shot=>shot,
     confirmDialog:async()=>true,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',environment:'',custom:''}});
-  vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
-  assert.equal(await e.context.storyboardGenerate(null,e.context.lastProductionOptions),true,e.notices.join(';'));assert.equal(queued.length,1);
+  useActualWorldGeneration(e,['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardCompilerRoutes','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate']);
+  assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(queued.length,1);
   const job=queued[0];assert.equal(job.source,'comfy');assert.equal(job.target,'gallery');assert.equal(job.inlineByDefault,false);
   assert.deepEqual(job.profile.comfyRouteBinding,recipe.binding);assert.equal(job.profile.comfyWorkflow,recipe.document.workflow);
   assert.equal(job.profile.comfyCharacterEnabled,false);assert.equal(job.shotSpec.directorDecision.outputs.film,false);
 });
 
 for(const revoke of [false,'source','account'])test(`real normal pipeline ${revoke?`stops changed ${revoke}`:'freezes world casting in a gallery-only NAI job'}`,async()=>{
-  const e=harness();assert.equal(await e.run(),true);const queued=[];
+  const e=harness();const queued=[];
   Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:100,
     storyboardQueueJob:async(job,isCurrent)=>{assert.equal(isCurrent(),true);queued.push(job);return true;},confirmDialog:async()=>true,
     storyboardCredentialId:()=> 'test-key-reference',storyboardAnchorForMessage:()=>null,
     sanitizeStoryboardDiagnosticData:value=>value,uniqueClean:items=>[...new Set(items.filter(Boolean))],
     storyboardAdaptShotForModel:async shot=>{if(revoke==='source')e.candidate.recommendation='reject';if(revoke==='account')e.setAccount('st-user:new');return shot;}});
-  vm.runInContext(['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardProfileSnapshot',
-    'storyboardResolveRoutingProfile','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate'].map(section).join('\n'),e.context);
-  assert.equal(await e.context.storyboardGenerate(null,e.context.lastProductionOptions),!revoke,e.notices.join(';'));
+  useActualWorldGeneration(e,['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardProfileSnapshot',
+    'storyboardResolveRoutingProfile','storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate']);
+  assert.equal(await e.run(),!revoke,e.notices.join(';'));
   assert.equal(queued.length,revoke?0:1);
   if(!revoke){const job=queued[0];assert.equal(job.target,'gallery');assert.equal(job.floor,null);assert.equal(job.inlineByDefault,false);
     assert.equal(job.automatic,false);assert.equal(job.payload.shotSpec.characters[0].archiveSnapshot.archiveId,'alice');
     assert.match(job.payload.parameters.providerOptions.v4_prompt.caption.char_captions[0].char_caption,/silver hair.*blue hair, no coat/);
     assert.equal(job.shotSpec.productionContext.truthMode,'speculative');assert.equal(job.shotSpec.directorDecision.outputs.film,false);
-    assert.equal(await e.context.storyboardGenerate(null,{automatic:true}),false);assert.equal(queued.length,1);
+    assert.equal(e.state.prompt,'original');assert.equal(e.state.promptDraft.shots[0].id,'old-shot');
+    const approved=e.context.lastProductionOptions;
+    assert.equal(await e.context.storyboardGenerate(null,{...approved,automatic:true}),false);assert.equal(queued.length,1);
+    await assert.rejects(()=>e.context.storyboardGenerate(null,approved),/已交接|已变化/);assert.equal(queued.length,1);
+    // An older saved world draft in the workbench still cannot mix with prose.
+    e.state.promptDraft.shots=copy(e.context.worldDraft.promptDraft.shots);
     e.state.promptDraft.shots.push({id:'prose',prompt:'ordinary prose'});
     assert.equal(await e.context.storyboardGenerate(null,{automatic:false}),false);assert.equal(queued.length,1);
   }
+});
+
+for(const mode of ['loading-edit','rejected','accepted-error'])test(`isolated world handoff preserves the workbench and exact ownership on ${mode}`,async()=>{
+  const e=harness(),jobs=[];e.state.pendingCompilerStages=[{type:'prompt_compiler',input:'original prose'}];
+  const before=copy({prompt:e.state.prompt,draft:e.state.promptDraft,stages:e.state.pendingCompilerStages,routing:e.state.routing});
+  let loads=0;const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>{
+    const result=await load(key);if(key==='worldShot'&&++loads===2&&mode==='loading-edit')e.state.prompt='new intentional edit';return result;
+  };
+  Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,
+    storyboardQueueJob:async(job,isCurrent)=>{
+      assert.equal(isCurrent(),true);if(mode==='rejected')return false;
+      job.queueAccepted=true;jobs.push(job);throw Error('acknowledgement lost');
+    },confirmDialog:async()=>true,storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,
+    uniqueClean:items=>[...new Set(items.filter(Boolean))],storyboardAdaptShotForModel:async shot=>shot});
+  useActualWorldGeneration(e,['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardProfileSnapshot','storyboardResolveRoutingProfile',
+    'storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate']);
+  assert.equal(await e.run(),mode==='accepted-error',e.notices.join(';'));assert.equal(jobs.length,mode==='accepted-error'?1:0);
+  assert.equal(e.state.prompt,mode==='loading-edit'?'new intentional edit':before.prompt);
+  assert.deepEqual(copy(e.state.promptDraft),before.draft);assert.deepEqual(copy(e.state.pendingCompilerStages),before.stages);assert.deepEqual(copy(e.state.routing),before.routing);
+  assert.equal(e.context.storyboardGenerationPreparing.size,0);assert.ok(!e.calls.includes('save'));
+  if(mode==='accepted-error')assert.ok(e.notices.some(text=>text.includes('请勿整批重复生成')));
 });
