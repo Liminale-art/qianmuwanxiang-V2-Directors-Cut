@@ -7,7 +7,7 @@ import { imageGatewayCapabilities } from '../qianmu-image-gateway.js';
 import {
   STORYBOARD_PROVIDER_REGISTRY, STORYBOARD_MODEL_REGISTRY, STORYBOARD_PIPELINE_LOG_LIMIT,
   createStoryboardDefaults, getStoryboardModel, resolveStoryboardJobModelIdentity,
-  resolveStoryboardConnectionBinding,
+  resolveStoryboardConnectionBinding,storyboardAutomaticJobEnabled,
   normalizeStoryboardInlineOrder,applyStoryboardFloorTakeToJob,
   sanitizeStoryboardSnapshot, sanitizeStoryboardDiagnosticData, pruneStoryboardPipelineLogs,
 } from '../qianmu-storyboard.js';
@@ -29,7 +29,7 @@ function section(name) {
 }
 function load(name, deps = {}) {
   return vm.runInNewContext(`${section('storyboardConfirmGatewayProtocolBinding')}\n${name==='storyboardStartLog'?section('storyboardStoreLog'):''}\n${section(name)}\n${name}`, {
-    clone: structuredClone, STORYBOARD_PROVIDER_REGISTRY, resolveStoryboardJobModelIdentity, resolveStoryboardConnectionBinding, applyStoryboardFloorTakeToJob, ...deps,
+    clone: structuredClone, STORYBOARD_PROVIDER_REGISTRY, resolveStoryboardJobModelIdentity, resolveStoryboardConnectionBinding, applyStoryboardFloorTakeToJob, storyboardAutomaticJobEnabled, ...deps,
   });
 }
 

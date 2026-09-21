@@ -6,7 +6,7 @@ import * as core from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {captureStoryboardContinuation as capture,prepareStoryboardContinuation as prepare,saveStoryboardContinuation as save,normalizeStoryboardContinuationLinks as normalize,storyboardContinuationPath as path} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardMessageReference as reference,resolveStoryboardMessageReference as resolve,normalizeStoryboardMessageReference as normalizeRef} from '../qianmu-storyboard.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.252';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.253';
 import {storyboardStreamGeneration as generation,storyboardStreamDigest as digest,storyboardStreamFingerprint as fingerprint,storyboardStreamGenerationInput,verifyStoryboardStreamReference as verify} from '../qianmu-storyboard-stream-reference.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
@@ -130,7 +130,7 @@ test('actual source resolver and inline task projection consume only current-cha
   const state={taskStates:[task],logs:[]},c=vm.createContext({...core,storyboardAdmissionEpoch:1,storyboardAdmission:null,confirmDialog(){},
     ctx:()=>f.context,getChatKey:()=>f.context.chatId,storyboardState:()=>state,storyboardGalleryRecords:()=>[],storyboardActiveJobs:new Map(),storyboardQueue:[task],
     featureRuntime:{load:async()=>({createImageAdmission:options=>(setup=options,{})})}});
-  vm.runInContext(['storyboardImageAdmissionRuntime','storyboardValidatedAnchor','storyboardCurrentInlineTasks'].map(section).join('\n'),c);
+  vm.runInContext(['storyboardImageAdmissionRuntime','storyboardVerifyWorldAutomaticApproval','storyboardValidatedAnchor','storyboardCurrentInlineTasks'].map(section).join('\n'),c);
   await c.storyboardImageAdmissionRuntime();const job={messageRef:ref,chatKey:'chat',target:'floor',floor:0};
   assert.equal(setup.resolveSource(job).state,'active');await verify(ref,()=>setup.resolveSource(job));
   assert.equal(c.storyboardValidatedAnchor(job).valid,true);assert.equal(c.storyboardCurrentInlineTasks().length,1);

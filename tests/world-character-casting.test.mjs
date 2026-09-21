@@ -16,6 +16,11 @@ import { recipesFixture } from './helpers/comfy-route-fixture.mjs';
 import {normalizeQianmuProductionPacket} from '../qianmu-production-packet.js';
 import {newCharacterArchive,normalizeCharacterArchive} from '../qianmu-character-archive.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import * as worldAutomatic from '../qianmu-world-automatic.js';
+import {buildWorldSourceIndex} from '../qianmu-world-source.js';
+import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
+import {createImageAdmission} from '../qianmu-image-admission.js';
+import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,settleImageAttempt} from '../qianmu-image-attempts.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 export function worldEnvironment() {
@@ -133,8 +138,87 @@ function useActualWorldGeneration(e,functions) {
   e.context.storyboardGenerate=(root,options)=>{e.context.lastProductionOptions=options;return generate(root,options);};
 }
 
+async function automaticWorldHarness({comfy=false}={}){
+  const e=comfy?await classifiedWorld():harness();
+  const source=(await buildWorldSourceIndex({npc_updates:[{name:'Alice',action:'stirs soup'}]},{chatKey:'chat-a',revisionId:'plan-1'})).entries[0].source;
+  e.packet.sourceRef={field:'npc_updates',index:0,worldSource:source};
+  const ledger=adaptProductionPacketToNarrativeLedgerEntry(e.packet);Object.assign(e.candidate,scoreNarrativeDirectorCandidate(ledger,{chatKey:'chat-a',viewerId:'user'}));
+  e.context.directorCandidatePoolState.ledger.entries=[ledger];e.state.directorBridge.worldAutoGenerate=true;e.state.automation.autoGenerate=false;
+  if(comfy)e.state.connections.comfy.draft.baseUrl='https://comfy.fixture.invalid';
+  const transport=streamCheckpointTransport(e.namespace),load=e.context.featureRuntime.load,rows=new Map(),checks=[];
+  e.context.featureRuntime.load=async key=>key==='worldAutomatic'?{...worldAutomatic,
+    beginWorldAutomaticAttempt:options=>worldAutomatic.beginWorldAutomaticAttempt({...options,createStorage:transport.createStorage}),
+    verifySavedWorldAutomaticApproval:(approval,options)=>{checks.push('saved');return worldAutomatic.verifySavedWorldAutomaticApproval(approval,{...options,createStorage:transport.createStorage});},
+  }:load(key);
+  e.context.storyboardCallCompiler=async(messages,profile,options)=>{
+    e.calls.push('llm');e.lastRequest={messages,profile,options};
+    const claim=[...transport.files.values()].map(JSON.parse).find(row=>row.value?.schema==='qianmu.world-automatic-attempt.v1');
+    assert.equal(claim?.value?.record.status,'preparing','model must not run ahead of durable preparation');
+    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats)});
+  };
+  const run=(scope,apply)=>{const key=imageAttemptScopeKey(scope),result=apply(rows.get(key));rows.set(key,structuredClone(result.ledger));return result;};
+  const admission=createImageAdmission({account:async()=>e.namespace,ownerId:'world-page',
+    resolveWorldApproval:(job,approval)=>e.context.storyboardVerifyWorldAutomaticApproval(job,approval),
+    store:{claim:async(scope,input,seeds)=>run(scope,value=>claimImageAttempt(importImageAttempts(value,scope,seeds,1000),scope,input,1000)),
+      settle:async(scope,input)=>run(scope,value=>settleImageAttempt(value,scope,input,1000)),close(){}}});
+  Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,
+    storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],
+    storyboardAdaptShotForModel:async shot=>shot,confirmDialog:async()=>assert.fail('automatic world must not open dialogs'),
+    STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',environment:'',custom:''},storyboardImageAdmissionRuntime:async()=>admission,
+    storyboardConfirmComfyExecution:async()=>true,storyboardPumpQueue(){},renderModal(){},storyboardPlanForJob:()=>null,storyboardSetPlanStatus(){},
+    storyboardStartLog:job=>{const log={id:'log-'+job.id,status:'queued',snapshot:structuredClone(job)};e.state.logs.push(log);return log;},
+  });
+  useActualWorldGeneration(e,['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardProfileSnapshot','storyboardResolveRoutingProfile',
+    'storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate',
+    'storyboardVerifyWorldAutomaticApproval','storyboardSettleImageAdmission','storyboardQueueJob']);
+  return {...e,transport,checks,admission,source,runAutomatic:()=>e.context.storyboardGenerateProductionPacket(null,'packet-a',{automatic:true})};
+}
+
 const renderingsFor=(shot,requested)=>Object.fromEntries(requested.map(format=>[format,{global:'kitchen, soft light',negative:'blurred details',
   characters:shot.characters.map(row=>({character_id:row.id,positive:'blue hair, no coat, stirs soup'}))}]));
+
+for(const comfy of [false,true])test(`automatic world ${comfy?'fixed Comfy':'NAI'} reaches the real gallery queue without dialogs, public draft mutation or prose opt-in`,async()=>{
+  const e=await automaticWorldHarness({comfy});try{
+    const before=copy(e.state.promptDraft);assert.equal(await e.runAutomatic(),true,e.notices.join(';'));
+    assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.filter(value=>value==='llm').length,1);
+    assert.equal(e.context.storyboardQueue.length,1);const job=e.context.storyboardQueue[0];
+    assert.equal(job.automatic,true);assert.equal(job.profile.count,'1');assert.equal(job.target,'gallery');assert.equal(job.floor,null);
+    assert.equal(job.shotSpec.directorDecision.approval.mode,'world_setting');assert.match(job.imageAdmission.messageKey,/^world-item:/);
+    assert.deepEqual(e.state.promptDraft,before);assert.equal(e.state.prompt,'original');assert.equal(e.checks.length,2);
+    const rows=[...e.transport.files.values()].map(JSON.parse);assert.ok(rows.some(row=>row.value?.record?.status==='queued'));
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.calls.filter(value=>value==='llm').length,1);
+  }finally{await e.admission.close();}
+});
+
+test('automatic world off or absent source produces no model request, confirmation or image',async()=>{
+  const e=await automaticWorldHarness();try{
+    e.state.directorBridge.worldAutoGenerate=false;assert.equal(await e.runAutomatic(),false);assert.equal(e.transport.calls.length,0);
+    e.state.directorBridge.worldAutoGenerate=true;delete e.packet.sourceRef.worldSource;
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.calls.includes('llm'),false);assert.equal(e.calls.includes('confirm'),false);assert.equal(e.context.storyboardQueue.length,0);
+  }finally{await e.admission.close();}
+});
+
+test('automatic world exhausts three format repairs once and never replays the failed source',async()=>{
+  const e=await automaticWorldHarness();let calls=0;try{
+    e.context.storyboardCallCompiler=async()=>{calls++;return 'not JSON';};assert.equal(await e.runAutomatic(),false);assert.equal(calls,4);assert.match(e.notices.join(';'),/已修复3次/);
+    assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.state.prompt,'original');assert.equal(await e.runAutomatic(),false);assert.equal(calls,4);
+  }finally{await e.admission.close();}
+});
+
+test('turning world automation off during expression preparation prevents queueing without changing the workbench',async()=>{
+  const e=await automaticWorldHarness(),call=e.context.storyboardCallCompiler;try{
+    e.context.storyboardCallCompiler=async(...args)=>{const value=await call(...args);e.state.directorBridge.worldAutoGenerate=false;return value;};
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.state.prompt,'original');assert.equal(e.context.storyboardGenerationPreparing.size,0);
+  }finally{await e.admission.close();}
+});
+
+test('a world image accepted by the real queue remains accepted if final ST settlement loses its acknowledgement',async()=>{
+  const e=await automaticWorldHarness(),queue=e.context.storyboardQueueJob;let lost=0;try{
+    e.context.storyboardQueueJob=async(...args)=>{const result=await queue(...args);if(result)e.transport.hook=({path})=>{if(path==='/api/files/upload'){lost++;throw Error('lost settlement');}};return result;};
+    assert.equal(await e.runAutomatic(),true,e.notices.join(';'));assert.equal(e.context.storyboardQueue.length,1);assert.equal(lost,1,JSON.stringify({notices:e.notices,methods:e.transport.calls.slice(-8).map(row=>row.options.method)}));assert.match(e.notices.join(';'),/已入队.*请勿重复/);
+    e.transport.hook=null;assert.equal(await e.runAutomatic(),false);assert.equal(e.calls.filter(value=>value==='llm').length,1);assert.equal(e.context.storyboardQueue.length,1);
+  }finally{await e.admission.close();}
+});
 
 test('real world entry refuses a stale plan before preparing characters or contacting a model',async()=>{
   const e=harness();

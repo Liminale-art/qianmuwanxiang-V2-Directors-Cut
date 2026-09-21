@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import vm from 'node:vm';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.252';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.253';
 import {createStoryboardMessageReference,normalizeStoryboardMessageReference,resolveStoryboardMessageReference,sanitizeStoryboardSnapshot,createStoryboardWorkflowTicket} from '../qianmu-storyboard.js';
-import {verifyStoryboardStreamReference,storyboardStreamFingerprint,storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.252';
+import {verifyStoryboardStreamReference,storyboardStreamFingerprint,storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.253';
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt,summarizeImageAttempts} from '../qianmu-image-attempts.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
@@ -170,6 +170,6 @@ test('actual admission runtime injects the live ST chat resolver rather than arc
   const f=fixture(),ref=await f.capture();let setup;
   const env=vm.createContext({storyboardAdmissionEpoch:1,storyboardAdmission:null,confirmDialog(){},ctx:()=>f.context,getChatKey:()=>ref.chatKey,
     resolveStoryboardMessageReference,featureRuntime:{load:async()=>({createImageAdmission:options=>(setup=options,{})})}});
-  vm.runInContext(storyboardFunctionSource('storyboardImageAdmissionRuntime'),env);await env.storyboardImageAdmissionRuntime();
+  vm.runInContext(['storyboardImageAdmissionRuntime','storyboardVerifyWorldAutomaticApproval'].map(storyboardFunctionSource).join('\n'),env);await env.storyboardImageAdmissionRuntime();
   assert.equal(setup.resolveSource(job(ref)).state,'active');f.context.chat[0].mes='changed';assert.equal(setup.resolveSource(job(ref)).state,'stale');
 });

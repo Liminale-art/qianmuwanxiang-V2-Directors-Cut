@@ -6,7 +6,7 @@ import * as floorTakes from '../qianmu-storyboard-floor-take.js';
 import { runningHubUsageFields } from '../qianmu-runninghub-usage.js';
 import { createImageServiceClient, createImageServiceClientStore } from '../qianmu-image-service-client.js';
 import { receiveServiceImage } from '../qianmu-service-recovery-action.js';
-import { normalizeStoryboardState, sanitizeStoryboardSnapshot } from '../qianmu-storyboard.js';
+import { normalizeStoryboardState, sanitizeStoryboardSnapshot, storyboardAutomaticJobEnabled } from '../qianmu-storyboard.js';
 import { confirmImageAttemptResult, claimImageAttempt, beginImageAttempt } from '../qianmu-image-attempts.js';
 
 const capability = { ok: true, schemaVersion: 1, taskLocatorVersion: 1, accountBindingVersion: 1, nativeReviewVersion: 1, scope: 'coordinated-endpoints-only', providers: ['novel'], protocols: ['novelai'], resultRetrieval: true, resultAcknowledgement: true };
@@ -321,6 +321,7 @@ test('service UI keeps generation and original retrieval as distinct explicit ac
 test('actual workbench job uses service transport and the shared archival helper exclusively', async () => {
   const s = setup(), d = deliverySetup(); let authorized = 0, acquired = 0;
   Object.assign(d.context, {
+    storyboardAutomaticJobEnabled,
     storyboardState: () => ({enabled:true,automation:{autoCapture:true,autoGenerate:true}}),
     storyboardAdmission:{beforeSubmit:async()=>{authorized++;}}, storyboardSettleImageAdmission:async()=>{},
     storyboardResolveApiKey:async()=>request.apiKey, resolveStoryboardJobModelIdentity:()=>({modelFamily:'novel',protocol:'novelai'}),

@@ -6,7 +6,7 @@ import {encodeNovelVibe} from '../qianmu-vibe-encoding.js';
 import {generateDirectImage,isDirectImageTransportError} from '../qianmu-image-direct.js';
 import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
 import {parseNovelVibeFile,vibeDigest} from '../qianmu-vibe-file.js';
-import {resolveStoryboardVibeRecipe,sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
+import {resolveStoryboardVibeRecipe,sanitizeStoryboardSnapshot,storyboardAutomaticJobEnabled} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const namespace='st-user:one',model={remoteModelId:'relay/model',capabilityModelId:'nai-diffusion-4-5-full'};
@@ -132,7 +132,7 @@ test('durable ownership lost to another tab cannot submit; concurrent ready resu
 });
 test('actual index preparation checkpoints into the saved log, retains source identity guards and never marks image admission submitted',async()=>{
   const e=setup(),job={source:'novel',modelIdentity:model,profile:{},connection,target:'gallery',payload:payload(),imageAdmission:{namespace}},log={snapshot:structuredClone(job)};
-  const context=vm.createContext({resolveStoryboardVibeRecipe,resolveStoryboardJobModelIdentity:()=>model,storyboardAdmissionEpoch:1,storyboardState:()=>({enabled:true}),
+  const context=vm.createContext({storyboardAutomaticJobEnabled,resolveStoryboardVibeRecipe,resolveStoryboardJobModelIdentity:()=>model,storyboardAdmissionEpoch:1,storyboardState:()=>({enabled:true}),
     getStoryboardCapabilities:()=>({supportsVibe:true}),storyboardReadImageReference:e.options.readImage,clone:structuredClone,ctx:()=>({}),toast(){},saveSettings(){},
     featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:key==='vibeAssets'?{callVibeAsset:e.options.call}:
       {confirmVibeEncoding:e.options.confirm,prepareStoryboardVibes:(payload,options)=>prepareStoryboardVibes(payload,{...options,encode:e.options.encode})}}});
@@ -161,7 +161,7 @@ test('actual job runner keeps encoding consent separate from image admission and
       return originalEncode(input,hooks);
     };
     const job={id:'job',source:'novel',target:'gallery',profile:{},connection,payload:{...payload(),prompt:'garden',parameters:{count:1}},imageAdmission:{namespace}},log={snapshot:structuredClone(job)};
-    const context=vm.createContext({resolveStoryboardVibeRecipe,resolveStoryboardJobModelIdentity:()=>model,storyboardAdmissionEpoch:1,storyboardState:()=>state,
+    const context=vm.createContext({storyboardAutomaticJobEnabled,resolveStoryboardVibeRecipe,resolveStoryboardJobModelIdentity:()=>model,storyboardAdmissionEpoch:1,storyboardState:()=>state,
       getStoryboardCapabilities:()=>({supportsVibe:true}),storyboardReadImageReference:e.options.readImage,clone:structuredClone,ctx:()=>({}),toast(){},saveSettings(){},
       featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:key==='vibeAssets'?{callVibeAsset:e.options.call}:
         {confirmVibeEncoding:e.options.confirm,prepareStoryboardVibes:(payload,options)=>prepareStoryboardVibes(payload,{...options,encode:e.options.encode})}},

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {normalizeStoryboardContinuationLinks,storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.252';
-import {storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.252';
+import {normalizeStoryboardContinuationLinks,storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.253';
+import {storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.253';
 import {verifyStoryboardOrdinaryContinuation as verify} from '../qianmu-storyboard-ordinary-continuation.js';
 import {createImageAdmission,createImageAdmissionIdentity} from '../qianmu-image-admission.js';
 import {beginImageAttempt,continueImageAttempt,claimImageAttempt,importImageAttempts,settleImageAttempt,imageAttemptScopeKey} from '../qianmu-image-attempts.js';
@@ -156,7 +156,7 @@ test('actual inline records, queued indicators and source resolver consume the s
   const c=vm.createContext({...core,storyboardAdmissionEpoch:1,storyboardAdmission:null,confirmDialog(){},ctx:()=>f.host,getChatKey:()=>f.host.chatId,
     storyboardState:()=>state,storyboardGalleryRecords:()=>[],storyboardActiveJobs:new Map(),storyboardQueue:[task],
     featureRuntime:{load:async()=>({createImageAdmission:options=>(setup=options,{})})}});
-  vm.runInContext(['storyboardImageAdmissionRuntime','storyboardValidatedAnchor','storyboardCurrentInlineTasks'].map(section).join('\n'),c);
+  vm.runInContext(['storyboardImageAdmissionRuntime','storyboardVerifyWorldAutomaticApproval','storyboardValidatedAnchor','storyboardCurrentInlineTasks'].map(section).join('\n'),c);
   await c.storyboardImageAdmissionRuntime();const job={target:'floor',floor:0,chatKey:'chat',messageRef:copy(f.ref)},before=copy(job);
   assert.equal(c.storyboardValidatedAnchor(job).valid,true);assert.equal(c.storyboardCurrentInlineTasks().length,1);await verify(job.messageRef,()=>setup.resolveSource(job),{namespace:f.namespace});
   assert.deepEqual(job,before);f.host.chatMetadata={story_director_liminale:{}};assert.equal(c.storyboardValidatedAnchor(job).valid,false);assert.equal(c.storyboardCurrentInlineTasks().length,0);
@@ -180,7 +180,7 @@ test('ordinary admission without saved lineage uses the actual metadata-only fas
   const f=await fixture(0);f.host.chat=Array.from({length:5000},()=>({get mes(){assert.fail('ordinary admission must not scan prose');}}));let setup;
   const c=vm.createContext({...core,storyboardAdmissionEpoch:0,storyboardAdmission:null,ctx:()=>f.host,getChatKey:()=>f.host.chatId,confirmDialog(){},
     featureRuntime:{load:async()=>({createImageAdmission:options=>(setup=options,{})})}});
-  vm.runInContext(section('storyboardImageAdmissionRuntime'),c);await c.storyboardImageAdmissionRuntime();
+  vm.runInContext(['storyboardImageAdmissionRuntime','storyboardVerifyWorldAutomaticApproval'].map(section).join('\n'),c);await c.storyboardImageAdmissionRuntime();
   const a=admission(f,{resolveSource:()=>assert.fail('must not call the full resolver'),resolveContinuation:setup.resolveContinuation});
   await a.runtime.admit(a.job,{maxAutomatic:1});await a.runtime.beforeSubmit(a.job);await a.runtime.settle(a.job,'succeeded');await a.runtime.close();
 });

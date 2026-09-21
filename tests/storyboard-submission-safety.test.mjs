@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { generateDirectImage, isDirectImageTransportError } from '../qianmu-image-direct.js';
 import { generateImage, imageGatewayErrorPayload } from '../qianmu-image-gateway.js';
-import { createStoryboardDefaults, normalizeStoryboardState } from '../qianmu-storyboard.js';
+import { createStoryboardDefaults, normalizeStoryboardState, storyboardAutomaticJobEnabled } from '../qianmu-storyboard.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {
@@ -144,6 +144,7 @@ test('actual job runner falls back only after actual read-only preflight failure
   const state = { enabled: true }, job = { target: 'gallery', source: 'openai' }, log = {}; const finished = [], posts = [];
   const directMethods = [];
   const run = vm.runInNewContext(`${section('storyboardRunJob')}\nstoryboardRunJob`, {
+    storyboardAutomaticJobEnabled,
     storyboardAdmission: { beforeSubmit: async () => {} }, storyboardSettleImageAdmission: async () => {},
     MODULE_NAME: 'test', storyboardState: () => state, storyboardPlanForJob: () => null, storyboardValidatedAnchor: () => ({ valid: true }),
     resolveStoryboardJobModelIdentity: () => ({ capabilityModelId: 'gpt-image-1' }), storyboardMarkLogGenerating: () => {}, storyboardSetPlanStatus: () => {},

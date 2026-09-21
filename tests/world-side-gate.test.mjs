@@ -19,9 +19,9 @@ const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 test('world-side shots are an explicit default-off storyboard setting', () => {
   assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
-  assert.deepEqual(createStoryboardDefaults().directorBridge, { worldSideShotsEnabled: false });
+  assert.deepEqual(createStoryboardDefaults().directorBridge, { worldSideShotsEnabled: false,worldAutoGenerate:false });
   const migrated = normalizeStoryboardState({ schemaVersion: 23, directorBridge: { worldSideShotsEnabled: true } });
-  assert.deepEqual(migrated.directorBridge, { worldSideShotsEnabled: false }, 'upgrades require a fresh explicit opt-in');
+  assert.deepEqual(migrated.directorBridge, { worldSideShotsEnabled: false,worldAutoGenerate:false }, 'upgrades require a fresh explicit opt-in');
   const current = normalizeStoryboardState({ schemaVersion: 24, directorBridge: { worldSideShotsEnabled: true } });
   assert.equal(current.directorBridge.worldSideShotsEnabled, true);
 });

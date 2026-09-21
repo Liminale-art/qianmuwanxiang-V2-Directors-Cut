@@ -39,6 +39,7 @@ const admit=(f,value,extra={})=>f.runtime.admit(value,{maxAutomatic:4,...extra})
 test('world image identity is source-owned, separate from prose and stable across engines, prompts and request receipts',async()=>{
   const value=await job(),first=await createImageAdmissionIdentity(value,namespace);
   assert.match(first.scope.messageKey,/^world-item:npc_updates:witem-/);assert.match(first.scope.revisionId,/^wrev-/);
+  assert.ok(Object.isFrozen(first.worldApproval));assert.ok(Object.isFrozen(first.worldApproval.source));
   const revised=copy(value);revised.prompt='new phrasing';revised.profile.model='different';revised.source='comfy';
   assert.equal((await createImageAdmissionIdentity(revised,namespace)).logicalShotId,first.logicalShotId);
   const manual=copy(value);manual.automatic=false;assert.equal((await createImageAdmissionIdentity(manual,namespace)).logicalShotId,first.logicalShotId);

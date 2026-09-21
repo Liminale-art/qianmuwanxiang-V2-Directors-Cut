@@ -36,5 +36,5 @@ test('retired presentation CSS and binding helpers are removed without removing 
   assert.doesNotMatch(css,/sd-video-channel-|sd-video-budget-/);
   assert.match(css,/sd-storyboard-automation-options\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(source,/!state\.enabled \|\| !state\.promptCompiler\?\.enabled/);
-  assert.match(source,/job\.automatic.*autoGenerate/);
+  assert.match(source,/storyboardAutomaticJobEnabled\(job,\s*(?:state|storyboardState\(\))\)/);
 });

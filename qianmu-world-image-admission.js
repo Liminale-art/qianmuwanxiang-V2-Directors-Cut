@@ -1,4 +1,4 @@
-import {validateDirectorDecision} from './qianmu-director-decision.js?v=1.59.252';
+import {validateDirectorDecision} from './qianmu-director-decision.js?v=1.59.253';
 import {worldSourceKey} from './qianmu-world-source.js';
 
 const fail=()=>{throw Object.assign(Error('造物之眼来源或自动授权无效，未提交生图'),{code:'image_attempt_world_identity'});};
@@ -27,5 +27,6 @@ export async function createWorldImageIdentity(job,namespace){
     job.paragraphSelection??null,job.paragraphAnchor??null,job.floorTake??null,variant,job.automatic===true];
   const logicalShotId=await hash([worldSourceKey(source),variant]);
   const worldReference=await hash(reference);
+  Object.freeze(approval.source);Object.freeze(approval);
   return {scope,logicalShotId,operationKey:logicalShotId,worldApproval:approval,worldReference};
 }
