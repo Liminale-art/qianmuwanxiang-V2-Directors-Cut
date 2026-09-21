@@ -351,6 +351,7 @@
     "qianmu-world-source.js",
     "qianmu-world-automatic-approval.js",
     "qianmu-world-automatic-storage.js",
+    "qianmu-world-image-admission.js",
     "qianmu-character-shot-edit.js",
     "qianmu-character-shot-view.js",
     "qianmu-character-reference.js",

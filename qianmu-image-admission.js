@@ -1,7 +1,7 @@
 import { createImageAttemptStore } from './qianmu-image-attempt-store.js';
 import { imageAttemptScopeKey } from './qianmu-image-attempts.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.251';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.251';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.252';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.252';
 
 const error = (code, message) => Object.assign(new Error(message), { code: `image_attempt_${code}` });
 const MESSAGES = {
@@ -13,6 +13,10 @@ const MESSAGES = {
 };
 const canonical = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+const hasWorldReference=job=>job?.shotSpec?.directorDecision?.approval?.mode==='world_setting'
+  ||Object.hasOwn(job?.shotSpec?.directorDecision?.approval||{},'worldAutomation')
+  ||String(job?.imageAdmission?.messageKey||'').startsWith('world-item:');
+const worldIdentity=async(job,namespace)=>(await import('./qianmu-world-image-admission.js?v=1.59.252')).createWorldImageIdentity(job,namespace);
 async function digest(value) {
   if (!globalThis.crypto?.subtle) throw error('identity', '当前环境不能安全识别生图请求，请使用 HTTPS 或本机地址');
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical(value)));
@@ -51,6 +55,7 @@ export async function manageImageAdmissionStorage(options = {}) {
 }
 
 export async function createImageAdmissionIdentity(job, namespace) {
+  if(hasWorldReference(job))return worldIdentity(job,namespace);
   const ref = job.messageRef;
   if(hasStoryboardStreamReference(ref)&&(normalizeStoryboardStreamReference(ref).invalid||ref.chatKey!==job.chatKey))throw error('identity','流式原文身份无效，未授权生图');
   const budgetRef=hasStoryboardStreamReference(ref)?storyboardStreamBudgetReference(ref,namespace):ref;
@@ -90,8 +95,22 @@ export async function createImageHistorySeeds(rows, identity) {
       if(ref.messageKey===identity.scope.messageKey||ref.stream?.family?.reference?.messageKey===identity.scope.messageKey)throw error('history','原流式数量记录不完整，未新增自动额度');
       continue;
     }
-    const budgetRef=proof?storyboardStreamBudgetReference(ref):ref;
-    if(budgetRef?.messageKey!==identity.scope.messageKey||budgetRef?.revisionId!==identity.scope.revisionId)continue;
+    const worldScope=identity.scope.messageKey.startsWith('world-item:');
+    let worldDerived;
+    if(worldScope){
+      const source=job.shotSpec?.productionContext?.worldSource||job.productionContext?.worldSource;
+      const sourceMatches=source&&`world-item:${source.field}:${source.itemId}`===identity.scope.messageKey&&source.revisionId===identity.scope.revisionId;
+      const savedMatches=job.imageAdmission?.messageKey===identity.scope.messageKey&&job.imageAdmission?.revisionId===identity.scope.revisionId;
+      if(!sourceMatches&&!savedMatches)continue;
+      if(!hasWorldReference(job))throw error('history','世界画面的原授权缺失，未新增自动额度');
+      worldDerived=await worldIdentity({...job,target:job.target??'gallery',inlineByDefault:job.inlineByDefault??job.inline??false},identity.scope.namespace);
+      if(imageAttemptScopeKey(worldDerived.scope)!==imageAttemptScopeKey(identity.scope))throw error('history','世界画面的原数量记录归属不符');
+      const old=job.imageAdmission;
+      if(old&&(old.namespace!==identity.scope.namespace||old.logicalShotId!==worldDerived.logicalShotId))throw error('history','世界画面的原数量记录不完整');
+    }else{
+      const budgetRef=proof?storyboardStreamBudgetReference(ref):ref;
+      if(budgetRef?.messageKey!==identity.scope.messageKey||budgetRef?.revisionId!==identity.scope.revisionId)continue;
+    }
     if(proof?.family&&proof.family.namespace!==identity.scope.namespace)throw error('history','原流式数量记录账户不一致，未新增自动额度');
     const state = row.status === 'success' || row.status === 'completed' || row.url ? 'succeeded'
       : ['unknown', 'accepted'].includes(row.submissionState) ? row.submissionState
@@ -101,7 +120,7 @@ export async function createImageHistorySeeds(rows, identity) {
     const attemptId = saved?.version === 1 && typeof saved.attemptId === 'string' ? saved.attemptId : `history-${await digest(row.logId || (row.url && (row.groupId || row.taskId)) || row.id)}`;
     if (seen.has(attemptId)) continue;
     seen.add(attemptId);
-    const derived = await createImageAdmissionIdentity({ ...job, messageRef: ref, chatKey: identity.scope.chatKey }, identity.scope.namespace);
+    const derived = worldDerived||await createImageAdmissionIdentity({ ...job, messageRef: ref, chatKey: identity.scope.chatKey }, identity.scope.namespace);
     seeds.push({ attemptId, logicalShotId: derived.logicalShotId, operationKey: derived.operationKey, status: state,
       ...(job.source === 'novel' && job.connection?.imageTransport === 'service' ? { serviceBacked: true } : {}),
       // Unknown legacy provenance is counted conservatively. Explicit manual
@@ -113,10 +132,18 @@ export async function createImageHistorySeeds(rows, identity) {
 }
 
 export function createImageAdmission({ store = createImageAttemptStore(), account = resolveImageAccountNamespace,
-  ownerId = globalThis.crypto?.randomUUID?.(), confirm = async () => false, resolveHistoryReviews = async (_scope, seeds) => seeds, resolveSource, resolveContinuation=resolveSource } = {}) {
+  ownerId = globalThis.crypto?.randomUUID?.(), confirm = async () => false, resolveHistoryReviews = async (_scope, seeds) => seeds, resolveSource, resolveContinuation=resolveSource, resolveWorldApproval } = {}) {
   const receipts = new WeakMap(), preparing = new WeakSet(), live = new Set();
   let closed = false;
   const current = (valid) => { if (closed || !valid()) throw error('cancelled', '生图上下文已变化，未继续提交'); };
+  const verifyWorld=async(job,identity,valid)=>{
+    if(!identity.worldReference)return;
+    current(valid);
+    if((await worldIdentity(job,identity.scope.namespace)).worldReference!==identity.worldReference)throw error('world_identity','造物之眼任务来源已变化，未提交');
+    if(job.automatic&&(typeof resolveWorldApproval!=='function'||await resolveWorldApproval(job,identity.worldApproval)!==true))throw error('world_claim','造物之眼自动尝试尚未确认保存，未提交');
+    current(valid);
+    if((await worldIdentity(job,identity.scope.namespace)).worldReference!==identity.worldReference)throw error('world_identity','造物之眼任务来源已变化，未提交');
+  };
   return {
     async admit(job, { maxAutomatic, history = [], valid = () => true } = {}) {
       if (preparing.has(job) || receipts.has(job)) throw error('busy', MESSAGES.busy);
@@ -127,6 +154,7 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         current(valid);
         if(hasStoryboardStreamReference(job.messageRef))await verifyStoryboardStreamReference(job.messageRef,resolveSource&&(()=>resolveSource(job)));
         const identity = await createImageAdmissionIdentity(job, await account());
+        await verifyWorld(job,identity,valid);
         const continuedSource=!hasStoryboardStreamReference(job.messageRef)&&await verifyStoryboardOrdinaryContinuation(job.messageRef,resolveContinuation&&(()=>resolveContinuation(job)),{namespace:identity.scope.namespace});
         let seeds = await createImageHistorySeeds(history, identity);
         if (seeds.some(seed => seed.serviceBacked && ['unknown','accepted'].includes(seed.status))) {
@@ -135,7 +163,7 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         current(valid);
         const kind = job.automatic ? 'automatic' : job.imageAdmission || job.variantRootId || Number(job.attempt) > 1 ? 'redraw' : job.manualSupplement ? 'supplement' : 'manual';
         const input = { attemptId: job.id, logicalShotId: identity.logicalShotId, operationKey: identity.operationKey,
-          ownerId, kind, maxAutomatic, imageCount: Number(job.payload?.parameters?.count ?? job.profile?.count ?? 1) };
+          ownerId, kind, maxAutomatic:identity.worldReference?1:maxAutomatic, imageCount: Number(job.payload?.parameters?.count ?? job.profile?.count ?? 1) };
         let decision = await store.claim(identity.scope, input, seeds), confirmedAttempts = [];
         if (!decision.ok && decision.code === 'confirmation_required' && !job.automatic && job.source === 'novel' && job.connection?.imageTransport === 'service') {
           throw error('service_review_required', '原请求结果待核查，请到分镜日志 → NAI 收片核查原任务，再手动生成新图');
@@ -153,6 +181,7 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         current(valid);
         if(continuedSource)await verifyStoryboardOrdinaryContinuation(job.messageRef,()=>resolveContinuation(job),{namespace:identity.scope.namespace,required:true});
         current(valid);
+        await verifyWorld(job,identity,valid);
         if(sourceReference&&canonical(job.messageRef)!==sourceReference)throw error('identity','生图任务来源已变化，未提交');
         receipts.set(job, receipt);
         live.add(job);
@@ -172,6 +201,7 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       if (!receipt) throw error('missing_reservation', '生图请求缺少有效授权，未继续提交');
       if(receipt.sourceReference&&canonical(job.messageRef)!==receipt.sourceReference)throw error('identity','生图任务来源已变化，未提交');
       if (await account() !== receipt.scope.namespace) throw error('account_changed', 'ST 账户已变化，未继续提交');
+      await verifyWorld(job,receipt,valid);
       if(hasStoryboardStreamReference(job.messageRef))await verifyStoryboardStreamReference(job.messageRef,resolveSource&&(()=>resolveSource(job)));
       else receipt.continuedSource=await verifyStoryboardOrdinaryContinuation(job.messageRef,resolveContinuation&&(()=>resolveContinuation(job)),{namespace:receipt.scope.namespace,required:receipt.continuedSource});
       current(valid);
@@ -182,6 +212,7 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       current(valid);
       if(receipt.continuedSource)await verifyStoryboardOrdinaryContinuation(job.messageRef,()=>resolveContinuation(job),{namespace:receipt.scope.namespace,required:true});
       current(valid);
+      await verifyWorld(job,receipt,valid);
       if(receipt.sourceReference&&canonical(job.messageRef)!==receipt.sourceReference)throw error('identity','生图任务来源已变化，未提交');
     },
     async settle(job, outcome) {
