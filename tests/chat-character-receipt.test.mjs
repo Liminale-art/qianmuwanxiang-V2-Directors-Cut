@@ -88,7 +88,8 @@ test('gallery missing, absent, empty, malformed and oversized sources do not col
     if(Array.isArray(records)&&!records.length)assert.deepEqual((await f.service.inspectGallery(f.request,input())).gallery,galleryResponse([]).gallery);
     else await rejectsCode(f.service.inspectGallery(f.request,input()),'content');
   }
-  await fs.writeFile(f.file,'x'.repeat(CHAT_CHARACTER_RECEIPT_LIMITS.headerBytes+1)+'\n');await rejectsCode(f.service.inspectGallery(f.request,input()),'size');
+  // Invalid JSON fails at its first token; it is not a valid oversized header.
+  await fs.writeFile(f.file,'x'.repeat(CHAT_CHARACTER_RECEIPT_LIMITS.headerBytes+1)+'\n');await rejectsCode(f.service.inspectGallery(f.request,input()),'content');
 });
 
 test('gallery lookup separates same-named character chats and group files inside the authenticated account',async t=>{

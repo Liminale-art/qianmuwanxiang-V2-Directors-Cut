@@ -10,7 +10,7 @@ const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'ut
 const readme = await readFile(new URL('README.md', root), 'utf8');
 const license = await readFile(new URL('LICENSE', root), 'utf8');
 
-assert.equal(manifest.version, '1.59.286');
+assert.equal(manifest.version, '1.59.287');
 assert.equal(packageJson.version, manifest.version, 'manifest 与 package 版本必须一致');
 assert.equal(packageJson.license, 'PolyForm-Noncommercial-1.0.0');
 assert.equal(manifest.js, `index.js?v=${manifest.version}`, '入口脚本必须按版本破除浏览器模块缓存');

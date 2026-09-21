@@ -12,6 +12,7 @@ import {chatGalleryEvidenceRequest} from './qianmu-chat-gallery-evidence.js';
 import {readSavedChatGalleryEvidence} from './qianmu-chat-gallery-evidence-reader.js';
 import {chatGalleryStateRequest,projectChatGalleryState,chatGalleryStateResponse} from './qianmu-chat-gallery-state.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
+import {readSavedChatGalleryHeader} from './qianmu-chat-gallery-header-reader.js';
 
 const fail=(code,message,status)=>{throw chatCharacterReceiptError(code,message,status);};
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
@@ -81,10 +82,13 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
     }finally{await handle.close();}
   }
   async function inspect(req,input,{signal}={},galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false,evidenceDigest=null,stateDigest=null){
-    const context=capture(req,input,signal);let metadata;
+    const context=capture(req,input,signal);let metadata,streamed;
     if(evidenceDigest!==null){try{return await readSavedChatGalleryEvidence(context,evidenceDigest,{io,lstat,checkedRoots,unchanged});}
       catch(error){if(error?.code==='ENOENT')fail('missing','原聊天记录不存在或已移动，未读取正文来源',404);throw error;}}
-    try{metadata=await readHeader(context,stateDigest!==null);}catch(error){
+    try{
+      if(galleryOnly&&stateDigest===null)streamed=await readSavedChatGalleryHeader(context,selection,{io,lstat,checkedRoots,unchanged});
+      else metadata=await readHeader(context,stateDigest!==null);
+    }catch(error){
       if(error?.code==='ENOENT')fail('missing','原聊天记录不存在或已移动，未确认保存',404);
       throw error;
     }
@@ -97,15 +101,10 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
         source,saved,sha256:createHash('sha256').update(JSON.stringify(saved)).digest('hex'),proof:'read-only-chat-state'},{namespace:context.owner.namespace});
       await checkedRoots(context);if(!unchanged(stat,await lstat(context.target)))fail('changed','聊天记录在读取期间已变化，请重试');context.guard();return result;
     }
-    context.guard();let collection=null,gallery=null,records;
-    if(Object.hasOwn(metadata,'story_director_liminale')){
+    context.guard();let collection=null,gallery=streamed?.gallery??null,records=streamed?.records;
+    if(metadata&&Object.hasOwn(metadata,'story_director_liminale')){
       const store=metadata.story_director_liminale;
       if(!object(store))fail('content','千幕聊天资料损坏，请保全原记录');
-      if(galleryOnly&&Object.hasOwn(store,'storyboardImages')){
-        const {text,...fields}=chatGalleryReceiptText(store.storyboardImages);
-        gallery={...fields,sha256:createHash('sha256').update(text).digest('hex')};
-        records=store.storyboardImages;
-      }
       if(!galleryOnly&&Object.hasOwn(store,'characterDrafts')){
         let summary;try{summary=chatCharacterCollectionReceiptText(store.characterDrafts,context.owner);}catch{fail('content','聊天人物资料版本、归属或内容不一致，请保全原记录');}
         const {text,...fields}=summary;collection={...fields,sha256:createHash('sha256').update(text).digest('hex')};

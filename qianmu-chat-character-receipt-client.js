@@ -60,6 +60,7 @@ function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=gl
             chat_character_receipt_changed:'聊天文件或账户已变化，请重新核对',
             chat_character_receipt_content:'原聊天资料不兼容或损坏，请先保留原件',
             chat_character_receipt_size:'聊天资料头超过核验上限，未裁剪或改写内容',
+            chat_character_receipt_timeout:'聊天画面核验超时，未使用不完整摘要，请稍后重试',
             chat_character_receipt_record_missing:'原画面记录已不存在；目录引用保留',
             chat_character_receipt_record_changed:'原聊天画面已变化，请重新打开此画面',
             chat_character_receipt_record_ambiguous:'原聊天有重复画面编号，未猜测原图',

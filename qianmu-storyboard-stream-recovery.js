@@ -1,6 +1,6 @@
-import {storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest} from './qianmu-storyboard-stream-reference.js?v=1.59.286';
-import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.286';
-import {createStoryboardStreamFinalStorage} from './qianmu-storyboard-stream-final-storage.js?v=1.59.286';
+import {storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest} from './qianmu-storyboard-stream-reference.js?v=1.59.287';
+import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.287';
+import {createStoryboardStreamFinalStorage} from './qianmu-storyboard-stream-final-storage.js?v=1.59.287';
 const fail=message=>{throw Object.assign(Error(message),{code:'storyboard_stream_checkpoint'});};
 
 // Missing settings/plan/logs are not evidence that this generation never ran.

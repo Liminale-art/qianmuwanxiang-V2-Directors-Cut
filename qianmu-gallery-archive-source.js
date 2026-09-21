@@ -2,10 +2,10 @@
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.286';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.287';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
-import {createHistoricalRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.286';
+import {createHistoricalRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.287';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 
