@@ -400,6 +400,40 @@ test('single cloud submit runner persists original acceptance with platform auth
   }
 });
 
+test('RH dispatch preserves graph seeds exactly once and keeps them frozen across authorization waits', async t => {
+  const f = await cloudSubmissionFixture(t, rhBinding), calls = [];
+  f.input.request.parameters.seed = 123;
+  f.input.request.workflow['1'].inputs.seed = '%qianmu_seed%';
+  f.input.request.workflow['1'].inputs.noise_seed = '18446744073709551615';
+  const expected = prepareComfyCloudSubmission(f.input.request);
+  const options = { ...f.options, authorizeTarget: async () => {
+    f.input.request.parameters.seed = 999;
+    f.input.request.workflow['1'].inputs.noise_seed = '1';
+    return async () => {};
+  }, requestImpl: mockNodeRequest(calls, () => ({ body: acceptedCloudBody(rhBinding, '1904152026220003329') })) };
+  const result = await submitComfyCloudTask(f.req, f.input, options);
+  assert.equal(result.status, 'accepted'); assert.equal(calls.length, 1);
+  const sent = JSON.parse(calls[0].body), graph = JSON.parse(sent.workflow);
+  assert.deepEqual(sent.nodeInfoList, [
+    { nodeId: '1', fieldName: 'seed', fieldValue: 123 },
+    { nodeId: '1', fieldName: 'noise_seed', fieldValue: '18446744073709551615' },
+  ]);
+  for (const entry of sent.nodeInfoList) assert.equal(entry.fieldValue, graph[entry.nodeId].inputs[entry.fieldName]);
+  const row = (await f.store.inspectChannel(f.key)).entries[0];
+  assert.equal(row.cloudReceipt.requestDigest, expected.intent.requestDigest);
+  assert.equal(row.cloudReceipt.workflow.executionHash, expected.intent.workflow.executionHash);
+  await assert.rejects(submitComfyCloudTask(f.req, f.input, options));
+  assert.equal(calls.length, 1);
+});
+
+test('RH seed validation rejects unsafe numbers before any network, upload or ledger write', async t => {
+  const f = await cloudSubmissionFixture(t, rhBinding), calls = [];
+  f.input.request.workflow['1'].inputs.seed = Number.MAX_SAFE_INTEGER + 1;
+  await assert.rejects(submitComfyCloudTask(f.req, f.input, { ...f.options, authorizeTarget: () => assert.fail('no authorization needed'),
+    requestImpl: mockNodeRequest(calls) }), { code: 'comfy_cloud_prepare_invalid', submissionState: 'not_submitted' });
+  assert.equal(calls.length, 0); assert.deepEqual(await fs.readdir(f.root), []);
+});
+
 async function reopenCloudSubmission(t, f) {
   await f.store.close();
   const store = createImageServiceStore({ dataRoot: f.root, scope: 'comfy-cloud' }); t.after(() => store.close());

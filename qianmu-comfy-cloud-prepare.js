@@ -20,6 +20,26 @@ const fields = (value, names) => {
 };
 const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 
+// RH resets seeds unless nodeInfoList repeats them (official doc-8287336).
+// Derive this transport mirror ONLY from the finished graph. It is not a second
+// editable input layer: no guessing node ids, replacing links or coercing uint64.
+function runningHubSeedMirror(graph) {
+  const entries = [];
+  for (const [nodeId, node] of Object.entries(graph)) {
+    for (const fieldName of ['seed', 'noise_seed']) {
+      if (!node?.inputs || !Object.hasOwn(node.inputs, fieldName)) continue;
+      const fieldValue = node.inputs[fieldName];
+      if (Array.isArray(fieldValue)) continue; // Linked values belong to the graph.
+      const valid = typeof fieldValue === 'number'
+        ? Number.isSafeInteger(fieldValue) && fieldValue >= 0
+        : typeof fieldValue === 'string' && /^\d{1,20}$/.test(fieldValue) && BigInt(fieldValue) <= 18446744073709551615n;
+      if (!valid) fail(); // Never submit a rounded or newly invented seed.
+      entries.push({ nodeId, fieldName, fieldValue });
+    }
+  }
+  return entries;
+}
+
 export function prepareComfyCloudSubmission(raw) {
   const preparation = prepareComfyCloudSubmissionInput(raw);
   if (Object.hasOwn(raw, 'references')) fail(); // Text-only callers cannot invent upload authority.
@@ -61,6 +81,10 @@ export function prepareComfyCloudSubmissionInput(raw) {
       execution: { version: 1, automatic: execution.automatic, maxImages: execution.maxImages,
         outputNodeIds: execution.outputNodeIds, ...(execution.expectedImages != null ? { expectedImages: execution.expectedImages } : {}) } };
     const body = plan.provider === 'comfy-cloud' ? { workflow: graph } : { workflow: JSON.stringify(graph) };
+    if (plan.provider === 'runninghub') {
+      const nodeInfoList = runningHubSeedMirror(graph);
+      if (nodeInfoList.length) body.nodeInfoList = nodeInfoList;
+    }
     if (source.runninghub !== undefined) {
       if (plan.provider !== 'runninghub') fail();
       fields(source.runninghub, ['workflowId', 'instanceType']);
@@ -75,7 +99,8 @@ export function prepareComfyCloudSubmissionInput(raw) {
         body.instanceType = instanceType;
       }
       // Full frozen workflow takes precedence over workflowId per RH's API.
-      // No second nodeInfoList override, silent tier escalation or paid retainSeconds.
+      // Only the derived seed mirror is allowed, never caller node overrides,
+      // silent tier escalation or paid retainSeconds.
     }
     const bodyBytes = Buffer.byteLength(JSON.stringify(body)); if (bodyBytes > LIMIT) fail();
     const { requestDigest } = describeImageServiceRequest({ connection: source.connection, body, workflow: identity, execution });

@@ -68,12 +68,13 @@ test('cloud preparation preserves topology and fixed words, performs one typed s
   assert.equal(prepared.intent.stillOutput.execution.expectedImages, 1); assert.equal(Object.hasOwn(prepared.intent.stillOutput.execution, 'allowUnverified'), false);
 });
 
-test('RH wraps the compiled graph as a string without a second node override or credential layer', () => {
+test('RH wraps the compiled graph and mirrors its seed without caller overrides or credentials', () => {
   const input = source(rh); input.runninghub = { workflowId: '1904136902449209346' };
   const prepared = prepare(input);
   assert.equal(typeof prepared.body.workflow, 'string'); assert.equal(prepared.body.workflowId, input.runninghub.workflowId);
   assert.equal(JSON.parse(prepared.body.workflow).latent.inputs.width, 768);
-  assert.deepEqual(Object.keys(prepared.body).sort(), ['workflow', 'workflowId']);
+  assert.deepEqual(Object.keys(prepared.body).sort(), ['nodeInfoList', 'workflow', 'workflowId']);
+  assert.deepEqual(prepared.body.nodeInfoList, [{ nodeId: 'sampler', fieldName: 'seed', fieldValue: 12 }]);
   assert.equal(prepared.bodyBytes, Buffer.byteLength(JSON.stringify(prepared.body)));
   assert.notEqual(prepared.intent.requestDigest, prepare(source()).intent.requestDigest);
 });
@@ -99,7 +100,7 @@ test('RH runtime tier is a frozen, hashed user choice independent of the compile
     assert.equal(got.body.instanceType, instanceType); assert.ok(Object.isFrozen(got.body));
     assert.equal(got.body.workflow, base.body.workflow); assert.deepEqual(got.intent.workflow, base.intent.workflow);
     assert.notEqual(got.intent.requestDigest, base.intent.requestDigest); digests.add(got.intent.requestDigest);
-    assert.deepEqual(Object.keys(got.body).sort(), ['instanceType', 'workflow']);
+    assert.deepEqual(Object.keys(got.body).sort(), ['instanceType', 'nodeInfoList', 'workflow']);
   }
   assert.equal(digests.size, 3);
   for (const runninghub of [{}, { instanceType: 'pro' }, { instanceType: 'PLUS' }, { instanceType: null },
@@ -139,4 +140,65 @@ test('one prepared random seed is stable and affects the actual execution identi
   assert.ok(Number.isSafeInteger(seed) && seed >= 0); assert.equal(prepared.body.workflow.sampler.inputs.seed, seed);
   input.parameters.seed = seed;
   assert.equal(prepare(input).intent.workflow.executionHash, prepared.intent.workflow.executionHash);
+});
+
+test('RH preserves literal seeds, zero and exact uint64 strings from all nodes without rewriting the graph', async () => {
+  const input = source(rh); input.parameters.seed = 0;
+  input.execution.automatic = false; input.execution.allowUnverified = true;
+  input.workflow.noise = node('RandomNoise', { noise_seed: '18446744073709551615' });
+  input.workflow.detail = node('CustomSampler', { seed: 42, text: 'do not mirror prompts' });
+  const before = structuredClone(input), prepared = prepare(input), actual = JSON.parse(prepared.body.workflow);
+  assert.deepEqual(prepared.body.nodeInfoList, [
+    { nodeId: 'sampler', fieldName: 'seed', fieldValue: 0 },
+    { nodeId: 'noise', fieldName: 'noise_seed', fieldValue: '18446744073709551615' },
+    { nodeId: 'detail', fieldName: 'seed', fieldValue: 42 },
+  ]);
+  assert.deepEqual(input, before);
+  for (const entry of prepared.body.nodeInfoList) assert.equal(entry.fieldValue, actual[entry.nodeId].inputs[entry.fieldName]);
+  assert.deepEqual(actual.noise, before.workflow.noise); assert.deepEqual(actual.detail, before.workflow.detail);
+  assert.equal(prepared.intent.workflow.executionHash, await comfyWorkflowReferenceHash(actual));
+  assert.ok(Object.isFrozen(prepared.body.nodeInfoList[0]));
+});
+
+test('RH seed protection never mirrors links, metadata, nested values, prompt text or invented inputs', () => {
+  const input = source(rh); input.workflow.sampler.inputs.seed = ['integer', 0];
+  input.execution.automatic = false; input.execution.allowUnverified = true;
+  input.workflow.integer = node('PrimitiveInt', { value: 123 });
+  input.workflow.positive.inputs.text = '%qianmu_prompt%';
+  input.workflow.positive._meta = { seed: 456 };
+  input.workflow.detail = node('CustomSampler', { settings: { seed: 789 }, random_seed: 90 });
+  const result = prepare(input);
+  assert.equal(Object.hasOwn(result.body, 'nodeInfoList'), false);
+  const actual = JSON.parse(result.body.workflow);
+  assert.deepEqual(actual.sampler.inputs.seed, ['integer', 0]);
+  assert.deepEqual(actual.detail, input.workflow.detail);
+  assert.equal(actual.positive.inputs.text, input.prompt);
+});
+
+test('RH random seed is selected once before IO and the mirror stays identical across completion calls', () => {
+  const input = source(rh); input.parameters.seed = -1;
+  const admission = prepareComfyCloudSubmissionInput(input);
+  input.parameters.seed = 999; input.workflow.sampler.inputs.seed = 888;
+  const first = admission.complete([]), second = admission.complete([]), value = first.body.nodeInfoList[0].fieldValue;
+  assert.ok(Number.isSafeInteger(value) && value >= 0);
+  assert.equal(value, JSON.parse(first.body.workflow).sampler.inputs.seed);
+  assert.deepEqual(first, second); assert.ok(Object.isFrozen(first.body.nodeInfoList));
+});
+
+test('RH refuses imprecise or invalid scalar seeds before creating a submission intent', () => {
+  for (const value of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, '', 'random', '1e3', '18446744073709551616', null, true, { seed: 1 }]) {
+    const input = source(rh); input.workflow.sampler.inputs.seed = value;
+    assert.throws(() => prepareComfyCloudSubmissionInput(input), invalid, String(value));
+  }
+});
+
+test('seed mirrors stay RH-only and callers cannot supply arbitrary nodeInfoList overrides', () => {
+  for (const connection of [cloud, rh]) {
+    const input = source(connection);
+    assert.throws(() => prepare({ ...input, nodeInfoList: [{ nodeId: 'save', fieldName: 'images', fieldValue: [] }] }), invalid);
+    if (connection === cloud) assert.equal(Object.hasOwn(prepare(input).body, 'nodeInfoList'), false);
+  }
+  const first = source(rh), second = source(rh); second.parameters.seed = 13;
+  assert.notEqual(prepare(first).intent.requestDigest, prepare(second).intent.requestDigest);
+  assert.notEqual(prepare(first).intent.workflow.executionHash, prepare(second).intent.workflow.executionHash);
 });
