@@ -6,16 +6,18 @@ import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qian
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
 import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {renderGalleryKeywordEntry,bindGalleryKeywordEntry,renderGalleryKeywordFilters} from './qianmu-gallery-keywords-view.js';
+import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor} from './qianmu-composition-schemes-view.js';
+import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.277';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.277';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.277';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.278';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.278';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.278';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.277';
-import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.277';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.278';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.278';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -253,7 +255,7 @@ import {
   resolveStoryboardMessageReference,
   resolveStoryboardOrdinaryMessageContinuation,
   resolveStoryboardComposition,
-  restoreStoryboardCompositionPolicy,
+  normalizeStoryboardCompositionPolicy,
   resolveStoryboardArtistAssignment,
   routeStoryboardShot,
   storyboardRouteUsesComfyAuto,
@@ -268,12 +270,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.277';
+} from './qianmu-storyboard.js?v=1.59.278';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.277';
+const VERSION = '1.59.278';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -283,7 +285,7 @@ const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,name
 const featureRuntime = createFeatureRuntime({
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.202') },
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.202') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.277') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.278') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -328,7 +330,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.277'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.278'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -364,15 +366,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.277'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.278'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.277'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.278'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.277'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.278'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -464,11 +466,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.277'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.278'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.277'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.278'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -556,9 +558,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.277'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.278'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.277')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.278')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -13830,27 +13832,7 @@ function renderStoryboardWorldbookCard(state) {
 }
 
 function renderStoryboardCompositionCard(state) {
-  const policy = state.compositionPolicy;
-  const allowed = new Set(policy.allowedRatioIds || []);
-  const ratioOptions = STORYBOARD_RATIOS.map((item) => `<option value="${item.id}" ${policy.fixedRatioId === item.id ? 'selected' : ''}>${item.label}</option>`).join('');
-  const preferredOptions = STORYBOARD_RATIOS.filter((item) => allowed.has(item.id)).map((item) => `<option value="${item.id}" ${policy.preferredRatioId === item.id ? 'selected' : ''}>${item.label}</option>`).join('');
-  const ratioChips = STORYBOARD_RATIOS.map((item) => `<label class="sd-option-chip"><input type="checkbox" class="sd-storyboard-composition-allowed" value="${item.id}" ${allowed.has(item.id) ? 'checked' : ''}><span>${item.label}</span></label>`).join('');
-  const strategyLabels = { single: '单幅', main_secondary: '主画幅 + 强调画幅', montage: '自由蒙太奇' };
-  return `<details class="sd-card sd-storyboard-composition-card" data-storyboard-card="composition" ${state.collapsedCards.composition ? '' : 'open'}>
-    <summary><span><b>画面比例</b><small>构景之律</small></span></summary>
-    <div class="sd-storyboard-card-body">
-      <div class="sd-storyboard-composition-mode" role="radiogroup" aria-label="比例分配方式">
-        <label class="sd-option-chip"><input type="radio" name="sd-storyboard-composition-mode" value="smart" ${policy.mode === 'smart' ? 'checked' : ''}><span>智能分配</span></label>
-        <label class="sd-option-chip"><input type="radio" name="sd-storyboard-composition-mode" value="fixed" ${policy.mode === 'fixed' ? 'checked' : ''}><span>固定比例</span></label>
-      </div>
-      ${policy.mode === 'fixed'
-        ? `<label><span>固定比例</span><select class="text_pole sd-storyboard-composition-fixed">${ratioOptions}</select></label>`
-        : `<label><span>优先主画幅</span><select class="text_pole sd-storyboard-composition-preferred">${preferredOptions}</select></label><div class="sd-storyboard-composition-ratios" aria-label="允许的画幅">${ratioChips}</div>`}
-      <label><span>镜组画幅策略</span><select class="text_pole sd-storyboard-composition-strategy">${STORYBOARD_GROUP_FRAME_STRATEGIES.map((id) => `<option value="${id}" ${policy.groupStrategy === id ? 'selected' : ''}>${strategyLabels[id]}</option>`).join('')}</select></label>
-      <label><span>构景之律 · 个人修订</span><textarea class="text_pole sd-storyboard-composition-override" spellcheck="false">${htmlEscape(policy.ruleOverride || '')}</textarea></label>
-      <div class="sd-storyboard-composition-actions"><small>${policy.userEdited ? '正在使用个人修订' : '正在使用千幕默认规则'}</small><button type="button" class="sd-btn sd-storyboard-restore-composition" ${policy.userEdited ? '' : 'disabled'}>恢复默认</button></div>
-    </div>
-  </details>`;
+  return `<section class="sd-card sd-storyboard-composition-card" data-storyboard-card="composition"><div class="sd-storyboard-card-body">${renderCompositionSelector(state)}</div></section>`;
 }
 
 function storyboardProductionPacketTitle(packet) {
@@ -14561,12 +14543,7 @@ function storyboardPromptPresetEntryMarkup(item = {}, index = 0, total = 1) {
 }
 
 function storyboardCompositionLawEntryMarkup(state) {
-  const policy = state.compositionPolicy;
-  const mode = policy.mode === 'fixed' ? `固定 ${policy.fixedRatioId}` : `智能 · ${policy.allowedRatioIds.length} 种可用画幅`;
-  return `<details class="sd-card sd-storyboard-preset-entry sd-storyboard-system-rule" data-storyboard-preset-entry="${STORYBOARD_COMPOSITION_RULE_ID}">
-    <summary><span class="sd-storyboard-system-rule-lock" aria-label="系统固定条目">◆</span><b>构景之律</b><span class="sd-storyboard-preset-token" title="系统固定条目">1</span><button type="button" class="sd-icon-btn sd-storyboard-open-composition" title="编辑构景设置" aria-label="编辑构景设置"><i class="fa-solid fa-pen"></i></button></summary>
-    <div class="sd-storyboard-preset-entry-preview sd-scroll">${htmlEscape(mode)}${policy.userEdited ? ' · 已应用个人修订' : ' · 千幕默认规则'}</div>
-  </details>`;
+  return renderCompositionEditor(state,{ratios:STORYBOARD_RATIOS});
 }
 
 function renderStoryboardPresetLibrary(state) {
@@ -14591,7 +14568,7 @@ function renderStoryboardPresetLibrary(state) {
       <div class="sd-storyboard-preset-control-row"><button type="button" class="sd-btn sd-primary sd-storyboard-new-preset">新建预设</button><button type="button" class="sd-icon-btn sd-storyboard-rename-preset" title="编辑预设名" aria-label="编辑预设名" ${selected ? '' : 'disabled'}><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-storyboard-overwrite-preset" title="保存覆盖" aria-label="保存覆盖" ${selected ? '' : 'disabled'}><i class="fa-solid fa-floppy-disk"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-preset" title="删除预设" aria-label="删除预设" ${selected ? '' : 'disabled'}><i class="fa-solid fa-trash-can"></i></button></div>
     </section>
     ${undo}
-    ${selected ? `<section class="sd-storyboard-preset-list" data-storyboard-preset-list="${htmlEscape(selected.id)}">${storyboardCompositionLawEntryMarkup(state)}${renderGalleryKeywordEntry(state)}${rows || '<div class="sd-storyboard-empty-inline">这个预设还没有自定义条目。</div>'}</section><button type="button" class="sd-icon-btn sd-primary sd-storyboard-add-preset-item" title="添加条目" aria-label="添加条目"><i class="fa-solid fa-plus"></i></button>` : renderGalleryKeywordEntry(state)}
+    ${storyboardCompositionLawEntryMarkup(state)}${selected ? `<section class="sd-storyboard-preset-list" data-storyboard-preset-list="${htmlEscape(selected.id)}">${renderGalleryKeywordEntry(state)}${rows || '<div class="sd-storyboard-empty-inline">这个预设还没有自定义条目。</div>'}</section><button type="button" class="sd-icon-btn sd-primary sd-storyboard-add-preset-item" title="添加条目" aria-label="添加条目"><i class="fa-solid fa-plus"></i></button>` : renderGalleryKeywordEntry(state)}
   </div>`;
 }
 
@@ -17857,24 +17834,6 @@ function storyboardCaptureWorkbench(root, sourceId = storyboardState().source, {
       : key === 'watermark' ? String(field.value) === 'true' : String(field.value || '').trim();
   });
   profile.ratio = String(root.querySelector('.sd-storyboard-ratio')?.value || profile.ratio || '');
-  const compositionMode = root.querySelector('input[name="sd-storyboard-composition-mode"]:checked');
-  if (compositionMode) state.compositionPolicy.mode = compositionMode.value === 'fixed' ? 'fixed' : 'smart';
-  const fixedRatio = root.querySelector('.sd-storyboard-composition-fixed');
-  if (fixedRatio) state.compositionPolicy.fixedRatioId = String(fixedRatio.value || '3:2');
-  const allowedRatios = [...root.querySelectorAll('.sd-storyboard-composition-allowed:checked')].map((field) => String(field.value || '')).filter(Boolean);
-  if (root.querySelector('.sd-storyboard-composition-allowed') && allowedRatios.length) state.compositionPolicy.allowedRatioIds = allowedRatios;
-  const preferredRatio = root.querySelector('.sd-storyboard-composition-preferred');
-  if (preferredRatio) state.compositionPolicy.preferredRatioId = String(preferredRatio.value || allowedRatios[0] || '3:2');
-  const strategy = root.querySelector('.sd-storyboard-composition-strategy');
-  if (strategy) {
-    state.compositionPolicy.groupStrategy = STORYBOARD_GROUP_FRAME_STRATEGIES.includes(strategy.value) ? strategy.value : 'main_secondary';
-    state.routing.frameStrategy = state.compositionPolicy.groupStrategy;
-  }
-  const ruleOverride = root.querySelector('.sd-storyboard-composition-override');
-  if (ruleOverride) {
-    state.compositionPolicy.ruleOverride = String(ruleOverride.value || '').trim().slice(0, 12000);
-    state.compositionPolicy.userEdited = Boolean(state.compositionPolicy.ruleOverride);
-  }
   profile.loaded = true;
   // The model change callback owns selection. Capturing old controls must not
   // attach them to the DOM's newly selected model before its memory is loaded.
@@ -19017,6 +18976,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
 function storyboardLoadPromptPreset(presetId) {
   const state = storyboardState();
   const preset = state.promptPresets.find((item) => item.id === presetId) || null;
+  try{if(state.promptCompiler.instructionPresetId!==preset?.id)applyBoundComposition(state,preset,normalizeStoryboardCompositionPolicy);}catch(error){return toast(error.message,'warning');}
   state.promptCompiler.instructionPresetId = preset?.id || '';
   if (preset) {
     state.promptCompiler.enabled = true;
@@ -22977,11 +22937,6 @@ function bindStoryboardTabEvents(root) {
     storyboardCaptureWorkbench(root);
     storyboardNavigate(root, { view: 'presets', editingPromptItemId: '', promptItemDraft: null });
   });
-  root.querySelector('.sd-storyboard-open-composition')?.addEventListener('click', (event) => {
-    event.preventDefault(); event.stopPropagation();
-    storyboardNavigate(root, { view: 'create', editingPromptItemId: '', promptItemDraft: null });
-    setTimeout(() => document.querySelector('.sd-storyboard-composition-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
-  });
   root.querySelector('.sd-storyboard-open-artist-library')?.addEventListener('click', () => {
     storyboardCaptureWorkbench(root);
     storyboardNavigate(root, { view: 'artists', editingArtistPresetId: '' });
@@ -23125,8 +23080,10 @@ function bindStoryboardTabEvents(root) {
   }));
   storyboardBindTagLibrary(root);
   bindGalleryKeywordEntry(root,state,{current:()=>state===storyboardState()&&root.isConnected,save:saveSettings});
+  bindCompositionEditor(root,state,{normalize:normalizeStoryboardCompositionPolicy,current:()=>state===storyboardState()&&root.isConnected,save:saveSettings,render:renderModal,createId:()=>uid('composition')});
   root.querySelectorAll('.sd-storyboard-open-vibe-library').forEach(button=>button.addEventListener('click',()=>storyboardOpenVibeSelection(root)));
   root.querySelector('.sd-storyboard-preset-library-select')?.addEventListener('change', (event) => {
+    try{if(state.promptCompiler.instructionPresetId!==event.target.value)applyBoundComposition(state,state.promptPresets.find(row=>row.id===event.target.value),normalizeStoryboardCompositionPolicy);}catch(error){toast(error.message,'warning');renderModal();return;}
     state.promptCompiler.instructionPresetId = String(event.target.value || '');
     state.editingPromptPresetId = state.promptCompiler.instructionPresetId;
     state.editingPromptItemId = ''; state.promptItemDraft = null; saveSettings(); renderModal();
@@ -23333,14 +23290,13 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-preset-import-file')?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0]; if (!file) return;
     try {
-      const data = JSON.parse(await file.text()); const incoming = Array.isArray(data?.presets) ? data.presets : (data?.id ? [data] : []);
+      const data = JSON.parse(await file.text()); if(state!==storyboardState()||root.isConnected===false)return;
+      const incoming = Array.isArray(data?.presets) ? data.presets : (data?.id ? [data] : []);
       const normalized = normalizeStoryboardState({ promptPresets: incoming }).promptPresets;
       if (!normalized.length) throw new Error('没有可导入的取景预设');
+      const composition=importedCompositionPolicy(state,normalized[0],data?.compositionLaw,normalizeStoryboardCompositionPolicy);
       state.promptPresets = storyboardMergeById(state.promptPresets, normalized, 200); state.promptCompiler.instructionPresetId = normalized[0].id; state.editingPromptPresetId = normalized[0].id;
-      if (data?.compositionLaw?.id === STORYBOARD_COMPOSITION_RULE_ID) {
-        state.compositionPolicy.ruleOverride = String(data.compositionLaw.ruleOverride || '').trim().slice(0, 12000);
-        state.compositionPolicy.userEdited = Boolean(state.compositionPolicy.ruleOverride);
-      }
+      Object.assign(state,composition);
       saveSettings(); toast(`已导入 ${normalized.length} 个取景预设。`, 'success'); renderModal();
     } catch (error) { toast(`导入失败：${error?.message || error}`, 'error'); }
     finally { event.target.value = ''; }
@@ -23417,17 +23373,6 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-target')?.addEventListener('change', (event) => {
     storyboardCaptureWorkbench(root);
     state.target = event.target.value;
-    saveSettings(); renderModal();
-  });
-  root.querySelectorAll('input[name="sd-storyboard-composition-mode"]').forEach((field) => field.addEventListener('change', () => {
-    storyboardCaptureWorkbench(root); saveSettings(); renderModal();
-  }));
-  root.querySelectorAll('.sd-storyboard-composition-fixed, .sd-storyboard-composition-preferred, .sd-storyboard-composition-strategy, .sd-storyboard-composition-allowed').forEach((field) => field.addEventListener('change', () => {
-    storyboardCaptureWorkbench(root); saveSettings(); renderModal();
-  }));
-  root.querySelector('.sd-storyboard-composition-override')?.addEventListener('change', () => { storyboardCaptureWorkbench(root); saveSettings(); });
-  root.querySelector('.sd-storyboard-restore-composition')?.addEventListener('click', () => {
-    state.compositionPolicy = restoreStoryboardCompositionPolicy(state.compositionPolicy);
     saveSettings(); renderModal();
   });
   root.querySelector('.sd-storyboard-ratio')?.addEventListener('change', (event) => {

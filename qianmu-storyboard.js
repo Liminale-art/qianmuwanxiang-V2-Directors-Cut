@@ -1,13 +1,14 @@
 import {retainEnsembleRecoveryRecord} from './qianmu-ensemble-record.js';
 import {DEFAULT_GALLERY_KEYWORDS} from './qianmu-gallery-keywords.js';
+import {normalizeCompositionLibrary,DEFAULT_COMPOSITION_SCHEME} from './qianmu-composition-schemes.js';
 export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.277';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.277';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.278';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.278';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.277';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.277';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.277';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.278';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.278';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.278';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -28,8 +29,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.277';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.277';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.278';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.278';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -388,7 +389,7 @@ export function createStoryboardDefaults() {
     connections: Object.fromEntries(ids.map((id) => [id, connection(id)])), generationPolicy: normalizeStoryboardGenerationPolicy(),
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,galleryKeywords:[...DEFAULT_GALLERY_KEYWORDS],
     artistPresets: [], artistCollections: [], artistCollectionId: '', selectedArtistPresetId: '', artistSearch: '', editingArtistPresetId: '',
-    artistPools: [], selectedArtistPoolId: '',
+    artistPools: [], selectedArtistPoolId: '',compositionSchemes:[],compositionSchemeId:'',
     tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], taskStates: [], collapsedCards: { model: true, context: true, worldbook: true, prompt: true, params: true, composition: true, production: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
   };
 }
@@ -844,6 +845,8 @@ export function normalizeStoryboardState(value) {
   if (!state.promptPresets.some((preset) => preset.id === state.promptCompiler.instructionPresetId)) state.promptCompiler.instructionPresetId = '';
   if (!state.promptPresets.some((preset) => preset.id === state.editingPromptPresetId)) { state.editingPromptPresetId = ''; state.editingPromptItemId = ''; state.promptItemDraft = null; }
   state.compositionPolicy = normalizeStoryboardCompositionPolicy(state.compositionPolicy); state.routing = normalizeRouting(state.routing); state.shotPlans = shotPlans(state.shotPlans, state); state.taskStates = taskStates(state.taskStates); const collapsedInput = obj(state.collapsedCards) ? state.collapsedCards : {}; state.collapsedCards = Object.fromEntries(Object.entries(collapsedInput).slice(0, 200).map(([k, v]) => [str(k, 120), Boolean(v)]).filter(([k]) => k)); if (!Object.hasOwn(collapsedInput, 'production')) state.collapsedCards.production = true; if (!Object.hasOwn(collapsedInput, 'worldbook')) state.collapsedCards.worldbook = true; state.logs = legacyLogs(state.logs); state.pipelineLogs = pipelineLogs(state.pipelineLogs);
+  state.compositionSchemes=normalizeCompositionLibrary(state.compositionSchemes,normalizeStoryboardCompositionPolicy);
+  if(state.compositionSchemeId!==DEFAULT_COMPOSITION_SCHEME&&!state.compositionSchemes.some(row=>row.id===state.compositionSchemeId))state.compositionSchemeId='';
   const visiblePipelineIds = new Set(state.logs.map((log) => log.pipelineId).filter(Boolean));
   // v1/v2 日志没有 pipelineId；旧数据先按相同上限保留，只有新契约完整时才做一一配对裁剪。
   if (visiblePipelineIds.size) state.pipelineLogs = state.pipelineLogs.filter((log) => visiblePipelineIds.has(log.id));
@@ -875,7 +878,7 @@ function promptPresets(value) {
     const presetId = cleanId(preset.id);
     const sourceItems = Array.isArray(preset.items) ? preset.items : (str(preset.instruction, 24000) ? [{ id: `${presetId}-legacy`, name: '基础指令', instruction: preset.instruction }] : []);
     const items = dedupeById(sourceItems.filter(obj).map((item, index) => ({ id: cleanId(item.id || `${presetId}-item-${index + 1}`), name: str(item.name || `条目 ${index + 1}`, 80) || `条目 ${index + 1}`, instruction: str(item.instruction || item.content, 12000) })).filter((item) => item.id && item.instruction)).slice(0, 50);
-    return { id: presetId, name: str(preset.name || '未命名方案', 80) || '未命名方案', mode: STORYBOARD_PROMPT_MODES[preset.mode] ? preset.mode : 'combined', items, instruction: items.map((item) => item.instruction).join('\n\n').slice(0, 24000), positiveTemplate: str(preset.positiveTemplate, 24000), negativeTemplate: str(preset.negativeTemplate, 12000), providerIds: providers(preset.providerIds), tagIds: ids(preset.tagIds, 300), ...(Object.hasOwn(preset,'galleryKeywords')?{galleryKeywords:safeData(preset.galleryKeywords,2)}:{}), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) };
+    return { id: presetId, name: str(preset.name || '未命名方案', 80) || '未命名方案', mode: STORYBOARD_PROMPT_MODES[preset.mode] ? preset.mode : 'combined', items, instruction: items.map((item) => item.instruction).join('\n\n').slice(0, 24000), positiveTemplate: str(preset.positiveTemplate, 24000), negativeTemplate: str(preset.negativeTemplate, 12000), providerIds: providers(preset.providerIds), tagIds: ids(preset.tagIds, 300), ...(Object.hasOwn(preset,'galleryKeywords')?{galleryKeywords:safeData(preset.galleryKeywords,2)}:{}), ...(Object.hasOwn(preset,'compositionBinding')?{compositionBinding:safeData(preset.compositionBinding,5)}:{}), createdAt: pos(preset.createdAt || preset.updatedAt), updatedAt: pos(preset.updatedAt) };
   }).filter((preset) => preset.id);
   return dedupeById(normalized).slice(0, 200);
 }

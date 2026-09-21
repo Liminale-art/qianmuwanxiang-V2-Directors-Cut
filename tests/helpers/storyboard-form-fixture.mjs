@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import * as storyboard from '../../qianmu-storyboard.js';
 import * as comfyView from '../../qianmu-comfy-workbench.js';
+import * as compositionView from '../../qianmu-composition-schemes-view.js';
+import * as compositionSchemes from '../../qianmu-composition-schemes.js';
 import { normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../../qianmu-openai-image-compat.js';
 
 const source = await readFile(new URL('../../index.js', import.meta.url), 'utf8');
@@ -23,7 +25,7 @@ export function createStoryboardFormFixture({ family = 'novel', enabled = true, 
   if (family === 'comfy') state.profiles.comfy.comfyWorkflow = typeof workflow === 'string' ? workflow : JSON.stringify(workflow);
   for (const key of ['model', 'context', 'params', 'prompt', 'composition']) state.collapsedCards[key] = false;
   const globals = {
-    ...storyboard, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders,
+    ...storyboard,...compositionView,...compositionSchemes, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders,
     settings: { apiProfiles: [] }, clone: structuredClone, uid: (() => { let id = 0; return () => `fixture-${++id}`; })(),
     htmlEscape: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     storyboardState: () => state, storyboardConnectionStatus: new Map(), storyboardDraftApiKeys: new Map(),
