@@ -6,6 +6,7 @@ import { comfyCloudResourceKey } from './qianmu-comfy-cloud-ledger.js';
 import { createComfyCloudServerTransport } from './qianmu-comfy-server-transport.js';
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from './qianmu-comfy-cloud-response.js';
 import { COMFY_CLOUD_RECEIPT_SCHEMA } from './qianmu-comfy-cloud-receipt.js';
+import { hasComfyCloudReadinessBasis } from './qianmu-comfy-cloud-protocol.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
 export async function submitComfyCloudTask(req, { request, apiKey, expectedAccount, attemptId } = {}, {
@@ -66,9 +67,9 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
       }
       if (input.automatic) {
         stage = 'readiness';
-        const report=await checkComfyCloudReadiness(req,input.readiness,{apiKey,authorizeTarget,signal:controller.signal,resolveHost,requestImpl,
+        const report=await checkComfyCloudReadiness(req,input.readiness,{apiKey,authorizeTarget,ledger,signal:controller.signal,resolveHost,requestImpl,
           timeoutMs:Math.max(1,Math.min(30000,Math.ceil(deadline-performance.now())))});check();
-        if(report.definitionsChecked!==true||report.actualGenerationVerified!==false||report.errors!==0||report.unverifiedWarnings!==0)
+        if(!hasComfyCloudReadinessBasis(report,input.connection.provider)||report.actualGenerationVerified!==false||report.errors!==0||report.unverifiedWarnings!==0)
           throw fail('readiness','节点或模型暂未通过自动检查，请手动确认；未提交生图');
       }
       if (input.references.length) {

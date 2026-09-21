@@ -12,13 +12,13 @@ import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryb
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.280';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.280';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.280';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.281';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.281';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.281';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.280';
-import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.280';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.281';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.281';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -271,12 +271,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.280';
+} from './qianmu-storyboard.js?v=1.59.281';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.280';
+const VERSION = '1.59.281';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -286,7 +286,7 @@ const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,name
 const featureRuntime = createFeatureRuntime({
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.202') },
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.202') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.280') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.281') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -331,7 +331,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.280'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.281'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -367,15 +367,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.280'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.281'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.280'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.281'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.280'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.281'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -467,11 +467,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.280'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.281'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.280'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.281'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -559,9 +559,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.280'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.281'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.280')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.281')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -18155,13 +18155,14 @@ async function storyboardCheckComfyReadiness(root) {
       model: profile.model, outputNodeId: profile.comfyOutputNodeId || '', referenceCount,
       parameters: Object.fromEntries(['width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, profile[key]])),
       allowPrivateNetwork: Boolean(connection.options?.allowPrivateNetwork),
+      ...(resolveStoryboardComfyCloud(connection)?.provider==='runninghub'&&profile.comfyInstanceType?{runninghub:{instanceType:profile.comfyInstanceType}}:{}),
     };
     runtime.prepareComfyReadiness(request);
     request.apiKey = String(root.querySelector('.sd-storyboard-api-key-memory')?.value || '').trim() || await storyboardResolveApiKey('comfy');
     if (!isCurrent()) return;
     let result, requester = '当前浏览器';
     const comfyTransport = requireStoryboardComfyTransport(connection);
-    if(resolveStoryboardComfyCloud(connection)){requester='Comfy Cloud';result=await runtime.checkCloudComfyReadiness(request,{headers:storyboardRequestHeaders(),guard:assertCurrent,signal:controller.signal});}
+    if(resolveStoryboardComfyCloud(connection)){requester=resolveStoryboardComfyCloud(connection).provider==='runninghub'?'RunningHub':'Comfy Cloud';result=await runtime.checkCloudComfyReadiness(request,{headers:storyboardRequestHeaders(),guard:assertCurrent,signal:controller.signal});}
     if (!result && comfyTransport !== 'gateway') {
       try {
         result = await runtime.checkComfyReadiness(request, { signal: controller.signal, fetchImpl: (url, options) => {
@@ -18188,7 +18189,7 @@ async function storyboardCheckComfyReadiness(root) {
     const headline = document.createElement('div');
     headline.textContent = `${requester} · ${result.message}`; output.replaceChildren(headline);
     const boundary = document.createElement('small');
-    boundary.textContent = `已检查 ${result.nodeCount} 个节点；未运行工作流，实际出图仍需验证。`;
+    boundary.textContent = result.verificationBasis==='prior_still_delivery'?'已核对本配置的历史收片记录；未读取远端节点清单，本次未运行工作流。':`已检查 ${result.nodeCount} 个节点；未运行工作流，实际出图仍需验证。`;
     output.append(boundary);
     if (Array.isArray(result.issues) && result.issues.length) {
       const list = document.createElement('ul');
@@ -19328,12 +19329,16 @@ async function storyboardCheckComfyJobReadiness(job, references, valid) {
   const apiKey=await storyboardResolveApiKey('comfy',job.connection?.credentialId,{exact:true});await guard();
   const request={baseUrl:job.connection.baseUrl,apiKey,workflow:job.payload.parameters.workflow,model:job.profile.model,
     parameters:Object.fromEntries(['width','height','count','steps','scale','cfg','seed','sampler','scheduler'].map(key=>[key,job.payload.parameters[key]])),
-    outputNodeId:job.profile.comfyOutputNodeId,referenceCount:references.length,allowPrivateNetwork:job.connection.allowPrivateNetwork===true};
+    outputNodeId:job.profile.comfyOutputNodeId,referenceCount:references.length,allowPrivateNetwork:job.connection.allowPrivateNetwork===true,
+    ...(cloud?.provider==='runninghub'&&job.profile.comfyInstanceType?{runninghub:{instanceType:job.profile.comfyInstanceType}}:{})};
   let checked;
   try { checked=await (job.comfyProbeReadiness || inspector).checkComfyCharacterReadiness(request,{transport,headers:storyboardRequestHeaders(),guard,automatic:true}); }
   finally { await guard(); } // Transport errors must not conceal a departed account/input scope.
-  if((checked.unverifiedWarnings ?? checked.warnings)!==0)throw new Error('Comfy 节点或模型含未验证项，请先手动核对工作流');
-  return {version:1,definitionsChecked:true,actualGenerationVerified:false,pendingReferenceUploads:checked.pendingReferenceUploads || 0};
+  if((checked.unverifiedWarnings ?? checked.warnings)!==0)throw new Error(checked.verificationBasis==='prior_still_delivery'
+    ? checked.issues?.[0]?.code==='validation_slots_unverified'?'工作流输入槽用途未核定，请先检查映射':'此工作流配置尚无成功保存记录，请先手动生成并收片一次'
+    :'Comfy 节点或模型含未验证项，请先手动核对工作流');
+  return {version:1,definitionsChecked:cloud?checked.definitionsChecked:true,actualGenerationVerified:false,pendingReferenceUploads:checked.pendingReferenceUploads || 0,
+    ...(checked.verificationBasis?{verificationBasis:checked.verificationBasis,priorGenerationVerified:checked.priorGenerationVerified}:{})};
 }
 
 async function storyboardProbeComfyCandidate(state, prepared, inputGuard, {candidate,shot,guard}) {

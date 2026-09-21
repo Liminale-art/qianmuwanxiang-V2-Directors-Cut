@@ -124,6 +124,7 @@
     "qianmu-comfy-cloud-service.js",
     "qianmu-comfy-cloud-submit.js",
     "qianmu-comfy-cloud-prepare.js",
+    "qianmu-comfy-validation-scope.js",
     "qianmu-comfy-cloud-request.js",
     "qianmu-comfy-cloud-execution.js",
     "qianmu-comfy-cloud-ledger.js",

@@ -4,12 +4,15 @@ import { bindComfyCloudProtocol as bind, bindComfyCloudTask, planComfyCloudOpera
 const cloud = bind('https://cloud.comfy.org', 'comfy-cloud-v2');
 const rh = bind('https://www.runninghub.cn', 'runninghub-workflow-v1');
 
-test('automatic main-site rollout needs explicit new-host support; RH and deployments remain manual even with a claimed capability',()=>{
+test('automatic main-site and RH rollout need explicit host support; deployments remain manual',()=>{
   const caps={submission:true,submissionProviders:['comfy-cloud','runninghub'],deploymentSubmission:true,automaticProviders:['comfy-cloud','runninghub']};
   assert.equal(requireComfyCloudImageSubmission(cloud,{automatic:true}).origin,cloud.origin);
   assert.equal(canSubmitComfyCloudImages(caps,'comfy-cloud',cloud,{automatic:true}),true);
   assert.equal(canSubmitComfyCloudImages({...caps,automaticProviders:undefined},'comfy-cloud',cloud,{automatic:true}),false);
-  for(const target of [rh,bind('https://sample.run.comfy.app',cloud.protocol)]){
+  assert.equal(requireComfyCloudImageSubmission(rh,{automatic:true}).origin,rh.origin);
+  assert.equal(canSubmitComfyCloudImages(caps,'runninghub',rh,{automatic:true}),true);
+  assert.equal(canSubmitComfyCloudImages({...caps,automaticProviders:undefined},'runninghub',rh,{automatic:true}),false);
+  for(const target of [bind('https://sample.run.comfy.app',cloud.protocol)]){
     assert.throws(()=>requireComfyCloudImageSubmission(target,{automatic:true}),{code:'comfy_cloud_submission_scope'});
     assert.equal(canSubmitComfyCloudImages(caps,target.provider,target,{automatic:true}),false);
     assert.equal(canSubmitComfyCloudImages(caps,target.provider,target),true);

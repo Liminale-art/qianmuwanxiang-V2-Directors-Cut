@@ -234,6 +234,21 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     // Local archive authority is account scoped, not dependent on retaining a
     // provider Key. This cannot create a submission ticket or settle new files.
     authorizeArchive: (req, locator, task) => authorizeOriginal(req, locator, task, true),
+    // A client cannot assert this evidence. Only this account's host-validated,
+    // fully archived original on the same credential/platform can qualify.
+    async verifiedWorkflow(req, { connection, apiKey, validationScope } = {}) {
+      const account = imageServiceAccount(req);
+      if (!/^[a-f0-9]{64}$/.test(validationScope || '') || connection?.provider !== 'runninghub')
+        throw fail('validation', '工作流验证范围无效');
+      const channelKey = comfyCloudResourceKey(connection, apiKey);
+      const state = normalizeComfyCloudChannel(await store.inspectChannel(channelKey), channelKey);
+      if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未交付工作流验证记录');
+      return state.entries.some(row => row.namespace === account.namespace && row.status === 'succeeded'
+        && row.cloudDelivery?.state === 'archived' && row.cloudDelivery.imageCount === 1
+        && row.cloudIntent?.workflow.validationScope === validationScope
+        && row.cloudReceipt?.workflow.validationScope === validationScope
+        && row.cloudReceipt.task.protocol === connection.protocol && row.cloudReceipt.task.origin === connection.origin);
+    },
     // Read-only preflight avoids uploading for an already blocked task. It is
     // NOT a reservation: reserve must still atomically recheck before generation.
     async assertAvailable(req, { apiKey, expectedAccount, attemptId, connection } = {}) {

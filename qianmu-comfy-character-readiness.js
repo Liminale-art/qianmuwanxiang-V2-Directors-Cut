@@ -31,7 +31,8 @@ export async function checkComfyCharacterReadiness(request,{transport,headers,fe
       .map(issue=>JSON.stringify([issue.nodeId,issue.field])));
     // File contents and uploaded names are checked in the existing asset/upload path. Keep ready=false;
     // exclude only this precise deferred check from unrelated unknown-node warnings, never all warnings.
-    return {...result,pendingReferenceUploads:deferred.size,unverifiedWarnings:Math.max(0,result.warnings-deferred.size)};
+    return {...result,pendingReferenceUploads:result.verificationBasis==='prior_still_delivery'?(request.referenceCount||0):deferred.size,
+      unverifiedWarnings:Math.max(0,result.warnings-deferred.size)};
   }finally{clearTimeout(timer);controller.abort();signal?.removeEventListener('abort',abort);}
 }
 
@@ -62,7 +63,8 @@ export function createComfyReadinessSession({check=checkComfyCharacterReadiness,
         const checked=await check(request,{...options,guard:current,signal:controller.signal});await current();
         if(checked?.ok!==true||checked.schemaVersion!==1||checked.actualGenerationVerified!==false||checked.errors!==0
           ||!Number.isSafeInteger(checked.warnings)||checked.warnings<0||checked.ready!==(checked.warnings===0))throw fail('节点核查没有返回有效静态结果');
-        const summary=Object.fromEntries(['ok','schemaVersion','actualGenerationVerified','ready','errors','warnings','issues','issueCount','nodeCount','classCount','message','pendingReferenceUploads','unverifiedWarnings']
+        const summary=Object.fromEntries(['ok','schemaVersion','actualGenerationVerified','ready','errors','warnings','issues','issueCount','nodeCount','classCount','message','pendingReferenceUploads','unverifiedWarnings',
+          'definitionsChecked','verificationBasis','priorGenerationVerified']
           .filter(key=>Object.hasOwn(checked,key)).map(key=>[key,checked[key]]));
         const data=JSON.stringify(summary),size=new TextEncoder().encode(data).byteLength;
         if(size>256*1024)throw fail('节点核查摘要过大');

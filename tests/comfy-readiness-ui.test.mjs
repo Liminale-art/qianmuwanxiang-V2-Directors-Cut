@@ -45,6 +45,30 @@ test('actual handler uses captured recipe, keeps the typed Key and reports brows
   fx.listeners.get('input')(); assert.equal(fx.output.hidden, true); assert.equal(fx.listeners.size, 0);
 });
 
+test('actual RH inspection passes the selected tier and labels prior evidence without pretending to read a node catalog',async()=>{
+  const requests=[];
+  const fx=fixture({globals:{storyboardConnectionState:()=>({draft:{baseUrl:'https://www.runninghub.cn',options:{comfyTransport:'gateway'}}})},
+    runtime:{checkCloudComfyReadiness:async request=>{requests.push(structuredClone(request));return {...report,definitionsChecked:false,verificationBasis:'prior_still_delivery',priorGenerationVerified:true,message:'此配置已完成一次生成与保存'};}}});
+  fx.state.profiles.comfy.comfyInstanceType='plus';await fx.run();
+  assert.equal(requests.length,1);assert.equal(requests[0].runninghub.instanceType,'plus');
+  assert.match(fx.output.children[0].textContent,/RunningHub/);
+  assert.match(fx.output.children[1].textContent,/未读取远端节点清单/);
+  assert.equal(fx.key.value,'typed-key');
+});
+
+test('actual per-shot RH gate forwards the runtime tier and explains missing successful delivery without submitting',async()=>{
+  let requestSeen;
+  const namespace='st-user:fixture',context=vm.createContext({resolveStoryboardComfyCloud,
+    storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardRequestHeaders:()=>({}),storyboardResolveApiKey:async()=>'synthetic',
+    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:{
+      checkComfyCharacterReadiness:async request=>{requestSeen=request;return {verificationBasis:'prior_still_delivery',warnings:1,unverifiedWarnings:1,priorGenerationVerified:false};}}}});
+  vm.runInContext(storyboardFunctionSource('storyboardCheckComfyJobReadiness'),context);
+  const job={payload:{parameters:{workflow:graph}},profile:{model:'comfy-workflow',comfyInstanceType:'plus'},
+    connection:{baseUrl:'https://www.runninghub.cn'},imageAdmission:{namespace},automatic:true};
+  await assert.rejects(context.storyboardCheckComfyJobReadiness(job,[],()=>true),/请先手动生成并收片一次/);
+  assert.equal(requestSeen.runninghub.instanceType,'plus');
+});
+
 test('the actual Cloud workbench button uses the guarded same-origin checker rather than native per-class requests',async()=>{
   const cloudCalls=[];
   const fx=fixture({runtime:{checkComfyReadiness:()=>assert.fail('cloud must not use the native route'),checkCloudComfyReadiness:async(request,options)=>{

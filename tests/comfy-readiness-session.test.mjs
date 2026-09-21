@@ -5,6 +5,19 @@ const result=()=>({ok:true,schemaVersion:1,actualGenerationVerified:false,errors
 const request=()=>({baseUrl:'https://comfy.test',apiKey:'secret-a',workflow:{save:{class_type:'SaveImage',inputs:{images:['image',0]}},image:{class_type:'EmptyImage',inputs:{width:512,height:768,batch_size:1}}},model:'comfy-workflow',parameters:{count:1},referenceCount:0});
 const options=()=>({transport:'gateway',headers:{'x-csrf-token':'token-a'},guard:async()=>{}});
 
+test('candidate memo preserves RH evidence type and separates runtime tiers without granting execution',async()=>{
+  let calls=0;const session=createComfyReadinessSession({check:async()=>{calls++;return {...result(),definitionsChecked:false,
+    verificationBasis:'prior_still_delivery',priorGenerationVerified:true,executionAuthorized:false};}});
+  try{
+    const input={...request(),baseUrl:'https://www.runninghub.cn',runninghub:{instanceType:'default'}};
+    const first=await session.checkComfyCharacterReadiness(input,options());
+    assert.equal(first.definitionsChecked,false);assert.equal(first.priorGenerationVerified,true);
+    assert.deepEqual(await session.checkComfyCharacterReadiness(input,options()),first);assert.equal(calls,1);
+    input.runninghub.instanceType='plus';await session.checkComfyCharacterReadiness(input,options());assert.equal(calls,2);
+    assert.equal(first.executionAuthorized,undefined,'probe summaries carry no execution authority');
+  }finally{session.close();}
+});
+
 test('identical candidate requests share only static reports; results are isolated and guards run even on hits',async()=>{
   let calls=0,guards=0;const session=createComfyReadinessSession({check:async()=>{calls++;return result();}}),input=request(),opt={...options(),guard:async()=>{guards++;}};
   const first=await session.checkComfyCharacterReadiness(input,opt);first.issues.push('changed');

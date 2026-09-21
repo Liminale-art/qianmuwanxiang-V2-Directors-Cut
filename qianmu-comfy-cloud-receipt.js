@@ -18,9 +18,11 @@ const freeze = value => { if (value && typeof value === 'object') { Object.value
 
 function evidence(value) {
   if (!hash(value.requestDigest)) fail();
-  fields(value.workflow, ['templateHash', 'executionHash', 'binding']);
+  fields(value.workflow, ['templateHash', 'executionHash', 'binding', 'validationScope']);
   const { templateHash, executionHash } = value.workflow;
   if (!hash(templateHash) || !hash(executionHash)) fail();
+  const scoped = Object.hasOwn(value.workflow, 'validationScope');
+  if (scoped && !hash(value.workflow.validationScope)) fail();
   let binding;
   if (value.workflow.binding !== undefined) {
     fields(value.workflow.binding, ['schemaVersion', 'namespace', 'id', 'revision', 'version', 'name', 'workflowHash', 'recipeHash']);
@@ -29,7 +31,8 @@ function evidence(value) {
   }
   fields(value.stillOutput, ['version', 'model', 'previewNodeIds', 'execution']);
   fields(value.stillOutput.execution, ['version', 'automatic', 'maxImages', 'outputNodeIds', 'expectedImages']);
-  return { requestDigest: value.requestDigest, workflow: { templateHash, executionHash, ...(binding ? { binding } : {}) },
+  return { requestDigest: value.requestDigest, workflow: { templateHash, executionHash, ...(binding ? { binding } : {}),
+    ...(scoped ? { validationScope: value.workflow.validationScope } : {}) },
     stillOutput: normalizeComfyReceipt(value.stillOutput) };
 }
 

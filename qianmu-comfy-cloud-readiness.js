@@ -1,7 +1,9 @@
 // Host-only, read-only Cloud main-site catalog inspection. It is not execution
 // authority, proof of actual generation or permission to follow remote options.
 import { prepareComfyReadiness, inspectComfyDefinitions, isDeferredComfyReferenceIssue } from './qianmu-comfy-readiness.js';
-import { planComfyCloudReadiness } from './qianmu-comfy-cloud-protocol.js';
+import { planComfyCloudReadiness, planComfyCloudOperation, RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
+import { checkComfyConfiguration } from './qianmu-comfy-preflight.js';
+import { comfyWorkflowValidationScope } from './qianmu-comfy-validation-scope.js';
 import { createComfyCloudReadinessTransport } from './qianmu-comfy-server-transport.js';
 import { readComfyCloudDefinitionsResponse } from './qianmu-comfy-cloud-response.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
@@ -9,15 +11,20 @@ import { describeImageServiceRequest } from './qianmu-image-service-queue.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 
 const fail=message=>Object.assign(new Error(message),{code:'comfy_cloud_readiness',submissionState:'not_submitted',retryable:false});
-export async function checkComfyCloudReadiness(req,raw,{apiKey,authorizeTarget,timeoutMs=20000,maxBytes,signal,resolveHost,requestImpl}={}) {
+export async function checkComfyCloudReadiness(req,raw,{apiKey,authorizeTarget,timeoutMs=20000,maxBytes,signal,resolveHost,requestImpl,ledger}={}) {
   const started=performance.now(),account=imageServiceAccount(req);
-  let prepared,plan,sourceGraph;
+  let prepared,plan,sourceGraph,input,runninghub;
   try {
     if(describeImageServiceRequest({input:raw}).requestBytes>2*1024*1024)throw Error();
-    const input=parseBoundedJson(JSON.stringify(raw),{maxBytes:2*1024*1024,maxDepth:40,maxNodes:50000,label:'云节点检查'});
-    if(Object.keys(input).some(key=>!['connection','workflow','parameters','model','referenceCount','outputNodeId'].includes(key)))throw Error();
+    input=parseBoundedJson(JSON.stringify(raw),{maxBytes:2*1024*1024,maxDepth:40,maxNodes:50000,label:'云节点检查'});
+    if(Object.keys(input).some(key=>!['connection','workflow','parameters','model','referenceCount','outputNodeId','runninghub'].includes(key)))throw Error();
+    runninghub=planComfyCloudOperation(input.connection,'submit').provider==='runninghub';
+    if(input.runninghub!==undefined && (!runninghub||!input.runninghub||typeof input.runninghub!=='object'||Array.isArray(input.runninghub)
+      ||Object.keys(input.runninghub).some(key=>!['instanceType','workflowId'].includes(key))
+      ||input.runninghub.instanceType!==undefined&&!RUNNINGHUB_INSTANCE_TYPES.includes(input.runninghub.instanceType)
+      ||input.runninghub.workflowId!==undefined&&(typeof input.runninghub.workflowId!=='string'||!/^\d{1,64}$/.test(input.runninghub.workflowId))))throw Error();
     plan=planComfyCloudReadiness(input.connection);
-    if(!plan)throw Error();
+    if(!plan&&!runninghub)throw Error();
     prepared=prepareComfyReadiness(input);
     sourceGraph=typeof input.workflow==='string'?JSON.parse(input.workflow):input.workflow;
   } catch (_) {throw fail('当前平台或工作流不能进行节点清单检查，请手动确认；未提交生图');}
@@ -35,6 +42,21 @@ export async function checkComfyCloudReadiness(req,raw,{apiKey,authorizeTarget,t
     onAbort=()=>stop('节点检查已停止，未提交生图');signal?.addEventListener('abort',onAbort,{once:true});if(signal?.aborted)onAbort();
   });
   const work=async()=>{
+    if(runninghub){
+      check();
+      const local=checkComfyConfiguration({...input,automatic:true});
+      if(typeof ledger?.verifiedWorkflow!=='function')throw fail('增强服务缺少工作流试跑记录检查，未提交生图');
+      const validationScope=comfyWorkflowValidationScope(input,local.report.outputNodeIds);
+      const verified=validationScope?await ledger.verifiedWorkflow(req,{connection:input.connection,apiKey,validationScope}):false;check();
+      const message=!validationScope?'提示词、种子或参考槽的用途未核定，暂不能用于自动工作流；请检查输入映射'
+        :verified?'此配置已完成一次静帧生成与保存；远端依赖变化仍可能失败':'此工作流版本、参数或参考模式尚无成功保存记录，请先手动生成并收片一次';
+      return {ok:true,schemaVersion:1,ready:verified===true,errors:0,warnings:verified?0:1,
+        issues:verified?[]:[{severity:'warning',code:validationScope?'prior_generation_required':'validation_slots_unverified',message}],issueCount:verified?0:1,
+        nodeCount:Object.keys(prepared.graph).length,classCount:prepared.classes.length,message,
+        definitionsChecked:false,priorGenerationVerified:verified===true,verificationBasis:'prior_still_delivery',
+        actualGenerationVerified:false,executionAuthorized:false,pendingReferenceUploads:input.referenceCount||0,
+        unverifiedWarnings:verified?0:1};
+    }
     check();const transport=await createComfyCloudReadinessTransport(req,plan,{signal:controller.signal,authorizeTarget,resolveHost,requestImpl});check();
     response=await transport.fetchImpl(plan.url,{method:'GET',headers:{Accept:'application/json','X-API-Key':apiKey},signal:controller.signal});check();
     const definitions=await readComfyCloudDefinitionsResponse(response,{maxBytes,signal:controller.signal,timeoutMs:Math.max(1,Math.ceil(deadline-performance.now()))});check();

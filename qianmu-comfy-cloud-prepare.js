@@ -11,6 +11,7 @@ import { COMFY_CLOUD_INTENT_SCHEMA, normalizeComfyCloudIntent } from './qianmu-c
 import { prepareComfyCloudWorkflow } from './qianmu-comfy-cloud-workflow.js';
 import { planComfyCloudUpload } from './qianmu-comfy-cloud-upload-contract.js';
 import { COMFY_REFERENCE_LIMIT, COMFY_REFERENCE_TOTAL } from './qianmu-comfy-reference-contract.js';
+import { comfyWorkflowValidationScope } from './qianmu-comfy-validation-scope.js';
 
 const LIMIT = 2 * 1024 * 1024;
 const hash = graph => createHash('sha256').update(JSON.stringify(graph)).digest('hex');
@@ -75,6 +76,10 @@ export function prepareComfyCloudSubmissionInput(raw) {
     function compile({workflow:graph,referenceLoadNodeIds}) {
     const execution = requireComfyExecution(auditComfyWorkflow(graph, source.execution, { referenceLoadNodeIds }), source.execution);
     const identity = { templateHash: hash(workflow), executionHash: hash(graph), ...(source.binding ? { binding: normalizeComfyRouteBinding(source.binding) } : {}) };
+    if (plan.provider === 'runninghub') {
+      const scope = comfyWorkflowValidationScope(source, execution.outputNodeIds);
+      if (scope) identity.validationScope = scope;
+    }
     // Keep the shared output receipt small; admission flags are hashed below,
     // not misrepresented as provider output evidence.
     const stillOutput = { version: 1, model: source.model || 'workflow', previewNodeIds: Object.entries(graph).filter(([, node]) => node.class_type === 'PreviewImage').map(([id]) => id),
@@ -110,7 +115,7 @@ export function prepareComfyCloudSubmissionInput(raw) {
     const {automatic,outputNodeIds}=compile(preview).intent.stillOutput.execution; // Discard preview identity.
     return freeze({ connection: source.connection, references, binding: source.binding, automatic,
       readiness:{connection:source.connection,workflow,parameters:source.parameters||{},model:source.model,
-        referenceCount:references.length,outputNodeId:outputNodeIds[0]||''},complete(uploads) {
+        referenceCount:references.length,outputNodeId:outputNodeIds[0]||'',...(source.runninghub?{runninghub:source.runninghub}:{})},complete(uploads) {
       try {
         if (!Array.isArray(uploads) || uploads.length !== references.length) fail();
         return compile(template ? template.bind(uploads) : preview);

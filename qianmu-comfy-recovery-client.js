@@ -229,15 +229,19 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
     async inspectCloudWorkflow(input, { automatic = false } = {}) {
       try {
       const connection=resolveStoryboardComfyCloud({baseUrl:input?.baseUrl});
-      if(!connection||!planComfyCloudReadiness(connection))throw Object.assign(fail('readiness','当前平台暂无节点清单检查，请手动确认工作流'),{submissionState:'not_submitted'});
+      if(!connection||connection.provider!=='runninghub'&&!planComfyCloudReadiness(connection))throw Object.assign(fail('readiness','当前平台暂无节点清单检查，请手动确认工作流'),{submissionState:'not_submitted'});
       const apiKey=input.apiKey;
-      const frozen=parseBoundedJson(JSON.stringify({connection,...Object.fromEntries(['workflow','parameters','model','referenceCount','outputNodeId']
+      const frozen=parseBoundedJson(JSON.stringify({connection,...Object.fromEntries(['workflow','parameters','model','referenceCount','outputNodeId','runninghub']
         .filter(key=>input[key]!==undefined).map(key=>[key,input[key]]))}),{maxBytes:2*1024*1024,maxDepth:40,maxNodes:50000,label:'节点检查'});
       const current=await scope(),capabilities=await this.cloudCapabilities({namespace:current.namespace});
       if(!capabilities.readinessProviders.includes(connection.provider))throw Object.assign(fail('capabilities','请同步更新增强服务后使用云工作流检查'),{submissionState:'not_submitted'});
       if(automatic&&!canSubmitComfyCloudImages(capabilities,connection.provider,connection,{automatic:true}))throw fail('capabilities','请同步更新增强服务后使用自动选流');
       const report=await request(current.job,'readiness',{...current.body,apiKey,request:frozen},256*1024,CLOUD_BASE);
-      if(report.schemaVersion!==1||report.definitionsChecked!==true||report.executionAuthorized!==false||report.actualGenerationVerified!==false
+      const validBasis=connection.provider==='runninghub'
+        ? report.definitionsChecked===false&&report.verificationBasis==='prior_still_delivery'&&typeof report.priorGenerationVerified==='boolean'
+          &&report.priorGenerationVerified===(report.errors===0&&report.warnings===0)
+        : report.definitionsChecked===true;
+      if(report.schemaVersion!==1||!validBasis||report.executionAuthorized!==false||report.actualGenerationVerified!==false
         ||!Number.isSafeInteger(report.errors)||report.errors<0||!Number.isSafeInteger(report.warnings)||report.warnings<0
         ||report.ready!==(report.errors===0&&report.warnings===0))throw fail('readiness','节点检查返回不完整，请手动确认');
       return report;

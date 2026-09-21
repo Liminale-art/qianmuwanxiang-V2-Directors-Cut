@@ -98,7 +98,10 @@ test('RH runtime tier is a frozen, hashed user choice independent of the compile
     const input = source(rh); input.runninghub = { instanceType };
     const got = prepare(input); input.runninghub.instanceType = 'changed';
     assert.equal(got.body.instanceType, instanceType); assert.ok(Object.isFrozen(got.body));
-    assert.equal(got.body.workflow, base.body.workflow); assert.deepEqual(got.intent.workflow, base.intent.workflow);
+    assert.equal(got.body.workflow, base.body.workflow);
+    assert.equal(got.intent.workflow.templateHash, base.intent.workflow.templateHash);
+    assert.equal(got.intent.workflow.executionHash, base.intent.workflow.executionHash);
+    assert.notEqual(got.intent.workflow.validationScope, base.intent.workflow.validationScope);
     assert.notEqual(got.intent.requestDigest, base.intent.requestDigest); digests.add(got.intent.requestDigest);
     assert.deepEqual(Object.keys(got.body).sort(), ['instanceType', 'nodeInfoList', 'workflow']);
   }

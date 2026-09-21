@@ -87,15 +87,23 @@ export function requireComfyCloudImageSubmission(binding, { automatic = false } 
   const current = checkedBinding(binding);
   // The official v2 contract accepts the same API graph on production deployments.
   // It does not accept an invented inputs map or cloud-editor version binding.
-  if (automatic && !planComfyCloudReadiness(current)) fail('submission_scope', '此平台暂不能核对自动工作流，请手动确认生成');
+  if (automatic && current.provider!=='runninghub' && !planComfyCloudReadiness(current)) fail('submission_scope', '此平台暂不能核对自动工作流，请手动确认生成');
   return current;
 }
 
 // Older hosts advertised RH retrieval before RH submission existed.
 export function canSubmitComfyCloudImages(capabilities, provider, connection, { automatic = false } = {}) {
   return capabilities?.submission === true && (capabilities.submissionProviders ?? ['comfy-cloud']).includes(provider)
-    && (!automatic || provider==='comfy-cloud' && connection?.origin==='https://cloud.comfy.org' && capabilities.automaticProviders?.includes(provider)===true)
+    && (!automatic || (provider==='runninghub'||provider==='comfy-cloud'&&connection?.origin==='https://cloud.comfy.org') && capabilities.automaticProviders?.includes(provider)===true)
     && !(provider==='comfy-cloud' && connection && connection.origin!=='https://cloud.comfy.org' && capabilities.deploymentSubmission!==true);
+}
+
+// Definitions are a read-only platform check, whereas RH evidence is a previous
+// host-validated still delivery. Neither claims the current job has executed.
+export function hasComfyCloudReadinessBasis(report,provider){
+  return provider==='runninghub'
+    ? report?.definitionsChecked===false && report?.verificationBasis==='prior_still_delivery' && report?.priorGenerationVerified===true
+    : report?.definitionsChecked===true;
 }
 
 function checkedJobLinks(binding, taskId, links) {

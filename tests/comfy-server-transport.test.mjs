@@ -21,6 +21,7 @@ import { COMFY_CLOUD_INTENT_SCHEMA, COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu
 import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from '../qianmu-comfy-cloud-response.js';
 import { submitComfyCloudTask } from '../qianmu-comfy-cloud-submit.js';
 import { prepareComfyCloudSubmission } from '../qianmu-comfy-cloud-prepare.js';
+import { stillInput } from './helpers/runninghub-validation-fixture.mjs';
 import { readComfyCloudAsset, downloadComfyCloudAsset, downloadComfyCloudJob } from '../qianmu-comfy-cloud-asset-read.js';
 import { downloadRunningHubJob } from '../qianmu-runninghub-download.js';
 import { createComfyCloudReceiver } from '../qianmu-comfy-cloud-receive.js';
@@ -443,6 +444,77 @@ async function reopenCloudSubmission(t, f) {
     authorizeTask: (req, original) => ledger.authorizeQuery(req, locator, original) } };
 }
 
+const rhReadinessInput = input => ({ connection: input.connection, workflow: input.workflow, parameters: input.parameters,
+  model: input.model, referenceCount: input.references?.length || 0, outputNodeId: input.execution.outputNodeIds[0],
+  ...(input.runninghub ? { runninghub: input.runninghub } : {}) });
+
+test('RH manual submission, complete download and archive unlock only the tested scope, then automatic submission rechecks it', async t => {
+  const f = await cloudSubmissionFixture(t, rhBinding), calls = []; f.input.request = stillInput(); let submissions = 0;
+  const taskId = '1904152026220003329';
+  const service = createComfyCloudService({ dataRoot: f.root, store: f.store, transportOptions: { authorizeTarget: cloudGrant, resolveHost: publicDns,
+    requestImpl: mockNodeRequest(calls, call => call.url.pathname === '/task/openapi/create'
+      ? (submissions++, { body: acceptedCloudBody(rhBinding, submissions === 1 ? taskId : '1904152026220003330') })
+      : rhDownloadReply({ task: { taskId } }, call, 1)) } }); t.after(() => service.close());
+  const input = { ...f.input, version: 1 }, inspect = (request = input.request, extra = {}) => service.readiness(f.req,
+    { version: 1, expectedAccount: input.expectedAccount, apiKey: input.apiKey, request: rhReadinessInput(request), ...extra });
+  let report = await inspect(); assert.equal(report.ready, false); assert.equal(report.issues[0].code, 'prior_generation_required');
+  assert.equal(calls.length, 0); assert.deepEqual(await fs.readdir(f.root), []);
+  const automatic = structuredClone(input); automatic.attemptId = 'automatic-after-verification'; automatic.request.execution.automatic = true;
+  await assert.rejects(service.submit(f.req, automatic), { submissionState: 'not_submitted' }); assert.equal(calls.length, 0);
+  const accepted = await service.submit(f.req, input); assert.equal(accepted.status, 'accepted'); assert.equal(calls.length, 1);
+  assert.equal((await inspect()).ready, false, 'acceptance is not completion');
+  const collect = { version: 1, expectedAccount: input.expectedAccount, apiKey: input.apiKey,
+    task: accepted.task, attemptId: input.attemptId, channelKey: accepted.locator.channelKey };
+  const result = await service.result(f.req, collect); assert.equal(result.status, 'ready'); assert.equal(calls.length, 4);
+  assert.equal((await inspect()).ready, false, 'download is not archive confirmation');
+  const ack = { ...collect, archived: true, receipt: result.receipt }; delete ack.apiKey;
+  await service.acknowledge(f.req, ack);
+  report = await inspect(); assert.equal(report.ready, true); assert.equal(report.priorGenerationVerified, true);
+  assert.equal(report.definitionsChecked, false); assert.equal(report.actualGenerationVerified, false); assert.equal(report.executionAuthorized, false);
+  assert.doesNotMatch(JSON.stringify(report), /test-only-secret|fixture\.safetensors|synthetic scene|1904152026220003329/);
+  for (const edit of [v => v.parameters.width = 768, v => v.model = 'other.safetensors', v => v.runninghub = { instanceType: 'plus' },
+    v => v.workflow.pos.inputs.text = 'different style, %qianmu_prompt%']) {
+    const changed = structuredClone(input.request); edit(changed); assert.equal((await inspect(changed)).ready, false);
+    await assert.rejects(service.submit(f.req, { ...automatic, request: { ...changed, execution: automatic.request.execution } }), { submissionState: 'not_submitted' });
+  }
+  assert.equal((await inspect(input.request, { apiKey: 'different-synthetic-key' })).ready, false);
+  const bob = account(); bob.user.profile.handle = 'bob';
+  assert.equal((await service.readiness(bob, { version: 1, expectedAccount: imageServiceAccount(bob).namespace, apiKey: input.apiKey, request: rhReadinessInput(input.request) })).ready, false);
+  assert.equal(calls.length, 4, 'all preflight variants are local-only');
+  const unsafeSlot=structuredClone(input.request);unsafeSlot.workflow.model.inputs.ckpt_name='%qianmu_prompt%';
+  const unverifiedSlot=await inspect(unsafeSlot);assert.equal(unverifiedSlot.ready,false);
+  assert.equal(unverifiedSlot.issues[0].code,'validation_slots_unverified');
+  await assert.rejects(service.submit(f.req,{...automatic,request:{...unsafeSlot,execution:automatic.request.execution}}),{submissionState:'not_submitted'});
+  assert.equal(calls.length,4);
+  const savedEvidence = await f.store.inspectChannel(f.key);
+  await f.store.transaction(f.key, value => ({ state: { ...value, entries: [] } }));
+  await assert.rejects(service.submit(f.req, automatic), { submissionState: 'not_submitted' });
+  assert.equal(calls.length, 4, 'a prior UI check cannot replace the dispatch-time host check');
+  await f.store.transaction(f.key, () => ({ state: savedEvidence }));
+  automatic.request.prompt = 'a different scene'; automatic.request.parameters.seed = 456;
+  assert.equal((await service.submit(f.req, automatic)).status, 'accepted'); assert.equal(calls.length, 5);
+  assert.equal(JSON.parse(calls[4].body).nodeInfoList[0].fieldValue, 456);
+  await assert.rejects(service.submit(f.req, automatic)); assert.equal(calls.length, 5);
+  const rows = (await f.store.inspectChannel(f.key)).entries; assert.equal(rows.length, 2); assert.equal(rows[0].cloudDelivery.state, 'archived');
+  await service.close();
+  const nextStore = createImageServiceStore({ dataRoot: f.root, scope: 'comfy-cloud' }); t.after(() => nextStore.close());
+  const next = createComfyCloudService({ dataRoot: f.root, store: nextStore, transportOptions: { authorizeTarget: cloudGrant,
+    requestImpl: () => assert.fail('restarting must not call the cloud') } }); t.after(() => next.close());
+  assert.equal((await next.readiness(f.req, { version: 1, expectedAccount: input.expectedAccount, apiKey: input.apiKey, request: rhReadinessInput(input.request) })).ready, true);
+});
+
+test('RH evidence reads reject changed login and cancellation; missing evidence cannot be asserted by the caller', async t => {
+  const f = await cloudSubmissionFixture(t, rhBinding), original = f.store.inspectChannel.bind(f.store), request = rhReadinessInput(stillInput());
+  const ledger = createComfyCloudLedger({ store: f.store });
+  const options = { apiKey: f.input.apiKey, authorizeTarget: cloudGrant, ledger, requestImpl: () => assert.fail('no cloud calls') };
+  for (const field of ['priorGenerationVerified', 'validationScope', 'definitionsChecked'])
+    await assert.rejects(checkComfyCloudReadiness(f.req, { ...request, [field]: true }, options), { submissionState: 'not_submitted' });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(checkComfyCloudReadiness(f.req, request, { ...options, signal: controller.signal }), { submissionState: 'not_submitted' });
+  f.store.inspectChannel = async (...args) => { const result = await original(...args); f.req.user.profile.handle = 'bob'; return result; };
+  await assert.rejects(checkComfyCloudReadiness(f.req, request, options), { submissionState: 'not_submitted' });
+});
+
 test('actual cloud submission survives service restart and remote success still does not release an uncollected image', async t => {
   for (const binding of [cloudBinding, rhBinding]) {
     const f = await cloudSubmissionFixture(t, binding), calls = [], cloud = binding.provider === 'comfy-cloud', id = cloud ? 'new-job' : '1904152026220003329';
@@ -790,6 +862,8 @@ test('RH shares persistent receive/readback/ack: repeated retrieval has no cloud
   assert.equal((await service.acknowledge(f.req, ack)).cleanup, 'complete');
   assert.equal((await service.acknowledge(f.req, ack)).cleanup, 'complete');
   assert.equal((await service.result(f.req, input)).status, 'archived'); assert.equal(calls.length, 4);
+  assert.equal(await f.ledger.verifiedWorkflow(f.req, { connection: rhBinding, apiKey: f.locator.apiKey,
+    validationScope: 'a'.repeat(64) }), false, 'legacy successful receipts have no known validation scope');
 });
 
 test('failed RH tasks persist reported usage through query and collection without pretending files were stored or resubmitting',async t=>{
@@ -1945,7 +2019,7 @@ test('installed cloud recovery endpoints advertise only implemented operations a
     assert.equal(res.statusCode, 401); assert.equal(res.headers['cache-control'], 'no-store');
   }
   const res = response(); await handlers.get('GET /image/comfy/cloud/capabilities')(account(), res);
-  assert.equal(res.body.submission, true); assert.equal(res.body.scope,'cloud-still'); assert.deepEqual(res.body.automaticProviders,['comfy-cloud']); assert.deepEqual(res.body.submissionProviders,['comfy-cloud','runninghub']); assert.equal(res.body.cancellation, true); assert.equal(res.body.referenceUpload, true);
+  assert.equal(res.body.submission, true); assert.equal(res.body.scope,'cloud-still'); assert.deepEqual(res.body.automaticProviders,['comfy-cloud','runninghub']); assert.deepEqual(res.body.submissionProviders,['comfy-cloud','runninghub']); assert.equal(res.body.cancellation, true); assert.equal(res.body.referenceUpload, true);
   assert.equal(res.body.deploymentSubmission,true);
   assert.deepEqual(res.body.resultProviders, ['comfy-cloud', 'runninghub']); assert.equal(res.body.archiveConfirmation, true);
   assert.equal(handlers.has('POST /image/comfy/cloud/tasks/submit'), true, 'manual text generation has one guarded route; unsupported providers remain closed');

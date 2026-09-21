@@ -131,6 +131,28 @@ async function addReference(f) {
     workflowHash:await comfyWorkflowReferenceHash(graph),items:[{url:'/user/images/source.png',name:'selected reference',mime:'image/png',bytes:123,sha256:'a'.repeat(64)}]};
 }
 
+test('RH client distinguishes prior delivery evidence from a node catalog and snapshots runtime tier',async()=>{
+  for(const verified of [false,true]){
+    const f=await submissionFixture({prepare:false,capabilities:{readinessProviders:['runninghub'],automaticProviders:['runninghub'],submissionProviders:['runninghub']},
+      readinessReply:()=>Response.json({...readinessReport(),definitionsChecked:false,verificationBasis:'prior_still_delivery',
+        priorGenerationVerified:verified,ready:verified,warnings:verified?0:1})});
+    const input={baseUrl:'https://www.runninghub.cn',apiKey:'synthetic-key',workflow:workflow(),runninghub:{instanceType:'plus'}};
+    const pending=f.client.inspectCloudWorkflow(input,{automatic:true});input.runninghub.instanceType='ultra';
+    const report=await pending;assert.equal(report.priorGenerationVerified,verified);assert.equal(report.definitionsChecked,false);
+    assert.equal(f.calls.find(call=>call.url.endsWith('/readiness')).body.request.runninghub.instanceType,'plus');
+    assert.equal(f.rows.size,0);f.client.close();
+  }
+});
+
+test('RH client rejects catalog-shaped, contradictory or executable-looking verification reports',async()=>{
+  for(const change of [{definitionsChecked:true},{priorGenerationVerified:false},{verificationBasis:'unknown'},{actualGenerationVerified:true},{executionAuthorized:true}]){
+    const f=await submissionFixture({prepare:false,capabilities:{readinessProviders:['runninghub']},
+      readinessReply:()=>Response.json({...readinessReport(),definitionsChecked:false,verificationBasis:'prior_still_delivery',priorGenerationVerified:true,...change})});
+    await assert.rejects(f.client.inspectCloudWorkflow({baseUrl:'https://www.runninghub.cn',apiKey:'synthetic-key',workflow:workflow()}),{submissionState:'not_submitted'});
+    assert.equal(f.rows.size,0);f.client.close();
+  }
+});
+
 test('automatic candidate checks cannot use a manual-only backend even when readonly inspection exists',async()=>{
   for(const supported of [false,true]){
     const f=await submissionFixture({prepare:false,capabilities:{readinessProviders:['comfy-cloud'],...(supported?{automaticProviders:['comfy-cloud']}:{})},
