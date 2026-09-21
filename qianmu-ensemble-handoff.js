@@ -67,3 +67,13 @@ export async function resolveEnsembleCompiledRoutes(result,planned,{guard}={}){
     async assertCurrent(){await check();if(JSON.stringify(selected())!==JSON.stringify(indices))fail('镜组待画列表已变化');},
   });
 }
+
+// Readable recovery data is not a transferable execution permit. Only a live,
+// sealed compiler result can produce it; a new host must recheck stored origin,
+// shot content and fresh technical bindings before using a restored selection.
+export async function readEnsembleCompilerProof(result,{guard}={}){
+  const record=recordFor(result);if(!record)fail('此结果没有镜组交接');
+  const resolved=await resolveEnsembleCompiledRoutes(result,record.shots,{guard});await resolved.assertCurrent();
+  return freeze({receipt:JSON.parse(JSON.stringify(record.receipt)),shotIds:[...record.ids],snapshots:[...record.snapshots]});
+}
+export const ensembleShotContent=shot=>snapshot(shot);

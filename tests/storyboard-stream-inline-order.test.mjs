@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as core from '../qianmu-storyboard.js';
-import {storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint} from '../qianmu-storyboard-stream-reference.js?v=1.59.261';
+import {storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint} from '../qianmu-storyboard-stream-reference.js?v=1.59.262';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const ids=rows=>rows.map(row=>row.id);

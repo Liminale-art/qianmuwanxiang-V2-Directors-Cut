@@ -1,6 +1,6 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.261';
-import {storyboardStreamDigest} from './qianmu-storyboard-source-proof.js?v=1.59.261';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.262';
+import {storyboardStreamDigest} from './qianmu-storyboard-source-proof.js?v=1.59.262';
 
 const schema='qianmu.storyboard.stream-checkpoint.v1';
 const fail=message=>{throw Object.assign(Error(message),{code:'storyboard_stream_checkpoint'});};

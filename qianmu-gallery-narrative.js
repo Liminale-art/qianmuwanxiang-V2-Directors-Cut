@@ -1,4 +1,4 @@
-import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.261';
+import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.262';
 import { hashText } from './qianmu-storyboard-utils.js';
 
 const text = value => String(value ?? '');

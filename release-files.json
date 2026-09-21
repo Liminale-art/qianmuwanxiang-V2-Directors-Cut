@@ -320,6 +320,7 @@
     "qianmu-ensemble-handoff.js",
     "qianmu-ensemble-editor.js",
     "qianmu-ensemble-view.js",
+    "qianmu-ensemble-recovery.js",
     "qianmu-vibe-recipe.js",
     "qianmu-artist-prompt-layer.js",
     "qianmu-artist-prompt-review.js",
