@@ -10820,3 +10820,38 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #qianmu-notes-panel-layer .sd-note-legacy-review p { font-size: 12px; margin: 0; }
 #qianmu-notes-panel-layer .sd-note-legacy-review textarea { flex: 1; min-height: 50px; width: 100%; resize: none; }
 #qianmu-notes-panel-layer .sd-note-legacy-review > div { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Scoped mirror-library component. Shared themes retain their palette; input
+   editing does not rebuild the form or draw a focus halo. */
+.sd-ensemble-library { --qm-control-height:32px;display:grid;gap:9px;min-width:0;color:var(--sd-text);font-size:var(--sd-font-body,13px);text-align:left; }
+.sd-ensemble-library * { box-sizing:border-box;min-width:0; }
+.sd-ensemble-chat,.sd-ensemble-binding-fields { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px; }
+.sd-ensemble-toolbar { display:grid;grid-template-columns:minmax(0,1fr) 32px 32px;gap:6px;align-items:center; }
+.sd-ensemble-library :is(input.text_pole,select.text_pole,button) { min-height:32px;height:32px;margin:0; }
+.sd-ensemble-library .text_pole { width:100%;padding:5px 8px;border:1px solid var(--sd-border,var(--sd-hairline));border-radius:8px;background:var(--sd-card);color:inherit;font:inherit;box-shadow:none;outline:none; }
+.sd-ensemble-library textarea.text_pole { min-height:76px;resize:vertical;line-height:1.5; }
+#story-director-modal .sd-storyboard-root .sd-ensemble-library .text_pole:focus { outline:none !important;box-shadow:none !important;border-color:var(--sd-border,var(--sd-hairline)) !important; }
+.sd-ensemble-library :is(button,.sd-ensemble-icon) { display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:5px 9px;border:1px solid var(--sd-border,var(--sd-hairline));border-radius:8px;background:var(--sd-card);color:inherit;font:inherit;cursor:pointer; }
+.sd-ensemble-library button:focus-visible { outline:2px solid var(--sd-accent);outline-offset:2px; }
+.sd-ensemble-library button:disabled { opacity:.45;cursor:default; }
+.sd-ensemble-library .sd-ensemble-icon { width:32px;min-width:32px;padding:7px; }
+.sd-ensemble-library .qm-glyph-svg { display:block;width:17px;height:17px; }
+.sd-ensemble-library [aria-pressed="true"] { color:var(--sd-accent);border-color:var(--sd-accent);background:color-mix(in srgb,var(--sd-accent) 15%,var(--sd-card)); }
+.sd-ensemble-status:empty { display:none; }
+.sd-ensemble-library :is(small,.sd-ensemble-status,.sd-ensemble-list-tools,.sd-ensemble-empty) { font-size:var(--sd-font-caption,11px);line-height:1.5;color:var(--sd-muted,var(--sd-text));overflow-wrap:anywhere; }
+.sd-ensemble-editor,.sd-ensemble-scheme { padding:11px;border:1px solid var(--sd-border,var(--sd-hairline));border-radius:10px;background:var(--sd-card); }
+.sd-ensemble-editor { display:grid;gap:9px; }
+.sd-ensemble-editor :is(header,footer),.sd-ensemble-list-tools { display:flex;align-items:center;justify-content:space-between;gap:8px; }
+.sd-ensemble-fields { display:grid;gap:9px; }
+.sd-ensemble-fields label { display:grid;gap:5px;text-align:left; }
+.sd-ensemble-fields label>span { text-align:left;font-size:var(--sd-font-caption,12px); }
+.sd-ensemble-list-tools label { display:flex;gap:5px;align-items:center; }
+.sd-ensemble-list-tools input { width:14px;height:14px;margin:0;accent-color:var(--sd-accent); }
+.sd-ensemble-scheme { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:8px; }
+.sd-ensemble-scheme.is-selected { border-color:var(--sd-accent); }
+.sd-ensemble-scheme-copy>b { display:block;overflow-wrap:anywhere; }
+.sd-ensemble-scheme-copy>p { display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;margin:4px 0;font-size:12px;line-height:1.45;opacity:.8; }
+.sd-ensemble-scheme-actions { display:flex;flex-direction:column;align-items:flex-end;gap:6px; }
+.sd-ensemble-tags { display:flex;flex-wrap:wrap;gap:4px;margin-top:5px; }
+.sd-ensemble-tags>span { padding:2px 5px;border-radius:4px;background:color-mix(in srgb,var(--sd-accent) 10%,transparent);font-size:10px;overflow-wrap:anywhere; }
+@media(min-width:700px) { .sd-ensemble-binding-fields { grid-template-columns:repeat(2,minmax(0,1fr)); } }
