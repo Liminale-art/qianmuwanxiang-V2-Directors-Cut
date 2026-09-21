@@ -451,6 +451,7 @@
     "qianmu-storyboard-continuation.js",
     "qianmu-storyboard-continuation-host.js",
     "qianmu-storyboard-stream-scheduler.js",
+    "qianmu-storyboard-stream-attempt.js",
     "qianmu-storyboard-continuation-proof.js",
     "qianmu-storyboard-floor-capture.js",
     "qianmu-storyboard-continuity-events.js",

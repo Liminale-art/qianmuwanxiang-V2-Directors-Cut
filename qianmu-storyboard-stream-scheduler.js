@@ -1,11 +1,11 @@
-import {storyboardStableStreamBoundary} from './qianmu-storyboard-stream-source.js?v=1.59.239';
+import {storyboardStableStreamBoundary} from './qianmu-storyboard-stream-source.js?v=1.59.240';
 
 // One explicit compiler pass. A boolean return alone cannot distinguish a
 // harmless wait from an exhausted format-repair batch. No extra repair budget.
 export async function runStoryboardStreamPass(api,stream){
   let status='failed',outcome=null;
   try{
-    await api.compile(null,{quiet:true,automatic:true,stream,
+    await api.compile(null,{quiet:true,automatic:true,stream:{...stream,trackAttempt:true},
       onStreamOutcome:value=>{status=value?.status||'failed';},
       onPrepared:async prepared=>{try{outcome=await api.submit(prepared);}catch(error){outcome=error?.streamOutcome||outcome;throw error;}}});
   }catch(_){status='failed';}

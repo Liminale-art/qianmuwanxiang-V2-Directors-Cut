@@ -1,8 +1,9 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.239';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.239';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.239';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.239';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.239';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.240';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.240';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.240';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.240';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.240';
+import {verifyStoryboardStreamAttemptPrefix} from './qianmu-storyboard-stream-attempt.js?v=1.59.240';
 
 // Finished host notifications share the existing automatic-capture queue. A
 // persisted final-pass marker prevents repeated notifications/reloads from
@@ -46,6 +47,7 @@ export async function finishStoryboardStreamCapture(ticket,d){
     const matches=state.shotPlans.filter(row=>row.revisionId===root.revisionId&&row.messageRef?.messageKey===root.messageKey&&row.chatKey===ticket.chatKey&&row.origin==='automatic');
     if(matches.length!==1)throw Error('本层原流式计划缺失或重复，请手动核对，未重复提交');
     [plan]=matches;
+    await verifyStoryboardStreamAttemptPrefix(plan,{message:()=>message,guard:()=>{if(!valid())throw Error('终稿来源已变化，未继续补图');}});
     if(!plan.id||root.stream&&plan.id!==`stream-${root.stream.generationKey}`)throw Error('本层原流式计划编号不一致，未重复提交');
     if(!valid())return false;
     if(Object.hasOwn(plan,'streamFinalCapture')){

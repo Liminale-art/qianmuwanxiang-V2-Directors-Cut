@@ -580,6 +580,56 @@ function installPassScheduler(f){
   return{scheduler,outcomes,timers,get finishes(){return finishes;},async pass(){completion=deferred();const [id,fn]=timers.entries().next().value;timers.delete(id);fn();await completion.promise;for(let i=0;i<8;i++)await Promise.resolve();}};
 }
 
+const trackedPass=f=>runStoryboardStreamPass({compile:f.context.storyboardCompilePrompt,submit:f.context.storyboardSubmitStreamPrepared},{floor:0,signal:f.controller.signal});
+
+test('actual first incremental request observes its checkpoint before calling either model stage',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);let observed=0;
+  f.modelHook=()=>{observed++;assert.equal(f.state.shotPlans.length,1);assert.equal(f.state.shotPlans[0].streamAttempt.status,'preparing');assert.ok(f.counts.saves>0);};
+  assert.equal((await trackedPass(f)).status,'advanced');assert.equal(observed,2);assert.equal(q.queue.length,1);
+  assert.equal(f.state.shotPlans[0].streamAttempt.status,'ready');f.assertReleased();
+});
+
+for(const status of ['preparing','failed','cancelled'])test(`actual restored ${status} checkpoint blocks both partial and finished-floor replay before a model call`,async()=>{
+  const f=await fixture(),q=installStreamQueue(f);f.modelHook=()=>{throw Error('synthetic interruption');};await trackedPass(f);
+  const restored=normalizeStoryboardState(copy(f.state));restored.shotPlans[0].streamAttempt.status=status;f.state.shotPlans=restored.shotPlans;
+  const before=copy(f.state.shotPlans),calls=f.counts.requests;f.modelHook=null;f.host.chat[0].mes+='\n\nA later complete paragraph.';
+  assert.equal((await trackedPass(f)).status,'failed');assert.equal(await installFinalNotifications(f).run(),false);
+  assert.equal(f.counts.requests,calls);assert.equal(q.queue.length,0);assert.deepEqual(copy(f.state.shotPlans),before);f.assertReleased();
+});
+
+test('actual waiting prefixes retain one checkpoint, survive lightweight summaries and stop at the durable round limit',async()=>{
+  const f=await fixture({text:'Alice reads a letter in the kitchen.\n\n',wait:true}),q=installStreamQueue(f);
+  for(let i=0;i<3;i++){
+    if(i)f.host.chat[0].mes+=`Another complete paragraph ${i}.\n\n`;
+    assert.equal((await trackedPass(f)).status,'waiting');assert.equal(f.state.shotPlans.length,1);assert.equal(f.state.shotPlans[0].streamAttempt.passes,i+1);
+  }
+  installFinalNotifications(f);const plan=f.state.shotPlans[0],summary=f.context.storyboardPlanLightweightSummary(plan);
+  assert.deepEqual(copy(summary.streamAttempt),copy(plan.streamAttempt));assert.equal(normalizeStoryboardState(copy(f.state)).shotPlans[0].streamAttempt.passes,3);
+  f.host.chat[0].mes+='A fourth complete paragraph.\n\n';assert.equal((await trackedPass(f)).status,'waiting');assert.equal(f.counts.requests,3);
+  assert.equal(await installFinalNotifications(f).run(),false);assert.equal(f.counts.requests,4);assert.equal(plan.streamFinalCapture.status,'complete');assert.equal(q.queue.length,0);f.assertReleased();
+});
+
+test('actual final capture rejects an edited later waiting fragment even when the original first prefix still matches',async()=>{
+  const f=await fixture({text:'Alice reads a letter in the kitchen.\n\n',wait:true}),q=installStreamQueue(f);await trackedPass(f);
+  f.host.chat[0].mes+='The kitchen is quiet.\n\n';await trackedPass(f);assert.equal(f.counts.requests,2);
+  f.host.chat[0].mes=f.host.chat[0].mes.replace('The kitchen is quiet.','The room has changed.')+'Another paragraph.';
+  assert.equal(await installFinalNotifications(f).run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,0);
+  assert.match(f.notices.at(-1),/片段或原检查点改变/);assert.equal(f.state.shotPlans[0].streamFinalCapture,undefined);f.assertReleased();
+});
+
+test('actual checkpoint persistence failure prevents the first model request and preserves a failed no-replay marker',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);f.context.saveSettings=()=>{throw Error('synthetic settings failure');};
+  assert.equal((await trackedPass(f)).status,'failed');assert.equal(f.counts.requests,0);assert.equal(q.queue.length,0);
+  assert.equal(f.state.shotPlans[0].streamAttempt.status,'failed');f.assertReleased();
+});
+
+test('actual queued pictures survive a later failed partial request and are not regenerated at final capture',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal((await trackedPass(f)).status,'advanced');const old=copy(q.queue[0]),plan=f.state.shotPlans[0];
+  f.host.chat[0].mes+=' for another letter.\n\n';f.modelHook=()=>{throw Error('synthetic later failure');};assert.equal((await trackedPass(f)).status,'failed');
+  assert.equal(plan.streamAttempt.status,'failed');assert.equal(plan.shots[0].status,'queued');const calls=f.counts.requests;
+  assert.equal(await installFinalNotifications(f).run(),false);assert.equal(f.counts.requests,calls);assert.deepEqual(copy(q.queue[0]),old);assert.equal(q.queue.length,1);f.assertReleased();
+});
+
 test('actual scheduler serializes growing prefixes and final capture through one original plan and paid-admission ledger',async()=>{
   const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f),loop=installPassScheduler(f);useShotSet(f,[0]);
   for(let i=0;i<1000;i++)loop.scheduler.pulse('unused raw token');assert.equal(loop.timers.size,1);await loop.pass();assert.equal(q.queue.length,1);
@@ -594,7 +644,9 @@ test('actual failed incremental extraction cannot launch a fresh final LLM pass 
   const f=await fixture(),q=installStreamQueue(f),loop=installPassScheduler(f),before=editable(f.state);let attempts=0;
   f.context.storyboardCallCompiler=async()=>{attempts++;throw Error('simulated offline');};loop.scheduler.pulse();await loop.pass();
   assert.equal(loop.outcomes[0].status,'failed');f.host.chat[0].mes+='\n\nAnother paragraph.';loop.scheduler.pulse();assert.equal(loop.timers.size,0);
-  assert.equal(await loop.scheduler.finalize(),false);assert.equal(loop.finishes,0);assert.equal(attempts,1);assert.equal(q.queue.length,0);assert.deepEqual(editable(f.state),before);
+  assert.equal(await loop.scheduler.finalize(),false);assert.equal(loop.finishes,0);assert.equal(attempts,1);assert.equal(q.queue.length,0);
+  const after=editable(f.state);delete before.shotPlans;delete after.shotPlans;assert.deepEqual(after,before);
+  assert.equal(f.state.shotPlans.length,1);assert.equal(f.state.shotPlans[0].streamAttempt.status,'failed');assert.equal(f.state.shotPlans[0].shots.length,0);
   loop.scheduler.close();f.assertReleased();
 });
 
