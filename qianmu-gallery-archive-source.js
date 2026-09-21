@@ -2,10 +2,10 @@
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.291';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.292';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
-import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.291';
+import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.292';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};

@@ -4,7 +4,8 @@ import {chatGalleryReceiptRecordText,CHAT_GALLERY_RECEIPT_LIMITS,CHAT_GALLERY_ST
 
 // Only the saved JSONL header is scanned. Unrelated metadata is validated but
 // never accumulated. One record is materialized at a time; the result retains
-// at most two matching records (two means ambiguous), not the complete gallery.
+// at most two matches per selected id (two means ambiguous), not the complete
+// gallery. Internal original batches select up to eight small projections.
 export const CHAT_GALLERY_HEADER_LIMITS=Object.freeze({bytes:64*1024*1024,depth:40,nodes:500000,keyLength:4096,keyCharacters:2*1024*1024,numberCharacters:128,durationMs:10000});
 const fail=(message,code='content')=>{throw chatCharacterReceiptError(code,message);};
 const white=char=>char===' '||char==='\t'||char==='\r'||char==='\n';
@@ -14,7 +15,11 @@ const at=(path,wanted)=>path.length===wanted.length&&wanted.every((value,index)=
 // Incremental JSON grammar, not a brace/regex extractor: duplicates, trailing
 // garbage, malformed skipped fields and incomplete tails invalidate the receipt.
 // Input is decoded with fatal streaming UTF-8 by the file reader.
-export function createChatGalleryHeaderCapture({recordId,guard=()=>{}}={}){
+export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord=value=>value,guard=()=>{}}={}){
+  if(recordIds!==undefined&&(recordId!==undefined||!Array.isArray(recordIds)||recordIds.length<1||recordIds.length>8
+    ||recordIds.some(id=>typeof id!=='string'||!id||id.length>240)||new Set(recordIds).size!==recordIds.length))fail('聊天批次选择超出核验范围');
+  if(typeof projectRecord!=='function')fail('聊天条目投影无效');
+  const selected=new Set(recordIds??(recordId===undefined?[]:[recordId])),counts=new Map();
   const frames=[],matches=[],hash=createHash('sha256');hash.update('[');
   let root=false,metadata=false,present=false,finished=false,failed=false,nodes=0,galleryNodes=0,keyCharacters=0;
   let count=0,bytes=2,token=null,capture=null,offset=0;
@@ -58,7 +63,9 @@ export function createChatGalleryHeaderCapture({recordId,guard=()=>{}}={}){
     bytes+=summary.bytes+(count?1:0);
     if(bytes>CHAT_GALLERY_STREAM_LIMITS.bytes)fail('聊天静帧资料超过核验上限，请保全原件');
     if(count)hash.update(',');hash.update(summary.text);count++;
-    if(recordId!==undefined&&value.id===recordId&&matches.length<2)matches.push(value);
+    if(selected.has(value.id)&&(counts.get(value.id)||0)<2){
+      counts.set(value.id,(counts.get(value.id)||0)+1);matches.push(projectRecord(value));
+    }
   }
   function close(kind){
     const frame=frames.at(-1);

@@ -10,6 +10,7 @@ import {chatGalleryRecordRequest,chatGalleryRecordResponse} from './qianmu-chat-
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {imageRestoreReceipt,IMAGE_RESTORE_MAX_BYTES} from './qianmu-image-restore-contract.js';
 import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
+import {galleryOriginalBatchRequest} from './qianmu-gallery-original-contract.js';
 
 export const GALLERY_ORIGINAL_SOURCE_LIMITS=Object.freeze({bytes:IMAGE_RESTORE_MAX_BYTES,pending:2,chunkBytes:64*1024,timeoutMs:30000});
 const LIMIT=GALLERY_ORIGINAL_SOURCE_LIMITS;
@@ -86,8 +87,7 @@ export function createGalleryOriginalSource({dataRoot,io=fs,timeoutMs=LIMIT.time
             return {bytes,mime,sha256:hash.digest('hex'),file:after};
         }finally{await handle?.close();}
     }
-    async function process(req,input,signal){
-        const context=capture(req,input,signal),record=await saved(req,input,context,signal);
+    function locate(context,record){
         // Validate portable recovery-safe path syntax before touching the image
         // filesystem. Placeholder digest/size only validate syntax, never escape.
         const extension=record.url.split('.').at(-1).toLowerCase(),mime=['jpg','jpeg'].includes(extension)?'image/jpeg':'image/'+extension;
@@ -95,6 +95,10 @@ export function createGalleryOriginalSource({dataRoot,io=fs,timeoutMs=LIMIT.time
         catch{fail('path','原图路径不兼容安全保全，请保留原文件');}
         const target=path.join(context.images,...location.slice('/user/images/'.length).split('/').map(decodeURIComponent));
         if(!child(context.images,target))fail('path','原图路径超出当前账户');
+        return {target,location,mime};
+    }
+    async function process(req,input,signal){
+        const context=capture(req,input,signal),record=await saved(req,input,context,signal),{target,location,mime}=locate(context,record);
         const result=await readBytes(context,target);context.guard();
         if(result.mime!==mime)fail('format','原图扩展名与内容不符');
         const again=await saved(req,input,context,signal);context.guard();
@@ -105,8 +109,42 @@ export function createGalleryOriginalSource({dataRoot,io=fs,timeoutMs=LIMIT.time
         return Object.freeze({version:1,expectedAccount:input.expectedAccount,target:input.target,selection:input.selection,
             receipt,bytes:result.bytes,proof:'read-only-original-bytes',originalVerified:false,canPrune:false});
     }
-    function read(req,raw,{signal}={}){
-        let input;try{input=chatGalleryRecordRequest(raw);if(closed||signal?.aborted)fail('changed','原图核验已取消');
+    async function processBatch(req,input,signal,consume){
+        const context=capture(req,input,signal),files=new Map(),pendingReads=new Set();let active=true,busy=false;
+        const identityGuard=context.guard;context.guard=()=>{identityGuard();if(!active)fail('changed','原图批次读取会话已结束');};
+        async function verifyFiles(){
+            context.guard();for(const [target,file] of files){await roots(context,target);const current=await stat(target);context.guard();
+                if(!unchanged(file,current))fail('changed','批次期间原图文件变化，未确认保全');}
+        }
+        try{
+            const result=await source.withGalleryOriginalBatch(req,input,async lease=>{
+                const records=new Map(lease.records.map(record=>[record.id,record])),readIds=new Set();
+                const readOne=async recordId=>{
+                    context.guard();if(!active||busy||!records.has(recordId)||readIds.has(recordId))fail('batch','原图读取不属于当前批次或正在读取');
+                    busy=true;
+                    try{
+                        await lease.verify();context.guard();const record=records.get(recordId),{target,location,mime}=locate(context,record);
+                        const original=await readBytes(context,target);context.guard();if(original.mime!==mime)fail('format','原图扩展名与内容不符');
+                        if(files.has(target)&&!unchanged(files.get(target),original.file))fail('changed','同一原图在批次内变化');
+                        files.set(target,original.file);readIds.add(recordId);await lease.verify();context.guard();
+                        const receipt=imageRestoreReceipt({url:location,mime,bytes:original.bytes.length,sha256:original.sha256});
+                        return Object.freeze({version:1,expectedAccount:input.expectedAccount,target:input.target,
+                            selection:{recordId,createdAt:record.createdAt,gallerySha256:input.gallerySha256},receipt,bytes:original.bytes,
+                            proof:'read-only-original-bytes',originalVerified:false,canPrune:false});
+                    }finally{busy=false;}
+                };
+                const read=recordId=>{const task=readOne(recordId);pendingReads.add(task);void task.finally(()=>pendingReads.delete(task)).catch(()=>{});return task;};
+                const value=await consume(Object.freeze({read,records:lease.records,signal}));context.guard();
+                if(busy||readIds.size!==records.size)fail('batch','原图批次尚未完整读取，未返回部分成功');
+                await verifyFiles();return value;
+            },{signal});
+            // Also check images after the final complete chat-header scan.
+            await verifyFiles();return result;
+        }finally{active=false;await Promise.allSettled([...pendingReads]);files.clear();}
+    }
+    function run(req,raw,{signal}={},consume){
+        let input;try{input=consume?galleryOriginalBatchRequest(raw):chatGalleryRecordRequest(raw);if(consume&&typeof consume!=='function')fail('batch','原图批次缺少受控消费方法');
+            if(closed||signal?.aborted)fail('changed','原图核验已取消');
             if(pending.size>=LIMIT.pending)fail('busy','原图核验正忙，请稍后重试',429);
         }catch(error){return Promise.reject(String(error?.code||'').startsWith('gallery_original_')?error:Object.assign(Error('原图核验只接受准确聊天和画面选择'),{code:'gallery_original_request',status:400}));}
         const controller=new AbortController();let reject;
@@ -114,7 +152,7 @@ export function createGalleryOriginalSource({dataRoot,io=fs,timeoutMs=LIMIT.time
         const abort=()=>{controller.abort();reject(Object.assign(Error('原图核验已取消或超时，原资料未改动'),{code:'gallery_original_cancelled',status:409}));};
         controllers.add(abort);
         signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(abort,Math.max(100,Math.min(60000,timeoutMs)));
-        const operation=Promise.resolve().then(()=>process(req,input,controller.signal)).catch(error=>{
+        const operation=Promise.resolve().then(()=>consume?processBatch(req,input,controller.signal,consume):process(req,input,controller.signal)).catch(error=>{
             if(String(error?.code||'').startsWith('gallery_original_'))throw error;
             fail(error?.code==='ENOENT'?'missing':'read',error?.code==='ENOENT'?'原图文件不存在，原记录仍保留':'原图读取未确认，请保留原资料后重试');
         }).finally(()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);controllers.delete(abort);pending.delete(operation);});
@@ -123,5 +161,6 @@ export function createGalleryOriginalSource({dataRoot,io=fs,timeoutMs=LIMIT.time
         // late result is rejected by guard and its file handle is still closed.
         return Promise.race([operation,cancellation]);
     }
-    return Object.freeze({read,async close(){closed=true;for(const abort of controllers)abort();await Promise.allSettled([source.close(),...pending]);}});
+    return Object.freeze({read:(req,input,options)=>run(req,input,options),withBatch:(req,input,consume,options)=>run(req,input,options,consume),
+        async close(){closed=true;for(const abort of controllers)abort();await Promise.allSettled([source.close(),...pending]);}});
 }

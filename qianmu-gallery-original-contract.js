@@ -4,6 +4,8 @@ import {imageRestoreReceipt,imageRestoreAccount,IMAGE_RESTORE_MAX_BYTES} from '.
 
 export const GALLERY_ORIGINAL_MAX_BYTES=IMAGE_RESTORE_MAX_BYTES;
 export const GALLERY_ORIGINAL_JSON_BYTES=16384;
+export const GALLERY_ORIGINAL_BATCH_LIMIT=8;
+export const GALLERY_ORIGINAL_BATCH_JSON_BYTES=128*1024;
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 export const galleryOriginalError=(code,message,status=409)=>Object.assign(Error(message),{code:'gallery_original_'+code,status});
 const fail=(code,message,status)=>{throw galleryOriginalError(code,message,status);};
@@ -21,6 +23,30 @@ export function galleryOriginalRequest(value){
 export function galleryOriginalReadRequest(value){
     if(!exact(value,['version','expectedAccount','reference'])||value.version!==1||!imageRestoreAccount(value.expectedAccount))fail('request','原图读回只接受当前账户和准确副本引用',400);
     return {version:1,expectedAccount:value.expectedAccount,reference:galleryOriginalReference(value.reference)};
+}
+export function galleryOriginalBatchRequest(value){
+    if(!exact(value,['version','expectedAccount','target','gallerySha256','selections'])||!Array.isArray(value.selections)
+        ||value.selections.length<1||value.selections.length>GALLERY_ORIGINAL_BATCH_LIMIT)fail('request','原图批次须包含1至8个准确镜头选择',400);
+    const selections=[],ids=new Set();let target;
+    for(const selection of value.selections){
+        if(!exact(selection,['recordId','createdAt'])||ids.has(selection.recordId))fail('request','原图批次存在重复或不完整的画面选择',400);
+        const single=galleryOriginalRequest({version:value.version,expectedAccount:value.expectedAccount,target:value.target,
+            selection:{...selection,gallerySha256:value.gallerySha256}});target=single.target;ids.add(selection.recordId);selections.push({...selection});
+    }
+    return {version:1,expectedAccount:value.expectedAccount,target,gallerySha256:value.gallerySha256,selections};
+}
+export function galleryOriginalBatchPreserved(value){
+    if(!exact(value,['version','expectedAccount','target','gallerySha256','selections','records','proof','canPrune'])
+        ||value.proof!=='original-batch-readback'||value.canPrune!==false||!Array.isArray(value.records))fail('response','原图批次没有完整保存凭据');
+    const request=galleryOriginalBatchRequest({version:value.version,expectedAccount:value.expectedAccount,target:value.target,gallerySha256:value.gallerySha256,selections:value.selections});
+    if(value.records.length!==request.selections.length)fail('response','原图批次返回不完整，未当作全部成功');
+    const records=value.records.map((raw,index)=>{
+        const record=galleryOriginalPreserved(raw),selection=request.selections[index];
+        if(record.expectedAccount!==request.expectedAccount||JSON.stringify(record.target)!==JSON.stringify(request.target)
+            ||record.selection.gallerySha256!==request.gallerySha256||record.selection.recordId!==selection.recordId||record.selection.createdAt!==selection.createdAt)
+            fail('response','原图批次返回了不同来源或顺序的画面');return record;
+    });
+    return {...request,records,proof:value.proof,canPrune:false};
 }
 export function galleryOriginalCapabilities(value){
     if(!exact(value,['ok','version','expectedAccount','selectorOnly','maxBytes','canPrune'])||value.ok!==true||value.version!==1

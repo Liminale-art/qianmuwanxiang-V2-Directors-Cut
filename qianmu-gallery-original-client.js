@@ -1,5 +1,6 @@
 import {galleryOriginalReference,galleryOriginalRequest,galleryOriginalReadRequest,galleryOriginalCapabilities,galleryOriginalPreserved,
-    galleryOriginalError,galleryOriginalErrorPayload,GALLERY_ORIGINAL_JSON_BYTES} from './qianmu-gallery-original-contract.js';
+    galleryOriginalError,galleryOriginalErrorPayload,galleryOriginalBatchRequest,galleryOriginalBatchPreserved,
+    GALLERY_ORIGINAL_JSON_BYTES,GALLERY_ORIGINAL_BATCH_JSON_BYTES,GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
 import {galleryCatalogAccount} from './qianmu-gallery-catalog-contract.js';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {comfyReferencePath} from './qianmu-comfy-reference-contract.js';
@@ -57,10 +58,11 @@ export function createGalleryOriginalClient({account,headers,guard=async()=>true
                 if(data.length!==reference.bytes||await hash(data)!==reference.sha256||comfyReferenceStillMime(data)!==reference.mime)fail('原图字节校验失败，未显示不完整画面');
                 await check();alive();return {blob:new Blob([data],{type:reference.mime}),reference,proof:'original-copy-readback',originalVerified:true,canPrune:false};
             }
-            if(!/^application\/json\b/i.test(type)||declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>GALLERY_ORIGINAL_JSON_BYTES)){
+            const jsonLimit=action==='preserve-batch'?GALLERY_ORIGINAL_BATCH_JSON_BYTES:GALLERY_ORIGINAL_JSON_BYTES;
+            if(!/^application\/json\b/i.test(type)||declared!==null&&(!/^\d+$/.test(declared)||Number(declared)>jsonLimit)){
                 discard();fail('原图服务返回不兼容或过大');
             }
-            const data=await bytes(response,GALLERY_ORIGINAL_JSON_BYTES);let value;
+            const data=await bytes(response,jsonLimit);let value;
             try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data));}catch{fail('原图返回不是完整的有效凭据');}
             await check();alive();return value;
         }
@@ -71,6 +73,24 @@ export function createGalleryOriginalClient({account,headers,guard=async()=>true
         return Promise.race([worker,cancelled]).finally(()=>{clearTimeout(timer);aborters.delete(abort);signal?.removeEventListener('abort',abort);controller.abort();});
     }
     return Object.freeze({
+        preserveBatch(raw,options){
+            let value;try{
+                value=captureGalleryArchiveJson(raw,GALLERY_ORIGINAL_JSON_BYTES);
+                if(!value||Object.keys(value).length!==3||!Object.hasOwn(value,'target')||!Object.hasOwn(value,'gallerySha256')
+                    ||!Array.isArray(value.records)||!value.records.length||value.records.length>GALLERY_ORIGINAL_BATCH_LIMIT
+                    ||value.records.some(row=>!row||Object.keys(row).length!==3||!Object.hasOwn(row,'recordId')||!Object.hasOwn(row,'createdAt')||!Object.hasOwn(row,'url')||comfyReferencePath(row.url)!==row.url))fail('原图批次缺少准确画面与来源');
+                // Validate selector shape and uniqueness before any network I/O.
+                galleryOriginalBatchRequest({version:1,expectedAccount:'st-user:'+'0'.repeat(64),target:value.target,gallerySha256:value.gallerySha256,
+                    selections:value.records.map(({recordId,createdAt})=>({recordId,createdAt}))});
+            }catch(error){return Promise.reject(error);}
+            return run(async({expectedAccount,request,alive})=>{
+                const body=galleryOriginalBatchRequest({version:1,expectedAccount,target:value.target,gallerySha256:value.gallerySha256,
+                    selections:value.records.map(({recordId,createdAt})=>({recordId,createdAt}))});
+                const result=galleryOriginalBatchPreserved(await request('preserve-batch',body));alive();
+                if(result.expectedAccount!==body.expectedAccount||!same(result.target,body.target)||result.gallerySha256!==body.gallerySha256||!same(result.selections,body.selections)
+                    ||result.records.some((record,index)=>record.original.url!==value.records[index].url))fail('原图批次返回了不同来源，未采纳部分结果');return result;
+            },options);
+        },
         preserve(raw,options){
             let value;try{value=captureGalleryArchiveJson(raw,8192);
                 if(Object.keys(value).length!==3||!Object.hasOwn(value,'target')||!Object.hasOwn(value,'selection')||!Object.hasOwn(value,'url')||comfyReferencePath(value.url)!==value.url)fail('原图保全缺少准确来源');

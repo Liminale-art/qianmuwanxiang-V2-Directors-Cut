@@ -13,6 +13,7 @@ import {readSavedChatGalleryEvidence} from './qianmu-chat-gallery-evidence-reade
 import {chatGalleryStateRequest,projectChatGalleryState,chatGalleryStateResponse} from './qianmu-chat-gallery-state.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {readSavedChatGalleryHeader} from './qianmu-chat-gallery-header-reader.js';
+import {galleryOriginalBatchRequest} from './qianmu-gallery-original-contract.js';
 
 const fail=(code,message,status)=>{throw chatCharacterReceiptError(code,message,status);};
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
@@ -133,7 +134,40 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
     if(pending.size>=LIMIT.pending)return Promise.reject(chatCharacterReceiptError('busy','聊天核验正忙，请稍后重试',429));
     const operation=inspect(req,input,options,galleryOnly,selection,detailsOnly,recipeSource,evidenceDigest,stateDigest);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
   }
+  function withGalleryOriginalBatch(req,raw,consume,{signal}={}){
+    let input,context;
+    try{
+      input=galleryOriginalBatchRequest(raw);if(typeof consume!=='function')fail('contract','原图批次缺少受控消费方法',400);
+      if(pending.size>=LIMIT.pending)fail('busy','聊天核验正忙，请稍后重试',429);
+      context=capture(req,{version:input.version,expectedAccount:input.expectedAccount,target:input.target},signal);
+    }catch(error){return Promise.reject(error);}
+    const task=(async()=>{
+      let active=true;
+      const check=()=>{context.guard();if(!active)fail('changed','原图批次来源会话已结束');};
+      const read=()=>readSavedChatGalleryHeader(context,{recordIds:input.selections.map(row=>row.recordId)},
+        {io,lstat,checkedRoots,unchanged,withIdentity:true,projectRecord:projectChatGalleryRecord});
+      try{
+        const first=await read();check();
+        if(!first.gallery||first.gallery.sha256!==input.gallerySha256)fail('record_changed','原图批次与已保存聊天不一致');
+        const records=input.selections.map(selection=>{
+          const matches=first.records.filter(record=>record.id===selection.recordId);
+          if(matches.length!==1||matches[0].createdAt!==selection.createdAt)fail('record_ambiguous','原图批次中有缺失、重复或已变化的画面');
+          return Object.freeze({...matches[0],tags:Object.freeze([...matches[0].tags])});
+        });
+        const verify=async()=>{check();await checkedRoots(context);const current=await lstat(context.target);check();
+          if(!unchanged(first.file,current))fail('changed','原图批次期间聊天文件变化，未确认保全');};
+        await verify();const result=await consume(Object.freeze({records:Object.freeze(records),verify}));await verify();
+        const last=await read();check();
+        if(!unchanged(first.file,last.file)||JSON.stringify(first.gallery)!==JSON.stringify(last.gallery)
+          ||JSON.stringify(first.records)!==JSON.stringify(last.records))fail('record_changed','原图批次最终来源核验不符');
+        return result;
+      }finally{active=false;}
+    })();
+    pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
+  }
   return Object.freeze({inspect:(req,input,options)=>run(req,input,options),inspectGallery:(req,input,options)=>run(req,input,options,true),
+    // Internal callback only. No route returns this lease, path or file identity.
+    withGalleryOriginalBatch,
     async readGalleryState(req,input,options){const {gallerySha256,...body}=chatGalleryStateRequest(input);return run(req,body,options,true,null,false,false,null,gallerySha256);},
     async readGalleryEvidence(req,input,options){const {gallerySha256,...body}=chatGalleryEvidenceRequest(input);return run(req,body,options,true,null,false,false,gallerySha256);},
     async readGalleryRecord(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection);},

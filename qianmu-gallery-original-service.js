@@ -3,7 +3,7 @@
 // Preserve accepts selectors, never user-provided bytes, URL or disk paths.
 import {createGalleryOriginalSource} from './qianmu-gallery-original-source.js';
 import {createGalleryOriginalStore,GALLERY_ORIGINAL_STORE_LIMITS} from './qianmu-gallery-original-store.js';
-import {galleryOriginalRequest,galleryOriginalReadRequest,galleryOriginalPreserved} from './qianmu-gallery-original-contract.js';
+import {galleryOriginalRequest,galleryOriginalReadRequest,galleryOriginalPreserved,galleryOriginalBatchRequest,galleryOriginalBatchPreserved} from './qianmu-gallery-original-contract.js';
 import {imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 
 const fail=(code,message,status=409)=>{throw Object.assign(Error(message),{code:'gallery_original_service_'+code,status});};
@@ -14,7 +14,7 @@ export function createGalleryOriginalService(options){
         try{
             if(closed||signal?.aborted)fail('changed','原图保全已取消');
             if(pending.size>=GALLERY_ORIGINAL_STORE_LIMITS.pending)fail('busy','原图保全正忙，请稍后重试',429);
-            input=write?galleryOriginalRequest(raw):galleryOriginalReadRequest(raw);
+            input=write==='batch'?galleryOriginalBatchRequest(raw):write?galleryOriginalRequest(raw):galleryOriginalReadRequest(raw);
         }catch(error){return Promise.reject(error);}
         const controller=new AbortController(),abort=()=>controller.abort();controllers.add(controller);signal?.addEventListener('abort',abort,{once:true});
         const keys=write?['root','userImages',input.target.kind==='group'?'groupChats':'chats']:['root'];
@@ -29,6 +29,21 @@ export function createGalleryOriginalService(options){
                 const bytes=await store.get(req,input.expectedAccount,input.reference,operation);guard();
                 return Object.freeze({...input,bytes,proof:'original-copy-readback',persistence:'st-account-file',originalVerified:true,canPrune:false});
             }
+            if(write==='batch'){
+                const records=await source.withBatch(req,input,async lease=>{
+                    const copies=[];
+                    for(const record of lease.records){
+                        guard();let captured=await lease.read(record.id);guard();const original=captured.receipt;
+                        const reference=await store.put(req,input.expectedAccount,{bytes:captured.bytes,sha256:original.sha256,mime:original.mime},{signal:lease.signal});guard();captured=null;
+                        copies.push(galleryOriginalPreserved({version:1,expectedAccount:input.expectedAccount,target:input.target,
+                            selection:{recordId:record.id,createdAt:record.createdAt,gallerySha256:input.gallerySha256},reference,original,
+                            proof:'original-copy-readback',persistence:'st-account-file',originalVerified:true,canPrune:false}));
+                    }
+                    return copies;
+                },operation);guard();
+                for(const copy of records){await store.get(req,input.expectedAccount,copy.reference,operation);guard();}
+                return galleryOriginalBatchPreserved({...input,records,proof:'original-batch-readback',canPrune:false});
+            }
             let captured=await source.read(req,input,operation);guard();const receipt=captured.receipt;
             const reference=await store.put(req,input.expectedAccount,{bytes:captured.bytes,sha256:receipt.sha256,mime:receipt.mime},operation);guard();
             captured=null; // Do not retain two full originals during final source verification.
@@ -42,6 +57,6 @@ export function createGalleryOriginalService(options){
         })();
         pending.add(task);void task.finally(()=>{pending.delete(task);controllers.delete(controller);signal?.removeEventListener('abort',abort);}).catch(()=>{});return task;
     }
-    return Object.freeze({preserve:(req,input,options)=>run(req,input,options,true),read:(req,input,options)=>run(req,input,options,false),
+    return Object.freeze({preserve:(req,input,options)=>run(req,input,options,true),preserveBatch:(req,input,options)=>run(req,input,options,'batch'),read:(req,input,options)=>run(req,input,options,false),
         async close(){closed=true;for(const controller of controllers)controller.abort();await Promise.allSettled([source.close(),store.close(),...pending]);}});
 }

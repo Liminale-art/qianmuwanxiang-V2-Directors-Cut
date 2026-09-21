@@ -6,7 +6,7 @@ const fail=(code,message,status=409)=>{throw chatCharacterReceiptError(code,mess
 // Borrow the authenticated service's already constrained file target/roots.
 // No request can provide a path. Do not scan/hash subsequent JSONL body lines;
 // the last bounded filesystem chunk may contain unused bytes after the first LF.
-export async function readSavedChatGalleryHeader(context,selection,{io,lstat,checkedRoots,unchanged}){
+export async function readSavedChatGalleryHeader(context,selection,{io,lstat,checkedRoots,unchanged,projectRecord,withIdentity=false}){
   const started=performance.now();
   const check=()=>{context.guard();if(performance.now()-started>LIMIT.durationMs)fail('timeout','聊天画面核验超时，未返回不完整摘要',408);};
   check();await checkedRoots(context);const before=await lstat(context.target);
@@ -15,7 +15,7 @@ export async function readSavedChatGalleryHeader(context,selection,{io,lstat,che
   const handle=await io.open(context.target,constants.O_RDONLY|(constants.O_NOFOLLOW||0));
   try{
     check();const opened=await handle.stat({bigint:true});if(!unchanged(before,opened))fail('changed','聊天记录在读取前已变化，请重试');
-    const capture=createChatGalleryHeaderCapture({recordId:selection?.recordId,guard:check});
+    const capture=createChatGalleryHeaderCapture({recordId:selection?.recordId,recordIds:selection?.recordIds,projectRecord,guard:check});
     const decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});let length=0,position=0,found=false;
     function feed(part,final=false){
       let text;try{text=final?decoder.decode():decoder.decode(part,{stream:true});}catch{fail('content','聊天资料头编码损坏，未按空记录处理');}
@@ -32,6 +32,6 @@ export async function readSavedChatGalleryHeader(context,selection,{io,lstat,che
     feed(null,true);const result=capture.finish();check();
     const after=await handle.stat({bigint:true}),current=await lstat(context.target);
     if(!unchanged(opened,after)||!unchanged(after,current))fail('changed','聊天记录在核验期间已变化，请重试');
-    await checkedRoots(context);check();return result;
+    await checkedRoots(context);check();return withIdentity?{...result,file:current}:result;
   }finally{await handle.close();}
 }
