@@ -29,12 +29,14 @@ function createRecipeArchiveClient({source,getGallery,
   account=async()=>(await import('./qianmu-image-admission.js')).resolveImageAccountNamespace(),
   headers=()=>({}),guard=async()=>{},fetchImpl=globalThis.fetch,timeoutMs=8000}={},writable=true){
   if(typeof getGallery!=='function'||typeof account!=='function'||!Number.isFinite(timeoutMs))throw fail('配方读取缺少聊天来源');
-  let original,rows;
+  let original,rows,sourceHash;
   try{rows=getGallery();original=chatGalleryReceiptText(rows).text;}catch(error){source.close();throw error;}
   const pending=new Set();let namespace,closed=false;
   function current(){
     if(closed)throw fail('配方会话已结束');source.assertCurrent();
-    if(getGallery()!==rows||chatGalleryReceiptText(rows).text!==original)throw fail('原画面资料已变化，请重新打开后重试');
+    // Historical rows are private detached clones, never exposed to callers.
+    // Rechecking that complete clone at every guarded await is quadratic work.
+    if(getGallery()!==rows||(writable&&chatGalleryReceiptText(rows).text!==original))throw fail('原画面资料已变化，请重新打开后重试');
   }
   async function check(){
     await guard();current();const active=await account();current();
@@ -64,7 +66,7 @@ function createRecipeArchiveClient({source,getGallery,
     const selection=selected(record);
     return bounded(async(signal,alive)=>{
       const expectedAccount='st-user:'+await digest(namespace.slice(8));
-      const body=recipeArchiveRequest({version:1,expectedAccount,target:source.target,selection:{...selection,gallerySha256:await digest(original)}});
+      const body=recipeArchiveRequest({version:1,expectedAccount,target:source.target,selection:{...selection,gallerySha256:await(sourceHash??=digest(original))}});
       const provided=new Headers(await headers());
       const requestHeaders={'Content-Type':'application/json',Accept:'application/json'};
       if(provided.has('x-csrf-token'))requestHeaders['X-CSRF-Token']=provided.get('x-csrf-token');

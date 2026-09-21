@@ -89,7 +89,7 @@ function entry(e,options={}){
   const cache=new Map(),local=new Map();let writes=0,saves=0;
   const globals={console:{warn(){}},Date,JSON,Map,Error,clone:structuredClone,sanitizeStoryboardSnapshot:structuredClone,preserveCapturedSnapshotArchives,
     getChatKey:()=>e.context.chatId,storyboardSnapshotEpoch:e.epoch,storyboardSnapshotCache:cache,storyboardSnapshotReads:new Map(),storyboardGalleryRecords:()=>e.rows,
-    storyboardPackageArchiveAllowed:async()=>true,storyboardRecipeArchiveClient:async()=>e.client(options),toast:()=>{},
+    storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,storyboardRecipeArchiveClient:async()=>e.client(options),toast:()=>{},
     saveMetadata:async()=>{saves++;await e.save();},blobStore:{blobStoreAvailable:()=>true,
       putStoryboardSnapshots:async rows=>{writes++;for(const row of rows)local.set(row.key,structuredClone(row));return {stored:rows.map(row=>row.key)};},
       getStoryboardSnapshots:async keys=>keys.map(key=>local.get(key)).filter(Boolean)}};

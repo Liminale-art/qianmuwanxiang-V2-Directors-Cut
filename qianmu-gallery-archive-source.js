@@ -1,17 +1,18 @@
 // Connect immutable record/page storage to the exact SAVED current-chat source.
-// Not yet imported by the app. No host save, original-record mutation, live-head replacement,
+// Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.284';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.285';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
-import {createCurrentRecipeArchiveClient} from './qianmu-recipe-archive-client.js';
+import {createHistoricalRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.285';
+import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};
 const canonical=rows=>chatGalleryReceiptText(rows).text;
 export async function createCurrentGalleryArchiveSession({getContext,epoch,account,headers,fetchImpl,timeoutMs,
-  guard=()=>true,createStorage}={}){
+  guard=()=>true,createStorage,yieldWork=async()=>{}}={}){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof guard!=='function')fail('画面保全缺少准确的当前聊天来源');
   let client,archive,recipes,closed=false,busy=false,live,captured,sourceText;const records=new Map();
   function external(){
@@ -44,8 +45,8 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
   async function preserve(work){
     check();if(busy)fail('原聊天画面正在保全，请勿重复提交');busy=true;let started=false;
     try{
-      const before=await saved();check();started=true;
-      const result=await work(before),sourceReceipt=await saved();check();
+      await yieldWork();const before=await saved();check();started=true;
+      const result=await work(before);await yieldWork();const sourceReceipt=await saved();check();
       return {...result,sourceReceipt,originalVerified:false,canPrune:false};
     }catch(error){if(started)error.writeState='unconfirmed';else error.writeState??='not_started';throw error;}
     finally{busy=false;}
@@ -58,9 +59,10 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
       if(typeof record.id!=='string'||!record.id||records.has(record.id))fail('原聊天画面编号缺失或重复，未选择或合并记录');
       records.set(record.id,{record,text:canonical([record])});
     }
-    archive=await createGalleryArchiveStorage({scope:{namespace:client.owner.namespace,...client.source},guard:check,createStorage,
+    archive=await createGalleryArchiveStorage({scope:{namespace:client.owner.namespace,...client.source},guard:check,createStorage,yieldWork,
       verifyRecord:record=>{check();return records.get(record.id)?.text===canonical([record]);}});check();
-    return Object.freeze({scope:archive.scope,
+    const identity=JSON.stringify([archive.scope,await vibeDigest(sourceText)]);unchanged();
+    return Object.freeze({scope:archive.scope,identity,
       preserveRecord(id){const [record]=selected([id]);return preserve(()=>archive.preserveRecord(record));},
       stagePage(ids){const rows=selected(ids);return preserve(()=>archive.stagePage(rows));},
       preserveAll(){return preserve(async sourceReceipt=>{
@@ -69,17 +71,17 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
         const ordered=[...captured].sort((a,b)=>b.createdAt-a.createdAt||(a.id<b.id?1:a.id>b.id?-1:0)),pages=[];let recipeCopies=0;
         for(let at=0;at<ordered.length;at+=LIMIT.rows){
           const batch=ordered.slice(at,at+LIMIT.rows);
-          unchanged();const result=await archive.stagePage(batch);check();pages.push(result.descriptor);
+          await yieldWork();unchanged();const result=await archive.stagePage(batch);unchanged();pages.push(result.descriptor);
           for(const record of batch){
             if(galleryArchiveRecipeState(record)!=='server-reference')continue;
-            unchanged();recipes??=createCurrentRecipeArchiveClient({getContext,epoch,getGallery:()=>live,account,headers,fetchImpl,timeoutMs,guard:unchanged});
-            const read=await recipes.read(record);unchanged();
+            await yieldWork();check();recipes??=createHistoricalRecipeArchiveClient({namespace:client.owner.namespace,target:client.target,records:captured,headers,fetchImpl,timeoutMs,guard:async()=>{check();await client.guard();check();}});
+            const read=await recipes.read(record);check();
             if(read.selection.gallerySha256!==sourceReceipt.sha256)fail('配方读取来源版本与本次保全不符');
-            await archive.preserveServerRecipe(record,read);unchanged();recipeCopies++;
+            await archive.preserveServerRecipe(record,read);check();recipeCopies++;
             await new Promise(resolve=>setTimeout(resolve,0));check();
           }
         }
-        unchanged();return {...await archive.publishSourceVersion(sourceReceipt,pages),recipeCopies};
+        await yieldWork();unchanged();return {...await archive.publishSourceVersion(sourceReceipt,pages),recipeCopies};
       });},
       openSourceVersion:receipt=>{check();return archive.openSourceVersion(receipt);},
       readRecord:ref=>{check();return archive.readRecord(ref);},

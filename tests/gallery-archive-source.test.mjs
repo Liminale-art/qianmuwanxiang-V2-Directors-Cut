@@ -7,6 +7,7 @@ import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js'
 import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
+import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
 
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 async function fixture(t){
@@ -210,4 +211,33 @@ test('local-only recipe remains unresolved after complete preservation, while in
   const session=await f.open(),saved=await session.preserveAll(),reader=await session.openSourceVersion(saved.sourceReceipt),page=await reader.page();
   const states={};for(const row of page.rows)states[row.recordId]=(await session.readRecipe(row.record)).state;
   assert.deepEqual(states,{none:'not-recorded',local:'local-reference',image:'available'});assert.equal(saved.recipeCopies,0);reader.close();
+});
+
+test('idle application coordinator -> exact saved source -> fresh native reader without another source write',async t=>{
+  const f=await fixture(t),{original}=await serverRecipe(f),before=await fs.readFile(f.host.file),errors=[];let opens=0,result,scope;
+  const document=new EventTarget();document.hidden=false;document.readyState='complete';
+  const c=createGalleryArchiveCoordinator({getContext:()=>f.host.context,epoch:()=>f.host.epoch,isCurrent:()=>true,window:globalThis,document,quietMs:1,onError:e=>errors.push(e),
+    connect:async options=>{opens++;const session=await f.open({guard:options.guard,yieldWork:options.yieldWork});scope=session.scope;
+      return {...session,async preserveAll(){return result=await session.preserveAll();}};}});t.after(()=>c.close());
+  const until=async predicate=>{for(let i=0;i<500;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5));}assert.fail('bounded fixture wait expired');};
+  assert.equal(f.calls.length,0);assert.equal(opens,0);for(let i=0;i<20;i++)c.schedule();await until(()=>c.status().state==='saved');
+  assert.equal(opens,1);assert.equal(result.total,1);assert.equal(result.recipeCopies,1);assert.deepEqual(errors,[]);assert.deepEqual(await fs.readFile(f.host.file),before);
+  const calls=f.calls.length,posts=f.transport.calls.filter(call=>call.options.method==='POST').length;
+  c.schedule();await until(()=>opens===2&&!c.status().running);assert.equal(f.calls.length,calls);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,posts);
+  const reader=await createGalleryArchiveStorage({scope,guard:()=>true,verifyRecord:()=>false,createStorage:f.transport.createStorage});t.after(()=>reader.close());
+  const version=await reader.openSourceVersion(result.sourceReceipt),page=await version.page();assert.deepEqual((await reader.readRecipe(page.rows[0].record)).snapshot,original);version.close();
+});
+
+test('full preservation yields before each record and refuses publication after source changes during a pause',async t=>{
+  const f=await fixture(t),base=f.host.rows[0];f.host.rows=[base,{...base,id:'next',createdAt:2}];await f.host.save();
+  let yields=0,mutated=false;const session=await f.open({yieldWork:async()=>{yields++;if(!mutated&&f.transport.calls.some(call=>call.path==='/api/files/upload')){mutated=true;f.host.rows[0].unknown='changed while idle';}}});
+  await assert.rejects(session.preserveAll(),/已修改/);assert.ok(yields>=4);assert.equal(mutated,true);
+  assert.ok(![...f.transport.files.keys()].some(name=>name.includes('-gallery-source-')));assert.equal(f.host.rows[0].unknown,'changed while idle');
+});
+
+test('detached recipe reader still rejects an account change during a server response before sidecar publication',async t=>{
+  const f=await fixture(t);await serverRecipe(f);const originalFetch=f.host.fetch;
+  f.host.fetch=async(url,options)=>{const response=await originalFetch(url,options);f.host.account='st-user:bob';return response;};
+  const session=await f.open();await assert.rejects(session.preserveAll(),/账户|核验|变化/);
+  assert.ok(![...f.transport.files.keys()].some(name=>name.includes('-gallery-recipe-')||name.includes('-gallery-source-')));
 });

@@ -7,13 +7,13 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.284';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.285';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_storage',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 const bytes=value=>new TextEncoder().encode(value).length;
-export async function createGalleryArchiveStorage({scope,guard,verifyRecord,createStorage=createConfiguredStAccountStorage}={}){
+export async function createGalleryArchiveStorage({scope,guard,verifyRecord,createStorage=createConfiguredStAccountStorage,yieldWork=async()=>{}}={}){
   const owner=galleryArchiveScope(scope);
   if(typeof guard!=='function'||typeof verifyRecord!=='function'||typeof createStorage!=='function')fail('画面保全缺少来源验证');
   let storage,closed=false,busy=false,mayHaveWritten=false;const readers=new Set(),staged=new Map();
@@ -117,13 +117,13 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
         // Validate the complete batch first. Its order must already be newest
         // first; never silently reorder/deduplicate the source supplied by host.
         const encoded=[];
-        for(const item of captured){encoded.push(await encodeGalleryArchiveRecord(owner,item));check();}
+        for(const item of captured){await yieldWork();check();encoded.push(await encodeGalleryArchiveRecord(owner,item));check();}
         const rows=encoded.map(item=>({recordId:item.value.record.id,createdAt:item.value.record.createdAt,label:'',
           tags:galleryCatalogTags(item.value.record.tags),record:item.reference}));
         const page=await encodeGalleryIndexPage(owner,rows);check();
         if(!staged.has(page.reference.sha256)&&staged.size>=LIMIT.pages)fail('单次保全页数超过上限，已存副本保留');
         for(const item of encoded)await verify(item);
-        for(const item of encoded){await preserveEncoded(item);await new Promise(resolve=>setTimeout(resolve,0));check();}
+        for(const item of encoded){await yieldWork();check();await preserveEncoded(item);await new Promise(resolve=>setTimeout(resolve,0));check();}
         // Recheck all records after uploads, before making this page reachable.
         for(const item of encoded)await verify(item);
         await putObject('page',{...page,value:JSON.parse(page.text)},value=>inspectPage(value,page));check();
@@ -153,6 +153,7 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
         // Recheck page bytes, not every original record body again. Staging
         // already read those back; first-paint readers need only small metadata.
         for(const descriptor of pages){
+          await yieldWork();check();
           const ref={sha256:descriptor.sha256,bytes:descriptor.bytes};
           const expected=await encodeGalleryIndexPage(owner,staged.get(ref.sha256).rows);check();
           if(await indexText('page',ref)!==expected.text)fail('图库页面已变化，未发布目录');

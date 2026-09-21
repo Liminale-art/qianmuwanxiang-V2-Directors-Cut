@@ -7,7 +7,7 @@ function fixture() {
   const record={id:'image',chatKey:'chat',snapshot:{prompt:'original'}},rows=[record],calls=[];
   const c=vm.createContext({preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,storyboardSnapshotCache:new Map(),storyboardSnapshotReads:new Map(),
     storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:structuredClone,console:{warn(){}},
-    storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>calls.push('metadata'),
+    storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>calls.push('metadata'),
     blobStore:{blobStoreAvailable:()=>true,putStoryboardSnapshots:async(rows,options)=>{assert.equal(options.preserveExisting,true);calls.push('write');return {stored:rows.map(row=>row.key)};},
       deleteStoryboardSnapshots:()=>assert.fail('automatic archival must not delete older originals'),getStoryboardSnapshots:async()=>{calls.push('read');return [];}}});
   vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardArchiveGallerySnapshots','storyboardHydrateGallerySnapshots'].map(section).join('\n'),c);

@@ -29,7 +29,7 @@ function fixture() {
   const record={id:'image',chatKey:'chat',snapshotRef:base},rows=[record],cache=new Map([[base,{prompt:'old'}]]),writes=[];
   const c=vm.createContext({preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,storyboardSnapshotCache:cache,
     storyboardSnapshotReads:new Map(),storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:structuredClone,
-    console:{warn(){}},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{},storyboardRecipeArchiveClient:async()=>{throw Error('old backend fixture');},
+    console:{warn(){}},storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{},storyboardRecipeArchiveClient:async()=>{throw Error('old backend fixture');},
     blobStore:{blobStoreAvailable:()=>true,putStoryboardSnapshots:async(records,options)=>{
       assert.equal(options.preserveExisting,true);writes.push(structuredClone(records));return {stored:[revision]};
     },getStoryboardSnapshots:async()=>[{key:base,snapshot:{prompt:'old'}},{key:revision,snapshot:{prompt:'edited'}}]}});
