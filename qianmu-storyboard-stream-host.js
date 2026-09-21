@@ -1,5 +1,5 @@
-import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.257';
-import {createStoryboardStreamScheduler} from './qianmu-storyboard-stream-scheduler.js?v=1.59.257';
+import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.258';
+import {createStoryboardStreamScheduler} from './qianmu-storyboard-stream-scheduler.js?v=1.59.258';
 
 const kind=value=>value==null||value===''?'normal':value;
 const identity=message=>JSON.stringify([message.name,message.is_user===true,message.is_system===true,message.swipe_id||0,
