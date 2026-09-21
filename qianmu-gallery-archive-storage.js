@@ -7,7 +7,7 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.292';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.293';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 import {encodeGalleryArchiveOriginal,inspectGalleryArchiveOriginal} from './qianmu-gallery-archive-original.js';
 
@@ -89,6 +89,31 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
     if(!stored.exists)return {state:'not-preserved',reference:null,originalVerified:false,canPrune:false};
     const result=await inspectGalleryArchiveOriginal(owner,original,stored.value);check();return {state:'available',...result};
   }
+  function stagedRecord(rawReference,signal){
+    check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES),original=currentPageRecords.get(ref.sha256);
+    if(signal?.aborted)fail('当前批次读取已取消');
+    if(!original||!same(original.reference,ref))fail('读取不属于当前已保全批次');return original;
+  }
+  async function readStagedCopy(rawReference,signal,readCopy){
+    const original=stagedRecord(rawReference,signal),current=()=>{
+      if(stagedRecord(rawReference,signal)!==original)fail('当前已保全批次已变化');
+    };
+    await verify(original);current();const result=await readCopy(original,signal);current();await verify(original);current();return result;
+  }
+  async function saveOriginalReference(record,response,stagedOriginal){
+    const encoded=await encodeGalleryArchiveOriginal(owner,record,response);check();await verify(encoded.record);
+    const stagedCurrent=()=>{if(stagedOriginal&&stagedRecord(encoded.record.reference)!==stagedOriginal)fail('原图副本不属于当前已保全批次');};
+    stagedCurrent();
+    if(!stagedOriginal)await inspectGalleryArchiveRecord(owner,await readObject('record',encoded.record.reference),encoded.record.reference);check();
+    await putObject('original',encoded,async stored=>{
+      const prior=await inspectGalleryArchiveOriginal(owner,encoded.record,stored);check();
+      // Other records may change the whole-gallery hash; this record stays exact.
+      if(['id','sha256','bytes','mime'].some(key=>prior.reference[key]!==encoded.value.source.reference[key])
+        ||prior.original.url!==encoded.value.source.original.url)fail('原画面已有不同原图副本凭据，保留旧版未覆盖');
+    },slot('original',encoded.record.reference));
+    await verify(encoded.record);stagedCurrent();
+    return {record:encoded.record.reference,proof:'original-reference-only',originalVerified:false,canPrune:false};
+  }
   return Object.freeze({scope:Object.freeze({...owner}),
     async preserveRecord(raw){
       // Capture before the first await so editing the live record cannot change
@@ -122,19 +147,11 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
     },
     async preserveOriginalReference(rawRecord,rawResponse){
       check();const record=captureGalleryArchiveJson(rawRecord,GALLERY_ARCHIVE_RECORD_BYTES),response=captureGalleryArchiveJson(rawResponse,16384);
-      return exclusive(async()=>{
-        const encoded=await encodeGalleryArchiveOriginal(owner,record,response);check();await verify(encoded.record);
-        await inspectGalleryArchiveRecord(owner,await readObject('record',encoded.record.reference),encoded.record.reference);check();
-        await putObject('original',encoded,async stored=>{
-          const prior=await inspectGalleryArchiveOriginal(owner,encoded.record,stored);check();
-          // Appending other gallery records changes the whole-source digest,
-          // not this immutable record or copy. Keep the first valid evidence.
-          if(['id','sha256','bytes','mime'].some(key=>prior.reference[key]!==encoded.value.source.reference[key])
-            ||prior.original.url!==encoded.value.source.original.url)fail('原画面已有不同原图副本凭据，保留旧版未覆盖');
-        },slot('original',encoded.record.reference));
-        await verify(encoded.record);
-        return {record:encoded.record.reference,proof:'original-reference-only',originalVerified:false,canPrune:false};
-      });
+      return exclusive(()=>saveOriginalReference(record,response));
+    },
+    async preserveStagedOriginalReference(rawReference,rawResponse){
+      const original=stagedRecord(rawReference),response=captureGalleryArchiveJson(rawResponse,16384);
+      return exclusive(()=>saveOriginalReference(original.value.record,response,original));
     },
     async readOriginal(rawReference,{signal}={}){
       check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES);
@@ -149,13 +166,13 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
       return {record:original.value.record,recipeState:original.recipeState,reference:ref,media,originalVerified:false,canPrune:false};
     },
     async readStagedRecipe(rawReference,{signal}={}){
-      check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES),original=currentPageRecords.get(ref.sha256);
       // Only this session's last completely read-back page can reuse its record
       // bytes. The sidecar is still freshly read and validated; no persistent
       // "exists" cache, caller-injected body, fallback or deletion permission.
-      const stagedCurrent=()=>{check();if(signal?.aborted)fail('配方读取已取消');
-        if(!original||!same(original.reference,ref)||currentPageRecords.get(ref.sha256)!==original)fail('配方读取不属于当前已保全批次');};
-      stagedCurrent();await verify(original);stagedCurrent();const result=await readRecipeCopy(original,signal);stagedCurrent();await verify(original);stagedCurrent();return result;
+      return readStagedCopy(rawReference,signal,readRecipeCopy);
+    },
+    async readStagedOriginal(rawReference,{signal}={}){
+      return readStagedCopy(rawReference,signal,readOriginalCopy);
     },
     async stagePage(raw){
       check();const captured=captureGalleryArchiveJson(raw,LIMIT.recordBytes);

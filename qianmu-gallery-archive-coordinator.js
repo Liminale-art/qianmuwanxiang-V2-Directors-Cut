@@ -1,7 +1,7 @@
 // One idle, add-only preservation pass per settled source. No startup scan,
 // generation, pruning, retry storm or background queue of complete chat copies.
 export function createGalleryArchiveCoordinator({getContext,epoch,account,headers,isCurrent,canRun=()=>true,admit=async()=>true,
-  connect=async options=>(await import('./qianmu-gallery-archive-source.js?v=1.59.292')).createCurrentGalleryArchiveSession(options),
+  connect=async options=>(await import('./qianmu-gallery-archive-source.js?v=1.59.293')).createCurrentGalleryArchiveSession(options),
   window=globalThis.window,document=globalThis.document,now=Date.now,quietMs=5000,onError=()=>{}}={}){
   if(typeof getContext!=='function'||typeof isCurrent!=='function'||typeof epoch!=='function'||!window?.setTimeout)throw Error('图库保全缺少宿主保护');
   let closed=false,pending=false,running=false,timer=null,revision=0,session=null,controller=null,lastActivity=now(),lastSuccess=null;
@@ -41,7 +41,13 @@ export function createGalleryArchiveCoordinator({getContext,epoch,account,header
       // Only an exact account/owner/chat/content identity, after successful
       // readback in this lifecycle, can avoid another unchanged pass.
       if(typeof opened.identity!=='string'||!opened.identity)throw Error('图库保全缺少来源版本');
-      if(opened.identity!==lastSuccess){await yieldWork();await opened.preserveAll();check();lastSuccess=opened.identity;}
+      if(opened.identity!==lastSuccess){
+        await yieldWork();const result=await opened.preserveAll();check();
+        if(result?.originals?.state==='partial'){
+          state='partial';try{onError({code:'gallery_originals_incomplete',writeState:'records_saved'});}catch{}return;
+        }
+        lastSuccess=opened.identity;
+      }
       state='saved';
     }catch(error){
       if(valid(turn)&&!signal.aborted){if(error?.name==='AbortError')state='idle';else{state='error';try{onError({code:'gallery_preservation_failed',writeState:error?.writeState==='unconfirmed'?'unconfirmed':'not_started'});}catch{}}}

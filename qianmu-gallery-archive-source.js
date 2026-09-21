@@ -1,24 +1,28 @@
 // Connect immutable record/page storage to the exact SAVED current-chat source.
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
-// pruning, image download or generation; observed equality is not a server lock.
+// pruning, browser image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.292';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.293';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
-import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.292';
+import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.293';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
+import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
+import {GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
+import {comfyReferencePath} from './qianmu-comfy-reference-contract.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 export async function createCurrentGalleryArchiveSession({getContext,epoch,account,headers,fetchImpl,timeoutMs,
-  guard=()=>true,createStorage,yieldWork=async()=>{}}={}){
+  guard=()=>true,createStorage,yieldWork=async()=>{},preserveOriginals=true}={}){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof guard!=='function')fail('画面保全缺少准确的当前聊天来源');
-  let client,archive,recipes,closed=false,busy=false,live,summary;const records=new Map();
+  if(typeof preserveOriginals!=='boolean')fail('原图保全模式无效');
+  let client,archive,recipes,originals,closed=false,busy=false,live,summary;const records=new Map();
   function external(){
     const value=guard();if(value&&typeof value.then==='function'){void Promise.resolve(value).catch(()=>{});fail('画面保全需要同步切换保护');}
     if(value!==true)fail('画面保全来源保护已失效');
   }
-  function close(){closed=true;recipes?.close();archive?.close();client?.close();records.clear();live=null;}
+  function close(){closed=true;originals?.close();recipes?.close();archive?.close();client?.close();records.clear();live=null;}
   function check(){
     if(closed)fail('画面保全来源会话已结束');
     try{external();client.assertCurrent();
@@ -57,6 +61,47 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
     }catch(error){if(started)error.writeState='unconfirmed';else error.writeState??='not_started';throw error;}
     finally{busy=false;}
   }
+  async function preservePageOriginals(batch,references,progress){
+    let queue=[];
+    async function flush(){
+      if(!queue.length)return;
+      await yieldWork();check();const selected=queue;queue=[];
+      for(const record of selected)currentRecord(record.id);
+      let result;
+      try{
+        originals??=createGalleryOriginalClient({account:async()=>client.owner.namespace,
+          headers:headers||(()=>getContext().getRequestHeaders?.()||{}),fetchImpl,timeoutMs,
+          guard:async()=>{check();await client.guard();check();return true;}});
+        result=await originals.preserveBatch({target:client.target,gallerySha256:summary.sha256,
+          records:selected.map(({id:recordId,createdAt,url})=>({recordId,createdAt,url}))});check();
+        for(const record of selected)currentRecord(record.id);
+      }catch{
+        check();for(const record of selected)currentRecord(record.id);
+        // No fallback, per-image retry or service-error storm. Finish the record
+        // and recipe directory, with explicit incomplete media coverage.
+        progress.failed+=selected.length;progress.stopped=true;originals?.close();originals=null;return;
+      }
+      for(let index=0;index<selected.length;index++){
+        await yieldWork();check();const record=selected[index];currentRecord(record.id);
+        try{await archive.preserveStagedOriginalReference(references.get(record.id),result.records[index]);check();
+          progress.available++;progress.preserved++;
+        }catch{check();currentRecord(record.id);progress.failed++;}
+      }
+    }
+    for(const record of batch){
+      await yieldWork();check();currentRecord(record.id);
+      let eligible=false;try{eligible=comfyReferencePath(record.url)===record.url;}catch{}
+      if(!eligible){progress.skipped++;continue;}
+      if(progress.stopped){progress.deferred++;continue;}
+      let existing;
+      try{existing=await archive.readStagedOriginal(references.get(record.id));check();}
+      catch{check();currentRecord(record.id);progress.failed++;continue;}
+      if(existing.state==='available'){progress.available++;continue;}
+      if(existing.state!=='not-preserved'){progress.failed++;continue;}
+      queue.push(record);if(queue.length===GALLERY_ORIGINAL_BATCH_LIMIT)await flush();
+    }
+    await flush();
+  }
   try{
     external();client=await createCurrentChatGalleryReceiptClient({getContext,epoch,account,headers,fetchImpl,timeoutMs,guard:external});
     live=getContext().chatMetadata.story_director_liminale?.storyboardImages;check();
@@ -76,6 +121,7 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
         // end, respecting bytes as well as row count (large inline workflows).
         const ordered=[...records.values()].sort((a,b)=>b.createdAt-a.createdAt||(a.id<b.id?1:a.id>b.id?-1:0)),batches=[],pages=[];
         let ids=[],batchBytes=2,recipeCopies=0;
+        const originalProgress={total:ordered.length,available:0,preserved:0,failed:0,deferred:0,skipped:0,stopped:false};
         for(let at=ordered.length-1;at>=0;at--){
           const row=ordered[at];
           if(row.bytes+2>LIMIT.recordBytes)fail('单个画面超过保全批次大小，未裁剪原件');
@@ -99,8 +145,12 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
             await archive.preserveServerRecipe(record,read);check();recipeCopies++;
             await new Promise(resolve=>setTimeout(resolve,0));check();
           }
+          if(preserveOriginals)await preservePageOriginals(batch,references,originalProgress);
         }
-        await yieldWork();await unchanged();return {...await archive.publishSourceVersion(sourceReceipt,pages),recipeCopies};
+        await yieldWork();await unchanged();const version=await archive.publishSourceVersion(sourceReceipt,pages);check();
+        const {stopped,...coverage}=originalProgress;
+        return {...version,recipeCopies,...(preserveOriginals?{originals:{...coverage,
+          state:coverage.available===coverage.total?'complete':'partial',proof:'original-reference-only',originalVerified:false,canPrune:false}}:{})};
       });},
       openSourceVersion:receipt=>{check();return archive.openSourceVersion(receipt);},
       readRecord:ref=>{check();return archive.readRecord(ref);},

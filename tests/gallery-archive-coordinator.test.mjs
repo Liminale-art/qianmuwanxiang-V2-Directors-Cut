@@ -103,15 +103,17 @@ test('late component loading after runtime disposal cannot recreate the automati
 });
 
 test('actual application glue coalesces lazy imports and respects typing/generation/import/cleanup gates',async()=>{
-  const load=gate(),created=[];let scheduled=0,loaded=0;
+  const load=gate(),created=[],warnings=[];let scheduled=0,loaded=0;
   const context=vm.createContext({initialized:true,settings:{enabled:true},isRuntimeOwner:()=>true,storyboardAdmissionEpoch:1,storyboardSnapshotEpoch:1,
     storyboardGalleryPreserver:null,storyboardGalleryPreserverLoading:null,storyboardSnapshotArchiveBusy:0,
     featureRuntime:{load:()=>{loaded++;return load.promise;}},ctx:()=>({}),storyboardRequestHeaders:()=>({}),storyboardPackageArchiveAllowed:async()=>true,
-    configRestoreActivity:()=>({}),console:{warn(){}}});vm.runInContext(section('storyboardScheduleGalleryPreservation'),context);
+    configRestoreActivity:()=>({}),console:{warn:message=>warnings.push(message)}});vm.runInContext(section('storyboardScheduleGalleryPreservation'),context);
   context.storyboardScheduleGalleryPreservation();context.storyboardScheduleGalleryPreservation();assert.equal(loaded,1);
   load.resolve({createGalleryArchiveCoordinator:options=>{created.push(options);return {schedule:()=>scheduled++};}});await flush();
   assert.equal(created.length,1);assert.equal(scheduled,1);context.storyboardScheduleGalleryPreservation();assert.equal(scheduled,2);
   const options=created[0];assert.equal(options.canRun(),true);
+  options.onError({code:'gallery_originals_incomplete',private:'never log'});assert.match(warnings[0],/记录与配方已保存/);assert.doesNotMatch(warnings[0],/never log/);
+  options.onError({code:'gallery_preservation_failed'});assert.match(warnings[1],/图库保全未完成/);
   for(const key of ['director','image','transfer']){context.configRestoreActivity=()=>({[key]:true});assert.equal(options.canRun(),false);}
   context.configRestoreActivity=()=>({});context.storyboardSnapshotArchiveBusy=1;assert.equal(options.canRun(),false);context.storyboardSnapshotArchiveBusy=0;
   context.ctx=()=>({streamingProcessor:{isStopped:false,isFinished:false}});assert.equal(options.canRun(),false);
