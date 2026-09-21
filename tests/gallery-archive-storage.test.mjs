@@ -175,7 +175,7 @@ test('record contract ships for discovery but archive writing is not live-wired 
   assert.equal(release.files.includes('qianmu-gallery-archive-record.js'),true);
   assert.equal(release.files.includes('qianmu-gallery-archive-storage.js'),true);
   const browser=await readFile(new URL('../qianmu-gallery-archive-browser.js',import.meta.url),'utf8');
-  assert.doesNotMatch(browser,/\.(?:preserveRecord|stagePage|publishSourceVersion|write|update|delete)\s*\(/);
+  assert.doesNotMatch(browser,/\.(?:preserveRecord|preserveServerRecipe|stagePage|publishSourceVersion|write|update|delete)\s*\(/);
   const code=await readFile(new URL('../qianmu-gallery-archive-storage.js',import.meta.url),'utf8');
   assert.doesNotMatch(code,/\bfetch\s*\(|storage\.(?:delete|remove|update)\(|\.unlink\(|\.admit\(|storyboardImages\s*=/);
 });

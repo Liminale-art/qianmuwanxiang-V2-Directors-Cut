@@ -6,6 +6,7 @@
     "qianmu-gallery-archive-browser.js",
     "qianmu-gallery-archive-view.js",
     "qianmu-gallery-archive-storage.js",
+    "qianmu-gallery-archive-recipe.js",
     "qianmu-gallery-discovery-client.js",
     "qianmu-gallery-discovery-routes.js",
     "qianmu-gallery-discovery-service.js",

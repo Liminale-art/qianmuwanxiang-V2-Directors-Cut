@@ -1,27 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {openGalleryArchive as open,galleryArchiveListHtml as listHtml} from '../qianmu-gallery-archive-view.js';
+import {openGalleryArchive as open,galleryArchiveListHtml as listHtml,galleryArchiveRecipeHtml as recipeHtml} from '../qianmu-gallery-archive-view.js';
 const tick=()=>new Promise(done=>setTimeout(done,0));
 const gate=()=>{let resolve;return {promise:new Promise(done=>resolve=done),resolve};};
 const entry={key:'a'.repeat(64),value:{scope:{ownerKey:'char:Alice.png',chatKey:'Archived chat'},sourceReceipt:{count:1}}};
 const row={recordId:'one',createdAt:123,tags:['海岸']};
 // Synthetic DOM event harness only: no browser layout or real ST acceptance.
 function fixture(extra={}){
-  const events=new Map(),observers=[],revoked=[],main={scrollTop:0};let parentOpen=true,focus=0,closed=0,listed=0,pages=0,previews=0,created=0,markup='';
+  const events=new Map(),observers=[],revoked=[],main={scrollTop:0},recipeContainer={innerHTML:''},status={textContent:''},buttons=[{},{}];let parentOpen=true,focus=0,closed=0,listed=0,pages=0,previews=0,created=0,markup='',draws=0;
   const dialog={open:false,isConnected:false,innerHTML:'',setAttribute(){},addEventListener(key,fn){events.set(key,fn);},
-    showModal(){this.open=true;},close(){this.open=false;events.get('close')?.();},remove(){this.isConnected=false;},querySelector(selector){return selector==='main'?main:null;}};
-  Object.defineProperty(dialog,'innerHTML',{get:()=>markup,set:value=>{markup=value;main.scrollTop=0;}});
+    showModal(){this.open=true;},close(){this.open=false;events.get('close')?.();},remove(){this.isConnected=false;},querySelector(selector){return selector==='main'?main:selector==='[data-archive-recipe]'?recipeContainer:selector==='footer [role="status"]'?status:null;},querySelectorAll(){return buttons;}};
+  Object.defineProperty(dialog,'innerHTML',{get:()=>markup,set:value=>{markup=value;main.scrollTop=0;draws++;}});
   const view={URL:{createObjectURL(){created++;return 'blob:fixture';},revokeObjectURL(url){revoked.push(url);}},
     MutationObserver:class{constructor(callback){this.callback=callback;observers.push(this);}observe(){}disconnect(){this.disconnected=true;}},addEventListener(){},removeEventListener(){}};
   const document={defaultView:view,body:{},activeElement:{isConnected:true,focus(){focus++;}},createElement(){return dialog;}};
   const parent={ownerDocument:document,isConnected:true,classList:{contains:()=>parentOpen},append(node){node.isConnected=true;}};
   const session={isClosed:()=>false,async list(){listed++;return {entries:[entry],nextCursor:null};},async open(key){assert.equal(key,entry.key);},
-    async page(){pages++;return {rows:[row],cursor:null};},async preview(id){assert.equal(id,'one');previews++;return {record:row,source:entry.value.scope,blob:new Blob(['fixture']),width:10,height:20};},close(){closed++;},...extra};
+    async page(){pages++;return {rows:[row],cursor:null};},async preview(id){assert.equal(id,'one');previews++;return {record:{...row,id},source:entry.value.scope,blob:new Blob(['fixture']),width:10,height:20};},recipe:async()=>({state:'not-recorded'}),close(){closed++;},...extra};
   const opened=open({parent,account:async()=> 'st-user:fixture',headers:()=>({}),connect:()=>session});
   const click=(kind,value)=>events.get('click')({target:{closest:selector=>selector===`[data-archive-${kind}]`?{dataset:{['archive'+kind[0].toUpperCase()+kind.slice(1)]:String(value)}}:null}});
-  return {opened,dialog,session,revoked,main,click,async action(action){click('action',action);await tick();},async choose(kind,index){click(kind,index);await tick();},
+  return {opened,dialog,session,revoked,main,recipeContainer,status,buttons,click,async action(action){click('action',action);await tick();},async choose(kind,index){click(kind,index);await tick();},
     hide(){parentOpen=false;observers[0].callback();},cancel(){events.get('cancel')({preventDefault(){}});},
-    get counts(){return {focus,closed,listed,pages,previews,created};},observers};
+    get counts(){return {focus,closed,listed,pages,previews,created,draws};},observers};
 }
 
 test('version and row markup escapes user metadata and never emits raw remote images',()=>{
@@ -63,4 +63,28 @@ test('account expiration clears old metadata and leaves a concise reopen instruc
 test('parent closure ends the dialog once, disconnects observers, and restores focus',async()=>{
   const f=fixture();await tick();f.hide();await f.opened.finished;f.opened.close();
   assert.equal(f.counts.closed,1);assert.equal(f.counts.focus,1);assert.ok(f.observers.every(item=>item.disconnected));
+});
+
+test('recipe reads only on explicit click and changes only its section, preserving image and scroll',async()=>{
+  let reads=0;const f=fixture({recipe:async id=>{assert.equal(id,'one');reads++;return {state:'available',origin:'server-copy',snapshot:{prompt:'</textarea><img src=x>',unknown:{kept:true}}};}});
+  await tick();await f.choose('version',0);await f.choose('record',0);assert.equal(reads,0);
+  const draws=f.counts.draws;f.main.scrollTop=144;await f.action('recipe');
+  assert.equal(reads,1);assert.equal(f.counts.draws,draws);assert.equal(f.main.scrollTop,144);assert.equal(f.counts.created,1);
+  assert.match(f.recipeContainer.innerHTML,/readonly/);assert.match(f.recipeContainer.innerHTML,/&lt;\/textarea&gt;&lt;img/);
+  assert.doesNotMatch(f.recipeContainer.innerHTML,/<img/);assert.match(f.recipeContainer.innerHTML,/unknown/);assert.ok(f.buttons.every(node=>!node.disabled));
+  await f.action('recipe');assert.equal(reads,2);f.opened.close();
+});
+
+test('missing recipe states are explicit, and never claim a current configuration or executable workflow',()=>{
+  for(const state of ['not-preserved','local-reference','unavailable','unresolved','not-recorded']){
+    const html=recipeHtml({state});assert.doesNotMatch(html,/<textarea/);assert.ok(html.length>12);
+  }
+  assert.match(recipeHtml({state:'local-reference'}),/无法确认账户归属/);
+});
+
+test('closing during recipe read drops its late content and does not rebuild a closed preview',async()=>{
+  const wait=gate(),f=fixture({recipe:()=>wait.promise});await tick();await f.choose('version',0);await f.choose('record',0);
+  f.click('action','recipe');assert.ok(f.buttons.every(node=>node.disabled));f.opened.close();
+  wait.resolve({state:'available',snapshot:{prompt:'late'}});await tick();
+  assert.equal(f.recipeContainer.innerHTML,'');assert.deepEqual(f.revoked,['blob:fixture']);
 });

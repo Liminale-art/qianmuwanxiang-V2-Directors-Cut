@@ -1,22 +1,24 @@
 // Connect immutable record/page storage to the exact SAVED current-chat source.
-// Not yet imported by the app. No host save, recipe hydration, live-head replacement,
+// Not yet imported by the app. No host save, original-record mutation, live-head replacement,
 // pruning, image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.284';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
+import {createCurrentRecipeArchiveClient} from './qianmu-recipe-archive-client.js';
+import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};
 const canonical=rows=>chatGalleryReceiptText(rows).text;
 export async function createCurrentGalleryArchiveSession({getContext,epoch,account,headers,fetchImpl,timeoutMs,
   guard=()=>true,createStorage}={}){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof guard!=='function')fail('画面保全缺少准确的当前聊天来源');
-  let client,archive,closed=false,busy=false,live,captured,sourceText;const records=new Map();
+  let client,archive,recipes,closed=false,busy=false,live,captured,sourceText;const records=new Map();
   function external(){
     const value=guard();if(value&&typeof value.then==='function'){void Promise.resolve(value).catch(()=>{});fail('画面保全需要同步切换保护');}
     if(value!==true)fail('画面保全来源保护已失效');
   }
-  function close(){closed=true;archive?.close();client?.close();}
+  function close(){closed=true;recipes?.close();archive?.close();client?.close();}
   function check(){
     if(closed)fail('画面保全来源会话已结束');
     try{external();client.assertCurrent();
@@ -64,14 +66,24 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
       preserveAll(){return preserve(async sourceReceipt=>{
         // Sorting is only for the independent chronological index; captured
         // source order and every original record stay untouched.
-        const ordered=[...captured].sort((a,b)=>b.createdAt-a.createdAt||(a.id<b.id?1:a.id>b.id?-1:0)),pages=[];
+        const ordered=[...captured].sort((a,b)=>b.createdAt-a.createdAt||(a.id<b.id?1:a.id>b.id?-1:0)),pages=[];let recipeCopies=0;
         for(let at=0;at<ordered.length;at+=LIMIT.rows){
-          unchanged();const result=await archive.stagePage(ordered.slice(at,at+LIMIT.rows));check();pages.push(result.descriptor);
+          const batch=ordered.slice(at,at+LIMIT.rows);
+          unchanged();const result=await archive.stagePage(batch);check();pages.push(result.descriptor);
+          for(const record of batch){
+            if(galleryArchiveRecipeState(record)!=='server-reference')continue;
+            unchanged();recipes??=createCurrentRecipeArchiveClient({getContext,epoch,getGallery:()=>live,account,headers,fetchImpl,timeoutMs,guard:unchanged});
+            const read=await recipes.read(record);unchanged();
+            if(read.selection.gallerySha256!==sourceReceipt.sha256)fail('配方读取来源版本与本次保全不符');
+            await archive.preserveServerRecipe(record,read);unchanged();recipeCopies++;
+            await new Promise(resolve=>setTimeout(resolve,0));check();
+          }
         }
-        unchanged();return archive.publishSourceVersion(sourceReceipt,pages);
+        unchanged();return {...await archive.publishSourceVersion(sourceReceipt,pages),recipeCopies};
       });},
       openSourceVersion:receipt=>{check();return archive.openSourceVersion(receipt);},
       readRecord:ref=>{check();return archive.readRecord(ref);},
+      readRecipe:(ref,options)=>{check();return archive.readRecipe(ref,options);},
       openStagedPage:descriptor=>{check();return archive.openStagedPage(descriptor);},close,
     });
   }catch(error){close();throw error;}

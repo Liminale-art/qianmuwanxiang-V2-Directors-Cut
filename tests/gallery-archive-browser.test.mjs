@@ -35,7 +35,7 @@ test('actual discovery, native version/page/record readers work with no original
   assert.equal(preview.record.prompt,'PRIVATE_PROMPT');assert.equal(preview.source.chatKey,entry.value.scope.chatKey);
   assert.equal(preview.originalVerified,false);assert.equal(preview.canPrune,false);
   assert.ok(f.transport.calls.slice(calls).every(row=>row.options.method!=='POST'));
-  assert.deepEqual(await f.unchanged(),before);assert.deepEqual(Object.keys(f.s).sort(),['close','isClosed','list','open','page','preview']);
+  assert.deepEqual(await f.unchanged(),before);assert.deepEqual(Object.keys(f.s).sort(),['close','isClosed','list','open','page','preview','recipe']);
 });
 
 test('caller cannot forge a discovered version or select a record outside the current page',async t=>{
@@ -99,4 +99,11 @@ test('manifest changes and record metadata mismatch stop before media fetch',asy
     return {...real,readRecord:async ref=>{const saved=await real.readRecord(ref);saved.record.id='mismatch';return saved;}};
   }}),items=await g.s.list();await g.s.open(items.entries[0].key);const page=await g.s.page();
   await assert.rejects(g.s.preview(page.rows[0].recordId),/记录与目录不一致/);assert.equal(g.images,0);
+});
+
+test('recipe is an explicit read of a current-page record, without media fetch, writes or fallback',async t=>{
+  const f=await fixture(t),list=await f.s.list();await f.s.open(list.entries[0].key);const page=await f.s.page(),calls=f.transport.calls.length;
+  assert.equal((await f.s.recipe(page.rows[0].recordId)).state,'not-recorded');assert.equal(f.images,0);
+  assert.equal(f.transport.calls.length-calls,2);assert.ok(f.transport.calls.slice(calls).every(call=>call.options.method!=='POST'));
+  await assert.rejects(f.s.recipe('other'),/当前分页/);f.switchAccount();await assert.rejects(f.s.recipe(page.rows[0].recordId),/账户已变化/);
 });

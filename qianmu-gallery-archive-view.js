@@ -1,9 +1,14 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.284';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
 const date=value=>new Date(value).toLocaleString();
+const recipeLabels={'not-preserved':'此版本尚未保全完整服务器配方；原引用保留。','local-reference':'仅有旧本机配方引用，无法确认账户归属；未借用其他设备缓存。',unavailable:'原记录明确标为未保留配方。',unresolved:'原记录的配方结构尚未核实，未使用当前设置补齐。','not-recorded':'原记录没有保存配方。'};
+export function galleryArchiveRecipeHtml(recipe){
+  return recipe?.state==='available'?`<p>${recipe.origin==='server-copy'?'已保全的服务器配方副本':'保全记录内的完整配方'}；不代表原模型仍可调用，此处不重绘或套用。</p><textarea class="text_pole" rows="10" readonly aria-label="原配方，只读">${escape(JSON.stringify(recipe.snapshot))}</textarea>`
+    :recipe?`<p>${escape(recipeLabels[recipe.state]||'原配方尚未确认。')}</p>`:'';
+}
 export function galleryArchiveListHtml({entries=[],rows=[],selected=null,busy=false}={}){
   if(selected)return rows.map((row,index)=>`<button type="button" class="sd-directory-row" data-archive-record="${index}" ${busy?'disabled':''}><span><b>${escape(row.tags.join(' · ')||'静帧')}</b><small>${escape(date(row.createdAt))}</small></span><span>查看画面</span></button>`).join('');
   return entries.map((entry,index)=>`<button type="button" class="sd-directory-row" data-archive-version="${index}" ${busy?'disabled':''}><span><b>${escape(entry.value.scope.chatKey)}</b><small>${escape(entry.value.scope.ownerKey)} · ${entry.value.sourceReceipt.count} 张 · 版本 ${escape(entry.key.slice(0,8))}</small></span><span>打开</span></button>`).join('');
@@ -15,11 +20,11 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
   const document=parent.ownerDocument,view=document.defaultView,returnFocus=document.activeElement;
   const dialog=document.createElement('dialog');dialog.className='sd-bundle-dialog sd-gallery-directory sd-gallery-archive';
   dialog.setAttribute('aria-label','已保存图库');
-  let closed=false,busy=false,notice='',session,selected=null,preview=null,url='',releaseZoom;
+  let closed=false,busy=false,notice='',session,selected=null,preview=null,url='',releaseZoom,recipe=null;
   let versions=null,page=null,versionStack=[null],pageStack=[null],tag='',resolve;
   let versionScroll=0,pageScroll=0,restoreScroll=null;
   const finished=new Promise(done=>resolve=done);
-  function releaseImage(){releaseZoom?.();releaseZoom=null;if(url)view.URL.revokeObjectURL(url);url='';preview=null;}
+  function releaseImage(){releaseZoom?.();releaseZoom=null;if(url)view.URL.revokeObjectURL(url);url='';preview=null;recipe=null;}
   function close(){
     if(closed)return;closed=true;observer.disconnect();view.removeEventListener('pagehide',close);session?.close();releaseImage();
     if(dialog.open)dialog.close();dialog.remove();if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});resolve();
@@ -39,7 +44,9 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
         <div class="sd-directory-image-stage" tabindex="0" aria-label="图片；滚轮或双指缩放，拖动平移，0 恢复"><div><img src="${escape(url)}" alt="${escape(tags.join(' · ')||'已保存画面')}" draggable="false"></div></div>
         <nav><button type="button" class="sd-btn" data-preview-zoom="out" aria-label="缩小">−</button><span data-preview-scale>100%</span><button type="button" class="sd-btn" data-preview-zoom="in" aria-label="放大">＋</button><button type="button" class="sd-btn" data-preview-zoom="reset">恢复适配</button></nav>
         <details><summary>来源与详情</summary><p>${escape(preview.source.chatKey)}</p><p>${escape(preview.source.ownerKey)}</p><p>${escape(date(preview.record.createdAt))} · ${preview.width} × ${preview.height}</p><p>${escape(tags.join(' · '))}</p>
-        <p>读取保全记录指向的现存图片。配方尚未完整核验，此处不提供重绘或套用。</p></details></main><footer><p role="status">${escape(notice||'不需要打开原聊天；图片文件本身仍需保留在 ST 中。')}</p></footer>`;
+        ${button('recipe',recipe?'重新读取原配方':'读取原配方',busy)}
+        <div data-archive-recipe>${galleryArchiveRecipeHtml(recipe)}</div>
+        </details></main><footer><p role="status">${escape(notice||'不需要打开原聊天；图片文件本身仍需保留在 ST 中。')}</p></footer>`;
       releaseZoom=bindGalleryPreviewZoom(dialog,{...preview,isCurrent:alive});return;
     }
     const stack=selected?pageStack:versionStack,next=selected?page?.cursor:versions?.nextCursor;
@@ -63,10 +70,26 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
   }
   async function loadVersions(){versions=await session.list({limit:24,cursor:versionStack.at(-1)});}
   async function loadPage(){page=await session.page({limit:24,cursor:pageStack.at(-1),tags:tag?[tag]:[]});}
+  async function loadRecipe(){
+    if(!alive()||busy||!preview)return;busy=true;const current=preview;
+    const buttons=()=>dialog.querySelectorAll('[data-archive-action="recipe"],[data-archive-action="back"]');
+    const status=message=>{if(alive())dialog.querySelector('footer [role="status"]').textContent=message;};
+    for(const node of buttons())node.disabled=true;status('正在读取此画面的已保存配方…');
+    try{
+      const value=await session.recipe(current.record.id);if(!alive()||preview!==current)return;recipe=value;
+      dialog.querySelector('[data-archive-recipe]').innerHTML=galleryArchiveRecipeHtml(recipe);status('配方只读查看，不会自动套用或提交生成。');
+    }catch(error){
+      if(!alive())return;
+      if(session.isClosed()){releaseImage();versions=null;page=null;selected=null;notice=error.message;draw();}
+      else status(error?.message||'原配方读取未完成，请重试');
+    }finally{busy=false;if(alive())for(const node of buttons())node.disabled=false;}
+    // Keep the image element, zoom, expanded details and current scroll intact.
+  }
   dialog.addEventListener('cancel',event=>{event.preventDefault();close();});dialog.addEventListener('close',close);
   dialog.addEventListener('click',event=>{
     const action=event.target.closest('[data-archive-action]')?.dataset.archiveAction;
     if(action==='close'){close();return;}
+    if(action==='recipe'){void loadRecipe();return;}
     const entry=event.target.closest('[data-archive-version]'),record=event.target.closest('[data-archive-record]');
     if(!action&&!entry&&!record)return;
     if(busy)return;

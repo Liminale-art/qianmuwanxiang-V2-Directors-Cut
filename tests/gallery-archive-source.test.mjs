@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import {EventEmitter} from 'node:events';
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
+import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
 import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
@@ -13,6 +14,7 @@ async function fixture(t){
   const events=new EventEmitter();host.context.eventSource=events;
   let hook;const calls=[];
   const fetchImpl=async(url,options)=>{
+    if(url==='/api/plugins/qianmu-tts/chat-gallery/recipe/read')return host.fetch(url,options);
     assert.equal(url,'/api/plugins/qianmu-tts/chat-gallery/receipt');const body=JSON.parse(options.body);calls.push({url,...options,body});
     if(hook){const result=await hook({body,options});if(result)return result;}
     try{return Response.json(await service.inspectGallery(host.req,body,{signal:options.signal}));}
@@ -159,4 +161,53 @@ test('complete source capture sorts only its index, publishes every page, and re
   session.close();const other=await f.open(),reader=await other.openSourceVersion(version.sourceReceipt);let cursor,ids=[];
   do{const page=await reader.page({limit:60,...(cursor?{cursor}:{})});ids.push(...page.rows.map(row=>row.recordId));cursor=page.cursor;}while(cursor);
   assert.deepEqual(ids,original.map(row=>row.id).reverse());assert.equal(f.calls.length,2);reader.close();
+});
+
+async function serverRecipe(f){
+  const client=f.host.client(),original=structuredClone(f.host.rows[0].snapshot);
+  try{const saved=await client.preserve(f.host.rows[0]);delete f.host.rows[0].snapshot;f.host.rows[0].snapshotServerRef=saved.reference;await f.host.save();return {original,reference:saved.reference};}
+  finally{client.close();}
+}
+
+test('complete preservation materializes exact server recipe and fresh-device reads survive deletion of source chat and old recipe',async t=>{
+  const f=await fixture(t),{original,reference}=await serverRecipe(f),raw=structuredClone(f.host.rows[0]),session=await f.open(),before=await fs.readFile(f.host.file);
+  const saved=await session.preserveAll();assert.equal(saved.recipeCopies,1);assert.equal(saved.canPrune,false);
+  assert.deepEqual(f.host.rows[0],raw);assert.deepEqual(await fs.readFile(f.host.file),before);
+  const scope={...session.scope};session.close();await fs.unlink(f.host.file);await fs.unlink(f.host.archive+'/'+reference.id+'.json');
+  const fresh=await createGalleryArchiveStorage({scope,guard:()=>true,verifyRecord:()=>false,createStorage:f.transport.createStorage});t.after(()=>fresh.close());
+  const reader=await fresh.openSourceVersion(saved.sourceReceipt),page=await reader.page(),result=await fresh.readRecipe(page.rows[0].record);
+  assert.deepEqual(result.snapshot,original);assert.equal(result.origin,'server-copy');assert.equal(result.originalVerified,false);
+  assert.deepEqual((await fresh.readRecord(page.rows[0].record)).record,raw);
+  assert.ok(f.host.calls.filter(call=>call.url.endsWith('/read')).every(call=>!Object.hasOwn(call.body,'snapshot')));reader.close();
+});
+
+test('repeated complete preservation keeps identical server copies and never rewrites a record or recipe',async t=>{
+  const f=await fixture(t);await serverRecipe(f);const session=await f.open(),first=await session.preserveAll();
+  const files=[...f.transport.files],posts=f.transport.calls.filter(call=>call.options.method==='POST').length;
+  const again=await session.preserveAll();assert.deepEqual(again,first);assert.deepEqual([...f.transport.files],files);
+  assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,posts);
+});
+
+test('server recipe read failure prevents publication, keeps partial immutable copies and never changes live source',async t=>{
+  const f=await fixture(t);await serverRecipe(f);const raw=structuredClone(f.host.rows),session=await f.open();
+  f.host.fetch=async()=>Response.json({ok:false},{status:503});
+  await assert.rejects(session.preserveAll(),error=>error.writeState==='unconfirmed');assert.deepEqual(f.host.rows,raw);
+  assert.ok(f.transport.files.size>0);assert.ok(![...f.transport.files.keys()].some(name=>name.includes('-gallery-source-')));
+});
+
+test('recipe upload failure leaves prior record and original server recipe intact, without publishing incomplete version',async t=>{
+  const f=await fixture(t),{reference}=await serverRecipe(f),session=await f.open();
+  const original=await fs.readFile(f.host.archive+'/'+reference.id+'.json');
+  f.transport.hook=async({path,options,json})=>path==='/api/files/upload'&&JSON.parse(options.body).name.includes('-gallery-recipe-')?json({},503):undefined;
+  await assert.rejects(session.preserveAll(),error=>error.writeState==='unconfirmed');
+  assert.deepEqual(await fs.readFile(f.host.archive+'/'+reference.id+'.json'),original);
+  assert.ok(![...f.transport.files.keys()].some(name=>name.includes('-gallery-source-')));
+});
+
+test('local-only recipe remains unresolved after complete preservation, while inline and absent recipes keep their exact states',async t=>{
+  const f=await fixture(t),base=f.host.rows[0];f.host.rows=[base,{...base,id:'local',createdAt:2,snapshot:undefined,snapshotRef:'legacy'}];
+  delete f.host.rows[1].snapshot;f.host.rows.push({id:'none',createdAt:3,url:'/user/images/none.png'});await f.host.save();
+  const session=await f.open(),saved=await session.preserveAll(),reader=await session.openSourceVersion(saved.sourceReceipt),page=await reader.page();
+  const states={};for(const row of page.rows)states[row.recordId]=(await session.readRecipe(row.record)).state;
+  assert.deepEqual(states,{none:'not-recorded',local:'local-reference',image:'available'});assert.equal(saved.recipeCopies,0);reader.close();
 });

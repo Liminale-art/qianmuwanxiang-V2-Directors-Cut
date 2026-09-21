@@ -1,5 +1,5 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.284';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
@@ -63,6 +63,10 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
       const media=await loadImage(record.url,{guard:check,signal:cancellation.signal});await check();
       return {...media,record:structuredClone(record),source:{...selection.scope},recipeState:saved.recipeState,
         originalVerified:false,canPrune:false};
+    });},
+    recipe(recordId){return run(async()=>{
+      const row=rows.get(recordId);if(!row||!storage)throw Error('画面不在当前分页，请重新选择');
+      const result=await storage.readRecipe(row.record);await check();return result;
     });},
     isClosed:()=>closed,close,
   });

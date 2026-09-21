@@ -7,6 +7,8 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.284';
+import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_storage',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
@@ -83,6 +85,30 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
       check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES);
       const encoded=await inspectGalleryArchiveRecord(owner,await readObject('record',ref),ref);check();
       return {record:encoded.value.record,recipeState:encoded.recipeState,reference:{...ref},proof:'record-readback-only',originalVerified:false,canPrune:false};
+    },
+    async preserveServerRecipe(rawRecord,rawResponse){
+      check();const record=captureGalleryArchiveJson(rawRecord,GALLERY_ARCHIVE_RECORD_BYTES),response=captureGalleryArchiveJson(rawResponse,LIMIT.recordBytes);
+      return exclusive(async()=>{
+        const encoded=await encodeGalleryArchiveRecipe(owner,record,response);check();await verify(encoded.record);
+        // The unchanged record must already have been durably read back.
+        await inspectGalleryArchiveRecord(owner,await readObject('record',encoded.record.reference),encoded.record.reference);check();
+        await putObject('recipe',encoded,stored=>{
+          inspectGalleryArchiveRecipe(owner,encoded.record,stored);
+          if(JSON.stringify(captureGalleryArchiveJson(stored,LIMIT.recordBytes))!==encoded.text)fail('原画面已有不同配方副本，保留原件未覆盖');
+        },slot('recipe',encoded.record.reference));
+        await verify(encoded.record);
+        return {record:encoded.record.reference,proof:'recipe-readback-only',originalVerified:false,canPrune:false};
+      });
+    },
+    async readRecipe(rawReference,{signal}={}){
+      check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES);
+      const original=await inspectGalleryArchiveRecord(owner,await readObject('record',ref,signal),ref);check();
+      if(original.recipeState==='inline')return {state:'available',snapshot:recipeArchiveSnapshot(original.value.record.snapshot).snapshot,
+        origin:'saved-inline',proof:'recipe-readback-only',originalVerified:false,canPrune:false};
+      if(original.recipeState!=='server-reference')return {state:original.recipeState,snapshot:null,originalVerified:false,canPrune:false};
+      const stored=receipt(await storage.read(slot('recipe',ref),{guard:check,signal}));check();
+      if(!stored.exists)return {state:'not-preserved',snapshot:null,originalVerified:false,canPrune:false};
+      return {state:'available',...inspectGalleryArchiveRecipe(owner,original,stored.value)};
     },
     async stagePage(raw){
       check();const captured=captureGalleryArchiveJson(raw,LIMIT.recordBytes);
