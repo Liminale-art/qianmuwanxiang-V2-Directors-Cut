@@ -1,5 +1,5 @@
 // Connect immutable record/page storage to the exact SAVED current-chat source.
-// Not yet imported by the app. No host save, recipe hydration, head publication,
+// Not yet imported by the app. No host save, recipe hydration, live-head replacement,
 // pruning, image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
 import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js';
@@ -42,8 +42,8 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
   async function preserve(work){
     check();if(busy)fail('原聊天画面正在保全，请勿重复提交');busy=true;let started=false;
     try{
-      await saved();check();started=true;
-      const result=await work(),sourceReceipt=await saved();check();
+      const before=await saved();check();started=true;
+      const result=await work(before),sourceReceipt=await saved();check();
       return {...result,sourceReceipt,originalVerified:false,canPrune:false};
     }catch(error){if(started)error.writeState='unconfirmed';else error.writeState??='not_started';throw error;}
     finally{busy=false;}
@@ -61,6 +61,16 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
     return Object.freeze({scope:archive.scope,
       preserveRecord(id){const [record]=selected([id]);return preserve(()=>archive.preserveRecord(record));},
       stagePage(ids){const rows=selected(ids);return preserve(()=>archive.stagePage(rows));},
+      preserveAll(){return preserve(async sourceReceipt=>{
+        // Sorting is only for the independent chronological index; captured
+        // source order and every original record stay untouched.
+        const ordered=[...captured].sort((a,b)=>b.createdAt-a.createdAt||(a.id<b.id?1:a.id>b.id?-1:0)),pages=[];
+        for(let at=0;at<ordered.length;at+=LIMIT.rows){
+          unchanged();const result=await archive.stagePage(ordered.slice(at,at+LIMIT.rows));check();pages.push(result.descriptor);
+        }
+        unchanged();return archive.publishSourceVersion(sourceReceipt,pages);
+      });},
+      openSourceVersion:receipt=>{check();return archive.openSourceVersion(receipt);},
       readRecord:ref=>{check();return archive.readRecord(ref);},
       openStagedPage:descriptor=>{check();return archive.openStagedPage(descriptor);},close,
     });

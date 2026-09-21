@@ -151,3 +151,12 @@ test('saved server recipe reference is preserved verbatim, never implicitly read
   assert.equal(saved.recipeState,'server-reference');assert.deepEqual((await session.readRecord(saved.reference)).record,raw);
   assert.equal(f.host.calls.length,recipeCalls);assert.equal(saved.canPrune,false);
 });
+
+test('complete source capture sorts only its index, publishes every page, and reopens without another source request',async t=>{
+  const f=await fixture(t);f.host.rows=Array.from({length:130},(_,index)=>({id:'r'+index,createdAt:index,url:'/user/images/fixture.png',chatKey:'chat'}));await f.host.save();
+  const original=structuredClone(f.host.rows),session=await f.open(),version=await session.preserveAll();
+  assert.equal(version.total,130);assert.equal(version.pages,2);assert.equal(f.calls.length,2);assert.deepEqual(f.host.rows,original);
+  session.close();const other=await f.open(),reader=await other.openSourceVersion(version.sourceReceipt);let cursor,ids=[];
+  do{const page=await reader.page({limit:60,...(cursor?{cursor}:{})});ids.push(...page.rows.map(row=>row.recordId));cursor=page.cursor;}while(cursor);
+  assert.deepEqual(ids,original.map(row=>row.id).reverse());assert.equal(f.calls.length,2);reader.close();
+});
