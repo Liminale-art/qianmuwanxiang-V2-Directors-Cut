@@ -1,8 +1,15 @@
-import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.272';
-import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.272';
+import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.273';
+import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.273';
+import {resolveStoryboardProfileBinding} from './qianmu-storyboard.js?v=1.59.273';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
-const key=route=>JSON.stringify([route.providerId,route.modelId,route.capabilityModelId||'',route.connectionPresetId||'',route.parameterPresetId||'',route.comfyWorkflowBinding,route.comfyCharacterEnabled,route.comfyReferences]);
+const key=route=>{
+  // Explicit capability IDs added by job creation must retain the same identity.
+  // Keep remote aliases, presets and the complete fixed recipe/reference binding.
+  let capability=route.capabilityModelId||'';
+  try{capability=resolveStoryboardProfileBinding(route.providerId,{model:route.modelId,capabilityModelId:capability}).capabilityModelId;}catch(_){/* Invalid optional routes are excluded by binding validation. */}
+  return JSON.stringify([route.providerId,route.modelId,capability,route.connectionPresetId||'',route.parameterPresetId||'',route.comfyWorkflowBinding,route.comfyCharacterEnabled===true,route.comfyReferences??null]);
+};
 const fail=message=>{throw Object.assign(Error(message),{code:'ensemble_host',submissionState:'not_submitted'});};
 
 // Explicit new-library mode only. The old mode incurs no account-file reads.
@@ -56,7 +63,7 @@ export async function prepareStoryboardEnsembleSession(state,inputGuard,d,{plan=
         promptFormats:descriptor.profile.comfyRoutePromptFormat?[descriptor.profile.comfyRoutePromptFormat]:row?.input.comfyRoutes?.promptFormats||[]};},
     });await guard();
     inputGuard.comfyRoutes=prepared;inputGuard.comfyAuto=main.input.comfyAuto;
-    const result=Object.freeze({session:bindings.session,unavailable:Object.freeze([...new Map([...bindings.session.excluded,...bindings.unavailable].map(row=>[row.id,row])).values()]),
+    const result=Object.freeze({session:bindings.session,useReference:bindings.useReference,unavailable:Object.freeze([...new Map([...bindings.session.excluded,...bindings.unavailable].map(row=>[row.id,row])).values()]),
       async assertCurrent(){await guard();await bindings.assertCurrent();await prepared.assertCurrent();},close});
     inputGuard.ensemble=result;return result;
   }catch(error){close();throw error;}

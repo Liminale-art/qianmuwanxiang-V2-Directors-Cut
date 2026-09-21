@@ -6,6 +6,11 @@ import {inspectHistoricalStoryboardBundle} from '../qianmu-historical-storyboard
 import {openStoryboardBundle} from '../qianmu-storyboard-bundle.js';
 import {createGalleryCatalogManagement} from '../qianmu-gallery-catalog-management.js';
 const wait=()=>new Promise(done=>setTimeout(done,20));
+const awaitImageRead=(ready,finished)=>Promise.race([ready,finished.then(()=>{throw Error('Export settled before the controlled image read started');})]);
+
+test('image-read test barrier fails promptly when an export times out before reaching its read stub',async()=>{
+  await assert.rejects(awaitImageRead(new Promise(()=>{}),Promise.resolve()),/before the controlled image read/);
+});
 
 test('confirmed exact historical chat downloads one verified scoped QMB from real saved sources and original bytes',async t=>{
   const f=await historyExportFixture(t),before=await readFile(f.file),result=await f.run();
@@ -62,13 +67,16 @@ test('changed draft during actual image reading rejects final bundle and preserv
   assert.equal(f.downloads.length,0);assert.equal(f.saved.characterDrafts.items[0].future.note,'later');
 });
 
-test('user cancel, parent close and whole timeout settle stalled image reads without late download',async t=>{
+test('user cancel, parent close and whole timeout settle stalled image reads without late download',{timeout:15000},async t=>{
   const f=await historyExportFixture(t);
   for(const mode of ['user','parent','timeout']){
     let started,release;const ready=new Promise(done=>started=done),gate=new Promise(done=>release=done),controller=new AbortController();
-    const rejected=assert.rejects(f.run({...(mode==='parent'?{parentSignal:controller.signal}:{signal:controller.signal}),timeoutMs:mode==='timeout'?180:5000,
+    // Disk-backed source capture must reach the deliberately stalled image read.
+    // A competing early timeout is a clear fixture failure, never an infinite ready wait.
+    const rejected=assert.rejects(f.run({...(mode==='parent'?{parentSignal:controller.signal}:{signal:controller.signal}),timeoutMs:mode==='timeout'?3000:5000,
       loadImage:async()=>{started();await gate;return {blob:new Blob([png],{type:'image/png'})};}}),/取消|超时|停止/);
-    await ready;if(mode!=='timeout')controller.abort();await rejected;const calls=f.calls.length;release();await wait();assert.equal(f.calls.length,calls);assert.equal(f.downloads.length,0);
+    try{await awaitImageRead(ready,rejected);if(mode!=='timeout')controller.abort();await rejected;const calls=f.calls.length;release();await wait();assert.equal(f.calls.length,calls);assert.equal(f.downloads.length,0);}
+    finally{release();}
   }
 });
 
@@ -89,14 +97,15 @@ test('old backend failure remains visible without current-config fallback or ima
   assert.equal(f.mediaCalls.length,0);assert.equal(f.downloads.length,0);
 });
 
-test('manager delegates confirmed export without reading catalog rows; locks cleanup and cancels on close',async t=>{
+test('manager delegates confirmed export without reading catalog rows; locks cleanup and cancels on close',{timeout:15000},async t=>{
   const f=await historyExportFixture(t);let closed=0,started,release;
   const ready=new Promise(done=>started=done),gate=new Promise(done=>release=done);
   const session=await createGalleryCatalogManagement({resolveNamespace:async()=>f.account,headers:f.options().headers,
     createStore:()=>({close(){closed++;},inspectPage:()=>assert.fail('catalog is not original source'),clearScopeBatch:()=>assert.fail('no cleanup')})});
   const rejected=assert.rejects(session.exportHistory(f.exportOptions().source,f.exportOptions().save,{confirmed:true,fetchImpl:f.fetch,
     loadImage:async()=>{started();await gate;return {blob:new Blob([png])};}}),/取消|停止/);
-  await ready;await assert.rejects(session.inspect(),/正在处理/);await assert.rejects(session.exportHistory(f.exportOptions().source,()=>{}),/正在处理/);
+  t.after(()=>{session.close();release();});
+  await awaitImageRead(ready,rejected);await assert.rejects(session.inspect(),/正在处理/);await assert.rejects(session.exportHistory(f.exportOptions().source,()=>{}),/正在处理/);
   await assert.rejects(session.clear({}, {confirmed:true}));session.close();await rejected;release();await wait();assert.ok(closed>=1);assert.equal(f.downloads.length,0);
 });
 

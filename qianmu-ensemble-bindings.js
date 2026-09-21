@@ -1,5 +1,5 @@
-import {createEnsembleStyleSession,normalizeEnsembleLibrary,normalizeEnsembleChatSelection,ENSEMBLE_CURRENT_STYLE} from './qianmu-ensemble-selection.js?v=1.59.272';
-import {resolveStoryboardProfileBinding,resolveStoryboardConnectionBinding,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.272';
+import {createEnsembleStyleSession,normalizeEnsembleLibrary,normalizeEnsembleChatSelection,ENSEMBLE_CURRENT_STYLE} from './qianmu-ensemble-selection.js?v=1.59.273';
+import {resolveStoryboardProfileBinding,resolveStoryboardConnectionBinding,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.273';
 import {normalizeStoryboardPromptFormats,negotiateStoryboardPromptFormats} from './qianmu-prompt-formats.js';
 import {comfyRouteBindingKey} from './qianmu-comfy-route-contract.js';
 
@@ -105,6 +105,7 @@ export async function prepareEnsembleStyleBindings({library,selection,namespace,
   }
   const session=Object.freeze({...inner,resolve(rows,shotIds){const result=inner.resolve(rows,shotIds);issued.add(result);return result;},resolveAssignment});
   return Object.freeze({session,unavailable:freeze(unavailable),executionAuthorized:false,resolveAssignment,
+    useReference:[...pinned.values()].some(row=>row.descriptor.route.providerId==='novel'&&row.descriptor.profile.characterReferenceEnabled===true),
     async assertCurrent(){await check();inner.assertCurrent();},
     close(){closed=true;pinned.clear();eligibility.clear();},
   });

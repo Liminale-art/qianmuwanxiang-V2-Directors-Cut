@@ -25,6 +25,8 @@ import {buildWorldSourceIndex} from '../qianmu-world-source.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,settleImageAttempt} from '../qianmu-image-attempts.js';
+import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
+import {planCharacterReference,assertCharacterReferencePlan,characterReferenceNotice} from '../qianmu-character-reference.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 export function worldEnvironment() {
@@ -125,17 +127,18 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
       calls.push(key);
       return {directorDecision:decisions,directorWorkOrders:orders,imageAdmission:{resolveImageAccountNamespace:async()=>account},
         characterCasting:{...casting,readCharacterCasting:options=>casting.prepareCharacterCasting({...options,store:e.store})},
-        worldShot:{...world,createWorldGenerationHandoff:(owner,options)=>{
+        worldShot:{...world,prepareWorldStyleSelection:async(...args)=>{const result=await world.prepareWorldStyleSelection(...args);context.worldStyleExcluded=args[1].ensemble?.unavailable;return result;},createWorldGenerationHandoff:(owner,options)=>{
           // Inspect a second pure projection; the production handoff stays unconsumed.
           context.worldDraft=world.consumeWorldGenerationHandoff(world.createWorldGenerationHandoff(owner,options),owner);
           return world.createWorldGenerationHandoff(owner,options);
         },openWorldShotConfirmation:async options=>{await options.guard();calls.push('confirm');return confirm(options);}}}[key];
     }},saveSettings:()=>calls.push('save'),sanitizeStoryboardDiagnosticData:core.sanitizeStoryboardDiagnosticData,toast:(text)=>{notices.push(text);return false;},
     storyboardCallCompiler:async()=>assert.fail('unexpected world expression request'),storyboardPipelineArchiveCache:new Map(),
+    storyboardPreflightComfyForCompiler:async()=>assert.fail('configure the fixed-workflow preflight fixture explicitly'),
     storyboardArchivePipelineLog:async log=>{calls.push(['archive',log.pipelineId]);return false;},
     storyboardGenerate:async(root,options)=>{options.productionGuard.assertCurrent();context.lastProductionOptions=options;calls.push('generate');assert.equal(root,null);assert.equal(options.automatic,false);return true;},
   });
-  vm.runInContext(['storyboardStoreLog','storyboardPrepareComfyRoutes','storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
+  vm.runInContext(['storyboardStoreLog','storyboardPrepareComfyRoutes','storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardEnsembleHost','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
   return {...e,state,context,calls,notices,packet,candidate,run:()=>context.storyboardGenerateProductionPacket({isConnected:true},'packet-a'),setAccount:value=>{account=value;},setChat:value=>{chat=value;}};
 }
 function useActualWorldGeneration(e,functions) {
@@ -152,6 +155,7 @@ async function automaticWorldHarness({comfy=false}={}){
   e.context.directorCandidatePoolState.ledger.entries=[ledger];e.state.directorBridge.worldAutoGenerate=true;e.state.automation.autoGenerate=false;
   if(comfy)e.state.connections.comfy.draft.baseUrl='https://comfy.fixture.invalid';
   const transport=streamCheckpointTransport(e.namespace),load=e.context.featureRuntime.load,rows=new Map(),checks=[];
+  transport.configure();
   e.context.featureRuntime.load=async key=>key==='worldAutomatic'?{...worldAutomatic,
     beginWorldAutomaticAttempt:options=>worldAutomatic.beginWorldAutomaticAttempt({...options,createStorage:transport.createStorage}),
     verifySavedWorldAutomaticApproval:(approval,options)=>{checks.push('saved');return worldAutomatic.verifySavedWorldAutomaticApproval(approval,{...options,createStorage:transport.createStorage});},
@@ -178,6 +182,25 @@ async function automaticWorldHarness({comfy=false}={}){
     'storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate',
     'storyboardVerifyWorldAutomaticApproval','storyboardSettleImageAdmission','storyboardQueueJob']);
   return {...e,transport,checks,admission,source,runAutomatic:()=>e.context.storyboardGenerateProductionPacket(null,'packet-a',{automatic:true})};
+}
+
+async function nativeWorldEnsembleHarness({comfy=false,artist=false}={}){
+  const e=await automaticWorldHarness({comfy});e.state.routing.styleLibrary=true;
+  if(comfy)e.context.storyboardPreflightComfyForCompiler=async(_state,_profile,_plan,_input,_automatic,_ticket,routes)=>{
+    assert.equal(routes.length,1);assert.deepEqual(copy(routes[0].comfyWorkflowBinding),copy(e.recipe.binding));return [{localConfigurationReady:true}];
+  };
+  else {const providerId=artist?'novel':'banana';e.state.routing.rules=[{id:'world-style',enabled:true,shotTypes:[],target:{providerId,modelId:e.context.storyboardProviderProfile(e.state,providerId).model}}];}
+  if(artist)e.state.artistPresets.push({id:'world-artist',name:'World ink',value:'ink style',positivePrompt:'ink world texture',negativePrompt:'flat shading'});
+  const store=await createEnsembleStorage({namespace:e.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>e.namespace});
+  try{
+    const library=await store.readLibrary();await store.saveLibrary({...library.value,schemes:[{id:'alternative',revision:'r1',name:'世界画风',description:'突出幕后世界氛围',tags:['气氛'],archived:false,
+      binding:{routeId:comfy?'world-fixed':'world-style',artistPresetId:artist?'world-artist':''}}]},library);
+    const selection=await store.readSelection();await store.saveSelection({...selection.value,revision:'s1',enabled:true,schemeIds:['alternative']},selection);
+  }finally{store.close();}
+  const call=e.context.storyboardCallCompiler;
+  e.context.storyboardCallCompiler=async(...args)=>{e.lastRequest={messages:args[0],profile:args[1],options:args[2]};assert.ok(JSON.parse(args[0][1].content).style_catalogue,JSON.stringify(e.context.worldStyleExcluded));const value=JSON.parse(await call(...args));
+    value.style_selections=[{shot_id:'S1',scheme_id:'alternative',reason:'突出已确认世界画面的氛围'}];return JSON.stringify(value);};
+  return e;
 }
 
 const renderingsFor=(shot,requested)=>Object.fromEntries(requested.map(format=>[format,{global:'kitchen, soft light',negative:'blurred details',
@@ -258,7 +281,7 @@ test('resetting the actual automatic world host during expression never queues l
 
 for(const comfy of [false,true])test(`automatic world ${comfy?'fixed Comfy':'NAI'} reaches the real gallery queue without dialogs, public draft mutation or prose opt-in`,async()=>{
   const e=await automaticWorldHarness({comfy});try{
-    const before=copy(e.state.promptDraft);assert.equal(await e.runAutomatic(),true,e.notices.join(';'));
+    const before=copy(e.state.promptDraft);assert.equal(await e.runAutomatic(),true,e.notices.join(';')+' '+JSON.stringify(e.state.pipelineLogs.map(row=>row.stages.map(stage=>stage.error))));
     assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.filter(value=>value==='llm').length,1);
     assert.equal(e.context.storyboardQueue.length,1);const job=e.context.storyboardQueue[0];
     assert.equal(job.automatic,true);assert.equal(job.profile.count,'1');assert.equal(job.target,'gallery');assert.equal(job.floor,null);
@@ -295,6 +318,100 @@ test('the unchanged legacy world mode still refuses a broken configured route',a
   const e=await automaticWorldHarness();try{
     e.state.routing.enabled=true;e.state.routing.rules=[{id:'bad',enabled:true,shotTypes:[],target:{providerId:'novel',modelId:e.state.profiles.novel.model,connectionPresetId:'missing-connection'}}];
     assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.calls.includes('llm'),false);
+  }finally{await e.admission.close();}
+});
+
+for(const mode of ['closed','artist','comfy'])test(`native world ${mode} style is selected in one expression call and reaches the existing independent gallery queue`,async()=>{
+  const e=await nativeWorldEnsembleHarness({comfy:mode==='comfy',artist:mode==='artist'});try{
+    const before=copy(e.state.promptDraft);assert.equal(await e.runAutomatic(),true,e.notices.join(';')+' '+JSON.stringify(e.state.pipelineLogs.map(row=>row.stages.map(stage=>stage.error))));
+    assert.equal(e.calls.filter(value=>value==='llm').length,1);assert.equal(e.context.storyboardQueue.length,1);
+    const job=e.context.storyboardQueue[0];assert.equal(job.source,mode==='comfy'?'comfy':mode==='artist'?'novel':'banana');
+    assert.equal(job.ensembleStyleOrigin.schemeId,'alternative');assert.equal(job.target,'gallery');assert.match(job.imageAdmission.messageKey,/^world-item:/);
+    if(mode==='artist')assert.equal(job.artistPresetId,'world-artist');
+    if(mode==='comfy')assert.deepEqual(copy(job.profile.comfyRouteBinding),copy(e.recipe.binding));
+    const sent=JSON.parse(e.lastRequest.messages[1].content);assert.deepEqual(sent.style_catalogue.map(row=>row.id),['current','alternative']);
+    assert.doesNotMatch(JSON.stringify(sent),/apiKey|baseUrl|comfyWorkflow|PRIVATE-QUALIFICATION|original/);
+    assert.deepEqual(e.state.promptDraft,before);assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,1);
+  }finally{await e.admission.close();}
+});
+
+for(const change of ['unknown','missing','extra-shot'])test(`native world ${change} style is repaired at most three times without fallback or image submission`,async()=>{
+  const e=await nativeWorldEnsembleHarness();try{
+    const call=e.context.storyboardCallCompiler;e.context.storyboardCallCompiler=async(...args)=>{
+      const value=JSON.parse(await call(...args));
+      if(change==='unknown')value.style_selections[0].scheme_id='invented';
+      if(change==='missing')delete value.style_selections;
+      if(change==='extra-shot')value.style_selections.push({...value.style_selections[0],shot_id:'S2'});
+      return JSON.stringify(value);
+    };
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.calls.filter(row=>row==='llm').length,4);
+    assert.equal(e.context.storyboardQueue.length,0);assert.match(e.notices.join(';'),/已修复3次/);
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.calls.filter(row=>row==='llm').length,4);
+  }finally{await e.admission.close();}
+});
+
+for(const change of ['account','route','artist','source'])test(`native world ${change} changes after selection cannot reach image admission`,async()=>{
+  const e=await nativeWorldEnsembleHarness({artist:true});try{
+    const call=e.context.storyboardCallCompiler;e.context.storyboardCallCompiler=async(...args)=>{
+      const raw=await call(...args);
+      if(change==='account')e.setAccount('st-user:changed');
+      if(change==='route')e.state.routing.rules[0].target.modelId='nai-diffusion-3';
+      if(change==='artist')e.state.artistPresets[0].positivePrompt='changed';
+      if(change==='source')e.candidate.recommendation='reject';
+      return raw;
+    };
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,0);
+    assert.equal(e.calls.filter(row=>row==='llm').length,1);assert.equal(e.state.prompt,'original');
+  }finally{await e.admission.close();}
+});
+
+test('native world explicit manual expression uses current style with no LLM or workbench mutation',async()=>{
+  const e=await nativeWorldEnsembleHarness({artist:true});try{
+    const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>{
+      const runtime=await load(key);return key==='worldShot'?{...runtime,openWorldShotConfirmation:async options=>{
+        await options.guard();assert.equal(typeof options.useManualStyle,'function');options.useManualStyle(options.shot);
+        return {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderingsFor(options.shot,options.promptFormats),{formats:options.promptFormats})};
+      }}:runtime;
+    };
+    assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.calls.includes('llm'),false);
+    const job=e.context.storyboardQueue[0];assert.equal(job.source,'novel');assert.equal(job.ensembleStyleOrigin.schemeId,'current');
+    assert.notEqual(job.artistPresetId,'world-artist');assert.equal(e.state.prompt,'original');
+  }finally{await e.admission.close();}
+});
+
+test('native world fresh Comfy generation does not revive retired character injection from a style binding',async()=>{
+  for(const enabled of [false,true]){
+    const e=await nativeWorldEnsembleHarness({comfy:true});try{
+      e.state.routing.rules[0].target.comfyCharacterEnabled=enabled;
+      assert.equal(await e.runAutomatic(),true,e.notices.join(';'));
+      const job=e.context.storyboardQueue[0],snapshot=job.shotSpec.characters[0].archiveSnapshot;
+      assert.equal(snapshot.comfyImplementation,undefined);assert.equal(job.profile.comfyCharacterEnabled,false);
+      assert.doesNotMatch(JSON.stringify(e.lastRequest.messages),/comfyImplementation|archiveRevision|workflowHash/);
+    }finally{await e.admission.close();}
+  }
+});
+
+test('native world retains an enabled NAI reference mode even when its workbench is a different engine',async()=>{
+  const e=await nativeWorldEnsembleHarness({artist:true});try{
+    e.state.source='banana';e.state.profiles.novel.characterReferenceEnabled=true;
+    e.state.profiles.novel.model=e.state.routing.rules[0].target.modelId='nai-diffusion-4-5-full';e.state.profiles.novel.capabilityModelId='nai-diffusion-4-5-full';
+    Object.assign(e.context,{planCharacterReference,assertCharacterReferencePlan,characterReferenceNotice});
+    vm.runInContext(section('storyboardCharacterReferencePlan'),e.context);
+    assert.equal(await e.runAutomatic(),true,e.notices.join(';'));
+    const job=e.context.storyboardQueue[0];assert.equal(job.source,'novel');assert.equal(job.profile.characterReferenceEnabled,true);
+    assert.ok(job.shotSpec.characters[0].archiveSnapshot.imageReference);
+    assert.doesNotMatch(JSON.stringify(e.lastRequest.messages),/imageReference/);
+  }finally{await e.admission.close();}
+});
+
+test('native world can repair a failed style choice without replaying earlier narration or creating a second image',async()=>{
+  const e=await nativeWorldEnsembleHarness();try{
+    const call=e.context.storyboardCallCompiler;let requests=0;e.context.storyboardCallCompiler=async(...args)=>{
+      const value=JSON.parse(await call(...args));if(++requests===1)value.style_selections[0].scheme_id='invented';return JSON.stringify(value);
+    };
+    assert.equal(await e.runAutomatic(),true,e.notices.join(';'));assert.equal(requests,2);assert.equal(e.context.storyboardQueue.length,1);
+    assert.equal(e.context.storyboardQueue[0].ensembleStyleOrigin.schemeId,'alternative');
+    assert.deepEqual(e.lastRequest.messages.map(row=>JSON.parse(row.content).operation).filter(Boolean),['render_confirmed_visual_facts']);
   }finally{await e.admission.close();}
 });
 

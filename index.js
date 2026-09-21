@@ -7,13 +7,13 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.272';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.272';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.272';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.273';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.273';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.273';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.272';
-import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.272';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.273';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.273';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -266,12 +266,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.272';
+} from './qianmu-storyboard.js?v=1.59.273';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.272';
+const VERSION = '1.59.273';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -281,7 +281,7 @@ const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,name
 const featureRuntime = createFeatureRuntime({
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.202') },
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.202') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.272') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.273') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -326,7 +326,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.272'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.273'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -362,15 +362,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.272'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.273'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.272'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.273'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.272'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.273'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -462,11 +462,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.272'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.273'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.272'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.273'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -554,9 +554,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.272'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.273'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.272')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.273')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -19802,14 +19802,13 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
     const draft = {id:shotInput.id,title,role:shotInput.shotRole || 'custom',shotSpec:shotInput,
       shotType:shotInput.subjectKind === 'character' ? 'portrait' : shotInput.subjectKind === 'environment' ? 'environment' : 'custom'};
     const fallback = {providerId:state.source,modelId:profile.model,capabilityModelId:profile.capabilityModelId};
-    const route = state.routing.enabled ? routeStoryboardShot(draft,{...state.routing,single:fallback}) : fallback;
-    await storyboardPrepareComfyRoutes(state, preparationGuard, [route]); assertCurrent();
-    const finalProfile = storyboardResolveRoutingProfile(state,route,route.providerId===state.source ? profile : null,preparationGuard.comfyRoutes);
-    const sourceId = route.providerId, connectionGroup = storyboardConnectionState(state,sourceId);
-    const connection = route.connectionPresetId ? connectionGroup.group.presets.find(item=>item.id===route.connectionPresetId) : connectionGroup.draft;
-    const useReference = sourceId === 'novel' && finalProfile.characterReferenceEnabled === true;
+    const styles=state.routing.styleLibrary===true?await worldRuntime.prepareWorldStyleSelection(state,preparationGuard,storyboardEnsembleHost(),{automatic}):null;assertCurrent();
+    let route = state.routing.enabled ? routeStoryboardShot(draft,{...state.routing,single:fallback}) : fallback;
+    if(!preparationGuard.ensemble)await storyboardPrepareComfyRoutes(state, preparationGuard, [route]); assertCurrent();
+    let finalProfile = storyboardResolveRoutingProfile(state,route,route.providerId===state.source ? profile : null,preparationGuard.comfyRoutes),sourceId=route.providerId;
+    const useReference = styles?.useReference||(sourceId === 'novel' && finalProfile.characterReferenceEnabled === true);
     const usesAuto = storyboardRouteUsesComfyAuto(state,route);
-    const promptFormats = sourceId === 'comfy' ? preparationGuard.comfyRoutes?.promptFormats || [] : [sourceId==='novel'?'tags':'natural_language'];
+    const promptFormats = styles?.promptFormats||(sourceId === 'comfy' ? preparationGuard.comfyRoutes?.promptFormats || [] : [sourceId==='novel'?'tags':'natural_language']);
     const casting = await storyboardCompilerCharacterCasting('',{assertCurrent},useReference,
       !preparationGuard.freshComfy && sourceId === 'comfy' && (usesAuto ? preparationGuard.comfyRoutes?.candidates.some(row=>row.target.comfyCharacterEnabled) : finalProfile.comfyCharacterEnabled === true),shotInput.characters);
     assertCurrent();
@@ -19826,22 +19825,24 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
     const prepared = worldRuntime.prepareWorldCharacterShot(approvedInput,casting.prepared);
     const context = ctx();
     if (!automatic&&(!context.Popup || !context.POPUP_TYPE)) throw new Error('当前 ST 不支持画面确认面板，请更新 ST 后重试');
-    const confirmationGuard = async()=>{assertCurrent();await casting.assertCurrent();await preparationGuard.comfyRoutes?.assertCurrent();assertCurrent();};
+    const confirmationGuard = async()=>{assertCurrent();await casting.assertCurrent();await preparationGuard.ensemble?.assertCurrent();await preparationGuard.comfyRoutes?.assertCurrent();assertCurrent();};
     worldPromptAttempt=worldRuntime.createWorldPromptAttempt({call:storyboardCallCompiler,guard:confirmationGuard,uid,sanitize:sanitizeStoryboardDiagnosticData,startedAt,
       model:(settings.apiProfiles||[]).find(item=>item.id===state.promptCompiler.apiProfileId)?.model||(settings.providerMode==='external'?settings.model:'')||''});
     const prepareRenderings = async (confirmedShot,{repairAttempt=0,previousError=''}={}) => {
       await confirmationGuard();
-      const request = worldRuntime.buildWorldPromptRenderingRequest(confirmedShot,promptFormats);
+      const request = worldRuntime.buildWorldPromptRenderingRequest(confirmedShot,promptFormats,{styleSelection:styles});
       if(automatic&&repairAttempt)request.messages.push({role:'system',content:JSON.stringify({format_repair:repairAttempt,reason:previousError,keep_same_visual_facts:true})});
       toast('正在整理画面提示', 'info');
-      return worldPromptAttempt.request(request,state.promptCompiler.apiProfileId,raw=>worldRuntime.parseWorldPromptRenderings(raw,confirmedShot,promptFormats),{repairAttempt});
+      return worldPromptAttempt.request(request,state.promptCompiler.apiProfileId,raw=>worldRuntime.parseWorldPromptRenderings(raw,confirmedShot,promptFormats,{styleSelection:styles}),{repairAttempt});
     };
     const autoPrepared=automatic?await automaticRuntime.prepareAutomaticWorldShot({shot:prepared.shot,promptFormats,prepareRenderings,guard:confirmationGuard,useReference,repairBudget}):null;
     const shotSpec = automatic?autoPrepared.shot:await worldRuntime.openWorldShotConfirmation({shot:prepared.shot,warnings:prepared.warnings,title,
-      model:usesAuto?'自动选择工作流':finalProfile.model,useReference,context,promptFormats,prepareRenderings,guard:confirmationGuard});
+      model:styles?'镜组自动匹配风格':usesAuto?'自动选择工作流':finalProfile.model,useReference,context,promptFormats,prepareRenderings,guard:confirmationGuard,...(styles?{useManualStyle:shot=>styles.manual(shot)}:{})});
     if (!shotSpec) return false;
     await confirmationGuard();
     await worldRuntime.verifyWorldPromptRenderings(shotSpec,promptFormats,confirmationGuard);
+    if(styles){route=(await styles.resolve(shotSpec)).route;sourceId=route.providerId;finalProfile=storyboardResolveRoutingProfile(state,route,null,preparationGuard.comfyRoutes);await confirmationGuard();}
+    const connectionGroup=storyboardConnectionState(state,sourceId),connection=route.connectionPresetId?connectionGroup.group.presets.find(item=>item.id===route.connectionPresetId):connectionGroup.draft;
     const compiled = compileStoryboardPrompt({providerId:sourceId,remoteModelId:finalProfile.model,
       capabilityModelId:finalProfile.capabilityModelId,connection,workflow:sourceId==='comfy'?finalProfile.comfyWorkflow:undefined,shot:shotSpec});
     const prompt = String(compiled.prompt || '').trim();
@@ -19854,6 +19855,7 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
       decisions:[automatic?'自动静帧设置已启用；本项尝试已确认保存，不授权声音或视频':renderingStages.length?'用户明确确认创作；只整理已确认的单镜表达':'用户明确确认创作；未调用取词 LLM','档案形象与当前状态分别保留，不更新永久档案'],error:'',
     }),...renderingStages];
     const productionHandoff=worldRuntime.createWorldGenerationHandoff(state,{shotSpec,prompt,negative:compiled.negative,title,stages});
+    await worldRuntime.bindWorldGenerationStyles(productionHandoff,state,styles,confirmationGuard);await confirmationGuard();
     const handoffGuard={isCurrent:()=>productionGuard.isCurrent()&&preparationGuard.isCurrent()&&root?.isConnected!==false,
       assertCurrent,verify:async()=>{await confirmationGuard();await productionGuard.verify();}};
     accepted=(await storyboardGenerate(null, { automatic, productionGuard:handoffGuard, productionHandoff,compilerLease }))===true;
@@ -20074,10 +20076,12 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     let queued=0,queueFailures=0;
     try {
       let selectedRoutes = planned.map(shot => routingEnabled ? routeStoryboardShot(shot, state.routing) : state.routing.single);
-      if(state.promptDraft?.ensembleRequired||Object.hasOwn(plan||{},'ensembleRecovery')&&plan.ensembleRecoveryRetired!==true){
+      if(staged){const runtime=await featureRuntime.load('worldShot');inputGuard.assertCurrent();inputGuard.ensemble=await runtime.resolveWorldGenerationStyles(staged,planned,()=>inputGuard.isCurrent());
+        if(inputGuard.ensemble){selectedRoutes=inputGuard.ensemble.routes;inputGuard.comfyRoutes=inputGuard.ensemble.preparedRoutes;inputGuard.comfyAuto=inputGuard.ensemble.comfyAuto;}}
+      if(!inputGuard.ensemble&&(state.promptDraft?.ensembleRequired||Object.hasOwn(plan||{},'ensembleRecovery')&&plan.ensembleRecoveryRetired!==true)){
         const runtime=await featureRuntime.load('storyboardContract');inputGuard.assertCurrent();
         inputGuard.ensemble=await runtime.restoreStoryboardEnsemblePlan(state,plan,planned,inputGuard,storyboardEnsembleHost());selectedRoutes=inputGuard.ensemble.routes;
-      }else await storyboardPrepareComfyRoutes(state, inputGuard, selectedRoutes);
+      }else if(!inputGuard.ensemble)await storyboardPrepareComfyRoutes(state, inputGuard, selectedRoutes);
       const jobs = [];
       // Freeze narrative order before asynchronous preparation/submission, not when an engine finishes.
       const inlineBatch = { version: 1, batchId: uid('shotbatch'), batchStartedAt: Date.now() };

@@ -1,4 +1,4 @@
-import {readEnsembleCompilerProof,ensembleShotContent} from './qianmu-ensemble-handoff.js?v=1.59.272';
+import {readEnsembleCompilerProof,ensembleShotContent} from './qianmu-ensemble-handoff.js?v=1.59.273';
 import {ensembleStyleOrigins} from './qianmu-ensemble-origin.js';
 import {normalizeEnsembleRecoveryScope as scopeOf,normalizeEnsembleRecoveryRecord,ENSEMBLE_RECOVERY_SCHEMA} from './qianmu-ensemble-record.js';
 export {normalizeEnsembleRecoveryRecord,ENSEMBLE_RECOVERY_SCHEMA} from './qianmu-ensemble-record.js';

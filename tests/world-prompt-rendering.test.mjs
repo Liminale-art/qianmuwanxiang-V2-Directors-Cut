@@ -41,3 +41,38 @@ test('world expression editor escapes all imported content and validates format 
   const html=world.renderWorldPromptRenderingEditor(input,['tags'],v,'<svg onload=bad>');assert.doesNotMatch(html,/<img|<script|<svg/);
   assert.match(html,/&lt;script/);assert.throws(()=>world.renderWorldPromptRenderingEditor(input,['" onclick="bad'],v));
 });
+
+test('world style field is required only in an explicitly prepared selection and stays inside the single expression request',()=>{
+  let accepted=0;const styleSelection={request:()=>({catalogue:[{id:'current',name:'当前方案'}],schema:{type:'array'}}),accept(rows,input){assert.equal(input.subject,'厨房');assert.deepEqual(rows,[{shot_id:'S1',scheme_id:'current'}]);accepted++;}};
+  const request=world.buildWorldPromptRenderingRequest(shot(),['tags'],{styleSelection});
+  assert.equal(request.messages.length,2);assert.ok(request.schema.required.includes('style_selections'));
+  assert.deepEqual(JSON.parse(request.messages[1].content).style_catalogue,[{id:'current',name:'当前方案'}]);
+  const response=JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:values(),style_selections:[{shot_id:'S1',scheme_id:'current'}]});
+  assert.throws(()=>world.parseWorldPromptRenderings(response,shot(),['tags']),/格式/);
+  world.parseWorldPromptRenderings(response,shot(),['tags'],{styleSelection});assert.equal(accepted,1);
+  const bad=JSON.parse(response);bad.prompt_renderings.tags.characters=[];
+  assert.throws(()=>world.parseWorldPromptRenderings(JSON.stringify(bad),shot(),['tags'],{styleSelection}));assert.equal(accepted,1);
+});
+
+const handoff=()=>{const owner={routing:{},prompt:'old',promptDraft:{shots:[]}},spec={...shot(),id:'world-one',productionContext:{packetId:'packet-a'}};
+  return {owner,token:world.createWorldGenerationHandoff(owner,{shotSpec:spec,prompt:'kitchen'})};};
+test('world style binding must finish before owner-only, single-use generation handoff can be consumed',async()=>{
+  const e=handoff();let release;const pending=new Promise(resolve=>{release=resolve;}),binding=world.bindWorldGenerationStyles(e.token,e.owner,{bind:()=>pending},()=>true);
+  assert.throws(()=>world.consumeWorldGenerationHandoff(e.token,e.owner),/尚未核对/);
+  await assert.rejects(world.bindWorldGenerationStyles(e.token,e.owner,{bind(){}},()=>true),/归属/);
+  assert.throws(()=>world.consumeWorldGenerationHandoff(e.token,{}),/所属/);
+  release({resolve:async()=>({routes:['checked']})});await binding;
+  const draft=world.consumeWorldGenerationHandoff(e.token,e.owner);assert.equal(draft.worldStyleRequired,true);
+  assert.throws(()=>world.consumeWorldGenerationHandoff(e.token,e.owner),/已交接/);
+  await assert.rejects(world.resolveWorldGenerationStyles(structuredClone(draft),draft.promptDraft.shots,()=>true),/丢失/);
+  assert.deepEqual(await world.resolveWorldGenerationStyles(draft,draft.promptDraft.shots,()=>true),{routes:['checked']});
+  await assert.rejects(world.resolveWorldGenerationStyles(draft,draft.promptDraft.shots,()=>true),/丢失/);
+  assert.equal(e.owner.prompt,'old');assert.equal(e.owner.promptDraft.shots.length,0);
+});
+test('world unstyled legacy handoff adds no native requirement and failed style binding cannot fall back',async()=>{
+  const legacy=handoff();await world.bindWorldGenerationStyles(legacy.token,legacy.owner,null);
+  const plain=world.consumeWorldGenerationHandoff(legacy.token,legacy.owner);assert.equal(plain.worldStyleRequired,undefined);
+  assert.equal(await world.resolveWorldGenerationStyles(plain,plain.promptDraft.shots,()=>true),null);
+  const failed=handoff();await assert.rejects(world.bindWorldGenerationStyles(failed.token,failed.owner,{bind:async()=>{throw Error('changed');}},()=>true),/changed/);
+  assert.throws(()=>world.consumeWorldGenerationHandoff(failed.token,failed.owner),/尚未核对/);
+});
