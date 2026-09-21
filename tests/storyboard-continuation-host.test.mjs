@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuation-host.js';
 import {createStoryboardMessageReference,resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
-import {readStoryboardContinuationLinks,storyboardContinuationSavePending} from '../qianmu-storyboard-continuation-proof.js?v=1.59.241';
+import {readStoryboardContinuationLinks,storyboardContinuationSavePending} from '../qianmu-storyboard-continuation-proof.js?v=1.59.242';
 import {acquireChatSaveLock,releaseChatSaveLock} from '../qianmu-chat-save-lock.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;const promise=new Promise(yes=>{resolve=yes;});return{promise,resolve};};
@@ -29,6 +29,60 @@ test('host begin captures synchronously before date mutation without account loo
   f.advance();assert.notEqual(f.reference().messageKey,old.messageKey);assert.equal(await f.gate(),true);assert.equal(f.saves,1);
   assert.equal(resolveStoryboardMessageReference(old,f.host.chat,{chatKey:'chat',metadata:f.host.chatMetadata}).state,'active');
   assert.doesNotMatch(JSON.stringify(f.store),/Alice cooks|Bob brings|apiKey|prompt/);f.runtime.close();assert.equal(f.listeners(),0);
+});
+
+test('a failing notification cannot throw into host listeners or admit an unconfirmed continuation',async()=>{
+  const f=fixture({notify:()=>{throw Error('notification plugin unavailable');}});let later=0;
+  f.emitter.on('message_received',()=>later++);assert.doesNotThrow(()=>f.emitter.emit('message_received',0,'continue'));
+  assert.equal(later,1);assert.equal(await f.gate(),false);assert.equal(f.saves,0);f.runtime.close();
+});
+
+test('a failing optional inline refresh does not undo a confirmed save or schedule a second save',async()=>{
+  const f=fixture({onSaved:()=>{throw Error('renderer is closing');}});f.start();f.advance();assert.equal(await f.gate(),true);
+  assert.equal(await f.gate(),true);assert.equal(f.saves,1);assert.equal(f.notices.length,0);assert.equal(readStoryboardContinuationLinks(f.store).length,1);f.runtime.close();
+});
+
+test('transient host context errors cannot escape the received listener and interrupt later ST handlers',async()=>{
+  let fail=false;const f=fixture();f.runtime.close();
+  const runtime=createStoryboardContinuationHost({getContext:()=>{if(fail)throw Error('host switching');return f.host;},epoch:()=>0,enabled:()=>true,
+    createReference:createStoryboardMessageReference,resolveNamespace:async()=>'st-user:test',notify:()=>{}});
+  let later=0;f.emitter.on('message_received',()=>later++);fail=true;
+  assert.doesNotThrow(()=>f.emitter.emit('message_received',0,'continue'));assert.equal(later,1);assert.equal(runtime.beforeAutomatic(0,f.message,'continue'),false);
+  runtime.close();f.runtime.close();
+});
+
+test('rejected notification promises are isolated without unhandled rejections or a retry',async()=>{
+  const f=fixture({notify:async()=>{throw Error('asynchronous toast failure');}});f.emitter.emit('message_received',0,'continue');
+  await tick();assert.equal(await f.gate(),false);assert.equal(f.saves,0);f.runtime.close();
+});
+
+test('a rejected optional refresh promise does not reject confirmed continuation handoff',async()=>{
+  const f=fixture({onSaved:async()=>{throw Error('asynchronous renderer failure');}});f.start();f.advance();
+  assert.equal(await f.gate(),true);await tick();assert.equal(f.saves,1);assert.equal(f.notices.length,0);f.runtime.close();
+});
+
+test('throwing host getters at initialization yield an inert adapter rather than breaking extension startup',()=>{
+  const runtime=createStoryboardContinuationHost({getContext:()=>{throw Error('not ready');},epoch:()=>0,enabled:()=>true});
+  assert.equal(runtime.beforeAutomatic(0,{},'continue'),false);assert.doesNotThrow(()=>runtime.close());
+});
+
+test('a throwing enable getter is isolated from generation dispatch and never requests a save',()=>{
+  const f=fixture({enabled:()=>{throw Error('settings replaced');}});let later=0;f.emitter.on('generation_after_commands',()=>later++);
+  assert.doesNotThrow(()=>f.start());assert.equal(later,1);assert.equal(f.gate(),false);assert.equal(f.saves,0);f.runtime.close();
+});
+
+test('partial subscription failure removes already-attached listeners and leaves the adapter closed',()=>{
+  const events=new EventEmitter(),on=events.on.bind(events);let count=0;events.on=(...args)=>{on(...args);if(++count===2)throw Error('host teardown during binding');return events;};
+  const runtime=createStoryboardContinuationHost({getContext:()=>({eventSource:events}),epoch:()=>0,enabled:()=>true});
+  assert.equal(events.eventNames().length,0);assert.equal(runtime.beforeAutomatic(0,{},'continue'),false);runtime.close();
+});
+
+test('one failed unsubscribe does not prevent cleanup of remaining event handlers',()=>{
+  const f=fixture(),original=f.emitter.removeListener.bind(f.emitter);let calls=0;
+  // Adapter captures its remove method at creation, so install a fresh source.
+  f.runtime.close();f.emitter.removeListener=(...args)=>{calls++;original(...args);if(calls===1)throw Error('after removal');return f.emitter;};
+  const runtime=createStoryboardContinuationHost({getContext:()=>f.host,epoch:()=>0,enabled:()=>true});
+  assert.doesNotThrow(()=>runtime.close());assert.equal(calls,2);assert.equal(f.listeners(),0);runtime.close();assert.equal(calls,2);
 });
 
 test('the received event releases ST immediately and persists the relation independently of the automatic extraction queue',async()=>{

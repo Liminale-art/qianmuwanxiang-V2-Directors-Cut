@@ -1,21 +1,25 @@
 // Observe only an explicit host continue. No polling, raw-token interpretation,
 // generation requests, timestamp edits or whole-chat direct writes.
-import {captureStoryboardContinuation,saveStoryboardContinuation} from './qianmu-storyboard-continuation.js?v=1.59.241';
+import {captureStoryboardContinuation,saveStoryboardContinuation} from './qianmu-storyboard-continuation.js?v=1.59.242';
 import {acquireChatSaveLock,releaseChatSaveLock} from './qianmu-chat-save-lock.js';
-import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.241';
+import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.242';
 
 export function createStoryboardContinuationHost(d){
   let active=null,closed=false;const bindings=[];
-  const context=d.getContext(),source=context.eventSource,types=context.eventTypes||context.event_types||{};
+  let context;try{context=d.getContext()||{};}catch(_){context={};}
+  const source=context.eventSource,types=context.eventTypes||context.event_types||{};
   const remove=source?.removeListener||source?.off;
   const generation=message=>JSON.stringify(storyboardStreamGeneration(message));
-  const current=entry=>!closed&&active===entry&&d.epoch()===entry.epoch&&d.enabled()
-    &&d.getContext().chatMetadata===entry.metadata&&d.getContext().chat===entry.chat&&entry.chat[entry.floor]===entry.message;
+  const optional=(fn,...args)=>{try{void Promise.resolve(fn?.(...args)).catch(()=>{});}catch(_){}};
+  const releaseHandle=entry=>{try{entry?.handle?.close();}catch(_){}};
+  const current=entry=>{try{return !closed&&active===entry&&d.epoch()===entry.epoch&&d.enabled()
+    &&d.getContext().chatMetadata===entry.metadata&&d.getContext().chat===entry.chat&&entry.chat[entry.floor]===entry.message;}catch(_){return false;}};
   const notice=entry=>{
     if(entry.notified||!current(entry))return;entry.notified=true;
-    d.notify('续写来源或保存尚未确认，未自动补图；旧图保留，可稍后手动重新提取');
+    optional(d.notify,'续写来源或保存尚未确认，未自动补图；旧图保留，可稍后手动重新提取');
   };
-  const reset=()=>{active?.handle?.close();active=null;};
+  const reset=()=>{const old=active;active=null;releaseHandle(old);};
+  const close=()=>{closed=true;reset();for(const [event,handler]of bindings.splice(0))try{remove.call(source,event,handler);}catch(_){}};
   function start(type,options={},dryRun=false){
     if(closed||dryRun!==false)return;
     reset();if(type!=='continue'||!d.enabled())return;
@@ -45,17 +49,18 @@ export function createStoryboardContinuationHost(d){
         return saveHost.call(host);
       });
       const settled=operation.then(value=>({value}),()=>({error:true})).finally(()=>{
-        releaseChatSaveLock(store,token);entry.handle.close();
+        releaseChatSaveLock(store,token);releaseHandle(entry);
       });
       locked=false; // The issued operation now owns the lock until it settles.
       const timeout=new Promise(resolve=>{timer=setTimeout(()=>resolve({error:true}),Math.max(100,Math.min(30000,d.timeoutMs??10000)));});
       const result=await Promise.race([settled,timeout]);
       if(result.error||!result.value||!current(entry)||entry.message.mes!==body||generation(entry.message)!==revision)throw Error('unconfirmed');
-      d.onSaved?.(entry.floor);return true;
-    }catch(_){entry.failed=true;entry.handle?.close();notice(entry);return false;}
-    finally{clearTimeout(timer);if(locked){releaseChatSaveLock(entry.metadata?.story_director_liminale,token);entry.handle?.close();}}
+      optional(d.onSaved,entry.floor);return true;
+    }catch(_){entry.failed=true;releaseHandle(entry);notice(entry);return false;}
+    finally{clearTimeout(timer);if(locked){releaseChatSaveLock(entry.metadata?.story_director_liminale,token);releaseHandle(entry);}}
   }
   function beforeAutomatic(floor,message,type){
+    try{
     if(closed)return false;
     const entry=active;
     if(entry&&entry.message===message&&entry.floor===floor){
@@ -69,17 +74,19 @@ export function createStoryboardContinuationHost(d){
       const host=d.getContext();active={epoch:d.epoch(),metadata:host.chatMetadata,chat:host.chat,floor,message,failed:true,notified:false};notice(active);return false;
     }
     return null;
+    }catch(_){if(active)active.failed=true;return false;}
   }
   if(typeof source?.on==='function'&&typeof remove==='function'){
-    const event=types.GENERATION_AFTER_COMMANDS||'generation_after_commands';source.on(event,start);bindings.push([event,start]);
+    const safeStart=(...args)=>{try{start(...args);}catch(_){reset();}};
+    const event=types.GENERATION_AFTER_COMMANDS||'generation_after_commands';
     const received=types.MESSAGE_RECEIVED||'message_received',finish=(floor,type)=>{
       const index=typeof floor==='string'&&/^\d+$/.test(floor)?Number(floor):floor;
       if(!Number.isSafeInteger(index)||index<0)return;
       // Source links also preserve old images when automatic extraction is off.
       // Never return this promise to the host's awaited event dispatcher.
-      void Promise.resolve(beforeAutomatic(index,d.getContext().chat?.[index],type)).catch(()=>{});
+      try{void Promise.resolve(beforeAutomatic(index,d.getContext().chat?.[index],type)).catch(()=>{});}catch(_){reset();}
     };
-    source.on(received,finish);bindings.push([received,finish]);
+    try{for(const [name,handler]of [[event,safeStart],[received,finish]]){bindings.push([name,handler]);source.on(name,handler);}}catch(_){close();}
   }
-  return Object.freeze({beforeAutomatic,reset,close(){closed=true;reset();for(const [event,handler]of bindings.splice(0))remove.call(source,event,handler);}});
+  return Object.freeze({beforeAutomatic,reset,close});
 }
