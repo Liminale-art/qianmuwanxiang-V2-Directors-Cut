@@ -90,9 +90,14 @@ export function createAccountDocumentFiles({root,filename,lockname,temporaryPref
       let value;try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(buffer.subarray(0,length)));}catch(_){fail('lock_unverifiable','账户资料保存锁无法识别，已保留原文；请由服务器管理员核对后恢复',503);}
       if(BigInt(length)!==opened.size||!fields(value,['version','owner','pid'])||value.version!==1||typeof value.owner!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value.owner)
         ||!Number.isSafeInteger(value.pid)||value.pid<1||value.pid>0x7fffffff)fail('lock_unverifiable','账户资料保存锁格式未知，已保留原文；请由服务器管理员核对后恢复',503);
-      const status=await processStatus(value.pid),after=await handle.stat({bigint:true}),current=await stat(file);
+      const status=await processStatus(value.pid);
+      // An in-place replacement may keep inode, size and a coarse timestamp.
+      // Re-read bounded bytes before attributing the old PID diagnosis to it.
+      const verified=Buffer.alloc(513);let verifiedLength=0;
+      while(verifiedLength<verified.length){context.guard();const chunk=await handle.read(verified,verifiedLength,verified.length-verifiedLength,verifiedLength);if(!chunk.bytesRead)break;verifiedLength+=chunk.bytesRead;}
+      const after=await handle.stat({bigint:true}),current=await stat(file);
       await checkedRoots(context);
-      if(!sameVersion(opened,after)||!sameVersion(after,current)||!current.isFile()||current.isSymbolicLink()||current.nlink!==1n)fail('busy','账户资料保存锁已变化，未自动清理，请重新同步',423);
+      if(verifiedLength!==length||!verified.subarray(0,verifiedLength).equals(buffer.subarray(0,length))||!sameVersion(opened,after)||!sameVersion(after,current)||!current.isFile()||current.isSymbolicLink()||current.nlink!==1n)fail('busy','账户资料保存锁已变化，未自动清理，请重新同步',423);
       if(status==='dead')fail('stale_lock','检测到上次中断留下的账户资料保存锁；已保留原文，请由服务器管理员核对后恢复',503);
       if(status!=='alive')fail('lock_unverifiable','无法确认账户资料保存进程状态，已保留原文；请由服务器管理员核对后恢复',503);
       fail('busy','账户资料正在其他设备保存，请稍后重试',423);

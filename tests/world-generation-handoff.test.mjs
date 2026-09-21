@@ -26,6 +26,15 @@ test('world-owned routing, shot, prompt rows and trace are isolated from the ori
   assert.notEqual(owner.routing.single.modelId,'only-this-job');assert.equal(owner.promptDraft.shots[0].prompt,'old prose');
   assert.deepEqual(draft.promptDraft.shots[0].shotSpec.characters[0].identity,['silver hair']);assert.equal(draft.pendingCompilerStages[0].output.approved,true);
 });
+
+test('world handoff cannot inherit prose ensemble recovery or unknown prose-only execution metadata',()=>{
+  const {owner,input}=fixture();Object.assign(owner.promptDraft,{ensembleRequired:true,ensembleSelection:{scheme:'prose-only'},streamWindow:{floor:50},futureProseReceipt:'PRIVATE-PROSE-RECEIPT'});
+  const before=structuredClone(owner.promptDraft),draft=consume(create(owner,input),owner);
+  assert.deepEqual(owner.promptDraft,before);
+  for(const field of ['ensembleRequired','ensembleSelection','streamWindow','futureProseReceipt'])assert.equal(Object.hasOwn(draft.promptDraft,field),false,field);
+  assert.equal(draft.promptDraft.shots.length,1);assert.equal(draft.promptDraft.compiledBy,'director-work-order');
+  assert.equal(draft.promptDraft.shots[0].shotSpec.productionContext.packetId,'packet-a');
+});
 test('handoffs are owner-bound and single-use, and serialization cannot mint a new executable draft',()=>{
   const {owner,input}=fixture(),token=create(owner,input);assert.throws(()=>consume(token,createStoryboardDefaults()),/所属设置/);
   assert.ok(consume(token,owner));assert.throws(()=>consume(token,owner),/已交接/);

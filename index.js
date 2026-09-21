@@ -7,13 +7,13 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.271';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.271';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.271';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.272';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.272';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.272';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.271';
-import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.271';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.272';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.272';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -266,12 +266,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.271';
+} from './qianmu-storyboard.js?v=1.59.272';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.271';
+const VERSION = '1.59.272';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -281,7 +281,7 @@ const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,name
 const featureRuntime = createFeatureRuntime({
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.202') },
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.202') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.271') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.272') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -326,7 +326,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.271'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.272'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -362,15 +362,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.271'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.272'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.271'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.272'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.271'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.272'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -462,11 +462,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.271'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.272'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.271'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.272'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -554,9 +554,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.271'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.272'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.271')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.272')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -19986,11 +19986,12 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     const staged=productionHandoff?(await featureRuntime.load('worldShot')).consumeWorldGenerationHandoff(productionHandoff,storyboardState()):null;
     productionGuard?.assertCurrent();
     const { state: owner, profile, workflowResult } = storyboardCaptureWorkbench(root),state=staged||owner;
+    const legacyRouting=state.routing.enabled&&state.routing.styleLibrary!==true;
     const generationChatKey = String(getChatKey() || '');
     if (!state.enabled) return toast('请先启用分镜。', 'warning');
     try { resolveStoryboardProfileBinding(state.source, profile); }
     catch (error) { return toast(error.message, 'warning'); }
-    if (state.routing.enabled&&!state.promptDraft?.ensembleRequired&&(!Object.hasOwn(plan||{},'ensembleRecovery')||plan.ensembleRecoveryRetired===true)) {
+    if (legacyRouting&&!state.promptDraft?.ensembleRequired&&(!Object.hasOwn(plan||{},'ensembleRecovery')||plan.ensembleRecoveryRetired===true)) {
       try {
         for (const rule of state.routing.rules.filter((item) => item.enabled)) {
           try { if (rule.target?.providerId !== 'comfy' || rule.target.comfyWorkflowBinding == null) storyboardResolveRoutingProfile(state, rule.target); }
@@ -19999,7 +20000,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       } catch (error) { return toast(error.message, 'warning'); }
     }
     if (automatic && plan?.manualReviewRequired) return false;
-    if (state.source === 'comfy' && !state.routing.enabled && !state.comfyAutoEnabled && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
+    if (state.source === 'comfy' && !legacyRouting && !state.comfyAutoEnabled && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
       return toast(profile.comfyWorkflowNotice || storyboardWorkflowIssue(workflowResult), 'warning');
     }
     const productionDraft = state.promptDraft?.shots?.find((item) => storyboardProductionContext(item).packetId) || null;
@@ -20045,7 +20046,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       return toast('请输入有效的正文楼层。', 'warning');
     }
     state.routing.single = { providerId: state.source, modelId: profile.model, capabilityModelId: profile.capabilityModelId, connectionPresetId: '', parameterPresetId: '' };
-    const routingEnabled = Boolean(state.routing.enabled);
+    const routingEnabled = Boolean(legacyRouting);
     const {generationPolicy,manualSupplement,coverage,planned}=storyboardPrepareDraftGroup(state,plan,productionDraft);
     if (!planned.length) return toast('没有可用的独立画面，未发起生图', 'info');
     if (!productionDraft && !manualSupplement && planned.length < generationPolicy.minImages) toast(`可用画面 ${planned.length}/${generationPolicy.minImages}；不为凑数重复出图`, 'info');

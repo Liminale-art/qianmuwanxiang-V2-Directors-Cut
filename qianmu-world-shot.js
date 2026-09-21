@@ -1,7 +1,7 @@
 // World-camera preparation only. No autonomous inference, archive mutation or media submission.
-export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.271';
+export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.272';
 import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js';
-import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.271';
+import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.272';
 import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js';
 import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyboardPromptRenderingSource,
   storyboardPromptFormatBudget,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings,resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
@@ -20,7 +20,9 @@ export function createWorldGenerationHandoff(state,{shotSpec,prompt,negative='',
   const draft={...state,prompt:shot.prompt,negative:shot.negative,promptMode:'manual',target:'gallery',floor:'',inlineByDefault:false,
     pendingParagraphSelection:null,manualParagraphIndex:null,pendingParagraphIndex:null,pendingShotType:'',
     routing:copy(state.routing),
-    promptDraft:{...state.promptDraft,planId:'',compiled:shot.prompt,negative:shot.negative,compiledAt:Date.now(),compiledBy:'director-work-order',
+    // A world shot owns a fresh execution draft. In particular, prose ensemble
+    // recovery flags or future prose receipts must never enter its gallery path.
+    promptDraft:{planId:'',compiled:shot.prompt,negative:shot.negative,compiledAt:Date.now(),compiledBy:'director-work-order',
       userEditedCompiled:false,userEditedNegative:false,artistPositiveBaked:false,artistNegativeBaked:false,sourceSummary:['导演工作单',title],shots:[shot]},
     pendingCompilerStages:copy(stages)};
   const handoff=Object.freeze({});pendingGenerations.set(handoff,{owner:state,draft});return handoff;

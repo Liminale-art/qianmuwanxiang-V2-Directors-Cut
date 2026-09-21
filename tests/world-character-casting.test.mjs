@@ -277,6 +277,27 @@ test('automatic world off or absent source produces no model request, confirmati
   }finally{await e.admission.close();}
 });
 
+for(const kind of ['prose-draft','unused-route','both'])test(`native world generation isolates ${kind} and still reaches its independent gallery queue`,async()=>{
+  const e=await automaticWorldHarness();try{
+    e.state.routing.styleLibrary=true;e.state.routing.enabled=true;
+    if(kind!=='unused-route')Object.assign(e.state.promptDraft,{ensembleRequired:true,ensembleSelection:{scheme:'prose-style'},futureProseReceipt:'private-prose-receipt'});
+    if(kind!=='prose-draft')e.state.routing.rules=[{id:'unused',name:'unused old route',enabled:true,shotTypes:[],target:{providerId:'novel',modelId:e.state.profiles.novel.model,connectionPresetId:'missing-connection'}}];
+    const before=copy(e.state.promptDraft);assert.equal(await e.runAutomatic(),true,e.notices.join(';'));
+    assert.equal(e.context.storyboardQueue.length,1);const job=e.context.storyboardQueue[0];
+    assert.equal(job.source,'novel');assert.equal(job.target,'gallery');assert.match(job.imageAdmission.messageKey,/^world-item:/);
+    assert.equal(Object.hasOwn(e.context.worldDraft.promptDraft,'ensembleRequired'),false);assert.equal(job.ensembleStyleOrigin,undefined);
+    assert.deepEqual(e.state.promptDraft,before);assert.equal(e.calls.filter(value=>value==='llm').length,1);
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,1);
+  }finally{await e.admission.close();}
+});
+
+test('the unchanged legacy world mode still refuses a broken configured route',async()=>{
+  const e=await automaticWorldHarness();try{
+    e.state.routing.enabled=true;e.state.routing.rules=[{id:'bad',enabled:true,shotTypes:[],target:{providerId:'novel',modelId:e.state.profiles.novel.model,connectionPresetId:'missing-connection'}}];
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.calls.includes('llm'),false);
+  }finally{await e.admission.close();}
+});
+
 test('automatic world exhausts three format repairs once and never replays the failed source',async()=>{
   const e=await automaticWorldHarness();let calls=0;try{
     e.context.storyboardCallCompiler=async()=>{calls++;return 'not JSON';};assert.equal(await e.runAutomatic(),false);assert.equal(calls,4);assert.match(e.notices.join(';'),/已修复3次/);

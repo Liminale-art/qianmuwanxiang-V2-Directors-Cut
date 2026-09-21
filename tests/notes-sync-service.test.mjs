@@ -84,6 +84,20 @@ test('a replaced lock cannot inherit a prior dead-process diagnosis or be remove
   const service=f.create({processStatus:async()=>{await fs.writeFile(f.lock,replacement);return 'dead';}});
   await assert.rejects(service.write(f.request,input()),{code:'notes_sync_busy'});assert.equal(await fs.readFile(f.lock,'utf8'),replacement);assert.equal((await f.service.list(f.request)).notes.length,0);
 });
+
+test('same-size same-timestamp lock replacement is checked by content, not a prior PID diagnosis',async t=>{
+  const f=await fixture(t),lock=JSON.stringify({version:1,owner:randomUUID(),pid:12345});await fs.writeFile(f.lock,lock);
+  const replacement=JSON.stringify({version:1,owner:randomUUID(),pid:12345});assert.equal(Buffer.byteLength(replacement),Buffer.byteLength(lock));
+  const original=await fs.lstat(f.lock,{bigint:true});let replaced=false;
+  // Model a coarse filesystem timestamp deterministically; preserve real file,
+  // inode, symlink and bounded read checks rather than sleeping for the clock.
+  const stable=stat=>Object.assign(Object.create(stat),{mtimeNs:original.mtimeNs});
+  const io={...fs,lstat:async(file,...args)=>{const value=await fs.lstat(file,...args);return String(file)===f.lock?stable(value):value;},
+    open:async(file,...args)=>{const handle=await fs.open(file,...args);if(String(file)===f.lock){const stat=handle.stat.bind(handle);handle.stat=async(...options)=>stable(await stat(...options));}return handle;}};
+  const service=f.create({io,processStatus:async()=>{assert.equal(replaced,false);await fs.writeFile(f.lock,replacement);replaced=true;return 'dead';}});
+  await assert.rejects(service.write(f.request,input()),{code:'notes_sync_busy'});assert.equal(replaced,true);
+  assert.equal(await fs.readFile(f.lock,'utf8'),replacement);assert.equal((await f.service.list(f.request)).notes.length,0);
+});
 test('corrupt, overlarge and account-mismatched files are retained, never interpreted as an empty library',async t=>{
   const f=await fixture(t);await f.service.write(f.request,input());const original=await fs.readFile(f.file);
   for(const value of ['broken',JSON.stringify({schema:'future'}),original.toString().replace('完整正文','损坏正文')]){
