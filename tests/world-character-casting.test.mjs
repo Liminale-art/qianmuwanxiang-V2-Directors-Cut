@@ -130,10 +130,12 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
           context.worldDraft=world.consumeWorldGenerationHandoff(world.createWorldGenerationHandoff(owner,options),owner);
           return world.createWorldGenerationHandoff(owner,options);
         },openWorldShotConfirmation:async options=>{await options.guard();calls.push('confirm');return confirm(options);}}}[key];
-    }},saveSettings:()=>calls.push('save'),sanitizeStoryboardDiagnosticData:value=>value,toast:(text)=>{notices.push(text);return false;},
+    }},saveSettings:()=>calls.push('save'),sanitizeStoryboardDiagnosticData:core.sanitizeStoryboardDiagnosticData,toast:(text)=>{notices.push(text);return false;},
+    storyboardCallCompiler:async()=>assert.fail('unexpected world expression request'),storyboardPipelineArchiveCache:new Map(),
+    storyboardArchivePipelineLog:async log=>{calls.push(['archive',log.pipelineId]);return false;},
     storyboardGenerate:async(root,options)=>{options.productionGuard.assertCurrent();context.lastProductionOptions=options;calls.push('generate');assert.equal(root,null);assert.equal(options.automatic,false);return true;},
   });
-  vm.runInContext(['storyboardPrepareComfyRoutes','storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
+  vm.runInContext(['storyboardStoreLog','storyboardPrepareComfyRoutes','storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
   return {...e,state,context,calls,notices,packet,candidate,run:()=>context.storyboardGenerateProductionPacket({isConnected:true},'packet-a'),setAccount:value=>{account=value;},setChat:value=>{chat=value;}};
 }
 function useActualWorldGeneration(e,functions) {
@@ -289,6 +291,38 @@ test('turning world automation off during expression preparation prevents queuei
   }finally{await e.admission.close();}
 });
 
+test('actual world format exhaustion saves one non-image diagnostic with all four requests and archives by pipeline identity',async()=>{
+  const e=await automaticWorldHarness();let calls=0;try{
+    e.context.storyboardCallCompiler=async(_m,_p,o)=>{calls++;o.onResponse({text:'bad world JSON',finishReason:'stop',complete:true,usage:{total_tokens:11}});return 'bad world JSON';};
+    assert.equal(await e.runAutomatic(),false);assert.equal(calls,4);assert.equal(e.state.logs.length,1);
+    const log=e.state.logs[0],pipeline=e.state.pipelineLogs[0];assert.equal(log.promptOrigin,'world');assert.equal(log.snapshot,null);assert.equal(log.pipelineId,pipeline.id);
+    assert.equal(pipeline.stages.length,5);assert.equal(pipeline.stages.slice(0,4).reduce((n,row)=>n+row.output.response.usage.total_tokens,0),44);
+    assert.ok(e.calls.some(row=>Array.isArray(row)&&row[0]==='archive'&&row[1]===log.pipelineId));
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.state.logs.length,1);assert.equal(calls,4);assert.equal(e.context.storyboardQueue.length,0);
+  }finally{await e.admission.close();}
+});
+test('actual world transport error makes one request, keeps partial output and masks credentials in both log and toast',async()=>{
+  const e=await automaticWorldHarness();let calls=0;try{
+    e.context.storyboardCallCompiler=async(_m,_p,o)=>{calls++;o.onResponse({text:'partial world',finishReason:'length',complete:false});throw Object.assign(Error('HTTP 429 Authorization: Bearer hidden-world-key'),{code:'MODEL_OUTPUT_INCOMPLETE'});};
+    assert.equal(await e.runAutomatic(),false);assert.equal(calls,1);assert.equal(e.state.logs.length,1);
+    assert.equal(e.state.pipelineLogs[0].stages[0].output.response.text,'partial world');assert.equal(e.state.logs[0].promptOrigin,'world');
+    assert.doesNotMatch(JSON.stringify([e.state.logs,e.state.pipelineLogs,e.notices]),/hidden-world-key/);assert.equal(e.context.storyboardQueue.length,0);
+  }finally{await e.admission.close();}
+});
+test('actual world late account change drops failure diagnostics and does not overwrite the new account',async()=>{
+  const e=await automaticWorldHarness();try{
+    e.context.storyboardCallCompiler=async()=>{e.setAccount('st-user:new');throw Error('late failure');};
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.state.logs.length,0);assert.equal(e.state.pipelineLogs.length,0);assert.equal(e.context.storyboardQueue.length,0);
+  }finally{await e.admission.close();}
+});
+test('actual world diagnostic settings failure rolls logs back without masking the model error or enqueueing',async()=>{
+  const e=await automaticWorldHarness();try{
+    e.context.storyboardCallCompiler=async()=>{throw Error('HTTP 401 unauthorized');};e.context.saveSettings=()=>{throw Error('quota exceeded');};
+    assert.equal(await e.runAutomatic(),false);assert.equal(e.state.logs.length,0);assert.equal(e.state.pipelineLogs.length,0);assert.match(e.notices.join(';'),/401/);
+    assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.state.prompt,'original');assert.equal(e.context.storyboardCompilerBusy,false);
+  }finally{await e.admission.close();}
+});
+
 test('a world image accepted by the real queue remains accepted if final ST settlement loses its acknowledgement',async()=>{
   const e=await automaticWorldHarness(),queue=e.context.storyboardQueueJob;let lost=0;try{
     e.context.storyboardQueueJob=async(...args)=>{const result=await queue(...args);if(result)e.transport.hook=({path})=>{if(path==='/api/files/upload'){lost++;throw Error('lost settlement');}};return result;};
@@ -373,7 +407,7 @@ test('invalid world rendering can be manually repaired after explicit retry; tra
   }});
   e.context.storyboardCallCompiler=async()=>{e.calls.push('llm');return 'not json';};
   assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.calls.filter(row=>row==='llm').length,6);
-  assert.equal(e.context.worldDraft.pendingCompilerStages.length,5);assert.ok(e.context.worldDraft.pendingCompilerStages.slice(1).every(row=>row.status==='failed'&&row.output.raw==='not json'));
+  assert.equal(e.context.worldDraft.pendingCompilerStages.length,5);assert.ok(e.context.worldDraft.pendingCompilerStages.slice(1).every(row=>row.status==='failed'&&row.output.response.text==='not json'));
   const logs=core.pruneStoryboardPipelineLogs([{id:'world-log',status:'success',stages:e.context.worldDraft.pendingCompilerStages}]);
   assert.equal(logs[0].stages[1].type,'world_prompt_rendering');assert.equal(logs[0].stages[1].status,'failed');
   const missing=await classifiedWorld({confirm:async options=>options.shot});assert.equal(await missing.run(),false);assert.equal(missing.calls.includes('generate'),false);

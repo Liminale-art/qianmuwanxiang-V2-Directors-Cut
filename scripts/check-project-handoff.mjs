@@ -42,6 +42,12 @@ export function checkProjectHandoff({head,version,packageVersion,entryVersion,do
     if(commits.length!==1)fail('current_commit_ambiguous');
     const commit=commits[0].match(/`([a-f0-9]{40})`/),release=commits[0].match(/\bv(\d+\.\d+\.\d+)\b/);
     if(commit?.[1]!==head)fail('document_commit_stale');if(release?.[1]!==version)fail('document_version_stale');
+    const evidence=lines.filter(line=>/^-\s*(当前单元能力与证据|最新实现与证据|最新证据)：/.test(line));
+    if(evidence.length!==1)fail('current_evidence_ambiguous');
+    // Evidence must identify its own node, not borrow the up-to-date commit
+    // field above while still describing an earlier, unwired implementation.
+    const evidenceNode=evidence[0].match(/：\s*([a-f0-9]{7,40})\s*\/\s*v(\d+\.\d+\.\d+)(?=\s|：|$)/);
+    if(!evidenceNode||![head,head.slice(0,7)].includes(evidenceNode[1])||evidenceNode[2]!==version)fail('current_evidence_stale');
     const statuses=lines.filter(line=>/^-\s*当前状态：/.test(line));
     if(statuses.length>1)fail('current_status_ambiguous');
     for(const match of (statuses[0]||'').matchAll(/\bv(\d+\.\d+\.\d+)\b/g))if(match[1]!==version)fail('current_status_stale');

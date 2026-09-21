@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {checkProjectHandoff as check,HANDOFF_DOCUMENTS as names,HANDOFF_PRIVATE_FILES as privateFiles} from '../scripts/check-project-handoff.mjs';
 const head='a'.repeat(40),version='1.2.3';
 function fixture(){return {head,version,packageVersion:version,entryVersion:version,documents:Object.fromEntries(names.map((name,index)=>[name,
-  `# Private fixture\n\n## ${index===0?'0. 当前有效快照':'当前状态'}\n\n- **${index===0?'分支与代码节点':index===1?'当前提交':'提交'}**：\`${head}\` / v${version}\n- **当前单元**：R2-04 Development\n- 当前状态：latest v${version}\n\n## ${index===0?'2. R2-XXX 统一单元表':'R2 单元表'}\n\n| R2-04 | Development ${head.slice(0,7)} / v${version} |\n\n## Historical\n\n- 提交：\`${'b'.repeat(40)}\` / v0.0.1\n- 当前单元：R2-01 Old\n\n| R2-04 | Historical |\n`]))};}
+  `# Private fixture\n\n## ${index===0?'0. 当前有效快照':'当前状态'}\n\n- **${index===0?'分支与代码节点':index===1?'当前提交':'提交'}**：\`${head}\` / v${version}\n- **当前单元**：R2-04 Development\n- 最新证据：${head.slice(0,7)} / v${version}：isolated checks\n- 当前状态：latest v${version}\n\n## ${index===0?'2. R2-XXX 统一单元表':'R2 单元表'}\n\n| R2-04 | Development ${head.slice(0,7)} / v${version} |\n\n## Historical\n\n- 提交：\`${'b'.repeat(40)}\` / v0.0.1\n- 当前单元：R2-01 Old\n\n| R2-04 | Historical |\n`]))};}
 
 test('handoff compares only the current snapshot and does not misread historical commits or the visual baseline',()=>{
   const input=fixture();input.documents[privateFiles[3]]='Visual baseline v0.0.1';const result=check(input);
@@ -42,7 +42,7 @@ test('a stale current status is rejected even when the commit and release fields
 });
 test('both current unit tables carry the current release and node; historical rows do not repair a stale current row',()=>{
   for(const name of names.slice(0,2))for(const previous of ['aaaaaaa / v1.2.2','bbbbbbb / v1.2.3']){
-    const f=fixture();f.documents[name]=f.documents[name].replace('aaaaaaa / v1.2.3',previous);assert.throws(()=>check(f),{code:'current_unit_table_stale'});
+    const f=fixture();f.documents[name]=f.documents[name].replace('Development aaaaaaa / v1.2.3','Development '+previous);assert.throws(()=>check(f),{code:'current_unit_table_stale'});
   }
 });
 test('a missing or duplicated current row is not satisfied by the matching unit in historical logs',()=>{
@@ -59,6 +59,22 @@ test('ambiguous introduction status banners fail while historical block quotes r
   assert.throws(()=>check(f),{code:'current_banner_ambiguous'});const g=fixture();g.documents[names[0]]+='\n> 状态：v1.1.1';assert.equal(check(g).status,'consistent');
 });
 test('unit table versions and commit identifiers match complete tokens, not longer prefix collisions',()=>{
-  for(const patch of ['aaaaaaa / v1.2.30','aaaaaaa0 / v1.2.3']){const f=fixture();f.documents[names[0]]=f.documents[names[0]].replace('aaaaaaa / v1.2.3',patch);
+  for(const patch of ['aaaaaaa / v1.2.30','aaaaaaa0 / v1.2.3']){const f=fixture();f.documents[names[0]]=f.documents[names[0]].replace('Development aaaaaaa / v1.2.3','Development '+patch);
     assert.throws(()=>check(f),{code:'current_unit_table_stale'});}
+});
+
+test('every current evidence field identifies the current node independently of commit, banner and tables',()=>{
+  for(const name of names)for(const value of ['aaaaaaa / v1.2.2','bbbbbbb / v1.2.3','aaaaaaa0 / v1.2.3','aaaaaaa / v1.2.30','unversioned evidence']){
+    const f=fixture();f.documents[name]=f.documents[name].replace('- 最新证据：aaaaaaa / v1.2.3：isolated checks',`- 最新证据：${value}：isolated checks`);
+    assert.throws(()=>check(f),{code:'current_evidence_stale'});
+  }
+});
+test('missing or duplicate current evidence fails without choosing one arbitrarily or reading historical evidence',()=>{
+  for(const name of names){const f=fixture();f.documents[name]=f.documents[name].replace('- 最新证据：aaaaaaa / v1.2.3：isolated checks\n','');f.documents[name]+='\n- 最新证据：aaaaaaa / v1.2.3：historical';
+    assert.throws(()=>check(f),{code:'current_evidence_ambiguous'});
+    const g=fixture();g.documents[name]=g.documents[name].replace('- 最新证据：','- 最新证据：aaaaaaa / v1.2.3：duplicate\n- 最新证据：');assert.throws(()=>check(g),{code:'current_evidence_ambiguous'});}
+});
+test('accepted evidence labels support the three private document forms and a full current SHA without exposing their contents',()=>{
+  const f=fixture();f.documents[names[0]]=f.documents[names[0]].replace('- 最新证据：','- **当前单元能力与证据**：').replace('aaaaaaa / v1.2.3：isolated',`${head} / v1.2.3：isolated`);
+  f.documents[names[1]]=f.documents[names[1]].replace('- 最新证据：','- 最新实现与证据：');assert.equal(check(f).status,'consistent');
 });

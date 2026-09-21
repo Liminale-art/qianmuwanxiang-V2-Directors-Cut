@@ -72,6 +72,12 @@ test('actual stale failure never appends diagnostics or writes into the newly ed
   assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(e.state.prompt,'new manual edit');assert.equal(e.state.logs.length,0);assert.equal(e.state.pipelineLogs.length,0);
 });
 
+test('actual compiler failure passes the expected log object to the archive instead of an unresolvable id string',async()=>{
+  const e=await compilerEnvironment(),archived=[];e.context.storyboardCallCompiler=async()=>{throw Error('HTTP 401');};
+  e.context.storyboardArchivePipelineLog=async log=>{archived.push(log);};assert.equal(await e.context.storyboardCompilePrompt(null),false);
+  assert.equal(archived.length,1);assert.equal(archived[0].pipelineId,e.state.logs[0].pipelineId);
+});
+
 test('automatic quiet extraction still explains an initial request failure without scheduling a retry',async()=>{
   const e=await compilerEnvironment();let calls=0;
   e.context.storyboardCallCompiler=async()=>{calls++;throw Error('HTTP 401 unauthorized');};

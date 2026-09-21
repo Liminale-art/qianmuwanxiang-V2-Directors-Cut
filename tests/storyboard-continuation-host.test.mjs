@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuation-host.js';
 import {createStoryboardMessageReference,resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
-import {readStoryboardContinuationLinks,storyboardContinuationSavePending} from '../qianmu-storyboard-continuation-proof.js?v=1.59.255';
+import {readStoryboardContinuationLinks,storyboardContinuationSavePending} from '../qianmu-storyboard-continuation-proof.js?v=1.59.256';
 import {acquireChatSaveLock,releaseChatSaveLock} from '../qianmu-chat-save-lock.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;const promise=new Promise(yes=>{resolve=yes;});return{promise,resolve};};

@@ -7,9 +7,9 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.255';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.255';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.255';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.256';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.256';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.256';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -264,12 +264,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.255';
+} from './qianmu-storyboard.js?v=1.59.256';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.255';
+const VERSION = '1.59.256';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -322,7 +322,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.255'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.256'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -358,15 +358,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.255'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.256'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.255'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.256'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.255'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.256'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -458,11 +458,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.255'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.256'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.255'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.256'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -550,9 +550,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.255'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.256'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.255')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.256')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -17624,7 +17624,7 @@ async function storyboardLoadRecordToWorkbench(record) {
 
 function storyboardLogPresentation(log, pipeline) {
   const tone=log.status==='success'?'green':log.status==='failed'?'red':['generating','running','queued'].includes(log.status)?'yellow':'grey';
-  const kind=log.kind==='prompt_compiler'?'取景':log.kind==='comfy_preparation'?'准备':log.kind==='video'?'视频':'生图';
+  const kind=log.kind==='prompt_compiler'?(log.promptOrigin==='world'?'造物之眼':'取景'):log.kind==='comfy_preparation'?'准备':log.kind==='video'?'视频':'生图';
   const stages=pipeline?.stages||[];
   const raw=String(sanitizeStoryboardDiagnosticData(log.error||[...stages].reverse().find(stage=>stage.error)?.error||'')).trim();
   let reason=raw.split(/\r?\n/)[0].replace(/\s+/g,' ');
@@ -17694,7 +17694,7 @@ function renderStoryboardLogs(state) {
     return `<details class="sd-card sd-storyboard-log ${htmlEscape(log.status)}" data-tone="${presentation.tone}" data-storyboard-log="${htmlEscape(log.id)}">
       <summary><span class="sd-storyboard-log-status">${statusLabel}</span><span class="sd-storyboard-log-kind">${presentation.kind}</span><time>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</time></summary>
       <div class="sd-storyboard-log-body">
-        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${presentation.tokens}</span><span>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</span><span>${Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span>${compiler?'':`<span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>`}${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
+        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${presentation.tokens}</span><span>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</span><span>${compiler&&log.promptOrigin==='world'?'世界画面':Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span>${compiler?'':`<span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>`}${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
         ${renderRunningHubTaskUsage(log)}${presentation.reason?`<p class="sd-storyboard-log-reason">${htmlEscape(presentation.reason)}</p>`:''}
         <section class="sd-storyboard-log-exchange" data-log-exchange="input"><header>↑ 发送</header><pre></pre></section>
         <section class="sd-storyboard-log-exchange" data-log-exchange="output"><header>↓ 返回</header><pre></pre></section>
@@ -19027,7 +19027,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       return report('cancelled');
     }
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
-    if(!resultAccepted)inputGuard.compilerAttempt?.fail(error,{store:storyboardStoreLog,archive:id=>storyboardArchivePipelineLog(id,state)});
+    if(!resultAccepted)inputGuard.compilerAttempt?.fail(error,{store:storyboardStoreLog,archive:id=>storyboardArchivePipelineLog({pipelineId:id})});
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
     if (!quiet||inputGuard.compilerAttempt||/^(st_account_storage_|storyboard_stream_(attempt|checkpoint)$)/.test(error?.code||'')||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return report('failed');
@@ -19788,7 +19788,7 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
       && admissionEpoch === storyboardAdmissionEpoch && sourceSnapshot === sourceValue(),
     assertCurrent() { if (!this.isCurrent()) throw Object.assign(new Error('导演素材、聊天或配置已变化，请重新确认'), {code:'storyboard_input_changed'}); },
   };
-  let preparationGuard,automaticRuntime,automaticAttempt,accepted=false,automaticOutcome='failed';
+  let preparationGuard,automaticRuntime,automaticAttempt,worldPromptAttempt,accepted=false,automaticOutcome='failed';
   try {
     sourceSnapshot=sourceValue();
     if(compilerLease)storyboardCompilerBusy=compilerLease;
@@ -19860,29 +19860,15 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
     const prepared = worldRuntime.prepareWorldCharacterShot(approvedInput,casting.prepared);
     const context = ctx();
     if (!automatic&&(!context.Popup || !context.POPUP_TYPE)) throw new Error('当前 ST 不支持画面确认面板，请更新 ST 后重试');
-    const renderingStages = [];
     const confirmationGuard = async()=>{assertCurrent();await casting.assertCurrent();await preparationGuard.comfyRoutes?.assertCurrent();assertCurrent();};
+    worldPromptAttempt=worldRuntime.createWorldPromptAttempt({call:storyboardCallCompiler,guard:confirmationGuard,uid,sanitize:sanitizeStoryboardDiagnosticData,startedAt,
+      model:(settings.apiProfiles||[]).find(item=>item.id===state.promptCompiler.apiProfileId)?.model||(settings.providerMode==='external'?settings.model:'')||''});
     const prepareRenderings = async (confirmedShot,{repairAttempt=0,previousError=''}={}) => {
       await confirmationGuard();
       const request = worldRuntime.buildWorldPromptRenderingRequest(confirmedShot,promptFormats);
       if(automatic&&repairAttempt)request.messages.push({role:'system',content:JSON.stringify({format_repair:repairAttempt,reason:previousError,keep_same_visual_facts:true})});
-      const stage = {id:uid('stage-world-expression'),type:'world_prompt_rendering',status:'running',startedAt:Date.now(),input:{messages:request.messages,formats:request.formats},output:{},error:''};
       toast('正在整理画面提示', 'info');
-      try {
-        const raw = await storyboardCallCompiler(request.messages,state.promptCompiler.apiProfileId,{
-          promptFormats:request.formats,maxTokens:request.maxTokens,jsonSchema:request.schema,jsonSchemaName:request.schemaId,jsonSchemaStrict:true,
-        });
-        await confirmationGuard();
-        stage.output={raw:typeof raw==='string'?raw.slice(0,96*1024):'',...(typeof raw==='string'&&raw.length>96*1024?{truncated:true,reason:'response_limit'}:{})};
-        const renderings=worldRuntime.parseWorldPromptRenderings(raw,confirmedShot,promptFormats);
-        stage.status='success';return renderings;
-      } catch(error) {
-        await confirmationGuard();stage.status='failed';stage.error=String(sanitizeStoryboardDiagnosticData(error.message || '整理失败，可手动填写')).slice(0,240);
-        throw Object.assign(new Error(stage.error),{code:error?.code});
-      } finally {
-        stage.finishedAt=Date.now();renderingStages.push(sanitizeStoryboardDiagnosticData(stage));
-        if(renderingStages.length>4)renderingStages.shift();
-      }
+      return worldPromptAttempt.request(request,state.promptCompiler.apiProfileId,raw=>worldRuntime.parseWorldPromptRenderings(raw,confirmedShot,promptFormats),{repairAttempt});
     };
     const autoPrepared=automatic?await automaticRuntime.prepareAutomaticWorldShot({shot:prepared.shot,promptFormats,prepareRenderings,guard:confirmationGuard,useReference,repairBudget}):null;
     const shotSpec = automatic?autoPrepared.shot:await worldRuntime.openWorldShotConfirmation({shot:prepared.shot,warnings:prepared.warnings,title,
@@ -19894,6 +19880,7 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
       capabilityModelId:finalProfile.capabilityModelId,connection,workflow:sourceId==='comfy'?finalProfile.comfyWorkflow:undefined,shot:shotSpec});
     const prompt = String(compiled.prompt || '').trim();
     if (!prompt) return toast('这条导演素材暂时没有可生成的画面信息。', 'warning');
+    const renderingStages=worldPromptAttempt.stages;
     const stages = [sanitizeStoryboardDiagnosticData({
       id:uid('stage-world'),type:automatic?'world_automatic':'world_confirmation',status:'success',startedAt,finishedAt:Date.now(),
       input:{packetId:packet.packetId,eventId:packet.eventId,provider:sourceId,model:finalProfile.model},
@@ -19907,7 +19894,8 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
     return accepted;
   } catch (error) {
     automaticOutcome=error?.code==='storyboard_input_changed'?'cancelled':'failed';
-    if (state === storyboardState() && currentChatKey === String(getChatKey() || '')) toast(error.message || '造物之眼画面暂时无法确认', 'warning');
+    if(!accepted&&automaticOutcome!=='cancelled')await worldPromptAttempt?.fail(error,{store:storyboardStoreLog,archive:storyboardArchivePipelineLog});
+    if (state === storyboardState() && currentChatKey === String(getChatKey() || '')) toast(String(sanitizeStoryboardDiagnosticData(error.message || '造物之眼画面暂时无法确认')).slice(0,240), 'warning');
     return false;
   } finally {
     if(automaticAttempt){
