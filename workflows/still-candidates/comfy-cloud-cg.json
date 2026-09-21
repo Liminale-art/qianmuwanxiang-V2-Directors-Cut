@@ -1,0 +1,212 @@
+{
+  "schema": "qianmu.comfy.still-candidate.v1",
+  "id": "comfy-cloud-cg",
+  "revision": "0.1.0-candidate.1",
+  "name": "千幕·艺术化CG / Comfy Cloud",
+  "provider": "comfy-cloud",
+  "style": "cg",
+  "status": "unverified",
+  "releaseReady": false,
+  "document": {
+    "workflow": {
+      "model": {
+        "class_type": "CheckpointLoaderSimple",
+        "inputs": {
+          "ckpt_name": "sd_xl_base_1.0.safetensors"
+        }
+      },
+      "positive": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": "cinematic 3D rendered illustration, physically based materials, sculpted surface detail, game cinematic art, %qianmu_prompt%",
+          "clip": [
+            "model",
+            1
+          ]
+        }
+      },
+      "negative": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": "unreadable detail, malformed anatomy, compression artifacts, %qianmu_negative%",
+          "clip": [
+            "model",
+            1
+          ]
+        }
+      },
+      "latent": {
+        "class_type": "EmptyLatentImage",
+        "inputs": {
+          "width": "%qianmu_width%",
+          "height": "%qianmu_height%",
+          "batch_size": 1
+        }
+      },
+      "sampler": {
+        "class_type": "KSampler",
+        "inputs": {
+          "seed": "%qianmu_seed%",
+          "steps": 30,
+          "cfg": 7,
+          "sampler_name": "dpmpp_2m",
+          "scheduler": "karras",
+          "denoise": 1,
+          "model": [
+            "model",
+            0
+          ],
+          "positive": [
+            "positive",
+            0
+          ],
+          "negative": [
+            "negative",
+            0
+          ],
+          "latent_image": [
+            "latent",
+            0
+          ]
+        }
+      },
+      "decode": {
+        "class_type": "VAEDecode",
+        "inputs": {
+          "samples": [
+            "sampler",
+            0
+          ],
+          "vae": [
+            "model",
+            2
+          ]
+        }
+      },
+      "save": {
+        "class_type": "SaveImage",
+        "inputs": {
+          "images": [
+            "decode",
+            0
+          ],
+          "filename_prefix": "Qianmu_comfy_cloud_cg"
+        }
+      }
+    },
+    "outputNodeId": "save",
+    "parameters": {
+      "width": "1024",
+      "height": "1024",
+      "count": "1",
+      "seed": "-1",
+      "steps": "30",
+      "cfg": "7",
+      "sampler": "dpmpp_2m",
+      "scheduler": "karras"
+    },
+    "positivePrompt": "",
+    "negativePrompt": "",
+    "classification": {
+      "version": 1,
+      "visualKinds": [
+        "character",
+        "environment",
+        "object",
+        "symbolic",
+        "mixed"
+      ],
+      "castSizes": [
+        "none",
+        "one",
+        "many"
+      ],
+      "narrativeLayers": [
+        "present",
+        "memory",
+        "fantasy",
+        "dream",
+        "imagined"
+      ],
+      "contentClasses": [
+        "sfw"
+      ],
+      "promptFormat": "natural_language",
+      "maxSubjects": null
+    }
+  },
+  "dependencies": {
+    "nodes": [
+      "CheckpointLoaderSimple",
+      "CLIPTextEncode",
+      "EmptyLatentImage",
+      "KSampler",
+      "VAEDecode",
+      "SaveImage"
+    ],
+    "models": [
+      {
+        "node": "model",
+        "field": "ckpt_name",
+        "category": "checkpoints",
+        "filename": "sd_xl_base_1.0.safetensors"
+      }
+    ],
+    "customNodes": []
+  },
+  "inputModes": {
+    "textOnly": true,
+    "referenceCount": 0,
+    "characterIdentity": false
+  },
+  "sizes": [
+    {
+      "id": "square",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "id": "portrait",
+      "width": 832,
+      "height": 1216
+    },
+    {
+      "id": "landscape",
+      "width": 1216,
+      "height": 832
+    },
+    {
+      "id": "tall",
+      "width": 768,
+      "height": 1344
+    },
+    {
+      "id": "wide",
+      "width": 1344,
+      "height": 768
+    }
+  ],
+  "defaultSize": "square",
+  "cost": {
+    "basis": "provider_gpu_usage",
+    "amount": null,
+    "currency": null,
+    "partnerApiNodes": false
+  },
+  "qualification": {
+    "platformRuntime": null,
+    "actualGenerationVerified": false,
+    "qualityReviewed": false,
+    "licenseReviewed": false,
+    "evidence": []
+  },
+  "sources": [
+    "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_sdxl_simple.json",
+    "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0"
+  ],
+  "licenseReview": "CreativeML Open RAIL++-M; model terms and platform use require separate release review",
+  "limitations": [
+    "当前仅文生图，无参考图或人物身份锁；不得向用户显示参考能力。",
+    "SDXL基础模型为CG候选起点，真实画质未评审；不以可运行代替艺术化CG目标，质量不足须替换候选。"
+  ]
+}
