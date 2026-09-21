@@ -4,11 +4,13 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
 import { parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
+import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';
 const alias = 'vendor/shared-NAI';
 function section(name) {
+  if(name==='storyboardCreatePreparationGuard')return storyboardFunctionSource(name);
   const match = new RegExp(`^(?:async )?function ${name}\\(`, 'm').exec(source);
   assert.ok(match, name);
   const tail = source.slice(match.index), next = tail.slice(1).search(/^(?:async )?function /m);

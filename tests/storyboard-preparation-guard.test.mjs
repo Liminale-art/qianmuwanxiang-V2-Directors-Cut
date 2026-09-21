@@ -6,9 +6,11 @@ import {EventEmitter} from 'node:events';
 import * as storyboard from '../qianmu-storyboard.js';
 import * as contractRuntime from '../qianmu-storyboard-contract.js';
 import {installCompilerDiagnosticsFixture} from './helpers/compiler-diagnostics-fixture.mjs';
+import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {
+  if(name==='storyboardCreatePreparationGuard')return storyboardFunctionSource(name);
   const match = new RegExp(`^(?:async )?function ${name}\\(`, 'm').exec(source);
   assert.ok(match, name);
   const tail = source.slice(match.index), next = tail.slice(1).search(/^(?:async )?function /m);
@@ -56,6 +58,29 @@ function environment() {
   };
   return { state, context, calls, notices, plan, chat, events, dispatchInput };
 }
+
+test('extracted guard observes replaced settings and draft-key containers through the real host adapter',()=>{
+  for(const change of [e=>{e.context.settings={...e.context.settings,apiProfiles:[{...e.context.settings.apiProfiles[0],model:'replaced'}]};},
+    e=>{e.context.storyboardDraftApiKeys=new Map([['novel','replacement']]);}]){
+    const e=environment(),guard=e.context.storyboardCreatePreparationGuard(e.state);change(e);
+    assert.throws(()=>guard.assertCurrent(),{code:'storyboard_input_changed'});guard.dispose();
+  }
+});
+
+test('extracted guard binds only its owned plan and notices subsequent cancellation without a document',()=>{
+  const e=environment();delete e.context.document;const guard=e.context.storyboardCreatePreparationGuard(e.state);
+  assert.throws(()=>guard.bindPlan(e.plan),{code:'storyboard_input_changed'});
+  e.state.shotPlans.push(e.plan);guard.bindPlan(e.plan);guard.assertCurrent();
+  const other={...e.plan,id:'other'};e.state.shotPlans.push(other);assert.throws(()=>guard.bindPlan(other),{code:'storyboard_input_changed'});
+  e.plan.status='cancelled';assert.throws(()=>guard.assertCurrent(),{code:'storyboard_input_changed'});guard.dispose();assert.equal(guard.isCurrent(),false);
+});
+
+test('extracted guard releases all operation-owned resources and document listeners',()=>{
+  const e=environment(),guard=e.context.storyboardCreatePreparationGuard(e.state),closed=[];
+  for(const name of ['ensemble','continuityStore','compilerSources','streamFrame','comfyBatch','comfyAuto','comfyReadiness'])guard[name]={close:()=>closed.push(name)};
+  guard.dispose();assert.equal(closed.length,7);assert.equal(guard.isCurrent(),false);
+  assert.equal([...e.events.values()].reduce((n,set)=>n+set.size,0),0);
+});
 
 test('actual context and preparation lifecycle invalidate restored dependency edits before repair/save and release borrowed sources',async()=>{
   for(const invalidate of [false,true]){

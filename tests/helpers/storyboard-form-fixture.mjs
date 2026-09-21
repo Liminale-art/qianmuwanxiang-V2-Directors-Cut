@@ -6,11 +6,13 @@ import * as comfyView from '../../qianmu-comfy-workbench.js';
 import { normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../../qianmu-openai-image-compat.js';
 
 const source = await readFile(new URL('../../index.js', import.meta.url), 'utf8');
+const preparationGuardSource=(await readFile(new URL('../../qianmu-storyboard-preparation-guard.js',import.meta.url),'utf8')).replace(/^export /gm,'');
 export function storyboardFunctionSource(name) {
   const match = new RegExp(`^(?:async )?function ${name}\\(`, 'm').exec(source);
   if (!match) throw new Error(`Missing renderer: ${name}`);
   const tail = source.slice(match.index), next = tail.slice(1).search(/^(?:async )?function /m);
-  return next < 0 ? tail : tail.slice(0, next + 1);
+  const body=next < 0 ? tail : tail.slice(0, next + 1);
+  return name==='storyboardCreatePreparationGuard'?preparationGuardSource+'\n'+body:body;
 }
 
 export function createStoryboardFormFixture({ family = 'novel', enabled = true, workflow = '', connection = {} } = {}) {

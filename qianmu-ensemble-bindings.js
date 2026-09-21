@@ -1,5 +1,5 @@
-import {createEnsembleStyleSession,normalizeEnsembleLibrary,normalizeEnsembleChatSelection,ENSEMBLE_CURRENT_STYLE} from './qianmu-ensemble-selection.js?v=1.59.269';
-import {resolveStoryboardProfileBinding,resolveStoryboardConnectionBinding,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.269';
+import {createEnsembleStyleSession,normalizeEnsembleLibrary,normalizeEnsembleChatSelection,ENSEMBLE_CURRENT_STYLE} from './qianmu-ensemble-selection.js?v=1.59.270';
+import {resolveStoryboardProfileBinding,resolveStoryboardConnectionBinding,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.270';
 import {normalizeStoryboardPromptFormats,negotiateStoryboardPromptFormats} from './qianmu-prompt-formats.js';
 import {comfyRouteBindingKey} from './qianmu-comfy-route-contract.js';
 
@@ -63,7 +63,7 @@ export async function prepareEnsembleStyleBindings({library,selection,namespace,
       const rows=state.artistPresets?.filter(row=>row.id===artistId)||[];
       if(rows.length!==1)fail('方案绑定的画师不存在或重复','ensemble_missing_artist');artist=rows[0];
     }
-    return copy({route,identity,profile,connection,protocol,artist});
+    return copy({route,identity,profile,connection,protocol,artist,...(isBase&&route.providerId==='comfy'&&state.comfyAutoEnabled===true?{automaticWorkflowSelection:state.comfyPoolSelection}: {})});
   }
   function assertPins(){sync();for(const {scheme,text} of pinned.values())if(serialized(capture(scheme))!==text)fail('方案模型、API、参数、画师或工作流已变化','ensemble_binding_changed');}
   await check();

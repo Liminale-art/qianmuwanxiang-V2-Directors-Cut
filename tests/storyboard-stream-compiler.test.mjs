@@ -17,6 +17,9 @@ import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
 import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
 import {prepareComfyRouteRecipes,assertComfyRouteProfile} from '../qianmu-comfy-route.js';
 import {sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
+import * as comfyAutoRuntime from '../qianmu-comfy-auto-runtime.js';
+import {normalizeComfyAutoPool,COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
+import {readPinnedComfyRouteWorkflow} from '../qianmu-comfy-route.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -1146,6 +1149,84 @@ async function ordinaryEnsembleFixture(){
   const plan=f.context.createStoryboardWorkflowTicket({id:'ordinary-styles',chatKey:'chat-a',floor:0,messageRef,origin:'automatic',autoGenerate:true});f.state.shotPlans=[plan];
   return {f,q,binding,plan,compile:()=>f.run({stream:null,onPrepared:null,plan,automatic:true}),generate:()=>f.context.storyboardGenerate(null,{plan,automatic:true})};
 }
+
+async function nativeEnsembleFixture(){
+  const f=await ordinaryEnsembleFixture();f.binding.close();
+  // Remove the old explicit session injection: production code must read the
+  // saved ST library and construct its own session, including real preflight.
+  vm.runInContext(['storyboardCompilerRequestConfig','storyboardPrepareComfyRoutes'].map(section).join('\n'),f.f.context);
+  f.f.state.routing.styleLibrary=true;return f;
+}
+
+test('first extraction reads the saved ST selection and creates its own mixed-style session through reload and admission',async()=>{
+  const {f,q,plan,compile,generate}=await nativeEnsembleFixture();const files=[...f.storage.files.keys()];
+  assert.equal(await compile(),true,JSON.stringify({errors:f.errors,notices:f.notices}));
+  assert.equal(f.counts.requests,2);assert.ok(plan.ensembleRecovery);assert.equal(f.state.promptDraft.ensembleRequired,true);
+  Object.assign(f.state,normalizeStoryboardState(copy(f.state)));assert.equal(f.state.routing.styleLibrary,true);
+  assert.equal(await f.context.storyboardGenerate(null),true,JSON.stringify(f.notices));
+  assert.deepEqual(q.queue.map(job=>job.source),['comfy','novel','novel']);assert.equal(q.queue[1].artistPresetId,'style-artist');
+  assert.ok(files.every(name=>f.storage.files.has(name)));f.assertReleased();
+});
+
+for(const problem of ['graph','preflight','connection'])test(`first extraction excludes optional ${problem} failure without cancelling the other styles`,async()=>{
+  const {f,q,compile,generate}=await nativeEnsembleFixture();
+  if(problem==='graph')f.state.routing.rules[0].target.comfyWorkflowBinding.revision='missing';
+  if(problem==='connection')f.state.routing.rules[0].target.connectionPresetId='missing';
+  if(problem==='preflight'){const load=f.context.featureRuntime.load;f.context.featureRuntime.load=async name=>name==='comfyPreflight'?{checkComfyConfiguration:()=>({localConfigurationReady:false})}:load(name);}
+  useInheritedEnsembleShots(f,[0],{style:'ink'});
+  assert.equal(await compile(),true,JSON.stringify({errors:f.errors,notices:f.notices}));
+  assert.match(f.notices.join('\n'),/1 个风格方案暂不可用/);assert.equal(f.counts.requests,2);
+  assert.equal(await generate(),true,JSON.stringify(f.notices));assert.equal(q.queue.length,1);assert.equal(q.queue[0].ensembleStyleOrigin.schemeId,'ink');f.assertReleased();
+});
+
+test('a disabled native per-chat selection ignores old shot-type rules and reads no library file',async()=>{
+  const {f,q,binding,compile,generate}=await nativeEnsembleFixture();
+  const store=await createEnsembleStorage({namespace:binding.library.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>binding.library.namespace});
+  const before=await store.readSelection();await store.saveSelection({...before.value,enabled:false,revision:'disabled'},before);store.close();
+  f.state.routing.enabled=true;f.state.routing.rules[0].target.comfyWorkflowBinding.revision='missing';useShotSet(f,[0]);
+  const start=f.storage.calls.length;assert.equal(await compile(),true,JSON.stringify(f.errors));
+  assert.equal(f.storage.calls.slice(start).filter(row=>row.path.includes('ensemble-library')).length,0);
+  assert.equal(f.state.promptDraft.ensembleRequired,false);assert.equal(await generate(),true,JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.source),['novel']);f.assertReleased();
+});
+
+test('switching account while native selection is being read prevents any model call or draft replacement',async()=>{
+  const {f,q,compile}=await nativeEnsembleFixture(),draft=copy(f.state.promptDraft);
+  f.storage.hook=({path})=>{if(path.includes('ensemble-chat'))f.setAccount('st-user:other');};
+  assert.equal(await compile(),false);assert.equal(f.counts.requests,0);assert.equal(q.queue.length,0);assert.deepEqual(copy(f.state.promptDraft),draft);f.assertReleased();
+});
+
+test('invalid current Comfy workbench remains a required failure rather than falling back to an optional NAI style',async()=>{
+  const {f,q,compile}=await nativeEnsembleFixture();f.state.source='comfy';f.state.profiles.comfy.comfyWorkflow='{invalid';
+  assert.equal(await compile(),false);assert.equal(f.counts.requests,0);assert.equal(q.queue.length,0);f.assertReleased();
+});
+
+test('native library mode also constructs the style session for streaming without replacing the editable workbench',async()=>{
+  const {f,q}=await nativeEnsembleFixture();const before=copy([f.state.prompt,f.state.negative,f.state.promptDraft]);
+  installStreamQueue(f);assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,notices:f.notices}));
+  assert.deepEqual(copy([f.state.prompt,f.state.negative,f.state.promptDraft]),before);assert.equal(f.counts.requests,2);f.assertReleased();
+});
+
+test('all optional schemes unavailable leaves only the current engine and no invented style assignment',async()=>{
+  const {f,q,compile,generate}=await nativeEnsembleFixture();f.state.routing.rules=[];f.state.routing.enabled=true;useShotSet(f,[0]);
+  assert.equal(await compile(),true,JSON.stringify(f.errors));assert.equal(f.counts.requests,2);assert.equal(f.state.promptDraft.ensembleRequired,false);
+  assert.match(f.notices.join('\n'),/2 个风格方案暂不可用/);assert.equal(await generate(),true,JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.source),['novel']);f.assertReleased();
+});
+
+test('native session preserves current Comfy automatic candidates alongside fixed optional style recipes',async()=>{
+  const {f}=await nativeEnsembleFixture(),namespace='st-user:route-test';
+  const pool=normalizeComfyAutoPool({schema:COMFY_SELECTION_SCHEMA,namespace,id:'native-pool',revision:'v1',enabled:false,styleLock:true,
+    candidates:f.routes.map((target,index)=>({id:'auto-'+index,enabled:true,priority:0,target,classification:f.rows[index].document.classification}))});
+  const row={namespace,id:pool.id,revision:pool.revision,version:1,name:'native pool',archived:false,pool};
+  const createStore=()=>({list:async()=>[copy(row)],versions:async()=>[copy(row)],load:async()=>copy(row),close(){}});
+  f.state.comfyPoolSelection=(await comfyAutoRuntime.pinComfyAutoPool({namespace,selection:row,createStore})).binding;
+  f.state.comfyAutoEnabled=true;f.state.source='comfy';
+  const load=f.context.featureRuntime.load;f.context.featureRuntime.load=async name=>name==='comfyAuto'?{...comfyAutoRuntime,
+    prepareComfyAutoSession:options=>comfyAutoRuntime.prepareComfyAutoSession({...options,createStore,readRecipe:request=>readPinnedComfyRouteWorkflow({...request,createStore:f.createStore})})}:load(name);
+  let captured;
+  assert.equal(await f.run({onPrepared:value=>{captured=value;const {comfyAuto,comfyRoutes}=value.inputGuard;assert.equal(comfyAuto.candidates.length,2);
+    for(const item of comfyAuto.candidates)assert.equal(comfyRoutes.apply(item.target,f.state.profiles.comfy).comfyRouteBinding.id,item.target.comfyWorkflowBinding.id);}}),true,JSON.stringify(f.errors));
+  assert.equal(captured.result.ensembleRequired,true);assert.equal(f.counts.requests,2);f.assertReleased();
+});
 
 function useLockedEnsembleShots(f){
   useShotSet(f,[0,1,2],({reply,payload,options})=>{

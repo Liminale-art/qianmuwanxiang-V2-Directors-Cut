@@ -33,6 +33,14 @@ async function fixture(){
 }
 const choose=(scheme='ink',shot='S1')=>({shot_id:shot,scheme_id:scheme,reason:'叙事表现增益'});
 
+test('current Comfy style fingerprint includes the automatic workflow selection and rejects later pool changes',async()=>{
+  const f=await fixture();f.state.source='comfy';f.state.comfyAutoEnabled=true;f.state.comfyPoolSelection={id:'pool-one',revision:'one'};
+  const verify=f.options.verifyTarget,b=await f.open({verifyTarget:(d,c)=>d.route.comfyWorkflowBinding?verify(d,c):{ready:true,promptFormats:['natural_language']}});
+  const receipt=b.session.resolve([choose('current')],['S1']);await b.resolveAssignment(receipt,'S1');
+  f.state.comfyPoolSelection={id:'pool-two',revision:'two'};
+  await assert.rejects(b.resolveAssignment(receipt,'S1'),{code:'ensemble_binding_changed'});b.close();
+});
+
 test('actual profile resolvers pin NAI artist and classified Comfy graph while descriptions alone reach the model',async()=>{
   const f=await fixture(),before=JSON.stringify(f.state),binding=await f.open();
   try{

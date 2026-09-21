@@ -5,10 +5,10 @@ import {assertStoryboardInputBudget} from './qianmu-storyboard-complete-context.
 import {normalizeStoryboardPromptFormats} from './qianmu-prompt-formats.js';
 import {projectStoryboardFocusedInput,storyboardFocusedRepairContext} from './qianmu-storyboard-focused-input.js?v=1.59.224';
 import {configureStoryboardStreamReadiness,assertStoryboardStreamReadiness,STORYBOARD_STREAM_READINESS_INSTRUCTION} from './qianmu-storyboard-stream-readiness.js?v=1.59.221';
-import {configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,STORYBOARD_STREAM_COVERAGE_INSTRUCTION,storyboardStreamStyleHistory} from './qianmu-storyboard-stream-coverage.js?v=1.59.269';
+import {configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,STORYBOARD_STREAM_COVERAGE_INSTRUCTION,storyboardStreamStyleHistory} from './qianmu-storyboard-stream-coverage.js?v=1.59.270';
 import {createEnsembleSceneLock} from './qianmu-ensemble-scene-lock.js';
 import {configureEnsembleSceneContinuation,mergeEnsembleSceneHistories,ENSEMBLE_SCENE_CONTINUATION_INSTRUCTION} from './qianmu-ensemble-continuation.js';
-import {readEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.269';
+import {readEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.270';
 
 export const STORYBOARD_NARRATIVE_SCHEMA='qianmu.storyboard.narrative.v1';
 export const STORYBOARD_EXPRESSION_SCHEMA='qianmu.storyboard.expression.v1';

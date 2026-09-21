@@ -1,11 +1,11 @@
 import {retainEnsembleRecoveryRecord} from './qianmu-ensemble-record.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.269';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.269';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.270';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.270';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.269';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.269';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.269';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.270';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.270';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.270';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -26,8 +26,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.269';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.269';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.270';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.270';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -1937,7 +1937,7 @@ function normalizeRouting(value) {
   const enabled = r.enabled === undefined ? r.mode === 'ensemble' : Boolean(r.enabled);
   const templateId = STORYBOARD_SHOT_GROUP_TEMPLATES[r.templateId] ? r.templateId : 'smart';
   const frameStrategy = STORYBOARD_GROUP_FRAME_STRATEGIES.includes(r.frameStrategy) ? r.frameStrategy : 'main_secondary';
-  return { enabled, mode: enabled ? 'ensemble' : 'single', templateId, frameStrategy, single: target(r.single), rules, confirmMultipleRequests: r.confirmMultipleRequests !== false };
+  return { enabled, mode: enabled ? 'ensemble' : 'single', ...(r.styleLibrary===true?{styleLibrary:true}:{}), templateId, frameStrategy, single: target(r.single), rules, confirmMultipleRequests: r.confirmMultipleRequests !== false };
 }
 
 export function storyboardRouteUsesComfyAuto(state,route) {
@@ -2228,7 +2228,7 @@ export function resolveStoryboardVisualState(facts) {
   return { values: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.value])), sources: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.source])), decisions };
 }
 
-export function routeStoryboardShot(shot, routing) { const r = normalizeRouting(routing); if (!r.enabled) return { ...r.single, ruleId: '' }; const type = str(shot?.shotType || 'custom', 60), rule = r.rules.find((x) => x.enabled && (!x.shotTypes.length || x.shotTypes.includes(type))); return rule ? { ...rule.target, ruleId: rule.id } : { ...r.single, ruleId: '' }; }
+export function routeStoryboardShot(shot, routing) { const r = normalizeRouting(routing); if (!r.enabled||r.styleLibrary===true) return { ...r.single, ruleId: '' }; const type = str(shot?.shotType || 'custom', 60), rule = r.rules.find((x) => x.enabled && (!x.shotTypes.length || x.shotTypes.includes(type))); return rule ? { ...rule.target, ruleId: rule.id } : { ...r.single, ruleId: '' }; }
 
 export function summarizeStoryboardGenerationDemand(jobs) {
   const requests = (Array.isArray(jobs) ? jobs : []).filter(obj);

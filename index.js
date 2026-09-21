@@ -7,11 +7,12 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.269';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.269';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.269';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.270';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.270';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.270';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -264,12 +265,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.269';
+} from './qianmu-storyboard.js?v=1.59.270';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.269';
+const VERSION = '1.59.270';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -322,7 +323,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.269'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.270'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -358,15 +359,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.269'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.270'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.269'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.270'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.269'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.270'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -458,11 +459,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.269'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.270'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.269'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.270'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -550,9 +551,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.269'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.270'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.269')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.270')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -18504,86 +18505,13 @@ async function storyboardCompilerWorldText(state) {
   return { text: resolved.join('\n\n'), rows: selected, fallback: false };
 }
 
-function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = true, upstreamGuard = null, requireCompiler = false, freshComfy = false, stream = null } = {}) {
-  const chatKey = String(getChatKey() || '');
-  const copy = (value) => Array.isArray(value) ? value.map(copy)
-    : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copy(item)])) : value;
-  const equal = (a, b) => {
-    if (Object.is(a, b)) return true;
-    if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
-    const keys = Object.keys(a);
-    return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && equal(a[key], b[key]));
-  };
-  // Only preparation inputs: no gallery, logs, media bytes or parameter-memory archive. Strings are not serialized/copied.
-  const read = () => {
-    const floor = stream?.floor ?? storyboardTargetFloor(state);
-    const recent = Math.max(0, Math.min(20, Number(state.promptCompiler.includeRecentFloors) || 0));
-    const chat = ctx().chat || [];
-    const selectedPreset = state.promptPresets.find((item) => item.id === state.promptCompiler.instructionPresetId);
-    const profileId = state.promptCompiler.apiProfileId;
-    const matches = profileId ? (settings.apiProfiles || []).filter((item) => item.id === profileId) : [];
-    if (requireCompiler && profileId && matches.length !== 1) throw new Error('取景 API 档案已失效或编号重复，请重新选择；未改用其他连接');
-    const api = matches[0] || settings;
-    return {
-      enabled: state.enabled, automation:state.automation, source: state.source, target: state.target, floor, floorValue: state.floor,
-      profiles: Object.fromEntries(Object.keys(STORYBOARD_PROVIDER_REGISTRY).map((id) => {
-        const { loaded, ...effectiveProfile } = storyboardProviderProfile(state, id);
-        return [id, effectiveProfile];
-      })), connections: state.connections, credentialRevision: storyboardCredentialRevision,
-      draftKeys: [...storyboardDraftApiKeys.entries()],
-      compiler: state.promptCompiler, preset: selectedPreset, composition: state.compositionPolicy, routing: state.routing, generation: state.generationPolicy,
-      comfyPoolSelection: state.comfyPoolSelection,
-      comfyAutoEnabled: state.comfyAutoEnabled,
-      parameterPresets: state.parameterPresets, paragraphMode: state.paragraphMode, manualParagraphIndex: state.manualParagraphIndex,
-      paragraphSelection: state.pendingParagraphSelection, promptMode: state.promptMode,
-      prompt: includeDraft ? state.prompt : undefined, negative: includeDraft ? state.negative : undefined, promptDraft: includeDraft ? state.promptDraft : undefined,
-      selectedArtist: state.selectedArtistPresetId, selectedPool: state.selectedArtistPoolId,
-      artists: state.artistPresets.map(({ id, value, positivePrompt, negativePrompt }) => ({ id, value, positivePrompt, negativePrompt })),
-      pools: state.artistPools, vibes: state.selectedVibeIds,
-      llm: { id: api.id, mode: settings.providerMode, apiUrl: api.apiUrl, apiKey: api.apiKey, model: api.model, temperature: api.temperature, structuredOutputMode: api.structuredOutputMode },
-      character: getCharacterDescription(), persona: getPersonaDescription(), mainApi: ctx().mainApi,
-      messages: chat.slice(Math.max(0, floor - recent), floor + 1).map((item,index,rows) => ({ text: stream && !stream.complete && index===rows.length-1 ? undefined : item?.mes, swipe: item?.swipe_id, user: item?.is_user, system: item?.is_system })),
-    };
-  };
-  const floor = stream?.floor ?? storyboardTargetFloor(state), message = ctx().chat?.[floor];
-  let baseline = copy(read()), invalidated = false;
-  // Input events also invalidate edit-and-restore (A → B → A), without cancelling on scrolling or library searches.
-  const onInput = (event) => {
-    const target = event.target;
-    if (target?.closest?.('.sd-storyboard-root') && target.matches?.('input, textarea, select')
-      && !/search/.test(String(target.className || '')) && target.type !== 'search') invalidated = true;
-  };
-  if (typeof document !== 'undefined') {
-    document.addEventListener('input', onInput, true);
-    document.addEventListener('change', onInput, true);
-  }
-  const isCurrent = () => !invalidated && !stream?.signal?.aborted && baseline !== null && (!upstreamGuard || upstreamGuard.isCurrent()) && state === storyboardState()
-    && chatKey === String(getChatKey() || '') && plan?.status !== 'cancelled' && ctx().chat?.[floor] === message && equal(baseline, read());
-  return {
-    stream,
-    bindPlan(value){this.assertCurrent();if(plan&&plan!==value||!state.shotPlans.includes(value)||value.chatKey!==chatKey)throw Object.assign(new Error('准备计划归属已变化'),{code:'storyboard_input_changed'});plan=value;this.assertCurrent();},
-    get freshComfy() { return freshComfy === true; },
-    isCurrent,
-    ownsCurrentContext: () => state === storyboardState() && chatKey === String(getChatKey() || ''),
-    assertCurrent() {
-      try{this.streamFrame?.assertCurrent();}catch(error){throw Object.assign(error,{code:'storyboard_input_changed'});}
-      if (isCurrent()) { this.compilerSources?.assertCurrent(); return; }
-      const error = new Error('分镜配置或正文已变化，已忽略旧结果，请按当前设置重试');
-      error.code = 'storyboard_input_changed'; throw error;
-    },
-    dispose() {
-      this.ensemble?.close();
-      this.continuityStore?.close();
-      this.compilerSources?.close();
-      this.streamFrame?.close();
-      this.comfyBatch?.close();this.comfyAuto?.close();this.comfyReadiness?.close();
-      baseline = null;
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('input', onInput, true);
-        document.removeEventListener('change', onInput, true);
-      }
-    },
-  };
+function storyboardCreatePreparationGuard(state, options = {}) {
+  return createStoryboardPreparationGuard(state,options,{
+    ctx:()=>ctx(),getChatKey:()=>getChatKey(),storyboardState:()=>storyboardState(),storyboardTargetFloor:value=>storyboardTargetFloor(value),
+    storyboardProviderProfile:(...args)=>storyboardProviderProfile(...args),getCharacterDescription:()=>getCharacterDescription(),getPersonaDescription:()=>getPersonaDescription(),
+    get settings(){return settings;},get credentialRevision(){return storyboardCredentialRevision;},get draftApiKeys(){return storyboardDraftApiKeys;},
+    get providers(){return STORYBOARD_PROVIDER_REGISTRY;},document:typeof document==='undefined'?null:document,
+  });
 }
 
 async function storyboardCompilerCharacterCasting(text, inputGuard, includeReferences = false, includeComfy = false, visibleCharacters) {
@@ -18665,7 +18593,7 @@ function storyboardCompilerRequestConfig(state, profile, preparedRoutes = null) 
   const extra = presetItems.length
     ? presetItems.map((item, index) => `${index + 1}. ${item.name}\n${item.instruction}`).join('\n\n')
     : String(preset?.instruction || '').trim();
-  const ensemble = Boolean(state.routing.enabled);
+  const ensemble = Boolean(state.routing.enabled)&&state.routing.styleLibrary!==true;
   const groupTemplate = STORYBOARD_SHOT_GROUP_TEMPLATES[state.routing.templateId] || STORYBOARD_SHOT_GROUP_TEMPLATES.smart;
   const allowedRatioIds = state.compositionPolicy?.mode === 'fixed' && state.compositionPolicy?.fixedRatioId
     ? [state.compositionPolicy.fixedRatioId]
@@ -18708,7 +18636,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
 
 function storyboardCompilerRoutes(state, profile) {
   const fallback = { providerId: state.source, modelId: profile.model, capabilityModelId: profile.capabilityModelId, connectionPresetId: '', parameterPresetId: '' };
-  if (!state.routing.enabled) return [fallback];
+  if (!state.routing.enabled||state.routing.styleLibrary===true) return [fallback];
   // Generation refreshes routing.single from the workbench too; never trust an old persisted fallback here.
   const routing = { ...state.routing, single: fallback };
   const routes = new Map();
@@ -18860,10 +18788,11 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
   const startedAt = Date.now();
   let resultAccepted = false;
   try {
-    await storyboardPrepareComfyRoutes(state, inputGuard);
+    const styles=state.routing.styleLibrary===true?await (await featureRuntime.load('storyboardContract')).prepareStoryboardEnsembleSession(state,inputGuard,storyboardEnsembleHost(),{plan,automatic}):null;
+    if(!styles)await storyboardPrepareComfyRoutes(state, inputGuard);
     const comfyRoles=storyboardUsesComfyCharacters(state, inputGuard.comfyRoutes, inputGuard.freshComfy);
     let context=comfyRoles?await storyboardCompilerContext(state,inputGuard):null;
-    if (state.source === 'comfy' || state.routing.enabled && state.routing.rules.some(rule => rule.enabled !== false && rule.target?.providerId === 'comfy')) {
+    if (!styles&&(state.source === 'comfy' || state.routing.enabled && state.routing.rules.some(rule => rule.enabled !== false && rule.target?.providerId === 'comfy'))) {
       await storyboardPreflightComfyForCompiler(state, profile, plan, inputGuard, automatic, context);
       inputGuard.assertCurrent();
     }
@@ -18890,6 +18819,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       ])]),
     } : inputGuard.comfyRoutes;
     const compilerConfig=storyboardCompilerRequestConfig(stream?{...state,pendingParagraphSelection:null}:state,profile,expressionRoutes);
+    if(styles){if(styles.session.enabled)compilerConfig.styleSession=styles.session;compilerConfig.promptFormats=styles.session.promptFormats;await styles.assertCurrent();if(styles.unavailable.length)toast(`${styles.unavailable.length} 个风格方案暂不可用，本次已排除`,'warning');}
     if(compilerConfig.styleSession?.enabled&&compilerConfig.styleSession.styleLock&&!compilerConfig.manualSupplement)await contract.captureStoryboardEnsembleHistory(context.compilerSources,[...state.logs,...storyboardGalleryRecords()]);
     const contractRequest = {
       ...contract.buildStoryboardPlanContractRequest(context,compilerConfig),
