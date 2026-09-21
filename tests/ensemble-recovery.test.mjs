@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
 import {ENSEMBLE_LIBRARY_SCHEMA,ENSEMBLE_SELECTION_SCHEMA} from '../qianmu-ensemble-selection.js';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult} from '../qianmu-ensemble-handoff.js?v=1.59.262';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult} from '../qianmu-ensemble-handoff.js?v=1.59.263';
 import {normalizeEnsembleRecoveryRecord,createEnsembleRecoveryRecord,restoreEnsembleRecoveryRecord} from '../qianmu-ensemble-recovery.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 import {routeEnvironment,namespace} from './helpers/comfy-route-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
+import {createEnsemblePlanStorage} from '../qianmu-ensemble-plan-storage.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 async function fixture({keepFirst=false}={}){
   const e=await routeEnvironment(),profile=e.context.storyboardProviderProfile(e.state,'novel');
@@ -94,9 +95,9 @@ test('a lost final saved-record verification rejects the prepared routes without
   const f=await fixture();let reads=0;await assert.rejects(restoreEnsembleRecoveryRecord(f.record,{...f.options,verifySaved:async()=>++reads===1}),{code:'ensemble_recovery'});assert.equal(reads,2);assert.equal(f.jobs.length,0);
 });
 test('native ST immutable file roundtrip verifies the exact record, then login failure invalidates its later use',async()=>{
-  const f=await fixture(),transport=streamCheckpointTransport(namespace),storage=await transport.createStorage();
-  try{await storage.write('ensemble-recovery',f.record,{expectedFingerprint:null});
-    const verifySaved=async record=>{const view=await storage.read('ensemble-recovery');return view.persistence==='st-account-file'&&view.exists&&JSON.stringify(view.value)===JSON.stringify(record);};
+  const f=await fixture(),transport=streamCheckpointTransport(namespace),storage=await createEnsemblePlanStorage({scope:f.scope,guard:()=>true,createStorage:transport.createStorage});
+  try{await storage.save(f.record,await storage.read());
+    const verifySaved=record=>storage.verify(record);
     const restored=await restoreEnsembleRecoveryRecord(copy(f.record),{...f.options,verifySaved});assert.equal(restored.routes.length,3);
     transport.hook=({json})=>json({},401);await assert.rejects(restored.assertCurrent(),{code:'st_account_storage_account'});assert.equal(f.jobs.length,0);
   }finally{storage.close();}

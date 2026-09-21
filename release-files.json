@@ -321,6 +321,8 @@
     "qianmu-ensemble-editor.js",
     "qianmu-ensemble-view.js",
     "qianmu-ensemble-recovery.js",
+    "qianmu-ensemble-record.js",
+    "qianmu-ensemble-plan-storage.js",
     "qianmu-vibe-recipe.js",
     "qianmu-artist-prompt-layer.js",
     "qianmu-artist-prompt-review.js",
