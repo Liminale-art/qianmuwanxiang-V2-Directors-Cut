@@ -5,6 +5,7 @@ import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 import {storyboardFocusedCatalogue,storyboardFocusedRepairContext} from '../qianmu-storyboard-focused-input.js';
 import {STORYBOARD_NARRATIVE_SCHEMA as NARRATIVE,STORYBOARD_EXPRESSION_SCHEMA as EXPRESSION} from '../qianmu-storyboard-focused-extraction.js';
 import {response as basePlan,compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
+import {createEnsembleStyleSession,ENSEMBLE_LIBRARY_SCHEMA,ENSEMBLE_SELECTION_SCHEMA} from '../qianmu-ensemble-selection.js';
 
 const roster=()=>({branches:[{id:'now',layer:'present'}],subjectIds:['A']});
 const event=(overrides={})=>({id:'coat',branchId:'now',paragraphId:'P1',subjectId:'A',category:'outfit',key:'coat',value:'removed',persistence:'persistent',evidence:'A removes the coat.',...overrides});
@@ -12,7 +13,16 @@ const record=(floor,events=[])=>({floor,roster:roster(),events});
 const link=(from,to,facts=[{source_floor:from,event_id:'coat',subject_id:'A'}])=>({from_floor:from,from_branch:'now',to_floor:to,to_branch:'now',evidence:{paragraph_id:'P1',quote:'A continues chatting.'},facts});
 const plain=value=>JSON.parse(JSON.stringify(value));
 
-async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],providerId='novel',promptFormats,maxShots=3,metadata,stream=false}={}){
+function styles({format='tags'}={}){
+  const namespace='st-user:synthetic',chatKey='synthetic',preparationId='style-preparation';
+  const library={schema:ENSEMBLE_LIBRARY_SCHEMA,namespace,schemes:[{id:'ink',revision:'ink-1',name:'水墨',description:'静默留白',tags:['ink wash'],binding:{routeId:'hidden-route',artistPresetId:'hidden-artist'}}]};
+  const selection={schema:ENSEMBLE_SELECTION_SCHEMA,namespace,chatKey,revision:'selection-1',enabled:true,schemeIds:['ink']};
+  const proof=revision=>({namespace,chatKey,preparationId,revision,ready:true,bindingKey:'c'.repeat(64),promptFormats:[format]});
+  const session=createEnsembleStyleSession({library,selection,namespace,chatKey,preparationId,base:proof('base-1'),eligibility:new Map([['ink',proof('ink-1')]]),guard:()=>{}});
+  return {session,selection,library};
+}
+
+async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],providerId='novel',promptFormats,maxShots=3,metadata,stream=false,styleSession}={}){
   let active=true,saves=0,account='st-user:synthetic',saveHook=null;
   const host={chatId:'synthetic',characterId:0,characters:[{avatar:'A.png',chat:'synthetic'}],chatMetadata:metadata||{story_director_liminale:{}},
     chat:texts.map((mes,index)=>({mes,name:'A',is_user:index%2===1,send_date:String(index),...(stream?{gen_started:`stream-${index}`}:{})})),async saveMetadata(){saves++;if(saveHook)await saveHook();}};
@@ -26,7 +36,7 @@ async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],p
   const store=contract.openStoryboardCompilerContinuity(window);
   const context={floor,messages:window.messages,paragraphs:window.paragraphs,currentCharacter:'Alice stable appearance',persona:'user description',world:'selected world',
     compilerSources:window,continuity:await store.read()};
-  const config={focused:true,providerId,promptFormats,maxShots,minShots:1,allowedRatioIds:['3:2'],groupLabel:'obsolete three beats',groupInstruction:'MUST split the scene into three narrative acts'};
+  const config={focused:true,providerId,promptFormats,maxShots,minShots:1,allowedRatioIds:['3:2'],groupLabel:'obsolete three beats',groupInstruction:'MUST split the scene into three narrative acts',styleSession};
   let request;
   try{request=contract.buildStoryboardPlanContractRequest(context,config);}catch(error){store.close();window.close();throw error;}
   const first=basePlan().shots[0];delete first.prompt_atoms;delete first.prompt_renderings;
@@ -54,6 +64,49 @@ test('actual two steps retain full selected input once, lock all shot facts and 
   assert.equal(f.request.schema.properties.shots.maxItems,3);assert.ok(Object.isFrozen(result.trace.narrative));
   const final=JSON.parse(result.raw);assert.equal(final.schema,contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID);
   assert.deepEqual(final.shots[0].composition,before.shots[0].composition);assert.deepEqual(final.shots[0].characters,before.shots[0].characters);f.close();
+});
+
+test('style schemes enter only the existing expression step, leave narrative and image count unchanged and yield a separate non-executable handoff',async()=>{
+  const s=styles(),f=await fixture({styleSession:s.session});let calls=0;
+  try{
+    assert.doesNotMatch(f.request.messages[1].content,/style_candidates|静默留白|hidden-route|hidden-artist/);
+    assert.equal(f.request.schema.properties.style_assignments,undefined);const before=plain(f.narrative);
+    const result=await f.run({call:async(messages,definition)=>{calls++;const payload=JSON.parse(messages[1].content);
+      assert.deepEqual(payload.style_candidates.map(row=>row.id),['current','ink']);assert.doesNotMatch(messages[1].content,/hidden-route|hidden-artist|st-user:/);
+      assert.ok(definition.schema.required.includes('style_assignments'));assert.match(messages[0].content,/镜组只管表现方式/);
+      return JSON.stringify({...f.expression(),style_assignments:[{shot_id:'S1',scheme_id:'ink',reason:'留白强调独处'}]});}});
+    assert.equal(calls,1);assert.deepEqual(result.trace.narrative,before);assert.equal(result.meta.repairCalls,0);
+    assert.equal(result.styleSelection.executionAuthorized,false);assert.equal(result.styleSelection.assignments[0].schemeId,'ink');
+    assert.equal(JSON.parse(result.raw).shots.length,1);assert.equal(JSON.parse(result.raw).style_assignments,undefined);
+  }finally{f.close();}
+});
+test('invalid style ids use the same bounded expression repairs without resending narrative context or changing its selected frames',async()=>{
+  const s=styles(),f=await fixture({styleSession:s.session});let calls=0;
+  try{
+    await assert.rejects(f.run({call:async(messages,definition)=>{calls++;assert.equal(definition.schemaId,EXPRESSION);
+      if(calls>1){const payload=JSON.parse(messages[1].content);assert.deepEqual(payload.context.verified_handoff.style_candidates.map(row=>row.id),['current','ink']);assert.doesNotMatch(messages[1].content,/selected world|user description|stable appearance/);}
+      return JSON.stringify({...f.expression(),style_assignments:[{shot_id:'S1',scheme_id:'not-selected',reason:'wrong'}]});}}),error=>error.code==='storyboard_contract_failed'&&error.diagnostic.stage==='expression'&&error.diagnostic.repairCalls===3);
+    assert.equal(calls,4);assert.equal(f.saves,1);
+  }finally{f.close();}
+});
+test('duplicate style choices or invented technical fields cannot sneak past the second-step schema',async()=>{
+  for(const extra of [{route:{providerId:'comfy'}},{scheme_id:'ink',reason:''},{shot_id:'S2'}]){
+    const f=await fixture({styleSession:styles().session});let calls=0;try{
+      await assert.rejects(f.run({call:async()=>{calls++;return JSON.stringify({...f.expression(),style_assignments:[{shot_id:'S1',scheme_id:'ink',reason:'gain',...extra}]});}}),{code:'storyboard_contract_failed'});assert.equal(calls,4);
+    }finally{f.close();}
+  }
+});
+test('style changes during expression invalidate the request rather than repairing or returning a route under new preferences',async()=>{
+  const s=styles(),f=await fixture({styleSession:s.session});let calls=0;
+  try{await assert.rejects(f.run({call:async()=>{calls++;s.selection.schemeIds=[];return JSON.stringify({...f.expression(),style_assignments:[{shot_id:'S1',scheme_id:'ink',reason:'gain'}]});}}),{code:'storyboard_style_selection'});assert.equal(calls,1);}
+  finally{f.close();}
+});
+test('no-image narrative creates no expression or style request, and unavailable format preparation fails before requesting',async()=>{
+  const f=await fixture({styleSession:styles().session});try{
+    Object.assign(f.narrative,{should_generate:false,skip_reason:'no new visual information',shots:[]});
+    const result=await f.run({call:async()=>assert.fail('no style or expression request for empty scene')});assert.equal(result.styleSelection,undefined);
+  }finally{f.close();}
+  await assert.rejects(fixture({styleSession:styles({format:'natural_language'}).session,providerId:'novel'}),{code:'storyboard_style_selection'});
 });
 
 const streamAnchor=(floor,quote,paragraph_id='P1',branch_id='now')=>({floor,branch_id,paragraph_id,quote});
