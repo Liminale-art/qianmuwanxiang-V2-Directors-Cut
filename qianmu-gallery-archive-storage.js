@@ -1,4 +1,4 @@
-// Add-only ST-native object storage foundation. Not imported by the application.
+// Add-only ST-native object storage. The gallery browser uses read methods only.
 // No live head replacement, migration, original download, deletion or generation.
 // Records/pages have content-addressed slots; differing edits retain both copies.
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';

@@ -37,7 +37,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal dialog.sd-bundle-dialog { box-sizing: border-box; width: min(820px, calc(100vw - 24px)); height: min(780px, calc(100dvh - 24px)); max-width: none; max-height: none; margin: auto; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 12px; background: var(--sd-sticky-bg, #f7f3eb); color: var(--sd-text); font: inherit; overflow: hidden; }
 #story-director-modal dialog.sd-bundle-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 #story-director-modal .sd-bundle-dialog::backdrop { background: #0008; }
-#story-director-modal .sd-gallery-directory-entry { display: flex; justify-content: flex-end; margin-block: 8px; }
+#story-director-modal .sd-gallery-directory-entry { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-block: 8px; }
 #story-director-modal .sd-gallery-directory .sd-directory-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; box-sizing: border-box; padding: 12px 0; border: 0; border-bottom: 1px solid var(--sd-hairline); background: transparent; color: inherit; text-align: start; font: inherit; }
 #story-director-modal .sd-gallery-directory .sd-directory-row > span { display: grid; min-width: 0; gap: 4px; overflow-wrap: anywhere; }
 #story-director-modal .sd-gallery-directory .sd-directory-row b { font-size: 13px; }
@@ -45,6 +45,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-modal .sd-gallery-directory .sd-directory-row > button { flex-shrink: 0; }
 #story-director-modal .sd-gallery-directory nav { flex-wrap: wrap; justify-content: flex-start; }
 #story-director-modal .sd-gallery-directory h3 { margin-top: 14px; overflow-wrap: anywhere; }
+#story-director-modal .sd-gallery-archive > header > b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-gallery-archive > header > button { flex-shrink: 0; }
 #story-director-modal .sd-gallery-directory p { overflow-wrap: anywhere; }
 #story-director-modal .sd-directory-search { display: flex; gap: 6px; margin-block: 10px; }
 #story-director-modal .sd-directory-search input { min-width: 0; flex: 1; }

@@ -173,7 +173,9 @@ test('record contract ships for discovery but archive writing is not live-wired 
   const entry=await readFile(new URL('../index.js',import.meta.url),'utf8'),release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
   for(const name of ['qianmu-gallery-archive-record.js','qianmu-gallery-archive-storage.js'])assert.equal(entry.includes(name),false);
   assert.equal(release.files.includes('qianmu-gallery-archive-record.js'),true);
-  assert.equal(release.files.includes('qianmu-gallery-archive-storage.js'),false);
+  assert.equal(release.files.includes('qianmu-gallery-archive-storage.js'),true);
+  const browser=await readFile(new URL('../qianmu-gallery-archive-browser.js',import.meta.url),'utf8');
+  assert.doesNotMatch(browser,/\.(?:preserveRecord|stagePage|publishSourceVersion|write|update|delete)\s*\(/);
   const code=await readFile(new URL('../qianmu-gallery-archive-storage.js',import.meta.url),'utf8');
   assert.doesNotMatch(code,/\bfetch\s*\(|storage\.(?:delete|remove|update)\(|\.unlink\(|\.admit\(|storyboardImages\s*=/);
 });
