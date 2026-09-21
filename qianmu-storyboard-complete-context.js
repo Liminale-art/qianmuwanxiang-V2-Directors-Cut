@@ -11,6 +11,6 @@ export function completeStoryboardParagraphs(value,{document=globalThis.document
 }
 export function assertStoryboardInputBudget(value){
  const bytes=new TextEncoder().encode(typeof value==='string'?value:JSON.stringify(value)).byteLength;
- if(bytes>STORYBOARD_INPUT_MAX_BYTES)throw Object.assign(new Error('取景上下文超过单次安全容量，未发送、未截断。请减少参考楼层或所选世界书。'),{code:'storyboard_input_capacity',bytes});
+ if(bytes>STORYBOARD_INPUT_MAX_BYTES)throw Object.assign(new Error('取景上下文超过单次安全容量，未发送、未截断。请减少参考楼层、所选世界书或取景预设内容。'),{code:'storyboard_input_capacity',bytes});
  return value;
 }

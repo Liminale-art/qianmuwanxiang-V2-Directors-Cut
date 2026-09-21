@@ -1,8 +1,9 @@
 // World-camera preparation only. No autonomous inference, archive mutation or media submission.
-export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.274';
+export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.275';
 import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js';
-import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.274';
+import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.275';
 import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js';
+import {STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,STORYBOARD_WORLD_STILL_INSTRUCTION,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js';
 import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyboardPromptRenderingSource,
   storyboardPromptFormatBudget,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings,resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -13,7 +14,7 @@ const stagedStyles = new WeakMap();
 
 export async function prepareWorldStyleSelection(state,inputGuard,dependencies,options){
   if(state.routing?.styleLibrary!==true)return null;
-  const runtime=await import('./qianmu-world-ensemble.js?v=1.59.274');inputGuard.assertCurrent();
+  const runtime=await import('./qianmu-world-ensemble.js?v=1.59.275');inputGuard.assertCurrent();
   return runtime.prepareWorldStyleSelection(state,inputGuard,dependencies,options);
 }
 export async function bindWorldGenerationStyles(handoff,owner,selection,guard){
@@ -156,11 +157,13 @@ export function buildWorldPromptRenderingRequest(shot,formatsInput,{styleSelecti
     schema:{type:'string',enum:[WORLD_RENDERING_SCHEMA]},prompt_renderings:storyboardPromptRenderingsSchema(formats)}};
   const styles=styleSelection?.request();
   if(styles){schema.required.push('style_selections');schema.properties.style_selections=styles.schema;}
-  // Machine input/output contract only. Final authored creative instructions remain a later Phase 1 task.
+  // Use the same self-contained visual-expression guidance as ordinary stills,
+  // without introducing narrative planning, another request or prose context.
   return {schema,schemaId:WORLD_RENDERING_SCHEMA,formats,maxTokens:storyboardPromptFormatBudget(formats,1)+(styles?500:0),messages:[
-    {role:'system',content:JSON.stringify({contract:WORLD_RENDERING_SCHEMA,operation:'render_confirmed_visual_facts',source_mutation:false,output_schema:schema})},
-    {role:'user',content:JSON.stringify({source_kind:'director_work_order',truth_mode:'speculative',shot:source,...(styles?{style_catalogue:styles.catalogue,
-      style_instruction:'Choose one S1 style by narrative emphasis and visual gain, not quota. Keep this picture, people, facts and composition unchanged. Return only a listed scheme ID with a reason; do not invent routes or workflow parameters.'}:{})})},
+    {role:'system',content:JSON.stringify({contract:WORLD_RENDERING_SCHEMA,operation:'render_confirmed_visual_facts',source_mutation:false,
+      instructions:[STORYBOARD_WORLD_STILL_INSTRUCTION,...STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,storyboardStillFormatInstructions(formats),
+        ...(styles?['每镜仅从style_catalogue选择一个S1方案并填写style_selections及简短reason，按本画面表现增益选择，不按配额轮换；没有明确增益选current。不改变人物、状态、事实或构图；不把艺术家名、方案元数据、路线或工作流参数抄入提示。']:[])],output_schema:schema})},
+    {role:'user',content:JSON.stringify({source_kind:'director_work_order',truth_mode:'speculative',shot:source,...(styles?{style_catalogue:styles.catalogue}:{})})},
   ]};
 }
 export function parseWorldPromptRenderings(raw,shot,formats,{styleSelection=null}={}){

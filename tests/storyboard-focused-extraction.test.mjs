@@ -6,6 +6,7 @@ import {storyboardFocusedCatalogue,storyboardFocusedRepairContext} from '../qian
 import {STORYBOARD_NARRATIVE_SCHEMA as NARRATIVE,STORYBOARD_EXPRESSION_SCHEMA as EXPRESSION} from '../qianmu-storyboard-focused-extraction.js';
 import {response as basePlan,compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {createEnsembleStyleSession,ENSEMBLE_LIBRARY_SCHEMA,ENSEMBLE_SELECTION_SCHEMA} from '../qianmu-ensemble-selection.js';
+import {STORYBOARD_STILL_NARRATIVE_INSTRUCTIONS,STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,storyboardStillFormatInstructions} from '../qianmu-still-frame-instructions.js';
 
 const roster=()=>({branches:[{id:'now',layer:'present'}],subjectIds:['A']});
 const event=(overrides={})=>({id:'coat',branchId:'now',paragraphId:'P1',subjectId:'A',category:'outfit',key:'coat',value:'removed',persistence:'persistent',evidence:'A removes the coat.',...overrides});
@@ -50,6 +51,61 @@ async function fixture({texts=['A removes the coat.\n\nA continues chatting.'],p
   return {host,window,store,context,config,request,narrative,expression,calls,options,get saves(){return saves;},set active(value){active=value;},set account(value){account=value;},set saveHook(value){saveHook=value;},
     run:overrides=>contract.completeStoryboardFocusedExtraction({...options,raw:JSON.stringify(narrative),...overrides}),close(){store.close();window.close();}};
 }
+
+for(const stream of [false,true])test(`authored still guidance is injected once into its own real stage, streaming ${stream}`,async()=>{
+  const f=await fixture({stream,promptFormats:['tags','natural_language','character_blocks']});
+  try{
+    const first=f.request.messages[0].content;
+    for(const rule of STORYBOARD_STILL_NARRATIVE_INSTRUCTIONS)assert.equal(first.split(rule).length-1,1);
+    for(const rule of STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS)assert.equal(first.includes(rule),false);
+    // Inspect the actual second-stage request without authorizing any provider
+    // image request or claiming semantic quality from a deterministic response.
+    if(stream)streamSupport(f);
+    const before=plain(f.narrative);await f.run();assert.equal(f.calls.length,1);
+    const second=f.calls[0].messages[0].content;
+    for(const rule of STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS)assert.equal(second.split(rule).length-1,1);
+    for(const rule of STORYBOARD_STILL_NARRATIVE_INSTRUCTIONS)assert.equal(second.includes(rule),false);
+    assert.equal(second.split(storyboardStillFormatInstructions(f.request.promptFormats)).length-1,1);
+    assert.deepEqual(f.narrative,before);assert.doesNotMatch(f.calls[0].messages[1].content,/selected world|user description|stable appearance/);
+  }finally{f.close();}
+});
+
+test('unclassified custom Comfy expression keeps the legacy atom-only schema without inventing rendering blocks',async()=>{
+  const f=await fixture({providerId:'comfy',promptFormats:[]});try{
+    const result=await f.run();assert.equal(f.calls.length,1);const request=f.calls[0],system=request.messages[0].content;
+    assert.match(system,/只填本次合同已有字段/);assert.match(system,/未声明表达格式/);
+    assert.equal(request.definition.schema.properties.shots.items.properties.prompt_renderings,undefined);
+    assert.equal(JSON.parse(result.raw).shots[0].prompt_renderings,undefined);
+    assert.doesNotMatch(system,/tags：|natural_language：|character_blocks：/);
+  }finally{f.close();}
+});
+
+test('authored narrative rules coexist with each selected custom instruction exactly once',async()=>{
+  const f=await fixture();try{
+    const custom={...f.config,extraInstructions:'CUSTOM_PRESET_SENTINEL',compositionRuleOverride:'CUSTOM_COMPOSITION_SENTINEL'};
+    const request=contract.buildStoryboardPlanContractRequest(f.context,custom);
+    for(const marker of ['CUSTOM_PRESET_SENTINEL','CUSTOM_COMPOSITION_SENTINEL'])assert.equal(request.messages.map(row=>row.content).join('\n').split(marker).length-1,1);
+    assert.equal(request.schema.properties.shots.maxItems,f.request.schema.properties.shots.maxItems);
+  }finally{f.close();}
+});
+
+for(const focused of [true,false])test(`selected custom instructions remain complete instead of silently losing their tail, focused ${focused}`,async()=>{
+  const f=await fixture();try{
+    const extra='FIRST_PRESET\n'+'a'.repeat(13000)+'\nLAST_PRESET',composition='b'.repeat(13000)+'\nCOMPOSITION_END';
+    const request=contract.buildStoryboardPlanContractRequest(f.context,{...f.config,focused,extraInstructions:extra,compositionRuleOverride:composition});
+    const sent=request.messages.map(row=>row.content).join('\n');assert.equal(sent.split(extra).length-1,1);assert.equal(sent.split(composition).length-1,1);
+    assert.throws(()=>contract.buildStoryboardPlanContractRequest(f.context,{...f.config,focused,extraInstructions:'中'.repeat(400000)}),{code:'storyboard_input_capacity'});
+  }finally{f.close();}
+});
+
+test('actual compiler host sends every selected preset item once without an extra model step',async()=>{
+  const e=await compilerEnvironment();
+  e.state.promptPresets=[{id:'long-preset',name:'长预设',items:[{name:'一',instruction:'x'.repeat(8000)+' FIRST_ITEM_END'},{name:'二',instruction:'y'.repeat(8000)+' SECOND_ITEM_END'}]}];
+  e.state.promptCompiler.instructionPresetId='long-preset';
+  assert.equal(await e.context.storyboardCompilePrompt(null),true,JSON.stringify(e.errors));assert.equal(e.llmCalls.length,2);
+  const narrative=e.llmCalls[0].messages[0].content,expression=e.llmCalls[1].messages[0].content;
+  for(const item of e.state.promptPresets[0].items){assert.equal(narrative.split(item.instruction).length-1,1);assert.equal(expression.includes(item.instruction),false);}
+});
 
 test('actual two steps retain full selected input once, lock all shot facts and use a small expression handoff',async()=>{
   const f=await fixture({texts:['A removes the coat.','A continues chatting.']});
