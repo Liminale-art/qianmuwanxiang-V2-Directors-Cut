@@ -1,11 +1,12 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.245';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.245';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.245';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.245';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.245';
-import {verifyStoryboardStreamAttemptPrefix} from './qianmu-storyboard-stream-attempt.js?v=1.59.245';
-import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.245';
-import {createStoryboardStreamFinalStorage} from './qianmu-storyboard-stream-final-storage.js?v=1.59.245';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.246';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.246';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.246';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.246';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.246';
+import {verifyStoryboardStreamAttemptPrefix} from './qianmu-storyboard-stream-attempt.js?v=1.59.246';
+import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.246';
+import {createStoryboardStreamFinalStorage} from './qianmu-storyboard-stream-final-storage.js?v=1.59.246';
+import {probeStoryboardStreamRecovery} from './qianmu-storyboard-stream-recovery.js?v=1.59.246';
 
 // Finished host notifications share the existing automatic-capture queue. A
 // persisted final-pass marker prevents repeated notifications/reloads from
@@ -18,15 +19,23 @@ export async function finishStoryboardStreamCapture(ticket,d){
     &&(!plan||state.shotPlans.includes(plan)&&plan.status!=='cancelled'&&!plan.promptLocked&&!plan.manualReviewRequired);
   let outcome=null,attemptError=null,attempted=false,marker,plan,namespace,checkpoint,prepared=false,owned;
   try{
-    const refs=[...state.shotPlans.map(row=>row.messageRef),...state.logs.map(row=>row.snapshot?.messageRef),...d.storyboardGalleryRecords().map(row=>row.messageRef)];
-    if(refs.length>2000||state.shotPlans.length>300)throw Error('流式任务记录超过核对范围，未新增自动生成');
+    const references=()=>{
+      const rows=[...state.shotPlans.map(row=>row.messageRef),...state.logs.map(row=>row.snapshot?.messageRef),...d.storyboardGalleryRecords().map(row=>row.messageRef)];
+      if(rows.length>2000||state.shotPlans.length>300)throw Error('流式任务记录超过核对范围，未新增自动生成');return rows;
+    };
+    const refs=references();
     const links=()=>readStoryboardContinuationLinks(d.getContext().chatMetadata?.story_director_liminale);
     const currentLineage=createStoryboardStreamLineage(messageRef,message,links());
     const matchesSource=(lineage,ref)=>hasStoryboardStreamReference(ref)?lineage.matches(ref):lineage.matchesOrdinary(ref);
     const candidates=refs.filter(ref=>matchesSource(currentLineage,ref));
     if(!candidates.length){
       if(currentLineage.links.length)throw Error('本次续写未找到可核对的原自动计划，请手动重新提取；未另开额度');
-      return null; // An ordinary NEW floor keeps its existing automatic path.
+      const previous=await probeStoryboardStreamRecovery({reference:messageRef,message,resolveNamespace:d.resolveNamespace,guard:valid});
+      if(previous)throw Error('本层存在已保存的取景记录，但本地计划缺失；请手动核对，未重复生成');
+      if(!valid())return false;
+      const latest=createStoryboardStreamLineage(messageRef,message,links());
+      if(latest.links.length||references().some(ref=>matchesSource(latest,ref)))return false;
+      return null; // Confirmed absent, or an ordinary legacy source without a stream identity.
     }
     if(!ticket.autoGenerate||!state.automation.autoGenerate)return false;
     namespace=await d.resolveNamespace();

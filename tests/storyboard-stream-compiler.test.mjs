@@ -1008,6 +1008,33 @@ for(const change of ['source','account','plan-id','manual'])test(`actual ${chang
   assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);assert.equal(posts,2);f.assertReleased();
 });
 
-test('ordinary new floors do not open a final checkpoint or perform new ST file reads',async()=>{
-  const f=await fixture();installStreamQueue(f);const final=installFinalNotifications(f);assert.equal(await final.finish(),null);assert.equal(f.storage.calls.length,0);assert.equal(f.counts.requests,0);f.assertReleased();
+test('ordinary new floors use two bounded recovery reads, no file writes or model requests before falling through',async()=>{
+  const f=await fixture();installStreamQueue(f);const final=installFinalNotifications(f);assert.equal(await final.finish(),null);
+  assert.equal(f.storage.calls.length,2);assert.ok(f.storage.calls.every(row=>row.options.method==='GET'));assert.equal(f.counts.requests,0);f.assertReleased();
+});
+
+test('actual partial checkpoint blocks ordinary fallback after all local plans and logs are lost',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal((await trackedPass(f)).status,'advanced');
+  const queued=copy(q.queue);f.state.shotPlans=[];f.state.logs=[];const final=installFinalNotifications(f),before=f.storage.calls.length;
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.deepEqual(copy(q.queue),queued);assert.equal(f.state.shotPlans.length,0);
+  assert.match(f.notices.at(-1),/本地计划缺失/);assert.ok(f.storage.calls.slice(before).every(row=>row.options.method==='GET'));f.assertReleased();
+});
+
+test('actual final-only checkpoint blocks fallback after all local plans and logs are lost',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);assert.equal(await final.run(),false);
+  const queued=copy(q.queue),count=f.counts.requests;f.state.shotPlans=[];f.state.logs=[];
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,count);assert.equal(f.state.shotPlans.length,0);assert.deepEqual(copy(q.queue),queued);
+  assert.match(f.notices.at(-1),/本地计划缺失/);f.assertReleased();
+});
+
+test('actual unknown recovery storage never falls through to an ordinary fresh plan or model call',async()=>{
+  const f=await fixture();installStreamQueue(f);const final=installFinalNotifications(f);f.storage.hook=()=>{throw Error('synthetic unavailable ST read');};
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,0);assert.equal(f.state.shotPlans.length,0);assert.ok(f.notices.length);f.assertReleased();
+});
+
+test('a stream plan arriving during recovery cannot become a second ordinary plan',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const saved=f.state.shotPlans[0];f.state.shotPlans=[];f.state.logs=[];
+  const final=installFinalNotifications(f);let restored=false;
+  f.storage.hook=()=>{if(!restored){restored=true;f.state.shotPlans.push(saved);}};
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.equal(f.state.shotPlans.length,1);assert.equal(q.queue.length,1);f.assertReleased();
 });
