@@ -7,9 +7,9 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.258';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.258';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.258';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.259';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.259';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.259';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -264,12 +264,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.258';
+} from './qianmu-storyboard.js?v=1.59.259';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.258';
+const VERSION = '1.59.259';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -322,7 +322,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.258'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.259'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -358,15 +358,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.258'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.259'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.258'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.259'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.258'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.259'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -458,11 +458,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.258'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.259'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.258'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.259'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -550,9 +550,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.258'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.259'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.258')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.259')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {

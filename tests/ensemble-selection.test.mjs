@@ -74,3 +74,9 @@ test('false or asynchronous guards cannot be mistaken for a successful synchrono
   const f=fixture();assert.throws(()=>ensemble.createEnsembleStyleSession({...f,guard:()=>false}),{code:'storyboard_style_selection'});
   assert.throws(()=>ensemble.createEnsembleStyleSession({...f,guard:async()=>{throw Error('late');}}),{code:'storyboard_style_selection'});await Promise.resolve();
 });
+
+test('declared Comfy character blocks participate alongside tags and natural language without format guessing',()=>{
+  const f=fixture();f.eligibility.get('cg').promptFormats=['character_blocks','natural_language'];
+  const session=f.open();assert.deepEqual(session.promptFormats,['tags','character_blocks','natural_language']);assert.equal(session.resolve([choose('cg')],['S1']).assignments[0].schemeId,'cg');
+  const invalid=fixture();invalid.eligibility.get('cg').promptFormats=['character_blocks','character_blocks'];assert.ok(!invalid.open().catalogue.some(row=>row.id==='cg'));
+});

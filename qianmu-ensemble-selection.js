@@ -1,5 +1,6 @@
 // Pure, request-scoped style selection. This is not narrative planning, model
 // execution, persistence, or permission to alter a Comfy graph or image budget.
+import {STORYBOARD_PROMPT_FORMATS} from './qianmu-prompt-formats.js';
 export const ENSEMBLE_LIBRARY_SCHEMA='qianmu.ensemble.library.v1';
 export const ENSEMBLE_SELECTION_SCHEMA='qianmu.ensemble.chat-selection.v1';
 export const ENSEMBLE_CURRENT_STYLE='current';
@@ -39,8 +40,8 @@ export function normalizeEnsembleChatSelection(value,{namespace:owner,chatKey}={
 function proof(value,{namespace:owner,chatKey,preparationId,revision}){
   return object(value)&&value.ready===true&&value.namespace===owner&&value.chatKey===chatKey&&value.preparationId===preparationId
     &&value.revision===revision&&hash(value.bindingKey)&&Array.isArray(value.promptFormats)&&value.promptFormats.length>0
-    &&value.promptFormats.length<=2&&new Set(value.promptFormats).size===value.promptFormats.length
-    &&value.promptFormats.every(format=>['tags','natural_language'].includes(format));
+    &&value.promptFormats.length<=STORYBOARD_PROMPT_FORMATS.length&&new Set(value.promptFormats).size===value.promptFormats.length
+    &&value.promptFormats.every(format=>STORYBOARD_PROMPT_FORMATS.includes(format));
 }
 
 export function createEnsembleStyleSession({library,selection,namespace:owner,chatKey,preparationId,eligibility,base,guard}={}){
