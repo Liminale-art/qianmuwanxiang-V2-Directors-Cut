@@ -439,6 +439,7 @@
   "qianmu-storyboard-stream-final.js",
   "qianmu-storyboard-stream-final-storage.js",
   "qianmu-storyboard-stream-recovery.js",
+  "qianmu-storyboard-stream-host.js",
     "qianmu-storyboard-stream-readiness.js",
     "qianmu-storyboard-continuity-store.js",
     "qianmu-storyboard-focused-extraction.js",

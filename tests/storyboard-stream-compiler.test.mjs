@@ -12,6 +12,7 @@ import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianm
 import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuation-host.js';
 import {createStoryboardStreamScheduler,runStoryboardStreamPass} from '../qianmu-storyboard-stream-scheduler.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
+import {createStoryboardStreamHost} from '../qianmu-storyboard-stream-host.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -1037,4 +1038,43 @@ test('a stream plan arriving during recovery cannot become a second ordinary pla
   const final=installFinalNotifications(f);let restored=false;
   f.storage.hook=()=>{if(!restored){restored=true;f.state.shotPlans.push(saved);}};
   assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.equal(f.state.shotPlans.length,1);assert.equal(q.queue.length,1);f.assertReleased();
+});
+
+function installActualStreamHost(f){
+  const timers=new Map(),outcomes=[];let sequence=0,completion=null;
+  const runtime=createStoryboardStreamHost({getContext:()=>f.host,epoch:()=>0,enabled:()=>f.state.enabled&&f.state.automation.autoGenerate,
+    busy:()=>f.context.storyboardCompilerBusy,document:f.context.document,intervalMs:0,
+    setTimer:fn=>{const id=++sequence;timers.set(id,fn);return id;},clearTimer:id=>timers.delete(id),notify:message=>f.notices.push(message),
+    openFrame:({floor,signal})=>f.context.storyboardCreatePreparationGuard(f.state,{requireCompiler:true,stream:{floor,signal}}),
+    run:async stream=>{try{const result=await runStoryboardStreamPass({compile:f.context.storyboardCompilePrompt,submit:f.context.storyboardSubmitStreamPrepared},stream);outcomes.push(result);return result;}finally{completion?.resolve();}}});
+  const next=()=>{const [id,fn]=timers.entries().next().value||[];assert.ok(fn);timers.delete(id);fn();};
+  f.events.emit('generation_after_commands',undefined,{},false);f.host.chat[0].gen_started='real-host-generation';
+  f.host.streamingProcessor={type:undefined,messageId:0,abortController:new AbortController()};
+  return {runtime,timers,outcomes,pulse:()=>f.events.emit('stream_token_received','raw ignored'),
+    async bootstrap(){next();for(let n=0;n<20;n++)await Promise.resolve();},
+    async pass(){completion=deferred();next();await completion.promise;for(let n=0;n<20;n++)await Promise.resolve();},
+    gate:()=>runtime.beforeAutomatic(0,f.host.chat[0],undefined)};
+}
+
+test('actual ST token adapter prepares an early picture then releases one original-budget final capture',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);useShotSet(f,[0]);const host=installActualStreamHost(f);
+  host.pulse();await host.bootstrap();await host.pass();assert.equal(host.outcomes[0].status,'advanced');assert.equal(q.queue.length,1);
+  f.host.chat[0].mes=threeParagraphs.replace('\n\nUnfinished','');useShotSet(f,[0,1,2]);f.events.emit('message_received',0,undefined);
+  assert.equal(await host.gate(),true);assert.equal(await installFinalNotifications(f).run(),true,JSON.stringify(f.notices));
+  assert.equal(q.queue.length,3);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete');
+  host.runtime.close();assert.equal(host.timers.size,0);f.assertReleased();
+});
+
+test('actual stopped host cancels its in-flight compiler and never releases final automatic capture',async()=>{
+  const f=await fixture(),q=installStreamQueue(f),held=deferred(),entered=deferred();const host=installActualStreamHost(f);
+  f.modelHook=async()=>{entered.resolve();await held.promise;};host.pulse();await host.bootstrap();const pending=host.pass();await entered.promise;
+  f.events.emit('generation_stopped');assert.equal(host.gate(),false);held.resolve();await pending;
+  assert.equal(q.queue.length,0);assert.equal(f.counts.requests,1);assert.equal(host.outcomes[0].status,'cancelled');host.runtime.close();f.assertReleased();
+});
+
+test('actual manual edit between token batches preserves admitted pictures and blocks further compilation',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);const host=installActualStreamHost(f);host.pulse();await host.bootstrap();await host.pass();
+  for(const fn of f.domEvents.get('input')||[])fn({target:{type:'text',className:'sd-storyboard-prompt',closest:()=>({}),matches:()=>true}});
+  f.state.prompt='USER WORKBENCH EDIT';f.host.chat[0].mes=threeParagraphs;host.pulse();assert.equal(host.timers.size,0);assert.equal(host.gate(),false);
+  assert.equal(q.queue.length,1);assert.equal(f.counts.requests,2);assert.equal(f.state.prompt,'USER WORKBENCH EDIT');host.runtime.close();f.assertReleased();
 });
