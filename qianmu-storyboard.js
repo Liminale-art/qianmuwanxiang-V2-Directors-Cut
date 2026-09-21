@@ -1,8 +1,9 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.249';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.250';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.250';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.249';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.249';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.249';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.250';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.250';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.250';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -23,8 +24,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.249';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.249';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.250';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.250';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -1244,7 +1245,7 @@ function normalizeStoryboardDirectorDecisionSnapshot(value) {
   const decisionId = cleanId(raw.decisionId || raw.decision_id);
   if (!decisionId) return null;
   return {
-    schema: 'qianmu.director-decision.v1',
+    schema: raw.schema===undefined||raw.schema==='qianmu.director-decision.v1'?'qianmu.director-decision.v1':'qianmu.director-decision.invalid',
     decisionId,
     owner: { chatKey: str(raw.owner?.chatKey || raw.owner?.chat_key, 512) },
     status: raw.status === 'approved' ? 'approved' : 'revoked',
@@ -1260,7 +1261,8 @@ function normalizeStoryboardDirectorDecisionSnapshot(value) {
       ...narrativeContextField(source),
     },
     approval: {
-      mode: approval.mode === 'explicit' ? 'explicit' : 'none',
+      mode: ['explicit','world_setting'].includes(approval.mode) ? approval.mode : 'none',
+      ...(Object.hasOwn(approval,'worldAutomation')?{worldAutomation:normalizeWorldAutomaticApproval(approval.worldAutomation)}:{}),
       approvedAt: pos(approval.approvedAt || approval.approved_at),
       revokedAt: pos(approval.revokedAt || approval.revoked_at),
       revision: int(approval.revision, 1, 1000, 1),

@@ -3,6 +3,7 @@ import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate, scoreNarr
 import { validateNarrativeLedgerEntry, adaptProductionPacketToNarrativeLedgerEntry } from './qianmu-narrative-ledger.js';
 import { QIANMU_PRODUCTION_PACKET_SCHEMA } from './qianmu-production-packet.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
+import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './qianmu-world-automatic-approval.js?v=1.59.250';
 import { narrativeContextField, narrativeContextIssues, matchingNarrativeContexts, isMainlineNarrativeFact } from './qianmu-narrative-context.js';
 
 export const QIANMU_DIRECTOR_DECISION_SCHEMA = 'qianmu.director-decision.v1';
@@ -72,7 +73,8 @@ export function normalizeDirectorDecision(value = {}) {
       ...narrativeContextField(source),
     },
     approval: {
-      mode: approval.mode === 'explicit' ? 'explicit' : 'none',
+      mode: ['explicit','world_setting'].includes(approval.mode) ? approval.mode : 'none',
+      ...(Object.hasOwn(approval,'worldAutomation')?{worldAutomation:normalizeWorldAutomaticApproval(approval.worldAutomation)}:{}),
       approvedAt: timestamp(approval.approvedAt || approval.approved_at),
       revokedAt: timestamp(approval.revokedAt || approval.revoked_at),
       revision: Math.max(1, Math.min(1000, Math.floor(Number(approval.revision) || 1))),
@@ -103,7 +105,12 @@ export function validateDirectorDecision(value = {}) {
   if (decision.truthMode === 'canon' && Object.hasOwn(decision.source, 'narrativeContext')
     && !isMainlineNarrativeFact(decision.source.narrativeContext)) issues.push('narrative_context_truth_mismatch');
   if (!decision.source.candidateId || !decision.source.ledgerEntryId || !decision.source.packetId) issues.push('source_chain_incomplete');
-  if (decision.status === 'approved' && decision.approval.mode !== 'explicit') issues.push('explicit_approval_missing');
+  if (decision.status === 'approved' && !['explicit','world_setting'].includes(decision.approval.mode)) issues.push('explicit_approval_missing');
+  if(decision.approval.mode==='world_setting') {
+    if(!worldAutomaticApprovalMatches(decision.approval.worldAutomation,decision.source.worldSource,decision.owner.chatKey))issues.push('world_automatic_source_invalid');
+    if(decision.truthMode!=='speculative'||!decision.outputs.storyboard||['voice','subtitle','film'].some(key=>decision.outputs[key]))issues.push('world_automatic_scope_invalid');
+    if(decision.lanes.dialogue.length||decision.lanes.ambience.length||decision.lanes.caption)issues.push('world_automatic_lane_invalid');
+  } else if(Object.hasOwn(decision.approval,'worldAutomation'))issues.push('world_automatic_mode_mismatch');
   if (decision.status === 'approved' && !decision.approval.approvedAt) issues.push('approval_time_missing');
   if (!Object.values(decision.outputs).some(Boolean)) issues.push('consumer_missing');
   if (!decision.lanes.visual.description && !decision.lanes.visual.subject && !decision.lanes.dialogue.length && !decision.lanes.ambience.length && !decision.lanes.caption) issues.push('decision_content_missing');
@@ -132,7 +139,7 @@ function directorSourcePairIssues(candidate, packet, ledgerEntry, chatKey) {
   return issues;
 }
 
-export function createDirectorDecision(candidateValue = {}, packetValue = {}, options = {}) {
+function buildDirectorDecision(candidateValue = {}, packetValue = {}, options = {}, automaticWorld = false) {
   const candidate = normalizeDirectorCandidate(candidateValue);
   const packet = plain(packetValue) ? packetValue : {};
   const input = plain(options) ? options : {};
@@ -146,7 +153,15 @@ export function createDirectorDecision(candidateValue = {}, packetValue = {}, op
   if (candidate.recommendation === 'reject') issues.push('candidate_rejected');
   if (!candidate.gates.sourceValid || !candidate.gates.factConsistency || !candidate.gates.shotDistinct
     || (candidate.recommendation === 'automatic' && (!candidate.gates.spoilerSafe || candidate.sourceKind !== 'prose'))) issues.push('candidate_gate_failed');
-  if (input.explicitApproval !== true) issues.push('explicit_approval_required');
+  if(!automaticWorld&&input.explicitApproval !== true) issues.push('explicit_approval_required');
+  if(automaticWorld){
+    if(input.worldAutoEnabled!==true)issues.push('world_automatic_opt_in_required');
+    if(candidate.sourceKind!=='simulation'||!Object.hasOwn(input,'ledgerEntry'))issues.push('world_automatic_source_required');
+    if(!worldAutomaticApprovalMatches(input.worldAutomation,packet.sourceRef?.worldSource,chatKey))issues.push('world_automatic_source_invalid');
+    if(typeof input.namespace!=='string'||input.namespace!==input.worldAutomation?.namespace)issues.push('world_automatic_account_mismatch');
+    if(packet.sourceRef?.field!==input.worldAutomation?.source?.field)issues.push('world_automatic_source_invalid');
+    if(input.explicitApproval===true)issues.push('world_automatic_mode_mismatch');
+  }
   if (candidate.entryId !== text(input.ledgerEntryId || input.ledger_entry_id, 200)) issues.push('ledger_entry_mismatch');
   // Legacy receipts stay readable; current world creation supplies the actual source rather than just its ID.
   if (Object.hasOwn(input, 'ledgerEntry')) issues.push(...directorSourcePairIssues(candidate, packet, input.ledgerEntry, chatKey));
@@ -157,32 +172,40 @@ export function createDirectorDecision(candidateValue = {}, packetValue = {}, op
   const outputs = normalizeOutputs(input.outputs || { storyboard: true });
   const approvedAt = timestamp(input.approvedAt || input.approved_at) || Date.now();
   const decision = normalizeDirectorDecision({
-    decisionId: `decision-${hash(`${chatKey}|${candidate.candidateId}|${packet.packetId}|${approvedAt}`)}`,
+    decisionId: automaticWorld ? `decision-${input.worldAutomation?.requestId || 'invalid'}` : `decision-${hash(`${chatKey}|${candidate.candidateId}|${packet.packetId}|${approvedAt}`)}`,
     owner: { chatKey },
     status: 'approved',
-    truthMode: candidate.sourceKind === 'prose' && (!Object.hasOwn(candidate, 'narrativeContext') || isMainlineNarrativeFact(candidate.narrativeContext)) ? 'canon' : 'speculative',
+    truthMode: !automaticWorld&&candidate.sourceKind === 'prose' && (!Object.hasOwn(candidate, 'narrativeContext') || isMainlineNarrativeFact(candidate.narrativeContext)) ? 'canon' : 'speculative',
     source: {
       candidateId: candidate.candidateId, ledgerEntryId: candidate.entryId, packetId: packet.packetId,
       eventId: packet.eventId, track: packet.track, canonLevel: packet.canonLevel,
       worldSource: packet.sourceRef?.worldSource,
       ...narrativeContextField(candidate),
     },
-    approval: { mode: 'explicit', approvedAt, revision: 1 },
+    approval: { mode: automaticWorld?'world_setting':'explicit', approvedAt, revision: 1,
+      ...(automaticWorld?{worldAutomation:input.worldAutomation}:{}) },
     outputs,
     lanes: {
       visual: {
         duty: visual.duty, shotPattern: visual.shotPattern, subject: visual.subject, description: visual.description,
         characters: packet.characterState, scene, evidenceRefs: visual.evidenceRefs,
       },
-      dialogue: audio.dialogue,
-      ambience: audio.ambience,
-      caption: consequence.summary,
+      dialogue: automaticWorld?[]:audio.dialogue,
+      ambience: automaticWorld?[]:audio.ambience,
+      caption: automaticWorld?'':consequence.summary,
     },
   });
   const validation = validateDirectorDecision(decision);
   const ok = issues.length === 0 && validation.ok;
   // A failed confirmation must not hand callers an apparently approved receipt.
   return { ok, issues: [...new Set([...issues, ...validation.issues])], decision: ok ? decision : null };
+}
+
+export function createDirectorDecision(candidate={},packet={},options={}) {
+  return buildDirectorDecision(candidate,packet,options);
+}
+export function createAutomaticWorldDirectorDecision(candidate={},packet={},options={}) {
+  return buildDirectorDecision(candidate,packet,options,true);
 }
 
 export function canConsumeDirectorDecision(value = {}, consumer = '', chatKey = '') {

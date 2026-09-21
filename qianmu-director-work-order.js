@@ -1,11 +1,12 @@
 // 千幕·导演工作单。下游工种只接收已批准决策的有限投影，不再解释原始推演文本。
 import { normalizeWorldSource } from './qianmu-world-source.js';
+import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './qianmu-world-automatic-approval.js?v=1.59.250';
 import { narrativeContextField, narrativeContextIssues, isMainlineNarrativeFact, narrativeContextLayer } from './qianmu-narrative-context.js';
 import {
   QIANMU_DIRECTOR_DECISION_CONSUMERS,
   canConsumeDirectorDecision,
   normalizeDirectorDecision,
-} from './qianmu-director-decision.js';
+} from './qianmu-director-decision.js?v=1.59.250';
 
 export const QIANMU_DIRECTOR_WORK_ORDER_SCHEMA = 'qianmu.director-work-order.v1';
 export const QIANMU_DIRECTOR_WORK_ORDER_STATUSES = Object.freeze(['ready', 'cancelled']);
@@ -96,6 +97,7 @@ export function normalizeDirectorWorkOrder(value = {}) {
       track: ['main_camera', 'second_camera'].includes(source.track) ? source.track : '',
       canonLevel: ['canon', 'director', 'draft'].includes(source.canonLevel || source.canon_level) ? (source.canonLevel || source.canon_level) : '',
       ...(normalizeWorldSource(source.worldSource) ? {worldSource:normalizeWorldSource(source.worldSource)} : {}),
+      ...(Object.hasOwn(source,'worldAutomation')?{worldAutomation:normalizeWorldAutomaticApproval(source.worldAutomation)}:{}),
       ...narrativeContextField(source),
     },
     payload: normalizePayload(raw.payload, consumer),
@@ -114,6 +116,10 @@ export function validateDirectorWorkOrder(value = {}, consumer = '', chatKey = '
     && !isMainlineNarrativeFact(workOrder.source.narrativeContext)) issues.push('narrative_context_truth_mismatch');
   if (chatKey && workOrder.owner.chatKey !== text(chatKey, 512)) issues.push('owner_chat_mismatch');
   if (!workOrder.consumer) issues.push('consumer_invalid');
+  if(Object.hasOwn(workOrder.source,'worldAutomation')){
+    if(!worldAutomaticApprovalMatches(workOrder.source.worldAutomation,workOrder.source.worldSource,workOrder.owner.chatKey))issues.push('world_automatic_source_invalid');
+    if(workOrder.consumer!=='storyboard'||workOrder.truthMode!=='speculative')issues.push('world_automatic_scope_invalid');
+  }
   if (consumer && workOrder.consumer !== consumer) issues.push('consumer_mismatch');
   if (workOrder.status !== 'ready') issues.push('work_order_not_ready');
   if (!workOrder.source.decisionId || !workOrder.source.candidateId || !workOrder.source.ledgerEntryId || !workOrder.source.packetId) issues.push('source_chain_incomplete');
@@ -143,6 +149,7 @@ export function createDirectorWorkOrder(decisionValue = {}, consumer = '', chatK
       packetId: decision.source.packetId, eventId: decision.source.eventId,
       track: decision.source.track, canonLevel: decision.source.canonLevel,
       worldSource: decision.source.worldSource,
+      ...(decision.approval.mode==='world_setting'?{worldAutomation:decision.approval.worldAutomation}:{}),
       ...narrativeContextField(decision.source),
     },
     payload: decision.lanes,
