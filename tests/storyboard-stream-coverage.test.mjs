@@ -4,7 +4,7 @@ import {EventEmitter} from 'node:events';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {normalizeStoryboardMessageReference,sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
 import {createStoryboardStreamMoment} from '../qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.240';
+import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.241';
 import {resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
 import {response as sample} from './helpers/comfy-compiler-fixture.mjs';
 const copy=value=>JSON.parse(JSON.stringify(value));
