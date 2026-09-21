@@ -952,3 +952,62 @@ test('a deferred Comfy stream mirror records its own frozen proof and global slo
   assert.equal(q.queue[1].inlineOrder.shotIndex,2);assert.equal(q.queue[1].messageRef.stream.moment.paragraphId,'P3');
   assert.deepEqual(q.outcomes.at(-1),{queued:1,failed:1,prepared:1});f.assertReleased();
 });
+
+const storedFinals=f=>[...f.storage.files.values()].map(text=>JSON.parse(text)).filter(row=>row.schema==='qianmu.st-account-document.v1')
+  .map(row=>row.value).filter(value=>value?.schema==='qianmu.storyboard.stream-final.v1');
+
+test('actual final model and return both wait for their ST prepare and settle readbacks',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+  const entered=[deferred(),deferred()],held=[deferred(),deferred()];let posts=0,blocked=0,ended=false;
+  f.storage.hook=async({path})=>{if(path==='/api/files/upload')posts++;
+    else if(posts===2*(blocked+1)&&blocked<2){const n=blocked++;entered[n].resolve();await held[n].promise;}};
+  const pending=final.run().then(value=>{ended=true;return value;});
+  await entered[0].promise;assert.equal(f.counts.requests,2);assert.equal(ended,false);held[0].resolve();
+  await entered[1].promise;assert.equal(f.counts.requests,3);assert.equal(ended,false);held[1].resolve();assert.equal(await pending,false);
+  const records=storedFinals(f);assert.deepEqual(records.map(row=>row.record.status),['preparing','complete']);
+  assert.deepEqual(copy(f.state.shotPlans[0].streamFinalCapture),records.at(-1).record);assert.equal(q.queue.length,1);f.assertReleased();
+});
+
+for(const phase of ['prepare','settle'])test(`actual lost final ${phase} acknowledgement retains accepted jobs and blocks replay even without the local marker`,async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0]);assert.equal(await f.run(),true);
+  useShotSet(f,[0,1,2]);f.host.chat[0].mes=threeParagraphs.replace('\n\nUnfinished','');const final=installFinalNotifications(f);let posts=0;
+  f.storage.hook=({path,options,files})=>{
+    if(path==='/api/files/upload'&&++posts===(phase==='prepare'?2:4)){
+      const {name,data}=JSON.parse(options.body);files.set(name,Buffer.from(data,'base64').toString());throw Error('synthetic lost final acknowledgement');
+    }
+  };
+  assert.equal(await final.run(),phase==='settle');assert.equal(f.counts.requests,phase==='prepare'?2:4);assert.equal(q.queue.length,phase==='prepare'?1:3);
+  assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'failed');const count=f.counts.requests,queued=copy(q.queue);
+  f.storage.hook=null;delete f.state.shotPlans[0].streamFinalCapture;
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,count);assert.deepEqual(copy(q.queue),queued);assert.match(f.notices.at(-1),/已有取景记录/);f.assertReleased();
+});
+
+test('actual final claim remains no-replay after settings save fails following confirmed ST completion',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
+  const save=f.context.saveSettings;f.context.saveSettings=()=>{if(f.state.shotPlans[0]?.streamFinalCapture?.status==='complete')throw Error('settings unavailable');return save();};
+  assert.equal(await final.run(),false);assert.equal(storedFinals(f).at(-1).record.status,'complete');assert.equal(q.queue.length,1);
+  const count=f.counts.requests;f.context.saveSettings=save;delete f.state.shotPlans[0].streamFinalCapture;
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,count);f.assertReleased();
+});
+
+test('actual final capture verifies a tracked partial checkpoint against ST before opening a final claim',async()=>{
+  for(const missing of [false,true]){
+    const f=await fixture(),q=installStreamQueue(f);assert.equal((await trackedPass(f)).status,'advanced');const final=installFinalNotifications(f);
+    if(missing)f.storage.files.clear();else f.state.shotPlans[0].streamAttempt.updatedAt++;
+    const before=f.storage.calls.length;assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);
+    assert.equal(storedFinals(f).length,0);assert.ok(f.storage.calls.slice(before).every(row=>row.options.method==='GET'));f.assertReleased();
+  }
+});
+
+for(const change of ['source','account','plan-id','manual'])test(`actual ${change} change during final claim readback prevents the first model request`,async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);let posts=0;
+  f.storage.hook=({path})=>{if(path==='/api/files/upload'&&++posts===2){
+    if(change==='source')f.host.chat[0].mes+='changed';if(change==='account'){f.setAccount('st-user:other');f.storage.namespace='st-user:other';}
+    if(change==='plan-id')f.state.shotPlans[0].id='replaced';if(change==='manual')f.state.shotPlans[0].promptLocked=true;
+  }};
+  assert.equal(await final.run(),false);assert.equal(f.counts.requests,2);assert.equal(q.queue.length,1);assert.equal(posts,2);f.assertReleased();
+});
+
+test('ordinary new floors do not open a final checkpoint or perform new ST file reads',async()=>{
+  const f=await fixture();installStreamQueue(f);const final=installFinalNotifications(f);assert.equal(await final.finish(),null);assert.equal(f.storage.calls.length,0);assert.equal(f.counts.requests,0);f.assertReleased();
+});

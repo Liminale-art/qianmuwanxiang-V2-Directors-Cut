@@ -437,6 +437,7 @@
   "qianmu-storyboard-compiler-result.js",
   "qianmu-storyboard-stream-jobs.js",
   "qianmu-storyboard-stream-final.js",
+  "qianmu-storyboard-stream-final-storage.js",
     "qianmu-storyboard-stream-readiness.js",
     "qianmu-storyboard-continuity-store.js",
     "qianmu-storyboard-focused-extraction.js",
