@@ -133,10 +133,11 @@ test('synthetic 1k/10k/50k indexes keep first paint to one small page, without r
   }
 });
 
-test('foundation is not live-wired and cannot claim to remove the current gallery cap',async()=>{
+test('index contract ships for read-only discovery, without wiring gallery pruning or generation',async()=>{
   const entry=await readFile(new URL('../index.js',import.meta.url),'utf8'),release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
   const implementation=await readFile(new URL('../qianmu-gallery-page-index.js',import.meta.url),'utf8');
-  assert.doesNotMatch(entry,/qianmu-gallery-page-index/);assert.equal(release.files.includes('qianmu-gallery-page-index.js'),false);
+  assert.doesNotMatch(entry,/qianmu-gallery-page-index/);assert.equal(release.files.includes('qianmu-gallery-page-index.js'),true);
+  assert.equal(release.files.includes('qianmu-gallery-discovery-service.js'),true);
   assert.match(entry,/pruneStoryboardRetakeGallery\(gallery/,'existing retention risk remains explicit, not silently claimed fixed');
   assert.doesNotMatch(implementation,/\bfetch\s*\(|\bindexedDB\b|\.unlink\(|\.writeFile\(|\.splice\(|\badmit\s*\(/);
 });

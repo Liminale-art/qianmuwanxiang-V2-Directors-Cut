@@ -1,18 +1,18 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.281';
-import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.281';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.281';
-import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.281';
-import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.281';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.282';
+import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.282';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.282';
+import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.282';
+import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.282';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
 import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
-import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.281';
+import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.282';
 import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
-import {beginStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.281';
-import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.281';
-import {captureEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.281';
-export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.281';
+import {beginStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.282';
+import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.282';
+import {captureEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.282';
+export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.282';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
 const windows = new WeakMap();

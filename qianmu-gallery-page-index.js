@@ -1,5 +1,5 @@
-// Phase 1 paging foundation ONLY. No runtime import, migration, storage writes,
-// gallery pruning, generation gate, network or original-media access. Hashes
+// Shared paging contract used by read-only version discovery. No migration,
+// storage writes, gallery pruning, generation gate or original-media access. Hashes
 // prove byte integrity, not durable storage, authenticated ownership or deletion
 // authority. A future adapter must establish those separately before adoption.
 import {parseBoundedJson} from './qianmu-json-input.js';

@@ -17,7 +17,7 @@ const stamp=stat=>sha([stat.dev,stat.ino,stat.mtimeNs,stat.ctimeNs].join(':'));
 
 // Read-only discovery of already-published ST-native source versions. No chat,
 // record, recipe, image, mutable registry, write, repair or recursive traversal.
-// Not wired to an HTTP route yet; callers must supply the authenticated ST req.
+// HTTP adapter supplies the authenticated ST request, never caller-owned roots.
 export function createGalleryDiscoveryService({dataRoot,io=fs,timeoutMs=LIMIT.timeoutMs}={}){
   if(typeof dataRoot!=='string'||!dataRoot||dataRoot.includes('\0')||!Number.isFinite(timeoutMs)||timeoutMs<100||timeoutMs>30000)fail('setup','图库发现环境未就绪',503);
   const root=path.resolve(dataRoot);if(root===path.parse(root).root)fail('setup','图库发现数据范围无效',503);

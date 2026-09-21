@@ -169,9 +169,11 @@ test('canonical record hash ignores JSON property order but not unknown fields; 
   assert.deepEqual((await inspect(scope(),first.value,first.reference)).value.record,a);
 });
 
-test('archive foundation does not change application wiring, generation admission or current pruning',async()=>{
+test('record contract ships for discovery but archive writing is not live-wired and pruning remains unchanged',async()=>{
   const entry=await readFile(new URL('../index.js',import.meta.url),'utf8'),release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  for(const name of ['qianmu-gallery-archive-record.js','qianmu-gallery-archive-storage.js']){assert.equal(entry.includes(name),false);assert.equal(release.files.includes(name),false);}
+  for(const name of ['qianmu-gallery-archive-record.js','qianmu-gallery-archive-storage.js'])assert.equal(entry.includes(name),false);
+  assert.equal(release.files.includes('qianmu-gallery-archive-record.js'),true);
+  assert.equal(release.files.includes('qianmu-gallery-archive-storage.js'),false);
   const code=await readFile(new URL('../qianmu-gallery-archive-storage.js',import.meta.url),'utf8');
   assert.doesNotMatch(code,/\bfetch\s*\(|storage\.(?:delete|remove|update)\(|\.unlink\(|\.admit\(|storyboardImages\s*=/);
 });

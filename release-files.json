@@ -3,6 +3,13 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-gallery-discovery-client.js",
+    "qianmu-gallery-discovery-routes.js",
+    "qianmu-gallery-discovery-service.js",
+    "qianmu-gallery-discovery-contract.js",
+    "qianmu-gallery-archive-version.js",
+    "qianmu-gallery-archive-record.js",
+    "qianmu-gallery-page-index.js",
     "qianmu-storyboard-ordinary-moment.js",
     "qianmu-storyboard-source-proof.js",
     "qianmu-hive-ownership.js",
