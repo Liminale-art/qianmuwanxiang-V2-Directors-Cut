@@ -14,6 +14,7 @@ import {createStoryboardStreamScheduler,runStoryboardStreamPass} from '../qianmu
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createStoryboardStreamHost} from '../qianmu-storyboard-stream-host.js';
 import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
+import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
 import {prepareComfyRouteRecipes,assertComfyRouteProfile} from '../qianmu-comfy-route.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -285,6 +286,7 @@ async function installEnsembleChoices(f){
   const profile=f.context.storyboardProviderProfile(f.state,'novel');
   f.state.artistPresets.push({id:'style-artist',name:'test ink',value:'artist:ink',positivePrompt:'ink wash',negativePrompt:'low quality'});
   f.state.routing.rules.push({id:'style-nai',enabled:true,target:{providerId:'novel',modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''}});
+  Object.assign(f.state,normalizeStoryboardState(copy(f.state)));
   const library={schema:'qianmu.ensemble.library.v1',namespace:'st-user:route-test',schemes:[
     {id:'ink',revision:'v1',name:'Ink',description:'留白',tags:[],binding:{routeId:'style-nai',artistPresetId:'style-artist'}},
     {id:'cg',revision:'v1',name:'CG',description:'空间',tags:[],binding:{routeId:'rule-0'}}]};
@@ -297,7 +299,7 @@ async function installEnsembleChoices(f){
   f.context.storyboardCompilerRequestConfig=(...args)=>({...config(...args),styleSession:binding.session,promptFormats:binding.session.promptFormats});
   f.context.storyboardPrepareComfyRoutes=(state,guard)=>prepare(state,guard,[...f.routes,f.state.routing.rules.at(-1).target]);
   useShotSet(f,[0,1,2],({reply,options})=>{if(options.jsonSchemaName==='qianmu.storyboard.expression.v1')reply.style_assignments=['cg','ink','current'].map((scheme_id,index)=>({shot_id:`S${index+1}`,scheme_id,reason:'表现增益'}));});
-  return binding;
+  return {...binding,library,selection};
 }
 
 test('actual compiler maps verified style IDs through cast remapping into mixed Comfy and NAI stream jobs',async()=>{
@@ -1130,4 +1132,90 @@ test('actual manual edit between token batches preserves admitted pictures and b
   for(const fn of f.domEvents.get('input')||[])fn({target:{type:'text',className:'sd-storyboard-prompt',closest:()=>({}),matches:()=>true}});
   f.state.prompt='USER WORKBENCH EDIT';f.host.chat[0].mes=threeParagraphs;host.pulse();assert.equal(host.timers.size,0);assert.equal(host.gate(),false);
   assert.equal(q.queue.length,1);assert.equal(f.counts.requests,2);assert.equal(f.state.prompt,'USER WORKBENCH EDIT');host.runtime.close();f.assertReleased();
+});
+
+async function ordinaryEnsembleFixture(){
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);Object.assign(f.state,{target:'floor',floor:'0'});
+  vm.runInContext(section('storyboardEnsembleHost'),f.context);
+  const binding=await installEnsembleChoices(f),store=await createEnsembleStorage({namespace:binding.library.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>binding.library.namespace});
+  await store.saveLibrary(binding.library,await store.readLibrary());await store.saveSelection(binding.selection,await store.readSelection());store.close();
+  const messageRef=createStoryboardMessageReference({message:f.host.chat[0],chatKey:'chat-a',floor:0});
+  const plan=f.context.createStoryboardWorkflowTicket({id:'ordinary-styles',chatKey:'chat-a',floor:0,messageRef,origin:'automatic',autoGenerate:true});f.state.shotPlans=[plan];
+  return {f,q,binding,plan,compile:()=>f.run({stream:null,onPrepared:null,plan,automatic:true}),generate:()=>f.context.storyboardGenerate(null,{plan,automatic:true})};
+}
+
+test('actual ordinary compiler durably stores style choices and the later generator revalidates them with no extra LLM call',async()=>{
+  const {f,q,binding,plan,compile,generate}=await ordinaryEnsembleFixture();
+  try{
+    assert.equal(await compile(),true,JSON.stringify({errors:f.errors,notices:f.notices}));f.assertReleased();binding.close();
+    assert.equal(f.state.promptDraft.ensembleRequired,true);assert.equal(plan.ensembleRecovery.executionAuthorized,false);
+    const records=[...f.storage.files.values()].map(value=>JSON.parse(value)).filter(row=>row.value?.schema==='qianmu.ensemble.recovery.v1');assert.equal(records.length,1);
+    assert.deepEqual(records[0].value,copy(plan.ensembleRecovery));const start=f.storage.calls.length;assert.equal(await generate(),true,JSON.stringify({errors:f.errors,notices:f.notices}));
+    assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','novel']);assert.equal(q.queue[0].profile.comfyRouteBinding.id,'portrait');assert.equal(q.queue[1].artistPresetId,'style-artist');
+    assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2]);assert.equal(f.counts.requests,2);assert.ok(q.queue.every(row=>row.imageAdmission.automaticSlot&&row.profile.count==='1'));
+    assert.equal(f.storage.calls.slice(start).filter(row=>row.path.includes('-ensemble-plan-')).length,10,'entry/final verification plus one check before each submission, without a redundant host read');f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual ordinary coverage omission preserves original per-shot style instead of shifting the first assignment',async()=>{
+  const {f,q,binding,compile,generate}=await ordinaryEnsembleFixture();try{
+    assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();const prepare=f.context.storyboardPrepareDraftGroup;
+    f.context.storyboardPrepareDraftGroup=(...args)=>{const group=prepare(...args);return {...group,planned:group.planned.slice(1)};};
+    assert.equal(await generate(),true,JSON.stringify(f.notices));assert.deepEqual(q.queue.map(row=>row.source),['novel','novel']);assert.equal(q.queue[0].artistPresetId,'style-artist');assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual ordinary missing recovery metadata cannot silently use the old type routing',async()=>{
+  const {f,q,binding,plan,compile,generate}=await ordinaryEnsembleFixture();try{
+    assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();delete plan.ensembleRecovery;
+    assert.equal(await generate(),false);assert.equal(q.queue.length,0);assert.equal(f.counts.requests,2);assert.match(f.notices.at(-1),/交接记录缺失/);f.assertReleased();
+  }finally{binding.close();}
+});
+
+for(const kind of ['prompt','reorder','record','account','revision','selection','artist'])test(`actual ordinary ${kind} change refuses the old style receipt before image admission`,async()=>{
+  const {f,q,binding,plan,compile,generate}=await ordinaryEnsembleFixture();try{
+    assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();
+    if(kind==='prompt')f.state.promptDraft.shots[0].prompt='manually changed';
+    if(kind==='reorder')f.state.promptDraft.shots.reverse();
+    if(kind==='record')plan.ensembleRecovery={...plan.ensembleRecovery,selectionRevision:'changed'};
+    if(kind==='account'){f.setAccount('st-user:other');f.storage.namespace='st-user:other';}
+    if(kind==='revision'){plan.revisionId='other';}
+    if(kind==='artist')f.state.artistPresets[0].value='changed artist';
+    if(kind==='selection'){const store=await createEnsembleStorage({namespace:binding.library.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>binding.library.namespace});
+      const view=await store.readSelection();await store.saveSelection({...view.value,revision:'changed'},view);store.close();}
+    assert.equal(await generate(),false,JSON.stringify(f.notices));assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual ordinary style persistence failure preserves the old workbench and does not generate',async()=>{
+  const {f,q,binding,plan,compile}=await ordinaryEnsembleFixture(),before=editable(f.state);let uploads=0;
+  f.storage.hook=({path})=>{if(path==='/api/files/upload'){uploads++;throw Error('lost style save acknowledgement');}};
+  try{assert.equal(await compile(),false);assert.equal(uploads,1);assert.equal(plan.ensembleRecovery,undefined);assert.equal(f.state.prompt,before.prompt);
+    assert.deepEqual(copy(f.state.promptDraft),before.promptDraft);assert.equal(q.queue.length,0);assert.equal(f.counts.requests,2);assert.match(f.notices.at(-1),/未确认/);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual ordinary normalized reload retains content identities and can reconstruct the original mixed style batch',async()=>{
+  const {f,q,binding,compile}=await ordinaryEnsembleFixture();try{
+    assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();Object.assign(f.state,normalizeStoryboardState(copy(f.state)));
+    assert.equal(await f.context.storyboardGenerate(null,{plan:f.state.shotPlans[0],automatic:true}),true,JSON.stringify(f.notices));
+    assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','novel']);assert.equal(q.queue[1].artistPresetId,'style-artist');assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual ordinary absent native recovery file stops instead of trusting settings metadata',async()=>{
+  const {f,q,binding,plan,compile,generate}=await ordinaryEnsembleFixture();try{
+    assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();const original=copy(plan.ensembleRecovery);
+    f.storage.hook=({path,json})=>path.includes('-ensemble-plan-')?json({},404):undefined;
+    assert.equal(await generate(),false);assert.equal(q.queue.length,0);assert.deepEqual(copy(plan.ensembleRecovery),original);assert.equal(f.counts.requests,2);assert.match(f.notices.at(-1),/尚未确认保存/);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual ordinary saved-record failure between submissions keeps the accepted image and never repeats the whole batch',async()=>{
+  const {f,q,binding,compile,generate}=await ordinaryEnsembleFixture();try{
+    assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();
+    f.storage.hook=({path,json})=>q.queue.length&&path.includes('-ensemble-plan-')?json({},401):undefined;
+    assert.equal(await generate(),true,JSON.stringify(f.notices));assert.equal(q.queue.length,1);const accepted=copy(q.queue[0]);
+    assert.match(f.notices.at(-1),/已进入队列.*勿整批重复/);assert.equal(await generate(),false);assert.deepEqual(copy(q.queue[0]),accepted);assert.equal(q.queue.length,1);assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
 });

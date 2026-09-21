@@ -1,5 +1,5 @@
-import {createEnsembleStyleSession,normalizeEnsembleLibrary,normalizeEnsembleChatSelection,ENSEMBLE_CURRENT_STYLE} from './qianmu-ensemble-selection.js?v=1.59.263';
-import {resolveStoryboardProfileBinding,resolveStoryboardConnectionBinding,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.263';
+import {createEnsembleStyleSession,normalizeEnsembleLibrary,normalizeEnsembleChatSelection,ENSEMBLE_CURRENT_STYLE} from './qianmu-ensemble-selection.js?v=1.59.264';
+import {resolveStoryboardProfileBinding,resolveStoryboardConnectionBinding,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.264';
 import {normalizeStoryboardPromptFormats,negotiateStoryboardPromptFormats} from './qianmu-prompt-formats.js';
 import {comfyRouteBindingKey} from './qianmu-comfy-route-contract.js';
 

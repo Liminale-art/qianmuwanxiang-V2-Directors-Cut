@@ -7,9 +7,9 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.263';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.263';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.263';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.264';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.264';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.264';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -264,12 +264,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.263';
+} from './qianmu-storyboard.js?v=1.59.264';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.263';
+const VERSION = '1.59.264';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -322,7 +322,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.263'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.264'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -358,15 +358,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.263'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.264'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.263'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.264'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.263'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.264'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -458,11 +458,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.263'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.264'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.263'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.264'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -550,9 +550,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.263'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.264'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.263')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.264')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -18567,6 +18567,7 @@ function storyboardCreatePreparationGuard(state, { plan = null, includeDraft = t
       error.code = 'storyboard_input_changed'; throw error;
     },
     dispose() {
+      this.ensemble?.close();
       this.continuityStore?.close();
       this.compilerSources?.close();
       this.streamFrame?.close();
@@ -18791,9 +18792,9 @@ function storyboardUsesComfyCharacters(state, preparedRoutes = null, freshComfy 
   return false;
 }
 
-async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGuard, automatic = false, context = null) {
-  const routes = storyboardCompilerRoutes(state, profile).filter(route => route.providerId === 'comfy' && !storyboardRouteUsesComfyAuto(state,route)).map(route=>({route}));
-  routes.push(...(inputGuard.comfyRoutes?.candidates || []).map(row=>({route:row.target,candidateId:row.id})));
+async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGuard, automatic = false, context = null, requestedRoutes = null) {
+  const requested=requestedRoutes||storyboardCompilerRoutes(state,profile),routes = requested.filter(route => route.providerId === 'comfy' && !storyboardRouteUsesComfyAuto(state,route)).map(route=>({route}));
+  if(!requestedRoutes||requested.some(route=>storyboardRouteUsesComfyAuto(state,route)))routes.push(...(inputGuard.comfyRoutes?.candidates || []).map(row=>({route:row.target,candidateId:row.id})));
   const reports = [];
   for (const {route,candidateId} of routes) {
   try {
@@ -18830,6 +18831,8 @@ async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGu
   if(inputGuard.comfyAuto && !inputGuard.comfyAuto.candidates.length)throw Object.assign(new Error('没有可用的 Comfy 候选，请核对连接、角色与输出配置'),{comfyPreflight:true});
   return reports.length === 1 ? reports[0] : reports;
 }
+
+function storyboardEnsembleHost(){return {storyboardState,ctx,getChatKey,featureRuntime,storyboardProviderProfile,storyboardResolveRoutingProfile,storyboardPrepareComfyRoutes,storyboardPreflightComfyForCompiler,uid};}
 
 async function storyboardCompilePrompt(root, { plan = null, quiet = false, automatic = false, stream = null, onPrepared = null, onStreamOutcome = null } = {}) {
   let streamAttempt,streamStatus;const report=async status=>{streamStatus=await streamAttempt?.finish(status)||status;if(streamStatus==='failed'&&status!==streamStatus)toast('取景检查点保存未确认，已暂停提前取景；已入队画面保留。','warning');if(stream&&typeof onStreamOutcome==='function')try{const result=onStreamOutcome({status:streamStatus});result?.catch?.(()=>{});}catch(_){}return false;};
@@ -18922,6 +18925,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       delete shot.promptRenderings;
     }
     if(result.ensembleRequired)await contract.sealEnsembleCompilerResult(result,async()=>{inputGuard.assertCurrent();await context.casting?.assertCurrent();await inputGuard.comfyRoutes?.assertCurrent();inputGuard.assertCurrent();});
+    if(result.ensembleRequired&&!stream)await contract.persistStoryboardEnsemblePlan(result,context,plan,inputGuard,storyboardEnsembleHost());
     resultAccepted = true;
     const compilerInput = {
       floor: context.floor,
@@ -18938,7 +18942,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
         compiled: '', negative: '', compiledAt: Date.now(),
         compiledBy: state.promptCompiler.apiProfileId || 'current-api', userEditedCompiled: false,
         userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false,
-        sourceSummary: [`第 ${context.floor} 层`, '已判断无需配图'], shots: [],
+        sourceSummary: [`第 ${context.floor} 层`, '已判断无需配图'], shots: [], ensembleRequired:false,
       });
       if (plan) {
         plan.floor = context.floor;
@@ -18975,7 +18979,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       compiledBy: manualRequired ? 'local-contract-fallback' : (state.promptCompiler.apiProfileId || 'current-api'), userEditedCompiled: false,
       userEditedNegative: false, artistPositiveBaked: false, artistNegativeBaked: false,
       sourceSummary: [`第 ${context.floor} 层`, `近景 ${context.messages.length} 条`, `世界书 ${context.worldRows.length} 条`, ...(manualRequired ? ['待手动确认'] : [])],
-      shots: compiledShots,
+      shots: compiledShots, ensembleRequired:result.ensembleRequired===true,
     });
     state.pendingParagraphIndex = result.paragraphIndex;
     state.pendingShotType = result.shotType;
@@ -19032,7 +19036,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
     if(!resultAccepted)inputGuard.compilerAttempt?.fail(error,{store:storyboardStoreLog,archive:id=>storyboardArchivePipelineLog({pipelineId:id})});
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
-    if (!quiet||inputGuard.compilerAttempt||/^(st_account_storage_|storyboard_stream_(attempt|checkpoint)$)/.test(error?.code||'')||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
+    if (!quiet||inputGuard.compilerAttempt||/^(ensemble_|st_account_storage_|storyboard_stream_(attempt|checkpoint)$)/.test(error?.code||'')||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return report('failed');
   } finally {
     await streamAttempt?.finish('cancelled');
@@ -20027,7 +20031,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     if (!state.enabled) return toast('请先启用分镜。', 'warning');
     try { resolveStoryboardProfileBinding(state.source, profile); }
     catch (error) { return toast(error.message, 'warning'); }
-    if (state.routing.enabled) {
+    if (state.routing.enabled&&!state.promptDraft?.ensembleRequired&&!Object.hasOwn(plan||{},'ensembleRecovery')) {
       try {
         for (const rule of state.routing.rules.filter((item) => item.enabled)) {
           try { if (rule.target?.providerId !== 'comfy' || rule.target.comfyWorkflowBinding == null) storyboardResolveRoutingProfile(state, rule.target); }
@@ -20108,7 +20112,10 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     let queued=0,queueFailures=0;
     try {
       let selectedRoutes = planned.map(shot => routingEnabled ? routeStoryboardShot(shot, state.routing) : state.routing.single);
-      await storyboardPrepareComfyRoutes(state, inputGuard, selectedRoutes);
+      if(state.promptDraft?.ensembleRequired||Object.hasOwn(plan||{},'ensembleRecovery')){
+        const runtime=await featureRuntime.load('storyboardContract');inputGuard.assertCurrent();
+        inputGuard.ensemble=await runtime.restoreStoryboardEnsemblePlan(state,plan,planned,inputGuard,storyboardEnsembleHost());selectedRoutes=inputGuard.ensemble.routes;
+      }else await storyboardPrepareComfyRoutes(state, inputGuard, selectedRoutes);
       const jobs = [];
       // Freeze narrative order before asynchronous preparation/submission, not when an engine finishes.
       const inlineBatch = { version: 1, batchId: uid('shotbatch'), batchStartedAt: Date.now() };
@@ -20144,7 +20151,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
           let job;
           try {
             job = storyboardCreateJob(state, requestProfile, {
-              shot: effectiveShot, sourceId, profileSourceId: sourceId, modelId: route.modelId, capabilityModelId: shotProfile.capabilityModelId, connectionPresetId: route.connectionPresetId,
+              shot: inputGuard.ensemble?.artistPresetIds[index]?{...effectiveShot,artistPresetId:inputGuard.ensemble.artistPresetIds[index]}:effectiveShot, sourceId, profileSourceId: sourceId, modelId: route.modelId, capabilityModelId: shotProfile.capabilityModelId, connectionPresetId: route.connectionPresetId,
               planId: plan?.id || '', planShotId: planShot?.id || '', recentArtistIds: resolvedArtistIds,
               requestIndex: request.requestIndex, requestTotal: request.requestTotal,
               inlineOrder: { ...inlineBatch, shotIndex: index, requestIndex: request.requestIndex },
@@ -20188,6 +20195,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       if(autoSelection?.failures.size)toast(`${autoSelection.failures.size} 镜待选工作流；可从正文或日志重新准备本镜${jobs.length?'，其余镜头继续':'，尚无可入队镜头'}`,'warning');
       for (const job of jobs) {
         await inputGuard.comfyRoutes?.assertCurrent();
+        await inputGuard.ensemble?.assertCurrent();
         if (productionGuard?.verify) await productionGuard.verify();
         inputGuard.assertCurrent();
         let reason='';
@@ -20215,7 +20223,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
         if(inputGuard.ownsCurrentContext())toast(`${queued} 个请求已进入队列；${detail}。请勿整批重复生成`,'warning');
         return true;
       }
-      if (/^comfy_(route|reference|library|auto|scene)/.test(error?.code || '') || error?.code === 'image_attempt_account') {
+      if (/^(ensemble_|storyboard_style_selection|st_account_storage_|comfy_(route|reference|library|auto|scene))/.test(error?.code || '') || error?.code === 'image_attempt_account') {
         if (inputGuard.ownsCurrentContext()) toast(error.message || '工作流分工未就绪，未提交生成', 'warning');
         return false;
       }
