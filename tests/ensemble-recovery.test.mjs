@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
 import {ENSEMBLE_LIBRARY_SCHEMA,ENSEMBLE_SELECTION_SCHEMA} from '../qianmu-ensemble-selection.js';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult} from '../qianmu-ensemble-handoff.js?v=1.59.265';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult} from '../qianmu-ensemble-handoff.js?v=1.59.266';
 import {normalizeEnsembleRecoveryRecord,createEnsembleRecoveryRecord,restoreEnsembleRecoveryRecord} from '../qianmu-ensemble-recovery.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 import {routeEnvironment,namespace} from './helpers/comfy-route-fixture.mjs';
@@ -40,6 +40,8 @@ test('a closed compiler can be recovered only through a new actual binding sessi
 test('coverage may omit a mirror without shifting its original style or narrative order',async()=>{
   const f=await fixture(),restored=await restoreEnsembleRecoveryRecord(f.record,{...f.options,planned:f.options.planned.slice(1)});
   assert.deepEqual(restored.schemes.map(row=>row.shotId),['S2','S3']);assert.deepEqual(restored.artistPresetIds,['','ink']);
+  assert.deepEqual(restored.origins.map(row=>[row.shotId,row.schemeId,row.revision,row.bindingKey]),f.record.shots.slice(1).map(row=>[row.shotId,row.schemeId,row.revision,row.bindingKey]));
+  assert.equal(restored.origins[0].selectionRevision,f.record.selectionRevision);assert.equal(restored.origins[0].executionAuthorized,false);
 });
 test('recovery cannot substitute another account, chat, plan, message or revision',async()=>{
   for(const key of ['namespace','chatKey','planId','messageKey','revisionId']){const f=await fixture();await assert.rejects(restoreEnsembleRecoveryRecord(f.record,{...f.options,scope:{...f.scope,[key]:key==='namespace'?'st-user:other':'other'}}),{code:'ensemble_recovery'});assert.equal(f.jobs.length,0);}

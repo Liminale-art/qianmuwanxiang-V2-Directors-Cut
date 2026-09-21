@@ -7,9 +7,9 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.265';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.265';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.265';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.266';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.266';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.266';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -264,12 +264,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.265';
+} from './qianmu-storyboard.js?v=1.59.266';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.265';
+const VERSION = '1.59.266';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -322,7 +322,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.265'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.266'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -358,15 +358,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.265'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.266'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.265'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.266'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.265'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.266'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -458,11 +458,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.265'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.266'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.265'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.266'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -550,9 +550,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.265'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.266'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.265')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.266')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -17329,6 +17329,7 @@ function storyboardStartLog(job,{preparationError=''}={}) {
       ...(job.floorTake?{floorTake:normalizeStoryboardFloorTake(job.floorTake)}:{}),
       imageAdmission: job.imageAdmission,
       ...(Object.hasOwn(job,'comfySceneOrigin') ? {comfySceneOrigin:job.comfySceneOrigin} : {}),
+      ...(Object.hasOwn(job,'ensembleStyleOrigin') ? {ensembleStyleOrigin:job.ensembleStyleOrigin} : {}),
       ...(job.source === 'comfy' ? { comfyExecution: job.comfyExecution, comfyAudit: job.comfyAudit } : {}),
     }),
   };
@@ -20158,6 +20159,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
               routeTarget: route, preparedRoutes: inputGuard.comfyRoutes, freshComfy:inputGuard.freshComfy,
             });
           } catch (error) { return toast(`镜组配置：${error.message}`, 'warning'); }
+          if(inputGuard.ensemble)job.ensembleStyleOrigin=inputGuard.ensemble.origins[index];
           if (job.artistPresetId) resolvedArtistIds.push(job.artistPresetId);
           if (planShot && request.requestIndex === 1) Object.assign(planShot, {
             shotSpec: clone(job.shotSpec), compiledPrompt: clone(job.compiledPrompt), compositionDecision: clone(job.compositionDecision),

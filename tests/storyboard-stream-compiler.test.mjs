@@ -16,6 +16,7 @@ import {createStoryboardStreamHost} from '../qianmu-storyboard-stream-host.js';
 import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
 import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
 import {prepareComfyRouteRecipes,assertComfyRouteProfile} from '../qianmu-comfy-route.js';
+import {sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -1154,6 +1155,54 @@ function useLockedEnsembleShots(f){
     }
   });
 }
+
+function assertEnsembleOrigins(f,q,expected){
+  assert.deepEqual(q.queue.map(job=>job.ensembleStyleOrigin.schemeId),expected);
+  Object.assign(f.context,{storyboardProductionDeliveryPolicy,storyboardItemCollectionIds:()=>[],uniqueClean:value=>value});
+  vm.runInContext(section('storyboardCreateRecord'),f.context);
+  const reload=normalizeStoryboardState(copy(f.state));
+  for(const job of q.queue){
+    const origin=job.ensembleStyleOrigin;assert.equal(origin.namespace,'st-user:route-test');assert.equal(origin.chatKey,'chat-a');
+    assert.match(origin.bindingKey,/^[a-f0-9]{64}$/);assert.ok(origin.revision&&origin.selectionRevision&&origin.preparationId);assert.equal(origin.executionAuthorized,false);
+    const log=f.state.logs.find(row=>row.id===job.logId),saved=reload.logs.find(row=>row.id===job.logId);
+    assert.equal(log.status,'queued');assert.ok(job.queueAccepted&&job.imageAdmission.automaticSlot);
+    assert.deepEqual(copy(log.snapshot.ensembleStyleOrigin),copy(origin));assert.deepEqual(saved.snapshot.ensembleStyleOrigin,copy(origin));
+    assert.deepEqual(sanitizeStoryboardSnapshot(log.snapshot).ensembleStyleOrigin,copy(origin));
+    const image=f.context.storyboardCreateRecord(job,log,'/user/images/synthetic-style.png',0,{floor:job.floor,message:f.host.chat[job.floor],valid:true},{});
+    assert.equal(image.taskId,job.id);assert.deepEqual(copy(image.snapshot.ensembleStyleOrigin),copy(origin));
+  }
+}
+
+test('actual streaming accepted jobs retain exact choices through logs and sanitized gallery snapshots',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);useLockedEnsembleShots(f);
+  try{assert.equal(await f.run(),true,JSON.stringify(f.errors));assertEnsembleOrigins(f,q,['cg','ink','cg']);
+    const saved=copy(q.queue.map(job=>job.ensembleStyleOrigin));binding.library.schemes[0].revision='later-user-edit';
+    assert.deepEqual(copy(q.queue.map(job=>job.ensembleStyleOrigin)),saved);assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual ordinary restored selection leaves the same exact style identity on each accepted job',async()=>{
+  const {f,q,binding,compile}=await ordinaryEnsembleFixture();useLockedEnsembleShots(f);
+  try{assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();Object.assign(f.state,normalizeStoryboardState(copy(f.state)));
+    assert.equal(await f.context.storyboardGenerate(null,{plan:f.state.shotPlans[0],automatic:true}),true,JSON.stringify(f.notices));assertEnsembleOrigins(f,q,['cg','ink','cg']);
+    assert.deepEqual(q.queue.map(job=>[job.ensembleStyleOrigin.shotId,job.ensembleStyleOrigin.revision,job.ensembleStyleOrigin.bindingKey]),
+      f.state.shotPlans[0].ensembleRecovery.shots.map(row=>[row.shotId,row.revision,row.bindingKey]));assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('legacy accepted jobs never acquire a guessed scheme from their model, artist or route',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,1);
+  assert.equal(Object.hasOwn(q.queue[0],'ensembleStyleOrigin'),false);assert.ok(f.state.logs.every(log=>!Object.hasOwn(log.snapshot,'ensembleStyleOrigin')));f.assertReleased();
+});
+
+test('a style handoff without admission does not publish an accepted style origin in logs',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);useLockedEnsembleShots(f);
+  f.context.storyboardImageAdmissionRuntime=async()=>({admit:async()=>{throw Error('synthetic admission refused');}});
+  try{assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,0);
+    assert.ok(f.state.logs.every(log=>log.status==='failed'&&log.submissionState==='not_submitted'));
+    assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
+});
 
 test('actual ordinary scene-locked choices survive ST save and normalized reload into the same mixed image queue',async()=>{
   const {f,q,binding,compile}=await ordinaryEnsembleFixture();useLockedEnsembleShots(f);

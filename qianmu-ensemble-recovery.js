@@ -1,4 +1,5 @@
-import {readEnsembleCompilerProof,ensembleShotContent} from './qianmu-ensemble-handoff.js?v=1.59.265';
+import {readEnsembleCompilerProof,ensembleShotContent} from './qianmu-ensemble-handoff.js?v=1.59.266';
+import {ensembleStyleOrigins} from './qianmu-ensemble-origin.js';
 import {normalizeEnsembleRecoveryScope as scopeOf,normalizeEnsembleRecoveryRecord,ENSEMBLE_RECOVERY_SCHEMA} from './qianmu-ensemble-record.js';
 export {normalizeEnsembleRecoveryRecord,ENSEMBLE_RECOVERY_SCHEMA} from './qianmu-ensemble-record.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -48,5 +49,6 @@ export async function restoreEnsembleRecoveryRecord(record,{scope,planned,sessio
   for(const index of selected){assignments.push(await session.resolveAssignment(receipt,saved.shots[index].shotId));await current();}
   await current(true);
   return Object.freeze({routes:freeze(assignments.map(row=>copy(row.route))),artistPresetIds:freeze(assignments.map(row=>row.artistPresetId)),
+    origins:ensembleStyleOrigins(receipt,selected.map(index=>saved.shots[index].shotId)),
     schemes:freeze(assignments.map(row=>({shotId:row.shotId,schemeId:row.schemeId,bindingKey:row.bindingKey}))),executionAuthorized:false,assertCurrent:()=>current(true)});
 }
