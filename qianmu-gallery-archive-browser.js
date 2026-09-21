@@ -1,5 +1,5 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.294';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.295';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
@@ -47,7 +47,7 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
       const candidate=await createArchive({scope:structuredClone(selected.scope),guard:current,verifyRecord:()=>false});
       try{
         await check();storage=candidate;
-        const opened=await storage.openSourceVersion(selected.sourceReceipt);await check();
+        const opened=await storage.openSourceVersion(selected.sourceReceipt,selected.supplement);await check();
         if(JSON.stringify(opened.reference)!==JSON.stringify(selected.manifest)){opened.close();throw Error('图库版本已变化，请刷新列表');}
         version=opened;selection=structuredClone(selected);return {scope:{...selection.scope},total:version.total};
       }catch(error){candidate.close();releaseVersion();throw error;}
@@ -77,6 +77,14 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
     recipe(recordId){return run(async()=>{
       const row=rows.get(recordId);if(!row||!storage)throw Error('画面不在当前分页，请重新选择');
       const result=await storage.readRecipe(row.record);await check();return result;
+    });},
+    supplement(){return run(async()=>{
+      if(!selection||!storage)throw Error('请先选择已保存版本');
+      if(!selection.supplement)return {state:'not-preserved',receipt:null,canPrune:false};
+      const result=await storage.readSupplement(selection.supplement,{signal:cancellation.signal});await check();
+      const gallery=result.receipt.gallery,source=selection.sourceReceipt;
+      if(gallery.sha256!==source.sha256||gallery.bytes!==source.bytes||gallery.count!==source.count)throw Error('补充资料与所选图库版本不符');
+      return {state:'available',...result};
     });},
     isClosed:()=>closed,close,
   });

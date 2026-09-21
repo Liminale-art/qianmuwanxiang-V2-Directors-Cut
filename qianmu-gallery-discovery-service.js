@@ -62,19 +62,19 @@ export function createGalleryDiscoveryService({dataRoot,io=fs,timeoutMs=LIMIT.ti
   async function inspect(req,input,signal){
     const context=capture(req,input,signal),initial=await roots(context),generation=stamp(initial),query=context.query;
     if(query.cursor&&query.cursor.stamp!==generation)fail('stale','图库目录在翻页期间已变化，请刷新列表');
-    const prefix=`qianmu-v2-${context.scope}-gallery-source-`,pattern=new RegExp(`^${prefix}([a-f0-9]{64})\\.json$`),selected=[];
+    const prefix=`qianmu-v2-${context.scope}-gallery-source`,pattern=new RegExp(`^${prefix}(2)?-([a-f0-9]{64})\\.json$`),selected=[];
     const directory=await io.opendir(context.folder);let scanned=0;
     try{for await(const entry of directory){
       context.guard();if(++scanned>LIMIT.scan)fail('capacity','账户文件数量超过本次发现范围，未截断为完整目录');
-      const match=pattern.exec(entry.name);if(!match||match[1]<=(query.cursor?.after||''))continue;
+      const match=pattern.exec(entry.name);if(!match||match[1]&&query.version===1||match[2]<=(query.cursor?.after||''))continue;
       if(!entry.isFile()||entry.isSymbolicLink())fail('path','图库目录入口不是独立常规文件');
       // Only keep this page plus one sentinel, not every native filename.
-      selected.push(match[1]);selected.sort();if(selected.length>query.limit+1)selected.pop();
+      selected.push({key:match[2],slot:`gallery-source${match[1]||''}-${match[2]}`});selected.sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);if(selected.length>query.limit+1)selected.pop();
     }}finally{try{await directory.close();}catch(error){if(error.code!=='ERR_DIR_CLOSED')throw error;}}
     if(stamp(await roots(context))!==generation)fail('stale','图库目录扫描期间已变化，请刷新列表');
     const entries=[];
-    for(const key of selected.slice(0,query.limit)){
-      const slot=`gallery-source-${key}`,base=`qianmu-v2-${context.scope}-${slot}`,head=await read(context,`${base}.json`,4096),pointer=head.value;
+    for(const {key,slot} of selected.slice(0,query.limit)){
+      const base=`qianmu-v2-${context.scope}-${slot}`,head=await read(context,`${base}.json`,4096),pointer=head.value;
       if(!exact(pointer,['schema','scope','slot','fingerprint'])||pointer.schema!=='qianmu.st-account-head.v1'||pointer.scope!==context.scope||pointer.slot!==slot
         ||typeof pointer.fingerprint!=='string'||!/^[a-f0-9]{64}$/.test(pointer.fingerprint))fail('content','图库目录入口校验失败');
       const body=await read(context,`${base}-${pointer.fingerprint}.json`,12288),document=body.value;
@@ -83,8 +83,8 @@ export function createGalleryDiscoveryService({dataRoot,io=fs,timeoutMs=LIMIT.ti
       if((await read(context,`${base}.json`,4096)).text!==head.text)fail('changed','图库目录入口读取期间已变化');
       entries.push({key,value:document.value});context.guard();
     }
-    const nextCursor=selected.length>query.limit?{version:1,account:context.account.namespace,stamp:generation,after:entries.at(-1).key}:null;
-    const result=await galleryDiscoveryResponse({ok:true,version:1,expectedAccount:context.account.namespace,entries,nextCursor,proof:'read-only-directory'},
+    const nextCursor=selected.length>query.limit?{version:query.version,account:context.account.namespace,stamp:generation,after:entries.at(-1).key}:null;
+    const result=await galleryDiscoveryResponse({ok:true,version:query.version,expectedAccount:context.account.namespace,entries,nextCursor,proof:'read-only-directory'},
       {namespace:context.namespace,request:query});
     if(stamp(await roots(context))!==generation)fail('stale','图库目录返回前已变化，请刷新列表');context.guard();return result;
   }

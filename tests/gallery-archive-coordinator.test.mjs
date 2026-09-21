@@ -112,7 +112,7 @@ test('actual application glue coalesces lazy imports and respects typing/generat
   load.resolve({createGalleryArchiveCoordinator:options=>{created.push(options);return {schedule:()=>scheduled++};}});await flush();
   assert.equal(created.length,1);assert.equal(scheduled,1);context.storyboardScheduleGalleryPreservation();assert.equal(scheduled,2);
   const options=created[0];assert.equal(options.canRun(),true);
-  options.onError({code:'gallery_originals_incomplete',private:'never log'});assert.match(warnings[0],/记录与配方已保存/);assert.doesNotMatch(warnings[0],/never log/);
+  options.onError({code:'gallery_originals_incomplete',writeState:'records_saved',private:'never log'});assert.match(warnings[0],/记录与配方已保存/);assert.doesNotMatch(warnings[0],/never log/);
   options.onError({code:'gallery_preservation_failed'});assert.match(warnings[1],/图库保全未完成/);
   for(const key of ['director','image','transfer']){context.configRestoreActivity=()=>({[key]:true});assert.equal(options.canRun(),false);}
   context.configRestoreActivity=()=>({});context.storyboardSnapshotArchiveBusy=1;assert.equal(options.canRun(),false);context.storyboardSnapshotArchiveBusy=0;

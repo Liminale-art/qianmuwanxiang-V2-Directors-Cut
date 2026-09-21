@@ -1,28 +1,30 @@
 // Connect immutable record/page storage to the exact SAVED current-chat source.
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, browser image download or generation; observed equality is not a server lock.
-import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.294';
+import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient} from './qianmu-chat-character-receipt-client.js';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.295';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
-import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.294';
+import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.295';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
 import {GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
 import {comfyReferencePath} from './qianmu-comfy-reference-contract.js';
+import {captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
+import {vibeDigest} from './qianmu-vibe-file.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 export async function createCurrentGalleryArchiveSession({getContext,epoch,account,headers,fetchImpl,timeoutMs,
-  guard=()=>true,createStorage,yieldWork=async()=>{},preserveOriginals=true}={}){
+  guard=()=>true,createStorage,yieldWork=async()=>{},preserveOriginals=true,preserveSupplements=true}={}){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof guard!=='function')fail('画面保全缺少准确的当前聊天来源');
-  if(typeof preserveOriginals!=='boolean')fail('原图保全模式无效');
-  let client,archive,recipes,originals,closed=false,busy=false,live,summary;const records=new Map();
+  if(typeof preserveOriginals!=='boolean'||typeof preserveSupplements!=='boolean')fail('原图或补充资料保全模式无效');
+  let client,archive,recipes,originals,supplementClient,localSupplement,supplementCaptureFailed=false,closed=false,busy=false,live,summary;const records=new Map();
   function external(){
     const value=guard();if(value&&typeof value.then==='function'){void Promise.resolve(value).catch(()=>{});fail('画面保全需要同步切换保护');}
     if(value!==true)fail('画面保全来源保护已失效');
   }
-  function close(){closed=true;originals?.close();recipes?.close();archive?.close();client?.close();records.clear();live=null;}
+  function close(){closed=true;supplementClient?.close();originals?.close();recipes?.close();archive?.close();client?.close();records.clear();live=null;}
   function check(){
     if(closed)fail('画面保全来源会话已结束');
     try{external();client.assertCurrent();
@@ -40,6 +42,25 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
     await unchanged();const receipt=await client.inspect();await unchanged();
     if(receipt.state!=='present'||!same(receipt.gallery,summary)){close();fail('原聊天尚未保存相同画面资料，未确认保全');}
     return {...receipt.gallery,proof:receipt.proof};
+  }
+  function captureSupplement(){
+    check();const store=getContext().chatMetadata.story_director_liminale,saved={};
+    for(const field of ['storyboardCollections','characterDrafts'])if(Object.hasOwn(store,field)){
+      const property=Object.getOwnPropertyDescriptor(store,field);if(!Object.hasOwn(property,'value'))fail('补充资料含不支持的访问器');saved[field]=property.value;
+    }
+    return JSON.stringify(captureGallerySupplement({order:[...records.keys()],saved}));
+  }
+  function unchangedSupplement(){
+    check();if(supplementCaptureFailed)fail('补充资料无法完整读取，未截断或猜补');
+    let current;try{current=captureSupplement();}catch(error){close();throw error;}
+    if(current!==localSupplement){close();fail('合集或角色草稿已修改，请保存后重新核对');}
+  }
+  async function readSavedSupplement(){
+    unchangedSupplement();supplementClient??=createChatGallerySupplementClient({namespace:client.owner.namespace,target:client.target,
+      headers:headers||(()=>getContext().getRequestHeaders?.()||{}),fetchImpl,timeoutMs,
+      guard:async()=>{unchangedSupplement();await client.guard();unchangedSupplement();}});
+    const result=await supplementClient.read(summary.sha256);unchangedSupplement();
+    if(JSON.stringify({order:result.order,saved:result.saved})!==localSupplement)fail('原聊天尚未保存相同合集或角色草稿');return result;
   }
   function currentRecord(id){
     check();const expected=records.get(id);if(!expected)fail('画面保全选择不属于原聊天，未猜测记录');
@@ -110,9 +131,11 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
       if(typeof id!=='string'||!id||records.has(id))fail('原聊天画面编号缺失或重复，未选择或合并记录');
       records.set(id,{id,createdAt,index,bytes:record.bytes,sha256:record.sha256});
     }});
+    if(preserveSupplements)try{localSupplement=captureSupplement();}catch{supplementCaptureFailed=true;}
     archive=await createGalleryArchiveStorage({scope:{namespace:client.owner.namespace,...client.source},guard:check,createStorage,yieldWork,
+      verifySupplement:receipt=>{unchangedSupplement();return same(receipt.gallery,summary)&&JSON.stringify({order:receipt.order,saved:receipt.saved})===localSupplement;},
       verifyRecord:record=>{check();currentRecord(record.id);return records.get(record.id)?.sha256===galleryDigestRecord(record).sha256;}});check();
-    const identity=JSON.stringify([archive.scope,summary.sha256]);await unchanged();
+    const identity=JSON.stringify([archive.scope,summary.sha256,...(preserveSupplements?[supplementCaptureFailed?'unreadable':await vibeDigest(localSupplement)]:[])]);await unchanged();
     return Object.freeze({scope:archive.scope,identity,
       async preserveRecord(id){const [record]=selected([id]);return preserve(()=>archive.preserveRecord(record));},
       async stagePage(ids){const rows=selected(ids);return preserve(()=>archive.stagePage(rows));},
@@ -147,12 +170,24 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
           }
           if(preserveOriginals)await preservePageOriginals(batch,references,originalProgress);
         }
-        await yieldWork();await unchanged();const version=await archive.publishSourceVersion(sourceReceipt,pages);check();
+        await yieldWork();await unchanged();let supplement,supplementState;
+        if(preserveSupplements){
+          try{
+            const observed=await readSavedSupplement();check();
+            const kept=await archive.preserveSupplement(observed);check();
+            const confirmed=await readSavedSupplement();check();
+            // Source/header changes retain any saved body but do not publish a
+            // descriptor claiming a mixed snapshot. Never overwrite old copies.
+            if(!same(confirmed,observed))fail('补充资料来源在保存期间已变化');
+            supplement=kept.reference;supplementState='complete';
+          }catch(error){check();if(!supplementCaptureFailed)unchangedSupplement();supplementState='partial';}
+        }
+        const version=await archive.publishSourceVersion(sourceReceipt,pages,supplement);check();
         const {stopped,...coverage}=originalProgress;
-        return {...version,recipeCopies,...(preserveOriginals?{originals:{...coverage,
+        return {...version,recipeCopies,...(preserveSupplements?{supplements:{state:supplementState,proof:supplementState==='complete'?'supplement-readback-only':'not-confirmed',originalVerified:false,canPrune:false}}:{}),...(preserveOriginals?{originals:{...coverage,
           state:coverage.available===coverage.total?'complete':'partial',proof:'original-reference-only',originalVerified:false,canPrune:false}}:{})};
       });},
-      openSourceVersion:receipt=>{check();return archive.openSourceVersion(receipt);},
+      openSourceVersion:(receipt,supplement)=>{check();return archive.openSourceVersion(receipt,supplement);},
       readRecord:ref=>{check();return archive.readRecord(ref);},
       readRecipe:(ref,options)=>{check();return archive.readRecipe(ref,options);},
       openStagedPage:descriptor=>{check();return archive.openStagedPage(descriptor);},close,

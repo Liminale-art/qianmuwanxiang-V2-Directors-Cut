@@ -41,7 +41,7 @@ export function createGalleryDiscoveryClient({account,headers,guard=()=>true,fet
     }
     const work=(async()=>{
       const owner=await check(),expectedAccount=`st-user:${await vibeDigest(owner.slice(8))}`;current();
-      const request=galleryDiscoveryRequest({version:1,expectedAccount,limit:options.limit??24,cursor:options.cursor??null});
+      const request=galleryDiscoveryRequest({version:2,expectedAccount,limit:options.limit??24,cursor:options.cursor??null});
       const supplied=new Headers(await headers());current();const requestHeaders={Accept:'application/json','Content-Type':'application/json'};
       if(supplied.has('x-csrf-token'))requestHeaders['X-CSRF-Token']=supplied.get('x-csrf-token');await check();
       let response,reader,cancelReader;
@@ -60,6 +60,7 @@ export function createGalleryDiscoveryClient({account,headers,guard=()=>true,fet
           if(length>LIMIT.responseBytes)throw fail('图库目录返回超过读取上限');text+=decoder.decode(part.value,{stream:true});}
         text+=decoder.decode();const value=parseBoundedJson(text,{maxBytes:LIMIT.responseBytes,maxDepth:16,maxNodes:10000,label:'图库版本发现'});
         if(!response.ok||value?.ok!==true){const serviceCode=typeof value?.code==='string'&&Object.hasOwn(messages,value.code)?value.code:'';
+          if(response.status===400&&value?.code==='gallery_discovery_contract')throw unsupported();
           if(response.status===404&&!serviceCode)throw unsupported();
           throw fail(messages[serviceCode]||'图库目录暂不可读取，未当作空库',serviceCode);}
         const result=await galleryDiscoveryResponse(value,{namespace:owner,request});await check();return result;

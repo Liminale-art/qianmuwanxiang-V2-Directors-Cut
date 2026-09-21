@@ -18,7 +18,7 @@ export function createChatGalleryRecordClient(options){return createChatReceiptC
 export function createChatGalleryDetailsClient(options){return createChatReceiptClient(options,true,true,true);}
 export function createChatGalleryEvidenceClient(options){return createChatReceiptClient({timeoutMs:30000,...options},true,false,false,true);}
 export function createChatGalleryStateClient(options){return createChatReceiptClient(options,true,false,false,false,true);}
-export function createChatGallerySupplementClient(options){return createChatReceiptClient({timeoutMs:30000,...options},true,false,false,false,false,true);}
+export function createChatGallerySupplementClient(options){return createChatReceiptClient({...options,timeoutMs:options?.timeoutMs??30000},true,false,false,false,false,true);}
 function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=globalThis.fetch,guard=async()=>{},timeoutMs=10000}={},galleryOnly=false,recordOnly=false,detailsOnly=false,evidenceOnly=false,stateOnly=false,supplementOnly=false){
   if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace)||!Number.isFinite(timeoutMs))throw fail('聊天核验账户或等待时间无效');
   const selected=chatCharacterReceiptTarget(target),owner={namespace,chatKey:selected.chatId},expected=digest(namespace.slice(8)).then(value=>`st-user:${value}`);

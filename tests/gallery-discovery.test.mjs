@@ -17,12 +17,12 @@ test('over 2 MiB source preserves to real native files, discovers and validates 
   const f=await fixture(t);f.host.rows=Array.from({length:6},(_,i)=>({id:'large-'+i,createdAt:i,url:'/user/images/f.png',unknown:'x'.repeat(450000)}));await f.host.save();
   const service=createChatCharacterReceiptService({dataRoot:f.host.root});t.after(()=>service.close());
   const session=await createCurrentGalleryArchiveSession({getContext:()=>f.host.context,epoch:()=>f.host.epoch,account:async()=>f.host.account,
-    createStorage:f.transport.createStorage,fetchImpl:async(url,options)=>Response.json(await service.inspectGallery(f.host.req,JSON.parse(options.body),{signal:options.signal}))});
+    createStorage:f.transport.createStorage,fetchImpl:async(url,options)=>Response.json(await service[url.endsWith('/supplement')?'readGallerySupplement':'inspectGallery'](f.host.req,JSON.parse(options.body),{signal:options.signal}))});
   t.after(()=>session.close());const saved=await session.preserveAll();assert.ok(saved.sourceReceipt.bytes>2*1024*1024);await f.flush();
-  const result=await galleryDiscoveryResponse(await f.service.list(f.host.req,f.input()),{namespace:f.host.account,request:f.input()});
+  const request=f.input({version:2}),result=await galleryDiscoveryResponse(await f.service.list(f.host.req,request),{namespace:f.host.account,request});
   assert.equal(result.entries.length,1);assert.deepEqual(result.entries[0].value.sourceReceipt,saved.sourceReceipt);
   const source=result.entries[0].value,reader=await createGalleryArchiveStorage({scope:source.scope,guard:()=>true,verifyRecord:()=>false,createStorage:f.transport.createStorage});
-  t.after(()=>reader.close());const pageReader=await reader.openSourceVersion(source.sourceReceipt),page=await pageReader.page();
+  t.after(()=>reader.close());const pageReader=await reader.openSourceVersion(source.sourceReceipt,source.supplement),page=await pageReader.page();
   assert.equal(page.rows.length,6);for(const row of page.rows)assert.equal((await reader.readRecord(row.record)).record.unknown.length,450000);pageReader.close();
 });
 

@@ -1,7 +1,7 @@
 // One idle, add-only preservation pass per settled source. No startup scan,
 // generation, pruning, retry storm or background queue of complete chat copies.
 export function createGalleryArchiveCoordinator({getContext,epoch,account,headers,isCurrent,canRun=()=>true,admit=async()=>true,
-  connect=async options=>(await import('./qianmu-gallery-archive-source.js?v=1.59.294')).createCurrentGalleryArchiveSession(options),
+  connect=async options=>(await import('./qianmu-gallery-archive-source.js?v=1.59.295')).createCurrentGalleryArchiveSession(options),
   window=globalThis.window,document=globalThis.document,now=Date.now,quietMs=5000,onError=()=>{}}={}){
   if(typeof getContext!=='function'||typeof isCurrent!=='function'||typeof epoch!=='function'||!window?.setTimeout)throw Error('图库保全缺少宿主保护');
   let closed=false,pending=false,running=false,timer=null,revision=0,session=null,controller=null,lastActivity=now(),lastSuccess=null;
@@ -28,8 +28,10 @@ export function createGalleryArchiveCoordinator({getContext,epoch,account,header
     if(closed||running||!pending)return;
     const turn=revision;if(!valid(turn)){pending=false;return;}
     if(busy()){arm();return;}
-    let rows,sourceEpoch;try{rows=getContext()?.chatMetadata?.story_director_liminale?.storyboardImages;sourceEpoch=epoch();}catch{pending=false;return;}
-    if(!Array.isArray(rows)||!rows.length){pending=false;return;}
+    let rows,sourceEpoch,store;try{store=getContext()?.chatMetadata?.story_director_liminale;rows=store?.storyboardImages;sourceEpoch=epoch();}catch{pending=false;return;}
+    if(!Array.isArray(rows)){pending=false;return;}
+    if(!rows.length){
+      if(!store||!['storyboardCollections','characterDrafts'].some(key=>Object.hasOwn(store,key))){pending=false;return;}}
     running=true;pending=false;controller=new AbortController();const signal=controller.signal;
     const check=()=>{if(!valid(turn)||signal.aborted||sourceEpoch!==epoch())throw cancelled();return true;};
     const yieldWork=async()=>{check();while(busy()){state='waiting';await delay(signal);check();}state='saving';};
@@ -43,8 +45,8 @@ export function createGalleryArchiveCoordinator({getContext,epoch,account,header
       if(typeof opened.identity!=='string'||!opened.identity)throw Error('图库保全缺少来源版本');
       if(opened.identity!==lastSuccess){
         await yieldWork();const result=await opened.preserveAll();check();
-        if(result?.originals?.state==='partial'){
-          state='partial';try{onError({code:'gallery_originals_incomplete',writeState:'records_saved'});}catch{}return;
+        if(result?.originals?.state==='partial'||result?.supplements?.state==='partial'){
+          state='partial';try{onError({code:result?.supplements?.state==='partial'?'gallery_supplements_incomplete':'gallery_originals_incomplete',writeState:'records_saved'});}catch{}return;
         }
         lastSuccess=opened.identity;
       }

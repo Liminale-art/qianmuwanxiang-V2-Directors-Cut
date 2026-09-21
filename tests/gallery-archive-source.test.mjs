@@ -26,8 +26,9 @@ async function fixture(t){
   return {host,transport,events,calls,set hook(value){hook=value;},
     // This fixture isolates metadata/recipes. Default-on original HTTP and idle
     // integration are covered by gallery-original-idle.test.mjs, without opt-out.
+    // Default supplement preservation is covered by gallery-supplement-archive.
     async open(options={}){const session=await createCurrentGalleryArchiveSession({getContext:()=>host.context,epoch:()=>host.epoch,
-      account:async()=>host.account,fetchImpl,createStorage:transport.createStorage,preserveOriginals:false,...options});t.after(()=>session.close());return session;},
+      account:async()=>host.account,fetchImpl,createStorage:transport.createStorage,preserveOriginals:false,preserveSupplements:false,...options});t.after(()=>session.close());return session;},
   };
 }
 

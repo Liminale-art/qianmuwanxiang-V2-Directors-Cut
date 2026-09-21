@@ -3,6 +3,7 @@ import {galleryArchiveScope,galleryArchiveObjectReference} from './qianmu-galler
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gallery-page-index.js';
 import {CHAT_GALLERY_STREAM_LIMITS as CHAT_GALLERY_RECEIPT_LIMITS} from './qianmu-chat-gallery-receipt.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {CHAT_GALLERY_SUPPLEMENT_LIMITS} from './qianmu-chat-gallery-supplement.js';
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_version'});};
 export function galleryArchiveSourceReceipt(raw){
   const value=captureGalleryArchiveJson(raw,4096),keys=Object.keys(value||{});
@@ -11,12 +12,16 @@ export function galleryArchiveSourceReceipt(raw){
     ||!Number.isSafeInteger(value.bytes)||value.bytes<2||value.bytes>CHAT_GALLERY_RECEIPT_LIMITS.bytes||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/.test(value.sha256))fail('图库版本缺少准确已保存来源摘要');
   return {count:value.count,bytes:value.bytes,sha256:value.sha256,proof:value.proof};
 }
-export async function galleryArchiveSourceSlot(scope,receipt){
-  return `gallery-source-${await vibeDigest(JSON.stringify({scope:galleryArchiveScope(scope),receipt:galleryArchiveSourceReceipt(receipt)}))}`;
+export function galleryArchiveSupplementReference(value){return galleryArchiveObjectReference(value,CHAT_GALLERY_SUPPLEMENT_LIMITS.responseBytes+8192);}
+export async function galleryArchiveSourceSlot(scope,receipt,supplement){
+  return `gallery-source${supplement===undefined?'':'2'}-${await vibeDigest(JSON.stringify({scope:galleryArchiveScope(scope),receipt:galleryArchiveSourceReceipt(receipt),
+    ...(supplement===undefined?{}:{supplement:galleryArchiveSupplementReference(supplement)})}))}`;
 }
 export function galleryArchiveSourceVersion(raw,scope,receipt){
   const copy=captureGalleryArchiveJson(raw,8192),owner=galleryArchiveScope(scope),expected=galleryArchiveSourceReceipt(receipt);
-  if(!copy||Array.isArray(copy)||Object.keys(copy).length!==4||copy.schema!=='qianmu.gallery.source-version.v1'
+  const supplemented=copy?.schema==='qianmu.gallery.source-version.v2';
+  if(!copy||Array.isArray(copy)||Object.keys(copy).length!==(supplemented?5:4)||!supplemented&&copy.schema!=='qianmu.gallery.source-version.v1'
     ||JSON.stringify(galleryArchiveScope(copy.scope))!==JSON.stringify(owner)||JSON.stringify(galleryArchiveSourceReceipt(copy.sourceReceipt))!==JSON.stringify(expected))fail('图库版本来源不符，未改写已有目录');
-  return {schema:copy.schema,scope:owner,sourceReceipt:expected,manifest:galleryArchiveObjectReference(copy.manifest,GALLERY_PAGE_INDEX_LIMITS.manifestBytes)};
+  return {schema:copy.schema,scope:owner,sourceReceipt:expected,manifest:galleryArchiveObjectReference(copy.manifest,GALLERY_PAGE_INDEX_LIMITS.manifestBytes),
+    ...(supplemented?{supplement:galleryArchiveSupplementReference(copy.supplement)}:{})};
 }

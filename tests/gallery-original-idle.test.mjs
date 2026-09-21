@@ -21,6 +21,10 @@ async function fixture(t,{count=3,io=fs}={}){
   const fetchImpl=async(url,options)=>{
     state.calls.push({url,options});if(state.hook){const response=await state.hook(url,options);if(response)return response;}
     if(url.startsWith('/api/plugins/qianmu-tts/chat-gallery/original/'))return f.fetch(url,options);
+    if(url.endsWith('/chat-gallery/supplement')){
+      try{return Response.json(await receipt.readGallerySupplement(f.req,JSON.parse(options.body),{signal:options.signal}));}
+      catch(error){return Response.json({ok:false,code:error.code},{status:error.status||400});}
+    }
     if(url.endsWith('/chat-gallery/receipt')){
       try{return Response.json(await receipt.inspectGallery(f.req,JSON.parse(options.body),{signal:options.signal}));}
       catch(error){return Response.json({ok:false,code:error.code},{status:error.status||400});}
@@ -47,7 +51,7 @@ test('default idle preservation copies batches server-side, binds every exact re
   let recordReadsBeforeCopy;const recordReads=()=>f.transport.calls.filter(call=>call.path.includes('-gallery-record-')&&call.options.method!=='POST').length;
   f.state.hook=url=>{if(url.endsWith('/preserve-batch'))recordReadsBeforeCopy??=recordReads();};
   const saved=await session.preserveAll();assert.equal(saved.originals.state,'complete');assert.equal(saved.originals.available,10);assert.equal(saved.originals.preserved,10);
-  assert.equal(saved.originals.originalVerified,false);assert.equal(saved.canPrune,false);assert.equal(headers,6);assert.equal(images,10);
+  assert.equal(saved.originals.originalVerified,false);assert.equal(saved.canPrune,false);assert.equal(headers,8);assert.equal(images,10);
   assert.equal(recordReads(),recordReadsBeforeCopy,'staged original sidecars reuse the already verified record');
   assert.deepEqual(f.batches().map(call=>JSON.parse(call.options.body).selections.length),[8,2]);assert.equal(f.copies().length,10);
   assert.deepEqual(f.rows,raw);assert.deepEqual(await fs.readFile(f.file),before);
@@ -75,7 +79,7 @@ test('fresh archive reader recovers complete record, server recipe and original 
   const raw=structuredClone(f.rows[0]),session=await f.open(),saved=await session.preserveAll(),scope={...session.scope};session.close();
   await fs.unlink(f.file);await fs.unlink(path.join(f.images,'frame-0.png'));await fs.unlink(path.join(f.archive,recipe.reference.id+'.json'));
   const fresh=await createGalleryArchiveStorage({scope,guard:()=>true,verifyRecord:()=>false,createStorage:f.transport.createStorage});t.after(()=>fresh.close());
-  const reader=await fresh.openSourceVersion(saved.sourceReceipt),page=await reader.page(),media=await fresh.readMediaRecord(page.rows[0].record);
+  const reader=await fresh.openSourceVersion(saved.sourceReceipt,saved.supplement),page=await reader.page(),media=await fresh.readMediaRecord(page.rows[0].record);
   assert.deepEqual(media.record,raw);assert.deepEqual((await fresh.readRecipe(page.rows[0].record)).snapshot,snapshot);assert.equal(media.media.state,'available');
   const originals=createGalleryOriginalClient({account:async()=>f.account,headers:()=>({}),fetchImpl:f.fetch});t.after(()=>originals.close());
   assert.deepEqual(Buffer.from(await (await originals.read(media.media.reference)).blob.arrayBuffer()),png);reader.close();
@@ -85,7 +89,7 @@ test('missing originals keep the complete directory and recipes, stop media atte
   const f=await fixture(t,{count:10});await fs.unlink(path.join(f.images,'frame-9.png'));
   const session=await f.open(),saved=await session.preserveAll();assert.equal(saved.total,10);assert.equal(saved.originals.state,'partial');
   assert.equal(saved.originals.failed,8);assert.equal(saved.originals.deferred,2);assert.equal(saved.originals.available,0);assert.equal(f.batches().length,1);
-  assert.equal(f.copies().length,0);const reader=await session.openSourceVersion(saved.sourceReceipt),page=await reader.page();assert.equal(page.rows.length,10);
+  assert.equal(f.copies().length,0);const reader=await session.openSourceVersion(saved.sourceReceipt,saved.supplement),page=await reader.page();assert.equal(page.rows.length,10);
   assert.deepEqual((await session.readRecipe(page.rows[0].record)).snapshot,f.rows[9].snapshot);reader.close();
 });
 
@@ -94,7 +98,7 @@ test('old or unavailable media backend does not prevent metadata publication or 
     const f=await fixture(t,{count:10});f.state.hook=url=>url.includes('/original/')?new Response('unavailable',{status}):undefined;
     const session=await f.open(),saved=await session.preserveAll();assert.equal(saved.originals.state,'partial');assert.equal(saved.originals.failed,8);assert.equal(saved.originals.deferred,2);
     assert.equal(f.state.calls.filter(call=>call.url.includes('/original/')).length,1);assert.equal(f.copies().length,0);
-    const reader=await session.openSourceVersion(saved.sourceReceipt);assert.equal((await reader.page()).rows.length,10);reader.close();
+    const reader=await session.openSourceVersion(saved.sourceReceipt,saved.supplement);assert.equal((await reader.page()).rows.length,10);reader.close();
   }
 });
 
@@ -117,7 +121,7 @@ test('one sidecar upload failure leaves its original intact and permits remainin
   const f=await fixture(t);let failed=false;
   f.transport.hook=({path,options,json})=>{if(!failed&&path==='/api/files/upload'&&JSON.parse(options.body).name.includes('-gallery-original-')){failed=true;return json({},503);}};
   const session=await f.open(),saved=await session.preserveAll();assert.equal(failed,true);assert.equal(saved.originals.failed,1);assert.equal(saved.originals.available,2);assert.equal(saved.originals.state,'partial');
-  const reader=await session.openSourceVersion(saved.sourceReceipt);assert.equal((await reader.page()).rows.length,3);reader.close();
+  const reader=await session.openSourceVersion(saved.sourceReceipt,saved.supplement);assert.equal((await reader.page()).rows.length,3);reader.close();
   for(const row of f.rows)assert.deepEqual(await fs.readFile(path.join(f.images,path.basename(row.url))),png);
 });
 
@@ -126,7 +130,7 @@ test('partial backend batch result never publishes original references but prese
     if(!url.endsWith('/preserve-batch'))return;const result=await (await f.fetch(url,options)).json();result.records.pop();return Response.json(result);
   };
   const session=await f.open(),saved=await session.preserveAll();assert.equal(saved.originals.available,0);assert.equal(saved.originals.failed,3);assert.equal(f.copies().length,0);
-  const reader=await session.openSourceVersion(saved.sourceReceipt);assert.equal((await reader.page()).rows.length,3);reader.close();
+  const reader=await session.openSourceVersion(saved.sourceReceipt,saved.supplement);assert.equal((await reader.page()).rows.length,3);reader.close();
 });
 
 test('close or chat-epoch change during a late original response cannot publish a stale reference or success',{timeout:15000},async t=>{
