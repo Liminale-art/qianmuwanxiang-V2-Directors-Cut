@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-chat-gallery-supplement.js",
     "qianmu-gallery-original-contract.js",
     "qianmu-gallery-original-source.js",
     "qianmu-gallery-original-store.js",

@@ -246,7 +246,7 @@ export async function init(router, options = {}) {
   installGalleryDiscoveryRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.galleryDiscoveryOptions});
   installGalleryOriginalRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.galleryOriginalOptions});
   let chatCharacterReceipt;
-  for(const [route,method] of [['/chat-characters/receipt','inspect'],['/chat-gallery/receipt','inspectGallery'],['/chat-gallery/record','readGalleryRecord'],['/chat-gallery/details','readGalleryDetails'],['/chat-gallery/evidence','readGalleryEvidence'],['/chat-gallery/state','readGalleryState']])router.post(route, async (req, res) => {
+  for(const [route,method] of [['/chat-characters/receipt','inspect'],['/chat-gallery/receipt','inspectGallery'],['/chat-gallery/record','readGalleryRecord'],['/chat-gallery/details','readGalleryDetails'],['/chat-gallery/evidence','readGalleryEvidence'],['/chat-gallery/state','readGalleryState'],['/chat-gallery/supplement','readGallerySupplement']])router.post(route, async (req, res) => {
     prepareImageResponse(res);
     const controller = new AbortController(), onClose = () => { if (!res.writableEnded) controller.abort(); };
     res.once?.('close', onClose);

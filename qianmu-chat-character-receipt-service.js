@@ -14,6 +14,7 @@ import {chatGalleryStateRequest,projectChatGalleryState,chatGalleryStateResponse
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {readSavedChatGalleryHeader} from './qianmu-chat-gallery-header-reader.js';
 import {galleryOriginalBatchRequest} from './qianmu-gallery-original-contract.js';
+import {chatGallerySupplementRequest,projectChatGallerySupplement,chatGallerySupplementDigest,chatGallerySupplementResponse} from './qianmu-chat-gallery-supplement.js';
 
 const fail=(code,message,status)=>{throw chatCharacterReceiptError(code,message,status);};
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
@@ -134,6 +135,26 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
     if(pending.size>=LIMIT.pending)return Promise.reject(chatCharacterReceiptError('busy','聊天核验正忙，请稍后重试',429));
     const operation=inspect(req,input,options,galleryOnly,selection,detailsOnly,recipeSource,evidenceDigest,stateDigest);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
   }
+  function readGallerySupplement(req,raw,{signal}={}){
+    let input,context;
+    try{
+      input=chatGallerySupplementRequest(raw);
+      if(pending.size>=LIMIT.pending)fail('busy','聊天核验正忙，请稍后重试',429);
+      context=capture(req,{version:input.version,expectedAccount:input.expectedAccount,target:input.target},signal);
+    }catch(error){return Promise.reject(error);}
+    const task=(async()=>{
+      let header;try{header=await readSavedChatGalleryHeader(context,null,{io,lstat,checkedRoots,unchanged,withIdentity:true,withSource:true,supplement:true});}
+      catch(error){if(error?.code==='ENOENT')fail('missing','原聊天不存在或已移动，未猜补分镜资料',404);throw error;}
+      if(!header.gallery)fail('record_missing','原聊天没有画面资料，未猜补原件',404);
+      if(header.gallery.sha256!==input.gallerySha256)fail('record_changed','原画面资料已变化，请重新核对');
+      const saved=await projectChatGallerySupplement(header.saved,context.owner);context.guard();
+      const result=await chatGallerySupplementResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
+        gallery:header.gallery,source:header.source,saved,order:header.order,sha256:await chatGallerySupplementDigest(header.order,saved),proof:'read-only-chat-supplement'},
+      {namespace:context.owner.namespace});
+      await checkedRoots(context);if(!unchanged(header.file,await lstat(context.target)))fail('changed','分镜资料核验期间原聊天已变化');context.guard();return result;
+    })();
+    pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
+  }
   function withGalleryOriginalBatch(req,raw,consume,{signal}={}){
     let input,context;
     try{
@@ -167,7 +188,7 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
   }
   return Object.freeze({inspect:(req,input,options)=>run(req,input,options),inspectGallery:(req,input,options)=>run(req,input,options,true),
     // Internal callback only. No route returns this lease, path or file identity.
-    withGalleryOriginalBatch,
+    withGalleryOriginalBatch,readGallerySupplement,
     async readGalleryState(req,input,options){const {gallerySha256,...body}=chatGalleryStateRequest(input);return run(req,body,options,true,null,false,false,null,gallerySha256);},
     async readGalleryEvidence(req,input,options){const {gallerySha256,...body}=chatGalleryEvidenceRequest(input);return run(req,body,options,true,null,false,false,gallerySha256);},
     async readGalleryRecord(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection);},

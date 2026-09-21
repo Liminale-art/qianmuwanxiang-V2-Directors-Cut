@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {chatCharacterReceiptError} from './qianmu-chat-character-receipt.js';
 import {chatGalleryReceiptRecordText,CHAT_GALLERY_RECEIPT_LIMITS,CHAT_GALLERY_STREAM_LIMITS} from './qianmu-chat-gallery-receipt.js';
+import {CHAT_GALLERY_SUPPLEMENT_LIMITS} from './qianmu-chat-gallery-supplement.js';
 
 // Only the saved JSONL header is scanned. Unrelated metadata is validated but
 // never accumulated. One record is materialized at a time; the result retains
@@ -15,12 +16,14 @@ const at=(path,wanted)=>path.length===wanted.length&&wanted.every((value,index)=
 // Incremental JSON grammar, not a brace/regex extractor: duplicates, trailing
 // garbage, malformed skipped fields and incomplete tails invalidate the receipt.
 // Input is decoded with fatal streaming UTF-8 by the file reader.
-export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord=value=>value,guard=()=>{}}={}){
+export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord=value=>value,guard=()=>{},supplement=false}={}){
   if(recordIds!==undefined&&(recordId!==undefined||!Array.isArray(recordIds)||recordIds.length<1||recordIds.length>8
     ||recordIds.some(id=>typeof id!=='string'||!id||id.length>240)||new Set(recordIds).size!==recordIds.length))fail('聊天批次选择超出核验范围');
   if(typeof projectRecord!=='function')fail('聊天条目投影无效');
+  if(typeof supplement!=='boolean')fail('分镜补充资料核验模式无效');
   const selected=new Set(recordIds??(recordId===undefined?[]:[recordId])),counts=new Map();
   const frames=[],matches=[],hash=createHash('sha256');hash.update('[');
+  const saved={},order=[],orderedIds=new Set();let extra=null,extraCharacters=0;
   let root=false,metadata=false,present=false,finished=false,failed=false,nodes=0,galleryNodes=0,keyCharacters=0;
   let count=0,bytes=2,token=null,capture=null,offset=0;
   function check(){if(finished||failed)fail('聊天资料头核验已结束');guard();}
@@ -41,6 +44,11 @@ export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord
     if(at(path,storePath)&&kind!=='object')fail('千幕聊天资料损坏，请保全原记录');
     if(path.length===1&&path[0]==='mes')fail('聊天正文不能代替资料头');
     if(at(path,galleryPath)){if(kind!=='array')fail('聊天静帧记录不是数组');present=true;}
+    if(supplement&&path.length===storePath.length+1&&storePath.every((value,index)=>path[index]===value)
+      &&['storyboardCollections','characterDrafts'].includes(path.at(-1))){
+      const field=path.at(-1);if(kind!==(field==='storyboardCollections'?'array':'object'))fail('分镜补充资料类型无效','supplement_content');
+      extra={field,depth:frames.length+1,parts:[],chars:[],length:0};
+    }
     if(path.length>=galleryPath.length&&galleryPath.every((value,index)=>path[index]===value)){
       if(++galleryNodes>CHAT_GALLERY_STREAM_LIMITS.nodes)fail('聊天静帧资料结构过大，请保留原件');
       if(path.length===galleryPath.length+1){
@@ -51,6 +59,10 @@ export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord
     return path;
   }
   function append(char){
+    if(extra){
+      extraCharacters+=char.length;if(extraCharacters>CHAT_GALLERY_SUPPLEMENT_LIMITS.bytes)fail('分镜补充资料超过单独核验上限，未截断','supplement_content');
+      extra.chars.push(char);if(extra.chars.length>=4096){extra.parts.push(extra.chars.join(''));extra.chars=[];}
+    }
     if(!capture)return;
     capture.length+=char.length;
     if(capture.length>CHAT_GALLERY_RECEIPT_LIMITS.bytes)fail('聊天静帧条目超过核验上限，未裁剪资料');
@@ -63,6 +75,11 @@ export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord
     bytes+=summary.bytes+(count?1:0);
     if(bytes>CHAT_GALLERY_STREAM_LIMITS.bytes)fail('聊天静帧资料超过核验上限，请保全原件');
     if(count)hash.update(',');hash.update(summary.text);count++;
+    if(supplement){
+      if(typeof value.id!=='string'||!value.id||value.id.length>240||/[\u0000-\u001f\u007f]/.test(value.id)||orderedIds.has(value.id))
+        fail('原画面编号缺失或重复，不能恢复准确顺序','supplement_content');
+      order.push(value.id);orderedIds.add(value.id);
+    }
     if(selected.has(value.id)&&(counts.get(value.id)||0)<2){
       counts.set(value.id,(counts.get(value.id)||0)+1);matches.push(projectRecord(value));
     }
@@ -70,7 +87,12 @@ export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord
   function close(kind){
     const frame=frames.at(-1);
     if(!frame||frame.kind!==kind||!['first','end'].includes(frame.state))fail('聊天资料头括号或逗号不完整');
-    if(capture?.depth===frames.length)record();frames.pop();
+    if(capture?.depth===frames.length)record();
+    if(extra?.depth===frames.length){
+      const text=extra.parts.join('')+extra.chars.join('');saved[extra.field]=JSON.parse(text);extra=null;
+      if(Buffer.byteLength(JSON.stringify(saved))>CHAT_GALLERY_SUPPLEMENT_LIMITS.bytes)fail('分镜补充资料超过字节上限，未截断','supplement_content');
+    }
+    frames.pop();
   }
   function endScalar(){
     if(token.kind==='number'){
@@ -132,9 +154,9 @@ export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord
     finish(){
       check();try{
         if(token&&token.kind!=='string')endScalar();
-        if(token||frames.length||!root||!metadata||capture)fail('聊天资料头不完整，未按空记录处理');
+        if(token||frames.length||!root||!metadata||capture||extra)fail('聊天资料头不完整，未按空记录处理');
         hash.update(']');const sha256=hash.digest('hex');finished=true;
-        return {gallery:present?{count,bytes,sha256}:null,records:matches};
+        return {gallery:present?{count,bytes,sha256}:null,records:matches,...(supplement?{saved,order}:{})};
       }catch(error){failed=true;throw error;}
     },
   });
