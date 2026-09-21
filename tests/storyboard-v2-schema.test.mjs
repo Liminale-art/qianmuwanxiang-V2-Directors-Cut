@@ -49,7 +49,7 @@ assert.equal(getStoryboardCapabilities('novel', 'nai-diffusion-5-full').preciseR
 const defaults = createStoryboardDefaults();
 assert.equal(defaults.schemaVersion, 24);
 assert.equal(defaults.enabled, false);
-assert.deepEqual(defaults.automation, { autoGenerate: true });
+assert.deepEqual(defaults.automation, { autoGenerate: true, streamEnabled: false });
 assert.equal(defaults.promptCompiler.enabled, true);
 assert.equal(defaults.promptMode, 'manual');
 assert.equal(defaults.promptDraft.userEditedCompiled, false);

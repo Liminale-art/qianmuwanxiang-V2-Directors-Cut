@@ -7,16 +7,16 @@ import {createStoryboardFormFixture} from './helpers/storyboard-form-fixture.mjs
 test('legacy extraction-off migrates once to image-off without mutating source settings',()=>{
   for(const autoGenerate of [true,false,undefined]){
     const old={autoCapture:false,...(autoGenerate===undefined?{}:{autoGenerate})},saved=structuredClone(old);
-    const next=normalizeStoryboardAutomation(old);assert.deepEqual(next,{autoGenerate:false});assert.deepEqual(old,saved);
+    const next=normalizeStoryboardAutomation(old);assert.deepEqual(next,{autoGenerate:false,streamEnabled:false});assert.deepEqual(old,saved);
     assert.deepEqual(normalizeStoryboardAutomation(next),next);
-    next.autoGenerate=true;assert.deepEqual(normalizeStoryboardAutomation(next),{autoGenerate:true});
+    next.autoGenerate=true;assert.deepEqual(normalizeStoryboardAutomation(next),{autoGenerate:true,streamEnabled:false});
   }
 });
 
 test('removing extraction choice preserves enabled image preferences and the master opt-in',()=>{
-  assert.deepEqual(normalizeStoryboardAutomation({autoCapture:true,autoGenerate:true}),{autoGenerate:true});
-  assert.deepEqual(normalizeStoryboardAutomation({autoGenerate:false}),{autoGenerate:false});
-  const defaults=createStoryboardDefaults();assert.equal(defaults.enabled,false);assert.deepEqual(defaults.automation,{autoGenerate:true});
+  assert.deepEqual(normalizeStoryboardAutomation({autoCapture:true,autoGenerate:true}),{autoGenerate:true,streamEnabled:false});
+  assert.deepEqual(normalizeStoryboardAutomation({autoGenerate:false}),{autoGenerate:false,streamEnabled:false});
+  const defaults=createStoryboardDefaults();assert.equal(defaults.enabled,false);assert.deepEqual(defaults.automation,{autoGenerate:true,streamEnabled:false});
   const old=createStoryboardDefaults();old.enabled=false;old.automation={autoCapture:false,autoGenerate:true};
   const next=normalizeStoryboardState(old);assert.equal(next.enabled,false);assert.equal(next.automation.autoGenerate,false);
   assert.equal(Object.hasOwn(next.automation,'autoCapture'),false);

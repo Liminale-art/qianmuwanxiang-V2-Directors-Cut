@@ -11,7 +11,7 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 const defaults = createStoryboardDefaults();
-assert.deepEqual(defaults.automation, { autoGenerate: true });
+assert.deepEqual(defaults.automation, { autoGenerate: true, streamEnabled: false });
 assert.equal(defaults.promptCompiler.enabled, true);
 const normalized = normalizeStoryboardState({
   schemaVersion: 4,

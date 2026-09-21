@@ -27,6 +27,7 @@ async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nSh
   const initial=editable(e.state),calls=[],domEvents=new Map();let prepared,modelHook=null,preparedHook=null,worldHook=null,requests=0,hostSaves=0,saves=0,renders=0,wakes=0;
   host.saveMetadata=async()=>hostSaves++;
   Object.assign(e.context,{
+    storyboardStreamRuntime:null,
     storyboardCleanWithTagRules:value=>value.replace(/<think>[\s\S]*?<\/think>/g,''),storyboardCleanMessageText:value=>value.trim(),resolveMacro:async value=>value,
     storyboardMessageParagraphs:value=>value.split(/\n\s*\n/).map(row=>row.trim()).filter(Boolean),
     storyboardCompilerWorldText:async()=>{if(worldHook)await worldHook();return {text:'',rows:[]};},
@@ -1042,11 +1043,13 @@ test('a stream plan arriving during recovery cannot become a second ordinary pla
 
 function installActualStreamHost(f){
   const timers=new Map(),outcomes=[];let sequence=0,completion=null;
-  const runtime=createStoryboardStreamHost({getContext:()=>f.host,epoch:()=>0,enabled:()=>f.state.enabled&&f.state.automation.autoGenerate,
-    busy:()=>f.context.storyboardCompilerBusy,document:f.context.document,intervalMs:0,
-    setTimer:fn=>{const id=++sequence;timers.set(id,fn);return id;},clearTimer:id=>timers.delete(id),notify:message=>f.notices.push(message),
-    openFrame:({floor,signal})=>f.context.storyboardCreatePreparationGuard(f.state,{requireCompiler:true,stream:{floor,signal}}),
-    run:async stream=>{try{const result=await runStoryboardStreamPass({compile:f.context.storyboardCompilePrompt,submit:f.context.storyboardSubmitStreamPrepared},stream);outcomes.push(result);return result;}finally{completion?.resolve();}}});
+  f.context.settings.enabled=true;f.state.automation.streamEnabled=true;f.state.promptCompiler.enabled=true;
+  const compile=f.context.storyboardCompilePrompt;
+  Object.assign(f.context,{createStoryboardStreamHost,storyboardAutomaticEpoch:0,storyboardAutomaticCurrent:null,
+    setTimeout:fn=>{const id=++sequence;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id),
+    storyboardCompilePrompt:async(root,options)=>{try{return await compile(root,{...options,onStreamOutcome:value=>{outcomes.push(value);return options.onStreamOutcome?.(value);}});}finally{completion?.resolve();}}});
+  vm.runInContext(section('storyboardCreateStreamHost'),f.context);
+  const runtime=f.context.storyboardStreamRuntime=f.context.storyboardCreateStreamHost();
   const next=()=>{const [id,fn]=timers.entries().next().value||[];assert.ok(fn);timers.delete(id);fn();};
   f.events.emit('generation_after_commands',undefined,{},false);f.host.chat[0].gen_started='real-host-generation';
   f.host.streamingProcessor={type:undefined,messageId:0,abortController:new AbortController()};
@@ -1058,7 +1061,7 @@ function installActualStreamHost(f){
 
 test('actual ST token adapter prepares an early picture then releases one original-budget final capture',async()=>{
   const f=await fixture(),q=installStreamQueue(f);useShotSet(f,[0]);const host=installActualStreamHost(f);
-  host.pulse();await host.bootstrap();await host.pass();assert.equal(host.outcomes[0].status,'advanced');assert.equal(q.queue.length,1);
+  host.pulse();await host.bootstrap();await host.pass();assert.equal(host.outcomes[0].status,'ready');assert.equal(q.queue.length,1);
   f.host.chat[0].mes=threeParagraphs.replace('\n\nUnfinished','');useShotSet(f,[0,1,2]);f.events.emit('message_received',0,undefined);
   assert.equal(await host.gate(),true);assert.equal(await installFinalNotifications(f).run(),true,JSON.stringify(f.notices));
   assert.equal(q.queue.length,3);assert.equal(q.rows.size,1);assert.equal(f.state.shotPlans.length,1);assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete');

@@ -13,6 +13,14 @@ function snapshot(text){
   const lines=text.replaceAll('**','').split(/\r?\n/),at=lines.findIndex(line=>/^## (?:0\. )?当前/.test(line));
   if(at<0)fail('snapshot_missing');const end=lines.findIndex((line,index)=>index>at&&/^#{2,3} /.test(line));return lines.slice(at+1,end<0?undefined:end);
 }
+function currentTableRow(text,unit){
+  const lines=text.replaceAll('**','').split(/\r?\n/),at=lines.findIndex(line=>/^## (?:2\. )?R2.*单元表$/.test(line));
+  if(at<0)fail('current_unit_missing_from_table');
+  const end=lines.findIndex((line,index)=>index>at&&/^## /.test(line));
+  const rows=lines.slice(at+1,end<0?undefined:end).filter(line=>new RegExp(`^\\| ${unit} \\|`).test(line));
+  if(rows.length!==1)fail(rows.length?'current_unit_table_ambiguous':'current_unit_missing_from_table');
+  return rows[0];
+}
 export function checkProjectHandoff({head,version,packageVersion,entryVersion,documents={},trackedPaths=[],releasePaths=[],requireDocuments=false}={}){
   if(!/^[a-f0-9]{40}$/.test(head||''))fail('head_invalid');
   if(!/^\d+\.\d+\.\d+$/.test(version||'')||version!==packageVersion||version!==entryVersion)fail('runtime_version_mismatch');
@@ -30,11 +38,17 @@ export function checkProjectHandoff({head,version,packageVersion,entryVersion,do
     if(commits.length!==1)fail('current_commit_ambiguous');
     const commit=commits[0].match(/`([a-f0-9]{40})`/),release=commits[0].match(/\bv(\d+\.\d+\.\d+)\b/);
     if(commit?.[1]!==head)fail('document_commit_stale');if(release?.[1]!==version)fail('document_version_stale');
+    const statuses=lines.filter(line=>/^-\s*当前状态：/.test(line));
+    if(statuses.length>1)fail('current_status_ambiguous');
+    for(const match of (statuses[0]||'').matchAll(/\bv(\d+\.\d+\.\d+)\b/g))if(match[1]!==version)fail('current_status_stale');
     const current=lines.filter(line=>/^-\s*当前单元：/.test(line));if(current.length!==1)fail('current_unit_ambiguous');
     const unit=current[0].match(/当前单元：\s*(R2-\d{2})(?![A-Za-z0-9_-])/)?.[1];if(!/^R2-(0\d|1[0-2])$/.test(unit||''))fail('current_unit_invalid');units.push(unit);
   }
   if(new Set(units).size!==1)fail('current_units_disagree');
-  if(!documents[HANDOFF_DOCUMENTS[1]].split(/\r?\n/).some(line=>new RegExp(`^\\| ${units[0]} \\|`).test(line)))fail('current_unit_missing_from_table');
+  for(const file of HANDOFF_DOCUMENTS.slice(0,2)){
+    const row=currentTableRow(documents[file],units[0]);
+    if(!row.includes(`v${version}`)||!row.includes(head.slice(0,7)))fail('current_unit_table_stale');
+  }
   return {status:'consistent',head,version,currentUnit:units[0],checkedDocuments:3,privateFilesExcluded:4};
 }
 

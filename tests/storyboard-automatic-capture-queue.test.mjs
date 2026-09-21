@@ -20,7 +20,7 @@ function environment() {
   const chat = [{ mes: 'first garden', send_date: '2026-09-06T01:00:00Z', swipe_id: 0 }];
   let chatKey = 'chat-a', seq = 0; const timers = new Map(), calls = [], notices = [], errors = [];
   const context = vm.createContext({
-    ...board, MODULE_NAME: 'test', STORYBOARD_QUEUE_LIMIT: 8,storyboardContinuationRuntime:null,
+    ...board, MODULE_NAME: 'test', STORYBOARD_QUEUE_LIMIT: 8,storyboardContinuationRuntime:null,storyboardStreamRuntime:null,
     storyboardAutomaticPending: new Map(), storyboardAutomaticCurrent: null, storyboardAutomaticTimer: null, storyboardAutomaticEpoch: 0, storyboardCompilerBusy: false,
     storyboardState: () => state, getChatKey: () => chatKey, ctx: () => ({ chat }), storyboardCurrentAssistantFloor: () => chat.length - 1,
     storyboardPlanCompilerSignature: () => 'compiler', storyboardDeletePlanArchives: async () => {}, uid: () => `id-${++seq}`,
@@ -68,6 +68,25 @@ test('actual automatic entry waits for a continuation save barrier before reserv
 test('a failed continuation barrier stops the actual automatic path without an ordinary fallback',async()=>{
   const e=environment();e.context.storyboardContinuationRuntime={beforeAutomatic:()=>Promise.resolve(false)};
   assert.equal(await e.context.storyboardHandleAutomaticCapture(0,'continue'),false);await e.flush();assert.equal(e.state.shotPlans.length,0);assert.deepEqual(e.calls,[]);
+});
+
+test('actual final notification waits for early jobs before creating any automatic ticket',async()=>{
+  const e=environment(),gate=deferred();e.context.storyboardStreamRuntime={beforeAutomatic:()=>gate.promise,wake(){}};
+  const pending=e.context.storyboardHandleAutomaticCapture(0);assert.equal(e.context.storyboardAutomaticPending.size,0);assert.equal(e.calls.length,0);
+  gate.resolve(true);assert.equal(await pending,true);await e.flush();assert.deepEqual(e.calls,[['compile',0],['generate',0,true]]);
+});
+
+test('a failed or taken-over early stream cannot fall through to ordinary fresh extraction',async()=>{
+  for(const value of [false,Promise.resolve(false)]){
+    const e=environment();e.context.storyboardStreamRuntime={beforeAutomatic:()=>value};
+    assert.equal(await e.context.storyboardHandleAutomaticCapture(0),false);assert.equal(e.state.shotPlans.length,0);assert.deepEqual(e.calls,[]);
+  }
+});
+
+test('switching chats while awaiting early stream completion cannot create a late automatic ticket',async()=>{
+  const e=environment(),gate=deferred();e.context.storyboardStreamRuntime={beforeAutomatic:()=>gate.promise,reset(){}};
+  const pending=e.context.storyboardHandleAutomaticCapture(0);e.context.storyboardResetAutomaticCapture();gate.resolve(true);
+  assert.equal(await pending,false);assert.equal(e.context.storyboardAutomaticPending.size,0);assert.deepEqual(e.calls,[]);
 });
 
 test('source changes or manual takeover while awaiting a continuation save cannot reserve an automatic plan',async()=>{

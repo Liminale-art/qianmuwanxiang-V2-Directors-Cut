@@ -42,18 +42,23 @@ try{
     const before={scroll:scroll.scrollTop,left:entry.style.left,top:entry.style.top,classes:root.className,controls:root.querySelectorAll('input,textarea,select,button').length};
     const snapshot=controller.setTheme({theme,mode,accent:'#5c79d3'});
     const optionRow=root.querySelector('.sd-storyboard-automation-options'),options=[...optionRow.querySelectorAll('.sd-option-chip')].map(node=>node.getBoundingClientRect());
+    const stream=root.querySelector('.sd-storyboard-stream-enabled'),streamLabel=stream.closest('label'),streamRect=streamLabel.getBoundingClientRect(),generationGrid=streamLabel.previousElementSibling.getBoundingClientRect(),streamNote=root.querySelector('.sd-storyboard-stream-note');
     return {same:root.contains(input),focused:document.activeElement===input,value:input.value,selection:[input.selectionStart,input.selectionEnd,input.selectionDirection],scroll:scroll.scrollTop,
      left:entry.style.left,top:entry.style.top,classes:root.className,controls:root.querySelectorAll('input,textarea,select,button').length,before,
      tokens:[root,notes,dialog].map(n=>getComputedStyle(n).getPropertyValue('--sd-text').trim()),expected:snapshot.tokens['--sd-text'],
      hive:entry.style.getPropertyValue('--sd-wheel-icon'),expectedHive:snapshot.hive.dark.icon,background:getComputedStyle(entry).backgroundColor,
      automation:{count:options.length,equal:options.length===2&&Math.abs(options[0].width-options[1].width)<1&&Math.abs(options[0].top-options[1].top)<1,
-       fits:optionRow.scrollWidth<=optionRow.clientWidth+1,retired:!!root.querySelector('.sd-storyboard-auto-capture')}};
+       fits:optionRow.scrollWidth<=optionRow.clientWidth+1,retired:!!root.querySelector('.sd-storyboard-auto-capture')},
+     streaming:{checked:stream.checked,disabled:stream.disabled,fullWidth:Math.abs(streamRect.width-generationGrid.width)<1,
+       tallEnough:streamRect.height>=35,roundedRectangle:parseFloat(getComputedStyle(streamLabel).borderRadius)<streamRect.height/2,
+       noteFits:streamNote.scrollWidth<=streamNote.clientWidth+1}};
    },{theme,mode});
    assert.equal(result.same,true);assert.equal(result.focused,true);assert.equal(result.value,'正式表单未保存草稿');assert.deepEqual(result.selection,[2,6,'backward']);
    for(const key of ['scroll','left','top','classes','controls'])assert.equal(result[key],result.before[key]);
    assert.ok(result.tokens.every(v=>v===result.expected));assert.equal(result.hive,result.expectedHive);assert.match(result.background,/color\(srgb|rgba/);
    assert.deepEqual(result.automation,{count:2,equal:true,fits:true,retired:false});
-   checks.push(`${family} ${width} ${theme} ${mode}: two equal automation options without retired extraction gate`);
+   assert.deepEqual(result.streaming,{checked:false,disabled:false,fullWidth:true,tallEnough:true,roundedRectangle:true,noteFits:true});
+   checks.push(`${family} ${width} ${theme} ${mode}: two equal automation options plus default-off full-width streaming choice`);
    checks.push(`${family} ${width} ${theme} ${mode}: real form and portals retain state`);
   }
   // Theme patching must leave real captured-pointer drag and the single position save intact.
