@@ -1,7 +1,7 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.267';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.267';
-import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.267';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.267';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.268';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.268';
+import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.268';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.268';
 import {assertStoryboardStreamMoment,createStoryboardStreamMoment,storyboardStreamMomentsOverlap} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 import {captureEnsembleSceneAnchor} from './qianmu-ensemble-continuation.js';
 const coverages=new WeakMap();
@@ -9,8 +9,9 @@ const styleHistories=new WeakMap();
 const copy=value=>JSON.parse(JSON.stringify(value));
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const fail=()=>{throw Object.assign(new Error('本层已有流式任务，但来源或占位记录不完整，未重复自动生成'),{code:'storyboard_stream_coverage'});};
-const occupied=row=>Boolean(row.url)||['queued','generating','success','completed'].includes(row.status)||['unknown','accepted'].includes(row.submissionState)
+export const storyboardHistoryOccupiesImageSlot=row=>Boolean(row.url)||['queued','generating','success','completed'].includes(row.status)||['unknown','accepted'].includes(row.submissionState)
   ||!row.submissionState&&['failed','cancelled'].includes(row.status)&&Number(row.startedAt)>0;
+const occupied=storyboardHistoryOccupiesImageSlot;
 
 // Use compact references retained in both logs and archived gallery indices.
 // Completed, accepted and uncertain work all occupies its original slot. This

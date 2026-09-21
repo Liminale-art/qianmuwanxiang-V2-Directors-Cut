@@ -42,12 +42,13 @@ async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nSh
       requests++;const payload=JSON.parse(messages[1].content);calls.push({payload,options:copy(options)});
       let reply;
       if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
-        const first=payload.source_catalogue.find(row=>row.floor===floor).passages.find(row=>row.paragraph_id==='P1').text;
+        const input=payload.context||payload,catalogue=input.source_catalogue||input.evidence_sources;
+        const first=(catalogue.find(row=>row.floor===floor)||catalogue.at(-1)).passages.find(row=>row.paragraph_id==='P1').text;
         const {prompt_atoms,prompt_renderings,...shot}=response().shots[0];
         const anchor={floor,branch_id:'present',paragraph_id:'P1',quote:first};
         reply={schema:options.jsonSchemaName,should_generate:!wait,skip_reason:wait?'等待人物在场明确':'',decisions:[],shots:wait?[]:[{...shot,
-          state_point:{branchId:'present',paragraphId:'P1',evidence:first},...(payload.constraints.streaming?{stream_support:{scene:anchor,content:anchor,presence:[{character_id:'A',source:anchor}]}}:{})}],
-          source_states:payload.required_state_floors.map(floor=>({floor,roster:{branches:[{id:'present',layer:'present'}],subjectIds:['A']},events:[]})),continuity_links:[]};
+          state_point:{branchId:'present',paragraphId:'P1',evidence:first},...(input.constraints.streaming?{stream_support:{scene:anchor,content:anchor,presence:[{character_id:'A',source:anchor}]}}:{})}],
+          source_states:input.required_state_floors.map(floor=>({floor,roster:{branches:[{id:'present',layer:'present'}],subjectIds:['A']},events:[]})),continuity_links:[]};
       }else reply={schema:options.jsonSchemaName,shots:[{shot_id:'S1',prompt_atoms:response().shots[0].prompt_atoms,
         prompt_renderings:Object.fromEntries(options.promptFormats.map(format=>[format,response().shots[0].prompt_renderings[format]]))}]};
       if(modelHook)await modelHook({requests,messages,options,reply,payload});return JSON.stringify(reply);
@@ -1181,6 +1182,35 @@ test('actual later stream pass explicitly inherits an accepted scene style witho
     assert.equal(q.queue[1].messageRef.stream.moment.paragraphId,'P3');assert.equal(q.rows.size,1);assert.equal(f.counts.requests,4);
     assert.equal(f.calls[2].payload.prior_scene_anchors.length,1);assert.doesNotMatch(JSON.stringify(f.calls[2].payload.prior_scene_anchors),/cg|bindingKey|schemeId|st-user/);
     assert.equal(f.calls[3].payload.style_scene_lock.groups[0].scheme_id,'cg');f.assertReleased();
+  }finally{binding.close();}
+});
+
+for(const linked of [true,false])test(`actual new-floor compiler ${linked?'inherits style without sharing old image allowance':'repairs a missing scene chain before expression or queue admission'}`,async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true,JSON.stringify(f.errors));const old=copy(q.queue[0]);
+    f.host.chat.push({mes:'Look at the cup.',name:'User',is_user:true,send_date:'user-next'},
+      {mes:'The broken cup still rests on the kitchen table.\n\n',name:'Alice',is_user:false,send_date:'next-floor',gen_started:'next-generation',swipe_id:0});
+    f.modelHook=({reply,payload:wire,options})=>{
+      const payload=wire.context?.verified_handoff||wire.context||wire;
+      if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
+        const quote=(payload.source_catalogue||payload.evidence_sources).find(row=>row.floor===2).passages.find(row=>row.paragraph_id==='P1').text;
+        const {prompt_atoms,prompt_renderings,...shot}=response().shots[2],anchor={floor:2,branch_id:'present',paragraph_id:'P1',quote};
+        reply.shots=[{...shot,source_paragraph_ids:['P1'],insert_after:'P1',scene:copy(response().shots[0].scene),scene_predecessor:'E1',state_point:{branchId:'present',paragraphId:'P1',evidence:quote},
+          stream_support:{scene:anchor,content:anchor,presence:[]}}];
+        reply.continuity_links=linked?[{from_floor:0,from_branch:'present',to_floor:2,to_branch:'present',evidence:{paragraph_id:'P1',quote},facts:[]}]:[];
+      }else{
+        const shot=response().shots[2];reply.shots=[{shot_id:'S1',prompt_atoms:shot.prompt_atoms,prompt_renderings:Object.fromEntries(options.promptFormats.map(format=>[format,shot.prompt_renderings[format]]))}];
+        reply.style_assignments=[{shot_id:'S1',scheme_id:payload.style_scene_lock.groups[0].scheme_id,reason:'same kitchen'}];
+      }
+    };
+    assert.equal(await f.run({stream:{floor:2,signal:f.controller.signal}}),linked,JSON.stringify({errors:f.errors,notices:f.notices,queue:q.errors.map(e=>e.message)}));
+    assert.deepEqual(copy(q.queue[0]),old);assert.equal(q.queue.length,linked?2:1);assert.equal(q.rows.size,linked?2:1);
+    assert.deepEqual(f.calls[2].payload.prior_scene_anchors.map(row=>row.floor),[0]);
+    assert.equal(f.calls.slice(2).filter(row=>row.options.jsonSchemaName==='qianmu.storyboard.expression.v1').length,linked?1:0);
+    assert.equal(f.counts.requests,linked?4:6);
+    if(linked){assert.equal(q.queue[1].ensembleStyleOrigin.schemeId,'cg');assert.equal(q.queue[1].messageRef.lastKnownFloor,2);assert.equal(f.state.shotPlans.length,2);}
+    else assert.match(f.notices.at(-1),/连续场景|场景承接/);
+    f.assertReleased();
   }finally{binding.close();}
 });
 
