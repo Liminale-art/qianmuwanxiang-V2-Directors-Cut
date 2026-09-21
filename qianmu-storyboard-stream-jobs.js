@@ -1,8 +1,9 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.259';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.259';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.260';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.260';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.260';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -17,7 +18,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
   if (result.manualRequired || !messageRef?.stream || !Array.isArray(result.shots) || !result.shots.length
     || result.shots.length !== shotReferences?.length || result.shots.length > 4) throw stop('流式结果缺少已核对的画面来源，未提交');
   const state = d.storyboardState(), chatKey = messageRef.chatKey;
-  let plan, existing=false, restored=null, planSnapshot='';
+  let plan, existing=false, restored=null, planSnapshot='',ensemble=null;
   const valid = () => inputGuard.isCurrent() && state === d.storyboardState() && state.enabled
     && state.automation.autoGenerate && chatKey === String(d.getChatKey() || '')
     && plan?.status !== 'cancelled' && !plan?.promptLocked && !plan?.manualReviewRequired;
@@ -27,6 +28,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     if (existing && !state.shotPlans.includes(plan)) throw stop('镜头计划已被归档或替换，请等待下一次取景');
     await context.compilerSources.guard();
     await inputGuard.comfyRoutes?.assertCurrent();
+    await ensemble?.assertCurrent();
     inputGuard.assertCurrent();
     if (!valid()) throw stop('自动生成或当前任务已变化，未继续提交');
   };
@@ -89,6 +91,10 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     const planView = {...plan, shots:newShots};
     const inlineBatch = {version:1,batchId:plan.id,batchStartedAt:plan.createdAt};
     let routes = planned.map(shot=>projected.routing.enabled ? d.routeStoryboardShot(shot,projected.routing) : projected.routing.single);
+    // Use the compiler's exact draft-ID mapping; style choice never uses an
+    // array position after coverage has dropped a redundant mirror.
+    ensemble=await resolveEnsembleCompiledRoutes(result,planned,{guard:async()=>{inputGuard.assertCurrent();await context.compilerSources.guard();inputGuard.assertCurrent();}});
+    if(ensemble)routes=ensemble.routes;
     // Routes and model capabilities were pinned before the compiler request.
     // Reuse that session; rebuilding it here could silently switch workflows.
     let selection=null;
@@ -106,7 +112,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
         {chatKey,capabilityModelId:shotProfile.capabilityModelId,isCurrent:valid,cancelled:()=>plan.status==='cancelled'});
       await check();
       if (effective.safetyAborted) throw stop('本镜模型适配已取消，未提交');
-      const job=d.storyboardCreateJob(projected,shotProfile,{shot:effective,sourceId,profileSourceId:sourceId,modelId:route.modelId,
+      const job=d.storyboardCreateJob(projected,shotProfile,{shot:ensemble?.artistPresetIds[index]?{...effective,artistPresetId:ensemble.artistPresetIds[index]}:effective,sourceId,profileSourceId:sourceId,modelId:route.modelId,
         capabilityModelId:shotProfile.capabilityModelId,connectionPresetId:route.connectionPresetId,planId:plan.id,planShotId:newShots[index].id,
         recentArtistIds:artists,requestIndex:1,requestTotal:1,inlineOrder:{...inlineBatch,shotIndex:offset+index,requestIndex:1},
         routeTarget:route,preparedRoutes:inputGuard.comfyRoutes,freshComfy:inputGuard.freshComfy});

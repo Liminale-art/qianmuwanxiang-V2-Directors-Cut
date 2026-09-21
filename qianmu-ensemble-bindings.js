@@ -1,5 +1,5 @@
-import {createEnsembleStyleSession,normalizeEnsembleLibrary,normalizeEnsembleChatSelection,ENSEMBLE_CURRENT_STYLE} from './qianmu-ensemble-selection.js?v=1.59.259';
-import {resolveStoryboardProfileBinding,resolveStoryboardConnectionBinding,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.259';
+import {createEnsembleStyleSession,normalizeEnsembleLibrary,normalizeEnsembleChatSelection,ENSEMBLE_CURRENT_STYLE} from './qianmu-ensemble-selection.js?v=1.59.260';
+import {resolveStoryboardProfileBinding,resolveStoryboardConnectionBinding,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.260';
 import {normalizeStoryboardPromptFormats,negotiateStoryboardPromptFormats} from './qianmu-prompt-formats.js';
 import {comfyRouteBindingKey} from './qianmu-comfy-route-contract.js';
 
@@ -95,16 +95,16 @@ export async function prepareEnsembleStyleBindings({library,selection,namespace,
   }
   await check();assertPins();
   const inner=createEnsembleStyleSession({library,selection,namespace,chatKey,preparationId,eligibility,base:pinned.get(ENSEMBLE_CURRENT_STYLE).proof,guard:assertPins});
-  const session=Object.freeze({...inner,resolve(rows,shotIds){const result=inner.resolve(rows,shotIds);issued.add(result);return result;}});
-  return Object.freeze({session,unavailable:freeze(unavailable),executionAuthorized:false,
-    async resolveAssignment(receipt,shotId){
+  async function resolveAssignment(receipt,shotId){
       if(!issued.has(receipt))fail('不是本次模型选择的已核对结果');
       await check();inner.assertCurrent();
       const assignment=receipt.assignments.find(row=>row.shotId===shotId),record=assignment&&pinned.get(assignment.schemeId);
       if(!record||record.proof.bindingKey!==assignment.bindingKey||record.proof.revision!==assignment.revision)fail('此镜没有有效风格绑定');
       return freeze({shotId,schemeId:assignment.schemeId,bindingKey:assignment.bindingKey,route:copy(record.descriptor.route),
         artistPresetId:record.descriptor.artist?.id||'',executionAuthorized:false});
-    },
+  }
+  const session=Object.freeze({...inner,resolve(rows,shotIds){const result=inner.resolve(rows,shotIds);issued.add(result);return result;},resolveAssignment});
+  return Object.freeze({session,unavailable:freeze(unavailable),executionAuthorized:false,resolveAssignment,
     async assertCurrent(){await check();inner.assertCurrent();},
     close(){closed=true;pinned.clear();eligibility.clear();},
   });

@@ -13,6 +13,8 @@ import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuatio
 import {createStoryboardStreamScheduler,runStoryboardStreamPass} from '../qianmu-storyboard-stream-scheduler.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createStoryboardStreamHost} from '../qianmu-storyboard-stream-host.js';
+import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
+import {prepareComfyRouteRecipes,assertComfyRouteProfile} from '../qianmu-comfy-route.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -273,6 +275,54 @@ function useShotSet(f,indexes,after){
   };
 }
 const threeParagraphs='Alice reads a letter in the kitchen.\n\nA mountain valley stretches into the sunlight.\n\nA broken cup rests on the table.\n\nUnfinished';
+
+async function installEnsembleChoices(f){
+  f.state.connections.comfy.draft.baseUrl='https://comfy.invalid';
+  // Queue admission is real; remote workflow readiness is deliberately not a
+  // network probe in this isolated fixture and must still be tested in ST.
+  f.context.storyboardConfirmComfyExecution=async()=>true;
+  f.context.storyboardParseWorkflow=value=>typeof value==='string'?JSON.parse(value):value;
+  const profile=f.context.storyboardProviderProfile(f.state,'novel');
+  f.state.artistPresets.push({id:'style-artist',name:'test ink',value:'artist:ink',positivePrompt:'ink wash',negativePrompt:'low quality'});
+  f.state.routing.rules.push({id:'style-nai',enabled:true,target:{providerId:'novel',modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''}});
+  const library={schema:'qianmu.ensemble.library.v1',namespace:'st-user:route-test',schemes:[
+    {id:'ink',revision:'v1',name:'Ink',description:'留白',tags:[],binding:{routeId:'style-nai',artistPresetId:'style-artist'}},
+    {id:'cg',revision:'v1',name:'CG',description:'空间',tags:[],binding:{routeId:'rule-0'}}]};
+  const selection={schema:'qianmu.ensemble.chat-selection.v1',namespace:library.namespace,chatKey:'chat-a',revision:'selection-1',enabled:true,schemeIds:['ink','cg']};
+  const prepared=await prepareComfyRouteRecipes({routes:f.routes,namespace:library.namespace,createStore:f.createStore});
+  const binding=await prepareEnsembleStyleBindings({library,selection,namespace:library.namespace,chatKey:'chat-a',preparationId:'styles-stream',readState:()=>f.state,
+    assertCurrent:()=>true,guard:async()=>true,resolveProfile:({state,route})=>f.context.storyboardResolveRoutingProfile(state,route,null,prepared),
+    verifyTarget:async(d,{guard})=>{if(d.route.providerId==='comfy')await assertComfyRouteProfile(d.profile,{namespace:library.namespace,guard});return {ready:true,promptFormats:d.route.providerId==='comfy'?[d.profile.comfyRoutePromptFormat]:['tags']};}});
+  const config=f.context.storyboardCompilerRequestConfig,prepare=f.context.storyboardPrepareComfyRoutes;
+  f.context.storyboardCompilerRequestConfig=(...args)=>({...config(...args),styleSession:binding.session,promptFormats:binding.session.promptFormats});
+  f.context.storyboardPrepareComfyRoutes=(state,guard)=>prepare(state,guard,[...f.routes,f.state.routing.rules.at(-1).target]);
+  useShotSet(f,[0,1,2],({reply,options})=>{if(options.jsonSchemaName==='qianmu.storyboard.expression.v1')reply.style_assignments=['cg','ink','current'].map((scheme_id,index)=>({shot_id:`S${index+1}`,scheme_id,reason:'表现增益'}));});
+  return binding;
+}
+
+test('actual compiler maps verified style IDs through cast remapping into mixed Comfy and NAI stream jobs',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));assert.equal(q.queue.length,3);
+    assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','novel']);assert.equal(q.queue[0].profile.comfyRouteBinding.id,'portrait');assert.equal(q.queue[1].artistPresetId,'style-artist');
+    assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2]);assert.ok(q.queue.every(row=>row.profile.count==='1'&&row.imageAdmission.automaticSlot));
+    assert.equal(f.calls.length,2);assert.equal(f.prepared.result.ensembleRequired,true);f.assertReleased();
+  }finally{binding.close();}
+});
+test('actual coverage filtering preserves original wire-to-draft style mapping instead of assigning the omitted first style to the second mirror',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f),prepare=f.context.storyboardPrepareDraftGroup;
+  f.context.storyboardPrepareDraftGroup=(...args)=>{const group=prepare(...args);return {...group,planned:group.planned.slice(1)};};
+  try{assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));assert.equal(q.queue.length,2);assert.deepEqual(q.queue.map(row=>row.source),['novel','novel']);assert.equal(q.queue[0].artistPresetId,'style-artist');assert.equal(q.queue[0].messageRef.stream.moment.paragraphId,'P2');f.assertReleased();}finally{binding.close();}
+});
+test('actual style handoff rejects post-compiler reordering before any queue admission or image reservation',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f),prepare=f.context.storyboardPrepareDraftGroup;
+  f.context.storyboardPrepareDraftGroup=(...args)=>{const group=prepare(...args);return {...group,planned:[...group.planned].reverse()};};
+  try{assert.equal(await f.run(),false);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);assert.equal(q.errors[0].code,'ensemble_handoff');f.assertReleased();}finally{binding.close();}
+});
+test('a style binding removed during expression is not repaired into another route or submitted from the late response',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f),call=f.context.storyboardCallCompiler;
+  f.context.storyboardCallCompiler=async(...args)=>{const result=await call(...args);if(args[2].jsonSchemaName==='qianmu.storyboard.expression.v1')f.state.artistPresets=[];return result;};
+  try{assert.equal(await f.run(),false);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);assert.equal(f.calls.length,2);f.assertReleased();}finally{binding.close();}
+});
 async function continueHost(f,text,{floor=0}={}){
   const message=f.host.chat[floor],handle=captureStoryboardContinuation({type:'continue',getContext:()=>f.host,epoch:()=>0,createReference:createStoryboardMessageReference});
   assert.ok(handle);assert.ok(text.startsWith(message.mes));message.mes=text;

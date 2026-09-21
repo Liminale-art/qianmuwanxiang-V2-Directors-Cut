@@ -1,10 +1,12 @@
 // Lazy compiler-result adapter. It owns no host state, event subscriptions or
 // storage; the caller supplies guarded dependencies and retains draft ownership.
 import {createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
+import {attachEnsembleCompilerResult} from './qianmu-ensemble-handoff.js?v=1.59.260';
 export async function resolveStoryboardCompilerResult(raw, context, capabilities, state, contractRequest, inputGuard, dependencies) {
   const {featureRuntime,storyboardCallCompiler,STORYBOARD_RATIOS,getStoryboardGenerationPolicy,STORYBOARD_PLAN_SCHEMA,extractJson,normalizeStoryboardShotSpec,storyboardProviderProfile,compileStoryboardPrompt,uid}=dependencies;
   inputGuard?.assertCurrent();
   let focused=null;
+  const styleSession=contractRequest?.styleSession;
   if(contractRequest?.focused){
     const contract=contractRequest.runtime;
     focused=await contract.completeStoryboardFocusedExtraction({raw,context,request:contractRequest,
@@ -142,10 +144,11 @@ export async function resolveStoryboardCompilerResult(raw, context, capabilities
   }).filter(Boolean);
   if (!shots.length) throw new Error('画面整理没有返回可用提示词');
   const first = shots[0];
-  return {
+  const output = {
     shouldGenerate: true, skipReason: '',
     prompt: first.prompt, safePrompt: first.safePrompt, negative: first.negative, paragraphIndex: first.paragraphIndex, shotType: first.shotType, shots,
     decisions: Array.isArray(object.decisions) ? object.decisions.map((item) => String(item).slice(0, 500)).slice(0, 12) : [],
     contractMeta, contractTrace,
   };
+  return focused?.styleSelection?attachEnsembleCompilerResult(output,{session:styleSession,receipt:focused.styleSelection}):output;
 }

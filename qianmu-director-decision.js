@@ -3,7 +3,7 @@ import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate, scoreNarr
 import { validateNarrativeLedgerEntry, adaptProductionPacketToNarrativeLedgerEntry } from './qianmu-narrative-ledger.js';
 import { QIANMU_PRODUCTION_PACKET_SCHEMA } from './qianmu-production-packet.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
-import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './qianmu-world-automatic-approval.js?v=1.59.259';
+import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './qianmu-world-automatic-approval.js?v=1.59.260';
 import { narrativeContextField, narrativeContextIssues, matchingNarrativeContexts, isMainlineNarrativeFact } from './qianmu-narrative-context.js';
 
 export const QIANMU_DIRECTOR_DECISION_SCHEMA = 'qianmu.director-decision.v1';

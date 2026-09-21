@@ -317,6 +317,7 @@
     "qianmu-ensemble-selection.js",
     "qianmu-ensemble-storage.js",
     "qianmu-ensemble-bindings.js",
+    "qianmu-ensemble-handoff.js",
     "qianmu-vibe-recipe.js",
     "qianmu-artist-prompt-layer.js",
     "qianmu-artist-prompt-review.js",
