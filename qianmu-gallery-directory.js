@@ -2,24 +2,29 @@ import { createGalleryCatalogStore } from './qianmu-gallery-catalog-store.js';
 import { projectGalleryCatalogEntry, galleryCatalogSource, galleryCatalogAccount } from './qianmu-gallery-catalog-contract.js';
 import { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient, createChatGalleryDetailsClient } from './qianmu-chat-character-receipt-client.js';
 import { loadGalleryPreviewImage } from './qianmu-gallery-preview-media.js';
-import { chatGalleryReceiptText } from './qianmu-chat-gallery-receipt.js';
+import { scanChatGallery, galleryDigestRow } from './qianmu-chat-gallery-digest.js';
 import { chatFileTarget } from './qianmu-chat-file-target.js';
 
 // Only the existing still-record family is projected. Unknown/invalid metadata
 // stays in its original chat; no fallback timestamp, truncated tags or URL inference.
-export function projectGalleryDirectorySnapshot(namespace, source, records) {
+export async function projectGalleryDirectorySnapshot(namespace, source, records, options = {}) {
     namespace = galleryCatalogAccount(namespace); source = galleryCatalogSource(source);
-    const snapshot = chatGalleryReceiptText(records), entries = [], ids = new Set();
+    const entries = [], fingerprints = new Map();
     let skipped = 0;
-    for (const row of snapshot ? JSON.parse(snapshot.text) : []) {
+    const snapshot = records === undefined ? null : await scanChatGallery(records, { ...options, visit(record, index) {
+        const row = record.value;
         let entry;
         try { entry = projectGalleryCatalogEntry(namespace, source, { id: row.id, kind: 'still', createdAt: row.createdAt, tags: row.tags }); }
-        catch (_) { skipped++; continue; }
-        if (ids.has(entry.recordId)) throw Error('静帧编号重复，请先核对原聊天；本次未更新目录');
-        ids.add(entry.recordId); entries.push({ id: entry.recordId, kind: entry.kind, createdAt: entry.createdAt, tags: entry.tags });
-    }
-    return { snapshot, entries, skipped };
+        catch (_) { skipped++; return; }
+        if (fingerprints.has(entry.recordId)) throw Error('静帧编号重复，请先核对原聊天；本次未更新目录');
+        fingerprints.set(entry.recordId, { index, sha256: record.sha256 });
+        entries.push({ id: entry.recordId, kind: entry.kind, createdAt: entry.createdAt, tags: entry.tags });
+    } });
+    return { snapshot, entries, skipped, fingerprints };
 }
+
+const sameSummary = (left, right) => left === null || right === null ? left === right
+    : ['count', 'bytes', 'sha256'].every(key => left?.[key] === right?.[key]);
 
 export function galleryDirectoryTarget(source) {
     const value = galleryCatalogSource(source);
@@ -44,26 +49,42 @@ export async function createGalleryDirectorySession({ getContext, epoch, guard =
     };
     try { await check(); store = createStore(); } catch (error) { client.close(); throw error; }
     const records = () => getContext()?.chatMetadata?.story_director_liminale?.storyboardImages;
-    const same = captured => { current(); if (chatGalleryReceiptText(records())?.text !== captured?.text) throw Error('静帧记录已变化，目录仅保留先前已收录的引用，请重新更新'); };
     return {
         namespace, source, assertCurrent: current,
         async refresh() {
             if (updating) throw Error('目录正在更新'); updating = true;
             try {
                 await check();
-                const projected = projectGalleryDirectorySnapshot(namespace, source, records());
-                const receipt = await client.verify(projected.snapshot ? JSON.parse(projected.snapshot.text) : undefined);
-                await check(); same(projected.snapshot);
-                if (!receipt.matches) throw Error('当前静帧尚未与服务器保存内容一致，未更新目录；请保存聊天后重试');
+                const captured = records(), length = captured?.length;
+                const changedSource = () => { throw Error('静帧记录已变化，目录仅保留先前已收录的引用，请重新更新'); };
+                const scope = () => { current(); if (records() !== captured || captured?.length !== length) changedSource(); return true; };
+                const projected = await projectGalleryDirectorySnapshot(namespace, source, captured, { guard: scope });
+                const same = async () => {
+                    scope(); const summary = captured === undefined ? null : await scanChatGallery(captured, { guard: scope });
+                    await check(); scope(); if (!sameSummary(summary, projected.snapshot)) changedSource();
+                };
+                const saved = async () => {
+                    const receipt = await client.inspect(); await check(); scope();
+                    if (!(projected.snapshot === null ? receipt.state === 'absent' : receipt.state === 'present' && sameSummary(receipt.gallery, projected.snapshot)))
+                        throw Error('当前静帧尚未与服务器保存内容一致，目录只保留已收录引用；请保存聊天后重试');
+                };
+                await saved(); await same();
                 let revision = (await store.page(namespace, { limit: 1 }, { isCurrent: current })).revision, changed = 0;
                 for (let at = 0; at < projected.entries.length; at += 200) {
-                    await check(); same(projected.snapshot);
-                    const result = await store.upsert(namespace, source, projected.entries.slice(at, at + 200), { expectedRevision: revision, isCurrent: current });
+                    await check(); scope();
+                    const batch = projected.entries.slice(at, at + 200), expected = batch.map(row => projected.fingerprints.get(row.id));
+                    const selected = expected.map(item => galleryDigestRow(captured, item.index));
+                    const batchScope = () => { scope(); if (expected.some((item, index) => galleryDigestRow(captured, item.index) !== selected[index])) changedSource(); return true; };
+                    // Only this batch is rehashed, not the complete library for every write.
+                    // A final complete scan catches edits to rows outside or behind it.
+                    await scanChatGallery(selected, { guard: batchScope, visit(record, index) { if (record.sha256 !== expected[index].sha256) changedSource(); } });
+                    await check(); batchScope();
+                    const result = await store.upsert(namespace, source, batch, { expectedRevision: revision, isCurrent: batchScope });
                     revision = result.revision; changed += result.changed;
                     // Let the host and cancellation events run between bounded batches.
                     await new Promise(resolve => setTimeout(resolve, 0));
                 }
-                await check(); same(projected.snapshot);
+                await saved(); await same();
                 return { indexed: projected.entries.length, skipped: projected.skipped, changed, revision };
             } finally { updating = false; }
         },
