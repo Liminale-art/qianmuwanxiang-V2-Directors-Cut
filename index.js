@@ -7,8 +7,8 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.242';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.242';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.243';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.243';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -262,12 +262,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.242';
+} from './qianmu-storyboard.js?v=1.59.243';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.242';
+const VERSION = '1.59.243';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
@@ -320,7 +320,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.242'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.243'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -540,9 +540,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.242'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.243'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.242')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.243')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -18903,7 +18903,7 @@ async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGu
 }
 
 async function storyboardCompilePrompt(root, { plan = null, quiet = false, automatic = false, stream = null, onPrepared = null, onStreamOutcome = null } = {}) {
-  let streamAttempt;const report=status=>{status=streamAttempt?.finish(status)||status;if(stream&&typeof onStreamOutcome==='function')try{onStreamOutcome({status});}catch(_){}return false;};
+  let streamAttempt,streamStatus;const report=async status=>{streamStatus=await streamAttempt?.finish(status)||status;if(streamStatus==='failed'&&status!==streamStatus)toast('取景检查点保存未确认，已暂停提前取景；已入队画面保留。','warning');if(stream&&typeof onStreamOutcome==='function')try{const result=onStreamOutcome({status:streamStatus});result?.catch?.(()=>{});}catch(_){}return false;};
   if(stream){if(root||plan||typeof onPrepared!=='function'||!Number.isSafeInteger(stream.floor)||stream.floor<0||Object.hasOwn(stream,'complete')&&typeof stream.complete!=='boolean'||Object.hasOwn(stream,'namespace')&&(typeof stream.namespace!=='string'||!/^st-user:.{1,504}$/.test(stream.namespace)))return false;automatic=true;stream={floor:stream.floor,signal:stream.signal,complete:stream.complete===true,trackAttempt:stream.trackAttempt===true,...(stream.namespace?{namespace:stream.namespace}:{})};}
   else if(onPrepared)return false;
   if (storyboardCompilerBusy) return report('busy');
@@ -18939,7 +18939,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     const contract = await featureRuntime.load('storyboardContract');
     inputGuard.assertCurrent();
     if(automatic||stream)context.streamCoverage=await contract.captureStoryboardStreamCoverage(context.compilerSources,[...state.logs,...storyboardGalleryRecords()],state.shotPlans,state.pipelineLogs);
-    if(stream?.trackAttempt&&!stream.complete)streamAttempt=await contract.beginStoryboardStreamAttempt(await contract.createStoryboardStreamPlanReference(context,inputGuard.streamFrame),context.streamCoverage?.scope,{state:storyboardState,message:()=>ctx().chat?.[context.floor],guard:()=>inputGuard.assertCurrent(),save:saveSettings,uid,createPlan:createStoryboardWorkflowTicket});
+    if(stream?.trackAttempt&&!stream.complete)streamAttempt=await contract.beginStoryboardCompilerStreamAttempt(context,inputGuard.streamFrame,{state:storyboardState,message:()=>ctx().chat?.[context.floor],guard:()=>inputGuard.assertCurrent(),save:saveSettings,uid,createPlan:createStoryboardWorkflowTicket});
     inputGuard.compilerAttempt=contract.createStoryboardCompilerAttempt({call:storyboardCallCompiler,guard:()=>inputGuard.assertCurrent(),uid,sanitize:sanitizeStoryboardDiagnosticData,startedAt,floor,
       model:(settings.apiProfiles||[]).find(item=>item.id===state.promptCompiler.apiProfileId)?.model||(settings.providerMode==='external'?settings.model:'')||''});
     // In a mixed batch, request only reachable closed-model expressions alongside pinned Comfy formats.
@@ -19000,7 +19000,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       ...(contractRequest.promptFormats?.length ? {promptFormats:contractRequest.promptFormats,maxOutputTokens:contractRequest.maxTokens} : {}),
       messages: contractRequest.messages,
     };
-    if(stream){await onPrepared({...await contract.prepareStoryboardStreamHandoff(result,context,inputGuard.streamFrame),context,compilerInput,inputGuard});inputGuard.assertCurrent();report(result.manualRequired?'failed':result.shouldGenerate?'ready':'waiting');return result.shouldGenerate===true&&!result.manualRequired;}
+    if(stream){await onPrepared({...await contract.prepareStoryboardStreamHandoff(result,context,inputGuard.streamFrame),context,compilerInput,inputGuard});inputGuard.assertCurrent();await report(result.manualRequired?'failed':result.shouldGenerate?'ready':'waiting');return streamStatus==='ready';}
     if (!result.shouldGenerate) {
       state.prompt = '';
       state.negative = '';
@@ -19102,10 +19102,10 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
     if(!resultAccepted)inputGuard.compilerAttempt?.fail(error,{store:storyboardStoreLog,archive:id=>storyboardArchivePipelineLog(id,state)});
     storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
-    if (!quiet||inputGuard.compilerAttempt||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
+    if (!quiet||inputGuard.compilerAttempt||/^(st_account_storage_|storyboard_stream_(attempt|checkpoint)$)/.test(error?.code||'')||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return report('failed');
   } finally {
-    streamAttempt?.finish('cancelled');
+    await streamAttempt?.finish('cancelled');
     inputGuard.dispose();
     storyboardCompilerBusy = false;
     storyboardScheduleAutomaticCapture();

@@ -11,12 +11,14 @@ import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAtt
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuation-host.js';
 import {createStoryboardStreamScheduler,runStoryboardStreamPass} from '../qianmu-storyboard-stream-scheduler.js';
+import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
 const editable=state=>copy(Object.fromEntries(['prompt','negative','promptDraft','target','floor','paragraphMode','manualParagraphIndex','pendingParagraphSelection','pendingCompilerStages','contentRating','shotPlans'].map(key=>[key,state[key]])));
 async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nShe reaches',wait=false}={}){
   const e=await compilerEnvironment(),host=e.context.ctx(),events=new EventEmitter(),controller=new AbortController();events.setMaxListeners(100);
+  const storage=streamCheckpointTransport();storage.configure();
   host.eventSource=events;host.chat.splice(0,host.chat.length,...Array.from({length:floor},(_,index)=>({mes:`earlier ${index}`,send_date:String(index),is_user:index%2===0})),
     {mes:text,name:'Alice',is_user:false,send_date:'live-start',gen_started:'live-generation',swipe_id:0});
   e.state.routing.enabled=false;e.state.prompt='MANUAL WORKBENCH';e.state.negative='manual exclusions';e.state.floor='99';e.state.target='gallery';
@@ -47,7 +49,7 @@ async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nSh
   });
   vm.runInContext(section('storyboardCompilerContext'),e.context);
   const onPrepared=async value=>{prepared=value;value.inputGuard.assertCurrent();await value.context.compilerSources.guard();if(preparedHook)await preparedHook(value);};
-  return {...e,host,events,controller,initial,calls,domEvents,run:options=>e.context.storyboardCompilePrompt(null,{quiet:true,stream:{floor,signal:controller.signal},onPrepared,...options}),
+  return {...e,host,events,controller,initial,calls,domEvents,storage,run:options=>e.context.storyboardCompilePrompt(null,{quiet:true,stream:{floor,signal:controller.signal},onPrepared,...options}),
     get prepared(){return prepared;},get counts(){return {requests,hostSaves,saves,renders,wakes};},
     set modelHook(value){modelHook=value;},set preparedHook(value){preparedHook=value;},set worldHook(value){worldHook=value;},
     assertReleased(){assert.equal(events.eventNames().reduce((sum,key)=>sum+events.listenerCount(key),0),0);assert.equal([...domEvents.values()].reduce((sum,rows)=>sum+rows.size,0),0);assert.equal(e.context.storyboardCompilerBusy,false);},
@@ -587,6 +589,68 @@ test('actual first incremental request observes its checkpoint before calling ei
   f.modelHook=()=>{observed++;assert.equal(f.state.shotPlans.length,1);assert.equal(f.state.shotPlans[0].streamAttempt.status,'preparing');assert.ok(f.counts.saves>0);};
   assert.equal((await trackedPass(f)).status,'advanced');assert.equal(observed,2);assert.equal(q.queue.length,1);
   assert.equal(f.state.shotPlans[0].streamAttempt.status,'ready');f.assertReleased();
+});
+
+test('actual first model request waits for ST readback, and records never contain model inputs',async()=>{
+  const f=await fixture(),q=installStreamQueue(f),held=deferred(),entered=deferred();let head=false;
+  f.storage.hook=async({path,options})=>{
+    if(path==='/api/files/upload')head=JSON.parse(Buffer.from(JSON.parse(options.body).data,'base64').toString('utf8')).schema==='qianmu.st-account-head.v1';
+    else if(head){entered.resolve();await held.promise;}
+  };
+  const pending=trackedPass(f);await entered.promise;assert.equal(f.counts.requests,0);assert.equal(q.queue.length,0);assert.equal(f.context.storyboardCompilerBusy,true);
+  held.resolve();assert.equal((await pending).status,'advanced');assert.equal(f.counts.requests,2);
+  const records=f.storage.checkpoints();assert.deepEqual(records.map(row=>row.attempt.status),['preparing','ready']);
+  assert.deepEqual(records.at(-1).attempt,copy(f.state.shotPlans[0].streamAttempt));
+  assert.doesNotMatch(JSON.stringify(records),/Alice reads|MANUAL WORKBENCH|prompt|apiKey/);f.assertReleased();
+});
+
+test('actual pass and busy ownership wait for settlement readback before reporting completion',async()=>{
+  const f=await fixture(),q=installStreamQueue(f),held=deferred(),entered=deferred();let heads=0,completed=false;
+  f.storage.hook=async({path,options})=>{
+    if(path==='/api/files/upload'&&JSON.parse(Buffer.from(JSON.parse(options.body).data,'base64').toString('utf8')).schema==='qianmu.st-account-head.v1')heads++;
+    else if(path.startsWith('/user/files/')&&heads===2){entered.resolve();await held.promise;}
+  };
+  const pending=trackedPass(f).then(result=>{completed=true;return result;});await entered.promise;
+  assert.equal(q.queue.length,1);assert.equal(completed,false);assert.equal(f.context.storyboardCompilerBusy,true);assert.equal(f.state.shotPlans[0].streamAttempt.status,'preparing');
+  held.resolve();assert.equal((await pending).status,'advanced');assert.equal(f.state.shotPlans[0].streamAttempt.status,'ready');f.assertReleased();
+});
+
+for(const phase of ['prepare','settle'])test(`actual lost ${phase} acknowledgement stops without replay and keeps accepted images`,async()=>{
+  const f=await fixture(),q=installStreamQueue(f);let heads=0,failures=0;
+  f.storage.hook=({path,options,files})=>{
+    if(path!=='/api/files/upload')return;
+    const {name,data}=JSON.parse(options.body),body=Buffer.from(data,'base64').toString('utf8');
+    if(JSON.parse(body).schema==='qianmu.st-account-head.v1'&&++heads===(phase==='prepare'?1:2)){
+      files.set(name,body);failures++;throw Error('simulated persisted head with lost acknowledgement');
+    }
+  };
+  const result=await trackedPass(f);assert.equal(result.status,'failed');assert.equal(failures,1);
+  assert.ok(f.notices.some(text=>phase==='settle'?/检查点保存未确认/.test(text):/画面整理失败/.test(text)));
+  assert.equal(f.counts.requests,phase==='prepare'?0:2);assert.equal(q.queue.length,phase==='prepare'?0:1);
+  assert.equal(f.state.shotPlans[0].streamAttempt.status,'failed');const calls=f.counts.requests;
+  f.host.chat[0].mes+=' another paragraph.\n\n';assert.equal((await trackedPass(f)).status,'failed');assert.equal(f.counts.requests,calls);assert.equal(failures,1);f.assertReleased();
+});
+
+test('actual missing local plan cannot overwrite the remote checkpoint to start a fresh incremental request',async()=>{
+  const f=await fixture({wait:true}),q=installStreamQueue(f);assert.equal((await trackedPass(f)).status,'waiting');
+  const oldFiles=[...f.storage.files.entries()],requests=f.counts.requests;f.state.shotPlans=[];f.host.chat[0].mes+=' another paragraph.\n\n';
+  assert.equal((await trackedPass(f)).status,'failed');assert.equal(f.counts.requests,requests);assert.deepEqual([...f.storage.files.entries()],oldFiles);
+  assert.equal(q.queue.length,0);assert.equal(f.state.shotPlans[0].streamAttempt.status,'failed');f.assertReleased();
+});
+
+for(const kind of ['account','source'])test(`actual ${kind} change while saving prevents either model stage`,async()=>{
+  const f=await fixture(),q=installStreamQueue(f);let heads=0;
+  f.storage.hook=({path,options})=>{
+    if(path==='/api/files/upload'&&JSON.parse(Buffer.from(JSON.parse(options.body).data,'base64').toString('utf8')).schema==='qianmu.st-account-head.v1'&&++heads===1){
+      if(kind==='account')f.storage.namespace='st-user:other';else f.controller.abort();
+    }
+  };
+  assert.ok(['failed','cancelled'].includes((await trackedPass(f)).status));assert.equal(f.counts.requests,0);assert.equal(q.queue.length,0);f.assertReleased();
+});
+
+test('ordinary and untracked preparation open no checkpoint storage, and rejecting observers are isolated',async()=>{
+  const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run({onStreamOutcome:()=>Promise.reject(Error('optional observer'))}),true);
+  assert.equal(f.storage.calls.length,0);assert.equal(q.queue.length,1);f.assertReleased();
 });
 
 for(const status of ['preparing','failed','cancelled'])test(`actual restored ${status} checkpoint blocks both partial and finished-floor replay before a model call`,async()=>{

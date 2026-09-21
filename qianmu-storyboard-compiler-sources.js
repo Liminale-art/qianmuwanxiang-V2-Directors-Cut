@@ -1,15 +1,17 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.242';
-import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.242';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.242';
-import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.242';
-import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.242';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.243';
+import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.243';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.243';
+import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.243';
+import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.243';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
 import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
-import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.242';
+import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.243';
 import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
-export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.242';
+import {beginStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.243';
+import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.243';
+export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.243';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
 const windows = new WeakMap();
@@ -42,6 +44,19 @@ export async function prepareStoryboardStreamHandoff(result,context,frame){
 export async function createStoryboardStreamPlanReference(context,frame){
   if(!windows.has(context.compilerSources)||!frame)throw changed();
   return bindCoverageReference(await createStoryboardStreamMessageReference(frame),context.compilerSources,context.streamCoverage);
+}
+// Namespace is borrowed only from the authenticated compiler window, never
+// from a form field or stream option. No storage is opened for ordinary work.
+export async function beginStoryboardCompilerStreamAttempt(context,frame,d){
+  const window=context.compilerSources,owner=windows.get(window);
+  if(!owner)throw changed();window.assertCurrent();
+  const reference=await createStoryboardStreamPlanReference(context,frame);
+  return beginStoryboardStreamAttempt(reference,context.streamCoverage?.scope,{...d,
+    openCheckpoint:({reference:root,planId,guard})=>createStoryboardStreamCheckpointStorage({
+      scope:{namespace:owner.namespace,chatKey:root.chatKey,messageKey:root.messageKey,revisionId:root.revisionId,planId},
+      guard:()=>{window.assertCurrent();return guard();},
+    }),
+  });
 }
 export async function createStoryboardFinalStreamReference(window,coverage=null){
   const scope=windows.get(window);

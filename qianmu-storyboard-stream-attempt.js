@@ -1,4 +1,4 @@
-import {normalizeStoryboardStreamReference,storyboardStreamBudgetReference,storyboardStreamDigest} from './qianmu-storyboard-stream-reference.js?v=1.59.242';
+import {normalizeStoryboardStreamReference,storyboardStreamBudgetReference,storyboardStreamDigest} from './qianmu-storyboard-stream-reference.js?v=1.59.243';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const fail=message=>{throw Object.assign(Error(message),{code:'storyboard_stream_attempt'});};
 const fields=['version','requestId','sourceDigest','prefixLength','status','passes','updatedAt'];
@@ -50,15 +50,37 @@ export async function beginStoryboardStreamAttempt(reference,scope,d){
   if(record.invalid)fail('提前取景检查点无效，未请求模型');
   if(!plan){plan=d.createPlan({id,messageRef:copy(root),chatKey:root.chatKey,floor:reference.lastKnownFloor,origin:'automatic',autoGenerate:true});plan.status='screening';state.shotPlans=[plan,...state.shotPlans];}
   plan.streamAttempt=record;
-  try{d.guard();d.save();d.guard();}catch(error){record.status='failed';throw error;}
-  let ended=false;
+  const started=copy(record),signature=JSON.stringify(started);
+  const owned=()=>{
+    d.guard();
+    if(d.state()!==state||!state.shotPlans.includes(plan)||plan.streamAttempt!==record||JSON.stringify(record)!==signature
+      ||plan.id!==id||plan.origin!=='automatic'||plan.chatKey!==root.chatKey||plan.revisionId!==root.revisionId||plan.messageRef?.messageKey!==root.messageKey
+      ||plan.status==='cancelled'||plan.promptLocked||plan.manualReviewRequired)fail('取景计划或检查点已变化，未继续请求或保存');
+    return true;
+  };
+  let checkpoint,finished;
+  const close=()=>{try{checkpoint?.close();}catch(_){}};
+  const markFailed=()=>{if(plan.streamAttempt===record){record.status='failed';if(plan.status==='screening'&&!plan.shots.length)plan.status='failed';}};
+  try{
+    owned();d.save();owned();
+    if(typeof d.openCheckpoint!=='function')fail('取景检查点确认保存未就绪，未请求模型');
+    checkpoint=await d.openCheckpoint({reference:root,planId:id,guard:owned});owned();
+    await checkpoint.prepare(started,previous);owned();
+  }catch(error){markFailed();close();throw error;}
   return Object.freeze({plan,finish(status){
-    if(ended)return status;ended=true;
-    if(d.state()!==state||!state.shotPlans.includes(plan)||plan.streamAttempt!==record)return 'cancelled';
-    try{d.guard();}catch(_){return 'cancelled';} // Do not save a captured record through a newly selected chat.
-    record.status=['ready','waiting','failed','cancelled'].includes(status)?status:'failed';record.updatedAt=Date.now();
-    if(plan.status==='screening'&&!plan.shots.length)plan.status=record.status==='waiting'?'idle':record.status==='ready'?'prompt_ready':record.status;
-    try{d.save();}catch(_){record.status='failed';return 'failed';}
-    return record.status;
+    // A report and its finally block share the same completion, including errors.
+    if(finished)return finished;
+    finished=(async()=>{
+      try{
+        try{owned();}catch(_){return 'cancelled';}
+        const next=['ready','waiting','failed','cancelled'].includes(status)?status:'failed';
+        const receipt=await checkpoint.settle(started,next);owned();
+        Object.assign(record,receipt.attempt);
+        if(plan.status==='screening'&&!plan.shots.length)plan.status=record.status==='waiting'?'idle':record.status==='ready'?'prompt_ready':record.status;
+        d.save();return record.status;
+      }catch(_){markFailed();return 'failed';}
+      finally{close();}
+    })();
+    return finished;
   }});
 }
