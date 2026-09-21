@@ -49,3 +49,16 @@ test('a missing or duplicated current row is not satisfied by the matching unit 
   const f=fixture();f.documents[names[1]]=f.documents[names[1]].replace('| R2-04 | Development','| R2-05 | Development');assert.throws(()=>check(f),{code:'current_unit_missing_from_table'});
   const g=fixture();g.documents[names[0]]=g.documents[names[0]].replace('## Historical','| R2-04 | Duplicate |\n\n## Historical');assert.throws(()=>check(g),{code:'current_unit_table_ambiguous'});
 });
+
+test('the master introduction banner cannot retain an old version while its snapshot is current',()=>{
+  const f=fixture();f.documents[names[0]]=f.documents[names[0]].replace('# Private fixture','# Private fixture\n\n> 状态：**latest v1.2.2**');
+  assert.throws(()=>check(f),{code:'current_banner_stale'});f.documents[names[0]]=f.documents[names[0]].replace('v1.2.2','v1.2.3');assert.equal(check(f).status,'consistent');
+});
+test('ambiguous introduction status banners fail while historical block quotes remain historical',()=>{
+  const f=fixture();f.documents[names[0]]=f.documents[names[0]].replace('# Private fixture','# Private fixture\n\n> 状态：v1.2.3\n> 状态：v1.2.3');
+  assert.throws(()=>check(f),{code:'current_banner_ambiguous'});const g=fixture();g.documents[names[0]]+='\n> 状态：v1.1.1';assert.equal(check(g).status,'consistent');
+});
+test('unit table versions and commit identifiers match complete tokens, not longer prefix collisions',()=>{
+  for(const patch of ['aaaaaaa / v1.2.30','aaaaaaa0 / v1.2.3']){const f=fixture();f.documents[names[0]]=f.documents[names[0]].replace('aaaaaaa / v1.2.3',patch);
+    assert.throws(()=>check(f),{code:'current_unit_table_stale'});}
+});

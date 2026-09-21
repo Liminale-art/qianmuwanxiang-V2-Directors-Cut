@@ -33,6 +33,10 @@ export function checkProjectHandoff({head,version,packageVersion,entryVersion,do
   if(present.length!==HANDOFF_DOCUMENTS.length)fail('private_documents_incomplete');
   const units=[];
   for(const file of HANDOFF_DOCUMENTS){
+    const prelude=documents[file].replaceAll('**','').split(/^## /m,1)[0];
+    const banners=prelude.split(/\r?\n/).filter(line=>/^>\s*状态：/.test(line));
+    if(banners.length>1)fail('current_banner_ambiguous');
+    for(const match of (banners[0]||'').matchAll(/\bv(\d+\.\d+\.\d+)\b/g))if(match[1]!==version)fail('current_banner_stale');
     const lines=snapshot(documents[file]);
     const commits=lines.filter(line=>/^-\s*(分支与代码节点|当前提交|提交)：/.test(line));
     if(commits.length!==1)fail('current_commit_ambiguous');
@@ -47,7 +51,8 @@ export function checkProjectHandoff({head,version,packageVersion,entryVersion,do
   if(new Set(units).size!==1)fail('current_units_disagree');
   for(const file of HANDOFF_DOCUMENTS.slice(0,2)){
     const row=currentTableRow(documents[file],units[0]);
-    if(!row.includes(`v${version}`)||!row.includes(head.slice(0,7)))fail('current_unit_table_stale');
+    if(![...row.matchAll(/\bv(\d+\.\d+\.\d+)\b/g)].some(match=>match[1]===version)
+      ||![...row.matchAll(/\b[a-f0-9]{7,40}\b/g)].some(match=>match[0]===head||match[0]===head.slice(0,7)))fail('current_unit_table_stale');
   }
   return {status:'consistent',head,version,currentUnit:units[0],checkedDocuments:3,privateFilesExcluded:4};
 }
