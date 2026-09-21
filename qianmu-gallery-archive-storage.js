@@ -6,7 +6,7 @@ import {captureGalleryArchiveJson,encodeGalleryIndexPage,encodeGalleryIndexManif
 import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRecord,inspectGalleryArchiveRecord,GALLERY_ARCHIVE_RECORD_BYTES} from './qianmu-gallery-archive-record.js';
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
-import {CHAT_GALLERY_RECEIPT_LIMITS} from './qianmu-chat-gallery-receipt.js';
+import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_storage',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
@@ -66,24 +66,12 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
     const content=JSON.stringify(captureGalleryArchiveJson(value,LIMIT.pageBytes));
     if(content!==encoded.text)fail('分页保全读回不一致，未覆盖已有版本');
   }
-  function sourceReceipt(raw){
-    const value=captureGalleryArchiveJson(raw,4096),keys=Object.keys(value||{});
-    if(!value||Array.isArray(value)||keys.length!==4||!['count','bytes','sha256','proof'].every(key=>keys.includes(key))
-      ||value.proof!=='read-only-snapshot'||!Number.isSafeInteger(value.count)||value.count<0||value.count>CHAT_GALLERY_RECEIPT_LIMITS.records
-      ||!Number.isSafeInteger(value.bytes)||value.bytes<2||value.bytes>CHAT_GALLERY_RECEIPT_LIMITS.bytes||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/.test(value.sha256))fail('图库版本缺少准确已保存来源摘要');
-    return {count:value.count,bytes:value.bytes,sha256:value.sha256,proof:value.proof};
-  }
-  const sourceSlot=async receipt=>`gallery-source-${await vibeDigest(JSON.stringify({scope:owner,receipt}))}`;
+  const sourceSlot=receipt=>galleryArchiveSourceSlot(owner,receipt);
   async function openHead(head){
     check();const reader=await createGalleryPageIndexReader({source:owner,head,guard:check,readPage:(ref,{signal})=>indexText('page',ref,signal)});check();readers.add(reader);
     return Object.freeze({page:input=>reader.page(input),close(){readers.delete(reader);reader.close();}});
   }
-  function versionValue(value,expected){
-    const copy=captureGalleryArchiveJson(value,8192);
-    if(!copy||Array.isArray(copy)||Object.keys(copy).length!==4||copy.schema!=='qianmu.gallery.source-version.v1'
-      ||!same(galleryArchiveScope(copy.scope),owner)||!same(sourceReceipt(copy.sourceReceipt),expected))fail('图库版本来源不符，未改写已有目录');
-    return {schema:copy.schema,scope:owner,sourceReceipt:expected,manifest:galleryArchiveObjectReference(copy.manifest,LIMIT.manifestBytes)};
-  }
+  const versionValue=(value,expected)=>galleryArchiveSourceVersion(value,owner,expected);
   return Object.freeze({scope:Object.freeze({...owner}),
     async preserveRecord(raw){
       // Capture before the first await so editing the live record cannot change
