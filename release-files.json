@@ -353,6 +353,7 @@
     "qianmu-world-automatic-storage.js",
     "qianmu-world-image-admission.js",
     "qianmu-world-automatic.js",
+    "qianmu-world-automatic-host.js",
     "qianmu-character-shot-edit.js",
     "qianmu-character-shot-view.js",
     "qianmu-character-reference.js",

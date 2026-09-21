@@ -1,5 +1,5 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {WORLD_AUTOMATIC_APPROVAL_SCHEMA,normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.253';
+import {WORLD_AUTOMATIC_APPROVAL_SCHEMA,normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.254';
 
 const schema='qianmu.world-automatic-attempt.v1';
 const sourceFields=['schema','chatKey','revisionId','field','itemId'];

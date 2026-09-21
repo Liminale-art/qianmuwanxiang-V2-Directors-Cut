@@ -1,7 +1,8 @@
-import {createWorldAutomaticStorage} from './qianmu-world-automatic-storage.js?v=1.59.253';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.253';
+import {createWorldAutomaticStorage} from './qianmu-world-automatic-storage.js?v=1.59.254';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.254';
 import {normalizeStoryboardPromptFormats,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings} from './qianmu-prompt-formats.js';
 import {characterReferenceChoice} from './qianmu-character-reference.js';
+import {createWorldAutomaticRepairBudget} from './qianmu-world-automatic-host.js?v=1.59.254';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'world_automatic_preparation'});};
 export async function beginWorldAutomaticAttempt({namespace,source,guard,createStorage}={}){
@@ -29,7 +30,7 @@ export async function verifySavedWorldAutomaticApproval(value,{guard,createStora
 
 // Only render the already scoped world facts. This is not another narrative
 // planner, a workflow editor, or permission to recover a failed image request.
-export async function prepareAutomaticWorldShot({shot,promptFormats,prepareRenderings,guard,useReference=false}={}){
+export async function prepareAutomaticWorldShot({shot,promptFormats,prepareRenderings,guard,useReference=false,repairBudget=createWorldAutomaticRepairBudget()}={}){
   if(typeof guard!=='function'||typeof prepareRenderings!=='function')fail('造物之眼提示整理尚未就绪');
   const formats=normalizeStoryboardPromptFormats(promptFormats);if(!formats.length)fail('当前工作流尚未声明提示格式，未自动创作');
   let prepared=structuredClone(shot);const warnings=[];
@@ -48,7 +49,7 @@ export async function prepareAutomaticWorldShot({shot,promptFormats,prepareRende
     }catch(error){
       await guard();
       if(!['world_shot_preparation','storyboard_prompt_format'].includes(error?.code))throw error;
-      if(repairAttempt===3)fail('画面提示格式仍不正确（已修复3次），本镜未生图');
+      if(repairAttempt===3||repairBudget?.take?.()!==true)fail('画面提示格式仍不正确（本批已修复3次），本镜未生图');
       previousError=String(error?.message||'提示格式不符').slice(0,240);
     }
   }

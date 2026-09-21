@@ -1,6 +1,6 @@
 // Manual world-camera preparation only. No inference, archive mutation or media submission.
 import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js';
-import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.253';
+import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.254';
 import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js';
 import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyboardPromptRenderingSource,
   storyboardPromptFormatBudget,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings,resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
