@@ -8,6 +8,8 @@ import {
 } from '../qianmu-storyboard.js';
 
 const browserSource = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+const routeSource = fs.readFileSync(new URL('../qianmu-ensemble-route-view.js', import.meta.url), 'utf8');
+const ensembleSource = fs.readFileSync(new URL('../qianmu-ensemble-view.js', import.meta.url), 'utf8');
 
 assert.deepEqual(
   STORYBOARD_MODEL_REGISTRY.novel.map((item) => item.id),
@@ -79,10 +81,12 @@ assert.doesNotMatch(browserSource, /modelPresets[\s\S]*item\.model === profile\.
 assert.match(browserSource, /const channelPresets = connection\.group\?\.presets \|\| \[\]/, 'API presets must be listed by image channel');
 assert.match(browserSource, /const legacy = profileOverride \|\| state\.profiles\[providerId\][\s\S]*resolveStoryboardProfileBinding\(providerId, legacy\)/, 'the selected image model must come from drawing settings, not the connection preset');
 assert.doesNotMatch(browserSource, /data-storyboard-routing-mode=/, 'the old single-model versus ensemble selector must be removed');
-assert.match(browserSource, /class="sd-storyboard-routing-enabled"/, 'the router needs one master switch');
+assert.match(routeSource, /class="sd-storyboard-routing-enabled"/, 'the retained legacy router has its original master switch');
+assert.match(ensembleSource, /data-ensemble-action="enabled"/, 'native styles use the per-chat enable control');
+assert.match(browserSource, /renderEnsembleRoutePanel\(state/, 'the production entry must mount the new route renderer');
 assert.match(browserSource, /renderStoryboardModelPicker\(provider.id, modelId, target.capabilityModelId, true\)/, 'each assignment uses the shared searchable model selector');
 assert.doesNotMatch(browserSource, /sd-storyboard-route-rating|仅 SFW|仅 NSFW/, 'the configuration UI must not expose redundant SFW/NSFW routing states');
-assert.match(browserSource, /sd-storyboard-safety-notice[\s\S]*受限制模型[\s\S]*安全但叙事一致/, 'the safety policy must be explained once in configuration');
+assert.match(routeSource, /sd-storyboard-safety-notice[\s\S]*受限制模型[\s\S]*安全但叙事一致/, 'the safety policy must be explained once in configuration');
 assert.match(browserSource, /function storyboardAdaptShotForModel[\s\S]*contentPolicy[\s\S]*safePrompt/, 'filtered models must receive the compiler-provided safe narrative equivalent');
 assert.match(browserSource, /function renderStoryboardParameterVibes[\s\S]*!capabilities\.supportsVibe[\s\S]*sd-vibe-workbench-strip/, 'only capable workbenches show Vibe selection entries; unsupported families can still manage the independent library');
 assert.match(browserSource, /modelId: route\.modelId[\s\S]*connectionPresetId: route\.connectionPresetId/, 'the routed concrete model must reach the generation job');

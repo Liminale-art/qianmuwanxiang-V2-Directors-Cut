@@ -1,5 +1,5 @@
-import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.270';
-import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.270';
+import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.271';
+import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.271';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const key=route=>JSON.stringify([route.providerId,route.modelId,route.capabilityModelId||'',route.connectionPresetId||'',route.parameterPresetId||'',route.comfyWorkflowBinding,route.comfyCharacterEnabled,route.comfyReferences]);

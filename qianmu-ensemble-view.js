@@ -1,5 +1,5 @@
 import {qianmuIconMarkup} from './qianmu-icon-renderer.js';
-import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.270';
+import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.271';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const glyph=name=>qianmuIconMarkup(`qm-regular-${name}`);
 const icon=(action,label,name,disabled=false,extra='')=>`<button type="button" class="sd-ensemble-icon" data-ensemble-action="${action}" aria-label="${escape(label)}" title="${escape(label)}" ${disabled?'disabled':''} ${extra}>${glyph(name)}</button>`;
@@ -31,7 +31,7 @@ export function mountEnsembleLibrary(root,options){
     const top=root.scrollTop,focus=root.ownerDocument?.activeElement,field=root.contains(focus)?focus?.dataset?.ensembleField:null;
     root.innerHTML=renderEnsembleLibrary(view);root.scrollTop=top;if(field)root.querySelector(`[data-ensemble-field="${field}"]`)?.focus({preventScroll:true});
   }
-  model=createEnsembleLibraryEditor({...options,onChange:paint});paint(model.snapshot(),'view');
+  model=options.model||createEnsembleLibraryEditor(options);const unsubscribe=model.subscribe(paint);paint(model.snapshot(),'view');
   const report=error=>{if(alive){const status=root.querySelector('[role=status]');if(status)status.textContent=['ensemble_editor','storyboard_style_selection'].includes(error?.code)?error.message:'操作未完成，草稿保留，请刷新后核对。';}};
   const click=event=>{const button=event.target.closest?.('[data-ensemble-action]');if(!button||!root.contains(button)||button.disabled)return;
     const action=button.dataset.ensembleAction,id=button.dataset.id;
@@ -48,5 +48,5 @@ export function mountEnsembleLibrary(root,options){
   const change=event=>{try{const field=event.target.dataset?.ensembleField;if(field&&event.target.tagName==='SELECT')model.setField(field,event.target.value);else if(event.target.matches?.('[data-ensemble-archived]'))model.showArchived(event.target.checked);}catch(error){report(error);}};
   root.addEventListener('click',click);root.addEventListener('input',input);root.addEventListener('change',change);
   const ready=model.load();ready.catch(report);
-  return {ready,model,close(){alive=false;root.removeEventListener('click',click);root.removeEventListener('input',input);root.removeEventListener('change',change);model.close();}};
+  return {ready,model,close(){alive=false;unsubscribe();root.removeEventListener('click',click);root.removeEventListener('input',input);root.removeEventListener('change',change);if(!options.model)model.close();}};
 }

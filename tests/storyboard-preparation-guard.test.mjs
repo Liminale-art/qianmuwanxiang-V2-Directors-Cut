@@ -82,6 +82,11 @@ test('extracted guard releases all operation-owned resources and document listen
   assert.equal([...e.events.values()].reduce((n,set)=>n+set.size,0),0);
 });
 
+test('native library mutations invalidate a running preparation even without a form input event',()=>{
+  const e=environment();e.context.storyboardEnsembleRevision=0;const guard=e.context.storyboardCreatePreparationGuard(e.state);
+  e.context.storyboardEnsembleRevision++;assert.throws(()=>guard.assertCurrent(),{code:'storyboard_input_changed'});guard.dispose();
+});
+
 test('actual context and preparation lifecycle invalidate restored dependency edits before repair/save and release borrowed sources',async()=>{
   for(const invalidate of [false,true]){
     const e=environment(),emitter=new EventEmitter(),host={chat:e.chat,chatId:'chat-a',characterId:0,

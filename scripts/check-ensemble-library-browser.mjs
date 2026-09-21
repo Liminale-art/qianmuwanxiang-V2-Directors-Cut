@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=(await Promise.all(['style.css','qianmu-theme-skins.css'].map(p=>readFile(new URL('../'+p,import.meta.url),'utf8')))).join('\n');
 const out=new URL('../dist/local-qa/ensemble-library/',import.meta.url);await mkdir(out,{recursive:true});
-const assets=new Set(['qianmu-theme-surfaces.js','qianmu-theme-palette.js','qianmu-ensemble-view.js','qianmu-ensemble-editor.js','qianmu-ensemble-selection.js','qianmu-prompt-formats.js','qianmu-icon-renderer.js']);
+const assets=new Set(['qianmu-theme-surfaces.js','qianmu-theme-palette.js','qianmu-ensemble-view.js','qianmu-ensemble-editor.js','qianmu-ensemble-selection.js','qianmu-prompt-formats.js','qianmu-icon-renderer.js','qianmu-ensemble-origin.js','qianmu-ensemble-ui.js','qianmu-ensemble-route-view.js','qianmu-ensemble-storage.js','qianmu-st-account-storage.js','qianmu-json-input.js']);
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext(),page=await context.newPage(),errors=[],checks=[],screenshots=[];let external=0;
 page.on('pageerror',error=>errors.push(error.message));
@@ -19,20 +19,27 @@ await context.route('**/*',async route=>{
 });
 try{
   await page.goto('https://qianmu.test/');await page.addStyleTag({content:css});
-  await page.evaluate(async()=>{window.theme=await import('./qianmu-theme-surfaces.js');window.module=await import('./qianmu-ensemble-view.js');});
+  await page.evaluate(async()=>{window.theme=await import('./qianmu-theme-surfaces.js');window.module=await import('./qianmu-ensemble-ui.js');window.routeView=await import('./qianmu-ensemble-route-view.js');});
   for(const width of [320,393,1280])for(const skin of ['classic','editorial','glass'])for(const mode of ['light','dark']){
     await page.setViewportSize({width,height:1000});
     await page.evaluate(async({skin,mode})=>{
-      window.mount?.close();window.controller?.dispose();
+      window.mount?.close();window.libraryUi?.dispose();window.controller?.dispose();
       document.body.innerHTML='<main id="story-director-modal" class="sd-storyboard-mode sd-theme-'+mode+' open"><section class="sd-window"><main class="sd-body sd-storyboard-body"><div class="sd-storyboard-root"><header class="sd-storyboard-titlebar"><span>镜组</span></header><div class="sd-storyboard-scroll"><div class="sd-storyboard-create"><div id="fixture"></div></div></div><nav class="sd-storyboard-nav"></nav></div></main></section></main>';
       const root=document.getElementById('story-director-modal');window.controller=theme.createQianmuThemeSurfaceController();controller.register(root);if(skin!=='classic')controller.setTheme({theme:skin,mode,accent:'#719782'});
       const namespace='st-user:synthetic-browser-account',chatKey='synthetic-chat';window.stats={reads:0,writes:0};const view=value=>({value:structuredClone(value)});
       let library=view({schema:'qianmu.ensemble.library.v1',namespace,schemes:[{id:'ink',revision:'r1',name:'留白水墨 · 室内静谧',description:'适用于静默的室内、回忆与留白；保留叙事既定镜头，只匹配绘制风格。',tags:['静谧','留白'],archived:false,binding:{routeId:'nai',artistPresetId:'ink'}},{id:'photo',revision:'r1',name:'电影感写实',description:'适用于城市远景与自然环境',tags:['风景'],archived:false,binding:{routeId:'comfy',artistPresetId:''}}]});
       let selection=view({schema:'qianmu.ensemble.chat-selection.v1',namespace,chatKey,revision:'r1',enabled:false,schemeIds:[],styleLock:true});
-      const store={namespace,chatKey,readLibrary:async()=>{stats.reads++;return library;},readSelection:async()=>{stats.reads++;return selection;},saveLibrary:async(value,expected)=>{if(expected!==library)throw Error('fixture conflict');stats.writes++;return library=view(value);},saveSelection:async(value,expected)=>{if(expected!==selection)throw Error('fixture conflict');stats.writes++;return selection=view(value);}};
-      window.mount=module.mountEnsembleLibrary(document.getElementById('fixture'),{store,chatKey,isCurrent:()=>true,readTargets:()=>[{id:'nai',name:'日常插图',providerLabel:'NAI',artistCapable:true},{id:'comfy',name:'固定工作流',providerLabel:'Comfy',artistCapable:false}],readArtists:()=>[{id:'ink',name:'水墨画师'}]});await mount.ready;
+      const store={namespace,chatKey,readLibrary:async()=>{stats.reads++;return library;},readSelection:async()=>{stats.reads++;return selection;},saveLibrary:async(value,expected)=>{if(expected!==library)throw Error('fixture conflict');stats.writes++;return library=view(value);},saveSelection:async(value,expected)=>{if(expected!==selection)throw Error('fixture conflict');stats.writes++;return selection=view(value);},close(){}};
+      window.libraryState={routing:{enabled:false,rules:[{id:'nai',name:'日常绘制线路',enabled:true,target:{providerId:'novel'}}]},collapsedCards:{'routing-rules':true}};
+      document.getElementById('fixture').innerHTML=routeView.renderEnsembleRoutePanel(libraryState,{targetOptions:()=>'',shotTypes:{},templates:{},policy:{minImages:1,maxImages:3,concurrency:2}});
+      window.libraryUi=module.createStoryboardEnsembleController({state:libraryState,chatKey,isCurrent:()=>true,resolveNamespace:async()=>namespace,createStore:async()=>store,changed:()=>{},publish:()=>{},readTargets:()=>[{id:'nai',name:'日常插图',providerLabel:'NAI',artistCapable:true},{id:'comfy',name:'固定工作流',providerLabel:'Comfy',artistCapable:false}],readArtists:()=>[{id:'ink',name:'水墨画师'}]});
+      await libraryUi.mount(document.querySelector('.sd-ensemble-library-host'));window.mount={model:libraryUi.model,close:()=>libraryUi.detach()};
     },{skin,mode});
     const key=[width,skin,mode].join('/');
+    await page.locator('[data-storyboard-card="routing-rules"] summary').click();
+    const routeGeometry=await page.locator('.sd-storyboard-route-rule>div:first-child').evaluate(row=>{const field=row.querySelector('input').getBoundingClientRect(),button=row.querySelector('button').getBoundingClientRect(),bounds=row.getBoundingClientRect();return {aligned:Math.abs(field.y-button.y)<1&&Math.abs(field.height-button.height)<1,contained:field.left>=bounds.left-1&&button.right<=bounds.right+1,field:{y:field.y,h:field.height},button:{y:button.y,h:button.height}};});
+    assert.equal(routeGeometry.aligned,true,key+' route name/delete '+JSON.stringify(routeGeometry));assert.equal(routeGeometry.contained,true,key+' route bounds');
+    await page.locator('[data-storyboard-card="routing-rules"] summary').click();
     await page.locator('[data-ensemble-action=edit][data-id=ink]').click();
     const before=await page.evaluate(()=>{window.originalInput=document.querySelector('[data-ensemble-field=name]');originalInput.focus();originalInput.setSelectionRange(2,2);return stats.reads;});
     await page.locator('[data-ensemble-field=name]').press('ArrowLeft');
@@ -56,6 +63,7 @@ try{
     await page.locator('[data-ensemble-action=toggle][data-id=ink]').click();await page.waitForFunction(()=>!mount.model.snapshot().busy);
     await page.locator('[data-ensemble-action=enabled]').click();await page.waitForFunction(()=>!mount.model.snapshot().busy);
     assert.equal(await page.locator('[data-ensemble-action=enabled]').getAttribute('aria-pressed'),'true',key);
+    assert.equal(await page.evaluate(()=>libraryState.routing.styleLibrary),true,key);
     await page.evaluate(()=>{window.originalSearch=document.querySelector('[data-ensemble-search]');});
     await page.locator('[data-ensemble-search]').fill('不存在');
     assert.equal(await page.locator('.sd-ensemble-scheme').count(),0,key);
@@ -68,6 +76,8 @@ try{
     await page.locator('[data-ensemble-action=archive][data-id=ink]').click();await page.waitForFunction(()=>!mount.model.snapshot().busy);
     assert.equal(await page.locator('.sd-ensemble-scheme').count(),0,key);
     assert.deepEqual(await page.evaluate(()=>({reads:stats.reads,writes:stats.writes,selected:mount.model.snapshot().selection.schemeIds})),{reads:2,writes:5,selected:['ink']},key);
+    await page.evaluate(async()=>{libraryUi.detach();await libraryUi.mount(document.querySelector('.sd-ensemble-library-host'));});
+    assert.equal(await page.evaluate(()=>stats.reads),2,key+' remount cache');
     checks.push(key);
   }
   assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({passed:checks.length,errors,external,screenshots,scope:'real DOM, local theme and synthetic storage; no production ST, mobile device, cloud or paid-model acceptance'}));

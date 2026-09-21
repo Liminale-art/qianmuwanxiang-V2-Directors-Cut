@@ -7,12 +7,13 @@ import { normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } f
 
 const source = await readFile(new URL('../../index.js', import.meta.url), 'utf8');
 const preparationGuardSource=(await readFile(new URL('../../qianmu-storyboard-preparation-guard.js',import.meta.url),'utf8')).replace(/^export /gm,'');
+const ensembleRouteSource=(await readFile(new URL('../../qianmu-ensemble-route-view.js',import.meta.url),'utf8')).replace(/^export /gm,'');
 export function storyboardFunctionSource(name) {
   const match = new RegExp(`^(?:async )?function ${name}\\(`, 'm').exec(source);
   if (!match) throw new Error(`Missing renderer: ${name}`);
   const tail = source.slice(match.index), next = tail.slice(1).search(/^(?:async )?function /m);
   const body=next < 0 ? tail : tail.slice(0, next + 1);
-  return name==='storyboardCreatePreparationGuard'?preparationGuardSource+'\n'+body:body;
+  return name==='storyboardCreatePreparationGuard'?preparationGuardSource+'\n'+body:name==='renderStoryboardRouting'?ensembleRouteSource+'\n'+body:body;
 }
 
 export function createStoryboardFormFixture({ family = 'novel', enabled = true, workflow = '', connection = {} } = {}) {

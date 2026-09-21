@@ -12,6 +12,7 @@ import {
 } from '../qianmu-storyboard.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const routeSource = await readFile(new URL('../qianmu-ensemble-route-view.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const contractSource = await readFile(new URL('../qianmu-storyboard-contract.js', import.meta.url), 'utf8');
 
@@ -82,7 +83,7 @@ const inlineRender = source.slice(source.indexOf('function storyboardRenderInlin
 assert.match(inlineRender, /plan\.origin !== 'manual_supplement'/, 'only an explicitly requested manual supplement may expose an intermediate placeholder');
 assert.doesNotMatch(inlineRender, /plan\.origin === 'automatic'[\s\S]*is-pending/, 'automatic intermediate states stay out of the immersive chat surface');
 assert.match(source, /data-storyboard-chat-action="edit"[\s\S]*data-storyboard-chat-action="redraw"/, 'completed images retain edit and redraw escape hatches');
-assert.match(source, /sd-storyboard-safety-notice[\s\S]*不在生成结果下重复提示/);
+assert.match(routeSource, /sd-storyboard-safety-notice[\s\S]*不在生成结果下重复提示/);
 assert.match(css, /\.sd-storyboard-safety-notice/);
 
 console.log('Storyboard v7 automatic experience contract OK');

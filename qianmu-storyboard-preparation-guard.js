@@ -26,7 +26,7 @@ export function createStoryboardPreparationGuard(state, { plan = null, includeDr
         const { loaded, ...effectiveProfile } = storyboardProviderProfile(state, id);
         return [id, effectiveProfile];
       })), connections: state.connections, credentialRevision: host.credentialRevision,
-      draftKeys: [...host.draftApiKeys.entries()],
+      draftKeys: [...host.draftApiKeys.entries()],ensembleRevision:host.ensembleRevision,
       compiler: state.promptCompiler, preset: selectedPreset, composition: state.compositionPolicy, routing: state.routing, generation: state.generationPolicy,
       comfyPoolSelection: state.comfyPoolSelection,
       comfyAutoEnabled: state.comfyAutoEnabled,

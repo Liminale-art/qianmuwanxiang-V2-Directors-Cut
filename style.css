@@ -10834,6 +10834,10 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 .sd-ensemble-library :is(button,.sd-ensemble-icon) { display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:5px 9px;border:1px solid var(--sd-border,var(--sd-hairline));border-radius:8px;background:var(--sd-card);color:inherit;font:inherit;cursor:pointer; }
 .sd-ensemble-library button:focus-visible { outline:2px solid var(--sd-accent);outline-offset:2px; }
 .sd-ensemble-library button:disabled { opacity:.45;cursor:default; }
+.sd-ensemble-library-host { min-width:0; }
+#story-director-modal .sd-storyboard-route-rule > div:first-child:not(:has(.sd-storyboard-route-type)) { --qm-control-height:32px;grid-template-columns:minmax(0,1fr) auto;align-items:center; }
+#story-director-modal .sd-storyboard-route-rule > div:first-child:not(:has(.sd-storyboard-route-type)) .sd-storyboard-route-name { grid-column:auto;min-width:0; }
+#story-director-modal .sd-storyboard-route-rule > div:first-child:not(:has(.sd-storyboard-route-type)) :is(input,button) { box-sizing:border-box;height:32px!important;min-height:32px!important;margin:0!important; }
 .sd-ensemble-library .sd-ensemble-icon { width:32px;min-width:32px;padding:7px; }
 .sd-ensemble-library .qm-glyph-svg { display:block;width:17px;height:17px; }
 .sd-ensemble-library [aria-pressed="true"] { color:var(--sd-accent);border-color:var(--sd-accent);background:color-mix(in srgb,var(--sd-accent) 15%,var(--sd-card)); }

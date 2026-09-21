@@ -20,6 +20,7 @@ import {sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
 import * as comfyAutoRuntime from '../qianmu-comfy-auto-runtime.js';
 import {normalizeComfyAutoPool,COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {readPinnedComfyRouteWorkflow} from '../qianmu-comfy-route.js';
+import {createStoryboardEnsembleController} from '../qianmu-ensemble-ui.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -1210,6 +1211,19 @@ test('all optional schemes unavailable leaves only the current engine and no inv
   const {f,q,compile,generate}=await nativeEnsembleFixture();f.state.routing.rules=[];f.state.routing.enabled=true;useShotSet(f,[0]);
   assert.equal(await compile(),true,JSON.stringify(f.errors));assert.equal(f.counts.requests,2);assert.equal(f.state.promptDraft.ensembleRequired,false);
   assert.match(f.notices.join('\n'),/2 个风格方案暂不可用/);assert.equal(await generate(),true,JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.source),['novel']);f.assertReleased();
+});
+
+for(const interrupt of [false,true])test(`native UI adoption ${interrupt?'invalidates a running extraction after selection save':'feeds the actual compiler without a manually set mode flag'}`,async()=>{
+  const {f,q,compile,generate}=await nativeEnsembleFixture();delete f.state.routing.styleLibrary;f.context.storyboardEnsembleRevision=0;let publishes=0;
+  const controller=createStoryboardEnsembleController({state:f.state,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=> 'st-user:route-test',
+    readTargets:()=>[],readArtists:()=>[],changed:()=>{f.context.storyboardEnsembleRevision++;},publish:()=>publishes++,uid:f.context.uid});
+  try{const model=await controller.load();assert.equal(f.state.routing.styleLibrary,true);assert.equal(publishes,1);assert.equal(f.counts.requests,0);
+    if(interrupt)f.modelHook=async()=>model.setStyleLock(false);
+    assert.equal(await compile(),!interrupt,JSON.stringify(f.errors));
+    if(interrupt){assert.equal(f.counts.requests,1);assert.equal(q.queue.length,0);}
+    else{assert.equal(await generate(),true,JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.source),['comfy','novel','novel']);}
+    f.assertReleased();
+  }finally{controller.dispose();}
 });
 
 test('native session preserves current Comfy automatic candidates alongside fixed optional style recipes',async()=>{

@@ -7,12 +7,13 @@ import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.270';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.270';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.270';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.271';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.271';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.271';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.271';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.271';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -265,13 +266,14 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.270';
+} from './qianmu-storyboard.js?v=1.59.271';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.270';
+const VERSION = '1.59.271';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
+let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
@@ -279,6 +281,7 @@ const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,name
 const featureRuntime = createFeatureRuntime({
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.202') },
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.202') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.271') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -323,7 +326,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.270'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.271'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -359,15 +362,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.270'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.271'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.270'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.271'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.270'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.271'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -459,11 +462,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.270'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.271'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.270'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.271'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -551,9 +554,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.270'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.271'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.270')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.271')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -6813,6 +6816,7 @@ function renderModal() {
   modal._sdVibePreviewsCleanup?.();
   modal._sdTagLibraryCleanup?.();
   storyboardVibeLibraryController?.detach();
+  storyboardEnsembleController?.detach();
   prepareDirectorWorldEntryLinks();
   const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
   // 记录当前 tab 供下次打开恢复。只在真变化且非临时视图时落盘，避免每次静默重渲染都写。
@@ -12481,6 +12485,7 @@ function storyboardBeginSession() {
 }
 
 function storyboardEndSession() {
+  storyboardEnsembleController?.detach();
   storyboardLinkReview?.close(); storyboardLinkReview = null;
   storyboardBundleReview?.close(); storyboardBundleReview = null;
   storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
@@ -14521,14 +14526,28 @@ async function storyboardBindRouteWorkflow(root, rule) {
 }
 
 function renderStoryboardRouting(state) {
-  const routing = state.routing;
-  const currentProfile = storyboardProviderProfile(state);
-  const currentProvider = STORYBOARD_PROVIDER_REGISTRY[state.source];
-  const rows = routing.rules.map((rule) => {
-    const providerId = STORYBOARD_PROVIDER_REGISTRY[rule.target?.providerId] ? rule.target.providerId : state.source;
-    return `<article class="sd-storyboard-route-rule" data-storyboard-route-rule="${htmlEscape(rule.id)}"><div><input class="text_pole sd-storyboard-route-name" value="${htmlEscape(rule.name || '')}" placeholder="分工名称"><select class="text_pole sd-storyboard-route-type"><option value="">所有镜头</option>${Object.entries(STORYBOARD_SHOT_TYPE_LABELS).map(([id, label]) => `<option value="${id}" ${rule.shotTypes?.[0] === id ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-route" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div><div class="sd-storyboard-route-target">${storyboardRoutingTargetOptions(state, providerId, rule.target)}</div><label class="sd-switch-row"><span>启用</span><input type="checkbox" class="sd-storyboard-route-enabled" ${rule.enabled !== false ? 'checked' : ''}></label></article>`;
-  }).join('');
-  return `<div class="sd-storyboard-routing"><section class="sd-card sd-storyboard-routing-head"><div class="sd-card-title-row"><div><h3>镜组</h3><small>未命中分工时沿用 ${htmlEscape(currentProvider.label)} · ${htmlEscape(getStoryboardModel(state.source, currentProfile.model)?.label || currentProfile.model)}</small></div><label class="sd-switch-row"><span>${routing.enabled ? '已启用' : '未启用'}</span><input type="checkbox" class="sd-storyboard-routing-enabled" ${routing.enabled ? 'checked' : ''}></label></div><p class="sd-storyboard-safety-notice">内容适配由千幕在后台完成：NAI Full 保留原叙事尺度；分配到受限制模型时，会自动改写为安全但叙事一致的画面，不在生成结果下重复提示。</p>${routing.enabled ? `<div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>镜组模板</span><select class="text_pole sd-storyboard-route-template">${Object.values(STORYBOARD_SHOT_GROUP_TEMPLATES).map((template) => `<option value="${template.id}" ${routing.templateId === template.id ? 'selected' : ''}>${template.label}</option>`).join('')}</select></label><div class="sd-storyboard-generation-summary">沿用镜头台 ${getStoryboardGenerationPolicy(state).minImages}～${getStoryboardGenerationPolicy(state).maxImages} 张 · 同时 ${getStoryboardGenerationPolicy(state).concurrency}</div><label class="sd-switch-row"><span>手动生成多镜头前确认</span><input type="checkbox" class="sd-storyboard-route-confirm" ${routing.confirmMultipleRequests !== false ? 'checked' : ''}></label></div>` : ''}</section>${routing.enabled ? `<details class="sd-card" data-storyboard-card="routing-rules" ${state.collapsedCards['routing-rules'] ? '' : 'open'}><summary><span><b>镜头分工</b><small>${routing.rules.length ? `${routing.rules.length} 条` : '按需添加'}</small></span></summary><div class="sd-storyboard-card-body"><div class="sd-storyboard-route-rules">${rows || '<div class="sd-storyboard-empty-inline">没有额外分工时，只使用模型卡中的当前模型。</div>'}</div><button type="button" class="sd-btn sd-primary sd-storyboard-add-route"><i class="fa-solid fa-plus"></i>添加分工</button></div></details>` : ''}</div>`;
+  return renderEnsembleRoutePanel(state,{targetOptions:target=>storyboardRoutingTargetOptions(state,target.providerId,target),shotTypes:STORYBOARD_SHOT_TYPE_LABELS,templates:STORYBOARD_SHOT_GROUP_TEMPLATES,policy:getStoryboardGenerationPolicy(state)});
+}
+
+async function storyboardMountEnsembleLibrary(root) {
+  const host=root.querySelector('.sd-ensemble-library-host');if(!host)return;
+  const state=storyboardState(),chat=String(getChatKey()||''),epoch=storyboardAdmissionEpoch,ticket={};root._sdEnsembleTicket=ticket;
+  const current=()=>host.isConnected&&root._sdEnsembleTicket===ticket&&state===storyboardState()&&chat===String(getChatKey()||'')&&epoch===storyboardAdmissionEpoch;
+  try{
+    const [runtime,identity]=await Promise.all([featureRuntime.load('ensembleLibrary'),featureRuntime.load('imageAdmission')]);if(!current())return;
+    const namespace=await identity.resolveImageAccountNamespace();if(!current())return;
+    const prior=storyboardEnsembleContext;
+    if(!prior||prior.state!==state||prior.chat!==chat||prior.epoch!==epoch||prior.namespace!==namespace){
+      storyboardEnsembleController?.dispose();storyboardEnsembleContext={state,chat,epoch,namespace};
+      storyboardEnsembleController=runtime.createStoryboardEnsembleController({state,chatKey:chat||null,
+        isCurrent:()=>state===storyboardState()&&chat===String(getChatKey()||'')&&epoch===storyboardAdmissionEpoch,
+        resolveNamespace:identity.resolveImageAccountNamespace,uid,
+        readTargets:()=>ensembleRouteTargets(state,{providers:STORYBOARD_PROVIDER_REGISTRY,resolveBinding:resolveStoryboardProfileBinding,getCapabilities:getStoryboardCapabilities}),
+        readArtists:()=>state.artistPresets.map(row=>({id:row.id,name:row.name})),changed:()=>{storyboardEnsembleRevision++;},
+        publish:()=>{saveSettings();queueMicrotask(()=>{if(current())renderModal();});}});
+    }
+    await storyboardEnsembleController.mount(host);
+  }catch(error){if(current()){host.innerHTML='<button type="button" class="sd-btn">重新载入镜组方案库</button>';host.querySelector('button').addEventListener('click',()=>void storyboardMountEnsembleLibrary(root));}}
 }
 
 function storyboardPromptPresetEntryMarkup(item = {}, index = 0, total = 1) {
@@ -18510,7 +18529,7 @@ function storyboardCreatePreparationGuard(state, options = {}) {
     ctx:()=>ctx(),getChatKey:()=>getChatKey(),storyboardState:()=>storyboardState(),storyboardTargetFloor:value=>storyboardTargetFloor(value),
     storyboardProviderProfile:(...args)=>storyboardProviderProfile(...args),getCharacterDescription:()=>getCharacterDescription(),getPersonaDescription:()=>getPersonaDescription(),
     get settings(){return settings;},get credentialRevision(){return storyboardCredentialRevision;},get draftApiKeys(){return storyboardDraftApiKeys;},
-    get providers(){return STORYBOARD_PROVIDER_REGISTRY;},document:typeof document==='undefined'?null:document,
+    get providers(){return STORYBOARD_PROVIDER_REGISTRY;},get ensembleRevision(){return typeof storyboardEnsembleRevision==='undefined'?0:storyboardEnsembleRevision;},document:typeof document==='undefined'?null:document,
   });
 }
 
@@ -22459,6 +22478,7 @@ function bindStoryboardTabEvents(root) {
   root._sdStoryboardState = state;
   storyboardBindTagCompletion(root);
   void storyboardMountVibeLibrary(root);
+  void storyboardMountEnsembleLibrary(root);
   void storyboardMountVibeWorkbenchPreviews(root);
   const boundPage = root.querySelector('.sd-storyboard-root');
   if (state.view === 'characters') void storyboardMountCharacterArchive(root);
@@ -35618,6 +35638,7 @@ function bindEvents() {
     queueMicrotask(() => void runBackgroundDirectorRefresh());
   };
   const rerenderHandler = async () => {
+    storyboardEnsembleController?.dispose();storyboardEnsembleController=null;storyboardEnsembleContext=null;storyboardEnsembleRevision++;
     directorRun?.controller.abort(); directorLiveLog = null;
     if(storyboardVibeControllerContext&&storyboardVibeControllerContext.chat!==String(getChatKey()||'')){
       storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
@@ -35804,6 +35825,7 @@ function cleanupRuntime(resetSettings = false) {
     clean('injection', () => clearDirectorInjection());
     clean('panels', () => {
       document.getElementById(MODAL_ID)?._sdThemeMenuCleanup?.();
+      storyboardEnsembleController?.dispose();storyboardEnsembleController=null;storyboardEnsembleContext=null;storyboardEnsembleRevision++;
       storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
       document.getElementById(MODAL_ID)?._sdVibePreviewsCleanup?.();
       document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
