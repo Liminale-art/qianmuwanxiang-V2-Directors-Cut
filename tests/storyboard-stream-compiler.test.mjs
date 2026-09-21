@@ -1144,6 +1144,36 @@ async function ordinaryEnsembleFixture(){
   return {f,q,binding,plan,compile:()=>f.run({stream:null,onPrepared:null,plan,automatic:true}),generate:()=>f.context.storyboardGenerate(null,{plan,automatic:true})};
 }
 
+function useLockedEnsembleShots(f){
+  useShotSet(f,[0,1,2],({reply,payload,options})=>{
+    if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
+      reply.shots[2].scene=copy(reply.shots[0].scene);reply.shots[2].composition.continuity_key=reply.shots[0].composition.continuity_key;
+    }else{
+      assert.deepEqual(payload.style_scene_lock.groups.map(row=>row.shot_ids),[['S1','S3'],['S2']]);
+      reply.style_assignments=['cg','ink','cg'].map((scheme_id,index)=>({shot_id:`S${index+1}`,scheme_id,reason:'场景表现与连续性'}));
+    }
+  });
+}
+
+test('actual ordinary scene-locked choices survive ST save and normalized reload into the same mixed image queue',async()=>{
+  const {f,q,binding,compile}=await ordinaryEnsembleFixture();useLockedEnsembleShots(f);
+  try{assert.equal(await compile(),true,JSON.stringify(f.errors));binding.close();
+    assert.deepEqual(f.state.shotPlans[0].ensembleRecovery.shots.map(row=>row.schemeId),['cg','ink','cg']);
+    Object.assign(f.state,normalizeStoryboardState(copy(f.state)));
+    assert.equal(await f.context.storyboardGenerate(null,{plan:f.state.shotPlans[0],automatic:true}),true,JSON.stringify(f.notices));
+    assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','comfy']);assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2]);
+    assert.equal(q.queue[0].profile.comfyRouteBinding.id,q.queue[2].profile.comfyRouteBinding.id);assert.equal(f.counts.requests,2);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual streaming same-batch scene lock preserves per-shot framing and narrative order through live handoff',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);useLockedEnsembleShots(f);
+  try{assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','comfy']);
+    assert.notEqual(q.queue[0].shotSpec.subject,q.queue[2].shotSpec.subject);assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2]);
+    assert.equal(f.counts.requests,2);assert.ok(q.queue.every(row=>row.profile.count==='1'&&row.imageAdmission.automaticSlot));f.assertReleased();
+  }finally{binding.close();}
+});
+
 test('actual ordinary compiler durably stores style choices and the later generator revalidates them with no extra LLM call',async()=>{
   const {f,q,binding,plan,compile,generate}=await ordinaryEnsembleFixture();
   try{

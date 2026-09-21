@@ -1,4 +1,4 @@
-import {readEnsembleCompilerProof,ensembleShotContent} from './qianmu-ensemble-handoff.js?v=1.59.264';
+import {readEnsembleCompilerProof,ensembleShotContent} from './qianmu-ensemble-handoff.js?v=1.59.265';
 import {normalizeEnsembleRecoveryScope as scopeOf,normalizeEnsembleRecoveryRecord,ENSEMBLE_RECOVERY_SCHEMA} from './qianmu-ensemble-record.js';
 export {normalizeEnsembleRecoveryRecord,ENSEMBLE_RECOVERY_SCHEMA} from './qianmu-ensemble-record.js';
 const copy=value=>JSON.parse(JSON.stringify(value));

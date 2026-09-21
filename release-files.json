@@ -324,6 +324,7 @@
     "qianmu-ensemble-record.js",
     "qianmu-ensemble-plan-storage.js",
     "qianmu-ensemble-host.js",
+    "qianmu-ensemble-scene-lock.js",
     "qianmu-vibe-recipe.js",
     "qianmu-artist-prompt-layer.js",
     "qianmu-artist-prompt-review.js",

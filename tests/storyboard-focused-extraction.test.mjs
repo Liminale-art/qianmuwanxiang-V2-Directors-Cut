@@ -13,10 +13,10 @@ const record=(floor,events=[])=>({floor,roster:roster(),events});
 const link=(from,to,facts=[{source_floor:from,event_id:'coat',subject_id:'A'}])=>({from_floor:from,from_branch:'now',to_floor:to,to_branch:'now',evidence:{paragraph_id:'P1',quote:'A continues chatting.'},facts});
 const plain=value=>JSON.parse(JSON.stringify(value));
 
-function styles({format='tags'}={}){
+function styles({format='tags',styleLock=true}={}){
   const namespace='st-user:synthetic',chatKey='synthetic',preparationId='style-preparation';
   const library={schema:ENSEMBLE_LIBRARY_SCHEMA,namespace,schemes:[{id:'ink',revision:'ink-1',name:'水墨',description:'静默留白',tags:['ink wash'],binding:{routeId:'hidden-route',artistPresetId:'hidden-artist'}}]};
-  const selection={schema:ENSEMBLE_SELECTION_SCHEMA,namespace,chatKey,revision:'selection-1',enabled:true,schemeIds:['ink']};
+  const selection={schema:ENSEMBLE_SELECTION_SCHEMA,namespace,chatKey,revision:'selection-1',enabled:true,schemeIds:['ink'],styleLock};
   const proof=revision=>({namespace,chatKey,preparationId,revision,ready:true,bindingKey:'c'.repeat(64),promptFormats:[format]});
   const session=createEnsembleStyleSession({library,selection,namespace,chatKey,preparationId,base:proof('base-1'),eligibility:new Map([['ink',proof('ink-1')]]),guard:()=>{}});
   return {session,selection,library};
@@ -80,6 +80,68 @@ test('style schemes enter only the existing expression step, leave narrative and
     assert.equal(JSON.parse(result.raw).shots.length,1);assert.equal(JSON.parse(result.raw).style_assignments,undefined);
   }finally{f.close();}
 });
+async function sceneStyleFixture(styleLock=true){
+  const s=styles({styleLock}),f=await fixture({texts:['A reads a letter.\n\nA remembers yesterday.\n\nA puts down the letter.'],styleSession:s.session});
+  const first=plain(f.narrative.shots[0]);
+  f.narrative.shots=[0,1,2].map(index=>({...plain(first),source_paragraph_ids:[`P${index+1}`],insert_after:`P${index+1}`,
+    subject:`Alice moment ${index+1}`,composition:{...plain(first.composition),focus:`moment ${index+1}`},
+    state_point:{branchId:'now',paragraphId:`P${index+1}`,evidence:f.window.paragraphs[index]}}));
+  return {...f,s,response:(...schemes)=>({...f.expression(),style_assignments:schemes.map((scheme_id,index)=>({shot_id:`S${index+1}`,scheme_id,reason:'表现增益'}))})};
+}
+
+test('actual expression stage locks a continuous scene without changing framing, count, order or adding model stages',async()=>{
+  const f=await sceneStyleFixture(),before=plain(f.narrative);let calls=0;
+  try{const result=await f.run({call:async(messages,definition)=>{calls++;assert.equal(definition.schemaId,EXPRESSION);
+    const input=JSON.parse(messages[1].content);assert.deepEqual(input.style_scene_lock.groups,[{id:'scene-1',leader_shot_id:'S1',shot_ids:['S1','S2','S3']}]);
+    assert.match(messages[0].content,/只锁方案/);assert.deepEqual(input.shots.map(row=>row.plan.composition),before.shots.map(row=>row.composition));
+    const response=f.response('ink','ink','ink');response.style_assignments.reverse();return JSON.stringify(response);}});
+    assert.equal(calls,1);assert.equal(result.meta.repairCalls,0);assert.deepEqual(result.trace.narrative,before);
+    assert.deepEqual(result.styleSelection.assignments.map(row=>[row.shotId,row.schemeId]),[['S1','ink'],['S2','ink'],['S3','ink']]);
+  }finally{f.close();}
+});
+
+test('actual scene-lock mismatch repairs only expression using the same verified handoff and repair budget',async()=>{
+  const f=await sceneStyleFixture();let calls=0;
+  try{const result=await f.run({call:async(messages,definition)=>{calls++;assert.equal(definition.schemaId,EXPRESSION);
+    if(calls===1)return JSON.stringify(f.response('ink','current','ink'));
+    const input=JSON.parse(messages[1].content);assert.equal(input.errors[0].code,'style_scene_lock');
+    assert.deepEqual(input.context.verified_handoff.style_scene_lock.groups[0].shot_ids,['S1','S2','S3']);
+    assert.doesNotMatch(JSON.stringify(input),/selected world|user description|stable appearance|source_catalogue/);
+    return JSON.stringify(f.response('ink','ink','ink'));}});
+    assert.equal(calls,2);assert.equal(result.meta.repairCalls,1);assert.equal(result.meta.stages[0].repairCalls,0);
+    assert.deepEqual(result.styleSelection.assignments.map(row=>row.schemeId),['ink','ink','ink']);
+  }finally{f.close();}
+});
+
+test('actual expression keeps flashback independent and restores the present-scene style on return',async()=>{
+  const f=await sceneStyleFixture();f.narrative.source_states[0].roster.branches.push({id:'past',layer:'memory'});
+  f.narrative.shots[1].state_point.branchId='past';f.narrative.shots[1].narrative_layer='memory';
+  try{const result=await f.run({call:async messages=>{const input=JSON.parse(messages[1].content);
+    assert.deepEqual(input.style_scene_lock.groups.map(row=>row.shot_ids),[['S1','S3'],['S2']]);return JSON.stringify(f.response('current','ink','current'));}});
+    assert.deepEqual(result.styleSelection.assignments.map(row=>row.schemeId),['current','ink','current']);assert.equal(result.meta.repairCalls,0);
+  }finally{f.close();}
+});
+
+test('disabling the actual scene lock removes its prompt constraints and permits independent styles in one scene',async()=>{
+  const f=await sceneStyleFixture(false);
+  try{const result=await f.run({call:async messages=>{assert.equal(JSON.parse(messages[1].content).style_scene_lock,undefined);assert.doesNotMatch(messages[0].content,/已启用连续风格锁/);return JSON.stringify(f.response('ink','current','ink'));}});
+    assert.equal(result.meta.repairCalls,0);assert.deepEqual(result.styleSelection.assignments.map(row=>row.schemeId),['ink','current','ink']);
+  }finally{f.close();}
+});
+
+test('persistently inconsistent scene styles exhaust three shared repairs with a concise diagnostic, never silently overwrite choices',async()=>{
+  const f=await sceneStyleFixture();let calls=0;
+  try{await assert.rejects(f.run({call:async(_messages,definition)=>{calls++;assert.equal(definition.schemaId,EXPRESSION);return JSON.stringify(f.response('ink','current','ink'));}}),error=>{
+    assert.equal(error.code,'storyboard_contract_failed');assert.equal(error.diagnostic.repairCalls,3);assert.match(error.message,/连续场景.*风格/);return true;});assert.equal(calls,4);
+  }finally{f.close();}
+});
+
+test('no-picture extraction creates no scene selection or expression request',async()=>{
+  const f=await sceneStyleFixture();Object.assign(f.narrative,{should_generate:false,skip_reason:'no new picture',shots:[]});
+  try{const result=await f.run({call:async()=>assert.fail('no expression request')});assert.equal(result.styleSelection,undefined);assert.equal(result.meta.stages.length,1);
+  }finally{f.close();}
+});
+
 test('invalid style ids use the same bounded expression repairs without resending narrative context or changing its selected frames',async()=>{
   const s=styles(),f=await fixture({styleSession:s.session});let calls=0;
   try{
