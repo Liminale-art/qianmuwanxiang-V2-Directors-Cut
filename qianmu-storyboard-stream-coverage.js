@@ -1,9 +1,11 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.266';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.266';
-import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.266';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.266';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.267';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.267';
+import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.267';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.267';
 import {assertStoryboardStreamMoment,createStoryboardStreamMoment,storyboardStreamMomentsOverlap} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
+import {captureEnsembleSceneAnchor} from './qianmu-ensemble-continuation.js';
 const coverages=new WeakMap();
+const styleHistories=new WeakMap();
 const copy=value=>JSON.parse(JSON.stringify(value));
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const fail=()=>{throw Object.assign(new Error('本层已有流式任务，但来源或占位记录不完整，未重复自动生成'),{code:'storyboard_stream_coverage'});};
@@ -27,7 +29,7 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
     if(candidates.length>1||candidates[0]&&taskId&&candidates[0].taskId!==taskId)fail();
     return candidates[0]?.stages||[];
   };
-  const current=window.current.messageRef,lineage=createStoryboardStreamLineage(current,message,continuationLinks,namespace),pins=new Map();let family=null;
+  const current=window.current.messageRef,lineage=createStoryboardStreamLineage(current,message,continuationLinks,namespace),pins=new Map(),styleHistory=[];let family=null;
   const matches=ref=>hasStoryboardStreamReference(ref)?lineage.matches(ref):lineage.matchesOrdinary(ref);
   const budget=ref=>hasStoryboardStreamReference(ref)?storyboardStreamBudgetReference(ref,namespace):ref;
   const verify=ref=>hasStoryboardStreamReference(ref)?verifyStoryboardStreamReference(ref,()=>resolve(ref))
@@ -80,6 +82,8 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
     const oldWindow=proof?null:originalWindow(ref);
     const moment=proof?assertStoryboardStreamMoment(proof.moment,window):readStoryboardOrdinaryMoment(job,oldWindow,stagesFor(job,row)),id=admission.logicalShotId,old=pins.get(id);
     if(moment)assertStoryboardStreamMoment(moment,window);
+    const anchor=captureEnsembleSceneAnchor(job,moment);
+    if(anchor&&styleHistory.length<=8){const entry={id,anchor};if(!styleHistory.some(row=>JSON.stringify(row)===JSON.stringify(entry)))styleHistory.push(entry);}
     remember(ref);
     if(slot){coveredSlots.add(slot);const slots=pinSlots.get(id)||new Map();slots.set(slot,{planId:job.planId,shotId:job.planShotId});pinSlots.set(id,slots);}
     if(!moment){pendingMoments.push({id,spec:job.shotSpec,oldWindow});continue;}
@@ -100,7 +104,12 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
   if(selectedPlans.some(plan=>!plans.includes(plan)||JSON.stringify(plan)!==planProofs.get(plan)))fail();
   // A budget family is NOT proof for the text of a later new shot. Its creator
   // must capture a fresh prefix/final source proof before image admission.
-  const coverage=freeze({version:1,scope:family,pins:[...pins.values()].map(pin=>({...pin,slots:[...(pinSlots.get(pin.id)?.values()||[])]}))});coverages.set(coverage,window);return coverage;
+  const coverage=freeze({version:1,scope:family,pins:[...pins.values()].map(pin=>({...pin,slots:[...(pinSlots.get(pin.id)?.values()||[])]}))});coverages.set(coverage,window);styleHistories.set(coverage,freeze(styleHistory));return coverage;
+}
+
+export function storyboardStreamStyleHistory(coverage,window){
+  if(!coverage)return null;
+  if(coverages.get(coverage)!==window)fail();window.assertCurrent();return Object.freeze({namespace:coverage.scope.namespace,rows:styleHistories.get(coverage)||[]});
 }
 
 export function configureStoryboardStreamCoverage(context,payload,config){

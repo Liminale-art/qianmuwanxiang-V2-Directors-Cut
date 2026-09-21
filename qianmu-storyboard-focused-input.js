@@ -43,6 +43,7 @@ export function storyboardFocusedRepairContext({name,result,data,context,request
   const selected=[...floors].filter(floor=>available.has(floor));
   return {target_floor:context.floor,constraints:payload.constraints,required_state_floors:request.requiredFloors,
     ...(payload.committed_images?{committed_images:payload.committed_images}:{}),
+    ...(payload.prior_scene_anchors?{prior_scene_anchors:payload.prior_scene_anchors}:{}),
     paragraph_catalogue:context.compilerSources.sources.map(source=>({floor:source.messageRef.lastKnownFloor,paragraph_ids:source.paragraphs.map(row=>row.id)})),
     evidence_sources:storyboardFocusedCatalogue(context.compilerSources,selected),
     cached_source_states:payload.cached_source_states.filter(row=>selected.includes(row.floor))};

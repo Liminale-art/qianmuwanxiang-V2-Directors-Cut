@@ -260,7 +260,8 @@ test('stream job preparation waits without touching plans when narrative request
 });
 
 function useShotSet(f,indexes,after){
-  f.modelHook=({reply,payload,options})=>{
+  f.modelHook=({reply,payload:wire,options})=>{
+    const payload=wire.context?.verified_handoff||wire;
     if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
       reply.shots=indexes.map(index=>{
         const {prompt_atoms,prompt_renderings,...shot}=response().shots[index],id=`P${index+1}`;
@@ -1155,6 +1156,94 @@ function useLockedEnsembleShots(f){
     }
   });
 }
+
+function useInheritedEnsembleShots(f,indexes,{predecessor='E1',style='cg',wrongExpressions=0}={}){
+  let expressions=0;
+  useShotSet(f,indexes,({reply,payload,options})=>{
+    if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
+      for(const shot of reply.shots){
+        if(shot.subject===response().shots[2].subject){shot.scene=copy(response().shots[0].scene);shot.composition.continuity_key='kitchen-current';}
+        if(payload.prior_scene_anchors)shot.scene_predecessor=shot.scene.location==='kitchen'?predecessor:'';
+      }
+    }else{
+      expressions++;
+      reply.style_assignments=payload.shots.map(row=>({shot_id:row.shot_id,scheme_id:expressions<=wrongExpressions?'ink':
+        payload.style_scene_lock?.groups.find(group=>group.shot_ids.includes(row.shot_id))?.scheme_id||style,reason:'场景承接表现'}));
+    }
+  });
+}
+
+test('actual later stream pass explicitly inherits an accepted scene style without extra narrative work or a duplicate image',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true,JSON.stringify(f.errors));const old=copy(q.queue[0]);
+    useInheritedEnsembleShots(f,[0,2]);assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,notices:f.notices}));
+    assert.equal(q.queue.length,2);assert.deepEqual(copy(q.queue[0]),old);assert.equal(q.queue[1].ensembleStyleOrigin.schemeId,'cg');
+    assert.equal(q.queue[1].messageRef.stream.moment.paragraphId,'P3');assert.equal(q.rows.size,1);assert.equal(f.counts.requests,4);
+    assert.equal(f.calls[2].payload.prior_scene_anchors.length,1);assert.doesNotMatch(JSON.stringify(f.calls[2].payload.prior_scene_anchors),/cg|bindingKey|schemeId|st-user/);
+    assert.equal(f.calls[3].payload.style_scene_lock.groups[0].scheme_id,'cg');f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual final pass inherits style through the same occupied source family after normalized log reload',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true);f.state.logs=normalizeStoryboardState(copy(f.state)).logs;
+    useInheritedEnsembleShots(f,[0,2]);assert.equal(await f.run({stream:{floor:0,complete:true}}),true,JSON.stringify(f.errors));
+    assert.equal(q.queue.length,2);assert.equal(q.queue[1].ensembleStyleOrigin.schemeId,'cg');assert.equal(q.rows.size,1);assert.equal(f.counts.requests,4);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual inherited-style conflict repairs expression alone and preserves the original admission budget',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true);
+    useInheritedEnsembleShots(f,[0,2],{wrongExpressions:1});assert.equal(await f.run(),true,JSON.stringify(f.errors));
+    assert.equal(q.queue.length,2);assert.equal(q.queue[1].ensembleStyleOrigin.schemeId,'cg');assert.equal(f.counts.requests,5);
+    assert.equal(f.calls[4].payload.stage,'expression');assert.equal(f.calls[4].payload.context.verified_handoff.style_scene_lock.groups[0].scheme_id,'cg');assert.equal(q.rows.size,1);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual missing scene predecessor leaves a new scene free instead of guessing continuity from matching names',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true);
+    useInheritedEnsembleShots(f,[0,2],{predecessor:'',style:'ink'});assert.equal(await f.run(),true,JSON.stringify(f.errors));
+    assert.deepEqual(q.queue.map(row=>row.ensembleStyleOrigin.schemeId),['cg','ink']);assert.equal(f.calls[3].payload.style_scene_lock.groups[0].scheme_id,undefined);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual unavailable inherited binding stops after narrative with no extra expression repair or image admission',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true);const old=copy(q.queue[0]);
+    f.state.logs[0].snapshot.ensembleStyleOrigin.revision='old-version';useInheritedEnsembleShots(f,[0,2]);
+    assert.equal(await f.run(),false);assert.equal(f.counts.requests,3);assert.equal(q.queue.length,1);assert.deepEqual(copy(q.queue[0]),old);assert.match(f.notices.at(-1),/原风格|绘制绑定/);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual explicit text continuation carries a verified scene style through its existing lineage without widening the budget',async()=>{
+  const f=await fixture({text:threeParagraphs.split('\n\n')[0]+'\n\n'}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true,JSON.stringify(f.errors));
+    await continueHost(f,threeParagraphs);useInheritedEnsembleShots(f,[0,2]);assert.equal(await f.run(),true,JSON.stringify(f.errors));
+    assert.deepEqual(q.queue.map(row=>row.ensembleStyleOrigin.schemeId),['cg','cg']);assert.equal(q.rows.size,1);assert.equal(q.queue[1].messageRef.stream.version,2);
+    assert.equal(f.counts.requests,4);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual lock opt-out ignores old style metadata and adds neither predecessor fields nor expression locks',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true);f.state.logs[0].snapshot.ensembleStyleOrigin={invalid:true};
+    const config=f.context.storyboardCompilerRequestConfig;
+    f.context.storyboardCompilerRequestConfig=(...args)=>{const value=config(...args);return {...value,styleSession:{...value.styleSession,styleLock:false}};};
+    useInheritedEnsembleShots(f,[0,2],{style:'ink'});assert.equal(await f.run(),true,JSON.stringify(f.errors));
+    assert.deepEqual(q.queue.map(row=>row.ensembleStyleOrigin.schemeId),['cg','ink']);assert.equal(f.calls[2].payload.prior_scene_anchors,undefined);
+    assert.equal(f.calls[3].payload.style_scene_lock,undefined);assert.equal(f.counts.requests,4);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('actual inherited-style repair exhaustion keeps the first accepted image and stops after the shared three repairs',async()=>{
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);
+  try{useInheritedEnsembleShots(f,[0]);assert.equal(await f.run(),true);const original=copy(q.queue[0]);
+    useInheritedEnsembleShots(f,[0,2],{wrongExpressions:9});assert.equal(await f.run(),false);
+    assert.equal(f.counts.requests,7);assert.equal(q.queue.length,1);assert.deepEqual(copy(q.queue[0]),original);assert.match(f.notices.at(-1),/风格方案不一致/);f.assertReleased();
+  }finally{binding.close();}
+});
 
 function assertEnsembleOrigins(f,q,expected){
   assert.deepEqual(q.queue.map(job=>job.ensembleStyleOrigin.schemeId),expected);

@@ -4,11 +4,16 @@ import {EventEmitter} from 'node:events';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {normalizeStoryboardMessageReference,sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
 import {createStoryboardStreamMoment} from '../qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.266';
+import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.267';
 import {resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
 import {response as sample} from './helpers/comfy-compiler-fixture.mjs';
+import {storyboardStreamStyleHistory} from '../qianmu-storyboard-stream-coverage.js?v=1.59.267';
+import {ENSEMBLE_STYLE_ORIGIN_SCHEMA} from '../qianmu-ensemble-origin.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const defaultTexts=['Alice reads a letter.','A mountain valley.','A broken cup.'];
+const withStyle=row=>{row.snapshot.ensembleStyleOrigin={schema:ENSEMBLE_STYLE_ORIGIN_SCHEMA,namespace:'st-user:test',chatKey:'char:Alice.png:chat-a',
+  preparationId:'old',selectionRevision:'r1',shotId:'S1',schemeId:'ink',revision:'v1',bindingKey:'a'.repeat(64),executionAuthorized:false};
+  row.snapshot.ensembleStyleOrigin.chatKey=row.snapshot.chatKey;row.snapshot.shotSpec={sceneFingerprint:{location:'kitchen'},continuityUpdates:{time:'day'}};return row;};
 async function fixture({stream=false,max=3,texts=defaultTexts}={}){
   let saves=0,account='st-user:test',identityReads=0;
   const host={chatId:'chat-a',characterId:0,characters:[{chat:'chat-a',avatar:'Alice.png'}],chatMetadata:{story_director_liminale:{}},eventSource:new EventEmitter(),
@@ -184,4 +189,24 @@ test('coverage is bound to the exact borrowed window and exposes only a budget s
   assert.equal(a.context.streamCoverage.messageRef,undefined);assert.equal(a.context.streamCoverage.scope.revisionId,a.base.revisionId);
   b.context.streamCoverage=a.context.streamCoverage;
   assert.throws(()=>contract.buildStoryboardPlanContractRequest(b.context,b.config),{code:'storyboard_stream_coverage'});a.close();b.close();
+});
+
+test('only occupied verified source rows contribute private scene anchors, never rejected or manual attempts',async()=>{
+  const f=await fixture(),accepted=withStyle(f.history(0)),rejected=withStyle(f.history(1,{status:'failed',submissionState:'not_submitted'})),manual=withStyle(f.history(2,{automaticSlot:false}));
+  const coverage=await contract.captureStoryboardStreamCoverage(f.window,[accepted,rejected,manual]),history=storyboardStreamStyleHistory(coverage,f.window);
+  assert.equal(history.namespace,'st-user:test');assert.equal(history.rows.length,1);assert.equal(history.rows[0].anchor.origin.schemeId,'ink');
+  assert.equal(history.rows[0].anchor.moment.paragraphId,'P1');assert.ok(Object.isFrozen(history.rows[0]));assert.equal(coverage.styleHistory,undefined);f.close();
+});
+
+test('duplicated log/gallery provenance is deduplicated and copied or foreign coverage cannot expose it',async()=>{
+  const f=await fixture(),other=await fixture(),row=withStyle(f.history(0));
+  const coverage=await contract.captureStoryboardStreamCoverage(f.window,[row,{...copy(row),id:'gallery',url:'/user/images/test.png'}]);
+  assert.equal(storyboardStreamStyleHistory(coverage,f.window).rows.length,1);
+  assert.throws(()=>storyboardStreamStyleHistory(copy(coverage),f.window),{code:'storyboard_stream_coverage'});
+  assert.throws(()=>storyboardStreamStyleHistory(coverage,other.window),{code:'storyboard_stream_coverage'});f.close();other.close();
+});
+
+test('invalid style metadata does not break ordinary budget accounting when the ensemble is not enabled',async()=>{
+  const f=await fixture(),row=withStyle(f.history(0));row.snapshot.ensembleStyleOrigin={invalid:true};
+  const request=await f.prepare([row]);assert.equal(request.sceneContinuation,null);assert.equal(f.context.streamCoverage.pins.length,1);f.close();
 });

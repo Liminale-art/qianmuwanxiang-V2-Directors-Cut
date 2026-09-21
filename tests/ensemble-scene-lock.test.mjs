@@ -5,6 +5,18 @@ const shot=(overrides={})=>({state_point:{branchId:'now'},narrative_layer:'prese
 const choices=(...styles)=>styles.map((scheme_id,index)=>({shot_id:`S${index+1}`,scheme_id,reason:'visual benefit'}));
 const open=shots=>create({shots},{enabled:true,assertCurrent:()=>true});
 
+test('a verified predecessor fixes its whole current scene while unrelated scenes remain free',()=>{
+  const narrative={shots:[shot(),shot(),shot({scene:{location:'street',time:'night'}})]};
+  const lock=create(narrative,{enabled:true,assertCurrent:()=>true,inherited:[{shotId:'S2',schemeId:'ink'}]});
+  assert.equal(lock.constraints.groups[0].scheme_id,'ink');assert.equal(lock.constraints.groups[1].scheme_id,undefined);
+  assert.equal(lock.validate(choices('ink','ink','cg')),true);assert.throws(()=>lock.validate(choices('cg','cg','cg')),{code:'ensemble_scene_lock'});
+});
+
+test('contradictory or invented inherited assignments cannot create a scene lock',()=>{
+  for(const inherited of [[{shotId:'S3',schemeId:'ink'}],[{shotId:'S1',schemeId:'ink'},{shotId:'S1',schemeId:'ink'}],
+    [{shotId:'S1',schemeId:'ink'},{shotId:'S2',schemeId:'cg'}]])assert.throws(()=>create({shots:[shot(),shot()]},{enabled:true,assertCurrent:()=>true,inherited}),{code:'ensemble_scene_lock'});
+});
+
 test('continuous shots lock one freely chosen style without changing narrative data or depending on response order',()=>{
   const narrative={shots:[shot(),shot(),shot()]},before=JSON.stringify(narrative),lock=create(narrative,{enabled:true,assertCurrent:()=>true});
   assert.deepEqual(lock.constraints.groups,[{id:'scene-1',leader_shot_id:'S1',shot_ids:['S1','S2','S3']}]);

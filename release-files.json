@@ -326,6 +326,7 @@
     "qianmu-ensemble-host.js",
     "qianmu-ensemble-scene-lock.js",
     "qianmu-ensemble-origin.js",
+    "qianmu-ensemble-continuation.js",
     "qianmu-vibe-recipe.js",
     "qianmu-artist-prompt-layer.js",
     "qianmu-artist-prompt-review.js",

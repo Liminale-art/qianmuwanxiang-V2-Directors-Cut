@@ -1,6 +1,7 @@
 // Pure, request-scoped style selection. This is not narrative planning, model
 // execution, persistence, or permission to alter a Comfy graph or image budget.
 import {STORYBOARD_PROMPT_FORMATS} from './qianmu-prompt-formats.js';
+import {normalizeEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
 export const ENSEMBLE_LIBRARY_SCHEMA='qianmu.ensemble.library.v1';
 export const ENSEMBLE_SELECTION_SCHEMA='qianmu.ensemble.chat-selection.v1';
 export const ENSEMBLE_CURRENT_STYLE='current';
@@ -91,7 +92,13 @@ export function createEnsembleStyleSession({library,selection,namespace:owner,ch
     assertCurrent();return freeze({version:1,namespace:owner,chatKey,preparationId,selectionRevision:captured.choice.revision,
       executionAuthorized:false,assignments:shots.map(key=>byShot.get(key))});
   }
-  return Object.freeze({catalogue,excluded:captured.excluded,styleLock:captured.choice.styleLock,assertCurrent,responseSchema,resolve,
+  function verifyOrigin(value){
+    assertCurrent();const origin=normalizeEnsembleStyleOrigin(value),target=available.get(origin.schemeId);
+    if(origin.namespace!==owner||origin.chatKey!==chatKey||origin.selectionRevision!==captured.choice.revision
+      ||!target||target.revision!==origin.revision||target.bindingKey!==origin.bindingKey)fail('连续场景的原风格或绘制绑定已变化，请核对镜组配置');
+    assertCurrent();return origin.schemeId;
+  }
+  return Object.freeze({catalogue,excluded:captured.excluded,styleLock:captured.choice.styleLock,assertCurrent,responseSchema,resolve,verifyOrigin,
     promptFormats:freeze([...new Set([...captured.base.promptFormats,...captured.entries.flatMap(row=>row.proof.promptFormats)])]),
     enabled:captured.choice.enabled&&captured.entries.length>0});
 }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as ensemble from '../qianmu-ensemble-selection.js';
+import {ensembleStyleOrigins} from '../qianmu-ensemble-origin.js';
 const owner='st-user:fixture',chatKey='chat-a',key='a'.repeat(64);
 function fixture(){
   const library={schema:ensemble.ENSEMBLE_LIBRARY_SCHEMA,namespace:owner,schemes:[
@@ -13,6 +14,15 @@ function fixture(){
   return {...options,open:()=>ensemble.createEnsembleStyleSession(options),stop:()=>{active=false;}};
 }
 const choose=(scheme='ink',shot='S1')=>({shot_id:shot,scheme_id:scheme,reason:'本镜的留白表现增益'});
+
+test('historical origin selects only an unchanged current binding and does not authorize generation',()=>{
+  const f=fixture(),session=f.open(),origin=ensembleStyleOrigins(session.resolve([choose()],['S1']),['S1'])[0];
+  assert.equal(session.verifyOrigin({...origin,preparationId:'earlier-batch'}),'ink');assert.equal(origin.executionAuthorized,false);
+  for(const change of [v=>v.namespace='st-user:other',v=>v.chatKey='other',v=>v.selectionRevision='other',v=>v.schemeId='missing',v=>v.revision='other',v=>v.bindingKey='b'.repeat(64)]){
+    const value={...origin};change(value);assert.throws(()=>session.verifyOrigin(value),{code:'storyboard_style_selection'});
+  }
+  f.stop();assert.throws(()=>session.verifyOrigin(origin),/changed owner/);
+});
 
 test('model catalogue is only the enabled usable style descriptions, never route, workflow or credentials',()=>{
   const f=fixture();f.library.schemes[0].apiKey='secret';f.eligibility.get('ink').workflow={secretGraph:true};f.base.url='https://private.invalid';
