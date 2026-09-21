@@ -1,5 +1,6 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
+import {chatGalleryReceiptText,chatGalleryReceiptSummary} from './qianmu-chat-gallery-receipt.js';
+import {chatGalleryDigest,galleryDigestRecord,scanChatGallery} from './qianmu-chat-gallery-digest.js';
 import {recipeArchiveRequest,recipeArchiveResponse,recipeArchiveReference,recipeArchiveError,RECIPE_ARCHIVE_LIMITS} from './qianmu-recipe-archive-contract.js';
 import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
 
@@ -25,18 +26,33 @@ export function createHistoricalRecipeArchiveClient({namespace,target,records,gu
   return createRecipeArchiveClient({...options,source,getGallery:()=>rows,account:async()=>namespace,guard},false);
 }
 
-function createRecipeArchiveClient({source,getGallery,
+// Archive-session reader: the saved summary is an exact source selector, never
+// evidence by itself. The server rehashes the saved source before/after reading.
+// Only one selected record is captured, not a detached copy of the whole library.
+export function createSelectedRecipeArchiveClient({namespace,target,summary,verifyRecord,guard,...options}={}){
+  if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace)
+    ||typeof guard!=='function'||typeof verifyRecord!=='function')throw fail('原配方读取缺少来源或会话保护');
+  const source={target:chatCharacterReceiptTarget(target),assertCurrent(){},close(){}};
+  return createRecipeArchiveClient({...options,source,sourceSummary:chatGalleryReceiptSummary(summary),verifyRecord,account:async()=>namespace,guard},false);
+}
+
+function createRecipeArchiveClient({source,getGallery,sourceSummary,verifyRecord,
   account=async()=>(await import('./qianmu-image-admission.js')).resolveImageAccountNamespace(),
   headers=()=>({}),guard=async()=>{},fetchImpl=globalThis.fetch,timeoutMs=8000}={},writable=true){
-  if(typeof getGallery!=='function'||typeof account!=='function'||!Number.isFinite(timeoutMs))throw fail('配方读取缺少聊天来源');
-  let original,rows,sourceHash;
-  try{rows=getGallery();original=chatGalleryReceiptText(rows).text;}catch(error){source.close();throw error;}
+  if((sourceSummary?(writable||typeof verifyRecord!=='function'):typeof getGallery!=='function')||typeof account!=='function'||!Number.isFinite(timeoutMs))throw fail('配方读取缺少聊天来源');
+  let original,rows;
+  try{if(sourceSummary)original=sourceSummary;else {rows=getGallery();original=chatGalleryDigest(rows);if(!original)throw fail('配方缺少原图库');}}catch(error){source.close();throw error;}
   const pending=new Set();let namespace,closed=false;
   function current(){
     if(closed)throw fail('配方会话已结束');source.assertCurrent();
     // Historical rows are private detached clones, never exposed to callers.
     // Rechecking that complete clone at every guarded await is quadratic work.
-    if(getGallery()!==rows||(writable&&chatGalleryReceiptText(rows).text!==original))throw fail('原画面资料已变化，请重新打开后重试');
+    if(!sourceSummary&&getGallery()!==rows)throw fail('原画面资料已变化，请重新打开后重试');
+  }
+  async function unchanged(alive){
+    current();alive();if(!writable)return;
+    const summary=await scanChatGallery(rows,{guard:()=>{current();alive();}});current();alive();
+    if(summary.sha256!==original.sha256)throw fail('原画面资料已变化，请重新打开后重试');
   }
   async function check(){
     await guard();current();const active=await account();current();
@@ -45,8 +61,11 @@ function createRecipeArchiveClient({source,getGallery,
     await guard();current();
   }
   function selected(record){
-    current();const matches=rows.filter(item=>item?.id===record?.id);
-    if(matches.length!==1||!equal(matches[0],record))throw fail('原画面已替换或编号重复，未猜测配方');
+    current();
+    if(sourceSummary){const result=verifyRecord(record);if(result&&typeof result.then==='function')void Promise.resolve(result).catch(()=>{});
+      if(result!==true)throw fail('原画面与保全来源不符');}
+    else {const matches=rows.filter(item=>item?.id===record?.id);
+      if(matches.length!==1||!equal(matches[0],record))throw fail('原画面已替换或编号重复，未猜测配方');}
     return {recordId:record.id,createdAt:record.createdAt};
   }
   async function bounded(task,{signal}={}){
@@ -63,14 +82,15 @@ function createRecipeArchiveClient({source,getGallery,
     }finally{clearTimeout(timer);pending.delete(abort);signal?.removeEventListener('abort',abort);controller.abort();}
   }
   async function call(method,record,options){
+    if(sourceSummary)record=galleryDigestRecord(record).value;
     const selection=selected(record);
     return bounded(async(signal,alive)=>{
       const expectedAccount='st-user:'+await digest(namespace.slice(8));
-      const body=recipeArchiveRequest({version:1,expectedAccount,target:source.target,selection:{...selection,gallerySha256:await(sourceHash??=digest(original))}});
+      const body=recipeArchiveRequest({version:1,expectedAccount,target:source.target,selection:{...selection,gallerySha256:original.sha256}});
       const provided=new Headers(await headers());
       const requestHeaders={'Content-Type':'application/json',Accept:'application/json'};
       if(provided.has('x-csrf-token'))requestHeaders['X-CSRF-Token']=provided.get('x-csrf-token');
-      await check();alive();
+      await unchanged(alive);await check();alive();if(sourceSummary)selected(record);
       const response=await fetchImpl('/api/plugins/qianmu-tts/chat-gallery/recipe/'+method,{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',signal,
         headers:requestHeaders,body:JSON.stringify(body)});
       const discard=()=>{void response.body?.cancel?.().catch(()=>{});};
@@ -89,10 +109,10 @@ function createRecipeArchiveClient({source,getGallery,
       if(result.proof!==(method==='preserve'?'durable-recipe':'read-only-recipe')||result.expectedAccount!==body.expectedAccount
         ||!equal(result.target,body.target)||!equal(result.selection,body.selection))throw fail('配方返回另一账户、聊天或画面');
       if(method==='read'&&record.snapshotServerRef&&!record.snapshot&&(!result.reference||!equal(result.reference,recipeArchiveReference(record.snapshotServerRef))))throw fail('服务器配方不是此画面保存的版本');
-      await check();alive();return result;
+      await unchanged(alive);await check();alive();if(sourceSummary)selected(record);return result;
     },options);
   }
   return Object.freeze({...writable?{preserve:(record,options)=>call('preserve',record,options)}:{},read:(record,options)=>call('read',record,options),
-    guard:options=>bounded(async()=>true,options),
+    guard:options=>bounded(async(signal,alive)=>{await unchanged(alive);await check();alive();return true;},options),
     close(){closed=true;source.close();for(const abort of pending)abort();rows=null;}});
 }

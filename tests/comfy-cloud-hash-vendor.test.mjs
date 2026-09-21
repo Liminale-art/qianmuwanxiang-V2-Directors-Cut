@@ -28,7 +28,7 @@ test('offline BLAKE3 dependency subset retains exact upstream files and the full
   const manifest = JSON.parse(await readFile(new URL('VENDOR.json', root), 'utf8'));
   assert.equal(manifest.version, '2.4.0'); assert.equal(manifest.license, 'MIT');
   assert.equal(manifest.upstreamNode, '>=20.19.0');
-  assert.deepEqual(Object.keys(manifest.files).sort(), ['LICENSE', '_blake.js', '_md.js', '_u64.js', 'blake2.js', 'blake3.js', 'utils.js']);
+  assert.deepEqual(Object.keys(manifest.files).sort(), ['LICENSE', '_blake.js', '_md.js', '_u64.js', 'blake2.js', 'blake3.js', 'sha2.js', 'utils.js']);
   for (const [name, expected] of Object.entries(manifest.files)) {
     const bytes = await readFile(new URL(name, root));
     assert.equal(bytes.length, expected.bytes, name);

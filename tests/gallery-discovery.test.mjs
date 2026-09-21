@@ -6,9 +6,25 @@ import {createHash} from 'node:crypto';
 import {createGalleryDiscoveryService} from '../qianmu-gallery-discovery-service.js';
 import {galleryDiscoveryRequest,galleryDiscoveryResponse,galleryDiscoveryErrorPayload,GALLERY_DISCOVERY_LIMITS} from '../qianmu-gallery-discovery-contract.js';
 import {galleryDiscoveryFixture as fixture} from './helpers/gallery-discovery-fixture.mjs';
+import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
+import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
 
 const sha=text=>createHash('sha256').update(text).digest('hex');
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
+
+test('over 2 MiB source preserves to real native files, discovers and validates through the existing response contract',async t=>{
+  const f=await fixture(t);f.host.rows=Array.from({length:6},(_,i)=>({id:'large-'+i,createdAt:i,url:'/user/images/f.png',unknown:'x'.repeat(450000)}));await f.host.save();
+  const service=createChatCharacterReceiptService({dataRoot:f.host.root});t.after(()=>service.close());
+  const session=await createCurrentGalleryArchiveSession({getContext:()=>f.host.context,epoch:()=>f.host.epoch,account:async()=>f.host.account,
+    createStorage:f.transport.createStorage,fetchImpl:async(url,options)=>Response.json(await service.inspectGallery(f.host.req,JSON.parse(options.body),{signal:options.signal}))});
+  t.after(()=>session.close());const saved=await session.preserveAll();assert.ok(saved.sourceReceipt.bytes>2*1024*1024);await f.flush();
+  const result=await galleryDiscoveryResponse(await f.service.list(f.host.req,f.input()),{namespace:f.host.account,request:f.input()});
+  assert.equal(result.entries.length,1);assert.deepEqual(result.entries[0].value.sourceReceipt,saved.sourceReceipt);
+  const source=result.entries[0].value,reader=await createGalleryArchiveStorage({scope:source.scope,guard:()=>true,verifyRecord:()=>false,createStorage:f.transport.createStorage});
+  t.after(()=>reader.close());const pageReader=await reader.openSourceVersion(source.sourceReceipt),page=await pageReader.page();
+  assert.equal(page.rows.length,6);for(const row of page.rows)assert.equal((await reader.readRecord(row.record)).record.unknown.length,450000);pageReader.close();
+});
 
 test('real native-version files discover across pages without reading chats, originals, records or recipes',async t=>{
   const f=await fixture(t);for(let i=1;i<=5;i++)await f.add(i);await f.flush();

@@ -9,6 +9,25 @@ import {RECIPE_ARCHIVE_LIMITS} from '../qianmu-recipe-archive-contract.js';
 import {projectChatGalleryDetails} from '../qianmu-chat-gallery-details.js';
 import {createStoryboardBundleConfiguration} from '../qianmu-storyboard-bundle-configuration.js';
 import {createStoryboardDefaults} from '../qianmu-storyboard.js';
+import {createSelectedRecipeArchiveClient} from '../qianmu-recipe-archive-client.js';
+import {chatGalleryDigest,galleryDigestRecord} from '../qianmu-chat-gallery-digest.js';
+
+test('legacy current recipe preservation also handles a saved gallery above 2 MiB without fallback',async t=>{
+  const e=await recipeClientFixture(t);e.rows=[e.rows[0],...Array.from({length:5},(_,i)=>({id:'pad-'+i,createdAt:i+2,unknown:'x'.repeat(450000)}))];await e.save();
+  const client=e.client();t.after(()=>client.close());assert.equal((await client.preserve(e.rows[0])).proof,'durable-recipe');
+  assert.deepEqual((await client.read(e.rows[0])).snapshot,e.rows[0].snapshot);
+});
+
+test('selected recipe reader is read-only, rejects record edits and cannot use a forged saved digest',async t=>{
+  const e=await recipeClientFixture(t),summary=chatGalleryDigest(e.rows),raw=structuredClone(e.rows[0]),fingerprint=galleryDigestRecord(raw).sha256;
+  let allowed=true;const options={namespace:e.account,target:{kind:'character',avatar:'Alice.png',chatId:'chat'},summary,
+    guard:async()=>{if(!allowed)throw Error('account changed');},verifyRecord:record=>galleryDigestRecord(record).sha256===fingerprint,fetchImpl:e.fetch};
+  const client=createSelectedRecipeArchiveClient(options);t.after(()=>client.close());assert.equal(client.preserve,undefined);
+  assert.deepEqual((await client.read(raw)).snapshot,raw.snapshot);
+  const before=e.calls.length;await assert.rejects(client.read({...raw,future:'edit'}));assert.equal(e.calls.length,before);
+  const forged=createSelectedRecipeArchiveClient({...options,summary:{...summary,sha256:'a'.repeat(64)}});t.after(()=>forged.close());await assert.rejects(forged.read(raw));
+  allowed=false;await assert.rejects(client.read(raw),/account changed/);
+});
 
 test('real saved source -> immutable server reference -> fresh device recipe, with no recipe upload or local cache',async t=>{
   const e=await recipeClientFixture(t),client=e.client(),before=await fs.readFile(e.file);

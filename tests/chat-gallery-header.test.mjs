@@ -88,7 +88,7 @@ test('existing gallery bytes, records and structural budgets remain enforced wit
   for(const records of [[{large:'字'.repeat(CHAT_GALLERY_RECEIPT_LIMITS.bytes/3)}],Array.from({length:10001},()=>({})),
     [{a:Array.from({length:CHAT_GALLERY_RECEIPT_LIMITS.nodes},()=>0)}]])assert.throws(()=>parse(JSON.stringify(header(records)),16384));
   const text=JSON.stringify(header(Array.from({length:400},(_,i)=>({id:'r'+i,text:'x'.repeat(6000)}))));
-  assert.throws(()=>parse(text,16384),/超过核验/);
+  assert.ok(parse(text,16384).gallery.bytes>CHAT_GALLERY_RECEIPT_LIMITS.bytes);
 });
 
 test('skipped fields have independent depth, node, key and scalar limits',()=>{

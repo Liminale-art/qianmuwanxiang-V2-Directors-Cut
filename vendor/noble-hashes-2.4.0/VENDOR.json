@@ -6,8 +6,12 @@
   "integrity": "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==",
   "license": "MIT",
   "upstreamNode": ">=20.19.0",
-  "scope": "Unmodified BLAKE3 transitive ESM subset; no upstream install scripts or runtime downloads.",
+  "scope": "Unmodified BLAKE3 and SHA-2 transitive ESM subset; no upstream install scripts or runtime downloads.",
   "files": {
+    "sha2.js": {
+      "bytes": 18997,
+      "sha256": "471746bba6ec4c6238ca41358d1d3b40b6ff31cf3363f0b4d550c649c1a8e83b"
+    },
     "blake3.js": {
       "bytes": 12503,
       "sha256": "bc25a8f6c50acabf3781c44ec55cb364b00f6f3f4349d841813a1057a8af2f20"

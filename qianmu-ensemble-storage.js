@@ -1,5 +1,5 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {ENSEMBLE_LIBRARY_SCHEMA,ENSEMBLE_SELECTION_SCHEMA,normalizeEnsembleLibrary,normalizeEnsembleChatSelection} from './qianmu-ensemble-selection.js?v=1.59.287';
+import {ENSEMBLE_LIBRARY_SCHEMA,ENSEMBLE_SELECTION_SCHEMA,normalizeEnsembleLibrary,normalizeEnsembleChatSelection} from './qianmu-ensemble-selection.js?v=1.59.288';
 
 const MAX_BYTES=1024*1024;
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};

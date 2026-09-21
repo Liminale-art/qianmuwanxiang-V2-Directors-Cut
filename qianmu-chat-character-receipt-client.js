@@ -1,7 +1,8 @@
 import {CHAT_CHARACTER_RECEIPT_LIMITS as LIMIT,chatCharacterReceiptError,chatCharacterReceiptTarget,
   chatCharacterReceiptResponse,chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {chatGalleryReceiptText,chatGalleryReceiptResponse} from './qianmu-chat-gallery-receipt.js';
+import {chatGalleryReceiptResponse} from './qianmu-chat-gallery-receipt.js';
+import {scanChatGallery} from './qianmu-chat-gallery-digest.js';
 import {chatGalleryRecordSelection,chatGalleryRecordResponse,CHAT_GALLERY_RECORD_RESPONSE_BYTES} from './qianmu-chat-gallery-record.js';
 import {chatGalleryDetailsResponse,CHAT_GALLERY_DETAILS_RESPONSE_BYTES} from './qianmu-chat-gallery-details.js';
 import {chatGalleryEvidenceRequest,chatGalleryEvidenceResponse,CHAT_GALLERY_EVIDENCE_LIMITS} from './qianmu-chat-gallery-evidence.js';
@@ -89,7 +90,8 @@ function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=gl
   return Object.freeze({inspect,close,async verify(collection,options){
     if(closed||options?.signal?.aborted)throw fail('聊天核验已取消，不能确认保存');
     // The guarded/account-resolving awaits belong inside inspect's cancellation deadline.
-    const wanted=galleryOnly?chatGalleryReceiptText(collection):chatCharacterCollectionReceiptText(collection,owner),sha256=wanted?await digest(wanted.text):null,receipt=await inspect(options);
+    const wanted=galleryOnly?(collection===undefined?null:await scanChatGallery(collection,{guard:()=>{if(closed||options?.signal?.aborted)throw fail('聊天核验已取消');}})):chatCharacterCollectionReceiptText(collection,owner);
+    const sha256=wanted?(galleryOnly?wanted.sha256:await digest(wanted.text)):null,receipt=await inspect(options);
     if(closed||options?.signal?.aborted)throw fail('聊天核验已取消，不能确认保存');
     // Observed equality only: never a lock, an authorization, or a substitute for a successful host save.
     const summary=galleryOnly?receipt.gallery:receipt.collection,fields=galleryOnly?['count','bytes']:['revision','count','bytes'];

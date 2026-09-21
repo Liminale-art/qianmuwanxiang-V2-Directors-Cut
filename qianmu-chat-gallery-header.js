@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {chatCharacterReceiptError} from './qianmu-chat-character-receipt.js';
-import {chatGalleryReceiptText,CHAT_GALLERY_RECEIPT_LIMITS} from './qianmu-chat-gallery-receipt.js';
+import {chatGalleryReceiptRecordText,CHAT_GALLERY_RECEIPT_LIMITS,CHAT_GALLERY_STREAM_LIMITS} from './qianmu-chat-gallery-receipt.js';
 
 // Only the saved JSONL header is scanned. Unrelated metadata is validated but
 // never accumulated. One record is materialized at a time; the result retains
@@ -37,7 +37,7 @@ export function createChatGalleryHeaderCapture({recordId,guard=()=>{}}={}){
     if(path.length===1&&path[0]==='mes')fail('聊天正文不能代替资料头');
     if(at(path,galleryPath)){if(kind!=='array')fail('聊天静帧记录不是数组');present=true;}
     if(path.length>=galleryPath.length&&galleryPath.every((value,index)=>path[index]===value)){
-      if(++galleryNodes>CHAT_GALLERY_RECEIPT_LIMITS.nodes)fail('聊天静帧资料结构过大，请保留原件');
+      if(++galleryNodes>CHAT_GALLERY_STREAM_LIMITS.nodes)fail('聊天静帧资料结构过大，请保留原件');
       if(path.length===galleryPath.length+1){
         if(kind!=='object'||count>=CHAT_GALLERY_RECEIPT_LIMITS.records)fail('聊天静帧条目不完整或数量超过核验范围');
         capture={depth:frames.length+1,parts:[],chars:[],length:0};
@@ -54,10 +54,10 @@ export function createChatGalleryHeaderCapture({recordId,guard=()=>{}}={}){
   }
   function record(){
     let value;try{value=JSON.parse(capture.parts.join('')+capture.chars.join(''));}catch{fail('聊天静帧条目损坏');}
-    capture=null;const summary=chatGalleryReceiptText([value]);
-    bytes+=summary.bytes-2+(count?1:0);
-    if(bytes>CHAT_GALLERY_RECEIPT_LIMITS.bytes)fail('聊天静帧资料超过核验上限，请保全原件');
-    if(count)hash.update(',');hash.update(summary.text.slice(1,-1));count++;
+    capture=null;const summary=chatGalleryReceiptRecordText(value);
+    bytes+=summary.bytes+(count?1:0);
+    if(bytes>CHAT_GALLERY_STREAM_LIMITS.bytes)fail('聊天静帧资料超过核验上限，请保全原件');
+    if(count)hash.update(',');hash.update(summary.text);count++;
     if(recordId!==undefined&&value.id===recordId&&matches.length<2)matches.push(value);
   }
   function close(kind){

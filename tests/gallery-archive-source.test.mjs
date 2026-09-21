@@ -8,6 +8,7 @@ import {createChatCharacterReceiptService} from '../qianmu-chat-character-receip
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
+import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
 
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 async function fixture(t){
@@ -27,6 +28,35 @@ async function fixture(t){
       account:async()=>host.account,fetchImpl,createStorage:transport.createStorage,...options});t.after(()=>session.close());return session;},
   };
 }
+
+test('over 2 MiB inline gallery is split by bytes and fully read back in a fresh session without altering originals',async t=>{
+  const f=await fixture(t),base=f.host.rows[0];f.host.rows=Array.from({length:6},(_,i)=>({...structuredClone(base),id:'large-'+i,createdAt:i,
+    snapshot:{...structuredClone(base.snapshot),prompt:'字'.repeat(150000)}}));await f.host.save();
+  const before=await fs.readFile(f.host.file),source=chatGalleryDigest(f.host.rows);assert.ok(source.bytes>2*1024*1024);
+  const session=await f.open(),saved=await session.preserveAll();assert.equal(saved.total,6);assert.equal(saved.pages,2);assert.equal(saved.canPrune,false);
+  assert.equal(saved.sourceReceipt.sha256,source.sha256);session.close();
+  const other=await f.open(),reader=await other.openSourceVersion(saved.sourceReceipt),page=await reader.page({limit:10});
+  assert.deepEqual(page.rows.map(row=>row.recordId),['large-5','large-4','large-3','large-2','large-1','large-0']);
+  for(const row of page.rows){const original=f.host.rows.find(item=>item.id===row.recordId);assert.deepEqual((await other.readRecord(row.record)).record,original);
+    assert.deepEqual((await other.readRecipe(row.record)).snapshot,original.snapshot);}
+  assert.deepEqual(await fs.readFile(f.host.file),before);reader.close();
+  for(const call of f.calls)assert.deepEqual(Object.keys(call.body).sort(),['expectedAccount','target','version']);
+});
+
+test('large source detects an unknown-field edit behind its yielding scan before network I/O',async t=>{
+  const f=await fixture(t);f.host.rows=Array.from({length:40},(_,i)=>({id:'r'+i,createdAt:i,url:'/user/images/f.png',unknown:'x'.repeat(60000)}));await f.host.save();
+  let passes=0;await assert.rejects(f.open({yieldWork:async()=>{if(++passes===2)f.host.rows[0].unknown='edited behind the scan';}}),/已修改/);
+  assert.equal(f.calls.length,0);assert.equal(f.transport.calls.length,0);
+});
+
+test('large source reads only selected server recipes without a detached whole-library recipe clone',async t=>{
+  const f=await fixture(t);await serverRecipe(f);const original=f.host.rows[0];
+  f.host.rows=[original,...Array.from({length:5},(_,i)=>({id:'padding-'+i,createdAt:10+i,url:'/user/images/p.png',unknown:'x'.repeat(450000)}))];await f.host.save();
+  const session=await f.open(),saved=await session.preserveAll();assert.equal(saved.recipeCopies,1);assert.equal(saved.total,6);
+  const calls=f.host.calls.filter(row=>row.url.endsWith('/read'));assert.equal(calls.length,1);assert.equal(calls[0].body.selection.recordId,original.id);
+  assert.equal(calls[0].body.selection.gallerySha256,chatGalleryDigest(f.host.rows).sha256);
+  assert.doesNotMatch(JSON.stringify(calls[0].body),/unknown|parameters|original/);
+});
 
 test('exact saved chat -> native immutable record -> readback; no source save or original download',async t=>{
   const f=await fixture(t);f.host.rows[0].unknown={text:' untouched\r\n',flags:[false,0,null]};await f.host.save();

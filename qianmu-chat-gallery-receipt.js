@@ -1,13 +1,16 @@
 import {chatCharacterReceiptError,chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
 
 export const CHAT_GALLERY_RECEIPT_LIMITS=Object.freeze({bytes:2*1024*1024,records:10000,nodes:100000});
+// Separate aggregate streaming budgets. Individual records/legacy text helpers
+// retain their existing limits; this is not a larger single-object allowance.
+export const CHAT_GALLERY_STREAM_LIMITS=Object.freeze({bytes:32*1024*1024,records:10000,nodes:400000});
 const fail=message=>{throw chatCharacterReceiptError('content',message,400);};
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
 const keys=(value,fields)=>object(value)&&Object.keys(value).length===fields.length&&Object.keys(value).every(key=>fields.includes(key));
 
 // Hash the complete existing records, including unknown future fields. The response
 // carries only a count/digest, never prompts, URLs, image data or other chat metadata.
-export function chatGalleryReceiptText(value){
+function canonicalGallery(value){
   if(value===undefined)return null;
   if(!Array.isArray(value)||value.length>CHAT_GALLERY_RECEIPT_LIMITS.records)fail('聊天静帧记录格式或数量不支持，未裁剪资料');
   let nodes=0,characters=0;const seen=new Set();
@@ -33,7 +36,15 @@ export function chatGalleryReceiptText(value){
   for(const row of value)if(!object(row))fail('聊天静帧条目不完整，不能确认来源');
   const text=canonical(value),bytes=new TextEncoder().encode(text).byteLength;
   if(bytes>CHAT_GALLERY_RECEIPT_LIMITS.bytes)fail('聊天静帧资料超过核验上限，请保全原件');
-  return {text,count:value.length,bytes};
+  return {text,count:value.length,bytes,nodes};
+}
+
+export function chatGalleryReceiptText(value){const result=canonicalGallery(value);if(!result)return null;const {nodes,...summary}=result;return summary;}
+export function chatGalleryReceiptRecordText(value){const {text,bytes,nodes}=canonicalGallery([value]);return {text:text.slice(1,-1),bytes:bytes-2,nodes:nodes-1};}
+export function chatGalleryReceiptSummary(value){
+  if(!keys(value,['count','bytes','sha256'])||!Number.isSafeInteger(value.count)||value.count<0||value.count>CHAT_GALLERY_STREAM_LIMITS.records
+    ||!Number.isSafeInteger(value.bytes)||value.bytes<2||value.bytes>CHAT_GALLERY_STREAM_LIMITS.bytes||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/.test(value.sha256))fail('聊天静帧核验摘要无效');
+  return {count:value.count,bytes:value.bytes,sha256:value.sha256};
 }
 
 export function chatGalleryReceiptResponse(value){
@@ -42,7 +53,6 @@ export function chatGalleryReceiptResponse(value){
     ||!['absent','present'].includes(value.state)||value.proof!=='read-only-snapshot')fail('聊天静帧核验返回不兼容');
   const target=chatCharacterReceiptTarget(value.target),row=value.gallery;
   if(value.state==='absent'){if(row!==null)fail('聊天静帧空记录回执不一致');}
-  else if(!keys(row,['count','bytes','sha256'])||!Number.isSafeInteger(row.count)||row.count<0||row.count>CHAT_GALLERY_RECEIPT_LIMITS.records
-    ||!Number.isSafeInteger(row.bytes)||row.bytes<2||row.bytes>CHAT_GALLERY_RECEIPT_LIMITS.bytes||typeof row.sha256!=='string'||!/^[a-f0-9]{64}$/.test(row.sha256))fail('聊天静帧核验摘要无效');
+  else chatGalleryReceiptSummary(row);
   return {...value,target,gallery:row?{...row}:null};
 }

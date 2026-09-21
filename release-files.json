@@ -3,6 +3,8 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-chat-gallery-digest.js",
+    "vendor/noble-hashes-2.4.0/sha2.js",
     "qianmu-chat-gallery-header.js",
     "qianmu-chat-gallery-header-reader.js",
     "qianmu-gallery-archive-coordinator.js",
