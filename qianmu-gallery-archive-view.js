@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.290';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.291';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
@@ -46,7 +46,7 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
         <details><summary>来源与详情</summary><p>${escape(preview.source.chatKey)}</p><p>${escape(preview.source.ownerKey)}</p><p>${escape(date(preview.record.createdAt))} · ${preview.width} × ${preview.height}</p><p>${escape(tags.join(' · '))}</p>
         ${button('recipe',recipe?'重新读取原配方':'读取原配方',busy)}
         <div data-archive-recipe>${galleryArchiveRecipeHtml(recipe)}</div>
-        </details></main><footer><p role="status">${escape(notice||'不需要打开原聊天；图片文件本身仍需保留在 ST 中。')}</p></footer>`;
+        </details></main><footer><p role="status">${escape(notice||(preview.mediaOrigin==='server-copy'?'已读取此账户保全的原图副本；不会改动原聊天或原图片。':'不需要打开原聊天；此图尚无独立副本，ST 原图片文件仍须保留。'))}</p></footer>`;
       releaseZoom=bindGalleryPreviewZoom(dialog,{...preview,isCurrent:alive});return;
     }
     const stack=selected?pageStack:versionStack,next=selected?page?.cursor:versions?.nextCursor;

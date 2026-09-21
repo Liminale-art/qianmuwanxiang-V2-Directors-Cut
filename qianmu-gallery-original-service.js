@@ -1,8 +1,9 @@
-// Components only: not an HTTP endpoint or automatic runtime archive hook.
+// Server service. Routes provide authentication and bounded binary responses;
+// this does not itself schedule automatic archive copies.
 // Preserve accepts selectors, never user-provided bytes, URL or disk paths.
 import {createGalleryOriginalSource} from './qianmu-gallery-original-source.js';
-import {createGalleryOriginalStore,galleryOriginalReference,GALLERY_ORIGINAL_STORE_LIMITS} from './qianmu-gallery-original-store.js';
-import {chatGalleryRecordRequest} from './qianmu-chat-gallery-record.js';
+import {createGalleryOriginalStore,GALLERY_ORIGINAL_STORE_LIMITS} from './qianmu-gallery-original-store.js';
+import {galleryOriginalRequest,galleryOriginalReadRequest,galleryOriginalPreserved} from './qianmu-gallery-original-contract.js';
 import {imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 
 const fail=(code,message,status=409)=>{throw Object.assign(Error(message),{code:'gallery_original_service_'+code,status});};
@@ -13,11 +14,7 @@ export function createGalleryOriginalService(options){
         try{
             if(closed||signal?.aborted)fail('changed','原图保全已取消');
             if(pending.size>=GALLERY_ORIGINAL_STORE_LIMITS.pending)fail('busy','原图保全正忙，请稍后重试',429);
-            if(write)input=chatGalleryRecordRequest(raw);
-            else{
-                if(!raw||Object.keys(raw).length!==3||raw.version!==1||typeof raw.expectedAccount!=='string')fail('request','原图读回只接受账户和准确副本引用',400);
-                input={version:1,expectedAccount:raw.expectedAccount,reference:galleryOriginalReference(raw.reference)};
-            }
+            input=write?galleryOriginalRequest(raw):galleryOriginalReadRequest(raw);
         }catch(error){return Promise.reject(error);}
         const controller=new AbortController(),abort=()=>controller.abort();controllers.add(controller);signal?.addEventListener('abort',abort,{once:true});
         const keys=write?['root','userImages',input.target.kind==='group'?'groupChats':'chats']:['root'];
@@ -41,7 +38,7 @@ export function createGalleryOriginalService(options){
             // Point-in-time source verification, not a lock on the live chat.
             // originalVerified covers this copy's bytes only, not recipes,
             // attachments, anchors or the authority to prune any source.
-            return Object.freeze({...input,reference,original:receipt,proof:'original-copy-readback',persistence:'st-account-file',originalVerified:true,canPrune:false});
+            return Object.freeze(galleryOriginalPreserved({...input,reference,original:receipt,proof:'original-copy-readback',persistence:'st-account-file',originalVerified:true,canPrune:false}));
         })();
         pending.add(task);void task.finally(()=>{pending.delete(task);controllers.delete(controller);signal?.removeEventListener('abort',abort);}).catch(()=>{});return task;
     }

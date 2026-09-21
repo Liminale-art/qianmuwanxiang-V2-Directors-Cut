@@ -5,6 +5,8 @@ import {createGalleryArchiveBrowser as create} from '../qianmu-gallery-archive-b
 import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
 import {createGalleryDiscoveryClient} from '../qianmu-gallery-discovery-client.js';
 import {galleryDiscoveryFixture} from './helpers/gallery-discovery-fixture.mjs';
+import {createHash,randomUUID} from 'node:crypto';
+import {imageServiceAccount} from '../qianmu-image-service-access.js';
 
 const gate=()=>{let resolve;return {promise:new Promise(done=>resolve=done),resolve};};
 async function fixture(t,extra={}){
@@ -31,7 +33,7 @@ test('actual discovery, native version/page/record readers work with no original
   const page=await f.s.page({limit:24});assert.equal(page.rows.length,1);assert.equal(f.images,0);
   assert.equal(f.transport.calls.length-calls,6,'page metadata, not all record bodies');
   const preview=await f.s.preview(page.rows[0].recordId);
-  assert.equal(f.transport.calls.length-calls,8);assert.equal(f.images,1);
+  assert.equal(f.transport.calls.length-calls,9,'one record head/body plus one absent sidecar head; no duplicate record read');assert.equal(f.images,1);
   assert.equal(preview.record.prompt,'PRIVATE_PROMPT');assert.equal(preview.source.chatKey,entry.value.scope.chatKey);
   assert.equal(preview.originalVerified,false);assert.equal(preview.canPrune,false);
   assert.ok(f.transport.calls.slice(calls).every(row=>row.options.method!=='POST'));
@@ -96,7 +98,7 @@ test('manifest changes and record metadata mismatch stop before media fetch',asy
   const list=await f.s.list();await assert.rejects(f.s.open(list.entries[0].key),/版本已变化/);assert.equal(f.images,0);
   const g=await fixture(t,{createArchive:async options=>{
     const real=await createGalleryArchiveStorage({...options,createStorage:g.transport.createStorage});
-    return {...real,readRecord:async ref=>{const saved=await real.readRecord(ref);saved.record.id='mismatch';return saved;}};
+    return {...real,readMediaRecord:async ref=>{const saved=await real.readMediaRecord(ref);saved.record.id='mismatch';return saved;}};
   }}),items=await g.s.list();await g.s.open(items.entries[0].key);const page=await g.s.page();
   await assert.rejects(g.s.preview(page.rows[0].recordId),/记录与目录不一致/);assert.equal(g.images,0);
 });
@@ -106,4 +108,48 @@ test('recipe is an explicit read of a current-page record, without media fetch, 
   assert.equal((await f.s.recipe(page.rows[0].recordId)).state,'not-recorded');assert.equal(f.images,0);
   assert.equal(f.transport.calls.length-calls,2);assert.ok(f.transport.calls.slice(calls).every(call=>call.options.method!=='POST'));
   await assert.rejects(f.s.recipe('other'),/当前分页/);f.switchAccount();await assert.rejects(f.s.recipe(page.rows[0].recordId),/账户已变化/);
+});
+
+async function addOriginalSidecar(f,entry,row){
+  const store=await createGalleryArchiveStorage({scope:entry.value.scope,guard:()=>true,verifyRecord:()=>true,createStorage:f.transport.createStorage});
+  try{
+    const saved=await store.readRecord(row.record),sha256=createHash('sha256').update('fixture copy').digest('hex');
+    const reference={version:1,id:sha256+'-'+randomUUID(),sha256,bytes:12,mime:'image/png'};
+    await store.preserveOriginalReference(saved.record,{version:1,expectedAccount:imageServiceAccount(f.host.req).namespace,
+      target:{kind:'character',avatar:'Alice.png',chatId:entry.value.scope.chatKey},
+      selection:{recordId:row.recordId,createdAt:row.createdAt,gallerySha256:entry.value.sourceReceipt.sha256},reference,
+      original:{url:saved.record.url,sha256,bytes:12,mime:'image/png'},proof:'original-copy-readback',persistence:'st-account-file',originalVerified:true,canPrune:false});
+  }finally{store.close();}
+}
+
+test('preview prefers an attached original copy only on click, never reads the mutable URL or preserves during browse',async t=>{
+  let copies=0,decodes=0,closes=0;const f=await fixture(t,{createOriginal:options=>({
+    async read(reference,{signal}){assert.equal(await options.guard(),true);assert.equal(signal.aborted,false);copies++;
+      return {reference,blob:new Blob(['fixture copy'],{type:'image/png'}),proof:'original-copy-readback',originalVerified:true,canPrune:false};},
+    close(){closes++;},
+  }),decodeOriginal:async(blob,{guard})=>{assert.equal(await guard(),true);decodes++;return {blob,width:10,height:20};}});
+  const list=await f.s.list(),entry=list.entries[0];await f.s.open(entry.key);const page=await f.s.page(),row=page.rows[0];
+  await addOriginalSidecar(f,entry,row);const before=f.transport.calls.length;assert.equal(copies,0);assert.equal(f.images,0);
+  const image=await f.s.preview(row.recordId);assert.equal(copies,1);assert.equal(decodes,1);assert.equal(f.images,0);
+  assert.equal(image.mediaOrigin,'server-copy');assert.equal(image.originalVerified,true);assert.equal(image.canPrune,false);
+  assert.equal(f.transport.calls.length-before,4,'one record and one sidecar head/body, no duplicate record lookup');
+  assert.ok(f.transport.calls.slice(before).every(call=>call.options.method!=='POST'));f.s.close();assert.equal(closes,1);
+});
+
+test('missing or unverified attached copies fail visibly without falling back to another URL',async t=>{
+  for(const mode of ['missing','proof']){
+    const f=await fixture(t,{createOriginal:()=>({read:async reference=>{if(mode==='missing')throw Error('副本缺失');
+      return {reference,blob:new Blob(['bad']),originalVerified:false,proof:'original-reference-only'};},close(){}})});
+    const list=await f.s.list(),entry=list.entries[0];await f.s.open(entry.key);const page=await f.s.page();await addOriginalSidecar(f,entry,page.rows[0]);
+    await assert.rejects(f.s.preview(page.rows[0].recordId),/副本/);assert.equal(f.images,0);
+  }
+});
+
+test('closing preview before a late copy arrives prevents decode and releases its client',async t=>{
+  const wait=gate();let started,decodes=0,closed=0;const begin=new Promise(resolve=>{started=resolve;});
+  const f=await fixture(t,{createOriginal:()=>({read:async reference=>{started();await wait.promise;return {reference,blob:new Blob(['late']),originalVerified:true,proof:'original-copy-readback'};},close(){closed++;}}),
+    decodeOriginal:async()=>{decodes++;throw Error('must not decode');}});
+  const list=await f.s.list(),entry=list.entries[0];await f.s.open(entry.key);const page=await f.s.page();await addOriginalSidecar(f,entry,page.rows[0]);
+  const task=f.s.preview(page.rows[0].recordId);await begin;f.s.close();await assert.rejects(task,/取消/);wait.resolve();await new Promise(done=>setTimeout(done,0));
+  assert.equal(closed,1);assert.equal(decodes,0);assert.equal(f.images,0);
 });

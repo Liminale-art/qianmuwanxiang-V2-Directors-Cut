@@ -1,22 +1,24 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.290';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.291';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
+import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
+import {decodeGalleryOriginalBlob} from './qianmu-gallery-original-preview.js';
 
 // Account-bound, read-only consumer. No current chat, local recipe fallback,
 // preservation, source repair, generation or deletion is reachable here.
 export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
   createDiscovery=createGalleryDiscoveryClient,createArchive=createGalleryArchiveStorage,
-  loadImage=loadGalleryPreviewImage,timeoutMs=45000}={}){
+  loadImage=loadGalleryPreviewImage,createOriginal=createGalleryOriginalClient,decodeOriginal=decodeGalleryOriginalBlob,timeoutMs=45000}={}){
   if(typeof account!=='function'||typeof headers!=='function'||typeof isCurrent!=='function'
     ||!Number.isFinite(timeoutMs)||timeoutMs<100||timeoutMs>60000)throw Error('图库读取环境尚未就绪');
-  let closed=false,pending=false,namespace,storage,version,selection,endReason;
+  let closed=false,pending=false,namespace,storage,version,selection,endReason,originals;
   let versions=new Map(),rows=new Map();const cancellation=new AbortController();
   const discovery=createDiscovery({account,headers,guard:()=>current()});
   function current(){if(closed||isCurrent()!==true)throw Error('图库页面已变化，请重新打开');return true;}
   function releaseVersion(){version?.close();version=null;storage?.close();storage=null;selection=null;rows.clear();}
-  function close(reason){if(closed)return;if(reason instanceof Error)endReason=reason;closed=true;cancellation.abort();releaseVersion();versions.clear();discovery.close();}
+  function close(reason){if(closed)return;if(reason instanceof Error)endReason=reason;closed=true;cancellation.abort();originals?.close();releaseVersion();versions.clear();discovery.close();}
   async function check(){
     current();const found=galleryCatalogAccount(await account());current();
     if(namespace!==undefined&&namespace!==found){const error=Error('ST 账户已变化，请重新打开图库');close(error);throw error;}
@@ -56,13 +58,21 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
     });},
     preview(recordId){return run(async()=>{
       const row=rows.get(recordId);if(!row||!selection||!storage)throw Error('画面不在当前分页，请重新选择');
-      const saved=await storage.readRecord(row.record);await check();
+      const saved=await storage.readMediaRecord(row.record,{signal:cancellation.signal});await check();
       const record=saved.record;
       if(record.id!==row.recordId||record.createdAt!==row.createdAt
         ||JSON.stringify(galleryCatalogTags(record.tags))!==JSON.stringify(row.tags))throw Error('画面记录与目录不一致，未加载图片');
-      const media=await loadImage(record.url,{guard:check,signal:cancellation.signal});await check();
+      let media,originalVerified=false,mediaOrigin='st-original';
+      if(saved.media.state==='available'){
+        originals??=createOriginal({account,headers,guard:check,timeoutMs});
+        const copy=await originals.read(saved.media.reference,{signal:cancellation.signal});await check();
+        if(copy.originalVerified!==true||copy.proof!=='original-copy-readback'||JSON.stringify(copy.reference)!==JSON.stringify(saved.media.reference))throw Error('原图副本尚未核实');
+        media=await decodeOriginal(copy.blob,{guard:check,signal:cancellation.signal});await check();originalVerified=true;mediaOrigin='server-copy';
+      }else if(saved.media.state==='not-preserved'){
+        media=await loadImage(record.url,{guard:check,signal:cancellation.signal});await check();
+      }else throw Error('原图副本状态不兼容，未自动换图');
       return {...media,record:structuredClone(record),source:{...selection.scope},recipeState:saved.recipeState,
-        originalVerified:false,canPrune:false};
+        mediaOrigin,originalVerified,canPrune:false};
     });},
     recipe(recordId){return run(async()=>{
       const row=rows.get(recordId);if(!row||!storage)throw Error('画面不在当前分页，请重新选择');

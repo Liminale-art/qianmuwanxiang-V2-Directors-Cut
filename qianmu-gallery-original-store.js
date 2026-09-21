@@ -7,6 +7,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {IMAGE_RESTORE_MAX_BYTES} from './qianmu-image-restore-contract.js';
 import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
+import {galleryOriginalReference} from './qianmu-gallery-original-contract.js';
+export {galleryOriginalReference} from './qianmu-gallery-original-contract.js';
 
 export const GALLERY_ORIGINAL_STORE_LIMITS=Object.freeze({bytes:IMAGE_RESTORE_MAX_BYTES,pending:2,bucketFiles:4096,
     reserveBytes:64*1024*1024,chunkBytes:64*1024,timeoutMs:30000});
@@ -19,12 +21,6 @@ const absolute=value=>typeof value==='string'&&path.isAbsolute(value)&&!value.in
 const child=(root,target)=>{const relative=path.relative(root,target);return relative!==''&&relative!=='..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative);};
 const same=(a,b)=>typeof a?.ino==='bigint'&&a.ino>0n&&typeof a.dev==='bigint'&&a.dev>=0n&&a.ino===b?.ino&&a.dev===b.dev;
 const unchanged=(a,b)=>same(a,b)&&a.size===b.size&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs&&b.isFile()&&!b.isSymbolicLink()&&b.nlink===1n;
-export function galleryOriginalReference(value){
-    if(!exact(value,['version','id','sha256','bytes','mime'])||value.version!==1||!id.test(value.id)||!(/^[a-f0-9]{64}$/).test(value.sha256)
-        ||!value.id.startsWith(value.sha256+'-')||!Number.isSafeInteger(value.bytes)||value.bytes<1||value.bytes>LIMIT.bytes
-        ||!['image/png','image/jpeg','image/webp'].includes(value.mime))fail('reference','原图副本引用无效，未猜测磁盘位置',400);
-    return Object.freeze({...value});
-}
 function captureBytes(value){
     if(!exact(value,['bytes','sha256','mime'])||!Buffer.isBuffer(value.bytes)||value.bytes.length<1||value.bytes.length>LIMIT.bytes)
         fail('content','原图副本只接受完整的受限静帧字节',400);

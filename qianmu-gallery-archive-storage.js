@@ -7,8 +7,9 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.290';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.291';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
+import {encodeGalleryArchiveOriginal,inspectGalleryArchiveOriginal} from './qianmu-gallery-archive-original.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_storage',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
@@ -83,6 +84,11 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
     if(!stored.exists)return {state:'not-preserved',snapshot:null,originalVerified:false,canPrune:false};
     return {state:'available',...inspectGalleryArchiveRecipe(owner,original,stored.value)};
   }
+  async function readOriginalCopy(original,signal){
+    check();const stored=receipt(await storage.read(slot('original',original.reference),{guard:check,signal}));check();
+    if(!stored.exists)return {state:'not-preserved',reference:null,originalVerified:false,canPrune:false};
+    const result=await inspectGalleryArchiveOriginal(owner,original,stored.value);check();return {state:'available',...result};
+  }
   return Object.freeze({scope:Object.freeze({...owner}),
     async preserveRecord(raw){
       // Capture before the first await so editing the live record cannot change
@@ -113,6 +119,34 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
       check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES);
       const original=await inspectGalleryArchiveRecord(owner,await readObject('record',ref,signal),ref);check();
       return readRecipeCopy(original,signal);
+    },
+    async preserveOriginalReference(rawRecord,rawResponse){
+      check();const record=captureGalleryArchiveJson(rawRecord,GALLERY_ARCHIVE_RECORD_BYTES),response=captureGalleryArchiveJson(rawResponse,16384);
+      return exclusive(async()=>{
+        const encoded=await encodeGalleryArchiveOriginal(owner,record,response);check();await verify(encoded.record);
+        await inspectGalleryArchiveRecord(owner,await readObject('record',encoded.record.reference),encoded.record.reference);check();
+        await putObject('original',encoded,async stored=>{
+          const prior=await inspectGalleryArchiveOriginal(owner,encoded.record,stored);check();
+          // Appending other gallery records changes the whole-source digest,
+          // not this immutable record or copy. Keep the first valid evidence.
+          if(['id','sha256','bytes','mime'].some(key=>prior.reference[key]!==encoded.value.source.reference[key])
+            ||prior.original.url!==encoded.value.source.original.url)fail('原画面已有不同原图副本凭据，保留旧版未覆盖');
+        },slot('original',encoded.record.reference));
+        await verify(encoded.record);
+        return {record:encoded.record.reference,proof:'original-reference-only',originalVerified:false,canPrune:false};
+      });
+    },
+    async readOriginal(rawReference,{signal}={}){
+      check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES);
+      const original=await inspectGalleryArchiveRecord(owner,await readObject('record',ref,signal),ref);check();
+      return readOriginalCopy(original,signal);
+    },
+    async readMediaRecord(rawReference,{signal}={}){
+      check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES);
+      const original=await inspectGalleryArchiveRecord(owner,await readObject('record',ref,signal),ref);check();
+      // One selected record read, not readRecord + readOriginal duplicating it.
+      const media=await readOriginalCopy(original,signal);check();
+      return {record:original.value.record,recipeState:original.recipeState,reference:ref,media,originalVerified:false,canPrune:false};
     },
     async readStagedRecipe(rawReference,{signal}={}){
       check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES),original=currentPageRecords.get(ref.sha256);

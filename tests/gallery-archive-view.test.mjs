@@ -88,3 +88,12 @@ test('closing during recipe read drops its late content and does not rebuild a c
   wait.resolve({state:'available',snapshot:{prompt:'late'}});await tick();
   assert.equal(f.recipeContainer.innerHTML,'');assert.deepEqual(f.revoked,['blob:fixture']);
 });
+
+test('preview explains verified private copy versus legacy native media without a false migration claim',async()=>{
+  for(const mediaOrigin of ['server-copy','st-original']){
+    const f=fixture({preview:async()=>({record:{id:'one',tags:[]},source:entry.value.scope,blob:new Blob(['fixture']),width:1,height:1,mediaOrigin})});
+    await tick();await f.choose('version',0);await f.choose('record',0);
+    assert.match(f.dialog.innerHTML,mediaOrigin==='server-copy'?/已读取此账户保全的原图副本/:/尚无独立副本/);
+    assert.doesNotMatch(f.dialog.innerHTML,/可以删除原图|完整迁移完成/);f.opened.close();
+  }
+});
