@@ -89,10 +89,13 @@ test('native throw before commit preserves proposed local content and never auto
 });
 
 test('host timeout retains shared exclusion until actual native promise settles; then verify is read-only', async t => {
-  const f = await fixture(t), wait = gate(); f.host = async () => { await wait.promise; await f.persist(); };
+  const f = await fixture(t), wait = gate(); let nativeSave;
+  f.host = () => nativeSave = (async () => { await wait.promise; await f.persist(); })();
   const a = f.open({ hostTimeoutMs: 20 }), b = f.open(); const result = await a.save(f.proposal, consent);
   assert.equal(result.reason, 'host_pending'); await assert.rejects(b.save(f.proposal, consent)); await assert.rejects(a.retry({ confirmed: true }));
-  wait.release(); await new Promise(done => setTimeout(done, 25)); assert.equal((await a.verify()).status, 'saved'); assert.equal(f.saves, 1);
+  // Wait for the actual file write, not a 25ms estimate that races the disk
+  // under the full parallel suite. Timeout/lock assertions above stay intact.
+  wait.release(); await nativeSave; assert.equal((await a.verify()).status, 'saved'); assert.equal(f.saves, 1);
 });
 
 test('character draft saver and three-field saver share host write exclusion', async t => {

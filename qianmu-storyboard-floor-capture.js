@@ -1,6 +1,6 @@
-import {createStoryboardFloorTake,createStoryboardCaptureReservation} from './qianmu-storyboard-floor-take.js?v=1.59.285';
-import {readStoryboardFloorTakeSourceKeys} from './qianmu-storyboard-floor-take-source.js?v=1.59.285';
-import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.285';
+import {createStoryboardFloorTake,createStoryboardCaptureReservation} from './qianmu-storyboard-floor-take.js?v=1.59.286';
+import {readStoryboardFloorTakeSourceKeys} from './qianmu-storyboard-floor-take-source.js?v=1.59.286';
+import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.286';
 const running=new WeakSet();
 export async function captureStoryboardFloor(floor,message,api) {
   const state=api.state(),chatKey=api.chatKey(),epoch=api.epoch(),text=message?.mes,swipe=message?.swipe_id;
@@ -24,7 +24,7 @@ export async function captureStoryboardFloor(floor,message,api) {
     if(!current()||api.busy())return false;
     reservation=createStoryboardCaptureReservation(state);
     plan=api.ensurePlan(state,floor,message,{origin:supplement?'manual_supplement':'manual',autoGenerate:false,forceNew:true,paragraphSelection:choice.selection});
-    if(!supplement){const records=api.records();if(records.length>=400)throw new Error('当前聊天的图库索引空间不足，未启动整层重拍；旧图保留');plan.floorTake=createStoryboardFloorTake(plan,records,api.visible,api.pending?.()||state.taskStates||[],api.receipts?api.receipts():[],messageKeys);}
+    if(!supplement)plan.floorTake=createStoryboardFloorTake(plan,api.records(),api.visible,api.pending?.()||state.taskStates||[],api.receipts?api.receipts():[],messageKeys);
     Object.assign(state,{target:'floor',floor:String(floor),inlineByDefault:true,paragraphMode:supplement?'manual':'auto',manualParagraphIndex:choice.paragraphIndex,
       pendingParagraphSelection:choice.selection,promptMode:'auto'});
     state.promptCompiler.enabled=true;reservation.seal();

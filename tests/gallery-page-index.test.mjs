@@ -138,7 +138,7 @@ test('index contract ships for read-only discovery, without wiring gallery pruni
   const implementation=await readFile(new URL('../qianmu-gallery-page-index.js',import.meta.url),'utf8');
   assert.doesNotMatch(entry,/qianmu-gallery-page-index/);assert.equal(release.files.includes('qianmu-gallery-page-index.js'),true);
   assert.equal(release.files.includes('qianmu-gallery-discovery-service.js'),true);
-  assert.match(entry,/pruneStoryboardRetakeGallery\(gallery/,'existing retention risk remains explicit, not silently claimed fixed');
+  assert.doesNotMatch(entry,/pruneStoryboardRetakeGallery\(/,'record count cannot authorize deleting gallery history');
   assert.doesNotMatch(implementation,/\bfetch\s*\(|\bindexedDB\b|\.unlink\(|\.writeFile\(|\.splice\(|\badmit\s*\(/);
 });
 

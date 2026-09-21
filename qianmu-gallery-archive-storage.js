@@ -7,7 +7,7 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.285';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.286';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_storage',writeState:'not_started'});};
@@ -16,7 +16,7 @@ const bytes=value=>new TextEncoder().encode(value).length;
 export async function createGalleryArchiveStorage({scope,guard,verifyRecord,createStorage=createConfiguredStAccountStorage,yieldWork=async()=>{}}={}){
   const owner=galleryArchiveScope(scope);
   if(typeof guard!=='function'||typeof verifyRecord!=='function'||typeof createStorage!=='function')fail('画面保全缺少来源验证');
-  let storage,closed=false,busy=false,mayHaveWritten=false;const readers=new Set(),staged=new Map();
+  let storage,closed=false,busy=false,mayHaveWritten=false;const readers=new Set(),staged=new Map(),currentPageRecords=new Map();
   function check(){
     if(closed)fail('画面保全会话已结束');let valid=false;
     try{const result=guard();if(result&&typeof result.then==='function')void Promise.resolve(result).catch(()=>{});else valid=result===true;
@@ -24,7 +24,7 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
     }catch{valid=false;}
     if(!valid){close();fail('画面保全账户或聊天已变化');}return true;
   }
-  function close(){closed=true;for(const reader of readers)reader.close();readers.clear();staged.clear();storage?.close();}
+  function close(){closed=true;for(const reader of readers)reader.close();readers.clear();staged.clear();currentPageRecords.clear();storage?.close();}
   check();
   try{
     storage=await createStorage({isCurrent:()=>{try{return check();}catch{return false;}},maxBytes:LIMIT.recordBytes});check();
@@ -74,6 +74,15 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
     return Object.freeze({page:input=>reader.page(input),close(){readers.delete(reader);reader.close();}});
   }
   const versionValue=(value,expected)=>galleryArchiveSourceVersion(value,owner,expected);
+  async function readRecipeCopy(original,signal){
+    check();
+    if(original.recipeState==='inline')return {state:'available',snapshot:recipeArchiveSnapshot(original.value.record.snapshot).snapshot,
+      origin:'saved-inline',proof:'recipe-readback-only',originalVerified:false,canPrune:false};
+    if(original.recipeState!=='server-reference')return {state:original.recipeState,snapshot:null,originalVerified:false,canPrune:false};
+    const stored=receipt(await storage.read(slot('recipe',original.reference),{guard:check,signal}));check();
+    if(!stored.exists)return {state:'not-preserved',snapshot:null,originalVerified:false,canPrune:false};
+    return {state:'available',...inspectGalleryArchiveRecipe(owner,original,stored.value)};
+  }
   return Object.freeze({scope:Object.freeze({...owner}),
     async preserveRecord(raw){
       // Capture before the first await so editing the live record cannot change
@@ -103,17 +112,22 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
     async readRecipe(rawReference,{signal}={}){
       check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES);
       const original=await inspectGalleryArchiveRecord(owner,await readObject('record',ref,signal),ref);check();
-      if(original.recipeState==='inline')return {state:'available',snapshot:recipeArchiveSnapshot(original.value.record.snapshot).snapshot,
-        origin:'saved-inline',proof:'recipe-readback-only',originalVerified:false,canPrune:false};
-      if(original.recipeState!=='server-reference')return {state:original.recipeState,snapshot:null,originalVerified:false,canPrune:false};
-      const stored=receipt(await storage.read(slot('recipe',ref),{guard:check,signal}));check();
-      if(!stored.exists)return {state:'not-preserved',snapshot:null,originalVerified:false,canPrune:false};
-      return {state:'available',...inspectGalleryArchiveRecipe(owner,original,stored.value)};
+      return readRecipeCopy(original,signal);
+    },
+    async readStagedRecipe(rawReference,{signal}={}){
+      check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES),original=currentPageRecords.get(ref.sha256);
+      // Only this session's last completely read-back page can reuse its record
+      // bytes. The sidecar is still freshly read and validated; no persistent
+      // "exists" cache, caller-injected body, fallback or deletion permission.
+      const stagedCurrent=()=>{check();if(signal?.aborted)fail('配方读取已取消');
+        if(!original||!same(original.reference,ref)||currentPageRecords.get(ref.sha256)!==original)fail('配方读取不属于当前已保全批次');};
+      stagedCurrent();await verify(original);stagedCurrent();const result=await readRecipeCopy(original,signal);stagedCurrent();await verify(original);stagedCurrent();return result;
     },
     async stagePage(raw){
       check();const captured=captureGalleryArchiveJson(raw,LIMIT.recordBytes);
       if(!Array.isArray(captured)||!captured.length||captured.length>LIMIT.rows)fail('画面保全每批须为1至128项，未裁剪');
       return exclusive(async()=>{
+        currentPageRecords.clear();
         // Validate the complete batch first. Its order must already be newest
         // first; never silently reorder/deduplicate the source supplied by host.
         const encoded=[];
@@ -129,6 +143,7 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,crea
         await putObject('page',{...page,value:JSON.parse(page.text)},value=>inspectPage(value,page));check();
         for(const item of encoded)await verify(item);
         staged.set(page.reference.sha256,{descriptor:structuredClone(page.descriptor),rows:structuredClone(rows)});
+        for(const item of encoded)currentPageRecords.set(item.reference.sha256,item);
         return {descriptor:structuredClone(page.descriptor),records:encoded.map(item=>({recordId:item.value.record.id,reference:item.reference,recipeState:item.recipeState})),
           persistence:'st-account-file',proof:'page-readback-only',originalVerified:false,canPrune:false};
       });

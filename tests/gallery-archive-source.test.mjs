@@ -184,9 +184,10 @@ test('complete preservation materializes exact server recipe and fresh-device re
 
 test('repeated complete preservation keeps identical server copies and never rewrites a record or recipe',async t=>{
   const f=await fixture(t);await serverRecipe(f);const session=await f.open(),first=await session.preserveAll();
-  const files=[...f.transport.files],posts=f.transport.calls.filter(call=>call.options.method==='POST').length;
+  const files=[...f.transport.files],posts=f.transport.calls.filter(call=>call.options.method==='POST').length,recipeReads=f.host.calls.filter(call=>call.url.endsWith('/read')).length;
   const again=await session.preserveAll();assert.deepEqual(again,first);assert.deepEqual([...f.transport.files],files);
   assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,posts);
+  assert.equal(f.host.calls.filter(call=>call.url.endsWith('/read')).length,recipeReads,'existing exact recipe copies need no source recipe API');
 });
 
 test('server recipe read failure prevents publication, keeps partial immutable copies and never changes live source',async t=>{
@@ -240,4 +241,56 @@ test('detached recipe reader still rejects an account change during a server res
   f.host.fetch=async(url,options)=>{const response=await originalFetch(url,options);f.host.account='st-user:bob';return response;};
   const session=await f.open();await assert.rejects(session.preserveAll(),/账户|核验|变化/);
   assert.ok(![...f.transport.files.keys()].some(name=>name.includes('-gallery-recipe-')||name.includes('-gallery-source-')));
+});
+
+test('one appended image fetches only its new recipe, and a fresh session reuses older native copies',async t=>{
+  const f=await fixture(t),{original}=await serverRecipe(f),first=await f.open();await first.preserveAll();first.close();
+  const next={...structuredClone(f.host.rows[0]),id:'next',createdAt:2,snapshot:original};delete next.snapshotServerRef;f.host.rows.push(next);await f.host.save();
+  const client=f.host.client();try{next.snapshotServerRef=(await client.preserve(next)).reference;delete next.snapshot;}finally{client.close();}await f.host.save();
+  const before=f.host.calls.filter(call=>call.url.endsWith('/read')).length,session=await f.open(),saved=await session.preserveAll();
+  assert.equal(saved.total,2);assert.equal(saved.recipeCopies,2);
+  const reads=f.host.calls.filter(call=>call.url.endsWith('/read')).slice(before);assert.equal(reads.length,1);assert.equal(reads[0].body.selection.recordId,'next');
+  const reader=await session.openSourceVersion(saved.sourceReceipt),page=await reader.page();assert.equal(page.rows.length,2);
+  for(const row of page.rows)assert.deepEqual((await session.readRecipe(row.record)).snapshot,original);reader.close();
+});
+
+test('existing exact native copy remains usable when the old server recipe file is gone, without recreating it',async t=>{
+  const f=await fixture(t),{reference}=await serverRecipe(f),session=await f.open(),first=await session.preserveAll();session.close();
+  await fs.unlink(f.host.archive+'/'+reference.id+'.json');const before=f.host.calls.length,other=await f.open();
+  assert.deepEqual(await other.preserveAll(),first);assert.equal(f.host.calls.length,before);
+  await assert.rejects(fs.stat(f.host.archive+'/'+reference.id+'.json'),error=>error.code==='ENOENT');
+});
+
+test('corrupt native recipe copy fails without silently re-reading, overwriting or publishing another version',async t=>{
+  const f=await fixture(t);await serverRecipe(f);const session=await f.open(),saved=await session.preserveAll(),reader=await session.openSourceVersion(saved.sourceReceipt),page=await reader.page();reader.close();session.close();
+  const head=[...f.transport.files.keys()].find(key=>key.endsWith(`gallery-recipe-${page.rows[0].record.sha256}.json`));f.transport.files.set(head,'broken');
+  const files=[...f.transport.files],reads=f.host.calls.length,other=await f.open();await assert.rejects(other.preserveAll());
+  assert.deepEqual([...f.transport.files],files);assert.equal(f.host.calls.length,reads);
+});
+
+test('a missing native recipe copy is recreated only from the exact saved original, never current settings',async t=>{
+  const f=await fixture(t);await serverRecipe(f);const session=await f.open(),saved=await session.preserveAll(),reader=await session.openSourceVersion(saved.sourceReceipt),page=await reader.page();reader.close();session.close();
+  const head=[...f.transport.files.keys()].find(key=>key.endsWith(`gallery-recipe-${page.rows[0].record.sha256}.json`));f.transport.files.delete(head);
+  const before=f.host.calls.filter(call=>call.url.endsWith('/read')).length,other=await f.open();await other.preserveAll();
+  assert.equal(f.host.calls.filter(call=>call.url.endsWith('/read')).length-before,1);assert.ok(f.transport.files.has(head));
+});
+
+test('401 saved originals are preserved in four complete pages, with no storage cap clipping',async t=>{
+  const f=await fixture(t);f.host.rows=Array.from({length:401},(_,i)=>({id:'record-'+i,createdAt:i,url:'/user/images/'+i+'.png',unknown:{keep:i}}));await f.host.save();
+  const before=await fs.readFile(f.host.file),session=await f.open(),saved=await session.preserveAll();assert.equal(saved.total,401);assert.equal(saved.pages,4);
+  const reader=await session.openSourceVersion(saved.sourceReceipt),ids=[];let cursor;
+  do{const page=await reader.page({limit:60,...cursor?{cursor}:{}});ids.push(...page.rows.map(row=>row.recordId));cursor=page.cursor;}while(cursor);
+  assert.equal(new Set(ids).size,401);assert.equal(ids[0],'record-400');assert.equal(ids.at(-1),'record-0');
+  assert.deepEqual(await fs.readFile(f.host.file),before);assert.equal(f.host.rows.length,401);reader.close();
+});
+
+test('newer append changes only the leading partial page, keeping the older full page content-addressed',async t=>{
+  const f=await fixture(t),record=i=>({id:'record-'+i,createdAt:i,url:'/user/images/'+i+'.png'});
+  f.host.rows=Array.from({length:130},(_,i)=>record(i));await f.host.save();const first=await f.open();await first.preserveAll();first.close();
+  const pages=()=>new Map([...f.transport.files].map(([key,text])=>[key,JSON.parse(text)]).filter(([,body])=>body.schema==='qianmu.st-account-document.v1'&&body.value?.schema==='qianmu.gallery.index-page.v1'));
+  const before=pages();assert.equal(before.size,2);const full=[...before].find(([,body])=>body.value.rows.length===128);assert.ok(full);
+  f.host.rows.push(record(130));await f.host.save();const second=await f.open(),saved=await second.preserveAll(),after=pages();
+  assert.equal(saved.total,131);assert.equal(saved.pages,2);assert.equal(after.size,before.size+1,'one new leading page, not rewrites of all page boundaries');
+  assert.deepEqual(after.get(full[0]),full[1]);const reader=await second.openSourceVersion(saved.sourceReceipt),firstRows=await reader.page({limit:4});
+  assert.deepEqual(firstRows.rows.map(row=>row.recordId),['record-130','record-129','record-128','record-127']);reader.close();
 });

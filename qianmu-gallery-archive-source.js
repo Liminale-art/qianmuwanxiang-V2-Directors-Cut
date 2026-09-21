@@ -2,10 +2,10 @@
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.285';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.286';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
-import {createHistoricalRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.285';
+import {createHistoricalRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.286';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 
@@ -69,11 +69,18 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
         // Sorting is only for the independent chronological index; captured
         // source order and every original record stay untouched.
         const ordered=[...captured].sort((a,b)=>b.createdAt-a.createdAt||(a.id<b.id?1:a.id>b.id?-1:0)),pages=[];let recipeCopies=0;
-        for(let at=0;at<ordered.length;at+=LIMIT.rows){
-          const batch=ordered.slice(at,at+LIMIT.rows);
+        // Anchor full pages at the oldest end. Appending a newer image changes
+        // only the leading partial page, instead of shifting every page's bytes.
+        const firstSize=ordered.length%LIMIT.rows||LIMIT.rows;
+        for(let at=0;at<ordered.length;){
+          const size=at===0?firstSize:LIMIT.rows,batch=ordered.slice(at,at+size);at+=size;
           await yieldWork();unchanged();const result=await archive.stagePage(batch);unchanged();pages.push(result.descriptor);
+          const references=new Map(result.records.map(record=>[record.recordId,record.reference]));
           for(const record of batch){
             if(galleryArchiveRecipeState(record)!=='server-reference')continue;
+            await yieldWork();check();const existing=await archive.readStagedRecipe(references.get(record.id));check();
+            if(existing.state==='available'&&existing.origin==='server-copy'){recipeCopies++;continue;}
+            if(existing.state!=='not-preserved')fail('原配方副本状态不兼容，未重新覆盖');
             await yieldWork();check();recipes??=createHistoricalRecipeArchiveClient({namespace:client.owner.namespace,target:client.target,records:captured,headers,fetchImpl,timeoutMs,guard:async()=>{check();await client.guard();check();}});
             const read=await recipes.read(record);check();
             if(read.selection.gallerySha256!==sourceReceipt.sha256)fail('配方读取来源版本与本次保全不符');

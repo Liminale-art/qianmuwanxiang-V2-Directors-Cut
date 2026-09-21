@@ -1,8 +1,8 @@
 // A floor retake is an immutable receipt attached to the original jobs/images.
 // It neither deletes assets nor authorizes a request. Only a fully saved take
 // changes inline visibility; the gallery remains the source of originals.
-import {normalizeStoryboardFloorTakeReceipts,mergeStoryboardFloorTakeReceipts,storyboardFloorTakeReceiptSupersedes} from './qianmu-storyboard-floor-take-receipt.js?v=1.59.285';
-import {storyboardFloorTakeMessageKeys,storyboardFloorTakeScopesOverlap} from './qianmu-storyboard-floor-take-scope.js?v=1.59.285';
+import {normalizeStoryboardFloorTakeReceipts,mergeStoryboardFloorTakeReceipts,storyboardFloorTakeReceiptSupersedes} from './qianmu-storyboard-floor-take-receipt.js?v=1.59.286';
+import {storyboardFloorTakeMessageKeys,storyboardFloorTakeScopesOverlap} from './qianmu-storyboard-floor-take-scope.js?v=1.59.286';
 const obj=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max?value:'';
 const integer=(value,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max;
@@ -143,29 +143,11 @@ export function storyboardFloorTakeInitialInline(job,records=[],receipts=[]) {
   const take=normalizeStoryboardFloorTake(job.floorTake);
   return Boolean(take&&!take.invalid&&take.slots.length&&(job.floorTakeCommittedAt>0||!take.baselineIds.length&&!take.baselineTaskIds?.length));
 }
-export function pruneStoryboardRetakeGallery(records,received=[],pendingTakes=[],receipts=[]) {
-  // Never prune when the ownership ledger is unreadable. Delivery will report
-  // the error, while the already received original remains recoverable.
-  try{receipts=normalizeStoryboardFloorTakeReceipts(receipts);}catch{return [];}
-  const keep=new Set(received.map(record=>record.id)),tasks=new Map();
-  const protect=take=>{
-    for(const id of take.baselineIds||[])keep.add(id);
-    for(const messageKey of storyboardFloorTakeMessageKeys(take)||[]){
-      const key=scope({...take,messageKey});if(!tasks.has(key))tasks.set(key,new Set());
-      for(const id of take.baselineTaskIds||[])tasks.get(key).add(id);
-    }
-  };
-  for(const pending of pendingTakes){const take=normalizeStoryboardFloorTake(pending);if(take&&!take.invalid)protect(take);}
-  for(const receipt of receipts)protect(receipt);
-  for(const record of records){const take=normalizeStoryboardFloorTake(record.floorTake);if(take&&!take.invalid){keep.add(record.id);protect(take);}}
-  for(const record of records)if(record.messageRef?.messageKey&&tasks.get(scope(record.messageRef))?.has(record.taskId))keep.add(record.id);
-  const removed=[];
-  for(let index=0;records.length>400&&index<records.length;) {
-    if(keep.has(records[index].id)){index++;continue;}
-    removed.push(...records.splice(index,1));
-  }
-  return removed;
-}
+// Compatibility export for a still-loaded older entry. Counting to 400 is not
+// permission to discard history or its recipes. New delivery paths do not call
+// this function. Paged metadata adoption must retain an exact readable source;
+// until then keep originals and accept new results, without a generation gate.
+export function pruneStoryboardRetakeGallery() { return []; }
 export function settleStoryboardFloorTakes(records,eligible=()=>true,receipts=[]) {
   receipts=normalizeStoryboardFloorTakeReceipts(receipts);
   const changes=[],committed=[];
