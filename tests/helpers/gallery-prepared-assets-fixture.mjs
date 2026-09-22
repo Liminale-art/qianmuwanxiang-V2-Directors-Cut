@@ -11,11 +11,12 @@ import {createGalleryRestorePlanStorage} from '../../qianmu-gallery-restore-plan
 import {openPreparedGallerySource} from '../../qianmu-gallery-prepared-source.js';
 import {createPreparedGalleryAssets} from '../../qianmu-gallery-restore-assets.js';
 
-export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,recordBytes=0}={}){
+export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,recordBytes=0,decorateRecord}={}){
   const host=await galleryOriginalHttpFixture(t),transport=streamCheckpointTransport(host.account),calls=[],state={active:true,hook:null};
   const own=resource=>{t.after(()=>resource.close());return resource;};
   host.context.chat.push({mes:'fixture narrative',name:'Alice',is_user:false});
   const rows=Array.from({length:count},(_,index)=>({...structuredClone(host.rows[0]),id:'record-'+index,createdAt:index,future:{keep:[null,false,0,''],...(recordBytes?{text:'x'.repeat(recordBytes)}:{})}})).reverse();
+  if(decorateRecord)for(const row of rows)decorateRecord(row,host.context);
   const store=host.context.chatMetadata.story_director_liminale;store.storyboardImages=rows;
   const save=()=>fs.writeFile(host.file,[JSON.stringify({chat_metadata:host.context.chatMetadata}),...host.context.chat.map(m=>JSON.stringify(m))].join('\n')+'\n');await save();
   const target={kind:'character',avatar:'Alice.png',chatId:'chat'};let recipePath;

@@ -22,6 +22,22 @@ test('actual gallery entry refreshes the current view only after verified restor
     assert.equal(rendered,mode==='restored'?1:0);assert.equal(inline,rendered);assert.equal(button.disabled,false);
   }
 });
+test('actual archive entry loads navigation only on click and supplies current identity and host hooks',async()=>{
+  const text=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=text.indexOf("  root.querySelector('.sd-open-gallery-archive')"),end=text.indexOf("  root.querySelector('.sd-open-gallery-directory')",start);
+  let click,opened,navigation=0;const order=[],finished=gate(),state={view:'gallery'},document={},paragraphs=()=>[];
+  const button={isConnected:true,addEventListener(_,fn){click=fn;}},root={classList:{contains:()=>true},querySelector:()=>button};
+  const context=vm.createContext({root,state,document,storyboardAdmissionEpoch:1,storyboardState:()=>state,storyboardGalleryKind:'stills',
+    loadLocalChunk:async path=>path.includes('location-view')?(navigation++,{revealGalleryLocation:async(input,options)=>{
+      assert.equal(await input.account(),'st-user:fixture');assert.equal(input.isCurrent(),true);assert.equal(input.paragraphs,paragraphs);assert.equal(options.document,document);
+      assert.equal(await options.confirmLarge(401),true);assert.equal(typeof options.loadHost,'function');options.beforeReveal();return {status:'located'};
+    }}):{openGalleryArchive:options=>{opened=options;return {finished:finished.promise};}},
+    featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=> 'st-user:fixture'})},storyboardRequestHeaders:()=>({}),ctx:()=>({}),
+    storyboardImportPackage:{},storyboardExportPackage:{},storyboardActiveJobs:new Map(),storyboardQueue:[],isRuntimeOwner:()=>true,storyboardLinkReviewParagraphs:paragraphs,
+    confirmDialog:async(_,message)=>{assert.match(message,/401/);return true;},closeModal:()=>order.push('main'),toast:()=>assert.fail('unexpected error')});
+  vm.runInContext(text.slice(start,end),context);const work=click({currentTarget:button});await flush();assert.equal(navigation,0);
+  assert.equal((await opened.locate({record:{id:'a'},scope:{}},{beforeReveal:()=>order.push('preview')})).status,'located');assert.equal(navigation,1);assert.deepEqual(order,['preview','main']);
+  context.storyboardAdmissionEpoch++;await assert.rejects(opened.locate({},{}),/页面已变化/);finished.resolve({restored:false});await work;
+});
 function fixture(t,extra={}){
   const window=new EventTarget(),document=new EventTarget(),timers=new Map(),opened=[],errors=[];
   let time=0,id=0,available=true,current=true,admitted=true,identity='account/chat/content',saves=0;

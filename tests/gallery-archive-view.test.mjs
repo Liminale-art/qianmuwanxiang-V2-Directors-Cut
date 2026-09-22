@@ -6,7 +6,7 @@ const gate=()=>{let resolve;return {promise:new Promise(done=>resolve=done),reso
 const entry={key:'a'.repeat(64),value:{scope:{ownerKey:'char:Alice.png',chatKey:'Archived chat'},sourceReceipt:{count:1}}};
 const row={recordId:'one',createdAt:123,tags:['海岸']};
 // Synthetic DOM event harness only: no browser layout or real ST acceptance.
-function fixture(extra={}){
+function fixture(extra={},options={}){
   const events=new Map(),observers=[],revoked=[],main={scrollTop:0},recipeContainer={innerHTML:''},status={textContent:''},buttons=[{},{}];let parentOpen=true,focus=0,closed=0,listed=0,pages=0,previews=0,created=0,markup='',draws=0;
   const dialog={open:false,isConnected:false,innerHTML:'',setAttribute(){},addEventListener(key,fn){events.set(key,fn);},
     showModal(){this.open=true;},close(){this.open=false;events.get('close')?.();},remove(){this.isConnected=false;},querySelector(selector){return selector==='main'?main:selector==='[data-archive-recipe]'?recipeContainer:selector==='footer [role="status"]'?status:null;},querySelectorAll(){return buttons;}};
@@ -17,12 +17,41 @@ function fixture(extra={}){
   const parent={ownerDocument:document,isConnected:true,classList:{contains:()=>parentOpen},append(node){node.isConnected=true;}};
   const session={isClosed:()=>false,async list(){listed++;return {entries:[entry],nextCursor:null};},async open(key){assert.equal(key,entry.key);},
     async page(){pages++;return {rows:[row],cursor:null};},async preview(id){assert.equal(id,'one');previews++;return {record:{...row,id},source:entry.value.scope,blob:new Blob(['fixture']),width:10,height:20};},recipe:async()=>({state:'not-recorded'}),close(){closed++;},...extra};
-  const opened=open({parent,account:async()=> 'st-user:fixture',headers:()=>({}),connect:()=>session});
+  const opened=open({parent,account:async()=> 'st-user:fixture',headers:()=>({}),connect:()=>session,...options});
   const click=(kind,value)=>events.get('click')({target:{closest:selector=>selector===`[data-archive-${kind}]`?{dataset:{['archive'+kind[0].toUpperCase()+kind.slice(1)]:String(value)}}:null}});
   return {opened,dialog,session,revoked,main,recipeContainer,status,buttons,click,async action(action){click('action',action);await tick();},async choose(kind,index){click(kind,index);await tick();},
     hide(){parentOpen=false;observers[0].callback();},cancel(){events.get('cancel')({preventDefault(){}});},
     get counts(){return {focus,closed,listed,pages,previews,created,draws};},observers};
 }
+
+test('location is explicit and hands off a detached source without aborting its verified close',async()=>{
+  let calls=0,source,signal;const f=fixture({},{locate:async(input,options)=>{calls++;source=input;signal=options.signal;options.beforeReveal();assert.equal(signal.aborted,false);return {status:'located'};}});
+  await tick();await f.choose('version',0);await f.choose('record',0);assert.equal(calls,0);assert.match(f.dialog.innerHTML,/回到正文/);
+  await f.action('locate');assert.equal(calls,1);assert.deepEqual(source.scope,entry.value.scope);assert.equal(source.record.id,'one');assert.equal(f.counts.closed,1);
+  assert.deepEqual(await f.opened.finished,{restored:false});assert.deepEqual(f.revoked,['blob:fixture']);assert.equal(signal.aborted,false);
+});
+test('location failure or cancellation preserves the same preview, image and scroll',async()=>{
+  for(const fail of [true,false]){const f=fixture({},{locate:async()=>{if(fail)throw Error('来源无法唯一确认');return {status:'cancelled'};}});
+    await tick();await f.choose('version',0);await f.choose('record',0);const draws=f.counts.draws;f.main.scrollTop=137;
+    await f.action('locate');assert.equal(f.counts.draws,draws);assert.equal(f.main.scrollTop,137);assert.equal(f.counts.created,1);assert.equal(f.counts.closed,0);
+    if(fail)assert.match(f.status.textContent,/无法唯一确认/);assert.ok(f.buttons.every(b=>!b.disabled));f.opened.close();
+  }
+});
+test('manual close cancels pending location; its late handoff cannot close a new panel',async()=>{
+  const held=gate();let options;const f=fixture({},{locate:async(_,value)=>{options=value;await held.promise;value.beforeReveal();}});
+  await tick();await f.choose('version',0);await f.choose('record',0);f.click('action','locate');assert.ok(f.buttons.every(b=>b.disabled));
+  f.opened.close();assert.equal(options.signal.aborted,true);const draws=f.counts.draws;held.resolve();await tick();assert.equal(f.counts.draws,draws);assert.equal(f.counts.closed,1);
+});
+test('read-only archive consumers without navigation do not expose a dead location button',async()=>{
+  const f=fixture();await tick();await f.choose('version',0);await f.choose('record',0);assert.doesNotMatch(f.dialog.innerHTML,/data-archive-action="locate"/);f.opened.close();
+});
+test('location copies only source fields, never the original large recipe or unrelated future data',async()=>{
+  const record={...row,id:'one',messageRef:{version:1},paragraphAnchor:{version:1}};
+  for(const key of ['snapshot','future'])Object.defineProperty(record,key,{enumerable:true,get(){throw Error('unrelated payload read');}});
+  let calls=0;const f=fixture({preview:async()=>({record,source:entry.value.scope,blob:new Blob(['fixture']),width:1,height:1})},
+    {locate:async input=>{calls++;assert.equal(input.record.id,'one');assert.deepEqual(input.record.messageRef,{version:1});assert.equal(Object.hasOwn(input.record,'snapshot'),false);return {status:'cancelled'};}});
+  await tick();await f.choose('version',0);await f.choose('record',0);await f.action('locate');assert.equal(calls,1);f.opened.close();
+});
 
 test('version and row markup escapes user metadata and never emits raw remote images',()=>{
   const html=listHtml({entries:[{...entry,value:{...entry.value,scope:{ownerKey:'char:<img>.png',chatKey:'<script>bad</script>'}}}]});

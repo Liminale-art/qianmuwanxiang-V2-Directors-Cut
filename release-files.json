@@ -34,6 +34,8 @@
     "qianmu-gallery-resolved-write.js",
     "qianmu-gallery-write-proposal.js",
     "qianmu-gallery-chat-save.js",
+    "qianmu-gallery-location.js",
+    "qianmu-gallery-location-view.js",
     "qianmu-gallery-write-files.js",
     "qianmu-gallery-restore-execution.js",
     "qianmu-recipe-verify-client.js",

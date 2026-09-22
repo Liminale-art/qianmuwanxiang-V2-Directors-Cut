@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.304';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.305';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
@@ -34,17 +34,17 @@ export function galleryArchiveRestoreHtml(state,busy=false){
 
 // Kept inside the existing still-gallery dialog family. Only an explicit image
 // click fetches media; back navigation uses the already loaded small list.
-export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,getContext,epoch,canPrepare,connect=createGalleryArchiveBrowser}={}){
+export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,getContext,epoch,canPrepare,locate,connect=createGalleryArchiveBrowser}={}){
   const document=parent.ownerDocument,view=document.defaultView,returnFocus=document.activeElement;
   const dialog=document.createElement('dialog');dialog.className='sd-bundle-dialog sd-gallery-directory sd-gallery-archive';
   dialog.setAttribute('aria-label','已保存图库');
   let closed=false,busy=false,notice='',session,selected=null,preview=null,url='',releaseZoom,recipe=null;
   let versions=null,page=null,versionStack=[null],pageStack=[null],tag='',resolve,review=null,prepared=null;
-  let versionScroll=0,pageScroll=0,restoreScroll=null,restoreState=null,restored=false;
+  let versionScroll=0,pageScroll=0,restoreScroll=null,restoreState=null,restored=false,locating=null,revealing=false;
   const finished=new Promise(done=>resolve=done);
   function releaseImage(){releaseZoom?.();releaseZoom=null;if(url)view.URL.revokeObjectURL(url);url='';preview=null;recipe=null;}
   function close(){
-    if(closed)return;closed=true;observer.disconnect();view.removeEventListener('pagehide',close);session?.close();releaseImage();
+    if(closed)return;closed=true;if(!revealing)locating?.abort();observer.disconnect();view.removeEventListener('pagehide',close);session?.close();releaseImage();
     if(dialog.open)dialog.close();dialog.remove();if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});resolve({restored});
   }
   function alive(){
@@ -60,7 +60,7 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,ge
       const tags=Array.isArray(preview.record.tags)?preview.record.tags:[];
       dialog.innerHTML=`<header><b>已保存画面 · 只读</b>${button('back','返回列表')}${button('close','关闭')}</header><main>
         <div class="sd-directory-image-stage" tabindex="0" aria-label="图片；滚轮或双指缩放，拖动平移，0 恢复"><div><img src="${escape(url)}" alt="${escape(tags.join(' · ')||'已保存画面')}" draggable="false"></div></div>
-        <nav><button type="button" class="sd-btn" data-preview-zoom="out" aria-label="缩小">−</button><span data-preview-scale>100%</span><button type="button" class="sd-btn" data-preview-zoom="in" aria-label="放大">＋</button><button type="button" class="sd-btn" data-preview-zoom="reset">恢复适配</button></nav>
+        <nav><button type="button" class="sd-btn" data-preview-zoom="out" aria-label="缩小">−</button><span data-preview-scale>100%</span><button type="button" class="sd-btn" data-preview-zoom="in" aria-label="放大">＋</button><button type="button" class="sd-btn" data-preview-zoom="reset">恢复适配</button>${typeof locate==='function'?button('locate','回到正文',busy):''}</nav>
         <details><summary>来源与详情</summary><p>${escape(preview.source.chatKey)}</p><p>${escape(preview.source.ownerKey)}</p><p>${escape(date(preview.record.createdAt))} · ${preview.width} × ${preview.height}</p><p>${escape(tags.join(' · '))}</p>
         ${button('recipe',recipe?'重新读取原配方':'读取原配方',busy)}
         <div data-archive-recipe>${galleryArchiveRecipeHtml(recipe)}</div>
@@ -107,11 +107,26 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,ge
     }finally{busy=false;if(alive())for(const node of buttons())node.disabled=false;}
     // Keep the image element, zoom, expanded details and current scroll intact.
   }
+  async function locatePreview(){
+    if(!alive()||busy||!preview||typeof locate!=='function')return;busy=true;const selected=preview,controller=new AbortController();locating=controller;
+    const buttons=()=>dialog.querySelectorAll('[data-archive-action="locate"],[data-archive-action="back"],[data-archive-action="recipe"]');
+    const status=value=>{if(alive())dialog.querySelector('footer [role="status"]').textContent=value;};
+    for(const button of buttons())button.disabled=true;status('正在核对原聊天及正文位置…不会修复链接或重新生成。');
+    try{
+      const sourceFields=['id','chatKey','messageRef','paragraphAnchor','messageHash','swipeId','restoreLinkReview','worldReference','target'];
+      const record=structuredClone(Object.fromEntries(sourceFields.filter(key=>Object.hasOwn(selected.record,key)).map(key=>[key,selected.record[key]])));
+      const result=await locate({record,scope:structuredClone(selected.source)},
+        {signal:controller.signal,beforeReveal:()=>{if(!alive()||preview!==selected)throw Error('画面已切换，未定位');revealing=true;close();}});
+      if(result?.status==='cancelled')status('已取消加载，原画面保留。');
+    }catch(error){status(error?.message||'正文位置未能确认，原画面保留。');}
+    finally{busy=false;if(locating===controller)locating=null;if(alive())for(const button of buttons())button.disabled=false;}
+  }
   dialog.addEventListener('cancel',event=>{event.preventDefault();close();});dialog.addEventListener('close',close);
   dialog.addEventListener('click',event=>{
     const action=event.target.closest('[data-archive-action]')?.dataset.archiveAction;
     if(action==='close'){close();return;}
     if(action==='recipe'){void loadRecipe();return;}
+    if(action==='locate'){void locatePreview();return;}
     const entry=event.target.closest('[data-archive-version]'),record=event.target.closest('[data-archive-record]');
     if(!action&&!entry&&!record)return;
     if(busy)return;
