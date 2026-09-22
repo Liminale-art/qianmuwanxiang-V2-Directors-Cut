@@ -1,5 +1,6 @@
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js';
 import { collectRestoreStorage, clearRestoreStorage } from './qianmu-storyboard-restore-storage.js';
+import {createStAccountStorage} from './qianmu-st-account-storage.js';
 
 let started=false,request=0,id='',pending=null;
 const guard=()=>new Promise(resolve=>{pending={request:++request,resolve};self.postMessage({id,guard:request});});
@@ -24,7 +25,14 @@ self.addEventListener('message',async event=>{
       await guard();const {createCharacterArchiveStore}=await import('./qianmu-character-archive-store.js');
       characters=createCharacterArchiveStore();await guard();const result=await characters.storageSummary(input.namespace);await guard();self.postMessage({id,result});return;
     }
-    journal=createStoryboardPackageJournal();
+    let native=false;
+    if(input.nativeHistory){
+      const value=input.nativeHistory;
+      if(!['inspect','clear'].includes(input.action)||Object.keys(value).length!==3||value.namespace!==input.namespace||value.origin!==self.location.origin||typeof value.csrf!=='string')throw Error('恢复记录储存来源无效');
+      native={createStorage:options=>createStAccountStorage({...options,origin:value.origin,isCurrent:()=>true,
+        resolveNamespace:async()=>{await guard();return input.namespace;},headers:()=>({'X-CSRF-Token':value.csrf})})};
+    }
+    journal=createStoryboardPackageJournal({native});
     const options={journal,namespace:input.namespace,guard,isCurrent:()=>true};
     if(input.action==='mapping-import-preview'||input.action==='mapping-import-apply'){
       const {runMappingImport}=await import('./qianmu-mapping-import.js');const result=await runMappingImport(input.action,{...options,input:input.input});await guard();self.postMessage({id,result});return;

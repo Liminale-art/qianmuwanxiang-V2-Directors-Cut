@@ -41,6 +41,18 @@ export function configureStAccountStorage(options){configured=configuration(opti
 export function isStAccountStorageConfigured(){return configured!==null;}
 // An opaque lifetime token, never an account id or a substitute for a guard.
 export function getStAccountStorageReadScope(){return readScope;}
+// Narrow Worker handoff: same ST origin/account and CSRF only. The caller must
+// still validate the live account on every Worker guard RPC. No API credentials.
+export async function captureStAccountStorageWorkerContext(){
+  if(!configured)fail('setup','ST 储存环境尚未就绪');const base=configured,epoch=configurationEpoch;
+  const check=()=>{if(epoch!==configurationEpoch||base.isCurrent()!==true)fail('scope','ST 储存账户已变化');};
+  check();const namespace=namespaceName(await base.resolveNamespace());check();
+  const csrf=new Headers(await base.headers()).get('x-csrf-token')||'';check();
+  if(await base.resolveNamespace()!==namespace)fail('account','ST 储存账户已变化');check();
+  const origin=base.origin||globalThis.location?.origin;let url;try{url=new URL(origin);}catch{fail('setup','ST 储存站点不可用');}
+  if(!['https:','http:'].includes(url.protocol)||url.origin!==origin||globalThis.location?.origin&&origin!==globalThis.location.origin)fail('setup','ST 储存只能使用当前站点');
+  return {namespace,origin,csrf};
+}
 export function createConfiguredStAccountStorage(options={}){
   if(!configured)fail('setup','ST 储存环境尚未就绪');const epoch=configurationEpoch,base=configured;
   // A caller cannot replace the account resolver with another account by override.

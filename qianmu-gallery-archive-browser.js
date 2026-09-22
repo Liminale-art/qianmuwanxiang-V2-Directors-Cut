@@ -1,12 +1,12 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.300';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.301';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
-import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js?v=1.59.300';
+import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js?v=1.59.301';
 import {decodeGalleryOriginalBlob} from './qianmu-gallery-original-preview.js';
-import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.300';
-import {verifyGalleryRestoreOriginals} from './qianmu-gallery-restore-originals.js?v=1.59.300';
+import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.301';
+import {verifyGalleryRestoreOriginals} from './qianmu-gallery-restore-originals.js?v=1.59.301';
 
 // Account-bound, read-only consumer. No current chat, local recipe fallback,
 // preservation, source repair, generation or deletion is reachable here.

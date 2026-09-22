@@ -73,6 +73,7 @@
     "qianmu-historical-recipe-restore.js",
     "qianmu-historical-chat-save.js",
     "qianmu-historical-chat-journal.js",
+    "qianmu-historical-journal-native.js",
     "qianmu-historical-restore.js",
     "qianmu-historical-restore-view.js",
     "qianmu-historical-import-runtime.js",

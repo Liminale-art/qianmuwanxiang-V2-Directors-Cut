@@ -6,6 +6,7 @@ import {aliasHash,validateAliasInput,validateAliasTargets,validateAliasPage,vali
 import {canonicalUserSubjectKey} from './qianmu-user-identity.js';
 import {validateBundleCarrierInventory} from './qianmu-bundle-carrier-storage-contract.js';
 import {isMappingImport,validateMappingImportInput,validateMappingImportPreview,validateMappingImportResult} from './qianmu-mapping-import-contract.js';
+import * as nativeStorage from './qianmu-st-account-storage.js';
 const fail=message=>Object.assign(new Error(message),{code:'storyboard_restore_storage_runtime',submissionState:'not_submitted'});
 
 // Each request owns and immediately releases its Worker. No idle worker, background timer, raw configuration or network credential.
@@ -17,9 +18,15 @@ export async function runRestoreStorage(action,{namespace,guard,selected,input,c
   if(action==='mapping-detail'||action==='mapping-export')validateMappingSelection(input,{paged:action==='mapping-detail'});
   if(action==='clear'&&(confirmed!==true||recoveryLossAccepted!==true))throw fail('尚未确认结束所选恢复记录');
   await guard();
+  let nativeHistory;
+  if(['inspect','clear'].includes(action)&&nativeStorage.isStAccountStorageConfigured()){
+    if(typeof nativeStorage.captureStAccountStorageWorkerContext!=='function')throw fail('请刷新 ST 后核对跨端恢复记录');
+    nativeHistory=await nativeStorage.captureStAccountStorageWorkerContext();await guard();
+    if(nativeHistory.namespace!==namespace)throw fail('恢复记录储存账户不一致');
+  }
   const interrupted=()=>fail(action==='mapping-import-apply'?'迁移凭据导入已中断':action==='user-alias-apply'?'USER整理结果未确认，原绑定可能已调整，请重新打开核对；不会自动重试。':action==='user-alias-preview'?'USER地址核对已取消，未修改绑定':action==='clear'?'清理结果未确认；部分记录可能已结束，请重新盘点。不会自动重试。':action==='mappings'||action.startsWith('mapping-')?'迁移凭据核对已取消，原映射记录未修改':`${action==='characters'?'角色空间':action==='comfy'?'Comfy 空间':'恢复记录'}盘点已取消，未修改数据`);
   if(signal?.aborted)throw interrupted();
-  const id=crypto.randomUUID(),payload={id,action,namespace,...(action.startsWith('mapping-')||action.startsWith('user-alias-')?{input:structuredClone(input)}:{}),...(action.startsWith('user-alias-')?{chatHash}:{}),...(action==='clear'?{selected:structuredClone(selected),confirmed,recoveryLossAccepted}: {})};
+  const id=crypto.randomUUID(),payload={id,action,namespace,...(nativeHistory?{nativeHistory}:{}),...(action.startsWith('mapping-')||action.startsWith('user-alias-')?{input:structuredClone(input)}:{}),...(action.startsWith('user-alias-')?{chatHash}:{}),...(action==='clear'?{selected:structuredClone(selected),confirmed,recoveryLossAccepted}: {})};
   return new Promise((resolve,reject)=>{
     let worker,done=false,lastGuard=0,timer;
     const abort=()=>finish(interrupted());

@@ -6,6 +6,8 @@ import {inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
 import {sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
 import {inspectHistoricalChatMutation,historicalChatMutationNext} from './qianmu-historical-chat-journal.js';
 import {comfyLibraryBackupDigest as mappingDigest} from './qianmu-comfy-library-backup.js';
+import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {createNativeHistoricalJournal} from './qianmu-historical-journal-native.js';
 // Asset checkpoints are identity-only; the separate mutation store holds local before/after configuration.
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_package_journal',submissionState:'not_submitted'});};
 const account=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);
@@ -30,7 +32,11 @@ export function validateStoryboardPackageCheckpoint(row){
   return row;
 }
 
-export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-storyboard-package-journal',timeoutMs=8000,now=Date.now}={}){
+export function createStoryboardPackageJournal({native=isStAccountStorageConfigured(),...options}={}){
+  const legacy=createLocalStoryboardPackageJournal({...options,nativeHistory:Boolean(native)});
+  return native?createNativeHistoricalJournal({legacy,...(typeof native==='object'?native:{}),now:options.now||Date.now}):legacy;
+}
+function createLocalStoryboardPackageJournal({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-storyboard-package-journal',timeoutMs=8000,now=Date.now,nativeHistory=false}={}){
   let database=null,opening=null,closed=false;const pending=new Set(),timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||8000));
   const error=message=>Object.assign(new Error(message),{code:'storyboard_package_journal',submissionState:'not_submitted'});
   const ended=()=>error('分镜导入恢复记录会话已结束');
@@ -305,12 +311,14 @@ export function createStoryboardPackageJournal({indexedDB=globalThis.indexedDB,k
         if(key!==undefined){set(true);return;}read(tx.objectStore('historicalChatMutations').getKey(namespace),historical=>set(historical!==undefined));
       }),['mutations','historicalChatMutations']);
     },
-    async prepareMutation(input,{isCurrent=()=>true}={}){
+    async prepareMutation(input,{isCurrent=()=>true,nativeHistoricalBaseline}={}){
       const row=structuredClone(validateStoryboardMutation(input));if(row.phase!=='prepared'||row.revision!==1)fail('元数据恢复记录必须从准备阶段开始');
       return transaction('readwrite',isCurrent,(store,read,set,tx)=>read(store.get(row.namespace),existing=>{
         if(existing)fail('本账户已有待核对的分镜导入，请先处理恢复记录');
-        read(tx.objectStore('historicalChatMutations').getKey(row.namespace),historical=>{
-          if(historical!==undefined)fail('本账户已有原聊天待核对记录，请先核对');store.add(row);set(row);
+        read(tx.objectStore('historicalChatMutations').get(row.namespace),historical=>{
+          // Native wrapper has checked remote and distinct local pending rows;
+          // retained, explicitly ended copies must not block all future imports.
+          if(nativeHistory?nativeHistoricalBaseline===undefined||JSON.stringify(historical??null)!==JSON.stringify(nativeHistoricalBaseline):historical!==undefined)fail('本账户原聊天待核对记录已变化，请先核对');store.add(row);set(row);
         });
       }),['mutations','historicalChatMutations']);
     },

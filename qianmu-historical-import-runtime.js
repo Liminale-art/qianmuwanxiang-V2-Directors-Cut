@@ -31,7 +31,9 @@ export async function importHistoricalStoryboardBundle(file, [
     await guard();
     if (!navigator.locks?.request) throw new Error('浏览器不支持跨页恢复锁，未修改聊天资料');
     journal = journalModule.createStoryboardPackageJournal();
-    await journal.assertNoHistoricalChatMutation(scope.namespace, { isCurrent });
+    // The coordinator checks the exact package/target and recovers its own
+    // pending journal. Do not block that recovery merely because it exists.
+    if(await journal.loadMutation(scope.namespace))throw new Error('请先核对当前账户的其他分镜导入记录');
     await guard();
     review = viewModule.openHistoricalRestoreReview({ parent, fileName: file.name || '历史聊天分镜原件', hostWriteReady,
       readHostWriteReady: () => typeof hostContext()?.saveMetadata === 'function', paintIcons: applyIcons,
