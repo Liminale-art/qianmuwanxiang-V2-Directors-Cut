@@ -36,7 +36,7 @@ async function fixture(t){
     // Isolate supplement behavior here; default-on original+supplement wiring
     // together is exercised by gallery-original-idle with actual local HTTP.
     async open(options={}){const session=await createCurrentGalleryArchiveSession({getContext:()=>f.host.context,epoch:()=>f.host.epoch,account:async()=>f.host.account,
-      fetchImpl,createStorage:f.transport.createStorage,preserveOriginals:false,...options});t.after(()=>session.close());return session;},
+      fetchImpl,createStorage:f.transport.createStorage,preserveOriginals:false,preserveEvidence:false,...options});t.after(()=>session.close());return session;},
     async reader(){const reader=await createGalleryArchiveStorage({scope,guard:()=>true,verifyRecord:()=>false,createStorage:f.transport.createStorage});t.after(()=>reader.close());return reader;},
     request(){return {version:1,expectedAccount:imageServiceAccount(f.host.req).namespace,target:{kind:'character',avatar:'Alice.png',chatId:'chat'},gallerySha256:chatGalleryDigest(f.host.rows).sha256};},
     browser(){const browser=createGalleryArchiveBrowser({account:async()=>f.host.account,headers:()=>({}),

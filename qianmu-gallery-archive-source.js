@@ -1,30 +1,34 @@
 // Connect immutable record/page storage to the exact SAVED current-chat source.
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, browser image download or generation; observed equality is not a server lock.
-import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.297';
+import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient,createChatGalleryEvidenceSourceClient} from './qianmu-chat-character-receipt-client.js';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.298';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
-import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.297';
+import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.298';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
 import {GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
 import {comfyReferencePath} from './qianmu-comfy-reference-contract.js';
 import {captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {scanGalleryEvidenceSource} from './qianmu-gallery-evidence-source.js';
+import {galleryEvidenceSummary} from './qianmu-gallery-archive-evidence.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 export async function createCurrentGalleryArchiveSession({getContext,epoch,account,headers,fetchImpl,timeoutMs,
-  guard=()=>true,createStorage,yieldWork=async()=>{},preserveOriginals=true,preserveSupplements=true}={}){
+  guard=()=>true,createStorage,yieldWork=async()=>{},preserveOriginals=true,preserveSupplements=true,preserveEvidence=preserveSupplements}={}){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof guard!=='function')fail('画面保全缺少准确的当前聊天来源');
   if(typeof preserveOriginals!=='boolean'||typeof preserveSupplements!=='boolean')fail('原图或补充资料保全模式无效');
+  if(typeof preserveEvidence!=='boolean'||preserveEvidence&&!preserveSupplements)fail('正文依据保全必须绑定关联资料');
   let client,archive,recipes,originals,supplementClient,localSupplement,supplementCaptureFailed=false,closed=false,busy=false,live,summary;const records=new Map();
+  let evidenceClient,localEvidence,evidenceCaptureFailed=false,observedEvidence;
   function external(){
     const value=guard();if(value&&typeof value.then==='function'){void Promise.resolve(value).catch(()=>{});fail('画面保全需要同步切换保护');}
     if(value!==true)fail('画面保全来源保护已失效');
   }
-  function close(){closed=true;supplementClient?.close();originals?.close();recipes?.close();archive?.close();client?.close();records.clear();live=null;}
+  function close(){closed=true;evidenceClient?.close();supplementClient?.close();originals?.close();recipes?.close();archive?.close();client?.close();records.clear();live=null;}
   function check(){
     if(closed)fail('画面保全来源会话已结束');
     try{external();client.assertCurrent();
@@ -62,6 +66,19 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
     const result=await supplementClient.read(summary.sha256);unchangedSupplement();
     if(JSON.stringify({order:result.order,saved:result.saved})!==localSupplement)fail('原聊天尚未保存相同合集或角色草稿');return result;
   }
+  async function captureEvidence(){check();return scanGalleryEvidenceSource(getContext().chat,client.target.chatId,{guard:check,yieldWork});}
+  async function unchangedEvidence(){
+    check();if(evidenceCaptureFailed)fail('正文依据无法完整读取，未截断或猜补');
+    let current;try{current=await captureEvidence();check();}catch(error){close();throw error;}
+    if(!same(current,localEvidence)){close();fail('当前正文已修改，原保全会话作废');}
+  }
+  async function readSavedEvidence(){
+    await unchangedEvidence();evidenceClient??=createChatGalleryEvidenceSourceClient({namespace:client.owner.namespace,target:client.target,
+      headers:headers||(()=>getContext().getRequestHeaders?.()||{}),fetchImpl,timeoutMs,
+      guard:async()=>{check();await client.guard();check();}});
+    const result=await evidenceClient.read(summary.sha256);await unchangedEvidence();
+    if(result.chatEvidence.digest!==localEvidence.digest||result.chatEvidence.messages.length!==localEvidence.count)fail('原聊天尚未保存相同正文，未确认正文依据');return result;
+  }
   function currentRecord(id){
     check();const expected=records.get(id);if(!expected)fail('画面保全选择不属于原聊天，未猜测记录');
     const record=galleryDigestRecord(galleryDigestRow(live,expected.index));
@@ -78,6 +95,7 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
     try{
       await yieldWork();const before=await saved();check();started=true;
       const result=await work(before);await yieldWork();const sourceReceipt=await saved();check();
+      if(result.evidences&&!evidenceCaptureFailed)await unchangedEvidence();check();
       return {...result,sourceReceipt,originalVerified:false,canPrune:false};
     }catch(error){if(started)error.writeState='unconfirmed';else error.writeState??='not_started';throw error;}
     finally{busy=false;}
@@ -132,10 +150,13 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
       records.set(id,{id,createdAt,index,bytes:record.bytes,sha256:record.sha256});
     }});
     if(preserveSupplements)try{localSupplement=captureSupplement();}catch{supplementCaptureFailed=true;}
+    if(preserveEvidence)try{localEvidence=await captureEvidence();}catch{check();evidenceCaptureFailed=true;}
     archive=await createGalleryArchiveStorage({scope:{namespace:client.owner.namespace,...client.source},guard:check,createStorage,yieldWork,
       verifySupplement:receipt=>{unchangedSupplement();return same(receipt.gallery,summary)&&JSON.stringify({order:receipt.order,saved:receipt.saved})===localSupplement;},
+      verifyEvidence:receipt=>{check();return !evidenceCaptureFailed&&same(receipt,observedEvidence)&&receipt.chatEvidence.digest===localEvidence?.digest&&receipt.chatEvidence.count===localEvidence?.count;},
       verifyRecord:record=>{check();currentRecord(record.id);return records.get(record.id)?.sha256===galleryDigestRecord(record).sha256;}});check();
-    const identity=JSON.stringify([archive.scope,summary.sha256,...(preserveSupplements?[supplementCaptureFailed?'unreadable':await vibeDigest(localSupplement)]:[])]);await unchanged();
+    const identity=JSON.stringify([archive.scope,summary.sha256,...(preserveSupplements?[supplementCaptureFailed?'unreadable':await vibeDigest(localSupplement)]:[]),
+      ...(preserveEvidence?[evidenceCaptureFailed?'unreadable-evidence':localEvidence]:[])]);await unchanged();
     return Object.freeze({scope:archive.scope,identity,
       async preserveRecord(id){const [record]=selected([id]);return preserve(()=>archive.preserveRecord(record));},
       async stagePage(ids){const rows=selected(ids);return preserve(()=>archive.stagePage(rows));},
@@ -182,12 +203,23 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
             supplement=kept.reference;supplementState='complete';
           }catch(error){check();if(!supplementCaptureFailed)unchangedSupplement();supplementState='partial';}
         }
-        const version=await archive.publishSourceVersion(sourceReceipt,pages,supplement);check();
+        let evidence,evidenceState;
+        if(preserveEvidence){
+          evidenceState='partial';
+          if(supplement)try{
+            let observed=await readSavedEvidence();check();observedEvidence=galleryEvidenceSummary(observed);
+            const kept=await archive.preserveEvidence(observed,supplement);check();observed=null;
+            const confirmed=await readSavedEvidence();check();
+            if(!same(galleryEvidenceSummary(confirmed),observedEvidence))fail('正文依据源文件在保存期间已变化');
+            evidence=kept.reference;evidenceState='complete';
+          }catch{check();if(!evidenceCaptureFailed)await unchangedEvidence();observedEvidence=null;}
+        }
+        const version=await archive.publishSourceVersion(sourceReceipt,pages,supplement,evidence);check();
         const {stopped,...coverage}=originalProgress;
-        return {...version,recipeCopies,...(preserveSupplements?{supplements:{state:supplementState,proof:supplementState==='complete'?'supplement-readback-only':'not-confirmed',originalVerified:false,canPrune:false}}:{}),...(preserveOriginals?{originals:{...coverage,
+        return {...version,recipeCopies,...(preserveEvidence?{evidences:{state:evidenceState,proof:evidenceState==='complete'?'evidence-readback-only':'not-confirmed',originalVerified:false,canPrune:false}}:{}),...(preserveSupplements?{supplements:{state:supplementState,proof:supplementState==='complete'?'supplement-readback-only':'not-confirmed',originalVerified:false,canPrune:false}}:{}),...(preserveOriginals?{originals:{...coverage,
           state:coverage.available===coverage.total?'complete':'partial',proof:'original-reference-only',originalVerified:false,canPrune:false}}:{})};
       });},
-      openSourceVersion:(receipt,supplement)=>{check();return archive.openSourceVersion(receipt,supplement);},
+      openSourceVersion:(receipt,supplement,evidence)=>{check();return archive.openSourceVersion(receipt,supplement,evidence);},
       readRecord:ref=>{check();return archive.readRecord(ref);},
       readRecipe:(ref,options)=>{check();return archive.readRecipe(ref,options);},
       openStagedPage:descriptor=>{check();return archive.openStagedPage(descriptor);},close,

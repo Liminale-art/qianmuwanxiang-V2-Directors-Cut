@@ -39,7 +39,7 @@ async function fixture(t,{count=3,io=fs}={}){
     batches:()=>state.calls.filter(call=>call.url.endsWith('/preserve-batch')),
     copies:()=>documents(transport).filter(value=>value?.schema==='qianmu.gallery.original-copy.v1'),
     async open(options={}){const session=await createCurrentGalleryArchiveSession({getContext:()=>f.context,epoch:()=>state.epoch,account:async()=>state.account,
-      fetchImpl,createStorage:transport.createStorage,...options});t.after(()=>session.close());return session;},
+      fetchImpl,createStorage:transport.createStorage,preserveEvidence:false,...options});t.after(()=>session.close());return session;},
   };
 }
 

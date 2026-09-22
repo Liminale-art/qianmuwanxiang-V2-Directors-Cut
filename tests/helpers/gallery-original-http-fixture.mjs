@@ -27,7 +27,7 @@ export async function galleryOriginalHttpFixture(t,serviceOptions={}){
     const expectedAccount=imageServiceAccount(f.req).namespace;
     const input=()=>({version:1,expectedAccount,target:{kind:'character',avatar:'Alice.png',chatId:'chat'},
         selection:{recordId:f.rows[0].id,createdAt:f.rows[0].createdAt,gallerySha256:chatGalleryDigest(f.rows).sha256}});
-    return {...f,image,images,routes,calls,expectedAccount,input,
+    return {...f,image,images,routes,calls,expectedAccount,input,origin:base,
         request:(action,body,anonymous=false)=>fetch(base+'/chat-gallery/original/'+action,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(anonymous?{'x-fixture-anonymous':'yes'}:{})},...(body?{body:JSON.stringify(body)}:{})}),
         fetch:async(url,options)=>{calls.push({url,...options});if(!url.startsWith('/api/plugins/qianmu-tts/chat-gallery/original/'))throw Error('unexpected URL');
             return fetch(base+url.slice('/api/plugins/qianmu-tts'.length),options);},
