@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.301';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.302';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
@@ -24,12 +24,12 @@ export function galleryArchiveReviewHtml(review){
 
 // Kept inside the existing still-gallery dialog family. Only an explicit image
 // click fetches media; back navigation uses the already loaded small list.
-export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,connect=createGalleryArchiveBrowser}={}){
+export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,getContext,epoch,canPrepare,connect=createGalleryArchiveBrowser}={}){
   const document=parent.ownerDocument,view=document.defaultView,returnFocus=document.activeElement;
   const dialog=document.createElement('dialog');dialog.className='sd-bundle-dialog sd-gallery-directory sd-gallery-archive';
   dialog.setAttribute('aria-label','已保存图库');
   let closed=false,busy=false,notice='',session,selected=null,preview=null,url='',releaseZoom,recipe=null;
-  let versions=null,page=null,versionStack=[null],pageStack=[null],tag='',resolve,review=null;
+  let versions=null,page=null,versionStack=[null],pageStack=[null],tag='',resolve,review=null,prepared=null;
   let versionScroll=0,pageScroll=0,restoreScroll=null;
   const finished=new Promise(done=>resolve=done);
   function releaseImage(){releaseZoom?.();releaseZoom=null;if(url)view.URL.revokeObjectURL(url);url='';preview=null;recipe=null;}
@@ -62,7 +62,8 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
       <p>${selected?'按保存时的记录浏览；点开画面后才读取图片。':'只显示已完整保全到此 ST 账户的版本，不代表账户全部原作品。浏览不会新增保存或扫描聊天正文。'}</p>
       <fieldset ${busy||session?.isClosed()?'disabled':''}><nav>${button('refresh','刷新列表')}${selected?button('review','核对恢复资料',busy):''}</nav>
       ${selected?galleryArchiveReviewHtml(review):''}
-      ${selected&&review?`<nav>${button('originals','核验原图',busy)}<small>逐张读取已保存副本，可能需要更多时间和流量；关闭可取消。</small></nav>`:''}
+      ${selected&&review?`<nav>${button('originals','核验原图',busy)}${button('prepare','准备恢复资料',busy)}<small>核验原图需要更多时间和流量；准备恢复会先保全当前准确原聊天的资料，不写回聊天。关闭可取消。</small></nav>`:''}
+      ${selected&&prepared?`<section aria-label="恢复准备结果">${prepared.compatible?`<b>恢复资料已准备 · 尚未执行恢复</b><p>保留当前记录，新增 ${prepared.added} 张 · 相同 ${prepared.kept} 张 · 合计 ${prepared.total} 张</p><small>准备方案已存入 ST 账户；原图、配方的恢复与正式写回仍需后续核验。不能据此删除原资料。</small>`:`<b>存在 ${prepared.conflicts} 项冲突，未生成可用准备方案</b><p>同编号内容或关联资料不同，未覆盖当前记录；已保存的资料副本保留。</p>`}</section>`:''}
       ${selected?`<form class="sd-directory-search" data-archive-search><input class="text_pole" type="search" name="tag" maxlength="80" value="${escape(tag)}" aria-label="完整标签" placeholder="按完整标签查找"><button type="submit" class="sd-btn">查找</button>${button('clear','清除',!tag)}</form>`:''}
       <div class="sd-directory-rows">${galleryArchiveListHtml({entries:versions?.entries,rows:page?.rows,selected,busy})||`<p>${busy?'正在读取…':notice?'未读取当前列表，请按下方提示处理。':selected?(page?.cursor?'本段没有匹配画面，可继续下一页。':'没有匹配画面。'):'暂无已保全版本；原聊天中的画面不受影响。'}</p>`}</div>
       <nav aria-label="已保存图库分页">${button('previous','上一页',stack.length===1)}<span>第 ${stack.length} 页</span>${button('next','下一页',!next)}</nav></fieldset>
@@ -74,7 +75,7 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
     try{await action();if(!alive())return;}
     catch(error){if(alive()){
       if(session?.isClosed()){releaseImage();versions=null;page=null;selected=null;}
-      notice=error?.message||'图库读取未完成，请重试';
+      prepared=null;notice=error?.message||'图库读取未完成，请重试';
     }}
     finally{busy=false;draw();}
   }
@@ -107,20 +108,24 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
     if(record)pageScroll=dialog.querySelector('main')?.scrollTop||0;
     void work(async()=>{
       if(action==='back'){releaseImage();restoreScroll=pageScroll;return;}
-      if(action==='versions'){selected=null;page=null;pageStack=[null];tag='';review=null;restoreScroll=versionScroll;return;}
+      if(action==='versions'){selected=null;page=null;pageStack=[null];tag='';review=null;prepared=null;restoreScroll=versionScroll;return;}
+      if(action==='prepare'){
+        prepared=null;const result=await session.prepare({onProgress:({phase,completed,total})=>{if(alive())dialog.querySelector('footer [role="status"]').textContent=phase==='preserving'?'正在保全当前聊天基线；关闭可取消。':`正在${phase==='baseline'?'核对当前基线':'合并历史记录'} ${completed}/${total}；不会改写聊天。`;}});
+        if(alive()){prepared=result;notice=result.compatible?'准备资料已保存，当前聊天未修改。':'发现冲突，当前聊天未修改。';}return;
+      }
       if(action==='review'||action==='originals'){
-        review=null;const result=await session.review({verifyOriginals:action==='originals',onProgress:({phase,completed,total,verified})=>{if(alive())dialog.querySelector('footer [role="status"]').textContent=phase==='originals'?`原图文件已核验 ${verified}/${total}；关闭窗口可取消。`:`正在按原顺序核对恢复资料 ${completed}/${total}；关闭窗口可取消。`;}});
+        prepared=null;review=null;const result=await session.review({verifyOriginals:action==='originals',onProgress:({phase,completed,total,verified})=>{if(alive())dialog.querySelector('footer [role="status"]').textContent=phase==='originals'?`原图文件已核验 ${verified}/${total}；关闭窗口可取消。`:`正在按原顺序核对恢复资料 ${completed}/${total}；关闭窗口可取消。`;}});
         if(alive()){review=result;notice=action==='originals'?'本次原图副本核验结束；尚未执行恢复。':'核对完成；尚未执行恢复或验证原图文件。';}return;
       }
       if(entry){
         const chosen=versions?.entries[Number(entry.dataset.archiveVersion)];if(!chosen)return;
-        review=null;await session.open(chosen.key);if(!alive())return;selected=chosen;page=null;pageStack=[null];tag='';restoreScroll=0;await loadPage();
+        prepared=null;review=null;await session.open(chosen.key);if(!alive())return;selected=chosen;page=null;pageStack=[null];tag='';restoreScroll=0;await loadPage();
       }else if(record){
         const chosen=page?.rows[Number(record.dataset.archiveRecord)];if(!chosen)return;
         const result=await session.preview(chosen.recordId);if(!alive())return;
         releaseImage();url=view.URL.createObjectURL(result.blob);preview=result;
       }else if(action==='refresh'){
-        restoreScroll=0;review=null;
+        restoreScroll=0;review=null;prepared=null;
         if(selected){pageStack=[null];page=null;await session.open(selected.key);await loadPage();}
         else{versionStack=[null];versions=null;await loadVersions();}
       }else if(action==='clear'){tag='';pageStack=[null];page=null;restoreScroll=0;await loadPage();}
@@ -137,7 +142,7 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
     const value=new FormData(event.target).get('tag');void work(async()=>{tag=String(value||'').trim();pageStack=[null];page=null;restoreScroll=0;await loadPage();});
   });
   parent.append(dialog);observer.observe(document.body,{childList:true,subtree:true});observer.observe(parent,{attributes:true,attributeFilter:['class']});view.addEventListener('pagehide',close);
-  try{session=connect({account,headers,isCurrent:alive});dialog.showModal();draw();void work(loadVersions);}
+  try{session=connect({account,headers,isCurrent:alive,getContext,epoch,canPrepare});dialog.showModal();draw();void work(loadVersions);}
   catch(error){close();throw error;}
   return {close,finished};
 }

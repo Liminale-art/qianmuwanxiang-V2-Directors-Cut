@@ -2,10 +2,10 @@
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, browser image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient,createChatGalleryEvidenceSourceClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.301';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.302';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
-import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.301';
+import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.302';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
 import {GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
@@ -158,6 +158,14 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
     const identity=JSON.stringify([archive.scope,summary.sha256,...(preserveSupplements?[supplementCaptureFailed?'unreadable':await vibeDigest(localSupplement)]:[]),
       ...(preserveEvidence?[evidenceCaptureFailed?'unreadable-evidence':localEvidence]:[])]);await unchanged();
     return Object.freeze({scope:archive.scope,identity,
+      async verifySavedSource(){
+        check();if(busy)fail('原聊天画面正在保全，请勿重复提交');busy=true;
+        try{
+          const sourceReceipt=await saved(),supplement=await readSavedSupplement(),evidence=await readSavedEvidence();
+          await unchanged();unchangedSupplement();await unchangedEvidence();check();
+          return {sourceReceipt,supplement,evidence};
+        }finally{busy=false;}
+      },
       async preserveRecord(id){const [record]=selected([id]);return preserve(()=>archive.preserveRecord(record));},
       async stagePage(ids){const rows=selected(ids);return preserve(()=>archive.stagePage(rows));},
       preserveAll(){return preserve(async sourceReceipt=>{

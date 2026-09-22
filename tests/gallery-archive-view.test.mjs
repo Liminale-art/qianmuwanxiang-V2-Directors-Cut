@@ -129,3 +129,25 @@ test('failed original verification clears its previous success summary and never
   await tick();await f.choose('version',0);await f.action('review');await f.action('originals');assert.match(f.dialog.innerHTML,/已核验 4\/7/);
   await f.action('originals');assert.match(f.dialog.innerHTML,/原图字节校验失败/);assert.doesNotMatch(f.dialog.innerHTML,/已核验 4\/7|已恢复并完成/);f.opened.close();
 });
+
+test('prepare is explicit, carries progress and presents only a durable preparation, not a restored chat',async()=>{
+  let calls=0;const f=fixture({review:async()=>reviewResult,prepare:async({onProgress})=>{
+    calls++;onProgress({phase:'source',completed:2,total:4});assert.match(f.status.textContent,/合并历史记录 2\/4/);
+    return {compatible:true,added:2,kept:2,total:4};
+  }});
+  await tick();await f.choose('version',0);assert.equal(calls,0);assert.doesNotMatch(f.dialog.innerHTML,/data-archive-action="prepare"/);
+  await f.action('review');assert.equal(calls,0);assert.match(f.dialog.innerHTML,/data-archive-action="prepare"/);
+  await f.action('prepare');assert.equal(calls,1);assert.match(f.dialog.innerHTML,/尚未执行恢复/);assert.match(f.dialog.innerHTML,/新增 2 张/);assert.match(f.dialog.innerHTML,/不能据此删除/);
+  await f.action('refresh');assert.doesNotMatch(f.dialog.innerHTML,/恢复资料已准备/);f.opened.close();
+});
+
+test('prepare conflicts and failures clear stale success without dumping full records into the dialog',async()=>{
+  let fail=false;const f=fixture({review:async()=>reviewResult,prepare:async()=>{if(fail)throw Error('基线已修改');return {compatible:false,conflicts:3,examples:[{id:'PRIVATE_ROW'}]};}});
+  await tick();await f.choose('version',0);await f.action('review');await f.action('prepare');assert.match(f.dialog.innerHTML,/存在 3 项冲突/);assert.doesNotMatch(f.dialog.innerHTML,/PRIVATE_ROW|恢复资料已准备/);
+  fail=true;await f.action('prepare');assert.match(f.dialog.innerHTML,/基线已修改/);assert.doesNotMatch(f.dialog.innerHTML,/存在 3 项冲突/);f.opened.close();
+});
+
+test('closing preparation releases the session and ignores a late successful result',async()=>{
+  const wait=gate(),f=fixture({review:async()=>reviewResult,prepare:()=>wait.promise});await tick();await f.choose('version',0);await f.action('review');f.click('action','prepare');f.opened.close();const before=f.counts.draws;
+  wait.resolve({compatible:true,added:1,kept:0,total:1});await tick();assert.equal(f.counts.draws,before);assert.equal(f.counts.closed,1);
+});

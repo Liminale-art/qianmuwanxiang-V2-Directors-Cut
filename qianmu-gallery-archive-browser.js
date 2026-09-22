@@ -1,16 +1,17 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.301';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.302';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
-import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js?v=1.59.301';
+import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js?v=1.59.302';
 import {decodeGalleryOriginalBlob} from './qianmu-gallery-original-preview.js';
-import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.301';
-import {verifyGalleryRestoreOriginals} from './qianmu-gallery-restore-originals.js?v=1.59.301';
+import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.302';
+import {verifyGalleryRestoreOriginals} from './qianmu-gallery-restore-originals.js?v=1.59.302';
 
-// Account-bound, read-only consumer. No current chat, local recipe fallback,
-// preservation, source repair, generation or deletion is reachable here.
+// Browsing remains read-only. Current-chat preservation is lazy and reachable
+// only through the explicit preparation action, never directory opening.
 export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
+  getContext,epoch,canPrepare=()=>false,
   createDiscovery=createGalleryDiscoveryClient,createArchive=createGalleryArchiveStorage,
   loadImage=loadGalleryPreviewImage,createOriginal=createGalleryOriginalClient,decodeOriginal=decodeGalleryOriginalBlob,timeoutMs=45000}={}){
   if(typeof account!=='function'||typeof headers!=='function'||typeof isCurrent!=='function'
@@ -106,6 +107,13 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
         }});
       }finally{source.close();}
     },verifyOriginals===true?600000:180000);},
+    prepare({onProgress=()=>{}}={}){return run(async()=>{
+      if(!selection||!storage)throw Error('请先选择已保存版本');
+      if(typeof getContext!=='function'||typeof epoch!=='function')throw Error('请在准确的原聊天中准备恢复');
+      const {prepareCurrentGalleryRestore}=await import('./qianmu-gallery-restore-runtime.js?v=1.59.302');await check();
+      return prepareCurrentGalleryRestore({selection,archive:storage,getContext,epoch,account,headers,guard:check,isCurrent:current,
+        canPrepare,signal:cancellation.signal,onProgress});
+    },600000);},
     isClosed:()=>closed,close,
   });
 }
