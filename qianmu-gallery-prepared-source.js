@@ -24,6 +24,7 @@ export async function openPreparedGallerySource({reference,planStorage,archive,g
     const merged=await mergeGallerySupplement(before.supplement.saved,incoming.supplement.saved,{namespace:plan.scope.namespace,chatKey:plan.scope.chatKey});await check();
     if(merged.conflicts.length||chatGalleryReceiptText([{saved:merged.saved}]).text!==chatGalleryReceiptText([{saved:metadata.saved}]).text)fail('恢复方案关联资料与原合并结果不符');
     return Object.freeze({get metadata(){return structuredClone(metadata);},
+      baselineMetadata:()=>exclusive(async()=>{await check();const value=await baseline.metadata();await check();return value;}),
       verify:()=>exclusive(verify),
       readSelected:index=>exclusive(async()=>{const item=await source.read(index);await check();return item;}),
       scan({visit=async()=>{},onProgress=()=>{}}={}){return exclusive(async()=>{

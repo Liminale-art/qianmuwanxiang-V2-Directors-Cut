@@ -1,26 +1,27 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.303';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.304';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
-import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js?v=1.59.303';
+import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js?v=1.59.304';
 import {decodeGalleryOriginalBlob} from './qianmu-gallery-original-preview.js';
-import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.303';
-import {verifyGalleryRestoreOriginals} from './qianmu-gallery-restore-originals.js?v=1.59.303';
+import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.304';
+import {verifyGalleryRestoreOriginals} from './qianmu-gallery-restore-originals.js?v=1.59.304';
 
 // Browsing remains read-only. Current-chat preservation is lazy and reachable
 // only through the explicit preparation action, never directory opening.
 export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
   getContext,epoch,canPrepare=()=>false,
   createDiscovery=createGalleryDiscoveryClient,createArchive=createGalleryArchiveStorage,
+  createRestoration=async options=>(await import('./qianmu-gallery-restore-execution.js?v=1.59.304')).createGalleryRestoreExecution(options),
   loadImage=loadGalleryPreviewImage,createOriginal=createGalleryOriginalClient,decodeOriginal=decodeGalleryOriginalBlob,timeoutMs=45000}={}){
   if(typeof account!=='function'||typeof headers!=='function'||typeof isCurrent!=='function'
     ||!Number.isFinite(timeoutMs)||timeoutMs<100||timeoutMs>60000)throw Error('图库读取环境尚未就绪');
-  let closed=false,pending=false,namespace,storage,version,selection,endReason,originals;
+  let closed=false,pending=false,namespace,storage,version,selection,endReason,originals,preparation,restoration;
   let versions=new Map(),rows=new Map();const cancellation=new AbortController();
   const discovery=createDiscovery({account,headers,guard:()=>current()});
   function current(){if(closed||isCurrent()!==true)throw Error('图库页面已变化，请重新打开');return true;}
-  function releaseVersion(){version?.close();version=null;storage?.close();storage=null;selection=null;rows.clear();}
+  function releaseVersion(){restoration?.close();restoration=null;preparation=null;version?.close();version=null;storage?.close();storage=null;selection=null;rows.clear();}
   function close(reason){if(closed)return;if(reason instanceof Error)endReason=reason;closed=true;cancellation.abort();originals?.close();releaseVersion();versions.clear();discovery.close();}
   async function check(){
     current();const found=galleryCatalogAccount(await account());current();
@@ -110,10 +111,19 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
     prepare({onProgress=()=>{}}={}){return run(async()=>{
       if(!selection||!storage)throw Error('请先选择已保存版本');
       if(typeof getContext!=='function'||typeof epoch!=='function')throw Error('请在准确的原聊天中准备恢复');
-      const {prepareCurrentGalleryRestore}=await import('./qianmu-gallery-restore-runtime.js?v=1.59.303');await check();
-      return prepareCurrentGalleryRestore({selection,archive:storage,getContext,epoch,account,headers,guard:check,isCurrent:current,
-        canPrepare,signal:cancellation.signal,onProgress});
+      const {prepareCurrentGalleryRestore}=await import('./qianmu-gallery-restore-runtime.js?v=1.59.304');await check();
+      restoration?.close();restoration=null;preparation=null;
+      const result=await prepareCurrentGalleryRestore({selection,archive:storage,getContext,epoch,account,headers,guard:check,isCurrent:current,
+        canPrepare,signal:cancellation.signal,onProgress});await check();if(result.compatible)preparation=structuredClone(result.reference);return result;
     },600000);},
+    restorePreview({onProgress=()=>{}}={}){return run(async()=>{
+      if(!selection||!storage||typeof getContext!=='function'||typeof epoch!=='function')throw Error('请在准确的原聊天中核对恢复');
+      restoration?.close();restoration=null;await check();
+      const opened=await createRestoration({selection,preparation,archive:storage,getContext,epoch,account,headers,guard:check,isCurrent:current,canPrepare,signal:cancellation.signal,onProgress});
+      try{await check();restoration=opened;return await opened.preview();}catch(error){opened.close();restoration=null;throw error;}
+    },600000);},
+    restore(options){return run(async()=>{if(!restoration)throw Error('请先核对本次恢复');return restoration.execute(options);},600000);},
+    finishRestore(){return run(async()=>{if(!restoration)throw Error('请先核对本次恢复');const result=await restoration.finish({confirmed:true});restoration.close();restoration=null;preparation=null;return result;},600000);},
     isClosed:()=>closed,close,
   });
 }

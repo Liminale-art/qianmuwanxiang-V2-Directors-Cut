@@ -2,7 +2,7 @@ import {createChatCharacterReceiptService} from './qianmu-chat-character-receipt
 import {createRecipeArchiveStore} from './qianmu-recipe-archive-store.js';
 import {imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {recipeArchiveError,recipeArchiveRequest,recipeArchiveSnapshot,recipeArchiveReference,recipeArchiveResponse,recipeArchiveStorageRequest,recipeArchiveStorageResponse,RECIPE_ARCHIVE_LIMITS} from './qianmu-recipe-archive-contract.js';
-import {recipeRestoreRequest,inspectRecipeRestoreRequest,recipeRestoreResponse} from './qianmu-recipe-restore-contract.js';
+import {recipeRestoreRequest,inspectRecipeRestoreRequest,recipeRestoreResponse,recipeVerificationRequest,recipeVerificationResponse} from './qianmu-recipe-restore-contract.js';
 const fail=(code,message,status)=>{throw recipeArchiveError(code,message,status);};
 
 // Ordinary preserve/read accept only selectors; the saved ST record is authoritative.
@@ -69,8 +69,19 @@ export function createRecipeArchiveService(options){
     })();
     pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
   }
+  function verifyRestored(req,raw,options={}){
+    let input;try{input=recipeVerificationRequest(raw);if(closed||options.signal?.aborted)fail('changed','配方文件核对已取消');if(pending.size>=RECIPE_ARCHIVE_LIMITS.pending)fail('busy','配方文件核对正忙',429);}
+    catch(error){return Promise.reject(error);}
+    const originalRoot=req.user?.directories?.root;
+    const guard=()=>{if(closed||options.signal?.aborted||req.user?.directories?.root!==originalRoot||!imageServiceAccountStillMatches(req,{namespace:input.expectedAccount}))fail('changed','配方文件核对账户或目录已变化');};
+    const task=(async()=>{
+      guard();const saved=await store.get(req,input.expectedAccount,input.reference,options);guard();
+      if(JSON.stringify(saved.source)!==JSON.stringify(input.source))fail('source','原配方文件不属于此准确聊天和画面');
+      return recipeVerificationResponse({ok:true,...input,proof:'read-only-recipe-file'});
+    })();pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
+  }
   return Object.freeze({preserve:(req,input,options)=>run(req,input,options,true),read:(req,input,options)=>run(req,input,options,false),
     storage:(req,input,options)=>run(req,input,options,false,true),
-    restore,
+    restore,verifyRestored,
     async close(){closed=true;await Promise.allSettled([source.close(),store.close(),...pending]);}});
 }

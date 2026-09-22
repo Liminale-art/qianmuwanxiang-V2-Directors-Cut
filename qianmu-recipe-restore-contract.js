@@ -41,3 +41,16 @@ export function recipeRestoreResponse(value) {
   if (!sameReferenceContent(originalReference, reference)) fail('配方恢复回执改变了原始内容指纹');
   return { ok: true, version: 1, expectedAccount: checked.value.expectedAccount, source: checked.value.source, originalReference, reference, proof: value.proof };
 }
+
+// Read only an exact, already-restored private file. No caller recipe, path,
+// arbitrary account or implicit repair; usable before the chat points at it.
+export function recipeVerificationRequest(value){
+  if(!exact(value,['version','expectedAccount','source','reference'])||value.version!==1)fail('配方文件核对只接受准确来源与原引用');
+  const checked=recipeArchiveEnvelope({version:1,expectedAccount:value.expectedAccount,source:value.source,
+    snapshot:{source:'receipt-only',prompt:'',negative:'',profile:{},payload:{}}});
+  return {version:1,expectedAccount:checked.value.expectedAccount,source:checked.value.source,reference:recipeArchiveReference(value.reference)};
+}
+export function recipeVerificationResponse(value){
+  if(!exact(value,['ok','version','expectedAccount','source','reference','proof'])||value.ok!==true||value.proof!=='read-only-recipe-file')fail('配方文件核对回执不完整');
+  return {ok:true,...recipeVerificationRequest({version:value.version,expectedAccount:value.expectedAccount,source:value.source,reference:value.reference}),proof:value.proof};
+}

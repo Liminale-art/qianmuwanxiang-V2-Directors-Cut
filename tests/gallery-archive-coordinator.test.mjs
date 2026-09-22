@@ -1,11 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {readFile} from 'node:fs/promises';
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const gate=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
+test('actual gallery entry refreshes the current view only after verified restore closes, never for a stale or read-only session',async()=>{
+  const text=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=text.indexOf("  root.querySelector('.sd-open-gallery-archive')"),end=text.indexOf("  root.querySelector('.sd-open-gallery-directory')",start),glue=text.slice(start,end);
+  assert.ok(start>0&&end>start);
+  for(const mode of ['read-only','restored','stale','uncertain']){
+    const finished=gate(),state={view:'gallery'};let click,rendered=0,inline=0,opened=0;
+    const button={isConnected:true,disabled:false,addEventListener(_,handler){click=handler;}},root={classList:{contains:()=>true},querySelector:()=>button};
+    const context=vm.createContext({root,state,storyboardAdmissionEpoch:1,storyboardState:()=>state,storyboardGalleryKind:'stills',
+      loadLocalChunk:async()=>({openGalleryArchive:()=>{opened++;return {finished:finished.promise};}}),featureRuntime:{load:async()=>({resolveImageAccountNamespace(){}})},
+      storyboardRequestHeaders:()=>({}),ctx:()=>({}),storyboardImportPackage:{},storyboardExportPackage:{},storyboardActiveJobs:new Map(),storyboardQueue:[],
+      storyboardScheduleInlineRender:()=>inline++,renderModal:()=>rendered++,toast:()=>assert.fail('unexpected error')});
+    vm.runInContext(glue,context);const work=click({currentTarget:button});await flush();assert.equal(opened,1);assert.equal(rendered,0);
+    if(mode==='stale')context.storyboardAdmissionEpoch++;finished.resolve({restored:['restored','stale'].includes(mode)});await work;
+    assert.equal(rendered,mode==='restored'?1:0);assert.equal(inline,rendered);assert.equal(button.disabled,false);
+  }
+});
 function fixture(t,extra={}){
   const window=new EventTarget(),document=new EventTarget(),timers=new Map(),opened=[],errors=[];
   let time=0,id=0,available=true,current=true,admitted=true,identity='account/chat/content',saves=0;

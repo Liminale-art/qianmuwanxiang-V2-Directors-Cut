@@ -151,3 +151,19 @@ test('closing preparation releases the session and ignores a late successful res
   const wait=gate(),f=fixture({review:async()=>reviewResult,prepare:()=>wait.promise});await tick();await f.choose('version',0);await f.action('review');f.click('action','prepare');f.opened.close();const before=f.counts.draws;
   wait.resolve({compatible:true,added:1,kept:0,total:1});await tick();assert.equal(f.counts.draws,before);assert.equal(f.counts.closed,1);
 });
+
+test('restoration requires separate explicit confirmation and reports only verified results',async()=>{
+  let writes=0,finishes=0;const f=fixture({restorePreview:async()=>({mode:'fresh',status:'prepared',ready:true,digest:'checked',added:2,kept:1,total:3,assets:{missing:1,conflicts:0}}),
+    restore:async input=>{assert.deepEqual(input,{confirmed:true,expectedDigest:'checked'});writes++;return {status:'restored'};},finishRestore:async()=>{finishes++;return {status:'finished'};}});
+  await tick();await f.choose('version',0);await f.action('restore-review');assert.equal(writes,0);assert.match(f.dialog.innerHTML,/需补回原图 1 份/);assert.match(f.dialog.innerHTML,/不改正文或全局设置/);
+  await f.action('restore-confirm');assert.equal(writes,1);assert.match(f.dialog.innerHTML,/已恢复并核对完成/);await f.action('restore-finish');assert.equal(finishes,1);assert.match(f.dialog.innerHTML,/核对已结束/);f.opened.close();assert.deepEqual(await f.opened.finished,{restored:true});
+});
+test('uncertain and already-saved recovery cannot cause automatic or duplicate restore calls',async()=>{
+  let writes=0;const f=fixture({restorePreview:async()=>({mode:'recovery',status:'unconfirmed',reason:'reload_required',ready:false}),restore(){writes++;}});
+  await tick();await f.choose('version',0);await f.action('restore-review');await f.action('restore-confirm');assert.equal(writes,0);assert.match(f.dialog.innerHTML,/重新载入原聊天/);f.opened.close();assert.deepEqual(await f.opened.finished,{restored:false});
+  const g=fixture({restorePreview:async()=>({mode:'recovery',status:'saved',ready:false}),restore(){writes++;}});await tick();await g.choose('version',0);await g.action('restore-review');await g.action('restore-confirm');assert.equal(writes,0);assert.match(g.dialog.innerHTML,/已恢复并核对完成/);g.opened.close();assert.deepEqual(await g.opened.finished,{restored:true});
+});
+test('late restoration result after close never recreates the modal or shows a success',async()=>{
+  const held=gate(),f=fixture({restorePreview:async()=>({mode:'fresh',status:'prepared',ready:true,digest:'checked'}),restore:()=>held.promise});
+  await tick();await f.choose('version',0);await f.action('restore-review');f.click('action','restore-confirm');f.opened.close();const draws=f.counts.draws;held.resolve({status:'restored'});await tick();assert.equal(f.counts.draws,draws);
+});

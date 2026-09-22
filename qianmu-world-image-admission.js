@@ -1,4 +1,4 @@
-import {validateDirectorDecision} from './qianmu-director-decision.js?v=1.59.303';
+import {validateDirectorDecision} from './qianmu-director-decision.js?v=1.59.304';
 import {worldSourceKey} from './qianmu-world-source.js';
 
 const fail=()=>{throw Object.assign(Error('造物之眼来源或自动授权无效，未提交生图'),{code:'image_attempt_world_identity'});};

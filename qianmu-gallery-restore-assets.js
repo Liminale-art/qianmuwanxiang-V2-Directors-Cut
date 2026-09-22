@@ -24,7 +24,7 @@ export function createPreparedGalleryAssets({source,account,headers,guard,verify
     const abort=()=>{controller.abort();reject(Error('恢复原件已取消或超时'));};cancel=abort;
     const timer=setTimeout(abort,timeoutMs),clients=[];
     async function check(){if(closed||controller.signal.aborted||await guard()!==true||await account()!==namespace||closed||controller.signal.aborted)fail('恢复原件账户或页面已变化');return true;}
-    async function current(){await check();if(await verifyCurrent()!==true)fail('当前聊天基线已变化，未继续恢复原件');await check();}
+    async function current(options={deep:true}){await check();if(await verifyCurrent(options)!==true)fail('当前聊天基线已变化，未继续恢复原件');await check();}
     async function fetchLinked(url,options){
       await check();const linked=new AbortController();
       const stop=()=>{linked.abort();controller.signal.removeEventListener('abort',stop);options.signal.removeEventListener('abort',stop);};
@@ -77,7 +77,7 @@ export function createPreparedGalleryAssets({source,account,headers,guard,verify
             const read=await op.copies.read(row.reference,{signal:op.signal});await op.check();
             const bytes=new Uint8Array(await read.blob.arrayBuffer());await op.check();let data='';
             for(let at=0;at<bytes.length;at+=8192){data+=String.fromCharCode(...bytes.subarray(at,at+8192));if(at%131072===0){await new Promise(resolve=>setTimeout(resolve,0));await op.check();}}
-            await op.current();op.mark('original');await op.images.restore(row.receipt,btoa(data),{confirmed:true});await op.check();
+            await op.current({deep:false});op.mark('original');await op.images.restore(row.receipt,btoa(data),{confirmed:true});await op.check();
           }
           if((await op.images.inspect(row.receipt)).state!=='present')fail('原图路径读回未确认');
           await op.progress({phase:'originals',completed:++completed,total:prepared.images.length});
