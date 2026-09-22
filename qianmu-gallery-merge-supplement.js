@@ -2,6 +2,7 @@ import {projectChatGallerySupplement} from './qianmu-chat-gallery-supplement.js'
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
 import {chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
 import {captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
+import {mergeGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.306';
 
 const same=(a,b)=>chatGalleryReceiptText([{value:a}]).text===chatGalleryReceiptText([{value:b}]).text;
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_restore_merge',writeState:'not_started'});};
@@ -39,6 +40,7 @@ export async function mergeGallerySupplement(before,incoming,owner){
       saved.characterDrafts=result;
     }
   }
+  const continuity=mergeGalleryContinuity(local,source,same);Object.assign(saved,continuity.saved);Object.assign(added,continuity.added);conflicts.push(...continuity.conflicts);
   if(!conflicts.length)await projectChatGallerySupplement(saved,owner);
   return {saved:conflicts.length?null:saved,conflicts,added:conflicts.length?null:added};
 }

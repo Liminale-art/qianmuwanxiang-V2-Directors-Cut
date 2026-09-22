@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.305';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.306';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
@@ -17,9 +17,10 @@ export function galleryArchiveListHtml({entries=[],rows=[],selected=null,busy=fa
 export function galleryArchiveReviewHtml(review){
   if(!review)return '';
   const verified=review.proof==='archive-originals-readback-only';
+  const continuity=review.continuity?.state==='recorded'?`续写依据 ${Number(review.continuity.continuations)||0} · 换版依据 ${Number(review.continuity.retakes)||0}`:'旧版本未记录续写/换版依据是否完整；不会猜补。';
   return `<section aria-label="恢复资料核对"><b>恢复资料核对 · 只读</b><p>画面记录 ${review.total} · 完整配方 ${review.recipes.available}/${review.total} · 原图副本引用 ${review.originals.referenced}/${review.total}</p>
     ${verified?`<p>原图文件已核验 ${review.originals.verified}/${review.total} · 去重读取 ${review.originals.unique} 份</p>`:''}
-    <p>合集 ${review.collections} · 角色草稿 ${review.characterDrafts} · 正文依据 ${review.evidenceFloors} 层</p><p>已按原保存顺序核验全部画面记录。${review.recipes.missing||review.originals.missing?'存在未保全的配方或原图引用，请保留原资料。':''}${verified?'本次已核验现有副本的文件大小、格式和摘要；仍不代表原路径已恢复。':'原图文件内容尚未逐张核验。'}正文依据不是全文备份；本次不会写回聊天或删除任何资料。</p></section>`;
+    <p>合集 ${review.collections} · 角色草稿 ${review.characterDrafts} · 正文依据 ${review.evidenceFloors} 层</p><p>${continuity}</p><p>已按原保存顺序核验全部画面记录。${review.recipes.missing||review.originals.missing?'存在未保全的配方或原图引用，请保留原资料。':''}${verified?'本次已核验现有副本的文件大小、格式和摘要；仍不代表原路径已恢复。':'原图文件内容尚未逐张核验。'}正文依据不是全文备份；本次不会写回聊天或删除任何资料。</p></section>`;
 }
 
 export function galleryArchiveRestoreHtml(state,busy=false){
@@ -28,7 +29,7 @@ export function galleryArchiveRestoreHtml(state,busy=false){
   const reasons={reload_required:'服务器已保存，请重新载入原聊天后核对；不会重复保存。',local_conflict:'当前资料已编辑，请保留两份资料后核对。',server_conflict:'服务器资料与原方案不同，未覆盖。',needs_review:'保存尚未确认，请重新核对；不会自动重试。',host_pending:'ST 保存尚未结束，请稍后重新核对。'};
   if(state.status==='unconfirmed'&&!state.ready)return `<section aria-label="恢复待核对"><b>恢复尚未确认</b><p>${escape(reasons[state.reason]||'原件或保存尚未完整核实，请重新核对。')}</p>${button('restore-review','重新核对',busy)}</section>`;
   return `<section aria-label="确认恢复"><b>${state.mode==='recovery'?'核对上次恢复':'恢复至原聊天'}</b><p>新增 ${state.added} 张 · 保留相同 ${state.kept} 张 · 合计 ${state.total} 张</p>
-    ${state.assets?`<p>需补回原图 ${state.assets.missing} 份 · 冲突 ${state.assets.conflicts} 份</p>`:''}<small>仅恢复所选静帧、合集与角色草稿，不改正文或全局设置；不安装模型/节点，不重新生成。此操作可能需要一些时间，不能据此删除原件。</small>
+    ${state.assets?`<p>需补回原图 ${state.assets.missing} 份 · 冲突 ${state.assets.conflicts} 份</p>`:''}<small>恢复所选静帧、合集、角色草稿及已保全的续写/换版依据；来源冲突不覆盖，不改正文或全局设置，不安装模型/节点，不重新生成。此操作可能需要一些时间，不能据此删除原件。</small>
     ${button('restore-confirm',state.mode==='recovery'?'确认重试原恢复':'确认恢复',busy||!state.ready)}${button('restore-cancel','暂不恢复',busy)}</section>`;
 }
 

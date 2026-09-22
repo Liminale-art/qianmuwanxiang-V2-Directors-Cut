@@ -4,7 +4,7 @@ import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {createStoryboardMessageReference,createStoryboardParagraphAnchor,resolveStoryboardMessageReference,resolveStoryboardOrdinaryMessageContinuation} from './qianmu-storyboard.js';
 import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js';
 import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.305';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.306';
 import {hashText} from './qianmu-storyboard-utils.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_location'});};

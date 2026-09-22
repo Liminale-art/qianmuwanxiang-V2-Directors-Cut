@@ -10,8 +10,9 @@ import {createGalleryWriteProposal} from './qianmu-gallery-write-proposal.js';
 import {createHistoricalChatMutation,inspectHistoricalChatMutation} from './qianmu-historical-chat-journal.js';
 import {acquireChatSaveLock,releaseChatSaveLock} from './qianmu-chat-save-lock.js';
 import {verifyPreparedGalleryFiles} from './qianmu-gallery-write-files.js';
+import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.306';
 
-const scope='paged-gallery-current-chat',fields=['storyboardImages','storyboardCollections','characterDrafts'];
+const scope='paged-gallery-current-chat',fields=['storyboardImages',...GALLERY_SUPPLEMENT_FIELDS];
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),equal=(a,b)=>chatGalleryReceiptText([{value:a}]).text===chatGalleryReceiptText([{value:b}]).text;
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_chat_save',submissionState:'not_submitted'});};
 const summary=receipt=>({count:receipt.count,bytes:receipt.bytes,sha256:receipt.sha256});
@@ -29,7 +30,8 @@ export function createPagedGallerySaveSession({source,writeStorage,writeReferenc
     ||!store||typeof saveHost!=='function'){currentSource.close();fail('请先打开准确的原聊天，未切换或创建资料槽');}
   let closed=false,busy=false,hostPending=false,intent=null,row=null,abortActive;
   const current=()=>{if(closed||isCurrent()!==true)fail('分页保存页面已变化');currentSource.assertCurrent();
-    if(getContext().chatMetadata.story_director_liminale!==store||getContext().saveMetadata!==saveHost)fail('宿主资料或保存接口已变化');return true;};
+    if(getContext().chatMetadata.story_director_liminale!==store||getContext().saveMetadata!==saveHost)fail('宿主资料或保存接口已变化');
+    if(galleryContinuitySavePending(store))fail('续写或换版依据仍在保存，未写回恢复资料');return true;};
   const release=()=>{if(!busy&&!hostPending)releaseChatSaveLock(store,token);};
   const unknown=reason=>({status:'unconfirmed',reason,durableJournal:Boolean(row),metadataVerified:false,canPrune:false});
   const supplement=()=>{const saved={};for(const key of fields.slice(1)){const descriptor=Object.getOwnPropertyDescriptor(store,key);
@@ -114,7 +116,7 @@ export function createPagedGallerySaveSession({source,writeStorage,writeReferenc
     row=await journal.updateHistoricalChatMutation(row,'submitted',{isCurrent:op.active});await op.check();intent=loaded.proposal;
     if(!await observed(loaded.before,op))fail('写前记录提交期间服务器资料已变化');await op.check();
     if(!local(expected))fail('最终写回前资料已编辑');unchangedBody(messages);const changes=assignments(saved);
-    // No await between final source/body/value checks, three assignments and ST.
+    // No await between final source/body/value checks, scoped assignments and ST.
     current();for(const [key,value]of changes)store[key]=value;return invoke(loaded,op);
   }
   return Object.freeze({

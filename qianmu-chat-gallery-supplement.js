@@ -3,6 +3,8 @@ import {chatGalleryEvidenceRequest} from './qianmu-chat-gallery-evidence.js';
 import {chatGalleryReceiptSummary,CHAT_GALLERY_STREAM_LIMITS} from './qianmu-chat-gallery-receipt.js';
 import {projectChatGalleryState} from './qianmu-chat-gallery-state.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {GALLERY_SUPPLEMENT_FIELDS,GALLERY_CONTINUITY_FIELDS,projectGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.306';
+import {parseBoundedJson} from './qianmu-json-input.js';
 
 // The gallery bodies are already preserved as separate immutable records. This
 // endpoint carries only original ordering and the chat-owned companion fields.
@@ -10,7 +12,7 @@ import {vibeDigest} from './qianmu-vibe-file.js';
 // Response budget also covers 10k existing IDs of 240 UTF-16 units (including
 // non-ASCII IDs), plus the separate 2 MiB supplement. It contains no image bodies.
 export const CHAT_GALLERY_SUPPLEMENT_LIMITS=Object.freeze({bytes:2*1048576,responseBytes:10*1048576,headerBytes:64*1048576,records:CHAT_GALLERY_STREAM_LIMITS.records});
-const fields=['storyboardCollections','characterDrafts'];
+const fields=GALLERY_SUPPLEMENT_FIELDS;
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
 const exact=(value,keys)=>object(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -21,7 +23,10 @@ export async function projectChatGallerySupplement(value,owner){
   try{
     // Reuse the existing ownership, portability and unknown-field validation,
     // without embedding another copy of every image record in the response.
-    const {storyboardImages,...saved}=await projectChatGalleryState({storyboardImages:[],...value},owner);return saved;
+    const captured=parseBoundedJson(JSON.stringify(value),{maxBytes:CHAT_GALLERY_SUPPLEMENT_LIMITS.bytes,maxDepth:40,maxNodes:100000,label:'分镜补充资料'});
+    const {storyboardImages,...saved}=await projectChatGalleryState({storyboardImages:[],...captured},owner);
+    const continuity=await projectGalleryContinuity(Object.fromEntries(GALLERY_CONTINUITY_FIELDS.filter(key=>Object.hasOwn(captured,key)).map(key=>[key,captured[key]])),owner);
+    return {...saved,...continuity};
   }catch{fail();}
 }
 export function chatGallerySupplementOrder(value,count){
@@ -35,7 +40,8 @@ export async function chatGallerySupplementResponse(value,{namespace}={}){
     ||!exact(value.source,['kind','bytes','sha256'])||value.source.kind!=='jsonl-header'||!Number.isSafeInteger(value.source.bytes)||value.source.bytes<1
     ||value.source.bytes>CHAT_GALLERY_SUPPLEMENT_LIMITS.headerBytes||!hash(value.source.sha256)||!hash(value.sha256)
     ||typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace))fail();
-  const gallery=chatGalleryReceiptSummary(value.gallery),request=chatGallerySupplementRequest({version:value.version,expectedAccount:value.expectedAccount,target:value.target,gallerySha256:gallery.sha256});
+  if(![1,2].includes(value.version)||value.version===1&&GALLERY_CONTINUITY_FIELDS.some(key=>Object.hasOwn(value.saved||{},key)))fail();
+  const gallery=chatGalleryReceiptSummary(value.gallery),request=chatGallerySupplementRequest({version:1,expectedAccount:value.expectedAccount,target:value.target,gallerySha256:gallery.sha256});
   if('st-user:'+await vibeDigest(namespace.slice(8))!==request.expectedAccount)fail();
   const order=chatGallerySupplementOrder(value.order,gallery.count),saved=await projectChatGallerySupplement(value.saved,{namespace,chatKey:request.target.chatId});
   if(await chatGallerySupplementDigest(order,saved)!==value.sha256||new TextEncoder().encode(JSON.stringify(value)).length>CHAT_GALLERY_SUPPLEMENT_LIMITS.responseBytes)fail();

@@ -11,13 +11,14 @@ import {createGalleryRestorePlanStorage} from '../../qianmu-gallery-restore-plan
 import {openPreparedGallerySource} from '../../qianmu-gallery-prepared-source.js';
 import {createPreparedGalleryAssets} from '../../qianmu-gallery-restore-assets.js';
 
-export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,recordBytes=0,decorateRecord}={}){
+export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,recordBytes=0,decorateRecord,prepareStore,clearArchivedFields=[]}={}){
   const host=await galleryOriginalHttpFixture(t),transport=streamCheckpointTransport(host.account),calls=[],state={active:true,hook:null};
   const own=resource=>{t.after(()=>resource.close());return resource;};
   host.context.chat.push({mes:'fixture narrative',name:'Alice',is_user:false});
   const rows=Array.from({length:count},(_,index)=>({...structuredClone(host.rows[0]),id:'record-'+index,createdAt:index,future:{keep:[null,false,0,''],...(recordBytes?{text:'x'.repeat(recordBytes)}:{})}})).reverse();
   if(decorateRecord)for(const row of rows)decorateRecord(row,host.context);
   const store=host.context.chatMetadata.story_director_liminale;store.storyboardImages=rows;
+  if(prepareStore)await prepareStore({context:host.context,store,rows,namespace:host.account});
   const save=()=>fs.writeFile(host.file,[JSON.stringify({chat_metadata:host.context.chatMetadata}),...host.context.chat.map(m=>JSON.stringify(m))].join('\n')+'\n');await save();
   const target={kind:'character',avatar:'Alice.png',chatId:'chat'};let recipePath;
   if(serverRecipe&&rows.length){
@@ -35,7 +36,7 @@ export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,
   assert.equal(saved.originals.state,'complete');assert.equal(saved.evidences.state,'complete');
   const selection={schema:'qianmu.gallery.source-version.v3',scope:session.scope,sourceReceipt:saved.sourceReceipt,manifest:saved.reference,supplement:saved.supplement,evidence:saved.evidence};
   const archive=own(await createGalleryArchiveStorage({scope:session.scope,guard:()=>state.active,verifyRecord:()=>false,createStorage:transport.createStorage}));
-  store.storyboardImages=[];await save();
+  store.storyboardImages=[];for(const key of clearArchivedFields)delete store[key];await save();
   const prepared=await prepareCurrentGalleryRestore({...options,selection,archive});assert.equal(prepared.compatible,true);
   const planStorage=own(await createGalleryRestorePlanStorage({scope:session.scope,guard:()=>state.active,createStorage:transport.createStorage}));
   const source=own(await openPreparedGallerySource({reference:prepared.reference,planStorage,archive,guard:()=>state.active}));

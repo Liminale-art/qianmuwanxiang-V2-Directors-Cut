@@ -2,10 +2,10 @@
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, browser image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient,createChatGalleryEvidenceSourceClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.305';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.306';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
-import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.305';
+import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.306';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
 import {GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
@@ -14,6 +14,7 @@ import {captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {scanGalleryEvidenceSource} from './qianmu-gallery-evidence-source.js';
 import {galleryEvidenceSummary} from './qianmu-gallery-archive-evidence.js';
+import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.306';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
@@ -32,7 +33,9 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
   function check(){
     if(closed)fail('画面保全来源会话已结束');
     try{external();client.assertCurrent();
-      if(getContext().chatMetadata.story_director_liminale?.storyboardImages!==live)fail('当前画面列表已替换，请重新核对来源');
+      const store=getContext().chatMetadata.story_director_liminale;
+      if(store?.storyboardImages!==live)fail('当前画面列表已替换，请重新核对来源');
+      if(galleryContinuitySavePending(store))fail('续写或换版依据仍在保存，请稍后重新核对');
     }catch(error){close();throw error;}return true;
   }
   async function unchanged(){
@@ -49,7 +52,7 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
   }
   function captureSupplement(){
     check();const store=getContext().chatMetadata.story_director_liminale,saved={};
-    for(const field of ['storyboardCollections','characterDrafts'])if(Object.hasOwn(store,field)){
+    for(const field of GALLERY_SUPPLEMENT_FIELDS)if(Object.hasOwn(store,field)){
       const property=Object.getOwnPropertyDescriptor(store,field);if(!Object.hasOwn(property,'value'))fail('补充资料含不支持的访问器');saved[field]=property.value;
     }
     return JSON.stringify(captureGallerySupplement({order:[...records.keys()],saved}));
@@ -57,14 +60,14 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
   function unchangedSupplement(){
     check();if(supplementCaptureFailed)fail('补充资料无法完整读取，未截断或猜补');
     let current;try{current=captureSupplement();}catch(error){close();throw error;}
-    if(current!==localSupplement){close();fail('合集或角色草稿已修改，请保存后重新核对');}
+    if(current!==localSupplement){close();fail('合集、角色草稿或来源依据已修改，请保存后重新核对');}
   }
   async function readSavedSupplement(){
     unchangedSupplement();supplementClient??=createChatGallerySupplementClient({namespace:client.owner.namespace,target:client.target,
       headers:headers||(()=>getContext().getRequestHeaders?.()||{}),fetchImpl,timeoutMs,
       guard:async()=>{unchangedSupplement();await client.guard();unchangedSupplement();}});
     const result=await supplementClient.read(summary.sha256);unchangedSupplement();
-    if(JSON.stringify({order:result.order,saved:result.saved})!==localSupplement)fail('原聊天尚未保存相同合集或角色草稿');return result;
+    if(JSON.stringify({order:result.order,saved:result.saved})!==localSupplement)fail('原聊天尚未保存相同合集、角色草稿或来源依据；也请确认后端版本');return result;
   }
   async function captureEvidence(){check();return scanGalleryEvidenceSource(getContext().chat,client.target.chatId,{guard:check,yieldWork});}
   async function unchangedEvidence(){

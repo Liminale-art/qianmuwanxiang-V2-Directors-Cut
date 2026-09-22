@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {chatCharacterReceiptError} from './qianmu-chat-character-receipt.js';
 import {chatGalleryReceiptRecordText,CHAT_GALLERY_RECEIPT_LIMITS,CHAT_GALLERY_STREAM_LIMITS} from './qianmu-chat-gallery-receipt.js';
 import {CHAT_GALLERY_SUPPLEMENT_LIMITS} from './qianmu-chat-gallery-supplement.js';
+import {GALLERY_SUPPLEMENT_FIELDS} from './qianmu-gallery-continuity.js?v=1.59.306';
 
 // Only the saved JSONL header is scanned. Unrelated metadata is validated but
 // never accumulated. One record is materialized at a time; the result retains
@@ -45,8 +46,8 @@ export function createChatGalleryHeaderCapture({recordId,recordIds,projectRecord
     if(path.length===1&&path[0]==='mes')fail('聊天正文不能代替资料头');
     if(at(path,galleryPath)){if(kind!=='array')fail('聊天静帧记录不是数组');present=true;}
     if(supplement&&path.length===storePath.length+1&&storePath.every((value,index)=>path[index]===value)
-      &&['storyboardCollections','characterDrafts'].includes(path.at(-1))){
-      const field=path.at(-1);if(kind!==(field==='storyboardCollections'?'array':'object'))fail('分镜补充资料类型无效','supplement_content');
+      &&GALLERY_SUPPLEMENT_FIELDS.includes(path.at(-1))){
+      const field=path.at(-1);if(kind!==(field==='characterDrafts'?'object':'array'))fail('分镜补充资料类型无效','supplement_content');
       extra={field,depth:frames.length+1,parts:[],chars:[],length:0};
     }
     if(path.length>=galleryPath.length&&galleryPath.every((value,index)=>path[index]===value)){

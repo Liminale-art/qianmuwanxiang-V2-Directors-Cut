@@ -54,6 +54,7 @@ export async function createGalleryRestoreSource({selection,archive,guard,signal
     if(rows.size!==companion.order.length||rows.size!==version.total)fail('恢复目录未覆盖全部原顺序，未截断为部分资料');
     const summary={scope:structuredClone(selected.scope),target:structuredClone(companion.target),total:rows.size,
       collections:companion.saved.storyboardCollections?.length??0,characterDrafts:companion.saved.characterDrafts?.items?.length??0,
+      continuity:{state:companion.version===2?'recorded':'legacy-unknown',continuations:companion.saved.storyboardContinuations?.length??0,retakes:companion.saved.storyboardFloorTakeReceipts?.length??0},
       evidenceFloors:body.receipt.chatEvidence.messages.length,originalVerified:false,canPrune:false};
     return Object.freeze({get summary(){return structuredClone(summary);},
       metadata:()=>exclusive(async()=>structuredClone({selection:selected,supplement:companion,evidence:body.receipt})),

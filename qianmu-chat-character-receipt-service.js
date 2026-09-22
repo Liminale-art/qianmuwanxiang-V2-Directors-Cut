@@ -148,7 +148,7 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
       if(!header.gallery)fail('record_missing','原聊天没有画面资料，未猜补原件',404);
       if(header.gallery.sha256!==input.gallerySha256)fail('record_changed','原画面资料已变化，请重新核对');
       const saved=await projectChatGallerySupplement(header.saved,context.owner);context.guard();
-      const result=await chatGallerySupplementResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
+      const result=await chatGallerySupplementResponse({ok:true,version:2,expectedAccount:context.account.namespace,target:context.body.target,
         gallery:header.gallery,source:header.source,saved,order:header.order,sha256:await chatGallerySupplementDigest(header.order,saved),proof:'read-only-chat-supplement'},
       {namespace:context.owner.namespace});
       await checkedRoots(context);if(!unchanged(header.file,await lstat(context.target)))fail('changed','分镜资料核验期间原聊天已变化');context.guard();return result;

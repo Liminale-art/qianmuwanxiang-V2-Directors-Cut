@@ -1,8 +1,8 @@
 // A floor retake is an immutable receipt attached to the original jobs/images.
 // It neither deletes assets nor authorizes a request. Only a fully saved take
 // changes inline visibility; the gallery remains the source of originals.
-import {normalizeStoryboardFloorTakeReceipts,mergeStoryboardFloorTakeReceipts,storyboardFloorTakeReceiptSupersedes} from './qianmu-storyboard-floor-take-receipt.js?v=1.59.305';
-import {storyboardFloorTakeMessageKeys,storyboardFloorTakeScopesOverlap} from './qianmu-storyboard-floor-take-scope.js?v=1.59.305';
+import {normalizeStoryboardFloorTakeReceipts,mergeStoryboardFloorTakeReceipts,storyboardFloorTakeReceiptSupersedes} from './qianmu-storyboard-floor-take-receipt.js?v=1.59.306';
+import {storyboardFloorTakeMessageKeys,storyboardFloorTakeScopesOverlap} from './qianmu-storyboard-floor-take-scope.js?v=1.59.306';
 const obj=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max?value:'';
 const integer=(value,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max;
@@ -10,6 +10,7 @@ const clone=value=>structuredClone(value);
 const invalid=()=>({invalid:true});
 const saving=new WeakMap();
 const provisionalReceipts=new WeakMap();
+export const storyboardFloorTakeSavePending=receipts=>Boolean(receipts&&(saving.has(receipts)||provisionalReceipts.has(receipts)));
 export async function saveStoryboardFloorTakes(records,save,eligible=()=>true,current=()=>true,receipts=undefined) {
   const key=Array.isArray(receipts)?receipts:records,previous=saving.get(key);
   const pending=(previous?previous.catch(()=>{}):Promise.resolve()).then(async()=>{

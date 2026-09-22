@@ -35,6 +35,7 @@
     "qianmu-gallery-write-proposal.js",
     "qianmu-gallery-chat-save.js",
     "qianmu-gallery-location.js",
+    "qianmu-gallery-continuity.js",
     "qianmu-gallery-location-view.js",
     "qianmu-gallery-write-files.js",
     "qianmu-gallery-restore-execution.js",
