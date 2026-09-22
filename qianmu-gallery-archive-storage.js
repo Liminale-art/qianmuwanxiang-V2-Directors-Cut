@@ -7,7 +7,7 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.298';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.299';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 import {encodeGalleryArchiveOriginal,inspectGalleryArchiveOriginal} from './qianmu-gallery-archive-original.js';
 import {createGallerySupplementStorage,captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
@@ -212,6 +212,12 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
       // One selected record read, not readRecord + readOriginal duplicating it.
       const media=await readOriginalCopy(original,signal);check();
       return {record:original.value.record,recipeState:original.recipeState,reference:ref,media,originalVerified:false,canPrune:false};
+    },
+    async readRecoveryRecord(rawReference,{signal}={}){
+      check();const ref=galleryArchiveObjectReference(rawReference,GALLERY_ARCHIVE_RECORD_BYTES);
+      const original=await inspectGalleryArchiveRecord(owner,await readObject('record',ref,signal),ref);check();
+      const recipe=await readRecipeCopy(original,signal);check();const media=await readOriginalCopy(original,signal);check();
+      return {record:original.value.record,reference:ref,recipe,media,proof:'record-readback-only',originalVerified:false,canPrune:false};
     },
     async readStagedRecipe(rawReference,{signal}={}){
       // Only this session's last completely read-back page can reuse its record

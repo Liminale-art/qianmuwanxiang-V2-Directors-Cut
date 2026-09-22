@@ -1,10 +1,11 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.298';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.299';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
 import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
 import {decodeGalleryOriginalBlob} from './qianmu-gallery-original-preview.js';
+import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.299';
 
 // Account-bound, read-only consumer. No current chat, local recipe fallback,
 // preservation, source repair, generation or deletion is reachable here.
@@ -24,12 +25,12 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
     if(namespace!==undefined&&namespace!==found){const error=Error('ST 账户已变化，请重新打开图库');close(error);throw error;}
     namespace??=found;return true;
   }
-  async function run(work){
+  async function run(work,deadline=timeoutMs){
     current();if(pending)throw Error('正在读取，请稍后再试');pending=true;
     let timer,stop;
     const cancelled=new Promise((_,reject)=>{stop=()=>reject(endReason||Error('图库读取已取消或超时，请重新打开'));});
     cancellation.signal.addEventListener('abort',stop,{once:true});
-    timer=setTimeout(close,timeoutMs);
+    timer=setTimeout(close,deadline);
     const worker=(async()=>{await check();const result=await work();await check();return result;})();
     // A late account/file operation cannot release the busy slot prematurely.
     void worker.finally(()=>{pending=false;}).catch(()=>{});
@@ -93,6 +94,11 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
       if(result.receipt.gallerySha256!==selection.sourceReceipt.sha256||JSON.stringify(result.supplement)!==JSON.stringify(selection.supplement))throw Error('正文依据与所选图库版本不符');
       return {state:'available',...result};
     });},
+    review({onProgress=()=>{}}={}){return run(async()=>{
+      if(!selection||!storage)throw Error('请先选择已保存版本');
+      const source=await createGalleryRestoreSource({selection,archive:storage,guard:check,signal:cancellation.signal});
+      try{return await source.scan({onProgress});}finally{source.close();}
+    },180000);},
     isClosed:()=>closed,close,
   });
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {openGalleryArchive as open,galleryArchiveListHtml as listHtml,galleryArchiveRecipeHtml as recipeHtml} from '../qianmu-gallery-archive-view.js';
+import {openGalleryArchive as open,galleryArchiveListHtml as listHtml,galleryArchiveRecipeHtml as recipeHtml,galleryArchiveReviewHtml as reviewHtml} from '../qianmu-gallery-archive-view.js';
 const tick=()=>new Promise(done=>setTimeout(done,0));
 const gate=()=>{let resolve;return {promise:new Promise(done=>resolve=done),resolve};};
 const entry={key:'a'.repeat(64),value:{scope:{ownerKey:'char:Alice.png',chatKey:'Archived chat'},sourceReceipt:{count:1}}};
@@ -96,4 +96,19 @@ test('preview explains verified private copy versus legacy native media without 
     assert.match(f.dialog.innerHTML,mediaOrigin==='server-copy'?/已读取此账户保全的原图副本/:/尚无独立副本/);
     assert.doesNotMatch(f.dialog.innerHTML,/可以删除原图|完整迁移完成/);f.opened.close();
   }
+});
+
+const reviewResult={total:7,recipes:{available:5,missing:2},originals:{referenced:4,missing:3},collections:1,characterDrafts:2,evidenceFloors:9};
+test('restore review is explicit, progress stays inside dialog, and summary never claims media verification or writeback',async()=>{
+  let reviews=0;const f=fixture({review:async({onProgress})=>{reviews++;onProgress({completed:3,total:7});assert.match(f.status.textContent,/3\/7/);return reviewResult;}});
+  await tick();await f.choose('version',0);assert.equal(reviews,0);assert.match(f.dialog.innerHTML,/核对恢复资料/);f.main.scrollTop=42;
+  await f.action('review');assert.equal(reviews,1);assert.match(f.dialog.innerHTML,/完整配方 5\/7/);assert.match(f.dialog.innerHTML,/原图文件内容尚未逐张核验/);assert.match(f.dialog.innerHTML,/存在未保全/);assert.equal(f.main.scrollTop,42);
+  assert.equal(f.counts.previews,0);await f.action('refresh');assert.doesNotMatch(f.dialog.innerHTML,/完整配方 5\/7/);f.opened.close();
+});
+
+test('failed or cancelled review removes obsolete success and drops late summaries',async()=>{
+  let first=true;const f=fixture({review:async()=>{if(first){first=false;return reviewResult;}throw Error('原件缺失，未猜补');}});
+  await tick();await f.choose('version',0);await f.action('review');assert.match(f.dialog.innerHTML,/完整配方 5\/7/);await f.action('review');assert.doesNotMatch(f.dialog.innerHTML,/完整配方 5\/7/);assert.match(f.dialog.innerHTML,/原件缺失/);f.opened.close();
+  const wait=gate(),g=fixture({review:()=>wait.promise});await tick();await g.choose('version',0);g.click('action','review');g.opened.close();const draws=g.counts.draws;wait.resolve(reviewResult);await tick();assert.equal(g.counts.draws,draws);
+  assert.match(reviewHtml(reviewResult),/不会写回聊天或删除任何资料/);
 });

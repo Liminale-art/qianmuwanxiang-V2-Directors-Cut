@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.298';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.299';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
@@ -14,6 +14,11 @@ export function galleryArchiveListHtml({entries=[],rows=[],selected=null,busy=fa
   return entries.map((entry,index)=>`<button type="button" class="sd-directory-row" data-archive-version="${index}" ${busy?'disabled':''}><span><b>${escape(entry.value.scope.chatKey)}</b><small>${escape(entry.value.scope.ownerKey)} · ${entry.value.sourceReceipt.count} 张 · 版本 ${escape(entry.key.slice(0,8))}</small></span><span>打开</span></button>`).join('');
 }
 
+export function galleryArchiveReviewHtml(review){
+  if(!review)return '';
+  return `<section aria-label="恢复资料核对"><b>恢复资料核对 · 只读</b><p>画面记录 ${review.total} · 完整配方 ${review.recipes.available}/${review.total} · 原图副本引用 ${review.originals.referenced}/${review.total}</p><p>合集 ${review.collections} · 角色草稿 ${review.characterDrafts} · 正文依据 ${review.evidenceFloors} 层</p><p>已按原保存顺序核验全部画面记录。${review.recipes.missing||review.originals.missing?'存在未保全的配方或原图引用，请保留原资料。':''}原图文件内容尚未逐张核验，正文依据不是全文备份；本次不会写回聊天或删除任何资料。</p></section>`;
+}
+
 // Kept inside the existing still-gallery dialog family. Only an explicit image
 // click fetches media; back navigation uses the already loaded small list.
 export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,connect=createGalleryArchiveBrowser}={}){
@@ -21,7 +26,7 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
   const dialog=document.createElement('dialog');dialog.className='sd-bundle-dialog sd-gallery-directory sd-gallery-archive';
   dialog.setAttribute('aria-label','已保存图库');
   let closed=false,busy=false,notice='',session,selected=null,preview=null,url='',releaseZoom,recipe=null;
-  let versions=null,page=null,versionStack=[null],pageStack=[null],tag='',resolve;
+  let versions=null,page=null,versionStack=[null],pageStack=[null],tag='',resolve,review=null;
   let versionScroll=0,pageScroll=0,restoreScroll=null;
   const finished=new Promise(done=>resolve=done);
   function releaseImage(){releaseZoom?.();releaseZoom=null;if(url)view.URL.revokeObjectURL(url);url='';preview=null;recipe=null;}
@@ -52,7 +57,8 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
     const stack=selected?pageStack:versionStack,next=selected?page?.cursor:versions?.nextCursor;
     dialog.innerHTML=`<header><b>${escape(selected?selected.value.scope.chatKey:'已保存图库')}</b>${selected?button('versions','返回版本',busy):''}${button('close','关闭')}</header><main>
       <p>${selected?'按保存时的记录浏览；点开画面后才读取图片。':'只显示已完整保全到此 ST 账户的版本，不代表账户全部原作品。浏览不会新增保存或扫描聊天正文。'}</p>
-      <fieldset ${busy||session?.isClosed()?'disabled':''}><nav>${button('refresh','刷新列表')}</nav>
+      <fieldset ${busy||session?.isClosed()?'disabled':''}><nav>${button('refresh','刷新列表')}${selected?button('review','核对恢复资料',busy):''}</nav>
+      ${selected?galleryArchiveReviewHtml(review):''}
       ${selected?`<form class="sd-directory-search" data-archive-search><input class="text_pole" type="search" name="tag" maxlength="80" value="${escape(tag)}" aria-label="完整标签" placeholder="按完整标签查找"><button type="submit" class="sd-btn">查找</button>${button('clear','清除',!tag)}</form>`:''}
       <div class="sd-directory-rows">${galleryArchiveListHtml({entries:versions?.entries,rows:page?.rows,selected,busy})||`<p>${busy?'正在读取…':notice?'未读取当前列表，请按下方提示处理。':selected?(page?.cursor?'本段没有匹配画面，可继续下一页。':'没有匹配画面。'):'暂无已保全版本；原聊天中的画面不受影响。'}</p>`}</div>
       <nav aria-label="已保存图库分页">${button('previous','上一页',stack.length===1)}<span>第 ${stack.length} 页</span>${button('next','下一页',!next)}</nav></fieldset>
@@ -97,16 +103,20 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
     if(record)pageScroll=dialog.querySelector('main')?.scrollTop||0;
     void work(async()=>{
       if(action==='back'){releaseImage();restoreScroll=pageScroll;return;}
-      if(action==='versions'){selected=null;page=null;pageStack=[null];tag='';restoreScroll=versionScroll;return;}
+      if(action==='versions'){selected=null;page=null;pageStack=[null];tag='';review=null;restoreScroll=versionScroll;return;}
+      if(action==='review'){
+        review=null;const result=await session.review({onProgress:({completed,total})=>{if(alive())dialog.querySelector('footer [role="status"]').textContent=`正在按原顺序核对恢复资料 ${completed}/${total}；关闭窗口可取消。`;}});
+        if(alive()){review=result;notice='核对完成；尚未执行恢复或验证原图文件。';}return;
+      }
       if(entry){
         const chosen=versions?.entries[Number(entry.dataset.archiveVersion)];if(!chosen)return;
-        await session.open(chosen.key);if(!alive())return;selected=chosen;page=null;pageStack=[null];tag='';restoreScroll=0;await loadPage();
+        review=null;await session.open(chosen.key);if(!alive())return;selected=chosen;page=null;pageStack=[null];tag='';restoreScroll=0;await loadPage();
       }else if(record){
         const chosen=page?.rows[Number(record.dataset.archiveRecord)];if(!chosen)return;
         const result=await session.preview(chosen.recordId);if(!alive())return;
         releaseImage();url=view.URL.createObjectURL(result.blob);preview=result;
       }else if(action==='refresh'){
-        restoreScroll=0;
+        restoreScroll=0;review=null;
         if(selected){pageStack=[null];page=null;await session.open(selected.key);await loadPage();}
         else{versionStack=[null];versions=null;await loadVersions();}
       }else if(action==='clear'){tag='';pageStack=[null];page=null;restoreScroll=0;await loadPage();}

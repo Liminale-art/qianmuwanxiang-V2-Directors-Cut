@@ -22,6 +22,7 @@
     "qianmu-gallery-archive-coordinator.js",
     "qianmu-gallery-archive-source.js",
     "qianmu-gallery-archive-browser.js",
+    "qianmu-gallery-restore-source.js",
     "qianmu-gallery-archive-view.js",
     "qianmu-gallery-archive-storage.js",
     "qianmu-gallery-archive-recipe.js",

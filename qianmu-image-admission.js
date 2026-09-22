@@ -1,7 +1,7 @@
 import { createImageAttemptStore } from './qianmu-image-attempt-store.js';
 import { imageAttemptScopeKey } from './qianmu-image-attempts.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.298';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.298';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.299';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.299';
 
 const error = (code, message) => Object.assign(new Error(message), { code: `image_attempt_${code}` });
 const MESSAGES = {
@@ -16,7 +16,7 @@ const canonical = value => JSON.stringify(value, (_, item) => item && typeof ite
 const hasWorldReference=job=>job?.shotSpec?.directorDecision?.approval?.mode==='world_setting'
   ||Object.hasOwn(job?.shotSpec?.directorDecision?.approval||{},'worldAutomation')
   ||String(job?.imageAdmission?.messageKey||'').startsWith('world-item:');
-const worldIdentity=async(job,namespace)=>(await import('./qianmu-world-image-admission.js?v=1.59.298')).createWorldImageIdentity(job,namespace);
+const worldIdentity=async(job,namespace)=>(await import('./qianmu-world-image-admission.js?v=1.59.299')).createWorldImageIdentity(job,namespace);
 async function digest(value) {
   if (!globalThis.crypto?.subtle) throw error('identity', '当前环境不能安全识别生图请求，请使用 HTTPS 或本机地址');
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical(value)));
