@@ -4,6 +4,7 @@ import { projectChatGalleryState } from './qianmu-chat-gallery-state.js';
 import { inspectStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
 import { assertJsonInputBounds } from './qianmu-json-input.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
+import { inspectGalleryWriteProposal,GALLERY_WRITE_PROPOSAL_KIND } from './qianmu-gallery-write-proposal.js';
 
 const fields = ['storyboardImages', 'storyboardCollections', 'characterDrafts'];
 const phases = ['prepared', 'submitted', 'uncertain', 'verified'];
@@ -17,6 +18,7 @@ export const HISTORICAL_CHAT_JOURNAL_BYTES = 32 * 1048576;
 // Synchronously detach BEFORE async digest/credential validation. Never normalize
 // original draft records, serialize a whole host context, or keep narrative text.
 export async function inspectHistoricalChatSaveProposal(input) {
+  if (input?.kind === GALLERY_WRITE_PROPOSAL_KIND) return inspectGalleryWriteProposal(input);
   if (!exact(input, ['namespace', 'target', 'before', 'after', 'chatEvidence', 'fileHash']) || !account(input.namespace) || !hash(input.fileHash)) fail('原聊天保存记录范围无效');
   const target = chatCharacterReceiptTarget(input.target);
   for (const saved of [input.before, input.after]) {

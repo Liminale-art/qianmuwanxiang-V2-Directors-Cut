@@ -88,6 +88,7 @@ export function createHistoricalRestore({ file, namespace, getContext, epoch, ac
       let record = null, originals, recipes, imageRows;
       if (pending) {
         record = await inspectHistoricalChatMutation(pending); await check();
+        if (record.proposal.kind === 'gallery-paged') fail('已有分页图库恢复待核对，请从原图库恢复入口处理；未导入旧历史包');
         if (record.proposal.fileHash !== bundle.fingerprint || !equal(record.proposal.target, target) || record.proposal.chatEvidence.digest !== baseline.evidence.digest
           || !equal(baseline.saved, record.proposal.before) && !equal(baseline.saved, record.proposal.after)) fail('待核对记录与原包或当前资料不符，未覆盖');
         imageRows = await imageStates(bundle);

@@ -176,6 +176,7 @@ export function createHistoricalChatSaveSession({ getContext, epoch, namespace, 
       await operation.check(); const stored = await journal.loadHistoricalChatMutation(namespace, { isCurrent: journalCurrent }); await operation.check();
       if (!stored) return { status: 'idle' };
       const row = await inspectHistoricalChatMutation(stored); await operation.check();
+      if (row.proposal.kind === 'gallery-paged') fail('这是分页图库恢复记录，请从原图库恢复入口核对；旧历史包未写入');
       if (row.namespace !== namespace || !equal(row.proposal.target, target)) fail('待核对记录属于另一份准确聊天，未切换或写入');
       journalRow = row; intent = clone(row.proposal); recovered = true;
       await inspectLocalEvidence(intent.chatEvidence, operation.check);

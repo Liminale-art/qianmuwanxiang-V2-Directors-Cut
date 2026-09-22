@@ -11,8 +11,8 @@ const partSlot=sha=>`historical-journal-part-${sha}`,closedSlot=sha=>`historical
 
 // Native ST files, not a backend-only feature. The head is optimistic, NOT a
 // cross-device lock. Retained content-addressed parts protect interrupted writes.
-// Legacy proposals keep their existing validation/capacity limits; this adapter
-// does not claim to implement the larger paged gallery restore protocol.
+// Legacy proposals keep their existing validation/capacity limits. Discriminated
+// paged proposals contain references only; host restoration is a separate stage.
 export function createNativeHistoricalJournal({legacy,createStorage=createConfiguredStAccountStorage,now=Date.now}={}){
   if(!legacy||typeof createStorage!=='function')fail('原聊天恢复记录环境不完整');
   let storage,opening,closed=false,busy=false,owner;

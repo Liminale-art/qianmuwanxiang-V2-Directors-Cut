@@ -97,6 +97,19 @@ export async function createGalleryRestorePlanStorage({scope,guard,createStorage
       if(await verify()!==true)fail('恢复准备发布前来源已变化');await put(storage,'plan',encoded);const result=await readPlan(encoded.reference);
       if(await verify()!==true)fail('恢复准备发布后来源已变化，副本保留但未确认');await check();return result;
     });},
-    read:reference=>exclusive(()=>readPlan(reference)),close,
+    read:reference=>exclusive(()=>readPlan(reference)),
+    scan(rawReference,{visit=async()=>{}}={}){
+      const reference=galleryArchiveObjectReference(rawReference,LIMIT.manifestBytes);
+      return exclusive(async()=>{
+        if(typeof visit!=='function')fail('恢复准备缺少分页接收器');const result=await readPlan(reference);let count=0;
+        for(const descriptor of result.plan.pages){
+          const current=page(await readObject(storage,'page',descriptor));
+          for(const row of current.rows){await check();await visit(structuredClone(row));count++;await check();}
+          await new Promise(resolve=>setTimeout(resolve,0));
+        }
+        await readObject(storage,'plan',reference);await check();
+        if(count!==result.plan.gallery.count)fail('恢复准备未完整读取');return result;
+      });
+    },close,
   });
 }
