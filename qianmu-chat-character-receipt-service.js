@@ -83,9 +83,9 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
       return withSource?{metadata:header.chat_metadata,stat:current,source:{kind:'jsonl-header',bytes:length,sha256:createHash('sha256').update(raw).digest('hex')}}:header.chat_metadata;
     }finally{await handle.close();}
   }
-  async function inspect(req,input,{signal}={},galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false,evidenceDigest=null,stateDigest=null){
+  async function inspect(req,input,{signal}={},galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false,evidenceDigest=null,stateDigest=null,evidenceWithHeader=false){
     const context=capture(req,input,signal);let metadata,streamed;
-    if(evidenceDigest!==null){try{return await readSavedChatGalleryEvidence(context,evidenceDigest,{io,lstat,checkedRoots,unchanged});}
+    if(evidenceDigest!==null){try{return await readSavedChatGalleryEvidence(context,evidenceDigest,{io,lstat,checkedRoots,unchanged,withHeader:evidenceWithHeader});}
       catch(error){if(error?.code==='ENOENT')fail('missing','原聊天记录不存在或已移动，未读取正文来源',404);throw error;}}
     try{
       if(galleryOnly&&stateDigest===null)streamed=await readSavedChatGalleryHeader(context,selection,{io,lstat,checkedRoots,unchanged});
@@ -131,9 +131,9 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
     return chatCharacterReceiptResponse({ok:true,version:1,expectedAccount:context.account.namespace,target:context.body.target,
       state:collection?'present':'absent',collection,proof:'read-only-snapshot'});
   }
-  function run(req,input,options,galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false,evidenceDigest=null,stateDigest=null){
+  function run(req,input,options,galleryOnly=false,selection=null,detailsOnly=false,recipeSource=false,evidenceDigest=null,stateDigest=null,evidenceWithHeader=false){
     if(pending.size>=LIMIT.pending)return Promise.reject(chatCharacterReceiptError('busy','聊天核验正忙，请稍后重试',429));
-    const operation=inspect(req,input,options,galleryOnly,selection,detailsOnly,recipeSource,evidenceDigest,stateDigest);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
+    const operation=inspect(req,input,options,galleryOnly,selection,detailsOnly,recipeSource,evidenceDigest,stateDigest,evidenceWithHeader);pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation;
   }
   function readGallerySupplement(req,raw,{signal}={}){
     let input,context;
@@ -191,6 +191,7 @@ export function createChatCharacterReceiptService({dataRoot,io=fs}={}){
     withGalleryOriginalBatch,readGallerySupplement,
     async readGalleryState(req,input,options){const {gallerySha256,...body}=chatGalleryStateRequest(input);return run(req,body,options,true,null,false,false,null,gallerySha256);},
     async readGalleryEvidence(req,input,options){const {gallerySha256,...body}=chatGalleryEvidenceRequest(input);return run(req,body,options,true,null,false,false,gallerySha256);},
+    async readGalleryEvidenceSource(req,input,options){const {gallerySha256,...body}=chatGalleryEvidenceRequest(input);return run(req,body,options,true,null,false,false,gallerySha256,null,true);},
     async readGalleryRecord(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection);},
     async readGalleryDetails(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection,true);},
     async readGalleryRecipeSource(req,input,options){const body=chatGalleryRecordRequest(input);return run(req,{version:body.version,expectedAccount:body.expectedAccount,target:body.target},options,true,body.selection,false,true);},

@@ -5,7 +5,7 @@ import {chatGalleryReceiptResponse} from './qianmu-chat-gallery-receipt.js';
 import {scanChatGallery} from './qianmu-chat-gallery-digest.js';
 import {chatGalleryRecordSelection,chatGalleryRecordResponse,CHAT_GALLERY_RECORD_RESPONSE_BYTES} from './qianmu-chat-gallery-record.js';
 import {chatGalleryDetailsResponse,CHAT_GALLERY_DETAILS_RESPONSE_BYTES} from './qianmu-chat-gallery-details.js';
-import {chatGalleryEvidenceRequest,chatGalleryEvidenceResponse,CHAT_GALLERY_EVIDENCE_LIMITS} from './qianmu-chat-gallery-evidence.js';
+import {chatGalleryEvidenceRequest,chatGalleryEvidenceResponse,chatGalleryEvidenceSourceResponse,CHAT_GALLERY_EVIDENCE_LIMITS} from './qianmu-chat-gallery-evidence.js';
 import {chatGalleryStateRequest,chatGalleryStateResponse,CHAT_GALLERY_STATE_LIMITS} from './qianmu-chat-gallery-state.js';
 import {chatGallerySupplementRequest,chatGallerySupplementResponse,CHAT_GALLERY_SUPPLEMENT_LIMITS} from './qianmu-chat-gallery-supplement.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
@@ -16,10 +16,11 @@ export function createChatCharacterReceiptClient(options){return createChatRecei
 export function createChatGalleryReceiptClient(options){return createChatReceiptClient(options,true);}
 export function createChatGalleryRecordClient(options){return createChatReceiptClient(options,true,true);}
 export function createChatGalleryDetailsClient(options){return createChatReceiptClient(options,true,true,true);}
-export function createChatGalleryEvidenceClient(options){return createChatReceiptClient({timeoutMs:30000,...options},true,false,false,true);}
+export function createChatGalleryEvidenceClient(options){return createChatReceiptClient({...options,timeoutMs:options?.timeoutMs??30000},true,false,false,true);}
+export function createChatGalleryEvidenceSourceClient(options){return createChatReceiptClient({...options,timeoutMs:options?.timeoutMs??30000},true,false,false,true,false,false,true);}
 export function createChatGalleryStateClient(options){return createChatReceiptClient(options,true,false,false,false,true);}
 export function createChatGallerySupplementClient(options){return createChatReceiptClient({...options,timeoutMs:options?.timeoutMs??30000},true,false,false,false,false,true);}
-function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=globalThis.fetch,guard=async()=>{},timeoutMs=10000}={},galleryOnly=false,recordOnly=false,detailsOnly=false,evidenceOnly=false,stateOnly=false,supplementOnly=false){
+function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=globalThis.fetch,guard=async()=>{},timeoutMs=10000}={},galleryOnly=false,recordOnly=false,detailsOnly=false,evidenceOnly=false,stateOnly=false,supplementOnly=false,evidenceWithHeader=false){
   if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace)||!Number.isFinite(timeoutMs))throw fail('聊天核验账户或等待时间无效');
   const selected=chatCharacterReceiptTarget(target),owner={namespace,chatKey:selected.chatId},expected=digest(namespace.slice(8)).then(value=>`st-user:${value}`);
   let closed=false;const pending=new Set();
@@ -47,7 +48,7 @@ function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=gl
         if(evidenceOnly)chatGalleryEvidenceRequest(request);
         if(stateOnly)chatGalleryStateRequest(request);
         if(supplementOnly)chatGallerySupplementRequest(request);
-        const response=await fetchImpl(supplementOnly?'/api/plugins/qianmu-tts/chat-gallery/supplement':stateOnly?'/api/plugins/qianmu-tts/chat-gallery/state':evidenceOnly?'/api/plugins/qianmu-tts/chat-gallery/evidence':detailsOnly?'/api/plugins/qianmu-tts/chat-gallery/details':recordOnly?'/api/plugins/qianmu-tts/chat-gallery/record':galleryOnly?'/api/plugins/qianmu-tts/chat-gallery/receipt':'/api/plugins/qianmu-tts/chat-characters/receipt',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal,
+        const response=await fetchImpl(evidenceWithHeader?'/api/plugins/qianmu-tts/chat-gallery/evidence-source':supplementOnly?'/api/plugins/qianmu-tts/chat-gallery/supplement':stateOnly?'/api/plugins/qianmu-tts/chat-gallery/state':evidenceOnly?'/api/plugins/qianmu-tts/chat-gallery/evidence':detailsOnly?'/api/plugins/qianmu-tts/chat-gallery/details':recordOnly?'/api/plugins/qianmu-tts/chat-gallery/record':galleryOnly?'/api/plugins/qianmu-tts/chat-gallery/receipt':'/api/plugins/qianmu-tts/chat-characters/receipt',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal,
           headers:requestHeaders,body:JSON.stringify(request)});
         const discard=()=>{void response.body?.cancel?.().catch(()=>{});};
         if(controller.signal.aborted){discard();check();}
@@ -59,7 +60,7 @@ function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=gl
         try{while(true){check();const part=await reader.read();check();if(part.done)break;
           length+=part.value.byteLength;if(length>responseBytes)throw fail('聊天核验返回过大');text+=decoder.decode(part.value,{stream:true});}text+=decoder.decode();}
         finally{controller.signal.removeEventListener('abort',cancelReader);cancelReader();reader.releaseLock();}
-        const value=stateOnly||supplementOnly?parseBoundedJson(text,{maxBytes:responseBytes,maxDepth:44,maxNodes:supplementOnly?120100:100100,label:'历史分镜资料'}):JSON.parse(text);
+        const value=stateOnly||supplementOnly||evidenceOnly?parseBoundedJson(text,{maxBytes:responseBytes,maxDepth:44,maxNodes:evidenceOnly?610100:supplementOnly?120100:100100,label:'历史分镜资料'}):JSON.parse(text);
         if(!response.ok||value?.ok!==true){
           const message=galleryOnly?{
             chat_character_receipt_missing:'原聊天文件不存在或已移动，不能按旧位置确认来源',
@@ -80,7 +81,7 @@ function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=gl
           }[value?.code]:null;
           throw fail(message||(supplementOnly&&response.status===404?missingSupplement:stateOnly&&response.status===404?missingState:evidenceOnly&&response.status===404?missingEvidence:detailsOnly&&response.status===404?missingDetails:'聊天记录尚未核验，请保留现有资料后重试'));
         }
-        const receipt=supplementOnly?await chatGallerySupplementResponse(value,{namespace}):stateOnly?await chatGalleryStateResponse(value,{namespace}):await (evidenceOnly?chatGalleryEvidenceResponse:detailsOnly?chatGalleryDetailsResponse:recordOnly?chatGalleryRecordResponse:galleryOnly?chatGalleryReceiptResponse:chatCharacterReceiptResponse)(value);
+        const receipt=evidenceWithHeader?await chatGalleryEvidenceSourceResponse(value):supplementOnly?await chatGallerySupplementResponse(value,{namespace}):stateOnly?await chatGalleryStateResponse(value,{namespace}):await (evidenceOnly?chatGalleryEvidenceResponse:detailsOnly?chatGalleryDetailsResponse:recordOnly?chatGalleryRecordResponse:galleryOnly?chatGalleryReceiptResponse:chatCharacterReceiptResponse)(value);
         if(receipt.expectedAccount!==expectedAccount||JSON.stringify(receipt.target)!==JSON.stringify(selected))throw fail('聊天核验返回另一账户或聊天');
         if(evidenceOnly&&receipt.gallerySha256!==gallerySha256)throw fail('历史正文返回另一份画面快照的来源');
         if(stateOnly&&receipt.gallerySha256!==gallerySha256)throw fail('历史分镜资料返回另一份画面快照');
