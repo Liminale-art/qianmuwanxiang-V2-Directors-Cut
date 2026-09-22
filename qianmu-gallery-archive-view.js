@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.306';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.307';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
@@ -116,7 +116,13 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,ge
     try{
       const sourceFields=['id','chatKey','messageRef','paragraphAnchor','messageHash','swipeId','restoreLinkReview','worldReference','target'];
       const record=structuredClone(Object.fromEntries(sourceFields.filter(key=>Object.hasOwn(selected.record,key)).map(key=>[key,selected.record[key]])));
-      const result=await locate({record,scope:structuredClone(selected.source)},
+      const loadContinuity=async({signal}={})=>{
+        const check=()=>{if(signal?.aborted||controller.signal.aborted||!alive()||preview!==selected)throw Error('画面定位已取消');};check();
+        const result=await session.supplement();check();if(result?.state==='not-preserved'||result?.receipt?.version===1)return null;
+        if(result?.state!=='available'||result.receipt?.version!==2||!result.receipt.order?.includes(record.id))throw Error('所选版本的续写依据未能核对');
+        return {scope:structuredClone(selected.source),links:structuredClone(result.receipt.saved.storyboardContinuations??[])};
+      };
+      const result=await locate({record,scope:structuredClone(selected.source),loadContinuity},
         {signal:controller.signal,beforeReveal:()=>{if(!alive()||preview!==selected)throw Error('画面已切换，未定位');revealing=true;close();}});
       if(result?.status==='cancelled')status('已取消加载，原画面保留。');
     }catch(error){status(error?.message||'正文位置未能确认，原画面保留。');}

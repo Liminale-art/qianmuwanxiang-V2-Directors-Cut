@@ -52,6 +52,20 @@ test('location copies only source fields, never the original large recipe or unr
     {locate:async input=>{calls++;assert.equal(input.record.id,'one');assert.deepEqual(input.record.messageRef,{version:1});assert.equal(Object.hasOwn(input.record,'snapshot'),false);return {status:'cancelled'};}});
   await tick();await f.choose('version',0);await f.choose('record',0);await f.action('locate');assert.equal(calls,1);f.opened.close();
 });
+test('archive continuity is loaded only when the location resolver asks, not when preview opens',async()=>{
+  let reads=0;const links=[{id:'link'}],f=fixture({supplement:async()=>{reads++;return {state:'available',receipt:{version:2,order:['one'],saved:{storyboardContinuations:links}}};}},
+    {locate:async(input)=>{const first=await input.loadContinuity();assert.deepEqual(first,{scope:entry.value.scope,links});first.links[0].id='mutated';return {status:'cancelled'};}});
+  await tick();await f.choose('version',0);await f.choose('record',0);assert.equal(reads,0);await f.action('locate');assert.equal(reads,1);assert.equal(links[0].id,'link');f.opened.close();
+});
+test('legacy and missing archive supplements return no evidence; foreign row or late close never lends evidence',async()=>{
+  for(const kind of ['legacy','missing','foreign','closed']){const held=gate();let work;
+    const f=fixture({supplement:async()=>kind==='closed'?held.promise:kind==='missing'?{state:'not-preserved'}:{state:'available',receipt:{version:kind==='legacy'?1:2,order:['other'],saved:{}}}},
+      {locate:async input=>{work=input.loadContinuity();if(['legacy','missing'].includes(kind))assert.equal(await work,null);else await assert.rejects(work);return {status:'cancelled'};}});
+    await tick();await f.choose('version',0);await f.choose('record',0);f.click('action','locate');await tick();
+    if(kind==='closed'){f.opened.close();held.resolve({state:'available',receipt:{version:2,order:['one'],saved:{}}});}
+    await tick();f.opened.close();
+  }
+});
 
 test('version and row markup escapes user metadata and never emits raw remote images',()=>{
   const html=listHtml({entries:[{...entry,value:{...entry.value,scope:{ownerKey:'char:<img>.png',chatKey:'<script>bad</script>'}}}]});
