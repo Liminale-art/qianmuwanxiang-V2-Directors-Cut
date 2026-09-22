@@ -60,6 +60,12 @@ test('idle coordinator has no startup I/O, coalesces triggers and skips exact un
   f.identity='account/chat/edited';f.c.schedule();await f.tick();assert.equal(f.saves,2);
   f.c.reset();f.c.schedule();await f.tick();assert.equal(f.saves,3,'reset invalidates session-only success memo');
 });
+test('unverified local recipe coverage stays partial and waits for a real event rather than retrying or memoizing success',async t=>{
+  let calls=0,complete=false;const f=fixture(t,{connect:async()=>({identity:'same-records',close(){},async preserveAll(){calls++;return {localRecipes:{state:complete?'complete':'partial'}};}})});
+  f.c.schedule();await f.tick();assert.equal(f.c.status().state,'partial');assert.equal(f.errors[0].code,'gallery_local_recipes_incomplete');assert.equal(f.timers.size,0);
+  await f.tick(20000);assert.equal(calls,1);complete=true;f.c.schedule();await f.tick();assert.equal(calls,2);assert.equal(f.c.status().state,'saved');
+  f.c.schedule();await f.tick();assert.equal(calls,2);
+});
 
 test('typing, generation, hidden/offline and data-saving defer imports until quiet',async t=>{
   const f=fixture(t);f.c.schedule();f.available=false;await f.tick();assert.equal(f.opened.length,0);f.available=true;
@@ -144,7 +150,7 @@ test('actual application glue coalesces lazy imports and respects typing/generat
   load.resolve({createGalleryArchiveCoordinator:options=>{created.push(options);return {schedule:()=>scheduled++};}});await flush();
   assert.equal(created.length,1);assert.equal(scheduled,1);context.storyboardScheduleGalleryPreservation();assert.equal(scheduled,2);
   const options=created[0];assert.equal(options.canRun(),true);
-  options.onError({code:'gallery_originals_incomplete',writeState:'records_saved',private:'never log'});assert.match(warnings[0],/记录与配方已保存/);assert.doesNotMatch(warnings[0],/never log/);
+  options.onError({code:'gallery_originals_incomplete',writeState:'records_saved',private:'never log'});assert.match(warnings[0],/记录已保存，部分配方/);assert.doesNotMatch(warnings[0],/never log/);
   options.onError({code:'gallery_preservation_failed'});assert.match(warnings[1],/图库保全未完成/);
   for(const key of ['director','image','transfer']){context.configRestoreActivity=()=>({[key]:true});assert.equal(options.canRun(),false);}
   context.configRestoreActivity=()=>({});context.storyboardSnapshotArchiveBusy=1;assert.equal(options.canRun(),false);context.storyboardSnapshotArchiveBusy=0;

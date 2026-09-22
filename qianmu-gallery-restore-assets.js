@@ -5,6 +5,7 @@ import {imageRestoreReceipt} from './qianmu-image-restore-contract.js';
 import {galleryOriginalReference} from './qianmu-gallery-original-contract.js';
 import {recipeArchiveReference} from './qianmu-recipe-archive-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {verifyGalleryLocalRecipe} from './qianmu-gallery-local-recipe.js';
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),scope='gallery-prepared-assets-only';
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_restore_assets',submissionState:'not_submitted'});};
@@ -54,6 +55,7 @@ export function createPreparedGalleryAssets({source,account,headers,guard,verify
       if(!existing)images.set(key,{receipt,reference});
       if(item.recipe.state!=='available')fail('所选版本缺少完整原配方，未使用当前配置补齐');
       if(item.record.snapshot!=null){inline++;return;}
+      if(item.recipe.origin==='verified-local-copy'){await verifyGalleryLocalRecipe(selected.plan.scope,item.record,item.recipe.snapshot);return;}
       recipes.push({index:item.index,recordId:item.record.id,createdAt:item.record.createdAt,record:item.reference,reference:recipeArchiveReference(item.record.snapshotServerRef)});
     }});
     await op.current();

@@ -10,8 +10,9 @@ import {prepareCurrentGalleryRestore} from '../../qianmu-gallery-restore-runtime
 import {createGalleryRestorePlanStorage} from '../../qianmu-gallery-restore-plan.js';
 import {openPreparedGallerySource} from '../../qianmu-gallery-prepared-source.js';
 import {createPreparedGalleryAssets} from '../../qianmu-gallery-restore-assets.js';
+import {vibeDigest} from '../../qianmu-vibe-file.js';
 
-export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,recordBytes=0,decorateRecord,prepareStore,clearArchivedFields=[]}={}){
+export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,recordBytes=0,decorateRecord,prepareStore,clearArchivedFields=[],localRecipe=false}={}){
   const host=await galleryOriginalHttpFixture(t),transport=streamCheckpointTransport(host.account),calls=[],state={active:true,hook:null};
   const own=resource=>{t.after(()=>resource.close());return resource;};
   host.context.chat.push({mes:'fixture narrative',name:'Alice',is_user:false});
@@ -21,7 +22,13 @@ export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,
   if(prepareStore)await prepareStore({context:host.context,store,rows,namespace:host.account});
   const save=()=>fs.writeFile(host.file,[JSON.stringify({chat_metadata:host.context.chatMetadata}),...host.context.chat.map(m=>JSON.stringify(m))].join('\n')+'\n');await save();
   const target={kind:'character',avatar:'Alice.png',chatId:'chat'};let recipePath;
-  if(serverRecipe&&rows.length){
+  const localRecipes=new Map();
+  if(localRecipe&&rows.length){
+    const row=rows[0],snapshot=structuredClone(row.snapshot),key=`chat\u241f${row.id}\u241frevision:${await vibeDigest(JSON.stringify(['chat',row.id,snapshot]))}`;
+    row.snapshotRef=key;row.snapshotVersion=1;delete row.snapshot;
+    localRecipes.set(key,{key,chatKey:'chat',recordId:row.id,snapshot});await save();
+  }
+  if(serverRecipe&&!localRecipe&&rows.length){
     const row=rows[0],saved=await host.service.preserve(host.req,{version:1,expectedAccount:host.expectedAccount,target,
       selection:{recordId:row.id,createdAt:row.createdAt,gallerySha256:chatGalleryDigest(rows).sha256}});
     row.snapshotServerRef=saved.reference;delete row.snapshot;recipePath=path.join(host.req.user.directories.root,'.qianmu-recipes-v1',saved.reference.id+'.json');await save();
@@ -31,7 +38,8 @@ export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,
     return fetch(host.origin+url.slice('/api/plugins/qianmu-tts'.length),options);
   };
   const options={getContext:()=>host.context,epoch:()=>0,account:async()=>host.account,headers:host.context.getRequestHeaders,
-    guard:()=>state.active,isCurrent:()=>state.active,canPrepare:()=>true,createStorage:transport.createStorage,fetchImpl};
+    guard:()=>state.active,isCurrent:()=>state.active,canPrepare:()=>true,createStorage:transport.createStorage,fetchImpl,
+    ...(localRecipe?{readLocalRecipe:async key=>structuredClone(localRecipes.get(key)??null)}:{})};
   const session=own(await createCurrentGalleryArchiveSession(options)),saved=await session.preserveAll();session.close();
   assert.equal(saved.originals.state,'complete');assert.equal(saved.evidences.state,'complete');
   const selection={schema:'qianmu.gallery.source-version.v3',scope:session.scope,sourceReceipt:saved.sourceReceipt,manifest:saved.reference,supplement:saved.supplement,evidence:saved.evidence};
@@ -42,7 +50,7 @@ export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,
   const source=own(await openPreparedGallerySource({reference:prepared.reference,planStorage,archive,guard:()=>state.active}));
   const originalFile=await fs.readFile(host.file),live=JSON.stringify(host.context.chatMetadata);
   const verifyCurrent=async()=>state.active&&JSON.stringify(host.context.chatMetadata)===live&&(await fs.readFile(host.file)).equals(originalFile);
-  return {...host,rows,store,transport,calls,state,selection,archive,planStorage,prepared,source,options,recipePath,save,originalFile,live,png:originalPng,own,
+  return {...host,rows,store,transport,calls,state,selection,archive,planStorage,prepared,source,options,recipePath,localRecipes,save,originalFile,live,png:originalPng,own,
     open:extra=>own(createPreparedGalleryAssets({source,account:options.account,headers:options.headers,guard:options.guard,verifyCurrent,fetchImpl,...extra})),
   };
 }

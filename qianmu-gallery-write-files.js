@@ -2,6 +2,7 @@ import {createImageRestoreClient} from './qianmu-image-restore-client.js';
 import {createRecipeVerificationClient} from './qianmu-recipe-verify-client.js';
 import {imageRestoreReceipt} from './qianmu-image-restore-contract.js';
 import {galleryRecipeResolution} from './qianmu-gallery-write-plan.js';
+import {verifyGalleryLocalRecipe} from './qianmu-gallery-local-recipe.js';
 
 // Read-only recheck before AND after a host save. It must never call restore,
 // generate a replacement reference, or inspect a full saved gallery per recipe.
@@ -18,6 +19,7 @@ export async function verifyPreparedGalleryFiles({source,resolutions,headers,gua
       const receipt=imageRestoreReceipt(item.media.original),ref=item.media.reference,key=decodeURIComponent(receipt.url),prior=images.get(key);
       if(receipt.url!==item.record.url||['sha256','bytes','mime'].some(k=>receipt[k]!==ref[k])||prior&&['sha256','bytes','mime'].some(k=>prior[k]!==receipt[k]))fail('原图路径或内容依据不符');images.set(key,receipt);
       if(item.record.snapshot==null){
+        if(item.recipe.origin==='verified-local-copy'){await verifyGalleryLocalRecipe(metadata.plan.scope,item.record,item.recipe.snapshot);return;}
         const row=rows.get(item.record.id);
         if(!row||row.createdAt!==item.record.createdAt||row.record.sha256!==item.reference.sha256||row.record.bytes!==item.reference.bytes
           ||['version','id','sha256','bytes'].some(k=>row.originalReference[k]!==item.record.snapshotServerRef?.[k]))fail('复位配方引用不是所选原画面');

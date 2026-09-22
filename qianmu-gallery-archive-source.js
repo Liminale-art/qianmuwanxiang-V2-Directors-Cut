@@ -2,11 +2,12 @@
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, browser image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient,createChatGalleryEvidenceSourceClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.307';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.308';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
-import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.307';
+import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.308';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
+import {galleryLocalRecipeReference,readLegacyGalleryRecipe} from './qianmu-gallery-local-recipe.js';
 import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
 import {GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
 import {comfyReferencePath} from './qianmu-comfy-reference-contract.js';
@@ -14,12 +15,12 @@ import {captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {scanGalleryEvidenceSource} from './qianmu-gallery-evidence-source.js';
 import {galleryEvidenceSummary} from './qianmu-gallery-archive-evidence.js';
-import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.307';
+import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.308';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 export async function createCurrentGalleryArchiveSession({getContext,epoch,account,headers,fetchImpl,timeoutMs,
-  guard=()=>true,createStorage,yieldWork=async()=>{},preserveOriginals=true,preserveSupplements=true,preserveEvidence=preserveSupplements}={}){
+  guard=()=>true,createStorage,yieldWork=async()=>{},readLocalRecipe=readLegacyGalleryRecipe,preserveOriginals=true,preserveSupplements=true,preserveEvidence=preserveSupplements}={}){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof guard!=='function')fail('画面保全缺少准确的当前聊天来源');
   if(typeof preserveOriginals!=='boolean'||typeof preserveSupplements!=='boolean')fail('原图或补充资料保全模式无效');
   if(typeof preserveEvidence!=='boolean'||preserveEvidence&&!preserveSupplements)fail('正文依据保全必须绑定关联资料');
@@ -176,6 +177,8 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
         // end, respecting bytes as well as row count (large inline workflows).
         const ordered=[...records.values()].sort((a,b)=>b.createdAt-a.createdAt||(a.id<b.id?1:a.id>b.id?-1:0)),batches=[],pages=[];
         let ids=[],batchBytes=2,recipeCopies=0;
+        const localRecipes={available:0,missing:0,unverified:0};
+        let localReadFailed=false;
         const originalProgress={total:ordered.length,available:0,preserved:0,failed:0,deferred:0,skipped:0,stopped:false};
         for(let at=ordered.length-1;at>=0;at--){
           const row=ordered[at];
@@ -189,6 +192,21 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
           await yieldWork();check();const batch=selected(ids),result=await archive.stagePage(batch);check();pages.push(result.descriptor);
           const references=new Map(result.records.map(record=>[record.recordId,record.reference]));
           for(const record of batch){
+            if(galleryArchiveRecipeState(record)==='local-reference'){
+              const key=galleryLocalRecipeReference(archive.scope,record);
+              if(!key){localRecipes.unverified++;continue;}
+              await yieldWork();check();const existing=await archive.readStagedRecipe(references.get(record.id));check();
+              if(existing.state==='available'){localRecipes.available++;continue;}
+              if(existing.state!=='local-reference')fail('旧配方副本状态不兼容，未覆盖');
+              if(localReadFailed){localRecipes.missing++;continue;}
+              try{
+                let local;try{local=await readLocalRecipe(key);}catch{check();localReadFailed=true;localRecipes.missing++;continue;}
+                check();currentRecord(record.id);
+                if(!local){localRecipes.missing++;continue;}
+                await archive.preserveLocalRecipe(record,local);check();localRecipes.available++;
+              }catch(error){check();currentRecord(record.id);localRecipes.missing++;}
+              continue;
+            }
             if(galleryArchiveRecipeState(record)!=='server-reference')continue;
             await yieldWork();check();const existing=await archive.readStagedRecipe(references.get(record.id));check();
             if(existing.state==='available'&&existing.origin==='server-copy'){recipeCopies++;continue;}
@@ -227,7 +245,7 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
         }
         const version=await archive.publishSourceVersion(sourceReceipt,pages,supplement,evidence);check();
         const {stopped,...coverage}=originalProgress;
-        return {...version,recipeCopies,...(preserveEvidence?{evidences:{state:evidenceState,proof:evidenceState==='complete'?'evidence-readback-only':'not-confirmed',originalVerified:false,canPrune:false}}:{}),...(preserveSupplements?{supplements:{state:supplementState,proof:supplementState==='complete'?'supplement-readback-only':'not-confirmed',originalVerified:false,canPrune:false}}:{}),...(preserveOriginals?{originals:{...coverage,
+        return {...version,recipeCopies,localRecipes:{...localRecipes,state:localRecipes.missing||localRecipes.unverified?'partial':'complete'},...(preserveEvidence?{evidences:{state:evidenceState,proof:evidenceState==='complete'?'evidence-readback-only':'not-confirmed',originalVerified:false,canPrune:false}}:{}),...(preserveSupplements?{supplements:{state:supplementState,proof:supplementState==='complete'?'supplement-readback-only':'not-confirmed',originalVerified:false,canPrune:false}}:{}),...(preserveOriginals?{originals:{...coverage,
           state:coverage.available===coverage.total?'complete':'partial',proof:'original-reference-only',originalVerified:false,canPrune:false}}:{})};
       });},
       openSourceVersion:(receipt,supplement,evidence)=>{check();return archive.openSourceVersion(receipt,supplement,evidence);},

@@ -7,8 +7,9 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.307';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.308';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
+import {encodeGalleryLocalRecipe,inspectGalleryLocalRecipe,galleryLocalRecipeSlot,readGalleryLocalRecipeCopy} from './qianmu-gallery-local-recipe.js';
 import {encodeGalleryArchiveOriginal,inspectGalleryArchiveOriginal} from './qianmu-gallery-archive-original.js';
 import {createGallerySupplementStorage,captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
 import {galleryArchiveSupplementReference} from './qianmu-gallery-archive-version.js';
@@ -95,6 +96,7 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
     check();
     if(original.recipeState==='inline')return {state:'available',snapshot:recipeArchiveSnapshot(original.value.record.snapshot).snapshot,
       origin:'saved-inline',proof:'recipe-readback-only',originalVerified:false,canPrune:false};
+    if(original.recipeState==='local-reference')return readGalleryLocalRecipeCopy(storage,owner,original.value.record,{guard:check,signal});
     if(original.recipeState!=='server-reference')return {state:original.recipeState,snapshot:null,originalVerified:false,canPrune:false};
     const stored=receipt(await storage.read(slot('recipe',original.reference),{guard:check,signal}));check();
     if(!stored.exists)return {state:'not-preserved',snapshot:null,originalVerified:false,canPrune:false};
@@ -186,6 +188,20 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
         },slot('recipe',encoded.record.reference));
         await verify(encoded.record);
         return {record:encoded.record.reference,proof:'recipe-readback-only',originalVerified:false,canPrune:false};
+      });
+    },
+    async preserveLocalRecipe(rawRecord,rawLocal){
+      check();const record=captureGalleryArchiveJson(rawRecord,GALLERY_ARCHIVE_RECORD_BYTES),local=captureGalleryArchiveJson(rawLocal,LIMIT.recordBytes);
+      return exclusive(async()=>{
+        const encoded=await encodeGalleryLocalRecipe(owner,record,local);check();await verify(encoded.record);
+        await inspectGalleryArchiveRecord(owner,await readObject('record',encoded.record.reference),encoded.record.reference);check();
+        const location=await galleryLocalRecipeSlot(owner,record);check();
+        await putObject('local-recipe',encoded,async stored=>{
+          await inspectGalleryLocalRecipe(owner,record,stored);check();
+          if(JSON.stringify(stored)!==encoded.text)fail('旧配方已有不同保全副本，未覆盖');
+        },location);
+        const result=await readGalleryLocalRecipeCopy(storage,owner,record,{guard:check});await verify(encoded.record);
+        if(result.state!=='available')fail('旧配方保存读回未确认');return result;
       });
     },
     async readRecipe(rawReference,{signal}={}){

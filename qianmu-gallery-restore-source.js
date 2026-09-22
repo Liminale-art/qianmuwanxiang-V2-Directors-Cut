@@ -5,6 +5,7 @@ import {galleryEvidenceMatchesSupplement} from './qianmu-gallery-archive-evidenc
 import {createChatGalleryDigest} from './qianmu-chat-gallery-digest.js';
 import {recipeArchiveEnvelope,recipeArchiveReference} from './qianmu-recipe-archive-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {verifyGalleryLocalRecipe} from './qianmu-gallery-local-recipe.js';
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_restore_source',writeState:'not_started'});};
@@ -31,9 +32,12 @@ export async function createGalleryRestoreSource({selection,archive,guard,signal
     if(!same(result.reference,row.record)||record.id!==row.recordId||record.createdAt!==row.createdAt||!same(galleryCatalogTags(record.tags),row.tags))fail('恢复画面与原目录不符');
     // A mutable sidecar must still prove the original server recipe envelope.
     if(result.recipe.state==='available'&&record.snapshot==null){
+      if(result.recipe.origin==='verified-local-copy'){await verifyGalleryLocalRecipe(selected.scope,record,result.recipe.snapshot);await check();}
+      else{
       const ref=recipeArchiveReference(record.snapshotServerRef),envelope=recipeArchiveEnvelope({version:1,expectedAccount:companion.expectedAccount,
         source:{target:companion.target,recordId:record.id,createdAt:record.createdAt},snapshot:result.recipe.snapshot});
       if(result.recipe.origin!=='server-copy'||new TextEncoder().encode(envelope.text).length!==ref.bytes||await vibeDigest(envelope.text)!==ref.sha256)fail('原配方副本与生成时引用不符，未用当前配置补齐');await check();
+      }
     }
     return {index,...result,originalVerified:false,canPrune:false};
   }

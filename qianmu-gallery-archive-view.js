@@ -1,12 +1,12 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.307';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.308';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
 const date=value=>new Date(value).toLocaleString();
-const recipeLabels={'not-preserved':'此版本尚未保全完整服务器配方；原引用保留。','local-reference':'仅有旧本机配方引用，无法确认账户归属；未借用其他设备缓存。',unavailable:'原记录明确标为未保留配方。',unresolved:'原记录的配方结构尚未核实，未使用当前设置补齐。','not-recorded':'原记录没有保存配方。'};
+const recipeLabels={'not-preserved':'此版本尚未保全完整服务器配方；原引用保留。','local-reference':'旧本机配方尚未完成归属与内容核验；原引用保留，不借用其他账户缓存。',unavailable:'原记录明确标为未保留配方。',unresolved:'原记录的配方结构尚未核实，未使用当前设置补齐。','not-recorded':'原记录没有保存配方。'};
 export function galleryArchiveRecipeHtml(recipe){
-  return recipe?.state==='available'?`<p>${recipe.origin==='server-copy'?'已保全的服务器配方副本':'保全记录内的完整配方'}；不代表原模型仍可调用，此处不重绘或套用。</p><textarea class="text_pole" rows="10" readonly aria-label="原配方，只读">${escape(JSON.stringify(recipe.snapshot))}</textarea>`
+  return recipe?.state==='available'?`<p>${recipe.origin==='verified-local-copy'?'已核对原内容引用的旧配方副本':recipe.origin==='server-copy'?'已保全的服务器配方副本':'保全记录内的完整配方'}；不代表原模型仍可调用，此处不重绘或套用。</p><textarea class="text_pole" rows="10" readonly aria-label="原配方，只读">${escape(JSON.stringify(recipe.snapshot))}</textarea>`
     :recipe?`<p>${escape(recipeLabels[recipe.state]||'原配方尚未确认。')}</p>`:'';
 }
 export function galleryArchiveListHtml({entries=[],rows=[],selected=null,busy=false}={}){

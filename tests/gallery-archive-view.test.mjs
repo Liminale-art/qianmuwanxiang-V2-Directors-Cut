@@ -122,7 +122,8 @@ test('missing recipe states are explicit, and never claim a current configuratio
   for(const state of ['not-preserved','local-reference','unavailable','unresolved','not-recorded']){
     const html=recipeHtml({state});assert.doesNotMatch(html,/<textarea/);assert.ok(html.length>12);
   }
-  assert.match(recipeHtml({state:'local-reference'}),/无法确认账户归属/);
+  assert.match(recipeHtml({state:'local-reference'}),/尚未完成归属与内容核验/);
+  assert.match(recipeHtml({state:'available',origin:'verified-local-copy',snapshot:{prompt:'old'}}),/已核对原内容引用的旧配方副本/);
 });
 
 test('closing during recipe read drops its late content and does not rebuild a closed preview',async()=>{

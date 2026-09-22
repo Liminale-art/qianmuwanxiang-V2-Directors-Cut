@@ -67,6 +67,23 @@ test('all-images selection keeps the existing complete filename and packet image
     const f = fixture({ choose: ['a','b'] }); await f.context.storyboardExportPackage({ bundle: true }); assert.equal(f.downloads.length, 1, JSON.stringify(f.notices));
     assert.equal(f.downloads[0].name, 'qianmu-storyboard-bundle-fixture.qmb'); assert.deepEqual(f.media, ['/a.png','/b.png']);
 });
+
+test('actual bundle export awaits strong local recipe reads for detached selected records, never the unscoped cache', async () => {
+    const f = fixture(), row = f.images[1]; delete row.snapshot; row.snapshotRef = 'same\u241fb\u241frevision:' + 'a'.repeat(64);
+    const before = structuredClone(f.images); let reads = 0;
+    f.context.storyboardSnapshotForRecord = () => assert.fail('strong references require guarded reading');
+    f.context.storyboardReadSnapshotForRecord = async value => { reads++; assert.notEqual(value,row); assert.deepEqual(value,row); return {}; };
+    await f.context.storyboardExportPackage({ bundle: true });
+    assert.equal(reads,1); assert.equal(f.downloads.length,1,JSON.stringify(f.notices)); assert.deepEqual(f.images,before);
+});
+
+test('failed strong local recipe read aborts export before media and download, without current-settings fallback', async () => {
+    const f = fixture(), row = f.images[1]; delete row.snapshot; row.snapshotRef = 'same\u241fb\u241frevision:' + 'a'.repeat(64);
+    f.context.storyboardReadSnapshotForRecord = async () => { throw Error('original recipe could not be verified'); };
+    await f.context.storyboardExportPackage({ bundle: true });
+    assert.equal(f.downloads.length,0); assert.deepEqual(f.media,[]); assert.match(f.notices.at(-1)[0],/could not be verified/);
+    assert.equal(f.context.storyboardExportPackage.busy,false);
+});
 test('chooser cancellation happens before source setup, media reads and library capture, and releases lock', async () => {
     const f = fixture({ cancel: true }); await f.context.storyboardExportPackage({ bundle: true });
     assert.deepEqual(f.events, ['choose','release']); assert.deepEqual(f.media, []); assert.equal(f.downloads.length, 0); assert.equal(f.context.storyboardExportPackage.busy, false);
