@@ -57,6 +57,7 @@ export async function createGalleryRestoreSource({selection,archive,guard,signal
       evidenceFloors:body.receipt.chatEvidence.messages.length,originalVerified:false,canPrune:false};
     return Object.freeze({get summary(){return structuredClone(summary);},
       metadata:()=>exclusive(async()=>structuredClone({selection:selected,supplement:companion,evidence:body.receipt})),
+      verify:()=>exclusive(async()=>{const checked=await openVersion();checked.close();await check();return true;}),
       read:index=>exclusive(()=>readAt(index)),
       scan({visit=async()=>{},onProgress=()=>{}}={}){return exclusive(async()=>{
         if(typeof visit!=='function'||typeof onProgress!=='function')fail('恢复资料核对回调无效');

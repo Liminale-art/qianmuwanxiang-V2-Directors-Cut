@@ -112,3 +112,20 @@ test('failed or cancelled review removes obsolete success and drops late summari
   const wait=gate(),g=fixture({review:()=>wait.promise});await tick();await g.choose('version',0);g.click('action','review');g.opened.close();const draws=g.counts.draws;wait.resolve(reviewResult);await tick();assert.equal(g.counts.draws,draws);
   assert.match(reviewHtml(reviewResult),/不会写回聊天或删除任何资料/);
 });
+
+test('original byte verification is a separate explicit action, with bandwidth notice and bounded status copy',async()=>{
+  const modes=[],f=fixture({review:async({verifyOriginals,onProgress})=>{
+    modes.push(verifyOriginals);if(!verifyOriginals)return reviewResult;
+    onProgress({phase:'originals',completed:7,total:7,verified:4});assert.match(f.status.textContent,/原图文件已核验 4\/7/);
+    return {...reviewResult,proof:'archive-originals-readback-only',originals:{...reviewResult.originals,verified:4,unique:2,bytes:140}};
+  }});
+  await tick();await f.choose('version',0);assert.deepEqual(modes,[]);assert.doesNotMatch(f.dialog.innerHTML,/data-archive-action="originals"/);
+  await f.action('review');assert.match(f.dialog.innerHTML,/更多时间和流量/);assert.deepEqual(modes,[false]);
+  await f.action('originals');assert.deepEqual(modes,[false,true]);assert.match(f.dialog.innerHTML,/原图文件已核验 4\/7/);assert.match(f.dialog.innerHTML,/去重读取 2 份/);assert.match(f.dialog.innerHTML,/仍不代表原路径已恢复/);assert.doesNotMatch(f.dialog.innerHTML,/原图文件内容尚未逐张核验/);f.opened.close();
+});
+
+test('failed original verification clears its previous success summary and never presents a restore success',async()=>{
+  let failed=false;const f=fixture({review:async({verifyOriginals})=>{if(verifyOriginals&&failed)throw Error('原图字节校验失败');if(verifyOriginals){failed=true;return {...reviewResult,proof:'archive-originals-readback-only',originals:{...reviewResult.originals,verified:4,unique:2,bytes:140}};}return reviewResult;}});
+  await tick();await f.choose('version',0);await f.action('review');await f.action('originals');assert.match(f.dialog.innerHTML,/已核验 4\/7/);
+  await f.action('originals');assert.match(f.dialog.innerHTML,/原图字节校验失败/);assert.doesNotMatch(f.dialog.innerHTML,/已核验 4\/7|已恢复并完成/);f.opened.close();
+});

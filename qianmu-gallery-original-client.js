@@ -73,6 +73,22 @@ export function createGalleryOriginalClient({account,headers,guard=async()=>true
         return Promise.race([worker,cancelled]).finally(()=>{clearTimeout(timer);aborters.delete(abort);signal?.removeEventListener('abort',abort);controller.abort();});
     }
     return Object.freeze({
+        readBatch(raw,{visit,signal}={}){
+            let references;try{
+                const value=captureGalleryArchiveJson(raw,GALLERY_ORIGINAL_JSON_BYTES);
+                if(!Array.isArray(value)||value.length<1||value.length>GALLERY_ORIGINAL_BATCH_LIMIT||typeof visit!=='function')fail('原图读取批次须包含1至8份准确引用及逐张接收器');
+                references=value.map(galleryOriginalReference);
+                if(new Set(references.map(row=>row.id)).size!==references.length)fail('原图读取批次引用重复');
+            }catch(error){return Promise.reject(error);}
+            return run(async({expectedAccount,request,check,alive})=>{
+                for(let index=0;index<references.length;index++){
+                    const reference=references[index],result=await request('read',galleryOriginalReadRequest({version:1,expectedAccount,reference}),reference);
+                    alive();await visit(result,index);await check();alive();
+                    // No array of Blobs: relinquish this result before the next read.
+                }
+                return {count:references.length,proof:'original-batch-readback',originalVerified:true,canPrune:false};
+            },{signal});
+        },
         preserveBatch(raw,options){
             let value;try{
                 value=captureGalleryArchiveJson(raw,GALLERY_ORIGINAL_JSON_BYTES);

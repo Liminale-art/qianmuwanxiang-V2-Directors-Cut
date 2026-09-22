@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.299';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.300';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
@@ -16,7 +16,10 @@ export function galleryArchiveListHtml({entries=[],rows=[],selected=null,busy=fa
 
 export function galleryArchiveReviewHtml(review){
   if(!review)return '';
-  return `<section aria-label="恢复资料核对"><b>恢复资料核对 · 只读</b><p>画面记录 ${review.total} · 完整配方 ${review.recipes.available}/${review.total} · 原图副本引用 ${review.originals.referenced}/${review.total}</p><p>合集 ${review.collections} · 角色草稿 ${review.characterDrafts} · 正文依据 ${review.evidenceFloors} 层</p><p>已按原保存顺序核验全部画面记录。${review.recipes.missing||review.originals.missing?'存在未保全的配方或原图引用，请保留原资料。':''}原图文件内容尚未逐张核验，正文依据不是全文备份；本次不会写回聊天或删除任何资料。</p></section>`;
+  const verified=review.proof==='archive-originals-readback-only';
+  return `<section aria-label="恢复资料核对"><b>恢复资料核对 · 只读</b><p>画面记录 ${review.total} · 完整配方 ${review.recipes.available}/${review.total} · 原图副本引用 ${review.originals.referenced}/${review.total}</p>
+    ${verified?`<p>原图文件已核验 ${review.originals.verified}/${review.total} · 去重读取 ${review.originals.unique} 份</p>`:''}
+    <p>合集 ${review.collections} · 角色草稿 ${review.characterDrafts} · 正文依据 ${review.evidenceFloors} 层</p><p>已按原保存顺序核验全部画面记录。${review.recipes.missing||review.originals.missing?'存在未保全的配方或原图引用，请保留原资料。':''}${verified?'本次已核验现有副本的文件大小、格式和摘要；仍不代表原路径已恢复。':'原图文件内容尚未逐张核验。'}正文依据不是全文备份；本次不会写回聊天或删除任何资料。</p></section>`;
 }
 
 // Kept inside the existing still-gallery dialog family. Only an explicit image
@@ -59,6 +62,7 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
       <p>${selected?'按保存时的记录浏览；点开画面后才读取图片。':'只显示已完整保全到此 ST 账户的版本，不代表账户全部原作品。浏览不会新增保存或扫描聊天正文。'}</p>
       <fieldset ${busy||session?.isClosed()?'disabled':''}><nav>${button('refresh','刷新列表')}${selected?button('review','核对恢复资料',busy):''}</nav>
       ${selected?galleryArchiveReviewHtml(review):''}
+      ${selected&&review?`<nav>${button('originals','核验原图',busy)}<small>逐张读取已保存副本，可能需要更多时间和流量；关闭可取消。</small></nav>`:''}
       ${selected?`<form class="sd-directory-search" data-archive-search><input class="text_pole" type="search" name="tag" maxlength="80" value="${escape(tag)}" aria-label="完整标签" placeholder="按完整标签查找"><button type="submit" class="sd-btn">查找</button>${button('clear','清除',!tag)}</form>`:''}
       <div class="sd-directory-rows">${galleryArchiveListHtml({entries:versions?.entries,rows:page?.rows,selected,busy})||`<p>${busy?'正在读取…':notice?'未读取当前列表，请按下方提示处理。':selected?(page?.cursor?'本段没有匹配画面，可继续下一页。':'没有匹配画面。'):'暂无已保全版本；原聊天中的画面不受影响。'}</p>`}</div>
       <nav aria-label="已保存图库分页">${button('previous','上一页',stack.length===1)}<span>第 ${stack.length} 页</span>${button('next','下一页',!next)}</nav></fieldset>
@@ -104,9 +108,9 @@ export function openGalleryArchive({parent,account,headers,isCurrent=()=>true,co
     void work(async()=>{
       if(action==='back'){releaseImage();restoreScroll=pageScroll;return;}
       if(action==='versions'){selected=null;page=null;pageStack=[null];tag='';review=null;restoreScroll=versionScroll;return;}
-      if(action==='review'){
-        review=null;const result=await session.review({onProgress:({completed,total})=>{if(alive())dialog.querySelector('footer [role="status"]').textContent=`正在按原顺序核对恢复资料 ${completed}/${total}；关闭窗口可取消。`;}});
-        if(alive()){review=result;notice='核对完成；尚未执行恢复或验证原图文件。';}return;
+      if(action==='review'||action==='originals'){
+        review=null;const result=await session.review({verifyOriginals:action==='originals',onProgress:({phase,completed,total,verified})=>{if(alive())dialog.querySelector('footer [role="status"]').textContent=phase==='originals'?`原图文件已核验 ${verified}/${total}；关闭窗口可取消。`:`正在按原顺序核对恢复资料 ${completed}/${total}；关闭窗口可取消。`;}});
+        if(alive()){review=result;notice=action==='originals'?'本次原图副本核验结束；尚未执行恢复。':'核对完成；尚未执行恢复或验证原图文件。';}return;
       }
       if(entry){
         const chosen=versions?.entries[Number(entry.dataset.archiveVersion)];if(!chosen)return;
