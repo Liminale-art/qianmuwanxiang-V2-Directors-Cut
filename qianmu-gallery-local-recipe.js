@@ -3,6 +3,7 @@ import {encodeGalleryArchiveRecord,galleryArchiveScope,galleryArchiveRecipeState
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
+import {galleryLegacyRecipeReference,galleryReviewedRecipeSlot,inspectGalleryReviewedRecipe} from './qianmu-gallery-reviewed-recipe.js';
 
 const schema='qianmu.gallery.local-recipe.v1',limit=GALLERY_PAGE_INDEX_LIMITS.recordBytes;
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_local_recipe'});};
@@ -48,12 +49,21 @@ export async function inspectGalleryLocalRecipe(scope,record,raw){
 }
 export async function readGalleryLocalRecipeCopy(storage,scope,record,{guard=()=>true,signal}={}){
   const check=()=>{if(signal?.aborted||guard()!==true)fail('旧配方读取已取消或来源变化');};check();
-  if(!galleryLocalRecipeReference(scope,record))return {state:'local-reference',snapshot:null,originalVerified:false,canPrune:false};
-  const slot=await galleryLocalRecipeSlot(scope,record);check();const stored=await storage.read(slot,{guard,signal});check();
+  const reviewed=Boolean(galleryLegacyRecipeReference(scope,record));
+  if(!reviewed&&!galleryLocalRecipeReference(scope,record))return {state:'local-reference',snapshot:null,originalVerified:false,canPrune:false};
+  const slot=await (reviewed?galleryReviewedRecipeSlot:galleryLocalRecipeSlot)(scope,record);check();const stored=await storage.read(slot,{guard,signal});check();
   if(stored?.persistence!=='st-account-file'||stored.concurrency!=='optimistic-non-cas'||typeof stored.exists!=='boolean'
     ||(stored.exists?!/^[a-f0-9]{64}$/.test(stored.fingerprint||''):stored.fingerprint!==null||stored.value!==null))fail('旧配方读取没有完整账户回执');
   if(!stored.exists)return {state:'local-reference',snapshot:null,originalVerified:false,canPrune:false};
-  const result=await inspectGalleryLocalRecipe(scope,record,stored.value);check();return {state:'available',...result};
+  const result=await (reviewed?inspectGalleryReviewedRecipe:inspectGalleryLocalRecipe)(scope,record,stored.value);check();return {state:'available',...result};
+}
+
+export const isGalleryLocalRecipeCopy=recipe=>recipe?.state==='available'&&['verified-local-copy','reviewed-local-copy'].includes(recipe.origin);
+export async function verifyGalleryLocalRecipeCopy(scope,record,recipe){
+  if(recipe?.origin==='verified-local-copy')return verifyGalleryLocalRecipe(scope,record,recipe.snapshot);
+  if(recipe?.origin!=='reviewed-local-copy')fail('旧配方缺少明确核对依据');
+  const checked=await inspectGalleryReviewedRecipe(scope,record,recipe.review);
+  if(JSON.stringify(checked.snapshot)!==JSON.stringify(recipe.snapshot))fail('旧配方与已核对副本不符');return checked.snapshot;
 }
 
 // One exact key, never an IDB scan or ownership inference from nearby entries.

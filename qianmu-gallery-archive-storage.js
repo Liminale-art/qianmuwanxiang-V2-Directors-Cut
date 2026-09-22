@@ -7,9 +7,10 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.308';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.309';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 import {encodeGalleryLocalRecipe,inspectGalleryLocalRecipe,galleryLocalRecipeSlot,readGalleryLocalRecipeCopy} from './qianmu-gallery-local-recipe.js';
+import {encodeGalleryReviewedRecipe,inspectGalleryReviewedRecipe,galleryReviewedRecipeSlot} from './qianmu-gallery-reviewed-recipe.js';
 import {encodeGalleryArchiveOriginal,inspectGalleryArchiveOriginal} from './qianmu-gallery-archive-original.js';
 import {createGallerySupplementStorage,captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
 import {galleryArchiveSupplementReference} from './qianmu-gallery-archive-version.js';
@@ -202,6 +203,19 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
         },location);
         const result=await readGalleryLocalRecipeCopy(storage,owner,record,{guard:check});await verify(encoded.record);
         if(result.state!=='available')fail('旧配方保存读回未确认');return result;
+      });
+    },
+    async preserveReviewedRecipe(rawRecord,rawReview,consent){
+      check();const record=captureGalleryArchiveJson(rawRecord,GALLERY_ARCHIVE_RECORD_BYTES),review=captureGalleryArchiveJson(rawReview,LIMIT.recordBytes),approval={...consent};
+      return exclusive(async()=>{
+        const encoded=await encodeGalleryReviewedRecipe(owner,record,review,approval);check();const original=await encodeGalleryArchiveRecord(owner,record);await verify(original);
+        await inspectGalleryArchiveRecord(owner,await readObject('record',original.reference),original.reference);check();
+        const location=await galleryReviewedRecipeSlot(owner,record);check();
+        await putObject('reviewed-recipe',encoded,async stored=>{
+          await inspectGalleryReviewedRecipe(owner,record,stored);check();if(JSON.stringify(stored)!==encoded.text)fail('此画面已有另一份核对结果，未覆盖');
+        },location);
+        const result=await readGalleryLocalRecipeCopy(storage,owner,record,{guard:check});await verify(original);
+        if(result.state!=='available')fail('旧配方核对副本保存未确认');return result;
       });
     },
     async readRecipe(rawReference,{signal}={}){

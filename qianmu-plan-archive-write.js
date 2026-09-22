@@ -41,13 +41,13 @@ export async function writePreservedPlanArchives(db, storeName, records) {
   return writePreservedVariants(db, storeName, records, identity);
 }
 
-async function writePreservedVariants(db, storeName, records, contentOf) {
+async function writePreservedVariants(db, storeName, records, contentOf, preferRevision=false) {
   const copies = records.map(row => structuredClone(row));
   const prepared = await Promise.all(copies.map(async record => {
     const content = contentOf(record);
     const bytes = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
     const hash = Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2,'0')).join('');
-    return {record, key:record.key, content, variant:`${record.key}\u241frevision:${hash}`};
+    return {record, key:record.key, content, variant:`${record.key}\u241frevision:${hash}`,preferRevision};
   }));
   return writePreservedRecords(db, storeName, prepared, contentOf);
 }
@@ -65,7 +65,7 @@ export function writePreservedPipelineLogs(db, storeName, records) {
 
 export function writePreservedSnapshotArchives(db, storeName, records) {
   const contentOf = row => JSON.stringify([row.chatKey, row.recordId, row.snapshot]);
-  return writePreservedVariants(db, storeName, records, contentOf);
+  return writePreservedVariants(db, storeName, records, contentOf, true);
 }
 
 function writePreservedRecords(db, storeName, prepared, contentOf) {
@@ -79,7 +79,7 @@ function writePreservedRecords(db, storeName, prepared, contentOf) {
     tx.onabort = () => reject(failure || tx.error || new Error('归档写入已撤销'));
     const next = index => {
       if (index >= prepared.length) return;
-      const {record,key:base,content,variant} = prepared[index];
+      const {record,key:base,content,variant,preferRevision} = prepared[index];
       const select = key => {
         const request = target.get(key);
         request.onsuccess = () => {
@@ -96,7 +96,7 @@ function writePreservedRecords(db, storeName, prepared, contentOf) {
           } catch (error) { abort(error); }
         };
       };
-      try { select(base); } catch (error) { abort(error); }
+      try { select(preferRevision?variant:base); } catch (error) { abort(error); }
     };
     next(0);
   });

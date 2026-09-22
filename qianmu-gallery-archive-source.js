@@ -2,12 +2,13 @@
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, browser image download or generation; observed equality is not a server lock.
 import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient,createChatGalleryEvidenceSourceClient} from './qianmu-chat-character-receipt-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.308';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.309';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
-import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.308';
+import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.309';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 import {galleryLocalRecipeReference,readLegacyGalleryRecipe} from './qianmu-gallery-local-recipe.js';
+import {galleryLegacyRecipeReference,captureGalleryRecipeReview} from './qianmu-gallery-reviewed-recipe.js';
 import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
 import {GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
 import {comfyReferencePath} from './qianmu-comfy-reference-contract.js';
@@ -15,7 +16,7 @@ import {captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {scanGalleryEvidenceSource} from './qianmu-gallery-evidence-source.js';
 import {galleryEvidenceSummary} from './qianmu-gallery-archive-evidence.js';
-import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.308';
+import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.309';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_source',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
@@ -25,12 +26,12 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
   if(typeof preserveOriginals!=='boolean'||typeof preserveSupplements!=='boolean')fail('原图或补充资料保全模式无效');
   if(typeof preserveEvidence!=='boolean'||preserveEvidence&&!preserveSupplements)fail('正文依据保全必须绑定关联资料');
   let client,archive,recipes,originals,supplementClient,localSupplement,supplementCaptureFailed=false,closed=false,busy=false,live,summary;const records=new Map();
-  let evidenceClient,localEvidence,evidenceCaptureFailed=false,observedEvidence;
+  let evidenceClient,localEvidence,evidenceCaptureFailed=false,observedEvidence,pendingReview;
   function external(){
     const value=guard();if(value&&typeof value.then==='function'){void Promise.resolve(value).catch(()=>{});fail('画面保全需要同步切换保护');}
     if(value!==true)fail('画面保全来源保护已失效');
   }
-  function close(){closed=true;evidenceClient?.close();supplementClient?.close();originals?.close();recipes?.close();archive?.close();client?.close();records.clear();live=null;}
+  function close(){closed=true;pendingReview=null;evidenceClient?.close();supplementClient?.close();originals?.close();recipes?.close();archive?.close();client?.close();records.clear();live=null;}
   function check(){
     if(closed)fail('画面保全来源会话已结束');
     try{external();client.assertCurrent();
@@ -162,6 +163,24 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
     const identity=JSON.stringify([archive.scope,summary.sha256,...(preserveSupplements?[supplementCaptureFailed?'unreadable':await vibeDigest(localSupplement)]:[]),
       ...(preserveEvidence?[evidenceCaptureFailed?'unreadable-evidence':localEvidence]:[])]);await unchanged();
     return Object.freeze({scope:archive.scope,identity,
+      async reviewLegacyRecipe(id){
+        check();if(busy)fail('旧配方正在核对');busy=true;pendingReview=null;
+        try{
+          const record=currentRecord(id),key=galleryLegacyRecipeReference(archive.scope,record);if(!key)fail('此画面不需要旧配方关联');
+          await saved();const row=await readLocalRecipe(key);check();currentRecord(id);
+          if(!row)fail('此设备未找到对应旧配方；原记录保留，请在原设备核对');
+          const review=await captureGalleryRecipeReview(archive.scope,record,row);await saved();check();
+          pendingReview={id,review};return {digest:review.digest,snapshot:structuredClone(review.snapshot)};
+        }finally{busy=false;}
+      },
+      async confirmLegacyRecipe({confirmed=false,expectedDigest}={}){
+        check();if(confirmed!==true||!pendingReview||expectedDigest!==pendingReview.review.digest)fail('请先查看并确认此画面的完整旧配方');
+        const chosen=pendingReview,record=currentRecord(chosen.id);
+        return preserve(async()=>{
+          await archive.preserveRecord(record);check();
+          const result=await archive.preserveReviewedRecipe(record,chosen.review,{confirmed:true,expectedDigest});check();return result;
+        });
+      },
       async verifySavedSource(){
         check();if(busy)fail('原聊天画面正在保全，请勿重复提交');busy=true;
         try{
@@ -194,10 +213,11 @@ export async function createCurrentGalleryArchiveSession({getContext,epoch,accou
           for(const record of batch){
             if(galleryArchiveRecipeState(record)==='local-reference'){
               const key=galleryLocalRecipeReference(archive.scope,record);
-              if(!key){localRecipes.unverified++;continue;}
+              if(!key&&!galleryLegacyRecipeReference(archive.scope,record)){localRecipes.unverified++;continue;}
               await yieldWork();check();const existing=await archive.readStagedRecipe(references.get(record.id));check();
               if(existing.state==='available'){localRecipes.available++;continue;}
               if(existing.state!=='local-reference')fail('旧配方副本状态不兼容，未覆盖');
+              if(!key){localRecipes.unverified++;continue;}
               if(localReadFailed){localRecipes.missing++;continue;}
               try{
                 let local;try{local=await readLocalRecipe(key);}catch{check();localReadFailed=true;localRecipes.missing++;continue;}

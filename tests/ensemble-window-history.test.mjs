@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import * as contract from '../qianmu-storyboard-contract.js';
-import {readEnsembleWindowHistory} from '../qianmu-ensemble-history.js?v=1.59.308';
+import {readEnsembleWindowHistory} from '../qianmu-ensemble-history.js?v=1.59.309';
 import {createEnsembleStyleSession} from '../qianmu-ensemble-selection.js';
 import {ensembleStyleOrigins} from '../qianmu-ensemble-origin.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';

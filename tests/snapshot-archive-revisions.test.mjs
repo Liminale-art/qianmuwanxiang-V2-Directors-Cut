@@ -31,6 +31,7 @@ function fixture() {
     storyboardSnapshotReads:new Map(),storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:structuredClone,
     console:{warn(){}},storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{},
     storyboardRecipeArchiveClient:async()=>({preserve:async()=>({reference:{id:'confirmed-test-reference'}}),read:async()=>({snapshot:{prompt:'edited'}}),guard:async()=>true,guardIdentity:async()=>true,close(){}}),
+    ctx:()=>({chatMetadata:null}),loadLocalChunk:async()=>({readCurrentGalleryLocalRecipe:async()=>{throw Error('请核对旧配方');}}),
     blobStore:{blobStoreAvailable:()=>true,putStoryboardSnapshots:async(records,options)=>{
       assert.equal(options.preserveExisting,true);writes.push(structuredClone(records));return {stored:[revision]};
     },getStoryboardSnapshots:async()=>[{key:base,snapshot:{prompt:'old'}},{key:revision,snapshot:{prompt:'edited'}}]}});
@@ -48,7 +49,7 @@ test('actual prompt edit and automatic archival use returned references without 
     assert.equal(e.record.snapshot,undefined);
     assert.equal(e.cache.get(base).prompt,'old');assert.equal(e.cache.get(revision).prompt,'edited');
     e.cache.clear();assert.equal((await e.c.storyboardReadSnapshotForRecord(e.record)).prompt,'edited');
-    assert.equal((await e.c.storyboardReadSnapshotForRecord({id:'image',chatKey:'chat',snapshotRef:base})).prompt,'old');
+    await assert.rejects(e.c.storyboardReadSnapshotForRecord({id:'image',chatKey:'chat',snapshotRef:base}),/核对旧配方/);
   }
 });
 
@@ -83,20 +84,18 @@ test('late explicit writes cannot strip or replace newer edits, record identitie
 test('batch hydration continues to resolve explicit revision and legacy references separately',async()=>{
   const e=fixture();e.cache.clear();e.record.snapshotRef=revision;e.rows.push({id:'old-copy',chatKey:'chat',snapshotRef:base});
   assert.equal(await e.c.storyboardHydrateGallerySnapshots(e.rows,{migrate:false}),2);
-  assert.equal(e.c.storyboardSnapshotForRecord(e.record).prompt,'edited');assert.equal(e.c.storyboardSnapshotForRecord(e.rows[1]).prompt,'old');
+  assert.equal(e.cache.get(revision).prompt,'edited');assert.equal(e.cache.get(base).prompt,'old');
+  assert.equal(e.c.storyboardSnapshotForRecord(e.record),null);assert.equal(e.c.storyboardSnapshotForRecord(e.rows[1]),null);
 });
 
-test('late reads of older references cannot roll back edited recipes or changed record identities',async()=>{
-  for(const mode of ['reference','inline','id']) {
-    const e=fixture();e.cache.clear();let release;
-    e.c.blobStore.getStoryboardSnapshots=()=>new Promise(resolve=>{release=resolve;});
-    const pending=e.c.storyboardReadSnapshotForRecord(e.record);
-    if(mode==='reference')e.record.snapshotRef=revision;
-    if(mode==='inline')e.record.snapshot={prompt:'newer inline'};
-    if(mode==='id')e.record.id='changed';
-    release([{key:base,snapshot:{prompt:'old'}}]);
-    assert.equal(await pending,null);assert.equal(e.cache.size,0);
-    assert.equal(e.record.snapshotRef,mode==='reference'?revision:base);
-    if(mode==='inline')assert.equal(e.record.snapshot.prompt,'newer inline');
-  }
+test('unrecorded recipes never invent a base-key reference or borrow an unscoped cache',async()=>{
+  const e=fixture();delete e.record.snapshotRef;const before=structuredClone(e.record);
+  e.c.blobStore.getStoryboardSnapshots=()=>assert.fail('unrecorded source must not read cache');
+  assert.equal(await e.c.storyboardReadSnapshotForRecord(e.record),null);assert.deepEqual(e.record,before);assert.equal(e.cache.get(base).prompt,'old');
+});
+
+test('chat changes during lazy recipe loader import cannot switch the borrowed source',async()=>{
+  const e=fixture();let release;e.c.loadLocalChunk=()=>new Promise(resolve=>{release=resolve;});
+  const work=e.c.storyboardReadSnapshotForRecord(e.record);e.c.storyboardSnapshotEpoch++;
+  release({readCurrentGalleryLocalRecipe:()=>assert.fail('must stop before new source is borrowed')});await assert.rejects(work,/来源已变化/);
 });

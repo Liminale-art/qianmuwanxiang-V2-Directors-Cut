@@ -84,6 +84,13 @@ test('failed strong local recipe read aborts export before media and download, w
     assert.equal(f.downloads.length,0); assert.deepEqual(f.media,[]); assert.match(f.notices.at(-1)[0],/could not be verified/);
     assert.equal(f.context.storyboardExportPackage.busy,false);
 });
+
+test('legacy base-reference bundle export also requires scoped reviewed content rather than an old memory cache',async()=>{
+    const f=fixture(),row=f.images[1];delete row.snapshot;row.snapshotRef='same\u241fb';let reads=0;
+    f.context.storyboardSnapshotForRecord=()=>assert.fail('legacy base cannot borrow unscoped cache');
+    f.context.storyboardReadSnapshotForRecord=async value=>{assert.deepEqual(value,row);reads++;return {};};
+    await f.context.storyboardExportPackage({bundle:true});assert.equal(reads,1);assert.equal(f.downloads.length,1,JSON.stringify(f.notices));
+});
 test('chooser cancellation happens before source setup, media reads and library capture, and releases lock', async () => {
     const f = fixture({ cancel: true }); await f.context.storyboardExportPackage({ bundle: true });
     assert.deepEqual(f.events, ['choose','release']); assert.deepEqual(f.media, []); assert.equal(f.downloads.length, 0); assert.equal(f.context.storyboardExportPackage.busy, false);

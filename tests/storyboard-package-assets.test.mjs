@@ -129,7 +129,7 @@ function indexFixture(){
   const noop=()=>{},context=vm.createContext({...board,Blob,clone:structuredClone,storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?pack:{resolveImageAccountNamespace:async()=>owner}},
     storyboardState:()=>currentState,getChatStore:()=>currentStore,getChatKey:()=>chat,storyboardHydratePipelineArchive:async()=>{},storyboardHydrateGallerySnapshots:async()=>{},
     storyboardPipelineForLog:log=>state.pipelineLogs.find(p=>p.id===log.pipelineId)||null,storyboardGalleryRecords:()=>images,storyboardGalleryCollections:()=>[{id:'c',name:'Captured collection'}],
-    storyboardSnapshotForRecord:record=>record.snapshot||null,storyboardPlansForPortableExport:async p=>p,storyboardSafeUrl:value=>value,fetch:async()=>({ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})}),blobToBase64:async()=> 'aW1hZ2U=',
+    storyboardSnapshotForRecord:record=>record.snapshot||null,storyboardReadSnapshotForRecord:async record=>record.snapshot||null,storyboardPlansForPortableExport:async p=>p,storyboardSafeUrl:value=>value,fetch:async()=>({ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})}),blobToBase64:async()=> 'aW1hZ2U=',
     confirmDialog:async()=>true,toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',URL:{createObjectURL:blob=>{exported=blob;return 'blob:test';},revokeObjectURL:noop},document:{createElement:()=>({click:noop,remove:noop}),body:{appendChild:noop}},
   });Object.assign(context,{MODAL_ID:'fixture',createStorageBackupCheck:()=>{const check=()=>{};check.release=()=>{};return check;}});context.document.getElementById=()=>({});
   context.setTimeout=noop;

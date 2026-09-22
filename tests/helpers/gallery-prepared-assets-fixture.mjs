@@ -24,7 +24,7 @@ export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,
   const target={kind:'character',avatar:'Alice.png',chatId:'chat'};let recipePath;
   const localRecipes=new Map();
   if(localRecipe&&rows.length){
-    const row=rows[0],snapshot=structuredClone(row.snapshot),key=`chat\u241f${row.id}\u241frevision:${await vibeDigest(JSON.stringify(['chat',row.id,snapshot]))}`;
+    const row=rows[0],snapshot=structuredClone(row.snapshot),base=`chat\u241f${row.id}`,key=localRecipe==='reviewed'?base:`${base}\u241frevision:${await vibeDigest(JSON.stringify(['chat',row.id,snapshot]))}`;
     row.snapshotRef=key;row.snapshotVersion=1;delete row.snapshot;
     localRecipes.set(key,{key,chatKey:'chat',recordId:row.id,snapshot});await save();
   }
@@ -40,7 +40,9 @@ export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,
   const options={getContext:()=>host.context,epoch:()=>0,account:async()=>host.account,headers:host.context.getRequestHeaders,
     guard:()=>state.active,isCurrent:()=>state.active,canPrepare:()=>true,createStorage:transport.createStorage,fetchImpl,
     ...(localRecipe?{readLocalRecipe:async key=>structuredClone(localRecipes.get(key)??null)}:{})};
-  const session=own(await createCurrentGalleryArchiveSession(options)),saved=await session.preserveAll();session.close();
+  const session=own(await createCurrentGalleryArchiveSession(options));
+  if(localRecipe==='reviewed'){const review=await session.reviewLegacyRecipe(rows[0].id);await session.confirmLegacyRecipe({confirmed:true,expectedDigest:review.digest});}
+  const saved=await session.preserveAll();session.close();
   assert.equal(saved.originals.state,'complete');assert.equal(saved.evidences.state,'complete');
   const selection={schema:'qianmu.gallery.source-version.v3',scope:session.scope,sourceReceipt:saved.sourceReceipt,manifest:saved.reference,supplement:saved.supplement,evidence:saved.evidence};
   const archive=own(await createGalleryArchiveStorage({scope:session.scope,guard:()=>state.active,verifyRecord:()=>false,createStorage:transport.createStorage}));

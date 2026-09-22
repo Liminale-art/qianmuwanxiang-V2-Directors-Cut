@@ -1,6 +1,6 @@
 import {galleryRecipeResolution,GALLERY_WRITE_PLAN_LIMITS} from './qianmu-gallery-write-plan.js';
 import {createChatGalleryDigest} from './qianmu-chat-gallery-digest.js';
-import {verifyGalleryLocalRecipe} from './qianmu-gallery-local-recipe.js';
+import {verifyGalleryLocalRecipeCopy,isGalleryLocalRecipeCopy} from './qianmu-gallery-local-recipe.js';
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),fail=message=>{throw Object.assign(Error(message),{code:'gallery_resolved_write',submissionState:'not_submitted'});};
 // One exact original record -> its same-content new server reference. Never
@@ -15,7 +15,7 @@ export async function scanResolvedGalleryWrite({source,resolutions,guard,signal,
     await source.scan({visit:async item=>{
       await check();let record=item.record;const row=rows.get(record.id);
       if(item.origin==='source'&&record.snapshot==null){
-        if(item.recipe?.state==='available'&&item.recipe.origin==='verified-local-copy')await verifyGalleryLocalRecipe(source.metadata.plan.scope,record,item.recipe.snapshot);
+        if(item.recipe?.state==='available'&&isGalleryLocalRecipeCopy(item.recipe))await verifyGalleryLocalRecipeCopy(source.metadata.plan.scope,record,item.recipe);
         else{if(!row)fail('原服务器配方尚未完整复位');selected.add(record.id);}
       }
       if(row){

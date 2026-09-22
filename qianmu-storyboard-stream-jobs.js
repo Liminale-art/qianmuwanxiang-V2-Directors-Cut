@@ -1,9 +1,9 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.308';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.308';
-import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.308';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.309';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.309';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.309';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
