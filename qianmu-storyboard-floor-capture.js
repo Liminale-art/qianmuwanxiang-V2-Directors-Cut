@@ -1,6 +1,6 @@
-import {createStoryboardFloorTake,createStoryboardCaptureReservation} from './qianmu-storyboard-floor-take.js?v=1.59.296';
-import {readStoryboardFloorTakeSourceKeys} from './qianmu-storyboard-floor-take-source.js?v=1.59.296';
-import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.296';
+import {createStoryboardFloorTake,createStoryboardCaptureReservation} from './qianmu-storyboard-floor-take.js?v=1.59.297';
+import {readStoryboardFloorTakeSourceKeys} from './qianmu-storyboard-floor-take-source.js?v=1.59.297';
+import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.297';
 const running=new WeakSet();
 export async function captureStoryboardFloor(floor,message,api) {
   const state=api.state(),chatKey=api.chatKey(),epoch=api.epoch(),text=message?.mes,swipe=message?.swipe_id;

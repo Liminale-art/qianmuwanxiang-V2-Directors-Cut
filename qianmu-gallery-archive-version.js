@@ -13,15 +13,17 @@ export function galleryArchiveSourceReceipt(raw){
   return {count:value.count,bytes:value.bytes,sha256:value.sha256,proof:value.proof};
 }
 export function galleryArchiveSupplementReference(value){return galleryArchiveObjectReference(value,CHAT_GALLERY_SUPPLEMENT_LIMITS.responseBytes+8192);}
-export async function galleryArchiveSourceSlot(scope,receipt,supplement){
-  return `gallery-source${supplement===undefined?'':'2'}-${await vibeDigest(JSON.stringify({scope:galleryArchiveScope(scope),receipt:galleryArchiveSourceReceipt(receipt),
-    ...(supplement===undefined?{}:{supplement:galleryArchiveSupplementReference(supplement)})}))}`;
+export function galleryArchiveEvidenceReference(value){return galleryArchiveObjectReference(value,128*1024);}
+export async function galleryArchiveSourceSlot(scope,receipt,supplement,evidence){
+  if(evidence!==undefined&&supplement===undefined)fail('正文依据版本必须绑定关联资料');
+  return `gallery-source${evidence!==undefined?'3':supplement===undefined?'':'2'}-${await vibeDigest(JSON.stringify({scope:galleryArchiveScope(scope),receipt:galleryArchiveSourceReceipt(receipt),
+    ...(supplement===undefined?{}:{supplement:galleryArchiveSupplementReference(supplement)}),...(evidence===undefined?{}:{evidence:galleryArchiveEvidenceReference(evidence)})}))}`;
 }
 export function galleryArchiveSourceVersion(raw,scope,receipt){
   const copy=captureGalleryArchiveJson(raw,8192),owner=galleryArchiveScope(scope),expected=galleryArchiveSourceReceipt(receipt);
-  const supplemented=copy?.schema==='qianmu.gallery.source-version.v2';
-  if(!copy||Array.isArray(copy)||Object.keys(copy).length!==(supplemented?5:4)||!supplemented&&copy.schema!=='qianmu.gallery.source-version.v1'
+  const evidenced=copy?.schema==='qianmu.gallery.source-version.v3',supplemented=evidenced||copy?.schema==='qianmu.gallery.source-version.v2';
+  if(!copy||Array.isArray(copy)||Object.keys(copy).length!==(evidenced?6:supplemented?5:4)||!supplemented&&copy.schema!=='qianmu.gallery.source-version.v1'
     ||JSON.stringify(galleryArchiveScope(copy.scope))!==JSON.stringify(owner)||JSON.stringify(galleryArchiveSourceReceipt(copy.sourceReceipt))!==JSON.stringify(expected))fail('图库版本来源不符，未改写已有目录');
   return {schema:copy.schema,scope:owner,sourceReceipt:expected,manifest:galleryArchiveObjectReference(copy.manifest,GALLERY_PAGE_INDEX_LIMITS.manifestBytes),
-    ...(supplemented?{supplement:galleryArchiveSupplementReference(copy.supplement)}:{})};
+    ...(supplemented?{supplement:galleryArchiveSupplementReference(copy.supplement)}:{}),...(evidenced?{evidence:galleryArchiveEvidenceReference(copy.evidence)}:{})};
 }

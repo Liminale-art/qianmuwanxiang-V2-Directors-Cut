@@ -8,7 +8,7 @@ const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 export function galleryDiscoveryRequest(raw){
   const value=captureGalleryArchiveJson(raw,4096);
-  if(!exact(value,['version','expectedAccount','limit','cursor'])||![1,2].includes(value.version)||typeof value.expectedAccount!=='string'||!/^st-user:[a-f0-9]{64}$/.test(value.expectedAccount)
+  if(!exact(value,['version','expectedAccount','limit','cursor'])||![1,2,3].includes(value.version)||typeof value.expectedAccount!=='string'||!/^st-user:[a-f0-9]{64}$/.test(value.expectedAccount)
     ||!Number.isSafeInteger(value.limit)||value.limit<1||value.limit>GALLERY_DISCOVERY_LIMITS.page)fail('图库发现只接受账户核对和受限分页');
   const cursor=value.cursor;
   if(cursor!==null&&(!exact(cursor,['version','account','stamp','after'])||cursor.version!==value.version||cursor.account!==value.expectedAccount||!hash(cursor.stamp)||!hash(cursor.after)))fail('图库发现续页已失效');
@@ -22,8 +22,8 @@ export async function galleryDiscoveryResponse(raw,{namespace,request}={}){
   for(const entry of value.entries){
     if(!exact(entry,['key','value'])||!hash(entry.key)||entry.key<=previous)fail('图库发现顺序或编号重复');
     const source=entry.value,checked=galleryArchiveSourceVersion(source,source?.scope,source?.sourceReceipt);
-    if(checked.scope.namespace!==namespace||expected.version===1&&checked.supplement
-      ||await galleryArchiveSourceSlot(checked.scope,checked.sourceReceipt,checked.supplement)!==`gallery-source${checked.supplement?'2':''}-${entry.key}`)fail('图库发现包含其他账户或错误来源');
+    if(checked.scope.namespace!==namespace||expected.version===1&&checked.supplement||expected.version<3&&checked.evidence
+      ||await galleryArchiveSourceSlot(checked.scope,checked.sourceReceipt,checked.supplement,checked.evidence)!==`gallery-source${checked.evidence?'3':checked.supplement?'2':''}-${entry.key}`)fail('图库发现包含其他账户或错误来源');
     entry.value=checked;previous=entry.key;
   }
   if(value.nextCursor!==null){

@@ -7,19 +7,20 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.296';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.297';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 import {encodeGalleryArchiveOriginal,inspectGalleryArchiveOriginal} from './qianmu-gallery-archive-original.js';
 import {createGallerySupplementStorage,captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
 import {galleryArchiveSupplementReference} from './qianmu-gallery-archive-version.js';
+import {createGalleryEvidenceStorage,captureGalleryEvidence,galleryArchiveEvidenceReference,galleryEvidenceMatchesSupplement,galleryEvidenceSummary} from './qianmu-gallery-archive-evidence.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_storage',writeState:'not_started'});};
 const same=(left,right)=>JSON.stringify(left)===JSON.stringify(right);
 const bytes=value=>new TextEncoder().encode(value).length;
-export async function createGalleryArchiveStorage({scope,guard,verifyRecord,verifySupplement=()=>false,createStorage=createConfiguredStAccountStorage,yieldWork=async()=>{}}={}){
+export async function createGalleryArchiveStorage({scope,guard,verifyRecord,verifySupplement=()=>false,verifyEvidence=()=>false,createStorage=createConfiguredStAccountStorage,yieldWork=async()=>{}}={}){
   const owner=galleryArchiveScope(scope);
   if(typeof guard!=='function'||typeof verifyRecord!=='function'||typeof createStorage!=='function')fail('画面保全缺少来源验证');
-  let storage,supplements,supplementsLoading,stagedSupplement,closed=false,busy=false,mayHaveWritten=false;const readers=new Set(),staged=new Map(),currentPageRecords=new Map();
+  let storage,supplements,supplementsLoading,evidence,evidenceLoading,stagedEvidence,stagedSupplement,closed=false,busy=false,mayHaveWritten=false;const readers=new Set(),staged=new Map(),currentPageRecords=new Map();
   function check(){
     if(closed)fail('画面保全会话已结束');let valid=false;
     try{const result=guard();if(result&&typeof result.then==='function')void Promise.resolve(result).catch(()=>{});else valid=result===true;
@@ -27,7 +28,7 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
     }catch{valid=false;}
     if(!valid){close();fail('画面保全账户或聊天已变化');}return true;
   }
-  function close(){closed=true;for(const reader of readers)reader.close();readers.clear();staged.clear();currentPageRecords.clear();storage?.close();supplements?.close();stagedSupplement=null;}
+  function close(){closed=true;for(const reader of readers)reader.close();readers.clear();staged.clear();currentPageRecords.clear();storage?.close();supplements?.close();evidence?.close();stagedSupplement=null;stagedEvidence=null;}
   check();
   try{
     storage=await createStorage({isCurrent:()=>{try{return check();}catch{return false;}},maxBytes:LIMIT.recordBytes});check();
@@ -71,7 +72,7 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
     const content=JSON.stringify(captureGalleryArchiveJson(value,LIMIT.pageBytes));
     if(content!==encoded.text)fail('分页保全读回不一致，未覆盖已有版本');
   }
-  const sourceSlot=(receipt,supplement)=>galleryArchiveSourceSlot(owner,receipt,supplement);
+  const sourceSlot=(receipt,supplement,evidence)=>galleryArchiveSourceSlot(owner,receipt,supplement,evidence);
   async function supplementStore(){
     check();if(supplements)return supplements;
     supplementsLoading??=createGallerySupplementStorage({scope:owner,guard:check,createStorage}).then(opened=>{
@@ -82,6 +83,12 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
   async function openHead(head){
     check();const reader=await createGalleryPageIndexReader({source:owner,head,guard:check,readPage:(ref,{signal})=>indexText('page',ref,signal)});check();readers.add(reader);
     return Object.freeze({page:input=>reader.page(input),close(){readers.delete(reader);reader.close();}});
+  }
+  async function evidenceStore(){
+    check();if(evidence)return evidence;
+    evidenceLoading??=createGalleryEvidenceStorage({scope:owner,guard:check,createStorage,yieldWork:async()=>{await yieldWork();check();await new Promise(resolve=>setTimeout(resolve,0));check();}}).then(opened=>{
+      try{check();evidence=opened;return opened;}catch(error){opened.close();throw error;}
+    }).catch(error=>{evidenceLoading=null;throw error;});return evidenceLoading;
   }
   const versionValue=(value,expected)=>galleryArchiveSourceVersion(value,owner,expected);
   async function readRecipeCopy(original,signal){
@@ -124,6 +131,27 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
     return {record:encoded.record.reference,proof:'original-reference-only',originalVerified:false,canPrune:false};
   }
   return Object.freeze({scope:Object.freeze({...owner}),
+    async preserveEvidence(raw,rawSupplement,{signal}={}){
+      check();const captured=captureGalleryEvidence(raw),ref=galleryArchiveSupplementReference(rawSupplement);
+      return exclusive(async()=>{
+        if(!same(stagedSupplement,ref))fail('正文依据所需关联资料尚未在本次保全');
+        const companion=await (await supplementStore()).read(ref,{signal});check();
+        if(!galleryEvidenceMatchesSupplement(captured,companion.value.receipt))fail('正文依据和关联资料来自不同资料头，未混用保存');
+        if(await verifySupplement(structuredClone(companion.value.receipt))!==true)fail('正文依据关联资料来源已变化');check();
+        const saved=await (await evidenceStore()).preserve(captured,{supplement:ref,signal,verify:async summary=>{
+          check();if(!same(stagedSupplement,ref)||!galleryEvidenceMatchesSupplement(summary,companion.value.receipt))return false;
+          const valid=await verifyEvidence(summary);check();return valid===true;
+        }});mayHaveWritten=true;check();
+        const finalCompanion=await (await supplementStore()).read(ref,{signal});check();
+        if(!galleryEvidenceMatchesSupplement(captured,finalCompanion.value.receipt)||await verifySupplement(structuredClone(finalCompanion.value.receipt))!==true)fail('正文依据保存后关联资料来源已变化');check();
+        stagedEvidence={reference:{...saved.reference},supplement:{...ref}};return saved;
+      });
+    },
+    async readEvidence(rawReference,{signal}={}){
+      check();const ref=galleryArchiveEvidenceReference(rawReference),saved=await (await evidenceStore()).read(ref,{signal});check();
+      const companion=await (await supplementStore()).read(saved.supplement,{signal});check();
+      if(!galleryEvidenceMatchesSupplement(saved.receipt,companion.value.receipt))fail('已保存正文依据与关联资料来源不符');return saved;
+    },
     async preserveSupplement(raw){
       check();const captured=captureGallerySupplement(raw);
       return exclusive(async()=>{
@@ -224,11 +252,12 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
       check();const descriptor=captureGalleryArchiveJson(rawDescriptor,4096),head=await encodeGalleryIndexManifest(owner,[descriptor]);check();
       return openHead(head);
     },
-    async publishSourceVersion(rawReceipt,rawPages,rawSupplement){
+    async publishSourceVersion(rawReceipt,rawPages,rawSupplement,rawEvidence){
       check();const observed=sourceReceipt(rawReceipt),pages=captureGalleryArchiveJson(rawPages,LIMIT.manifestBytes);
       const supplement=rawSupplement===undefined?undefined:galleryArchiveSupplementReference(rawSupplement);
+      const evidence=rawEvidence===undefined?undefined:galleryArchiveEvidenceReference(rawEvidence);
       return exclusive(async()=>{
-        const head=await encodeGalleryIndexManifest(owner,pages);check();const ids=new Set();
+        const head=await encodeGalleryIndexManifest(owner,pages);check();const ids=new Set();let checkedEvidence;
         // Only pages whose complete records were verified/read back by this
         // session may publish. No caller-forged descriptors or cross-page IDs.
         for(const descriptor of pages){
@@ -243,7 +272,15 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
           if(saved.gallery.sha256!==observed.sha256||saved.gallery.bytes!==observed.bytes||saved.gallery.count!==observed.count
             ||saved.order.length!==ids.size||saved.order.some(id=>!ids.has(id)))fail('补充资料与图库目录或原顺序不符');
           if(await verifySupplement(structuredClone(saved))!==true)fail('补充资料来源已变化，未发布版本');check();
+          if(evidence){
+            if(!same(stagedEvidence,{reference:evidence,supplement}))fail('正文依据尚未在本次保全，未发布版本');
+            const body=await (await evidenceStore()).read(evidence);check();
+            if(!same(body.supplement,supplement)||!galleryEvidenceMatchesSupplement(body.receipt,saved))fail('正文依据和关联资料版本不符');
+            checkedEvidence=galleryEvidenceSummary(body.receipt);
+            if(await verifyEvidence(structuredClone(checkedEvidence))!==true)fail('正文依据来源已变化，未发布版本');check();
+          }
         }
+        else if(evidence)fail('正文依据版本缺少已保全的关联资料');
         // Recheck page bytes, not every original record body again. Staging
         // already read those back; first-paint readers need only small metadata.
         for(const descriptor of pages){
@@ -254,22 +291,24 @@ export async function createGalleryArchiveStorage({scope,guard,verifyRecord,veri
           await new Promise(resolve=>setTimeout(resolve,0));check();
         }
         await putObject('manifest',{...head,value:JSON.parse(head.text)},value=>inspectPage(value,head));check();
-        const value={schema:supplement?'qianmu.gallery.source-version.v2':'qianmu.gallery.source-version.v1',scope:owner,sourceReceipt:observed,manifest:head.reference,
-          ...(supplement?{supplement}:{})};
+        const value={schema:evidence?'qianmu.gallery.source-version.v3':supplement?'qianmu.gallery.source-version.v2':'qianmu.gallery.source-version.v1',scope:owner,sourceReceipt:observed,manifest:head.reference,
+          ...(supplement?{supplement}:{}),...(evidence?{evidence}:{})};
         const content=JSON.stringify(value),encoded={value,text:content,reference:{sha256:await vibeDigest(content),bytes:bytes(content)}};check();
-        await putObject('source',encoded,stored=>{if(!same(versionValue(stored,observed),value))fail('同一来源已有不同目录，两个副本均保留，未覆盖');},await sourceSlot(observed,supplement));check();
-        return {reference:head.reference,sourceReceipt:observed,total:ids.size,pages:pages.length,...(supplement?{supplement}:{}),
+        if(checkedEvidence&&await verifyEvidence(structuredClone(checkedEvidence))!==true)fail('正文依据发布前来源已变化');check();
+        await putObject('source',encoded,stored=>{if(!same(versionValue(stored,observed),value))fail('同一来源已有不同目录，两个副本均保留，未覆盖');},await sourceSlot(observed,supplement,evidence));check();
+        if(checkedEvidence&&await verifyEvidence(structuredClone(checkedEvidence))!==true)fail('正文依据发布后来源已变化，副本保留但未确认');check();
+        return {reference:head.reference,sourceReceipt:observed,total:ids.size,pages:pages.length,...(supplement?{supplement}:{}),...(evidence?{evidence}:{}),
           persistence:'st-account-file',proof:'version-readback-only',originalVerified:false,canPrune:false};
       });
     },
-    async openSourceVersion(rawReceipt,rawSupplement){
-      check();const observed=sourceReceipt(rawReceipt),supplement=rawSupplement===undefined?undefined:galleryArchiveSupplementReference(rawSupplement),location=await sourceSlot(observed,supplement);check();
+    async openSourceVersion(rawReceipt,rawSupplement,rawEvidence){
+      check();const observed=sourceReceipt(rawReceipt),supplement=rawSupplement===undefined?undefined:galleryArchiveSupplementReference(rawSupplement),evidence=rawEvidence===undefined?undefined:galleryArchiveEvidenceReference(rawEvidence),location=await sourceSlot(observed,supplement,evidence);check();
       const saved=receipt(await storage.read(location,{guard:check}));if(!saved.exists)fail('此来源尚无完整图库版本，未当作空库');
       const version=versionValue(saved.value,observed),content=await indexText('manifest',version.manifest);check();
-      if(!same(version.supplement,supplement))fail('图库版本补充资料绑定已变化');
+      if(!same(version.supplement,supplement)||!same(version.evidence,evidence))fail('图库版本关联资料或正文依据绑定已变化');
       const decoded=JSON.parse(content);if(decoded.total!==observed.count)fail('图库版本总数与来源不符');
       const reader=await openHead({text:content,reference:version.manifest});
-      return Object.freeze({...reader,reference:version.manifest,sourceReceipt:observed,total:observed.count,...(supplement?{supplement}:{}),
+      return Object.freeze({...reader,reference:version.manifest,sourceReceipt:observed,total:observed.count,...(supplement?{supplement}:{}),...(evidence?{evidence}:{}),
         proof:'version-readback-only',originalVerified:false,canPrune:false});
     },close,
   });

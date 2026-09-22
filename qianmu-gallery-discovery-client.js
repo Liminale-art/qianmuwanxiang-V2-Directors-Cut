@@ -41,7 +41,7 @@ export function createGalleryDiscoveryClient({account,headers,guard=()=>true,fet
     }
     const work=(async()=>{
       const owner=await check(),expectedAccount=`st-user:${await vibeDigest(owner.slice(8))}`;current();
-      const request=galleryDiscoveryRequest({version:2,expectedAccount,limit:options.limit??24,cursor:options.cursor??null});
+      const request=galleryDiscoveryRequest({version:3,expectedAccount,limit:options.limit??24,cursor:options.cursor??null});
       const supplied=new Headers(await headers());current();const requestHeaders={Accept:'application/json','Content-Type':'application/json'};
       if(supplied.has('x-csrf-token'))requestHeaders['X-CSRF-Token']=supplied.get('x-csrf-token');await check();
       let response,reader,cancelReader;

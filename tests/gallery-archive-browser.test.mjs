@@ -37,7 +37,7 @@ test('actual discovery, native version/page/record readers work with no original
   assert.equal(preview.record.prompt,'PRIVATE_PROMPT');assert.equal(preview.source.chatKey,entry.value.scope.chatKey);
   assert.equal(preview.originalVerified,false);assert.equal(preview.canPrune,false);
   assert.ok(f.transport.calls.slice(calls).every(row=>row.options.method!=='POST'));
-  assert.deepEqual(await f.unchanged(),before);assert.deepEqual(Object.keys(f.s).sort(),['close','isClosed','list','open','page','preview','recipe','supplement']);
+  assert.deepEqual(await f.unchanged(),before);assert.deepEqual(Object.keys(f.s).sort(),['close','evidence','isClosed','list','open','page','preview','recipe','supplement']);
 });
 
 test('caller cannot forge a discovered version or select a record outside the current page',async t=>{

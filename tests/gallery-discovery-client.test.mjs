@@ -12,7 +12,7 @@ import {init,exit} from '../server-plugin.js';
 
 const BASE='/api/plugins/qianmu-tts/gallery-archive/versions',account='st-user:alice',expectedAccount='st-user:'+createHash('sha256').update('alice').digest('hex');
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
-const response=()=>({ok:true,version:2,expectedAccount,entries:[],nextCursor:null,proof:'read-only-directory'});
+const response=()=>({ok:true,version:3,expectedAccount,entries:[],nextCursor:null,proof:'read-only-directory'});
 const options=patch=>({account:async()=>account,headers:()=>({'X-CSRF-Token':'fixture','Authorization':'DO_NOT_SEND','Cookie':'DO_NOT_SEND','X-API-Key':'DO_NOT_SEND'}),...patch});
 const json=(value,status=200)=>Response.json(value,{status});
 
@@ -21,7 +21,7 @@ test('client is lazy, chat-independent, same-origin, and only sends expected acc
   assert.equal(accounts,0);assert.deepEqual((await client.list()).entries,[]);assert.equal(calls.length,1);
   const call=calls[0];assert.equal(call.url,BASE);assert.equal(call.method,'POST');assert.equal(call.credentials,'same-origin');assert.equal(call.redirect,'error');assert.equal(call.cache,'no-store');
   assert.deepEqual(call.headers,{Accept:'application/json','Content-Type':'application/json','X-CSRF-Token':'fixture'});
-  assert.deepEqual(JSON.parse(call.body),{version:2,expectedAccount,limit:24,cursor:null});
+  assert.deepEqual(JSON.parse(call.body),{version:3,expectedAccount,limit:24,cursor:null});
 });
 
 test('source options are captured before awaits; invalid options cannot add a path or raw content',async t=>{

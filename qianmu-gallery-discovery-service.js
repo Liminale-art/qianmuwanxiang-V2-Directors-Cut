@@ -62,11 +62,11 @@ export function createGalleryDiscoveryService({dataRoot,io=fs,timeoutMs=LIMIT.ti
   async function inspect(req,input,signal){
     const context=capture(req,input,signal),initial=await roots(context),generation=stamp(initial),query=context.query;
     if(query.cursor&&query.cursor.stamp!==generation)fail('stale','图库目录在翻页期间已变化，请刷新列表');
-    const prefix=`qianmu-v2-${context.scope}-gallery-source`,pattern=new RegExp(`^${prefix}(2)?-([a-f0-9]{64})\\.json$`),selected=[];
+    const prefix=`qianmu-v2-${context.scope}-gallery-source`,pattern=new RegExp(`^${prefix}([23])?-([a-f0-9]{64})\\.json$`),selected=[];
     const directory=await io.opendir(context.folder);let scanned=0;
     try{for await(const entry of directory){
       context.guard();if(++scanned>LIMIT.scan)fail('capacity','账户文件数量超过本次发现范围，未截断为完整目录');
-      const match=pattern.exec(entry.name);if(!match||match[1]&&query.version===1||match[2]<=(query.cursor?.after||''))continue;
+      const match=pattern.exec(entry.name);if(!match||Number(match[1]||1)>query.version||match[2]<=(query.cursor?.after||''))continue;
       if(!entry.isFile()||entry.isSymbolicLink())fail('path','图库目录入口不是独立常规文件');
       // Only keep this page plus one sentinel, not every native filename.
       selected.push({key:match[2],slot:`gallery-source${match[1]||''}-${match[2]}`});selected.sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);if(selected.length>query.limit+1)selected.pop();

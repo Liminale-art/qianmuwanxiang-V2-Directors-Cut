@@ -1,5 +1,5 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.296';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.297';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
@@ -47,7 +47,7 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
       const candidate=await createArchive({scope:structuredClone(selected.scope),guard:current,verifyRecord:()=>false});
       try{
         await check();storage=candidate;
-        const opened=await storage.openSourceVersion(selected.sourceReceipt,selected.supplement);await check();
+        const opened=await storage.openSourceVersion(selected.sourceReceipt,selected.supplement,selected.evidence);await check();
         if(JSON.stringify(opened.reference)!==JSON.stringify(selected.manifest)){opened.close();throw Error('图库版本已变化，请刷新列表');}
         version=opened;selection=structuredClone(selected);return {scope:{...selection.scope},total:version.total};
       }catch(error){candidate.close();releaseVersion();throw error;}
@@ -84,6 +84,13 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
       const result=await storage.readSupplement(selection.supplement,{signal:cancellation.signal});await check();
       const gallery=result.receipt.gallery,source=selection.sourceReceipt;
       if(gallery.sha256!==source.sha256||gallery.bytes!==source.bytes||gallery.count!==source.count)throw Error('补充资料与所选图库版本不符');
+      return {state:'available',...result};
+    });},
+    evidence(){return run(async()=>{
+      if(!selection||!storage)throw Error('请先选择已保存版本');
+      if(!selection.evidence)return {state:'not-preserved',receipt:null,canPrune:false};
+      const result=await storage.readEvidence(selection.evidence,{signal:cancellation.signal});await check();
+      if(result.receipt.gallerySha256!==selection.sourceReceipt.sha256||JSON.stringify(result.supplement)!==JSON.stringify(selection.supplement))throw Error('正文依据与所选图库版本不符');
       return {state:'available',...result};
     });},
     isClosed:()=>closed,close,

@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-gallery-archive-evidence.js",
     "qianmu-gallery-archive-supplement.js",
     "qianmu-chat-gallery-supplement.js",
     "qianmu-gallery-original-contract.js",
