@@ -47,7 +47,7 @@ function fixture({ cancel = false, choose = ['b'] } = {}) {
         loadLocalChunk: async () => ({ chooseStoryboardExportImages: async options => { events.push('choose'); await options.guard(); return cancel ? null : capture(options.readRecords()).select(choose); } }),
         storyboardPackageContext: () => Object.assign(() => ({ state, store, chatKey: 'same', epoch: context.storyboardAdmissionEpoch }), { release: () => events.push('release') }),
         storyboardState: () => state, ctx: () => ({ chat: [], getRequestHeaders: () => ({}) }), getChatKey: () => 'same',
-        storyboardCaptureSubjectEvidence: async () => ({ digest: 'subjects' }), storyboardHydratePipelineArchive: async () => {}, storyboardHydrateGallerySnapshots: async list => events.push(`hydrate-${list.length}`),
+        storyboardCaptureSubjectEvidence: async () => ({ digest: 'subjects' }), storyboardHydratePipelineArchive: async () => {},
         storyboardGalleryRecords: () => images, storyboardGalleryCollections: () => [], storyboardSnapshotForRecord: row => row.snapshot,
         storyboardPipelineForLog: () => null, storyboardPlansForPortableExport: async value => value,
         storyboardSafeUrl: url => url, blobToBase64: async () => png, confirmDialog: async () => true,
@@ -59,7 +59,7 @@ test('actual bundle entry exports only selected originals in unchanged v7 packet
     const f = fixture(), before = structuredClone(f.images); await f.context.storyboardExportPackage({ bundle: true });
     assert.equal(f.downloads.length, 1, JSON.stringify(f.notices)); assert.deepEqual(f.media, ['/b.png']); assert.deepEqual(f.images, before);
     assert.match(f.downloads[0].name, /bundle-part-1-of-2-fixture\.qmb$/); assert.ok(f.events.indexOf('choose') < f.events.indexOf('source'));
-    assert.ok(f.events.includes('hydrate-1')); const inspected = await inspectStoryboardPackageFile(f.downloads[0].blob);
+    const inspected = await inspectStoryboardPackageFile(f.downloads[0].blob);
     assert.equal(inspected.payload.version, 7); assert.deepEqual(inspected.payload.chat.images.map(row => row.id), ['b']); assert.deepEqual(inspected.payload.media.map(row => row.id), ['b']);
     assert.equal(inspected.payload.chat.images[0].prompt, before[1].prompt); assert.equal(f.context.storyboardExportPackage.busy, false);
 });
@@ -83,6 +83,26 @@ test('failed strong local recipe read aborts export before media and download, w
     await f.context.storyboardExportPackage({ bundle: true });
     assert.equal(f.downloads.length,0); assert.deepEqual(f.media,[]); assert.match(f.notices.at(-1)[0],/could not be verified/);
     assert.equal(f.context.storyboardExportPackage.busy,false);
+});
+
+test('selecting one image never reads an unselected recipe even when the gallery contains hundreds of references',async()=>{
+    const f=fixture(),readIds=[];
+    f.images.push(...Array.from({length:298},(_,i)=>({id:'other-'+i,createdAt:i+3,url:'/other-'+i+'.png',snapshotRef:'same␟other-'+i})));
+    for(const row of f.images){delete row.snapshot;row.snapshotRef||='same␟'+row.id;}
+    const before=JSON.stringify(f.images);
+    f.context.storyboardReadSnapshotForRecord=async row=>{readIds.push(row.id);assert.equal(row.id,'b','unselected originals must not be read or block this export');return {};};
+    f.context.storyboardSnapshotForRecord=()=>assert.fail('references must use the guarded reader');
+    await f.context.storyboardExportPackage({bundle:true});
+    assert.equal(f.downloads.length,1,JSON.stringify(f.notices));assert.deepEqual(readIds,['b']);assert.deepEqual(f.media,['/b.png']);
+    assert.equal(JSON.stringify(f.images),before);
+});
+
+test('complete configuration export reads each referenced recipe exactly once and does not prewarm local storage',async()=>{
+    const f=fixture(),readIds=[];
+    for(const row of f.images){delete row.snapshot;row.snapshotRef='same␟'+row.id;}
+    f.context.storyboardReadSnapshotForRecord=async row=>{readIds.push(row.id);return {};};
+    await f.context.storyboardExportPackage({originals:false});
+    assert.equal(f.downloads.length,1,JSON.stringify(f.notices));assert.deepEqual(readIds,['a','b']);
 });
 
 test('legacy base-reference bundle export also requires scoped reviewed content rather than an old memory cache',async()=>{

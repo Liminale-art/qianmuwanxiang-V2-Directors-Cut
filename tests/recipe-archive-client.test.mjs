@@ -105,16 +105,16 @@ test('old backend, HTML, broken JSON, oversized and invalid UTF8 response bodies
 });
 
 function entry(e,options={}){
-  const cache=new Map(),local=new Map();let writes=0,saves=0;
+  const local=new Map();let writes=0,saves=0;
   const globals={console:{warn(){}},Date,JSON,Map,Error,clone:structuredClone,sanitizeStoryboardSnapshot:structuredClone,preserveCapturedSnapshotArchives,
-    getChatKey:()=>e.context.chatId,storyboardSnapshotEpoch:e.epoch,storyboardSnapshotCache:cache,storyboardSnapshotReads:new Map(),storyboardGalleryRecords:()=>e.rows,
+    getChatKey:()=>e.context.chatId,storyboardSnapshotEpoch:e.epoch,storyboardGalleryRecords:()=>e.rows,
     storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,storyboardRecipeArchiveClient:async()=>e.client(options),toast:()=>{},
     saveMetadata:async()=>{saves++;await e.save();},blobStore:{blobStoreAvailable:()=>true,
       putStoryboardSnapshots:async rows=>{writes++;for(const row of rows)local.set(row.key,structuredClone(row));return {stored:rows.map(row=>row.key)};},
       getStoryboardSnapshots:async keys=>keys.map(key=>local.get(key)).filter(Boolean)}};
   const c=vm.createContext(globals);vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
-    'storyboardStoreSnapshotForRecord','storyboardArchiveGallerySnapshots','storyboardHydrateGallerySnapshots'].map(section).join('\n'),c);
-  return {c,cache,local,get writes(){return writes;},get saves(){return saves;}};
+    'storyboardStoreSnapshotForRecord','storyboardArchiveGallerySnapshots'].map(section).join('\n'),c);
+  return {c,local,get writes(){return writes;},get saves(){return saves;}};
 }
 
 test('actual automatic archive writes the durable ref into saved metadata and a fresh device bypasses wrong legacy caches',async t=>{
@@ -122,10 +122,11 @@ test('actual automatic archive writes the durable ref into saved metadata and a 
   assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.ok(e.rows[0].snapshotServerRef);assert.equal(e.rows[0].snapshot,undefined);
   const saved=JSON.parse((await fs.readFile(e.file,'utf8')).split('\n')[0]).chat_metadata.story_director_liminale.storyboardImages[0];
   assert.deepEqual(saved,e.rows[0]);assert.equal(a.saves,1);
-  const b=entry(e);b.cache.set(e.rows[0].snapshotRef,{prompt:'WRONG OTHER ACCOUNT'});b.c.blobStore.blobStoreAvailable=()=>false;
+  const b=entry(e);b.local.set(e.rows[0].snapshotRef,{snapshot:{prompt:'WRONG OTHER ACCOUNT'}});b.c.blobStore.blobStoreAvailable=()=>false;
+  b.c.blobStore.getStoryboardSnapshots=()=>assert.fail('server recipe must not read the device cache');
   assert.equal(b.c.storyboardSnapshotForRecord(e.rows[0]),null);
   assert.deepEqual(await b.c.storyboardReadSnapshotForRecord(e.rows[0]),recipe());assert.equal(b.writes,0);
-  assert.equal(await b.c.storyboardHydrateGallerySnapshots(e.rows,{migrate:false}),0);
+  assert.equal(b.saves,0);
 });
 
 test('actual explicit edit saves inline first and publishes a separate server recipe without changing the old file',async t=>{
@@ -221,7 +222,8 @@ test('actual late local writes after account/source changes cannot publish refs 
 
 test('actual server read failures cannot silently fall back to legacy cache, logs or current settings',async t=>{
   const e=await recipeClientFixture(t),a=entry(e);await a.c.storyboardArchiveGallerySnapshots();
-  const b=entry(e,{fetchImpl:async()=>new Response('offline',{status:503})});b.cache.set(e.rows[0].snapshotRef,recipe('wrong'));
+  const b=entry(e,{fetchImpl:async()=>new Response('offline',{status:503})});b.local.set(e.rows[0].snapshotRef,{snapshot:recipe('wrong')});
+  b.c.blobStore.getStoryboardSnapshots=()=>assert.fail('server failure must not borrow a local original');
   await assert.rejects(b.c.storyboardReadSnapshotForRecord(e.rows[0]));assert.equal(b.c.storyboardSnapshotForRecord(e.rows[0]),null);
 });
 

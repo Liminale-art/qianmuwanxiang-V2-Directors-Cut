@@ -125,7 +125,7 @@ test('actual portable export/import preserves the policy and imports old package
   const context=vm.createContext({...board,Blob,clone:structuredClone,storyboardState:()=>state,STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,
     storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?packageAssets:{resolveImageAccountNamespace:async()=> 'st-user:fixture'}},
     isPlainObject:v=>Boolean(v&&typeof v==='object'&&!Array.isArray(v)),confirmDialog:async()=>true,getChatKey:()=> 'chat-a',getChatStore:()=>store,
-    storyboardHydratePipelineArchive:noop,storyboardHydrateGallerySnapshots:noop,storyboardPlansForPortableExport:async x=>x,
+    storyboardHydratePipelineArchive:noop,storyboardPlansForPortableExport:async x=>x,
     storyboardGalleryRecords:()=>[],storyboardGalleryCollections:()=>[],storyboardUtilsModule:async()=>({}),
     saveSettings:noop,saveMetadata:noop,storyboardSchedulePlanArchive:noop,storyboardArchiveGallerySnapshots:noop,
     storyboardScheduleInlineRender:noop,renderModal:noop,toast:noop,fileStamp:()=> 'test',

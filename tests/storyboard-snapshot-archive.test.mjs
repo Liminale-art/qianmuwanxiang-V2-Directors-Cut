@@ -25,7 +25,7 @@ test('snapshot writes are transactional and reads stay bounded', () => {
 test('inline snapshots win during migration and are stripped only after durable storage', () => {
   const reader=source.slice(source.indexOf('function storyboardSnapshotForRecord'),source.indexOf('async function storyboardStoreSnapshotForRecord'));
   assert.match(reader, /record\?\.snapshot/);assert.doesNotMatch(reader,/storyboardSnapshotCache\.get/);assert.match(reader,/readCurrentGalleryLocalRecipe/);
-  const archive = source.slice(source.indexOf('async function storyboardArchiveGallerySnapshots'), source.indexOf('async function storyboardHydrateGallerySnapshots'));
+  const archive = source.slice(source.indexOf('async function storyboardArchiveGallerySnapshots'), source.indexOf('async function storyboardDeleteRecordSnapshots'));
   const writeAt=archive.indexOf('await preserveCapturedSnapshotArchives');
   assert.ok(writeAt >= 0 && writeAt < archive.indexOf('delete item.record.snapshot'));
   assert.match(archive, /const confirmed = captures\.filter\(item => references\.has\(item\.record\)\)/);
@@ -40,7 +40,14 @@ test('redraw, edit, attach and export hydrate exact snapshots on demand', () => 
   assert.match(source, /async function storyboardAttachProductionRecord[\s\S]*?await storyboardReadSnapshotForRecord/);
   assert.match(source, /async function storyboardRedrawRecord[\s\S]*?await storyboardReadSnapshotForRecord/);
   assert.match(source, /async function storyboardEditPrompt[\s\S]*?await storyboardReadSnapshotForRecord/);
-  assert.match(source, /async function storyboardExportPackage[\s\S]*?await storyboardHydrateGallerySnapshots/);
+  assert.match(source, /async function storyboardExportPackage[\s\S]*?await storyboardReadSnapshotForRecord/);
+});
+
+test('gallery view binding and export cannot prewarm recipes or retain an unused full-gallery memory cache', () => {
+  assert.doesNotMatch(source, /storyboardHydrateGallerySnapshots|storyboardSnapshotCache|storyboardSnapshotReads/);
+  const binding = source.slice(source.indexOf('function bindStoryboardTabEvents'), source.indexOf('\nfunction ', source.indexOf('function bindStoryboardTabEvents') + 1));
+  assert.ok(binding.includes('storyboardBindGalleryNarrative'));
+  assert.doesNotMatch(binding, /storyboardArchiveGallerySnapshots|getStoryboardSnapshots/);
 });
 
 test('gallery lifecycle archives, prunes, clears and invalidates snapshots safely', () => {

@@ -26,29 +26,29 @@ test('incomplete, sparse, reordered or unrelated snapshot references cannot disc
 });
 
 function fixture() {
-  const record={id:'image',chatKey:'chat',snapshotRef:base},rows=[record],cache=new Map([[base,{prompt:'old'}]]),writes=[];
-  const c=vm.createContext({preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,storyboardSnapshotCache:cache,
-    storyboardSnapshotReads:new Map(),storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:structuredClone,
+  const record={id:'image',chatKey:'chat',snapshotRef:base},rows=[record],writes=[];
+  const c=vm.createContext({preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,
+    storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:()=>assert.fail('no duplicate full-recipe memory cache'),
     console:{warn(){}},storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{},
     storyboardRecipeArchiveClient:async()=>({preserve:async()=>({reference:{id:'confirmed-test-reference'}}),read:async()=>({snapshot:{prompt:'edited'}}),guard:async()=>true,guardIdentity:async()=>true,close(){}}),
     ctx:()=>({chatMetadata:null}),loadLocalChunk:async()=>({readCurrentGalleryLocalRecipe:async()=>{throw Error('请核对旧配方');}}),
     blobStore:{blobStoreAvailable:()=>true,putStoryboardSnapshots:async(records,options)=>{
       assert.equal(options.preserveExisting,true);writes.push(structuredClone(records));return {stored:[revision]};
-    },getStoryboardSnapshots:async()=>[{key:base,snapshot:{prompt:'old'}},{key:revision,snapshot:{prompt:'edited'}}]}});
+    },getStoryboardSnapshots:()=>assert.fail('entry must not perform an unscoped batch read')}});
   vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
-    'storyboardStoreSnapshotForRecord','storyboardArchiveGallerySnapshots','storyboardHydrateGallerySnapshots'].map(section).join('\n'),c);
-  return {record,rows,cache,writes,c};
+    'storyboardStoreSnapshotForRecord','storyboardArchiveGallerySnapshots'].map(section).join('\n'),c);
+  return {record,rows,writes,c};
 }
 
-test('actual prompt edit and automatic archival use returned references without poisoning older cached recipes',async()=>{
+test('actual prompt edit and automatic archival retain exact durable recipes without a duplicate memory cache',async()=>{
   for(const automatic of [false,true]) {
     const e=fixture();e.record.snapshot={prompt:'edited'};
     const result=automatic?await e.c.storyboardArchiveGallerySnapshots():await e.c.storyboardStoreSnapshotForRecord(e.record,e.record.snapshot);
     assert.equal(result,automatic?1:true);assert.equal(e.record.snapshotRef,revision);
     if(!automatic){assert.equal(e.record.snapshot.prompt,'edited');await e.c.saveMetadata();assert.equal(await e.c.storyboardArchiveGallerySnapshots(),1);}
     assert.equal(e.record.snapshot,undefined);
-    assert.equal(e.cache.get(base).prompt,'old');assert.equal(e.cache.get(revision).prompt,'edited');
-    e.cache.clear();assert.equal((await e.c.storyboardReadSnapshotForRecord(e.record)).prompt,'edited');
+    assert.ok(e.writes.length);assert.ok(e.writes.every(rows=>rows[0].snapshot.prompt==='edited'));
+    assert.equal((await e.c.storyboardReadSnapshotForRecord(e.record)).prompt,'edited');
     await assert.rejects(e.c.storyboardReadSnapshotForRecord({id:'image',chatKey:'chat',snapshotRef:base}),/核对旧配方/);
   }
 });
@@ -61,7 +61,6 @@ test('failed or incomplete explicit archive writes retain complete edited inline
     };
     assert.equal(await e.c.storyboardStoreSnapshotForRecord(e.record,{prompt:'edited',payload:{seed:0}}),false);
     assert.deepEqual(e.record.snapshot,{prompt:'edited',payload:{seed:0}});assert.equal(e.record.snapshotRef,base);
-    assert.equal(e.cache.size,1);assert.equal(e.cache.get(base).prompt,'old');
   }
 });
 
@@ -76,22 +75,26 @@ test('late explicit writes cannot strip or replace newer edits, record identitie
       return {stored:[revision]};
     };
     assert.equal(await e.c.storyboardStoreSnapshotForRecord(e.record,{prompt:'edited'}),false);
-    assert.ok(e.record.snapshot);assert.equal(e.record.snapshotRef,base);assert.equal(e.cache.size,1);
+    assert.ok(e.record.snapshot);assert.equal(e.record.snapshotRef,base);
     if(mode==='mutate'||mode==='replace')assert.equal(e.record.snapshot.prompt,'newer');
   }
 });
 
-test('batch hydration continues to resolve explicit revision and legacy references separately',async()=>{
-  const e=fixture();e.cache.clear();e.record.snapshotRef=revision;e.rows.push({id:'old-copy',chatKey:'chat',snapshotRef:base});
-  assert.equal(await e.c.storyboardHydrateGallerySnapshots(e.rows,{migrate:false}),2);
-  assert.equal(e.cache.get(revision).prompt,'edited');assert.equal(e.cache.get(base).prompt,'old');
-  assert.equal(e.c.storyboardSnapshotForRecord(e.record),null);assert.equal(e.c.storyboardSnapshotForRecord(e.rows[1]),null);
+test('large gallery metadata iteration does not read recipes; one explicit action reads only its own reference',async()=>{
+  const e=fixture(),reads=[];e.record.snapshotRef=revision;
+  e.rows.push(...Array.from({length:5000},(_,i)=>({id:'old-'+i,chatKey:'chat',snapshotRef:'chat␟old-'+i})));
+  const before=JSON.stringify(e.rows);
+  e.c.loadLocalChunk=async()=>({readCurrentGalleryLocalRecipe:async({record})=>{reads.push(record.snapshotRef);return {prompt:'chosen'};}});
+  for(const row of e.rows)assert.equal(e.c.storyboardSnapshotForRecord(row),null);
+  assert.deepEqual(reads,[]);assert.deepEqual(e.writes,[]);
+  assert.equal((await e.c.storyboardReadSnapshotForRecord(e.record)).prompt,'chosen');
+  assert.deepEqual(reads,[revision]);assert.equal(JSON.stringify(e.rows),before);
 });
 
 test('unrecorded recipes never invent a base-key reference or borrow an unscoped cache',async()=>{
   const e=fixture();delete e.record.snapshotRef;const before=structuredClone(e.record);
   e.c.blobStore.getStoryboardSnapshots=()=>assert.fail('unrecorded source must not read cache');
-  assert.equal(await e.c.storyboardReadSnapshotForRecord(e.record),null);assert.deepEqual(e.record,before);assert.equal(e.cache.get(base).prompt,'old');
+  assert.equal(await e.c.storyboardReadSnapshotForRecord(e.record),null);assert.deepEqual(e.record,before);
 });
 
 test('chat changes during lazy recipe loader import cannot switch the borrowed source',async()=>{
