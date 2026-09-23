@@ -1,0 +1,508 @@
+[
+  {
+    "input": {
+      "message": {},
+      "chatKey": "fixture",
+      "floor": 0,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "ecafc06d",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "811c9dc5",
+      "revisionId": "30308a51",
+      "lastKnownFloor": 0,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "海岸\n故事",
+        "name": "  CHAR  "
+      },
+      "chatKey": "fixture",
+      "floor": 1,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "8f49e6ee",
+      "role": "assistant",
+      "name": "CHAR",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "3d1f4ffc",
+      "revisionId": "3a501514",
+      "lastKnownFloor": 1,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "😀\n回忆",
+        "name": "USER",
+        "is_user": true
+      },
+      "chatKey": "fixture",
+      "floor": 2,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "b10453c7",
+      "role": "user",
+      "name": "USER",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "5129888a",
+      "revisionId": "7c721c98",
+      "lastKnownFloor": 2,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "system",
+        "is_system": true
+      },
+      "chatKey": "fixture",
+      "floor": 3,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "6f0db45e",
+      "role": "system",
+      "name": "",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "491e0a9c",
+      "revisionId": "7917f59b",
+      "lastKnownFloor": 3,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "swipes": [
+          "first",
+          "revision"
+        ],
+        "swipe_id": 1
+      },
+      "chatKey": "fixture",
+      "floor": 4,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "77e7220f",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 1,
+      "revisionHash": "b7960e18",
+      "revisionId": "2559b9fe",
+      "lastKnownFloor": 4,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "swipes": [
+          "first",
+          "revision"
+        ],
+        "swipe_id": 1,
+        "send_date": "date",
+        "extra": {
+          "gen_id": "gen"
+        }
+      },
+      "chatKey": "fixture",
+      "floor": 5,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "528fc32d",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "date",
+      "baseGenerationId": "gen",
+      "swipeId": 1,
+      "revisionHash": "b7960e18",
+      "revisionId": "93887aab",
+      "lastKnownFloor": 5,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "name": " C ",
+        "swipe_id": 1,
+        "swipe_info": [
+          {
+            "send_date": "base",
+            "extra": {
+              "gen_id": "base-gen"
+            }
+          },
+          {
+            "send_date": "active",
+            "extra": {
+              "gen_id": "active-gen"
+            }
+          }
+        ]
+      },
+      "chatKey": "fixture",
+      "floor": 6,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "2c3b994f",
+      "role": "assistant",
+      "name": "C",
+      "baseSendDate": "base",
+      "baseGenerationId": "base-gen",
+      "swipeId": 1,
+      "revisionHash": "b7960e18",
+      "revisionId": "d161c0b9",
+      "lastKnownFloor": 6,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "gen_started": "generation-start"
+      },
+      "chatKey": "fixture",
+      "floor": 7,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "b2e5a274",
+      "role": "assistant",
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "baseSendDate": "generation-start",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "b7960e18",
+      "revisionId": "d82b1ad1",
+      "lastKnownFloor": 7,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "swipe_id": -3
+      },
+      "chatKey": "fixture",
+      "floor": 8,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "d364fd8d",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "b7960e18",
+      "revisionId": "ea1b7a7c",
+      "lastKnownFloor": 8,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "swipe_id": 1.6,
+        "swipe_info": [
+          {
+            "send_date": "zero"
+          },
+          null,
+          {
+            "send_date": "second"
+          }
+        ]
+      },
+      "chatKey": "fixture",
+      "floor": 9,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "f1fdc641",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "zero",
+      "baseGenerationId": "",
+      "swipeId": 2,
+      "revisionHash": "b7960e18",
+      "revisionId": "f157a38e",
+      "lastKnownFloor": 9,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "swipe_id": "1",
+        "swipe_info": [
+          {
+            "extra": {
+              "gen_id": 0
+            }
+          },
+          {
+            "extra": {
+              "gen_id": 7
+            }
+          }
+        ]
+      },
+      "chatKey": "fixture",
+      "floor": 10,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "3e7fc70f",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "",
+      "baseGenerationId": "0",
+      "swipeId": 1,
+      "revisionHash": "b7960e18",
+      "revisionId": "ea39196e",
+      "lastKnownFloor": 10,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "swipe_id": "bad"
+      },
+      "chatKey": "fixture",
+      "floor": 11,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "d364fd8d",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "b7960e18",
+      "revisionId": "ea1b7a7c",
+      "lastKnownFloor": 11,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "send_date": "2026-01-01T00:00:00.000Z",
+        "swipe_info": [
+          {}
+        ]
+      },
+      "chatKey": "fixture",
+      "floor": 12,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "25775369",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "2026-01-01T00:00:00.000Z",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "b7960e18",
+      "revisionId": "a0e91cb3",
+      "lastKnownFloor": 12,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "revision",
+        "swipe_id": 2,
+        "swipe_info": [
+          [
+            1
+          ],
+          {
+            "send_date": "unused"
+          }
+        ]
+      },
+      "chatKey": "fixture",
+      "floor": 13,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "d364fd8d",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 2,
+      "revisionHash": "b7960e18",
+      "revisionId": "f4af4f5e",
+      "lastKnownFloor": 13,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "",
+        "name": "A"
+      },
+      "chatKey": "fixture",
+      "floor": 14,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "5a3e9134",
+      "role": "assistant",
+      "name": "A",
+      "baseSendDate": "",
+      "baseGenerationId": "",
+      "swipeId": 0,
+      "revisionHash": "811c9dc5",
+      "revisionId": "e2f09a72",
+      "lastKnownFloor": 14,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": " ",
+        "swipes": [
+          null
+        ],
+        "extra": {
+          "gen_id": false
+        }
+      },
+      "chatKey": "fixture",
+      "floor": 15,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "964dd22e",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "",
+      "baseGenerationId": "false",
+      "swipeId": 0,
+      "revisionHash": "250c8f7f",
+      "revisionId": "9f4ba5c7",
+      "lastKnownFloor": 15,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  },
+  {
+    "input": {
+      "message": {
+        "mes": "edited",
+        "swipe_id": 100000000000000000,
+        "send_date": "date"
+      },
+      "chatKey": "fixture",
+      "floor": 16,
+      "now": 1
+    },
+    "expected": {
+      "version": 1,
+      "chatKey": "fixture",
+      "messageKey": "22de6c87",
+      "role": "assistant",
+      "name": "",
+      "baseSendDate": "date",
+      "baseGenerationId": "",
+      "swipeId": 9007199254740991,
+      "revisionHash": "6df599e8",
+      "revisionId": "80416a06",
+      "lastKnownFloor": 16,
+      "createdAt": 1,
+      "updatedAt": 1
+    }
+  }
+]

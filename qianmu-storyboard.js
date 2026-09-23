@@ -5,12 +5,12 @@ import {retainStoryboardArtDirection} from './qianmu-art-directions.js';
 export {STORYBOARD_ART_DIRECTIONS,retainStoryboardArtDirection,storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.312';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.312';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.313';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.313';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.312';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.312';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.312';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.313';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.313';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.313';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -31,8 +31,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.312';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.312';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.313';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.313';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -2310,14 +2310,9 @@ export function normalizeStoryboardParagraphAnchor(value) { const anchor = obj(v
 function messageRole(message) { return message?.is_system ? 'system' : message?.is_user ? 'user' : 'assistant'; }
 function timestamp(value) { return value instanceof Date ? value.toISOString() : str(value, 160); }
 
-/**
- * Build a non-invasive identity for a SillyTavern message. It deliberately does
- * not write an id into chat[].extra: the first swipe's timestamp/generation id
- * identifies the message family, while the active swipe + text hash identifies
- * one revision inside that family.
- */
-export function createStoryboardMessageReference(input = {}) {
-  const message = obj(input.message) ? input.message : input;
+// Shared pre-hash inputs, not an identity or ownership proof. Keeping this
+// normalization shared prevents read-only gallery reuse from missing swipe fields.
+export function storyboardMessageIdentityInputs(message = {}) {
   const firstSwipeInfo = Array.isArray(message.swipe_info) && obj(message.swipe_info[0]) ? message.swipe_info[0] : {};
   const activeSwipe = int(message.swipe_id, 0, Number.MAX_SAFE_INTEGER, 0);
   const activeSwipeInfo = Array.isArray(message.swipe_info) && obj(message.swipe_info[activeSwipe]) ? message.swipe_info[activeSwipe] : {};
@@ -2327,7 +2322,19 @@ export function createStoryboardMessageReference(input = {}) {
   const activeSendDate = timestamp(activeSwipeInfo.send_date ?? message.send_date);
   const activeGenerationId = str(activeSwipeInfo.extra?.gen_id ?? message.extra?.gen_id, 120);
   const baseText = Array.isArray(message.swipes) && message.swipes.length ? String(message.swipes[0] || '') : String(message.mes || '');
-  const revisionHash = hash(String(message.mes || ''));
+  return {role,name,baseSendDate,baseGenerationId,activeSwipe,activeSendDate,activeGenerationId,baseText,revisionText:String(message.mes||'')};
+}
+
+/**
+ * Build a non-invasive identity for a SillyTavern message. It deliberately does
+ * not write an id into chat[].extra: the first swipe's timestamp/generation id
+ * identifies the message family, while the active swipe + text hash identifies
+ * one revision inside that family.
+ */
+export function createStoryboardMessageReference(input = {}) {
+  const message = obj(input.message) ? input.message : input;
+  const {role,name,baseSendDate,baseGenerationId,activeSwipe,activeSendDate,activeGenerationId,baseText,revisionText} = storyboardMessageIdentityInputs(message);
+  const revisionHash = hash(revisionText);
   const fallbackIdentity = !baseSendDate && !baseGenerationId ? hash(baseText) : '';
   const messageKey = hash([role, name, baseSendDate, baseGenerationId, fallbackIdentity].join('\u241f'));
   const revisionId = hash([messageKey, activeSwipe, activeSendDate, activeGenerationId, revisionHash].join('\u241f'));

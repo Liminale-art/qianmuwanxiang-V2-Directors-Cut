@@ -1,5 +1,6 @@
-import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.312';
+import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.313';
 import { hashText } from './qianmu-storyboard-utils.js';
+import {captureGalleryNarrativeInputs,sameGalleryNarrativeInputs} from './qianmu-gallery-narrative-inputs.js';
 
 const text = value => String(value ?? '');
 const anchorText = value => text(value).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -13,7 +14,7 @@ export const GALLERY_UNPLACED = 'unplaced';
  * No Blob/snapshot reads, source repairs, fuzzy matches or floor-number fallback.
  * Build message identities once; duplicate evidence is intentionally unplaced.
  */
-export function buildGalleryNarrative({ records = [], messages = [], chatKey = '', paragraphs }) {
+export function buildGalleryNarrative({ records = [], messages = [], chatKey = '', paragraphs }, {unreusable=()=>{}} = {}) {
     const exact = new Map(), legacy = new Map(), floors = new Map(), sources = new Map(), unplaced = new Set();
     const ids = new Map();
     for (const record of records) if (record?.id) add(ids, text(record.id), record);
@@ -49,9 +50,13 @@ export function buildGalleryNarrative({ records = [], messages = [], chatKey = '
             // Use the same non-executing parser as manual source-link review. Oversized
             // or unsupported text remains available at floor level, never truncated into a match.
             if (match.message.mes.length <= 2 * 1048576) {
-                try { rows = paragraphs?.(match.message.mes) || []; } catch (_) { /* no guessed paragraph */ }
+                try {
+                    const parsedRows = paragraphs?.(match.message.mes);
+                    rows = parsedRows || [];
+                    if (typeof paragraphs==='function' && !Array.isArray(parsedRows)) unreusable();
+                } catch (_) { unreusable(); /* no guessed paragraph */ }
             }
-            if (!Array.isArray(rows) || rows.length > 240 || rows.some(row => typeof row !== 'string')) rows = [];
+            if (!Array.isArray(rows) || rows.length > 240 || rows.some(row => typeof row !== 'string')) { rows = []; unreusable(); }
             parsed.set(key, { rows, messageHash: createStoryboardParagraphAnchor({ messageText: match.message.mes }).messageHash,
                 anchors: rows.map(paragraphText => createStoryboardParagraphAnchor({ paragraphText })) });
             node.preview = rows[0]?.slice(0, 160) || '正文段落暂不可定位';
@@ -78,11 +83,12 @@ export function buildGalleryNarrative({ records = [], messages = [], chatKey = '
 /** In-memory navigation only. A changed chat/account owner resets selection;
  * a changed reply keeps an empty, explicit stale selection until the user clears it.
  */
-export function createGalleryNarrativeSession() {
-    let owner, chatKey, epoch, model, plans = [], floorKey = '', paragraphKey = '', query = '', page = 0, open = false;
+export function createGalleryNarrativeSession({reuseUnchanged=false} = {}) {
+    let owner, chatKey, epoch, model, remembered, plans = [], floorKey = '', paragraphKey = '', query = '', page = 0, open = false;
     function currentFloor() { return model?.floors.find(row => row.key === floorKey); }
     function selection() {
         if (!floorKey) return null;
+        if (!model) return { ids:new Set(), label:'原位置已变化，请重新选择', stale:true };
         if (floorKey === GALLERY_UNPLACED) return { ids: model.unplaced, label: '未定位画面' };
         const floor = currentFloor();
         const paragraph = paragraphKey && floor?.paragraphs.get(paragraphKey);
@@ -90,16 +96,24 @@ export function createGalleryNarrativeSession() {
         return { ids: paragraph ? paragraph.ids : floor.ids, label: `第 ${floor.floor + 1} 层${paragraph ? ` · 第 ${paragraph.index + 1} 段` : ' · 全部静帧'}` };
     }
     return Object.freeze({
-        reset() { owner = undefined; chatKey = undefined; epoch = undefined; model = undefined; plans = []; floorKey = ''; paragraphKey = ''; query = ''; page = 0; open = false; },
+        reset() { owner = undefined; chatKey = undefined; epoch = undefined; model = undefined; remembered = undefined; plans = []; floorKey = ''; paragraphKey = ''; query = ''; page = 0; open = false; },
         update(input) {
             if (input.owner !== owner || input.chatKey !== chatKey || input.epoch !== epoch) {
                 owner = input.owner; chatKey = input.chatKey; epoch = input.epoch;
+                remembered = undefined;
                 floorKey = ''; paragraphKey = ''; query = ''; page = 0; open = false;
             }
-            plans = Array.isArray(input.plans) ? input.plans : []; model = buildGalleryNarrative(input); return this;
+            plans = Array.isArray(input.plans) ? input.plans : [];
+            const captured = reuseUnchanged ? captureGalleryNarrativeInputs(input) : null;
+            if (model && sameGalleryNarrativeInputs(remembered,captured)) return this;
+            model = undefined; remembered = undefined;
+            let reusable = true;
+            model = buildGalleryNarrative(input,{unreusable:()=>{reusable=false;}});
+            if (reusable && captured && sameGalleryNarrativeInputs(captured,captureGalleryNarrativeInputs(input))) remembered=captured;
+            return this;
         },
         get owner() { return owner; }, get chatKey() { return chatKey; }, get epoch() { return epoch; },
-        get selected() { return selection(); }, get sourceCount() { return model?.floors.length || 0; },
+        get selected() { const value=selection(); return value?{...value,ids:new Set(value.ids)}:null; }, get sourceCount() { return model?.floors.length || 0; },
         filter(records) { const selected = selection(); return selected ? records.filter(row => selected.ids.has(text(row.id))) : records; },
         orderGroups(groups) {
             if (!floorKey || floorKey === GALLERY_UNPLACED || selection()?.stale) return groups;
@@ -108,12 +122,13 @@ export function createGalleryNarrativeSession() {
             const paragraph = group => model.sources.get(text(group.variants[0]?.id))?.paragraphIndex ?? Number.MAX_SAFE_INTEGER;
             return [...groups].sort((a, b) => paragraph(a) - paragraph(b) || rank.get(a.variants[0]) - rank.get(b.variants[0]));
         },
-        sourceFor(record) { return model?.sources.get(text(record?.id)); },
+        sourceFor(record) { const value=model?.sources.get(text(record?.id)); return value?{...value}:undefined; },
         selectRecord(record) {
             const source = this.sourceFor(record); if (!source) return false;
             floorKey = source.floorKey; paragraphKey = source.paragraphKey; query = ''; page = 0; open = false; return true;
         },
         choose(key) {
+            if (!model) return false;
             if (key === GALLERY_UNPLACED && model.unplaced.size) { floorKey = key; paragraphKey = ''; }
             else if (floorKey && currentFloor()?.paragraphs.has(key)) paragraphKey = key;
             else if (model.floors.some(row => row.key === key)) { floorKey = key; paragraphKey = ''; }
@@ -132,9 +147,10 @@ export function createGalleryNarrativeSession() {
             })) : (model?.floors || []).map(row => ({ ...row, label: `第 ${row.floor + 1} 层 · ${row.name || '正文'}`, count: row.ids.size }));
             const wanted = query.trim().toLocaleLowerCase(), results = rows.filter(row => !wanted || `${row.label} ${row.preview}`.toLocaleLowerCase().includes(wanted));
             const pages = Math.max(1, Math.ceil(results.length / GALLERY_NARRATIVE_PAGE_SIZE)); page = Math.min(Math.max(0, page), pages - 1);
-            return { open, query, page, pages, total: results.length, floorKey, paragraphKey, inFloor: Boolean(floor), selected,
+            const copyRow = row => ({...row,ids:new Set(row.ids),...(row.paragraphs?{paragraphs:new Map([...row.paragraphs].map(([key,value])=>[key,{...value,ids:new Set(value.ids)}]))}:{})});
+            return { open, query, page, pages, total: results.length, floorKey, paragraphKey, inFloor: Boolean(floor), selected:selected?{...selected,ids:new Set(selected.ids)}:null,
                 unplaced: model?.unplaced.size || 0, partial: floor ? floor.ids.size - new Set([...floor.paragraphs.values()].flatMap(row => [...row.ids])).size : 0,
-                rows: results.slice(page * GALLERY_NARRATIVE_PAGE_SIZE, (page + 1) * GALLERY_NARRATIVE_PAGE_SIZE) };
+                rows: results.slice(page * GALLERY_NARRATIVE_PAGE_SIZE, (page + 1) * GALLERY_NARRATIVE_PAGE_SIZE).map(copyRow) };
         },
     });
 }
