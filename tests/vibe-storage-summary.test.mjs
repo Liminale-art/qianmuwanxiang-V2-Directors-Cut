@@ -48,6 +48,13 @@ test('actual global inventory includes Vibe exactly once while preserving browse
   assert.equal(data.categories.find(row=>row.category==='vibes').bytes,420);assert.equal(data.categories.find(row=>row.category==='cache').bytes,40);assert.equal(data.categories.find(row=>row.category==='logs').bytes,380);
   assert.equal(data.vibeStorage.records.reviewCount,32);
 });
+test('actual global inventory keeps native retired originals in Vibe totals without claiming freed browser space',async()=>{
+  const value={...summary(),version:3,persistence:'st-account-file',retained:{count:1,bytes:100},bytes:630};
+  const context=globalContext(value);vm.runInContext(section('collectStorageInventory'),context);const data=await context.collectStorageInventory();
+  assert.equal(data.trackedBytes,1250);assert.equal(data.categories.find(row=>row.category==='vibes').bytes,520);assert.equal(data.vibeStorage.retained.bytes,100);assert.equal(data.origin.quota,10000);
+  for(const retained of [{count:0,bytes:1},{count:1,bytes:0},{count:8193,bytes:1},{count:1,bytes:67*1048576}])assert.throws(()=>validateVibeStorageSummary({...value,retained},namespace));
+});
+
 test('actual global card reports unmeasured Vibe content without losing its management entry or implying zero',async()=>{
   const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();

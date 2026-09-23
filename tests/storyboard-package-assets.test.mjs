@@ -92,7 +92,7 @@ test('count and metadata limits stop oversized packets without silently clipping
 
 test('packet worker uses a separate asset connection and has no fee store or service dependencies',async()=>{
   const worker=await readFile(new URL('../qianmu-storyboard-package-worker.js',import.meta.url),'utf8'),shared=await readFile(new URL('../qianmu-vibe-assets-worker.js',import.meta.url),'utf8');
-  assert.match(worker,/createVibeAssetStore/);assert.match(worker,/store\.close\(\);self\.close\(\)/);assert.doesNotMatch(worker,/encoding-store|fetch\(|putFile|remove\(/);assert.doesNotMatch(shared,/package-vibes-export/);
+  assert.match(worker,/createVibeAssetStore/);assert.match(worker,/finally\{store\?\.close\(\);guards\.clear\(\);self\.close\(\)/);assert.doesNotMatch(worker,/encoding-store|fetch\(|putFile|remove\(/);assert.doesNotMatch(shared,/package-vibes-export/);
 });
 
 test('dedicated runtime guards both ends, frees its worker and never accepts an incomplete reply',async()=>{

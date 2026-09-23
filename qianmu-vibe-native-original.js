@@ -30,6 +30,7 @@ function headText(value,namespace){
   }
   visit(value);validateVibeAssetHead(value,namespace);const text=JSON.stringify(value);if(bytes(text)>limits.head)fail('Vibe 原目录过大，未截断');return text;
 }
+export {headText as vibeNativeHeadText};
 function readHead(text,namespace){
   if(typeof text!=='string'||bytes(text)>limits.head)fail('Vibe 原目录不完整');
   const value=parseBoundedJson(text,{maxBytes:limits.head,maxDepth:32,maxNodes:50000,label:'Vibe 原目录'});

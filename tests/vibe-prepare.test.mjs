@@ -5,6 +5,7 @@ import {prepareStoryboardVibes,confirmVibeEncoding} from '../qianmu-vibe-prepare
 import {encodeNovelVibe} from '../qianmu-vibe-encoding.js';
 import {generateDirectImage,isDirectImageTransportError} from '../qianmu-image-direct.js';
 import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
+import {createVibeEncodingRetention} from '../qianmu-vibe-encoding-retention.js';
 import {parseNovelVibeFile,vibeDigest} from '../qianmu-vibe-file.js';
 import {resolveStoryboardVibeRecipe,sanitizeStoryboardSnapshot,storyboardAutomaticJobEnabled} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -18,9 +19,9 @@ function setup(){
   const store={load:async(ns,id)=>files.get(`${ns}:${id}`),putFile:async(ns,text)=>{
     const assets=await parseNovelVibeFile(text);for(const asset of assets)files.set(`${ns}:${asset.assetId}`,asset);return assets;
   }};
-  const encodings={get:async(ns,key)=>structuredClone(receipts.get(`${ns}:${key}`)||null),reserve:async(ns,key,identity,attemptId,{retryAttemptId})=>{
+  const encodings={get:async(ns,key)=>structuredClone(receipts.get(`${ns}:${key}`)||null),reserve:async(ns,key,identity,attemptId,{retryAttemptId,sourceAssetRef})=>{
     const id=`${ns}:${key}`,old=receipts.get(id);if(old&&(old.status!=='rejected'||old.attemptId!==retryAttemptId))return {owned:false,receipt:structuredClone(old)};
-    const receipt={status:'reserved',identity,attemptId,cacheKey:key};receipts.set(id,receipt);return {owned:true,receipt};
+    const receipt={status:'reserved',identity,attemptId,cacheKey:key,sourceAssetRef};receipts.set(id,receipt);return {owned:true,receipt};
   },transition:async(ns,key,attemptId,status,{assetRef})=>{
     const receipt=receipts.get(`${ns}:${key}`);assert.equal(receipt.attemptId,attemptId);assert.ok(['reserved','submitting'].includes(receipt.status));
     Object.assign(receipt,{status,...(assetRef?{assetRef}:{})});return structuredClone(receipt);
@@ -35,8 +36,46 @@ function setup(){
       return new Response('opaque-binary-test',{status:201,headers:{'content-type':'application/binary'}});
     }}),
   };
-  return {options,files,receipts,events,saved,operations,store,posts:()=>posts,confirmations:()=>confirmations,setLive:value=>live=value};
+  return {options,files,receipts,events,saved,operations,store,encodings,posts:()=>posts,confirmations:()=>confirmations,setLive:value=>live=value};
 }
+
+function retainedSetup(){
+  const e=setup();let closes=0;
+  e.options.prepareRetention=options=>createVibeEncodingRetention({...options,
+    readSource:selection=>e.options.call('encoding-original',selection),
+    createAssets:()=>({...e.store,close(){closes++;}}),createReceipts:()=>({...e.encodings,close(){closes++;}})});
+  return {...e,closes:()=>closes};
+}
+
+test('native-route paid return sink captures before POST and retains exact result after account guard rejects all remote calls',async()=>{
+  const e=retainedSetup(),encode=e.options.encode,call=e.options.call;let switched=false;
+  e.options.call=async(type,args)=>{assert.equal(switched,false,'no worker/native request may follow account switch');return call(type,args);};
+  e.options.encode=async(...args)=>{assert.ok(e.events.includes('encoding-original'));const result=await encode(...args);switched=true;e.setLive(false);return result;};
+  await assert.rejects(prepareStoryboardVibes(payload(),e.options),/context changed/);
+  const receipt=[...e.receipts.values()][0];assert.equal(receipt.status,'ready');assert.equal(receipt.assetRef.namespace,namespace);
+  assert.equal(e.files.get(`${namespace}:${receipt.assetRef.id}`).summary.variants.length,1);assert.equal(e.saved.length,1);assert.equal(e.posts(),1);assert.equal(e.closes(),2);
+});
+
+test('paid return sink normal completion publishes the same immutable recipe and reuses encoding without another charge',async()=>{
+  const e=retainedSetup(),first=await prepareStoryboardVibes(payload(),e.options),second=await prepareStoryboardVibes(payload(),e.options);
+  assert.deepEqual(first,second);assert.equal(e.posts(),1);assert.equal(e.closes(),2);assert.equal(e.saved.at(-1).items[0].assetRef.id,[...e.receipts.values()][0].assetRef.id);
+});
+
+test('unavailable return sink stops before charging, and changed receipt cannot be settled by the old response',async()=>{
+  const e=retainedSetup();e.options.prepareRetention=async()=>{throw Error('retention unavailable');};
+  await assert.rejects(prepareStoryboardVibes(payload(),e.options),/retention unavailable/);assert.equal(e.posts(),0);assert.equal([...e.receipts.values()][0].status,'rejected');
+  const f=retainedSetup(),encode=f.options.encode;f.options.encode=async(...args)=>{const value=await encode(...args);[...f.receipts.values()][0].attemptId='replacement-attempt';return value;};
+  await assert.rejects(prepareStoryboardVibes(payload(),f.options),{encodingState:'unknown'});assert.equal(f.files.size,1);assert.equal(f.posts(),1);assert.equal(f.closes(),2);
+});
+
+test('return sink rejects mismatched complete original and identity before charging without trimming source variants',async()=>{
+  for(const mode of ['source','receipt']){
+    const e=retainedSetup(),call=e.options.call;
+    e.options.call=async(type,args)=>{if(type==='encoding-original'&&mode==='source')return '{}';const result=await call(type,args);
+      if(type==='encoding-reserve'&&mode==='receipt')[...e.receipts.values()][0].sourceAssetRef.id='f'.repeat(64);return result;};
+    await assert.rejects(prepareStoryboardVibes(payload(),e.options));assert.equal(e.posts(),0);assert.equal(e.closes(),2);
+  }
+});
 
 test('actual coordinator freezes sources, explicitly confirms, persists receipt, encodes once and checkpoints the exact new asset',async()=>{
   const e=setup(),request=payload(),original=structuredClone(request),result=await prepareStoryboardVibes(request,e.options);
@@ -131,13 +170,14 @@ test('durable ownership lost to another tab cannot submit; concurrent ready resu
   }
 });
 test('actual index preparation checkpoints into the saved log, retains source identity guards and never marks image admission submitted',async()=>{
-  const e=setup(),job={source:'novel',modelIdentity:model,profile:{},connection,target:'gallery',payload:payload(),imageAdmission:{namespace}},log={snapshot:structuredClone(job)};
+  const e=retainedSetup(),job={source:'novel',modelIdentity:model,profile:{},connection,target:'gallery',payload:payload(),imageAdmission:{namespace}},log={snapshot:structuredClone(job)};
   const context=vm.createContext({storyboardAutomaticJobEnabled,resolveStoryboardVibeRecipe,resolveStoryboardJobModelIdentity:()=>model,storyboardAdmissionEpoch:1,storyboardState:()=>({enabled:true}),
     getStoryboardCapabilities:()=>({supportsVibe:true}),storyboardReadImageReference:e.options.readImage,clone:structuredClone,ctx:()=>({}),toast(){},saveSettings(){},
-    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:key==='vibeAssets'?{callVibeAsset:e.options.call}:
+    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:key==='vibeAssets'?{callVibeAsset:e.options.call,prepareVibeEncodingRetention:e.options.prepareRetention}:
       {confirmVibeEncoding:e.options.confirm,prepareStoryboardVibes:(payload,options)=>prepareStoryboardVibes(payload,{...options,encode:e.options.encode})}}});
   vm.runInContext(section('storyboardPrepareGatewayAssets'),context);
   const result=await context.storyboardPrepareGatewayAssets(job,{apiKey:'test-secret',log});assert.equal(result.vibes[0].kind,'novelai-vibe-encoding');
+  assert.equal(e.closes(),2);assert.ok(e.events.includes('encoding-original'));
   assert.deepEqual(job.payload.vibeRecipe,log.snapshot.payload.vibeRecipe);assert.equal(job.submissionState,undefined);assert.deepEqual(job.imageAdmission,{namespace});
   const snapshot=sanitizeStoryboardSnapshot(log.snapshot);assert.deepEqual(snapshot.payload.vibeRecipe,job.payload.vibeRecipe);assert.equal(JSON.stringify(snapshot).includes('test-secret'),false);
 });

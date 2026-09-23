@@ -1,13 +1,20 @@
 import {parseNovelVibeFile,vibeFileError,vibeFilePreview} from './qianmu-vibe-file.js';
 import {summarizeVibeAssetMetadata} from './qianmu-vibe-storage-accounting.js';
 import {VIBE_ASSET_LIMITS,vibeAssetNamespace as namespace,vibeAssetKey as key,validateVibeAssetHead as checkHead} from './qianmu-vibe-asset-contract.js';
+import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {createNativeVibeAssetStore} from './qianmu-vibe-native-store.js';
 export {VIBE_ASSET_LIMITS} from './qianmu-vibe-asset-contract.js';
 
 const fail=(code,message)=>{throw vibeFileError(code,message);};
 
 // Immutable imported-file assets; settings hold only IDs. Open/list never deserialize image/encoding bodies.
 // No automatic eviction: a library deletion must not invalidate an existing shot's frozen source.
-export function createVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-vibe-assets',timeoutMs=8000,now=Date.now}={}){
+export function createVibeAssetStore(options={}){
+  const {native,...local}=options,legacy=createLocalVibeAssetStore(local);
+  if(native===false||native===undefined&&(Object.hasOwn(options,'indexedDB')||Object.hasOwn(options,'dbName')||!isStAccountStorageConfigured()))return legacy;
+  return createNativeVibeAssetStore({legacy,now:local.now,...(native&&typeof native==='object'?native:{})});
+}
+export function createLocalVibeAssetStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-vibe-assets',timeoutMs=8000,now=Date.now}={}){
   let database=null,opening=null,closed=false;const pending=new Set(),stores=['heads','documents','usage','previews'];
   const timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||8000));
   const storageError=()=>vibeFileError('storage','Vibe 储存暂不可用，请检查浏览器空间');

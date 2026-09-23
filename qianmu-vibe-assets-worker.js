@@ -1,4 +1,5 @@
 import {createVibeAssetStore} from './qianmu-vibe-asset-store.js';
+import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
 import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
 import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,vibeDigest,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
@@ -134,7 +135,7 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
     }
     return new Blob([await exportNovelVibeFile(docs,{bundle:bundle??ids.length!==1})],{type:'application/json'});
   }
-  if(!['original-preview','original','resolve','check','attach-encoding','library-info','export-reviewed'].includes(type))throw vibeFileError('operation','未知 Vibe 资产操作');
+  if(!['original-preview','original','encoding-original','resolve','check','attach-encoding','library-info','export-reviewed'].includes(type))throw vibeFileError('operation','未知 Vibe 资产操作');
   const asset=await store.load(namespace,id);if(!asset)throw vibeFileError('missing','Vibe 原资产不存在，请重新导入');
   if(expectedSourceId!==undefined&&asset.document.id!==expectedSourceId)throw vibeFileError('source','编码缓存与原图不符，未替换素材');
   if(type==='library-info'||type==='export-reviewed'){
@@ -145,9 +146,9 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
     const document={...asset.document,importInfo:{model,information_extracted:information,strength}};
     return new Blob([await exportNovelVibeFile([document],{bundle:false})],{type:'application/json'});
   }
-  if(type==='original'){
+  if(type==='original'||type==='encoding-original'){
     if(asset.document.type!=='image')throw vibeFileError('image','此 Vibe 没有原图，不能重新编码');
-    return {data:asset.document.image};
+    return type==='encoding-original'?asset.serialized:{data:asset.document.image};
   }
   if(type==='attach-encoding'){
     const next=await appendNovelVibeEncoding(asset.document,model,information,encoding);
@@ -170,12 +171,26 @@ return async function run({type,namespace,id,file,ids,settings,bundle,model,info
   }
 };
 }
-const run=createVibeAssetOperations(createVibeAssetStore(),{encodings:createVibeEncodingStore()});let pending=Promise.resolve();
+let pending=Promise.resolve(),runtime=null,current=null,rpc=0,progress=0;const guards=new Map();
+const guard=()=>new Promise((resolve,reject)=>{if(!current){reject(vibeFileError('account','Vibe后台没有当前操作'));return;}
+  const id=++rpc;guards.set(id,{ticket:current.ticket,resolve,reject});self.postMessage({ticket:current.ticket,guard:id});});
 if(typeof self!=='undefined')self.addEventListener('message',event=>{
-  const message=event.data;if(!message||typeof message.ticket!=='number')return;
+  const message=event.data;if(!message||!Number.isSafeInteger(message.ticket))return;
+  if(Object.hasOwn(message,'guard')){const row=guards.get(message.guard);if(!row||row.ticket!==message.ticket)return;guards.delete(message.guard);
+    message.result===true?row.resolve():row.reject(vibeFileError('account','Vibe后台账户核对未通过'));return;}
   // Serial reads/imports bound peak memory; only metadata, a preview or the selected encoding crosses back.
   pending=pending.then(async()=>{
-    try{self.postMessage({ticket:message.ticket,value:await run(message)});}
+    current=message;progress=0;
+    try{
+      self.postMessage({ticket:message.ticket,started:true});
+      const key=JSON.stringify(message.nativeStorage??null);if(runtime?.key!==key){runtime?.store.close();runtime?.encodings.close();runtime=null;
+        const native=characterWorkerStorageOptions(message.nativeStorage,{namespace:message.namespace,origin:self.location?.origin,guard,isCurrent:()=>current!==null});
+        const store=createVibeAssetStore({native:native?{...native,onProgress:()=>self.postMessage({ticket:current.ticket,progress:++progress})}:false}),encodings=createVibeEncodingStore();
+        runtime={key,store,encodings,run:createVibeAssetOperations(store,{encodings})};
+      }
+      if(message.nativeStorage)await guard();const value=await runtime.run(message);if(message.nativeStorage)await guard();self.postMessage({ticket:message.ticket,value});
+    }
     catch(error){self.postMessage({ticket:message.ticket,error:{code:typeof error?.code==='string'?error.code:'vibe_file_storage',message:error?.message||'Vibe 操作失败'}});}
+    finally{current=null;for(const [id,row] of guards)if(row.ticket===message.ticket){guards.delete(id);row.reject(vibeFileError('closed','Vibe操作已结束'));}}
   }).catch(()=>{});
 });

@@ -23,7 +23,7 @@ export async function confirmVibeEncoding(title,text,{popup,confirm=value=>globa
 }
 
 async function prepareVibes(payload,{namespace,model,connection,apiKey,call,readImage,checkpoint,
-  guard,confirm,encode=encodeNovelVibe,service=null,allowEncoding=true,notify=()=>{}}){
+  guard,confirm,encode=encodeNovelVibe,service=null,allowEncoding=true,notify=()=>{},prepareRetention=null}){
   const items=resolveStoryboardVibeRecipe(payload);
   if(!items.length)return [];
   if(![call,readImage,checkpoint,guard,confirm,encode].every(fn=>typeof fn==='function'))throw fail('setup','Vibe 生成准备尚未接通');
@@ -80,8 +80,9 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
         const attemptId=crypto.randomUUID(),reservation=await rpc('encoding-reserve',{...options,identity:prepared.identity,attemptId,retryAttemptId:cached?.attemptId||'',sourceAssetRef:original,...(delivery?{delivery}:{})});
         if(!reservation.owned){if(reservation.receipt?.status==='ready')used=ref(reservation.receipt.assetRef);else throw blocked();}
         else{
-          let authorized=false,completed=false,localOnly=false,channelNeedsReview=false;
+          let authorized=false,completed=false,localOnly=false,channelNeedsReview=false,retention=null;
           try{
+            if(prepareRetention){retention=await prepareRetention({namespace,id:original.id,identity:prepared.identity,cacheKey:prepared.cacheKey,attemptId,guard});await guard();}
             const deliver=service?(input,hooks)=>service.encode(input,hooks,['rejected','reviewed'].includes(remoteState?.status)?remoteState.attemptId:''):encode;
             const encoded=await deliver(input,{guard,...(service?{clientAttemptId:attemptId}:{}),authorize:async(actual,key)=>{
               await guard();if(key!==prepared.cacheKey||JSON.stringify(actual)!==JSON.stringify(prepared.identity))throw fail('identity','Vibe 编码参数已变化');
@@ -92,15 +93,18 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
             completed=true;localOnly=encoded.serviceStored===false;channelNeedsReview=encoded.channelNeedsReview===true;
             if(!authorized||encoded.cacheKey!==prepared.cacheKey||JSON.stringify(encoded.identity)!==JSON.stringify(prepared.identity)
               ||delivery?.transport==='service'&&!matchesVibeServiceDelivery({delivery,attemptId},encoded.serviceAttemptId,encoded.serviceDelivery))throw fail('result','编码返回身份不符，请核查原请求','unknown');
-            used=ref(await call('attach-encoding',{namespace,...selection,encoding:encoded.encoding,expectedSourceId:prepared.identity.sourceId}));
-            await call('encoding-transition',{namespace,...options,attemptId,status:'ready',assetRef:used});
+            if(retention)used=ref(await retention.retain(encoded.encoding));
+            else{
+              used=ref(await call('attach-encoding',{namespace,...selection,encoding:encoded.encoding,expectedSourceId:prepared.identity.sourceId}));
+              await call('encoding-transition',{namespace,...options,attemptId,status:'ready',assetRef:used});
+            }
           }catch(error){
             const state=completed?'unknown':error?.submissionState==='rejected'?'rejected':authorized?'unknown':'rejected';
             // Local storage/RPC errors do not prove that an upstream request was uncharged.
             try{await call('encoding-transition',{namespace,...options,attemptId,status:state});}catch(_){}
             throw fail('encoding',completed?'Vibe 编码已返回，但本地关联未完成；请保留缓存并核查，未重复扣费'
               :state==='unknown'?'Vibe 编码结果未确认，请核查渠道记录，勿重复提交':error?.message||'Vibe 编码未完成',state);
-          }
+          }finally{retention?.close();}
           await guard();notify(localOnly?'Vibe 编码已保存在本设备；服务暂存失败，请导出备份，勿重复编码':channelNeedsReview?'Vibe 编码已缓存；NAI 共用渠道尚待核查':'Vibe 编码已缓存');
         }
       }
