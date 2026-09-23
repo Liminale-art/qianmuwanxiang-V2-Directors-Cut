@@ -8,7 +8,7 @@ const filmSave = await readFile(new URL('../qianmu-film-editor-save.js', import.
 test('ordinary prose media bypasses the director runtime without loading it', () => {
   const helper = source.slice(
     source.indexOf('async function storyboardDirectorWorkOrderForRecord'),
-    source.indexOf('function storyboardVideoDraftSourceShot'),
+    source.indexOf('function storyboardVideoDraftShotReader'),
   );
   assert.match(helper, /if \(!production\.packetId && !production\.eventId\) return null/);
   assert.ok(helper.indexOf('return null') < helper.indexOf("featureRuntime.load('directorWorkOrders')"));
@@ -17,7 +17,7 @@ test('ordinary prose media bypasses the director runtime without loading it', ()
 test('world-side media must keep an approved and matching decision chain', () => {
   const helper = source.slice(
     source.indexOf('async function storyboardDirectorWorkOrderForRecord'),
-    source.indexOf('function storyboardVideoDraftSourceShot'),
+    source.indexOf('function storyboardVideoDraftShotReader'),
   );
   assert.match(helper, /recordChatKey !== chatKey/);
   assert.match(helper, /production\.decisionId !== decision\.decisionId/);

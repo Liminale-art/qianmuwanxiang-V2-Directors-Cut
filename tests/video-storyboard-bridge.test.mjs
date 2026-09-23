@@ -87,7 +87,8 @@ test('legacy drafts without a source ShotSpec keep the original safe fallback', 
 
 test('the visible draft editor passes its source ShotSpec through the semantic bridge', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  assert.match(source, /function storyboardVideoDraftSourceShot\([\s\S]*record\?\.shotSpec[\s\S]*return record\.shotSpec/);
-  assert.match(source, /const sourceShot = storyboardVideoDraftSourceShot\(storyboardVideoDraftEditor\)/);
+  assert.match(source, /function storyboardVideoDraftShotReader\([\s\S]*createGalleryShotReader\(record/);
+  assert.match(source, /const shotReader=storyboardVideoDraftShotReader\(draft\),sourceShot=await shotReader\.read\(\)/);
+  assert.match(source, /storyboardVideoDraftEditorMarkup\(storyboardVideoDraftEditor,sourceShot\)/);
   assert.match(source, /compileVideoDraftSelection\(candidate, candidates, \{ sourceShot \}\)/);
 });

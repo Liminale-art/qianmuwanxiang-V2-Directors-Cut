@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
+import {createGalleryShotReader} from '../qianmu-gallery-shot-reader.js';
 import * as fs from 'node:fs/promises';
 import {recipeClientFixture,recipe} from './helpers/recipe-client-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -108,13 +109,14 @@ test('old backend, HTML, broken JSON, oversized and invalid UTF8 response bodies
 function entry(e,options={}){
   const local=new Map();let writes=0,saves=0;
   const globals={console:{warn(){}},Date,JSON,Map,Error,clone:structuredClone,sanitizeStoryboardSnapshot:structuredClone,preserveCapturedSnapshotArchives,
-    getChatKey:()=>e.context.chatId,storyboardSnapshotEpoch:e.epoch,storyboardGalleryRecords:()=>e.rows,
+    getChatKey:()=>e.context.chatId,storyboardSnapshotEpoch:e.epoch,storyboardGalleryRecords:()=>e.rows,storyboardState:()=>({shotPlans:[]}),
     storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,ctx:()=>e.context,toast:()=>{},
     featureRuntime:{load:async()=>({openCurrentRecipeArchiveClient:host=>e.open({...host,...options})})},
     saveMetadata:async()=>{saves++;await e.save();},blobStore:{blobStoreAvailable:()=>true,
       putStoryboardSnapshots:async rows=>{writes++;for(const row of rows)local.set(row.key,structuredClone(row));return {stored:rows.map(row=>row.key)};},
       getStoryboardSnapshots:async keys=>keys.map(key=>local.get(key)).filter(Boolean)}};
-  const c=vm.createContext({migrateGallerySnapshots,storyboardRecipeRecordMetadata,...globals});vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
+  const c=vm.createContext({migrateGallerySnapshots,createGalleryShotReader,storyboardRecipeRecordMetadata,...globals});vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
+    'storyboardVideoDraftSourceRecord','storyboardVideoDraftShotReader',
     'storyboardStoreSnapshotForRecord','storyboardRecipeArchiveClient','storyboardArchiveGallerySnapshots'].map(section).join('\n'),c);
   return {c,local,get writes(){return writes;},get saves(){return saves;}};
 }
@@ -545,4 +547,17 @@ test('admission cancellation after a confirmed external batch reports the preser
   a.c.storyboardPackageArchiveAllowed=async()=>{if(++checks===3)throw Error('new host activity');return true;};
   assert.equal(await a.c.storyboardArchiveGallerySnapshots(),8);assert.equal(e.calls.length,8);assert.ok(e.rows.slice(0,8).every(row=>!row.compiledPrompt));
   assert.deepEqual(e.rows.slice(8),before.slice(8));assert.equal(a.saves,1);
+});
+test('actual legacy shot consumer reads a complete archived shot on demand without rehydrating gallery records',async t=>{
+  const e=await recipeClientFixture(t),shot={id:'shot',characters:[{id:'a',name:'Original'}],future:{whole:'x'.repeat(26000),keep:['',0,false,null]}};
+  e.rows[0].snapshot.shotSpec=shot;await e.save();const a=entry(e);assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);
+  const before=structuredClone(e.rows),calls=e.calls.length,reader=a.c.storyboardVideoDraftShotReader({source:{recordId:e.rows[0].id}});
+  assert.equal(e.calls.length,calls);assert.deepEqual(await reader.read(),shot);assert.equal(e.calls.length,calls+1);assert.equal(e.calls.at(-1).url.endsWith('/read'),true);
+  assert.deepEqual(e.rows,before);assert.equal(e.rows[0].shotSpec,undefined);assert.equal(e.rows[0].snapshot,undefined);assert.equal(a.saves,1);
+});
+test('actual archived shot read failure does not borrow a newer plan or mutate the old image',async t=>{
+  const e=await recipeClientFixture(t);e.rows[0].snapshot.shotSpec={id:'original'};await e.save();await entry(e).c.storyboardArchiveGallerySnapshots();
+  const before=structuredClone(e.rows),a=entry(e,{fetchImpl:async()=>new Response('offline',{status:503})});
+  a.c.storyboardState=()=>assert.fail('must not borrow the current plan');
+  await assert.rejects(a.c.storyboardVideoDraftShotReader({source:{recordId:e.rows[0].id}}).read());assert.deepEqual(e.rows,before);assert.equal(a.saves,0);
 });
