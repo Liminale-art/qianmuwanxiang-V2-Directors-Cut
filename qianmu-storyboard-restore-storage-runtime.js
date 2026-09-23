@@ -8,10 +8,11 @@ import {validateBundleCarrierInventory} from './qianmu-bundle-carrier-storage-co
 import {isMappingImport,validateMappingImportInput,validateMappingImportPreview,validateMappingImportResult} from './qianmu-mapping-import-contract.js';
 import * as nativeStorage from './qianmu-st-account-storage.js';
 import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
+import {createVerifiedProgressWatch} from './qianmu-verified-progress-watch.js';
 const fail=message=>Object.assign(new Error(message),{code:'storyboard_restore_storage_runtime',submissionState:'not_submitted'});
 
 // Each request owns and immediately releases its Worker. No idle worker, background timer, raw configuration or network credential.
-export async function runRestoreStorage(action,{namespace,guard,selected,input,chatHash,resolveAliasTargets,confirmed=false,recoveryLossAccepted=false,signal,WorkerClass=globalThis.Worker,timeoutMs=120000}={}){
+export async function runRestoreStorage(action,{namespace,guard,selected,input,chatHash,resolveAliasTargets,confirmed=false,recoveryLossAccepted=false,signal,WorkerClass=globalThis.Worker,timeoutMs=120000,totalTimeoutMs=1800000}={}){
   if(!['inspect','clear','characters','comfy','mappings','carriers','mapping-list','mapping-detail','mapping-export','mapping-import-preview','mapping-import-apply','user-alias-preview','user-alias-apply'].includes(action)||typeof guard!=='function')throw fail('储存操作或范围无效');
   if(isMappingImport(action))validateMappingImportInput(action,input);
   if(action.startsWith('user-alias-')){validateAliasInput(action,input);if(!aliasHash(chatHash)||typeof resolveAliasTargets!=='function')throw fail('USER地址缺少当前聊天或人设目录');}
@@ -30,16 +31,20 @@ export async function runRestoreStorage(action,{namespace,guard,selected,input,c
   if(signal?.aborted)throw interrupted();
   const id=crypto.randomUUID(),payload={id,action,namespace,...(nativeHistory?{nativeHistory}:{}),...(nativeCharacters?{nativeCharacters}:{}),...(action.startsWith('mapping-')||action.startsWith('user-alias-')?{input:structuredClone(input)}:{}),...(action.startsWith('user-alias-')?{chatHash}:{}),...(action==='clear'?{selected:structuredClone(selected),confirmed,recoveryLossAccepted}: {})};
   return new Promise((resolve,reject)=>{
-    let worker,done=false,lastGuard=0,timer;
+    let worker,done=false,lastGuard=0,lastProgress=0,watch;
     const abort=()=>finish(interrupted());
     const rejectResult=error=>reject(action==='mapping-import-apply'?fail(`迁移凭据保存结果未确认，可能已保存：${error?.message||'返回核对失败'}。请重新核对，不会自动重试。`):error);
-    const finish=(error,result)=>{if(done)return;done=true;clearTimeout(timer);signal?.removeEventListener('abort',abort);worker?.terminate();if(error)rejectResult(error);else Promise.resolve().then(guard).then(()=>resolve(result),rejectResult);};
+    const finish=(error,result)=>{if(done)return;done=true;watch?.stop();signal?.removeEventListener('abort',abort);worker?.terminate();if(error)rejectResult(error);else Promise.resolve().then(guard).then(()=>resolve(result),rejectResult);};
     try{
       worker=new WorkerClass(new URL('./qianmu-storyboard-restore-storage-worker.js',import.meta.url),{type:'module',name:'qianmu-restore-storage'});
       worker.addEventListener('error',()=>finish(interrupted()));
       worker.addEventListener('message',async event=>{
         if(done||event.data?.id!==id)return;const data=event.data;
         try{
+          if(Object.hasOwn(data,'progress')){
+            if(action!=='carriers'||Object.keys(data).length!==2||!Number.isSafeInteger(data.progress)||data.progress!==lastProgress+1)throw fail('来源盘点进度消息不符');
+            lastProgress=data.progress;await guard();if(!done)watch?.progress();return;
+          }
           if(Object.hasOwn(data,'aliasTargets')){
             const request=data.aliasTargets;
             if(!action.startsWith('user-alias-')||!request||Object.keys(request).length!==2||!Number.isSafeInteger(request.request)||request.request!==lastGuard+1||!Array.isArray(request.targets)||request.targets.length>2048||new Set(request.targets).size!==request.targets.length||request.targets.some(key=>canonicalUserSubjectKey(key)!==key))throw fail('USER目录核对请求无效');
@@ -69,7 +74,7 @@ export async function runRestoreStorage(action,{namespace,guard,selected,input,c
           finish(null,result);
         }catch(error){finish(error);}
       });
-      timer=setTimeout(abort,Math.max(100,Math.min(300000,Number(timeoutMs)||120000)));signal?.addEventListener('abort',abort,{once:true});
+      watch=createVerifiedProgressWatch({idleMs:Number(timeoutMs)||120000,totalMs:totalTimeoutMs,onTimeout:kind=>finish(fail(kind==='total'?'储存操作已达本次最长等待，可能已保存部分记录；请重新核对，不会自动重试':'储存操作等待超时，长时间没有确认进展；可能已保存部分记录，请重新核对，不会自动重试'))});signal?.addEventListener('abort',abort,{once:true});
       if(signal?.aborted){abort();return;}worker.postMessage(payload);
     }catch(_){finish(fail('无法启动后台恢复记录管理，未自动改用主页面大数据处理'));}
   });

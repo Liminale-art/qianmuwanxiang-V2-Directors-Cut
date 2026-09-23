@@ -7,7 +7,7 @@ import {preserveCarrierNativeRaw,readCarrierNativeRaw} from './qianmu-bundle-car
 
 // Same account files, never model attachments. Immutable originals first, then
 // a light append-only catalog. No delete, implicit consent or cross-device CAS.
-export function createNativeBundleCarrierStore({legacy,createStorage=createConfiguredStAccountStorage}={}){
+export function createNativeBundleCarrierStore({legacy,createStorage=createConfiguredStAccountStorage,onProgress=null}={}){
   let opening,storage,closed=false,known=false;
   async function operation(namespace,options,work){
     bundleCarrierKey(namespace,'0'.repeat(64));const current=options?.isCurrent??(()=>true),guard=options?.guard??(async()=>{});
@@ -17,10 +17,11 @@ export function createNativeBundleCarrierStore({legacy,createStorage=createConfi
       if(closed){value.close();fail('来源储存会话已结束');}storage=value;return value;
     }).catch(error=>{opening=null;throw error;});
     const client=await opening;await check();if(client.namespace!==namespace)fail('来源储存不属于当前ST账户');
-    const transport={guard:check,signal:options?.signal},validate=value=>validateCarrierNativeIndex(value,{namespace,scope:client.scope});
+    const progress=async()=>{await check();if(onProgress!==null){if(typeof onProgress!=='function')fail('来源进度接口无效');await onProgress();await check();}};
+    const transport={guard:check,signal:options?.signal,progress},validate=value=>validateCarrierNativeIndex(value,{namespace,scope:client.scope});
     let index,committed=false;
     const read=await client.read(CARRIER_NATIVE_SLOT,transport);await check();if(!read.exists&&known)fail('已确认的ST来源目录缺失，未重建空库');
-    index=validate(read.exists?read.value:emptyCarrierNativeIndex(namespace));if(read.exists)known=true;
+    index=validate(read.exists?read.value:emptyCarrierNativeIndex(namespace));if(read.exists)known=true;await progress();
     const preflight=(heads,originals)=>{
       summarizeBundleCarrierStorage(mergeCarrierHeads(index.proofs.map(row=>row.head),heads),namespace);
       summarizeBundleCarrierOriginals(mergeCarrierHeads(index.originals.map(row=>row.head),originals),namespace);
@@ -36,29 +37,45 @@ export function createNativeBundleCarrierStore({legacy,createStorage=createConfi
       for(const [wanted,rows] of [[proofs,index.proofs],[originals,index.originals]])for(const row of wanted){
         const saved=rows.find(item=>item.head.key===row.head.key);if(!saved||!sameCarrierFields(saved.head,row.head)||!sameCarrierFields(saved.reference,row.reference))fail('ST来源目录读回不符');
       }
+      await progress();
+    };
+    // Bound metadata publication batches, not raw verification. Publish the
+    // first new item immediately; then at most eight complete descriptors at a
+    // time. Interrupted trailing bodies stay immutable and are reused only on
+    // an explicit retry; no publication is attempted after an error/cancel.
+    const createBatch=(sourceGuard=check)=>{
+      let raws=[],proofs=[],required=new Map(),rawCheckpoint=false,proofCheckpoint=false;
+      const flushOriginals=async()=>{if(!raws.length)return;await publish([],raws,sourceGuard);raws=[];rawCheckpoint=true;};
+      const flushProofs=async()=>{if(!proofs.length)return;await publish(proofs,[],sourceGuard,[...required.values()]);proofs=[];required=new Map();proofCheckpoint=true;};
+      return {
+        async original(row){raws.push(row);if(raws.length>=(rawCheckpoint?8:1))await flushOriginals();},
+        async proof(row,members){proofs.push(row);for(const member of members)required.set(member.head.key,member);if(proofs.length>=(proofCheckpoint?8:1))await flushProofs();},
+        flushOriginals,flushProofs,
+      };
     };
     const verifyPublished=async(heads,originals)=>{
       const latest=await client.read(CARRIER_NATIVE_SLOT,transport);await check();if(!latest.exists)fail('ST来源目录读回缺失');const checked=validate(latest.value);
       for(const [wanted,rows,prior] of [[heads,checked.proofs,index.proofs],[originals,checked.originals,index.originals]])for(const head of wanted){
         const saved=rows.find(row=>row.head.key===head.key),before=prior.find(row=>row.head.key===head.key);
         if(!saved||!before||!sameCarrierFields(saved.head,head)||!sameCarrierFields(saved.reference,before.reference))fail('ST来源在保存后变化，请重新核对');
-      }index=checked;
+      }index=checked;await progress();
     };
     const loadProof=async row=>{const result=await client.readImmutable(row.reference,transport);await check();const value=await inspectBundleCarrierProof(result.value,{namespace,guard:check});
-      if(!sameCarrierFields(row.head,bundleCarrierHead(value.summary)))fail('来源证明原文与目录不符');return value;};
-    const putOriginal=async(file,head,sourceGuard=check)=>{
+      if(!sameCarrierFields(row.head,bundleCarrierHead(value.summary)))fail('来源证明原文与目录不符');await progress();return value;};
+    const putOriginal=async(file,head,sourceGuard=check,batch=null)=>{
       preflight([],[head]);await check();const old=index.originals.find(row=>row.head.key===head.key);
       if(old)return (await readCarrierNativeRaw(client,old,transport)).member;
-      const value=await preserveCarrierNativeRaw(client,file,head,transport);await publish([],[value.descriptor],sourceGuard);return value.member;
+      const value=await preserveCarrierNativeRaw(client,file,head,transport);if(batch)await batch.original(value.descriptor);else await publish([],[value.descriptor],sourceGuard);return value.member;
     };
-    const putProof=async(head,input,verified,sourceGuard=check)=>{
+    const putProof=async(head,input,verified,sourceGuard=check,batch=null)=>{
       const value=await inspectBundleCarrierProof(input,{namespace,guard:check});if(!sameCarrierFields(head,bundleCarrierHead(value.summary)))fail('来源证明与目录不符');preflight([head],[]);
       for(const member of value.members)if(!sameBundleMappingHead(verified.get(member.sha256),member.head))fail('来源证明成员不完整，未发布');
       const old=index.proofs.find(row=>row.head.key===head.key);
       if(old){const saved=await loadProof(old);if(!sameCarrierFields(saved.proof,value.proof))fail('同一载体已有不同证明，未覆盖');return;}
       const saved=await client.preserveImmutable(CARRIER_PROOF_SLOT,value.proof,transport),checked=await inspectBundleCarrierProof(saved.value,{namespace,guard:check});
       const required=value.members.map(member=>index.originals.find(row=>row.head.sha256===member.sha256));if(required.some(row=>!row))fail('来源证明缺少已保存原件');
-      if(!sameCarrierFields(checked.proof,value.proof))fail('来源证明读回不符');await publish([{head,reference:saved.reference}],[],sourceGuard,required);
+      if(!sameCarrierFields(checked.proof,value.proof))fail('来源证明读回不符');await progress();
+      const row={head,reference:saved.reference};if(batch)await batch.proof(row,required);else await publish([row],[],sourceGuard,required);
     };
     try{
       // Only local heads/keys on repeated opens. Old raw/proof records are read
@@ -68,17 +85,19 @@ export function createNativeBundleCarrierStore({legacy,createStorage=createConfi
       if(pendingRaw.length||pendingProof.length){
         if(typeof legacy.createCarrierMigrationGuard!=='function')fail('旧来源库缺少只读迁移保护');
         const source=await legacy.createCarrierMigrationGuard(namespace,local,{isCurrent:current,guard:check}),sourceGuard=async()=>{await check();await source();await check();return true;},verified=new Map();
-        for(const head of pendingRaw){await sourceGuard();const file=await legacy.loadOriginal(namespace,head.sha256,{guard:check,isCurrent:current});await check();verified.set(head.sha256,await putOriginal(file,head,sourceGuard));}
+        const batch=createBatch(sourceGuard);
+        for(const head of pendingRaw){await sourceGuard();const file=await legacy.loadOriginal(namespace,head.sha256,{guard:check,isCurrent:current});await check();verified.set(head.sha256,await putOriginal(file,head,sourceGuard,batch));}
+        await batch.flushOriginals();
         for(const head of pendingProof){
           await sourceGuard();const proof=await legacy.load(namespace,head.carrierDigest,{guard:check,isCurrent:current});await check();
           const inspected=await inspectBundleCarrierProof(proof,{namespace,guard:check});
           for(const member of inspected.members)if(!verified.has(member.sha256)){
             const row=index.originals.find(row=>row.head.sha256===member.sha256);if(!row)fail('旧来源证明缺少原始成员');verified.set(member.sha256,(await readCarrierNativeRaw(client,row,transport)).member);
           }
-          await putProof(head,proof,verified,sourceGuard);
-        }await sourceGuard();await verifyPublished(local.heads,local.originals);
+          await putProof(head,proof,verified,sourceGuard,batch);
+        }await batch.flushProofs();await sourceGuard();await verifyPublished(local.heads,local.originals);
       }
-      const result=await work({client,index:()=>index,check,transport,preflight,publish,loadProof,putOriginal,putProof,verifyPublished});await check();return result;
+      const result=await work({client,index:()=>index,check,transport,preflight,publish,loadProof,putOriginal,putProof,verifyPublished,createBatch});await check();return result;
     }catch(error){if(committed&&error instanceof Error)error.writeState='unconfirmed';throw error;}
   }
   async function saveBatch(namespace,input,{confirmed=false,loadProof,loadOriginal,...options}={}){
@@ -86,13 +105,15 @@ export function createNativeBundleCarrierStore({legacy,createStorage=createConfi
     if(!carrierExact(input,['heads','originals'])||typeof loadProof!=='function'||typeof loadOriginal!=='function')fail('来源批次缺少完整目录或原文读取接口');
     const {heads,originals}=structuredClone(input);summarizeBundleCarrierStorage(heads,namespace);summarizeBundleCarrierOriginals(originals,namespace);
     return operation(namespace,options,async ctx=>{
-      ctx.preflight(heads,originals);const verified=new Map();
+      ctx.preflight(heads,originals);const verified=new Map(),batch=ctx.createBatch();
       for(const head of originals){await ctx.check();const file=await loadOriginal(head.sha256);await ctx.check();
         // Validate caller bytes even when this SHA already exists in native storage.
         await inspectBundleCarrierOriginal(file,head,{namespace,guard:ctx.check});
-        verified.set(head.sha256,await ctx.putOriginal(file,head));
+        verified.set(head.sha256,await ctx.putOriginal(file,head,ctx.check,batch));
       }
-      for(const head of heads){await ctx.check();const proof=await loadProof({...head});await ctx.check();await ctx.putProof(head,proof,verified);}
+      await batch.flushOriginals();
+      for(const head of heads){await ctx.check();const proof=await loadProof({...head});await ctx.check();await ctx.putProof(head,proof,verified,ctx.check,batch);}
+      await batch.flushProofs();
       await ctx.verifyPublished(heads,originals);await ctx.check();return {count:heads.length,originalCount:originals.length};
     });
   }
@@ -108,8 +129,9 @@ export function createNativeBundleCarrierStore({legacy,createStorage=createConfi
       if(confirmed!==true)fail('请明确确认保全来源关联');const proof=structuredClone(input);
       return operation(namespace,options,async ctx=>{
         const collected=await collectBundleCarrierMembers(proof,{load,guard:ctx.check}),head=bundleCarrierHead(collected.summary),originals=collected.files.map(row=>bundleCarrierOriginalHead(namespace,row.sha256,row.bytes));
-        ctx.preflight([head],originals);const verified=new Map();
-        for(const [at,row] of collected.files.entries())verified.set(row.sha256,await ctx.putOriginal(row.file,originals[at]));
+        ctx.preflight([head],originals);const verified=new Map(),batch=ctx.createBatch();
+        for(const [at,row] of collected.files.entries())verified.set(row.sha256,await ctx.putOriginal(row.file,originals[at],ctx.check,batch));
+        await batch.flushOriginals();
         await ctx.putProof(head,proof,verified);await ctx.verifyPublished([head],originals);return head;
       });
     },saveBatch,

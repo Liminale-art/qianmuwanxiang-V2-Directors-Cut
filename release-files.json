@@ -301,6 +301,7 @@
     "qianmu-bundle-carrier-native-contract.js",
     "qianmu-bundle-carrier-native-raw.js",
     "qianmu-bundle-carrier-native-store.js",
+    "qianmu-verified-progress-watch.js",
     "qianmu-bundle-carriers-contract.js",
     "qianmu-bundle-carriers.js",
     "qianmu-bundle-carrier-restore-contract.js",

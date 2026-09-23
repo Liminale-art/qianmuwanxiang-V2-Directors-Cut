@@ -8,7 +8,7 @@ import { createStoryboardPackageJournal } from './qianmu-storyboard-package-jour
 import {createBundleCarrierStore} from './qianmu-bundle-carrier-store.js';
 import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
 
-let started = false, counter = 0;
+let started = false, counter = 0, progress = 0;
 const pending = new Map();
 const guard = () => new Promise(resolve => { const id = ++counter; pending.set(id, resolve); self.postMessage({ guard: id }); });
 self.addEventListener('message', async event => {
@@ -19,7 +19,7 @@ self.addEventListener('message', async event => {
     let result;
     if (input?.action === 'capture') {
       const native=characterWorkerStorageOptions(input.nativeCharacters,{namespace:input.namespace,origin:self.location.origin,guard});
-      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native}), journal = createStoryboardPackageJournal({native}),carrierStore=createBundleCarrierStore({native}); stores.push(workflowStore, poolStore, characterStore, journal,carrierStore);
+      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native}), journal = createStoryboardPackageJournal({native}),carrierStore=createBundleCarrierStore({native:native?{...native,onProgress:()=>self.postMessage({progress:++progress})}:false}); stores.push(workflowStore, poolStore, characterStore, journal,carrierStore);
       result = await captureStoryboardResourceBundle({ namespace: input.namespace, chatKey: input.chatKey, source: input.source, chatEvidence: input.chatEvidence, subjectEvidence: input.subjectEvidence, storyboard: input.file, workflowStore, poolStore, characterStore, journal,carrierStore, guard });
     } else if (input?.action === 'inspect') result = await inspectStoryboardResourceBundle(input.file, { guard });
     else if (input?.action === 'chat-evidence') result = { chatEvidence: await captureStoryboardChatEvidence(input.messages, input.chatKey, { guard }) };

@@ -20,7 +20,7 @@ self.addEventListener('message',async event=>{
       native=characterWorkerStorageOptions(input.nativeHistory,{namespace:input.namespace,origin:self.location.origin,guard});
     }
     if(input.action==='carriers'){
-      await guard();const {createBundleCarrierStore}=await import('./qianmu-bundle-carrier-store.js'),{bundleCarrierInventory}=await import('./qianmu-bundle-carrier-storage-contract.js');carriers=createBundleCarrierStore({native});
+      let progress=0;await guard();const {createBundleCarrierStore}=await import('./qianmu-bundle-carrier-store.js'),{bundleCarrierInventory}=await import('./qianmu-bundle-carrier-storage-contract.js');carriers=createBundleCarrierStore({native:native?{...native,onProgress:()=>self.postMessage({id,progress:++progress})}:false});
       const result=bundleCarrierInventory(await carriers.list(input.namespace,{guard}),input.namespace);await guard();self.postMessage({id,result});return;
     }
     if(input.action==='comfy'){

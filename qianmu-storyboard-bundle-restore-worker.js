@@ -10,7 +10,7 @@ import { createSourceIdentityClient } from './qianmu-source-identity-client.js';
 import {createBundleCarrierStore} from './qianmu-bundle-carrier-store.js';
 import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
 
-let id = '', operation = 0, rpc = 0, busy = false, closed = false, session = null;
+let id = '', operation = 0, rpc = 0, progress = 0, busy = false, closed = false, session = null;
 const pending = new Map(), stores = [];
 const failure = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_worker', submissionState: 'not_submitted' });
 function close() { closed = true; session?.close(); for (const store of stores) store.close(); for (const item of pending.values()) item.reject(failure('恢复会话已关闭，请核对可能保存的部分')); pending.clear(); self.close(); }
@@ -29,13 +29,13 @@ self.addEventListener('message', async event => {
   }
   if (message.type !== 'command' || busy || !Number.isSafeInteger(message.operation) || message.operation <= operation) return;
   if (!id && message.action !== 'open') return;
-  id = message.id; operation = message.operation; busy = true;
+  id = message.id; operation = message.operation; progress = 0; busy = true;
   try {
     let result;
     if (message.action === 'open' && !session) {
       const namespace = message.payload.namespace, token = message.payload.csrf || '';
       const native=characterWorkerStorageOptions(message.payload.nativeCharacters,{namespace,origin:self.location.origin,guard,isCurrent:()=>!closed});
-      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native}), vibe = createVibeAssetStore(), journal = createStoryboardPackageJournal({native}),carrierStore=createBundleCarrierStore({native});
+      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native}), vibe = createVibeAssetStore(), journal = createStoryboardPackageJournal({native}),carrierStore=createBundleCarrierStore({native:native?{...native,onProgress:()=>self.postMessage({id,operation,progress:++progress})}:false});
       stores.push(workflowStore, poolStore, characterStore, vibe, journal,carrierStore);
       session = await createStoryboardBundleRestoreSession({ namespace, chatKey: message.payload.chatKey, file: message.payload.file, workflowStore, poolStore, characterStore, journal,carrierStore,
         vibeStage: createStoryboardPackageStage({ store: vibe, journal }), guard, isCurrent: () => !closed,

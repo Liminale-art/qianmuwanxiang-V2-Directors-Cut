@@ -140,7 +140,41 @@ test('native batched writes are linear and later catalog reads fetch no raw file
   for(let at=0;at<12;at++){const text=JSON.stringify({...f.source.records[0].receipt,createdAt:2000+at}),sha=await vibeDigest(text),file=new Blob([text],{type:'application/json'});files.set(sha,file);heads.push(bundleCarrierOriginalHead(namespace,sha,file.size));}
   f.reset();f.hook(()=>new Promise(resolve=>setTimeout(resolve,3)));const start=performance.now();
   await f.store.saveBatch(namespace,{heads:[],originals:heads},{confirmed:true,loadProof:()=>null,loadOriginal:sha=>files.get(sha)});
-  const calls=f.calls.length,ms=performance.now()-start;assert.ok(calls<=16*heads.length+6);f.reset();const listed=await f.store.list(namespace);
+  const calls=f.calls.length,ms=performance.now()-start;assert.ok(calls<=100,'v336 needed 170 requests for the same fixture');f.reset();const listed=await f.store.list(namespace);
   assert.equal(listed.originals.length,12);assert.equal(f.calls.length,2);assert.equal(f.uploads,0);
   t.diagnostic(JSON.stringify({rawCount:12,batchRequests:calls,batchMs:Math.round(ms),catalogRequests:f.calls.length,latency:'3ms per request; synthetic only, not VPS timing'}));
+});
+
+async function rawBatch(f,count){
+  const files=new Map(),originals=[];
+  for(let at=0;at<count;at++){const text=JSON.stringify({...f.source.records[0].receipt,createdAt:5000+at}),file=new Blob([text],{type:'application/json'}),sha=await vibeDigest(text);files.set(sha,file);originals.push(bundleCarrierOriginalHead(namespace,sha,file.size));}
+  return {input:{heads:[],originals},files,options:{confirmed:true,loadProof:()=>null,loadOriginal:sha=>files.get(sha)}};
+}
+test('128 exact originals publish bounded metadata batches rather than a full directory per file',async t=>{
+  const f=await fixture(t),batch=await rawBatch(f,128);f.reset();await f.store.saveBatch(namespace,batch.input,batch.options);
+  assert.ok(f.calls.length<=7*128+24);const published=f.calls.filter(call=>call.request.method==='POST'&&JSON.parse(call.request.body).name.endsWith('-carrier-library.json'));assert.equal(published.length,17);
+  assert.equal((await f.store.list(namespace)).originals.length,128);const last=batch.input.originals.at(-1);assert.equal(await(await f.open(carrierLegacyFixture()).loadOriginal(namespace,last.sha256)).text(),await batch.files.get(last.sha256).text());
+});
+test('interrupted trailing original batch stays immutable, does not publish after error and is reused on explicit retry',async t=>{
+  const f=await fixture(t),batch=await rawBatch(f,12);let reads=0;
+  await assert.rejects(f.store.saveBatch(namespace,batch.input,{...batch.options,loadOriginal:sha=>{if(++reads===3)throw Error('interrupted source');return batch.files.get(sha);}}),/interrupted source/);
+  assert.equal((await f.store.list(namespace)).originals.length,1);
+  const retained=new Set(f.calls.filter(call=>call.request.method==='POST').map(call=>JSON.parse(call.request.body).name).filter(name=>name.includes('-carrier-original-')));assert.equal(retained.size,4);
+  f.reset();await f.store.saveBatch(namespace,batch.input,batch.options);
+  assert.ok(f.calls.filter(call=>call.request.method==='POST').every(call=>!retained.has(JSON.parse(call.request.body).name)));assert.equal((await f.store.list(namespace)).originals.length,12);
+});
+test('progress is emitted only after checked native work and scope loss prevents buffered directory publication',async t=>{
+  const f=await fixture(t),batch=await rawBatch(f,12);let progress=0,live=true;
+  const store=createNativeBundleCarrierStore({legacy:carrierLegacyFixture().open(),createStorage:f.createStorage,onProgress:()=>{if(++progress===7)live=false;}});t.after(()=>store.close());
+  await assert.rejects(store.saveBatch(namespace,batch.input,{...batch.options,isCurrent:()=>live}),/变化/);
+  assert.ok(progress>=2);const index=await f.storage.read(CARRIER_NATIVE_SLOT);assert.equal(index.value.originals.length,1);
+  const before=f.uploads;await new Promise(resolve=>setTimeout(resolve,10));assert.equal(f.uploads,before);
+});
+test('proof batches retain checked immutable tails without publishing missing or failed members',async t=>{
+  const f=await fixture(t),proofs=[];
+  for(let at=0;at<10;at++){const packed=await carrierPack(f.source.rawEntries,100+at),proof=await createBundleCarrierProof(await openStoryboardBundle(packed.file));proofs.push({proof,head:bundleCarrierHead((await inspectBundleCarrierProof(proof)).summary)});}
+  const input={heads:proofs.map(row=>row.head),originals:f.source.originals},options={confirmed:true,loadOriginal:sha=>f.source.rawFiles.get(sha),loadProof:head=>proofs.find(row=>row.head.key===head.key).proof};let reads=0;
+  await assert.rejects(f.store.saveBatch(namespace,input,{...options,loadProof:head=>{if(++reads===3)throw Error('proof source changed');return options.loadProof(head);}}),/proof source changed/);
+  const partial=await f.store.list(namespace);assert.equal(partial.originals.length,4);assert.equal(partial.heads.length,1);
+  await f.store.saveBatch(namespace,input,options);assert.equal((await f.store.list(namespace)).heads.length,10);
 });

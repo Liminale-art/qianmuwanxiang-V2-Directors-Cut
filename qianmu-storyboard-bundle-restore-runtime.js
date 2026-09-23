@@ -6,6 +6,7 @@ import {validateBundleAliasInput,validateBundleAliasSummary,validateBundleAliasP
 import {validateBundleMappingSummary,validateBundleMappingRestoreSummary,validateBundleMappingPageInput,validateBundleMappingPage} from './qianmu-bundle-mapping-contract.js';
 import {validateBundleCarrierRestoreSummary,validateBundleCarrierPageInput,validateBundleCarrierPage} from './qianmu-bundle-carrier-restore-contract.js';
 import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
+import {createVerifiedProgressWatch} from './qianmu-verified-progress-watch.js';
 let active = null;
 const fail = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_runtime', submissionState: 'not_submitted' });
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -44,7 +45,7 @@ export function closeStoryboardBundleRestoreRuntime() { active?.close(); }
 // A single live worker owns the immutable source and all heavy library operations. No synchronous fallback.
 // Every RPC is bound to the session, operation and source; only an explicit restore can reach configuration.apply.
 export async function openStoryboardBundleRestoreRuntime(file, { namespace, chatKey, guard, configuration, headers = () => ({}), signal,
-  WorkerClass = globalThis.Worker, timeoutMs = 180000 } = {}) {
+  WorkerClass = globalThis.Worker, timeoutMs = 180000, totalTimeoutMs = 1800000 } = {}) {
   if (!(file instanceof Blob) || typeof guard !== 'function' || !configuration?.preview || !configuration?.apply) throw fail('恢复文件或页面核对无效');
   await guard(); if (active) throw fail('已有整包恢复会话，请先关闭原页面'); if (signal?.aborted) throw interrupted();
   const nativeCharacters = await captureCharacterWorkerStorage(namespace, guard);
@@ -52,7 +53,7 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
   const id = crypto.randomUUID(); let worker, current = null, counter = 0, sourceDigest = '', closed = false,carrierRequired=false;
   const check = async () => { if (closed) throw interrupted(); await guard(); if (closed) throw interrupted(); };
   function finish(error, result) {
-    const pending = current; if (!pending) return; current = null; clearTimeout(pending.timer);
+    const pending = current; if (!pending) return; current = null; pending.watch?.stop();
     error ? pending.reject(error) : pending.resolve(result);
   }
   function close(reason = interrupted()) {
@@ -72,8 +73,8 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
     if(action==='aliases')validateBundleAliasInput(captured);
     if(action==='preview'&&captured.sourceAliasChoices!==undefined)validateBundleAliasInput({choices:captured.sourceAliasChoices,offset:0});
     return new Promise((resolve, reject) => {
-      const operation = ++counter, pending = { operation, action, resolve, reject, lastRequest: 0, payload: captured }; current = pending;
-      pending.timer = setTimeout(() => close(fail('恢复等待超时，部分可能已保存；请核对记录，不会自动重传')), Math.max(100, Math.min(300000, timeoutMs)));
+      const operation = ++counter, pending = { operation, action, resolve, reject, lastRequest: 0, lastProgress:0, payload: captured }; current = pending;
+      pending.watch=createVerifiedProgressWatch({idleMs:timeoutMs,totalMs:totalTimeoutMs,onTimeout:kind=>close(fail(kind==='total'?'恢复已达本次最长等待，部分可能已保存；请核对记录，不会自动重传':'恢复等待超时，长时间没有确认进展；部分可能已保存，请核对记录，不会自动重传'))});
       try { worker.postMessage({ id, operation, type: 'command', action, sourceDigest, payload: captured }); } catch (_) { close(fail('恢复后台连接失败，请核对可能保存的部分')); }
     });
   }
@@ -83,6 +84,10 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
     worker.addEventListener('message', event => {
       const message = event.data, pending = current;
       if (closed || !pending || message?.id !== id || message.operation !== pending.operation) return;
+      if(Object.hasOwn(message,'progress')){
+        if(Object.keys(message).length!==3||!Number.isSafeInteger(message.progress)||message.progress!==pending.lastProgress+1){close(fail('恢复进度消息不符'));return;}
+        pending.lastProgress=message.progress;void check().then(()=>{if(current===pending)pending.watch?.progress();},error=>close(error));return;
+      }
       if (message.request) {
         if (!Number.isSafeInteger(message.request) || message.request <= pending.lastRequest || !['guard','configuration-preview','configuration-apply','configuration-subjects','configuration-targets'].includes(message.kind)) { close(fail('恢复后台核对消息不符')); return; }
         pending.lastRequest = message.request;

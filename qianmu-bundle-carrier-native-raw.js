@@ -30,16 +30,16 @@ export async function preserveCarrierNativeRaw(client,file,head,transport){
   for(let offset=0;offset<file.size;offset+=CARRIER_PART_BYTES){
     await transport.guard();const bytes=new Uint8Array(await file.slice(offset,offset+CARRIER_PART_BYTES).arrayBuffer());await transport.guard();
     const value={schema:CARRIER_PART_SCHEMA,namespace:client.namespace,data:encode(bytes)},saved=await client.preserveImmutable(CARRIER_PART_SLOT,value,transport);
-    part(saved.value,bytes.length,client.namespace);if(saved.value.data!==value.data)fail('来源分块读回不符');parts.push({bytes:bytes.length,reference:saved.reference});
+    part(saved.value,bytes.length,client.namespace);if(saved.value.data!==value.data)fail('来源分块读回不符');parts.push({bytes:bytes.length,reference:saved.reference});await transport.progress?.();
   }
   const value={schema:CARRIER_RAW_SCHEMA,namespace:client.namespace,sha256:head.sha256,bytes:head.bytes,parts};
   const saved=await client.preserveImmutable(CARRIER_ORIGINAL_SLOT,value,transport);manifest(saved.value,head,client);
-  if(JSON.stringify(saved.value)!==JSON.stringify(value))fail('来源原件目录读回不符');await transport.guard();return {descriptor:{head,reference:saved.reference},member};
+  if(JSON.stringify(saved.value)!==JSON.stringify(value))fail('来源原件目录读回不符');await transport.guard();await transport.progress?.();return {descriptor:{head,reference:saved.reference},member};
 }
 export async function readCarrierNativeRaw(client,descriptor,transport){
   stAccountImmutableReference(descriptor.reference,{scope:client.scope,slot:CARRIER_ORIGINAL_SLOT,maxBytes:16384});
   const saved=await client.readImmutable(descriptor.reference,transport),value=manifest(saved.value,descriptor.head,client),parts=[];
-  for(const row of value.parts){await transport.guard();const saved=await client.readImmutable(row.reference,transport);parts.push(part(saved.value,row.bytes,client.namespace));}
+  for(const row of value.parts){await transport.guard();const saved=await client.readImmutable(row.reference,transport);parts.push(part(saved.value,row.bytes,client.namespace));await transport.progress?.();}
   const file=new Blob(parts,{type:'application/json'});await transport.guard();
   const member=await inspectBundleCarrierOriginal(file,descriptor.head,{namespace:client.namespace,guard:transport.guard});return {file,member};
 }

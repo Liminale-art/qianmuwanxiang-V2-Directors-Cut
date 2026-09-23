@@ -3,12 +3,13 @@ import { projectStoryboardSubjects, inspectStoryboardSubjectEvidence } from './q
 import { validateBundleMappingTransportSummary } from './qianmu-bundle-mapping-contract.js';
 import {validateBundleCarriersTransportSummary} from './qianmu-bundle-carriers-contract.js';
 import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
+import {createVerifiedProgressWatch} from './qianmu-verified-progress-watch.js';
 let active = null;
 const failure = message => Object.assign(new Error(message), { code: 'storyboard_bundle_runtime', submissionState: 'not_submitted' });
-export function closeStoryboardBundleRuntime() { active?.finish(failure('资源包处理已取消，原库未修改')); }
+export function closeStoryboardBundleRuntime() { active?.finish(failure('资源包处理已取消，可能已保全部分来源；请保留原文件重新核对')); }
 
-// The worker owns heavy validation and short-lived, read-only library connections. No synchronous fallback on mobile.
-export async function runStoryboardBundle(action, file, { namespace, chatKey, source = null, chatEvidence = null, subjectEvidence = null, subjects, messages, guard, signal, WorkerClass = globalThis.Worker, timeoutMs = 180000 } = {}) {
+// The worker owns heavy validation and may preserve old sources in ST. No synchronous fallback on mobile.
+export async function runStoryboardBundle(action, file, { namespace, chatKey, source = null, chatEvidence = null, subjectEvidence = null, subjects, messages, guard, signal, WorkerClass = globalThis.Worker, timeoutMs = 180000, totalTimeoutMs = 1800000 } = {}) {
   if (!['capture', 'inspect', 'chat-evidence', 'subject-evidence'].includes(action) || (!['chat-evidence','subject-evidence'].includes(action) && !(file instanceof Blob)) || typeof guard !== 'function') throw failure('资源包操作或环境核对无效');
   const capturedSource = source === null ? null : structuredClone(source);
   const capturedChat = chatEvidence === null ? null : structuredClone(chatEvidence), projected = action === 'chat-evidence' ? projectStoryboardChatMessages(messages) : null;
@@ -18,19 +19,23 @@ export async function runStoryboardBundle(action, file, { namespace, chatKey, so
   if (active) throw failure('已有资源包正在处理');
   if (signal?.aborted) throw failure('资源包处理已取消');
   return new Promise((resolve, reject) => {
-    let worker, ended = false, timer;
-    const abort = () => finish(failure('资源包处理已取消，原库未修改'));
+    let worker, ended = false, watch, lastProgress=0;
+    const abort = () => finish(failure('资源包处理已取消，可能已保全部分来源；请保留原文件重新核对'));
     const finish = (error, result) => {
-      if (ended) return; ended = true; clearTimeout(timer); signal?.removeEventListener('abort', abort); worker?.terminate();
+      if (ended) return; ended = true; watch?.stop(); signal?.removeEventListener('abort', abort); worker?.terminate();
       if (active === entry) active = null;
       if (error) { reject(error); return; } Promise.resolve().then(guard).then(() => { if (signal?.aborted) reject(failure('资源包处理已取消')); else resolve(result); }, reject);
     };
     const entry = { finish }; active = entry;
     try {
       worker = new WorkerClass(new URL('./qianmu-storyboard-bundle-worker.js', import.meta.url), { type: 'module', name: 'qianmu-storyboard-bundle' });
-      worker.addEventListener('error', () => finish(failure('资源包处理失败，原库未修改')));
+      worker.addEventListener('error', () => finish(failure('资源包处理失败，可能已保全部分来源；请保留原文件重新核对')));
       worker.addEventListener('message', event => {
         if (ended) return;
+        if(Object.hasOwn(event.data||{},'progress')){
+          const value=event.data;if(action!=='capture'||Object.keys(value).length!==1||!Number.isSafeInteger(value.progress)||value.progress!==lastProgress+1){finish(failure('资源包进度消息不符'));return;}
+          lastProgress=value.progress;Promise.resolve().then(guard).then(()=>{if(!ended)watch?.progress();}).catch(error=>finish(error));return;
+        }
         if (Number.isSafeInteger(event.data?.guard) && event.data.guard > 0) {
           const id = event.data.guard;
           Promise.resolve().then(guard).then(() => { if (!ended) worker.postMessage({ guard: id }); }).catch(error => finish(error)); return;
@@ -57,7 +62,7 @@ export async function runStoryboardBundle(action, file, { namespace, chatKey, so
         }
       });
       signal?.addEventListener('abort', abort, { once: true });
-      timer = setTimeout(() => finish(failure('资源包处理超时，请保留原文件后重试')), Math.max(100, Math.min(300000, Number(timeoutMs) || 180000)));
+      watch=createVerifiedProgressWatch({idleMs:timeoutMs,totalMs:totalTimeoutMs,onTimeout:kind=>finish(failure(kind==='total'?'资源包已达本次最长等待，可能已保全部分来源；请保留原文件重新核对，不会自动重传':'资源包处理超时，长时间没有确认进展；请保留原文件重新核对，不会自动重传'))});
       if (signal?.aborted) { abort(); return; }
       worker.postMessage({ action, file, ...(action === 'capture' ? { namespace, chatKey, source: capturedSource, chatEvidence: capturedChat, subjectEvidence: capturedSubjects, ...(nativeCharacters ? {nativeCharacters} : {}) } : {}),
         ...(action === 'subject-evidence' ? { subjects: subjectProjection } : {}),

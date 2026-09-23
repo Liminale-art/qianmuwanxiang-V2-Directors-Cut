@@ -19,8 +19,8 @@ function installWorker(t){
   const prior=Object.getOwnPropertyDescriptor(globalThis,'self');
   class Worker{
     static last;
-    constructor(url){Worker.last=this;this.events={};this.sent=[];const scope={location:{origin},addEventListener:(_,fn)=>this.receive=fn,
-      postMessage:value=>{if(!this.closed)this.events.message?.({data:structuredClone(value)});},close:()=>this.workerClosed=true};
+    constructor(url){Worker.last=this;this.events={};this.sent=[];this.received=[];const scope={location:{origin},addEventListener:(_,fn)=>this.receive=fn,
+      postMessage:value=>{this.received.push(structuredClone(value));if(!this.closed)this.events.message?.({data:structuredClone(value)});},close:()=>this.workerClosed=true};
       Object.defineProperty(globalThis,'self',{configurable:true,value:scope});this.ready=import(url.href+'?carrier-native='+crypto.randomUUID());}
     addEventListener(name,fn){this.events[name]=fn;}
     postMessage(value){this.sent.push(structuredClone(value));void this.ready.then(()=>{if(!this.closed)return this.receive({data:value});}).catch(error=>this.events.error?.(error));}
@@ -33,6 +33,7 @@ test('real accounting worker lists remote carrier proofs and orphan originals on
   const summary=await runRestoreStorage('carriers',{namespace,guard:async()=>{guards++;},WorkerClass:Worker});
   assert.equal(summary.count,2);assert.equal(summary.originalCount,4);assert.ok(guards>10);assert.equal(f.uploads,0);
   assert.deepEqual(Worker.last.sent[0].nativeHistory,{namespace,origin,csrf:'synthetic'});assert.equal(Worker.last.closed,true);
+  assert.deepEqual(Worker.last.received.filter(value=>value.progress).map(value=>value.progress),[1]);
   assert.equal(f.calls.filter(row=>row.request.method==='GET').length,2);
 });
 test('real accounting worker fails on live identity loss without leaking the stale inventory',async t=>{
@@ -53,5 +54,6 @@ for(const restore of [false,true])test(`real bundle ${restore?'restore':'capture
     createStoryboardPackageStage:stub,createImageRestoreClient:stub,createSourceIdentityClient:stub,captureStoryboardResourceBundle:process,createStoryboardBundleRestoreSession:process});
   const payload={namespace,chatKey:'chat',file:new Blob(),csrf:'synthetic',nativeCharacters:{namespace,origin,csrf:'synthetic'}};
   await handler({data:restore?{id:'test',operation:1,type:'command',action:'open',payload}:{action:'capture',...payload}});
-  assert.ok(carriers);assert.ok(!posts.some(value=>value.error));carriers.close();
+  assert.ok(carriers);assert.ok(!posts.some(value=>value.error));
+  assert.deepEqual(posts.filter(value=>value.progress).map(value=>value.progress),[1]);carriers.close();
 });
