@@ -5,6 +5,8 @@ import {readFileSync} from 'node:fs';
 import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard} from '../qianmu-gallery-collections-view.js';
 import {summarizeGalleryRecords} from '../qianmu-gallery-summary.js';
 import {renderGalleryWindowControls} from '../qianmu-gallery-window.js';
+import {galleryMembershipIds,assignGalleryMemberships} from '../qianmu-gallery-membership.js';
+import {bindGalleryBulkCollections,bindGalleryKeywordChoices} from '../qianmu-gallery-taxonomy.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const summarize=rows=>summarizeGalleryRecords(rows,row=>row.collectionIds||[]);
@@ -139,7 +141,7 @@ function events(){
   card.querySelector=selector=>buttons[selector.replace('.sd-media-collection-','')];
   const root={querySelector:selector=>nodes[selector]||null,querySelectorAll:selector=>selector==='[data-gallery-collection]'?[card]:selector==='[data-gallery-tag-filter]'?[tag]:[]};
   const state={gallerySearch:'',galleryTagFilters:[]};
-  const c=vm.createContext({root,state,storyboardState:()=>state,storyboardGalleryViewGuard:()=>node=>f.current&&node.isConnected,
+  const c=vm.createContext({root,state,bindGalleryBulkCollections,bindGalleryKeywordChoices,galleryMembershipIds,assignGalleryMemberships,storyboardState:()=>state,storyboardGalleryViewGuard:()=>node=>f.current&&node.isConnected,
     storyboardGalleryCollections:()=>store.storyboardCollections,storyboardGalleryRecords:()=>store.storyboardImages,
     storyboardFilteredGalleryRecords:()=>store.storyboardImages,storyboardItemCollectionIds:row=>row.collectionIds||[],
     storyboardAssignCollectionIds:(row,ids)=>row.collectionIds=[...new Set(ids)],getChatStore:()=>store,
@@ -185,4 +187,9 @@ test('live bulk delete removes only selected records and move refuses removed co
   const f=events();f.store.storyboardImages.push({id:'two'});f.nodes['.sd-storyboard-gallery-move-target'].value='missing';
   await f.nodes['.sd-storyboard-gallery-move-selected'].fire();assert.equal(f.saves,0);
   await f.nodes['.sd-storyboard-gallery-delete-selected'].fire();assert.deepEqual(f.store.storyboardImages.map(row=>row.id),['two']);assert.equal(f.saves,1);
+});
+
+test('actual dissolving one collection preserves unrelated old over-limit memberships',async()=>{
+  const f=events();f.record.collectionIds=['a',...Array.from({length:40},(_,i)=>'kept-'+i)];await f.buttons.delete.fire();
+  assert.equal(f.record.collectionIds.length,40);assert.equal(f.record.collectionIds.at(-1),'kept-39');assert.equal(f.store.storyboardImages[0],f.record);
 });

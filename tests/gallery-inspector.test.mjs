@@ -4,6 +4,8 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {renderGalleryInspector,captureGalleryViewGuard,bindGalleryInspector} from '../qianmu-gallery-inspector.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {createChoiceFrame} from './helpers/gallery-choice-fixture.mjs';
+import {assignGalleryMemberships} from '../qianmu-gallery-membership.js';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
@@ -13,15 +15,14 @@ class Node {
   fire(name='click'){for(const callback of this.listeners[name]||[])callback({currentTarget:this,target:this});}
 }
 function fixture(){
-  const f={record:{id:'one'},id:'one',owner:{},active:true,backs:0,errors:[],calls:0};
-  const area=new Node({galleryDetail:'one'}),back=new Node(),button=new Node({galleryDetailAction:'preview'}),check=new Node(),tag=new Node();
-  check.value='collection';check.checked=true;
-  area.querySelector=()=>back;area.querySelectorAll=selector=>selector==='[data-gallery-detail-action]'?[button]:selector==='[data-media-tag-editor]'?[tag]:[check];
-  const root={isConnected:true,contains:node=>node.isConnected,querySelector:()=>area};
+  const f={record:{id:'one'},id:'one',owner:{},active:true,backs:0,errors:[],calls:0,collections:[{id:'collection',name:'Collection'}],save:async()=>{}};
+  const area=new Node({galleryDetail:'one'}),back=new Node(),button=new Node({galleryDetailAction:'preview'}),tag=new Node(),choice=createChoiceFrame('detail-collections');
+  area.querySelector=()=>back;area.querySelectorAll=selector=>selector==='[data-gallery-detail-action]'?[button]:selector==='[data-media-tag-editor]'?[tag]:[];
+  const root={isConnected:true,contains:node=>node.isConnected,querySelector:()=>area,querySelectorAll:()=>[choice.frame]};
   const scope=()=>[f.owner,f.active],isCurrent=captureGalleryViewGuard(root,{scope,isActive:()=>f.active});
-  f.bind=(actions={preview:async()=>{f.calls++;}})=>bindGalleryInspector(root,{isCurrent,readRecord:()=>f.record,readId:()=>f.id,
-    back:()=>f.backs++,actions,saveCollections:async(row,values,verify)=>{await verify();f.calls++;row.collections=values;},onError:error=>f.errors.push(error)});
-  return Object.assign(f,{root,area,back,button,check,tag,isCurrent});
+  f.bind=(actions={preview:async()=>{f.calls++;}})=>bindGalleryInspector(root,{isCurrent,readRecord:()=>f.record,readId:()=>f.id,readCollections:()=>f.collections,scope:()=>[f.owner],
+    back:()=>f.backs++,actions,saveCollections:async(row,values,verify)=>{await f.save();await verify();f.calls++;assignGalleryMemberships(row,values);},onError:error=>f.errors.push(error)});
+  return Object.assign(f,{root,area,back,button,choice,tag,isCurrent});
 }
 
 test('selected-only renderer escapes metadata and enables style only for usable NAI records',()=>{
@@ -49,7 +50,7 @@ test('detail retains full prompt, does not crop images, and review/explicit inse
 for(const [label,change] of Object.entries({owner:f=>f.owner={},closed:f=>f.active=false,detached:f=>f.area.isConnected=false,
   root:f=>f.root.isConnected=false,id:f=>f.id='two',replacement:f=>f.record={id:'one'},removed:f=>f.record=null}))
 test(`stale ${label} detail cannot preview, change collections or persist tags`,async()=>{
-  const f=fixture();f.bind();assert.equal(f.tag._qianmuGalleryCurrent(),true);change(f);f.button.fire();f.check.fire('change');await tick();
+  const f=fixture();f.bind();assert.equal(f.tag._qianmuGalleryCurrent(),true);change(f);f.button.fire();await f.choice.choose('collection');await tick();
   assert.equal(f.calls,0);assert.equal(f.tag._qianmuGalleryCurrent(),false);
 });
 
@@ -61,13 +62,13 @@ test('guard captures mutable scope values and fails closed on errors',()=>{
 
 test('rebind disposes old actions and collection inputs become usable again after save',async()=>{
   const f=fixture();f.bind();f.bind();f.button.fire();await tick();assert.equal(f.calls,1);
-  f.check.fire('change');await tick();assert.equal(f.calls,2);assert.deepEqual(f.record.collections,['collection']);assert.equal(f.check.disabled,false);
+  await f.choice.choose('collection');await tick();assert.equal(f.calls,2);assert.deepEqual(f.record.collectionIds,['collection']);assert.equal(f.choice.list.buttons[0].disabled,false);
 });
 
 test('only one pending detail action runs, but back remains available and stale completion is silent',async()=>{
   const f=fixture(),wait=deferred();let writes=0;
   f.bind({preview:async(row,{verify})=>{f.calls++;await wait.promise;await verify();writes++;}});
-  f.button.fire();f.button.fire();assert.equal(f.check.disabled,true);f.back.fire();assert.equal(f.backs,1);
+  f.button.fire();f.button.fire();assert.equal(f.choice.list.buttons[0].disabled,true);f.back.fire();assert.equal(f.backs,1);
   f.area.isConnected=false;wait.resolve();await tick();assert.equal(f.calls,1);assert.equal(writes,0);assert.equal(f.errors.length,0);
 });
 
@@ -96,6 +97,7 @@ test('actual detail binding shares complete variants, keeps style deferred, and 
   const state={gallerySearch:'word',galleryTrack:'main_camera',galleryTagFilters:['red']};let options,opened,styleCalls=0,renders=0;
   const current=()=>true,root={querySelector:()=>({})};
   const c=vm.createContext({bindGalleryInspector:(_root,value)=>{options=value;},storyboardGalleryViewGuard:()=>current,
+    storyboardGalleryCollections:()=>[],
     storyboardGalleryInspectorRecordId:'shown',storyboardGalleryRecords:()=>[hidden,record,other],storyboardGalleryGroupId:row=>row.group,
     storyboardOpenLightbox:(rows,id,guard)=>{opened={rows,id,guard};},storyboardApplyRecordStyle:async()=>{styleCalls++;},
     storyboardUpdateGalleryNarrative:()=>({selectRecord:value=>value===record}),storyboardState:()=>state,
@@ -158,4 +160,27 @@ test('actual stale card cannot select/open, and confirmation cannot delete a rep
   buttons['delete-record'].fire();current=false;store.storyboardImages=[{id:'one',otherChat:true}];
   buttons.check.fire();buttons['preview-record'].fire();buttons.inspect.fire();wait.resolve(true);await tick();
   assert.equal(saves,0);assert.equal(opens,0);assert.equal(c.storyboardGallerySelection.size,0);assert.equal(store.storyboardImages[0].otherChat,true);
+});
+
+test('detail presents only 24 collection choices even when 5001 collections exist',()=>{
+  const collections=Array.from({length:5001},(_,i)=>({id:'c'+i,name:'Collection '+i}));
+  const html=renderGalleryInspector({id:'one'},{collections,collectionIds:['c5000','legacy']});
+  assert.equal((html.match(/data-choice-id=/g)||[]).length,24);assert.match(html,/已选 2/);assert.doesNotMatch(html,/data-gallery-detail-collection/);
+});
+
+test('actual detail edits preserve page-external and absent-library memberships',async()=>{
+  const f=fixture();f.collections=Array.from({length:80},(_,i)=>({id:'c'+i,name:'Collection '+i}));f.record.collectionIds=['c0','c50','legacy'];f.bind();
+  await f.choice.choose('c0');assert.deepEqual(f.record.collectionIds,['c50','legacy']);
+  await f.choice.search('legacy');await f.choice.choose('legacy');assert.deepEqual(f.record.collectionIds,['c50']);assert.equal(f.errors.length,0);
+});
+
+test('actual detail can remove one old over-limit membership without silently clipping others; additions are rejected',async()=>{
+  const f=fixture();f.collections=Array.from({length:80},(_,i)=>({id:'c'+i,name:'Collection '+i}));f.record.collectionIds=f.collections.slice(0,40).map(row=>row.id);f.bind();
+  await f.choice.choose('c0');assert.equal(f.record.collectionIds.length,39);await f.choice.search('Collection 50');await f.choice.choose('c50');
+  assert.equal(f.record.collectionIds.length,39);assert.equal(f.record.collectionIds.includes('c50'),false);assert.match(f.errors[0].message,/最多归入 30/);
+});
+
+test('pending collection save excludes a competing preview immediately and rechecks source before writing',async()=>{
+  const f=fixture(),wait=deferred();f.save=()=>wait.promise;f.bind();const pending=f.choice.choose('collection');f.button.fire();await tick();
+  assert.equal(f.calls,0);f.back.fire();assert.equal(f.backs,1);f.owner={};wait.resolve();await pending;assert.equal(f.calls,0);assert.equal(f.errors.length,0);
 });

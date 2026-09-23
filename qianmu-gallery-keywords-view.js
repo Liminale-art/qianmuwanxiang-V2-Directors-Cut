@@ -1,4 +1,5 @@
 import {selectedGalleryKeywords,galleryKeywordList,DEFAULT_GALLERY_KEYWORDS} from './qianmu-gallery-keywords.js';
+import {renderGalleryChoicePicker} from './qianmu-gallery-choice-picker.js';
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 export function renderGalleryKeywordEntry(state){
   let words;try{words=selectedGalleryKeywords(state);}catch{words=[];}
@@ -24,5 +25,5 @@ export function bindGalleryKeywordEntry(root,state,{current,save,changed=()=>{}}
 }
 export function renderGalleryKeywordFilters(records,selected=[],keywordWords){
   const words=keywordWords??[...new Set(records.flatMap(row=>row.tags||[]))].filter(word=>typeof word==='string'&&word).sort((a,b)=>a.localeCompare(b));
-  return words.length?`<nav class="sd-gallery-keyword-filters" aria-label="关键词筛选，可多选取交集">${words.map(word=>`<button type="button" class="sd-btn" data-gallery-tag-filter="${escape(word)}" aria-pressed="${selected.includes(word)}">${escape(word)}</button>`).join('')}</nav>`:'';
+  return words.length?`<nav class="sd-gallery-keyword-filters" aria-label="关键词筛选，可多选取交集">${renderGalleryChoicePicker({id:'keywords',title:'关键词',items:words.map(word=>({id:word,label:word})),selected})}</nav>`:'';
 }

@@ -94,7 +94,7 @@ test('entry keeps existing filter/chat resets and route restoration while removi
   assert.doesNotMatch(source,/storyboardGalleryVisibleCount\s*\+=|sd-storyboard-gallery-more/);
   assert.match(section('storyboardApplyRoute'),/galleryVisibleCount/);
   assert.match(section('storyboardHandleChatChanged'),/storyboardGalleryVisibleCount = 40/);
-  const binding=section('bindStoryboardTabEvents');assert.match(binding,/galleryTagFilters[\s\S]*storyboardGalleryVisibleCount = 40/);
+  const binding=section('bindStoryboardTabEvents');assert.match(binding,/bindGalleryKeywordChoices[\s\S]*changed:\(\)=>\{storyboardGalleryVisibleCount\s*=\s*40/);
   assert.match(binding,/storyboardFilteredGalleryRecords\(state\)\.map\(\(item\) => item.id\)/,'select all still includes every filtered page');
   const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');assert.match(css,/sd-gallery-window-controls > button[^}]*border-radius: 8px/);
 });

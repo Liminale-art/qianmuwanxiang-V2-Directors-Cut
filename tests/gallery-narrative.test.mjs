@@ -141,10 +141,11 @@ test('source-scoped groups follow verified paragraph order and frozen shot order
 
 test('real gallery filter ignores saved model preference while retaining search, track and collection intersection', async () => {
     const {galleryTagsMatch}=await import('../qianmu-gallery-keywords.js');
+    const {galleryMembershipIds}=await import('../qianmu-gallery-membership.js');
     const records = [{ id: 'a', source: 'novel', prompt: 'coast', collectionIds: ['c'], track: 'main_camera' },
         { id: 'b', source: 'comfy', prompt: 'coast', collectionIds: [], track: 'main_camera' },
         { id: 'c', source: 'comfy', prompt: 'woods', collectionIds: ['c'], track: 'second_camera' }];
-    const sandbox = vm.createContext({ galleryTagsMatch,storyboardUpdateGalleryNarrative: () => ({ filter: value => value }), storyboardGalleryRecords: () => records,
+    const sandbox = vm.createContext({ galleryMembershipIds,galleryTagsMatch,storyboardUpdateGalleryNarrative: () => ({ filter: value => value }), storyboardGalleryRecords: () => records,
         storyboardProductionDeliveryPolicy: record => ({ track: record.track, sourceLabel: '' }), storyboardGalleryOpenCollectionId: '',
         storyboardItemCollectionIds: record => record.collectionIds, STORYBOARD_SOURCES: {} });
     vm.runInContext(storyboardFunctionSource('storyboardFilteredGalleryRecords'), sandbox);

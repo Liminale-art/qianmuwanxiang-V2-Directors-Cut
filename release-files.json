@@ -4,6 +4,9 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-gallery-collections-view.js",
+    "qianmu-gallery-choice-picker.js",
+    "qianmu-gallery-membership.js",
+    "qianmu-gallery-taxonomy.js",
     "qianmu-gallery-inspector.js",
     "qianmu-gallery-narrative-inputs.js",
     "qianmu-gallery-window.js",

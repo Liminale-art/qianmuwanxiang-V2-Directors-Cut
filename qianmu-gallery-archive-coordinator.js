@@ -1,7 +1,7 @@
 // One idle, add-only preservation pass per settled source. No startup scan,
 // generation, pruning, retry storm or background queue of complete chat copies.
 export function createGalleryArchiveCoordinator({getContext,epoch,account,headers,isCurrent,canRun=()=>true,admit=async()=>true,
-  connect=async options=>(await import('./qianmu-gallery-archive-source.js?v=1.59.315')).createCurrentGalleryArchiveSession(options),
+  connect=async options=>(await import('./qianmu-gallery-archive-source.js?v=1.59.316')).createCurrentGalleryArchiveSession(options),
   window=globalThis.window,document=globalThis.document,now=Date.now,quietMs=5000,onError=()=>{}}={}){
   if(typeof getContext!=='function'||typeof isCurrent!=='function'||typeof epoch!=='function'||!window?.setTimeout)throw Error('图库保全缺少宿主保护');
   let closed=false,pending=false,running=false,timer=null,revision=0,session=null,controller=null,lastActivity=now(),lastSuccess=null;

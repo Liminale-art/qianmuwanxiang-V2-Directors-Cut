@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {summarizeGalleryRecords} from '../qianmu-gallery-summary.js';
 import {renderGalleryInspector} from '../qianmu-gallery-inspector.js';
+import {galleryMembershipIds} from '../qianmu-gallery-membership.js';
+import {renderGalleryBulkCollections} from '../qianmu-gallery-taxonomy.js';
 import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard} from '../qianmu-gallery-collections-view.js';
 import {renderGalleryKeywordFilters} from '../qianmu-gallery-keywords-view.js';
 import {galleryTagsMatch} from '../qianmu-gallery-keywords.js';
@@ -62,11 +64,12 @@ function rendererFixture(count=5001,collectionCount=0){
   const rows=Array.from({length:count},(_,i)=>({id:String(i),createdAt:i,tags:['tag-'+i%12],collectionIds:['group-'+i%50],source:'novel',prompt:'original '+i,url:'/image-'+i+'.png'}));
   const collections=Array.from({length:collectionCount},(_,i)=>({id:'group-'+i,name:'Group '+i}));
   const state={gallerySearch:'',galleryTrack:'all',galleryTagFilters:[]};let reads=0,collectionReads=0;
-  const c=vm.createContext({summarizeGalleryRecords,renderGalleryInspector,galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
+  const c=vm.createContext({summarizeGalleryRecords,renderGalleryInspector,renderGalleryBulkCollections,galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
     storyboardGalleryKind:'stills',storyboardGalleryOpenCollectionId:'',storyboardGalleryInspectorRecordId:'',storyboardGallerySelectMode:false,
     storyboardGallerySelection:new Set(),storyboardGalleryVisibleCount:40,storyboardGalleryRecords:()=>{reads++;return rows;},
     storyboardGalleryCollections:()=>collections,
     storyboardItemCollectionIds:row=>{collectionReads++;return ids(row);},storyboardState:()=>state,
+    galleryMembershipIds:row=>{collectionReads++;return galleryMembershipIds(row);},
     ctx:()=>({chatMetadata:state,chat:[]}),getChatKey:()=> 'fixture',storyboardAdmissionEpoch:1,storyboardLinkReviewParagraphs:()=>[],
     storyboardGalleryNarrative:createGalleryNarrativeSession(),storyboardGalleryGroupId:row=>row.id,
     storyboardProductionDeliveryPolicy:()=>({track:'main_camera',sourceLabel:'正文'}),STORYBOARD_SOURCES:{novel:{label:'NAI'}},
@@ -170,4 +173,16 @@ test('actual large mixed render reads cover URLs only for visible tiles and mode
   for(const row of e.rows){Object.defineProperty(row,'url',{get(){urls++;return '/image.png';}});Object.defineProperty(row,'model',{get(){models++;return 'recorded-model';}});}
   const html=e.c.renderStoryboardGallery(e.state);assert.equal(urls,40);assert.equal(models,30);
   assert.equal((html.match(/class="sd-gallery-model-label"/g)||[]).length,30);assert.equal(e.collectionReads,5001);
+});
+
+test('actual selected gallery renders bounded bulk choices instead of thousands of select options',()=>{
+  const e=rendererFixture(5,5001);e.c.storyboardGallerySelectMode=true;const html=e.c.renderStoryboardGallery(e.state);
+  assert.match(html,/data-gallery-picker="bulk-collections"/);assert.doesNotMatch(html,/sd-storyboard-gallery-move-target/);
+  assert.equal((html.match(/data-choice-id=/g)||[]).length,29,'24 bulk choices plus 5 keywords');
+});
+
+test('actual gallery filtering and detail retain collection memberships beyond the old 30 read cap',()=>{
+  const e=rendererFixture(1,80);e.rows[0].collectionIds=Array.from({length:41},(_,i)=>'group-'+i);e.c.storyboardGalleryOpenCollectionId='group-40';
+  assert.equal(e.c.storyboardFilteredGalleryRecords(e.state).length,1);e.c.storyboardGalleryInspectorRecordId='0';
+  const html=e.c.renderStoryboardGallery(e.state);assert.match(html,/已选 41/);assert.equal((html.match(/data-choice-id=/g)||[]).length,24);
 });
