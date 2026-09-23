@@ -20,7 +20,7 @@ export function createNativeComfySceneStore({legacy,createStorage,indexedDB=glob
     const task=queue.then(async()=>{await check();const local=await journal.read(namespace),opts={guard:check,signal:captured.signal,requireExisting:local.nativeKnown,inventoryOnly:captured.inventoryOnly===true};
       // A persisted operation is replayed only as the exact same metadata
       // proposal. No provider job or imported receipt is ever submitted here.
-      if(local.pending){if(opts.inventoryOnly)fail('本机续场仍有待核对的保存操作，请先打开续场管理');
+      if(local.pending&&!captured.reviewOnly){if(opts.inventoryOnly)fail('本机续场仍有待核对的保存操作，请先打开续场管理');
         try{await catalogue.publish(local.pending.proposal,opts);await journal.acknowledge(namespace,local.pending.id);}
         catch(error){if(error?.code!=='comfy_scene_predecessor')throw error;await check();await journal.retainConflict(namespace,local.pending.id);}
         await check();}
@@ -69,6 +69,20 @@ export function createNativeComfySceneStore({legacy,createStorage,indexedDB=glob
   });
   return Object.freeze({
     persistence:'st-account-file',concurrency:'optimistic-non-cas',
+    review(namespace,chatKey,options={}){return run(namespace,{...options,reviewOnly:true},async opts=>{
+      const state=await catalogue.review(namespace,chatKey,opts),local=await journal.read(namespace);
+      return {...state,native:true,local:{pending:local.pending?{kind:local.pending.proposal.kind,id:local.pending.id}:null,outcomes:local.claims.reduce((n,row)=>n+row.outcomes.length,0),conflicts:local.conflicts.length}};
+    });},
+    synchronize(namespace,options={}){return run(namespace,options,async opts=>{await deliver(namespace,opts);return true;});},
+    resolveSource(scope,{heads,generation,selected,acknowledged},options={}){
+      scope=comfySceneScope(scope);const expected=structuredClone({heads,generation,selected,acknowledged});
+      return run(scope.namespace,options,async opts=>{await deliver(scope.namespace,opts);const state=await catalogue.reviewScope(scope,opts);
+        if(state.generation!==expected.generation||!sceneSame(state.heads,expected.heads))fail('续场来源在确认期间变化，请重新核对');
+        return apply({...state,record:state.branches},{type:'resolve',selected:expected.selected,acknowledged:expected.acknowledged},opts);
+      });
+    },
+    exportScene:(scope,options={})=>run(scope.namespace,{...options,reviewOnly:true},opts=>catalogue.exportScene(scope,opts)),
+    exportJournal:(namespace,options={})=>run(namespace,{...options,reviewOnly:true},()=>journal.read(namespace)),
     inspect:scope=>read(scope,{},state=>view(state)),
     pendingOwners:scope=>read(scope,{},async state=>({...view(state),owners:await localOwners(state)})),
     reserve:(scope,request)=>action(scope,{...structuredClone(request),type:'reserve'}),

@@ -2,6 +2,7 @@ import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
 import {comfySceneScope,comfySceneScopeKey,inspectComfySceneRecord,changeComfySceneRecord,copyComfySceneStyleRecord,captureComfySceneAction,captureComfySceneStyleLink,comfySceneLockError} from './qianmu-comfy-scene-lock.js';
 import {COMFY_SCENE_SNAPSHOT_SCHEMA,validateComfySceneSnapshot,comfySceneSnapshotBytes,sameComfySceneSnapshot,comfySceneSnapshotDigest} from './qianmu-comfy-scene-backup.js';
+import {resolveReviewedComfyScene} from './qianmu-comfy-scene-review.js';
 
 export const COMFY_SCENE_NATIVE_SLOT='comfy-scene-runtime',COMFY_SCENE_EVENT_SLOT='comfy-scene-transition';
 export const COMFY_SCENE_NATIVE_SCHEMA='qianmu.comfy.scene-runtime.v1',COMFY_SCENE_EVENT_SCHEMA='qianmu.comfy.scene-transition.v1';
@@ -17,6 +18,7 @@ export function validateSceneRecord(record,scope){
   if(!sceneSame(record.scope,scope))fail('续场记录范围不符');return record;
 }
 export function sceneMutation(before,scope,action,at,source=null){
+  if(action.type==='resolve')return resolveReviewedComfyScene(before,scope,action,at);
   validateSceneRecord(before,scope);
   if(action.type==='clear'){
     if(!exact(action,['type']))fail('续场清理动作无效');
@@ -67,7 +69,11 @@ export function validateSceneIndex(value,namespace,scope){
 export async function validateSceneEventLink(event,entry,meta){
   validateSceneEvent(event,event.namespace);
   if(!sceneSame(event.scope,entry.scope)||!sceneSame(event.parents,meta.parents)||await sceneHash(event)!==meta.digest||await sceneHash(event.record)!==meta.stateHash||(event.record===null?0:sceneBytes(event.record))!==meta.stateBytes)fail('续场原件与目录不符');
-  if(event.parents.length){const beforeHash=await sceneHash(event.before);if(event.parents.some(id=>entry.versions.find(v=>v.digest===id)?.stateHash!==beforeHash))fail('续场操作原前序状态不符');}
+  if(event.action?.type==='resolve'){
+    if(!sceneSame(event.parents,event.before.map(row=>row.digest)))fail('续场核对未覆盖全部原前序');
+    for(const branch of event.before)if(entry.versions.find(v=>v.digest===branch.digest)?.stateHash!==await sceneHash(branch.record))fail('续场核对的完整原件不符');
+  }
+  else if(event.parents.length){const beforeHash=await sceneHash(event.before);if(event.parents.some(id=>entry.versions.find(v=>v.digest===id)?.stateHash!==beforeHash))fail('续场操作原前序状态不符');}
   else if(event.action!==null&&event.before!==null)fail('非空续场操作缺少前序');
   return event;
 }

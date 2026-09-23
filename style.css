@@ -10961,3 +10961,5 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-composition-editor .sd-option-chip>span { font-size:11px; }
 .sd-composition-editor small,.sd-composition-editor [role=status] { font-size:var(--sd-font-caption,12px);overflow-wrap:anywhere; }
 .sd-composition-editor [role=status]:empty { display:none; }
+.sd-comfy-scene-review .sd-storyboard-card-body,.sd-comfy-scene-review .sd-comfy-pool-tools>* { min-width:0; }
+.sd-comfy-scene-review code,.sd-comfy-scene-review b,.sd-comfy-scene-review small,.sd-comfy-scene-review summary { white-space:normal;overflow-wrap:anywhere; }

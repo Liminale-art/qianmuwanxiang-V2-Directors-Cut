@@ -7,6 +7,7 @@ import {assertComfyRouteNamespace,normalizeComfySceneOrigin} from './qianmu-comf
 import {hasFreshComfyExecution,COMFY_FRESH_EXECUTION_POLICY} from './qianmu-comfy-new-execution.js';
 import {readComfySceneArchiveProof} from './qianmu-comfy-scene-result.js';
 export {createComfyBatchSceneScopes,createComfyDraftSceneScopes} from './qianmu-comfy-scene-lock.js';
+export const mountComfySceneReview=async options=>(await import('./qianmu-comfy-scene-view.js')).mountComfySceneReview(options);
 const copy=value=>JSON.parse(JSON.stringify(value));
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const fail=(code,message)=>{throw comfySceneLockError(code,message);};
@@ -168,6 +169,18 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
       await guard(evidence.namespace,current);return result.view;
     },
     async inspect(scope){scope=comfySceneScope(scope);await guard(scope.namespace);const view=await store.inspect(scope);await guard(scope.namespace);return view;},
+    async review(namespace,chatKey,{valid=()=>true}={}){
+      namespace=assertComfyRouteNamespace(namespace);await guard(namespace,valid);
+      const result=store.review?await store.review(namespace,chatKey,{guard:()=>guard(namespace,valid)}):{native:false,rows:(await store.list(namespace,chatKey)).map(view=>({scope:view.scope,view,branches:[],heads:[],generation:view.generation,error:''}))};
+      await guard(namespace,valid);return result;
+    },
+    async synchronize(namespace,{valid=()=>true}={}){namespace=assertComfyRouteNamespace(namespace);await guard(namespace,valid);await store.synchronize?.(namespace,{guard:()=>guard(namespace,valid)});await guard(namespace,valid);},
+    async resolveSource(scope,request,{valid=()=>true}={}){
+      scope=comfySceneScope(scope);const captured=structuredClone(request);await guard(scope.namespace,valid);if(!store.resolveSource)fail('review','当前存储不支持来源核对');
+      const result=await store.resolveSource(scope,captured,{guard:()=>guard(scope.namespace,valid)});await guard(scope.namespace,valid);return result.view;
+    },
+    async exportScene(scope,{valid=()=>true}={}){scope=comfySceneScope(scope);await guard(scope.namespace,valid);if(!store.exportScene)fail('review','当前存储不支持原件导出');const value=await store.exportScene(scope,{guard:()=>guard(scope.namespace,valid)});await guard(scope.namespace,valid);return value;},
+    async exportJournal(namespace,{valid=()=>true}={}){namespace=assertComfyRouteNamespace(namespace);await guard(namespace,valid);if(!store.exportJournal)fail('review','当前存储没有原生事务日志');const value=await store.exportJournal(namespace,{guard:()=>guard(namespace,valid)});await guard(namespace,valid);return value;},
     async linkStyle(sourceScope,targetScope,request,{valid=()=>true}={}){
       const captured=captureComfySceneStyleLink(sourceScope,targetScope,request);await guard(captured.targetScope.namespace,valid);
       const result=await store.linkStyle(captured.sourceScope,captured.targetScope,captured);await guard(captured.targetScope.namespace,valid);return result.view;

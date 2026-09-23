@@ -24,6 +24,10 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
       const load=async(entry,meta)=>{const saved=await client.readImmutable(sceneReference(meta.reference,client.scope),transport),value=validateSceneEvent(saved.value,namespace);if(value.generation>index.generation)fail('续场原件来自未确认的清理代数');await validateSceneEventLink(value,entry,meta);await check();return value;};
       const preserve=async event=>{validateSceneEvent(event,namespace);const saved=await client.preserveImmutable(COMFY_SCENE_EVENT_SLOT,event,transport);await check();if(!sceneSame(saved.value,event))fail('续场操作原件尚未读回');return {digest:await sceneHash(event),stateHash:await sceneHash(event.record),stateBytes:event.record===null?0:sceneBytes(event.record),reference:sceneReference(saved.reference,client.scope),parents:event.parents};};
       const find=(value,scope)=>value.entries.find(row=>comfySceneScopeKey(row.scope)===comfySceneScopeKey(scope));
+      const review=async scope=>{
+        const entry=find(index,scope),heads=sceneLeaves(entry),branches=[];for(const head of heads){const event=await load(entry,head);branches.push({digest:head.digest,record:event.record});}
+        return {scope,blocked:entry?.blocked===true,branches,heads:heads.map(row=>row.digest),generation:index.generation};
+      };
       const resolve=async scope=>{
         const entry=find(index,scope);if(entry?.blocked)fail('清理后发现另一端旧续场来源，原件已保全，请核对来源');
         const heads=sceneLeaves(entry),events=[];for(const head of heads)events.push(await load(entry,head));
@@ -41,23 +45,35 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
         }
         next.sources.push(sourceDigest);await save(next);
       }
-      const ctx={get index(){return index;},get exists(){return found.exists;},resolve,find,load,preserve,save,check,stable};
+      const ctx={get index(){return index;},get exists(){return found.exists;},resolve,review,find,load,preserve,save,check,stable};
       const result=await work(ctx);await stable();if((await read()).fingerprint!==found.fingerprint)fail('续场目录在核对期间变化');return structuredClone(result);
     });queue=task.then(()=>{},()=>{});return task;
   };
   return Object.freeze({
     get confirmed(){return known;},
     checkout(scope,options={}){scope=comfySceneScope(scope);return operation(scope.namespace,options,ctx=>ctx.resolve(scope));},
+    reviewScope(scope,options={}){scope=comfySceneScope(scope);return operation(scope.namespace,options,ctx=>ctx.review(scope));},
+    review(namespace,chatKey,options={}){return operation(namespace,options,async ctx=>{
+      const rows=[];for(const entry of ctx.index.entries.filter(row=>row.scope.chatKey===chatKey)){
+        try{rows.push({...await ctx.review(entry.scope),error:''});}
+        catch(error){await ctx.check();rows.push({scope:entry.scope,blocked:entry.blocked,branches:[],heads:sceneLeaves(entry).map(row=>row.digest),generation:ctx.index.generation,error:String(error?.message||'原件不可读取').slice(0,300)});}
+      }return {rows,generation:ctx.index.generation};
+    });},
     all(namespace,options={}){return operation(namespace,options,async ctx=>{const rows=[];for(const entry of ctx.index.entries){const row=await ctx.resolve(entry.scope);if(row.record!==null)rows.push(row);}return {rows,generation:ctx.index.generation,indexBytes:ctx.exists?sceneBytes(ctx.index):0};});},
     publish(proposal,options={}){const input=structuredClone(proposal);validateSceneProposal(input);return operation(input.namespace,options,async ctx=>{
       const digests=await Promise.all(input.events.map(sceneHash)),already=input.events.every((event,i)=>ctx.find(ctx.index,event.scope)?.versions.some(v=>v.digest===digests[i]));
       if(already){for(const [i,event]of input.events.entries()){const entry=ctx.find(ctx.index,event.scope);await ctx.load(entry,entry.versions.find(v=>v.digest===digests[i]));}return true;}
       if(ctx.index.generation!==input.generation)scenePredecessorFail('续场清理代数已变化，未重放旧操作');const next=structuredClone(ctx.index);
-      for(const event of input.events){const state=await ctx.resolve(event.scope);if(!sceneSame(state.heads,event.parents)||!sceneSame(state.record,event.before))scenePredecessorFail('续场原前序已变化，未覆盖另一端操作');if(event.action.type==='link'&&!sceneSame((await ctx.resolve(event.action.request.sourceScope)).record,event.source))scenePredecessorFail('续场关联来源已变化');}
-      for(const event of input.events){const previous=ctx.find(next,event.scope),entry=previous||{scope:event.scope,blocked:false,versions:[]};const meta=await ctx.preserve(event);entry.versions.push(meta);await validateSceneEventLink(event,entry,meta);if(!previous)next.entries.push(entry);}
+      for(const event of input.events){const reviewing=event.action.type==='resolve',state=reviewing?await ctx.review(event.scope):await ctx.resolve(event.scope);if(!sceneSame(state.heads,event.parents)||!sceneSame(reviewing?state.branches:state.record,event.before))scenePredecessorFail('续场原前序已变化，未覆盖另一端操作');if(event.action.type==='link'&&!sceneSame((await ctx.resolve(event.action.request.sourceScope)).record,event.source))scenePredecessorFail('续场关联来源已变化');}
+      for(const event of input.events){const previous=ctx.find(next,event.scope),entry=previous||{scope:event.scope,blocked:false,versions:[]};const meta=await ctx.preserve(event);entry.versions.push(meta);await validateSceneEventLink(event,entry,meta);if(event.action.type==='resolve')entry.blocked=false;if(!previous)next.entries.push(entry);}
       if(input.cleared){next.generation++;next.cleared=true;}await ctx.save(next);return true;
     });},
     exportAll(namespace,options={}){return operation(namespace,options,async ctx=>{const entries=[];for(const entry of ctx.index.entries){const versions=[];for(const meta of entry.versions)versions.push(await ctx.load(entry,meta));entries.push({scope:entry.scope,blocked:entry.blocked,versions});}return {namespace,generation:ctx.index.generation,entries,sources:ctx.index.sources};});},
+    exportScene(scope,options={}){scope=comfySceneScope(scope);return operation(scope.namespace,options,async ctx=>{
+      const entry=ctx.find(ctx.index,scope);if(!entry)fail('此场景没有保留的操作原件');const versions=[];let bytes=0;
+      for(const meta of entry.versions){const value=await ctx.load(entry,meta);bytes+=sceneBytes(value);if(bytes>32*1024*1024)fail('本场景原件超过32MiB，未截断或下载不完整文件');versions.push(value);}
+      return {schema:'qianmu.comfy.scene-export.v1',namespace:scope.namespace,scope,generation:ctx.index.generation,entry,versions};
+    });},
     close(){closed=true;client?.close();preservation.close();},
   });
 }

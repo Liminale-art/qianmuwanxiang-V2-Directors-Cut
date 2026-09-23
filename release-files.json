@@ -463,6 +463,8 @@
     "qianmu-comfy-scene-native-contract.js",
     "qianmu-comfy-scene-catalogue.js",
     "qianmu-comfy-scene-native-store.js",
+    "qianmu-comfy-scene-review.js",
+    "qianmu-comfy-scene-view.js",
     "qianmu-comfy-lock-store.js",
     "qianmu-comfy-lock-runtime.js",
     "qianmu-comfy-storage.js",
