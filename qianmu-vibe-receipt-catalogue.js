@@ -1,5 +1,5 @@
 import {createConfiguredStAccountStorage,stAccountImmutableReference} from './qianmu-st-account-storage.js';
-import {createVibeReceiptOriginals,captureVibeReceiptOriginal,VIBE_RECEIPT_ORIGINAL_SLOT,VIBE_RECEIPT_ORIGINAL_LIMITS} from './qianmu-vibe-receipt-original.js';
+import {createVibeReceiptOriginals,captureVibeReceiptOriginal,vibeReceiptEvidenceText,VIBE_RECEIPT_ORIGINAL_SLOT,VIBE_RECEIPT_ORIGINAL_LIMITS} from './qianmu-vibe-receipt-original.js';
 import {resolveVibeReceiptHeads,vibeReceiptFollows} from './qianmu-vibe-receipt-lineage.js';
 
 export const VIBE_RECEIPT_CATALOGUE_SLOT='vibe-receipt-catalogue';
@@ -45,10 +45,15 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
       const transport={guard:check,signal:captured.signal},originals=createVibeReceiptOriginals(client,{...transport,onProgress});
       async function read(){const result=await client.read(VIBE_RECEIPT_CATALOGUE_SLOT,transport);await check();
         if(!result.exists&&known)fail('已确认的费用目录缺失，未重建空账本');if(result.exists){validateIndex(result.value,namespace,client.scope);known=true;}return result;}
+      // Only this operation reuses an EXACT captured source. Every census
+      // still reads all five local tables; changes including undefined/-0,
+      // segments and counters remain observable. No cross-request cache.
+      const capturedSources=new Map();
       async function census(){const source=await legacy.census(namespace);await check();if(source.namespace!==namespace)fail('旧费用账本账户不符');
         const groups=new Map();for(const segment of source.reviewSegments){const rows=groups.get(segment.cacheKey)||[];rows.push(segment);groups.set(segment.cacheKey,rows);}
         const items=[];for(const section of ['current','archived'])for(const receipt of source[section]){
-          const capturedOriginal=await captureVibeReceiptOriginal({namespace,section,receipt,segments:groups.get(receipt.cacheKey)||[]},namespace);await check();items.push(capturedOriginal);
+          const input={namespace,section,receipt,segments:groups.get(receipt.cacheKey)||[]},text=vibeReceiptEvidenceText(input),prior=capturedSources.get(receipt.cacheKey);
+          const capturedOriginal=prior?.text===text?prior:await captureVibeReceiptOriginal(input,namespace);await check();capturedSources.set(receipt.cacheKey,capturedOriginal);items.push(capturedOriginal);
         }
         return {items,signature:JSON.stringify({items:items.map(item=>item.digest),archiveUsage:source.archiveUsage,reviewUsage:source.reviewUsage})};
       }
@@ -61,22 +66,27 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
         if(!same(saved.value,next))fail('费用目录尚未完整读回');found=saved;value=structuredClone(next);await unchanged();if((await read()).fingerprint!==found.fingerprint)fail('另一端修改了费用目录');
         await onProgress({kind:'vibe-receipt-catalogue',stage:'verified'});await check();
       }
-      const snapshots=new Map();
+      // Historical bodies belong to one receipt at a time, not the entire
+      // account. Newly preserved originals share the already-required census
+      // snapshots, so first migration does not download its own upload again.
+      const snapshots=new Map(),preserved=new Map();let loadedKey='';
+      function cacheFor(entry){if(loadedKey!==entry.cacheKey){snapshots.clear();loadedKey=entry.cacheKey;}return snapshots;}
       async function load(entry,version){
-        let snapshot=snapshots.get(version.digest);if(!snapshot){snapshot=await originals.read(version.reference,{cacheKey:entry.cacheKey,section:version.section});await check();
-          const capturedOriginal=await captureVibeReceiptOriginal(snapshot,namespace);await check();if(capturedOriginal.digest!==version.digest)fail('费用原件与目录依据不符');snapshots.set(version.digest,snapshot);}
+        const cache=cacheFor(entry);let snapshot=cache.get(version.digest)||preserved.get(version.digest);if(!snapshot){snapshot=await originals.read(version.reference,{cacheKey:entry.cacheKey,section:version.section});await check();
+          const capturedOriginal=await captureVibeReceiptOriginal(snapshot,namespace);await check();if(capturedOriginal.digest!==version.digest)fail('费用原件与目录依据不符');}
+        cache.set(version.digest,snapshot);
         return {digest:version.digest,snapshot};
       }
       async function resolve(entry){
         if(!entry)return {kind:'empty',selected:null,conflicts:[],heads:[]};const heads=leaves(entry),items=[];
         // Verify every explicit edge, including older predecessors: a forged
         // child must not hide a different uncertain attempt from the resolver.
-        const attempts=new Set();for(const version of entry.versions){const child=await load(entry,version);let newAttempt=false;
-          for(const id of version.parents){const parent=await load(entry,entry.versions.find(v=>v.digest===id));if(!await vibeReceiptFollows(parent.snapshot,child.snapshot,{explicit:true}))fail('费用目录前后状态衔接不符');
+        const byId=new Map(entry.versions.map(v=>[v.digest,v])),attempts=new Set();for(const version of entry.versions){const child=await load(entry,version);let newAttempt=false;
+          for(const id of version.parents){const parent=await load(entry,byId.get(id));if(!await vibeReceiptFollows(parent.snapshot,child.snapshot,{explicit:true}))fail('费用目录前后状态衔接不符');
             if(parent.snapshot.receipt.attemptId!==child.snapshot.receipt.attemptId)newAttempt=true;}
           if(newAttempt&&attempts.has(child.snapshot.receipt.attemptId))fail('新费用尝试复用了历史请求编号');attempts.add(child.snapshot.receipt.attemptId);
         }
-        const predecessors=new Map(),byId=new Map(entry.versions.map(v=>[v.digest,v]));
+        const predecessors=new Map();
         for(const version of heads){items.push(await load(entry,version));const seen=new Set(),pending=[...version.parents],prior=[];
           while(pending.length){const id=pending.pop();if(seen.has(id))continue;seen.add(id);const parent=byId.get(id);prior.push(await load(entry,parent));pending.push(...parent.parents);}
           predecessors.set(version.digest,prior);
@@ -93,17 +103,21 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
         // Only this exact captured candidate is deferred; it stays in every
         // census change check and is published below with validated parents.
         if(old.digest===deferredDigest&&!version)continue;
-        if(version){const checked=await load(existing,version);if(checked.digest!==old.digest)fail('旧费用原件核对不符');continue;}
+        // Matching recorded evidence is not new migration. Each operation
+        // below verifies the originals it actually returns/uses: one receipt
+        // plus ALL its predecessors, or the entire account for a full audit.
+        // Do not download unrelated recorded originals before every lookup.
+        if(version)continue;
         const saved=await originals.preserve(old.snapshot);await check();const entry=existing||{cacheKey:receipt.cacheKey,section:old.snapshot.section,versions:[]};
-        entry.versions.push({digest:old.digest,section:old.snapshot.section,reference:saved.reference,parents:[]});snapshots.set(old.digest,old.snapshot);
+        entry.versions.push({digest:old.digest,section:old.snapshot.section,reference:saved.reference,parents:[]});preserved.set(old.digest,old.snapshot);cacheFor(entry).set(old.digest,old.snapshot);
         entry.section=sectionOf(await resolve(entry));if(!existing)adopted.entries.push(entry);adoptionChanged=true;
       }
       if(adoptionChanged){adopted.revision=value.revision+1;await save(adopted);}
       const find=key=>value.entries.find(entry=>entry.cacheKey===key);
       const inspect=async key=>{const entry=find(key),result=await resolve(entry);if(entry&&entry.section!==sectionOf(result))fail('费用目录分区与原件不符');return {entry,result};};
-      const result=await work({find,inspect,resolve,sectionOf,load,originals,snapshots,check,baseline,get value(){return value;},save:async next=>{next.revision=value.revision+1;await save(next);}});
+      const result=await work({find,inspect,resolve,sectionOf,load,originals,check,baseline,get exists(){return found.exists;},get value(){return value;},save:async next=>{next.revision=value.revision+1;await save(next);}});
       await unchanged();if((await read()).fingerprint!==found.fingerprint)fail('费用目录在读取期间变化');return structuredClone(result);
-    });queue=task;return task;
+    });queue=task.then(()=>{},()=>{});return task;
   }
   const validKey=key=>{if(!hash(key))fail('费用记录编号无效');};
   return Object.freeze({
@@ -113,9 +127,12 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
     });},
     readAll(namespace,options={}){return operation(namespace,options,async state=>{
       const rows=[];for(const entry of state.value.entries){const {result}=await state.inspect(entry.cacheKey);if(result.kind==='conflict')fail('费用目录存在未核对分歧，未提供不完整清单');rows.push(result.selected.snapshot);}
-      return {rows,metadata:{count:1,bytes:new TextEncoder().encode(JSON.stringify(state.value)).length}};
+      return {rows,metadata:{count:Number(state.exists),bytes:state.exists?new TextEncoder().encode(JSON.stringify(state.value)).length:0}};
     });},
-    list(namespace,options={}){return operation(namespace,options,state=>state.value.entries.map(entry=>({cacheKey:entry.cacheKey,section:entry.section,versions:entry.versions.length,heads:leaves(entry).map(v=>v.digest)})));},
+    list(namespace,options={}){return operation(namespace,options,async state=>{
+      for(const entry of state.value.entries)await state.inspect(entry.cacheKey);
+      return state.value.entries.map(entry=>({cacheKey:entry.cacheKey,section:entry.section,versions:entry.versions.length,heads:leaves(entry).map(v=>v.digest)}));
+    });},
     inspect(namespace,cacheKey,options={}){validKey(cacheKey);return operation(namespace,options,async state=>{const {entry,result}=await state.inspect(cacheKey);
       return {...result,versions:entry?.versions.map(v=>({digest:v.digest,section:v.section,reference:v.reference,parents:v.parents}))||[]};});},
     get(namespace,cacheKey,options={}){validKey(cacheKey);return operation(namespace,options,async state=>{const {result}=await state.inspect(cacheKey);

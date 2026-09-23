@@ -15,7 +15,7 @@ export function createNativeVibeEncodingStore({legacy,createStorage,onProgress,g
   const catalogue=createVibeReceiptCatalogue({legacy,createStorage,onProgress});let closed=false,queue=Promise.resolve();
   const check=async()=>{if(closed||signal?.aborted||isCurrent&&isCurrent()!==true)fail('费用会话已变化');if(await guard?.()===false)fail('费用账户核对未通过');if(closed||signal?.aborted||isCurrent&&isCurrent()!==true)fail('费用会话已变化');return true;};
   const options={guard:check,signal,isCurrent:()=>!closed&&(!isCurrent||isCurrent()===true)};
-  function run(args,work){const captured=structuredClone(args),task=queue.catch(()=>{}).then(async()=>{await check();const result=await work(...captured);await check();return structuredClone(result);});queue=task;return task;}
+  function run(args,work){const captured=structuredClone(args),task=queue.catch(()=>{}).then(async()=>{await check();const result=await work(...captured);await check();return structuredClone(result);});queue=task.then(()=>{},()=>{});return task;}
   async function checkout(namespace,cacheKey){
     key(cacheKey);const state=await catalogue.checkout(namespace,cacheKey,options);await check();
     // A concurrent local update must not be overwritten, even if ST still
