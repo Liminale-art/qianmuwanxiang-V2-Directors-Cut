@@ -126,10 +126,10 @@ export function createLocalComfySceneLockStore({indexedDB=globalThis.indexedDB,k
       return transaction('readonly',(tx,output,abort)=>readComfySceneSnapshot(tx,namespace,keyRange,{limits:quota,isCurrent},output,abort),isCurrent);
     },
     async assertSnapshot(expected,{isCurrent=()=>true}={}){
-      const {validateComfySceneSnapshot,sameComfySceneSnapshot}=await import('./qianmu-comfy-scene-backup.js');
-      const captured=structuredClone(expected);validateComfySceneSnapshot(captured,{limits:quota});
-      const actual=await this.snapshot(captured.namespace,{isCurrent});
-      if(!isCurrent()||!sameComfySceneSnapshot(actual,captured))throw comfySceneLockError('conflict','本机续场原件在保全期间变化，请重新核对');return true;
+      const captured=structuredClone(expected);
+      const {compareComfySceneSnapshot}=await import('./qianmu-comfy-scene-backup.js');
+      const matched=await transaction('readonly',(tx,output,abort)=>compareComfySceneSnapshot(tx,captured,keyRange,{limits:quota,isCurrent},output,abort),isCurrent);
+      if(!isCurrent())throw closedError();return matched;
     },
     inspect:scope=>operate(scope),
     pendingOwners:scope=>operate(scope,null,true),

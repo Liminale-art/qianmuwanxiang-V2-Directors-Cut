@@ -6,7 +6,7 @@ import * as core from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {captureStoryboardContinuation as capture,prepareStoryboardContinuation as prepare,saveStoryboardContinuation as save,normalizeStoryboardContinuationLinks as normalize,storyboardContinuationPath as path} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardMessageReference as reference,resolveStoryboardMessageReference as resolve,normalizeStoryboardMessageReference as normalizeRef} from '../qianmu-storyboard.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.357';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.358';
 import {storyboardStreamGeneration as generation,storyboardStreamDigest as digest,storyboardStreamFingerprint as fingerprint,storyboardStreamGenerationInput,verifyStoryboardStreamReference as verify} from '../qianmu-storyboard-stream-reference.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};

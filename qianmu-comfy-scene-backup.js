@@ -69,3 +69,42 @@ export function readComfySceneSnapshot(tx,namespace,keyRange,{limits,isCurrent=(
     }catch(error){abort(error);}};
   }catch(error){abort(error);}};
 }
+
+// Compare every stored field directly against a fully validated captured
+// snapshot. Unlike JSON serialization, this cannot erase undefined values,
+// sparse arrays, extra fields, non-JSON objects or negative zero. Object key
+// order is immaterial; array order and exact primitive values are not.
+function sameStoredValue(actual,expected){
+  if(actual===null||expected===null||typeof actual!=='object'||typeof expected!=='object')return Object.is(actual,expected);
+  const array=Array.isArray(expected);
+  if(Array.isArray(actual)!==array||!array&&![Object.prototype,null].includes(Object.getPrototypeOf(actual)))return false;
+  const keys=Object.keys(expected),actualKeys=Object.keys(actual);
+  if(actualKeys.length!==keys.length||Reflect.ownKeys(actual).length!==actualKeys.length+(array?1:0)||array&&actual.length!==expected.length)return false;
+  return keys.every(key=>{const descriptor=Object.getOwnPropertyDescriptor(actual,key);return descriptor?.enumerable&&Object.hasOwn(descriptor,'value')&&sameStoredValue(descriptor.value,expected[key]);});
+}
+
+// The caller owns an isolated capture. Revalidation still scans both tables
+// atomically and checks primary keys, but does not build, clone, normalize or
+// serialize a second complete snapshot merely to compare it with the first.
+export function compareComfySceneSnapshot(tx,expected,keyRange,{limits,isCurrent=()=>true}={},output,abort){
+  validateComfySceneSnapshot(expected,{limits});
+  const namespace=expected.namespace,rows=new Map(expected.rows.map(row=>[row.key,row.value])),seen=new Set();
+  const valid=()=>{if(isCurrent()!==true)fail('续场原件读取页面已变化');};
+  const mismatch=()=>{throw comfySceneLockError('conflict','本机续场原件在保全期间变化，请重新核对');};
+  valid();const request=tx.objectStore('usage').get(namespace);
+  request.onsuccess=()=>{try{
+    valid();if(!sameStoredValue(request.result===undefined?null:request.result,expected.usage))mismatch();
+    const scan=tx.objectStore('scopes').index('chat').openCursor(keyRange.bound([namespace],[namespace,[]]));
+    scan.onsuccess=()=>{try{
+      valid();const cursor=scan.result;
+      if(!cursor){
+        if(seen.size!==rows.size)mismatch();
+        const prefix=JSON.stringify([namespace]).slice(0,-1)+',';
+        const keys=tx.objectStore('scopes').getAllKeys(keyRange.bound(prefix,prefix+'\uffff'),(limits?.scopes??COMFY_SCENE_STORE_LIMITS.scopes)+1);
+        keys.onsuccess=()=>{try{valid();if(!sameStoredValue(keys.result,expected.rows.map(row=>row.key)))mismatch();output(true);}catch(error){abort(error);}};return;
+      }
+      if(!rows.has(cursor.primaryKey)||seen.has(cursor.primaryKey)||!sameStoredValue(cursor.value,rows.get(cursor.primaryKey)))mismatch();
+      seen.add(cursor.primaryKey);cursor.continue();
+    }catch(error){abort(error);}};
+  }catch(error){abort(error);}};
+}

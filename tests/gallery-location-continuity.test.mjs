@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {galleryLocationFixture,locationGate} from './helpers/gallery-location-fixture.mjs';
 import {attachGalleryContinuity} from './helpers/gallery-continuity-fixture.mjs';
-import {stageStoryboardContinuationLinks,storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.357';
+import {stageStoryboardContinuationLinks,storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.358';
 import {vibeDigest} from '../qianmu-vibe-file.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.357';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.358';
 
 async function fixture(t){const f=galleryLocationFixture(t),store=f.context.chatMetadata.story_director_liminale;
   const {record}=await attachGalleryContinuity({context:f.context,namespace:f.scope.namespace});Object.assign(f.record,record);
