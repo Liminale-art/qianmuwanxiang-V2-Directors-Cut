@@ -13,6 +13,19 @@ const exact=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(
 const slotName=value=>{if(typeof value!=='string'||!/^[a-z][a-z0-9-]{0,95}$/.test(value))fail('slot','储存项目标识无效');return value;};
 const namespaceName=value=>{if(typeof value!=='string'||!/^st-user:.+/.test(value)||value.length>512||/[\u0000-\u001f\u007f]/.test(value))fail('account','尚未确认当前 ST 账户');return value;};
 const utf8=new TextEncoder();
+// A reference identifies one complete version inside the captured ST account.
+// It is not authorization and cannot select an external URL or bypass a guard.
+export function stAccountImmutableReference(value,{scope,slot,maxBytes=ST_ACCOUNT_STORAGE_LIMITS.maxBytes+1024}={}){
+  const names=['version','scope','slot','fingerprint','bytes'];
+  if(!value||typeof value!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(value))
+    ||Reflect.ownKeys(value).length!==names.length||names.some(key=>!Object.getOwnPropertyDescriptor(value,key)?.enumerable
+      ||!Object.hasOwn(Object.getOwnPropertyDescriptor(value,key)||{},'value')))fail('reference','ST 原件引用格式无效');
+  if(value.version!==1||typeof scope!=='string'||!hashPattern.test(scope)||value.scope!==scope
+    ||typeof value.fingerprint!=='string'||!hashPattern.test(value.fingerprint)
+    ||!Number.isSafeInteger(maxBytes)||maxBytes<1||!Number.isSafeInteger(value.bytes)||value.bytes<1||value.bytes>maxBytes
+    ||slot!==undefined&&value.slot!==slot)fail('reference','ST 原件引用与账户或读取范围不一致');
+  slotName(value.slot);return Object.freeze(Object.fromEntries(names.map(key=>[key,value[key]])));
+}
 function jsonText(value,maxBytes){
   const seen=new Set();let nodes=0;
   function check(item,depth=0){
@@ -139,6 +152,25 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
     const receipt=await op.call('/api/files/upload',{body:JSON.stringify({name,data:base64(text)}),limit:4096});
     if(!exact(receipt.value,['path'])||![path(name),path(name).slice(1)].includes(receipt.value.path))fail('path','ST 保存回执路径无效，未确认保存');
   }
+  async function readImmutable(reference,op,allowMissing=false){
+    const body=await op.call(path(`${prefix(reference.slot)}-${reference.fingerprint}.json`),{limit:reference.bytes,allowMissing:true});
+    if(!body){if(allowMissing)return null;fail('missing','ST 原件已不可读，未使用其他版本替代');}
+    const value=body.value;
+    if(utf8.encode(body.text).byteLength!==reference.bytes||!exact(value,['schema','scope','slot','value'])||value.schema!==schema
+      ||value.scope!==scope||value.slot!==reference.slot||await digest(body.text)!==reference.fingerprint)fail('format','ST 原件版本或内容校验失败，未采用内容');
+    jsonText(value.value,maxBytes);await op.check();
+    return Object.freeze({...result(value.value,reference.fingerprint),reference});
+  }
+  async function preserveImmutable(slot,value,op){
+    const text=jsonText({schema,scope,slot,value},maxBytes+1024);
+    const reference=stAccountImmutableReference({version:1,scope,slot,fingerprint:await digest(text),bytes:utf8.encode(text).byteLength},{scope,slot,maxBytes:maxBytes+1024});
+    await op.check();
+    const existing=await readImmutable(reference,op,true);if(existing)return existing;
+    // Never publishes/replaces a mutable head. Even after a lost upload receipt,
+    // a caller retry first verifies the exact body instead of uploading blindly.
+    await upload(`${prefix(slot)}-${reference.fingerprint}.json`,text,op);
+    return readImmutable(reference,op);
+  }
   async function writeDocument(slot,value,expectedFingerprint,op){
     const text=jsonText({schema,scope,slot,value},maxBytes+1024),fingerprint=await digest(text);await op.check();
     const previous=await readHead(slot,op);
@@ -160,6 +192,14 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
   }
   return Object.freeze({namespace,scope,
     read(slot,options){return queue(slot,op=>readDocument(slot,op),options);},
+    readImmutable(reference,options){
+      try{const captured=stAccountImmutableReference(reference,{scope,maxBytes:maxBytes+1024});return queue(captured.slot,op=>readImmutable(captured,op),options);}
+      catch(cause){return Promise.reject(cause);}
+    },
+    preserveImmutable(slot,value,options){
+      try{slotName(slot);const captured=JSON.parse(jsonText(value,maxBytes));return queue(slot,op=>preserveImmutable(slot,captured,op),options);}
+      catch(cause){return Promise.reject(cause);}
+    },
     write(slot,value,{expectedFingerprint,signal,guard}={}){
       try{
         if(expectedFingerprint!==null&&!hashPattern.test(expectedFingerprint||''))fail('conflict','保存需要先读取当前版本');

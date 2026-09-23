@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {createStAccountStorage,configureStAccountStorage,createConfiguredStAccountStorage,isStAccountStorageConfigured} from '../qianmu-st-account-storage.js';
+import {createStAccountStorage,configureStAccountStorage,createConfiguredStAccountStorage,isStAccountStorageConfigured,stAccountImmutableReference} from '../qianmu-st-account-storage.js';
 
 const origin='https://st.fixture.invalid',owner='st-user:fixture-account';
 const response=(value,status=200,headers={})=>new Response(typeof value==='string'?value:JSON.stringify(value),{status,headers:{'content-type':'application/json',...headers}});
@@ -133,4 +133,123 @@ test('head races preserve uploaded copies and report conflict rather than fake C
   }}),store=await f.create();
   await assert.rejects(store.write('notes',{text:'preserved'},{expectedFingerprint:null}),{code:'st_account_storage_conflict',writeState:'unconfirmed'});
   assert.equal(f.files.size,1);assert.ok([...f.files.values()][0].includes('preserved'));assert.equal(f.calls.filter(c=>c.request.method==='POST').length,1);store.close();
+});
+
+test('immutable originals preserve complete text, create no head and read by exact version across clients',async()=>{
+  const f=fixture(),a=await f.create(),value={record:{text:'完整原文\r\n😀'.repeat(18000),future:['',0,false,null]},origin:{chat:'deleted later'}};
+  const saved=await a.preserveImmutable('collection-record',value);assert.equal(f.files.size,1);assert.equal(f.calls.length,3);
+  assert.ok([...f.files.values()].every(body=>JSON.parse(body).schema==='qianmu.st-account-document.v1'));
+  assert.equal(saved.reference.scope,a.scope);assert.equal(saved.reference.bytes,Buffer.byteLength([...f.files.values()][0]));a.close();
+  const b=await f.create(),start=f.calls.length,loaded=await b.readImmutable(saved.reference);assert.equal(f.calls.length,start+1);assert.deepEqual(loaded.value,value);
+  assert.equal(loaded.persistence,'st-account-file');assert.deepEqual(loaded.reference,saved.reference);assert.equal((await b.read('collection-record')).exists,false);
+  loaded.value.record.text='caller edit';assert.deepEqual((await b.readImmutable(saved.reference)).value,value);b.close();
+});
+
+test('changing one immutable original uploads only that original and leaves every earlier version readable',async()=>{
+  const f=fixture(),store=await f.create(),refs=[],values=Array.from({length:12},(_,i)=>({id:'item-'+i,text:('完整原文'+i).repeat(9000)}));
+  for(const value of values)refs.push((await store.preserveImmutable('collection-record',value)).reference);
+  const before=new Map(f.files),count=f.calls.length,next={...values[3],text:'单条修改'};
+  const saved=await store.preserveImmutable('collection-record',next);assert.equal(f.files.size,before.size+1);
+  const writes=f.calls.slice(count).filter(call=>call.request.method==='POST');assert.equal(writes.length,1);
+  const sent=Buffer.from(JSON.parse(writes[0].request.body).data,'base64').toString('utf8');assert.ok(Buffer.byteLength(sent)<500);assert.ok(!sent.includes(values[0].text));
+  for(const [name,text]of before)assert.equal(f.files.get(name),text);
+  for(let i=0;i<refs.length;i++)assert.deepEqual((await store.readImmutable(refs[i])).value,values[i]);
+  assert.deepEqual((await store.readImmutable(saved.reference)).value,next);store.close();
+});
+
+test('immutable reuse verifies the stored body without upload and never changes an existing mutable head',async()=>{
+  const f=fixture(),store=await f.create(),first=await store.write('collections',{text:'old library'},{expectedFingerprint:null});
+  const head=[...f.files].find(([,text])=>JSON.parse(text).schema==='qianmu.st-account-head.v1'),value={text:'single original'};
+  const saved=await store.preserveImmutable('collections',value),count=f.calls.length,files=f.files.size;
+  assert.deepEqual((await store.preserveImmutable('collections',value)).reference,saved.reference);assert.equal(f.calls.length,count+1);assert.equal(f.files.size,files);
+  assert.equal(f.files.get(head[0]),head[1]);assert.equal((await store.read('collections')).fingerprint,first.fingerprint);store.close();
+});
+
+test('lost immutable upload acknowledgement stays unconfirmed and retry verifies without another upload',async()=>{
+  let lose=true;const f=fixture({fetch:({path,request,files})=>{
+    if(path==='/api/files/upload'&&lose){lose=false;const {name,data}=JSON.parse(request.body);files.set(name,Buffer.from(data,'base64').toString('utf8'));throw Error('accepted, receipt lost');}
+  }}),store=await f.create(),value={text:'saved original'};
+  await assert.rejects(store.preserveImmutable('collection-record',value),{code:'st_account_storage_connection',writeState:'unconfirmed'});
+  const start=f.calls.length,saved=await store.preserveImmutable('collection-record',value);assert.deepEqual(saved.value,value);
+  assert.equal(f.calls.length,start+1);assert.equal(f.calls.filter(call=>call.request.method==='POST').length,1);assert.equal(f.files.size,1);store.close();
+});
+
+test('immutable source and reference are captured before queueing; invalid JSON never reaches transport',async()=>{
+  const f=fixture(),store=await f.create(),value={text:'original'},pending=store.preserveImmutable('collection-record',value);value.text='late edit';
+  const saved=await pending;assert.equal(saved.value.text,'original');const ref={...saved.reference},reading=store.readImmutable(ref);ref.fingerprint='f'.repeat(64);
+  assert.equal((await reading).value.text,'original');
+  for(const value of [undefined,NaN,{x:undefined},[,,],{text:'\ud800'},new Date()]){
+    const start=f.calls.length;await assert.rejects(store.preserveImmutable('collection-record',value));assert.equal(f.calls.length,start);
+  }store.close();
+});
+
+test('immutable references reject foreign scope, paths, over-budget bytes, accessors and hidden fields without fetching',async()=>{
+  const f=fixture(),store=await f.create(),ref=(await store.preserveImmutable('collection-record',{text:'private'})).reference;let getters=0;
+  const accessor={...ref};Object.defineProperty(accessor,'scope',{enumerable:true,get(){getters++;return ref.scope;}});
+  const hidden={...ref};Object.defineProperty(hidden,'extra',{value:'bad'});
+  for(const bad of [null,{...ref,scope:'b'.repeat(64)},{...ref,slot:'../collections'},{...ref,fingerprint:'https://elsewhere'},
+    {...ref,fingerprint:{toString(){getters++;return ref.fingerprint;}}},
+    {...ref,bytes:0},{...ref,bytes:Infinity},{...ref,bytes:64*1024*1024+1025},{...ref,version:2},{...ref,extra:true},accessor,hidden]){
+    const start=f.calls.length;await assert.rejects(store.readImmutable(bad));assert.equal(f.calls.length,start);
+  }
+  assert.equal(getters,0);assert.throws(()=>stAccountImmutableReference(ref,{scope:store.scope,slot:'notes'}));store.close();
+});
+
+test('deleted or corrupted immutable bodies never fall back to a newer head or get silently repaired',async()=>{
+  for(const mode of ['missing','changed','bytes','slot','duplicate']){
+    const f=fixture(),store=await f.create(),saved=await store.preserveImmutable('collection-record',{text:'old'}),[name]=f.files.keys();
+    await store.write('collection-record',{text:'new head must not be borrowed'},{expectedFingerprint:null});
+    let ref={...saved.reference};if(mode==='missing')f.files.delete(name);
+    if(mode==='changed')f.files.set(name,f.files.get(name).replace('"old"','"bad"'));
+    if(mode==='bytes')ref.bytes++;
+    if(mode==='slot')ref.slot='another-slot';
+    if(mode==='duplicate')f.files.set(name,f.files.get(name).replace('"value":','"value":null,"value":'));
+    const writes=f.calls.filter(call=>call.request.method==='POST').length,start=f.calls.length;
+    await assert.rejects(store.readImmutable(ref));assert.equal(f.calls.length,start+1);assert.equal(f.calls.filter(call=>call.request.method==='POST').length,writes);
+    if(['changed','duplicate'].includes(mode)){
+      await assert.rejects(store.preserveImmutable('collection-record',{text:'old'}));assert.equal(f.calls.filter(call=>call.request.method==='POST').length,writes);
+    }store.close();
+  }
+});
+
+test('immutable references cannot be reused in another account and late account changes cannot publish originals',async()=>{
+  const f=fixture(),a=await f.create(),saved=await a.preserveImmutable('collection-record',{text:'private'});a.close();f.setAccount('st-user:other');
+  const b=await f.create(),start=f.calls.length;await assert.rejects(b.readImmutable(saved.reference),{code:'st_account_storage_reference'});assert.equal(f.calls.length,start);b.close();
+  const entered=gate(),release=gate(),late=fixture({headers:async()=>{entered.resolve();return release.promise;}}),c=await late.create();
+  const pending=c.preserveImmutable('collection-record',{text:'never sent'});await entered.promise;late.setAccount('st-user:changed');release.resolve({});
+  await assert.rejects(pending,{code:'st_account_storage_account'});assert.equal(late.calls.length,0);c.close();
+});
+
+test('immutable cancellation and timeouts settle without publishing a mutable head or retrying',async()=>{
+  for(const mode of ['abort','close','timeout']){
+    const entered=gate(),controller=new AbortController(),f=fixture({timeoutMs:100,fetch:()=>{entered.resolve();return new Promise(()=>{});}}),store=await f.create();
+    const pending=store.preserveImmutable('collection-record',{text:'original'},{signal:controller.signal});await entered.promise;
+    if(mode==='abort')controller.abort();if(mode==='close')store.close();
+    await assert.rejects(pending,e=>e.writeState==='not_started');assert.equal(f.calls.length,1);assert.equal(f.files.size,0);store.close();
+  }
+});
+
+test('immutable upload acknowledgement and subsequent readback must both identify the complete saved original',async()=>{
+  for(const mode of ['wrong-receipt','tamper-after-upload']){
+    const f=fixture({fetch:({path,request,files})=>{
+      if(path!=='/api/files/upload')return;
+      if(mode==='wrong-receipt')return response({path:'/user/files/not-the-requested-file.json'});
+      const {name,data}=JSON.parse(request.body);files.set(name,Buffer.from(data,'base64').toString('utf8').replace('"original"','"tampered"'));return response({path:'/user/files/'+name});
+    }}),store=await f.create();await assert.rejects(store.preserveImmutable('collection-record',{text:'original'}),e=>e.writeState==='unconfirmed');
+    assert.equal(f.calls.filter(call=>call.request.method==='POST').length,1);assert.ok([...f.files.values()].every(text=>JSON.parse(text).schema!=='qianmu.st-account-head.v1'));store.close();
+  }
+});
+
+test('immutable operations retain the existing per-call guard and byte limits before transport',async()=>{
+  const f=fixture({maxBytes:1024}),store=await f.create(),saved=await store.preserveImmutable('collection-record',{text:'safe'});
+  for(const invoke of [()=>store.readImmutable(saved.reference,{guard:()=>false}),()=>store.preserveImmutable('collection-record',{text:'safe'},{guard:()=>false}),
+    ()=>store.preserveImmutable('collection-record',{text:'文'.repeat(400)})]){
+    const count=f.calls.length;await assert.rejects(invoke());assert.equal(f.calls.length,count);
+  }store.close();
+});
+
+test('a timeout after immutable upload begins is unconfirmed and never starts a blind second upload',async()=>{
+  const f=fixture({timeoutMs:100,fetch:({path})=>path==='/api/files/upload'?new Promise(()=>{}):null}),store=await f.create();
+  await assert.rejects(store.preserveImmutable('collection-record',{text:'original'}),{code:'st_account_storage_timeout',writeState:'unconfirmed'});
+  assert.equal(f.calls.length,2);assert.equal(f.calls.filter(call=>call.request.method==='POST').length,1);store.close();
 });

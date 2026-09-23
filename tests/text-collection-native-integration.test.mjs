@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,webcrypto} from 'node:crypto';
-import {configureStAccountStorage} from '../qianmu-st-account-storage.js';
+import {configureStAccountStorage,createConfiguredStAccountStorage} from '../qianmu-st-account-storage.js';
+import {createTextCollectionOriginalStore,textCollectionOriginalDescriptor} from '../qianmu-text-collection-original.js';
 import {createTextCollectionSession} from '../qianmu-text-collection-session.js';
-import {createTextCollection} from '../qianmu-text-collection.js';
+import {createTextCollection,restoreTextCollectionCopy} from '../qianmu-text-collection.js';
 
 const origin='https://st.fixture.invalid',namespace='st-user:collection-integration';
 const account='st-user:'+createHash('sha256').update(namespace.slice(8)).digest('hex');
@@ -92,4 +93,85 @@ test('legacy records migrate intact through the real HTTP reader and account cha
     const operation=session.prepareEdit(original.id,1,'不得写给另一账户'),before=f.uploads;f.setAccount('st-user:someone-else');
     await assert.rejects(operation.submit(),{code:'text_collection_sync_account'});assert.equal(f.uploads,before);
     assert.ok([...f.files.values()].some(body=>body.includes('厨房的一刻')));assert.ok([...f.files.values()].every(body=>!body.includes('不得写给另一账户')));
+});
+
+const entry=record=>({id:record.id,revision:record.revision,updatedAt:record.updatedAt,deleted:false,record});
+async function originalStore(t){
+    const f=fixture(t),storage=await createConfiguredStAccountStorage();t.after(()=>storage.close());
+    return {...f,storage,originals:createTextCollectionOriginalStore({storage,expectedAccount:account})};
+}
+
+test('complete collection original and lightweight descriptor use actual native HTTP storage without migrating the library',async t=>{
+    const f=await originalStore(t),original=entry(record('collection-long','原文😀\r\n'.repeat(26000))),saved=await f.originals.preserve(original);
+    assert.equal(f.files.size,1);assert.equal(f.calls.filter(call=>call.path==='/api/files/upload').length,1);
+    assert.equal(f.calls.some(call=>call.path.includes('/api/plugins/')),false);
+    assert.ok(JSON.stringify(saved).length<1200);assert.equal(Object.hasOwn(saved,'record'),false);assert.equal(Object.hasOwn(saved,'text'),false);
+    assert.equal(saved.textBytes,Buffer.byteLength(original.record.text));assert.equal(saved.summary.charName,'当时 CHAR');
+    f.storage.close();const other=await createConfiguredStAccountStorage();t.after(()=>other.close());
+    const independent=createTextCollectionOriginalStore({storage:other,expectedAccount:account}),count=f.calls.length;
+    assert.deepEqual(await independent.read(saved),original);assert.equal(f.calls.length,count+1);assert.equal((await other.read('collections')).exists,false);
+});
+
+test('an original descriptor retains restored ownership separately from the captured source account',async t=>{
+    const f=await originalStore(t),old=record(),foreign={...old,source:{...old.source,account:'st-user:'+'f'.repeat(64)}};
+    const restored=entry(restoreTextCollectionCopy(foreign,{id:'restored-copy',ownerAccount:account,restoredAt:20})),saved=await f.originals.preserve(restored);
+    assert.deepEqual(await f.originals.read(saved),restored);assert.equal(saved.summary.charName,old.source.charName);
+    assert.equal((await f.originals.read(saved)).record.source.account,foreign.source.account);
+});
+
+test('single collection original preservation leaves the existing library and all original bodies untouched',async t=>{
+    const f=await originalStore(t),session=await f.open(),old=record();await session.prepareCreate(old).submit();
+    const library=await f.storage.read('collections'),before=new Map(f.files),saved=await f.originals.preserve(entry(old));
+    for(const [name,body]of before)assert.equal(f.files.get(name),body);
+    assert.deepEqual(await f.storage.read('collections'),library);assert.deepEqual((await session.get(old.id)).record,old);
+    assert.deepEqual(await f.originals.read(saved),entry(old));
+});
+
+test('collection descriptors reject modified preview, names, date, body length and id when reading the exact original',async t=>{
+    const f=await originalStore(t),saved=await f.originals.preserve(entry(record()));
+    for(const change of [v=>v.summary.preview='wrong preview',v=>v.summary.charName='wrong person',v=>v.summary.createdAt--,
+      v=>v.recordBytes++,v=>v.textBytes++,v=>{v.id=v.summary.id='different-id';}]){
+      const changed=structuredClone(saved);change(changed);await assert.rejects(f.originals.read(changed),{code:'text_collection_sync_original'});
+    }
+    const shuffled=structuredClone(saved);shuffled.summary=Object.fromEntries(Object.entries(shuffled.summary).reverse());
+    assert.deepEqual(await f.originals.read(shuffled),entry(record()),'JSON key ordering is not a content change');
+});
+
+test('invalid originals, tombstones and mismatched account data are rejected before any upload',async t=>{
+    const f=await originalStore(t),good=entry(record());
+    for(const bad of [{...good,deleted:true,revision:2,record:null},{...good,extra:true},
+      {...good,record:{...good.record,future:'not recognized by the existing record contract'}},
+      {...good,record:{...good.record,source:{...good.record.source,account:'st-user:'+'f'.repeat(64)}}}]){
+      const count=f.calls.length;await assert.rejects(f.originals.preserve(bad));assert.equal(f.calls.length,count);
+    }assert.equal(f.files.size,0);
+});
+
+test('invalid collection references cannot read other document slots or foreign account versions',async t=>{
+    const f=await originalStore(t),saved=await f.originals.preserve(entry(record()));
+    for(const change of [v=>v.original.slot='notes',v=>v.original.scope='f'.repeat(64),v=>v.original.bytes=0,v=>v.extra=true]){
+      const bad=structuredClone(saved);change(bad);const count=f.calls.length;await assert.rejects(f.originals.read(bad));assert.equal(f.calls.length,count);
+    }
+    assert.deepEqual(textCollectionOriginalDescriptor(saved,{expectedAccount:account,scope:f.storage.scope}),saved);
+});
+
+test('verified native bodies still require collection-envelope account, entry and version matching',async t=>{
+    const f=await originalStore(t),original=entry(record()),saved=await f.originals.preserve(original);
+    for(const value of [{version:2,expectedAccount:account,entry:original},{version:1,expectedAccount:'st-user:'+'f'.repeat(64),entry:original},
+      {version:1,expectedAccount:account,entry:original,extra:'unrecognized'}]){
+      const receipt=await f.storage.preserveImmutable('collection-record',value);
+      await assert.rejects(f.originals.read({...saved,original:receipt.reference}),{code:'text_collection_sync_original'});
+    }
+});
+
+test('collection original persistence cannot accept a receipt for a different complete record',async t=>{
+    const f=await originalStore(t),other=await f.storage.preserveImmutable('collection-record',{version:1,expectedAccount:account,entry:entry(record('other-record','different'))});
+    const mismatched=createTextCollectionOriginalStore({storage:{scope:f.storage.scope,preserveImmutable:async()=>other,readImmutable:async()=>other},expectedAccount:account});
+    await assert.rejects(mismatched.preserve(entry(record())),{code:'text_collection_sync_original'});
+});
+
+test('deleted originals and account switches remain errors rather than empty collection content',async t=>{
+    const f=await originalStore(t),saved=await f.originals.preserve(entry(record())),name=[...f.files.keys()][0];
+    f.files.delete(name);await assert.rejects(f.originals.read(saved),{code:'st_account_storage_missing'});assert.equal(f.files.size,0);
+    f.setAccount('st-user:other-account');const count=f.calls.length;
+    await assert.rejects(f.originals.preserve(entry(record())),{code:'st_account_storage_account'});assert.equal(f.calls.length,count);
 });
