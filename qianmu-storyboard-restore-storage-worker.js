@@ -1,6 +1,5 @@
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js';
 import { collectRestoreStorage, clearRestoreStorage } from './qianmu-storyboard-restore-storage.js';
-import {createStAccountStorage} from './qianmu-st-account-storage.js';
 import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
 
 let started=false,request=0,id='',pending=null;
@@ -29,10 +28,8 @@ self.addEventListener('message',async event=>{
     }
     let native=false;
     if(input.nativeHistory){
-      const value=input.nativeHistory;
-      if(!['inspect','clear'].includes(input.action)||Object.keys(value).length!==3||value.namespace!==input.namespace||value.origin!==self.location.origin||typeof value.csrf!=='string')throw Error('恢复记录储存来源无效');
-      native={createStorage:options=>createStAccountStorage({...options,origin:value.origin,isCurrent:()=>true,
-        resolveNamespace:async()=>{await guard();return input.namespace;},headers:()=>({'X-CSRF-Token':value.csrf})})};
+      if(!['inspect','clear','mappings'].includes(input.action)&&!input.action.startsWith('mapping-')&&!input.action.startsWith('user-alias-'))throw Error('恢复记录储存交接范围无效');
+      native=characterWorkerStorageOptions(input.nativeHistory,{namespace:input.namespace,origin:self.location.origin,guard});
     }
     journal=createStoryboardPackageJournal({native});
     const options={journal,namespace:input.namespace,guard,isCurrent:()=>true};

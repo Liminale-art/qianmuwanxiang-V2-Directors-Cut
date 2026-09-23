@@ -9,6 +9,7 @@ import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {createStoryboardPackageJournal} from '../qianmu-storyboard-package-journal.js';
+import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
 
 // Real native-file protocol/client; deterministic in-memory ST HTTP transport.
 // Independent clients are not a claim of real two-device/browser acceptance.
@@ -157,13 +158,15 @@ test('default main factory selects native journal while explicit legacy workers 
 });
 
 test('real manager Worker script inspects and ends the native row without sending raw proposals to its main thread',async t=>{
+  t.mock.method(globalThis,'fetch',(...args)=>configFetch(...args));let configFetch;
   const f=await fixture(t);configureStAccountStorage(f.config);await f.open().prepareHistoricalChatMutation(f.row,{confirmed:true});
   const source=(await readFile(new URL('../qianmu-storyboard-restore-storage-worker.js',import.meta.url),'utf8')).replace(/^import[^\n]*\n/gm,''),posts=[];
   class Worker{
     listeners={};handler=null;closed=false;
     constructor(){
       const self={location:{origin:f.config.origin},addEventListener:(_,fn)=>{this.handler=fn;},close:()=>{},postMessage:data=>{posts.push(data);queueMicrotask(()=>{if(!this.closed)this.listeners.message({data});});}};
-      vm.runInNewContext(source,{self,createStoryboardPackageJournal:({native})=>{assert.ok(native.createStorage);return f.open(f.makeLegacy(),native);},
+      configFetch=f.config.fetchImpl;
+      vm.runInNewContext(source,{self,characterWorkerStorageOptions,createStoryboardPackageJournal:({native})=>{assert.ok(native.createStorage);return f.open(f.makeLegacy(),native);},
         createStAccountStorage:options=>createStAccountStorage({...f.config,...options}),collectRestoreStorage,clearRestoreStorage:options=>clearRestoreStorage({...options,locks:{request:async(_,__,fn)=>fn({})}})});
     }
     addEventListener(name,fn){this.listeners[name]=fn;}postMessage(data){queueMicrotask(()=>{if(!this.closed)void this.handler({data});});}terminate(){this.closed=true;}

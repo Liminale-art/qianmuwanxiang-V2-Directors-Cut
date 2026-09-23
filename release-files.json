@@ -309,6 +309,8 @@
     "qianmu-storyboard-mapping-contract.js",
     "qianmu-mapping-import-contract.js",
     "qianmu-mapping-import.js",
+    "qianmu-mapping-native-contract.js",
+    "qianmu-mapping-journal-native.js",
     "qianmu-storyboard-mapping-registry.js",
     "qianmu-storyboard-mapping-view.js",
     "qianmu-storyboard-subject-map.js",

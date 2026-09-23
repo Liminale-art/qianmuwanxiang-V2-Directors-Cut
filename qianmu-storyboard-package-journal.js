@@ -3,11 +3,12 @@ import {inspectStoryboardEnvironmentReview,validateStoryboardEnvironmentReceipt,
 import {inspectStoryboardSubjectMapReview} from './qianmu-storyboard-subject-map.js';
 import {mappingHead,validateMappingHead,mappingHeadKey} from './qianmu-storyboard-mapping-contract.js';
 import {inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
-import {sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
+import {sameBundleMappingHead,validateBundleMappingHeads} from './qianmu-bundle-mapping-contract.js';
 import {inspectHistoricalChatMutation,historicalChatMutationNext} from './qianmu-historical-chat-journal.js';
 import {comfyLibraryBackupDigest as mappingDigest} from './qianmu-comfy-library-backup.js';
 import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
 import {createNativeHistoricalJournal} from './qianmu-historical-journal-native.js';
+import {createNativeMappingJournal} from './qianmu-mapping-journal-native.js';
 // Asset checkpoints are identity-only; the separate mutation store holds local before/after configuration.
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_package_journal',submissionState:'not_submitted'});};
 const account=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);
@@ -34,7 +35,8 @@ export function validateStoryboardPackageCheckpoint(row){
 
 export function createStoryboardPackageJournal({native=isStAccountStorageConfigured(),...options}={}){
   const legacy=createLocalStoryboardPackageJournal({...options,nativeHistory:Boolean(native)});
-  return native?createNativeHistoricalJournal({legacy,...(typeof native==='object'?native:{}),now:options.now||Date.now}):legacy;
+  const settings={...(typeof native==='object'?native:{}),now:options.now||Date.now};
+  return native?createNativeMappingJournal({legacy:createNativeHistoricalJournal({legacy,...settings}),...settings}):legacy;
 }
 function createLocalStoryboardPackageJournal({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-storyboard-package-journal',timeoutMs=8000,now=Date.now,nativeHistory=false}={}){
   let database=null,opening=null,closed=false;const pending=new Set(),timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||8000));
@@ -183,13 +185,25 @@ function createLocalStoryboardPackageJournal({indexedDB=globalThis.indexedDB,key
       },[storeName,'mappingHeads']);
       return loadMappingReceipt(namespace,head.kind,head.digest,{isCurrent});
     },
-    async listMappingHeads(namespace,{guard=async()=>{},isCurrent=()=>true}={}){
+    async createMappingMigrationGuard(namespace,heads,{isCurrent=()=>true}={}){
+      validateBundleMappingHeads(heads,namespace);const before=await mappingReferences(namespace,isCurrent),byKey=new Map(heads.map(head=>[head.key,head]));
+      if(before.refs.length!==heads.length||before.refs.some(ref=>{const head=byKey.get(mappingHeadKey(namespace,ref.kind,ref.digest));return !head||ref.bytes&&ref.bytes!==head.reviewBytes;})
+        ||before.heads.some(head=>!sameBundleMappingHead(head,byKey.get(head.key))))fail('本机迁移凭据已变化，请重新核对');
+      // Supported journal writers only append immutable receipts and heads in
+      // one transaction. Recheck the exact key/metadata snapshot at publication,
+      // not every large legacy body on every network guard.
+      const expected=JSON.stringify(before);
+      return async()=>{if(JSON.stringify(await mappingReferences(namespace,isCurrent))!==expected)fail('保全期间本机迁移凭据已变化，请重新核对');return true;};
+    },
+    async listMappingHeads(namespace,{guard=async()=>{},isCurrent=()=>true,readOnly=false}={}){
       if(!account(namespace))fail('迁移凭据账户无效');await guard();const before=await mappingReferences(namespace,isCurrent),existing=new Set(before.heads.map(row=>row.key));
       if(before.refs.length===before.heads.length){await guard();return before.heads;}
+      const derived=[];
       for(const ref of before.refs){
         if(existing.has(mappingHeadKey(namespace,ref.kind,ref.digest)))continue;
         await guard();const receipt=await loadMappingReceipt(namespace,ref.kind,ref.digest,{isCurrent});if(!receipt)fail('迁移凭据已变化，请重新盘点');
         const head=mappingHead(ref.kind,receipt);await guard();
+        if(readOnly){derived.push(head);continue;}
         await transaction('readwrite',isCurrent,(store,read,set,tx)=>read(store.get(ref.key),current=>{
           if(JSON.stringify(current)!==JSON.stringify(receipt))fail('原迁移凭据已变化，未改写历史');
           const heads=tx.objectStore('mappingHeads');read(heads.get(head.key),currentHead=>{
@@ -199,6 +213,7 @@ function createLocalStoryboardPackageJournal({indexedDB=globalThis.indexedDB,key
         }),[mappingStore(ref.kind),'mappingHeads']);
       }
       await guard();const after=await mappingReferences(namespace,isCurrent);
+      if(readOnly){if(JSON.stringify(after)!==JSON.stringify(before))fail('本机迁移凭据已变化，请刷新目录');return [...before.heads,...derived];}
       if(after.refs.length!==after.heads.length)fail('另一个页面新增了迁移凭据，请刷新目录');return after.heads;
     },
     async loadSubjectMap(namespace,expectedDigest){

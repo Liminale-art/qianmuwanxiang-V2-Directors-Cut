@@ -34,7 +34,8 @@ self.addEventListener('message', async event => {
     let result;
     if (message.action === 'open' && !session) {
       const namespace = message.payload.namespace, token = message.payload.csrf || '';
-      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native: characterWorkerStorageOptions(message.payload.nativeCharacters, {namespace, origin: self.location.origin, guard, isCurrent: () => !closed})}), vibe = createVibeAssetStore(), journal = createStoryboardPackageJournal(),carrierStore=createBundleCarrierStore();
+      const native=characterWorkerStorageOptions(message.payload.nativeCharacters,{namespace,origin:self.location.origin,guard,isCurrent:()=>!closed});
+      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native}), vibe = createVibeAssetStore(), journal = createStoryboardPackageJournal({native}),carrierStore=createBundleCarrierStore();
       stores.push(workflowStore, poolStore, characterStore, vibe, journal,carrierStore);
       session = await createStoryboardBundleRestoreSession({ namespace, chatKey: message.payload.chatKey, file: message.payload.file, workflowStore, poolStore, characterStore, journal,carrierStore,
         vibeStage: createStoryboardPackageStage({ store: vibe, journal }), guard, isCurrent: () => !closed,

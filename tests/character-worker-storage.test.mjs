@@ -110,7 +110,8 @@ test('bundle restore runtime carries native scope independently from image-clien
 test('all bundle and storage worker archive factories explicitly consume the validated native context', async () => {
   for (const name of ['qianmu-storyboard-bundle-worker.js','qianmu-storyboard-bundle-restore-worker.js','qianmu-storyboard-restore-storage-worker.js']) {
     const source = await readFile(new URL('../' + name, import.meta.url), 'utf8');
-    assert.doesNotMatch(source, /createCharacterArchiveStore\(\)/); assert.match(source, /createCharacterArchiveStore\(\{native:\s*characterWorkerStorageOptions/);
+    assert.doesNotMatch(source, /createCharacterArchiveStore\(\)/); assert.match(source, /createCharacterArchiveStore\(\{native(?::\s*characterWorkerStorageOptions|\})/);
+    if(name.includes('bundle'))assert.match(source,/createStoryboardPackageJournal\(\{native\}\)/);
     assert.match(source, /nativeCharacters/);
   }
 });
