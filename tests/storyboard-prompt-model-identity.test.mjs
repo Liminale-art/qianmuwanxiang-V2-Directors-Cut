@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
+import {prepareGalleryRecipeFieldRelease} from '../qianmu-gallery-recipe-fields.js';
 import {
   compileStoryboardPrompt, normalizeStoryboardShotSpec, createStoryboardDefaults,
   resolveStoryboardModelBinding, resolveStoryboardJobModelIdentity,
@@ -10,6 +11,7 @@ import {
   getStoryboardCapabilities, synchronizeStoryboardCaptionBase,
   planCharacterReference, characterReferenceChoice,
   storyboardProductionContext,
+  storyboardRecipeRecordMetadata,
   captureStoryboardArtistPromptLayer, resolveStoryboardArtistPromptBase,
   createStoryboardMessageReference,
   captureStoryboardVibeRecipe,
@@ -250,6 +252,14 @@ test('actual inline redraw prefers saved image edits over the old log and leaves
   assert.deepEqual([...job.tags],['夜色','相伴']);
   assert.deepEqual(archive, {...before,tags:['旧标签']});
   assert.notEqual(env.original.payload.negative, 'edited exclusions');
+});
+test('actual redraw after duplicate release still consumes complete compiled and composition data from the original recipe',async()=>{
+  const archive=snapshot();archive.compiledPrompt={prompt:'original compiled',future:{keep:true}};archive.compositionDecision={ratioId:'3:2',future:'keep'};
+  const env=redrawRuntime(archive);Object.assign(env.record,{snapshot:archive,compiledPrompt:structuredClone(archive.compiledPrompt),compositionDecision:structuredClone(archive.compositionDecision)});
+  const source=structuredClone(archive);prepareGalleryRecipeFieldRelease(env.record,archive,storyboardRecipeRecordMetadata).apply();delete env.record.snapshot;
+  assert.equal(env.record.compiledPrompt,undefined);assert.equal(env.record.compositionDecision,undefined);
+  assert.equal(await env.context.storyboardRedrawRecord(env.record),true);assert.deepEqual(env.queued[0].compiledPrompt,archive.compiledPrompt);
+  assert.deepEqual(env.queued[0].compositionDecision,archive.compositionDecision);assert.deepEqual(archive,source);
 });
 
 test('actual redraw inherits every collection beyond both old 30 and generic snapshot 100 limits',async()=>{

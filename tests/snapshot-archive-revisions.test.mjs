@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
+import {storyboardRecipeRecordMetadata} from '../qianmu-storyboard.js';
 import {preserveCapturedSnapshotArchives} from '../qianmu-plan-archive-write.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
@@ -28,7 +29,7 @@ test('incomplete, sparse, reordered or unrelated snapshot references cannot disc
 
 function fixture() {
   const record={id:'image',chatKey:'chat',snapshotRef:base},rows=[record],writes=[];
-  const c=vm.createContext({migrateGallerySnapshots,preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,
+  const c=vm.createContext({migrateGallerySnapshots,storyboardRecipeRecordMetadata,preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,
     storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:()=>assert.fail('no duplicate full-recipe memory cache'),
     console:{warn(){}},storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>{},
     storyboardRecipeArchiveClient:async()=>({preserve:async()=>({reference:{id:'confirmed-test-reference'}}),read:async()=>({snapshot:{prompt:'edited'}}),guard:async()=>true,guardIdentity:async()=>true,close(){}}),

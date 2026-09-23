@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {migrateGallerySnapshots,GALLERY_SNAPSHOT_BATCH} from '../qianmu-gallery-snapshot-migration.js';
 import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
+import {storyboardRecipeRecordMetadata} from '../qianmu-storyboard.js';
 const test=(name,run)=>nodeTest(name,{timeout:15000},run);
 
 const rows=(n,size=8)=>Array.from({length:n},(_,i)=>({id:'image-'+i,chatKey:'chat',snapshot:{prompt:'p'+i,body:'x'.repeat(size)},future:{keep:true}}));
@@ -10,6 +11,7 @@ function fixture(records=rows(19)){
   const e={records,chat:'chat',epoch:1,time:0,events:[],writes:[],saves:[],errors:[],active:0,maxActive:0,normalized:0};
   const options={readRecords:()=>e.records,readChatKey:()=>e.chat,readEpoch:()=>e.epoch,available:()=>true,admit:async()=>true,now:()=>e.time,
     recordChatKey:row=>row.chatKey,recordKey:row=>'chat␟'+row.id,normalize:snapshot=>{e.normalized++;e.events.push('normalize');return structuredClone(snapshot);},
+    projectRecipeRecord:storyboardRecipeRecordMetadata,
     yieldWork:async()=>{e.events.push('yield');},onError:error=>e.errors.push(error),
     connect:async()=>{
       e.active++;e.maxActive=Math.max(e.maxActive,e.active);e.events.push('connect');
@@ -93,7 +95,7 @@ test('another gallery is not blocked and a waiting old owner cannot publish afte
   assert.deepEqual(await Promise.all([first,second]),[0,0]);assert.ok(e.records.every(row=>row.snapshot));assert.equal(e.active,0);
 });
 test('actual entry delegates bounded batches, retains its busy lifecycle and schedules additive preservation',async()=>{
-  const e=fixture(),c=vm.createContext({migrateGallerySnapshots,storyboardSnapshotArchiveBusy:0,storyboardSnapshotEpoch:1,Date,
+  const e=fixture(),c=vm.createContext({migrateGallerySnapshots,storyboardRecipeRecordMetadata,storyboardSnapshotArchiveBusy:0,storyboardSnapshotEpoch:1,Date,
     storyboardGalleryRecords:()=>e.records,getChatKey:()=>e.chat,storyboardPackageArchiveAllowed:e.options.admit,storyboardRecipeArchiveClient:e.options.connect,
     storyboardRecordChatKey:e.options.recordChatKey,storyboardSnapshotKey:e.options.recordKey,sanitizeStoryboardSnapshot:e.options.normalize,
     blobStore:{blobStoreAvailable:e.options.available,putStoryboardSnapshots:e.options.put},saveMetadata:e.options.save,console:{warn(){}},storyboardScheduleGalleryPreservation:()=>e.events.push('schedule')});
@@ -107,4 +109,17 @@ test('malformed client capability and advertised batch without a batch writer ca
     assert.equal(await e.run(),0);assert.ok(e.records[0].snapshot);assert.equal(e.writes.length,0);assert.equal(e.saves.length,0);
     assert.equal(e.events.some(event=>event.startsWith('preserve:')),false);assert.equal(e.active,0);assert.equal(e.normalized,0);
   }
+});
+test('later host save failure restores only that batch of repeated fields while keeping the confirmed earlier batch',async()=>{
+  const e=fixture(rows(10));for(const row of e.records){row.compiledPrompt={prompt:row.id,future:['',false,0]};row.snapshot.compiledPrompt=structuredClone(row.compiledPrompt);}
+  const before=structuredClone(e.records),save=e.options.save;let saves=0;e.options.save=async()=>{if(++saves===2)throw Error('save failed');return save();};
+  assert.equal(await e.run(),8);assert.ok(e.records.slice(0,8).every(row=>!row.snapshot&&!row.compiledPrompt));assert.deepEqual(e.records.slice(8),before.slice(8));
+  e.options.save=save;assert.equal(await e.run(),2);assert.ok(e.records.every(row=>!row.snapshot&&!row.compiledPrompt));
+});
+test('a changed later prepared record rolls back already released rows before any host save',async()=>{
+  const e=fixture(rows(3));for(const row of e.records){row.compiledPrompt={prompt:row.id};row.snapshot.compiledPrompt=structuredClone(row.compiledPrompt);}
+  e.records[2].productionContext={};e.records[2].snapshot.productionContext={narrativeContext:{invalid:true}};
+  const before=structuredClone(e.records);let changed=false;e.options.onError=error=>{e.errors.push(error);if(!changed){changed=true;e.records[1].compiledPrompt.prompt='newer edit';}};
+  assert.equal(await e.run(),0);assert.equal(e.saves.length,0);assert.deepEqual(e.records[0],before[0]);assert.deepEqual(e.records[2],before[2]);
+  assert.equal(e.records[1].compiledPrompt.prompt,'newer edit');assert.deepEqual(e.records[1].snapshot,before[1].snapshot);
 });

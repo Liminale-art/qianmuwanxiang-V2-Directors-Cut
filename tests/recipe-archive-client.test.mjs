@@ -9,7 +9,7 @@ import {preserveCapturedSnapshotArchives} from '../qianmu-plan-archive-write.js'
 import {RECIPE_ARCHIVE_LIMITS} from '../qianmu-recipe-archive-contract.js';
 import {projectChatGalleryDetails} from '../qianmu-chat-gallery-details.js';
 import {createStoryboardBundleConfiguration} from '../qianmu-storyboard-bundle-configuration.js';
-import {createStoryboardDefaults} from '../qianmu-storyboard.js';
+import {createStoryboardDefaults,storyboardProductionContext,storyboardDirectorDecisionSnapshot,storyboardProductionDeliveryPolicy,storyboardRecipeRecordMetadata} from '../qianmu-storyboard.js';
 import {createSelectedRecipeArchiveClient} from '../qianmu-recipe-archive-client.js';
 import {chatGalleryDigest,galleryDigestRecord} from '../qianmu-chat-gallery-digest.js';
 
@@ -114,7 +114,7 @@ function entry(e,options={}){
     saveMetadata:async()=>{saves++;await e.save();},blobStore:{blobStoreAvailable:()=>true,
       putStoryboardSnapshots:async rows=>{writes++;for(const row of rows)local.set(row.key,structuredClone(row));return {stored:rows.map(row=>row.key)};},
       getStoryboardSnapshots:async keys=>keys.map(key=>local.get(key)).filter(Boolean)}};
-  const c=vm.createContext({migrateGallerySnapshots,...globals});vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
+  const c=vm.createContext({migrateGallerySnapshots,storyboardRecipeRecordMetadata,...globals});vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
     'storyboardStoreSnapshotForRecord','storyboardRecipeArchiveClient','storyboardArchiveGallerySnapshots'].map(section).join('\n'),c);
   return {c,local,get writes(){return writes;},get saves(){return saves;}};
 }
@@ -381,4 +381,52 @@ test('actual new and legacy backend paths preserve the same ten complete origina
     assert.equal(singles,modern?0:10);assert.equal(batches,modern?2:0);assert.equal(a.saves,2);assert.equal(a.writes,2);
     assert.deepEqual([...a.local.values()].map(row=>row.snapshot),original);assert.equal(e.rows.length,10);assert.ok(e.rows.every(row=>!row.snapshot&&row.snapshotServerRef));
   }
+});
+
+function repeatedRecipeFields(record){
+  record.snapshot.compiledPrompt={prompt:'原词',future:{large:'x'.repeat(60000),keep:['',0,false,null]}};
+  record.snapshot.compositionDecision={ratioId:'3:2',future:{unknown:'keep'}};
+  record.compiledPrompt=structuredClone(record.snapshot.compiledPrompt);record.compositionDecision=structuredClone(record.snapshot.compositionDecision);
+  record.shotSpec={id:'legacy-shot',characters:[],unknown:'do not remove'};
+}
+test('actual new and legacy archives remove only complete repeated fields and a fresh client reads every original byte',async t=>{
+  for(const modern of [true,false]){
+    const e=await recipeClientFixture(t);repeatedRecipeFields(e.rows[0]);await e.save();const original=structuredClone(e.rows[0]),hotBefore={...original};delete hotBefore.snapshot;
+    const a=entry(e,{fetchImpl:(url,options)=>!modern&&url.endsWith('/batch-capabilities')?Promise.resolve(new Response('old',{status:404})):e.fetch(url,options)});
+    assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);const record=e.rows[0];assert.equal(record.compiledPrompt,undefined);assert.equal(record.compositionDecision,undefined);
+    assert.deepEqual(record.shotSpec,original.shotSpec);assert.ok(Buffer.byteLength(JSON.stringify(hotBefore))-Buffer.byteLength(JSON.stringify(record))>58000);
+    const reader=await e.open();assert.deepEqual((await reader.read(record)).snapshot,original.snapshot);reader.close();
+    const saved=JSON.parse((await fs.readFile(e.file,'utf8')).split('\n')[0]).chat_metadata.story_director_liminale.storyboardImages[0];assert.deepEqual(saved,record);
+  }
+});
+test('actual archival preserves world provenance that previously existed only inside the inline recipe',async t=>{
+  const e=await recipeClientFixture(t);repeatedRecipeFields(e.rows[0]);delete e.rows[0].shotSpec;
+  e.rows[0].snapshot.productionContext={packetId:'world',eventId:'event',track:'second_camera',truthMode:'speculative',decisionId:'d',decisionStatus:'approved'};
+  e.rows[0].snapshot.shotSpec={directorDecision:{decisionId:'d',status:'approved',owner:{chatKey:'chat'},source:{packetId:'world'},approval:{mode:'explicit',approvedAt:1}}};
+  await e.save();const before=storyboardProductionDeliveryPolicy(e.rows[0],{target:'latest'}),decision=storyboardDirectorDecisionSnapshot(e.rows[0]);
+  assert.equal(await entry(e).c.storyboardArchiveGallerySnapshots(),1);assert.equal(e.rows[0].snapshot,undefined);
+  assert.deepEqual(storyboardProductionDeliveryPolicy(e.rows[0],{target:'latest'}),before);assert.deepEqual(storyboardDirectorDecisionSnapshot(e.rows[0]),decision);
+  assert.equal(before.target,'gallery');assert.equal(e.rows[0].productionContext.packetId,'world');
+});
+test('actual failed host save restores duplicate fields and provenance additions exactly',async t=>{
+  const e=await recipeClientFixture(t);repeatedRecipeFields(e.rows[0]);e.rows[0].snapshot.productionContext={packetId:'world',track:'second_camera'};await e.save();
+  const before=structuredClone(e.rows),a=entry(e);a.c.saveMetadata=async()=>{throw Error('host save failed');};
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows,before);assert.equal(Object.hasOwn(e.rows[0],'productionContext'),false);
+  assert.equal((await fs.readdir(e.archive)).length,1);assert.equal(await entry(e).c.storyboardArchiveGallerySnapshots(),1);
+});
+test('actual failed save never overwrites a newer compiled edit while restoring its other unpublished fields',async t=>{
+  const e=await recipeClientFixture(t);repeatedRecipeFields(e.rows[0]);await e.save();const original=structuredClone(e.rows[0]),a=entry(e);
+  a.c.saveMetadata=async()=>{e.rows[0].compiledPrompt={newer:true};throw Error('failed');};
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows[0].compiledPrompt,{newer:true});
+  assert.deepEqual(e.rows[0].snapshot,original.snapshot);assert.deepEqual(e.rows[0].compositionDecision,original.compositionDecision);
+});
+test('actual unrepresentable provenance retains every original even after independent copies have been saved',async t=>{
+  const e=await recipeClientFixture(t);repeatedRecipeFields(e.rows[0]);e.rows[0].productionContext={packetId:'world'};
+  e.rows[0].snapshot.productionContext={packetId:'world',narrativeContext:{invalid:true}};await e.save();const before=structuredClone(e.rows),a=entry(e);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows,before);assert.equal(a.saves,0);assert.equal((await fs.readdir(e.archive)).length,1);
+});
+test('actual changed duplicate or missing original remains resident without silently borrowing payload fields',async t=>{
+  const e=await recipeClientFixture(t);repeatedRecipeFields(e.rows[0]);e.rows[0].compiledPrompt.future.onlyCopy='keep';
+  delete e.rows[0].snapshot.compositionDecision;await e.save();const before=structuredClone(e.rows[0]);assert.equal(await entry(e).c.storyboardArchiveGallerySnapshots(),1);
+  assert.deepEqual(e.rows[0].compiledPrompt,before.compiledPrompt);assert.deepEqual(e.rows[0].compositionDecision,before.compositionDecision);
 });

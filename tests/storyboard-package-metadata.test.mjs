@@ -97,7 +97,7 @@ test('archive admission reads only the pending key, pauses during import and pre
 });
 test('all real archive writers return before any original-body write while recovery is pending',async()=>{
   const writes=[],pipeline={id:'pipeline',status:'success'},state={logs:[{id:'log',pipelineId:'pipeline'}],pipelineLogs:[pipeline]},record={id:'image',snapshot:{prompt:'old'}};
-  const gallery=[record],context=vm.createContext({migrateGallerySnapshots,storyboardState:()=>state,storyboardGalleryRecords:()=>gallery,storyboardPackageArchiveAllowed:async()=>false,storyboardPipelineArchiveEpoch:1,storyboardPipelineArchiveWrites:new Map(),
+  const gallery=[record],context=vm.createContext({migrateGallerySnapshots,storyboardRecipeRecordMetadata:board.storyboardRecipeRecordMetadata,storyboardState:()=>state,storyboardGalleryRecords:()=>gallery,storyboardPackageArchiveAllowed:async()=>false,storyboardPipelineArchiveEpoch:1,storyboardPipelineArchiveWrites:new Map(),
     storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardSnapshotEpoch:1,storyboardPlanArchiveEpoch:1,getChatKey:()=> 'chat',storyboardRecordChatKey:()=> 'chat',storyboardSnapshotKey:()=> 'snapshot',sanitizeStoryboardSnapshot:value=>value,
     storyboardPlanHasHeavyPayload:()=>true,storyboardPlanArchiveKey:()=> 'plan',storyboardPlanArchivePayload:plan=>plan,clone:structuredClone,
     blobStore:{blobStoreAvailable:()=>true,putStoryboardSnapshots:async()=>writes.push('snapshot'),putStoryboardPlanArchives:async()=>writes.push('plan'),putStoryboardPipelineLogs:async()=>writes.push('pipeline')}});

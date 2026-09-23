@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
+import {storyboardRecipeRecordMetadata} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {preserveCapturedSnapshotArchives} from '../qianmu-plan-archive-write.js';
 function fixture() {
   const record={id:'image',chatKey:'chat',snapshot:{prompt:'original'}},rows=[record],calls=[];
-  const c=vm.createContext({migrateGallerySnapshots,preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,
+  const c=vm.createContext({migrateGallerySnapshots,storyboardRecipeRecordMetadata,preserveCapturedSnapshotArchives,getChatKey:()=> 'chat',storyboardSnapshotEpoch:0,
     storyboardGalleryRecords:()=>rows,sanitizeStoryboardSnapshot:structuredClone,clone:structuredClone,console:{warn(){}},
     storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,saveMetadata:async()=>calls.push('metadata'),
     storyboardRecipeArchiveClient:async()=>({preserve:async()=>({reference:{id:'confirmed-test-reference'}}),guard:async()=>true,guardIdentity:async()=>true,close(){}}),

@@ -1,5 +1,6 @@
 import {preserveCapturedSnapshotArchives} from './qianmu-plan-archive-write.js';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
+import {prepareGalleryRecipeFieldRelease} from './qianmu-gallery-recipe-fields.js';
 
 export const GALLERY_SNAPSHOT_BATCH=Object.freeze({records:8,bytes:2*1024*1024,durationMs:15000});
 const lanes=new WeakMap(),utf8=new TextEncoder();
@@ -10,7 +11,7 @@ const changed=()=>Error('聊天或配方在整理期间已变化，未继续迁�
 // server proof -> immutable local copy -> guarded host save/rollback sequence.
 // A failed/expired pass leaves every unprocessed original inline for a later event.
 export async function migrateGallerySnapshots(records,{readRecords,readChatKey,readEpoch,available,admit,connect,recordChatKey,recordKey,
-  normalize,put,save,onError=()=>{},yieldWork=yieldThread,now=Date.now}={}){
+  normalize,put,save,projectRecipeRecord,onError=()=>{},yieldWork=yieldThread,now=Date.now}={}){
   const epoch=readEpoch(),chatKey=String(readChatKey()||''),gallery=readRecords();
   if(!Array.isArray(records)||!Array.isArray(gallery)||!available())return 0;
   // Only retain references while waiting; never serialize/normalize the whole gallery.
@@ -72,18 +73,25 @@ export async function migrateGallerySnapshots(records,{readRecords,readChatKey,r
           await server.guard();check();
           const stored=await preserveCapturedSnapshotArchives(confirmed,put);check();
           await server.guard();check();
-          const currentById=new Map(gallery.map(record=>[String(record?.id||''),record])),stripped=[];
+          const currentById=new Map(gallery.map(record=>[String(record?.id||''),record])),stripped=[],ready=[];
           for(const item of stored){
             if(currentById.get(item.recordId)!==item.record||String(item.record.id)!==item.recordId||item.record.snapshot!==item.source||JSON.stringify(item.record.snapshot)!==item.sourceText)continue;
-            item.previousMetadata=['chatKey','snapshotRef','snapshotVersion','snapshotServerRef'].map(key=>({key,present:Object.hasOwn(item.record,key),value:item.record[key]}));
-            Object.assign(item.record,{chatKey,snapshotRef:item.key,snapshotVersion:1,snapshotServerRef:item.installedServerRef});
-            delete item.record.snapshot;stripped.push(item);
+            try{item.recipeFields=prepareGalleryRecipeFieldRelease(item.record,item.source,projectRecipeRecord);ready.push(item);}catch(error){onError(error);}
           }
-          if(!stripped.length)continue;
-          try{await save();check();await server.guardIdentity();check();}
+          try{
+            for(const item of ready){
+              item.previousMetadata=['chatKey','snapshotRef','snapshotVersion','snapshotServerRef'].map(key=>({key,present:Object.hasOwn(item.record,key),value:item.record[key]}));
+              item.recipeFields.apply();
+              Object.assign(item.record,{chatKey,snapshotRef:item.key,snapshotVersion:1,snapshotServerRef:item.installedServerRef});
+              delete item.record.snapshot;stripped.push(item);
+            }
+            if(!stripped.length)continue;
+            await save();check();await server.guardIdentity();check();
+          }
           catch(error){
             for(const item of stripped)if(!item.record.snapshot&&item.record.snapshotRef===item.key&&item.record.snapshotServerRef===item.installedServerRef){
               item.record.snapshot=item.source;
+              item.recipeFields.rollback();
               for(const field of item.previousMetadata){if(field.present)item.record[field.key]=field.value;else delete item.record[field.key];}
             }
             throw error;
