@@ -100,3 +100,11 @@ test('actual entry delegates bounded batches, retains its busy lifecycle and sch
   vm.runInContext(fn('storyboardArchiveGallerySnapshots'),c);const work=c.storyboardArchiveGallerySnapshots();assert.equal(c.storyboardSnapshotArchiveBusy,1);
   assert.equal(await work,19);assert.equal(c.storyboardSnapshotArchiveBusy,0);assert.deepEqual(e.writes.map(rows=>rows.length),[8,8,3]);assert.equal(e.events.at(-1),'schedule');
 });
+test('malformed client capability and advertised batch without a batch writer cannot silently use legacy preservation',async()=>{
+  for(const capability of [null,undefined,'true',true]){
+    const e=fixture(rows(1)),connect=e.options.connect;
+    e.options.connect=async()=>({...await connect(),supportsBatch:async()=>capability});
+    assert.equal(await e.run(),0);assert.ok(e.records[0].snapshot);assert.equal(e.writes.length,0);assert.equal(e.saves.length,0);
+    assert.equal(e.events.some(event=>event.startsWith('preserve:')),false);assert.equal(e.active,0);assert.equal(e.normalized,0);
+  }
+});

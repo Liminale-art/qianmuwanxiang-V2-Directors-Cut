@@ -1,4 +1,5 @@
 import {preserveCapturedSnapshotArchives} from './qianmu-plan-archive-write.js';
+import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 
 export const GALLERY_SNAPSHOT_BATCH=Object.freeze({records:8,bytes:2*1024*1024,durationMs:15000});
 const lanes=new WeakMap(),utf8=new TextEncoder();
@@ -30,24 +31,42 @@ export async function migrateGallerySnapshots(records,{readRecords,readChatKey,r
         let server;
         try{
           server=await connect();check();
-          const confirmed=[];let bytes=0;
-          while(cursor<targets.length&&confirmed.length<GALLERY_SNAPSHOT_BATCH.records&&now()<deadline){
+          const batch=typeof server.supportsBatch==='function'?await server.supportsBatch():false;check();
+          if(typeof batch!=='boolean'||batch&&typeof server.preserveBatch!=='function')throw Error('配方批次客户端能力不完整，未降级继续写入');
+          const confirmed=[],prepared=[];let bytes=0;
+          while(cursor<targets.length&&confirmed.length+prepared.length<GALLERY_SNAPSHOT_BATCH.records&&now()<deadline){
             await yieldWork();check();
             if(now()>=deadline)break;
             const record=targets[cursor],source=record.snapshot;
             if(!record.id||!source||typeof source!=='object'||recordChatKey(record,chatKey)!==chatKey||!gallery.includes(record)){cursor++;continue;}
             const key=recordKey(record,chatKey);if(!key){cursor++;continue;}
-            const sourceText=JSON.stringify(source),size=utf8.encode(sourceText).byteLength;
+            const sourceText=JSON.stringify(source),size=utf8.encode(batch?JSON.stringify({id:record.id,createdAt:record.createdAt,
+              unavailable:record.recipeUnavailable===true,snapshot:source,reference:record.snapshotServerRef??null}):sourceText).byteLength;
             if(size>GALLERY_SNAPSHOT_BATCH.bytes){stop=true;onError(Error('单份配方超过分批整理范围，原内容保持原样'));break;}
-            if(confirmed.length&&bytes+size>GALLERY_SNAPSHOT_BATCH.bytes)break;
+            if((confirmed.length+prepared.length)&&bytes+size>GALLERY_SNAPSHOT_BATCH.bytes)break;
             cursor++;
             const item={record,source,sourceText,key,chatKey,recordId:String(record.id)};
             try{
+              if(batch){
+                if(record.recipeUnavailable===true)throw Error('此画面已明确未保留配方，原记录保持原样');
+                recipeArchiveSnapshot(source);prepared.push(item);bytes+=size;continue;
+              }
               const result=await server.preserve(record);check();
               if(record.snapshot!==source||JSON.stringify(source)!==sourceText||String(record.id)!==item.recordId)continue;
               item.installedServerRef=result.reference;
               item.snapshot=normalize(source,record);confirmed.push(item);bytes+=size;
             }catch(error){stop=true;onError(error);break;}
+          }
+          if(batch&&prepared.length&&now()<deadline){
+            // A malformed later item leaves a validated prefix eligible. A
+            // failed batch receipt never falls back to unverified single writes.
+            const result=await server.preserveBatch(prepared.map(item=>item.record));check();
+            if(result.records?.length!==prepared.length)throw Error('配方批次凭据不完整，原内容保持原样');
+            for(let index=0;index<prepared.length;index++){
+              const item=prepared[index];
+              if(item.record.snapshot!==item.source||JSON.stringify(item.source)!==item.sourceText||String(item.record.id)!==item.recordId)continue;
+              item.installedServerRef=result.records[index].reference;item.snapshot=normalize(item.source,item.record);confirmed.push(item);
+            }
           }
           if(!confirmed.length)continue;
           await server.guard();check();
