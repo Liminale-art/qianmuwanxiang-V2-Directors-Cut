@@ -54,6 +54,13 @@ async function checked(value,namespace){
   const reviews=await resolveVibeReviewHistory(namespace,value.receipt.cacheKey,value.receipt.reviewArchive,value.segments);
   checkCombinedVibeReviews(value.receipt,reviews);return value;
 }
+// Stable complete evidence identity, including legacy undefined and -0. A
+// digest names stored evidence; it is never a fee authorization certificate.
+export async function captureVibeReceiptOriginal(value,namespace){
+  const text=encode(value),snapshot=decode(text);await checked(snapshot,namespace);
+  return {text,snapshot,digest:await vibeDigest(text)};
+}
+export {encode as vibeReceiptEvidenceText};
 export function validateVibeReceiptOriginal(value,{namespace,scope}={}){
   if(!exact(value,['schema','namespace','cacheKey','section','digest','bytes','parts'])||value.schema!==schema||value.namespace!==namespace||!hash(value.cacheKey)
     ||!['current','archived'].includes(value.section)||!hash(value.digest)||!Number.isSafeInteger(value.bytes)||value.bytes<1||value.bytes>limits.body
