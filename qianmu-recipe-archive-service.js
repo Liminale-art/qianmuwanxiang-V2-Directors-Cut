@@ -3,6 +3,7 @@ import {createRecipeArchiveStore} from './qianmu-recipe-archive-store.js';
 import {imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {recipeArchiveError,recipeArchiveRequest,recipeArchiveSnapshot,recipeArchiveReference,recipeArchiveResponse,recipeArchiveStorageRequest,recipeArchiveStorageResponse,RECIPE_ARCHIVE_LIMITS} from './qianmu-recipe-archive-contract.js';
 import {recipeRestoreRequest,inspectRecipeRestoreRequest,recipeRestoreResponse,recipeVerificationRequest,recipeVerificationResponse} from './qianmu-recipe-restore-contract.js';
+import {recipeArchiveBatchRequest,recipeArchiveBatchResponse,recipeArchiveBatchCapabilities,RECIPE_BATCH_LIMITS} from './qianmu-recipe-batch-contract.js';
 const fail=(code,message,status)=>{throw recipeArchiveError(code,message,status);};
 
 // Ordinary preserve/read accept only selectors; the saved ST record is authoritative.
@@ -52,6 +53,60 @@ export function createRecipeArchiveService(options){
     }):process(req,body,options,write);
     pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
   }
+  function batchCapabilities(req,raw){
+    const input=recipeArchiveStorageRequest(raw);
+    if(closed||!imageServiceAccountStillMatches(req,{namespace:input.expectedAccount}))fail('account','配方批次能力账户已变化',401);
+    return recipeArchiveBatchCapabilities({ok:true,...input,selectorOnly:true,maxRecords:RECIPE_BATCH_LIMITS.records,
+      maxSnapshotBytes:RECIPE_BATCH_LIMITS.snapshotBytes,proof:'recipe-batch-capabilities',canPrune:false});
+  }
+  function preserveBatch(req,raw,options={}){
+    let input;try{input=recipeArchiveBatchRequest(raw);if(closed||options.signal?.aborted)fail('changed','配方批次已取消');
+      if(pending.size>=RECIPE_ARCHIVE_LIMITS.pending)fail('busy','配方保全请求正忙',429);
+    }catch(error){return Promise.reject(error);}
+    const originalRoot=req.user?.directories?.root,base=input.target.kind==='group'?'groupChats':'chats',originalBase=req.user?.directories?.[base];
+    const guard=()=>{if(closed||options.signal?.aborted||!imageServiceAccountStillMatches(req,{namespace:input.expectedAccount})
+      ||req.user?.directories?.root!==originalRoot||req.user?.directories?.[base]!==originalBase)fail('changed','配方批次账户或聊天目录已变化');};
+    const task=(async()=>{
+      guard();
+      const result=await source.withGalleryRecipeBatch(req,input,async({records,verify})=>{
+        const prepared=[];let bytes=0;
+        // Validate every selected recipe before writing any new copy. Only the
+        // bounded selection is retained; the complete source is still rehashed.
+        for(const record of records){
+          guard();await verify();guard();
+          if(record.unavailable)fail('missing','批次画面已明确未保留配方，未用当前设置补齐',404);
+          let reference=null,value=record.snapshot;
+          if(value===null){
+            if(record.reference===null)fail('missing','批次原配方只有本机引用或未保留，原记录仍保留',404);
+            reference=recipeArchiveReference(record.reference);const saved=await store.get(req,input.expectedAccount,reference,options);guard();await verify();guard();
+            if(saved.source.recordId!==record.id||saved.source.createdAt!==record.createdAt)fail('source','批次配方归档与画面编号或时间不符');value=saved.snapshot;
+          }
+          const captured=recipeArchiveSnapshot(value);bytes+=Buffer.byteLength(captured.text);
+          if(bytes>RECIPE_BATCH_LIMITS.snapshotBytes)fail('size','配方批次超过完整保存上限，未裁剪原件',413);
+          prepared.push({record,reference,snapshot:captured.snapshot});
+        }
+        const results=[];
+        for(const item of prepared){
+          guard();await verify();guard();
+          const selection={recordId:item.record.id,createdAt:item.record.createdAt,gallerySha256:input.gallerySha256};
+          const reference=item.reference||await store.put(req,{version:1,expectedAccount:input.expectedAccount,
+            source:{target:input.target,recordId:selection.recordId,createdAt:selection.createdAt},snapshot:item.snapshot},options);
+          guard();await verify();guard();
+          results.push(recipeArchiveResponse({ok:true,version:1,expectedAccount:input.expectedAccount,target:input.target,selection,reference,proof:'durable-recipe'}));
+        }
+        return recipeArchiveBatchResponse({ok:true,...input,records:results,proof:'durable-recipe-batch',canPrune:false});
+      },options);
+      guard();return result;
+    })().catch(error=>{
+      if(String(error?.code||'').startsWith('recipe_archive_'))throw error;
+      const messages={account:'配方批次账户已变化',changed:'配方批次期间原聊天或账户目录已变化',
+        size:'配方批次来源超过完整读取上限，未截断原件',record_changed:'配方批次与已保存的完整图库不符',
+        record_ambiguous:'配方批次含缺失、重复或已变化的画面',path:'配方批次来源不是独立常规聊天文件'};
+      const code=String(error?.code||'').replace('chat_character_receipt_','');
+      fail('source',messages[code]||'配方批次完整来源核验未通过，请保留原聊天及已有副本',error?.status||409);
+    });
+    pending.add(task);void task.finally(()=>pending.delete(task)).catch(()=>{});return task;
+  }
   function restore(req,raw,options={}){
     let input;try{input=recipeRestoreRequest(raw);if(closed||options.signal?.aborted)fail('changed','配方恢复已取消');if(pending.size>=RECIPE_ARCHIVE_LIMITS.pending)fail('busy','配方保全请求正忙',429);}
     catch(error){return Promise.reject(error);}
@@ -82,6 +137,6 @@ export function createRecipeArchiveService(options){
   }
   return Object.freeze({preserve:(req,input,options)=>run(req,input,options,true),read:(req,input,options)=>run(req,input,options,false),
     storage:(req,input,options)=>run(req,input,options,false,true),
-    restore,verifyRestored,
+    restore,verifyRestored,batchCapabilities,preserveBatch,
     async close(){closed=true;await Promise.allSettled([source.close(),store.close(),...pending]);}});
 }

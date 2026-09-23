@@ -232,7 +232,7 @@ export async function init(router, options = {}) {
     } finally { res.off?.('close', onClose); }
   });
   let recipeArchive;
-  for(const [route,method] of [['/chat-gallery/recipe/preserve','preserve'],['/chat-gallery/recipe/read','read'],['/chat-gallery/recipe/storage','storage'],['/chat-gallery/recipe/restore','restore'],['/chat-gallery/recipe/verify-restored','verifyRestored']])router.post(route,async(req,res)=>{
+  for(const [route,method] of [['/chat-gallery/recipe/preserve','preserve'],['/chat-gallery/recipe/read','read'],['/chat-gallery/recipe/storage','storage'],['/chat-gallery/recipe/restore','restore'],['/chat-gallery/recipe/verify-restored','verifyRestored'],['/chat-gallery/recipe/batch-capabilities','batchCapabilities'],['/chat-gallery/recipe/preserve-batch','preserveBatch']])router.post(route,async(req,res)=>{
     prepareImageResponse(res);
     const controller=new AbortController(),onClose=()=>{if(!res.writableEnded)controller.abort();};res.once?.('close',onClose);
     try{

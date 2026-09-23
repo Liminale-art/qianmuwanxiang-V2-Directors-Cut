@@ -1,4 +1,4 @@
-import {normalizeStoryboardStreamReference,storyboardStreamBudgetReference,storyboardStreamDigest} from './qianmu-storyboard-stream-reference.js?v=1.59.319';
+import {normalizeStoryboardStreamReference,storyboardStreamBudgetReference,storyboardStreamDigest} from './qianmu-storyboard-stream-reference.js?v=1.59.320';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const fail=message=>{throw Object.assign(Error(message),{code:'storyboard_stream_attempt'});};
 const fields=['version','requestId','sourceDigest','prefixLength','status','passes','updatedAt'];

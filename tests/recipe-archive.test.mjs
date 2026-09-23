@@ -228,6 +228,14 @@ test('actual plugin routes authenticate, refuse client payloads and return no-st
   assert.notEqual((await request('preserve',{...input(rows),snapshot:recipe('forged')})).status,200);
   const saved=await request('preserve');assert.equal(saved.status,200);assert.equal(saved.headers.get('cache-control'),'no-store');assert.equal(saved.headers.get('x-content-type-options'),'nosniff');
   const proof=await saved.json();assert.equal(proof.proof,'durable-recipe');assert.equal(proof.snapshot,undefined);
+  const batchBody={version:1,expectedAccount:account('alice'),target,gallerySha256:input(rows).selection.gallerySha256,selections:[{recordId:'image',createdAt:1}]};
+  const capsBody={version:1,expectedAccount:account('alice')};
+  for(const action of ['batch-capabilities','preserve-batch'])assert.equal((await request(action,action==='batch-capabilities'?capsBody:batchBody,false)).status,401);
+  assert.equal((await request('batch-capabilities',{...capsBody,path:f.archive})).status,400);
+  const capability=await request('batch-capabilities',capsBody);assert.equal(capability.headers.get('cache-control'),'no-store');assert.equal((await capability.json()).proof,'recipe-batch-capabilities');
+  assert.equal((await request('preserve-batch',{...batchBody,snapshot:recipe('forged')})).status,400);
+  const batch=await request('preserve-batch',batchBody);assert.equal(batch.status,200);assert.equal(batch.headers.get('cache-control'),'no-store');assert.equal(batch.headers.get('x-content-type-options'),'nosniff');
+  const batchResult=await batch.json();assert.equal(batchResult.proof,'durable-recipe-batch');assert.deepEqual(batchResult.records[0].reference,proof.reference);assert.equal(batchResult.canPrune,false);
   const storageBody={version:1,expectedAccount:account('alice')};
   assert.equal((await request('storage',storageBody,false)).status,401);
   assert.equal((await request('storage',{...storageBody,path:f.archive})).status,400);
