@@ -3,6 +3,9 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-character-import-view.js",
+    "qianmu-character-import.js",
+    "qianmu-character-reconciliation.js",
     "qianmu-character-migration.js",
     "qianmu-character-migration-idle.js",
     "qianmu-gallery-collections-view.js",

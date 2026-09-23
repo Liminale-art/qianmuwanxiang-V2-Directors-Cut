@@ -3,6 +3,7 @@ import {sameCharacterSubject} from './qianmu-user-identity.js';
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
 import {characterBindingTarget} from './qianmu-character-archive.js';
 import {characterBackupBindingKey, validateCharacterLibraryBackup, planCharacterLibraryRestore, characterLibraryBackupDigest} from './qianmu-character-library-backup.js';
+import {readCharacterImport,planCharacterImport} from './qianmu-character-import.js';
 import {CHARACTER_NATIVE_SLOT, characterNativeFail as fail, characterNativeAccount, characterNativeId, characterNativeBytes as bytes,
   characterNativeEqual as equal, characterNativeStoredHead as storedHead, characterNativeStoredBinding as storedBinding,
   characterNativeUsage, emptyCharacterNativeIndex, validateCharacterNativeIndex, characterNativeBackup, createCharacterNativeOriginals} from './qianmu-character-native-contract.js';
@@ -14,6 +15,8 @@ export function createCharacterNativeStore({createStorage = createConfiguredStAc
   let opening, storage, closed = false, knownLibrary = requireExisting === true;
   const freshId = () => { const value = randomUUID(); if (!characterNativeId(value)) fail('secure', '角色库需要安全的唯一编号'); return value; };
   const checkId = value => { if (!characterNativeId(value)) fail('id', '角色档案编号无效'); };
+  const checkDigest=value=>{if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))fail('id','旧资料来源编号无效');};
+  const findImport=(index,digest)=>{const row=index.imports?.find(row=>row.digest===digest);if(!row)fail('changed','旧资料来源已变化，请重新打开');return row;};
   const clock = () => { const value = now(); if (!Number.isSafeInteger(value) || value < 0) fail('index', '角色库时间无效'); return value; };
   async function operation(namespace, options, work) {
     characterNativeAccount(namespace);
@@ -79,6 +82,34 @@ export function createCharacterNativeStore({createStorage = createConfiguredStAc
     return characterNativeBackup(index.namespace, archives, index.bindings);
   }
   return Object.freeze({
+    overview(namespace){return operation(namespace,null,async({read})=>{
+      const {index}=await read();return {rows:index.archives.map(row=>storedHead(namespace,row.head)).sort((a,b)=>b.updatedAt-a.updatedAt||a.id.localeCompare(b.id)),
+        bindings:index.bindings.map(row=>storedBinding(namespace,row)),imports:(index.imports||[]).filter(row=>row.pending.length).map(row=>({digest:row.digest,count:row.pending.length}))};
+    });},
+    legacyImports(namespace){return operation(namespace,null,async({read})=>(await read()).index.imports?.filter(row=>row.pending.length).map(row=>({digest:row.digest,count:row.pending.length}))||[]);},
+    previewLegacyImport(namespace,digest){checkDigest(digest);return operation(namespace,null,async({read,client,transport})=>{
+      const {index,fingerprint}=await read(),receipt=findImport(index,digest),source=await readCharacterImport(client,receipt,transport);
+      const plan=planCharacterImport(index,source,{reviewKeys:receipt.pending});return {digest,fingerprint,conflicts:plan.conflicts};
+    });},
+    legacyDocument(namespace,{digest,id}){checkDigest(digest);checkId(id);return operation(namespace,null,async({read,client,transport,originals})=>{
+      const {index}=await read(),source=await readCharacterImport(client,findImport(index,digest),transport),row=source.archives.find(item=>item.head.id===id);
+      if(!row)fail('changed','此旧资料来源没有对应档案');return originals.read(row,transport);
+    });},
+    resolveLegacyImport(namespace,{digest,expectedFingerprint,decisions},{confirmed=false,isCurrent=()=>true,signal}={}){
+      checkDigest(digest);checkDigest(expectedFingerprint);if(confirmed!==true)fail('backup','请明确确认旧资料核对选择');
+      const choices=structuredClone(decisions);
+      if(!choices||typeof choices!=='object'||Array.isArray(choices))fail('choice_stale','旧资料核对选择无效');
+      return operation(namespace,{isCurrent,signal},async({read,client,transport,originals,check,update})=>{
+        const {index,fingerprint}=await read();if(fingerprint!==expectedFingerprint)fail('conflict','核对期间角色库已变化，请重新打开');
+        const receipt=findImport(index,digest),source=await readCharacterImport(client,receipt,transport);
+        const plan=planCharacterImport(index,source,{reviewKeys:receipt.pending,decisions:choices});
+        if(!plan.ready)fail('choice_stale','请逐项选择如何保留旧资料');
+        for(const row of source.archives)if(choices[`archive:${row.head.id}`]==='source'){await originals.read(row,transport);check();}
+        plan.next.imports=plan.next.imports.map(row=>row.digest===digest?{...row,pending:[]}:row);
+        await update(next=>{if(!equal(next,index))fail('conflict','核对提交期间角色库已变化，未覆盖');Object.assign(next,plan.next);});
+        return {resolved:receipt.pending.length};
+      });
+    },
     list(namespace) { return operation(namespace, null, async ({read}) => {
       const {index} = await read(); return index.archives.map(row => storedHead(namespace, row.head)).sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
     }); },

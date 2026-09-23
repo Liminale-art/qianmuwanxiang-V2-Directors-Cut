@@ -1,6 +1,7 @@
 import {CHARACTER_CATEGORIES,newCharacterArchive,normalizeCharacterArchive,selectCharacterBinding,exportCharacterArchive,importCharacterArchive} from './qianmu-character-archive.js';
 import {createCharacterArchiveStore} from './qianmu-character-archive-store.js';
 import {canonicalUserSubjectKey,sameCharacterSubject} from './qianmu-user-identity.js';
+import {renderCharacterImportReview} from './qianmu-character-import-view.js';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const clone=value=>JSON.parse(JSON.stringify(value));
 const icon=(action,label,glyph,attrs='')=>`<button type="button" class="sd-icon-btn" data-archive-action="${action}" title="${escape(label)}" aria-label="${escape(label)}" ${attrs}><i data-qm-icon="qm-regular-${({upload:'upload-simple',download:'download-simple'})[glyph]||glyph}"></i></button>`;
@@ -31,6 +32,7 @@ export async function saveCharacterReference(file,{save,guard,createBitmap=globa
 
 export function renderCharacterArchive(view,{identity=()=>''}={}) {
   const disabled=view.busy?'disabled':'';
+  if(view.legacyReview)return renderCharacterImportReview(view.legacyReview,{escape,icon,busy:view.busy,error:view.error});
   if(view.restoring){
     const r=view.restoring,p=r.preview,phase={prepared:'已确认',originals:'原图核对',workflows:'工作流核对',metadata:'档案提交核对',verified:'已完成核对'}[r.record?.phase]||'';
     const conflicts=p?.conflicts||[],bindings=p?.bindingReview||[],page=r.page||0,offset=page*24,limit=offset+24;
@@ -89,6 +91,8 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
       <div class="sd-character-tools">${icon('binding-cancel','取消绑定选择','x')}<button type="button" class="sd-btn" data-archive-action="inherit" ${picker.scope==='chat'?'':'disabled'}>沿用默认</button><span class="sd-character-spacer"></span>${icon('binding-save','保存绑定','floppy-disk')}</div>
     </div></section>`:''}
     <div class="sd-character-tools"><input class="text_pole" type="search" data-archive-search value="${escape(view.search)}" aria-label="搜索角色档案">${icon('backup-library','备份角色库与原图','download')}${icon('restore-library','恢复角色库与原图','folder')}${icon('refresh','刷新角色库','arrows-clockwise')}${icon('import','导入角色档案','upload')}</div>
+    ${view.legacyImports?.length?`<div class="sd-character-tools"><span>旧资料有 ${view.legacyImports.reduce((sum,row)=>sum+row.count,0)} 项待核对</span><button type="button" class="sd-btn" data-archive-action="legacy-open" data-archive-digest="${escape(view.legacyImports[0].digest)}">核对旧资料</button></div>`:''}
+    ${view.migrationStatus?.status==='unavailable'?'<p class="sd-character-status" role="status">旧端资料暂未完成保全核对，当前ST库仍可使用；请保留旧浏览器资料，稍后打开时会重新检查。</p>':''}
     ${hasAliasRows(view.bindings)?'<div class="sd-character-tools"><span>USER地址存在不同写法</span><button type="button" class="sd-btn" data-archive-action="user-aliases">核对USER地址</button></div>':''}
     ${CHARACTER_CATEGORIES.map(category=>{
       const query=view.search.toLocaleLowerCase(),rows=view.rows.filter(row=>row.category===category&&(!query||[row.name,...row.aliases].join(' ').toLocaleLowerCase().includes(query))),shown=rows.slice(0,view.shown[category]||24);
@@ -104,8 +108,8 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
 
 export function createCharacterArchiveController({resolveNamespace,getContext,getScope,isCurrent=()=>true,onIcons=()=>{},identity,notify=()=>{},confirm=async()=>false,download,saveReference,onUserAliases,requestHeaders=()=>({}),
   onCollapse=()=>{},collapsed={},store=createCharacterArchiveStore()}={}) {
-  const view={rows:[],bindings:[],subjects:[],chatKey:'',search:'',draft:null,bindingEditor:null,collapsed:{...collapsed},shown:{},bindingShown:24,busy:false,error:''};
-  let host=null,namespace='',entry=0,disposed=false,verified=-1;const scrolls={list:0,editor:0,restore:0};
+  const view={rows:[],bindings:[],subjects:[],chatKey:'',search:'',draft:null,bindingEditor:null,legacyImports:[],legacyReview:null,collapsed:{...collapsed},shown:{},bindingShown:24,busy:false,error:''};
+  let host=null,namespace='',entry=0,disposed=false,verified=-1,events=null;const scrolls={list:0,editor:0,restore:0};
   const clearRestore=()=>{const r=view.restoring;r?.session?.close();r?.workflows?.close();r?.journal?.close();view.restoring=null;};
   const visible=()=>!disposed&&host?.isConnected&&isCurrent();
   const position=()=>host?.closest('.sd-storyboard-scroll');
@@ -121,20 +125,29 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
   async function authorize(expected=entry) {
     const next=await resolveNamespace();
     if(!visible()||expected!==entry)throw Error('页面已切换，操作未继续');
-    if(namespace&&next!==namespace){clearRestore();view.draft=null;view.rows=[];view.bindings=[];view.bindingEditor=null;verified=-1;namespace=next;throw Error('账户已切换，请刷新角色库');}
+    if(namespace&&next!==namespace){clearRestore();view.legacyReview=null;view.legacyImports=[];view.draft=null;view.rows=[];view.bindings=[];view.bindingEditor=null;verified=-1;namespace=next;throw Error('账户已切换，请刷新角色库');}
     namespace=next;
     const context=await getContext();
     if(!visible()||expected!==entry)throw Error('页面已切换，操作未继续');
     if(view.chatKey!==context.chatKey)view.bindingEditor=null;
     view.chatKey=context.chatKey;view.subjects=context.subjects;verified=entry;return next;
   }
-  const loadList=async expected=>{const [rows,bindings]=await Promise.all([store.list(namespace),store.bindings(namespace)]);await authorize(expected);view.rows=rows;view.bindings=bindings;};
+  const loadList=async expected=>{
+    const data=store.overview?await store.overview(namespace):await Promise.all([store.list(namespace),store.bindings(namespace)]).then(([rows,bindings])=>({rows,bindings,imports:[]}));
+    await authorize(expected);view.rows=data.rows;view.bindings=data.bindings;view.legacyImports=data.imports;view.migrationStatus=data.migrationStatus||null;
+  };
   const run=async work=>{
     if(view.busy||!visible())return;const expected=entry;view.busy=true;view.error='';draw();
     const guard=()=>authorize(expected);
     try{await guard();await work(guard,expected);}catch(error){if(visible()&&expected===entry){view.error=error.message||'角色库操作失败';notify(view.error,'warning');}}
     finally{view.busy=false;if(expected===entry)draw();else if(visible())void run((_guard,next)=>loadList(next));}
   };
+  const nativeChanged=()=>{
+    const active=events?.activeElement;
+    if(!visible()||view.busy||view.draft||view.restoring||view.legacyReview||active&&host.contains(active)&&active.matches?.('input,textarea,select,[contenteditable="true"]'))return;
+    remember();void run((_guard,expected)=>loadList(expected)).then(()=>{if(visible())restore();});
+  };
+  const listen=node=>{events?.removeEventListener?.('qianmu-character-library-changed',nativeChanged);events=node;events?.addEventListener?.('qianmu-character-library-changed',nativeChanged);};
   // Existing archives have no version history: keep legacy fields on edit, not on new/copy drafts.
   const edit=(document,head={})=>{remember();const value=clone(document);if(!head.id)delete value.comfy;view.draft={id:head.id||'',revision:head.revision||'',version:head.version||0,document:value,dirty:false};view.bindingEditor=null;view.bindingShown=24;scrolls.editor=0;};
   const toList=()=>{remember();view.draft=null;};
@@ -145,6 +158,23 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
     if(action==='restore-file'){if(!view.busy)host.querySelector('[data-archive-backup-file]')?.click();return;}
     await run(async(guard,expected)=>{
       const id=button?.dataset.archiveId,category=button?.dataset.category;
+      if(action==='legacy-open'||action==='legacy-reload'){
+        const digest=action==='legacy-open'?button.dataset.archiveDigest:view.legacyReview?.digest;
+        const preview=await store.previewLegacyImport(namespace,digest);await guard();view.legacyReview={...preview,choices:{},page:0,details:null};view.bindingEditor=null;return;
+      }
+      if(action==='legacy-close'){view.legacyReview=null;await loadList(expected);return;}
+      if(action==='legacy-previous'){view.legacyReview.page=Math.max(0,view.legacyReview.page-1);return;}
+      if(action==='legacy-next'){view.legacyReview.page++;return;}
+      if(action==='legacy-details'){
+        const review=view.legacyReview,[current,source]=await Promise.all([store.load(namespace,id),store.legacyDocument(namespace,{digest:review.digest,id})]);await guard();
+        if(view.legacyReview!==review)throw Error('旧资料核对页面已变化');review.details={current,source};return;
+      }
+      if(action==='legacy-apply'){
+        const review=view.legacyReview,account=namespace;
+        await store.resolveLegacyImport(account,{digest:review.digest,expectedFingerprint:review.fingerprint,decisions:review.choices},
+          {confirmed:true,isCurrent:()=>Boolean(visible()&&entry===expected&&namespace===account&&view.legacyReview===review)});
+        await guard();view.legacyReview=null;await loadList(expected);notify('旧资料核对已保存，原件保留','success');return;
+      }
       if(action==='user-aliases'){
         if(typeof onUserAliases!=='function')throw Error('请更新前端后核对USER地址');view.bindingEditor=null;await onUserAliases(namespace,guard);await loadList(expected);return;
       }
@@ -180,7 +210,7 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
         const account=namespace,chatKey=view.chatKey,isSame=()=>Boolean(visible()&&entry===expected&&namespace===account&&view.chatKey===chatKey);
         const codec=await import('./qianmu-character-backup-file.js');await guard();
         const library=await store.backup(account,{isCurrent:isSame}),census=codec.collectCharacterBackupDependencies(library);await guard();
-        if(!await confirm(`备份全部已保存的 ${library.usage.count} 份角色档案、${library.usage.bindings} 处绑定及 ${census.images.length} 份参考图/封面原件？包含普通形象、性征与 Comfy 实现，仅保存到本机文件，请妥善保管。不含模型/LoRA 磁盘文件、API 连接与授权。请使用“恢复角色库与原图”入口核对同账户恢复；实测前保留旧环境和原文件。`))return;
+        if(!await confirm(`备份当前有效的 ${library.usage.count} 份角色档案、${library.usage.bindings} 处绑定及 ${census.images.length} 份参考图/封面原件？包含普通形象、性征与 Comfy 实现，仅保存到本机文件，请妥善保管。不含模型/LoRA 磁盘文件、API 连接与授权。${view.legacyImports.length?'仍有旧资料差异待核对，不计入此备份；旧源仍保留在ST，请先核对再做完整迁移备份。':''}请使用“恢复角色库与原图”入口核对同账户恢复；实测前保留旧环境和原文件。`))return;
         await guard();let workflows=null;
         if(census.workflows.length){
           const module=await import('./qianmu-comfy-library.js');await guard();const workflowStore=module.createComfyWorkflowStore();
@@ -199,7 +229,7 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
       if(action==='clear-image'){view.draft.document.imagegen.reference=null;view.draft.document.imagegen.preview=null;view.draft.dirty=true;return;}
       if(action==='export'){exportDocument(view.draft.document);return;}
       if(action==='save'){const draft=view.draft;await store.save(namespace,{id:draft.id,expectedRevision:draft.revision,document:draft.document});await guard();notify('档案已保存','success');toList();await loadList(expected);return;}
-      if(action==='delete'){const draft=view.draft;if(!draft.id)return;if(!await confirm('删除此档案？档案文字不可恢复；参考图文件和历史成片不会删除。'))return;await guard();await store.remove(namespace,draft.id,draft.revision);await guard();toList();await loadList(expected);notify('档案已删除，参考文件保留','success');return;}
+      if(action==='delete'){const draft=view.draft;if(!draft.id)return;if(!await confirm('将此档案从当前角色库移除？参考图文件和历史成片不会删除。'))return;await guard();await store.remove(namespace,draft.id,draft.revision);await guard();toList();await loadList(expected);notify('档案已删除，参考文件保留','success');return;}
       if(action==='unbind'){
         const rows=view.bindings.filter(row=>row.archiveId===view.draft.id),row=rows[Number(button.dataset.bindingIndex)];if(!row)throw Error('绑定已变化');
         if(!await confirm('解除此绑定？当前聊天级解除后将沿用角色默认绑定。'))return;await guard();
@@ -225,6 +255,10 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
   }
   function bind() {
     host.querySelectorAll('[data-archive-action]').forEach(button=>button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();void act(button.dataset.archiveAction,button);}));
+    host.querySelectorAll('[data-archive-legacy-choice]').forEach(field=>field.addEventListener('change',()=>{
+      const review=view.legacyReview,row=review?.conflicts[Number(field.dataset.archiveLegacyChoice)];if(!row||view.busy)return;
+      if(field.value)review.choices[row.key]=field.value;else delete review.choices[row.key];remember();draw();restore();
+    }));
     host.querySelectorAll('[data-archive-category]').forEach(details=>details.addEventListener('toggle',()=>{if(!visible()||!host.contains(details))return;const key=details.dataset.archiveCategory,next=!details.open;if(Boolean(view.collapsed[key])===next)return;view.collapsed[key]=next;onCollapse({...view.collapsed});}));
     host.querySelector('[data-archive-search]')?.addEventListener('input',event=>{const start=event.target.selectionStart;view.search=event.target.value;draw();const input=host.querySelector('[data-archive-search]');input?.focus();try{input?.setSelectionRange(start,start);}catch(_){}});
     host.querySelectorAll('[data-archive-field]').forEach(field=>field.addEventListener('input',()=>{
@@ -271,8 +305,8 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
     });});
   }
   return Object.freeze({
-    mount(element){if(disposed)return;const changed=host!==element;if(changed&&view.restoring){clearRestore();notify('恢复页面已重建，请重新选择原备份核对；已保存部分保留','info');}host=element;if(changed)entry++;draw();if(changed||verified!==entry)void run((_guard,expected)=>loadList(expected));},
-    detach(){remember();clearRestore();host=null;entry++;},
-    dispose(){clearRestore();disposed=true;host=null;view.draft=null;entry++;store.close();},
+    mount(element){if(disposed)return;const changed=host!==element;if(changed)view.legacyReview=null;if(changed&&view.restoring){clearRestore();notify('恢复页面已重建，请重新选择原备份核对；已保存部分保留','info');}host=element;listen(host?.ownerDocument||globalThis.document);if(changed)entry++;draw();if(changed||verified!==entry)void run((_guard,expected)=>loadList(expected));},
+    detach(){remember();clearRestore();view.legacyReview=null;listen(null);host=null;entry++;},
+    dispose(){clearRestore();view.legacyReview=null;listen(null);disposed=true;host=null;view.draft=null;entry++;store.close();},
   });
 }

@@ -117,7 +117,7 @@ test('normal session schedules nonempty preservation without blocking reads then
   const {f,old,packet,migration}=await fixture(t);let requests=0;
   const session=createCharacterArchiveSession({createLocal:old.createLocal,createStorage:f.createStorage,requestMigration:options=>{requests++;assert.equal(options.namespace,namespace);}});t.after(()=>session.close());
   assert.equal((await session.list(namespace))[0].name,'Legacy 0');assert.equal(requests,1);assert.equal(f.uploads,0);
-  await finish(migration);assert.deepEqual(await session.backup(namespace),packet);assert.equal(requests,1);
+  await finish(migration);assert.deepEqual(await session.backup(namespace),packet);assert.equal(requests,2,'native activation requests the new deferred legacy reconciliation');
   const head=await session.save(namespace,{id:'old-0',expectedRevision:'rev-0',document:document('native edit')});assert.equal(head.version,4);
   assert.equal(old.state.documents[0].document.name,'Legacy 0');assert.equal((await f.open().load(namespace,'old-0')).document.name,'native edit');
 });

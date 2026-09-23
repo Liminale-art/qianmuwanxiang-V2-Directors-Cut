@@ -10690,6 +10690,7 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-character-restore .sd-storyboard-card-body { display: grid; gap: 8px; min-width: 0; }
 #story-director-modal .sd-character-restore-items { max-height: min(42vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
 #story-director-modal .sd-character-restore-items > label { display: grid; gap: 5px; }
+#story-director-modal .sd-character-import-original { max-height: min(48vh, 460px); min-width: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; margin: 0; font: inherit; text-align: left; }
 #story-director-modal .sd-character-restore-items .text_pole { width: 100%; min-width: 0; height: 40px; text-align: left; }
 #story-director-modal .sd-character-restore .sd-character-tools > .sd-btn { flex: 1; min-width: 0; min-height: 40px; }
 #story-director-modal .sd-character-restore-review { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; }

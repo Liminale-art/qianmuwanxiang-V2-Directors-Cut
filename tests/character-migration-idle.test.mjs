@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {characterLegacyFixture,legacyPacket} from './helpers/character-legacy-fixture.mjs';
-import {requestCharacterMigration} from '../qianmu-character-migration-idle.js';
+import {requestCharacterMigration,getCharacterMigrationStatus} from '../qianmu-character-migration-idle.js';
 import {createCharacterArchiveStore} from '../qianmu-character-archive-store.js';
 
 function browser(t,{expose=false}={}){
@@ -62,4 +62,26 @@ test('ordinary main-thread factory actually schedules preservation and closing t
   await b.drain();assert.deepEqual(await f.open().backup(namespace),legacyPacket({optional:false}));
   const next=createCharacterArchiveStore({native:{createStorage:f.createStorage},indexedDB:{open(){assert.fail('native must not reopen legacy');}}});t.after(()=>next.close());
   assert.equal((await next.load(namespace,'old-0')).document.ageStatus,'unknown');
+});
+
+test('ordinary existing-native factory defers old-IDB audit, accepts distinct old records and does not reopen IDB on foreground reads',async t=>{
+  const f=await characterNativeFixture(t),old=characterLegacyFixture(t),b=browser(t,{expose:true});f.configure();
+  await f.open().save(namespace,{document:{...legacyPacket().archives[0].document,name:'Native first'}});
+  const store=createCharacterArchiveStore({indexedDB:old.indexedDB,keyRange:old.keyRange,native:{createStorage:f.createStorage}});t.after(()=>store.close());f.reset();
+  assert.equal((await store.overview(namespace)).rows.length,1);assert.equal(old.opened,0);assert.equal(f.uploads,0);assert.equal(b.timers.size,1);
+  await b.drain();assert.equal((await store.overview(namespace)).rows.length,2);assert.equal(getCharacterMigrationStatus(namespace).status,'complete');
+  const before=old.opened;await store.overview(namespace);assert.equal(old.opened,before);
+});
+
+test('unreadable old IDB never blocks a valid native foreground library or reports old preservation as complete',async t=>{
+  const f=await characterNativeFixture(t),b=browser(t,{expose:true});f.configure();await f.open().save(namespace,{document:legacyPacket().archives[0].document});
+  const store=createCharacterArchiveStore({indexedDB:{open(){throw Error('synthetic old storage unavailable');}},native:{createStorage:f.createStorage}});t.after(()=>store.close());
+  assert.equal((await store.overview(namespace)).rows.length,1);await b.drain();f.reset();
+  const view=await store.overview(namespace);assert.equal(view.rows.length,1);assert.equal(view.migrationStatus.status,'unavailable');assert.equal(f.uploads,0);
+});
+
+test('an older-page local change after completed audit is picked up on a later ordinary read after cooldown',async t=>{
+  const {f,old,b,request}=await setup(t);await f.open().save(namespace,{document:legacyPacket().archives[0].document});request();await b.drain();
+  const packet=legacyPacket();packet.archives[0].head.revision='later';packet.archives[0].head.version=4;old.replace(packet);request();assert.equal(b.timers.size,0);
+  b.advance(30*60*1000+1);request();await b.drain();assert.equal((await f.readIndex()).value.imports.length,2);assert.ok((await f.open().legacyImports(namespace)).length);
 });

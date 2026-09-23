@@ -5,6 +5,8 @@ import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
 export const CHARACTER_NATIVE_SLOT = 'character-library';
 export const CHARACTER_ORIGINAL_SLOT = 'character-record';
 export const CHARACTER_NATIVE_SCHEMA = 'qianmu.character.native-index.v1';
+export const CHARACTER_RECONCILED_SCHEMA = 'qianmu.character.native-index.v2';
+export const CHARACTER_IMPORT_SLOT = 'character-import';
 export const CHARACTER_ORIGINAL_SCHEMA = 'qianmu.character.original.v1';
 export const characterNativeFail = (code, message) => { throw characterArchiveError(code, message); };
 export const characterNativeBytes = value => new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -52,8 +54,9 @@ export function emptyCharacterNativeIndex(namespace) {
 // cannot silently resurrect them. These are not visible records or physical deletes.
 export function validateCharacterNativeIndex(value, {namespace, scope}) {
   characterNativeAccount(namespace);
-  if (!characterNativeExact(value, ['schema', 'namespace', 'revision', 'archives', 'bindings', 'usage', 'retired'])
-    || value.schema !== CHARACTER_NATIVE_SCHEMA || value.namespace !== namespace || !integer(value.revision)
+  const reconciled=value?.schema===CHARACTER_RECONCILED_SCHEMA;
+  if (!characterNativeExact(value, ['schema', 'namespace', 'revision', 'archives', 'bindings', 'usage', 'retired',...(reconciled?['imports']:[])])
+    || ![CHARACTER_NATIVE_SCHEMA,CHARACTER_RECONCILED_SCHEMA].includes(value.schema) || value.namespace !== namespace || !integer(value.revision)
     || !Array.isArray(value.archives) || value.archives.length > 512 || !Array.isArray(value.bindings) || value.bindings.length > 2048
     || !characterNativeExact(value.usage, ['count', 'bytes', 'bindings']) || !characterNativeExact(value.retired, ['archives', 'bindings'])) characterNativeFail('index', '角色库目录格式或数量无效');
   const archives = new Map(), bindings = new Set();
@@ -84,6 +87,25 @@ export function validateCharacterNativeIndex(value, {namespace, scope}) {
     }
   }
   const usage = {count: archives.size, bytes: characterNativeUsage(value.archives), bindings: bindings.size};
+  if(reconciled){
+    if(!Array.isArray(value.imports)||value.imports.length>256)characterNativeFail('capacity','旧角色库保全来源达到上限，未删减原件');
+    const seen=new Set();
+    for(const row of value.imports){
+      if(!characterNativeExact(row,['digest','source','pending'])||!/^([a-f0-9]{64})$/.test(row.digest)||seen.has(row.digest)
+        ||!Array.isArray(row.pending)||row.pending.length>2560||new Set(row.pending).size!==row.pending.length)characterNativeFail('index','旧角色库保全凭据无效');
+      seen.add(row.digest);stAccountImmutableReference(row.source,{scope,slot:CHARACTER_IMPORT_SLOT,maxBytes:8*1024*1024});
+      for(const key of row.pending){
+        if(typeof key!=='string')characterNativeFail('index','旧资料核对位置无效');
+        if(key.startsWith('archive:')){if(!characterNativeId(key.slice(8)))characterNativeFail('index','旧档案核对位置无效');}
+        else if(key.startsWith('binding:')){
+          let tuple;try{tuple=JSON.parse(key.slice(8));}catch{characterNativeFail('index','旧绑定核对位置无效');}
+          if(!Array.isArray(tuple)||tuple.length!==4)characterNativeFail('index','旧绑定核对位置无效');
+          const target=characterBindingTarget({category:tuple[0],subjectKey:tuple[1],scope:tuple[2],chatKey:tuple[3]});
+          if(characterBackupBindingKey(target)!==key.slice(8))characterNativeFail('index','旧绑定核对位置无效');
+        }else characterNativeFail('index','未知旧资料核对位置');
+      }
+    }
+  }
   if (!characterNativeEqual(value.usage, usage) || usage.bytes > 16 * 1024 * 1024 || characterNativeBytes(value) > 8 * 1024 * 1024) characterNativeFail('capacity', '角色库计值不符或达到上限，未截断原文');
   return value;
 }
