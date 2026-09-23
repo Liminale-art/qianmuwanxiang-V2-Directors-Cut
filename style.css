@@ -8069,6 +8069,10 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-media-library-main .sd-storyboard-artist-waterfall { columns: 2 135px; column-gap: 7px; }
 #story-director-modal .sd-media-library-main .sd-storyboard-gallery { columns: 2 180px; column-gap: 8px; }
 #story-director-modal .sd-storyboard-gallery-card.inspected { border-color: color-mix(in srgb, var(--sd-accent) 54%, var(--sd-hairline)); }
+#story-director-modal .sd-gallery-window-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 6px 0; }
+#story-director-modal .sd-gallery-window-controls > span { min-width: 0; color: var(--sd-muted); font-size: 11px; text-align: center; overflow-wrap: anywhere; }
+#story-director-modal .sd-gallery-window-controls > button { flex: 0 0 34px; width: 34px; height: 34px; min-width: 34px; border-radius: 8px; }
+#story-director-modal .sd-gallery-window-controls > button:disabled { opacity: .35; cursor: default; }
 #story-director-modal .sd-storyboard-gallery-card-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
 
 #story-director-modal .sd-media-inspector { display: block; padding: 0; }

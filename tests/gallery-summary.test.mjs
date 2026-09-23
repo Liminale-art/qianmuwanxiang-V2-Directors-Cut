@@ -5,6 +5,7 @@ import {summarizeGalleryRecords} from '../qianmu-gallery-summary.js';
 import {renderGalleryKeywordFilters} from '../qianmu-gallery-keywords-view.js';
 import {galleryTagsMatch} from '../qianmu-gallery-keywords.js';
 import {createGalleryNarrativeSession} from '../qianmu-gallery-narrative.js';
+import {galleryDisplayWindow,renderGalleryWindowControls} from '../qianmu-gallery-window.js';
 import {uniqueClean, htmlEscape} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
@@ -58,7 +59,7 @@ test('precomputed keyword view preserves escaping and selection and does not res
 function rendererFixture(count=5001){
   const rows=Array.from({length:count},(_,i)=>({id:String(i),createdAt:i,tags:['tag-'+i%12],collectionIds:['group-'+i%50],source:'novel',prompt:'original '+i,url:'/image-'+i+'.png'}));
   const state={gallerySearch:'',galleryTrack:'all',galleryTagFilters:[]};let reads=0,collectionReads=0,sidebar;
-  const c=vm.createContext({summarizeGalleryRecords,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
+  const c=vm.createContext({summarizeGalleryRecords,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
     storyboardGalleryKind:'stills',storyboardGalleryOpenCollectionId:'',storyboardGalleryInspectorRecordId:'',storyboardGallerySelectMode:false,
     storyboardGallerySelection:new Set(),storyboardGalleryVisibleCount:40,storyboardGalleryRecords:()=>{reads++;return rows;},
     storyboardGalleryCollections:()=>Array.from({length:50},(_,i)=>({id:'group-'+i,name:'Group '+i})),
@@ -95,4 +96,23 @@ test('actual next gallery render sees changed tags and removes a missing inspect
   assert.equal(e.c.storyboardGalleryInspectorRecordId,'');assert.equal(e.state.galleryTagFilters.length,0);
   assert.equal((html.match(/data-storyboard-record=/g)||[]).length,4);
   e.rows[0].tags=['fresh'];assert.ok(e.c.renderStoryboardGallery(e.state).includes('data-gallery-tag-filter="fresh"'));
+});
+
+test('actual gallery render pages through every group while retaining off-page selection and original records',()=>{
+  const e=rendererFixture(81),before=JSON.stringify(e.rows),seen=[];e.c.storyboardGallerySelection.add('80');
+  for(const cursor of [40,80,120]){
+    e.c.storyboardGalleryVisibleCount=cursor;const html=e.c.renderStoryboardGallery(e.state),ids=[...html.matchAll(/data-storyboard-record="([^"]+)"/g)].map(match=>match[1]);
+    assert.ok(ids.length<=40);seen.push(...ids);assert.equal(e.c.storyboardGallerySelection.has('80'),true);
+  }
+  assert.deepEqual(seen,[...e.rows].reverse().map(row=>row.id));assert.equal(JSON.stringify(e.rows),before);
+  e.c.storyboardGalleryVisibleCount=80;assert.ok(e.c.renderStoryboardGallery(e.state).includes('41–80 / 81 组'));
+});
+
+test('actual rendering clamps a deleted last page and retains inspection and saved page across an ordinary rerender',()=>{
+  const e=rendererFixture(81);e.c.storyboardGalleryVisibleCount=120;e.c.renderStoryboardGallery(e.state);
+  e.rows.splice(0,41);const html=e.c.renderStoryboardGallery(e.state);assert.equal(e.c.storyboardGalleryVisibleCount,40);
+  assert.equal((html.match(/data-storyboard-record=/g)||[]).length,40);
+  const another=rendererFixture(100);another.c.storyboardGalleryVisibleCount=80;another.c.storyboardGalleryInspectorRecordId='2';
+  const first=another.c.renderStoryboardGallery(another.state);assert.equal(another.c.storyboardGalleryVisibleCount,80);assert.ok(first.includes('画面详情'));
+  another.c.renderStoryboardGallery(another.state);assert.equal(another.c.storyboardGalleryVisibleCount,80);assert.equal(another.c.storyboardGalleryInspectorRecordId,'2');
 });
