@@ -51,14 +51,14 @@ export function requestCollectionMigration({readScope,expectedAccount,slot,windo
         if(owner!==expectedAccount||!unchanged())throw Error('collection owner changed');
         migration=createCollectionMigration({store,expectedAccount,check:unchanged});
       }
-      const result=await migration.step();if(result.changed){committed=true;slot.cache=null;slot.epoch++;}return result;
+      const result=await migration.step();if(result.changed){committed=true;slot.cache=null;slot.memo?.clear();slot.epoch++;}return result;
       }finally{if(!job.running){migration?.close();store?.close();migration=null;store=null;}}
     },
     onFinish(cause){migration?.close();store?.close();migration=null;store=null;job.running=false;job.stop=null;
       // Failures are retried only after a later normal read and a quiet minute;
       // no network retry loop or user-facing interruption for optional upkeep.
       job.retryAt=now()+(cause?60000:30*60*1000);
-      if(cause&&epoch!==null){slot.cache=null;slot.epoch++;}
+      if(cause&&epoch!==null){slot.cache=null;slot.memo?.clear();slot.epoch++;}
       if(committed&&sameScope())try{document.dispatchEvent(new (window.Event||globalThis.Event)('qianmu-text-collections-changed'));}catch{}
     }});
 }

@@ -9,6 +9,7 @@ import {createTextCollectionOriginalStore} from './qianmu-text-collection-origin
 import {queryIndexedCollection} from './qianmu-text-collection-index-query.js';
 import {writeIndexedCollection} from './qianmu-text-collection-index-write.js';
 import {requestCollectionMigration} from './qianmu-text-collection-migration-idle.js';
+import {createCollectionReadMemo} from './qianmu-text-collection-read-memo.js';
 
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)))),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -18,7 +19,7 @@ function readSlot(scope,account){
   let pool=sessionSnapshots.get(scope);if(!pool){pool=new Map();sessionSnapshots.set(scope,pool);}
   // Only the currently authenticated account stays resident; switching back
   // requires reading again. No plaintext is written to browser persistence.
-  if(!pool.has(account)){for(const prior of pool.values()){prior.cache=null;prior.epoch++;}pool.clear();}
+  if(!pool.has(account)){for(const prior of pool.values()){prior.cache=null;prior.memo?.clear();prior.epoch++;}pool.clear();}
   if(!pool.has(account)||pool.get(account).revoked)pool.set(account,{cache:null,epoch:0,writes:0});
   return pool.get(account);
 }
@@ -28,18 +29,19 @@ function readSlot(scope,account){
 export function createNativeTextCollectionClient({expectedAccount,guard,isCurrent,headers,storageFactory=createConfiguredStAccountStorage,legacyFactory=createTextCollectionClient,now=Date.now,readCacheMs=15000,readScope=storageFactory===createConfiguredStAccountStorage?getStAccountStorageReadScope():null}={}) {
   if(!Number.isFinite(readCacheMs)||readCacheMs<0||readCacheMs>30000)throw error('setup','收藏读取缓存配置无效',503);
   let closed=false,opening=null,storage=null,storageGuard,storageScope,format=1;const slot=readSlot(readScope,expectedAccount),legacy=legacyFactory({expectedAccount,guard,headers});
+  slot.memo??=createCollectionReadMemo({now});
   const check=async(options)=>{
     if(options?.signal?.aborted)throw error('cancelled','收藏读取已取消');
     const sameScope=()=>storageFactory!==createConfiguredStAccountStorage||readScope===getStAccountStorageReadScope();
     try{if(closed||slot.revoked||!sameScope()||await guard()===false||closed||slot.revoked||!sameScope())throw error('account','收藏账户或页面已变化',401);}catch(cause){if(!closed)invalidateReadCache();throw cause;}
     if(options?.signal?.aborted)throw error('cancelled','收藏读取已取消');return true;
   };
-  const invalidateReadCache=()=>{slot.cache=null;slot.epoch++;};
+  const invalidateReadCache=()=>{slot.cache=null;slot.memo.clear();slot.epoch++;};
   const rejectAccount=cause=>{if(cause?.code==='st_account_storage_account'||!closed&&cause?.code==='text_collection_sync_account'){slot.revoked=true;invalidateReadCache();}throw cause;};
   const available=()=>Boolean(slot.cache&&!slot.writes&&readCacheMs>0&&now()>=slot.cache.at&&now()-slot.cache.at<30*60*1000);
   const cached=()=>available()&&now()-slot.cache.at<readCacheMs;
   function considerMigration(state){if(state.version===1&&storageFactory===createConfiguredStAccountStorage)requestCollectionMigration({readScope,expectedAccount,slot});return state;}
-  function remember(value,epoch,committed=false){const state=validate(value);if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0)slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now()}:null;return considerMigration(state);}
+  function remember(value,epoch,committed=false){const state=validate(value);let result=state;if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0){slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now()}:null;result=slot.cache?.state||state;}return considerMigration(result);}
   function validate(value){
     const state=validateNativeCollectionDocument(value,{expectedAccount,scope:storageScope});format=state.version;return state;
   }
@@ -121,10 +123,11 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
       const epoch=slot.epoch;
       const current=async()=>{await check(options);if(epoch!==slot.epoch)throw error('changed','收藏目录已变化，未采用旧原件');};
       try{
-        let originals;
-        const readEntry=async row=>{await current();if(!originals)originals=createTextCollectionOriginalStore({storage:await open(options),expectedAccount});
-          await current();const entry=await originals.read(row,{...options,guard:storageGuard});await current();return entry;};
-        response=await queryIndexedCollection(state,method,input,{common,expectedAccount,now,readEntry,check:current});
+        let originals;const memo=readCacheMs>0&&['list','get'].includes(method)&&options?.forceRefresh!==true&&options?.revalidate!==true?slot.memo:null;
+        const readEntry=async row=>{await current();const hit=memo?.getOriginal(row);if(hit){await current();return hit;}
+          if(!originals)originals=createTextCollectionOriginalStore({storage:await open(options),expectedAccount});
+          await current();const entry=await originals.read(row,{...options,guard:storageGuard});await current();memo?.rememberOriginal(row,entry);return entry;};
+        response=await queryIndexedCollection(state,method,input,{common,expectedAccount,now,readEntry,check:current,memo});
         await current();return textCollectionSyncResponse(response,method,request);
       }catch(cause){return rejectAccount(cause);}
     }
