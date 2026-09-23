@@ -1,4 +1,4 @@
-import {storyboardMessageIdentityInputs} from './qianmu-storyboard.js?v=1.59.321';
+import {storyboardMessageIdentityInputs} from './qianmu-storyboard.js?v=1.59.322';
 
 // One current-session projection, never history. Oversized/unsupported shapes
 // bypass reuse; they are still passed intact to the ordinary builder.

@@ -9,6 +9,8 @@ import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
 const fail=message=>recipeArchiveError('client',message);
 const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),n=>n.toString(16).padStart(2,'0')).join('');
 const equal=(a,b)=>chatGalleryReceiptText([a]).text===chatGalleryReceiptText([b]).text;
+const resolveAccount=async()=>(await import('./qianmu-image-admission.js')).resolveImageAccountNamespace();
+const validAccount=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);
 
 // A short-lived borrower of one actual host gallery. Never uploads a recipe or reads
 // an unscoped local cache. Every returned recipe/ref must come from the saved source.
@@ -16,6 +18,34 @@ export function createCurrentRecipeArchiveClient(options={}){
   const {getContext,epoch}=options,source=captureCurrentChatSource({getContext,epoch});
   try{return createRecipeArchiveClient({...options,source,headers:options.headers||(()=>getContext().getRequestHeaders?.()||{})});}
   catch(error){source.close();throw error;}
+}
+
+// Live UI entry: borrow the exact host scope immediately, but yield while hashing.
+// The prepared digest stays private; callers cannot supply cached content as proof.
+// Every actual operation still re-scans the complete source before and after I/O.
+export async function openCurrentRecipeArchiveClient(options={}){
+  const {getContext,epoch,getGallery,account=resolveAccount,guard=async()=>{},timeoutMs=8000,signal,yieldWork}=options;
+  if(typeof getGallery!=='function'||typeof account!=='function'||typeof guard!=='function'||!Number.isFinite(timeoutMs)
+    ||options.sourceSummary||yieldWork!==undefined&&typeof yieldWork!=='function')throw fail('配方读取缺少聊天来源');
+  const source=captureCurrentChatSource({getContext,epoch});let rows,namespace,expired=false,timer;
+  const check=()=>{if(expired||signal?.aborted)throw fail('配方初始化已取消或超时；原资料仍保留');source.assertCurrent();
+    if(getGallery()!==rows)throw fail('原画面资料已变化，请重新打开后重试');};
+  const identity=async()=>{check();await guard();check();const active=await account();check();
+    if(!validAccount(active)||namespace!==undefined&&namespace!==active)throw fail('ST 账户无法确认或已切换，未使用旧配方');
+    namespace=active;await guard();check();};
+  let reject;const cancellation=new Promise((_,no)=>{reject=no;});
+  const abort=()=>{expired=true;source.close();reject(fail('配方初始化已取消或超时；原资料仍保留'));};
+  try{
+    rows=getGallery();galleryDigestRows(rows);
+    signal?.addEventListener('abort',abort,{once:true});
+    timer=setTimeout(abort,Math.max(100,Math.min(30000,timeoutMs)));
+    if(signal?.aborted)abort();
+    return await Promise.race([(async()=>{
+      await identity();const original=await scanChatGallery(rows,{guard:check,yieldWork});await identity();check();
+      return createRecipeArchiveClient({...options,source,headers:options.headers||(()=>getContext().getRequestHeaders?.()||{})},true,{rows,original,namespace});
+    })(),cancellation]);
+  }catch(error){expired=true;source.close();throw error;}
+  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
 }
 
 // Exact saved-file reader. It cannot preserve/upload or impersonate an open host
@@ -39,12 +69,12 @@ export function createSelectedRecipeArchiveClient({namespace,target,summary,veri
 }
 
 function createRecipeArchiveClient({source,getGallery,sourceSummary,verifyRecord,
-  account=async()=>(await import('./qianmu-image-admission.js')).resolveImageAccountNamespace(),
-  headers=()=>({}),guard=async()=>{},fetchImpl=globalThis.fetch,timeoutMs=8000}={},writable=true){
+  account=resolveAccount,
+  headers=()=>({}),guard=async()=>{},fetchImpl=globalThis.fetch,timeoutMs=8000}={},writable=true,prepared){
   if((sourceSummary?(writable||typeof verifyRecord!=='function'):typeof getGallery!=='function')||typeof account!=='function'||!Number.isFinite(timeoutMs))throw fail('配方读取缺少聊天来源');
   let original,rows;
-  try{if(sourceSummary)original=sourceSummary;else {rows=getGallery();original=chatGalleryDigest(rows);if(!original)throw fail('配方缺少原图库');}}catch(error){source.close();throw error;}
-  const pending=new Set();let namespace,closed=false;
+  try{if(sourceSummary)original=sourceSummary;else if(prepared){({rows,original}=prepared);}else {rows=getGallery();original=chatGalleryDigest(rows);if(!original)throw fail('配方缺少原图库');}}catch(error){source.close();throw error;}
+  const pending=new Set();let namespace=prepared?.namespace,closed=false;
   function current(){
     if(closed)throw fail('配方会话已结束');source.assertCurrent();
     // Historical rows are private detached clones, never exposed to callers.
@@ -58,7 +88,7 @@ function createRecipeArchiveClient({source,getGallery,sourceSummary,verifyRecord
   }
   async function check(){
     await guard();current();const active=await account();current();
-    if(typeof active!=='string'||!/^st-user:.+/.test(active)||active.length>512||/[\u0000-\u001f\u007f]/.test(active))throw fail('无法确认当前 ST 账户');
+    if(!validAccount(active))throw fail('无法确认当前 ST 账户');
     if(namespace!==undefined&&namespace!==active)throw fail('ST 账户已切换，未使用旧配方');namespace=active;
     await guard();current();
   }

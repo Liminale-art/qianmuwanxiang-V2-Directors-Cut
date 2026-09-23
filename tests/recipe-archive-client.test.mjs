@@ -109,12 +109,13 @@ function entry(e,options={}){
   const local=new Map();let writes=0,saves=0;
   const globals={console:{warn(){}},Date,JSON,Map,Error,clone:structuredClone,sanitizeStoryboardSnapshot:structuredClone,preserveCapturedSnapshotArchives,
     getChatKey:()=>e.context.chatId,storyboardSnapshotEpoch:e.epoch,storyboardGalleryRecords:()=>e.rows,
-    storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,storyboardRecipeArchiveClient:async()=>e.client(options),toast:()=>{},
+    storyboardSnapshotArchiveBusy:0,storyboardScheduleGalleryPreservation:()=>{},storyboardPackageArchiveAllowed:async()=>true,ctx:()=>e.context,toast:()=>{},
+    featureRuntime:{load:async()=>({openCurrentRecipeArchiveClient:host=>e.open({...host,...options})})},
     saveMetadata:async()=>{saves++;await e.save();},blobStore:{blobStoreAvailable:()=>true,
       putStoryboardSnapshots:async rows=>{writes++;for(const row of rows)local.set(row.key,structuredClone(row));return {stored:rows.map(row=>row.key)};},
       getStoryboardSnapshots:async keys=>keys.map(key=>local.get(key)).filter(Boolean)}};
   const c=vm.createContext({migrateGallerySnapshots,...globals});vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
-    'storyboardStoreSnapshotForRecord','storyboardArchiveGallerySnapshots'].map(section).join('\n'),c);
+    'storyboardStoreSnapshotForRecord','storyboardRecipeArchiveClient','storyboardArchiveGallerySnapshots'].map(section).join('\n'),c);
   return {c,local,get writes(){return writes;},get saves(){return saves;}};
 }
 

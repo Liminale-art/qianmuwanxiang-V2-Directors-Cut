@@ -1,5 +1,5 @@
 import {qianmuIconMarkup} from './qianmu-icon-renderer.js';
-import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.321';
+import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.322';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const glyph=name=>qianmuIconMarkup(`qm-regular-${name}`);
 const icon=(action,label,name,disabled=false,extra='')=>`<button type="button" class="sd-ensemble-icon" data-ensemble-action="${action}" aria-label="${escape(label)}" title="${escape(label)}" ${disabled?'disabled':''} ${extra}>${glyph(name)}</button>`;
