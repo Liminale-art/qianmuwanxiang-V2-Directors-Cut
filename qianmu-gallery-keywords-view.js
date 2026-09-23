@@ -22,7 +22,7 @@ export function bindGalleryKeywordEntry(root,state,{current,save,changed=()=>{}}
   input.addEventListener('change',commit);
   root.querySelector('[data-gallery-keyword-defaults]')?.addEventListener('click',()=>{if(valid()){input.value=DEFAULT_GALLERY_KEYWORDS.join('\n');commit();}});
 }
-export function renderGalleryKeywordFilters(records,selected=[]){
-  const words=[...new Set(records.flatMap(row=>row.tags||[]))].filter(word=>typeof word==='string'&&word).sort((a,b)=>a.localeCompare(b));
+export function renderGalleryKeywordFilters(records,selected=[],keywordWords){
+  const words=keywordWords??[...new Set(records.flatMap(row=>row.tags||[]))].filter(word=>typeof word==='string'&&word).sort((a,b)=>a.localeCompare(b));
   return words.length?`<nav class="sd-gallery-keyword-filters" aria-label="关键词筛选，可多选取交集">${words.map(word=>`<button type="button" class="sd-btn" data-gallery-tag-filter="${escape(word)}" aria-pressed="${selected.includes(word)}">${escape(word)}</button>`).join('')}</nav>`:'';
 }
