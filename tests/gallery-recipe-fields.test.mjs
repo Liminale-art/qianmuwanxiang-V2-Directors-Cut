@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {prepareGalleryRecipeFieldRelease as prepare} from '../qianmu-gallery-recipe-fields.js';
+import {prepareGalleryRecipeFieldRelease as prepare,prepareExternalGalleryRecipeFieldRelease as prepareExternal} from '../qianmu-gallery-recipe-fields.js';
 import {storyboardProductionContext,storyboardDirectorDecisionSnapshot,storyboardProductionDeliveryPolicy} from '../qianmu-storyboard.js';
 const project=record=>({production:storyboardProductionContext(record),decision:storyboardDirectorDecisionSnapshot(record)});
 const decision=()=>({decisionId:'decision-a',owner:{chatKey:'chat'},status:'approved',truthMode:'speculative',
@@ -97,4 +97,35 @@ test('rollback does not overwrite newer duplicate fields or in-place edits to in
   const plan=prepare(record,record.snapshot,project);plan.apply();record.compiledPrompt={newer:true};record.productionContext.packetId='newer';record.directorDecision.status='revoked';plan.rollback();
   assert.deepEqual(record.compiledPrompt,{newer:true});assert.equal(record.productionContext.packetId,'newer');assert.equal(record.directorDecision.status,'revoked');
   assert.deepEqual(record.compositionDecision,record.snapshot.compositionDecision);
+});
+
+function external(){const record=row(),snapshot=record.snapshot;delete record.snapshot;record.snapshotServerRef={version:1,id:'caller-verified-reference'};return {record,snapshot};}
+test('external release is explicit and retains the recipe, reference and absent-inline state',()=>{
+  const {record,snapshot}=external(),before=structuredClone(snapshot),ref=record.snapshotServerRef,plan=prepareExternal(record,snapshot,project);
+  assert.equal(plan.changed,true);plan.apply();assert.equal(Object.hasOwn(record,'snapshot'),false);assert.equal(record.compiledPrompt,undefined);
+  assert.equal(record.compositionDecision,undefined);assert.equal(record.snapshotServerRef,ref);assert.deepEqual(snapshot,before);assert.ok(record.shotSpec);
+});
+test('external recipe metadata repairs absent light provenance without inventing or overriding an existing field',()=>{
+  const {record,snapshot}=external();delete record.shotSpec;snapshot.productionContext=production();snapshot.shotSpec={directorDecision:decision()};
+  const expected=project({...record,snapshot}),plan=prepareExternal(record,snapshot,project);plan.apply();assert.deepEqual(project(record),expected);
+  assert.equal(record.productionContext.packetId,'p');assert.equal(record.directorDecision.decisionId,'decision-a');plan.rollback();
+  assert.equal(Object.hasOwn(record,'productionContext'),false);assert.equal(Object.hasOwn(record,'directorDecision'),false);assert.equal(Object.hasOwn(record,'snapshot'),false);
+  const conflict=external();conflict.record.productionContext=production();conflict.snapshot.productionContext={...production(),narrativeContext:{invalid:true}};
+  const before=structuredClone(conflict.record);assert.throws(()=>prepareExternal(conflict.record,conflict.snapshot,project));assert.deepEqual(conflict.record,before);
+});
+test('external release is a no-op when neither a complete duplicate nor missing provenance can move',()=>{
+  const {record,snapshot}=external();record.compiledPrompt.onlyCopy=true;record.compositionDecision.onlyCopy=true;
+  const before=structuredClone(record),plan=prepareExternal(record,snapshot,project);assert.equal(plan.changed,false);plan.apply();assert.deepEqual(record,before);
+});
+test('external recipe cannot use inline, unavailable, unreferenced or changed source data',()=>{
+  for(const mode of ['inline','null-inline','unavailable','missing-ref','source-edit','ref-edit','record-edit']){
+    const {record,snapshot}=external();
+    if(mode==='inline')record.snapshot=snapshot;if(mode==='null-inline')record.snapshot=null;
+    if(mode==='unavailable')record.recipeUnavailable=true;if(mode==='missing-ref')delete record.snapshotServerRef;
+    if(['source-edit','ref-edit','record-edit'].includes(mode)){
+      const plan=prepareExternal(record,snapshot,project);if(mode==='source-edit')snapshot.future='new';
+      if(mode==='ref-edit')record.snapshotServerRef.id='new';if(mode==='record-edit')record.compiledPrompt.future.push('new');
+      const before=structuredClone(record);assert.throws(()=>plan.apply());assert.deepEqual(record,before);
+    }else assert.throws(()=>prepareExternal(record,snapshot,project));
+  }
 });

@@ -5,9 +5,9 @@ const text=value=>galleryRecordFingerprintText({value}).text;
 const utf8=new TextEncoder(),fingerprint=record=>sha256(utf8.encode(galleryRecordFingerprintText(record).text));
 const same=(a,b)=>a.length===b.length&&a.every((value,index)=>value===b[index]);
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-const fail=()=>{throw Error('原画面的来源信息尚不能等价移出，原配方保持内联');};
-function editable(record){
-  if(!Object.getOwnPropertyDescriptor(record,'snapshot')?.configurable)fail();
+const fail=()=>{throw Error('原画面的来源信息尚不能等价保持，原记录与配方不变');};
+function editable(record,external){
+  if(external?Object.hasOwn(record,'snapshot'):!Object.getOwnPropertyDescriptor(record,'snapshot')?.configurable)fail();
   for(const name of ['chatKey','snapshotRef','snapshotVersion','snapshotServerRef']){
     const field=Object.getOwnPropertyDescriptor(record,name);if(field?!field.writable:!Object.isExtensible(record))fail();
   }
@@ -17,12 +17,25 @@ function editable(record){
 // confirmed the complete server recipe and immutable local copy, before host save.
 // shotSpec stays resident for legacy synchronous consumers; original files stay.
 export function prepareGalleryRecipeFieldRelease(record,snapshot,metadata){
+  return prepare(record,snapshot,metadata,false);
+}
+
+// For an already externalized recipe: the caller must freshly read the exact
+// saved server reference and preserve its complete immutable local copy first.
+export function prepareExternalGalleryRecipeFieldRelease(record,snapshot,metadata){
+  return prepare(record,snapshot,metadata,true);
+}
+
+function prepare(record,snapshot,metadata,external){
   if(!object(record)||!object(snapshot)||typeof metadata!=='function')fail();
   const inline=Object.getOwnPropertyDescriptor(record,'snapshot');
-  if(!inline||!Object.hasOwn(inline,'value')||inline.value!==snapshot||!inline.configurable)fail();
+  if(external){if(inline||!object(Object.getOwnPropertyDescriptor(record,'snapshotServerRef')?.value)||record.recipeUnavailable===true)fail();}
+  else if(!inline||!Object.hasOwn(inline,'value')||inline.value!==snapshot||!inline.configurable)fail();
   const captured=fingerprint(record); // Complete validation, but retain only 32 bytes across this batch.
-  editable(record);
-  const original=metadata(record),expected=text(original),candidate={...record};delete candidate.snapshot;
+  const sourceCapture=external?fingerprint(snapshot):null;
+  editable(record,external);
+  const project=()=>metadata(external?{...record,snapshot}:record);
+  const original=project(),expected=text(original),candidate={...record};delete candidate.snapshot;
   for(const name of ['compiledPrompt','compositionDecision']){
     const field=Object.getOwnPropertyDescriptor(record,name);
     if(field?.configurable&&field.writable&&object(field.value)&&Object.hasOwn(snapshot,name)
@@ -45,12 +58,14 @@ export function prepareGalleryRecipeFieldRelease(record,snapshot,metadata){
   }
   let applied=false;
   return Object.freeze({
+    changed:changes.length>0,
     apply(){
       if(applied||!same(fingerprint(record),captured))fail();
-      editable(record);
+      if(external&&!same(fingerprint(snapshot),sourceCapture))fail();
+      editable(record,external);
       for(const change of changes){const now=Object.getOwnPropertyDescriptor(record,change.name);
         if(Boolean(now)!==Boolean(change.before)||now&&(now.value!==change.before.value||now.configurable!==change.before.configurable||now.writable!==change.before.writable))fail();}
-      if(text(metadata(record))!==expected)fail();
+      if(text(project())!==expected)fail();
       for(const change of changes){if(change.present)Object.defineProperty(record,change.name,{value:change.value,enumerable:true,writable:true,configurable:true});else delete record[change.name];}
       applied=true;
     },

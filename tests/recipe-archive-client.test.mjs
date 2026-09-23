@@ -430,3 +430,119 @@ test('actual changed duplicate or missing original remains resident without sile
   delete e.rows[0].snapshot.compositionDecision;await e.save();const before=structuredClone(e.rows[0]);assert.equal(await entry(e).c.storyboardArchiveGallerySnapshots(),1);
   assert.deepEqual(e.rows[0].compiledPrompt,before.compiledPrompt);assert.deepEqual(e.rows[0].compositionDecision,before.compositionDecision);
 });
+
+async function externalRecipeRows(e,count=1,size=60000){
+  e.rows=Array.from({length:count},(_,i)=>({id:'external-'+i,createdAt:i+1,chatKey:'chat',source:'comfy',snapshot:recipe()}));
+  for(const record of e.rows){repeatedRecipeFields(record);record.snapshot.compiledPrompt.future.large='x'.repeat(size);
+    delete record.compiledPrompt;delete record.compositionDecision;}
+  await e.save();const originals=e.rows.map(row=>structuredClone(row.snapshot)),refs=[],writer=e.client();
+  try{for(const record of e.rows)refs.push((await writer.preserve(record)).reference);}finally{writer.close();}
+  e.rows.forEach((record,i)=>{record.snapshotServerRef=refs[i];delete record.snapshot;
+    record.compiledPrompt=structuredClone(originals[i].compiledPrompt);record.compositionDecision=structuredClone(originals[i].compositionDecision);});
+  await e.save();e.calls.length=0;return originals;
+}
+test('actual external cleanup reads only selected server recipes in bounded batches and never rewrites original files',async t=>{
+  const e=await recipeClientFixture(t),originals=await externalRecipeRows(e,10),refs=e.rows.map(row=>structuredClone(row.snapshotServerRef));
+  const files=await Promise.all(refs.map(ref=>fs.readFile(e.archive+'/'+ref.id+'.json'))),a=entry(e);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),10);assert.equal(a.saves,2);assert.equal(a.writes,2);
+  assert.ok(e.calls.every(call=>call.url.endsWith('/read')));assert.equal(e.calls.length,10);
+  assert.ok(e.rows.every(row=>!Object.hasOwn(row,'snapshot')&&!row.compiledPrompt&&!row.compositionDecision&&row.shotSpec));
+  assert.deepEqual(e.rows.map(row=>row.snapshotServerRef),refs);assert.deepEqual([...a.local.values()].map(row=>row.snapshot),originals);
+  const fresh=await e.open();for(let i=0;i<10;i++)assert.deepEqual((await fresh.read(e.rows[i])).snapshot,originals[i]);fresh.close();
+  assert.deepEqual(await Promise.all(refs.map(ref=>fs.readFile(e.archive+'/'+ref.id+'.json'))),files);assert.equal((await fs.readdir(e.archive)).length,10);
+  const calls=e.calls.length;assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.equal(e.calls.length,calls);
+});
+test('external recipe batches obey immutable envelope byte sizes before fetching their bodies',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e,3,800000);const a=entry(e),counts=[],put=a.c.blobStore.putStoryboardSnapshots;
+  a.c.blobStore.putStoryboardSnapshots=async(records,options)=>{counts.push(records.length);return put(records,options);};
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),3);assert.deepEqual(counts,[2,1]);assert.equal(a.saves,2);assert.equal(e.calls.length,3);
+});
+test('external cleanup skips local-only, unavailable, explicit null inline and already light records without networking',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e,4);
+  delete e.rows[0].snapshotServerRef;e.rows[0].snapshotRef='unscoped-old-cache';e.rows[1].recipeUnavailable=true;e.rows[2].snapshot=null;
+  delete e.rows[3].compiledPrompt;delete e.rows[3].compositionDecision;await e.save();const before=structuredClone(e.rows),a=entry(e);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows,before);assert.equal(e.calls.length,0);assert.equal(a.writes,0);assert.equal(a.saves,0);
+});
+test('differing external copies are not silently discarded and do not cause no-op host writes',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e);e.rows[0].compiledPrompt.onlyCopy='keep';e.rows[0].compositionDecision.onlyCopy='keep';await e.save();
+  const before=structuredClone(e.rows),a=entry(e);assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows,before);
+  assert.equal(a.writes,0);assert.equal(a.saves,0);assert.equal(e.calls.length,1);
+});
+test('old external world recipes restore equivalent missing light metadata while originals stay external',async t=>{
+  const e=await recipeClientFixture(t);repeatedRecipeFields(e.rows[0]);delete e.rows[0].shotSpec;
+  e.rows[0].snapshot.productionContext={packetId:'world',track:'second_camera',truthMode:'speculative'};
+  e.rows[0].snapshot.shotSpec={directorDecision:{decisionId:'d',status:'approved',owner:{chatKey:'chat'},source:{packetId:'world'},approval:{mode:'explicit',approvedAt:1}}};
+  const policy=storyboardProductionDeliveryPolicy(e.rows[0],{target:'latest'}),decision=storyboardDirectorDecisionSnapshot(e.rows[0]);await e.save();
+  const writer=e.client(),ref=(await writer.preserve(e.rows[0])).reference;writer.close();e.rows[0].snapshotServerRef=ref;delete e.rows[0].snapshot;await e.save();
+  const a=entry(e);assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(Object.hasOwn(e.rows[0],'snapshot'),false);
+  assert.deepEqual(storyboardProductionDeliveryPolicy(e.rows[0],{target:'latest'}),policy);assert.deepEqual(storyboardDirectorDecisionSnapshot(e.rows[0]),decision);
+  assert.equal(e.rows[0].productionContext.packetId,'world');assert.deepEqual(e.rows[0].snapshotServerRef,ref);
+});
+test('external host save failure restores exact absent metadata state without hydrating the complete recipe',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e);const before=structuredClone(e.rows),a=entry(e);
+  a.c.saveMetadata=async()=>{throw Error('save failed');};assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows,before);
+  assert.equal(Object.hasOwn(e.rows[0],'snapshot'),false);assert.equal(Object.hasOwn(e.rows[0],'snapshotRef'),false);
+  assert.equal(await entry(e).c.storyboardArchiveGallerySnapshots(),1);assert.equal((await fs.readdir(e.archive)).length,1);
+});
+test('external rollback preserves a new field edit or a newer inline recipe written during failed save',async t=>{
+  for(const inline of [false,true]){
+    const e=await recipeClientFixture(t);await externalRecipeRows(e);const a=entry(e),before=structuredClone(e.rows[0]);
+    a.c.saveMetadata=async()=>{e.rows[0].compiledPrompt={newer:true};if(inline){e.rows[0].snapshot=recipe('newer');delete e.rows[0].snapshotServerRef;}throw Error('failed');};
+    assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows[0].compiledPrompt,{newer:true});
+    if(inline){assert.equal(e.rows[0].snapshot.prompt,'newer');assert.equal(e.rows[0].snapshotServerRef,undefined);}
+    else{assert.deepEqual(e.rows[0].compositionDecision,before.compositionDecision);assert.equal(e.rows[0].snapshot,undefined);}
+  }
+});
+test('changed accounts, records and host scopes invalidate external read or local-write results before host mutation',async t=>{
+  for(const stage of ['read','local'])for(const mode of ['account','epoch','record']){
+    const e=await recipeClientFixture(t);await externalRecipeRows(e);const original=e.rows[0],before=structuredClone(original);let changed=false;
+    const mutate=()=>{if(changed)return;changed=true;if(mode==='account')e.account='st-user:bob';if(mode==='epoch'){e.epoch++;a.c.storyboardSnapshotEpoch++;}if(mode==='record')e.rows=[structuredClone(original)];};
+    const a=entry(e,stage==='read'?{fetchImpl:async(url,options)=>{const result=await e.fetch(url,options);mutate();return result;}}:{});
+    if(stage==='local'){const put=a.c.blobStore.putStoryboardSnapshots;a.c.blobStore.putStoryboardSnapshots=async(...args)=>{const result=await put(...args);mutate();return result;};}
+    assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0,stage+':'+mode);assert.deepEqual(original,before);assert.equal(a.saves,0);
+  }
+});
+test('missing backend or corrupted external originals do not release fields or borrow local fallback',async t=>{
+  for(const mode of ['backend','corrupt']){
+    const e=await recipeClientFixture(t);await externalRecipeRows(e);const before=structuredClone(e.rows);
+    if(mode==='corrupt')await fs.writeFile(e.archive+'/'+e.rows[0].snapshotServerRef.id+'.json','corrupt fixture');
+    const a=entry(e,mode==='backend'?{fetchImpl:async()=>new Response('old',{status:404})}:{});
+    a.c.blobStore.getStoryboardSnapshots=()=>assert.fail('not a server proof');assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);
+    assert.deepEqual(e.rows,before);assert.equal(a.saves,0);assert.equal(a.writes,0);
+  }
+});
+test('same-gallery external passes serialize and do not re-read already released records',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e,2);const a=entry(e);
+  assert.deepEqual(await Promise.all([a.c.storyboardArchiveGallerySnapshots(),a.c.storyboardArchiveGallerySnapshots()]),[2,0]);
+  assert.equal(e.calls.length,2);assert.equal(a.saves,1);assert.equal(a.writes,1);
+});
+test('mixed inline and external recipes share the original lane and commit independently without overwriting server references',async t=>{
+  const e=await recipeClientFixture(t),original=await externalRecipeRows(e),ref=structuredClone(e.rows[0].snapshotServerRef);
+  e.rows.push({id:'new-inline',createdAt:2,chatKey:'chat',snapshot:recipe('new')});await e.save();const a=entry(e);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),2);assert.equal(a.saves,2);assert.deepEqual(e.rows[0].snapshotServerRef,ref);
+  const fresh=await e.open();assert.deepEqual((await fresh.read(e.rows[0])).snapshot,original[0]);assert.equal((await fresh.read(e.rows[1])).snapshot.prompt,'new');fresh.close();
+});
+test('external failure does not roll back an already confirmed inline batch',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e);const before=structuredClone(e.rows[0]);
+  e.rows.push({id:'new-inline',createdAt:2,chatKey:'chat',snapshot:recipe('new')});await e.save();
+  const a=entry(e,{fetchImpl:(url,options)=>url.endsWith('/read')?Promise.resolve(new Response('offline',{status:503})):e.fetch(url,options)});
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(e.rows[1].snapshot,undefined);assert.ok(e.rows[1].snapshotServerRef);assert.deepEqual(e.rows[0],before);
+});
+test('external cleanup shares the 15-second pass deadline and leaves unread originals for a later event',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e,3);let now=0;const before=structuredClone(e.rows);
+  const a=entry(e,{fetchImpl:async(url,options)=>{const result=await e.fetch(url,options);now+=16000;return result;}});a.c.Date={now:()=>now};
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(e.calls.length,1);assert.deepEqual(e.rows.slice(1),before.slice(1));
+  assert.equal(await entry(e).c.storyboardArchiveGallerySnapshots(),2);assert.ok(e.rows.every(row=>!row.compiledPrompt));
+});
+test('a failed later external host save retains the committed prefix and restores only its own batch',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e,10);const before=structuredClone(e.rows),a=entry(e);let saves=0;
+  a.c.saveMetadata=async()=>{if(++saves===2)throw Error('second host save failed');await e.save();};
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),8);assert.ok(e.rows.slice(0,8).every(row=>!row.compiledPrompt));assert.deepEqual(e.rows.slice(8),before.slice(8));
+  assert.equal(await entry(e).c.storyboardArchiveGallerySnapshots(),2);assert.ok(e.rows.every(row=>!row.compiledPrompt));
+});
+test('admission cancellation after a confirmed external batch reports the preserved prefix accurately',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e,10);const before=structuredClone(e.rows),a=entry(e);let checks=0;
+  a.c.storyboardPackageArchiveAllowed=async()=>{if(++checks===3)throw Error('new host activity');return true;};
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),8);assert.equal(e.calls.length,8);assert.ok(e.rows.slice(0,8).every(row=>!row.compiledPrompt));
+  assert.deepEqual(e.rows.slice(8),before.slice(8));assert.equal(a.saves,1);
+});

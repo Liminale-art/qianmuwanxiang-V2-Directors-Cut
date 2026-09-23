@@ -1,6 +1,7 @@
 import {preserveCapturedSnapshotArchives} from './qianmu-plan-archive-write.js';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 import {prepareGalleryRecipeFieldRelease} from './qianmu-gallery-recipe-fields.js';
+import {hasExternalGalleryRecipeFields,releaseExternalGalleryRecipeFields} from './qianmu-gallery-external-recipe-migration.js';
 
 export const GALLERY_SNAPSHOT_BATCH=Object.freeze({records:8,bytes:2*1024*1024,durationMs:15000});
 const lanes=new WeakMap(),utf8=new TextEncoder();
@@ -16,7 +17,8 @@ export async function migrateGallerySnapshots(records,{readRecords,readChatKey,r
   if(!Array.isArray(records)||!Array.isArray(gallery)||!available())return 0;
   // Only retain references while waiting; never serialize/normalize the whole gallery.
   const targets=[...new Set(records.filter(record=>record?.id&&record.snapshot&&typeof record.snapshot==='object'&&recordChatKey(record,chatKey)===chatKey))];
-  if(!targets.length)return 0;
+  const external=[...new Set(records.filter(record=>hasExternalGalleryRecipeFields(record)&&recordChatKey(record,chatKey)===chatKey))];
+  if(!targets.length&&!external.length)return 0;
   const check=()=>{if(epoch!==readEpoch()||chatKey!==String(readChatKey()||'')||gallery!==readRecords())throw changed();};
   const previous=lanes.get(gallery)||Promise.resolve();
   const work=previous.catch(()=>{}).then(async()=>{
@@ -99,6 +101,8 @@ export async function migrateGallerySnapshots(records,{readRecords,readChatKey,r
           completed+=stripped.length;
         }finally{server?.close();}
       }
+      if(!stop&&now()<deadline)completed+=await releaseExternalGalleryRecipeFields(external,{gallery,chatKey,check,available,admit,connect,recordChatKey,recordKey,
+        put,save,projectRecipeRecord,onError,yieldWork,now,deadline,limits:GALLERY_SNAPSHOT_BATCH});
     }catch(error){onError(error);}
     return completed;
   });

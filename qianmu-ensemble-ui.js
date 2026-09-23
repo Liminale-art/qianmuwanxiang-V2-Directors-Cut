@@ -1,6 +1,6 @@
-import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.323';
-import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.323';
-import {mountEnsembleLibrary} from './qianmu-ensemble-view.js?v=1.59.323';
+import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.324';
+import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.324';
+import {mountEnsembleLibrary} from './qianmu-ensemble-view.js?v=1.59.324';
 
 // One account/chat controller survives modal re-renders. Detach removes only
 // DOM listeners; dispose retires data on an account/chat/runtime change.

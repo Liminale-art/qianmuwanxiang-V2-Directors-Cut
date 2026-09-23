@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
 import {captureStoryboardStreamFrame as frame,captureStoryboardCompilerSources as capture,openStoryboardCompilerContinuity as open,storyboardStableStreamBoundary as boundary} from '../qianmu-storyboard-compiler-sources.js';
-import {borrowStoryboardStreamFrame} from '../qianmu-storyboard-stream-source.js?v=1.59.323';
+import {borrowStoryboardStreamFrame} from '../qianmu-storyboard-stream-source.js?v=1.59.324';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};

@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.323';
+import {createGalleryArchiveBrowser} from './qianmu-gallery-archive-browser.js?v=1.59.324';
 import {bindGalleryPreviewZoom} from './qianmu-gallery-preview-zoom.js';
 
 const button=(action,label,disabled=false)=>`<button type="button" class="sd-btn" data-archive-action="${action}" ${disabled?'disabled':''}>${label}</button>`;

@@ -9,6 +9,7 @@
     "qianmu-gallery-package-collections.js",
     "qianmu-gallery-snapshot-migration.js",
     "qianmu-gallery-recipe-fields.js",
+    "qianmu-gallery-external-recipe-migration.js",
     "qianmu-gallery-taxonomy.js",
     "qianmu-gallery-inspector.js",
     "qianmu-gallery-narrative-inputs.js",

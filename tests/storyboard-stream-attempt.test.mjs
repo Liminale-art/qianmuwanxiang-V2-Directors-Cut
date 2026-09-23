@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStoryboardDefaults,createStoryboardWorkflowTicket,normalizeStoryboardState} from '../qianmu-storyboard.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.323';
-import {beginStoryboardStreamAttempt as begin,normalizeStoryboardStreamAttempt as normalize,assertStoryboardStreamAttemptSettled as settled} from '../qianmu-storyboard-stream-attempt.js?v=1.59.323';
-import {createStoryboardStreamCheckpointStorage} from '../qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.323';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.324';
+import {beginStoryboardStreamAttempt as begin,normalizeStoryboardStreamAttempt as normalize,assertStoryboardStreamAttemptSettled as settled} from '../qianmu-storyboard-stream-attempt.js?v=1.59.324';
+import {createStoryboardStreamCheckpointStorage} from '../qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.324';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 const copy=value=>JSON.parse(JSON.stringify(value));
 async function fixture(){
