@@ -1,4 +1,4 @@
-import {validateVibeEncodingReceipt} from './qianmu-vibe-encoding-store.js';
+import {validateVibeEncodingReceipt} from './qianmu-vibe-encoding-contract.js';
 import {resolveVibeReviewHistory,checkCombinedVibeReviews} from './qianmu-vibe-history.js';
 import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {parseBoundedJson} from './qianmu-json-input.js';

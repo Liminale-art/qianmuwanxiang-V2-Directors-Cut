@@ -54,7 +54,7 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
       const input={...binding,version:1,provider:'novel',model:identity.remoteModelId,capabilityModelId:identity.capabilityModelId,apiKey,image:source.data,information:item.information};
       const prepared=await prepareNovelVibeEncoding(input);await guard();
       const options={cacheKey:prepared.cacheKey},cached=await rpc('encoding-get',options);
-      let used,remoteState=null;
+      let used,remoteState=null,retainedAttempt='';
       if(cached?.status==='ready')used=ref(cached.assetRef);
       else{
         if(service){
@@ -93,7 +93,7 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
             completed=true;localOnly=encoded.serviceStored===false;channelNeedsReview=encoded.channelNeedsReview===true;
             if(!authorized||encoded.cacheKey!==prepared.cacheKey||JSON.stringify(encoded.identity)!==JSON.stringify(prepared.identity)
               ||delivery?.transport==='service'&&!matchesVibeServiceDelivery({delivery,attemptId},encoded.serviceAttemptId,encoded.serviceDelivery))throw fail('result','编码返回身份不符，请核查原请求','unknown');
-            if(retention)used=ref(await retention.retain(encoded.encoding));
+            if(retention){used=ref(await retention.retain(encoded.encoding));retainedAttempt=attemptId;}
             else{
               used=ref(await call('attach-encoding',{namespace,...selection,encoding:encoded.encoding,expectedSourceId:prepared.identity.sourceId}));
               await call('encoding-transition',{namespace,...options,attemptId,status:'ready',assetRef:used});
@@ -105,11 +105,18 @@ async function prepareVibes(payload,{namespace,model,connection,apiKey,call,read
             throw fail('encoding',completed?'Vibe 编码已返回，但本地关联未完成；请保留缓存并核查，未重复扣费'
               :state==='unknown'?'Vibe 编码结果未确认，请核查渠道记录，勿重复提交':error?.message||'Vibe 编码未完成',state);
           }finally{retention?.close();}
-          await guard();notify(localOnly?'Vibe 编码已保存在本设备；服务暂存失败，请导出备份，勿重复编码':channelNeedsReview?'Vibe 编码已缓存；NAI 共用渠道尚待核查':'Vibe 编码已缓存');
+          await guard();
+          notify(localOnly?'Vibe 编码已保存在本设备；服务暂存失败，请导出备份，勿重复编码':channelNeedsReview?'Vibe 编码已缓存；NAI 共用渠道尚待核查':'Vibe 编码已缓存');
         }
       }
       // Resolve the durable asset, not the transient HTTP bytes. Corruption or deletion must not trigger another charge.
-      image=await rpc('resolve',{...selection,id:used.id,expectedSourceId:prepared.identity.sourceId});await save(index,used);
+      try{
+        image=await rpc('resolve',{...selection,id:used.id,expectedSourceId:prepared.identity.sourceId});
+        // The original-account sink never writes remotely. Once guarded, save
+        // the returned full asset first, then publish its ready fee receipt.
+        if(retainedAttempt){const saved=await rpc('encoding-get',options);if(saved?.status!=='ready'||saved.attemptId!==retainedAttempt||JSON.stringify(saved.assetRef)!==JSON.stringify(used))throw Error('ready receipt mismatch');}
+      }catch(error){if(retainedAttempt)throw fail('encoding','Vibe 编码已在原账户本机保全，但 ST 完整结果或费用记录未确认；请刷新核查，勿重复编码','unknown');throw error;}
+      await save(index,used);
     }
     bytes+=image.data.length/4*3-(image.data.endsWith('==')?2:image.data.endsWith('=')?1:0);
     if(bytes>48*1024*1024)throw fail('size','本次 Vibe 合计超过 48 MB，请减少所选项；已取得的编码仍保留在缓存中');

@@ -1,5 +1,5 @@
 import {createLocalVibeAssetStore} from './qianmu-vibe-asset-store.js';
-import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
+import {createLocalVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
 import {parseNovelVibeFile,appendNovelVibeEncoding,vibeFileError} from './qianmu-vibe-file.js';
 
 // Capture an account-bound local return sink BEFORE charging. This is not a
@@ -7,7 +7,7 @@ import {parseNovelVibeFile,appendNovelVibeEncoding,vibeFileError} from './qianmu
 // A late paid result can be retained without any request to the newly logged-in
 // account. The ordinary native reader later preserves these exact new originals.
 export async function createVibeEncodingRetention({namespace,id,identity,cacheKey,attemptId,guard,readSource,
-  createAssets=createLocalVibeAssetStore,createReceipts=createVibeEncodingStore}={}){
+  createAssets=createLocalVibeAssetStore,createReceipts=createLocalVibeEncodingStore}={}){
   const bound=structuredClone({namespace,id,identity,cacheKey,attemptId});
   const fail=()=>{throw vibeFileError('retention','Vibe编码保全记录已变化，未继续提交');};
   if(typeof guard!=='function'||typeof readSource!=='function')fail();

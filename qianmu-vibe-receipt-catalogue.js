@@ -32,7 +32,7 @@ function validateIndex(value,namespace,scope){
 export function createVibeReceiptCatalogue({legacy,createStorage=createConfiguredStAccountStorage,onProgress=()=>{}}={}){
   if(typeof legacy?.census!=='function'||typeof legacy?.close!=='function'||typeof onProgress!=='function')fail('费用账本环境未就绪');
   let client,opening,closed=false,owner='',known=false,queue=Promise.resolve();
-  function operation(namespace,options,work){
+  function operation(namespace,options,work,deferredDigest=''){
     const captured={...options};
     if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace))fail('费用目录账户无效');
     const check=async()=>{if(closed||captured.signal?.aborted||captured.isCurrent&&captured.isCurrent()!==true)fail('费用目录页面或账户已变化');
@@ -85,20 +85,36 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
         return {...resolution,heads:heads.map(v=>v.digest)};
       }
       const sectionOf=resolution=>resolution.kind==='resolved'?resolution.selected.snapshot.section:resolution.conflicts.every(v=>v.snapshot.section==='archived')?'archived':'current';
-      for(const old of baseline.items){const receipt=old.snapshot.receipt,existing=value.entries.find(e=>e.cacheKey===receipt.cacheKey),version=existing?.versions.find(v=>v.digest===old.digest);
+      // Preserve a migration batch first, then publish its single index. Avoid
+      // N complete account re-censuses and head rewrites for N old receipts.
+      const adopted=structuredClone(value);let adoptionChanged=false;
+      for(const old of baseline.items){const receipt=old.snapshot.receipt,existing=adopted.entries.find(e=>e.cacheKey===receipt.cacheKey),version=existing?.versions.find(v=>v.digest===old.digest);
+        // A just-committed local mutation is not an unrelated legacy root.
+        // Only this exact captured candidate is deferred; it stays in every
+        // census change check and is published below with validated parents.
+        if(old.digest===deferredDigest&&!version)continue;
         if(version){const checked=await load(existing,version);if(checked.digest!==old.digest)fail('旧费用原件核对不符');continue;}
-        const saved=await originals.preserve(old.snapshot);await check();const next=structuredClone(value),entry=next.entries.find(e=>e.cacheKey===receipt.cacheKey)||{cacheKey:receipt.cacheKey,section:old.snapshot.section,versions:[]};
+        const saved=await originals.preserve(old.snapshot);await check();const entry=existing||{cacheKey:receipt.cacheKey,section:old.snapshot.section,versions:[]};
         entry.versions.push({digest:old.digest,section:old.snapshot.section,reference:saved.reference,parents:[]});snapshots.set(old.digest,old.snapshot);
-        entry.section=sectionOf(await resolve(entry));if(!existing)next.entries.push(entry);next.revision++;await save(next);
+        entry.section=sectionOf(await resolve(entry));if(!existing)adopted.entries.push(entry);adoptionChanged=true;
       }
+      if(adoptionChanged){adopted.revision=value.revision+1;await save(adopted);}
       const find=key=>value.entries.find(entry=>entry.cacheKey===key);
       const inspect=async key=>{const entry=find(key),result=await resolve(entry);if(entry&&entry.section!==sectionOf(result))fail('费用目录分区与原件不符');return {entry,result};};
-      const result=await work({find,inspect,resolve,sectionOf,load,originals,snapshots,check,get value(){return value;},save:async next=>{next.revision=value.revision+1;await save(next);}});
+      const result=await work({find,inspect,resolve,sectionOf,load,originals,snapshots,check,baseline,get value(){return value;},save:async next=>{next.revision=value.revision+1;await save(next);}});
       await unchanged();if((await read()).fingerprint!==found.fingerprint)fail('费用目录在读取期间变化');return structuredClone(result);
     });queue=task;return task;
   }
   const validKey=key=>{if(!hash(key))fail('费用记录编号无效');};
   return Object.freeze({
+    checkout(namespace,cacheKey,options={}){validKey(cacheKey);return operation(namespace,options,async state=>{
+      const {result}=await state.inspect(cacheKey);if(result.kind==='conflict')fail('不同来源的编码费用记录尚未核对，未授权新请求');
+      return {snapshot:result.selected?.snapshot||null,heads:result.heads,local:state.baseline.items.find(item=>item.snapshot.receipt.cacheKey===cacheKey)?.snapshot||null};
+    });},
+    readAll(namespace,options={}){return operation(namespace,options,async state=>{
+      const rows=[];for(const entry of state.value.entries){const {result}=await state.inspect(entry.cacheKey);if(result.kind==='conflict')fail('费用目录存在未核对分歧，未提供不完整清单');rows.push(result.selected.snapshot);}
+      return {rows,metadata:{count:1,bytes:new TextEncoder().encode(JSON.stringify(state.value)).length}};
+    });},
     list(namespace,options={}){return operation(namespace,options,state=>state.value.entries.map(entry=>({cacheKey:entry.cacheKey,section:entry.section,versions:entry.versions.length,heads:leaves(entry).map(v=>v.digest)})));},
     inspect(namespace,cacheKey,options={}){validKey(cacheKey);return operation(namespace,options,async state=>{const {entry,result}=await state.inspect(cacheKey);
       return {...result,versions:entry?.versions.map(v=>({digest:v.digest,section:v.section,reference:v.reference,parents:v.parents}))||[]};});},
@@ -127,7 +143,7 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
         const saved=await state.originals.preserve(candidate);await state.check();const next=structuredClone(state.value),target=next.entries.find(e=>e.cacheKey===cacheKey)||{cacheKey,section:candidate.section,versions:[]};
         target.versions.push({digest:capturedOriginal.digest,section:candidate.section,reference:saved.reference,parents});target.section=candidate.section;
         if(!entry)next.entries.push(target);await state.save(next);return {digest:capturedOriginal.digest,reference:saved.reference,changed:true};
-      });
+      },capturedOriginal.digest);
     },
     close(){closed=true;client?.close();legacy.close();},
   });

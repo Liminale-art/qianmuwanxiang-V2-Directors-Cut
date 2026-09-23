@@ -19,7 +19,7 @@ function follows(left,right,explicit){
   if(before.section==='archived')return left.whole===right.whole;
   if(after.section==='archived'&&b.status!=='ready')return false;
   if(a.attemptId!==b.attemptId){
-    return explicit&&after.section==='current'&&['rejected','reviewed'].includes(a.status)&&b.status==='reserved'&&b.revision===a.revision+1
+    return explicit&&after.section==='current'&&['rejected','reviewed'].includes(a.status)&&(b.status==='reserved'||a.status==='rejected'&&b.status==='ready'&&b.attemptId.startsWith('cached-'))&&b.revision===a.revision+1
       &&right.history===left.reviewedHistory&&!right.attempts.has(b.attemptId);
   }
   if(left.immutable!==right.immutable)return false;

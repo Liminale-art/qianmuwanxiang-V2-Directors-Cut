@@ -185,7 +185,8 @@ if(typeof self!=='undefined')self.addEventListener('message',event=>{
       self.postMessage({ticket:message.ticket,started:true});
       const key=JSON.stringify(message.nativeStorage??null);if(runtime?.key!==key){runtime?.store.close();runtime?.encodings.close();runtime=null;
         const native=characterWorkerStorageOptions(message.nativeStorage,{namespace:message.namespace,origin:self.location?.origin,guard,isCurrent:()=>current!==null});
-        const store=createVibeAssetStore({native:native?{...native,onProgress:()=>self.postMessage({ticket:current.ticket,progress:++progress})}:false}),encodings=createVibeEncodingStore();
+        const storage=native?{...native,onProgress:()=>self.postMessage({ticket:current.ticket,progress:++progress})}:false;
+        const store=createVibeAssetStore({native:storage}),encodings=createVibeEncodingStore({native:storage});
         runtime={key,store,encodings,run:createVibeAssetOperations(store,{encodings})};
       }
       if(message.nativeStorage)await guard();const value=await runtime.run(message);if(message.nativeStorage)await guard();self.postMessage({ticket:message.ticket,value});

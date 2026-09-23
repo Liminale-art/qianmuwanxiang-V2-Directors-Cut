@@ -11,14 +11,14 @@ function select(snapshot,ids){
   return ids.map(id=>{const row=snapshot.items.find(row=>row.id===id);if(!row)throw fail('所选文件已变化，请刷新');return row;});
 }
 
-// After first legacy preservation, both snapshots contain metadata only. Native
-// assets use ST; encoding fee receipts remain local until their own migration.
+// Native assets and fee evidence use ST. Fee history is validated completely;
+// displayed bytes are current content, not all immutable versions or VPS disk.
 export function createVibeStorageOperations({store,encodings,locks=globalThis.navigator?.locks}){
   async function read(namespace){
-    const local=await store.inventory(namespace),{receipts,archived,reviewHistory,metadata:ledgerMetadata}=await encodings.inventory(namespace);
+    const local=await store.inventory(namespace),{receipts,archived,reviewHistory,metadata:ledgerMetadata,persistence:ledgerPersistence}=await encodings.inventory(namespace);
     for(const row of [local.metadata,ledgerMetadata])if(!row||!Number.isSafeInteger(row.bytes)||row.bytes<0||!Number.isSafeInteger(row.count)||row.count<0)throw fail('Vibe 元数据尚未完成盘点，请刷新后重新读取');
     const metadata={bytes:local.metadata.bytes+ledgerMetadata.bytes,count:local.metadata.count+ledgerMetadata.count,assetBytes:local.metadata.bytes,ledgerBytes:ledgerMetadata.bytes};
-    const fingerprint=await hash([namespace,local,receipts,archived,reviewHistory,ledgerMetadata]);
+    const fingerprint=await hash([namespace,local,receipts,archived,reviewHistory,ledgerMetadata,ledgerPersistence||'local']);
     const byRef=new Map(),bySource=new Map(),add=(map,key,row)=>{if(key){if(!map.has(key))map.set(key,new Set());map.get(key).add(row);}};
     for(const row of receipts){add(byRef,row.assetRef?.id,row);add(byRef,row.sourceAssetRef?.id,row);add(bySource,row.identity.sourceId,row);}
     const items=local.heads.map(head=>{
@@ -26,7 +26,7 @@ export function createVibeStorageOperations({store,encodings,locks=globalThis.na
       return {id:head.assetId,name:head.summary.name,type:head.summary.type,bytes:head.bytes,previewBytes:head.previewBytes||0,
         createdAt:head.createdAt,variants:head.summary.variants.length,receiptCount:related.length,pending:related.filter(unsettled).length};
     });
-    return {local,view:{version:1,namespace,fingerprint,items,metadata,...(local.persistence==='st-account-file'?{persistence:local.persistence,retained:local.retained}:{}),receiptCount:receipts.length+archived.count,archivedReceiptCount:archived.count,historyReviewCount:reviewHistory?.reviews||0,receiptBytes:receipts.reduce((sum,row)=>sum+size(row),0)+archived.bytes+(reviewHistory?.bytes||0),
+    return {local,view:{version:1,namespace,fingerprint,items,metadata,...(ledgerPersistence==='st-account-file'?{ledgerPersistence}:{}),...(local.persistence==='st-account-file'?{persistence:local.persistence,retained:local.retained}:{}),receiptCount:receipts.length+archived.count,archivedReceiptCount:archived.count,historyReviewCount:reviewHistory?.reviews||0,receiptBytes:receipts.reduce((sum,row)=>sum+size(row),0)+archived.bytes+(reviewHistory?.bytes||0),
       pendingCount:receipts.filter(unsettled).length,usage:{count:local.usage.count,bytes:local.usage.bytes,previewBytes:local.usage.previewBytes,limit:local.usage.limit,countLimit:VIBE_ASSET_LIMITS.count}}};
   }
   return {
@@ -87,7 +87,7 @@ export function createVibeStorageActions({namespace,call,guard,items=()=>[]}){
       const referenced=snapshot.library.filter(row=>ids.includes(row.assetId)).length;
       const native=snapshot.persistence==='st-account-file';
       const yes=await confirm(native?'移出 Vibe 目录':'清理 Vibe 文件',native
-        ?`将 ${ids.length} 份文件移出同账户ST活跃目录。完整原件及旧设备副本继续保留，不释放物理磁盘空间；旧设备不会自动将其加回。\n当前库有 ${referenced} 处引用，其他聊天和历史镜头也可能引用；相关Vibe将暂不可用，明确重新导入同一原文件可恢复。已生成图片不删除。\n编码费用记录目前仅在本设备核查，请先结束其他设备的在途NAI请求。不会自动重新编码或生图。确认移出？`
+        ?`将 ${ids.length} 份文件移出同账户ST活跃目录。完整原件及旧设备副本继续保留，不释放物理磁盘空间；旧设备不会自动将其加回。\n当前库有 ${referenced} 处引用，其他聊天和历史镜头也可能引用；相关Vibe将暂不可用，明确重新导入同一原文件可恢复。已生成图片不删除。\n${snapshot.ledgerPersistence==='st-account-file'?'费用记录已按当前ST目录核查，仍请先结束其他设备的在途NAI请求。':'编码费用记录目前仅在本设备核查，请先结束其他设备的在途NAI请求。'}不会自动重新编码或生图。确认移出？`
         :`将删除 ${ids.length} 份本机文件及缩略图，约 ${bytes(selected.reduce((sum,row)=>sum+row.bytes+row.previewBytes,0))}。\n当前库有 ${referenced} 处引用，其他聊天和历史镜头也可能引用。相关 Vibe 将暂不可用，需重新导入同一原文件；已生成图片不删除。\n编码记录与未知费用保留，不会自动重新编码或生图。\n此操作无法撤销；若尚未备份，请取消并先导出原文件。确认清理？`);
       await guard();if(yes!==true)return {cancelled:true};
       if(!equal(library(),snapshot.library))throw fail('确认期间 Vibe 库引用已变化，未删除');
@@ -125,7 +125,7 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
     if(native)parts.push(['移出后保留原件',snapshot.retained?.bytes||0,'#9398af']);
     host.innerHTML=`<section class="sd-vibe-storage">
       <header><h3>Vibe 文件空间</h3><button type="button" class="sd-icon-btn sd-vibe-storage-refresh" aria-label="刷新空间" ${busy?'disabled':''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-icon-btn sd-vibe-storage-close" aria-label="返回 Vibe 库"><i class="fa-solid fa-xmark"></i></button></header>
-      <p role="status">${escape(message||(busy?'正在读取…':native?'同账户ST素材 · 编码费用记录仍在本设备。当前目录内容估算，不是全部历史文件或VPS磁盘占用。':'本设备 · 当前 ST 账户。不含 VPS 磁盘及其他功能数据。'))}</p>
+      <p role="status">${escape(message||(busy?'正在读取…':native?`同账户ST素材 · ${snapshot.ledgerPersistence==='st-account-file'?'费用记录已同步ST目录':'编码费用记录仍在本设备'}。当前目录内容估算，不是全部历史文件或VPS磁盘占用。`:'本设备 · 当前 ST 账户。不含 VPS 磁盘及其他功能数据。'))}</p>
       ${createPreservation?`<button type="button" class="sd-btn sd-vibe-preserve-open" ${busy?'disabled':''}>原始数据保全</button>`:''}
       ${typeof actions.inspectRestore==='function'?`<label class="sd-btn sd-vibe-restore-open">核对/恢复原文件备份<input type="file" accept=".naiv4vibe,.naiv4vibeBundle,.json" hidden ${busy?'disabled':''}></label>`:''}
       ${snapshot?`<div class="sd-vibe-storage-meter" role="img" aria-label="Vibe 占用组成">${parts.map(([label,n,color])=>`<span style="width:${total?n/total*100:0}%;background:${color}" title="${label} ${bytes(n)}"></span>`).join('')}</div>

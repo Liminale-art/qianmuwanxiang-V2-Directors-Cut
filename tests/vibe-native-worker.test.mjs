@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {createVibeAssetStore} from '../qianmu-vibe-asset-store.js';
+import {createVibeEncodingStore} from '../qianmu-vibe-encoding-store.js';
+import {receiptInput} from './helpers/vibe-receipt-fixture.mjs';
+import {receiptWritableFixture} from './helpers/vibe-receipt-writable-fixture.mjs';
 import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
 import {vibeFileError} from '../qianmu-vibe-file.js';
 import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
@@ -18,13 +21,13 @@ const origin='https://st.fixture.invalid',settled=()=>new Promise(resolve=>setIm
 const sources=await Promise.all(['qianmu-vibe-assets-worker.js','qianmu-storyboard-package-worker.js','qianmu-storyboard-bundle-restore-worker.js','qianmu-vibe-assets.js'].map(file=>readFile(new URL('../'+file,import.meta.url),'utf8')));
 const packet=input=>({type:'qianmu-storyboard',version:6,credentialsIncluded:false,settings:{vibeLibrary:[{id:'item',name:'item',strength:0,information:0,assetRef:{version:1,namespace,id:input.asset.assetId}}],logs:[],pipelineLogs:[],shotPlans:[],taskStates:[]},chat:{images:[],collections:[]},media:[]});
 async function fixture(t,inputs=[]){
-  closeVibeAssetRuntime();closeStoryboardPackageRuntime();const f=await characterNativeFixture(t),local=vibeLegacyFixture(t,inputs);f.configure();t.mock.method(globalThis,'fetch',f.fetchImpl);
+  closeVibeAssetRuntime();closeStoryboardPackageRuntime();const f=await characterNativeFixture(t),local=vibeLegacyFixture(t,inputs),ledger=receiptWritableFixture();f.configure();t.mock.method(globalThis,'fetch',f.fetchImpl);
   class Worker extends EventTarget{
     static instances=[];
     constructor(url){super();Worker.instances.push(this);this.sent=[];this.received=[];this.closed=false;this.url=url;
       const self={location:{origin},addEventListener:(_,handler)=>this.receive=handler,postMessage:value=>{this.received.push(structuredClone(value));queueMicrotask(()=>{if(!this.closed)this.dispatchEvent(new MessageEvent('message',{data:structuredClone(value)}));});},close:()=>{this.workerClosed=true;}};
       this.realm=vm.createContext({self,characterWorkerStorageOptions,vibeFileError,createVibeAssetOperations,buildStoryboardVibePackage,validateStoryboardPackageMedia,
-        createVibeAssetStore:options=>createVibeAssetStore({...options,indexedDB:local.indexedDB,keyRange:local.keyRange}),createVibeEncodingStore:()=>({close(){}})});
+        createVibeAssetStore:options=>createVibeAssetStore({...options,indexedDB:local.indexedDB,keyRange:local.keyRange}),createVibeEncodingStore:options=>createVibeEncodingStore({...options,indexedDB:ledger.indexedDB,keyRange:ledger.keyRange,now:()=>10})});
       const source=String(url).includes('qianmu-vibe-assets-worker.js')?sources[0].slice(sources[0].indexOf('let pending=Promise.resolve()')):sources[1].replace(/^import[^\n]*\n/gm,'');
       vm.runInContext(source,this.realm);
     }
@@ -33,8 +36,22 @@ async function fixture(t,inputs=[]){
   }
   const prior=Object.getOwnPropertyDescriptor(globalThis,'Worker');Object.defineProperty(globalThis,'Worker',{value:Worker,configurable:true});
   t.after(()=>{closeVibeAssetRuntime();closeStoryboardPackageRuntime();if(prior)Object.defineProperty(globalThis,'Worker',prior);else delete globalThis.Worker;});
-  return Object.assign(f,{local,Worker});
+  return Object.assign(f,{local,ledger,Worker});
 }
+
+test('actual bridge and Worker reserve and transition the ST fee catalogue before returning success',async t=>{
+  const input=await receiptInput(),f=await fixture(t),cacheKey=input.receipt.cacheKey,attemptId='actual-worker-attempt';
+  const saved=await callVibeAsset('encoding-reserve',{namespace,cacheKey,identity:input.receipt.identity,attemptId,sourceAssetRef:input.receipt.sourceAssetRef,delivery:input.receipt.delivery});assert.equal(saved.owned,true);
+  assert.ok([...f.files.keys()].some(name=>name.endsWith('-vibe-receipt-catalogue.json')));assert.equal(f.ledger.state.tables.receipts[0].status,'reserved');
+  assert.equal((await callVibeAsset('encoding-transition',{namespace,cacheKey,attemptId,status:'submitting'})).status,'submitting');
+  assert.equal((await callVibeAsset('encoding-get',{namespace,cacheKey})).status,'submitting');assert.ok(f.Worker.instances[0].received.some(row=>row.progress));
+});
+
+test('actual Worker never returns owned after a failed fee catalogue publication',async t=>{
+  const input=await receiptInput(),f=await fixture(t);f.hook(call=>{if(call.path==='/api/files/upload'&&JSON.parse(call.request.body).name.endsWith('-vibe-receipt-catalogue.json'))throw Error('fee write failed');});
+  await assert.rejects(callVibeAsset('encoding-reserve',{namespace,cacheKey:input.receipt.cacheKey,identity:input.receipt.identity,attemptId:'worker-failed-attempt',sourceAssetRef:input.receipt.sourceAssetRef,delivery:input.receipt.delivery}));
+  assert.equal(f.ledger.state.tables.receipts[0].status,'reserved');assert.ok(!f.calls.some(row=>/generate|encode-vibe/.test(row.path)));
+});
 
 test('actual client and serial worker import then resolve native assets and reset verified progress for every operation',async t=>{
   const f=await fixture(t),a=await vibeInput('A'),b=await vibeInput('B');
