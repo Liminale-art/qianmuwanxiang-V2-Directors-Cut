@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
+import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
 import * as takes from '../qianmu-storyboard-floor-take.js';
 import * as receipts from '../qianmu-storyboard-floor-take-receipt.js';
 import * as capture from '../qianmu-storyboard-floor-capture.js';
@@ -9,8 +10,8 @@ import {migrateQianmuChatStoreV2} from '../qianmu-data-migrations.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.316';
-import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.316';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.317';
+import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.317';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
 const ref=core.createStoryboardMessageReference({chatKey:'chat',floor:0,message:{mes:'Alice cooks.',send_date:'synthetic',swipe_id:0}});
@@ -112,7 +113,7 @@ async function entryFixture(){
   Object.assign(e.context,{storyboardMessageFloor:()=>0,storyboardChooseCaptureMode:async()=>choice,storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:()=>history,
     storyboardProductionDeliveryPolicy:core.storyboardProductionDeliveryPolicy,
     storyboardReconcileGalleryLinks:()=>{},storyboardInlineRecordValid:r=>r.inline,storyboardDeletePlanArchives:async()=>{},storyboardPlanCompilerSignature:()=> 'same compiler',
-    storyboardPlanForJob:job=>e.state.shotPlans.find(p=>p.id===job.planId),storyboardItemCollectionIds:()=>[],uniqueClean:v=>v,
+    storyboardPlanForJob:job=>e.state.shotPlans.find(p=>p.id===job.planId),galleryMembershipSnapshot,uniqueClean:v=>v,
     storyboardPersistGatewayImage:async(_image,job,index)=>`/saved/${job.id}-${index}.png`,storyboardValidatedAnchor:()=>({valid:true,floor:0,message}),
     runningHubUsageFields:()=>({}),storyboardPipelineStage:()=>{},storyboardFinishLog:()=>{},saveMetadata:async()=>{if(saveFailure)throw Error('metadata save failed');},
     storyboardArchiveGallerySnapshots:()=>{},storyboardDeleteRecordSnapshots:()=>{},

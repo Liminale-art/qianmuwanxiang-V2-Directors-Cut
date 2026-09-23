@@ -3,6 +3,8 @@ import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {parseNovelVibeFile,vibeFileError} from './qianmu-vibe-file.js';
 import {inspectStoryboardPortableSelections} from './qianmu-storyboard-package-fields.js';
 import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
+import {assertGalleryPackageCollections} from './qianmu-gallery-package-collections.js';
+export {assertGalleryPackageCollections};
 export {assertPortableStoryboardData};
 export {assertStoryboardPresetDataRetained} from './qianmu-storyboard-package-presets.js';
 export {assertStoryboardRelationsRetained} from './qianmu-storyboard-package-relations.js';
@@ -63,6 +65,8 @@ export function collectStoryboardVibeDependencies(payload,{namespace=null,onRefe
 export async function buildStoryboardVibePackage(payload,{namespace,load}){
   if(!account(namespace)||typeof load!=='function')fail('无法确认分镜打包账户');
   const {media=[],vibeAssets:ignoredAssets,vibeAccount:ignoredAccount,...metadata}=payload;
+  assertGalleryPackageCollections(metadata.chat?.collections);
+  if(!Array.isArray(metadata.chat?.images)||metadata.chat.images.length>400)fail('分镜整包最多包含 400 张成片，请使用图库分段备份；未裁剪导出');
   inspectStoryboardPortableSelections(metadata.settings,namespace);
   if(!Array.isArray(media)||media.length>400)fail('分镜媒体列表超过 400 项或结构无效');
   const header=JSON.stringify({...metadata,version:7,vibeAccount:namespace});
@@ -91,6 +95,8 @@ export async function buildStoryboardVibePackage(payload,{namespace,load}){
 export async function inspectStoryboardVibePackage(payload){
   if(!object(payload)||payload.version!==7||!account(payload.vibeAccount)||!Array.isArray(payload.vibeAssets)||payload.vibeAssets.length>STORYBOARD_PACKAGE_LIMITS.assets)fail('分镜包版本或 Vibe 原文件清单无效');
   const {vibeAssets,media=[],...metadata}=payload;
+  assertGalleryPackageCollections(metadata.chat?.collections);
+  if(!Array.isArray(metadata.chat?.images)||metadata.chat.images.length>400)fail('分镜整包最多包含 400 张成片，未部分读取');
   inspectStoryboardPortableSelections(metadata.settings,payload.vibeAccount);
   if(size(JSON.stringify(metadata))>STORYBOARD_PACKAGE_LIMITS.metadata||!Array.isArray(media)||media.length>400)fail('分镜包元数据超限');
   await assertPortableStoryboardData(metadata);

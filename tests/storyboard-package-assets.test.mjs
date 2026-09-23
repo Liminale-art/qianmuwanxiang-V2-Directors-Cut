@@ -137,6 +137,18 @@ function indexFixture(){
   return {state,store,notices,context,exported:()=>exported,setImages:value=>images=value,switch:()=>{chat='chat-b';currentState=board.createStoryboardDefaults();currentStore={};owner=otherAccount;}};
 }
 
+test('actual export retains collections beyond 120 and refuses excess scope before reading original images',async()=>{
+  const e=indexFixture(),collections=Array.from({length:141},(_,i)=>({id:'c'+i,name:'Collection '+i,future:{keep:i}}));
+  e.context.storyboardGalleryCollections=()=>collections;await e.context.storyboardExportPackage({originals:false});
+  assert.deepEqual(JSON.parse(await e.exported().text()).chat.collections,collections);
+  for(const mode of ['collections','images']){
+    const f=indexFixture();let reads=0;f.context.storyboardReadSnapshotForRecord=async()=>{reads++;return {};};
+    if(mode==='collections')f.context.storyboardGalleryCollections=()=>Array.from({length:10001},(_,i)=>({id:'c'+i,name:'C'}));
+    else f.setImages(Array.from({length:401},(_,i)=>({id:'i'+i,snapshotRef:'archive'})));
+    await f.context.storyboardExportPackage({originals:false});assert.equal(f.exported(),null);assert.equal(reads,0);assert.match(f.notices.at(-1)[0],/10000|400/);
+  }
+});
+
 for(const failure of ['', 'append', 'click'])test('actual storyboard download releases its URL after browser handoff and reports '+(failure||'success'),async()=>{
   const e=indexFixture(),events=[],timers=[];let link;
   e.context.URL.revokeObjectURL=()=>events.push('revoke');

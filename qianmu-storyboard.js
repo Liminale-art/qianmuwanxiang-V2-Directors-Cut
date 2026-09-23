@@ -1,16 +1,17 @@
 import {retainEnsembleRecoveryRecord} from './qianmu-ensemble-record.js';
+import {galleryMembershipSnapshot} from './qianmu-gallery-membership.js';
 import {DEFAULT_GALLERY_KEYWORDS} from './qianmu-gallery-keywords.js';
 import {normalizeCompositionLibrary,DEFAULT_COMPOSITION_SCHEME} from './qianmu-composition-schemes.js';
 import {retainStoryboardArtDirection} from './qianmu-art-directions.js';
 export {STORYBOARD_ART_DIRECTIONS,retainStoryboardArtDirection,storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.316';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.316';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.317';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.317';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.316';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.316';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.316';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.317';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.317';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.317';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -31,8 +32,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.316';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.316';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.317';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.317';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -2609,6 +2610,7 @@ function snapshot(value, fallback = {}) {
     } else if (!result.ok && !profile.comfyWorkflowNotice) profile.comfyWorkflowNotice = result.message;
   }
   if (obj(safe)) {
+    if(Object.hasOwn(raw,'collectionIds')||Object.hasOwn(raw,'collectionId'))Object.assign(safe,galleryMembershipSnapshot(raw));
     if(Object.hasOwn(raw,'floorTake'))safe.floorTake=normalizeStoryboardFloorTake(raw.floorTake);
     if (Object.hasOwn(raw, 'comfySceneOrigin')) safe.comfySceneOrigin = retainComfySceneOrigin(raw.comfySceneOrigin);
     if (Object.hasOwn(raw, 'ensembleStyleOrigin')) safe.ensembleStyleOrigin = retainEnsembleStyleOrigin(raw.ensembleStyleOrigin);

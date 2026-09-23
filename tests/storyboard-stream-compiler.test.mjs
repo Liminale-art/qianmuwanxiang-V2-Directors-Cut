@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
 import {EventEmitter} from 'node:events';
 import {compilerEnvironment,casting,response} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -499,7 +500,7 @@ test('actual final handoff fills only new scenes, persists final state and queue
 
 test('real early and final jobs deliver in prose order with normalized task markers and stable original queue identities',async()=>{
   const f=await fixture({text:'Alice reads a letter in the kitchen.\n\nA mountain valley stretches into the sunlight.\n\nA broken'}),q=installStreamQueue(f);
-  Object.assign(f.context,{storyboardProductionDeliveryPolicy,storyboardItemCollectionIds:()=>[],uniqueClean:value=>value});
+  Object.assign(f.context,{storyboardProductionDeliveryPolicy,galleryMembershipSnapshot,uniqueClean:value=>value});
   vm.runInContext(section('storyboardCreateRecord')+'\n'+section('storyboardInlineTaskMarkup'),f.context);
   useShotSet(f,[1]);assert.equal(await f.run(),true,JSON.stringify(f.errors));
   const initial=q.queue[0],image=f.context.storyboardCreateRecord(initial,f.state.logs[0],'/user/images/early.png',0,{floor:0,message:f.host.chat[0],valid:true},{});
@@ -1389,7 +1390,7 @@ test('actual inherited-style repair exhaustion keeps the first accepted image an
 
 function assertEnsembleOrigins(f,q,expected){
   assert.deepEqual(q.queue.map(job=>job.ensembleStyleOrigin.schemeId),expected);
-  Object.assign(f.context,{storyboardProductionDeliveryPolicy,storyboardItemCollectionIds:()=>[],uniqueClean:value=>value});
+  Object.assign(f.context,{storyboardProductionDeliveryPolicy,galleryMembershipSnapshot,uniqueClean:value=>value});
   vm.runInContext(section('storyboardCreateRecord'),f.context);
   const reload=normalizeStoryboardState(copy(f.state));
   for(const job of q.queue){

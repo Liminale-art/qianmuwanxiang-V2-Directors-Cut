@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
+import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
 const order = (shotIndex = 0, requestIndex = 1, batchId = 'batch-a', batchStartedAt = 100) => ({ version: 1, batchId, batchStartedAt, shotIndex, requestIndex });
@@ -79,7 +80,7 @@ test('exact retry snapshot preserves inline order across sanitization and never 
 test('record and log projections retain the order outside the removable heavy snapshot', () => {
   const state = core.createStoryboardDefaults(), context = vm.createContext({ ...core,
     clone: structuredClone, uid: () => 'generated', storyboardState: () => state,
-    storyboardItemCollectionIds: () => [], uniqueClean: value => value, hashText: () => 'hash',
+    galleryMembershipSnapshot, uniqueClean: value => value, hashText: () => 'hash',
     storyboardPipelineArchiveCache: new Map(), storyboardGalleryRecords:()=>[],storyboardFloorTakeReceipts:()=>[],saveSettings() {},
   });
   vm.runInContext([section('storyboardCreateRecord'), section('storyboardStoreLog'), section('storyboardStartLog')].join('\n'), context);

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
+import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
 import {DEFAULT_GALLERY_KEYWORDS,galleryKeywordList,selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from '../qianmu-gallery-keywords.js';
 import {renderGalleryKeywordEntry,renderGalleryKeywordFilters,bindGalleryKeywordEntry} from '../qianmu-gallery-keywords-view.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
@@ -54,7 +55,7 @@ test('actual compiler -> normalized settings -> mixed jobs -> gallery records re
   assert.deepEqual(e.jobs.map(job=>copy(job.tags)),[['相伴'],['风景'],['物件']]);
   vm.runInContext(section('storyboardCreateRecord'),e.context);
   e.context.storyboardProductionDeliveryPolicy=core.storyboardProductionDeliveryPolicy;
-  e.context.storyboardItemCollectionIds=()=>[];
+  e.context.galleryMembershipSnapshot=galleryMembershipSnapshot;
   const records=e.jobs.map((job,i)=>e.context.storyboardCreateRecord(job,{snapshot:core.sanitizeStoryboardSnapshot(job)},'https://image.invalid/'+i,i,{floor:null,message:null},{}));
   assert.deepEqual(records.map(row=>copy(row.tags)),[['相伴'],['风景'],['物件']]);
   assert.ok(e.jobs.every(job=>!JSON.stringify(job.payload).includes('相伴')));

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
 import * as casting from '../qianmu-character-casting.js';
 import * as world from '../qianmu-world-shot.js';
 import * as core from '../qianmu-storyboard.js';
@@ -215,7 +216,7 @@ for(const comfy of [false,true])test(`actual ${comfy?'Comfy':'NAI'} world host u
       assert.deepEqual(payload.gallery_keyword_vocabulary,['夜色','相伴']);assert.equal(payload.shot.gallery_keywords,undefined);
       result.gallery_keywords=['夜色','相伴'];return JSON.stringify(result);
     };
-    Object.assign(e.context,{STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardItemCollectionIds:()=>[]});
+    Object.assign(e.context,{STORYBOARD_PIPELINE_LOG_LIMIT:40,galleryMembershipSnapshot});
     vm.runInContext(['storyboardStartLog','storyboardCreateRecord','storyboardJobFromLog'].map(section).join('\n'),e.context);
     assert.equal(await e.runAutomatic(),true,e.notices.join(';'));assert.equal(e.calls.filter(row=>row==='llm').length,1);
     const job=e.context.storyboardQueue[0],log=e.state.logs.find(row=>row.id===job.logId);

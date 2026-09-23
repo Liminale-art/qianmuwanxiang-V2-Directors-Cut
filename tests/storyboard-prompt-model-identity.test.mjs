@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
 import {
   compileStoryboardPrompt, normalizeStoryboardShotSpec, createStoryboardDefaults,
   resolveStoryboardModelBinding, resolveStoryboardJobModelIdentity,
@@ -224,7 +225,7 @@ function redrawRuntime(archive, { mutate = null, archived = true } = {}) {
     storyboardReadSnapshotForRecord: async () => { mutate?.({ chat, changeChat: () => { chatKey = 'chat-b'; } }); return archived ? archive : null; },
     createStoryboardMessageReference, hashText:value=>`fixture:${value}`, storyboardAnchorForMessage:()=>({paragraphIndex:0}),
     storyboardGalleryGroupId: () => 'root-a',
-    storyboardAssignCollectionIds: () => {}, storyboardItemCollectionIds: () => [],
+    galleryMembershipSnapshot,
     storyboardQueueJob: (job,guard) => { queued.push(job); queueGuards.push(guard); return true; },
     toast: (message) => { notices.push(message); return false; },
   }, ['storyboardRedrawRecord', 'storyboardJobFromLog','storyboardRelinkRedrawSnapshot']);
@@ -249,6 +250,20 @@ test('actual inline redraw prefers saved image edits over the old log and leaves
   assert.deepEqual([...job.tags],['夜色','相伴']);
   assert.deepEqual(archive, {...before,tags:['旧标签']});
   assert.notEqual(env.original.payload.negative, 'edited exclusions');
+});
+
+test('actual redraw inherits every collection beyond both old 30 and generic snapshot 100 limits',async()=>{
+  const env=redrawRuntime(snapshot());env.record.collectionIds=Array.from({length:140},(_,i)=>'album-'+i);env.record.collectionId='legacy-primary';
+  const before=structuredClone(env.record);assert.equal(await env.context.storyboardRedrawRecord(env.record),true);
+  assert.deepEqual(env.queued[0].collectionIds,[...before.collectionIds,'legacy-primary']);assert.equal(env.queued[0].collectionId,'legacy-primary');
+  assert.deepEqual(env.record,before);assert.equal(env.queueGuards[0](),true);
+  env.record.collectionIds.push('later');assert.equal(env.queueGuards[0](),false,'old queued intention must not use changed membership');
+});
+
+test('membership changes while reading redraw recipe stop the old operation before queueing',async()=>{
+  const env=redrawRuntime(snapshot());env.record.collectionIds=['before'];
+  env.context.storyboardReadSnapshotForRecord=async()=>{env.record.collectionIds.push('after');return snapshot();};
+  assert.equal(await env.context.storyboardRedrawRecord(env.record),false);assert.equal(env.queued.length,0);
 });
 
 test('actual inline artist replacement updates native request text using the historical model', async () => {

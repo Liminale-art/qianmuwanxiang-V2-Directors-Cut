@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
 import * as sources from '../qianmu-world-source.js';
 import * as packets from '../qianmu-production-packet.js';
 import * as decisions from '../qianmu-director-decision.js';
@@ -74,7 +75,7 @@ test('source survives packet→decision→work order→compiled shot→light del
 });
 test('actual delivery writes stable source into lightweight record so media indexing never needs its recipe',async()=>{
   const e=await approved();
-  const context=vm.createContext({...core,Date,clone:copy,uid:()=> 'delivered-image',storyboardItemCollectionIds:()=>[],uniqueClean:items=>items,
+  const context=vm.createContext({...core,Date,clone:copy,uid:()=> 'delivered-image',galleryMembershipSnapshot,uniqueClean:items=>items,
     sanitizeStoryboardSnapshot:value=>copy(value),hashText:()=> 'unused'});
   vm.runInContext(functionOnly('storyboardCreateRecord'),context);
   const job={id:'world-job',chatKey:owner.chatKey,source:'novel',profile:{model:'nai-diffusion-4-5-full'},payload:{prompt:'world scene'},shotSpec:e.shot,target:'gallery',floor:null,inlineByDefault:false};
@@ -155,18 +156,19 @@ async function redrawHarness() {
     getChatKey:()=>chatKey,ctx:()=>({chat:[]}),storyboardGalleryRecords:()=>[record],storyboardReconcileGalleryLinks:()=>{},
     storyboardReadSnapshotForRecord:async()=>snapshot,storyboardLoadRecordToWorkbench:()=>{throw Error('world needs no prose workbench fallback');},
     storyboardRelinkRedrawSnapshot:()=>{throw Error('world must not invent an anchor');},storyboardGalleryGroupId:r=>r.variantRootId,
-    storyboardItemCollectionIds:()=>['collection-a'],storyboardAssignCollectionIds:(job,ids)=>{job.collectionIds=ids;},uniqueClean:v=>v,
+    galleryMembershipSnapshot,uniqueClean:v=>v,
     storyboardQueueJob:job=>{queued.push(job);return job;},toast:message=>messages.push(message),
     featureRuntime:{load:async name=>name==='directorDecision'?decisions:{resolveImageAccountNamespace:async()=>namespace}}});
   vm.runInContext(['storyboardJobFromLog','storyboardRedrawRecord'].map(section).join('\n'),context);
   return {...e,context,state,snapshot,record,queued,messages,setChat:key=>{chatKey=key;},setAccount:key=>{namespace=key;},run:options=>context.storyboardRedrawRecord(record,options)};
 }
 test('actual world redraw reuses frozen recipe and shared queue, keeps original and creates gallery-only variant',async()=>{
-  const e=await redrawHarness(),before=copy(e.record);
+  const e=await redrawHarness();e.record.collectionIds=Array.from({length:140},(_,i)=>'collection-'+i);const before=copy(e.record);
   e.state.source='comfy';await e.run();assert.equal(e.queued.length,1);
   const job=e.queued[0];assert.equal(job.source,'novel');assert.equal(job.connection.baseUrl,'https://original.invalid');assert.equal(job.profile.seed,42);
   assert.equal(job.floor,null);assert.equal(job.target,'gallery');assert.equal(job.inlineByDefault,false);assert.equal(job.messageRef,null);assert.equal(job.paragraphAnchor,null);
   assert.equal(job.variantRootId,'original-group');assert.equal(job.automatic,false);assert.deepEqual(copy(job.tags),['rain']);assert.deepEqual(e.record,before);
+  assert.deepEqual(job.collectionIds,before.collectionIds);
   assert.equal(sources.worldSourceKey(core.storyboardProductionContext(job).worldSource),sources.worldSourceKey(e.packet.sourceRef.worldSource));
 });
 test('world redraw refuses missing/revoked/mismatched approval and a foreign source',async()=>{

@@ -4,6 +4,13 @@ export const GALLERY_MEMBERSHIP_LIMIT=30;
 export function galleryMembershipIds(record){
   return uniqueClean([...(Array.isArray(record?.collectionIds)?record.collectionIds:[]),record?.collectionId]).map(id=>String(id||'').trim()).filter(Boolean);
 }
+// Inheritance is not a new user selection. Keep complete historical membership,
+// including the legacy primary ID, without lifting the 30-item add guard.
+export function galleryMembershipSnapshot(record){
+  const collectionIds=galleryMembershipIds(record),primary=String(record?.collectionId||'').trim();
+  if(collectionIds.length>10000||collectionIds.some(id=>id.length>240||/[\u0000-\u001f\u007f]/.test(id)))throw Error('图片合集归属超过完整保留范围，未截断或继续生成');
+  return {collectionIds,collectionId:primary||collectionIds[0]||''};
+}
 export function galleryMembershipChange(record,id,checked){
   const before=galleryMembershipIds(record),after=checked?uniqueClean([...before,id]):before.filter(value=>value!==id);
   assertGalleryMembershipChange(record,after);return after;

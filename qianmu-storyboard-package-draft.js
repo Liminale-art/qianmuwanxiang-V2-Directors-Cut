@@ -3,6 +3,7 @@ import {mergeStoryboardParameterMemory,assertStoryboardMemoryIdentitiesRetained,
 import {STORYBOARD_RELATION_FIELDS,captureStoryboardRelationData,assertStoryboardRelationsRetained,mergeStoryboardParameterSelection} from './qianmu-storyboard-package-relations.js';
 import {captureStoryboardHistoryData,assertStoryboardHistoryRetained} from './qianmu-storyboard-package-history.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js';
+import {GALLERY_PACKAGE_COLLECTION_LIMIT,assertGalleryPackageCollections} from './qianmu-gallery-package-collections.js';
 import {STORYBOARD_ADDED_IMPORT_FIELDS,assertStoryboardSelectionRestoreScope,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 import {storyboardConnectionsShareTarget,storyboardConnectionRestoreReview} from './qianmu-storyboard-connection-identity.js';
 const fail=message=>{throw new Error(message);};
@@ -95,7 +96,7 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   // A normalizer can reorder fields or drop references; top-level rows are never silently lost.
   for(const [key,limit] of Object.entries(limits))if(touched.has(key)){const expected=mergeStoryboardPackageRows(settings[key]||[],raw[key],limit,key);assertRetained(expected,draftSettings[key],key);}
   const mergedImages=mergeStoryboardPackageRows(chat.storyboardImages||[],images,400,'阅片室成片');
-  const mergedCollections=mergeStoryboardPackageRows(chat.storyboardCollections||[],collections,120,'阅片室合集');
-  for(const row of mergedCollections)if(typeof row.name!=='string'||!row.name.trim()||row.name.length>80)fail('阅片室合集名称无效或超长');
+  const mergedCollections=mergeStoryboardPackageRows(chat.storyboardCollections||[],collections,GALLERY_PACKAGE_COLLECTION_LIMIT,'阅片室合集');
+  assertGalleryPackageCollections(mergedCollections);
   return {settings:draftSettings,chat:{storyboardImages:mergedImages,storyboardCollections:mergedCollections},connectionReview};
 }

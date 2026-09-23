@@ -3,6 +3,7 @@ import {STORYBOARD_PACKAGE_LIMITS,inspectStoryboardVibePackage} from './qianmu-s
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js';
+import {assertGalleryPackageCollections} from './qianmu-gallery-package-collections.js';
 
 // Export and import share one limit until segmented packages are supported.
 export const STORYBOARD_PACKAGE_INPUT_LIMIT=STORYBOARD_PACKAGE_LIMITS.total;
@@ -50,6 +51,7 @@ export function validateStoryboardPackagePayload(payload,{legacy=false,auto=fals
 }
 
 export function validateStoryboardPackageMedia(payload,{legacy=false}={}){
+  assertGalleryPackageCollections(payload.chat.collections);
   const images=payload.chat.images??[],media=payload.media??[];
   if(!Array.isArray(images)||images.length>400||!Array.isArray(media)||media.length>400)fail('分镜成片或媒体清单超限');
   const ids=new Set(),embedded=new Set();
