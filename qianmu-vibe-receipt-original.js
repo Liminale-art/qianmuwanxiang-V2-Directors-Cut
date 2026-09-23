@@ -71,10 +71,10 @@ export function validateVibeReceiptOriginal(value,{namespace,scope}={}){
 // Complete immutable receipt + review-chain preservation/reading only. This is
 // NOT a current ledger, a fee certificate, a reservation or cross-device lock.
 // No IDB writes, mutable heads, settings changes, retries or media/API reads.
-export function createVibeReceiptOriginals(client,{guard=()=>true,signal,onProgress=()=>{}}={}){
+export function createVibeReceiptOriginals(client,{guard=()=>true,signal,onProgress=()=>{},onVerifiedFiles}={}){
   const namespace=client?.namespace,scope=client?.scope;
   if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace)||!hash(scope)
-    ||typeof client.preserveImmutable!=='function'||typeof client.readImmutable!=='function'||typeof guard!=='function'||typeof onProgress!=='function')fail('费用原件储存环境无效');
+    ||typeof client.preserveImmutable!=='function'||typeof client.readImmutable!=='function'||typeof guard!=='function'||typeof onProgress!=='function'||onVerifiedFiles!==undefined&&typeof onVerifiedFiles!=='function')fail('费用原件储存环境无效');
   async function check(){if(signal?.aborted)fail('费用原件操作已取消');if(await guard()===false||signal?.aborted)fail('费用原件账户或页面已变化');return true;}
   const transport={guard:check,signal};
   async function progress(stage,amount){await check();await onProgress({kind:'vibe-receipt-original',stage,bytes:amount});await check();}
@@ -91,6 +91,7 @@ export function createVibeReceiptOriginals(client,{guard=()=>true,signal,onProgr
       await check();validateVibeReceiptOriginal(value,{namespace,scope});const saved=await client.preserveImmutable(VIBE_RECEIPT_ORIGINAL_SLOT,value,transport);await check();
       if(JSON.stringify(saved.value)!==JSON.stringify(value))fail('费用原件目录尚未完整读回');
       const reference=stAccountImmutableReference(saved.reference,{scope,slot:VIBE_RECEIPT_ORIGINAL_SLOT,maxBytes:limits.manifest+1024});
+      if(onVerifiedFiles){await onVerifiedFiles({digest:value.digest,files:structuredClone([reference,...parts])});await check();}
       await progress('complete',value.bytes);return {cacheKey:value.cacheKey,section:value.section,reference};
     },
     async read(reference,{cacheKey,section}={}){
@@ -104,6 +105,7 @@ export function createVibeReceiptOriginals(client,{guard=()=>true,signal,onProgr
       }
       const text=parts.join('');parts.length=0;if(total!==value.bytes||await vibeDigest(text)!==value.digest)fail('费用原件完整性核对失败');await check();
       const result=await checked(decode(text),namespace);await check();if(result.receipt.cacheKey!==cacheKey||result.section!==section)fail('费用原件内容与目录不符');
+      if(onVerifiedFiles){await onVerifiedFiles({digest:value.digest,files:structuredClone([captured,...value.parts])});await check();}
       await progress('complete',total);return result;
     },
   });

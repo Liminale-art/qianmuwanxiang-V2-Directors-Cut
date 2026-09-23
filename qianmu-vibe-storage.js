@@ -1,4 +1,5 @@
 import {VIBE_ASSET_LIMITS} from './qianmu-vibe-asset-store.js';
+import {validateVibeReceiptFileUsage} from './qianmu-vibe-receipt-accounting.js';
 const fail=message=>Object.assign(new Error(message),{code:'vibe_storage_review',submissionState:'not_submitted'});
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)))),b=>b.toString(16).padStart(2,'0')).join('');
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -12,13 +13,15 @@ function select(snapshot,ids){
 }
 
 // Native assets and fee evidence use ST. Fee history is validated completely;
-// displayed bytes are current content, not all immutable versions or VPS disk.
+// logical content totals stay separate from verified registered-original file
+// bytes. Neither is a complete immutable directory inventory or VPS disk usage.
 export function createVibeStorageOperations({store,encodings,locks=globalThis.navigator?.locks}){
   async function read(namespace){
-    const local=await store.inventory(namespace),{receipts,archived,reviewHistory,metadata:ledgerMetadata,persistence:ledgerPersistence}=await encodings.inventory(namespace);
+    const local=await store.inventory(namespace),{receipts,archived,reviewHistory,metadata:ledgerMetadata,persistence:ledgerPersistence,fileUsage}=await encodings.inventory(namespace);
+    const feeOriginals=fileUsage===undefined?null:validateVibeReceiptFileUsage(fileUsage,receipts.length+archived.count);
     for(const row of [local.metadata,ledgerMetadata])if(!row||!Number.isSafeInteger(row.bytes)||row.bytes<0||!Number.isSafeInteger(row.count)||row.count<0)throw fail('Vibe 元数据尚未完成盘点，请刷新后重新读取');
     const metadata={bytes:local.metadata.bytes+ledgerMetadata.bytes,count:local.metadata.count+ledgerMetadata.count,assetBytes:local.metadata.bytes,ledgerBytes:ledgerMetadata.bytes};
-    const fingerprint=await hash([namespace,local,receipts,archived,reviewHistory,ledgerMetadata,ledgerPersistence||'local']);
+    const fingerprint=await hash([namespace,local,receipts,archived,reviewHistory,ledgerMetadata,ledgerPersistence||'local',feeOriginals]);
     const byRef=new Map(),bySource=new Map(),add=(map,key,row)=>{if(key){if(!map.has(key))map.set(key,new Set());map.get(key).add(row);}};
     for(const row of receipts){add(byRef,row.assetRef?.id,row);add(byRef,row.sourceAssetRef?.id,row);add(bySource,row.identity.sourceId,row);}
     const items=local.heads.map(head=>{
@@ -26,7 +29,7 @@ export function createVibeStorageOperations({store,encodings,locks=globalThis.na
       return {id:head.assetId,name:head.summary.name,type:head.summary.type,bytes:head.bytes,previewBytes:head.previewBytes||0,
         createdAt:head.createdAt,variants:head.summary.variants.length,receiptCount:related.length,pending:related.filter(unsettled).length};
     });
-    return {local,view:{version:1,namespace,fingerprint,items,metadata,...(ledgerPersistence==='st-account-file'?{ledgerPersistence}:{}),...(local.persistence==='st-account-file'?{persistence:local.persistence,retained:local.retained}:{}),receiptCount:receipts.length+archived.count,archivedReceiptCount:archived.count,historyReviewCount:reviewHistory?.reviews||0,receiptBytes:receipts.reduce((sum,row)=>sum+size(row),0)+archived.bytes+(reviewHistory?.bytes||0),
+    return {local,view:{version:1,namespace,fingerprint,items,metadata,...(feeOriginals?{feeOriginals}:{}),...(ledgerPersistence==='st-account-file'?{ledgerPersistence}:{}),...(local.persistence==='st-account-file'?{persistence:local.persistence,retained:local.retained}:{}),receiptCount:receipts.length+archived.count,archivedReceiptCount:archived.count,historyReviewCount:reviewHistory?.reviews||0,receiptBytes:receipts.reduce((sum,row)=>sum+size(row),0)+archived.bytes+(reviewHistory?.bytes||0),
       pendingCount:receipts.filter(unsettled).length,usage:{count:local.usage.count,bytes:local.usage.bytes,previewBytes:local.usage.previewBytes,limit:local.usage.limit,countLimit:VIBE_ASSET_LIMITS.count}}};
   }
   return {
@@ -34,8 +37,8 @@ export function createVibeStorageOperations({store,encodings,locks=globalThis.na
     async summary(namespace){
       const view=(await read(namespace)).view,assets={bytes:view.usage.bytes,count:view.items.length,originalCount:view.items.filter(row=>row.type==='image').length,encodingCount:view.items.filter(row=>row.type==='encoding').length},
         previews={bytes:view.usage.previewBytes,count:view.items.filter(row=>row.previewBytes>0).length},records={bytes:view.receiptBytes,count:view.receiptCount,archivedCount:view.archivedReceiptCount,pendingCount:view.pendingCount,reviewCount:view.historyReviewCount};
-      const native=view.persistence==='st-account-file';return {version:native?3:2,status:'ready',namespace,assets,previews,records,metadata:view.metadata,
-        ...(native?{persistence:view.persistence,retained:view.retained}:{}),bytes:assets.bytes+previews.bytes+records.bytes+view.metadata.bytes+(view.retained?.bytes||0)};
+      const native=view.persistence==='st-account-file';return {version:native?(view.feeOriginals?4:3):2,status:'ready',namespace,assets,previews,records,metadata:view.metadata,
+        ...(native?{persistence:view.persistence,retained:view.retained,...(view.feeOriginals?{feeOriginals:view.feeOriginals}:{})}:{}),bytes:assets.bytes+previews.bytes+records.bytes+view.metadata.bytes+(view.retained?.bytes||0)};
     },
     async remove(namespace,ids,proof,confirmed){
       ids=Array.isArray(ids)?[...ids]:ids;
@@ -131,6 +134,7 @@ export function createVibeStorageController({actions,confirm=async()=>false,onCl
       ${snapshot?`<div class="sd-vibe-storage-meter" role="img" aria-label="Vibe 占用组成">${parts.map(([label,n,color])=>`<span style="width:${total?n/total*100:0}%;background:${color}" title="${label} ${bytes(n)}"></span>`).join('')}</div>
       <div class="sd-vibe-storage-legend">${parts.map(([label,n,color])=>`<span><i style="background:${color}"></i>${label} ${bytes(n)}</span>`).join('')}</div>
       <p>文件 ${rows.length} / ${snapshot.usage.countLimit} · ${bytes(snapshot.usage.bytes+snapshot.usage.previewBytes)} / ${bytes(snapshot.usage.limit)}<br>记录 ${snapshot.receiptCount} 条，其中归档 ${snapshot.archivedReceiptCount||0} 条、未决 ${snapshot.pendingCount} 条；另存核查明细 ${snapshot.historyReviewCount||0} 次。计值为内容大小，非浏览器实际磁盘占用或剩余空间。</p>
+      ${snapshot.feeOriginals?`<p class="sd-vibe-review-file-info">已登记费用原件 · ${bytes(snapshot.feeOriginals.total.bytes)} · ${snapshot.feeOriginals.total.count} 个文件 / ${snapshot.feeOriginals.versions} 个版本<br>当前版本文件 ${bytes(snapshot.feeOriginals.selected.bytes)} · 历史独有文件 ${bytes(snapshot.feeOriginals.history.bytes)}<br>按已核验ST文件去重计值；不含旧索引文件、未登记残留或本机副本，不与上方内容估算直接相加，也不表示可安全删除。</p>`:''}
       <div class="sd-vibe-storage-tools"><button type="button" class="sd-btn sd-vibe-storage-select" ${busy?'disabled':''}>${selected.size?'清空选择':'选择未锁定项'}</button><button type="button" class="sd-btn sd-vibe-storage-export" ${busy||!selected.size?'disabled':''}>导出所选</button><button type="button" class="sd-btn sd-danger sd-vibe-storage-remove" ${busy||!selected.size||blocked?'disabled':''}>${native?'移出目录':'清理'} ${selected.size} 项</button></div>
       ${typeof actions.aggregate==='function'?`<button type="button" class="sd-btn sd-vibe-storage-aggregate" ${busy||selected.size!==1||rows.find(row=>selected.has(row.id))?.type!=='image'?'disabled':''}>汇总同原图档位</button>`:''}
       <small>${native?'移出目录保留完整原件，不表示释放磁盘空间。':'不自动清理。'}其他聊天和历史镜头仍可能引用这些文件；移出后需明确重新导入同一原文件。未决关联文件可导出，处理前须先核查。</small>

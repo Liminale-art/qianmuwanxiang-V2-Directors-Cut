@@ -38,9 +38,9 @@ export function createNativeVibeEncodingStore({legacy,createStorage,onProgress,g
     return {receipt:row.receipt,segments:row.segments,reviews:await resolveVibeReviewHistory(namespace,cacheKey,row.receipt.reviewArchive,row.segments)};
   }
   async function inventory(namespace){
-    const {rows,metadata}=await catalogue.readAll(namespace,options),current=rows.filter(row=>row.section==='current'),archived=rows.filter(row=>row.section==='archived'),segments=rows.flatMap(row=>row.segments);
+    const {rows,metadata,fileUsage}=await catalogue.inventory(namespace,options),current=rows.filter(row=>row.section==='current'),archived=rows.filter(row=>row.section==='archived'),segments=rows.flatMap(row=>row.segments);
     return {persistence:'st-account-file',receipts:current.map(row=>row.receipt),archived:{namespace,count:archived.length,bytes:archived.reduce((n,row)=>n+bytes(row.receipt),0)},
-      reviewHistory:{namespace,count:segments.length,bytes:segments.reduce((n,row)=>n+bytes(row),0),reviews:segments.reduce((n,row)=>n+row.reviews.length,0)},metadata};
+      reviewHistory:{namespace,count:segments.length,bytes:segments.reduce((n,row)=>n+bytes(row),0),reviews:segments.reduce((n,row)=>n+row.reviews.length,0)},metadata,fileUsage};
   }
   return Object.freeze({
     get(namespace,cacheKey){return run([namespace,cacheKey],async(ns,id)=>(await catalogue.get(ns,id,options))?.receipt||null);},

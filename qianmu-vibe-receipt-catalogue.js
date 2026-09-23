@@ -1,6 +1,7 @@
 import {createConfiguredStAccountStorage,stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {createVibeReceiptOriginals,captureVibeReceiptOriginal,vibeReceiptEvidenceText,VIBE_RECEIPT_ORIGINAL_SLOT,VIBE_RECEIPT_ORIGINAL_LIMITS} from './qianmu-vibe-receipt-original.js';
 import {resolveVibeReceiptHeads,vibeReceiptFollows} from './qianmu-vibe-receipt-lineage.js';
+import {createVibeReceiptFileAccounting} from './qianmu-vibe-receipt-accounting.js';
 
 export const VIBE_RECEIPT_CATALOGUE_SLOT='vibe-receipt-catalogue';
 const schema='qianmu.vibe.receipt-catalogue.v1',maxIndex=8*1048576;
@@ -32,7 +33,7 @@ function validateIndex(value,namespace,scope){
 export function createVibeReceiptCatalogue({legacy,createStorage=createConfiguredStAccountStorage,onProgress=()=>{}}={}){
   if(typeof legacy?.census!=='function'||typeof legacy?.close!=='function'||typeof onProgress!=='function')fail('费用账本环境未就绪');
   let client,opening,closed=false,owner='',known=false,queue=Promise.resolve();
-  function operation(namespace,options,work,deferredDigest=''){
+  function operation(namespace,options,work,deferredDigest='',accountFiles=false){
     const captured={...options};
     if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace))fail('费用目录账户无效');
     const check=async()=>{if(closed||captured.signal?.aborted||captured.isCurrent&&captured.isCurrent()!==true)fail('费用目录页面或账户已变化');
@@ -42,7 +43,8 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
       opening??=Promise.resolve().then(()=>createStorage({maxBytes:maxIndex,isCurrent:()=>!closed})).then(value=>{
         if(closed||value.namespace!==namespace){value.close();fail('费用目录账户不符');}client=value;return value;
       }).catch(error=>{opening=null;throw error;});await opening;await check();
-      const transport={guard:check,signal:captured.signal},originals=createVibeReceiptOriginals(client,{...transport,onProgress});
+      const transport={guard:check,signal:captured.signal},accounting=accountFiles?createVibeReceiptFileAccounting():null,
+        originals=createVibeReceiptOriginals(client,{...transport,onProgress,...(accounting?{onVerifiedFiles:value=>accounting.verified(value)}:{})});
       async function read(){const result=await client.read(VIBE_RECEIPT_CATALOGUE_SLOT,transport);await check();
         if(!result.exists&&known)fail('已确认的费用目录缺失，未重建空账本');if(result.exists){validateIndex(result.value,namespace,client.scope);known=true;}return result;}
       // Only this operation reuses an EXACT captured source. Every census
@@ -115,20 +117,23 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
       if(adoptionChanged){adopted.revision=value.revision+1;await save(adopted);}
       const find=key=>value.entries.find(entry=>entry.cacheKey===key);
       const inspect=async key=>{const entry=find(key),result=await resolve(entry);if(entry&&entry.section!==sectionOf(result))fail('费用目录分区与原件不符');return {entry,result};};
-      const result=await work({find,inspect,resolve,sectionOf,load,originals,check,baseline,get exists(){return found.exists;},get value(){return value;},save:async next=>{next.revision=value.revision+1;await save(next);}});
+      const result=await work({find,inspect,resolve,sectionOf,load,originals,check,baseline,accounting,get exists(){return found.exists;},get value(){return value;},save:async next=>{next.revision=value.revision+1;await save(next);}});
       await unchanged();if((await read()).fingerprint!==found.fingerprint)fail('费用目录在读取期间变化');return structuredClone(result);
     });queue=task.then(()=>{},()=>{});return task;
   }
   const validKey=key=>{if(!hash(key))fail('费用记录编号无效');};
+  function readAll(namespace,options,accountFiles=false){return operation(namespace,options,async state=>{
+    const rows=[],selected=[];for(const entry of state.value.entries){const {result}=await state.inspect(entry.cacheKey);if(result.kind==='conflict')fail('费用目录存在未核对分歧，未提供不完整清单');rows.push(result.selected.snapshot);selected.push(result.selected.digest);}
+    return {rows,metadata:{count:Number(state.exists),bytes:state.exists?new TextEncoder().encode(JSON.stringify(state.value)).length:0},
+      ...(state.accounting?{fileUsage:state.accounting.summarize(selected,state.value.entries.reduce((n,entry)=>n+entry.versions.length,0))}:{})};
+  },'',accountFiles);}
   return Object.freeze({
     checkout(namespace,cacheKey,options={}){validKey(cacheKey);return operation(namespace,options,async state=>{
       const {result}=await state.inspect(cacheKey);if(result.kind==='conflict')fail('不同来源的编码费用记录尚未核对，未授权新请求');
       return {snapshot:result.selected?.snapshot||null,heads:result.heads,local:state.baseline.items.find(item=>item.snapshot.receipt.cacheKey===cacheKey)?.snapshot||null};
     });},
-    readAll(namespace,options={}){return operation(namespace,options,async state=>{
-      const rows=[];for(const entry of state.value.entries){const {result}=await state.inspect(entry.cacheKey);if(result.kind==='conflict')fail('费用目录存在未核对分歧，未提供不完整清单');rows.push(result.selected.snapshot);}
-      return {rows,metadata:{count:Number(state.exists),bytes:state.exists?new TextEncoder().encode(JSON.stringify(state.value)).length:0}};
-    });},
+    readAll(namespace,options={}){return readAll(namespace,options);},
+    inventory(namespace,options={}){return readAll(namespace,options,true);},
     list(namespace,options={}){return operation(namespace,options,async state=>{
       for(const entry of state.value.entries)await state.inspect(entry.cacheKey);
       return state.value.entries.map(entry=>({cacheKey:entry.cacheKey,section:entry.section,versions:entry.versions.length,heads:leaves(entry).map(v=>v.digest)}));

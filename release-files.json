@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "files": [
     "qianmu-vibe-receipt-lineage.js",
+    "qianmu-vibe-receipt-accounting.js",
     "qianmu-vibe-encoding-contract.js",
     "qianmu-vibe-local-encoding-store.js",
     "qianmu-vibe-native-encoding-store.js",
