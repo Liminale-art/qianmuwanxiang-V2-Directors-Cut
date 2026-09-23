@@ -7,12 +7,12 @@ import {chatStateFixture} from './helpers/chat-state-fixture.mjs';
 import {projectGalleryContinuity,GALLERY_CONTINUITY_FIELDS,galleryContinuitySavePending} from '../qianmu-gallery-continuity.js';
 import {projectChatGallerySupplement,chatGallerySupplementResponse} from '../qianmu-chat-gallery-supplement.js';
 import {mergeGallerySupplement} from '../qianmu-gallery-merge-supplement.js';
-import {stageStoryboardContinuationLinks} from '../qianmu-storyboard-continuation-proof.js?v=1.59.318';
-import {saveStoryboardFloorTakes} from '../qianmu-storyboard-floor-take.js?v=1.59.318';
+import {stageStoryboardContinuationLinks} from '../qianmu-storyboard-continuation-proof.js?v=1.59.319';
+import {saveStoryboardFloorTakes} from '../qianmu-storyboard-floor-take.js?v=1.59.319';
 import {createChatGalleryHeaderCapture} from '../qianmu-chat-gallery-header.js';
 import {galleryArchiveReviewHtml} from '../qianmu-gallery-archive-view.js';
 import {vibeDigest} from '../qianmu-vibe-file.js';
-import {storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.318';
+import {storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.319';
 
 async function fixture(t){const f=galleryLocationFixture(t),store=f.context.chatMetadata.story_director_liminale;
   await attachGalleryContinuity({context:f.context,namespace:f.scope.namespace});return {...f,store,owner:{namespace:f.scope.namespace,chatKey:'chat'}};}

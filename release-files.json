@@ -26,6 +26,7 @@
     "qianmu-gallery-original-preview.js",
     "qianmu-gallery-archive-original.js",
     "qianmu-chat-gallery-digest.js",
+    "qianmu-gallery-record-fingerprint.js",
     "vendor/noble-hashes-2.4.0/sha2.js",
     "qianmu-chat-gallery-header.js",
     "qianmu-chat-gallery-header-reader.js",

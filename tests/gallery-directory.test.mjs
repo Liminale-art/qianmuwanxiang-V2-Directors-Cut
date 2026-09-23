@@ -139,8 +139,9 @@ test('source hashing grows linearly with records, not with the number of write b
     for(const count of [201,801]){
         const f=fixture(),plain=Array.from({length:count},(_,i)=>row(String(i))),saved={state:'present',gallery:chatGalleryDigest(plain)};let inspected=0;
         f.client.inspect=async()=>saved;f.context.chatMetadata.story_director_liminale.storyboardImages=plain.map(value=>new Proxy(value,{getOwnPropertyDescriptor(target,key){if(key==='unknown')inspected++;return Reflect.getOwnPropertyDescriptor(target,key);}}));
-        // Four source passes; strict JSON capture inspects each descriptor twice.
-        const s=await create(f.options);assert.equal((await s.refresh()).indexed,count);assert.equal(inspected,count*8);assert.equal(f.writes,Math.ceil(count/200));s.close();
+        // Four source passes remain: projection + selected-batch captures inspect
+        // twice, while the before/after hash-only checks each inspect once.
+        const s=await create(f.options);assert.equal((await s.refresh()).indexed,count);assert.equal(inspected,count*6);assert.equal(f.writes,Math.ceil(count/200));s.close();
     }
 });
 
