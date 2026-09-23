@@ -1,5 +1,5 @@
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
-import {normalizeComfySceneReceipt,comfySceneLockError,comfySceneScopeKey} from './qianmu-comfy-scene-lock.js';
+import {normalizeComfySceneReceipt,comfySceneLockError,comfySceneScope} from './qianmu-comfy-scene-lock.js';
 import {validateSceneProposal,sceneSame} from './qianmu-comfy-scene-native-contract.js';
 
 const schema='qianmu.comfy.scene-local-journal.v1',table='accounts';
@@ -9,11 +9,32 @@ const receiptKey=value=>JSON.stringify(normalizeComfySceneReceipt(value));
 function valid(value,namespace){
   if(!exact(value,['schema','namespace','nativeKnown','revision','claims','pending','conflicts'])||value.schema!==schema||value.namespace!==namespace||typeof value.nativeKnown!=='boolean'||!Number.isSafeInteger(value.revision)||value.revision<0||!Array.isArray(value.claims)||value.claims.length>32768||!Array.isArray(value.conflicts)||value.conflicts.length>1024
     ||new TextEncoder().encode(JSON.stringify(value)).length>64*1024*1024)fail('续场本机事务记录损坏或超出容量');
-  const keys=new Set();for(const claim of value.claims){const receipt=normalizeComfySceneReceipt(claim.receipt),key=receiptKey(receipt);
+  const keys=new Set();for(const claim of value.claims){const receipt=normalizeComfySceneReceipt(claim.receipt),key=JSON.stringify(receipt);
     if(!exact(claim,['receipt','outcomes'])||!sceneSame(receipt,claim.receipt)||receipt.scope.namespace!==namespace||keys.has(key)||!Array.isArray(claim.outcomes)||claim.outcomes.length>64||new Set(claim.outcomes.map(row=>row.id)).size!==claim.outcomes.length||claim.outcomes.some(row=>!exact(row,['id','outcome'])||typeof row.id!=='string'||!/^[a-zA-Z0-9_-]{1,160}$/.test(row.id)||!['not_submitted','rejected','unknown','accepted','succeeded'].includes(row.outcome)))fail('续场原账户票据或结果不完整');keys.add(key);}
   if(value.pending!==null&&!exact(value.pending,['id','proposal']))fail('续场待保存操作不完整');
   const operations=[...value.conflicts,...(value.pending?[value.pending]:[])],ids=new Set();
   for(const item of operations){if(!exact(item,['id','proposal'])||typeof item.id!=='string'||!item.proposal||item.proposal.namespace!==namespace||item.id!==item.proposal.id||ids.has(item.id))fail('续场待保存操作归属不符');validateSceneProposal(item.proposal);ids.add(item.id);}return value;
+}
+
+// Explicit read-only projections, never a cache or execution authorization.
+// The complete stored account is still validated before selecting any result.
+// Capturing selectors before IDB opens prevents later caller mutation widening
+// an account, chat or scene query. Full read/export remains lossless.
+export function captureComfySceneJournalSelection(namespace,query){
+  namespace=assertComfyRouteNamespace(namespace);
+  if(exact(query,['kind'])&&query.kind==='control')return value=>({nativeKnown:value.nativeKnown,pending:value.pending});
+  if(exact(query,['kind'])&&query.kind==='summary')return value=>({pending:value.pending?{kind:value.pending.proposal.kind,id:value.pending.id}:null,
+    outcomes:value.claims.reduce((n,row)=>n+row.outcomes.length,0),conflicts:value.conflicts.length});
+  if(exact(query,['kind','scope','chatKey','pendingOnly'])&&query.kind==='claims'){
+    const scope=query.scope===null?null:comfySceneScope(query.scope),chatKey=query.chatKey,pendingOnly=query.pendingOnly;
+    if(scope&&scope.namespace!==namespace||scope&&chatKey!==null||chatKey!==null&&(typeof chatKey!=='string'||!chatKey||chatKey.length>512||/[\u0000-\u001f\u007f]/.test(chatKey))||typeof pendingOnly!=='boolean')fail('续场日志查询范围无效');
+    return value=>value.claims.filter(row=>(!pendingOnly||row.outcomes.length>0)&&(!scope||['namespace','chatKey','continuityId','narrativeLayer'].every(key=>row.receipt.scope[key]===scope[key]))&&(chatKey===null||row.receipt.scope.chatKey===chatKey));
+  }
+  if(exact(query,['kind','receipt'])&&query.kind==='authority'){
+    const receipt=normalizeComfySceneReceipt(query.receipt);if(receipt.scope.namespace!==namespace)fail('续场日志票据账户不符');const key=receiptKey(receipt);
+    return value=>{const owned=value.claims.some(row=>receiptKey(row.receipt)===key);return {owned,executable:owned&&!value.conflicts.some(row=>['reserve','begin'].includes(row.proposal.kind)&&receiptKey(row.proposal.receipt)===key)};};
+  }
+  fail('续场日志查询类型无效');
 }
 
 // Separate DB: legacy scopes/usage remain untouched. Staging a native mutation
@@ -47,6 +68,7 @@ export function createComfySceneJournal({indexedDB=globalThis.indexedDB,dbName='
   }
   return Object.freeze({
     read:namespace=>run(namespace,'readonly',value=>value),
+    select(namespace,query){const select=captureComfySceneJournalSelection(namespace,query);return run(namespace,'readonly',select);},
     observeNative:namespace=>run(namespace,'readwrite',value=>{value.nativeKnown=true;return true;}),
     stage(namespace,proposal){const captured=copy(proposal);validateSceneProposal(captured);return run(namespace,'readwrite',value=>{
       if(value.pending)fail('本机仍有未确认的续场保存，请先核对');if(captured.namespace!==namespace||typeof captured.id!=='string')fail('续场新操作归属不符');
@@ -80,7 +102,7 @@ export function createComfySceneJournal({indexedDB=globalThis.indexedDB,dbName='
         const last=claim.outcomes.at(-1);if(last?.outcome===outcome)return last;if(claim.outcomes.length>=64)fail('原任务待同步结果过多，未覆盖旧结果');const row={id:crypto.randomUUID(),outcome};claim.outcomes.push(row);return row;});},
     retire(namespace,receipts){const keys=new Set(receipts.map(receiptKey));return run(namespace,'readwrite',value=>{if(value.pending)fail('续场待保存时不能清理本机票据');
       value.claims=value.claims.filter(row=>!keys.has(receiptKey(row.receipt))||row.outcomes.length);return true;});},
-    async localOwners(scope){const value=await this.read(scope.namespace),key=comfySceneScopeKey(scope);return [...new Set(value.claims.filter(row=>comfySceneScopeKey(row.receipt.scope)===key).map(row=>row.receipt.ownerId))];},
+    async localOwners(scope){const claims=await this.select(scope.namespace,{kind:'claims',scope,chatKey:null,pendingOnly:false});return [...new Set(claims.map(row=>row.receipt.ownerId))];},
     close(){closed=true;for(const tx of transactions)try{tx.abort();}catch{}db?.close();db=null;opening=null;},
   });
 }
