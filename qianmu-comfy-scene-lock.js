@@ -4,6 +4,7 @@ import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
 export const COMFY_SCENE_LOCK_SCHEMA='qianmu.comfy.scene-lock.v1';
 export const COMFY_SCENE_RESERVATION_MS=10*60_000;
 export const COMFY_SCENE_HOLDER_LIMIT=32;
+export const COMFY_SCENE_STORE_LIMITS=Object.freeze({scopes:1024,bytes:4*1024*1024,rowBytes:32*1024});
 const copy=value=>JSON.parse(JSON.stringify(value));
 export const comfySceneLockError=(code,message)=>Object.assign(new Error(message),{code:`comfy_scene_${code}`,submissionState:'not_submitted'});
 const fail=(code,message)=>{throw comfySceneLockError(code,message);};

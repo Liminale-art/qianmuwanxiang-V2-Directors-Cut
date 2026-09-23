@@ -4,6 +4,9 @@ import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
 import * as auto from '../qianmu-comfy-auto-runtime.js';
 import {createComfySceneCoordinator} from '../qianmu-comfy-lock-runtime.js';
+import {createComfySceneLockStore} from '../qianmu-comfy-lock-store.js';
+import {characterNativeFixture} from './helpers/character-native-fixture.mjs';
+import {comfySceneIdbFixture,comfySceneJournalFixture} from './helpers/comfy-scene-idb-fixture.mjs';
 import {executeComfyCloudJob} from '../qianmu-comfy-cloud-execution.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 import {issueComfySceneArchiveProof} from '../qianmu-comfy-scene-result.js';
@@ -19,6 +22,25 @@ import {fakeWebLocks} from './helpers/web-locks-fixture.mjs';
 import {normalizeComfySceneOrigin,retainComfySceneOrigin} from '../qianmu-comfy-route-contract.js';
 import {COMFY_FRESH_EXECUTION_POLICY} from '../qianmu-comfy-new-execution.js';
 const copy=value=>JSON.parse(JSON.stringify(value)),scope={namespace,chatKey:'chat',continuityId:'program-confirmed-scene',narrativeLayer:'present'};
+
+test('actual native default coordinator reserves and begins before submission, then preserves an old-account late result across a new device',async t=>{
+  const f=await characterNativeFixture(t,{account:namespace}),old=comfySceneIdbFixture(),journal=comfySceneJournalFixture();
+  const properties={indexedDB:{open:(name,...args)=>(name==='qianmu-comfy-scene-runtime'?journal:old).indexedDB.open(name,...args)},IDBKeyRange:old.keyRange};
+  for(const [key,value]of Object.entries(properties)){const prior=Object.getOwnPropertyDescriptor(globalThis,key);Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});t.after(()=>{if(prior)Object.defineProperty(globalThis,key,prior);else delete globalThis[key];});}
+  f.configure();const e=await fixture({native:true}),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe});
+  try{
+    assert.equal(e.store.persistence,'st-account-file');const shot=await e.makeShot(),choice=await batch.choose(shot,scope),job=e.makeJob(choice,shot,'native-shot');
+    await batch.attach(job,choice);await e.manager.reserve(job);assert.equal((await e.manager.inspect(scope)).pending,1);
+    await e.manager.beforeSubmit(job);assert.ok([...f.files.values()].some(body=>body.includes('submitting')));
+    f.account('st-user:other');e.setAccount('st-user:other');f.reset();await assert.rejects(e.manager.settle(job,'succeeded'));assert.equal(f.uploads,0);
+    assert.equal((await journal.open().read(namespace)).claims[0].outcomes[0].outcome,'succeeded');
+    f.account(namespace);e.setAccount(namespace);assert.equal((await e.manager.inspect(scope)).established,true);
+    const emptyOld=comfySceneIdbFixture(),emptyJournal=comfySceneJournalFixture();globalThis.indexedDB={open:(name,...args)=>(name==='qianmu-comfy-scene-runtime'?emptyJournal:emptyOld).indexedDB.open(name,...args)};
+    const other=createComfySceneCoordinator({resolveNamespace:async()=>namespace,ownerId:'other-device',locks:fakeWebLocks()});
+    try{const view=await other.reconcile(scope);assert.equal(view.pending,0);assert.equal(view.established,true);assert.equal(view.lock.candidateId,choice.candidateId);assert.equal(emptyOld.state.writes.length,0);}finally{await other.close();}
+    assert.equal(old.state.writes.length,0);
+  }finally{batch.close();await e.close();}
+});
 
 test('unknown or asynchronously changed preparation policy cannot start scene work',async()=>{
   const e=await fixture({freshComfy:true});let batch;
@@ -49,14 +71,14 @@ function memoryStore(){
     reserve:(scope,request)=>write(scope,{...request,type:'reserve'}),begin:receipt=>write(receipt.scope,{type:'begin',receipt}),
     settle:(receipt,outcome)=>write(receipt.scope,{type:'settle',receipt,outcome}),confirmResult:(scope,request)=>write(scope,{...request,type:'confirm_result'}),unlock:(scope,request)=>write(scope,{...request,type:'unlock'}),close:()=>calls.push('close')};
 }
-async function fixture({freshComfy=false}={}){
+async function fixture({freshComfy=false,native=false}={}){
   const f=await recipesFixture({formats:['tags','natural_language']});f.rows.forEach((row,index)=>Object.assign(row.document.classification,{visualKinds:[index?'environment':'character']}));
   const recipes=await Promise.all(f.rows.map(selection=>pinComfyRouteWorkflow({namespace,selection,createStore:f.createStore})));
   const pool=normalizeComfyAutoPool({schema:COMFY_SELECTION_SCHEMA,namespace,id:'pool',revision:'v1',enabled:false,styleLock:true,candidates:recipes.map((recipe,index)=>({id:`candidate-${index}`,enabled:true,target:{...f.routes[index],comfyWorkflowBinding:recipe.binding},classification:recipe.document.classification}))});
   const row={namespace,id:pool.id,revision:pool.revision,version:1,name:'Pool',archived:false,pool},createStore=()=>({list:async()=>[copy(row)],versions:async()=>[copy(row)],load:async()=>copy(row),close(){}});
   const binding=(await auto.pinComfyAutoPool({namespace,selection:row,createStore})).binding;
   const prepared=await auto.prepareComfyAutoSession({namespace,binding,createStore,freshComfy,readRecipe:options=>readPinnedComfyRouteWorkflow({...options,createStore:f.createStore})});
-  const store=memoryStore();let account=namespace;
+  const store=native?createComfySceneLockStore():memoryStore();let account=namespace;
   const manager=createComfySceneCoordinator({store,resolveNamespace:async()=>account,ownerId:'page-a',locks:fakeWebLocks()});
   const probe=async({recipe})=>({automaticEligible:checkComfyConfiguration({workflow:recipe.document.workflow,parameters:{...recipe.document.parameters,count:1},model:'comfy-workflow',outputNodeId:'save',automatic:true}).localConfigurationReady});
   const makeShot=async(kind='character')=>{

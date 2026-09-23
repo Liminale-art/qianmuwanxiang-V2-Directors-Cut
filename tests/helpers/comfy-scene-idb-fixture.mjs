@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import {createComfySceneLockStore} from '../../qianmu-comfy-lock-store.js';
+import {createComfySceneJournal} from '../../qianmu-comfy-scene-journal.js';
 
 // Actual production two-table code over serialized atomic IDB protocol double.
 // Deliberately no browser/network emulation or real-user database access.
-export function comfySceneIdbFixture(snapshot){
-  const state={tables:{scopes:new Map(snapshot?.rows.map(row=>[row.key,structuredClone(row.value)])||[]),usage:new Map(snapshot?.usage?[[snapshot.namespace,structuredClone(snapshot.usage)]]:[])},transactions:[],writes:[],reads:[],failOpen:false,beforeTransaction:null};
+export function comfySceneIdbFixture(snapshot,{journal=false}={}){
+  const state={tables:journal?{accounts:new Map()}:{scopes:new Map(snapshot?.rows.map(row=>[row.key,structuredClone(row.value)])||[]),usage:new Map(snapshot?.usage?[[snapshot.namespace,structuredClone(snapshot.usage)]]:[])},transactions:[],writes:[],reads:[],failOpen:false,beforeTransaction:null};
   const cmp=(a,b)=>{if(Array.isArray(a)&&Array.isArray(b)){for(let i=0;i<Math.min(a.length,b.length);i++){const c=cmp(a[i],b[i]);if(c)return c;}return a.length-b.length;}if(Array.isArray(a))return 1;if(Array.isArray(b))return -1;return a<b?-1:a>b?1:0;};
   const match=(key,range)=>range===undefined||range?.bound?range===undefined||cmp(key,range.lower)>=0&&cmp(key,range.upper)<=0:cmp(key,range)===0;
   const keyRange={bound:(lower,upper)=>({bound:true,lower,upper})},pending=[];let running=false;
   const drain=()=>{if(running||!pending.length)return;running=true;queueMicrotask(()=>pending.shift()(()=>{running=false;drain();}));};
   const indexedDB={open(){const request={};queueMicrotask(()=>{if(state.failOpen){request.onerror?.();return;}request.result={close(){},transaction(names,mode){
-    assert.deepEqual([...names].sort(),['scopes','usage']);assert.ok(['readonly','readwrite'].includes(mode));let started=false,ended=false,scheduled=false,tables,done;const tasks=[],writes=[];
+    assert.deepEqual([...names].sort(),Object.keys(state.tables).sort());assert.ok(['readonly','readwrite'].includes(mode));let started=false,ended=false,scheduled=false,tables,done;const tasks=[],writes=[];
     const tx={abort(){if(ended)return;ended=true;queueMicrotask(()=>{tx.onabort?.();done?.();});}};
     const schedule=()=>{if(!started||ended||scheduled)return;scheduled=true;queueMicrotask(()=>{scheduled=false;if(ended)return;const task=tasks.shift();
       if(!task){ended=true;if(mode==='readwrite')state.tables=tables;state.writes.push(...writes);tx.oncomplete?.();done();return;}
@@ -28,5 +29,6 @@ export function comfySceneIdbFixture(snapshot){
     };
     pending.push(finish=>{done=finish;if(ended){done();return;}state.beforeTransaction?.({names,mode});tables=structuredClone(state.tables);state.transactions.push({names:[...names],mode});started=true;schedule();});drain();return tx;
   }};request.onsuccess?.();});return request;}};
-  return {state,indexedDB,keyRange,open:options=>createComfySceneLockStore({indexedDB,keyRange,now:()=>100,...options})};
+  return {state,indexedDB,keyRange,open:options=>(journal?createComfySceneJournal:createComfySceneLockStore)({indexedDB,keyRange,now:()=>100,...options})};
 }
+export const comfySceneJournalFixture=()=>comfySceneIdbFixture(undefined,{journal:true});

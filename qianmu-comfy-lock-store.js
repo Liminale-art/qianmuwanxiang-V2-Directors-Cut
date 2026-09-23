@@ -1,11 +1,19 @@
 // Independent lazy metadata store; never opens or upgrades voice, media or previous storyboard stores.
 import {comfySceneScope,comfySceneScopeKey,comfySceneLockError,normalizeComfySceneRecord,inspectComfySceneRecord,changeComfySceneRecord,normalizeComfySceneReceipt,captureComfySceneAction,captureComfySceneStyleLink,copyComfySceneStyleRecord} from './qianmu-comfy-scene-lock.js';
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
-export const COMFY_SCENE_STORE_LIMITS=Object.freeze({scopes:1024,bytes:4*1024*1024,rowBytes:32*1024});
+import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {createNativeComfySceneStore} from './qianmu-comfy-scene-native-store.js';
+import {COMFY_SCENE_STORE_LIMITS} from './qianmu-comfy-scene-lock.js';
+export {COMFY_SCENE_STORE_LIMITS};
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const copy=value=>JSON.parse(JSON.stringify(value));
 const problem=()=>comfySceneLockError('storage','续场记录暂不可用，请核查存储空间及原任务');
-export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-comfy-scene-locks',now=Date.now,timeoutMs=6000,limits=COMFY_SCENE_STORE_LIMITS}={}){
+export function createComfySceneLockStore(options={}){
+  const {native,...local}=options,legacy=createLocalComfySceneLockStore(local);
+  if(native===false||native===undefined&&(Object.hasOwn(options,'indexedDB')||Object.hasOwn(options,'dbName')||!isStAccountStorageConfigured()))return legacy;
+  return createNativeComfySceneStore({...local,legacy,...(native&&typeof native==='object'?native:{})});
+}
+export function createLocalComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-comfy-scene-locks',now=Date.now,timeoutMs=6000,limits=COMFY_SCENE_STORE_LIMITS}={}){
   const quota={};for(const key of Object.keys(COMFY_SCENE_STORE_LIMITS)){const value=limits[key]??COMFY_SCENE_STORE_LIMITS[key];if(!Number.isSafeInteger(value)||value<1||value>COMFY_SCENE_STORE_LIMITS[key])throw problem();quota[key]=value;}
   const timeout=Math.min(15000,Math.max(100,Number(timeoutMs)||6000)),transactions=new Set();let db=null,opening=null,closed=false;
   const closedError=()=>comfySceneLockError('closed','续场记录会话已结束');

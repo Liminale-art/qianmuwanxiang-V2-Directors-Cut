@@ -4,7 +4,7 @@ import {validateComfyStorageSummary} from './qianmu-comfy-storage-accounting.js'
 const factories={
   workflows:async options=> (await import('./qianmu-comfy-library.js')).createComfyWorkflowStore(options),
   pools:async options=> (await import('./qianmu-comfy-pool-store.js')).createComfyPoolStore(options),
-  scenes:async()=> (await import('./qianmu-comfy-lock-store.js')).createComfySceneLockStore(),
+  scenes:async options=> (await import('./qianmu-comfy-lock-store.js')).createComfySceneLockStore(options),
 };
 const labels={workflows:'Comfy 工作流库',pools:'Comfy 候选方案',scenes:'Comfy 续场记录'};
 const fail=message=>{throw new Error(message);};
@@ -20,7 +20,7 @@ export async function inspectComfyStorage({namespace,guard=async()=>{},native,cr
   for(const key of Object.keys(factories)){
     let store;
     try{
-      await guard();store=await createStores[key](key!=='scenes'&&native!==undefined?{native}:undefined);await guard();const summary=await store.storageSummary(namespace,{guard});await guard();rows.push([key,summary]);
+      await guard();store=await createStores[key](native!==undefined?{native}:undefined);await guard();const summary=await store.storageSummary(namespace,{guard});await guard();rows.push([key,summary]);
     }catch(error){rows.push([key,{status:'unavailable',bytes:null,count:null,error:(labels[key]+'：'+String(error?.message||'暂不可读取')).slice(0,512)}]);}
     finally{store?.close();}
   }
@@ -46,7 +46,8 @@ export async function clearComfySceneStorage({resolveNamespace,expectedNamespace
   const namespace=await account(resolveNamespace,valid,expectedNamespace);let store;
   try{
     store=await createStore();await account(resolveNamespace,valid,namespace);
-    // A single bounded account transaction either removes all settled rows or rolls back completely.
+    // Native clearing publishes one verified tombstone batch; retained originals
+    // remain recoverable. Local-only storage uses its original atomic transaction.
     return await store.clearAccount(namespace,{expectedGeneration,valid});
   }finally{store?.close();}
 }

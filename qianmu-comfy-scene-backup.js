@@ -1,4 +1,4 @@
-import {COMFY_SCENE_STORE_LIMITS} from './qianmu-comfy-lock-store.js';
+import {COMFY_SCENE_STORE_LIMITS} from './qianmu-comfy-scene-lock.js';
 import {comfySceneScopeKey,normalizeComfySceneRecord,comfySceneLockError} from './qianmu-comfy-scene-lock.js';
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
 

@@ -4,12 +4,24 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {createComfyWorkflowStore} from '../qianmu-comfy-library.js';
 import {createComfyPoolStore} from '../qianmu-comfy-pool-store.js';
+import {createComfySceneLockStore} from '../qianmu-comfy-lock-store.js';
+import {COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
+import {comfySceneIdbFixture,comfySceneJournalFixture} from './helpers/comfy-scene-idb-fixture.mjs';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
 import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {comfyLibraryIdbFixture} from './helpers/comfy-library-idb-fixture.mjs';
 import {poolNativeFixture} from './helpers/comfy-pool-native-fixture.mjs';
 const origin='https://st.fixture.invalid',context={namespace,origin,csrf:'synthetic'};
+
+test('actual storage Worker uses the native scene catalogue with its live account guard and never writes during inventory',async t=>{
+  const f=await characterNativeFixture(t),old=comfySceneIdbFixture(),journal=comfySceneJournalFixture();
+  property(t,'indexedDB',{open:(name,...args)=>(name==='qianmu-comfy-scene-runtime'?journal:old).indexedDB.open(name,...args)});property(t,'IDBKeyRange',old.keyRange);f.configure();t.mock.method(globalThis,'fetch',f.fetchImpl);
+  const store=createComfySceneLockStore();t.after(()=>store.close());const scope={namespace,chatKey:'chat',continuityId:'scene',narrativeLayer:'present'},lock={schema:COMFY_SELECTION_SCHEMA,scope,poolKey:'a'.repeat(64),candidateId:'candidate',executionKey:'b'.repeat(64)};
+  const reserved=await store.reserve(scope,{lock,expectedRevision:0,expectedGeneration:0,attemptId:'shot',ownerId:'page',token:'ticket'});await store.begin(reserved.receipt);await store.settle(reserved.receipt,'succeeded');
+  const Worker=installWorker(t);f.reset();const summary=await runRestoreStorage('comfy',{namespace,guard:async()=>{},WorkerClass:Worker});
+  assert.deepEqual(Worker.last.sent[0].nativeComfy,context);assert.equal(summary.scenes.status,'ready');assert.equal(summary.scenes.count,1);assert.equal(summary.scenes.generation,0);assert.equal(f.uploads,0);assert.equal(old.state.writes.length,0);assert.equal(Worker.last.closed,true);
+});
 function property(t,key,value){const prior=Object.getOwnPropertyDescriptor(globalThis,key);Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});t.after(()=>{if(prior)Object.defineProperty(globalThis,key,prior);else delete globalThis[key];});}
 function installWorker(t){
   const prior=Object.getOwnPropertyDescriptor(globalThis,'self');
