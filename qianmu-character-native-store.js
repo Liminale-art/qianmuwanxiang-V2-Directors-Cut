@@ -84,7 +84,7 @@ export function createCharacterNativeStore({createStorage = createConfiguredStAc
     }); },
     load(namespace, id) { checkId(id); return operation(namespace, null, async ({read, originals, transport}) => {
       const row = archive((await read()).index, id); if (!row) return null;
-      const saved = await originals.read(row, transport); return {head: storedHead(namespace, saved.head), document: saved.document};
+      const saved = await originals.read(row, transport); return {head: storedHead(namespace, saved.head), document: normalizeCharacterArchive(saved.document)};
     }); },
     save(namespace, {id = '', expectedRevision = '', document}) {
       if (id) checkId(id); if (expectedRevision) checkId(expectedRevision);

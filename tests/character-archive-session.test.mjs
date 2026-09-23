@@ -39,7 +39,7 @@ test('existing native directory never opens IDB, even if that browser DB is inac
   assert.equal((await store.load(namespace, head.id)).document.name, 'Alice'); assert.equal((await store.usage(namespace)).count, 1);
 });
 
-test('nonempty legacy library stays on its unchanged path and is never copied into an empty remote head', async t => {
+test('without a browser idle lifecycle nonempty legacy stays on its original path and selection itself does not copy data', async t => {
   const f = await characterNativeFixture(t), {store, legacy} = session(t, f, localFixture({nonempty: true}));
   assert.equal((await store.list(namespace))[0].id, 'legacy'); assert.equal((await store.load(namespace, 'legacy')).document.name, 'Legacy optional fields stay unchanged');
   await store.save(namespace, {document: document('legacy edit')});

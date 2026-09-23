@@ -19,7 +19,7 @@ export function createCharacterArchiveStore(options={}) {
   return createCharacterArchiveSession({createLocal:()=>createLocalCharacterArchiveStore(local),...(native&&typeof native==='object'?native:{})});
 }
 
-// Original IDB implementation: retained unchanged for verified legacy reads and
+// Original IDB implementation: retained for verified legacy reads and
 // the pre-migration compatibility path. Never used after native selection fails.
 export function createLocalCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-character-archive',timeoutMs=6000,now=Date.now}={}) {
   const names=['heads','documents','bindings','usage']; let db=null,opening=null,closed=false; const pending=new Set();
@@ -99,6 +99,27 @@ export function createLocalCharacterArchiveStore({indexedDB=globalThis.indexedDB
     },isCurrent);
   }
   return Object.freeze({
+    // A migration checks the exact atomic metadata/key snapshot on every final
+    // publication transport guard. No network request holds an IDB transaction;
+    // no legacy record is marked, rewritten or deleted. Normal writers always
+    // replace the revision. This is detection, not a cross-device CAS/IDB lock.
+    async createMigrationGuard(namespace, input, {isCurrent=()=>true}={}) {
+      account(namespace);const captured=structuredClone(input),codec=await import('./qianmu-character-library-backup.js');
+      codec.validateCharacterLibraryBackup(captured);if(captured.namespace!==namespace)fail('account','迁移原件不属于当前 ST 账户');
+      const sort=rows=>rows.slice().sort((a,b)=>a.key.localeCompare(b.key));
+      const heads=sort(captured.archives.map(({head})=>({...head,key:keyFor(namespace,head.id),namespace})));
+      const bindings=sort(captured.bindings.map(row=>({...row,key:bindingKey(namespace,row),namespace})));
+      const usage={key:namespace,...captured.usage};
+      return ()=>operation('readonly',(tx,read,set)=>{
+        const unchanged=(a,b)=>{if(canonicalDocument(a)!==canonicalDocument(b))fail('changed','旧角色库在迁移期间已变化，原件仍保留，未确认切换');};
+        read(tx.objectStore('heads').index('namespace').getAll(keyRange.only(namespace),513),rows=>unchanged(sort(rows),heads));
+        read(tx.objectStore('bindings').index('namespace').getAll(keyRange.only(namespace),2049),rows=>unchanged(sort(rows),bindings));
+        withUsage(tx,read,namespace,row=>unchanged(row,usage));
+        const prefix=JSON.stringify([namespace]).slice(0,-1)+',',range=keyRange.bound(prefix,prefix+'\uffff');
+        for(const name of ['heads','documents','bindings'])read(tx.objectStore(name).getAllKeys(range,name==='bindings'?2049:513),keys=>unchanged(keys.sort(),(name==='bindings'?bindings:heads).map(row=>row.key).sort()));
+        set(true);
+      },isCurrent);
+    },
     async backup(namespace,{isCurrent=()=>true}={}) {
       const codec=await import('./qianmu-character-library-backup.js'),records=await snapshot(namespace,isCurrent),value=codec.packCharacterLibraryRecords(namespace,records);
       if(isCurrent()!==true)fail('changed','角色库备份页面已变化');return value;

@@ -25,8 +25,14 @@ export function validateCharacterLibraryBackup(value) {
     only(row, ['head', 'document']); only(row.head, headFields); const head = row.head;
     if (!id(head.id) || !id(head.revision) || !integer(head.version, 1) || archives.has(head.id) || !integer(head.createdAt) || !integer(head.updatedAt, head.createdAt)) fail('角色档案身份或时间索引无效');
     let document; try { document = normalizeCharacterArchive(row.document); } catch (_) { fail('角色档案原文无效，请保留原件核对'); }
-    if (!equal(document, row.document)) fail('角色档案含无法无损保留的字段，未改写或截短');
-    if (head.category !== document.category || head.name !== document.name || !equal(head.aliases, document.aliases) || head.cover !== (document.imagegen.preview?.url || '') || head.bytes !== size(document)) fail('角色档案索引与原文不符');
+    // Early v1 records predate these two optional fields. Validate the exact raw
+    // record, not a rewritten/default-filled copy. All other lossy normalization
+    // (including invalid supplied values and unknown fields) still rejects.
+    const preserved = structuredClone(document);
+    if (!Object.hasOwn(row.document, 'ageStatus')) delete preserved.ageStatus;
+    if (object(row.document.imagegen) && !Object.hasOwn(row.document.imagegen, 'preview')) delete preserved.imagegen.preview;
+    if (!equal(preserved, row.document)) fail('角色档案含无法无损保留的字段，未改写或截短');
+    if (head.category !== document.category || head.name !== document.name || !equal(head.aliases, document.aliases) || head.cover !== (document.imagegen.preview?.url || '') || head.bytes !== size(row.document)) fail('角色档案索引与原文不符');
     bytes += head.bytes; references += Number(Boolean(document.imagegen.reference)); archives.set(head.id, row);
   }
   if (bytes > 16 * 1024 * 1024) fail('角色库原文超过 16 MiB');

@@ -2,6 +2,7 @@ import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
 import {createCharacterNativeStore} from './qianmu-character-native-store.js';
 import {CHARACTER_NATIVE_SLOT, characterNativeAccount, validateCharacterNativeIndex, characterNativeFail as fail} from './qianmu-character-native-contract.js';
 import {validateCharacterStorageSummary} from './qianmu-character-storage.js';
+import {requestCharacterMigration} from './qianmu-character-migration-idle.js';
 
 const methods = ['list','load','save','createOnce','bindings','bind','remove','backup','restoreBackup','applyUserAliasReview','storageSummary','usage'];
 const mutating = new Set(['save','createOnce','bind','remove','restoreBackup','applyUserAliasReview']);
@@ -20,9 +21,9 @@ function capture(method, args) {
 
 // Compatibility checkpoint: an existing native directory always wins, with no
 // failure-to-IDB fallback. Fresh, fully verified empty libraries use native ST.
-// Nonempty IDB originals stay local until the separate preservation migration is
-// ready; no copying, clearing, archive renaming or guessed conflict choice here.
-export function createCharacterArchiveSession({createLocal, createStorage = createConfiguredStAccountStorage} = {}) {
+// Nonempty originals remain usable while the idle first-publication migration
+// preserves them. Existing remote/local divergence needs separate reconciliation.
+export function createCharacterArchiveSession({createLocal, createStorage = createConfiguredStAccountStorage, requestMigration = requestCharacterMigration} = {}) {
   if (typeof createLocal !== 'function' || typeof createStorage !== 'function') fail('setup','角色库储存环境未就绪');
   let closed = false, owner = '', opening, storage, local, native, inspectedLocal = false, selecting;
   const alive = () => { if (closed) fail('closed','角色库会话已结束'); };
@@ -61,6 +62,7 @@ export function createCharacterArchiveSession({createLocal, createStorage = crea
         inspectedLocal = true;
         if (!summary.documents.count && !summary.bindings.count) return activateNative(false);
       }
+      requestMigration({namespace,createLocal,createStorage});
       return getLocal();
     })().finally(() => { selecting = null; });
     const selected = await selecting; check(); return selected;
