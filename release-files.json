@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-vibe-receipt-original.js",
     "qianmu-vibe-native-store.js",
     "qianmu-vibe-encoding-retention.js",
     "qianmu-vibe-stage-contract.js",

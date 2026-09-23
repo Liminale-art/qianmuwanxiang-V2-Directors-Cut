@@ -123,6 +123,38 @@ export function createVibeEncodingStore({indexedDB=globalThis.indexedDB,keyRange
     return {...result,reviews};
   }
   return Object.freeze({
+    // One readonly transaction captures all five tables. Migration must not
+    // assemble a ledger from pages that can belong to different fee attempts.
+    async census(namespace){
+      if(!account(namespace))throw fail('identity','编码缓存账户无效');
+      const result=await transaction('readonly',(table,read,set,archive,usage,segments,reviewUsage)=>
+        read(table.index('namespace').getAll(keyRange.only(namespace),VIBE_ENCODING_RECEIPT_LIMIT+1),current=>
+          read(archive.index('namespace').getAll(keyRange.only(namespace),VIBE_ENCODING_ARCHIVE_LIMIT+1),archived=>
+            read(segments.index('namespace').getAll(keyRange.only(namespace),4097),reviewSegments=>
+              read(usage.get(namespace),archiveUsage=>read(reviewUsage.get(namespace),reviewUsage=>
+                set({namespace,current,archived,reviewSegments,archiveUsage:archiveUsage??null,reviewUsage:reviewUsage??null})))))));
+      if(result.current.length>VIBE_ENCODING_RECEIPT_LIMIT||result.archived.length>VIBE_ENCODING_ARCHIVE_LIMIT||result.reviewSegments.length>4096)throw fail('capacity','编码账本超过原有上限，未截断');
+      const groups=new Map(),seen=new Set();let archivedBytes=0,segmentBytes=0,reviewCount=0;
+      for(const segment of result.reviewSegments){
+        if(!object(segment)||segment.namespace!==namespace||!hash(segment.cacheKey))throw fail('corrupt','核查明细归属无效');
+        const group=groups.get(segment.cacheKey)||[];group.push(segment);groups.set(segment.cacheKey,group);
+        segmentBytes+=receiptBytes(segment);reviewCount+=segment.reviews?.length||0;
+      }
+      for(const [section,rows] of [['current',result.current],['archived',result.archived]])for(const row of rows){
+        await checked(row,namespace,row?.cacheKey);if(!row||seen.has(row.cacheKey))throw fail('corrupt','编码账本存在重复记录');seen.add(row.cacheKey);
+        if(section==='archived'){completed(row);archivedBytes+=receiptBytes(row);}
+        const reviews=await resolveVibeReviewHistory(namespace,row.cacheKey,row.reviewArchive,groups.get(row.cacheKey)||[]);checkCombinedVibeReviews(row,reviews);groups.delete(row.cacheKey);
+      }
+      if(groups.size)throw fail('corrupt','编码账本存在未关联核查明细');
+      const checkUsage=(saved,expected)=>{
+        if(saved===null){if(expected.count)throw fail('corrupt','编码账本缺少计值记录');return;}
+        if(!object(saved)||Object.keys(saved).length!==Object.keys(expected).length||Object.keys(expected).some(name=>saved[name]!==expected[name]))throw fail('corrupt','编码账本计值与完整记录不符');
+      };
+      checkUsage(result.archiveUsage,{namespace,count:result.archived.length,bytes:archivedBytes});
+      checkUsage(result.reviewUsage,{namespace,count:result.reviewSegments.length,bytes:segmentBytes,reviews:reviewCount});
+      if(archivedBytes>ARCHIVE_BYTES||segmentBytes>ARCHIVE_BYTES)throw fail('capacity','编码账本超过原有占用上限');
+      if(closed)throw fail('closed','编码缓存会话已结束');return result;
+    },
     async get(namespace,cacheKey){return (await snapshot(namespace,cacheKey)).receipt;},
     async reviewHistory(namespace,cacheKey,expected){
       const result=await snapshot(namespace,cacheKey);if(!result.receipt||!equalReceipt(result.receipt,expected))throw fail('changed','核查明细对应记录已变化，请刷新');return result;
