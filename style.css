@@ -10963,3 +10963,6 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 .sd-composition-editor [role=status]:empty { display:none; }
 .sd-comfy-scene-review .sd-storyboard-card-body,.sd-comfy-scene-review .sd-comfy-pool-tools>* { min-width:0; }
 .sd-comfy-scene-review code,.sd-comfy-scene-review b,.sd-comfy-scene-review small,.sd-comfy-scene-review summary { white-space:normal;overflow-wrap:anywhere; }
+#story-director-modal .sd-comfy-scene-review .sd-comfy-scene-task { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 6px;margin-block:6px; }
+.sd-comfy-scene-review .sd-comfy-scene-task>code,.sd-comfy-scene-review .sd-comfy-scene-task>small { grid-column:1; }
+.sd-comfy-scene-review .sd-comfy-scene-task>button { grid-column:2;grid-row:1 / span 2;align-self:center; }

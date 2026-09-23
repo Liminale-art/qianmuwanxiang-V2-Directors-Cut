@@ -465,6 +465,7 @@
     "qianmu-comfy-scene-native-store.js",
     "qianmu-comfy-scene-review.js",
     "qianmu-comfy-scene-branch-result.js",
+    "qianmu-comfy-scene-task-navigation.js",
     "qianmu-comfy-scene-view.js",
     "qianmu-comfy-lock-store.js",
     "qianmu-comfy-lock-runtime.js",

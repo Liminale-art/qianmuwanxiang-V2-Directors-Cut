@@ -7,7 +7,7 @@ const description=record=>record?.label?.workflowName||record?.label?.sceneTitle
 const time=record=>record?new Date(record.updatedAt).toLocaleString():'';
 const layer=value=>({present:'现实',memory:'回忆',fantasy:'幻想',dream:'梦境',imagined:'想象'}[value]||value);
 
-export function renderComfySceneReview(snapshot,{shown=40,busy=false,error=''}={}){
+export function renderComfySceneReview(snapshot,{shown=40,busy=false,error='',taskLinks=false}={}){
   const rows=snapshot?.rows||[],local=snapshot?.local,tools=`${button('refresh','刷新续场记录','rotate')}${snapshot?.native?button('journal','导出本账户本机事务记录','download'):''}`;
   const pending=local&&(local.pending||local.outcomes)?`<div class="sd-comfy-pool-tools"><span>本机有待保存记录${local.outcomes?` · ${local.outcomes} 条结果`:''}</span><button type="button" class="sd-btn" data-scene-action="sync">重试保存</button></div><small>仅同步原记录，不提交生图。</small>`:'';
   return `<div class="sd-comfy-library sd-comfy-scene-review" aria-busy="${busy}">${error?`<p role="alert">${escape(error)}</p>`:''}<fieldset ${busy?'disabled':''}><div class="sd-comfy-pool-tools">${tools}${rows.length?'<button type="button" class="sd-btn" data-scene-action="clear">清理本聊天记录</button>':''}</div>${pending}${local?.conflicts?`<small>${local.conflicts} 项旧保存冲突已保全，可导出本机事务记录。</small>`:''}
@@ -18,20 +18,20 @@ export function renderComfySceneReview(snapshot,{shown=40,busy=false,error=''}={
       return `<section class="sd-card" data-scene-row="${i}"><div class="sd-storyboard-card-body"><div class="sd-comfy-pool-tools"><b>${escape(title)}</b>${snapshot.native?button('export','导出本场景完整操作原件','download'):''}</div>
         <small>${Number.isInteger(floor)?`第 ${floor} 层 · `:''}${escape(layer(row.scope.narrativeLayer))} · ${escape(time(primary)|| (view?new Date(view.updatedAt).toLocaleString():''))}</small>
         ${row.error?`<p role="alert">${escape(row.error)}</p><small>此场景原件未读全，不以空记录替代；可重试读取。其他场景仍可查看。</small>`:conflict?`<p>${row.blocked?'清理后发现旧来源':'发现不同续场来源'} · 请核对，不按时间自动选版</p>${hasTickets?'<small>来源仍含原任务票据，请先在原设备或渠道核查。这里不会把远端任务判为结束。</small>':''}
-          ${row.branches.map((branch,j)=>`<details class="sd-card"><summary>${escape(description(branch.record))} · ${branch.digest.slice(0,8)}</summary><div class="sd-storyboard-card-body"><small>${escape(status(branch.record))} · ${escape(time(branch.record))}</small>${renderTasks(branch.record)}<button type="button" class="sd-btn" data-scene-action="choose" data-scene-branch="${j}" ${hasTickets?'disabled':''}>保留此来源</button></div></details>`).join('')}`
-          :`<small>${view?view.pending?`${view.pending} 个待处理任务`:view.uncertain?`${view.uncertain} 个结果未明任务`:view.lock?'风格已保存':'风格已解除':escape(status(primary))}</small>${renderTasks(primary)}${view?.lock||primary?.lock?'<button type="button" class="sd-btn" data-scene-action="unlock">核查并解锁</button>':''}`}</div></section>`;
+          ${row.branches.map((branch,j)=>`<details class="sd-card"><summary>${escape(description(branch.record))} · ${branch.digest.slice(0,8)}</summary><div class="sd-storyboard-card-body"><small>${escape(status(branch.record))} · ${escape(time(branch.record))}</small>${renderTasks(branch.record,j,taskLinks)}<button type="button" class="sd-btn" data-scene-action="choose" data-scene-branch="${j}" ${hasTickets?'disabled':''}>保留此来源</button></div></details>`).join('')}`
+          :`<small>${view?view.pending?`${view.pending} 个待处理任务`:view.uncertain?`${view.uncertain} 个结果未明任务`:view.lock?'风格已保存':'风格已解除':escape(status(primary))}</small>${renderTasks(primary,records.indexOf(primary),taskLinks)}${view?.lock||primary?.lock?'<button type="button" class="sd-btn" data-scene-action="unlock">核查并解锁</button>':''}`}</div></section>`;
     }).join('')}${shown<rows.length?'<button type="button" class="sd-btn" data-scene-action="more">更多记录</button>':''}${snapshot&&!rows.length?'<small>本聊天暂无续场记录。</small>':''}</fieldset></div>`;
 }
-function renderTasks(record){
-  return record?.holders?.length?`<details><summary>查看原任务</summary>${record.holders.map(task=>`<div class="sd-comfy-pool-tools"><code>${escape(task.attemptId)}</code><small>${({reserved:'已预留（不以过期推定远端结束）',submitting:'已进入提交阶段',uncertain:'结果未明'})[task.status]}</small></div>`).join('')}</details>`:'';
+function renderTasks(record,branch,links){
+  return record?.holders?.length?`<details><summary>查看原任务</summary>${record.holders.map((task,i)=>`<div class="sd-comfy-pool-tools sd-comfy-scene-task"><code>${escape(task.attemptId)}</code><small>${({reserved:'已预留（不以过期推定远端结束）',submitting:'已进入提交阶段',uncertain:'结果未明'})[task.status]}</small>${links?button('task','查看原任务日志','arrow-right',`data-scene-branch="${branch}" data-scene-task="${i}"`):''}</div>`).join('')}</details>`:'';
 }
 const download=(name,value)=>{
   const blob=new Blob([JSON.stringify(value,null,2)],{type:'application/json'});if(blob.size>40*1024*1024)throw Error('原件超过40MiB，未截断或导出不完整文件');
   const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
-export async function mountComfySceneReview({host,manager,namespace,chatKey,current,guard,confirm,notify=()=>{},icons=()=>{},save=download}){
+export async function mountComfySceneReview({host,manager,namespace,chatKey,current,guard,confirm,notify=()=>{},icons=()=>{},save=download,openTask}){
   let snapshot=null,shown=40,busy=false,error='';
-  const draw=()=>{if(!current())return;host.innerHTML=renderComfySceneReview(snapshot,{shown,busy,error});icons(host);};
+  const draw=()=>{if(!current())return;host.innerHTML=renderComfySceneReview(snapshot,{shown,busy,error,taskLinks:typeof openTask==='function'});icons(host);};
   const refresh=async()=>{await guard();snapshot=await manager.review(namespace,chatKey,{valid:current});await guard();};
   const run=async work=>{if(busy||!current())return;busy=true;error='';draw();try{await guard();await work();await guard();}catch(cause){if(current()){error=cause.message||'续场操作未完成';notify(error,'warning');}}finally{busy=false;draw();}};
   host.onclick=event=>{const control=event.target.closest?.('[data-scene-action]');if(!control||!host.contains(control)||control.disabled||busy||!current())return;
@@ -44,6 +44,9 @@ export async function mountComfySceneReview({host,manager,namespace,chatKey,curr
         else notify('续场记录已核对保存，未提交生图','success');return;}
       if(action==='journal'){const value=await manager.exportJournal(namespace,{valid:current});await guard();save('qianmu-comfy-local-journal.json',value);return;}
       if(action==='export'&&row){const value=await manager.exportScene(row.scope,{valid:current});await guard();save(`qianmu-comfy-scene-${row.scope.continuityId.slice(0,16)}.json`,value);return;}
+      if(action==='task'&&row){const branch=row.branches[Number(control.dataset.sceneBranch)],task=branch?.record?.holders?.[Number(control.dataset.sceneTask)];
+        if(!task||typeof openTask!=='function')throw Error('原任务入口已变化，请刷新续场记录');
+        await openTask(structuredClone({scope:row.scope,lock:branch.record.lock,attemptId:task.attemptId}));return;}
       if(action==='choose'&&row){const branch=row.branches[Number(control.dataset.sceneBranch)];if(!branch)throw Error('所选来源已变化');
         if(!await confirm('核对续场来源','将使用这份来源的风格。其他来源与操作原件继续保留，不复制人物状态、不启动或重投生成。确认保留？'))return;
         await guard();await manager.resolveSource(row.scope,{heads:row.heads,generation:row.generation,selected:branch.digest,acknowledged:true},{valid:current});await refresh();notify('续场来源已核对，其他原件保留','success');return;}

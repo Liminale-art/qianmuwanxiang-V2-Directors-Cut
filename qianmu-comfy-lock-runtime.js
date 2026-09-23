@@ -7,7 +7,9 @@ import {assertComfyRouteNamespace,normalizeComfySceneOrigin} from './qianmu-comf
 import {hasFreshComfyExecution,COMFY_FRESH_EXECUTION_POLICY} from './qianmu-comfy-new-execution.js';
 import {readComfySceneArchiveProof} from './qianmu-comfy-scene-result.js';
 export {createComfyBatchSceneScopes,createComfyDraftSceneScopes} from './qianmu-comfy-scene-lock.js';
-export const mountComfySceneReview=async options=>(await import('./qianmu-comfy-scene-view.js')).mountComfySceneReview(options);
+const sceneChunk=name=>new URL(`./${name}.js${new URL(import.meta.url).search}`,import.meta.url).href;
+export const mountComfySceneReview=async options=>(await import(sceneChunk('qianmu-comfy-scene-view'))).mountComfySceneReview(options);
+export const navigateComfySceneTask=async(request,options)=>(await import(sceneChunk('qianmu-comfy-scene-task-navigation'))).navigateComfySceneTask(request,options);
 const copy=value=>JSON.parse(JSON.stringify(value));
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const fail=(code,message)=>{throw comfySceneLockError(code,message);};
