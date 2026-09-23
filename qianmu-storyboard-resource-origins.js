@@ -41,7 +41,7 @@ function validRow(row) {
 
 // Derive declarations, not installation readiness. Never fetch a model, resolve arbitrary files, execute nodes or rewrite graphs.
 // Inputs must already have passed the owning package/library validators.
-export async function buildStoryboardResourceOrigins({ payload, workflows, pools, characters, originals = [], legacy = null }, { guard = async()=>{} } = {}) {
+export async function buildStoryboardResourceOrigins({ payload, workflows, pools, characters, characterSources=null, originals = [], legacy = null }, { guard = async()=>{} } = {}) {
   const rows=[],seen=new Set(),originalMap=new Map(originals.map(row=>[row.url,row])),workflowIds=new Set(),presets=new Set();
   let nodes=0, rowBytes=0;
   const add = row => {
@@ -108,9 +108,9 @@ export async function buildStoryboardResourceOrigins({ payload, workflows, pools
   visit(payload.settings,'storyboard',['settings']);visit(payload.chat,'storyboard',['chat']);
   // Every immutable pool/workflow revision is inventoried, including archived or currently unused versions.
   for(const [i,row] of pools.pools.entries())for(const [j,version] of row.versions.entries()) {visit(version.pool,'pools',['pools',i,'versions',j,'pool'],'',workflowKey(version.meta));await guard();}
-  for(const [i,row] of characters.archives.entries()) {
-    const base=['archives',i,'document'];visit(row.document,'characters',base,'',workflowKey(row.head));
-    for(const [j,impl] of (row.document.comfy?.implementations||[]).entries())add({kind:'workflow',state:workflowIds.has(workflowKey(impl.workflow))?'included':'unresolved',at:`characters${pointer([...base,'comfy','implementations',j,'workflow'])}`,label:'角色实现固定工作流',target:workflowKey(impl.workflow)});
+  for(const [section,library] of [['characters',characters],...(characterSources?.sources||[]).map(row=>[`character-sources:${row.digest}`,row.library])])for(const [i,row] of library.archives.entries()) {
+    const base=['archives',i,'document'];visit(row.document,section,base,'',workflowKey(row.head));
+    for(const [j,impl] of (row.document.comfy?.implementations||[]).entries())add({kind:'workflow',state:workflowIds.has(workflowKey(impl.workflow))?'included':'unresolved',at:`${section}${pointer([...base,'comfy','implementations',j,'workflow'])}`,label:section==='characters'?'角色实现固定工作流':'旧来源角色固定工作流',target:workflowKey(impl.workflow)});
     await guard();
   }
   for(const [i,row] of workflows.workflows.entries())for(const [j,version] of row.versions.entries()) {graph(version.document.workflow,`workflows${pointer(['workflows',i,'versions',j,'document','workflow'])}`,workflowKey(version.meta));await guard();}

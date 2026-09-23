@@ -49,6 +49,7 @@ export function createCharacterRestoreChoiceSnapshot(local, source, plan, view) 
 export async function createCharacterRestoreSession(namespace, input, { store, workflowStore, images, journal, guard = async () => {}, isCurrent = () => true, locks = globalThis.navigator?.locks } = {}) {
   const source = structuredClone(input); if (source.namespace !== namespace) fail('角色备份属于另一 ST 账户，请在目标环境显式重新绑定');
   await inspectCharacterBackupFile(source, { guard }); await guard(); current(isCurrent);
+  if(source.sources&&['previewSources','restoreSources','verifySources'].some(name=>typeof store?.[name]!=='function'))fail('角色旧源保全接口未就绪，未开始恢复');
   const sourceDigest = await digest({ ...source, images: source.images.map(({ data: _, ...row }) => row) });
   const imageData = new Map(source.images.map(row => [row.sha256, row.data]));
   let stopped = false, choose = null;
@@ -56,7 +57,7 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
   const syncCurrent = () => !stopped && isCurrent() === true;
   async function dependencies(plan, decisions) {
     const conflicts = new Set(plan.conflicts.filter(row => row.kind === 'archive').map(row => row.key));
-    const selected = source.library.archives.filter(row => !conflicts.has(`archive:${row.head.id}`) || decisions[`archive:${row.head.id}`] === 'incoming');
+    const selected = [...source.library.archives.filter(row => !conflicts.has(`archive:${row.head.id}`) || decisions[`archive:${row.head.id}`] === 'incoming'),...(source.sources?.sources||[]).flatMap(row=>row.library.archives)];
     const originals = new Map(), bindings = new Map();
     for (const row of selected) {
       for (const value of [row.document.imagegen.reference, row.document.imagegen.preview]) if (value) {
@@ -73,11 +74,12 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
     choose = null;
     const choices = structuredClone(decisions); await check();
     const local = await store.backup(namespace, { isCurrent: syncCurrent }); await check();
+    const sourceSummary=source.sources?await store.previewSources(namespace,source.sources,{isCurrent:syncCurrent}):null;await check();
     const plan = planCharacterLibraryRestore(local, source.library, { decisions: choices });
     const record = await journal.loadResource(namespace); await check();
     if (record && record.sourceDigest !== sourceDigest && record.phase !== 'verified') fail('有另一份尚未完成的角色恢复，请先选择原备份或明确结束其核对');
     const base = { namespace, sourceDigest, libraryDigest: await digest(local), decisions: choices, conflicts: plan.conflicts, summary: plan.summary,
-      bindingReview: structuredClone(plan.bindingWrites), ready: plan.ready, record, images: [], workflowSummary: null, workflowDigest: null, planDigest: '' };
+      bindingReview: structuredClone(plan.bindingWrites), ready: plan.ready, record, images: [], workflowSummary: null, workflowDigest: null, planDigest: '',...(sourceSummary?{sources:sourceSummary}:{}) };
     if (!plan.ready) { await check(); choose = createCharacterRestoreChoiceSnapshot(local, source.library, plan, base); return { view: base, plan, dependencies: null }; }
     const needed = await dependencies(plan, choices);
     if (needed.workflows) {
@@ -147,9 +149,11 @@ export async function createCharacterRestoreSession(namespace, input, { store, w
           if (latest.dependencies.workflows) await workflowStore.restoreBackup(namespace, latest.dependencies.workflows, { expectedDigest: approved.workflowDigest, confirmed: true, isCurrent: syncCurrent });
           await verifyWorkflows(latest.dependencies); await verifyImages(latest.dependencies); await check();
           checkpoint = await journal.updateResource(checkpoint, 'metadata', { isCurrent: syncCurrent });
+          if(source.sources){await store.restoreSources(namespace,source.sources,{confirmed:true,isCurrent:syncCurrent});await check();await store.verifySources(namespace,source.sources,{isCurrent:syncCurrent});await check();}
           const summary = await store.restoreBackup(namespace, source.library, { expectedDigest: approved.libraryDigest, decisions: approved.decisions, confirmed: true, isCurrent: syncCurrent });
           await check(); const actual = await store.backup(namespace, { isCurrent: syncCurrent });
           if (await digest(actual) !== await digest(latest.plan.value)) fail('角色档案提交结果尚未确认，请保留备份核对');
+          if(source.sources){await store.verifySources(namespace,source.sources,{isCurrent:syncCurrent});await check();}
           await verifyWorkflows(latest.dependencies); await verifyImages(latest.dependencies); await check();
           checkpoint = await journal.updateResource(checkpoint, 'verified', { isCurrent: syncCurrent });
           return { summary, images: latest.dependencies.originals.length, checkpoint };

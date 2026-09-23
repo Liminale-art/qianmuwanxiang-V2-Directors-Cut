@@ -3,13 +3,14 @@ import {createCharacterNativeStore} from './qianmu-character-native-store.js';
 import {CHARACTER_NATIVE_SLOT, characterNativeAccount, validateCharacterNativeIndex, characterNativeFail as fail} from './qianmu-character-native-contract.js';
 import {validateCharacterStorageSummary} from './qianmu-character-storage.js';
 import {requestCharacterMigration,getCharacterMigrationStatus} from './qianmu-character-migration-idle.js';
+import {emptyCharacterSources} from './qianmu-character-source-backup.js';
 
-const methods = ['list','load','save','createOnce','bindings','bind','remove','backup','restoreBackup','applyUserAliasReview','storageSummary','usage','overview','legacyImports','previewLegacyImport','legacyDocument','resolveLegacyImport'];
-const mutating = new Set(['save','createOnce','bind','remove','restoreBackup','applyUserAliasReview','resolveLegacyImport']);
-const optionAt = {backup: 1, storageSummary: 1, createOnce: 2, restoreBackup: 2, applyUserAliasReview: 2, resolveLegacyImport:2};
+const methods = ['list','load','save','createOnce','bindings','bind','remove','backup','restoreBackup','applyUserAliasReview','storageSummary','usage','overview','legacyImports','previewLegacyImport','legacyDocument','resolveLegacyImport','backupSources','previewSources','verifySources','restoreSources'];
+const mutating = new Set(['save','createOnce','bind','remove','restoreBackup','applyUserAliasReview','resolveLegacyImport','restoreSources']);
+const optionAt = {backup: 1, storageSummary: 1, createOnce: 2, restoreBackup: 2, applyUserAliasReview: 2, resolveLegacyImport:2,backupSources:1,previewSources:2,verifySources:2,restoreSources:2};
 function capture(method, args) {
   const captured = [...args];
-  if (['save','createOnce','bind','restoreBackup','applyUserAliasReview','legacyDocument','resolveLegacyImport'].includes(method)) captured[1] = structuredClone(args[1]);
+  if (['save','createOnce','bind','restoreBackup','applyUserAliasReview','legacyDocument','resolveLegacyImport','previewSources','verifySources','restoreSources'].includes(method)) captured[1] = structuredClone(args[1]);
   const at = optionAt[method];
   if (at !== undefined && args[at]) {
     const value = {...args[at]};
@@ -78,6 +79,8 @@ export function createCharacterArchiveSession({createLocal, createStorage = crea
     try {
       let result;
       if(selected!==native&&method==='legacyImports')result=[];
+      else if(selected!==native&&method==='backupSources')result=emptyCharacterSources(namespace);
+      else if(selected!==native&&['previewSources','verifySources','restoreSources'].includes(method))fail('setup','旧本机角色库尚未完成ST保全，请保留原包，待自动迁移完成后重新核对');
       else if(selected!==native&&method==='overview'){const [rows,bindings]=await Promise.all([selected.list(namespace),selected.bindings(namespace)]);result={rows,bindings,imports:[]};}
       else result=await selected[method](...args);
       wrote = mutating.has(method); check();

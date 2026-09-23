@@ -23,6 +23,7 @@ import { captureBundleMappings, inspectBundleMappings } from './qianmu-bundle-ma
 import {captureBundleCarriers,inspectBundleCarriers} from './qianmu-bundle-carriers.js';
 import {inspectStoryboardPortableSelections} from './qianmu-storyboard-package-fields.js';
 import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
+import {captureCharacterSources,inspectCharacterSources} from './qianmu-character-source-backup.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_resources', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object';
@@ -88,16 +89,17 @@ function includeLegacyOriginals(config, document) {
   for (const row of result.receipts) addOriginal(config.census, row);
   config.summary.legacyVibeOriginals = result.rows.length;
 }
-async function inspectLibraries(namespace, config, { workflows, pools, characters }, guard) {
+async function inspectLibraries(namespace, config, { workflows, pools, characters,characterSources=null }, guard) {
   if ([workflows, pools, characters].some(value => value?.namespace !== namespace)) fail('资源库账户不一致');
-  await assertPortableStoryboardData({workflows,pools,characters}); await guard();
+  await assertPortableStoryboardData({workflows,pools,characters,characterSources}); await guard();
   const summary = { workflows: validateComfyLibraryBackup(workflows), pools: validateComfyPoolBackup(pools), characters: validateCharacterLibraryBackup(characters) };
   await verifyComfyPoolDependencies(pools, workflows, { guard });
-  const characterCensus = await verifyCharacterBackupWorkflowDependencies(characters, workflows, { guard });
+  if(characterSources!==null)await inspectCharacterSources(characterSources,namespace,{guard});
+  const characterCensus = await verifyCharacterBackupWorkflowDependencies(characters, workflows, { guard,sources:characterSources });
   const census = config.census;
   scan(pools, namespace, census);
   // Keep every reference/cover URL use even if its bytes are the same as a pool reference.
-  for (const archive of characters.archives) for (const row of [archive.document.imagegen.reference, archive.document.imagegen.preview]) if (row) addOriginal(census, row);
+  for (const library of [characters,...(characterSources?.sources||[]).map(row=>row.library)]) for (const archive of library.archives) for (const row of [archive.document.imagegen.reference, archive.document.imagegen.preview]) if (row) addOriginal(census, row);
   const versions = new Map(), verified = new Map();
   for (const row of workflows.workflows) for (const version of row.versions) versions.set(key(version.meta), version.document);
   if(census.selections.workflow&&!versions.has(key(census.selections.workflow)))fail('镜头台当前工作流选择的原版本缺失，未导出缺件包');
@@ -111,6 +113,7 @@ async function inspectLibraries(namespace, config, { workflows, pools, character
     const proof = verified.get(id); if (proof.workflowHash !== binding.workflowHash || proof.recipeHash !== binding.recipeHash) fail('配置引用与固定工作流原文不符'); await guard();
   }
   await guard(); return { census, summary: { ...config.summary, ...summary, characterPinnedVersions: characterCensus.workflows.length,
+    ...(characterSources?.sources.length?{characterSources:characterSources.sources.length}:{}),
     originalFiles: census.files.size, originalPaths: census.originals.size, pinnedVersions: verified.size,
     scope: 'current-chat-and-libraries', identityVerified: false, restoreAuthorized: false } };
 }
@@ -126,11 +129,14 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   const config = await (async () => { const parsed = await inspectStoryboardPackageFile(storyboard); await check(); return inspectConfig(parsed.payload, namespace, { checked: true, withOrigins: true, guard: check }); })();
   const pools = await poolStore.backup(namespace, { isCurrent }); await check();
   const characters = await characterStore.backup(namespace, { isCurrent }); await check();
+  const characterSources=await captureCharacterSources(characterStore,namespace,{isCurrent,guard:check});await check();
+  const sourceBaseline=await digest(characterSources);await check();
   const workflows = await workflowStore.backup(namespace, { isCurrent }); await check();
-  const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, check);
+  const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters,characterSources }, check);
   if (subjectEvidence) checkSubjectCoverage(subjectEvidence, characters);
   const baselines = await Promise.all([digest(workflows), digest(pools), digest(characters)]); await check();
   const entries = [{ id: 'storyboard', file: storyboard }, { id: 'workflows', file: jsonFile(workflows) }, { id: 'pools', file: jsonFile(pools) }, { id: 'characters', file: jsonFile(characters) }];
+  if(characterSources.sources.length)entries.push({id:'character-sources',file:jsonFile(characterSources)});
   const mappings=journal===null?null:await captureBundleMappings({namespace,journal,guard:check,isCurrent});
   if(mappings?.preserved?.length&&!carrierStore)fail('此库含旧端保全凭据，请更新完整来源导出模块；未输出遗漏原件的包');
   if(mappings){entries.push(...mappings.entries);summary.mappingReceipts=mappings.summary;}
@@ -147,7 +153,7 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   includeLegacyOriginals(config, legacy.document);
   Object.assign(summary, { legacyVibeOriginals: config.summary.legacyVibeOriginals, originalFiles: census.files.size, originalPaths: census.originals.size });
   entries.push({ id: 'legacy-vibes', file: jsonFile(legacy.document) });
-  const origins = await buildStoryboardResourceOrigins({payload:config.originsPayload,workflows,pools,characters,originals:[...census.originals.values()],legacy:legacy.document},{guard:check});
+  const origins = await buildStoryboardResourceOrigins({payload:config.originsPayload,workflows,pools,characters,characterSources,originals:[...census.originals.values()],legacy:legacy.document},{guard:check});
   delete config.originsPayload;
   entries.push({id:'resource-origins',file:jsonFile(origins)});summary.resourceOrigins=storyboardResourceOriginsSummary(origins,true);
   if(entries.reduce((sum,row)=>sum+row.file.size,STORYBOARD_BUNDLE_LIMITS.manifest)+[...census.files.values()].reduce((sum,row)=>sum+row.bytes,0)>STORYBOARD_BUNDLE_LIMITS.total)fail('加上文件用途清单后联包超过 512 MiB，未输出缺件包');
@@ -163,6 +169,7 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
     if (await digest(await store.backup(namespace, { isCurrent })) !== baselines[index]) fail('打包期间资源库已变化，请重新导出'); await check();
   }
   const result = await buildStoryboardBundle({ namespace, chatKey, entries, source, createdAt: now() }, { guard: check });
+  if(await digest(await captureCharacterSources(characterStore,namespace,{isCurrent,guard:check}))!==sourceBaseline)fail('打包期间角色旧来源已变化，请重新导出');
   await mappings?.verify();
   await carriers?.verify();
   await check(); return { ...result, summary };
@@ -177,7 +184,9 @@ export async function inspectStoryboardResourceBundle(file, { guard = async () =
   const legacy = opened.manifest.entries.some(row => row.id === 'legacy-vibes') ? await opened.readJson('legacy-vibes') : null;
   if (legacy) includeLegacyOriginals(config, legacy);
   const workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters'); await guard();
-  const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters }, guard);
+  const characterSources=opened.manifest.entries.some(row=>row.id==='character-sources')?await opened.readJson('character-sources'):null;
+  if(characterSources!==null&&!characterSources.sources?.length)fail('角色旧源分段为空或无效');
+  const { census, summary } = await inspectLibraries(namespace, config, { workflows, pools, characters,characterSources }, guard);
   if(mappings)summary.mappingReceipts=mappings.summary;
   if(carriers)summary.carriers=carriers.summary;
   if (opened.manifest.entries.some(row => row.id === 'chat-evidence')) {
@@ -192,7 +201,7 @@ export async function inspectStoryboardResourceBundle(file, { guard = async () =
     const expected = census.files.get(row.sha256); if (!expected || expected.bytes !== row.bytes || expected.mime !== row.mime) fail('资源原件收据不符');
     const part = await opened.read(row.id); if (comfyReferenceStillMime(part.bytes) !== row.mime) fail('资源原件不是完整静态图片'); await guard();
   }
-  const origins=await buildStoryboardResourceOrigins({payload:config.originsPayload,workflows,pools,characters,originals:[...census.originals.values()],legacy},{guard});
+  const origins=await buildStoryboardResourceOrigins({payload:config.originsPayload,workflows,pools,characters,characterSources,originals:[...census.originals.values()],legacy},{guard});
   delete config.originsPayload;
   const recorded=opened.manifest.entries.some(row=>row.id==='resource-origins');
   if(recorded)await inspectStoryboardResourceOrigins(await opened.readJson('resource-origins'),origins);
@@ -203,7 +212,7 @@ export async function inspectStoryboardResourceBundle(file, { guard = async () =
 
 // Restore only the selected incoming role originals. Shared config/pool references still remain required.
 // Called after the immutable bundle has passed full validation; this does not authorize any write.
-export async function collectStoryboardBundleRestoreOriginals(payload, pools, characters, excludedCharacterIds = [], legacyDocument = null) {
+export async function collectStoryboardBundleRestoreOriginals(payload, pools, characters, excludedCharacterIds = [], legacyDocument = null,characterSources=null) {
   const namespace = characters.namespace, config = await inspectConfig(payload, namespace, { checked: true }), { census } = config;
   if (legacyDocument !== null) includeLegacyOriginals(config, legacyDocument);
   scan(pools, namespace, census);
@@ -211,5 +220,6 @@ export async function collectStoryboardBundleRestoreOriginals(payload, pools, ch
   for (const row of characters.archives) if (!excluded.has(row.head.id)) {
     for (const original of [row.document.imagegen.reference, row.document.imagegen.preview]) if (original) addOriginal(census, original);
   }
+  for(const source of characterSources?.sources||[])for(const row of source.library.archives)for(const original of [row.document.imagegen.reference,row.document.imagegen.preview])if(original)addOriginal(census,original);
   return [...census.originals.values()];
 }

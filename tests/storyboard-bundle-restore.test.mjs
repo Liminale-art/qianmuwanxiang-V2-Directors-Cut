@@ -23,9 +23,10 @@ import {mappingLegacyFixture} from './helpers/mapping-legacy-fixture.mjs';
 import {createNativeMappingJournal} from '../qianmu-mapping-journal-native.js';
 import {carrierLegacyFixture} from './helpers/carrier-legacy-fixture.mjs';
 import {createNativeBundleCarrierStore} from '../qianmu-bundle-carrier-native-store.js';
+import {emptyCharacterSources,characterSourceLibrary} from '../qianmu-character-source-backup.js';
 
 const clone = structuredClone;
-async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, carriers=false, sourceText = 'original text', missingAnchor = false } = {}) {
+async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, carriers=false,characterSources=null,nativeCharacters=null, sourceText = 'original text', missingAnchor = false } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
   source.config.chat.images[0].paragraphAnchor = { floor: 0 };
   if (!missingAnchor) source.config.chat.images[0].messageHash = hashText(sourceText);
@@ -34,6 +35,7 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
     source.options.legacyFetch = async () => new Response(Buffer.from(data, 'base64'));
   }
   source.options.source = sourceIdentity;
+  if(characterSources)source.options.characterStore.backupSources=async()=>clone(characterSources);
   let subjectRows = [{ category: 'char', subjectKey: 'char:alice.png', state: 'present', profile: { name: 'Alice', description: 'original character' } }];
   if (subjectEvidence) { source.options.subjectEvidence = await captureStoryboardSubjectEvidence(subjectRows); source.sources.characters.bindings[0].archiveId = 'alice'; }
   if(sourceAliases){source.sources.characters={...aliasFixture({extra:26}),namespace};subjectRows=[...new Set(source.sources.characters.bindings.map(row=>row.subjectKey))].map(subjectKey=>({category:'user',subjectKey,state:'present',profile:{name:'Player',description:'source persona'}}));source.options.subjectEvidence=await captureStoryboardSubjectEvidence(subjectRows);}
@@ -60,7 +62,7 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
       }
       e.events.push(key); if (e.afterStore) await e.afterStore(key); return {};
     } });
-  options.workflowStore = store('workflows'); options.poolStore = store('pools'); options.characterStore = store('characters');
+  options.workflowStore = store('workflows'); options.poolStore = store('pools'); options.characterStore = nativeCharacters||store('characters');
   options.images = { inspect: async receipt => ({ receipt: clone(receipt), state: receipt.url === e.conflict ? 'conflict' : e.files.has(receipt.url) ? 'present' : 'missing' }),
     restore: async (receipt, encoded, approved) => {
       assert.equal(approved.confirmed, true); assert.equal(encoded, data); assert.equal(e.records.get('bundle').phase, 'originals'); assert.equal(e.files.has(receipt.url), false);
@@ -100,6 +102,20 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+for(const rejected of [false,true])test(`whole coordinator preserves native old character sources: ${rejected?'failure stops current metadata and configuration':'success keeps independent old records and dependencies'}`,async t=>{
+  const sample=await sourceFixture(),row=clone(sample.sources.characters.archives[0]);row.head.id='old-only';row.head.revision='old-revision';
+  row.document.imagegen.reference.url='/user/images/old-only.png';row.head.bytes=new TextEncoder().encode(JSON.stringify(row.document)).byteLength;
+  const library=characterSourceLibrary(namespace,[row],[]),sources={...emptyCharacterSources(namespace),sources:[{digest:await digest(library),library}]};
+  const target=await characterNativeFixture(t,{account:namespace}),store=target.open(),f=await fixture({characterSources:sources,nativeCharacters:store});t.after(()=>f.session.close());
+  if(rejected)target.hook(call=>{if(call.request.method==='POST'&&JSON.parse(call.request.body).name.includes('-character-import-'))return new Response('{}',{status:503});});
+  const p=await f.session.preview();assert.equal(p.summary.characterSources,1);assert.ok(p.images.some(row=>row.url==='/user/images/old-only.png'));assert.equal(target.uploads,0);
+  const action=f.session.restore(p,consent);
+  if(rejected){await assert.rejects(action,/未全部确认/);assert.equal((await store.list(namespace)).length,0);assert.equal(f.e.mutation,null);assert.equal(f.e.records.get('bundle').phase,'metadata');
+    target.hook(null);f.session.close();f.session=await f.reopen();await f.session.restore(await f.session.preview(),consent);
+  }else assert.equal((await action).resourcesVerified,true);
+  assert.equal(await store.load(namespace,'old-only'),null);assert.ok(await store.load(namespace,'alice'));assert.deepEqual(await target.open().backupSources(namespace),sources);assert.equal(f.e.mutation.phase,'applied');
+});
 
 for(const rejected of [false,true])test(`full resource coordinator uses native carrier storage: ${rejected?'proof failure stops all later resources':'fresh client reads complete exact sources after success'}`,async t=>{
   const f=await fixture({history:true,carriers:true});f.session.close();const storage=await characterNativeFixture(t,{account:namespace});

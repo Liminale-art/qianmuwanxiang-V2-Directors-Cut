@@ -11,6 +11,7 @@ export const HISTORICAL_BUNDLE_SCHEMA = 'qianmu.storyboard.bundle.v4';
 export const HISTORICAL_BUNDLE_SCOPE = 'historical-chat-originals';
 export const STORYBOARD_BUNDLE_LIMITS = Object.freeze({ total: 512 * 1048576, manifest: 1048576, entries: 2826,
   'bundle-carriers':1048576,carrier:5*1048576,'carrier-original':9*1048576,
+  'character-sources':64*1048576,
   'historical-originals':64*1048576,'historical-media':1048576,
   'mapping-receipts': BUNDLE_MAPPING_LIMITS.index, mapping: BUNDLE_MAPPING_LIMITS.receipt,
   storyboard: 128 * 1048576, workflows: 80 * 1048576, pools: 24 * 1048576, characters: 24 * 1048576, 'legacy-vibes': 2 * 1048576, 'chat-evidence': 24 * 1048576, 'subject-evidence': 4 * 1048576, 'resource-origins': 32 * 1048576, image: 16 * 1048576 });
@@ -22,7 +23,7 @@ export async function isStoryboardBundleFile(file) {
 }
 const fixed = ['storyboard', 'workflows', 'pools', 'characters'];
 const historical = ['historical-originals','historical-media'];
-const documents = [...fixed, ...historical, 'legacy-vibes', 'chat-evidence', 'subject-evidence', 'resource-origins', 'mapping-receipts','bundle-carriers'];
+const documents = [...fixed, ...historical, 'legacy-vibes', 'chat-evidence', 'subject-evidence', 'resource-origins', 'mapping-receipts','bundle-carriers','character-sources'];
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);

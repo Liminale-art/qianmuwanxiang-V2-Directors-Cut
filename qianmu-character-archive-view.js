@@ -40,6 +40,7 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
       <div class="sd-character-tools">${icon('restore-cancel','返回角色库','x')}<b>恢复角色库</b><span class="sd-character-spacer"></span>${icon('restore-file','选择角色资源备份','folder')}</div>
       <section class="sd-card"><div class="sd-storyboard-card-body">
         <p>同一 ST 账户恢复档案、原图与固定工作流。旧环境与原备份请先保留，不含 API 授权或模型文件。</p>
+        ${p?.sources?`<p>另保全 ${p.sources.count} 份旧端来源；不自动采用旧档案或绑定，恢复后可在旧资料核对中选择。</p>`:''}
         ${r.record?`<div class="sd-character-tools"><span>${escape(phase)} · ${escape(new Date(r.record.updatedAt).toLocaleString())}</span>${icon('restore-dismiss','结束此恢复核对记录','trash')}</div><p>阶段表示最近一次开始核对的位置，不代表全部保存成功；续接时仍逐件核对。</p>`:''}
         ${r.fileName?`<p class="sd-character-identifier">${escape(r.fileName)}</p>`:''}
         ${p?`<p>档案与绑定：新增 ${p.summary.added} · 替换 ${p.summary.replaced} · 保留 ${p.summary.kept}</p>${p.needsRecheck?'<p>选择仅更新预览；选定后核对本机库与原件，再确认恢复。</p>':`<p>原图 ${p.images.length} 个路径 · 缺件 ${p.images.filter(row=>row.state==='missing').length}${p.workflowSummary?` · 工作流新增版本 ${p.workflowSummary.addedVersions}`:''}</p>`}`:''}
@@ -209,14 +210,18 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
       if(action==='backup-library'&&!view.draft){
         const account=namespace,chatKey=view.chatKey,isSame=()=>Boolean(visible()&&entry===expected&&namespace===account&&view.chatKey===chatKey);
         const codec=await import('./qianmu-character-backup-file.js');await guard();
-        const library=await store.backup(account,{isCurrent:isSame}),census=codec.collectCharacterBackupDependencies(library);await guard();
-        if(!await confirm(`备份当前有效的 ${library.usage.count} 份角色档案、${library.usage.bindings} 处绑定及 ${census.images.length} 份参考图/封面原件？包含普通形象、性征与 Comfy 实现，仅保存到本机文件，请妥善保管。不含模型/LoRA 磁盘文件、API 连接与授权。${view.legacyImports.length?'仍有旧资料差异待核对，不计入此备份；旧源仍保留在ST，请先核对再做完整迁移备份。':''}请使用“恢复角色库与原图”入口核对同账户恢复；实测前保留旧环境和原文件。`))return;
+        const sourceCodec=await import('./qianmu-character-source-backup.js'),{characterLibraryBackupDigest:digest}=await import('./qianmu-character-library-backup.js');await guard();
+        const library=await store.backup(account,{isCurrent:isSame}),sources=await sourceCodec.captureCharacterSources(store,account,{isCurrent:isSame,guard}),census=codec.collectCharacterBackupDependencies(library,sources);await guard();
+        const baseline=await digest({library,sources});await guard();
+        if(!await confirm(`备份当前有效的 ${library.usage.count} 份角色档案、${library.usage.bindings} 处绑定、${sources.sources.length} 份完整旧端来源及 ${census.images.length} 份参考图/封面原件？包含普通形象、性征与 Comfy 实现，仅保存到本机文件，请妥善保管。不含模型/LoRA 磁盘文件、API 连接与授权。旧来源含已解决与未解决差异，恢复只保全原件，不自动采用旧绑定。请使用“恢复角色库与原图”入口核对同账户恢复；实测前保留旧环境和原文件。`))return;
         await guard();let workflows=null;
         if(census.workflows.length){
           const module=await import('./qianmu-comfy-library.js');await guard();const workflowStore=module.createComfyWorkflowStore();
-          try{workflows=codec.selectCharacterBackupWorkflows(library,await workflowStore.backup(account,{isCurrent:isSame}));}finally{workflowStore.close();}
+          try{workflows=codec.selectCharacterBackupWorkflows(library,await workflowStore.backup(account,{isCurrent:isSame}),sources);}finally{workflowStore.close();}
         }
-        const result=await codec.buildCharacterBackupFile(library,{workflows,guard});await guard();if(!isSame())throw Error('角色备份页面已变化');
+        const result=await codec.buildCharacterBackupFile(library,{workflows,sources,guard});await guard();if(!isSame())throw Error('角色备份页面已变化');
+        const latest={library:await store.backup(account,{isCurrent:isSame}),sources:await sourceCodec.captureCharacterSources(store,account,{isCurrent:isSame,guard})};
+        if(await digest(latest)!==baseline)throw Error('备份期间角色库或旧来源已变化，请重新备份');await guard();
         await download(result.file,'qianmu-character-resources.json');return;
       }
       if(action==='refresh'){await loadList(expected);return;}

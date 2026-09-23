@@ -69,6 +69,8 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   }
   const configFile = (await opened.read('storyboard')).file;
   const payload = await opened.readJson('storyboard'), workflows = await opened.readJson('workflows'), pools = await opened.readJson('pools'), characters = await opened.readJson('characters');
+  const characterSources=opened.manifest.entries.some(row=>row.id==='character-sources')?await opened.readJson('character-sources'):null;
+  if(characterSources&&['previewSources','restoreSources','verifySources'].some(name=>typeof characterStore?.[name]!=='function'))fail('角色旧源保全接口未就绪，未开始整包恢复');
   const legacyDocument = opened.manifest.entries.some(row => row.id === 'legacy-vibes') ? await opened.readJson('legacy-vibes') : null;
   const chatEvidence = opened.manifest.entries.some(row => row.id === 'chat-evidence') ? await opened.readJson('chat-evidence') : null;
   const subjectEvidence = opened.manifest.entries.some(row => row.id === 'subject-evidence') ? await opened.readJson('subject-evidence') : null;
@@ -122,6 +124,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   }
   async function inspect(decisions = {},mappingInput,aliasInput) {
     choose = null; const choices = clone(decisions); await checkSource(); const record = await pendingRecords(); await inspectEnvironmentMap();
+    if(characterSources){await characterStore.previewSources(namespace,characterSources,{isCurrent:syncCurrent});await check();}
     let requested=mappingInput,aliasChoices=aliasInput;
     if((requested===undefined||aliasChoices===undefined)&&record?.phase!=='verified'&&record?.subjectMappingDigest){
       const saved=await journal.loadSubjectMap?.(namespace,record.subjectMappingDigest);await check();
@@ -181,7 +184,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     const config = await configuration.preview(configOptions()); await check();
     if (!hash(config?.digest) || !validStoryboardConnectionReview(config.summary?.connections)) fail('整包配置核对未返回完整连接清单，请更新前端');
     const excluded = characterPlan.conflicts.filter(row => row.kind === 'archive' && choices[row.key] === 'local').map(row => row.key.slice('archive:'.length));
-    const originals = new Map((await collectStoryboardBundleRestoreOriginals(payload, pools, characters, excluded, legacyDocument)).map(row => [row.url, row]));
+    const originals = new Map((await collectStoryboardBundleRestoreOriginals(payload, pools, characters, excluded, legacyDocument,characterSources)).map(row => [row.url, row]));
     for (const { receipt } of gallery.values()) {
       if (originals.has(receipt.url) && await digest(originals.get(receipt.url)) !== await digest(receipt)) fail('成片与参考原件存在不同内容的同路径');
       originals.set(receipt.url, receipt);
@@ -199,6 +202,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
     return { view, baseline, expected, config, subjects, subjectMapReview, aliasPlan, sourceEvidence:evidence, mappedCharacters:mapped.value, originals: [...originals.values()] };
   }
   async function verifyResources(latest) {
+    if(characterSources){await characterStore.verifySources(namespace,characterSources,{isCurrent:syncCurrent});await check();}
     for (const [key, store] of [['workflows', workflowStore], ['pools', poolStore], ['characters', characterStore]]) {
       await check(); const actual = await store.backup(namespace, { isCurrent: syncCurrent }); await check();
       if (await digest(actual) !== latest.expected[key]) fail('资源库写入后复核不符，请保留原文件核对');
@@ -268,14 +272,18 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
           await check(); if (await digest(await workflowStore.backup(namespace, { isCurrent: syncCurrent })) !== latest.expected.workflows) fail('固定工作流版本尚未完整恢复');
           await advance('pools'); await poolStore.restoreBackup(namespace, pools, { expectedDigest: latest.baseline.pools, confirmed: true, isCurrent: syncCurrent });
           await check(); if (await digest(await poolStore.backup(namespace, { isCurrent: syncCurrent })) !== latest.expected.pools) fail('候选方案版本尚未完整恢复');
-          await advance('metadata'); await characterStore.restoreBackup(namespace, latest.mappedCharacters, { expectedDigest: latest.baseline.characters, decisions: approved.decisions, confirmed: true, isCurrent: syncCurrent });
+          await advance('metadata');
+          if(characterSources){await characterStore.restoreSources(namespace,characterSources,{confirmed:true,isCurrent:syncCurrent});await check();await characterStore.verifySources(namespace,characterSources,{isCurrent:syncCurrent});await check();}
+          await characterStore.restoreBackup(namespace, latest.mappedCharacters, { expectedDigest: latest.baseline.characters, decisions: approved.decisions, confirmed: true, isCurrent: syncCurrent });
           await advance('vibes'); await vibeStage.stage(configFile, latest.view.vibe, true, stageOptions);
           await verifyResources(latest); await check();
           // 'verified' belongs to the RESOURCE checkpoint only. Debounced ST settings are tracked separately.
           await advance('verified');
           const config = await configuration.preview(configOptions()); await check();
           if (config?.digest !== latest.config.digest) fail('资源恢复期间配置或正文已变化，未覆盖；已恢复原件保留');
+          if(characterSources){await characterStore.verifySources(namespace,characterSources,{isCurrent:syncCurrent});await check();}
           await checkSource(); await verifyHistory(); await inspectEnvironmentMap(true); await inspectSubjectMap(latest.subjectMapReview,true); await verifySubjects(latest); await configuration.apply({ ...configOptions(), expectedDigest: latest.config.digest }); await checkSource(); await verifyHistory(); await inspectEnvironmentMap(true); await inspectSubjectMap(latest.subjectMapReview,true); await verifySubjects(latest);
+          if(characterSources){await characterStore.verifySources(namespace,characterSources,{isCurrent:syncCurrent});await check();}
           const mutation = await journal.loadMutation(namespace); await check();
           if (!mutation || mutation.fileHash !== sourceDigest || mutation.chatHash !== chatHash || mutation.phase !== 'applied') fail('配置保存结果未确认，请通过“核对导入”处理');
           return { checkpoint, resourcesVerified: true, settingsApplied: true, settingsVerified: false, verificationRequired: true };
