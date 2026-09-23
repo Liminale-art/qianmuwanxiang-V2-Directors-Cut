@@ -22,6 +22,7 @@ import {characterNativeFixture} from './helpers/character-native-fixture.mjs';
 import {mappingLegacyFixture} from './helpers/mapping-legacy-fixture.mjs';
 import {createNativeMappingJournal} from '../qianmu-mapping-journal-native.js';
 import {createNativeResourceJournal} from '../qianmu-resource-journal-native.js';
+import {createNativeMutationJournal} from '../qianmu-mutation-journal-native.js';
 import {carrierLegacyFixture} from './helpers/carrier-legacy-fixture.mjs';
 import {createNativeBundleCarrierStore} from '../qianmu-bundle-carrier-native-store.js';
 import {emptyCharacterSources,characterSourceLibrary} from '../qianmu-character-source-backup.js';
@@ -104,6 +105,19 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   return { source, built, historyRows,e, options, reopen, session: await reopen() };
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
+
+for(const failed of [false,true])test(`full bundle configuration uses native before/after journal: ${failed?'record failure preserves live settings':'applied row readable from independent client'}`,async t=>{
+  const native=await characterNativeFixture(t,{account:namespace}),journals=[];
+  const wrap=legacy=>{const journal=createNativeMutationJournal({legacy,createStorage:native.createStorage});journals.push(journal);return journal;};
+  t.after(()=>journals.forEach(j=>j.close()));const f=await fixture({nativeJournal:wrap});t.after(()=>f.session.close());
+  const before=JSON.stringify({settings:f.e.settings,chat:f.e.chat});
+  if(failed)native.hook(call=>call.request.method==='POST'?new Response('{}',{status:503}):null);
+  const action=f.session.restore(await f.session.preview(),consent),fresh=wrap({loadMutation:async()=>null,close(){}});
+  if(failed){await assert.rejects(action,/未全部确认/);assert.equal(JSON.stringify({settings:f.e.settings,chat:f.e.chat}),before);assert.ok(!f.e.events.includes('configuration'));
+    native.hook(null);assert.equal(await fresh.loadMutation(namespace),null);
+  }else{assert.equal((await action).settingsApplied,true);assert.equal((await fresh.loadMutation(namespace)).phase,'applied');assert.ok(f.e.events.includes('configuration'));}
+  assert.equal(f.e.mutation,null);
+});
 
 for(const interrupted of [false,true])test(`full bundle restore persists actual native resource checkpoints: ${interrupted?'failed metadata phase stops settings, explicit reopen resumes':'all phases read by another client'}`,async t=>{
   const native=await characterNativeFixture(t,{account:namespace}),journals=[];

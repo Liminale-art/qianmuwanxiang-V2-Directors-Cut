@@ -54,7 +54,8 @@ export async function clearRestoreStorage({ journal, namespace, selected, confir
   return locked(`qianmu:package-import:${namespace}`,()=>locked(`qianmu:character-restore:${namespace}`,async()=>{
     const rows=await readRows(journal,namespace,check), summary=await summarize(rows,namespace,check);
     const current=new Map(summary.items.map((row,index)=>[identity(row),{summary:row,...rows[index]}]));
-    // Reject the entire stale selection before clearing anything. Journal CAS checks again at each actual deletion.
+    // Reject the entire stale selection first. Each journal rechecks the exact row;
+    // native ST heads are optimistic, not cross-device CAS, and retain originals.
     for(const row of choices)if(current.get(identity(row))?.summary.fingerprint!==row.fingerprint)fail('所选恢复记录已变化，请重新盘点；未删除任何记录');
     const removed=[];let removedBytes=0;
     for(const choice of choices){

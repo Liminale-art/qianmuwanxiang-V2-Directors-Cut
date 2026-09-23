@@ -90,26 +90,39 @@ export function createNativeHistoricalJournal({legacy,createStorage=createConfig
     const row=await unpack(found,namespace,options),last=await priorLocal(namespace,options,found);return {found,row:found.value?.closed?null:row,legacyBaseline:last.row};
   }
   async function exclusive(work){if(closed||busy)fail('恢复记录正在核对或已关闭');busy=true;try{return await work();}finally{busy=false;}}
+  async function historyUnchanged(before,namespace,options){
+    await check(namespace,options);const latest=await loadHead(namespace,options);
+    if(latest.fingerprint!==before.found.fingerprint||!same(await legacy.loadHistoricalChatMutation(namespace,options),before.legacyBaseline))fail('配置保全期间原聊天恢复记录已变化，请重新核对');
+    await check(namespace,options);return true;
+  }
+  const configurationPending=(namespace,options)=>typeof legacy.hasConfigurationMutation==='function'?legacy.hasConfigurationMutation(namespace,options):legacy.loadMutation(namespace);
   return Object.freeze({...legacy,persistence:'st-account-file',concurrency:'optimistic-non-cas',
     loadHistoricalChatMutation(namespace,options={}){return exclusive(async()=>structuredClone((await state(namespace,options)).row));},
     assertNoHistoricalChatMutation(namespace,options={}){return exclusive(async()=>{if((await state(namespace,options)).row)fail('本账户有原聊天恢复记录，请先核对原包或在分镜恢复记录中明确结束');return true;});},
-    hasMutation(namespace){return exclusive(async()=>Boolean((await state(namespace,{})).row||await legacy.loadMutation(namespace)));},
-    prepareMutation(input,options={}){return exclusive(async()=>{const before=await state(input.namespace,options);if(before.row)fail('本账户有原聊天恢复记录，未开始其他导入');
-      return legacy.prepareMutation(input,{...options,nativeHistoricalBaseline:before.legacyBaseline});});},
+    hasMutation(namespace){return exclusive(async()=>Boolean((await state(namespace,{})).row||await configurationPending(namespace,{})));},
+    prepareMutation(input,options={}){const captured=structuredClone(input);return exclusive(async()=>{const before=await state(captured.namespace,options);if(before.row)fail('本账户有原聊天恢复记录，未开始其他导入');
+      const nativeHistoricalCheck=()=>historyUnchanged(before,captured.namespace,options);
+      const saved=await legacy.prepareMutation(captured,{...options,nativeHistoricalBaseline:before.legacyBaseline,nativeHistoricalCheck});await nativeHistoricalCheck();return saved;});},
+    updateMutation(input,phase,options={}){const captured=structuredClone(input);return exclusive(async()=>{const before=await state(captured.namespace,options);if(before.row)fail('本账户有原聊天恢复记录，请保留双方核对');
+      const nativeHistoricalCheck=()=>historyUnchanged(before,captured.namespace,options);
+      const saved=await legacy.updateMutation(captured,phase,{...options,nativeHistoricalCheck});await nativeHistoricalCheck();return saved;});},
     prepareHistoricalChatMutation(input,{confirmed=false,...options}={}){
       const captured=structuredClone(input);return exclusive(async()=>{
         if(confirmed!==true)fail('请明确确认保存原聊天待核对记录');const row=await inspectHistoricalChatMutation(captured),namespace=row.namespace;
         if(row.phase!=='prepared'||row.revision!==1)fail('恢复记录必须从准备阶段开始');
-        const before=await state(namespace,options);if(before.row||await legacy.loadMutation(namespace))fail('本账户已有待核对记录，未覆盖');await check(namespace,options);
+        const before=await state(namespace,options);if(before.row||await configurationPending(namespace,options))fail('本账户已有待核对记录，未覆盖');await check(namespace,options);
         if(before.found.exists){const ended=marker(namespace,before.found.value.reference.sha256,before.found.value.createdAt);await put(await markerKey(ended),ended,namespace,options);}
-        const reference=await pack(row,namespace,options),saved=await write(slot,envelope(row,reference),before.found.fingerprint,namespace,options);
-        return unpack(saved,namespace,options);
+        const reference=await pack(row,namespace,options);await historyUnchanged(before,namespace,options);
+        if(await configurationPending(namespace,options))fail('保全期间出现配置恢复记录，请先核对，未发布原聊天恢复');await check(namespace,options);
+        const saved=await write(slot,envelope(row,reference),before.found.fingerprint,namespace,options),result=await unpack(saved,namespace,options);
+        if(await configurationPending(namespace,options))fail('原聊天与配置恢复记录并发变化，请保留双方核对');await check(namespace,options);return result;
       });
     },
     updateHistoricalChatMutation(input,phase,options={}){
       const captured=structuredClone(input);return exclusive(async()=>{
         const previous=await inspectHistoricalChatMutation(captured),namespace=previous.namespace,before=await state(namespace,options);
         if(!same(before.row,previous))fail('恢复记录已被另一页面修改');const next=historicalChatMutationNext(previous,phase,now());
+        if(await configurationPending(namespace,options))fail('存在配置恢复记录，请先核对双方状态');await check(namespace,options);
         const saved=await write(slot,envelope(next,before.found.value.reference),before.found.fingerprint,namespace,options);return unpack(saved,namespace,options);
       });
     },

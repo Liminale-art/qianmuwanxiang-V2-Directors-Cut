@@ -125,6 +125,8 @@
     "qianmu-historical-journal-native.js",
     "qianmu-resource-journal-contract.js",
     "qianmu-resource-journal-native.js",
+    "qianmu-mutation-journal-body.js",
+    "qianmu-mutation-journal-native.js",
     "qianmu-historical-restore.js",
     "qianmu-historical-restore-view.js",
     "qianmu-historical-import-runtime.js",

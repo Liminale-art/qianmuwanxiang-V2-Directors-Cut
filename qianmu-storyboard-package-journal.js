@@ -10,6 +10,7 @@ import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
 import {createNativeHistoricalJournal} from './qianmu-historical-journal-native.js';
 import {createNativeMappingJournal} from './qianmu-mapping-journal-native.js';
 import {createNativeResourceJournal} from './qianmu-resource-journal-native.js';
+import {createNativeMutationJournal} from './qianmu-mutation-journal-native.js';
 import {validateResourceRestoreCheckpoint,resourceOrder} from './qianmu-resource-journal-contract.js';
 export {validateResourceRestoreCheckpoint} from './qianmu-resource-journal-contract.js';
 // Asset checkpoints are identity-only; the separate mutation store holds local before/after configuration.
@@ -29,7 +30,7 @@ export function validateStoryboardPackageCheckpoint(row){
 export function createStoryboardPackageJournal({native=isStAccountStorageConfigured(),...options}={}){
   const legacy=createLocalStoryboardPackageJournal({...options,nativeHistory:Boolean(native)});
   const settings={...(typeof native==='object'?native:{}),now:options.now||Date.now};
-  return native?createNativeMappingJournal({legacy:createNativeHistoricalJournal({legacy:createNativeResourceJournal({legacy,...settings}),...settings}),...settings}):legacy;
+  return native?createNativeMappingJournal({legacy:createNativeHistoricalJournal({legacy:createNativeMutationJournal({legacy:createNativeResourceJournal({legacy,...settings}),...settings}),...settings}),...settings}):legacy;
 }
 function createLocalStoryboardPackageJournal({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-storyboard-package-journal',timeoutMs=8000,now=Date.now,nativeHistory=false}={}){
   let database=null,opening=null,closed=false;const pending=new Set(),timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||8000));
@@ -306,6 +307,9 @@ function createLocalStoryboardPackageJournal({indexedDB=globalThis.indexedDB,key
     },
     async loadMutation(namespace){
       if(!account(namespace))fail('无法确认元数据恢复账户');return transaction('readonly',()=>true,(store,read,set)=>read(store.get(namespace),row=>set(row?validateStoryboardMutation(row):null)),'mutations');
+    },
+    async hasConfigurationMutation(namespace){
+      if(!account(namespace))fail('无法确认元数据恢复账户');return transaction('readonly',()=>true,(store,read,set)=>read(store.getKey(namespace),key=>set(key!==undefined)),'mutations');
     },
     async dismissCheckpoint(input,{confirmed=false,isCurrent=()=>true}={}){
       const previous=structuredClone(validateStoryboardPackageCheckpoint(input));if(confirmed!==true)fail('尚未确认结束素材暂存核对');
