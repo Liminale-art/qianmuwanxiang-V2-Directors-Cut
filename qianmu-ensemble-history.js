@@ -1,11 +1,11 @@
 // Cross-floor descriptive style anchors, confined to the compiler's borrowed
 // source window. No model/storage/admission call and no whole-chat lookup.
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.342';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.342';
-import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.342';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.343';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.343';
+import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.343';
 import {assertStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 import {captureEnsembleSceneAnchor} from './qianmu-ensemble-continuation.js';
-import {storyboardHistoryOccupiesImageSlot} from './qianmu-storyboard-stream-coverage.js?v=1.59.342';
+import {storyboardHistoryOccupiesImageSlot} from './qianmu-storyboard-stream-coverage.js?v=1.59.343';
 const histories=new WeakMap();
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const fail=()=>{throw Object.assign(Error('所选楼层的镜组历史来源无法完整核对'),{code:'ensemble_history_source',submissionState:'not_submitted'});};

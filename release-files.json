@@ -5,6 +5,8 @@
   "files": [
     "qianmu-vibe-native-store.js",
     "qianmu-vibe-encoding-retention.js",
+    "qianmu-vibe-stage-contract.js",
+    "qianmu-vibe-stage-native.js",
     "qianmu-vibe-asset-contract.js",
     "qianmu-vibe-native-original.js",
     "qianmu-character-source-backup.js",

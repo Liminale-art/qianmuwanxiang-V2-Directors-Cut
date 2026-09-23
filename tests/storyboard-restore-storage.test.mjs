@@ -109,6 +109,7 @@ test('the record manager is unchecked by default, names destructive consequences
   const html=renderRestoreStorageReview({summary,busy:false,notice:'<script>bad</script>',selected:new Set(),accepted:false,chatHash},value=>`${value} B`);
   assert.equal((html.match(/data-restore-item=/g)||[]).length,4);assert.doesNotMatch(html,/ checked/);assert.match(html,/data-restore-storage="clear" disabled/);
   assert.match(html,/无法再通过“核对导入”/);assert.match(html,/其他聊天/);assert.match(html,/账户级角色库/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/private old text/);
+  assert.match(html,/不证明原件仍然存在/);assert.match(html,/重新核对完整原包与素材/);assert.match(html,/不表示释放服务器磁盘/);
 });
 
 function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'not sampled'}){

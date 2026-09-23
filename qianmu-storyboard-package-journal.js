@@ -11,26 +11,20 @@ import {createNativeHistoricalJournal} from './qianmu-historical-journal-native.
 import {createNativeMappingJournal} from './qianmu-mapping-journal-native.js';
 import {createNativeResourceJournal} from './qianmu-resource-journal-native.js';
 import {createNativeMutationJournal} from './qianmu-mutation-journal-native.js';
+import {createNativeVibeStageJournal} from './qianmu-vibe-stage-native.js';
+import {validateStoryboardPackageCheckpoint,prepareVibeStageCheckpoint,VIBE_STAGE_PHASES as phases} from './qianmu-vibe-stage-contract.js';
+export {validateStoryboardPackageCheckpoint} from './qianmu-vibe-stage-contract.js';
 import {validateResourceRestoreCheckpoint,resourceOrder} from './qianmu-resource-journal-contract.js';
 export {validateResourceRestoreCheckpoint} from './qianmu-resource-journal-contract.js';
-// Asset checkpoints are identity-only; the separate mutation store holds local before/after configuration.
+// Asset checkpoints are identity-only; the separate mutation store holds complete before/after configuration.
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_package_journal',submissionState:'not_submitted'});};
 const account=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
-const phases=['prepared','staging','assets_ready'];
-const key=row=>JSON.stringify([row.namespace,row.chatHash,row.fileHash]);
-const fields=['key','version','namespace','sourceNamespace','chatHash','fileHash','fileBytes','assetIds','phase','revision','createdAt','updatedAt'];
-export function validateStoryboardPackageCheckpoint(row){
-  if(!row||typeof row!=='object'||Object.keys(row).some(name=>!fields.includes(name))||row.version!==1||!account(row.namespace)||!account(row.sourceNamespace)||!hash(row.chatHash)||!hash(row.fileHash)
-    ||row.key!==key(row)||!Number.isSafeInteger(row.fileBytes)||row.fileBytes<1||row.fileBytes>128*1024*1024||!Array.isArray(row.assetIds)||row.assetIds.length>1024||row.assetIds.some(id=>!hash(id))||new Set(row.assetIds).size!==row.assetIds.length
-    ||!phases.includes(row.phase)||!Number.isSafeInteger(row.revision)||row.revision<1||!Number.isSafeInteger(row.createdAt)||row.createdAt<0||!Number.isSafeInteger(row.updatedAt)||row.updatedAt<row.createdAt)fail('分镜导入恢复记录损坏，请保留原包和本机数据');
-  return row;
-}
 
 export function createStoryboardPackageJournal({native=isStAccountStorageConfigured(),...options}={}){
   const legacy=createLocalStoryboardPackageJournal({...options,nativeHistory:Boolean(native)});
   const settings={...(typeof native==='object'?native:{}),now:options.now||Date.now};
-  return native?createNativeMappingJournal({legacy:createNativeHistoricalJournal({legacy:createNativeMutationJournal({legacy:createNativeResourceJournal({legacy,...settings}),...settings}),...settings}),...settings}):legacy;
+  return native?createNativeVibeStageJournal({legacy:createNativeMappingJournal({legacy:createNativeHistoricalJournal({legacy:createNativeMutationJournal({legacy:createNativeResourceJournal({legacy,...settings}),...settings}),...settings}),...settings}),...settings}):legacy;
 }
 function createLocalStoryboardPackageJournal({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-storyboard-package-journal',timeoutMs=8000,now=Date.now,nativeHistory=false}={}){
   let database=null,opening=null,closed=false;const pending=new Set(),timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||8000));
@@ -290,7 +284,7 @@ function createLocalStoryboardPackageJournal({indexedDB=globalThis.indexedDB,key
       if(rows.length>8)fail('导入恢复记录超限，请先保全核对');for(const row of rows){validateStoryboardPackageCheckpoint(row);if(row.namespace!==namespace)fail('恢复记录账户不符');}set(rows);
     }));},
     async prepare(descriptor,{isCurrent=()=>true}={}){
-      const stamp=now(),row=structuredClone(validateStoryboardPackageCheckpoint({...descriptor,key:key(descriptor),version:1,phase:'prepared',revision:1,createdAt:stamp,updatedAt:stamp}));
+      const row=prepareVibeStageCheckpoint(descriptor,now());
       return transaction('readwrite',isCurrent,(store,read,set)=>read(store.get(row.key),existing=>{
         if(existing){validateStoryboardPackageCheckpoint(existing);for(const field of ['namespace','sourceNamespace','chatHash','fileHash','fileBytes','assetIds'])if(JSON.stringify(existing[field])!==JSON.stringify(row[field]))fail('分镜包与原恢复记录不符');set(existing);return;}
         read(store.index('namespace').count(keyRange.only(row.namespace)),count=>{if(count>=8)fail('已有 8 份待核对导入记录，请先处理，不会自动清除');store.add(row);set(row);});
