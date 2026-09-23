@@ -43,7 +43,7 @@ test('detail retains full prompt, does not crop images, and review/explicit inse
   delete row.restoreLinkReview;assert.match(renderGalleryInspector(row,{production:{requiresExplicitInsert:true}}),/data-gallery-detail-action="attach"/);
   const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');assert.match(css,/\.sd-gallery-detail-visual img \{[^}]*object-fit: contain/);
   assert.match(css,/@media \(max-width: 720px\) \{[\s\S]*?\.sd-gallery-detail-layout \{ grid-template-columns: minmax\(0, 1fr\)/);
-  assert.match(css,/\.sd-media-gallery-library \{ grid-template-columns: minmax\(118px, \.3fr\) minmax\(0, 1fr\)/);
+  assert.match(css,/\.sd-gallery-browser-main \{ min-width: 0/);
 });
 
 for(const [label,change] of Object.entries({owner:f=>f.owner={},closed:f=>f.active=false,detached:f=>f.area.isConnected=false,

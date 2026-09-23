@@ -13,8 +13,9 @@ export function galleryDisplayWindow(groups, requestedCursor = GALLERY_WINDOW_SI
 
 export function renderGalleryWindowControls(window, position = 'top') {
   if (window.pages <= 1) return '';
+  const unit=window.unit==='项'?'项':'组';
   const button = (cursor, direction, icon) => `<button type="button" class="sd-icon-btn" data-gallery-window="${cursor??''}" data-gallery-window-current="${window.cursor}" title="${direction}" aria-label="${direction}" ${cursor===null?'disabled':''}><i class="fa-solid fa-chevron-${icon}"></i></button>`;
-  return `<nav class="sd-gallery-window-controls" data-gallery-window-position="${position==='bottom'?'bottom':'top'}" aria-label="画面分组分页" tabindex="-1">${button(window.previous,'上一页画面','left')}<span aria-live="polite">${window.start+1}–${window.end} / ${window.total} 组 · ${window.page}/${window.pages}</span>${button(window.next,'下一页画面','right')}</nav>`;
+  return `<nav class="sd-gallery-window-controls" data-gallery-window-position="${position==='bottom'?'bottom':'top'}" aria-label="阅片条目分页" tabindex="-1">${button(window.previous,'上一页画面','left')}<span aria-live="polite">${window.start+1}–${window.end} / ${window.total} ${unit} · ${window.page}/${window.pages}</span>${button(window.next,'下一页画面','right')}</nav>`;
 }
 
 export function galleryCardBindings(cards, readRecords, groupId) {

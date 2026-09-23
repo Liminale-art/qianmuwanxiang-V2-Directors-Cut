@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {summarizeGalleryRecords} from '../qianmu-gallery-summary.js';
 import {renderGalleryInspector} from '../qianmu-gallery-inspector.js';
+import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard} from '../qianmu-gallery-collections-view.js';
 import {renderGalleryKeywordFilters} from '../qianmu-gallery-keywords-view.js';
 import {galleryTagsMatch} from '../qianmu-gallery-keywords.js';
 import {createGalleryNarrativeSession} from '../qianmu-gallery-narrative.js';
@@ -57,28 +58,29 @@ test('precomputed keyword view preserves escaping and selection and does not res
   assert.equal(renderGalleryKeywordFilters(forbidden,[],[]),'');assert.ok(expected.includes('&lt;b&gt;'));
 });
 
-function rendererFixture(count=5001){
+function rendererFixture(count=5001,collectionCount=0){
   const rows=Array.from({length:count},(_,i)=>({id:String(i),createdAt:i,tags:['tag-'+i%12],collectionIds:['group-'+i%50],source:'novel',prompt:'original '+i,url:'/image-'+i+'.png'}));
-  const state={gallerySearch:'',galleryTrack:'all',galleryTagFilters:[]};let reads=0,collectionReads=0,sidebar;
-  const c=vm.createContext({summarizeGalleryRecords,renderGalleryInspector,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
+  const collections=Array.from({length:collectionCount},(_,i)=>({id:'group-'+i,name:'Group '+i}));
+  const state={gallerySearch:'',galleryTrack:'all',galleryTagFilters:[]};let reads=0,collectionReads=0;
+  const c=vm.createContext({summarizeGalleryRecords,renderGalleryInspector,galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
     storyboardGalleryKind:'stills',storyboardGalleryOpenCollectionId:'',storyboardGalleryInspectorRecordId:'',storyboardGallerySelectMode:false,
     storyboardGallerySelection:new Set(),storyboardGalleryVisibleCount:40,storyboardGalleryRecords:()=>{reads++;return rows;},
-    storyboardGalleryCollections:()=>Array.from({length:50},(_,i)=>({id:'group-'+i,name:'Group '+i})),
+    storyboardGalleryCollections:()=>collections,
     storyboardItemCollectionIds:row=>{collectionReads++;return ids(row);},storyboardState:()=>state,
     ctx:()=>({chatMetadata:state,chat:[]}),getChatKey:()=> 'fixture',storyboardAdmissionEpoch:1,storyboardLinkReviewParagraphs:()=>[],
     storyboardGalleryNarrative:createGalleryNarrativeSession(),storyboardGalleryGroupId:row=>row.id,
     storyboardProductionDeliveryPolicy:()=>({track:'main_camera',sourceLabel:'正文'}),STORYBOARD_SOURCES:{novel:{label:'NAI'}},
-    storyboardMediaSidebarMarkup:options=>{sidebar=options.collections.map(row=>options.countFor(row.id));return '';},
+    storyboardMediaSidebarMarkup:()=>assert.fail('ordinary gallery must not render the old sidebar'),
     renderStoryboardGalleryKindSwitch:()=>'',renderGalleryNarrative:()=>'',storyboardSafeUrl:value=>value,
     storyboardRecordStatus:()=>'',formatDateTime:String,snip:(value,n)=>String(value).slice(0,n),storyboardMediaTagEditorMarkup:()=>''});
   vm.runInContext(['storyboardUpdateGalleryNarrative','storyboardFilteredGalleryRecords','storyboardGalleryGroups','renderStoryboardGallery'].map(section).join('\n'),c);
-  return {rows,state,c,get reads(){return reads;},get collectionReads(){return collectionReads;},get sidebar(){return sidebar;}};
+  return {rows,collections,state,c,get reads(){return reads;},get collectionReads(){return collectionReads;}};
 }
 
 test('actual gallery render shares metadata counters while retaining the independent narrative projection',()=>{
-  const e=rendererFixture(),before=JSON.stringify(e.rows),html=e.c.renderStoryboardGallery(e.state);
-  assert.equal(e.reads,2,'one metadata capture plus the existing narrative source');assert.equal(e.collectionReads,5001);assert.equal(e.sidebar.reduce((a,b)=>a+b,0),5001);
-  assert.equal((html.match(/data-storyboard-record=/g)||[]).length,40);assert.equal((html.match(/data-gallery-tag-filter=/g)||[]).length,12);
+  const e=rendererFixture(5001,50),before=JSON.stringify(e.rows),html=e.c.renderStoryboardGallery(e.state);
+  assert.equal(e.reads,2,'one metadata capture plus the existing narrative source');assert.equal(e.collectionReads,5001);
+  assert.equal((html.match(/data-storyboard-record=/g)||[]).length,30);assert.equal((html.match(/data-gallery-collection=/g)||[]).length,10);assert.equal((html.match(/data-gallery-tag-filter=/g)||[]).length,12);
   assert.ok(html.indexOf('data-storyboard-record="5000"')<html.indexOf('data-storyboard-record="4999"'));
   assert.equal(JSON.stringify(e.rows),before);
 });
@@ -133,4 +135,39 @@ test('selected detail template reads no other record prompt or recipe; productio
   for(const row of e.rows){Object.defineProperty(row,'snapshot',{get(){assert.fail('recipe must be explicitly requested');}});
     if(row.id!=='2')for(const key of ['prompt','finalPrompt','url'])Object.defineProperty(row,key,{get(){assert.fail('unselected payload '+key);}});}
   assert.match(e.c.renderStoryboardGallery(e.state),/original 2/);assert.equal(e.state.gallerySearch,'unchanged');assert.deepEqual(e.state.galleryTagFilters,['tag-1']);
+});
+
+test('actual mixed gallery pages all images and folders without old sidebar or split groups',()=>{
+  const e=rendererFixture(81,50),images=[],folders=[];
+  for(const cursor of [40,80,120,160]){
+    e.c.storyboardGalleryVisibleCount=cursor;const html=e.c.renderStoryboardGallery(e.state);
+    const pageImages=[...html.matchAll(/data-storyboard-record="([^"]+)"/g)].map(m=>m[1]);
+    const pageFolders=[...html.matchAll(/data-gallery-collection="([^"]+)"/g)].map(m=>m[1]);
+    assert.ok(pageImages.length+pageFolders.length<=40);images.push(...pageImages);folders.push(...pageFolders);
+    assert.doesNotMatch(html,/sd-media-gallery-library|sd-media-library-sidebar|sd-media-inspector/);
+  }
+  assert.deepEqual(images,[...e.rows].reverse().map(row=>row.id));assert.equal(new Set(folders).size,50);assert.equal(folders.length,50);
+});
+
+test('actual name-only folder search includes whole-count preview, entering a folder removes other folder tiles',()=>{
+  const e=rendererFixture(5,2);e.state.gallerySearch='Group 1';let html=e.c.renderStoryboardGallery(e.state);
+  assert.match(html,/data-gallery-collection="group-1" data-gallery-collection-clear-search="true"/);assert.match(html,/<small>1 张<\/small>/);
+  assert.doesNotMatch(html,/data-storyboard-record=/);
+  e.state.gallerySearch='';e.c.storyboardGalleryOpenCollectionId='group-1';html=e.c.renderStoryboardGallery(e.state);
+  assert.match(html,/data-gallery-root/);assert.doesNotMatch(html,/sd-gallery-collection-tile/);assert.match(html,/data-storyboard-record="1"/);
+  assert.equal((html.match(/data-storyboard-record=/g)||[]).length,1);
+});
+
+test('actual empty gallery still displays empty collection and filters cannot silently widen it',()=>{
+  const e=rendererFixture(0,1);let html=e.c.renderStoryboardGallery(e.state);
+  assert.match(html,/sd-gallery-collection-empty/);assert.match(html,/data-gallery-collection="group-0"/);
+  e.state.gallerySearch='Group 0';e.state.galleryTrack='second_camera';html=e.c.renderStoryboardGallery(e.state);
+  assert.doesNotMatch(html,/data-gallery-collection=/);
+});
+
+test('actual large mixed render reads cover URLs only for visible tiles and model badges only for visible cards',()=>{
+  const e=rendererFixture(5001,501);let urls=0,models=0;
+  for(const row of e.rows){Object.defineProperty(row,'url',{get(){urls++;return '/image.png';}});Object.defineProperty(row,'model',{get(){models++;return 'recorded-model';}});}
+  const html=e.c.renderStoryboardGallery(e.state);assert.equal(urls,40);assert.equal(models,30);
+  assert.equal((html.match(/class="sd-gallery-model-label"/g)||[]).length,30);assert.equal(e.collectionReads,5001);
 });

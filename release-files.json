@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-gallery-collections-view.js",
     "qianmu-gallery-inspector.js",
     "qianmu-gallery-narrative-inputs.js",
     "qianmu-gallery-window.js",

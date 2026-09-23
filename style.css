@@ -8034,7 +8034,26 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-media-inspector {
   min-width: 0; overflow: hidden; border: 1px solid var(--sd-hairline); border-radius: 14px; background: var(--sd-card);
 }
-#story-director-modal .sd-media-gallery-library { grid-template-columns: minmax(118px, .3fr) minmax(0, 1fr); }
+#story-director-modal .sd-gallery-browser-main { min-width: 0; }
+#story-director-modal .sd-gallery-browser-main .sd-storyboard-gallery { columns: 3 180px; column-gap: 8px; }
+#story-director-modal .sd-gallery-collection-tile { position: relative; display: block; break-inside: avoid; margin: 0 0 8px; border: 1px solid var(--sd-hairline); border-radius: 12px; overflow: hidden; background: var(--sd-card); }
+#story-director-modal .sd-gallery-collection-tile .sd-media-collection-open { position: relative; display: block; min-width: 0; width: 100%; padding: 0; border-radius: 0; text-align: left; }
+#story-director-modal .sd-gallery-collection-tile img { display: block; width: 100%; height: auto; }
+#story-director-modal .sd-gallery-collection-empty { display: grid; place-items: center; aspect-ratio: 4 / 3; font-size: 28px; color: var(--sd-muted); background: var(--sd-pre); }
+#story-director-modal .sd-gallery-collection-mark,
+#story-director-modal .sd-gallery-model-label { position: absolute; z-index: 2; top: 8px; right: 8px; max-width: calc(100% - 48px); padding: 3px 6px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: color-mix(in srgb, var(--sd-bg) 92%, transparent); color: var(--sd-text); border: 1px solid var(--sd-hairline); font-size: 10px; line-height: 1.4; pointer-events: none; }
+#story-director-modal .sd-gallery-collection-caption { display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 9px; }
+#story-director-modal .sd-gallery-collection-caption b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+#story-director-modal .sd-gallery-collection-caption small { flex: 0 0 auto; color: var(--sd-muted); font-size: 10px; }
+#story-director-modal .sd-gallery-collection-actions,
+#story-director-modal .sd-gallery-collection-path > div { display: flex; justify-content: flex-end; gap: 4px; padding: 0 7px 7px; }
+#story-director-modal .sd-gallery-collection-actions .sd-icon-btn,
+#story-director-modal .sd-gallery-collection-path .sd-icon-btn { width: 30px; min-width: 30px; height: 30px; margin: 0; border-radius: 8px; }
+#story-director-modal .sd-gallery-collection-path { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#story-director-modal .sd-gallery-collection-path > b { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+#story-director-modal .sd-gallery-collection-path > div { padding: 0; }
+#story-director-modal .sd-gallery-results { color: var(--sd-muted); font-size: 11px; }
+#story-director-modal .sd-gallery-browser-page .sd-storyboard-gallery-check { border-radius: 8px; }
 #story-director-modal .sd-gallery-detail { display: grid; gap: 12px; min-width: 0; }
 #story-director-modal .sd-gallery-detail > header { display: flex; align-items: center; gap: 10px; min-width: 0; }
 #story-director-modal .sd-gallery-detail > header h3 { margin: 0; font-size: var(--sd-font-card-title, 14px); white-space: nowrap; }
@@ -8158,7 +8177,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   #story-director-modal .sd-storyboard-gallery-page,
   #story-director-modal .sd-storyboard-artist-page { gap: 5px; }
   #story-director-modal .sd-media-library-main .sd-storyboard-artist-waterfall,
-  #story-director-modal .sd-media-library-main .sd-storyboard-gallery { columns: 2 118px; column-gap: 6px; }
+  #story-director-modal .sd-media-library-main .sd-storyboard-gallery,
+  #story-director-modal .sd-gallery-browser-main .sd-storyboard-gallery { columns: 2 118px; column-gap: 6px; }
   .sd-inline-artist-options { grid-template-columns: 1fr; }
 }
 

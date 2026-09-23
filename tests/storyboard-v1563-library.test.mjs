@@ -39,12 +39,14 @@ assert.match(style, /\.sd-storyboard-root input\.text_pole:not\(\[type="file"\]\
 assert.match(style, /\.sd-storyboard-prompt-textarea \{ min-height: 96px !important/);
 assert.match(style, /\.sd-storyboard-root \{ --sd-storyboard-gap: 6px; gap: 6px; \}/);
 
-// Artist and gallery libraries share Eagle-like collections, tags, and responsive panes.
+// Artist library keeps its panes; ordinary gallery has moved to a shared waterfall.
+// Both retain collection memberships, tags and the same export/import data.
 assert.match(source, /function storyboardMediaSidebarMarkup/);
 assert.match(source, /function storyboardMediaTagEditorMarkup/);
 assert.match(source, /split\(\/\[,，\\n\]\+\//, 'desktop Enter and mobile comma input must tokenize tags');
 assert.match(source, /function storyboardAssignCollectionIds/);
-assert.match(source, /sd-media-gallery-library/);
+assert.match(source, /sd-gallery-browser-main/);
+assert.doesNotMatch(source, /sd-media-gallery-library/);
 assert.match(source, /sd-media-artist-library/);
 assert.match(style, /\.sd-media-library-shell[\s\S]*grid-template-columns:/);
 assert.match(style, /@media \(max-width: 720px\)[\s\S]*\.sd-media-library-shell \{ grid-template-columns: minmax\(0, 1fr\)/);
