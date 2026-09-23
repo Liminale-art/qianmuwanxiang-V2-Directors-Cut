@@ -6,6 +6,7 @@ import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qian
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
 import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {summarizeGalleryRecords} from './qianmu-gallery-summary.js';
+import {renderGalleryInspector,bindGalleryInspector,captureGalleryViewGuard} from './qianmu-gallery-inspector.js';
 import {galleryDisplayWindow,renderGalleryWindowControls,bindGalleryWindowControls,galleryCardBindings} from './qianmu-gallery-window.js';
 import {renderGalleryKeywordEntry,bindGalleryKeywordEntry,renderGalleryKeywordFilters} from './qianmu-gallery-keywords-view.js';
 import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor} from './qianmu-composition-schemes-view.js';
@@ -14,13 +15,13 @@ import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryb
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.313';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.313';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.313';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.314';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.314';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.314';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.313';
-import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.313';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.314';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.314';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -177,7 +178,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.202';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.212';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.313';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.314';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -273,12 +274,12 @@ import {
   storyboardDirectorDecisionSnapshot,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.313';
+} from './qianmu-storyboard.js?v=1.59.314';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.313';
+const VERSION = '1.59.314';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -286,10 +287,10 @@ let storyboardLinkReview = null;
 let reader = null;
 const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(),headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 const featureRuntime = createFeatureRuntime({
-  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.313') },
-  recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.313') },
+  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.314') },
+  recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.314') },
   vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.202') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.313') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.314') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -300,9 +301,9 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.202') },
   storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.202') },
   storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.202') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.313') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.313') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.313') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.314') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.314') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.314') },
   storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.202') },
   characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.202') },
   characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.202') },
@@ -334,7 +335,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.313'),
+    load: () => import('./qianmu-image-admission.js?v=1.59.314'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -370,15 +371,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.313'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.314'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.313'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.314'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.313'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.314'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -470,11 +471,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.313'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.314'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.313'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.314'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -562,9 +563,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.313'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.314'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.313')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.314')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -12447,6 +12448,7 @@ function storyboardBasePromptsForArtistRedraw(record, snapshot) {
 }
 
 function storyboardPageKey(state = storyboardState()) {
+  if (state.view === 'gallery' && storyboardGalleryKind === 'stills' && storyboardGalleryInspectorRecordId) return 'gallery:detail';
   if (state.view === 'create' && state.source === 'comfy') return 'create:comfy';
   if (state.editingArtistPresetId) return `artists:edit:${state.editingArtistPresetId}`;
   if (state.editingPromptItemId) return `presets:item:${state.editingPromptItemId}`;
@@ -12850,7 +12852,7 @@ async function storyboardReviewLegacyRecipe(record,parent) {
   const epoch=storyboardSnapshotEpoch,metadata=ctx().chatMetadata;
   const isCurrent=()=>parent.isConnected&&epoch===storyboardSnapshotEpoch&&metadata===ctx().chatMetadata;
   try {
-    const runtime=await loadLocalChunk('./qianmu-gallery-recipe-review-view.js?v=1.59.313');
+    const runtime=await loadLocalChunk('./qianmu-gallery-recipe-review-view.js?v=1.59.314');
     if(!isCurrent())return;
     const result=await runtime.openGalleryRecipeReview({parent,recordId:record.id,isCurrent,getContext:ctx,epoch:()=>storyboardSnapshotEpoch,
       account:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(),headers:storyboardRequestHeaders}).finished;
@@ -12874,7 +12876,7 @@ async function storyboardReadSnapshotForRecord(record) {
   }
   if (!record?.snapshot && record?.snapshotRef) {
     const epoch=storyboardSnapshotEpoch,metadata=ctx().chatMetadata;
-    const runtime = await loadLocalChunk('./qianmu-gallery-local-recipe-current.js?v=1.59.313');
+    const runtime = await loadLocalChunk('./qianmu-gallery-local-recipe-current.js?v=1.59.314');
     if(epoch!==storyboardSnapshotEpoch||metadata!==ctx().chatMetadata)throw new Error('原画面来源已变化，请重新打开');
     return runtime.readCurrentGalleryLocalRecipe({record,getContext:ctx,epoch:()=>storyboardSnapshotEpoch,
       account:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace()});
@@ -13348,6 +13350,7 @@ function storyboardMediaTagValues(editor) {
 function storyboardPersistMediaTagEditor(editor) {
   const scope = String(editor?.dataset.mediaTagEditor || '');
   if (!scope.startsWith('gallery:')) return;
+  if (!editor._qianmuGalleryCurrent?.()) return;
   const record = storyboardGalleryRecords().find((item) => item.id === scope.slice(8));
   if (!record) return;
   record.tags = storyboardMediaTagValues(editor);
@@ -13651,19 +13654,30 @@ function storyboardRecordStatus(record) {
   return `第 ${record.floor} 层`;
 }
 
-async function storyboardAttachProductionRecord(record) {
+async function storyboardAttachProductionRecord(record, {verify=async()=>{}} = {}) {
   const policy = storyboardProductionDeliveryPolicy(record);
   if (!record || !policy.requiresExplicitInsert) return false;
   const floor = storyboardCurrentAssistantFloor();
   const message = Number.isInteger(floor) ? ctx().chat?.[floor] : null;
   if (!message) return toast('当前聊天没有可承接画面的正文。', 'warning');
+  const chatKey=String(getChatKey()||''),owner=ctx().chatMetadata,state=storyboardState(),epoch=storyboardAdmissionEpoch;
+  const originalText=message.mes,originalSwipe=message.swipe_id;
+  let identity,namespace;
+  const guard=async()=>{await verify();
+    const same=()=>chatKey===String(getChatKey()||'')&&owner===ctx().chatMetadata&&state===storyboardState()&&epoch===storyboardAdmissionEpoch
+      &&ctx().chat?.[floor]===message&&message.mes===originalText&&message.swipe_id===originalSwipe&&storyboardGalleryRecords().includes(record);
+    if(!same())throw Error('正文或画面已变化，未继续引用');
+    if(identity&&namespace!==await identity.resolveImageAccountNamespace())throw Error('账户已变化，未继续引用');
+    await verify();if(!same())throw Error('正文或页面已变化，未继续引用');};
+  await guard();identity=await featureRuntime.load('imageAdmission');namespace=await identity.resolveImageAccountNamespace();await guard();
   const accepted = await confirmDialog(
     `引用${policy.sourceLabel}`,
     `将这张画面作为导演剪辑插画放入第 ${floor} 层；只改变画面展示，不会把幕后信息写入正文或角色记忆。是否继续？`,
   );
   if (!accepted) return false;
-  const chatKey = String(getChatKey() || '');
+  await guard();
   const snapshot = await storyboardReadSnapshotForRecord(record);
+  await guard();
   record.floor = floor;
   record.lastKnownFloor = floor;
   record.inline = true;
@@ -13686,8 +13700,11 @@ async function storyboardAttachProductionRecord(record) {
     nextSnapshot.paragraphAnchor = clone(record.paragraphAnchor);
     await storyboardStoreSnapshotForRecord(record, nextSnapshot);
   }
+  await guard();
   await saveMetadata();
+  await guard();
   await storyboardArchiveGallerySnapshots([record]);
+  await guard();
   storyboardRenderInlineImages(floor);
   renderModal();
   toast(`${policy.sourceLabel}已引用至第 ${floor} 层。`, 'success');
@@ -14793,10 +14810,41 @@ function storyboardBindGalleryNarrative(root) {
     isCurrent: () => root.isConnected && root.classList.contains('open') && state === storyboardState() && owner === ctx().chatMetadata
       && chatKey === String(getChatKey() || '') && epoch === storyboardAdmissionEpoch && state.view === 'gallery' && storyboardGalleryKind === 'stills',
     changed: all => {
-      if (all) { state.gallerySearch = ''; state.galleryTrack = 'all'; storyboardGalleryOpenCollectionId = ''; }
+      if (all) { state.gallerySearch = ''; state.galleryTrack = 'all'; state.galleryTagFilters=[]; storyboardGalleryOpenCollectionId = ''; }
       storyboardGallerySelection.clear(); storyboardGallerySelectMode = false; storyboardGalleryVisibleCount = 40;
       storyboardGalleryInspectorRecordId = ''; renderModal();
     } });
+}
+
+function storyboardGalleryViewGuard(root) {
+  return captureGalleryViewGuard(root,{scope:()=>[storyboardState(),ctx().chatMetadata,String(getChatKey()||''),storyboardAdmissionEpoch,activeTab,storyboardState().view,storyboardGalleryKind],
+    isActive:()=>root.classList.contains('open')&&activeTab==='imagegen'&&storyboardState().view==='gallery'&&storyboardGalleryKind==='stills'});
+}
+
+function storyboardShowGalleryInspector(root, record) {
+  if (!record || !storyboardGalleryRecords().includes(record)) return;
+  storyboardRememberPageScroll(root);storyboardGalleryInspectorRecordId=record.id;storyboardPendingRestoreScroll=0;renderModal();
+  root.querySelector('[data-gallery-detail-back]')?.focus({preventScroll:true});
+}
+
+function storyboardLeaveGalleryInspector(root, id) {
+  storyboardRememberPageScroll(root);storyboardGalleryInspectorRecordId='';storyboardPendingRestoreScroll=storyboardPageScrolls.get('gallery')||0;renderModal();
+  const card=[...root.querySelectorAll('.sd-storyboard-gallery-card')].find(node=>node.dataset.storyboardRecord===id);
+  (card?.querySelector('.sd-storyboard-gallery-inspect')||root.querySelector('.sd-storyboard-gallery-search'))?.focus({preventScroll:true});
+}
+
+function storyboardBindGalleryInspector(root) {
+  if (!root.querySelector('[data-gallery-detail]')) return;
+  bindGalleryInspector(root,{isCurrent:storyboardGalleryViewGuard(root),readId:()=>storyboardGalleryInspectorRecordId,
+    readRecord:()=>{const rows=storyboardGalleryRecords().filter(row=>row.id===storyboardGalleryInspectorRecordId);return rows.length===1?rows[0]:null;},
+    back:id=>storyboardLeaveGalleryInspector(root,id),onError:error=>toast(error.message||'画面操作未完成','warning'),
+    saveCollections:async(record,ids,verify)=>{await verify();storyboardAssignCollectionIds(record,ids);await saveMetadata();},
+    actions:{preview:(record,{isCurrent})=>storyboardOpenLightbox(storyboardGalleryRecords().filter(row=>storyboardGalleryGroupId(row)===storyboardGalleryGroupId(record)).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)),record.id,{isCurrent}),
+      style:(record,{verify})=>storyboardApplyRecordStyle(record,{verify}),review:(record,{verify})=>storyboardReviewRecordLink(record,{verify}),
+      attach:(record,{verify})=>storyboardAttachProductionRecord(record,{verify}),
+      source:record=>{if(!storyboardUpdateGalleryNarrative().selectRecord(record))return toast('正文位置已变化，请重新核对','warning');
+        const state=storyboardState();state.gallerySearch='';state.galleryTrack='all';state.galleryTagFilters=[];storyboardGalleryOpenCollectionId='';storyboardGallerySelection.clear();
+        storyboardGallerySelectMode=false;storyboardGalleryVisibleCount=40;storyboardGalleryInspectorRecordId='';storyboardPendingRestoreScroll=0;renderModal();}}});
 }
 
 function storyboardFilteredGalleryRecords(state, sourceRecords = [...storyboardGalleryRecords()].reverse()) {
@@ -14951,6 +14999,11 @@ function renderStoryboardGallery(state) {
   const allRecords = [...storyboardGalleryRecords()].reverse();
   const summary = summarizeGalleryRecords(allRecords, storyboardItemCollectionIds);
   const collections = storyboardGalleryCollections();
+  if (storyboardGalleryInspectorRecordId && !summary.record(storyboardGalleryInspectorRecordId)) storyboardGalleryInspectorRecordId='';
+  const inspected=summary.record(storyboardGalleryInspectorRecordId);
+  if (inspected) return renderGalleryInspector(inspected,{url:storyboardSafeUrl(inspected.url),sourceLabel:STORYBOARD_SOURCES[inspected.source]?.label||inspected.source||'分镜',
+    production:storyboardProductionDeliveryPolicy(inspected),collections,collectionIds:storyboardItemCollectionIds(inspected),
+    tagEditor:storyboardMediaTagEditorMarkup(inspected.tags||[],summary.knownTags,`gallery:${inspected.id}`),location:storyboardUpdateGalleryNarrative().sourceFor(inspected)});
   if (storyboardGalleryOpenCollectionId && !collections.some((item) => item.id === storyboardGalleryOpenCollectionId)) {
     storyboardGalleryOpenCollectionId = '';
   }
@@ -14962,9 +15015,6 @@ function renderStoryboardGallery(state) {
   const visible = window.items;
   const currentCollection = collections.find((item) => item.id === storyboardGalleryOpenCollectionId) || null;
   const selectionMode = storyboardGallerySelectMode;
-  if (storyboardGalleryInspectorRecordId && !summary.record(storyboardGalleryInspectorRecordId)) storyboardGalleryInspectorRecordId = '';
-  const inspected = summary.record(storyboardGalleryInspectorRecordId);
-  const knownTags = summary.knownTags;
   const sidebar = storyboardMediaSidebarMarkup({
     allCount: allRecords.length,
     collections,
@@ -14973,9 +15023,6 @@ function renderStoryboardGallery(state) {
     tags: [],
     scope: 'gallery',
   });
-  const inspectorCollections = inspected ? new Set(storyboardItemCollectionIds(inspected)) : new Set();
-  const inspectedProduction = inspected ? storyboardProductionDeliveryPolicy(inspected) : null;
-  const inspector = inspected ? `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div><img src="${htmlEscape(storyboardSafeUrl(inspected.url))}" alt=""><div class="sd-storyboard-inspector-source"><h4>${htmlEscape(STORYBOARD_SOURCES[inspected.source]?.label || inspected.source || '分镜')}</h4><span class="sd-storyboard-production-label ${inspectedProduction.track === 'second_camera' ? 'second-camera' : ''}">${htmlEscape(inspectedProduction.sourceLabel)}</span></div><p>${htmlEscape(snip(inspected.finalPrompt || inspected.prompt || '', 240))}</p><label><span>标签</span>${storyboardMediaTagEditorMarkup(inspected.tags || [], knownTags, `gallery:${inspected.id}`)}</label><label><span>合集</span><div class="sd-media-collection-choices">${collections.map((item) => `<label class="sd-media-collection-choice"><input type="checkbox" class="sd-gallery-inspector-collection" value="${htmlEscape(item.id)}" ${inspectorCollections.has(item.id) ? 'checked' : ''}><span>${htmlEscape(item.name)}</span></label>`).join('') || '<small>暂无合集</small>'}</div></label>${storyboardGalleryNarrative.sourceFor(inspected) ? `<button type="button" class="sd-btn" data-gallery-paragraph-record="${htmlEscape(inspected.id)}">${storyboardGalleryNarrative.sourceFor(inspected).paragraphKey ? '查看本段全部静帧' : '查看本层全部静帧'}</button>` : ''}${inspected.restoreLinkReview ? '<button type="button" class="sd-btn sd-storyboard-review-link"><i data-qm-icon="qm-regular-link"></i>核对正文位置</button>' : ''}${!inspected.restoreLinkReview && inspectedProduction.requiresExplicitInsert && !Number.isInteger(inspected.floor) ? '<button type="button" class="sd-btn sd-storyboard-attach-production"><i class="fa-solid fa-link"></i>引用至当前正文</button>' : ''}${inspected.source==='novel'&&!inspected.recipeUnavailable?'<button type="button" class="sd-btn sd-storyboard-apply-style">套用风格配置</button>':''}<button type="button" class="sd-btn sd-storyboard-preview-inspected"><i class="fa-solid fa-expand"></i>查看大图</button></div></details>` : `<details class="sd-media-inspector" open><summary><span>画面详情</span></summary><div class="sd-storyboard-empty-inline">点击画面信息按钮后在此整理。</div></details>`;
   return `<div class="sd-storyboard-gallery-page">
     ${renderStoryboardGalleryKindSwitch()}
     <div class="sd-gallery-directory-entry"><button type="button" class="sd-btn sd-open-gallery-archive">已保存图库</button><button type="button" class="sd-btn sd-open-gallery-directory">角色与聊天</button></div>
@@ -14997,7 +15044,7 @@ function renderStoryboardGallery(state) {
         <div class="sd-storyboard-gallery-caption"><span>${htmlEscape(STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜')}</span><small>${htmlEscape(status || formatDateTime(record.createdAt))}</small><span class="sd-storyboard-production-label ${production.track === 'second_camera' ? 'second-camera' : ''}">${htmlEscape(production.sourceLabel)}</span><p>${htmlEscape(snip(record.finalPrompt || record.prompt || '', 110))}</p>${record.tags?.length ? `<div class="sd-storyboard-gallery-card-tags">${record.tags.slice(0, 4).map((tag) => `<em>${htmlEscape(tag)}</em>`).join('')}</div>` : ''}</div>
         <div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-gallery-inspect" title="整理详情" aria-label="整理详情"><i class="fa-solid fa-circle-info"></i></button><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载当前图片" aria-label="下载当前图片"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor) ? `<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline === false ? '插回正文' : '移出正文'}" aria-label="${record.inline === false ? '插回正文' : '移出正文'}"><i class="fa-solid ${record.inline === false ? 'fa-eye' : 'fa-eye-slash'}"></i></button>` : ''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除当前图片" aria-label="删除当前图片"><i class="fa-solid fa-trash-can"></i></button></div>
       </article>`;
-    }).join('')}</div>${renderGalleryWindowControls(window,'bottom')}` : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '这里暂时没有符合条件的画面。' : '阅片室还是空的。生成后的画面会完整保留在这里。'}</p></section>`}</main>${inspector}</div>
+    }).join('')}</div>${renderGalleryWindowControls(window,'bottom')}` : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '这里暂时没有符合条件的画面。' : '阅片室还是空的。生成后的画面会完整保留在这里。'}</p></section>`}</main></div>
   </div>`;
 }
 
@@ -20305,6 +20352,7 @@ function storyboardRemoveQueuedLog(log) {
 
 async function storyboardHandleChatChanged() {
   const currentChatKey = String(getChatKey() || '');
+  storyboardGalleryInspectorRecordId = '';
   storyboardGalleryNarrative.reset();
   storyboardSnapshotEpoch++;
   storyboardGalleryPreserver?.reset();storyboardScheduleGalleryPreservation();
@@ -21252,7 +21300,8 @@ function storyboardRecordParameterLabel(record) {
   ].filter(Boolean).join(' · ') || '沿用模型默认参数';
 }
 
-async function storyboardOpenLightbox(input, initialId = '') {
+async function storyboardOpenLightbox(input, initialId = '', {isCurrent=()=>true} = {}) {
+  if (!isCurrent()) return;
   let variants = (Array.isArray(input) ? input : [input]).filter((record) => storyboardSafeUrl(record?.url));
   if (!variants.length) return;
   const store = getChatStore(), state = storyboardState(), chatKey = String(getChatKey() || ''), epoch = storyboardAdmissionEpoch;
@@ -21271,7 +21320,7 @@ async function storyboardOpenLightbox(input, initialId = '') {
   let busy = false, identity, namespace;
   try { identity = await featureRuntime.load('imageAdmission'); namespace = await identity.resolveImageAccountNamespace(); }
   catch (_) { return toast('暂时无法确认当前账户，请稍后重新打开画面。','warning'); }
-  if (!sameContext() || openEpoch!==storyboardLightboxEpoch) return;
+  if (!isCurrent() || !sameContext() || openEpoch!==storyboardLightboxEpoch) return;
   const currentRecord = id => sameContext() ? storyboardGalleryRecords().find(item=>item.id===id) : null;
   const guard = async id => {
     if (!sameContext() || storyboardLightboxEl!==layer || !currentRecord(id)) throw new Error('画面或聊天已变化，请重新打开');
@@ -21600,7 +21649,7 @@ function storyboardLinkReviewParagraphs(value) {
   return rows.filter(Boolean).slice(0, 241);
 }
 
-async function storyboardReviewRecordLink(record) {
+async function storyboardReviewRecordLink(record, {verify=async()=>{}} = {}) {
   if (!record?.restoreLinkReview || storyboardImportPackage.busy || storyboardExportPackage.busy) return;
   storyboardImportPackage.busy = true;
   let journal = null, review = null;
@@ -21616,6 +21665,7 @@ async function storyboardReviewRecordLink(record) {
     const parent = document.getElementById(MODAL_ID);
     const isCurrent = () => { try { const live = context(); return parent?.classList.contains('open') && live.state === initial.state && live.store === initial.store && live.chatKey === initial.chatKey && live.epoch === initial.epoch && (!review || review.isOpen); } catch (_) { return false; } };
     const guard = async () => {
+      await verify();
       await scope.guard();
       if (!isCurrent()) throw new Error('核对页面或聊天已变化，请重新选择；已保存部分请核对导入');
       if (storyboardActiveJobs.size || storyboardQueue.length || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜仍在工作，请结束当前任务后核对');
@@ -22432,6 +22482,7 @@ function storyboardBindChat() {
 }
 
 function storyboardUnbindChat() {
+  storyboardGalleryInspectorRecordId = '';
   if (storyboardChatClickBound) document.removeEventListener('click', storyboardOnChatClick, true);
   storyboardChatClickBound = false;
   if (storyboardInlineTimer) clearTimeout(storyboardInlineTimer);
@@ -22518,8 +22569,8 @@ function bindStoryboardTabEvents(root) {
     const current=()=>button.isConnected&&root.classList.contains('open')&&epoch===storyboardAdmissionEpoch&&state===storyboardState()&&state.view==='gallery'&&storyboardGalleryKind==='stills';
     if(button.disabled)return;button.disabled=true;
     try{
-      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.313'),featureRuntime.load('imageAdmission')]);
-      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.313');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
+      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.314'),featureRuntime.load('imageAdmission')]);
+      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.314');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
       if(current()){const result=await module.openGalleryArchive({parent:root,account:()=>identity.resolveImageAccountNamespace(),headers:storyboardRequestHeaders,isCurrent:current,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,canPrepare:()=>!storyboardImportPackage.busy&&!storyboardExportPackage.busy&&!storyboardActiveJobs.size&&!storyboardQueue.length,locate}).finished;
         if(current()&&result?.restored){storyboardScheduleInlineRender(0);renderModal();}}
     }catch(error){if(current())toast(error?.message||'已保存图库暂不可用','warning');}
@@ -23617,29 +23668,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelectorAll('[data-gallery-tag-filter]').forEach((button) => button.addEventListener('click', () => {
     state.galleryTagFilters=toggleGalleryTag(state.galleryTagFilters,button.dataset.galleryTagFilter);storyboardGalleryVisibleCount = 40; saveSettings(); renderModal();
   }));
-  root.querySelector('.sd-storyboard-preview-inspected')?.addEventListener('click', () => {
-    const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
-    if (record) storyboardOpenLightbox(record);
-  });
-  root.querySelector('.sd-media-inspector .sd-storyboard-apply-style')?.addEventListener('click',event=>{
-    const button=event.currentTarget,record=storyboardGalleryRecords().find(item=>item.id===storyboardGalleryInspectorRecordId);
-    if(!record||button.disabled)return;button.disabled=true;
-    void storyboardApplyRecordStyle(record,{verify:async()=>{if(!button.isConnected||storyboardGalleryInspectorRecordId!==record.id)throw new Error('详情页已变化，请重新选择');}}).finally(()=>{button.disabled=false;});
-  });
-  root.querySelector('.sd-storyboard-attach-production')?.addEventListener('click', () => {
-    const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
-    if (record) void storyboardAttachProductionRecord(record);
-  });
-  root.querySelector('.sd-storyboard-review-link')?.addEventListener('click', () => {
-    const record = storyboardGalleryRecords().find(item => item.id === storyboardGalleryInspectorRecordId);
-    if (record) void storyboardReviewRecordLink(record);
-  });
-  root.querySelectorAll('.sd-gallery-inspector-collection').forEach((input) => input.addEventListener('change', async () => {
-    const record = storyboardGalleryRecords().find((item) => item.id === storyboardGalleryInspectorRecordId);
-    if (!record) return;
-    storyboardAssignCollectionIds(record, Array.from(root.querySelectorAll('.sd-gallery-inspector-collection:checked')).map((item) => item.value));
-    await saveMetadata();
-  }));
+  storyboardBindGalleryInspector(root);
   root.querySelector('.sd-storyboard-gallery-select-mode')?.addEventListener('click', () => {
     storyboardGallerySelectMode = !storyboardGallerySelectMode;
     if (!storyboardGallerySelectMode) storyboardGallerySelection.clear();
@@ -23679,10 +23708,11 @@ function bindStoryboardTabEvents(root) {
     readCursor:()=>storyboardGalleryVisibleCount,scroller:()=>storyboardScroller(root),
     change:cursor=>{storyboardGalleryVisibleCount=cursor;storyboardPendingRestoreScroll=0;renderModal();},
   });
+  const galleryCurrent=storyboardGalleryViewGuard(root);
   galleryCardBindings(root.querySelectorAll('.sd-storyboard-gallery-card[data-storyboard-record]'),storyboardGalleryRecords,storyboardGalleryGroupId).forEach(({card,record,variants}) => {
     const memberIds = String(card.dataset.storyboardMembers || record?.id || '').split(',').filter(Boolean);
     const toggleSelection = () => {
-      if (!record) return;
+      if (!galleryCurrent(card) || !record || !storyboardGalleryRecords().includes(record)) return;
       const allSelected = memberIds.length && memberIds.every((id) => storyboardGallerySelection.has(id));
       memberIds.forEach((id) => allSelected ? storyboardGallerySelection.delete(id) : storyboardGallerySelection.add(id));
       renderModal();
@@ -23691,25 +23721,27 @@ function bindStoryboardTabEvents(root) {
       toggleSelection();
     });
     card.querySelector('.sd-storyboard-preview-record')?.addEventListener('click', () => {
-      if (record && !storyboardGallerySelectMode) storyboardOpenLightbox(variants, record.id);
+      if (!galleryCurrent(card)) return;
+      if (record && !storyboardGallerySelectMode) storyboardShowGalleryInspector(root,record);
       else toggleSelection();
     });
-    card.querySelector('.sd-storyboard-download')?.addEventListener('click', () => void storyboardDownloadRecord(record));
+    card.querySelector('.sd-storyboard-download')?.addEventListener('click', () => {if(galleryCurrent(card))void storyboardDownloadRecord(record);});
     card.querySelector('.sd-storyboard-gallery-inspect')?.addEventListener('click', () => {
-      if (!record) return;
-      storyboardGalleryInspectorRecordId = record.id; renderModal();
+      if (galleryCurrent(card)) storyboardShowGalleryInspector(root,record);
     });
     card.querySelector('.sd-storyboard-inline-toggle')?.addEventListener('click', async () => {
-      if (!record) return;
+      if (!galleryCurrent(card) || !record || !storyboardGalleryRecords().includes(record)) return;
       record.inline = record.inline === false;
-      await saveMetadata(); storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();
+      await saveMetadata(); if(galleryCurrent(card)){storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();}
     });
     card.querySelector('.sd-storyboard-delete-record')?.addEventListener('click', async () => {
-      if (!record || !await confirmDialog('删除图片', `${variants.length > 1 ? '只删除当前显示的这一张；同组其他版本会继续保留。' : '确定删除这张图片记录？'} SillyTavern 图片文件本身不会被清除。`)) return;
+      if (!galleryCurrent(card) || !record || !await confirmDialog('删除图片', `${variants.length > 1 ? '只删除当前显示的这一张；同组其他版本会继续保留。' : '确定删除这张图片记录？'} SillyTavern 图片文件本身不会被清除。`)) return;
+      if (!galleryCurrent(card) || !storyboardGalleryRecords().includes(record)) return;
       const store = getChatStore(); store.storyboardImages = store.storyboardImages.filter((item) => item.id !== record.id);
       if (storyboardGalleryInspectorRecordId === record.id) storyboardGalleryInspectorRecordId = '';
       storyboardGallerySelection.delete(record.id);
       await saveMetadata();
+      if (!galleryCurrent(card)) return;
       void storyboardDeleteRecordSnapshots(record);
       storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();
     });

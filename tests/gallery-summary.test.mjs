@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {summarizeGalleryRecords} from '../qianmu-gallery-summary.js';
+import {renderGalleryInspector} from '../qianmu-gallery-inspector.js';
 import {renderGalleryKeywordFilters} from '../qianmu-gallery-keywords-view.js';
 import {galleryTagsMatch} from '../qianmu-gallery-keywords.js';
 import {createGalleryNarrativeSession} from '../qianmu-gallery-narrative.js';
@@ -59,7 +60,7 @@ test('precomputed keyword view preserves escaping and selection and does not res
 function rendererFixture(count=5001){
   const rows=Array.from({length:count},(_,i)=>({id:String(i),createdAt:i,tags:['tag-'+i%12],collectionIds:['group-'+i%50],source:'novel',prompt:'original '+i,url:'/image-'+i+'.png'}));
   const state={gallerySearch:'',galleryTrack:'all',galleryTagFilters:[]};let reads=0,collectionReads=0,sidebar;
-  const c=vm.createContext({summarizeGalleryRecords,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
+  const c=vm.createContext({summarizeGalleryRecords,renderGalleryInspector,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
     storyboardGalleryKind:'stills',storyboardGalleryOpenCollectionId:'',storyboardGalleryInspectorRecordId:'',storyboardGallerySelectMode:false,
     storyboardGallerySelection:new Set(),storyboardGalleryVisibleCount:40,storyboardGalleryRecords:()=>{reads++;return rows;},
     storyboardGalleryCollections:()=>Array.from({length:50},(_,i)=>({id:'group-'+i,name:'Group '+i})),
@@ -115,4 +116,21 @@ test('actual rendering clamps a deleted last page and retains inspection and sav
   const another=rendererFixture(100);another.c.storyboardGalleryVisibleCount=80;another.c.storyboardGalleryInspectorRecordId='2';
   const first=another.c.renderStoryboardGallery(another.state);assert.equal(another.c.storyboardGalleryVisibleCount,80);assert.ok(first.includes('画面详情'));
   another.c.renderStoryboardGallery(another.state);assert.equal(another.c.storyboardGalleryVisibleCount,80);assert.equal(another.c.storyboardGalleryInspectorRecordId,'2');
+});
+
+test('ordinary browsing has no empty inspector, and selecting one record replaces the browser with a detail view',()=>{
+  const e=rendererFixture(100);e.c.storyboardGalleryVisibleCount=80;
+  const list=e.c.renderStoryboardGallery(e.state);assert.doesNotMatch(list,/data-gallery-detail=|画面详情|sd-media-inspector/);
+  e.c.storyboardGalleryInspectorRecordId='42';const before=JSON.stringify(e.rows),detail=e.c.renderStoryboardGallery(e.state);
+  assert.match(detail,/data-gallery-detail="42"/);assert.match(detail,/data-gallery-detail-back/);
+  assert.equal((detail.match(/<img /g)||[]).length,1);assert.doesNotMatch(detail,/data-storyboard-record=|sd-gallery-window-controls/);
+  assert.equal(e.c.storyboardGalleryVisibleCount,80);assert.equal(JSON.stringify(e.rows),before);
+  e.c.storyboardGalleryInspectorRecordId='';assert.match(e.c.renderStoryboardGallery(e.state),/41–80 \/ 100 组/);
+});
+
+test('selected detail template reads no other record prompt or recipe; production policy is injected separately',()=>{
+  const e=rendererFixture(5);e.c.storyboardGalleryInspectorRecordId='2';e.state.gallerySearch='unchanged';e.state.galleryTagFilters=['tag-1'];
+  for(const row of e.rows){Object.defineProperty(row,'snapshot',{get(){assert.fail('recipe must be explicitly requested');}});
+    if(row.id!=='2')for(const key of ['prompt','finalPrompt','url'])Object.defineProperty(row,key,{get(){assert.fail('unselected payload '+key);}});}
+  assert.match(e.c.renderStoryboardGallery(e.state),/original 2/);assert.equal(e.state.gallerySearch,'unchanged');assert.deepEqual(e.state.galleryTagFilters,['tag-1']);
 });

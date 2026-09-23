@@ -158,7 +158,10 @@ test('real gallery filter ignores saved model preference while retaining search,
 test('production gallery binds the new directory and ships both modules without model selector', async () => {
     const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
     assert.ok(storyboardFunctionSource('renderStoryboardGallery').includes('renderGalleryNarrative(storyboardGalleryNarrative)'));
-    assert.ok(source.includes('storyboardBindGalleryNarrative(root);')); assert.ok(source.includes('data-gallery-paragraph-record='));
+    assert.ok(source.includes('storyboardBindGalleryNarrative(root);'));
+    assert.match(storyboardFunctionSource('storyboardBindGalleryInspector'),/storyboardUpdateGalleryNarrative\(\)\.selectRecord\(record\)/);
+    const inspector=await readFile(new URL('../qianmu-gallery-inspector.js',import.meta.url),'utf8');
+    assert.ok(inspector.includes('data-gallery-detail-action="source"'));
     assert.ok(!source.includes('class="text_pole sd-storyboard-gallery-source"'));
     const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
     for (const name of ['qianmu-gallery-narrative.js', 'qianmu-gallery-narrative-view.js']) assert.ok(release.files.includes(name));

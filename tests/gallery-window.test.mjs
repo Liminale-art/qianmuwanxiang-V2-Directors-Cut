@@ -82,7 +82,7 @@ test('actual entry binding updates only the display cursor and pending scroll, l
   const c=vm.createContext({bindGalleryWindowControls,root:e.root,state,storyboardState:()=>state,ctx:()=>({chatMetadata:metadata}),getChatKey:()=> 'fixture',storyboardAdmissionEpoch:1,
     activeTab:'imagegen',storyboardGalleryKind:'stills',storyboardGalleryOpenCollectionId:'',storyboardGalleryNarrative:{selected:null},
     storyboardGalleryVisibleCount:40,storyboardGallerySelection:selected,storyboardPendingRestoreScroll:null,storyboardScroller:()=>e.body,renderModal:()=>renders++});
-  const source=section('bindStoryboardTabEvents'),start=source.indexOf('  bindGalleryWindowControls(root, {'),end=source.indexOf("  galleryCardBindings(root.querySelectorAll('.sd-storyboard-gallery-card",start);
+  const source=section('bindStoryboardTabEvents'),start=source.indexOf('  bindGalleryWindowControls(root, {'),end=source.indexOf('  const galleryCurrent=storyboardGalleryViewGuard(root);',start);
   assert.ok(start>=0&&end>start);vm.runInContext(source.slice(start,end),c);
   c.getChatKey=()=> 'changed-with-same-metadata';e.button.click();assert.equal(renders,0);
   c.getChatKey=()=> 'fixture';e.button.click();
@@ -115,15 +115,15 @@ test('binding preserves first duplicate identity, complete variants, stable time
   assert.deepEqual(galleryCardBindings([],()=>assert.fail('another page must not read the gallery'),()=>assert.fail()),[]);
 });
 
-test('actual card event binding opens the full group while selection uses only displayed filter members',()=>{
+test('actual card event binding enters the selected detail while selection uses only displayed filter members',()=>{
   const preview=new Button(),check=new Button(),inspect=new Button(),card={dataset:{storyboardRecord:'shown',storyboardGroup:'group',storyboardMembers:'shown'},querySelector:selector=>({
     '.sd-storyboard-preview-record':preview,'.sd-storyboard-gallery-check':check,'.sd-storyboard-gallery-inspect':inspect})[selector]||null};
   const rows=[{id:'hidden-by-filter',groupId:'group',createdAt:1},{id:'shown',groupId:'group',createdAt:2}],selection=new Set();let opened,renders=0,reads=0;
   const c=vm.createContext({galleryCardBindings,root:{querySelectorAll:()=>[card]},storyboardGalleryRecords:()=>{reads++;return rows;},
     storyboardGalleryGroupId:row=>row.groupId,storyboardGallerySelection:selection,storyboardGallerySelectMode:false,storyboardGalleryInspectorRecordId:'',
-    storyboardOpenLightbox:(variants,id)=>{opened={variants,id};},renderModal:()=>renders++});
+    galleryCurrent:()=>true,storyboardShowGalleryInspector:(_root,record)=>{c.storyboardGalleryInspectorRecordId=record.id;opened=record;renders++;},renderModal:()=>renders++});
   const source=section('bindStoryboardTabEvents'),start=source.indexOf("  galleryCardBindings(root.querySelectorAll('.sd-storyboard-gallery-card"),end=source.indexOf('  void storyboardRefreshSecretState',start);
   assert.ok(start>=0&&end>start);vm.runInContext(source.slice(start,end),c);assert.equal(reads,1);
-  preview.click();assert.deepEqual(opened,{id:'shown',variants:[rows[1],rows[0]]});
-  check.click();assert.deepEqual([...selection],['shown']);inspect.click();assert.equal(c.storyboardGalleryInspectorRecordId,'shown');assert.equal(renders,2);
+  preview.click();assert.equal(opened,rows[1]);
+  check.click();assert.deepEqual([...selection],['shown']);inspect.click();assert.equal(c.storyboardGalleryInspectorRecordId,'shown');assert.equal(renders,3);
 });

@@ -1,5 +1,5 @@
-import {prepareStoryboardEnsembleSession} from './qianmu-ensemble-preparation.js?v=1.59.313';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.313';
+import {prepareStoryboardEnsembleSession} from './qianmu-ensemble-preparation.js?v=1.59.314';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.314';
 import {storyboardPromptRenderingSource} from './qianmu-prompt-formats.js';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'world_shot_preparation',submissionState:'not_submitted'});};
