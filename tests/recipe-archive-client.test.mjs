@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
 import * as fs from 'node:fs/promises';
 import {recipeClientFixture,recipe} from './helpers/recipe-client-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -112,7 +113,7 @@ function entry(e,options={}){
     saveMetadata:async()=>{saves++;await e.save();},blobStore:{blobStoreAvailable:()=>true,
       putStoryboardSnapshots:async rows=>{writes++;for(const row of rows)local.set(row.key,structuredClone(row));return {stored:rows.map(row=>row.key)};},
       getStoryboardSnapshots:async keys=>keys.map(key=>local.get(key)).filter(Boolean)}};
-  const c=vm.createContext(globals);vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
+  const c=vm.createContext({migrateGallerySnapshots,...globals});vm.runInContext(['storyboardRecordChatKey','storyboardSnapshotKey','storyboardSnapshotForRecord','storyboardReadSnapshotForRecord',
     'storyboardStoreSnapshotForRecord','storyboardArchiveGallerySnapshots'].map(section).join('\n'),c);
   return {c,local,get writes(){return writes;},get saves(){return saves;}};
 }
@@ -171,6 +172,15 @@ test('partial server success strips only confirmed rows and retries the remainin
   const b=entry(e);assert.equal(await b.c.storyboardArchiveGallerySnapshots(),2);assert.equal(b.local.size,2);assert.deepEqual(e.rows[0].snapshotServerRef,reference);
   assert.deepEqual(await fs.readFile(e.archive+'/'+reference.id+'.json'),first);
   assert.ok(e.rows.every(row=>!row.snapshot&&row.snapshotServerRef));assert.equal((await fs.readdir(e.archive)).filter(name=>name.endsWith('.json')).length,3);
+});
+
+test('actual two-batch migration refreshes the saved-gallery proof and a fresh client reads every durable recipe',async t=>{
+  const e=await recipeClientFixture(t),base=e.rows[0];e.rows=Array.from({length:10},(_,i)=>({...structuredClone(base),id:'batch-image-'+i,createdAt:i,snapshot:recipe('batch-'+i)}));
+  const expected=e.rows.map(row=>structuredClone(row.snapshot));await e.save();const a=entry(e);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),10);assert.equal(a.writes,2);assert.equal(a.saves,2);assert.equal(a.local.size,10);
+  assert.ok(e.rows.every(row=>!row.snapshot&&row.snapshotServerRef));const client=e.client();t.after(()=>client.close());
+  for(let i=0;i<e.rows.length;i++)assert.deepEqual((await client.read(e.rows[i])).snapshot,expected[i]);
+  const saved=JSON.parse((await fs.readFile(e.file,'utf8')).split('\n')[0]);assert.equal(saved.chat_metadata.story_director_liminale.storyboardImages.length,10);
 });
 
 test('batch deadline retains not-yet-confirmed recipes inline instead of caching and stripping them',async t=>{

@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const store = readFileSync(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../qianmu-gallery-snapshot-migration.js', import.meta.url), 'utf8');
 
 test('storyboard redraw snapshots use an additive private IndexedDB store', () => {
 assert.match(store, /const DB_VERSION = 15/);
@@ -25,15 +26,16 @@ test('snapshot writes are transactional and reads stay bounded', () => {
 test('inline snapshots win during migration and are stripped only after durable storage', () => {
   const reader=source.slice(source.indexOf('function storyboardSnapshotForRecord'),source.indexOf('async function storyboardStoreSnapshotForRecord'));
   assert.match(reader, /record\?\.snapshot/);assert.doesNotMatch(reader,/storyboardSnapshotCache\.get/);assert.match(reader,/readCurrentGalleryLocalRecipe/);
-  const archive = source.slice(source.indexOf('async function storyboardArchiveGallerySnapshots'), source.indexOf('async function storyboardDeleteRecordSnapshots'));
+  assert.match(source,/return await migrateGallerySnapshots\(records,/);
+  const archive = migration;
   const writeAt=archive.indexOf('await preserveCapturedSnapshotArchives');
   assert.ok(writeAt >= 0 && writeAt < archive.indexOf('delete item.record.snapshot'));
-  assert.match(archive, /const confirmed = captures\.filter\(item => references\.has\(item\.record\)\)/);
+  assert.match(archive, /await server\.preserve\(record\)[\s\S]*?confirmed\.push\(item\)/);
   assert.match(archive, /preserveCapturedSnapshotArchives\(confirmed,/);
-  assert.match(archive, /await saveMetadata\(\)[\s\S]*?await server\.guardIdentity\(\)/);
-  assert.match(archive, /item\.record\.snapshot !== item\.source/);
-  assert.match(archive, /await saveMetadata\(\)[\s\S]*?item\.record\.snapshot = item\.source/);
-  assert.match(archive, /epoch !== storyboardSnapshotEpoch/);
+  assert.match(archive, /await save\(\)[\s\S]*?await server\.guardIdentity\(\)/);
+  assert.match(archive, /item\.record\.snapshot!==item\.source/);
+  assert.match(archive, /await save\(\)[\s\S]*?item\.record\.snapshot=item\.source/);
+  assert.match(archive, /epoch!==readEpoch\(\)/);
 });
 
 test('redraw, edit, attach and export hydrate exact snapshots on demand', () => {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
 import {readFile} from 'node:fs/promises';
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -159,7 +160,7 @@ test('actual application glue coalesces lazy imports and respects typing/generat
 });
 
 test('actual entry completion schedules even an already stripped gallery, but never after epoch change',async()=>{
-  let scheduled=0;const context=vm.createContext({storyboardSnapshotArchiveBusy:0,storyboardSnapshotEpoch:1,storyboardGalleryRecords:()=>[],getChatKey:()=> 'chat',
+  let scheduled=0;const context=vm.createContext({migrateGallerySnapshots,storyboardSnapshotArchiveBusy:0,storyboardSnapshotEpoch:1,storyboardGalleryRecords:()=>[],getChatKey:()=> 'chat',
     storyboardScheduleGalleryPreservation:()=>scheduled++,blobStore:{blobStoreAvailable:()=>true}});
   vm.runInContext(section('storyboardArchiveGallerySnapshots'),context);assert.equal(await context.storyboardArchiveGallerySnapshots(),0);
   assert.equal(scheduled,1);assert.equal(context.storyboardSnapshotArchiveBusy,0);

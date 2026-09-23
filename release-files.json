@@ -7,6 +7,7 @@
     "qianmu-gallery-choice-picker.js",
     "qianmu-gallery-membership.js",
     "qianmu-gallery-package-collections.js",
+    "qianmu-gallery-snapshot-migration.js",
     "qianmu-gallery-taxonomy.js",
     "qianmu-gallery-inspector.js",
     "qianmu-gallery-narrative-inputs.js",
