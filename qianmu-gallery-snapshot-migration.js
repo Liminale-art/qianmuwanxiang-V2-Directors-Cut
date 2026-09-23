@@ -101,7 +101,7 @@ export async function migrateGallerySnapshots(records,{readRecords,readChatKey,r
           completed+=stripped.length;
         }finally{server?.close();}
       }
-      if(!stop&&now()<deadline)completed+=await releaseExternalGalleryRecipeFields(external,{gallery,chatKey,check,available,admit,connect,recordChatKey,recordKey,
+      if(!stop&&now()<deadline)completed+=await releaseExternalGalleryRecipeFields(external,{gallery,chatKey,epoch,check,available,admit,connect,recordChatKey,recordKey,
         put,save,projectRecipeRecord,onError,yieldWork,now,deadline,limits:GALLERY_SNAPSHOT_BATCH});
     }catch(error){onError(error);}
     return completed;

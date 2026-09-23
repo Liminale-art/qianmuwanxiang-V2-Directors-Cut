@@ -10,6 +10,7 @@ import {job as comfyJob,namespace} from './helpers/comfy-character-fixture.mjs';
 import {snapshot} from './helpers/character-shot-fixture.mjs';
 import {generateDirectImage} from '../qianmu-image-direct.js';
 import {generateImage} from '../qianmu-image-gateway.js';
+import {prepareGalleryRecipeFieldRelease} from '../qianmu-gallery-recipe-fields.js';
 const copy=structuredClone;
 const fields=row=>({name:row.name,...Object.fromEntries(['identity','outfit','temporaryState','expression','pose','action','gaze','props'].map(key=>[key,row[key].join('\n')])),negative:row.negative??row.archiveSnapshot?.negative??'',spatial:{region:row.spatial.region,crop:row.spatial.crop,x:row.spatial.center[0],y:row.spatial.center[1]}});
 
@@ -115,8 +116,9 @@ test('person display escapes markup, offers no fake Comfy negative input and nev
   assert.doesNotMatch(html,/<img|data-shot-character-field="negative"|alice.png/);assert.match(html,/&lt;img/);assert.match(html,/使用最新档案/);assert.match(html,/重建正面词/);
 });
 
-for(const choice of ['save','cancel','generate','changed'])test(`actual prompt editor -> person draft -> preview ${choice} preserves explicit save/generate boundary`,async()=>{
+for(const choice of ['save','cancel','generate','changed'])for(const released of [false,true])test(`actual prompt editor -> person draft -> preview ${choice} released=${released} preserves explicit save/generate boundary`,async()=>{
   const state=storyboard.createStoryboardDefaults(),original=snapshot(),record={id:'image',floor:0,prompt:original.payload.prompt,finalPrompt:original.payload.prompt,negative:original.payload.negative};
+  if(released){record.snapshot=original;record.shotSpec=copy(original.shotSpec);prepareGalleryRecipeFieldRelease(record,original,storyboard.storyboardRecipeRecordMetadata).apply();delete record.snapshot;assert.equal(record.shotSpec,undefined);}
   let saved=null,generated=0,round=0;const notices=[],draft=copy(original.shotSpec.characters);draft[0].action=['opens a door'];
   const updated=(await prepareCharacterShotEdit(original,draft,{namespace})).snapshot;
   const fields={'.sd-storyboard-edit-positive':{value:''},'.sd-storyboard-edit-negative':{value:''}};
@@ -130,4 +132,5 @@ for(const choice of ['save','cancel','generate','changed'])test(`actual prompt e
   assert.equal(Boolean(result),choice==='save'||choice==='generate');assert.equal(generated,choice==='generate'?1:0);
   if(choice==='save'||choice==='generate'){assert.deepEqual(saved.shotSpec.characters[0].action,['opens a door']);assert.equal(saved.payload.parameters.providerOptions.v4_prompt.caption.base_caption,saved.payload.prompt);}
   else assert.equal(saved,null);
+  if(released)assert.equal(record.shotSpec,undefined,'editing does not hydrate a hot duplicate');
 });

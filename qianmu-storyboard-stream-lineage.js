@@ -1,5 +1,5 @@
-import {normalizeStoryboardContinuationLinks,storyboardContinuationSignature as signature,storyboardContinuationSourceMatches} from './qianmu-storyboard-continuation-proof.js?v=1.59.325';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.325';
+import {normalizeStoryboardContinuationLinks,storyboardContinuationSignature as signature,storyboardContinuationSourceMatches} from './qianmu-storyboard-continuation-proof.js?v=1.59.326';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.326';
 const fail=()=>{throw Object.assign(new Error('续写任务的原始归属无法唯一核对，未新增自动生成'),{code:'storyboard_stream_lineage'});};
 
 // A bounded metadata-only candidate index. This is deliberately not source or

@@ -1,6 +1,6 @@
-import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.325';
-import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.325';
-import {resolveStoryboardProfileBinding} from './qianmu-storyboard.js?v=1.59.325';
+import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.326';
+import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.326';
+import {resolveStoryboardProfileBinding} from './qianmu-storyboard.js?v=1.59.326';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const key=route=>{

@@ -443,6 +443,53 @@ async function externalRecipeRows(e,count=1,size=60000){
     record.compiledPrompt=structuredClone(originals[i].compiledPrompt);record.compositionDecision=structuredClone(originals[i].compositionDecision);});
   await e.save();e.calls.length=0;return originals;
 }
+async function duplicateShotRow(e,externalMode){
+  const shot={id:'shot',characters:[{id:'a',name:'Original'}],future:{whole:'x'.repeat(26000),values:['',0,false,null]}};
+  e.rows[0].snapshot.shotSpec=structuredClone(shot);e.rows[0].shotSpec=structuredClone(shot);await e.save();
+  if(externalMode){const writer=e.client();try{e.rows[0].snapshotServerRef=(await writer.preserve(e.rows[0])).reference;}finally{writer.close();}
+    delete e.rows[0].snapshot;await e.save();e.calls.length=0;}
+  return shot;
+}
+for(const externalMode of [false,true])test(`shot-only duplicate release external=${externalMode} retains the complete original for the actual legacy consumer`,async t=>{
+  const e=await recipeClientFixture(t),shot=await duplicateShotRow(e,externalMode),a=entry(e);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(Object.hasOwn(e.rows[0],'shotSpec'),false);assert.equal(Object.hasOwn(e.rows[0],'snapshot'),false);
+  const before=structuredClone(e.rows),reader=a.c.storyboardVideoDraftShotReader({source:{recordId:e.rows[0].id}});
+  assert.deepEqual(await reader.read(),shot);assert.deepEqual(e.rows,before);assert.equal(a.saves,1);assert.equal(a.writes,1);
+  const calls=e.calls.length;assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.equal(e.calls.length,calls);
+});
+for(const externalMode of [false,true])test(`failed host save restores the complete shot duplicate external=${externalMode}, then retries`,async t=>{
+  const e=await recipeClientFixture(t);await duplicateShotRow(e,externalMode);const before=structuredClone(e.rows),a=entry(e);
+  a.c.saveMetadata=async()=>{throw Error('save failed');};assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows,before);
+  a.c.saveMetadata=()=>e.save();assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(e.rows[0].shotSpec,undefined);
+});
+test('unchanged unique remaining fields are inspected once without repeated server reads or host writes',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e);e.rows[0].compiledPrompt.onlyCopy=true;e.rows[0].compositionDecision.onlyCopy=true;await e.save();
+  const a=entry(e),before=structuredClone(e.rows);for(let i=0;i<3;i++)assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);
+  assert.equal(e.calls.length,1);assert.equal(a.saves,0);assert.equal(a.writes,0);assert.deepEqual(e.rows,before);
+});
+for(const mode of ['edit','replacement','epoch','reference'])test(`housekeeping memo rechecks changed ${mode} and never suppresses actual original reads`,async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e);const a=entry(e);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(e.calls.length,1);
+  if(mode==='edit')e.rows[0].shotSpec.onlyCopy='new';
+  if(mode==='replacement')e.rows[0]=structuredClone(e.rows[0]);
+  if(mode==='epoch')a.c.storyboardSnapshotEpoch++;
+  if(mode==='reference'){const writer=e.client(),old=await writer.read(e.rows[0]);old.snapshot.prompt='new original revision';e.rows[0].snapshot=old.snapshot;await e.save();writer.close();
+    const next=e.client();e.rows[0].snapshotServerRef=(await next.preserve(e.rows[0])).reference;next.close();delete e.rows[0].snapshot;}
+  await e.save();const calls=e.calls.length;assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.equal(e.calls.length,calls+1);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.equal(e.calls.length,calls+1);
+  const reader=await e.open();await reader.read(e.rows[0]);reader.close();assert.equal(e.calls.length,calls+2);
+});
+test('edits made during a successful host save are not marked inspected',async t=>{
+  const e=await recipeClientFixture(t),originals=await externalRecipeRows(e),a=entry(e);let saves=0;
+  a.c.saveMetadata=async()=>{if(++saves===1)e.rows[0].compiledPrompt=structuredClone(originals[0].compiledPrompt);await e.save();};
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.ok(e.rows[0].compiledPrompt);
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(e.rows[0].compiledPrompt,undefined);assert.equal(e.calls.length,2);
+});
+test('a failed server inspection is retried instead of entering the housekeeping memo',async t=>{
+  const e=await recipeClientFixture(t);await externalRecipeRows(e);let fail=true,reads=0;
+  const a=entry(e,{fetchImpl:(url,options)=>{if(url.endsWith('/read')){reads++;if(fail)return Promise.resolve(new Response('offline',{status:503}));}return e.fetch(url,options);}});
+  assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);fail=false;assert.equal(await a.c.storyboardArchiveGallerySnapshots(),1);assert.equal(reads,2);
+});
 test('actual external cleanup reads only selected server recipes in bounded batches and never rewrites original files',async t=>{
   const e=await recipeClientFixture(t),originals=await externalRecipeRows(e,10),refs=e.rows.map(row=>structuredClone(row.snapshotServerRef));
   const files=await Promise.all(refs.map(ref=>fs.readFile(e.archive+'/'+ref.id+'.json'))),a=entry(e);
@@ -462,7 +509,7 @@ test('external recipe batches obey immutable envelope byte sizes before fetching
 test('external cleanup skips local-only, unavailable, explicit null inline and already light records without networking',async t=>{
   const e=await recipeClientFixture(t);await externalRecipeRows(e,4);
   delete e.rows[0].snapshotServerRef;e.rows[0].snapshotRef='unscoped-old-cache';e.rows[1].recipeUnavailable=true;e.rows[2].snapshot=null;
-  delete e.rows[3].compiledPrompt;delete e.rows[3].compositionDecision;await e.save();const before=structuredClone(e.rows),a=entry(e);
+  delete e.rows[3].compiledPrompt;delete e.rows[3].compositionDecision;delete e.rows[3].shotSpec;await e.save();const before=structuredClone(e.rows),a=entry(e);
   assert.equal(await a.c.storyboardArchiveGallerySnapshots(),0);assert.deepEqual(e.rows,before);assert.equal(e.calls.length,0);assert.equal(a.writes,0);assert.equal(a.saves,0);
 });
 test('differing external copies are not silently discarded and do not cause no-op host writes',async t=>{

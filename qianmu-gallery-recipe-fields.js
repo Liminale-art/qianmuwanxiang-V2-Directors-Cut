@@ -15,7 +15,7 @@ function editable(record,external){
 
 // Not a storage receipt or deletion grant. Called ONLY after the caller has
 // confirmed the complete server recipe and immutable local copy, before host save.
-// shotSpec stays resident for legacy synchronous consumers; original files stay.
+// Consumers read original shots on demand; unmatched fields and original files stay.
 export function prepareGalleryRecipeFieldRelease(record,snapshot,metadata){
   return prepare(record,snapshot,metadata,false);
 }
@@ -36,7 +36,7 @@ function prepare(record,snapshot,metadata,external){
   editable(record,external);
   const project=()=>metadata(external?{...record,snapshot}:record);
   const original=project(),expected=text(original),candidate={...record};delete candidate.snapshot;
-  for(const name of ['compiledPrompt','compositionDecision']){
+  for(const name of ['compiledPrompt','compositionDecision','shotSpec']){
     const field=Object.getOwnPropertyDescriptor(record,name);
     if(field?.configurable&&field.writable&&object(field.value)&&Object.hasOwn(snapshot,name)
       &&text(field.value)===text(snapshot[name]))delete candidate[name];
@@ -50,7 +50,7 @@ function prepare(record,snapshot,metadata,external){
   if(text(metadata(candidate))!==expected)fail();
   galleryRecordFingerprintText(candidate);
   const changes=[];
-  for(const name of ['compiledPrompt','compositionDecision','productionContext','directorDecision']){
+  for(const name of ['compiledPrompt','compositionDecision','shotSpec','productionContext','directorDecision']){
     const before=Object.getOwnPropertyDescriptor(record,name),present=Object.hasOwn(candidate,name);
     if(present===Boolean(before)&&(!present||candidate[name]===before.value))continue;
     if(before&&!before.configurable||!before&&!Object.isExtensible(record))fail();

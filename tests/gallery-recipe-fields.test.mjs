@@ -11,9 +11,9 @@ function row(){const snapshot={source:'comfy',prompt:'original',profile:{},paylo
   compiledPrompt:{prompt:'完整提示',future:['',false,0,null,{unknown:'保留'}]},compositionDecision:{ratioId:'3:2',future:'keep'},shotSpec:{id:'shot',future:'legacy consumer'}};
   return {id:'image',createdAt:1,snapshot,compiledPrompt:structuredClone(snapshot.compiledPrompt),compositionDecision:structuredClone(snapshot.compositionDecision),shotSpec:structuredClone(snapshot.shotSpec),future:{keep:true}};}
 
-test('equal complete copies leave the hot record but stay complete in the original recipe; shotSpec stays resident',()=>{
-  const record=row(),source=record.snapshot,before=structuredClone(source),shot=record.shotSpec,plan=prepare(record,source,project);
-  plan.apply();assert.equal(record.compiledPrompt,undefined);assert.equal(record.compositionDecision,undefined);assert.equal(record.shotSpec,shot);
+test('equal complete copies including shotSpec leave the hot record but stay complete in the original recipe',()=>{
+  const record=row(),source=record.snapshot,before=structuredClone(source),plan=prepare(record,source,project);
+  plan.apply();assert.equal(record.compiledPrompt,undefined);assert.equal(record.compositionDecision,undefined);assert.equal(record.shotSpec,undefined);
   assert.deepEqual(source,before);assert.deepEqual(record.future,{keep:true});assert.equal(record.snapshot,source);
 });
 test('different or missing originals are not inferred from normalized, truncated or current values',()=>{
@@ -100,10 +100,37 @@ test('rollback does not overwrite newer duplicate fields or in-place edits to in
 });
 
 function external(){const record=row(),snapshot=record.snapshot;delete record.snapshot;record.snapshotServerRef={version:1,id:'caller-verified-reference'};return {record,snapshot};}
+test('shot release preserves long unknown fields in the source and only removes an exactly equal object',()=>{
+  for(const mode of ['equal','different','missing','payload-only','scalar']){
+    const record=row();record.shotSpec.future={whole:'完整'.repeat(26000),values:['',0,false,null]};record.snapshot.shotSpec=structuredClone(record.shotSpec);
+    if(mode==='different')record.shotSpec.onlyCopy=true;
+    if(mode==='missing')delete record.snapshot.shotSpec;
+    if(mode==='payload-only'){record.snapshot.payload.shotSpec=record.snapshot.shotSpec;delete record.snapshot.shotSpec;}
+    if(mode==='scalar')record.shotSpec=record.snapshot.shotSpec='legacy';
+    const source=structuredClone(record.snapshot),shot=record.shotSpec;prepare(record,record.snapshot,project).apply();
+    assert.equal(record.shotSpec,mode==='equal'?undefined:shot);assert.deepEqual(record.snapshot,source);
+  }
+});
+test('shot-only world provenance and complete director projection survive inline and external duplicate release',()=>{
+  for(const externalMode of [false,true]){
+    const record=row();record.shotSpec={production_context:production(),directorDecision:decision(),future:'完整原件'};
+    record.snapshot.shotSpec=structuredClone(record.shotSpec);const snapshot=record.snapshot,before=project(record),policy=storyboardProductionDeliveryPolicy(record,{target:'latest'});
+    if(externalMode){delete record.snapshot;record.snapshotServerRef={version:1,id:'caller-verified-reference'};}
+    (externalMode?prepareExternal:prepare)(record,snapshot,project).apply();delete record.snapshot;
+    assert.equal(record.shotSpec,undefined);assert.deepEqual(project(record),before);assert.deepEqual(storyboardProductionDeliveryPolicy(record,{target:'latest'}),policy);
+    assert.equal(snapshot.shotSpec.future,'完整原件');
+  }
+});
+test('shot rollback restores the exact prior descriptor but never overwrites a newer shot edit',()=>{
+  for(const newer of [false,true]){const {record,snapshot}=external(),old=Object.getOwnPropertyDescriptor(record,'shotSpec'),plan=prepareExternal(record,snapshot,project);
+    plan.apply();if(newer)record.shotSpec={newer:true};plan.rollback();
+    if(newer)assert.deepEqual(record.shotSpec,{newer:true});else assert.deepEqual(Object.getOwnPropertyDescriptor(record,'shotSpec'),old);
+  }
+});
 test('external release is explicit and retains the recipe, reference and absent-inline state',()=>{
   const {record,snapshot}=external(),before=structuredClone(snapshot),ref=record.snapshotServerRef,plan=prepareExternal(record,snapshot,project);
   assert.equal(plan.changed,true);plan.apply();assert.equal(Object.hasOwn(record,'snapshot'),false);assert.equal(record.compiledPrompt,undefined);
-  assert.equal(record.compositionDecision,undefined);assert.equal(record.snapshotServerRef,ref);assert.deepEqual(snapshot,before);assert.ok(record.shotSpec);
+  assert.equal(record.compositionDecision,undefined);assert.equal(record.snapshotServerRef,ref);assert.deepEqual(snapshot,before);assert.equal(record.shotSpec,undefined);
 });
 test('external recipe metadata repairs absent light provenance without inventing or overriding an existing field',()=>{
   const {record,snapshot}=external();delete record.shotSpec;snapshot.productionContext=production();snapshot.shotSpec={directorDecision:decision()};
@@ -114,7 +141,7 @@ test('external recipe metadata repairs absent light provenance without inventing
   const before=structuredClone(conflict.record);assert.throws(()=>prepareExternal(conflict.record,conflict.snapshot,project));assert.deepEqual(conflict.record,before);
 });
 test('external release is a no-op when neither a complete duplicate nor missing provenance can move',()=>{
-  const {record,snapshot}=external();record.compiledPrompt.onlyCopy=true;record.compositionDecision.onlyCopy=true;
+  const {record,snapshot}=external();record.compiledPrompt.onlyCopy=true;record.compositionDecision.onlyCopy=true;record.shotSpec.onlyCopy=true;
   const before=structuredClone(record),plan=prepareExternal(record,snapshot,project);assert.equal(plan.changed,false);plan.apply();assert.deepEqual(record,before);
 });
 test('external recipe cannot use inline, unavailable, unreferenced or changed source data',()=>{
