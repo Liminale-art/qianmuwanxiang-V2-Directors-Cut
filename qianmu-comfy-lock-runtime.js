@@ -158,10 +158,10 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
       const identity=()=>JSON.stringify([job.id,job.source,job.originalOnly,job.imageAdmission,job.connection,job.comfySceneOrigin]),captured=identity();
       const current=()=>valid()&&captured===identity()&&!closed;
       const evidence=await readComfySceneArchiveProof(proof,job);await guard(evidence.namespace,current);
-      const before=await store.inspect(evidence.scope);await guard(evidence.namespace,current);
+      const before=store.resultSnapshot?await store.resultSnapshot(evidence.scope,{guard:()=>guard(evidence.namespace,current)}):await store.inspect(evidence.scope);await guard(evidence.namespace,current);
       await readComfySceneArchiveProof(proof,job);await guard(evidence.namespace,current);
       const result=await store.confirmResult(evidence.scope,{attemptId:evidence.attemptId,lock:evidence.lock,
-        expectedRevision:before.revision,expectedGeneration:before.generation},{valid:current});
+        expectedRevision:before.revision,expectedGeneration:before.generation,...(before.heads?{expectedHeads:before.heads}:{})},{valid:current});
       // The same page may still hold an accepted original while its recovery UI archives it.
       // Do not let that old waiter later restore an uncertain holder or submit again.
       for(const claim of live)if(claim.namespace===evidence.namespace&&claim.receipt?.attemptId===evidence.attemptId
@@ -174,7 +174,7 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
       const result=store.review?await store.review(namespace,chatKey,{guard:()=>guard(namespace,valid)}):{native:false,rows:(await store.list(namespace,chatKey)).map(view=>({scope:view.scope,view,branches:[],heads:[],generation:view.generation,error:''}))};
       await guard(namespace,valid);return result;
     },
-    async synchronize(namespace,{valid=()=>true}={}){namespace=assertComfyRouteNamespace(namespace);await guard(namespace,valid);await store.synchronize?.(namespace,{guard:()=>guard(namespace,valid)});await guard(namespace,valid);},
+    async synchronize(namespace,{valid=()=>true}={}){namespace=assertComfyRouteNamespace(namespace);await guard(namespace,valid);const result=await store.synchronize?.(namespace,{guard:()=>guard(namespace,valid)});await guard(namespace,valid);return result;},
     async resolveSource(scope,request,{valid=()=>true}={}){
       scope=comfySceneScope(scope);const captured=structuredClone(request);await guard(scope.namespace,valid);if(!store.resolveSource)fail('review','当前存储不支持来源核对');
       const result=await store.resolveSource(scope,captured,{guard:()=>guard(scope.namespace,valid)});await guard(scope.namespace,valid);return result.view;
@@ -188,7 +188,7 @@ export function createComfySceneCoordinator({resolveNamespace,store=createComfyS
     async list(namespace,chatKey){namespace=assertComfyRouteNamespace(namespace);await guard(namespace);const rows=await store.list(namespace,chatKey);await guard(namespace);return rows;},
     async clearChat(namespace,chatKey,{valid=()=>true}={}){
       namespace=assertComfyRouteNamespace(namespace);await guard(namespace,valid);
-      const before=await store.usage(namespace);await guard(namespace,valid);
+      const before=store.chatUsage?await store.chatUsage(namespace,chatKey):await store.usage(namespace);await guard(namespace,valid);
       const result=await store.clearChat(namespace,chatKey,{expectedGeneration:before.generation});await guard(namespace,valid);return result;
     },
     async reconcile(scope,{valid=()=>true}={}){

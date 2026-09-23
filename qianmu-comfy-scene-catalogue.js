@@ -59,12 +59,19 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
         catch(error){await ctx.check();rows.push({scope:entry.scope,blocked:entry.blocked,branches:[],heads:sceneLeaves(entry).map(row=>row.digest),generation:ctx.index.generation,error:String(error?.message||'原件不可读取').slice(0,300)});}
       }return {rows,generation:ctx.index.generation};
     });},
-    all(namespace,options={}){return operation(namespace,options,async ctx=>{const rows=[];for(const entry of ctx.index.entries){const row=await ctx.resolve(entry.scope);if(row.record!==null)rows.push(row);}return {rows,generation:ctx.index.generation,indexBytes:ctx.exists?sceneBytes(ctx.index):0};});},
+    all(namespace,options={}){return operation(namespace,options,async ctx=>{const rows=[];for(const entry of ctx.index.entries.filter(entry=>options.chatKey===undefined||entry.scope.chatKey===options.chatKey)){const row=await ctx.resolve(entry.scope);if(row.record!==null)rows.push(row);}return {rows,generation:ctx.index.generation,indexBytes:ctx.exists?sceneBytes(ctx.index):0};});},
     publish(proposal,options={}){const input=structuredClone(proposal);validateSceneProposal(input);return operation(input.namespace,options,async ctx=>{
       const digests=await Promise.all(input.events.map(sceneHash)),already=input.events.every((event,i)=>ctx.find(ctx.index,event.scope)?.versions.some(v=>v.digest===digests[i]));
       if(already){for(const [i,event]of input.events.entries()){const entry=ctx.find(ctx.index,event.scope);await ctx.load(entry,entry.versions.find(v=>v.digest===digests[i]));}return true;}
       if(ctx.index.generation!==input.generation)scenePredecessorFail('续场清理代数已变化，未重放旧操作');const next=structuredClone(ctx.index);
-      for(const event of input.events){const reviewing=event.action.type==='resolve',state=reviewing?await ctx.review(event.scope):await ctx.resolve(event.scope);if(!sceneSame(state.heads,event.parents)||!sceneSame(reviewing?state.branches:state.record,event.before))scenePredecessorFail('续场原前序已变化，未覆盖另一端操作');if(event.action.type==='link'&&!sceneSame((await ctx.resolve(event.action.request.sourceScope)).record,event.source))scenePredecessorFail('续场关联来源已变化');}
+      const states=new Map();
+      for(const event of input.events){const key=comfySceneScopeKey(event.scope);if(!states.has(key))states.set(key,await ctx.review(event.scope));const state=states.get(key),branch=event.action.type==='branch_result';
+        if(branch){const original=state.branches.find(row=>row.digest===event.parents[0]);if(!sceneSame(state.heads,event.action.heads)||!original||!sceneSame(original.record,event.before))scenePredecessorFail('原任务分支前序已变化，未覆盖其他来源');}
+        else{const reviewing=event.action.type==='resolve';
+          if(!sceneSame(state.heads,event.parents)||!sceneSame(reviewing?state.branches:state.branches[0]?.record??null,event.before)||!reviewing&&(state.blocked||state.branches.some(row=>!sceneSame(row.record,event.before))))scenePredecessorFail('续场原前序已变化，未覆盖另一端操作');
+        }
+        if(event.action.type==='link'&&!sceneSame((await ctx.resolve(event.action.request.sourceScope)).record,event.source))scenePredecessorFail('续场关联来源已变化');
+      }
       for(const event of input.events){const previous=ctx.find(next,event.scope),entry=previous||{scope:event.scope,blocked:false,versions:[]};const meta=await ctx.preserve(event);entry.versions.push(meta);await validateSceneEventLink(event,entry,meta);if(event.action.type==='resolve')entry.blocked=false;if(!previous)next.entries.push(entry);}
       if(input.cleared){next.generation++;next.cleared=true;}await ctx.save(next);return true;
     });},

@@ -39,7 +39,9 @@ export async function mountComfySceneReview({host,manager,namespace,chatKey,curr
     return run(async()=>{
       if(action==='refresh')return refresh();
       if(action==='more'){shown+=40;return;}
-      if(action==='sync'){await manager.synchronize(namespace,{valid:current});await refresh();notify('续场记录已核对保存，未提交生图','success');return;}
+      if(action==='sync'){const result=await manager.synchronize(namespace,{valid:current});await refresh();
+        if(result?.errors?.length){error=`${result.errors.length} 个场景仍待核查：${result.errors[0].error}`;notify(error,'warning');}
+        else notify('续场记录已核对保存，未提交生图','success');return;}
       if(action==='journal'){const value=await manager.exportJournal(namespace,{valid:current});await guard();save('qianmu-comfy-local-journal.json',value);return;}
       if(action==='export'&&row){const value=await manager.exportScene(row.scope,{valid:current});await guard();save(`qianmu-comfy-scene-${row.scope.continuityId.slice(0,16)}.json`,value);return;}
       if(action==='choose'&&row){const branch=row.branches[Number(control.dataset.sceneBranch)];if(!branch)throw Error('所选来源已变化');

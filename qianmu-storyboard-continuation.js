@@ -1,9 +1,9 @@
 // Only an observed host "continue" may bridge reply generations. No text-only
 // guessing, changes to ST's timestamps/body, copied prose in metadata or HTTP.
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {normalizeStoryboardContinuationLinks,storyboardContinuationEndpoint as endpoint,storyboardContinuationSignature as signature,stageStoryboardContinuationLinks,storyboardContinuationSource,storyboardContinuationIdentityInput} from './qianmu-storyboard-continuation-proof.js?v=1.59.354';
-export {normalizeStoryboardContinuationLinks,storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.354';
-import {storyboardStreamGeneration,storyboardStreamDigest,storyboardStreamFingerprint} from './qianmu-storyboard-stream-reference.js?v=1.59.354';
+import {normalizeStoryboardContinuationLinks,storyboardContinuationEndpoint as endpoint,storyboardContinuationSignature as signature,stageStoryboardContinuationLinks,storyboardContinuationSource,storyboardContinuationIdentityInput} from './qianmu-storyboard-continuation-proof.js?v=1.59.355';
+export {normalizeStoryboardContinuationLinks,storyboardContinuationPath} from './qianmu-storyboard-continuation-proof.js?v=1.59.355';
+import {storyboardStreamGeneration,storyboardStreamDigest,storyboardStreamFingerprint} from './qianmu-storyboard-stream-reference.js?v=1.59.355';
 const handles=new WeakMap(),writers=new WeakMap();
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);

@@ -53,7 +53,7 @@ export function createComfySceneJournal({indexedDB=globalThis.indexedDB,dbName='
       if(captured.receipt){const receipt=normalizeComfySceneReceipt(captured.receipt);if(receipt.scope.namespace!==namespace)fail('续场票据账户不符');
         const key=receiptKey(receipt),existing=value.claims.find(row=>receiptKey(row.receipt)===key);
         if(captured.kind==='reserve'){if(!existing)value.claims.push({receipt,outcomes:[]});}
-        else if(['begin','settle'].includes(captured.kind)&&!existing)fail('此浏览器没有原任务的本机预留，未接受导入票据');
+        else if(['begin','settle','branch_result'].includes(captured.kind)&&!existing)fail('此浏览器没有原任务的本机预留，未接受导入票据');
       }
       value.pending={id:captured.id,proposal:captured};return value.pending;
     });},
