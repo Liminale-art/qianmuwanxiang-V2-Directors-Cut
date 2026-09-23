@@ -10,7 +10,7 @@ export const record=(i,text='原文'+i)=>createTextCollection({id:'collection-'+
   source:{account,chatId:'deleted-chat',messageId:i,replyId:'reply-'+i,charName:'CHAR',userName:'USER',text}});
 export const entry=record=>({id:record.id,revision:record.revision,updatedAt:record.updatedAt,deleted:false,record});
 const json=(value,status=200)=>new Response(typeof value==='string'?value:JSON.stringify(value),{status,headers:{'content-type':'application/json'}});
-export async function collectionIndexFixture(t,records=[record(1)]){
+export async function collectionIndexFixture(t,records=[record(1)],{version=2}={}){
   const files=new Map(),calls=[],clients=[];let owner=namespace,hook=null,lose=false;
   const fetchImpl=async(url,request={})=>{
     const {origin,pathname:path}=new URL(url);assert.equal(origin,'https://st.fixture.invalid');assert.equal(request.cache,'no-store');assert.equal(request.redirect,'error');
@@ -28,13 +28,13 @@ export async function collectionIndexFixture(t,records=[record(1)]){
   const config={resolveNamespace:async()=>owner,isCurrent:()=>true,headers:()=>({'X-CSRF-Token':'fixture'}),fetchImpl,origin:'https://st.fixture.invalid',cryptoImpl:webcrypto};
   configureStAccountStorage(config);const storage=await createConfiguredStAccountStorage();clients.push(storage);
   const originals=createTextCollectionOriginalStore({storage,expectedAccount:account}),descriptors=[];
-  for(const row of records)descriptors.push(await originals.preserve(entry(row)));
-  await storage.write('collections',{version:2,expectedAccount:account,revision:records.length,entries:descriptors,receipts:[]},{expectedFingerprint:null});
+  if(version===2)for(const row of records)descriptors.push(await originals.preserve(entry(row)));
+  await storage.write('collections',{version,expectedAccount:account,revision:records.length,entries:version===2?descriptors:records.map(entry),receipts:[]},{expectedFingerprint:null});
   const open=async()=>{const session=await createTextCollectionSession({...config,fetchImpl:undefined});clients.push(session);return session;};
   t.after(()=>clients.forEach(client=>client.close()));calls.length=0;
   return {files,calls,storage,originals,records,descriptors,open,async readIndex(){return storage.read('collections');},
     async writeIndex(value){const prior=await storage.read('collections');return storage.write('collections',value,{expectedFingerprint:prior.fingerprint});},
-    hook(value){hook=value;},setAccount(value){owner=value;},loseIndexAck(){lose=true;},
+    hook(value){hook=value;},setAccount(value){owner=value;},reconfigure(){configureStAccountStorage(config);},loseIndexAck(){lose=true;},
     reset(){calls.length=0;},get bodyReads(){return calls.filter(c=>c.request.method==='GET'&&c.path.includes('-collection-record-')).length;},
     get uploads(){return calls.filter(c=>c.request.method==='POST').length;}};
 }

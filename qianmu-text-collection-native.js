@@ -8,6 +8,7 @@ import {validateNativeCollectionDocument} from './qianmu-text-collection-documen
 import {createTextCollectionOriginalStore} from './qianmu-text-collection-original.js';
 import {queryIndexedCollection} from './qianmu-text-collection-index-query.js';
 import {writeIndexedCollection} from './qianmu-text-collection-index-write.js';
+import {requestCollectionMigration} from './qianmu-text-collection-migration-idle.js';
 
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)))),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -37,7 +38,8 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   const rejectAccount=cause=>{if(cause?.code==='st_account_storage_account'||!closed&&cause?.code==='text_collection_sync_account'){slot.revoked=true;invalidateReadCache();}throw cause;};
   const available=()=>Boolean(slot.cache&&!slot.writes&&readCacheMs>0&&now()>=slot.cache.at&&now()-slot.cache.at<30*60*1000);
   const cached=()=>available()&&now()-slot.cache.at<readCacheMs;
-  function remember(value,epoch,committed=false){const state=validate(value);if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0)slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now()}:null;return state;}
+  function considerMigration(state){if(state.version===1&&storageFactory===createConfiguredStAccountStorage)requestCollectionMigration({readScope,expectedAccount,slot});return state;}
+  function remember(value,epoch,committed=false){const state=validate(value);if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0)slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now()}:null;return considerMigration(state);}
   function validate(value){
     const state=validateNativeCollectionDocument(value,{expectedAccount,scope:storageScope});format=state.version;return state;
   }
@@ -62,7 +64,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
           let prior=null;try{prior=(await legacy.snapshot(options)).backup;}catch(cause){if(cause?.code!=='text_collection_sync_unavailable'||cause.upstreamStatus!==404)throw cause;}
           await check(options);
           if(prior)validateTextCollectionBackup(prior);
-          const initial={version:1,expectedAccount,revision:prior?.libraryRevision||0,entries:(prior?.records||[]).map(record=>({id:record.id,revision:record.revision,updatedAt:record.updatedAt,deleted:false,record})),receipts:[],migration:{source:'qianmu-backend-v1',checkedAt:now(),records:prior?.records.length||0}};
+          const initial={version:prior?.records.length?1:2,expectedAccount,revision:prior?.libraryRevision||0,entries:(prior?.records||[]).map(record=>({id:record.id,revision:record.revision,updatedAt:record.updatedAt,deleted:false,record})),receipts:[],migration:{source:'qianmu-backend-v1',checkedAt:now(),records:prior?.records.length||0}};
           current=await candidate.write('collections',validate(initial),{...options,expectedFingerprint:null,guard:candidateGuard});
         }
         await check(options);storageScope=candidate.scope;remember(current.value,epoch);storageGuard=candidateGuard;storage=candidate;return storage;
@@ -73,7 +75,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   async function read(options){
     try{
     if(options?.forceRefresh===true)invalidateReadCache();
-    await check(options);if(options?.revalidate!==true&&(cached()||options?.preferCache===true&&available()))return slot.cache.state;
+    await check(options);if(options?.revalidate!==true&&(cached()||options?.preferCache===true&&available()))return considerMigration(slot.cache.state);
     const epoch=slot.epoch,wasOpen=storage!==null,store=await open(options);
     await check(options);
     // Initial open has just verified this exact document; don't download it twice.

@@ -88,6 +88,8 @@
     "qianmu-text-collection-document.js",
     "qianmu-text-collection-index-query.js",
     "qianmu-text-collection-index-write.js",
+    "qianmu-text-collection-migration.js",
+    "qianmu-text-collection-migration-idle.js",
     "qianmu-notes-native-client.js",
     "qianmu-text-collection-autosave.js",
     "qianmu-text-collection-native.js",

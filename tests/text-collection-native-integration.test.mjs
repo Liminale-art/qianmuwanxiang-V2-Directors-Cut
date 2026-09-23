@@ -57,6 +57,8 @@ test('reconfiguring native storage rejects a cached read from the old client lif
 test('configured real session uses native ST files without an installed backend and new clients can read, edit and delete',async t=>{
     const f=fixture(t),first=await f.open();assert.equal(first.expectedAccount,account);
     assert.equal((await first.list()).total,0,'legacy 404 is not an installation requirement');
+    const initial=[...f.files.values()].map(body=>JSON.parse(body)).find(body=>body.schema==='qianmu.st-account-document.v1'&&body.slot==='collections');
+    assert.equal(initial.value.version,2,'actual native initialization uses the compact format without a migration or user setting');
     const original=record(),created=await first.prepareCreate(original).submit();assert.equal(created.revision,1);first.close();
     const second=await f.open();assert.deepEqual((await second.get(original.id)).record,original);
     const page=await second.list({cursor:null,limit:50});assert.equal(page.total,1);assert.equal(page.items[0].charName,'当时 CHAR');

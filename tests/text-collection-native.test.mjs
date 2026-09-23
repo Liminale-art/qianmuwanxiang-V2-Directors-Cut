@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {createNativeTextCollectionClient} from '../qianmu-text-collection-native.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 const account='st-user:'+'a'.repeat(64);
@@ -7,7 +8,11 @@ const item=(id,text='值得保存的厨房往事')=>createTextCollection({id,mod
 const mutation=(record,id='mutation-0001')=>({version:1,expectedAccount:account,mutationId:id,operation:'create',id:record.id,baseRevision:0,record});
 function fixture({records=[],legacyStatus=404}={}){
   let value=null,writes=0,reads=0,legacyReads=0,live=true;
-  const store={read:async()=>{reads++;return {exists:value!==null,value:structuredClone(value),fingerprint:value===null?null:'current'};},
+  const originals=new Map(),scope='f'.repeat(64);
+  const store={scope,read:async()=>{reads++;return {exists:value!==null,value:structuredClone(value),fingerprint:value===null?null:'current'};},
+    preserveImmutable:async(slot,original)=>{const text=JSON.stringify({schema:'qianmu.st-account-document.v1',scope,slot,value:original}),fingerprint=createHash('sha256').update(text).digest('hex'),reference={version:1,scope,slot,fingerprint,bytes:Buffer.byteLength(text)};
+      const result={exists:true,value:structuredClone(original),fingerprint,reference};originals.set(fingerprint,result);return structuredClone(result);},
+    readImmutable:async reference=>structuredClone(originals.get(reference.fingerprint)),
     write:async(_,next,options)=>{await options.guard();writes++;value=structuredClone(next);return {value:structuredClone(value)};},
     update:async(_,fn,options)=>{await options.guard();const next=fn(structuredClone(value));writes++;value=structuredClone(next);return {value:structuredClone(value)};},close(){}};
   const legacy={snapshot:async()=>{legacyReads++;if(!records.length)throw Object.assign(Error('legacy unavailable'),{code:'text_collection_sync_unavailable',upstreamStatus:legacyStatus});return {backup:{type:'qianmu-text-collections',version:1,sourceAccount:account,exportedAt:20,libraryRevision:records.length,records}};},close(){}};
@@ -20,11 +25,12 @@ test('native collection works without plugin backend and survives a separate lib
   const ack=await f.client.write(request);assert.equal(ack.revision,1);assert.deepEqual((await f.client.get(record.id)).record,record);
   assert.equal((await f.client.list({cursor:null,limit:50,search:'厨房'})).items[0].id,record.id);
   assert.equal((await f.client.snapshot()).backup.records.length,1);assert.equal((await f.client.inventory()).count,1);
-  assert.equal(f.state.version,1,'this compatibility release does not automatically convert old or newly initialized libraries');
+  assert.equal(f.state.version,2,'a verified empty new library starts with the compact format');
   assert.equal(f.counts.legacyReads,1);f.client.close();
 });
 test('legacy originals migrate with same identity and are never deleted or rewritten',async()=>{
   const record=item('collection-0001'),f=fixture({records:[record]});assert.deepEqual((await f.client.get(record.id)).record,record);
+  assert.equal(f.state.version,1,'nonempty legacy imports remain complete until background migration');
   assert.equal(f.state.migration.records,1);assert.equal(f.counts.legacyReads,1);assert.equal((await f.client.list()).total,1);f.client.close();
 });
 test('only a real legacy 404 is absence; unsupported or failed legacy service never creates an empty replacement',async()=>{
