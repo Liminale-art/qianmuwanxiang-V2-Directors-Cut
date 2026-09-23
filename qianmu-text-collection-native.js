@@ -2,8 +2,12 @@ import {createConfiguredStAccountStorage,getStAccountStorageReadScope} from './q
 import {createTextCollectionClient} from './qianmu-text-collection-client.js';
 import {textCollectionPreview} from './qianmu-text-collection.js';
 import {validateTextCollectionBackup} from './qianmu-text-collection-backup.js';
-import {TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncError as error,textCollectionSyncEntry,textCollectionSyncMutation,textCollectionSyncQuery,textCollectionSyncResponse,applyTextCollectionMutation} from './qianmu-text-collection-sync-contract.js';
+import {TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncError as error,textCollectionSyncMutation,textCollectionSyncQuery,textCollectionSyncResponse,applyTextCollectionMutation} from './qianmu-text-collection-sync-contract.js';
 import {TEXT_COLLECTION_BULK_LIMITS,textCollectionBulkRequest,textCollectionBulkResponse,textCollectionBulkInfoResponse,textCollectionCleanupPlanResponse} from './qianmu-text-collection-bulk-contract.js';
+import {validateNativeCollectionDocument} from './qianmu-text-collection-document.js';
+import {createTextCollectionOriginalStore} from './qianmu-text-collection-original.js';
+import {queryIndexedCollection} from './qianmu-text-collection-index-query.js';
+import {writeIndexedCollection} from './qianmu-text-collection-index-write.js';
 
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)))),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -22,7 +26,7 @@ function readSlot(scope,account){
 // The response shape is shared with the UI; the capability is explicitly weaker.
 export function createNativeTextCollectionClient({expectedAccount,guard,isCurrent,headers,storageFactory=createConfiguredStAccountStorage,legacyFactory=createTextCollectionClient,now=Date.now,readCacheMs=15000,readScope=storageFactory===createConfiguredStAccountStorage?getStAccountStorageReadScope():null}={}) {
   if(!Number.isFinite(readCacheMs)||readCacheMs<0||readCacheMs>30000)throw error('setup','收藏读取缓存配置无效',503);
-  let closed=false,opening=null,storage=null,storageGuard;const slot=readSlot(readScope,expectedAccount),legacy=legacyFactory({expectedAccount,guard,headers});
+  let closed=false,opening=null,storage=null,storageGuard,storageScope,format=1;const slot=readSlot(readScope,expectedAccount),legacy=legacyFactory({expectedAccount,guard,headers});
   const check=async(options)=>{
     if(options?.signal?.aborted)throw error('cancelled','收藏读取已取消');
     const sameScope=()=>storageFactory!==createConfiguredStAccountStorage||readScope===getStAccountStorageReadScope();
@@ -35,13 +39,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   const cached=()=>available()&&now()-slot.cache.at<readCacheMs;
   function remember(value,epoch,committed=false){const state=validate(value);if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0)slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now()}:null;return state;}
   function validate(value){
-    if(!value||value.version!==1||value.expectedAccount!==expectedAccount||!Number.isSafeInteger(value.revision)||value.revision<0||value.revision>limits.mutations||!Array.isArray(value.entries)||value.entries.length>limits.records||!Array.isArray(value.receipts)||value.receipts.length>limits.mutations)throw error('corrupt','收藏资料校验失败，原件未覆盖',503);
-    const ids=new Set();for(const entry of value.entries){textCollectionSyncEntry(entry,expectedAccount);if(ids.has(entry.id)||entry.revision>value.revision)throw error('corrupt','收藏编号或版本不一致',503);ids.add(entry.id);}
-    const receipts=new Set();for(const row of value.receipts){if(!row||Object.keys(row).sort().join(',')!=='expectedAccount,hash,id,libraryRevision,mutationId,ok,revision,updatedAt,version'||row.ok!==true||row.version!==1
-      ||!/^[A-Za-z0-9_-]{8,120}$/.test(row.mutationId)||!/^[A-Za-z0-9_-]{8,120}$/.test(row.id)||!ids.has(row.id)
-      ||!Number.isSafeInteger(row.revision)||row.revision<1||!Number.isSafeInteger(row.libraryRevision)||row.libraryRevision<row.revision||!Number.isSafeInteger(row.updatedAt)||row.updatedAt<0||row.updatedAt>253402214400000
-      ||typeof row.hash!=='string'||!/^[a-f0-9]{64}$/.test(row.hash)||receipts.has(row.mutationId)||row.libraryRevision>value.revision||row.expectedAccount!==expectedAccount)throw error('corrupt','收藏保存凭据不一致',503);receipts.add(row.mutationId);}
-    if(bytes(value)>limits.bytes)throw error('capacity','收藏超过当前储存容量，未截断原文',507);return value;
+    const state=validateNativeCollectionDocument(value,{expectedAccount,scope:storageScope});format=state.version;return state;
   }
   async function open(options){
     await check(options);if(storage)return storage;if(opening)return opening;
@@ -67,7 +65,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
           const initial={version:1,expectedAccount,revision:prior?.libraryRevision||0,entries:(prior?.records||[]).map(record=>({id:record.id,revision:record.revision,updatedAt:record.updatedAt,deleted:false,record})),receipts:[],migration:{source:'qianmu-backend-v1',checkedAt:now(),records:prior?.records.length||0}};
           current=await candidate.write('collections',validate(initial),{...options,expectedFingerprint:null,guard:candidateGuard});
         }
-        await check(options);remember(current.value,epoch);storageGuard=candidateGuard;storage=candidate;return storage;
+        await check(options);storageScope=candidate.scope;remember(current.value,epoch);storageGuard=candidateGuard;storage=candidate;return storage;
       }catch(cause){candidate.close();throw cause;}
     })();try{return await opening;}finally{opening=null;}
   }
@@ -92,8 +90,9 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     invalidateReadCache();slot.writes++;
     try{
     const hashes=await Promise.all(inputs.map(hash)),store=await open(options);let acknowledgements;
-    const verified=await store.update('collections',value=>{
-      const state=validate(value),next=structuredClone(state),acks=[];
+    const legacyWrite=()=>store.update('collections',value=>{
+      const state=validate(value);if(state.version===2)throw error('layout','收藏已使用轻目录');
+      const next=structuredClone(state),acks=[];
       for(let index=0;index<inputs.length;index++){
         const input=inputs[index],fingerprint=hashes[index],prior=next.receipts.find(row=>row.mutationId===input.mutationId);
         if(prior){if(prior.hash!==fingerprint)throw error('mutation_conflict','收藏操作编号已对应其他内容');const {hash:ignored,...ack}=prior;acks.push(ack);continue;}
@@ -103,13 +102,30 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
         const ack={...base(next),mutationId:input.mutationId,id:entry.id,revision:entry.revision,updatedAt:entry.updatedAt};next.receipts.push({...ack,hash:fingerprint});acks.push(ack);
       }
       acknowledgements={...base(next),results:acks};return validate(next);
-    },{...options,guard:storageGuard});await check(options);remember(verified.value,++slot.epoch,true);return acknowledgements;
+    },{...options,guard:storageGuard});
+    const indexedWrite=async()=>{const result=await writeIndexedCollection({store,expectedAccount,inputs,hashes,validate,check:()=>check(options),now,options:{...options,guard:storageGuard}});
+      acknowledgements=result.acknowledgements;return result.verified;};
+    let verified;
+    if(format===2)verified=await indexedWrite();
+    else try{verified=await legacyWrite();}catch(cause){if(cause?.code!=='text_collection_sync_layout')throw cause;verified=await indexedWrite();}
+    await check(options);remember(verified.value,++slot.epoch,true);return acknowledgements;
     }catch(cause){invalidateReadCache();return rejectAccount(cause);}finally{slot.writes--;}
   }
   async function query(method,input={},options){
     input=structuredClone(input);
     const request={version:1,expectedAccount,...input};if(!['batch-info','cleanup-plan'].includes(method))textCollectionSyncQuery(request,method);
     const state=await read(['list','get'].includes(method)?options:{...options,forceRefresh:true}),common=base(state),remainingRecords=limits.records-state.entries.length,remainingMutations=limits.mutations-state.revision;let response;
+    if(state.version===2&&['list','get','inventory','snapshot'].includes(method)){
+      const epoch=slot.epoch;
+      const current=async()=>{await check(options);if(epoch!==slot.epoch)throw error('changed','收藏目录已变化，未采用旧原件');};
+      try{
+        let originals;
+        const readEntry=async row=>{await current();if(!originals)originals=createTextCollectionOriginalStore({storage:await open(options),expectedAccount});
+          await current();const entry=await originals.read(row,{...options,guard:storageGuard});await current();return entry;};
+        response=await queryIndexedCollection(state,method,input,{common,expectedAccount,now,readEntry,check:current});
+        await current();return textCollectionSyncResponse(response,method,request);
+      }catch(cause){return rejectAccount(cause);}
+    }
     if(method==='get')response={...common,record:state.entries.find(row=>row.id===input.id&&!row.deleted)?.record||null};
     else if(method==='snapshot')response={...common,backup:validateTextCollectionBackup({type:'qianmu-text-collections',version:1,sourceAccount:expectedAccount,exportedAt:now(),libraryRevision:state.revision,records:state.entries.filter(row=>!row.deleted).map(row=>row.record)})};
     else if(method==='inventory'){const live=state.entries.filter(row=>!row.deleted);response={...common,state:'present',count:live.length,deletedCount:state.entries.length-live.length,bytes:bytes(state),textBytes:live.reduce((sum,row)=>sum+new TextEncoder().encode(row.record.text).byteLength,0)};}

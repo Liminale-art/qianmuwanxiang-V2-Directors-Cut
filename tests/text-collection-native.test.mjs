@@ -20,6 +20,7 @@ test('native collection works without plugin backend and survives a separate lib
   const ack=await f.client.write(request);assert.equal(ack.revision,1);assert.deepEqual((await f.client.get(record.id)).record,record);
   assert.equal((await f.client.list({cursor:null,limit:50,search:'厨房'})).items[0].id,record.id);
   assert.equal((await f.client.snapshot()).backup.records.length,1);assert.equal((await f.client.inventory()).count,1);
+  assert.equal(f.state.version,1,'this compatibility release does not automatically convert old or newly initialized libraries');
   assert.equal(f.counts.legacyReads,1);f.client.close();
 });
 test('legacy originals migrate with same identity and are never deleted or rewritten',async()=>{
