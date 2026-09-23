@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {chatCharacterReceiptError} from './qianmu-chat-character-receipt.js';
 import {chatGalleryReceiptRecordText,CHAT_GALLERY_RECEIPT_LIMITS,CHAT_GALLERY_STREAM_LIMITS} from './qianmu-chat-gallery-receipt.js';
 import {CHAT_GALLERY_SUPPLEMENT_LIMITS} from './qianmu-chat-gallery-supplement.js';
-import {GALLERY_SUPPLEMENT_FIELDS} from './qianmu-gallery-continuity.js?v=1.59.350';
+import {GALLERY_SUPPLEMENT_FIELDS} from './qianmu-gallery-continuity.js?v=1.59.351';
 
 // Only the saved JSONL header is scanned. Unrelated metadata is validated but
 // never accumulated. One record is materialized at a time; the result retains

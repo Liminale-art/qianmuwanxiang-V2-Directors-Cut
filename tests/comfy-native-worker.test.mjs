@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {createComfyWorkflowStore} from '../qianmu-comfy-library.js';
+import {createComfyPoolStore} from '../qianmu-comfy-pool-store.js';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
 import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {comfyLibraryIdbFixture} from './helpers/comfy-library-idb-fixture.mjs';
+import {poolNativeFixture} from './helpers/comfy-pool-native-fixture.mjs';
 const origin='https://st.fixture.invalid',context={namespace,origin,csrf:'synthetic'};
 function property(t,key,value){const prior=Object.getOwnPropertyDescriptor(globalThis,key);Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});t.after(()=>{if(prior)Object.defineProperty(globalThis,key,prior);else delete globalThis[key];});}
 function installWorker(t){
@@ -47,4 +49,20 @@ for(const restore of [false,true])test(`actual bundle ${restore?'restore':'captu
   const payload={namespace,chatKey:'chat',file:new Blob(),csrf:'synthetic',nativeCharacters:context};f.reset();
   await handler({data:restore?{id:'test',operation:1,type:'command',action:'open',payload}:{action:'capture',...payload}});
   assert.ok(workflow);assert.ok(!posts.some(row=>row.error||row.type==='error'));assert.ok(!f.calls.some(row=>row.request.method==='POST'));workflow.close();
+});
+
+test('real storage Worker returns both native workflow and candidate summaries without original reads or uploads',async t=>{
+  const f=await poolNativeFixture(t),store=f.openPool();await store.save(namespace,{name:'Candidates',pool:f.pool});f.configureDefaults();t.mock.method(globalThis,'fetch',f.fetchImpl);const Worker=installWorker(t);f.reset();
+  const summary=await runRestoreStorage('comfy',{namespace,guard:async()=>{},WorkerClass:Worker});assert.deepEqual(Worker.last.sent[0].nativeComfy,context);assert.equal(summary.workflows.count,1);assert.equal(summary.pools.count,1);assert.equal(summary.pools.versions,1);assert.equal(summary.scenes.status,'unavailable');assert.equal(Worker.last.closed,true);
+  assert.equal(f.uploads,0);assert.ok(!f.calls.some(row=>/-comfy-(?:workflow|pool)-version-/.test(row.path)));
+});
+
+for(const restore of [false,true])test(`actual bundle ${restore?'restore':'capture'} worker candidate factory preserves exact pool references on ST`,async t=>{
+  const f=await poolNativeFixture(t),store=f.openPool(),head=await store.save(namespace,{name:'Candidates',pool:f.pool}),expected=await store.load(namespace,head.id,head.revision);f.configureDefaults();t.mock.method(globalThis,'fetch',f.fetchImpl);
+  const filename=restore?'qianmu-storyboard-bundle-restore-worker.js':'qianmu-storyboard-bundle-worker.js',source=(await readFile(new URL('../'+filename,import.meta.url),'utf8')).replace(/^import[^\n]*\n/gm,'');let handler,pools;const posts=[];
+  const self={location:{origin},addEventListener:(_,fn)=>handler=fn,postMessage:value=>{posts.push(value);if(value.guard)queueMicrotask(()=>handler({data:{guard:value.guard}}));if(value.kind==='guard')queueMicrotask(()=>handler({data:{type:'rpc',id:value.id,operation:value.operation,request:value.request,result:true}}));},close(){}};
+  const stub=()=>({close(){}}),process=async options=>{pools=options.poolStore;assert.equal(pools.persistence,'st-account-file');assert.equal((await pools.list(namespace))[0].revision,head.revision);assert.deepEqual(await pools.load(namespace,head.id,head.revision),expected);assert.equal((await pools.backup(namespace)).pools[0].versions.length,1);return {sourceDigest:'a'.repeat(64),close(){}};};
+  vm.runInNewContext(source,{self,characterWorkerStorageOptions,createComfyPoolStore:options=>createComfyPoolStore({...options,indexedDB:f.poolLocal.indexedDB,keyRange:f.poolLocal.keyRange}),createComfyWorkflowStore:stub,createCharacterArchiveStore:stub,createVibeAssetStore:stub,createStoryboardPackageJournal:stub,createBundleCarrierStore:stub,createStoryboardPackageStage:stub,createImageRestoreClient:stub,createSourceIdentityClient:stub,captureStoryboardResourceBundle:process,createStoryboardBundleRestoreSession:process});
+  const payload={namespace,chatKey:'chat',file:new Blob(),csrf:'synthetic',nativeCharacters:context};f.reset();await handler({data:restore?{id:'test',operation:1,type:'command',action:'open',payload}:{action:'capture',...payload}});
+  assert.ok(pools);assert.ok(!posts.some(row=>row.error||row.type==='error'));assert.equal(f.uploads,0);pools.close();
 });

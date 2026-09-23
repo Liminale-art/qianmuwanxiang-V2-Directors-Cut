@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import {createLocalComfyWorkflowStore} from '../../qianmu-comfy-library.js';
 import {unpackComfyLibraryRecord} from '../../qianmu-comfy-library-backup.js';
+import {createLocalComfyPoolStore} from '../../qianmu-comfy-pool-store.js';
+import {unpackComfyPoolRecord} from '../../qianmu-comfy-pool-backup.js';
 
 // Bounded three-table protocol double, not browser acceptance. Production
 // save/backup/census methods execute, with serialized atomic transactions.
-export function comfyLibraryIdbFixture(packet){
-  const records=packet?.workflows.map(row=>unpackComfyLibraryRecord(packet.namespace,row))||[];
-  const state={tables:{workflows:records.map(row=>row.head),revisions:records.flatMap(row=>row.versions.map(v=>v.meta)),documents:records.flatMap(row=>row.versions.map(v=>v.document))},transactions:[],reads:[],writes:[],failOpen:false,beforeTransaction:null};
+export function comfyLibraryIdbFixture(packet,{kind='workflow'}={}){
+  const pool=kind==='pool',records=packet?.[pool?'pools':'workflows'].map(row=>(pool?unpackComfyPoolRecord:unpackComfyLibraryRecord)(packet.namespace,row))||[];
+  const state={tables:{[pool?'heads':'workflows']:records.map(row=>row.head),[pool?'versions':'revisions']:records.flatMap(row=>row.versions.map(v=>v.meta)),documents:records.flatMap(row=>row.versions.map(v=>v.document))},transactions:[],reads:[],writes:[],failOpen:false,beforeTransaction:null};
   const keyRange={only:value=>({only:value}),bound:(lower,upper)=>({lower,upper})},matches=(value,range)=>range===undefined||('only'in range?value===range.only:value>=range.lower&&value<=range.upper);
   const pending=[];let running=false;
   const drain=()=>{if(running||!pending.length)return;running=true;queueMicrotask(()=>pending.shift()(()=>{running=false;drain();}));};
@@ -25,5 +27,6 @@ export function comfyLibraryIdbFixture(packet){
         add:value=>write('add',structuredClone(value)),put:value=>write('put',structuredClone(value)),index:index=>({getAll:(range,limit)=>ask(name,'index',()=>all(range,limit,index))})};};
     pending.push(done=>{finish=done;if(ended){done();return;}state.beforeTransaction?.({names,mode});tables=structuredClone(state.tables);state.transactions.push({names:[...names],mode});started=true;schedule();});drain();return tx;
   }};request.onsuccess?.();});return request;}};
-  return {state,indexedDB,keyRange,open:options=>createLocalComfyWorkflowStore({indexedDB,keyRange,now:()=>10,...options})};
+  return {state,indexedDB,keyRange,open:options=>(pool?createLocalComfyPoolStore:createLocalComfyWorkflowStore)({indexedDB,keyRange,now:()=>10,...options})};
 }
+export const comfyPoolIdbFixture=packet=>comfyLibraryIdbFixture(packet,{kind:'pool'});

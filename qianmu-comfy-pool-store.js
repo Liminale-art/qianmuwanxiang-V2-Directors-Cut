@@ -1,6 +1,8 @@
 // Lazy, account-scoped selection configuration. No workflow graphs, media, credentials or execution permissions.
 import { normalizeComfyAutoPool } from './qianmu-comfy-selection.js';
 import { assertComfyRouteNamespace } from './qianmu-comfy-route-contract.js';
+import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {createNativeComfyPoolStore} from './qianmu-comfy-pool-native-store.js';
 
 export const COMFY_POOL_DOCUMENT_SCHEMA = 'qianmu.comfy.pool-document.v1';
 export const COMFY_POOL_LIMITS = Object.freeze({ plans: 32, versions: 64, documentBytes: 256 * 1024, totalBytes: 16 * 1024 * 1024 });
@@ -40,7 +42,12 @@ export function importComfyPoolDocument(contents, namespace) {
   return { name: value.name, pool: value.pool, requiresReview: true, disabledImportedChoices: wasEnabled };
 }
 
-export function createComfyPoolStore({ indexedDB = globalThis.indexedDB, keyRange = globalThis.IDBKeyRange,
+export function createComfyPoolStore(options={}){
+  const {native,...local}=options,legacy=createLocalComfyPoolStore(local);
+  if(native===false||native===undefined&&(Object.hasOwn(options,'indexedDB')||Object.hasOwn(options,'dbName')||!isStAccountStorageConfigured()))return legacy;
+  return createNativeComfyPoolStore({...local,legacy,...(native&&typeof native==='object'?native:{})});
+}
+export function createLocalComfyPoolStore({ indexedDB = globalThis.indexedDB, keyRange = globalThis.IDBKeyRange,
   dbName = 'qianmu-comfy-pools', timeoutMs = 6000, maxBytes = COMFY_POOL_LIMITS.totalBytes, now = Date.now } = {}) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > COMFY_POOL_LIMITS.totalBytes) fail('capacity', '候选方案仓容量配置无效');
   const stores = ['heads', 'versions', 'documents'], timeout = Math.max(100, Math.min(15000, Number(timeoutMs) || 6000));
@@ -141,6 +148,9 @@ export function createComfyPoolStore({ indexedDB = globalThis.indexedDB, keyRang
     }, isCurrent);
   }
   return Object.freeze({
+    async census(namespace,{isCurrent=()=>true}={}){account(namespace);const {readComfyLibraryCensus}=await import('./qianmu-comfy-storage-accounting.js');
+      return operation(stores,'readonly',(tx,read,set)=>readComfyLibraryCensus(tx,read,set,keyRange,'pools',namespace),isCurrent);
+    },
     async backup(namespace, { isCurrent = () => true } = {}) {
       const codec = await import('./qianmu-comfy-pool-backup.js'), records = await snapshot(namespace, isCurrent);
       const value = codec.packComfyPoolRecords(namespace, records); if (isCurrent() !== true) fail('changed', '候选方案备份页面已变化'); return value;

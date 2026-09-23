@@ -374,6 +374,8 @@
     "qianmu-comfy-native-contract.js",
     "qianmu-comfy-native-store.js",
     "qianmu-comfy-native-migration.js",
+    "qianmu-comfy-pool-native-contract.js",
+    "qianmu-comfy-pool-native-store.js",
     "qianmu-comfy-pool-backup.js",
     "qianmu-comfy-resource-backup.js",
     "qianmu-character-library-backup.js",

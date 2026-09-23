@@ -29,7 +29,8 @@ async function readPool({namespace,selection,guard=async()=>{},createStore=creat
   namespace=assertComfyRouteNamespace(namespace);selection=normalizeComfyRouteSelection(selection);
   await guard();const store=createStore();
   try {
-    const [heads,versions,value]=await Promise.all([store.list(namespace),store.versions(namespace,selection.id),store.load(namespace,selection.id,selection.revision)]);await guard();
+    const snapshot=store.readVersion?await store.readVersion(namespace,selection.id,selection.revision,{guard}):null;
+    const [heads,versions,value]=snapshot?[[snapshot.head].filter(Boolean),[snapshot.version].filter(Boolean),snapshot.value]:await Promise.all([store.list(namespace),store.versions(namespace,selection.id),store.load(namespace,selection.id,selection.revision)]);await guard();
     const active=rows=>rows.some(row=>row.namespace===namespace && row.id===selection.id && row.archived===false);
     const version=versions.find(row=>row.namespace===namespace && row.id===selection.id && row.revision===selection.revision && row.version===selection.version);
     if(!active(heads)||!version||!value||value.id!==selection.id||value.revision!==selection.revision||value.version!==selection.version) fail('所选候选方案版本已不存在或已归档，请重新选择');

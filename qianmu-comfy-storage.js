@@ -3,7 +3,7 @@ import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
 import {validateComfyStorageSummary} from './qianmu-comfy-storage-accounting.js';
 const factories={
   workflows:async options=> (await import('./qianmu-comfy-library.js')).createComfyWorkflowStore(options),
-  pools:async()=> (await import('./qianmu-comfy-pool-store.js')).createComfyPoolStore(),
+  pools:async options=> (await import('./qianmu-comfy-pool-store.js')).createComfyPoolStore(options),
   scenes:async()=> (await import('./qianmu-comfy-lock-store.js')).createComfySceneLockStore(),
 };
 const labels={workflows:'Comfy 工作流库',pools:'Comfy 候选方案',scenes:'Comfy 续场记录'};
@@ -20,7 +20,7 @@ export async function inspectComfyStorage({namespace,guard=async()=>{},native,cr
   for(const key of Object.keys(factories)){
     let store;
     try{
-      await guard();store=await createStores[key](key==='workflows'&&native!==undefined?{native}:undefined);await guard();const summary=await store.storageSummary(namespace,{guard});await guard();rows.push([key,summary]);
+      await guard();store=await createStores[key](key!=='scenes'&&native!==undefined?{native}:undefined);await guard();const summary=await store.storageSummary(namespace,{guard});await guard();rows.push([key,summary]);
     }catch(error){rows.push([key,{status:'unavailable',bytes:null,count:null,error:(labels[key]+'：'+String(error?.message||'暂不可读取')).slice(0,512)}]);}
     finally{store?.close();}
   }

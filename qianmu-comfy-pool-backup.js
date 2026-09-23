@@ -23,6 +23,16 @@ function metadata(value) {
     || !integer(value.bytes, 1, COMFY_POOL_LIMITS.documentBytes) || !integer(value.totalBytes, value.bytes, COMFY_POOL_LIMITS.totalBytes)
     || !integer(value.candidateCount, 0, 32) || typeof value.enabled !== 'boolean' || typeof value.styleLock !== 'boolean') fail('候选方案版本索引无效');
 }
+export {metadata as validateComfyPoolMetadata};
+export function validateComfyPoolVersion(version,namespace){
+  only(version,['meta','pool']);metadata(version.meta);const meta=version.meta;let pool;
+  if(meta.archived!==false)fail('候选方案历史不能携带归档状态');
+  try{pool=normalizeComfyAutoPool(version.pool);}catch(_){fail('候选方案原文无效，请保留原件核对');}
+  if(!equal(pool,version.pool))fail('候选方案含无法无损保留的字段，未改写原文');
+  if(pool.namespace!==namespace||pool.id!==meta.id||pool.revision!==meta.revision||meta.bytes!==size(pool)
+    ||meta.candidateCount!==pool.candidates.length||meta.enabled!==pool.enabled||meta.styleLock!==pool.styleLock)fail('候选方案索引与原文不符');
+  return pool;
+}
 
 export function validateComfyPoolBackup(value) {
   only(value, ['schema', 'namespace', 'credentialsIncluded', 'pools']);
@@ -39,11 +49,7 @@ export function validateComfyPoolBackup(value) {
       if (meta.id !== row.head.id || meta.version !== i + 1 || revisions.has(meta.revision) || meta.archived !== false
         || meta.createdAt !== row.head.createdAt || meta.updatedAt < updatedAt) fail('候选方案历史顺序或归属不符');
       revisions.add(meta.revision); updatedAt = meta.updatedAt;
-      let pool; try { pool = normalizeComfyAutoPool(version.pool); } catch (_) { fail('候选方案原文无效，请保留原件核对'); }
-      if (!equal(pool, version.pool)) fail('候选方案含无法无损保留的字段，未改写原文');
-      const documentBytes = size(pool); sum += documentBytes;
-      if (pool.namespace !== value.namespace || pool.id !== meta.id || pool.revision !== meta.revision || meta.bytes !== documentBytes || meta.totalBytes !== sum
-        || meta.candidateCount !== pool.candidates.length || meta.enabled !== pool.enabled || meta.styleLock !== pool.styleLock) fail('候选方案索引与原文不符');
+      validateComfyPoolVersion(version,value.namespace);sum+=meta.bytes;if(meta.totalBytes!==sum)fail('候选方案索引与原文不符');
     }
     const tail = row.versions.at(-1).meta;
     if (row.head.updatedAt < tail.updatedAt || !equal(row.head, { ...tail, archived: row.head.archived, updatedAt: row.head.updatedAt })) fail('候选方案最新指针与历史不符');

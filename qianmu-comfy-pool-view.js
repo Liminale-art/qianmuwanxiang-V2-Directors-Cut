@@ -47,7 +47,7 @@ function renderMember(candidate, view) {
 }
 export function renderComfyPools(view) {
   view = { connections: [], ...view };
-  const draft = view.draft, disabled = view.busy ? 'disabled' : '';
+  const draft = view.draft, disabled = view.busy ? 'disabled' : '',native=view.usage?.persistence==='st-account-file';
   const choose=row=>view.canSelect?`<button type="button" class="sd-btn" data-pool-action="${row===draft?'select-version':'select'}" aria-pressed="${view.selection?.id===row.id && view.selection?.revision===row.revision}" ${row===draft&&draft.dirty?'disabled':''}>选用此版本</button>`:'';
   const body = draft ? `<div class="sd-comfy-pool-tools">${icon('cancel','取消编辑','xmark')}<span>${escape(draft.name || '新候选方案')}${draft.version ? ` · v${draft.version}` : ''}</span>${icon('export-draft','导出草稿','download')}${icon('save-copy','另存新方案','copy')}${icon('save','保存方案版本','floppy-disk')}</div>
     <section class="sd-card"><div class="sd-storyboard-card-body"><label><span>方案名</span><input class="text_pole" data-pool-name maxlength="80" value="${escape(draft.name)}"></label>
@@ -58,17 +58,25 @@ export function renderComfyPools(view) {
     <div class="sd-comfy-pool-members">${draft.pool.candidates.map(candidate => renderMember(candidate, view)).join('')}</div>`
     : `<div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="library">工作流库</button><input class="text_pole" type="search" data-pool-search aria-label="搜索候选方案" value="${escape(view.search || '')}">${icon('import','导入候选方案','upload')}${icon('new','新建候选方案','plus')}</div>
     <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="archived" aria-pressed="${Boolean(view.archived)}">归档</button><span class="sd-comfy-library-note">${view.usage ? `${view.usage.count} 个方案 · ${view.usage.versions} 个版本 · ${size(view.usage.bytes)} / ${size(view.usage.limit)}` : ''}</span>${icon('backup-resources','备份候选方案及工作流库','download')}${icon('restore-resources','恢复候选方案及工作流库','folder')}${icon('refresh','刷新候选方案','rotate')}</div>
-    <div class="sd-comfy-pool-rows">${(view.rows || []).map(row => `<section class="sd-card" data-pool-id="${escape(row.id)}" data-pool-search-name="${escape(row.name.toLocaleLowerCase())}" ${view.search && !row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase()) ? 'hidden' : ''}><div class="sd-comfy-pool-tools"><button type="button" class="sd-comfy-library-name" data-pool-action="${view.archived ? 'export' : 'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div><small class="sd-comfy-library-note">${row.candidateCount} 个候选 · ${size(row.totalBytes)}</small><div class="sd-comfy-pool-tools sd-comfy-pool-row-actions">${view.archived ? `${icon('restore','恢复候选方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge','永久清理全部版本','trash-can')}` : `${choose(row)}${icon('edit','编辑方案','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div></section>`).join('')}</div>`;
+    ${native?'<p class="sd-comfy-library-note">ST 账户保存 · 当前目录正文量，非磁盘总占用</p>'+renderPoolRecovery(view.recovery):''}
+    <div class="sd-comfy-pool-rows">${(view.rows || []).map(row => `<section class="sd-card" data-pool-id="${escape(row.id)}" data-pool-search-name="${escape(row.name.toLocaleLowerCase())}" ${view.search && !row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase()) ? 'hidden' : ''}><div class="sd-comfy-pool-tools"><button type="button" class="sd-comfy-library-name" data-pool-action="${view.archived ? 'export' : 'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div><small class="sd-comfy-library-note">${row.candidateCount} 个候选 · ${size(row.totalBytes)}</small><div class="sd-comfy-pool-tools sd-comfy-pool-row-actions">${view.archived ? `${icon('restore','恢复候选方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge',native?'移出目录（原件保留）':'永久清理全部版本','trash-can')}` : `${choose(row)}${icon('edit','编辑方案','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div></section>`).join('')}</div>`;
   const selection=view.canSelect&&view.selection?`<div class="sd-comfy-pool-tools"><small>已选：${escape(view.selection.invalid?'方案待核对':`${view.selection.name} · v${view.selection.version}`)}</small>${icon('clear-selection','清除所选方案','xmark')}</div>`:'';
   const message=view.error||(!draft&&!view.busy&&!view.rows?.length?(view.archived?'归档中还没有候选方案。':'还没有保存的候选方案，可新建或导入。'):'');
   return `<div class="sd-comfy-library sd-comfy-pools" aria-busy="${Boolean(view.busy)}">${message ? `<p role="${view.error?'alert':'status'}" class="sd-comfy-library-note">${escape(message)}</p>` : ''}<fieldset ${disabled}>${selection}${body}</fieldset><input type="file" data-pool-file accept=".json,application/json" hidden><input type="file" data-pool-backup-file accept=".json,application/json" hidden></div>`;
+}
+
+function renderPoolRecovery(value){
+  if(!value||!value.sources.length&&!value.retired.length)return '';const pending=value.sources.reduce((n,row)=>n+row.pending.length,0);
+  return `<details class="sd-card" ${pending?'open':''}><summary>旧方案与保留原件${pending?` · ${pending} 项待核对`:''}</summary><div class="sd-storyboard-card-body"><p class="sd-comfy-library-note">完整旧源已保全，不自动覆盖分叉。另存副本保留所有历史与原绑定，不改变所选方案或启动任务；移出目录不代表释放磁盘。</p>
+    ${value.sources.map(source=>`<div data-pool-id="${escape(source.census)}"><div class="sd-comfy-pool-tools"><span>来源 ${escape(source.census.slice(0,8))} · ${source.count} 个方案 / ${source.versions} 个版本</span>${icon('export-legacy','导出完整旧候选方案库','download')}</div>${source.pending.map(head=>`<div class="sd-comfy-pool-tools" data-pool-id="${escape(source.census+':'+head.id)}"><span>${escape(head.name)} · v${head.version}</span><button type="button" class="sd-btn" data-pool-action="keep-legacy">保留 ST 当前版</button><button type="button" class="sd-btn" data-pool-action="copy-legacy">另存完整副本</button></div>`).join('')}</div>`).join('')}
+    ${value.retired.map(head=>`<div class="sd-comfy-pool-tools" data-pool-id="${escape(head.id)}"><span>${escape(head.name)} · 已移出 / ${head.version} 个版本</span><button type="button" class="sd-btn" data-pool-action="restore-retired">恢复到归档</button></div>`).join('')}</div></details>`;
 }
 
 export function createComfyPoolController({ resolveNamespace, getScopeKey = () => '', getConnections = () => [], pickWorkflow,
   getSelection=()=>null,onSelect=null,
   onLibrary = () => {}, isCurrent = () => true, notify = () => {}, confirm = async () => false, onIcons = () => {}, download,
   store = createComfyPoolStore(), readRecipe = readPinnedComfyRouteWorkflow, openWorkflowStore = null } = {}) {
-  const view = { rows: [], usage: null, search: '', archived: false, draft: null, busy: false, error: '', connections: [], openMembers: new Set(), checks: new Map() };
+  const view = { rows: [], usage: null, recovery:null, search: '', archived: false, draft: null, busy: false, error: '', connections: [], openMembers: new Set(), checks: new Map() };
   let host = null, entry = 0, namespace = '', verifiedEntry = -1, disposed = false;
   const scrolls = { list: 0, draft: 0 };
   const visible = () => !disposed && host?.isConnected && isCurrent();
@@ -84,7 +92,7 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
     host.innerHTML = verifiedEntry === entry ? renderComfyPools(view) : `<div role="status">${escape(view.error || '正在读取候选方案')}${view.error ? '<button type="button" class="sd-btn" data-pool-action="refresh">重试</button>' : ''}</div>`;
     bind(); onIcons(host); restore();
   };
-  const resetAccount = value => { namespace = value; view.rows = []; view.usage = null; view.draft = null; view.checks.clear(); view.openMembers.clear(); scrolls.list = scrolls.draft = 0; };
+  const resetAccount = value => { namespace = value; view.rows = []; view.usage = null; view.recovery=null; view.draft = null; view.checks.clear(); view.openMembers.clear(); scrolls.list = scrolls.draft = 0; };
   async function run(work) {
     if (!visible() || view.busy) return; if (verifiedEntry === entry) remember(); const token = entry, scope = getScopeKey(); view.busy = true; view.error = '';
     const originalDraft = view.draft, active = host.contains(globalThis.document?.activeElement) ? globalThis.document.activeElement : null;
@@ -114,8 +122,8 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
     }
   }
   const loadList = async guard => {
-    const account = namespace, rows = await store.list(account, { archived: view.archived }), usage = await store.usage(account); await guard();
-    view.rows = rows; view.usage = usage;
+    const account = namespace,result=store.view?await store.view(account,{archived:view.archived,guard}):{rows:await store.list(account,{archived:view.archived}),usage:await store.usage(account)};await guard();
+    view.rows=result.rows;view.usage=result.usage;view.recovery=result.recovery||null;
   };
   const draftFrom = (value, versions = [], copy = false) => {
     remember(); view.draft = { id: copy ? '' : value.id || '', revision: copy ? '' : value.revision || '', version: copy ? 0 : value.version || 0,
@@ -152,6 +160,18 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
     if (name === 'restore-resources') { if (!view.busy && visible() && !view.draft) host.querySelector('[data-pool-backup-file]')?.click(); return; }
     await run(async guard => {
       const row = view.rows.find(row => row.id === id), draft = view.draft, member = draft?.pool.candidates.find(item => item.id === memberId);
+      if(name==='export-legacy'){
+        const packet=await store.exportLegacy(namespace,id,{guard});await guard();await download(new Blob([JSON.stringify(packet)],{type:'application/json'}),'qianmu-comfy-candidates-legacy-backup.json');return;
+      }
+      if(name==='keep-legacy'||name==='copy-legacy'){
+        const [census,oldId]=String(id).split(':'),expectedRevision=view.recovery?.revision,choice=name==='keep-legacy'?'keep':'copy';
+        if(!await confirm(choice==='keep'?'保留 ST 当前目录，不使用这一旧分支？完整旧来源仍可导出。':'另存此候选方案的全部历史为独立副本？保留原绑定，不改变镜头台所选方案或启动任务。'))return;
+        await guard();await store.resolveLegacy(namespace,{census,id:oldId,choice,expectedRevision,confirmed:true},{guard});await loadList(guard);return;
+      }
+      if(name==='restore-retired'){
+        const expectedRevision=view.recovery?.revision;if(!await confirm('将此候选方案的全部版本恢复到归档？不会自动选用或启动任务。'))return;
+        await guard();await store.restoreRetired(namespace,id,{expectedRevision,confirmed:true,guard});await loadList(guard);return;
+      }
       if (name === 'backup-resources' && !draft) {
         await withResourceStores(guard, async (codec, options, account) => {
           const packet = await codec.captureComfyResourcesBackup(account, options), summary = await codec.validateComfyResourcesBackup(packet, options); await guard();
@@ -194,8 +214,8 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
       if (name === 'edit' || name === 'copy') { const value = await read(row, guard), versions = name === 'edit' ? await store.versions(namespace, row.id) : []; await guard(); draftFrom({ ...value, name: name === 'copy' ? `${value.name} 副本`.slice(0, 80) : value.name }, versions, name === 'copy'); return; }
       if (name === 'export') { exportValue(await read(row, guard)); return; }
       if (name === 'archive' || name === 'restore') { await store.archive(namespace, row.id, row.revision, name === 'archive'); await guard(); await loadList(guard); return; }
-      if (name === 'purge') { if (!await confirm(`永久清理「${row.name}」全部 ${row.version} 个版本？无法撤回；需要保留请先导出。不会删除工作流或生成记录。`)) return;
-        await guard(); await store.purge(namespace, row.id, row.revision); await guard(); await loadList(guard); notify('候选方案的全部版本已清理，无法撤回', 'success'); }
+      if (name === 'purge') { const native=view.usage?.persistence==='st-account-file';if (!await confirm(native?`将「${row.name}」移出目录？全部${row.version}个版本原件保留，可恢复到归档；不保证释放磁盘，引用此方案的后续生成会停止并提示。`:`永久清理「${row.name}」全部 ${row.version} 个版本？无法撤回；需要保留请先导出。不会删除工作流或生成记录。`)) return;
+        await guard(); await store.purge(namespace, row.id, row.revision); await guard(); await loadList(guard); notify(native?'已移出候选目录，全部原件保留':'候选方案的全部版本已清理，无法撤回', 'success'); }
     });
   }
   function bind() {
