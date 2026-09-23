@@ -21,12 +21,13 @@ import {memoryCarrierStore} from './fixtures/bundle-carriers.mjs';
 import {characterNativeFixture} from './helpers/character-native-fixture.mjs';
 import {mappingLegacyFixture} from './helpers/mapping-legacy-fixture.mjs';
 import {createNativeMappingJournal} from '../qianmu-mapping-journal-native.js';
+import {createNativeResourceJournal} from '../qianmu-resource-journal-native.js';
 import {carrierLegacyFixture} from './helpers/carrier-legacy-fixture.mjs';
 import {createNativeBundleCarrierStore} from '../qianmu-bundle-carrier-native-store.js';
 import {emptyCharacterSources,characterSourceLibrary} from '../qianmu-character-source-backup.js';
 
 const clone = structuredClone;
-async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, carriers=false,characterSources=null,nativeCharacters=null, sourceText = 'original text', missingAnchor = false } = {}) {
+async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, carriers=false,characterSources=null,nativeCharacters=null,nativeJournal=null, sourceText = 'original text', missingAnchor = false } = {}) {
   const source = await sourceFixture(); source.config.chat.images[0].source = 'novel'; source.config.chat.images[0].floor = 0;
   source.config.chat.images[0].paragraphAnchor = { floor: 0 };
   if (!missingAnchor) source.config.chat.images[0].messageHash = hashText(sourceText);
@@ -65,12 +66,13 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   options.workflowStore = store('workflows'); options.poolStore = store('pools'); options.characterStore = nativeCharacters||store('characters');
   options.images = { inspect: async receipt => ({ receipt: clone(receipt), state: receipt.url === e.conflict ? 'conflict' : e.files.has(receipt.url) ? 'present' : 'missing' }),
     restore: async (receipt, encoded, approved) => {
-      assert.equal(approved.confirmed, true); assert.equal(encoded, data); assert.equal(e.records.get('bundle').phase, 'originals'); assert.equal(e.files.has(receipt.url), false);
+      assert.equal(approved.confirmed, true); assert.equal(encoded, data); assert.equal((await options.journal.loadResource(namespace,'bundle')).phase, 'originals'); assert.equal(e.files.has(receipt.url), false);
       e.files.set(receipt.url, data); e.events.push('image'); if (e.afterImage) await e.afterImage(); return { state: 'created', receipt: clone(receipt) };
     } };
   options.vibeStage = { inspect: async () => ({ fileHash: await vibeDigest(new Uint8Array(await source.options.storyboard.arrayBuffer())), localHash: await digest(e.vibes), fits: !e.vibeFull, missing: e.vibes ? 0 : 1, rows: [], namespace }),
     stage: async (_file, proof, confirmed) => { assert.equal(confirmed, true); assert.equal(proof.localHash, await digest(e.vibes)); if (e.failAt === 'vibes') throw Error('synthetic vibe failure'); e.vibes = true; e.events.push('vibes'); } };
   options.journal = {
+    close(){},
     listMappingHeads:async()=>[...[...e.mappings.values()].map(row=>mappingHead('environment',row)),...[...e.subjectMaps.values()].map(row=>mappingHead('subjects',row))],
     loadMappingReceipt:async(_ns,kind,id)=>clone((kind==='environment'?e.mappings:e.subjectMaps).get(id)||null),
     importMappingReceipt:async(row,{head,confirmed})=>{assert.equal(confirmed,true);const store=head.kind==='environment'?e.mappings:e.subjectMaps;
@@ -93,6 +95,7 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
     prepareMutation: async row => { assert.equal(e.mutation, null); if (e.failAt === 'mutation') throw Error('synthetic mutation failure'); e.mutation = clone(row); e.events.push('mutation'); return clone(row); },
     updateMutation: async (previous, phase) => { assert.deepEqual(e.mutation, previous); e.mutation = { ...clone(previous), phase, revision: previous.revision + 1 }; return clone(e.mutation); },
   };
+  if(nativeJournal)options.journal=nativeJournal(options.journal);
   options.configuration = createStoryboardBundleConfiguration({ namespace, chatKey, settings: e.settings, chat: e.chat, messages: () => e.messages,
     captureSubjects: async targets => captureStoryboardSubjectEvidence(e.subjectRows.filter(row=>targets.some(target=>target.category===row.category&&target.subjectKey===row.subjectKey))),
     journal: options.journal, guard: options.guard, isCurrent: options.isCurrent, persist: async () => { if (e.failAt === 'persist') throw Error('synthetic persist failure'); e.events.push('configuration'); } });
@@ -101,6 +104,21 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
   return { source, built, historyRows,e, options, reopen, session: await reopen() };
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
+
+for(const interrupted of [false,true])test(`full bundle restore persists actual native resource checkpoints: ${interrupted?'failed metadata phase stops settings, explicit reopen resumes':'all phases read by another client'}`,async t=>{
+  const native=await characterNativeFixture(t,{account:namespace}),journals=[];
+  const wrap=legacy=>{const journal=createNativeResourceJournal({legacy,createStorage:native.createStorage});journals.push(journal);return journal;};
+  t.after(()=>journals.forEach(j=>j.close()));const f=await fixture({nativeJournal:wrap});t.after(()=>f.session.close());
+  const fresh=wrap({loadResource:async()=>null,close(){}});assert.equal(await fresh.loadResource(namespace,'bundle'),null);
+  if(interrupted)native.hook(call=>{if(call.request.method==='POST'){const payload=JSON.parse(Buffer.from(JSON.parse(call.request.body).data,'base64').toString());
+    if(payload.value?.schema==='qianmu.resource-journal.v1'&&payload.value.row.phase==='metadata')return new Response('{}',{status:503});}});
+  const action=f.session.restore(await f.session.preview(),consent);
+  if(interrupted){await assert.rejects(action,/未全部确认/);assert.equal(f.e.mutation,null);assert.equal((await fresh.loadResource(namespace,'bundle')).phase,'pools');
+    native.hook(null);f.session.close();f.session=await f.reopen();const before=f.e.events.filter(value=>value==='image').length;const preview=await f.session.preview();
+    assert.equal(f.e.mutation,null);await f.session.restore(preview,consent);assert.equal(f.e.events.filter(value=>value==='image').length,before);
+  }else assert.equal((await action).resourcesVerified,true);
+  assert.equal((await fresh.loadResource(namespace,'bundle')).phase,'verified');assert.equal(f.e.mutation.phase,'applied');assert.equal(f.e.records.size,0);
+});
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
 
 for(const rejected of [false,true])test(`whole coordinator preserves native old character sources: ${rejected?'failure stops current metadata and configuration':'success keeps independent old records and dependencies'}`,async t=>{

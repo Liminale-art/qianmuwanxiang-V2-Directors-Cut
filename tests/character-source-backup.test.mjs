@@ -7,6 +7,7 @@ import {characterLibraryBackupDigest as digest} from '../qianmu-character-librar
 import {emptyCharacterSources,inspectCharacterSources,characterSourceLibrary} from '../qianmu-character-source-backup.js';
 import {buildCharacterBackupFile,readCharacterBackupFile,selectCharacterBackupWorkflows} from '../qianmu-character-backup-file.js';
 import {createCharacterRestoreSession} from '../qianmu-character-backup-restore.js';
+import {createNativeResourceJournal} from '../qianmu-resource-journal-native.js';
 import {fixture as bundleFixture,data} from './fixtures/storyboard-bundle.mjs';
 import {inspectStoryboardResourceBundle} from '../qianmu-storyboard-bundle-resources.js';
 import {openStoryboardBundle} from '../qianmu-storyboard-bundle.js';
@@ -118,16 +119,18 @@ test('whole export detects old source additions during download rather than omit
   await assert.rejects(f.build(),/旧来源已变化/);
 });
 
-test('standalone coordinator restores old-only images/workflows and native sources without adopting old metadata',async t=>{
+for(const nativeJournal of [false,true])test(`standalone coordinator restores old-only images/workflows and native sources without adopting old metadata (${nativeJournal?'ST checkpoint':'memory checkpoint'})`,async t=>{
   const f=await bundleFixture(),ns=f.sources.characters.namespace,source=await packet(f.sources.characters),library=characterSourceLibrary(ns,[],[]);
   const built=await buildCharacterBackupFile(library,{sources:source,workflows:f.sources.workflows,readImages:async()=>[{mime:'image/png',data}]});
   const target=await characterNativeFixture(t,{account:ns}),store=target.open(),files=new Map(),events=[];let record=null,workflows={schema:COMFY_LIBRARY_BACKUP_SCHEMA,namespace:ns,credentialsIncluded:false,workflows:[]};
-  const journal={loadResource:async()=>record,prepareResource:async row=>(record={...row,phase:'prepared'}),updateResource:async(_row,phase)=>(events.push(phase),record={...record,phase})};
+  const legacy={loadResource:async()=>record,prepareResource:async row=>(record={...row,phase:'prepared'}),updateResource:async(_row,phase)=>(events.push(phase),record={...record,phase}),close(){}};
+  const journal=nativeJournal?createNativeResourceJournal({legacy,createStorage:target.createStorage}):legacy;t.after(()=>journal.close());
   const workflowStore={backup:async()=>structuredClone(workflows),usage:async()=>({limit:64*1048576}),restoreBackup:async(_ns,input,options)=>{
     assert.equal(await digest(workflows),options.expectedDigest);const plan=planComfyLibraryRestore(workflows,input);workflows={...workflows,workflows:plan.writes};
   }};
   const images={inspect:async receipt=>({receipt,state:files.has(receipt.url)?'present':'missing'}),restore:async(receipt,value)=>{assert.equal(value,data);files.set(receipt.url,value);}};
   const session=await createCharacterRestoreSession(ns,await readCharacterBackupFile(built.file),{store,workflowStore,journal,images,locks:{request:async(_name,_options,run)=>run({})}});t.after(()=>session.close());
   const preview=await session.preview();assert.equal(preview.sources.count,1);assert.equal(target.uploads,0);
-  await session.restore(preview,{confirmed:true});assert.equal(record.phase,'verified');assert.equal(files.size,2);assert.equal((await store.list(ns)).length,0);assert.deepEqual(await target.open().backupSources(ns),source);
+  await session.restore(preview,{confirmed:true});assert.equal((await journal.loadResource(ns)).phase,'verified');assert.equal(files.size,2);assert.equal((await store.list(ns)).length,0);assert.deepEqual(await target.open().backupSources(ns),source);
+  if(nativeJournal){assert.equal(record,null);const other=createNativeResourceJournal({legacy,createStorage:target.createStorage});t.after(()=>other.close());assert.equal((await other.loadResource(ns)).phase,'verified');}
 });
