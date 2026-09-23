@@ -1,6 +1,8 @@
 import {normalizeCharacterArchive,characterBindingTarget,characterArchiveError} from './qianmu-character-archive.js';
 import {summarizeCharacterStorage} from './qianmu-character-storage.js';
 import {sameCharacterSubject} from './qianmu-user-identity.js';
+import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {createCharacterArchiveSession} from './qianmu-character-archive-session.js';
 const fail = (code,message) => { throw characterArchiveError(code,message); };
 const identifier = id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(id);
 const account = namespace => { if (typeof namespace !== 'string' || !/^st-user:.+/.test(namespace) || namespace.length > 512 || /[\u0000-\u001f\u007f]/.test(namespace)) fail('account','无法确认当前 ST 账户'); return namespace; };
@@ -9,8 +11,17 @@ const bindingKey = (namespace,target) => JSON.stringify([account(namespace),targ
 const byteSize = value => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const canonicalDocument=value=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 
-// Lazy, account-isolated indexed metadata + per-document reads. No settings, media or legacy-store migration.
-export function createCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-character-archive',timeoutMs=6000,now=Date.now}={}) {
+// Every ordinary consumer enters through this factory. Explicit local adapters
+// remain available to legacy preservation and isolated custom-database fixtures.
+export function createCharacterArchiveStore(options={}) {
+  const {native,...local}=options;
+  if(native===false||native===undefined&&(Object.hasOwn(options,'indexedDB')||Object.hasOwn(options,'dbName')||!isStAccountStorageConfigured()))return createLocalCharacterArchiveStore(local);
+  return createCharacterArchiveSession({createLocal:()=>createLocalCharacterArchiveStore(local),...(native&&typeof native==='object'?native:{})});
+}
+
+// Original IDB implementation: retained unchanged for verified legacy reads and
+// the pre-migration compatibility path. Never used after native selection fails.
+export function createLocalCharacterArchiveStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-character-archive',timeoutMs=6000,now=Date.now}={}) {
   const names=['heads','documents','bindings','usage']; let db=null,opening=null,closed=false; const pending=new Set();
   const timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||6000));
   const error=()=>characterArchiveError('storage','角色库暂不可用，请检查浏览器储存空间');

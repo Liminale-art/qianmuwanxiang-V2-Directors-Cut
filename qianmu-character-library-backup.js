@@ -68,7 +68,7 @@ export function planCharacterLibraryRestore(local, incoming, { decisions = {} } 
     if (!previous) { added++; return true; }
     if (equal(previous, next)) { kept++; return false; }
     keys.add(key); const choice = Object.hasOwn(decisions, key) ? decisions[key] : undefined;
-    if (choice !== undefined && !['local', 'incoming'].includes(choice)) fail('请选择保留本机或使用备份');
+    if (choice !== undefined && !['local', 'incoming'].includes(choice)) fail('请选择保留当前或使用备份');
     conflicts.push({ key, kind, ...summary, choice: choice || '' });
     if (choice === 'incoming') { replaced++; return true; } if (choice === 'local') kept++;
     return false;

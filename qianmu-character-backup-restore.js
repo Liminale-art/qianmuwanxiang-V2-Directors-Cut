@@ -34,7 +34,7 @@ export function createCharacterRestoreChoiceSnapshot(local, source, plan, view) 
     const next = structuredClone(initial); next.decisions = Object.fromEntries(Object.keys(decisions).map(key => [key, decisions[key]]));
     for (const row of next.conflicts) {
       const choice = Object.hasOwn(decisions, row.key) ? decisions[row.key] : undefined;
-      if (choice !== undefined && !['local', 'incoming'].includes(choice)) fail('请选择保留本机或使用备份');
+      if (choice !== undefined && !['local', 'incoming'].includes(choice)) fail('请选择保留当前或使用备份');
       row.choice = choice || '';
       if (choice === 'local') next.summary.kept++;
       if (choice === 'incoming') { next.summary.replaced++; if (row.kind === 'archive') next.summary.bytes += deltas.get(row.key); }

@@ -204,7 +204,7 @@ test('background runtime sends a Blob only, guards worker reads, and releases it
   let guards = 0; const pending = runStoryboardBundle('capture', blob, { namespace, chatKey, guard: async () => { guards++; }, WorkerClass: FakeWorker }); await turn();
   const worker = FakeWorker.latest; assert.equal(worker.messages[0].file, blob); assert.equal(worker.messages[0].namespace, namespace); assert.equal(worker.options.type, 'module');
   worker.emit({ guard: 1 }); await turn(); assert.equal(worker.messages[1].guard, 1);
-  worker.emit({ result: { file: blob, summary: {}, manifest: {}, fingerprint: sha256 } }); await pending; assert.equal(worker.terminated, true); assert.equal(guards, 3);
+  worker.emit({ result: { file: blob, summary: {}, manifest: {}, fingerprint: sha256 } }); await pending; assert.equal(worker.terminated, true); assert.equal(guards, 4);
 });
 
 test('background runtime cancels, rejects late results and never retries work synchronously', async () => {

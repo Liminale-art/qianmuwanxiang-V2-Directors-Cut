@@ -2,6 +2,7 @@ import { projectStoryboardChatMessages } from './qianmu-storyboard-chat-evidence
 import { projectStoryboardSubjects, inspectStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js';
 import { validateBundleMappingTransportSummary } from './qianmu-bundle-mapping-contract.js';
 import {validateBundleCarriersTransportSummary} from './qianmu-bundle-carriers-contract.js';
+import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
 let active = null;
 const failure = message => Object.assign(new Error(message), { code: 'storyboard_bundle_runtime', submissionState: 'not_submitted' });
 export function closeStoryboardBundleRuntime() { active?.finish(failure('资源包处理已取消，原库未修改')); }
@@ -13,6 +14,7 @@ export async function runStoryboardBundle(action, file, { namespace, chatKey, so
   const capturedChat = chatEvidence === null ? null : structuredClone(chatEvidence), projected = action === 'chat-evidence' ? projectStoryboardChatMessages(messages) : null;
   const capturedSubjects = subjectEvidence === null ? null : structuredClone(subjectEvidence), subjectProjection = action === 'subject-evidence' ? projectStoryboardSubjects(subjects) : null;
   await guard();
+  const nativeCharacters = action === 'capture' ? await captureCharacterWorkerStorage(namespace, guard) : null;
   if (active) throw failure('已有资源包正在处理');
   if (signal?.aborted) throw failure('资源包处理已取消');
   return new Promise((resolve, reject) => {
@@ -57,7 +59,7 @@ export async function runStoryboardBundle(action, file, { namespace, chatKey, so
       signal?.addEventListener('abort', abort, { once: true });
       timer = setTimeout(() => finish(failure('资源包处理超时，请保留原文件后重试')), Math.max(100, Math.min(300000, Number(timeoutMs) || 180000)));
       if (signal?.aborted) { abort(); return; }
-      worker.postMessage({ action, file, ...(action === 'capture' ? { namespace, chatKey, source: capturedSource, chatEvidence: capturedChat, subjectEvidence: capturedSubjects } : {}),
+      worker.postMessage({ action, file, ...(action === 'capture' ? { namespace, chatKey, source: capturedSource, chatEvidence: capturedChat, subjectEvidence: capturedSubjects, ...(nativeCharacters ? {nativeCharacters} : {}) } : {}),
         ...(action === 'subject-evidence' ? { subjects: subjectProjection } : {}),
         ...(action === 'chat-evidence' ? { chatKey, messages: projected } : {}) });
     } catch (_) { finish(failure('无法启动资源包后台处理，请检查浏览器权限')); }

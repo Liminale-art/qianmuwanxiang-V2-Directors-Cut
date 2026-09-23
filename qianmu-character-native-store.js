@@ -7,11 +7,11 @@ import {CHARACTER_NATIVE_SLOT, characterNativeFail as fail, characterNativeAccou
   characterNativeEqual as equal, characterNativeStoredHead as storedHead, characterNativeStoredBinding as storedBinding,
   characterNativeUsage, emptyCharacterNativeIndex, validateCharacterNativeIndex, characterNativeBackup, createCharacterNativeOriginals} from './qianmu-character-native-contract.js';
 
-// Complete native implementation of the archive-store interface. Activation is
-// deliberately separate: every main-thread/Worker consumer and the legacy local
-// migration must change together, never let readers and writers use two libraries.
-export function createCharacterNativeStore({createStorage = createConfiguredStAccountStorage, now = Date.now, randomUUID = () => globalThis.crypto?.randomUUID()} = {}) {
-  let opening, storage, closed = false;
+// Native archive-store interface, selected by the common archive session in
+// both main-thread and Worker consumers. Existing local originals are migrated
+// separately; selection never sends reads and writes to different libraries.
+export function createCharacterNativeStore({createStorage = createConfiguredStAccountStorage, now = Date.now, randomUUID = () => globalThis.crypto?.randomUUID(), requireExisting = false} = {}) {
+  let opening, storage, closed = false, knownLibrary = requireExisting === true;
   const freshId = () => { const value = randomUUID(); if (!characterNativeId(value)) fail('secure', '角色库需要安全的唯一编号'); return value; };
   const checkId = value => { if (!characterNativeId(value)) fail('id', '角色档案编号无效'); };
   const clock = () => { const value = now(); if (!Number.isSafeInteger(value) || value < 0) fail('index', '角色库时间无效'); return value; };
@@ -32,16 +32,20 @@ export function createCharacterNativeStore({createStorage = createConfiguredStAc
     const validate = value => validateCharacterNativeIndex(value, context);
     const read = async () => {
       const result = await client.read(CHARACTER_NATIVE_SLOT, transport); check();
-      return {index: validate(result.exists ? result.value : emptyCharacterNativeIndex(namespace)), fingerprint: result.fingerprint};
+      if (!result.exists && knownLibrary) fail('index', '已确认的 ST 角色库目录不可读，未重新建立空库');
+      const index = validate(result.exists ? result.value : emptyCharacterNativeIndex(namespace));
+      if (result.exists) knownLibrary = true;
+      return {index, fingerprint: result.fingerprint};
     };
     const update = async transform => {
       const saved = await client.update(CHARACTER_NATIVE_SLOT, value => {
+        if (value === null && knownLibrary) fail('index', '已确认的 ST 角色库目录不可读，未覆盖为空库');
         check(); const index = validate(value === null ? emptyCharacterNativeIndex(namespace) : value), before = structuredClone(index);
         transform(index); index.usage = {count: index.archives.length, bytes: characterNativeUsage(index.archives), bindings: index.bindings.length};
         if (!equal(index, before)) { if (index.revision >= Number.MAX_SAFE_INTEGER) fail('capacity', '角色库目录版本达到上限'); index.revision++; }
         return validate(index);
       }, transport);
-      committed = true; check(); return validate(saved.value);
+      committed = true; knownLibrary = true; check(); return validate(saved.value);
     };
     try { const result = await work({client, check, transport, originals, read, update}); check(); return result; }
     catch (error) { if (committed && error instanceof Error) error.writeState = 'unconfirmed'; throw error; }

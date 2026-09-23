@@ -8,6 +8,7 @@ import { createStoryboardPackageStage } from './qianmu-storyboard-package-stage.
 import { createImageRestoreClient } from './qianmu-image-restore-client.js';
 import { createSourceIdentityClient } from './qianmu-source-identity-client.js';
 import {createBundleCarrierStore} from './qianmu-bundle-carrier-store.js';
+import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
 
 let id = '', operation = 0, rpc = 0, busy = false, closed = false, session = null;
 const pending = new Map(), stores = [];
@@ -32,9 +33,9 @@ self.addEventListener('message', async event => {
   try {
     let result;
     if (message.action === 'open' && !session) {
-      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore(), vibe = createVibeAssetStore(), journal = createStoryboardPackageJournal(),carrierStore=createBundleCarrierStore();
-      stores.push(workflowStore, poolStore, characterStore, vibe, journal,carrierStore);
       const namespace = message.payload.namespace, token = message.payload.csrf || '';
+      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native: characterWorkerStorageOptions(message.payload.nativeCharacters, {namespace, origin: self.location.origin, guard, isCurrent: () => !closed})}), vibe = createVibeAssetStore(), journal = createStoryboardPackageJournal(),carrierStore=createBundleCarrierStore();
+      stores.push(workflowStore, poolStore, characterStore, vibe, journal,carrierStore);
       session = await createStoryboardBundleRestoreSession({ namespace, chatKey: message.payload.chatKey, file: message.payload.file, workflowStore, poolStore, characterStore, journal,carrierStore,
         vibeStage: createStoryboardPackageStage({ store: vibe, journal }), guard, isCurrent: () => !closed,
         images: createImageRestoreClient({ namespace, headers: () => ({ 'X-CSRF-Token': token }), guard }),

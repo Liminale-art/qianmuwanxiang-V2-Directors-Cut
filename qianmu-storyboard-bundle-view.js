@@ -36,7 +36,7 @@ function renderSubjects(view,subjects,offset) {
     ${subjects.slice(offset,offset+24).map((row,index)=>`<p>${escape(row.category.toUpperCase())} · ${escape(row.subjectKey)}${row.targetKey?`<br>→ ${escape(row.targetKey)}`:''}<br>${({matched:'内容一致',changed:'内容有变化，请确认仍为原角色',missing:'目标未找到',unverified:'来源或目标资料未载入，须人工核对'})[row.state]}${row.required?' · 将恢复绑定':''}
       ${['char','user'].includes(row.category)?`<br><button type="button" class="sd-btn" data-bundle-target-for="${offset+index}">选择目标</button>${row.targetKey?`<button type="button" class="sd-btn" data-bundle-target-clear="${offset+index}">保留原标识</button>`:''}`:''}</p>`).join('')}
     ${subjects.some(row=>row.required&&row.state==='missing')?'<p>待绑定目标缺失，请恢复原ST角色／人设，或明确选择对应目标；不猜同名对象。</p>':''}
-    ${view.preview.subjectMappings?.length?'<p>新选目标必须已载入资料。映射凭据保留原绑定与派生绑定；冲突选择保留本机时，并不覆盖该处绑定。重新核对不会自动沿用批准。</p>':''}
+    ${view.preview.subjectMappings?.length?'<p>新选目标必须已载入资料。映射凭据保留原绑定与派生绑定；冲突选择保留当前时，并不覆盖该处绑定。重新核对不会自动沿用批准。</p>':''}
     ${view.preview.subjectMappingConflict?'<p>未完成恢复的目标或内容摘要与原映射不同，尚不能续接；请先核对原选择与目标资料。</p>':''}</section>${renderSubjectPicker(view)}`;
 }
 function renderEnvironment(review) {
@@ -49,7 +49,7 @@ function renderEnvironment(review) {
 }
 function renderResources(view) {
   const summary=view.preview?.summary?.resourceOrigins,page=view.resourcePage;if(!summary)return '';
-  return `<section data-bundle-resource-section><h3>文件与引用用途 · ${summary.total}</h3><p>${summary.recorded?'来源清单已与原包逐项核对。':'旧包未记录此清单；以下从现有原文重建，不冒充当时的来源证明。'} 原包全部用途按位置列出，不是唯一文件数；保留本机条目时不代表全部应用。</p>
+  return `<section data-bundle-resource-section><h3>文件与引用用途 · ${summary.total}</h3><p>${summary.recorded?'来源清单已与原包逐项核对。':'旧包未记录此清单；以下从现有原文重建，不冒充当时的来源证明。'} 原包全部用途按位置列出，不是唯一文件数；保留当前条目时不代表全部应用。</p>
     <p>${Object.entries(resourceStates).map(([key,label])=>`${label} ${summary[key]}`).join(' · ')}</p><p>“包内资料”可能是图片/Vibe原件或配置引用，不代表模型、节点插件、ST API档案及授权已安装。动态槽需生成时提供；未识别节点和间接文件仍须在 Comfy 核对。</p>
     ${page?`<select class="text_pole" data-bundle-resource-filter aria-label="文件用途分类"><option value="all" ${page.filter==='all'?'selected':''}>全部用途</option>${Object.entries(resourceStates).map(([key,label])=>`<option value="${key}" ${page.filter===key?'selected':''}>${label}</option>`).join('')}</select>
     ${page.rows.map(row=>`<p><b>${escape(row.label)}</b> · ${resourceStates[row.state]}<br>${escape(row.target)}${row.owner?`<br>原版本：${escape(row.owner)}`:''}${row.sha256?`<br>SHA-256：${escape(row.sha256)} · ${row.bytes??'—'} 字节`:''}<br><small>${escape(row.at)}</small></p>`).join('')}
@@ -70,7 +70,7 @@ export function renderStoryboardBundleReview(view) {
     ${p.configuration?.orphaned ? `<p>${p.configuration.orphaned} 张成片无法确认正文位置，将保留在阅片室，不自动挂入楼层。</p>` : ''}
     ${!p.needsRecheck && p.planDigest ? `<p>原图 ${p.images.length} 处 · 缺件 ${p.images.filter(row => row.state === 'missing').length} · 冲突 ${p.images.filter(row => row.state === 'conflict').length}</p>` : '<p>选项只是草稿，选好后请核对原件。</p>'}
     ${p.record ? `<p>上次资源核对：${escape(({prepared:'已确认',originals:'原图',workflows:'工作流',pools:'候选',metadata:'角色',vibes:'Vibe',verified:'原件已核对，配置另行确认'})[p.record.phase] || p.record.phase)}。续接仍会逐项核对。</p>` : ''}` : ''}</section>
-    ${conflicts.length ? `<section><h3>逐项选择 · ${conflicts.length}</h3>${conflicts.slice(offset, offset + 24).map((row, index) => `<label class="sd-bundle-choice"><span>${escape(row.kind === 'archive' ? `${row.localName} v${row.localVersion} → ${row.incomingName} v${row.incomingVersion}` : `${row.category.toUpperCase()} · ${row.subjectKey} · ${row.chatKey || '默认绑定'} · ${row.localArchiveId || '不绑定'} → ${row.incomingArchiveId || '不绑定'}`)}</span><select class="text_pole" data-bundle-choice="${offset + index}"><option value="" ${!row.choice?'selected':''}>请选择</option><option value="local" ${row.choice==='local'?'selected':''}>保留本机</option><option value="incoming" ${row.choice==='incoming'?'selected':''}>使用备份</option></select></label>`).join('')}</section>` : ''}
+    ${conflicts.length ? `<section><h3>逐项选择 · ${conflicts.length}</h3>${conflicts.slice(offset, offset + 24).map((row, index) => `<label class="sd-bundle-choice"><span>${escape(row.kind === 'archive' ? `${row.localName} v${row.localVersion} → ${row.incomingName} v${row.incomingVersion}` : `${row.category.toUpperCase()} · ${row.subjectKey} · ${row.chatKey || '默认绑定'} · ${row.localArchiveId || '不绑定'} → ${row.incomingArchiveId || '不绑定'}`)}</span><select class="text_pole" data-bundle-choice="${offset + index}"><option value="" ${!row.choice?'selected':''}>请选择</option><option value="local" ${row.choice==='local'?'selected':''}>保留当前</option><option value="incoming" ${row.choice==='incoming'?'selected':''}>使用备份</option></select></label>`).join('')}</section>` : ''}
     ${bindings.length ? `<section><h3>原身份与聊天绑定 · ${bindings.length}</h3>${bindings.slice(offset, offset + 24).map(row => `<p>${escape(row.category.toUpperCase())} · ${escape(row.subjectKey)}<br>${escape(row.scope === 'chat' ? row.chatKey : '角色默认')} → ${escape(row.archiveId || '明确不绑定')}</p>`).join('')}</section>` : ''}
     ${renderSourceAliases(view)}
     ${renderMappingHistory(view)}

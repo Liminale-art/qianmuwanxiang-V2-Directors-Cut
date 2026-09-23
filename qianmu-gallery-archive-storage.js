@@ -7,7 +7,7 @@ import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRe
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
-import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.330';
+import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.331';
 import {recipeArchiveSnapshot} from './qianmu-recipe-archive-contract.js';
 import {encodeGalleryLocalRecipe,inspectGalleryLocalRecipe,galleryLocalRecipeSlot,readGalleryLocalRecipeCopy} from './qianmu-gallery-local-recipe.js';
 import {encodeGalleryReviewedRecipe,inspectGalleryReviewedRecipe,galleryReviewedRecipeSlot} from './qianmu-gallery-reviewed-recipe.js';

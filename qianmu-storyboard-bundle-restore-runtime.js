@@ -5,6 +5,7 @@ import { validStoryboardSubjectTargetPage, normalizeStoryboardSubjectMappings } 
 import {validateBundleAliasInput,validateBundleAliasSummary,validateBundleAliasPage} from './qianmu-bundle-user-alias-contract.js';
 import {validateBundleMappingSummary,validateBundleMappingRestoreSummary,validateBundleMappingPageInput,validateBundleMappingPage} from './qianmu-bundle-mapping-contract.js';
 import {validateBundleCarrierRestoreSummary,validateBundleCarrierPageInput,validateBundleCarrierPage} from './qianmu-bundle-carrier-restore-contract.js';
+import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
 let active = null;
 const fail = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_runtime', submissionState: 'not_submitted' });
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -46,6 +47,8 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
   WorkerClass = globalThis.Worker, timeoutMs = 180000 } = {}) {
   if (!(file instanceof Blob) || typeof guard !== 'function' || !configuration?.preview || !configuration?.apply) throw fail('恢复文件或页面核对无效');
   await guard(); if (active) throw fail('已有整包恢复会话，请先关闭原页面'); if (signal?.aborted) throw interrupted();
+  const nativeCharacters = await captureCharacterWorkerStorage(namespace, guard);
+  if (active) throw fail('已有整包恢复会话，请先关闭原页面'); if (signal?.aborted) throw interrupted();
   const id = crypto.randomUUID(); let worker, current = null, counter = 0, sourceDigest = '', closed = false,carrierRequired=false;
   const check = async () => { if (closed) throw interrupted(); await guard(); if (closed) throw interrupted(); };
   function finish(error, result) {
@@ -118,7 +121,7 @@ export async function openStoryboardBundleRestoreRuntime(file, { namespace, chat
     });
     signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) throw interrupted();
     const supplied = new Headers(headers()), csrf = supplied.get('x-csrf-token') || '';
-    await command('open', { namespace, chatKey, file, csrf });
+    await command('open', { namespace, chatKey, file, csrf, ...(nativeCharacters ? {nativeCharacters} : {}) });
     return Object.freeze({ sourceDigest, get isOpen() { return !closed; }, preview: (decisions,subjectMappings,sourceAliasChoices) => command('preview', { decisions: decisions || {},...(subjectMappings!==undefined?{subjectMappings}:{}),...(sourceAliasChoices!==undefined?{sourceAliasChoices}:{}) }),
       aliases:input=>command('aliases',input),
       receipts:input=>command('receipts',input),

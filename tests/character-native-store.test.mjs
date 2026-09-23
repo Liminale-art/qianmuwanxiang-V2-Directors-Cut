@@ -292,9 +292,9 @@ test('explicit no-op restore keeps the native directory revision and performs no
   assert.equal(result.added, 0); assert.equal(f.uploads, 0); assert.equal((await f.readIndex()).fingerprint, before.fingerprint);
 });
 
-test('pre-activation checkpoint does not silently switch only one consumer to a different library', async () => {
+test('native selection is centralized at the shared archive factory rather than only the panel', async () => {
   const store = await readFile(new URL('../qianmu-character-archive-store.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(store, /character-native-store|createCharacterNativeStore/);
+  assert.match(store, /createCharacterArchiveSession/); assert.match(store, /createLocalCharacterArchiveStore/);
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   for (const file of ['qianmu-character-native-store.js', 'qianmu-character-native-contract.js']) assert.ok(release.files.includes(file));
 });

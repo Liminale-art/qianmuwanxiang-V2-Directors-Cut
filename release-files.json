@@ -346,6 +346,8 @@
     "qianmu-character-library-backup.js",
     "qianmu-character-native-contract.js",
     "qianmu-character-native-store.js",
+    "qianmu-character-archive-session.js",
+    "qianmu-character-worker-storage.js",
     "qianmu-character-backup-file.js",
     "qianmu-vibe-review.js",
     "qianmu-vibe-receipt-file.js",

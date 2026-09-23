@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {createStAccountStorage} from '../../qianmu-st-account-storage.js';
+import {createStAccountStorage, configureStAccountStorage} from '../../qianmu-st-account-storage.js';
 import {createCharacterNativeStore} from '../../qianmu-character-native-store.js';
 import {newCharacterArchive} from '../../qianmu-character-archive.js';
 import {CHARACTER_NATIVE_SLOT} from '../../qianmu-character-native-contract.js';
@@ -31,7 +31,9 @@ export async function characterNativeFixture(t, {account = namespace} = {}) {
   const storage = await createStorage({maxBytes: 8 * 1024 * 1024}); clients.push(storage);
   const open = () => { const store = createCharacterNativeStore({createStorage, now: () => at}); clients.push(store); return store; };
   t.after(() => clients.forEach(client => client.close()));
-  return {files, calls, storage, open, reset() { calls.length = 0; }, setTime(value) { at = value; }, account(value) { owner = value; }, live(value) { active = value; },
+  const configure = () => configureStAccountStorage({resolveNamespace: async () => owner, isCurrent: () => active,
+    headers: () => ({'X-CSRF-Token': 'synthetic', Authorization: 'must-not-forward'}), fetchImpl, origin: 'https://st.fixture.invalid', cryptoImpl: webcrypto});
+  return {files, calls, storage, open, createStorage, fetchImpl, configure, reset() { calls.length = 0; }, setTime(value) { at = value; }, account(value) { owner = value; }, live(value) { active = value; },
     hook(value) { hook = value; }, loseAck() { lose = true; }, async readIndex() { return storage.read(CHARACTER_NATIVE_SLOT); },
     async writeIndex(value) { const old = await storage.read(CHARACTER_NATIVE_SLOT); return storage.write(CHARACTER_NATIVE_SLOT, value, {expectedFingerprint: old.fingerprint}); },
     get originalReads() { return calls.filter(row => row.request.method === 'GET' && row.path.includes('-character-record-')).length; },
