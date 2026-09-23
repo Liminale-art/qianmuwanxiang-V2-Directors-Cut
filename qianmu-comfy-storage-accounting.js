@@ -37,17 +37,20 @@ export function summarizeComfyLibraryStorage(kind,namespace,{heads,versions,docu
     documentBytes,indexBytes,bytes:documentBytes+indexBytes};
 }
 
-export function readComfyLibraryStorage(tx,read,set,keyRange,kind,namespace){
+export function readComfyLibraryCensus(tx,read,set,keyRange,kind,namespace){
   const limit=limits[kind],headStore=kind==='workflows'?'workflows':'heads',versionStore=kind==='workflows'?'revisions':'versions';
   const prefix=JSON.stringify([namespace]).slice(0,-1)+',',range=keyRange.bound(prefix,prefix+'\uffff');
   const snapshot={};let pending=3;
   const receive=name=>rows=>{snapshot[name]=rows;if(!--pending){
-    try{set(summarizeComfyLibraryStorage(kind,namespace,snapshot));}
+    try{summarizeComfyLibraryStorage(kind,namespace,snapshot);set(snapshot);}
     catch(error){throw Object.assign(Error(error.message),{code:kind==='workflows'?'comfy_library_storage':'comfy_pool_index'});}
   }};
   read(tx.objectStore(headStore).index('namespace').getAll(keyRange.only(namespace),limit.count+1),receive('heads'));
   read(tx.objectStore(versionStore).getAll(range,limit.count*64+1),receive('versions'));
   read(tx.objectStore('documents').getAllKeys(range,limit.count*64+1),receive('documentKeys'));
+}
+export function readComfyLibraryStorage(tx,read,set,keyRange,kind,namespace){
+  return readComfyLibraryCensus(tx,read,snapshot=>set(summarizeComfyLibraryStorage(kind,namespace,snapshot)),keyRange,kind,namespace);
 }
 
 export function validateComfyStorageSummary(value,namespace){

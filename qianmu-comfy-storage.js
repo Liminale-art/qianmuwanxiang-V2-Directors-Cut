@@ -2,7 +2,7 @@
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
 import {validateComfyStorageSummary} from './qianmu-comfy-storage-accounting.js';
 const factories={
-  workflows:async()=> (await import('./qianmu-comfy-library.js')).createComfyWorkflowStore(),
+  workflows:async options=> (await import('./qianmu-comfy-library.js')).createComfyWorkflowStore(options),
   pools:async()=> (await import('./qianmu-comfy-pool-store.js')).createComfyPoolStore(),
   scenes:async()=> (await import('./qianmu-comfy-lock-store.js')).createComfySceneLockStore(),
 };
@@ -14,13 +14,13 @@ async function account(resolveNamespace,valid,expected=''){
   if(!valid()||expected&&expected!==namespace)fail('账户已变化，请重新盘点后选择清理');
   return namespace;
 }
-export async function inspectComfyStorage({namespace,guard=async()=>{},createStores=factories}={}){
+export async function inspectComfyStorage({namespace,guard=async()=>{},native,createStores=factories}={}){
   assertComfyRouteNamespace(namespace);const rows=[];
   // One store at a time bounds memory and keeps Worker guard acknowledgements ordered.
   for(const key of Object.keys(factories)){
     let store;
     try{
-      await guard();store=await createStores[key]();await guard();const summary=await store.storageSummary(namespace);await guard();rows.push([key,summary]);
+      await guard();store=await createStores[key](key==='workflows'&&native!==undefined?{native}:undefined);await guard();const summary=await store.storageSummary(namespace,{guard});await guard();rows.push([key,summary]);
     }catch(error){rows.push([key,{status:'unavailable',bytes:null,count:null,error:(labels[key]+'：'+String(error?.message||'暂不可读取')).slice(0,512)}]);}
     finally{store?.close();}
   }

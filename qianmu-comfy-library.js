@@ -1,4 +1,6 @@
-// Account-scoped workflow documents. No generation, implicit migration or connection credentials.
+// Account-scoped workflow documents. No generation or connection credentials.
+import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {createNativeComfyWorkflowStore} from './qianmu-comfy-native-store.js';
 import { sanitizeStoryboardWorkflow } from './qianmu-storyboard.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
 import { normalizeComfyClassification } from './qianmu-comfy-selection.js';
@@ -57,7 +59,12 @@ export function exportComfyLibraryDocument(name,document) {
   return {schema:COMFY_LIBRARY_SCHEMA,name:text(name,80),document:normalizeComfyLibraryDocument(document)};
 }
 
-export function createComfyWorkflowStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-comfy-workflows',timeoutMs=6000,maxBytes=64*1024*1024,now=Date.now}={}) {
+export function createComfyWorkflowStore(options={}){
+  const {native,...local}=options,legacy=createLocalComfyWorkflowStore(local);
+  if(native===false||native===undefined&&(Object.hasOwn(options,'indexedDB')||Object.hasOwn(options,'dbName')||!isStAccountStorageConfigured()))return legacy;
+  return createNativeComfyWorkflowStore({...local,legacy,...(native&&typeof native==='object'?native:{})});
+}
+export function createLocalComfyWorkflowStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-comfy-workflows',timeoutMs=6000,maxBytes=64*1024*1024,now=Date.now}={}) {
   if(!Number.isSafeInteger(maxBytes)||maxBytes<1)throw comfyLibraryError('capacity','工作流库容量配置无效');
   const stores=['workflows','revisions','documents'],timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||6000));
   let opening=null,db=null,closed=false;const pending=new Set();
@@ -133,6 +140,9 @@ export function createComfyWorkflowStore({indexedDB=globalThis.indexedDB,keyRang
     },isCurrent);
   }
   return Object.freeze({
+    async census(namespace,{isCurrent=()=>true}={}){identity(namespace);const {readComfyLibraryCensus}=await import('./qianmu-comfy-storage-accounting.js');
+      return operation(stores,'readonly',(tx,read,set)=>readComfyLibraryCensus(tx,read,set,keyRange,'workflows',namespace),isCurrent);
+    },
     async backup(namespace,{isCurrent=()=>true}={}){
       const codec=await import('./qianmu-comfy-library-backup.js');const records=await snapshot(namespace,isCurrent);
       const value=codec.packComfyLibraryRecords(namespace,records);if(isCurrent()!==true)throw comfyLibraryError('changed','工作流备份页面已变化');return value;

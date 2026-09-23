@@ -35,7 +35,7 @@ self.addEventListener('message', async event => {
     if (message.action === 'open' && !session) {
       const namespace = message.payload.namespace, token = message.payload.csrf || '';
       const native=characterWorkerStorageOptions(message.payload.nativeCharacters,{namespace,origin:self.location.origin,guard,isCurrent:()=>!closed});
-      const workflowStore = createComfyWorkflowStore(), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native}), vibe = createVibeAssetStore({native:native?{...native,onProgress:()=>self.postMessage({id,operation,progress:++progress})}:false}), journal = createStoryboardPackageJournal({native}),carrierStore=createBundleCarrierStore({native:native?{...native,onProgress:()=>self.postMessage({id,operation,progress:++progress})}:false});
+      const workflowStore = createComfyWorkflowStore({native}), poolStore = createComfyPoolStore(), characterStore = createCharacterArchiveStore({native}), vibe = createVibeAssetStore({native:native?{...native,onProgress:()=>self.postMessage({id,operation,progress:++progress})}:false}), journal = createStoryboardPackageJournal({native}),carrierStore=createBundleCarrierStore({native:native?{...native,onProgress:()=>self.postMessage({id,operation,progress:++progress})}:false});
       stores.push(workflowStore, poolStore, characterStore, vibe, journal,carrierStore);
       session = await createStoryboardBundleRestoreSession({ namespace, chatKey: message.payload.chatKey, file: message.payload.file, workflowStore, poolStore, characterStore, journal,carrierStore,
         vibeStage: createStoryboardPackageStage({ store: vibe, journal }), guard, isCurrent: () => !closed,

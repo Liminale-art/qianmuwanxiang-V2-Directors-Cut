@@ -41,7 +41,7 @@ const options=document=>{
   return `<option value="">自动识别最终静帧</option>${selected&&!Object.hasOwn(nodes,selected)?`<option value="${escape(selected)}" selected>${escape(selected)} · 待核对</option>`:''}${Object.entries(nodes).filter(([,node])=>node&&typeof node.class_type==='string').map(([id,node])=>`<option value="${escape(id)}" ${id===selected?'selected':''}>${escape(id)} · ${escape(node.class_type)}</option>`).join('')}`;
 };
 export function renderComfyLibrary(view) {
-  const draft=view.draft,disabled=view.busy?'disabled':'';
+  const draft=view.draft,disabled=view.busy?'disabled':'',native=view.usage?.persistence==='st-account-file';
   const message=view.error||(view.busy?'正在处理，请稍候…':!draft&&!view.rows?.length?(view.archived?'归档中还没有工作流。':'还没有保存的工作流，可新建或导入。'):'');
   const feedback=message?`<p class="sd-comfy-library-note" role="${view.error?'alert':'status'}">${escape(message)}</p>`:'';
   if(draft){
@@ -67,18 +67,30 @@ export function renderComfyLibrary(view) {
     <div class="sd-comfy-library-tools"><input class="text_pole" data-comfy-search type="search" aria-label="搜索工作流" value="${escape(view.search||'')}">${icon('import','导入工作流','upload')}${icon('new','新建工作流','plus')}</div>
     <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="from-current">保存当前配方到库</button><button type="button" class="sd-btn ${view.archived?'active':''}" aria-pressed="${Boolean(view.archived)}" data-comfy-action="archived">归档</button>${icon('refresh','刷新列表','rotate')}</div>
     <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="candidates">候选方案</button>${icon('backup-library','备份整个工作流库（含历史版本）','download')}${icon('restore-library','恢复工作流库备份','folder')}</div>
-    ${view.usage?`<div class="sd-comfy-library-note">${view.usage.count} 个方案 · ${view.usage.versions} 个版本 · ${size(view.usage.bytes)} / ${size(view.usage.limit)}（当前浏览器 · 正文估算）</div>`:''}
+    ${view.usage?`<div class="sd-comfy-library-note">${view.usage.count} 个方案 · ${view.usage.versions} 个版本 · ${size(view.usage.bytes)} / ${size(view.usage.limit)}（${native?'ST 账户保存 · 当前目录正文量，非磁盘总占用':'当前浏览器 · 正文估算'}）</div>`:''}
+    ${native?renderRecovery(view.recovery):''}
     <div class="sd-comfy-library-rows">${(view.rows||[]).map(row=>`<section class="sd-card sd-comfy-library-row" data-comfy-id="${escape(row.id)}" data-comfy-name="${escape(row.name.toLocaleLowerCase())}" ${view.search&&!row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase())?'hidden':''}>
       <div class="sd-comfy-library-row-head"><button type="button" class="sd-comfy-library-name" data-comfy-action="${view.archived?'export':'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div>
       <div class="sd-comfy-library-note">${row.nodes} 个节点 · ${size(row.totalBytes)}${row.issue?` · ${escape(row.issue)}`:''}</div>
       ${renderComfyClassificationBadges(row)}
-      <div class="sd-comfy-library-row-actions">${view.archived?`${icon('restore','恢复方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge','永久清理全部版本','trash-can')}`:`<button type="button" class="sd-btn" data-comfy-action="apply">应用</button>${icon('edit','编辑版本','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div>
+      <div class="sd-comfy-library-row-actions">${view.archived?`${icon('restore','恢复方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge',native?'移出目录（原件保留）':'永久清理全部版本','trash-can')}`:`<button type="button" class="sd-btn" data-comfy-action="apply">应用</button>${icon('edit','编辑版本','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div>
     </section>`).join('')}</div>
   </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden><input type="file" data-comfy-backup-file accept=".json,application/json" hidden></div>`;
 }
 
+function renderRecovery(value){
+  if(!value||!value.sources.length&&!value.retired.length)return '';
+  const pending=value.sources.reduce((n,row)=>n+row.pending.length,0);
+  return `<details class="sd-card" ${pending?'open':''}><summary>旧库与保留原件${pending?` · ${pending} 项待核对`:''}</summary><div class="sd-storyboard-card-body">
+    <p class="sd-comfy-library-note">同账户旧库已保全。不同版本不自动覆盖；另存副本保留全部历史，但不会改绑现用配方。移出目录不代表释放磁盘。</p>
+    ${value.sources.map(source=>`<div data-comfy-id="${escape(source.census)}"><div class="sd-comfy-library-tools"><span>来源 ${escape(source.census.slice(0,8))} · ${source.count} 个方案 / ${source.versions} 个版本</span>${icon('export-legacy','导出此完整旧库','download')}</div>
+      ${source.pending.map(head=>`<div class="sd-comfy-library-tools" data-comfy-id="${escape(source.census+':'+head.id)}"><span>${escape(head.name)} · v${head.version}</span><button type="button" class="sd-btn" data-comfy-action="keep-legacy">保留 ST 当前版</button><button type="button" class="sd-btn" data-comfy-action="copy-legacy">另存完整副本</button></div>`).join('')}</div>`).join('')}
+    ${value.retired.map(head=>`<div class="sd-comfy-library-tools" data-comfy-id="${escape(head.id)}"><span>${escape(head.name)} · 已移出 / ${head.version} 个版本</span><button type="button" class="sd-btn" data-comfy-action="restore-retired">恢复到归档</button></div>`).join('')}
+  </div></details>`;
+}
+
 export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,onApply,onCandidates=()=>{},isCurrent=()=>true,notify=()=>{},confirm=async()=>false,onIcons=()=>{},download,store=createComfyWorkflowStore()}={}) {
-  const view={rows:[],usage:null,search:'',archived:false,draft:null,busy:false,error:''};
+  const view={rows:[],usage:null,recovery:null,search:'',archived:false,draft:null,busy:false,error:''};
   let host=null,namespace='',disposed=false,loaded=false,entry=0,operationEntry=0,verifiedEntry=-1;const scrolls={list:0,editor:0};
   const visible=()=>!disposed&&host?.isConnected&&isCurrent()&&(!view.busy||operationEntry===entry);
   const scroller=()=>host?.closest('.sd-storyboard-scroll');
@@ -88,12 +100,12 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
     if(verifiedEntry!==entry){host.innerHTML=`<div role="status">${escape(view.error||'正在读取工作流库')}${view.error?'<button type="button" class="sd-btn" data-comfy-action="refresh">重试</button>':''}</div>`;bind();return;}
     host.innerHTML=renderComfyLibrary(view);bind();onIcons(host);};
   const authorize=async()=>{const expected=entry,value=await resolveNamespace();if(!visible()||entry!==expected)throw Error('页面已切换，操作未继续');
-    if(namespace&&namespace!==value){namespace=value;loaded=false;view.rows=[];view.draft=null;view.usage=null;verifiedEntry=entry;throw Error('账户已切换，请刷新工作流库');}namespace=value;verifiedEntry=entry;return value;};
+    if(namespace&&namespace!==value){namespace=value;loaded=false;view.rows=[];view.draft=null;view.usage=null;view.recovery=null;verifiedEntry=entry;throw Error('账户已切换，请刷新工作流库');}namespace=value;verifiedEntry=entry;return value;};
   const loadList=async()=>{
-    const account=namespace,rows=await store.list(account,{archived:view.archived}),usage=await store.usage(account);
+    const account=namespace,result=store.view?await store.view(account,{archived:view.archived}):{rows:await store.list(account,{archived:view.archived}),usage:await store.usage(account)};
     // A slow read must not publish the previous account's list after a switch.
     // Reuse the same ownership guard used by explicit workflow operations.
-    await authorize();if(!visible())return;view.rows=rows;view.usage=usage;loaded=true;
+    await authorize();if(!visible())return;view.rows=result.rows;view.usage=result.usage;view.recovery=result.recovery||null;loaded=true;
   };
   const guarded=async work=>{
     if(view.busy||!visible())return;operationEntry=entry;view.busy=true;view.error='';changed();
@@ -113,6 +125,18 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
     if(name==='restore-library'){if(!view.busy)host.querySelector('[data-comfy-backup-file]')?.click();return;}
     await guarded(async()=>{
       const row=view.rows.find(row=>row.id===id);
+      if(name==='export-legacy'){
+        const packet=await store.exportLegacy(namespace,id);await authorize();download(new Blob([JSON.stringify(packet)],{type:'application/json'}),'qianmu-comfy-legacy-backup.json');return;
+      }
+      if(name==='keep-legacy'||name==='copy-legacy'){
+        const [census,oldId]=String(id).split(':'),expectedRevision=view.recovery?.revision,choice=name==='keep-legacy'?'keep':'copy';
+        if(!await confirm(choice==='keep'?'保留 ST 当前目录，不使用这一旧库分支？完整旧库仍可随时导出。':'将此旧库条目的所有历史版本另存为独立副本？不替换当前方案，也不会改绑现有镜组或开启生成。'))return;
+        await authorize();await store.resolveLegacy(namespace,{census,id:oldId,choice,expectedRevision,confirmed:true});await loadList();return;
+      }
+      if(name==='restore-retired'){
+        const expectedRevision=view.recovery?.revision;if(!await confirm('恢复此方案的全部版本到归档区？不会自动应用或生成。'))return;
+        await authorize();await store.restoreRetired(namespace,id,{expectedRevision,confirmed:true});await loadList();return;
+      }
       if(name==='backup-library'){
         const captured=namespace,at=entry,isSame=()=>visible()&&namespace===captured&&entry===at;
         const packet=await store.backup(captured,{isCurrent:isSame});await authorize();
@@ -153,8 +177,9 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
       }
       if(name==='archive'||name==='restore'){await store.archive(namespace,row.id,row.revision,name==='archive');await loadList();return;}
       if(name==='purge'){
-        if(!await confirm(`永久清理「${row.name}」的全部 ${row.version} 个版本？此操作不可撤回；需要保留时请先取消并导出。当前已应用配方和生成记录不受影响。`))return;
-        await authorize();await store.purge(namespace,row.id,row.revision);await loadList();notify('已清理归档方案的全部版本；无法撤回','success');
+        const native=view.usage?.persistence==='st-account-file';
+        if(!await confirm(native?`将「${row.name}」移出目录？全部 ${row.version} 个版本原件保留，可在保留原件中恢复；不保证释放磁盘，引用此方案的后续生成将停止并提示。`:`永久清理「${row.name}」的全部 ${row.version} 个版本？此操作不可撤回；需要保留时请先取消并导出。当前已应用配方和生成记录不受影响。`))return;
+        await authorize();await store.purge(namespace,row.id,row.revision);await loadList();notify(native?'已移出目录，全部原件保留':'已清理归档方案的全部版本；无法撤回','success');
       }
     });
   }

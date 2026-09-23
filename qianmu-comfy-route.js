@@ -1,4 +1,5 @@
-// Lazy read-only preparation. Saved graphs are never rewritten; node/output/admission checks still run downstream.
+// Lazy preparation may preserve same-account legacy originals. Saved graphs are
+// never rewritten; node/output/admission checks still run downstream.
 import { createComfyWorkflowStore, normalizeComfyLibraryDocument } from './qianmu-comfy-library.js';
 import { comfyWorkflowReferenceHash } from './qianmu-comfy-references.js';
 import { assertComfyRouteNamespace, normalizeComfyRouteSelection, normalizeComfyRouteBinding, comfyRouteError, comfyRouteBindingKey, retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';
@@ -19,7 +20,8 @@ async function recipeHash(document) {
 }
 
 async function readVersion({ namespace, selection, guard, store }) {
-  const [heads, versions, raw] = await Promise.all([
+  const snapshot=store.readVersion?await store.readVersion(namespace,selection.id,selection.revision,{guard}):null;
+  const [heads, versions, raw] = snapshot?[[snapshot.head].filter(Boolean),[snapshot.version].filter(Boolean),snapshot.document]:await Promise.all([
     store.list(namespace), store.versions(namespace, selection.id), store.load(namespace, selection.id, selection.revision),
   ]);
   await guard();

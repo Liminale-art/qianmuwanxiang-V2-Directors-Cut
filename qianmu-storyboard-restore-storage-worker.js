@@ -14,6 +14,7 @@ self.addEventListener('message',async event=>{
   try{
     if(typeof id!=='string'||!['inspect','clear','characters','comfy','mappings','carriers','mapping-list','mapping-detail','mapping-export','mapping-import-preview','mapping-import-apply','user-alias-preview','user-alias-apply'].includes(input.action))throw Error('储存操作无效');
     if(input.nativeCharacters&&input.action!=='characters'&&!input.action.startsWith('user-alias-'))throw Error('角色库储存交接范围无效');
+    if(input.nativeComfy&&input.action!=='comfy')throw Error('工作流储存交接范围无效');
     let native=false;
     if(input.nativeHistory){
       if(!['inspect','clear','mappings','carriers'].includes(input.action)&&!input.action.startsWith('mapping-')&&!input.action.startsWith('user-alias-'))throw Error('恢复记录储存交接范围无效');
@@ -25,7 +26,8 @@ self.addEventListener('message',async event=>{
     }
     if(input.action==='comfy'){
       await guard();const {inspectComfyStorage}=await import('./qianmu-comfy-storage.js');
-      const result=await inspectComfyStorage({namespace:input.namespace,guard});await guard();self.postMessage({id,result});return;
+      const comfy=characterWorkerStorageOptions(input.nativeComfy,{namespace:input.namespace,origin:self.location.origin,guard});
+      const result=await inspectComfyStorage({namespace:input.namespace,guard,native:comfy});await guard();self.postMessage({id,result});return;
     }
     if(input.action==='characters'){
       await guard();const {createCharacterArchiveStore}=await import('./qianmu-character-archive-store.js');

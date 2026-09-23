@@ -22,6 +22,16 @@ function metadata(meta){
     ||!integer(meta.bytes,1,64*1048576)||!integer(meta.totalBytes,meta.bytes,64*1048576)||!integer(meta.nodes,1,512)
     ||!Array.isArray(meta.slots)||meta.slots.some(x=>typeof x!=='string')||typeof meta.issue!=='string')fail('工作流备份版本索引无效');
 }
+export {metadata as validateComfyLibraryMetadata};
+export function validateComfyLibraryVersion(version){
+  only(version,['meta','document']);metadata(version.meta);const {meta,document}=version;
+  if(meta.archived!==false)fail('工作流历史版本不能携带归档状态');
+  let normalized;try{normalized=normalizeComfyLibraryDocument(document);}catch(_){fail('工作流原文无效或含凭据字段，请保留原件并单独核对');}
+  if(!equal(normalized,document))fail('工作流版本含无法无损保留的字段，未改写原文');
+  const inspected=inspectComfyLibraryDocument(normalized);
+  if(meta.bytes!==inspected.bytes||meta.nodes!==inspected.nodes||!equal(meta.slots,inspected.slots)||meta.issue!==inspected.issue||!equal(meta.classification,normalized.classification))fail('工作流索引与原文不一致');
+  return normalized;
+}
 export function validateComfyLibraryBackup(value){
   only(value,['schema','namespace','credentialsIncluded','workflows']);
   if(value.schema!==COMFY_LIBRARY_BACKUP_SCHEMA||value.credentialsIncluded!==false||!Array.isArray(value.workflows)||value.workflows.length>128)fail('工作流库备份格式或数量无效');account(value.namespace);
@@ -34,11 +44,7 @@ export function validateComfyLibraryBackup(value){
       const version=row.versions[i];only(version,['meta','document']);metadata(version.meta);const meta=version.meta;
       if(meta.id!==row.head.id||meta.version!==i+1||meta.parentRevision!==parent||revisions.has(meta.revision)||meta.archived!==false||meta.createdAt!==row.head.createdAt)fail('工作流版本链不连续或归属不符');
       revisions.add(meta.revision);parent=meta.revision;
-      let normalized;try{normalized=normalizeComfyLibraryDocument(version.document);}catch(_){fail('工作流原文无效或含凭据字段，请保留原件并单独核对');}
-      if(!equal(normalized,version.document))fail('工作流版本含无法无损保留的字段，未改写原文');
-      const inspected=inspectComfyLibraryDocument(normalized);sum+=inspected.bytes;
-      if(meta.bytes!==inspected.bytes||meta.totalBytes!==sum||meta.nodes!==inspected.nodes||!equal(meta.slots,inspected.slots)||meta.issue!==inspected.issue
-        ||!equal(meta.classification,normalized.classification))fail('工作流索引与原文不一致');
+      validateComfyLibraryVersion(version);sum+=meta.bytes;if(meta.totalBytes!==sum)fail('工作流索引与原文不一致');
     }
     const tail=row.versions.at(-1).meta,expected={...clean(tail),archived:row.head.archived,updatedAt:row.head.updatedAt};
     if(row.head.updatedAt<tail.updatedAt||!equal(row.head,expected))fail('工作流最新指针与版本链不符');bytes+=sum;versions+=row.versions.length;

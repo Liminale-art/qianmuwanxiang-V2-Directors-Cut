@@ -21,6 +21,7 @@ export async function runRestoreStorage(action,{namespace,guard,selected,input,c
   if(action==='clear'&&(confirmed!==true||recoveryLossAccepted!==true))throw fail('尚未确认结束所选恢复记录');
   await guard();
   const nativeCharacters = action === 'characters' || action.startsWith('user-alias-') ? await captureCharacterWorkerStorage(namespace, guard) : null;
+  const nativeComfy = action === 'comfy' ? await captureCharacterWorkerStorage(namespace, guard) : null;
   let nativeHistory;
   if((['inspect','clear','mappings','carriers'].includes(action)||action.startsWith('mapping-')||action.startsWith('user-alias-'))&&nativeStorage.isStAccountStorageConfigured()){
     if(typeof nativeStorage.captureStAccountStorageWorkerContext!=='function')throw fail('请刷新 ST 后核对跨端恢复记录');
@@ -29,7 +30,7 @@ export async function runRestoreStorage(action,{namespace,guard,selected,input,c
   }
   const interrupted=()=>fail(action==='mapping-import-apply'?'迁移凭据导入已中断':action==='user-alias-apply'?'USER整理结果未确认，原绑定可能已调整，请重新打开核对；不会自动重试。':action==='user-alias-preview'?'USER地址核对已取消，未修改绑定':action==='clear'?'清理结果未确认；部分记录可能已结束，请重新盘点。不会自动重试。':action==='mappings'||action.startsWith('mapping-')?'迁移凭据核对已取消，原映射记录未修改':`${action==='characters'?'角色空间':action==='comfy'?'Comfy 空间':'恢复记录'}盘点已取消，未修改数据`);
   if(signal?.aborted)throw interrupted();
-  const id=crypto.randomUUID(),payload={id,action,namespace,...(nativeHistory?{nativeHistory}:{}),...(nativeCharacters?{nativeCharacters}:{}),...(action.startsWith('mapping-')||action.startsWith('user-alias-')?{input:structuredClone(input)}:{}),...(action.startsWith('user-alias-')?{chatHash}:{}),...(action==='clear'?{selected:structuredClone(selected),confirmed,recoveryLossAccepted}: {})};
+  const id=crypto.randomUUID(),payload={id,action,namespace,...(nativeComfy?{nativeComfy}:{}),...(nativeHistory?{nativeHistory}:{}),...(nativeCharacters?{nativeCharacters}:{}),...(action.startsWith('mapping-')||action.startsWith('user-alias-')?{input:structuredClone(input)}:{}),...(action.startsWith('user-alias-')?{chatHash}:{}),...(action==='clear'?{selected:structuredClone(selected),confirmed,recoveryLossAccepted}: {})};
   return new Promise((resolve,reject)=>{
     let worker,done=false,lastGuard=0,lastProgress=0,watch;
     const abort=()=>finish(interrupted());
