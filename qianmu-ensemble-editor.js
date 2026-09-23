@@ -1,4 +1,4 @@
-import {normalizeEnsembleLibrary,normalizeEnsembleChatSelection} from './qianmu-ensemble-selection.js?v=1.59.351';
+import {normalizeEnsembleLibrary,normalizeEnsembleChatSelection} from './qianmu-ensemble-selection.js?v=1.59.352';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const fail=message=>{throw Object.assign(Error(message),{code:'ensemble_editor'});};
 const id=prefix=>`${prefix}-${crypto.randomUUID()}`;

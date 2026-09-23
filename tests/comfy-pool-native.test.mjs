@@ -107,9 +107,12 @@ test('empty native inventory is measured zero and a too-small new-save limit sto
 });
 
 test('another native client changing the directory during an original upload is not overwritten',async t=>{
-  const f=await poolNativeFixture(t),store=f.openPool(),first=await save(f,store),other=f.openPool(comfyPoolIdbFixture());let changed=false,remote;
+  const f=await poolNativeFixture(t),store=f.openPool(),first=await save(f,store);
+  const {createStAccountStorage}=await import('../qianmu-st-account-storage.js?pool-native-race');
+  const createStorage=options=>createStAccountStorage({...options,resolveNamespace:async()=>namespace,isCurrent:options?.isCurrent||(()=>true),headers:()=>({'X-CSRF-Token':'synthetic'}),fetchImpl:f.fetchImpl,origin:'https://st.fixture.invalid'});
+  const other=f.openPool(comfyPoolIdbFixture(),{native:{createStorage}});let changed=false,remote;
   f.hook(async call=>{if(!changed&&call.path==='/api/files/upload'&&JSON.parse(call.request.body).name.includes('-comfy-pool-version-')){changed=true;remote=await save(f,other,null,{styleLock:false});}});
-  await assert.rejects(save(f,store,first,{enabled:false}));f.hook(null);const rows=await other.list(namespace);assert.equal(rows.find(row=>row.id===first.id).revision,first.revision);assert.ok(rows.some(row=>row.id===remote.id));
+  await assert.rejects(save(f,store,first,{enabled:false}),{code:'st_account_storage_conflict'});f.hook(null);const rows=await other.list(namespace);assert.equal(rows.find(row=>row.id===first.id).revision,first.revision);assert.ok(rows.some(row=>row.id===remote.id));
 });
 
 test('unknown native directory fields and damaged pool originals fail instead of normalizing away evidence',async t=>{

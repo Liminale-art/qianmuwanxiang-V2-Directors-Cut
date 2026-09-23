@@ -112,6 +112,17 @@ export function createComfySceneLockStore({indexedDB=globalThis.indexedDB,keyRan
     },valid);
   }
   return {
+    async snapshot(namespace,{isCurrent=()=>true}={}){
+      namespace=assertComfyRouteNamespace(namespace);if(!isCurrent())throw closedError();
+      const {readComfySceneSnapshot}=await import('./qianmu-comfy-scene-backup.js');
+      return transaction('readonly',(tx,output,abort)=>readComfySceneSnapshot(tx,namespace,keyRange,{limits:quota,isCurrent},output,abort),isCurrent);
+    },
+    async assertSnapshot(expected,{isCurrent=()=>true}={}){
+      const {validateComfySceneSnapshot,sameComfySceneSnapshot}=await import('./qianmu-comfy-scene-backup.js');
+      const captured=structuredClone(expected);validateComfySceneSnapshot(captured,{limits:quota});
+      const actual=await this.snapshot(captured.namespace,{isCurrent});
+      if(!isCurrent()||!sameComfySceneSnapshot(actual,captured))throw comfySceneLockError('conflict','本机续场原件在保全期间变化，请重新核对');return true;
+    },
     inspect:scope=>operate(scope),
     pendingOwners:scope=>operate(scope,null,true),
     orphan:(scope,request)=>operate(scope,{...copy(request),type:'orphan'}),

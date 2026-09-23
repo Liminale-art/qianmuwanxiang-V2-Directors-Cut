@@ -5,10 +5,10 @@ import {assertStoryboardInputBudget,completeStoryboardText} from './qianmu-story
 import {normalizeStoryboardPromptFormats} from './qianmu-prompt-formats.js';
 import {projectStoryboardFocusedInput,storyboardFocusedRepairContext} from './qianmu-storyboard-focused-input.js?v=1.59.224';
 import {configureStoryboardStreamReadiness,assertStoryboardStreamReadiness,STORYBOARD_STREAM_READINESS_INSTRUCTION} from './qianmu-storyboard-stream-readiness.js?v=1.59.221';
-import {configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,STORYBOARD_STREAM_COVERAGE_INSTRUCTION,storyboardStreamStyleHistory} from './qianmu-storyboard-stream-coverage.js?v=1.59.351';
+import {configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,STORYBOARD_STREAM_COVERAGE_INSTRUCTION,storyboardStreamStyleHistory} from './qianmu-storyboard-stream-coverage.js?v=1.59.352';
 import {createEnsembleSceneLock} from './qianmu-ensemble-scene-lock.js';
 import {configureEnsembleSceneContinuation,mergeEnsembleSceneHistories,ENSEMBLE_SCENE_CONTINUATION_INSTRUCTION} from './qianmu-ensemble-continuation.js';
-import {readEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.351';
+import {readEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.352';
 import {STORYBOARD_STILL_NARRATIVE_INSTRUCTIONS,STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js';
 import {configureGalleryKeywords,GALLERY_KEYWORD_INSTRUCTION} from './qianmu-gallery-keywords.js';
 
