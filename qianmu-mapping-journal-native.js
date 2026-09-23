@@ -5,7 +5,7 @@ import {inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
 import {mappingHead,mappingBytes} from './qianmu-storyboard-mapping-contract.js';
 import {BUNDLE_MAPPING_LIMITS,validateBundleMappingHeads,sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
-import {MAPPING_NATIVE_SLOT,MAPPING_RECORD_SLOT,mappingNativeFail as fail,mappingNativeAccount,emptyMappingNativeIndex,validateMappingNativeIndex} from './qianmu-mapping-native-contract.js';
+import {MAPPING_NATIVE_SLOT,MAPPING_RECORD_SLOT,mappingNativeFail as fail,mappingNativeAccount,emptyMappingNativeIndex,validateMappingNativeIndex,planMappingNativeSources} from './qianmu-mapping-native-contract.js';
 
 // Append-only native receipts. Recovery checkpoints remain a separate journal;
 // storing a receipt never replays a binding, grants consent, or submits a model.
@@ -111,8 +111,32 @@ export function createNativeMappingJournal({legacy,createStorage=createConfigure
         const saved=await load(find(after,head.kind,head.digest));if(await digest(saved)!==await digest(row))fail('迁移凭据原文与读回不符');return saved;
       });
     },
-    // Preservation inventory for maintenance/export, not implicit permission to
-    // use or replay an old receipt. Normal registry/backup still shows active ones.
+    // Source APIs include the exact first-save variants. Normal registry remains
+    // the active receipt per review; source preservation never changes that pick.
+    listMappingSourceHeads(namespace,options){return operation(namespace,options,async({index})=>structuredClone([...index.records,...index.retained].map(row=>row.head)));},
+    inspectMappingSources(namespace,input,{reservations=[],...options}={}){
+      const heads=structuredClone(input),reserved=structuredClone(reservations);
+      return operation(namespace,options,async({index})=>({...planMappingNativeSources(index,heads,reserved),digest:await digest({index,heads,reserved})}));
+    },
+    loadMappingSource(namespace,input,options){
+      const head=structuredClone(input);
+      return operation(namespace,options,async({index,load})=>{
+        planMappingNativeSources(index,[head]);const row=[...index.records,...index.retained].find(row=>sameBundleMappingHead(row.head,head));return row?load(row):null;
+      });
+    },
+    async importMappingSource(input,{head:inputHead,confirmed=false,...options}={}){
+      if(confirmed!==true)fail('请明确确认保全原始迁移凭据');const row=structuredClone(input),head=structuredClone(inputHead);
+      await inspectBundleMappingReceipt(row,head,head?.namespace);
+      return operation(head.namespace,options,async({index,load,preserve,update})=>{
+        planMappingNativeSources(index,[head]);const locate=value=>[...value.records,...value.retained].find(item=>sameBundleMappingHead(item.head,head));
+        let saved=locate(index);
+        if(!saved){const descriptor=await preserve(row,head);const after=await update(value=>{
+          planMappingNativeSources(value,[head]);if(locate(value))return;
+          if(find(value,head.kind,head.digest))value.retained.push(descriptor);else value.records.push(descriptor);
+        });saved=locate(after);}
+        const receipt=await load(saved);if(await digest(receipt)!==await digest(row))fail('来源凭据读回不符，原件保留');return receipt;
+      });
+    },
     mappingPreservedSources(namespace,options){return operation(namespace,options,async({index})=>structuredClone(index.retained));},
     close(){closed=true;storage?.close();legacy.close();}
   });

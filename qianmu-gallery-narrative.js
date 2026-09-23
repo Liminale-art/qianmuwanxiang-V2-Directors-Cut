@@ -1,4 +1,4 @@
-import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.334';
+import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.335';
 import { hashText } from './qianmu-storyboard-utils.js';
 import {captureGalleryNarrativeInputs,sameGalleryNarrativeInputs} from './qianmu-gallery-narrative-inputs.js';
 

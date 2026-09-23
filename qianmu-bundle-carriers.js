@@ -1,15 +1,21 @@
 import {BUNDLE_CARRIERS_SCHEMA,bundleCarrierEntryId,isBundleCarrierEntry,isBundleCarrierOriginalEntry,validateBundleCarriersIndex,bundleCarriersSummary} from './qianmu-bundle-carriers-contract.js';
 import {bundleCarrierHead,sameCarrierFields,summarizeBundleCarrierStorage,summarizeBundleCarrierOriginals} from './qianmu-bundle-carrier-storage-contract.js';
 import {inspectBundleCarrierProof,inspectBundleCarrierOriginal} from './qianmu-bundle-carrier.js';
-import {sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
+import {sameBundleMappingHead,sameBundleMappingReview} from './qianmu-bundle-mapping-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_bundle_carriers',submissionState:'not_submitted'});};
 const file=value=>new Blob([JSON.stringify(value)],{type:'application/json'});
 const sorted=rows=>[...rows].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);
-function requireDeclaredCarriers(proof,ids){
+function requireDeclaredCarriers(proof,ids,originals){
   // Only explicit carrier IDs in the verified original manifest form these links; USER binding snapshots do not.
-  for(const row of JSON.parse(proof.manifestText).entries)if(isBundleCarrierEntry(row.id)&&(row.id===`carrier:${proof.carrierDigest}`||!ids.has(row.id)))fail('原清单声明的旧载体来源缺失，未省略中间来源');
+  for(const row of JSON.parse(proof.manifestText).entries){
+    if(isBundleCarrierEntry(row.id)&&(row.id===`carrier:${proof.carrierDigest}`||!ids.has(row.id)))fail('原清单声明的旧载体来源缺失，未省略中间来源');
+    if(isBundleCarrierOriginalEntry(row.id)){
+      const original=originals.get(row.sha256);
+      if(row.id!==`carrier-original:${row.sha256}`||!original||original.bytes!==row.bytes)fail('原清单声明的额外原件缺失，未省略旧端凭据');
+    }
+  }
 }
 export async function inspectBundleCarriersIndex(value,namespace){
   validateBundleCarriersIndex(value,namespace);if(file(value).size>1048576)fail('来源关联目录超过1MiB');const {digest:expected,...core}=value;if(await digest(core)!==expected)fail('来源关联目录摘要不符');return value;
@@ -17,8 +23,10 @@ export async function inspectBundleCarriersIndex(value,namespace){
 async function original(blob,head,namespace,mappings,guard){
   const derived=await inspectBundleCarrierOriginal(blob,head,{namespace,guard});
   const expected=mappings?.heads.find(row=>row.kind===derived.kind&&row.digest===derived.digest);
-  if(!expected||!sameBundleMappingHead(expected,derived))fail('来源成员缺少同一完整历史记录，未丢弃旧资料');
-  await guard();return expected;
+  if(!sameBundleMappingReview(expected,derived))fail('来源成员缺少同一完整历史映射，未丢弃旧资料');
+  // Keep this original's own exact head: its first-save metadata can differ
+  // from the active receipt, and historic manifests bind these original bytes.
+  await guard();return derived;
 }
 function requireVerifiedMembers(proof,verified){
   // This private map is built only by full raw-SHA/receipt validation in this operation.
@@ -32,22 +40,27 @@ export async function captureBundleCarriers({namespace,store,mappings,guard=asyn
   const check=async()=>{if(isCurrent()!==true)fail('来源关联备份页面已变化');await guard();if(isCurrent()!==true)fail('来源关联备份页面已变化');};
   const inventory=async()=>{await check();const value=structuredClone(await store.list(namespace,{guard:check,isCurrent}));summarizeBundleCarrierStorage(value.heads,namespace);summarizeBundleCarrierOriginals(value.originals,namespace);await check();return {heads:sorted(value.heads),originals:sorted(value.originals)};};
   const before=await inventory(),baseline=await digest(before),mappingFiles=new Map(),verified=new Map(),entries=[],originals=[];
+  const preserved=mappings.preserved??[],extraFiles=new Map(),rawHeads=new Map(before.originals.map(head=>[head.sha256,head]));
+  if(!Array.isArray(preserved))fail('保全来源原件清单无效');
+  summarizeBundleCarrierOriginals(preserved.map(row=>row.head),namespace);
+  for(const {head,file} of preserved){const prior=rawHeads.get(head.sha256);if(prior&&!sameCarrierFields(prior,head))fail('同一来源原件的目录不符');rawHeads.set(head.sha256,head);extraFiles.set(head.sha256,file);}
+  summarizeBundleCarrierOriginals([...rawHeads.values()],namespace);
   const carrierIds=new Set(before.heads.map(bundleCarrierEntryId));
   for(const entry of mappings.entries){if(entry.id==='mapping-receipts')continue;await check();const sha=await vibeDigest(new Uint8Array(await entry.file.arrayBuffer()));mappingFiles.set(sha,entry);}
-  for(const head of before.originals){
-    await check();const blob=await store.loadOriginal(namespace,head.sha256,{guard:check,isCurrent});verified.set(head.sha256,Object.freeze({...await original(blob,head,namespace,mappings.index,check)}));
+  for(const head of sorted([...rawHeads.values()])){
+    await check();const blob=extraFiles.get(head.sha256)??await store.loadOriginal(namespace,head.sha256,{guard:check,isCurrent});verified.set(head.sha256,Object.freeze({...await original(blob,head,namespace,mappings.index,check)}));
     const reused=mappingFiles.get(head.sha256),entryId=reused?reused.id:`carrier-original:${head.sha256}`;
     originals.push({...head,entryId});if(!reused)entries.push({id:entryId,file:blob});
   }
   for(const head of before.heads){
     await check();const proof=await store.load(namespace,head.carrierDigest,{guard:check,isCurrent}),inspected=await inspectBundleCarrierProof(proof,{namespace,guard:check});
     if(!sameCarrierFields(head,bundleCarrierHead(inspected.summary)))fail('来源关联原文与目录不符');
-    requireDeclaredCarriers(proof,carrierIds);
+    requireDeclaredCarriers(proof,carrierIds,rawHeads);
     requireVerifiedMembers(inspected,verified);entries.push({id:bundleCarrierEntryId(head),file:file(proof)});
   }
   const core={schema:BUNDLE_CARRIERS_SCHEMA,scope:'historical-carriers-only',namespace,heads:before.heads,originals:originals.sort((a,b)=>a.sha256<b.sha256?-1:1)},index=await inspectBundleCarriersIndex({...core,digest:await digest(core)},namespace);
   entries.unshift({id:'bundle-carriers',file:file(index)});
-  const verify=async()=>{if(await digest(await inventory())!==baseline)fail('打包期间来源关联已变化，请重新导出');await check();};
+  const verify=async()=>{if(await digest(await inventory())!==baseline)fail('打包期间来源关联已变化，请重新导出');await mappings.verify?.();await check();};
   await verify();return {index,entries,summary:bundleCarriersSummary(index),verify};
 }
 export async function inspectBundleCarriers(opened,{mappings,guard=async()=>{}}={}){
@@ -62,7 +75,7 @@ export async function inspectBundleCarriers(opened,{mappings,guard=async()=>{}}=
   for(const head of index.heads){
     const proof=await opened.readJson(bundleCarrierEntryId(head)),value=await inspectBundleCarrierProof(proof,{namespace,guard});
     if(!sameCarrierFields(head,bundleCarrierHead(value.summary)))fail('来源关联证明与清单不符');
-    requireDeclaredCarriers(proof,new Set(expected.keys()));
+    requireDeclaredCarriers(proof,new Set(expected.keys()),new Map(index.originals.map(row=>[row.sha256,row])));
     requireVerifiedMembers(value,verified);
   }
   await guard();return {index,summary:bundleCarriersSummary(index)};

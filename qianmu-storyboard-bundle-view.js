@@ -3,7 +3,7 @@ const button = (action, text, disabled = false) => `<button type="button" class=
 const resourceStates={included:'包内资料',external:'外部另备',dynamic:'动态槽位',unresolved:'引用待定位',review:'运行环境待核对'};
 function renderCarrierHistory(view){
   const plan=view.preview?.carrierRestore,page=view.carrierPage;if(!plan)return '';
-  return `<section data-bundle-carriers><h3>来源记录 · ${plan.count}</h3><p>含本次备份；新增 ${plan.added} · 完全相同 ${plan.existing}。原成员 ${plan.originalCount} 份，新增 ${plan.addedOriginals} 份。合计占用 ${Math.ceil(plan.totalBytes/1024)} KiB，已含本次载体及原文空间。</p><p>保存原始来源与成员，不执行旧选择，不认证身份，也不替代当前人物或环境确认。</p>
+  return `<section data-bundle-carriers><h3>来源记录 · ${plan.count}</h3><p>含本次备份；新增 ${plan.added} · 完全相同 ${plan.existing}。原成员 ${plan.originalCount} 份，新增 ${plan.addedOriginals} 份。合计占用 ${Math.ceil(plan.totalBytes/1024)} KiB，已含本次载体及原文空间。</p><p>保存原始来源与成员；首次时间不同的原件并存保全，不替换当前凭据。不执行旧选择，不认证身份，也不替代当前人物或环境确认。</p>
     ${page&&page.descriptorDigest===plan.descriptorDigest?`${page.rows.map(row=>`<p><b>${row.current?'本次备份':'历史来源'}</b> · ${escape(new Date(row.createdAt).toLocaleString())}<br>${row.indexState==='absent'?'原包未记录历史目录':row.indexState==='empty'?'原包历史目录明确为空':`原目录 ${row.receiptCount} 份凭据`} · ${Math.ceil(row.bytes/1024)} KiB<br><small>${escape(row.carrierDigest)}</small></p>`).join('')}<nav>${button('carriers-previous','上一页',!page.offset)}<span>${page.offset+1}–${Math.min(page.offset+24,page.total)} / ${page.total}</span>${button('carriers-next','下一页',page.offset+24>=page.total)}</nav>`:button('carriers','查看来源清单')}</section>`;
 }
 function renderMappingHistory(view){

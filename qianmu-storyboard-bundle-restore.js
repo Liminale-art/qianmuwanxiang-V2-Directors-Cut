@@ -44,7 +44,7 @@ export async function createStoryboardBundleRestoreSession({ namespace, chatKey,
   if (inspected.fingerprint !== opened.fingerprint) fail('核验后资源联包发生变化，请重新选择原文件');
   if (inspected.manifest.namespace !== namespace || inspected.manifest.chatKey !== chatKey) fail('请在原 ST 账户及原聊天核对；跨环境身份重绑定尚未确认');
   if((inspected.summary.carriers?.count||inspected.summary.carriers?.originalCount)&&!carrierStore)fail('此包含来源记录，请更新完整来源恢复模块，未恢复任何数据');
-  const carrierRestore=carrierStore?await createBundleCarrierRestore({opened,store:carrierStore,guard:check,isCurrent:syncCurrent}):null;
+  const carrierRestore=carrierStore?await createBundleCarrierRestore({opened,store:carrierStore,journal,guard:check,isCurrent:syncCurrent}):null;
   const mappingIndex=inspected.summary.mappingReceipts?.count?await inspectBundleMappingIndex(await opened.readJson('mapping-receipts'),namespace):null;
   const mappingOptions={index:mappingIndex,opened,journal,guard:check,isCurrent:syncCurrent};
   const verifyHistory=async()=>{if(mappingIndex)await verifyBundleMappingRestore(mappingOptions);await carrierRestore?.verify();};

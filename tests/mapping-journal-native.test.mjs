@@ -60,7 +60,7 @@ test('independent old devices with same review retain both exact receipts withou
   const variants=await a.mappingPreservedSources(namespace);assert.equal(variants.length,1);assert.equal(variants[0].head.createdAt,900);
   assert.deepEqual((await f.storage.readImmutable(variants[0].reference)).value,alternate);assert.deepEqual(local.state.rows[0].receipt,alternate);
   f.reset();await f.open(local).listMappingHeads(namespace);assert.equal(f.uploads,0);assert.equal((await f.read()).value.retained.length,1);
-  await assert.rejects(captureBundleMappings({namespace,journal:a}),/遗漏来源/);
+  assert.equal((await captureBundleMappings({namespace,journal:a})).preserved.length,1);
 });
 
 test('later local append is picked up even on the same handle; repeated listing does not reread native originals',async t=>{

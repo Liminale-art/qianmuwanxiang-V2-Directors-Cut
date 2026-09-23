@@ -18,6 +18,9 @@ import {inspectStoryboardSubjectMapReview} from '../qianmu-storyboard-subject-ma
 import {mappingReceiptsFixture} from './fixtures/storyboard-mapping-receipts.mjs';
 import {mappingHead,mappingBytes} from '../qianmu-storyboard-mapping-contract.js';
 import {memoryCarrierStore} from './fixtures/bundle-carriers.mjs';
+import {characterNativeFixture} from './helpers/character-native-fixture.mjs';
+import {mappingLegacyFixture} from './helpers/mapping-legacy-fixture.mjs';
+import {createNativeMappingJournal} from '../qianmu-mapping-journal-native.js';
 
 const clone = structuredClone;
 async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, carriers=false, sourceText = 'original text', missingAnchor = false } = {}) {
@@ -95,6 +98,29 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+for(const rejectSource of [false,true])test(`actual complete bundle coordinator with native sources ${rejectSource?'stops before images on failed variant save':'preserves existing destination receipts and restores every source'}`,async t=>{
+  const f=await fixture({history:true,carriers:true});f.session.close();
+  const sourceStorage=await characterNativeFixture(t,{account:namespace}),targetStorage=await characterNativeFixture(t,{account:namespace});
+  const sourceJournal=createNativeMappingJournal({legacy:mappingLegacyFixture().open(),createStorage:sourceStorage.createStorage});t.after(()=>sourceJournal.close());
+  for(const row of f.historyRows)await sourceJournal.importMappingReceipt(row.receipt,{head:row.head,confirmed:true});
+  const source=f.historyRows[0],variant={...source.receipt,createdAt:800},variantHead=mappingHead(source.kind,variant);
+  await sourceJournal.importMappingSource(variant,{head:variantHead,confirmed:true});
+  f.source.options.journal=sourceJournal;
+  await assert.rejects(f.source.build(),/完整来源导出模块/);
+  f.source.options.carrierStore=memoryCarrierStore().store;const built=await f.source.build();f.options.file=built.file;
+  assert.equal(built.summary.carriers.extraOriginalCount,1);
+  const local=mappingLegacyFixture().open(),legacy={...f.options.journal,listMappingHeads:local.listMappingHeads,loadMappingReceipt:local.loadMappingReceipt,createMappingMigrationGuard:local.createMappingMigrationGuard,close:local.close};
+  const targetJournal=createNativeMappingJournal({legacy,createStorage:targetStorage.createStorage});t.after(()=>targetJournal.close());f.options.journal=targetJournal;
+  const current={...source.receipt,createdAt:9000};await targetJournal.importMappingSource(current,{head:mappingHead(source.kind,current),confirmed:true});
+  const session=await f.reopen(),preview=await session.preview();assert.equal(preview.mappingRestore.added,4);assert.equal(preview.carrierRestore.originalCount,5);
+  if(rejectSource)targetStorage.hook(call=>{if(call.request.method!=='POST')return;const {data,name}=JSON.parse(call.request.body);if(name.includes('-mapping-record-')&&JSON.parse(Buffer.from(data,'base64').toString()).value?.createdAt===800)return Response.json({}, {status:503});});
+  const restore=session.restore(preview,{...consent,historyReviewed:true,carriersReviewed:true});
+  if(rejectSource){await assert.rejects(restore,/未全部确认/);assert.equal(f.e.files.size,0);assert.equal(f.e.mutation,null);assert.equal(f.e.locals.workflows.workflows.length,0);assert.equal(f.e.records.get('bundle').phase,'prepared');assert.equal(f.e.carriers.state.originals.length,5);}
+  else{const result=await restore;assert.equal(result.resourcesVerified,true);assert.equal(f.e.mutation.phase,'applied');assert.deepEqual(await targetJournal.loadMappingSource(namespace,variantHead),variant);}
+  assert.deepEqual(await targetJournal.loadMappingReceipt(namespace,source.kind,source.head.digest),current);
+  assert.deepEqual(await targetJournal.loadMappingSource(namespace,source.head),source.receipt);session.close();
+});
 test('actual restore coordinator saves source and exact originals after journal history and before images',async()=>{
   const f=await fixture({history:true,carriers:true}),p=await f.session.preview();assert.equal(p.carrierRestore.count,1);assert.equal(p.carrierRestore.originalCount,4);
   await assert.rejects(f.session.restore(p,{...consent,historyReviewed:true}),/单独确认保全/);assert.deepEqual(writes(f.e),[]);

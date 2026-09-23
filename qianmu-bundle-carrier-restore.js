@@ -1,14 +1,17 @@
-import {createBundleCarrierProof,inspectBundleCarrierProof} from './qianmu-bundle-carrier.js';
+import {createBundleCarrierProof,inspectBundleCarrierProof,readBundleCarrierOriginal} from './qianmu-bundle-carrier.js';
 import {inspectBundleCarriersIndex} from './qianmu-bundle-carriers.js';
 import {bundleCarrierEntryId} from './qianmu-bundle-carriers-contract.js';
 import {bundleCarrierHead,bundleCarrierOriginalHead,summarizeBundleCarrierStorage,summarizeBundleCarrierOriginals,sameCarrierFields} from './qianmu-bundle-carrier-storage-contract.js';
 import {validateBundleCarrierRestoreSummary,validateBundleCarrierPageInput} from './qianmu-bundle-carrier-restore-contract.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
+import {inspectBundleMappingIndex} from './qianmu-bundle-mappings.js';
+import {sameBundleMappingHead,sameBundleMappingReview} from './qianmu-bundle-mapping-contract.js';
+import {hasNativeMappingSources} from './qianmu-bundle-mapping-restore.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_bundle_carrier_restore',submissionState:'not_submitted'});};
 const ordered=rows=>[...rows].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);
 
 // Frozen source descriptor stays in the restore worker. Only heads/counts/pages leave it.
-export async function createBundleCarrierRestore({opened,store,guard=async()=>{},isCurrent=()=>true}){
+export async function createBundleCarrierRestore({opened,store,journal=null,guard=async()=>{},isCurrent=()=>true}){
   if(!store?.list||!store?.load||!store?.loadOriginal||!store?.saveBatch)fail('来源恢复存储不可用，请更新前端');
   const check=async()=>{if(isCurrent()!==true)fail('来源恢复页面已变化');await guard();if(isCurrent()!==true)fail('来源恢复页面已变化');};
   const {namespace}=opened.manifest,sourceDigest=opened.fingerprint;
@@ -21,8 +24,21 @@ export async function createBundleCarrierRestore({opened,store,guard=async()=>{}
   const desired={heads:ordered([...heads.values()]),originals:ordered([...originals.values()])};
   const descriptorDigest=await digest({sourceDigest,...desired}),getProof=async head=>head.carrierDigest===sourceDigest?current:opened.readJson(bundleCarrierEntryId(head));
   const getOriginal=async sha256=>{const id=entries.get(sha256);if(!id)fail('缺少来源成员原始分段');return (await opened.read(id)).file;};
+  const native=hasNativeMappingSources(journal);let sourceHeadsPromise;
+  const sourceHeads=()=>sourceHeadsPromise??=Promise.resolve().then(async()=>{
+    const mapping=opened.manifest.entries.some(row=>row.id==='mapping-receipts')?await inspectBundleMappingIndex(await opened.readJson('mapping-receipts'),namespace):null;
+    const rows=[...(mapping?.heads||[])];
+    for(const head of desired.originals){
+      await check();const source=await readBundleCarrierOriginal(await getOriginal(head.sha256),head,{namespace,guard:check});
+      const active=mapping?.heads.find(row=>row.key===source.head.key);
+      if(!sameBundleMappingReview(active,source.head))fail('保全原件不属于包内同一完整历史映射');
+      if(!rows.some(row=>sameBundleMappingHead(row,source.head)))rows.push(source.head);
+    }
+    await check();return rows;
+  });
   const inventory=async()=>{await check();const value=await store.list(namespace,{guard:check,isCurrent});summarizeBundleCarrierStorage(value.heads,namespace);summarizeBundleCarrierOriginals(value.originals,namespace);await check();return {heads:ordered(value.heads),originals:ordered(value.originals)};};
   async function preview(){
+    if(native)await journal.inspectMappingSources(namespace,await sourceHeads(),{guard:check,isCurrent});
     const before=await inventory(),mergedHeads=new Map(before.heads.map(row=>[row.key,row])),mergedOriginals=new Map(before.originals.map(row=>[row.key,row]));let added=0,addedOriginals=0;
     for(const head of desired.heads){
       const existing=mergedHeads.get(head.key);if(existing){
@@ -42,7 +58,9 @@ export async function createBundleCarrierRestore({opened,store,guard=async()=>{}
   }
   async function verify(){
     const saved=await inventory(),local=new Map(saved.heads.map(row=>[row.key,row])),raw=new Map(saved.originals.map(row=>[row.key,row]));
-    if(desired.heads.some(head=>!sameCarrierFields(local.get(head.key),head))||desired.originals.some(head=>!sameCarrierFields(raw.get(head.key),head)))fail('来源关联或原成员尚未完整保存，未继续恢复资源');await check();
+    if(desired.heads.some(head=>!sameCarrierFields(local.get(head.key),head))||desired.originals.some(head=>!sameCarrierFields(raw.get(head.key),head)))fail('来源关联或原成员尚未完整保存，未继续恢复资源');
+    if(native){const saved=await journal.listMappingSourceHeads(namespace,{guard:check,isCurrent});if((await sourceHeads()).some(head=>!saved.some(row=>sameBundleMappingHead(row,head))))fail('ST保全凭据尚未完整保存，未继续恢复资源');}
+    await check();
   }
   async function restore(approved,{confirmed=false}={}){
     if(confirmed!==true)fail('请单独确认保全全部来源记录及原成员');validateBundleCarrierRestoreSummary(approved,namespace,sourceDigest);
@@ -51,6 +69,11 @@ export async function createBundleCarrierRestore({opened,store,guard=async()=>{}
     // Preserve orphan originals too, then historic proofs, then this carrier; partial progress stays inspectable.
     await store.saveBatch(namespace,{heads:[...desired.heads.filter(row=>row.carrierDigest!==sourceDigest),currentHead],originals:desired.originals},
       {confirmed:true,loadProof:getProof,loadOriginal:getOriginal,guard:check,isCurrent});
+    if(native)for(const head of desired.originals){
+      await check();const source=await readBundleCarrierOriginal(await getOriginal(head.sha256),head,{namespace,guard:check});
+      const saved=await journal.importMappingSource(source.receipt,{head:source.head,confirmed:true,guard:check,isCurrent});
+      if(await digest(saved)!==await digest(source.receipt))fail('ST来源原件读回不符，请保留原包重新核对');await check();
+    }
     await verify();
   }
   return Object.freeze({preview,restore,verify,async page(input){validateBundleCarrierPageInput(input);await check();const rows=[currentHead,...desired.heads.filter(row=>row.carrierDigest!==sourceDigest)];if(input.offset&&input.offset>=rows.length)fail('来源目录页已变化');return {version:1,namespace,sourceDigest,descriptorDigest,offset:input.offset,total:rows.length,rows:rows.slice(input.offset,input.offset+24).map(head=>({...head,current:head.carrierDigest===sourceDigest}))};}});

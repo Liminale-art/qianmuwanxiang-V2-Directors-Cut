@@ -66,10 +66,13 @@ export async function verifyBundleCarrierMembers(input,options){
   return (await collectBundleCarrierMembers(input,options)).summary;
 }
 export async function inspectBundleCarrierOriginal(file,head,{namespace=head?.namespace,guard=async()=>{}}={}){
+  return (await readBundleCarrierOriginal(file,head,{namespace,guard})).head;
+}
+export async function readBundleCarrierOriginal(file,head,{namespace=head?.namespace,guard=async()=>{}}={}){
   await guard();validateBundleCarrierOriginalHead(head,namespace);
   if(!(file instanceof Blob)||file.size!==head.bytes)fail('来源成员原文缺失或大小不符');
   const content=new Uint8Array(await file.arrayBuffer());await guard();if(await vibeDigest(content)!==head.sha256)fail('来源成员原文指纹不符');
   const receipt=parseStrictStoryboardJson(decode(content),{maxBytes:9*1048576}),kind=receipt?.review?.schema==='qianmu.storyboard.environment-map.v1'?'environment':'subjects';
   let derived;try{derived=mappingHead(kind,receipt);}catch(_){fail('来源成员凭据结构不完整');}
-  await inspectBundleMappingReceipt(receipt,derived,namespace);await guard();return derived;
+  await inspectBundleMappingReceipt(receipt,derived,namespace);await guard();return {head:derived,receipt};
 }

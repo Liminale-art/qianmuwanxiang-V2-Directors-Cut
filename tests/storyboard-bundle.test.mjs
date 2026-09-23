@@ -77,7 +77,7 @@ test('full resource capture includes historic mappings without changing their so
   const captured=await f.build(),inspected=await inspectStoryboardResourceBundle(captured.file);assert.equal(captured.summary.mappingReceipts.count,1);assert.deepEqual(inspected.summary,captured.summary);assert.equal(lists,3);
   assert.deepEqual(await (await openStoryboardBundle(captured.file)).readJson('mapping:environment:'+review.digest),receipt);
   const next=await fixture();next.options.journal={listMappingHeads:async()=>{throw Error('journal unavailable');},loadMappingReceipt:async()=>null};await assert.rejects(next.build(),/unavailable/);assert.equal(next.reads.images,0);
-  const late=await fixture();let changed=false;late.options.journal={listMappingHeads:async()=>changed?[]:[head],loadMappingReceipt:async()=>receipt};late.options.readImages=async()=>{changed=true;return [blob];};await assert.rejects(late.build(),/迁移凭据已变化/);
+  const late=await fixture();let changed=false;late.options.journal={listMappingHeads:async()=>changed?[]:[head],loadMappingReceipt:async()=>receipt};late.options.readImages=async()=>{changed=true;return [blob];};await assert.rejects(late.build(),error=>error.code==='storyboard_bundle_mappings'&&error.submissionState==='not_submitted'&&/迁移凭据或保全来源已变化/.test(error.message));
 });
 
 test('source-labelled v3 bundles preserve complete contents and validate the account digest without upgrading legacy evidence', async () => {

@@ -5,6 +5,9 @@ export const BUNDLE_MAPPING_LIMITS=Object.freeze({count:512,perKind:256,index:10
 export const bundleMappingEntryId=head=>`mapping:${head.kind}:${head.digest}`;
 export const isBundleMappingEntry=id=>typeof id==='string'&&/^mapping:(environment|subjects):[a-f0-9]{64}$/.test(id);
 export const sameBundleMappingHead=(a,b)=>Boolean(a&&b&&Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(key=>a[key]===b[key]));
+// After full receipt/digest verification, only first-save metadata may differ.
+// This establishes the same review, never authority to replay its decisions.
+export const sameBundleMappingReview=(a,b)=>Boolean(a&&b&&['version','scope','key','namespace','kind','digest','sourceDigest','chatHash','reviewBytes','mappings','bindings'].every(key=>a[key]===b[key]));
 const fail=()=>{throw Object.assign(new Error('资源包迁移凭据清单不完整、重复或超限，请保留原文件'),{code:'storyboard_bundle_mappings'});};
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);

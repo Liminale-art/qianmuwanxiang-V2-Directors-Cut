@@ -132,6 +132,7 @@ export async function captureStoryboardResourceBundle({ namespace, chatKey, stor
   const baselines = await Promise.all([digest(workflows), digest(pools), digest(characters)]); await check();
   const entries = [{ id: 'storyboard', file: storyboard }, { id: 'workflows', file: jsonFile(workflows) }, { id: 'pools', file: jsonFile(pools) }, { id: 'characters', file: jsonFile(characters) }];
   const mappings=journal===null?null:await captureBundleMappings({namespace,journal,guard:check,isCurrent});
+  if(mappings?.preserved?.length&&!carrierStore)fail('此库含旧端保全凭据，请更新完整来源导出模块；未输出遗漏原件的包');
   if(mappings){entries.push(...mappings.entries);summary.mappingReceipts=mappings.summary;}
   const carriers=carrierStore===null?null:await captureBundleCarriers({namespace,store:carrierStore,mappings,guard:check,isCurrent});
   if(carriers){entries.push(...carriers.entries);summary.carriers=carriers.summary;}

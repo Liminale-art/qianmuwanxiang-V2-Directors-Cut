@@ -3,6 +3,8 @@ import {mappingHead,mappingBytes} from './qianmu-storyboard-mapping-contract.js'
 import {inspectStoryboardEnvironmentReview,validateStoryboardEnvironmentReceipt} from './qianmu-storyboard-environment-map.js';
 import {inspectStoryboardSubjectMapReview} from './qianmu-storyboard-subject-map.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
+import {vibeDigest} from './qianmu-vibe-file.js';
+import {bundleCarrierOriginalHead,summarizeBundleCarrierOriginals} from './qianmu-bundle-carrier-storage-contract.js';
 
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_bundle_mappings',submissionState:'not_submitted'});};
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
@@ -37,8 +39,9 @@ export async function captureBundleMappings({namespace,journal,guard=async()=>{}
   if(typeof journal?.listMappingHeads!=='function'||typeof journal?.loadMappingReceipt!=='function')fail('迁移凭据库不可读取，未输出遗漏历史来源的备份');
   const check=async()=>{if(isCurrent()!==true)fail('迁移凭据备份页面已变化');await guard();if(isCurrent()!==true)fail('迁移凭据备份页面已变化');};
   const list=async()=>{await check();const heads=structuredClone(await journal.listMappingHeads(namespace,{guard:check,isCurrent}));validateBundleMappingHeads(heads,namespace);await check();return ordered(heads);};
-  const preserveCheck=async()=>{if(typeof journal.mappingPreservedSources==='function'&&(await journal.mappingPreservedSources(namespace,{guard:check,isCurrent})).length)fail('存在额外的旧端首次迁移凭据，完整保全导出尚未接通；双方原件仍保留，未输出遗漏来源的资源包');};
-  await preserveCheck();
+  const sources=async()=>{await check();const rows=typeof journal.mappingPreservedSources==='function'?await journal.mappingPreservedSources(namespace,{guard:check,isCurrent}):[];
+    if(!Array.isArray(rows)||rows.length>512)fail('保全凭据来源清单无效');await check();return structuredClone(rows).sort((a,b)=>a.reference.fingerprint.localeCompare(b.reference.fingerprint));};
+  const sourceRows=await sources(),sourceDigest=await digest(sourceRows),preserved=[];
   const heads=await list(),baseline=await digest(heads),core={schema:BUNDLE_MAPPING_SCHEMA,scope:'historical-records-only',namespace,heads};
   const index=await inspectBundleMappingIndex({...core,digest:await digest(core)},namespace),entries=[{id:'mapping-receipts',file:jsonFile(index)}];
   for(const head of heads){
@@ -46,8 +49,15 @@ export async function captureBundleMappings({namespace,journal,guard=async()=>{}
     await inspectBundleMappingReceipt(receipt,head,namespace);await check();
     entries.push({id:bundleMappingEntryId(head),file:jsonFile(receipt)});
   }
-  const verify=async()=>{if(await digest(await list())!==baseline)fail('打包期间迁移凭据已变化，请重新导出；未输出缺件包');await preserveCheck();await check();};
-  await verify();return {entries,index,summary:bundleMappingSummary(index),verify};
+  for(const {head} of sourceRows){
+    if(typeof journal.loadMappingSource!=='function')fail('请更新前端以完整读取保全凭据');
+    await check();const receipt=await journal.loadMappingSource(namespace,head,{guard:check,isCurrent});await inspectBundleMappingReceipt(receipt,head,namespace);
+    const file=jsonFile(receipt),sha=await vibeDigest(new Uint8Array(await file.arrayBuffer()));await check();
+    preserved.push({head:bundleCarrierOriginalHead(namespace,sha,file.size),file});
+  }
+  summarizeBundleCarrierOriginals(preserved.map(row=>row.head),namespace);
+  const verify=async()=>{if(await digest(await list())!==baseline||await digest(await sources())!==sourceDigest)fail('打包期间迁移凭据或保全来源已变化，请重新导出；未输出缺件包');await check();};
+  await verify();return {entries,index,preserved,summary:bundleMappingSummary(index),verify};
 }
 
 export async function inspectBundleMappings(opened,{guard=async()=>{}}={}){
