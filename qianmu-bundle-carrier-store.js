@@ -3,12 +3,18 @@ import {inspectBundleCarrierProof,verifyBundleCarrierMembers,collectBundleCarrie
 import {bundleCarrierKey,bundleCarrierHead,validateBundleCarrierHead,summarizeBundleCarrierStorage,sameCarrierFields,bundleCarrierOriginalHead,validateBundleCarrierOriginalHead,summarizeBundleCarrierOriginals,BUNDLE_CARRIER_ORIGINAL_LIMITS} from './qianmu-bundle-carrier-storage-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
+import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {createNativeBundleCarrierStore} from './qianmu-bundle-carrier-native-store.js';
 
 const error=message=>Object.assign(new Error(message),{code:'storyboard_bundle_carrier_storage',submissionState:'not_submitted'});
 const fail=message=>{throw error(message);};
 // Separate, lazy database: reverting this feature does not downgrade the existing v6 restoration journal.
 // Append-only. Membership is rechecked against full original receipts; this store grants no restore permission.
-export function createBundleCarrierStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-storyboard-bundle-carriers',timeoutMs=8000}={}){
+export function createBundleCarrierStore({native=isStAccountStorageConfigured(),...options}={}){
+  const legacy=createLocalBundleCarrierStore(options);
+  return native?createNativeBundleCarrierStore({...(typeof native==='object'?native:{}),legacy}):legacy;
+}
+function createLocalBundleCarrierStore({indexedDB=globalThis.indexedDB,keyRange=globalThis.IDBKeyRange,dbName='qianmu-storyboard-bundle-carriers',timeoutMs=8000}={}){
   let database=null,opening=null,closed=false;const pending=new Set(),timeout=Math.max(100,Math.min(15000,Number(timeoutMs)||8000)),stores=['proofs','heads','originals','originalHeads'];
   const current=isCurrent=>{if(closed)fail('来源关联库会话已结束');if(isCurrent()!==true)fail('来源关联核对的账户或页面已变化');};
   function open(){
@@ -176,5 +182,14 @@ export function createBundleCarrierStore({indexedDB=globalThis.indexedDB,keyRang
       if(!storedHead){tx.objectStore('proofs').add({key:head.key,namespace,proof});tx.objectStore('heads').add(head);}set(true);
     }))));
   }
-  return Object.freeze({list,load,loadOriginal,save,saveOriginal,saveBatch,close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
+  async function createCarrierMigrationGuard(namespace,expected,{guard=async()=>{},isCurrent=()=>true}={}){
+    summarizeBundleCarrierStorage(expected.heads,namespace);summarizeBundleCarrierOriginals(expected.originals,namespace);
+    const fingerprint=value=>vibeDigest(JSON.stringify([value.heads,value.originals].map(rows=>[...rows].sort((a,b)=>a.key.localeCompare(b.key)))));
+    const baseline=await fingerprint(structuredClone(expected));
+    const check=async()=>{await guard();current(isCurrent);
+      const value=await operation('readonly',isCurrent,(tx,read,set)=>census(tx,read,namespace,heads=>originalCensus(tx,read,namespace,originals=>set({heads,originals}))));
+      if(await fingerprint(value)!==baseline)fail('旧来源库在保全期间变化，请重新核对；原件未删除');await guard();current(isCurrent);return true;
+    };await check();return check;
+  }
+  return Object.freeze({list,load,loadOriginal,save,saveOriginal,saveBatch,createCarrierMigrationGuard,close(){closed=true;for(const tx of pending)try{tx.abort();}catch(_){}database?.close();database=null;opening=null;}});
 }

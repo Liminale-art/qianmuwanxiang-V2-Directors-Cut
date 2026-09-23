@@ -21,7 +21,7 @@ export async function runRestoreStorage(action,{namespace,guard,selected,input,c
   await guard();
   const nativeCharacters = action === 'characters' || action.startsWith('user-alias-') ? await captureCharacterWorkerStorage(namespace, guard) : null;
   let nativeHistory;
-  if((['inspect','clear','mappings'].includes(action)||action.startsWith('mapping-')||action.startsWith('user-alias-'))&&nativeStorage.isStAccountStorageConfigured()){
+  if((['inspect','clear','mappings','carriers'].includes(action)||action.startsWith('mapping-')||action.startsWith('user-alias-'))&&nativeStorage.isStAccountStorageConfigured()){
     if(typeof nativeStorage.captureStAccountStorageWorkerContext!=='function')throw fail('请刷新 ST 后核对跨端恢复记录');
     nativeHistory=await nativeStorage.captureStAccountStorageWorkerContext();await guard();
     if(nativeHistory.namespace!==namespace)throw fail('恢复记录储存账户不一致');

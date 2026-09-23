@@ -42,7 +42,7 @@ export async function createBundleCarrierRestore({opened,store,journal=null,guar
     const before=await inventory(),mergedHeads=new Map(before.heads.map(row=>[row.key,row])),mergedOriginals=new Map(before.originals.map(row=>[row.key,row]));let added=0,addedOriginals=0;
     for(const head of desired.heads){
       const existing=mergedHeads.get(head.key);if(existing){
-        if(!sameCarrierFields(existing,head))fail('同一载体的本机来源证明不同，未覆盖');
+        if(!sameCarrierFields(existing,head))fail('同一载体已有不同来源证明，未覆盖');
         const proof=await store.load(namespace,head.carrierDigest,{guard:check,isCurrent});if(!sameCarrierFields(proof,await getProof(head)))fail('来源证明完整原文冲突');
       }else{added++;mergedHeads.set(head.key,head);}await check();
     }

@@ -21,6 +21,8 @@ import {memoryCarrierStore} from './fixtures/bundle-carriers.mjs';
 import {characterNativeFixture} from './helpers/character-native-fixture.mjs';
 import {mappingLegacyFixture} from './helpers/mapping-legacy-fixture.mjs';
 import {createNativeMappingJournal} from '../qianmu-mapping-journal-native.js';
+import {carrierLegacyFixture} from './helpers/carrier-legacy-fixture.mjs';
+import {createNativeBundleCarrierStore} from '../qianmu-bundle-carrier-native-store.js';
 
 const clone = structuredClone;
 async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, carriers=false, sourceText = 'original text', missingAnchor = false } = {}) {
@@ -98,6 +100,18 @@ async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = f
 }
 const consent = { confirmed: true, environmentReviewed: true, bindingsReviewed: true, connectionsReviewed: true, resourcesReviewed: true };
 const writes = e => e.events.filter(row => !row.startsWith('lock:'));
+
+for(const rejected of [false,true])test(`full resource coordinator uses native carrier storage: ${rejected?'proof failure stops all later resources':'fresh client reads complete exact sources after success'}`,async t=>{
+  const f=await fixture({history:true,carriers:true});f.session.close();const storage=await characterNativeFixture(t,{account:namespace});
+  const open=()=>{const store=createNativeBundleCarrierStore({legacy:carrierLegacyFixture().open(),createStorage:storage.createStorage});t.after(()=>store.close());return store;};
+  f.options.carrierStore=open();const session=await f.reopen();t.after(()=>session.close());
+  if(rejected)storage.hook(call=>{if(call.request.method==='POST'){const envelope=JSON.parse(Buffer.from(JSON.parse(call.request.body).data,'base64').toString());if(envelope.slot==='carrier-proof')return new Response('{}',{status:503});}});
+  const action=session.restore(await session.preview(),{...consent,historyReviewed:true,carriersReviewed:true});
+  if(rejected){await assert.rejects(action,/未全部确认/);assert.equal(f.e.files.size,0);assert.equal(f.e.mutation,null);assert.equal(f.e.records.get('bundle').phase,'prepared');}
+  else{assert.equal((await action).resourcesVerified,true);assert.equal(f.e.mutation.phase,'applied');}
+  storage.hook(null);const fresh=open(),catalog=await fresh.list(namespace);assert.equal(catalog.originals.length,4);assert.equal(catalog.heads.length,rejected?0:1);
+  for(const row of catalog.originals)assert.equal(await vibeDigest(new Uint8Array(await(await fresh.loadOriginal(namespace,row.sha256)).arrayBuffer())),row.sha256);
+});
 
 for(const rejectSource of [false,true])test(`actual complete bundle coordinator with native sources ${rejectSource?'stops before images on failed variant save':'preserves existing destination receipts and restores every source'}`,async t=>{
   const f=await fixture({history:true,carriers:true});f.session.close();
