@@ -21,12 +21,31 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
       const baseline=await legacy.snapshot(namespace,{isCurrent:valid}),sourceDigest=await sceneHash(baseline);await check();
       const stable=async()=>{await legacy.assertSnapshot(baseline,{isCurrent:valid});await check();};
       const save=async next=>{next.revision=index.revision+1;validateSceneIndex(next,namespace,client.scope);await stable();known=true;found=await client.write(slot,next,{...transport,expectedFingerprint:found.fingerprint});if(!sceneSame(found.value,next))fail('续场目录尚未读回');index=structuredClone(found.value);await stable();};
-      const load=async(entry,meta)=>{const saved=await client.readImmutable(sceneReference(meta.reference,client.scope),transport),value=validateSceneEvent(saved.value,namespace);if(value.generation>index.generation)fail('续场原件来自未确认的清理代数');await validateSceneEventLink(value,entry,meta);await check();return value;};
+      const validateLoaded=async(saved,entry,meta)=>{const value=validateSceneEvent(saved.value,namespace);if(value.generation>index.generation)fail('续场原件来自未确认的清理代数');await validateSceneEventLink(value,entry,meta);await check();return value;};
+      const load=async(entry,meta)=>validateLoaded(await client.readImmutable(sceneReference(meta.reference,client.scope),transport),entry,meta);
       const preserve=async event=>{validateSceneEvent(event,namespace);const saved=await client.preserveImmutable(COMFY_SCENE_EVENT_SLOT,event,transport);await check();if(!sceneSame(saved.value,event))fail('续场操作原件尚未读回');return {digest:await sceneHash(event),stateHash:await sceneHash(event.record),stateBytes:event.record===null?0:sceneBytes(event.record),reference:sceneReference(saved.reference,client.scope),parents:event.parents};};
       const find=(value,scope)=>value.entries.find(row=>comfySceneScopeKey(row.scope)===comfySceneScopeKey(scope));
       const review=async scope=>{
         const entry=find(index,scope),heads=sceneLeaves(entry),branches=[];for(const head of heads){const event=await load(entry,head);branches.push({digest:head.digest,record:event.record});}
         return {scope,blocked:entry?.blocked===true,branches,heads:heads.map(row=>row.digest),generation:index.generation};
+      };
+      const reviewMany=async entries=>{
+        const rows=entries.map(entry=>({scope:entry.scope,blocked:entry.blocked,branches:[],heads:sceneLeaves(entry).map(meta=>meta.digest),generation:index.generation,error:'',failure:null}));
+        function* pending(){for(let i=0;i<entries.length;i++)for(const meta of sceneLeaves(entries[i]))if(!rows[i].failure)yield {entry:entries[i],meta,row:rows[i]};}
+        const iterator=pending();let batch=[];
+        do{
+          batch=[];for(let next=iterator.next();!next.done;next=iterator.next()){batch.push(next.value);if(batch.length===4)break;}
+          if(!batch.length)break;await check();
+          const references=batch.map(({meta})=>sceneReference(meta.reference,client.scope));
+          const loaded=client.readImmutableBatch?await client.readImmutableBatch(references,transport):await Promise.allSettled(references.map(reference=>client.readImmutable(reference,transport)));
+          if(!Array.isArray(loaded)||loaded.length!==batch.length)fail('续场批次原件未完整返回');
+          for(let i=0;i<batch.length;i++){
+            const {entry,meta,row}=batch[i];try{if(loaded[i].status!=='fulfilled')throw loaded[i].reason||Error('原件不可读取');
+              const event=await validateLoaded(loaded[i].value,entry,meta);if(!row.failure)row.branches.push({digest:meta.digest,record:event.record});
+            }catch(error){await check();row.failure||=error;row.error=String(row.failure?.message||'原件不可读取').slice(0,300);row.branches=[];}
+          }await check();
+        }while(batch.length);
+        return rows;
       };
       const resolve=async scope=>{
         const entry=find(index,scope);if(entry?.blocked)fail('清理后发现另一端旧续场来源，原件已保全，请核对来源');
@@ -45,7 +64,7 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
         }
         next.sources.push(sourceDigest);await save(next);
       }
-      const ctx={get index(){return index;},get exists(){return found.exists;},resolve,review,find,load,preserve,save,check,stable};
+      const ctx={get index(){return index;},get exists(){return found.exists;},resolve,review,reviewMany,find,load,preserve,save,check,stable};
       const result=await work(ctx);await stable();if((await read()).fingerprint!==found.fingerprint)fail('续场目录在核对期间变化');return structuredClone(result);
     });queue=task.then(()=>{},()=>{});return task;
   };
@@ -54,12 +73,16 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
     checkout(scope,options={}){scope=comfySceneScope(scope);return operation(scope.namespace,options,ctx=>ctx.resolve(scope));},
     reviewScope(scope,options={}){scope=comfySceneScope(scope);return operation(scope.namespace,options,ctx=>ctx.review(scope));},
     review(namespace,chatKey,options={}){return operation(namespace,options,async ctx=>{
-      const rows=[];for(const entry of ctx.index.entries.filter(row=>row.scope.chatKey===chatKey)){
-        try{rows.push({...await ctx.review(entry.scope),error:''});}
-        catch(error){await ctx.check();rows.push({scope:entry.scope,blocked:entry.blocked,branches:[],heads:sceneLeaves(entry).map(row=>row.digest),generation:ctx.index.generation,error:String(error?.message||'原件不可读取').slice(0,300)});}
-      }return {rows,generation:ctx.index.generation};
+      const rows=await ctx.reviewMany(ctx.index.entries.filter(row=>row.scope.chatKey===chatKey));
+      return {rows:rows.map(({failure,...row})=>row),generation:ctx.index.generation};
     });},
-    all(namespace,options={}){return operation(namespace,options,async ctx=>{const rows=[];for(const entry of ctx.index.entries.filter(entry=>options.chatKey===undefined||entry.scope.chatKey===options.chatKey)){const row=await ctx.resolve(entry.scope);if(row.record!==null)rows.push(row);}return {rows,generation:ctx.index.generation,indexBytes:ctx.exists?sceneBytes(ctx.index):0};});},
+    all(namespace,options={}){return operation(namespace,options,async ctx=>{
+      const reviewed=await ctx.reviewMany(ctx.index.entries.filter(entry=>options.chatKey===undefined||entry.scope.chatKey===options.chatKey)),rows=[];
+      for(const row of reviewed){if(row.blocked)fail('清理后发现另一端旧续场来源，原件已保全，请核对来源');if(row.failure)throw row.failure;
+        if(row.branches.some(branch=>!sceneSame(branch.record,row.branches[0].record)))fail('两端续场状态分叉，原件均保留，未自动选择或提交');
+        const record=row.branches[0]?.record??null;if(record!==null)rows.push({scope:row.scope,record,heads:row.heads,generation:row.generation});
+      }return {rows,generation:ctx.index.generation,indexBytes:ctx.exists?sceneBytes(ctx.index):0};
+    });},
     publish(proposal,options={}){const input=structuredClone(proposal);validateSceneProposal(input);return operation(input.namespace,options,async ctx=>{
       const digests=await Promise.all(input.events.map(sceneHash)),already=input.events.every((event,i)=>ctx.find(ctx.index,event.scope)?.versions.some(v=>v.digest===digests[i]));
       if(already){for(const [i,event]of input.events.entries()){const entry=ctx.find(ctx.index,event.scope);await ctx.load(entry,entry.versions.find(v=>v.digest===digests[i]));}return true;}

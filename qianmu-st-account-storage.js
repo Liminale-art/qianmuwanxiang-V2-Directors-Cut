@@ -196,6 +196,18 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
       try{const captured=stAccountImmutableReference(reference,{scope,maxBytes:maxBytes+1024});return queue(captured.slot,op=>readImmutable(captured,op),options);}
       catch(cause){return Promise.reject(cause);}
     },
+    readImmutableBatch(references,options={}){
+      try{
+        if(!Array.isArray(references)||!references.length||references.length>4)fail('reference','ST 原件读取批次须为1至4份');
+        const captured=Array.from(references,reference=>stAccountImmutableReference(reference,{scope,maxBytes:maxBytes+1024})),slot=captured[0].slot;
+        if(captured.some(reference=>reference.slot!==slot)||captured.reduce((sum,reference)=>sum+reference.bytes,0)>maxBytes+1024)fail('capacity','ST 原件批次范围或总大小超过读取上限');
+        // One queued, read-only operation: at most four complete immutable
+        // bodies in flight, with the existing slot write order preserved.
+        // Missing/corrupt bodies are item failures; lost account/page guards
+        // still reject the entire batch before any result is returned.
+        return queue(slot,async op=>{const results=await Promise.allSettled(captured.map(reference=>readImmutable(reference,op)));await op.check();return results;},{...options});
+      }catch(cause){return Promise.reject(cause);}
+    },
     preserveImmutable(slot,value,options){
       try{slotName(slot);const captured=JSON.parse(jsonText(value,maxBytes));return queue(slot,op=>preserveImmutable(slot,captured,op),options);}
       catch(cause){return Promise.reject(cause);}
