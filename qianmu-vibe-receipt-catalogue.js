@@ -1,6 +1,6 @@
 import {createConfiguredStAccountStorage,stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {createVibeReceiptOriginals,captureVibeReceiptOriginal,vibeReceiptEvidenceText,VIBE_RECEIPT_ORIGINAL_SLOT,VIBE_RECEIPT_ORIGINAL_LIMITS} from './qianmu-vibe-receipt-original.js';
-import {resolveVibeReceiptHeads,vibeReceiptFollows} from './qianmu-vibe-receipt-lineage.js';
+import {resolveVibeReceiptLineage,vibeReceiptFollows} from './qianmu-vibe-receipt-lineage.js';
 import {createVibeReceiptFileAccounting} from './qianmu-vibe-receipt-accounting.js';
 
 export const VIBE_RECEIPT_CATALOGUE_SLOT='vibe-receipt-catalogue';
@@ -80,20 +80,11 @@ export function createVibeReceiptCatalogue({legacy,createStorage=createConfigure
         return {digest:version.digest,snapshot};
       }
       async function resolve(entry){
-        if(!entry)return {kind:'empty',selected:null,conflicts:[],heads:[]};const heads=leaves(entry),items=[];
-        // Verify every explicit edge, including older predecessors: a forged
-        // child must not hide a different uncertain attempt from the resolver.
-        const byId=new Map(entry.versions.map(v=>[v.digest,v])),attempts=new Set();for(const version of entry.versions){const child=await load(entry,version);let newAttempt=false;
-          for(const id of version.parents){const parent=await load(entry,byId.get(id));if(!await vibeReceiptFollows(parent.snapshot,child.snapshot,{explicit:true}))fail('费用目录前后状态衔接不符');
-            if(parent.snapshot.receipt.attemptId!==child.snapshot.receipt.attemptId)newAttempt=true;}
-          if(newAttempt&&attempts.has(child.snapshot.receipt.attemptId))fail('新费用尝试复用了历史请求编号');attempts.add(child.snapshot.receipt.attemptId);
-        }
-        const predecessors=new Map();
-        for(const version of heads){items.push(await load(entry,version));const seen=new Set(),pending=[...version.parents],prior=[];
-          while(pending.length){const id=pending.pop();if(seen.has(id))continue;seen.add(id);const parent=byId.get(id);prior.push(await load(entry,parent));pending.push(...parent.parents);}
-          predecessors.set(version.digest,prior);
-        }
-        const resolution=await resolveVibeReceiptHeads(items,{predecessors});await check();
+        if(!entry)return {kind:'empty',selected:null,conflicts:[],heads:[]};const heads=leaves(entry),versions=[];
+        // Read every complete original first. The resolver reuses preparation
+        // only within this entry, while validating all edges and branch cover.
+        for(const version of entry.versions)versions.push({...await load(entry,version),parents:version.parents});
+        const resolution=await resolveVibeReceiptLineage(versions,{guard:check});await check();
         return {...resolution,heads:heads.map(v=>v.digest)};
       }
       const sectionOf=resolution=>resolution.kind==='resolved'?resolution.selected.snapshot.section:resolution.conflicts.every(v=>v.snapshot.section==='archived')?'archived':'current';

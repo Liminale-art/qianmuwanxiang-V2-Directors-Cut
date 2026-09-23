@@ -39,12 +39,14 @@ function follows(left,right,explicit){
 }
 export async function vibeReceiptFollows(before,after,{explicit=false}={}){return follows(await comparison(before),await comparison(after),explicit);}
 
-// Preserve all branches when no single justified successor covers them. Unrelated attempts stay conflicts even
-// if one is newer or already ready. No automatic review/retry is performed.
-export async function resolveVibeReceiptHeads(heads,{predecessors=new Map()}={}){
+// Prepared comparisons belong to this one resolution only. Never reuse them
+// across requests, receipts, account switches or mutable source re-reads.
+function preparation(){
+  const cache=new Map();return async item=>{if(!cache.has(item.digest))cache.set(item.digest,await comparison(item.snapshot));return cache.get(item.digest);};
+}
+async function resolveHeads(heads,predecessors,prepare){
   if(!Array.isArray(heads)||!heads.length)return {kind:'empty',selected:null,conflicts:[]};
-  const prepared=[],past=[],cache=new Map();
-  const prepare=async item=>{if(!cache.has(item.digest))cache.set(item.digest,await comparison(item.snapshot));return cache.get(item.digest);};
+  const prepared=[],past=[];
   for(const head of heads){prepared.push(await prepare(head));const prior=[];for(const item of predecessors.get(head.digest)||[])prior.push(await prepare(item));past.push(prior);}
   // The catalogue validates every explicit predecessor edge before supplying
   // this map. A stale source can be covered by an earlier reviewed attempt on
@@ -55,4 +57,42 @@ export async function resolveVibeReceiptHeads(heads,{predecessors=new Map()}={})
   let candidate=0;for(let i=1;i<heads.length;i++)if(coveredBy(candidate,i)&&(!coveredBy(i,candidate)||heads[i].digest<heads[candidate].digest))candidate=i;
   const covered=prepared.every((_,i)=>coveredBy(i,candidate));
   return covered?{kind:'resolved',selected:heads[candidate],conflicts:[]}:{kind:'conflict',selected:null,conflicts:heads};
+}
+
+// Preserve all branches when no single justified successor covers them.
+// Unrelated attempts stay conflicts; no automatic review/retry is performed.
+export async function resolveVibeReceiptHeads(heads,{predecessors=new Map()}={}){
+  return resolveHeads(heads,predecessors,preparation());
+}
+
+// The catalogue has already read and validated every complete original and its
+// digest. Check ALL explicit edges and attempt reuse before electing a head.
+// Each original's history is prepared once, shared by edge and branch checks.
+// Nothing in this invocation survives the return, including prepared bodies.
+export async function resolveVibeReceiptLineage(versions,{guard=()=>true}={}){
+  const fail=message=>{throw Object.assign(Error(message),{code:'vibe_receipt_catalogue',submissionState:'not_submitted'});};
+  if(!Array.isArray(versions)||versions.length>8192||typeof guard!=='function')fail('费用前序清单无效');
+  const check=async()=>{if(await guard()===false)fail('费用前序核对已取消');};await check();
+  const byId=new Map(),used=new Set(),attempts=new Set(),prepare=preparation();
+  for(const version of versions){
+    if(!version||typeof version.digest!=='string'||!/^[a-f0-9]{64}$/.test(version.digest)||byId.has(version.digest)
+      ||!Array.isArray(version.parents)||new Set(version.parents).size!==version.parents.length||version.parents.some(id=>!byId.has(id)))fail('费用原件前后依据不完整');
+    const child=await prepare(version);await check();let newAttempt=false;
+    for(const id of version.parents){const parent=await prepare(byId.get(id));
+      if(!follows(parent,child,true))fail('费用目录前后状态衔接不符');used.add(id);
+      if(parent.value.receipt.attemptId!==child.value.receipt.attemptId)newAttempt=true;
+    }
+    if(newAttempt&&attempts.has(child.value.receipt.attemptId))fail('新费用尝试复用了历史请求编号');
+    attempts.add(child.value.receipt.attemptId);byId.set(version.digest,version);
+  }
+  const heads=versions.filter(version=>!used.has(version.digest)).map(({digest,snapshot})=>({digest,snapshot}));
+  // A single head needs no branch-election ancestry list, but every original,
+  // history, edge and prior attempt above has still been checked in full.
+  if(heads.length===1)return {kind:'resolved',selected:heads[0],conflicts:[]};
+  const predecessors=new Map();
+  for(const head of heads){const seen=new Set(),pending=[...byId.get(head.digest).parents],prior=[];
+    while(pending.length){const id=pending.pop();if(seen.has(id))continue;seen.add(id);const parent=byId.get(id);prior.push(parent);pending.push(...parent.parents);}
+    predecessors.set(head.digest,prior);
+  }
+  const result=await resolveHeads(heads,predecessors,prepare);await check();return result;
 }
