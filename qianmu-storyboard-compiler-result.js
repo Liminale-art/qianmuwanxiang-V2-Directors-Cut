@@ -1,7 +1,7 @@
 // Lazy compiler-result adapter. It owns no host state, event subscriptions or
 // storage; the caller supplies guarded dependencies and retains draft ownership.
 import {createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {attachEnsembleCompilerResult} from './qianmu-ensemble-handoff.js?v=1.59.340';
+import {attachEnsembleCompilerResult} from './qianmu-ensemble-handoff.js?v=1.59.341';
 export async function resolveStoryboardCompilerResult(raw, context, capabilities, state, contractRequest, inputGuard, dependencies) {
   const {featureRuntime,storyboardCallCompiler,STORYBOARD_RATIOS,getStoryboardGenerationPolicy,STORYBOARD_PLAN_SCHEMA,extractJson,normalizeStoryboardShotSpec,storyboardProviderProfile,compileStoryboardPrompt,uid}=dependencies;
   inputGuard?.assertCurrent();

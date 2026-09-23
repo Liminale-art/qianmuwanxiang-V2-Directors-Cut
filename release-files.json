@@ -3,6 +3,8 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-vibe-asset-contract.js",
+    "qianmu-vibe-native-original.js",
     "qianmu-character-source-backup.js",
     "qianmu-character-source-native.js",
     "qianmu-character-import-view.js",

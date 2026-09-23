@@ -10,7 +10,7 @@ const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'ut
 const readme = await readFile(new URL('README.md', root), 'utf8');
 const license = await readFile(new URL('LICENSE', root), 'utf8');
 
-assert.equal(manifest.version, '1.59.340');
+assert.equal(manifest.version, '1.59.341');
 assert.equal(packageJson.version, manifest.version, 'manifest 与 package 版本必须一致');
 assert.equal(packageJson.license, 'PolyForm-Noncommercial-1.0.0');
 assert.equal(manifest.js, `index.js?v=${manifest.version}`, '入口脚本必须按版本破除浏览器模块缓存');
@@ -24,7 +24,7 @@ assert.match(license, /^# PolyForm Noncommercial License 1\.0\.0/m);
 assert.match(license, /^Required Notice: Copyright © 2026 Liminale-art\./m);
 assert.doesNotMatch(license, /AGPL-3\.0-or-later/);
 assert.ok(source.includes(`const VERSION = '${manifest.version}';`), 'runtime version must match the manifest');
-assert.match(source, /historical-import-runtime\.js\?v=1\.59\.340/);
+assert.match(source, /historical-import-runtime\.js\?v=1\.59\.341/);
 assert.match(source, /historical-restore-view\.js\?v=1\.59\.212/);
 
 assert.match(source, /Symbol\.for\('qianmu\.omniscene\.runtime'\)/, '不同 URL 和安装目录必须共用一把运行锁');
