@@ -128,13 +128,13 @@ test('actual space card adds journal bytes exactly once without calling them rec
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
   assert.equal(data.trackedBytes,10+summary.bytes);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);assert.equal(data.origin.quota,99999);
   assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes);
-  const html=context.renderStorageManagementCard();assert.match(html,/分镜恢复记录 · 4 条/);assert.match(html,/sd-storage-restores/);assert.match(html,/不代表 VPS 磁盘总容量/);
+  const html=context.renderStorageManagementCard();assert.doesNotMatch(html,/分镜恢复记录 ·|<button[^>]+sd-storage-restores/);assert.match(html,/不代表 VPS 磁盘总容量/);assert.match(html,/选择清理项目/);
 });
 
-test('actual space card keeps an unavailable record manager visible without manufacturing a zero-byte result',async()=>{
+test('actual space card keeps unavailable recovery accounting unknown without surfacing a second manager',async()=>{
   const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'bad <record>'});vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10);
-  const html=context.renderStorageManagementCard();assert.match(html,/恢复记录占用暂不可读取 · 当前总计不含此部分/);assert.match(html,/bad &lt;record&gt;/);assert.doesNotMatch(html,/分镜恢复记录 · 0 条/);
+  assert.equal(data.restoreStorage.bytes,null);const html=context.renderStorageManagementCard();assert.match(html,/部分数据暂不可读取/);assert.match(html,/未读取的部分不会按零占用处理/);assert.doesNotMatch(html,/bad <record>|分镜恢复记录 · 0 条|<button[^>]+sd-storage-restores/);
 });
 
 test('actual space card counts mapping bodies plus heads once, without advertising them as clearable cache',async()=>{
@@ -143,7 +143,7 @@ test('actual space card counts mapping bodies plus heads once, without advertisi
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
   assert.equal(data.trackedBytes,10+summary.bytes+1400);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);
   assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes+1400);
-  const html=context.renderStorageManagementCard();assert.match(html,/迁移映射凭据 · 2 份 · 1400 B/);assert.match(html,/sd-storage-mappings/);assert.match(html,/凭据管理/);
+  const html=context.renderStorageManagementCard();assert.doesNotMatch(html,/迁移映射凭据|凭据管理|<button[^>]+sd-storage-mappings/);assert.match(html,/选择清理项目/);
 });
 
 test('actual mapping entry is available when accounting fails and never routes to clearing',async()=>{

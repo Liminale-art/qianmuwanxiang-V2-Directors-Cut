@@ -24,9 +24,9 @@ function permanentUrl(value){
 }
 
 // A single local editor session survives host rerenders. Only explicit Save publishes a library entry.
-export function createStoryboardVibeLibraryController({items,gallery,save,remove,assets=null,createReview=null,createStorage=null,modelId=()=>'',onEdit=()=>{},onGallery=()=>{},onGalleryDone=()=>{},onApply=()=>{},onCancel=()=>{},onNotice=()=>{},icons=()=>{},isCurrent=()=>true,selectionIssue=()=>'',collapsed=()=>false,onCollapse=()=>{}}={}){
+export function createStoryboardVibeLibraryController({items,gallery,save,remove,assets=null,createReview=null,createStorage=null,modelId=()=>'',onEdit=()=>{},onGallery=()=>{},onGalleryDone=()=>{},onApply=()=>{},onCancel=()=>{},onNotice=()=>{},icons=()=>{},isCurrent=()=>true,selectionIssue=()=>''}={}){
   let host=null,disposed=false,token=0,cancelProbe=null,objectUrl='',timer=0,revision=0,busy=false,sourcePending=false;
-  let draft=blank(),query='',visible=40,galleryQuery='',galleryVisible=40,picking=false,selection=null;
+  let draft=blank(),editing=false,query='',visible=40,galleryQuery='',galleryVisible=40,picking=false,selection=null;
   let previewObserver=null,previewEpoch=0;const previewUrls=new Set(),downloadUrls=new Map();
   let reviewing=false,review=null,reviewKind='';
   function blank(item){return {id:item?.id||'',name:item?.name||'',url:item?.previewUrl||'',assetRef:item?.assetRef?{...item.assetRef}:null,assetHead:null,strength:String(amount(item?.strength,.6)),info:String(amount(item?.informationExtracted,1)),file:undefined,mode:'',pendingUrl:''};}
@@ -109,11 +109,12 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
     finally{if(request===token)sourcePending=false;if(temporary)URL.revokeObjectURL(temporary);}
   }
   function editor(){
-    const preview=previewUrl();return `<details class="sd-card sd-vibe-editor" ${collapsed()?'':'open'}><summary><b>${draft.id?'编辑 Vibe':'新建 Vibe'}</b></summary><div class="sd-storyboard-card-body">
+    if(!editing)return '';
+    const preview=previewUrl();return `<section class="sd-card sd-vibe-editor"><div class="sd-card-title"><b>${draft.id?'编辑 Vibe':'新建 Vibe'}</b></div><div class="sd-storyboard-card-body">
       <div class="sd-vibe-edit-grid"><button type="button" class="sd-vibe-preview" ${draft.assetRef?'data-vibe-asset-preview="editor"':''} aria-label="上传或更换参考图">${preview?`<img src="${escape(preview)}" alt="参考图">`:'<i class="fa-solid fa-upload"></i>'}</button><input class="sd-storyboard-vibe-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
       <div class="sd-vibe-edit-fields"><label><span>名称</span><input class="text_pole sd-storyboard-vibe-name" maxlength="100" value="${escape(draft.name)}"></label><div class="sd-vibe-amounts"><label><span>强度</span><input class="text_pole sd-storyboard-vibe-strength" type="number" min="0" max="1" step=".05" value="${escape(draft.strength)}"></label><label><span>信息提取</span>${informationControl()}</label></div></div></div>
       <div class="sd-vibe-source-row">${draft.mode==='url'?`<input class="text_pole sd-vibe-source-url" type="url" aria-label="参考图 URL" value="${escape(draft.pendingUrl)}"><button type="button" class="sd-icon-btn sd-vibe-source-load" aria-label="读取地址"><i class="fa-solid fa-check"></i></button>`:'<select class="text_pole sd-vibe-source-mode" aria-label="其他图片来源"><option value="">选择图片来源</option><option value="url">URL</option><option value="gallery">阅片室</option></select>'}<button type="button" class="sd-icon-btn sd-vibe-source-reset" aria-label="重置来源选择"><i class="fa-solid fa-xmark"></i></button></div>
-      <div class="sd-vibe-editor-actions"><button type="button" class="sd-icon-btn sd-vibe-reset-editor" aria-label="取消编辑"><i class="fa-solid fa-xmark"></i></button><button type="button" class="sd-icon-btn sd-storyboard-create-vibe" aria-label="保存 Vibe" ${busy?'disabled':''}><i class="fa-solid fa-floppy-disk"></i></button></div></div></details>`;
+      <div class="sd-vibe-editor-actions"><button type="button" class="sd-icon-btn sd-vibe-reset-editor" aria-label="取消编辑"><i class="fa-solid fa-xmark"></i></button><button type="button" class="sd-icon-btn sd-storyboard-create-vibe" aria-label="保存 Vibe" ${busy?'disabled':''}><i class="fa-solid fa-floppy-disk"></i></button></div></div></section>`;
   }
   function selected(id){return selection?.ids.includes(id);}
   function library(){
@@ -131,9 +132,9 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
       article.querySelector('.sd-vibe-tile-actions').append(button);button.addEventListener('click',action(async()=>{const blob=await assets.export([item]);if(live())download(blob,`${item.name}.naiv4vibe`);}));
     }
     listen('.sd-vibe-more','click',()=>{visible+=40;renderLibrary();});
-    listen('.sd-vibe-edit','click',event=>{const item=items().find(row=>row.id===event.currentTarget.closest('[data-vibe-id]').dataset.vibeId);if(!item)return;syncFields();cancelSource();revoke();draft=blank(item);revision++;onEdit(item.id);onCollapse(false);render();host.querySelector('.sd-vibe-editor')?.scrollIntoView({block:'start',behavior:'auto'});host.querySelector('.sd-storyboard-vibe-name')?.focus({preventScroll:true});});
+    listen('.sd-vibe-edit','click',event=>{const item=items().find(row=>row.id===event.currentTarget.closest('[data-vibe-id]').dataset.vibeId);if(!item)return;syncFields();cancelSource();revoke();draft=blank(item);editing=true;revision++;onEdit(item.id);render();host.querySelector('.sd-vibe-editor')?.scrollIntoView({block:'start',behavior:'auto'});host.querySelector('.sd-storyboard-vibe-name')?.focus({preventScroll:true});});
     listen('.sd-vibe-delete','click',async event=>{const item=items().find(row=>row.id===event.currentTarget.closest('[data-vibe-id]').dataset.vibeId);if(!item)return;
-      if(await remove(item)&&live()){if(selection)selection.ids=selection.ids.filter(id=>id!==item.id);if(draft.id===item.id){cancelSource();revoke();draft=blank();revision++;onEdit('');}render();}
+      if(await remove(item)&&live()){if(selection)selection.ids=selection.ids.filter(id=>id!==item.id);if(draft.id===item.id){cancelSource();revoke();draft=blank();editing=false;revision++;onEdit('');}render();}
     });
     listen('.sd-vibe-select','click',event=>{
       const id=event.currentTarget.closest('[data-vibe-id]').dataset.vibeId,item=items().find(row=>row.id===id);if(!selection||!item)return;
@@ -155,7 +156,7 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
     if(!live())return;clearTimeout(timer);
     if(reviewing&&review){clearAssetPreviews();host.innerHTML='<div class="sd-vibe-review-host"></div>';review.mount(host.firstElementChild);return;}
     if(picking){renderGallery();return;}
-    host.innerHTML=`${selection?'<div class="sd-vibe-selection-bar"><span class="sd-vibe-selection-count"></span><button class="sd-icon-btn sd-vibe-clear-selection" type="button" aria-label="清空本次选择"><i class="fa-solid fa-xmark"></i></button><button class="sd-btn sd-vibe-cancel-selection" type="button">取消</button><button class="sd-btn sd-primary sd-vibe-apply-selection" type="button">确认</button></div>':''}${editor()}<div class="sd-vibe-library-search"><input class="text_pole sd-vibe-search" aria-label="搜索 Vibe 名称" placeholder="搜索 Vibe" value="${escape(query)}"></div><div class="sd-vibe-list-host">${library()}</div>`;
+    host.innerHTML=`${selection?'<div class="sd-vibe-selection-bar"><span class="sd-vibe-selection-count"></span><button class="sd-icon-btn sd-vibe-clear-selection" type="button" aria-label="清空本次选择"><i class="fa-solid fa-xmark"></i></button><button class="sd-btn sd-vibe-cancel-selection" type="button">取消</button><button class="sd-btn sd-primary sd-vibe-apply-selection" type="button">确认</button></div>':''}<div class="sd-vibe-library-search"><input class="text_pole sd-vibe-search" aria-label="搜索 Vibe 名称" placeholder="搜索 Vibe" value="${escape(query)}"><button type="button" class="sd-icon-btn sd-vibe-new" aria-label="新建 Vibe" ${busy||editing?'disabled':''}><i class="fa-solid fa-plus"></i></button></div>${editor()}<div class="sd-vibe-list-host">${library()}</div>`;
     updateSelectionCount();bindLibrary();icons(host);
     for(const [kind,create,label,icon] of [['review',createReview,'编码记录','fa-list'],['storage',createStorage,'Vibe 文件空间','fa-database']])if(create){
       host.querySelector('.sd-vibe-library-search').insertAdjacentHTML('beforeend',`<button type="button" class="sd-icon-btn sd-vibe-${kind}-open" aria-label="${label}"><i class="fa-solid ${icon}"></i></button>`);
@@ -164,37 +165,37 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
     if(assets){
       const search=host.querySelector('.sd-vibe-library-search');search.insertAdjacentHTML('beforeend','<button type="button" class="sd-icon-btn sd-vibe-import" aria-label="导入 Vibe 文件"><i class="fa-solid fa-file-import"></i></button><input class="sd-vibe-import-file" type="file" accept=".naiv4vibe,.naiv4vibeBundle,application/json" hidden>');
       search.querySelector('.sd-vibe-import').addEventListener('click',()=>{if(!busy)search.querySelector('input[type=file]').click();});
-      listen('.sd-vibe-import-file','change',async event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';if(!file||busy)return;syncFields();const version=revision,currentHost=host;busy=true;search.querySelector('button').disabled=true;
-        try{await assets.import(file,()=>live()&&host===currentHost&&version===revision);busy=false;if(live()){syncFields();render();}}finally{busy=false;if(live()){host.querySelector('.sd-vibe-import').disabled=false;host.querySelector('.sd-storyboard-create-vibe').disabled=false;}}
+      listen('.sd-vibe-import-file','change',async event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';if(!file||busy)return;syncFields();const version=revision,currentHost=host;busy=true;search.querySelector('.sd-vibe-import').disabled=true;
+        try{await assets.import(file,()=>live()&&host===currentHost&&version===revision);busy=false;if(live()){syncFields();render();}}finally{busy=false;if(live()){for(const selector of ['.sd-vibe-import','.sd-storyboard-create-vibe','.sd-vibe-new']){const button=host.querySelector(selector);if(button)button.disabled=selector==='.sd-vibe-new'&&editing;}}}
       });
       if(selection){const button=host.ownerDocument.createElement('button');button.type='button';button.className='sd-icon-btn';button.setAttribute('aria-label','导出所选 Vibe 合集');button.innerHTML='<i class="fa-solid fa-download"></i>';host.querySelector('.sd-vibe-selection-bar').append(button);
         button.addEventListener('click',action(async()=>{const rows=(selection?.ids||[]).map(id=>items().find(row=>row.id===id));const blob=await assets.export(rows,{bundle:true});if(live())download(blob,'qianmu.naiv4vibeBundle');}));}
       hydrateAssetPreviews();icons(search);icons(host.querySelector('.sd-vibe-selection-bar')||search);
     }
-    listen('.sd-vibe-editor','toggle',event=>{if(host.contains(event.currentTarget))onCollapse(!event.currentTarget.open);});
+    listen('.sd-vibe-new','click',()=>{if(busy||editing)return;cancelSource();revoke();draft=blank();editing=true;revision++;onEdit('');render();host.querySelector('.sd-storyboard-vibe-name')?.focus({preventScroll:true});});
     listen('.sd-vibe-search','input',event=>{query=event.currentTarget.value.slice(0,120);visible=40;clearTimeout(timer);timer=setTimeout(()=>{if(live())renderLibrary();},120);});
     for(const key of ['name','strength','info'])listen(`.sd-storyboard-vibe-${key}`,'input',event=>{draft[key]=event.currentTarget.value;revision++;});
     listen('.sd-vibe-head-retry','click',loadDraftAsset);
     // Native file picker must open in the original user activation, not in an awaited callback.
-    host.querySelector('.sd-vibe-preview').addEventListener('click',()=>host.querySelector('.sd-storyboard-vibe-file')?.click());
+    host.querySelector('.sd-vibe-preview')?.addEventListener('click',()=>host.querySelector('.sd-storyboard-vibe-file')?.click());
     listen('.sd-storyboard-vibe-file','change',async event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';if(file&&await source({file})&&live())render();});
     listen('.sd-vibe-source-mode','change',event=>{syncFields();revision++;if(event.currentTarget.value==='gallery'){cancelSource();picking=true;onGallery();}else{draft.mode='url';draft.pendingUrl=draft.url;render();host.querySelector('.sd-vibe-source-url')?.focus();}});
     listen('.sd-vibe-source-url','input',event=>{draft.pendingUrl=event.currentTarget.value;revision++;cancelSource();});
     const load=async()=>{if(await source({url:draft.pendingUrl})&&live())render();};
     listen('.sd-vibe-source-load','click',load);listen('.sd-vibe-source-url','change',load);listen('.sd-vibe-source-url','keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();return load();}});
     listen('.sd-vibe-source-reset','click',()=>{syncFields();cancelSource();revision++;draft.mode='';draft.pendingUrl='';render();});
-    listen('.sd-vibe-reset-editor','click',()=>{cancelSource();revoke();draft=blank();revision++;onEdit('');render();});
+    listen('.sd-vibe-reset-editor','click',()=>{cancelSource();revoke();draft=blank();editing=false;revision++;onEdit('');render();});
     listen('.sd-storyboard-create-vibe','click',async()=>{
       if(busy)return;if(sourcePending||draft.mode==='url'&&draft.pendingUrl.trim()!==draft.url.trim())throw Error('请先确认参考图读取成功，再保存');syncFields();cancelSource();const version=revision,currentDraft=draft,currentHost=host;busy=true;host.querySelector('.sd-storyboard-create-vibe').disabled=true;
-      try{if(await save(currentHost,{readDraft:read,isCurrent:()=>live()&&host===currentHost&&draft===currentDraft&&revision===version,onSaved:()=>{}})&&live()&&draft===currentDraft){revoke();draft=blank();revision++;onEdit('');render();}}
-      finally{busy=false;if(live()){const button=host.querySelector('.sd-storyboard-create-vibe');if(button)button.disabled=false;}}
+      try{if(await save(currentHost,{readDraft:read,isCurrent:()=>live()&&host===currentHost&&draft===currentDraft&&revision===version,onSaved:()=>{}})&&live()&&draft===currentDraft){revoke();draft=blank();editing=false;revision++;onEdit('');render();}}
+      finally{busy=false;if(live()){for(const selector of ['.sd-storyboard-create-vibe','.sd-vibe-new']){const button=host.querySelector(selector);if(button)button.disabled=selector==='.sd-vibe-new'&&editing;}}}
     });
     listen('.sd-vibe-cancel-selection','click',()=>{selection=null;onCancel();});
     listen('.sd-vibe-clear-selection','click',()=>{if(selection){selection.ids=[];renderLibrary();updateSelectionCount();}});
     listen('.sd-vibe-apply-selection','click',async()=>{if(selection)await onApply([...selection.ids]);});
     // A retry may replace its control immediately; bind the initial fields first
     // so a remount never adds a second input listener to that replacement.
-    if(assets)void loadDraftAsset();
+    if(assets&&editing)void loadDraftAsset();
   }
   function renderGallery(){
     const words=galleryQuery.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
@@ -213,7 +214,7 @@ export function createStoryboardVibeLibraryController({items,gallery,save,remove
     mount(node){if(disposed)return;this.detach();host=node;render();},
     detach(){syncFields();cancelSource();clearTimeout(timer);clearAssetPreviews();review?.detach();host=null;revoke();},
     dispose(){this.detach();disposed=true;draft=blank();selection=null;review?.dispose();review=null;for(const [url,timer] of downloadUrls){clearTimeout(timer);URL.revokeObjectURL(url);}downloadUrls.clear();},
-    edit(item){cancelSource();revoke();draft=blank(item);revision++;onEdit(draft.id);},
+    edit(item){cancelSource();revoke();draft=blank(item);editing=true;revision++;onEdit(draft.id);},
     beginSelection(value){selection={id:value.id,ids:[...value.ids]};},
     cancelSelection(){selection=null;},
     exitGallery(){cancelSource();picking=false;},

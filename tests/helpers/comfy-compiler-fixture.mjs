@@ -4,6 +4,7 @@ import * as prompts from '../../qianmu-comfy-prompt.js';
 import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../../qianmu-character-casting.js';
 import {routeEnvironment} from './comfy-route-fixture.mjs';
 import {installCompilerDiagnosticsFixture} from './compiler-diagnostics-fixture.mjs';
+import {readEnsembleCompilerProof} from '../../qianmu-ensemble-handoff.js?v=1.59.370';
 import {storyboardFunctionSource as section} from './storyboard-form-fixture.mjs';
 const plain=value=>JSON.parse(JSON.stringify(value));
 export const casting={schema:CHARACTER_CASTING_SCHEMA,entries:[{identity:{subjectId:'archive:alice',archiveId:'alice',archiveVersion:1,category:'char',name:'Alice',appearance:'silver hair',aliases:[]},negative:''}],unboundNames:[]};
@@ -21,7 +22,21 @@ export async function compilerEnvironment(){
   const e=await routeEnvironment({formats:['tags','natural_language']}),calls=[],errors=[];
   installCompilerDiagnosticsFixture(e.context);
   const load=e.context.featureRuntime.load;
-  e.context.featureRuntime.load=async key=>key==='storyboardContract'?contract:key==='comfyPrompt'?prompts:load(key);
+  let styleBinding=null,syntheticDraft=false;
+  e.context.featureRuntime.load=async key=>key==='storyboardContract'?{...contract,
+    finalizeStoryboardEnsemblePlan:async(result,context,plan,...args)=>{
+      syntheticDraft=false;
+      if(!result.ensembleRequired)return contract.finalizeStoryboardEnsemblePlan(result,context,plan,...args);
+      const proof=await readEnsembleCompilerProof(result,{guard:async()=>{args[0].assertCurrent();return true;}});
+      if(proof.receipt.preparationId!=='fixture-selected-styles')return contract.finalizeStoryboardEnsemblePlan(result,context,plan,...args);
+      syntheticDraft=true;
+      for(const [index,id] of proof.shotIds.entries())e.styleAssignments.set(id,proof.receipt.assignments[index].schemeId);return plan;
+    },
+    resolveStoryboardEnsembleDraftPlan:asyncSafeDraft,
+    restoreStoryboardEnsemblePlan:async(...args)=>syntheticDraft?(await load(key)).restoreStoryboardEnsemblePlan(...args):contract.restoreStoryboardEnsemblePlan(...args),
+  }:key==='comfyPrompt'?prompts:load(key);
+  function asyncSafeDraft(state,host,expected){if(!syntheticDraft)return contract.resolveStoryboardEnsembleDraftPlan(state,host,expected);
+    let plan=state.shotPlans.find(row=>row.id==='fixture-style-plan');if(!plan){plan={id:'fixture-style-plan',chatKey:'chat-a',status:'prompt_ready',shots:[],origin:'manual'};state.shotPlans.push(plan);}return plan;}
   const scene=response(),chat=[{mes:'Alice reads a letter.\n\nA mountain valley.\n\nA broken cup.',is_user:false}];
   const host={chat,chatId:'chat-a',characterId:0,characters:[{avatar:'Alice.png',chat:'chat-a'}],chatMetadata:{story_director_liminale:{}},saveMetadata:async()=>{}};
   Object.assign(e.context,{MODULE_NAME:'format-qa',storyboardCompilerBusy:false,STORYBOARD_SHOT_GROUP_TEMPLATES:{smart:{label:'test',instruction:''}},storyboardTargetFloor:()=>0,
@@ -40,13 +55,17 @@ export async function compilerEnvironment(){
         shots:scene.shots.map(({prompt_atoms,prompt_renderings,...shot},index)=>({...shot,...(options.jsonSchema.properties.shots.items.properties.gallery_keywords?{gallery_keywords:shot.gallery_keywords||[]}:{}),state_point:{branchId:shot.narrative_layer,paragraphId:`P${index+1}`,evidence:chat[0].mes.split('\n\n')[index]}})),
         source_states:[{floor:0,roster:{branches:[...new Set(scene.shots.map(shot=>shot.narrative_layer))].map(layer=>({id:layer,layer})),subjectIds:['A']},events:[]}],continuity_links:[]});
       if(options.jsonSchemaName==='qianmu.storyboard.expression.v1')return JSON.stringify({schema:options.jsonSchemaName,shots:scene.shots.map((shot,index)=>({shot_id:`S${index+1}`,prompt_atoms:shot.prompt_atoms,
-        ...(options.promptFormats?.length?{prompt_renderings:Object.fromEntries(options.promptFormats.filter(format=>shot.prompt_renderings?.[format]).map(format=>[format,shot.prompt_renderings[format]]))}:{})}))});
+        ...(options.promptFormats?.length?{prompt_renderings:Object.fromEntries(options.promptFormats.filter(format=>shot.prompt_renderings?.[format]).map(format=>[format,shot.prompt_renderings[format]]))}:{})})),
+        ...(styleBinding?.session.enabled?{style_assignments:scene.shots.map((_,index)=>({shot_id:`S${index+1}`,scheme_id:index<2?`fixture-style-${index}`:'current',reason:'synthetic selected style'}))}:{})});
       return JSON.stringify(scene);
     },
     storyboardScheduleInlineRender(){},storyboardScheduleAutomaticCapture(){},storyboardSchedulePlanArchive(){},
     storyboardSetPlanStatus:(plan,status,extra={})=>{if(plan)Object.assign(plan,{status,...extra});},console:{error:(...args)=>errors.push(args.map(value=>value?.message||String(value)).join(' '))},
   });
   vm.runInContext(['storyboardCompilerRequestConfig','storyboardCompilerResult','storyboardCompilePrompt','storyboardPrepareComfyPromptJob','storyboardPrepareGatewayAssets'].map(section).join('\n'),e.context);
+  const config=e.context.storyboardCompilerRequestConfig,prepare=e.context.storyboardPrepareComfyRoutes;
+  e.context.storyboardPrepareComfyRoutes=async(...args)=>{const result=await prepare(...args);if(e.context.storyboardCompilerBusy&&e.styleSelection.enabled&&e.state.routing.styleLibrary!==true){styleBinding=await e.prepareStyles(args[1],{prepared:true});}return result;};
+  e.context.storyboardCompilerRequestConfig=(...args)=>({...config(...args),...(e.styleSelection.enabled&&e.state.routing.styleLibrary!==true&&styleBinding?{styleSession:styleBinding.session,promptFormats:styleBinding.session.promptFormats}:{})});
   e.context.storyboardQueueJob=async job=>{if(job.source==='comfy') {if(job.profile.comfyRouteBinding)await e.context.storyboardVerifyComfyRouteJob(job);await e.context.storyboardPrepareComfyPromptJob(job,{prepare:true});}else await e.context.verifyStoryboardModelPromptJob(job);e.jobs.push(job);return true;};
   return {...e,llmCalls:calls,errors,response:scene};
 }

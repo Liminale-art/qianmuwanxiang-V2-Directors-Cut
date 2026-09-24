@@ -104,7 +104,7 @@ test('actual current identity adapter keeps group members separate and never bin
   context.refreshCoreadPersonaAvatar=async()=>{data.chatId='chat-b';};await assert.rejects(context.storyboardCharacterArchiveContext(),/聊天已切换/);
 });
 test('archive runtime is lazy and disposed with the main plugin; no separate settings image payload',async()=>{
-  const code=await readFile(new URL('../index.js',import.meta.url),'utf8');assert.match(code,/load: \(\) => import\('\.\/qianmu-character-archive-view\.js\?v=/);
+  const code=await readFile(new URL('../index.js',import.meta.url),'utf8');assert.match(code,/load: \(\) => loadLocalChunk\('\.\/qianmu-character-archive-view\.js\?v=/);
   assert.match(storyboardFunctionSource('storyboardEndSession'),/storyboardCharacterArchiveController\?\.detach\(\)/);
   assert.match(code,/storyboardCharacterArchiveController\?\.dispose\(\)/);
 });

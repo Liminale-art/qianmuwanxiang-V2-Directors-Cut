@@ -57,9 +57,9 @@ test('Comfy Worker results are compact, schema checked, bound to the operation a
   assert.deepEqual(await runRestoreStorage('comfy',{namespace,guard:async()=>{},WorkerClass:Worker}),result);assert.equal(closed,1);assert.deepEqual(Object.keys(payload).sort(),['action','id','namespace']);
   result={...result,workflow:'must not cross'};await assert.rejects(runRestoreStorage('comfy',{namespace,guard:async()=>{},WorkerClass:Worker}));assert.equal(closed,2);
 });
-test('actual storage card keeps failed Comfy library links, labels unknown space and renders real version and metadata counts',()=>{
+test('actual storage card shows compact Comfy totals and unknown status without duplicate library links',()=>{
   const comfy=complete();comfy.workflows={status:'unavailable',bytes:null,count:null,error:'unreadable <data>'};comfy.status='partial';comfy.errors=[comfy.workflows.error];
   const context=vm.createContext({renderStorageBackupSection,optionalServiceState:{status:'idle',services:[]},storageInventoryState:{status:'ready',data:{sampledAt:1,origin:{available:true,usage:99999,quota:999999},trackedBytes:comfy.bytes,categories:[],idb:{stores:[]},comfyStorage:comfy}},STORAGE_CATEGORY_LABELS:{},STORAGE_CATEGORY_COLORS:{},htmlEscape:x=>String(x??'').replaceAll('<','&lt;'),formatStorageBytes:x=>`${x} B`});
   context.storageInventoryState.data.origin.pressure={};vm.runInContext(['optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);const html=context.renderStorageManagementCard();
-  assert.match(html,/Comfy 工作流库 · 当前账户 · 未盘点，总计未包含/);assert.doesNotMatch(html,/Comfy 工作流库 · 当前账户 · 0 项/);assert.match(html,/data-storage-comfy-library="workflows"/);assert.match(html,/含 2 个版本、1 项归档/);assert.match(html,/未盘点站点数据/);assert.match(html,/unreadable &lt;data&gt;/);
+  assert.match(html,/<span>工作流<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(html,/<span>工作流<\/span><span>0 B|data-storage-comfy-library|含 2 个版本|unreadable <data>/);assert.match(html,new RegExp(`<span>工作流方案</span><span>${comfy.pools.bytes} B</span>`));assert.match(html,/未盘点站点数据/);assert.match(html,/部分数据暂不可读取/);
 });

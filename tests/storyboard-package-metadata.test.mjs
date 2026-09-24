@@ -74,9 +74,9 @@ test('body revisions are guarded without cloning unrelated huge chat payloads',a
   const f=createPackageImportFixture();f.e.messages=[{mes:'old',name:'Character',send_date:'2026-01-01',extra:{large:new Uint8Array(1024)}}];f.e.confirm=()=>{f.e.messages[0].mes='edited';return true;};
   await f.import(blob({promptMode:'combined'}));assert.equal(f.e.state.promptMode,'manual');assert.equal(f.e.pending,null);assert.match(f.e.notices.at(-1)[0],/正文在导入期间/);
 });
-test('legacy routing migration is retained without implicitly enabling automation on partial imports',()=>{
-  const state=board.createStoryboardDefaults(),args=request(state);args.incoming={schemaVersion:2,routing:{mode:'ensemble',maxShotsPerFloor:2}};
-  const result=draft(args);assert.equal(result.settings.routing.enabled,true);assert.equal(result.settings.enabled,undefined);assert.equal(result.settings.automation,undefined);
+test('a partial style-target import preserves its route identity without enabling automation or rewriting shot counts',()=>{
+  const state=board.createStoryboardDefaults(),args=request(state);args.incoming={schemaVersion:board.STORYBOARD_SCHEMA_VERSION,routing:{styleLibrary:true,rules:[{id:'ink',name:'Ink',enabled:true,target:{providerId:'novel',modelId:'nai-diffusion-3'}}]}};
+  const result=draft(args);assert.equal(result.settings.routing.rules[0].id,'ink');assert.equal(result.settings.routing.styleLibrary,true);assert.equal(Object.hasOwn(result.settings.routing,'enabled'),false);assert.equal(result.settings.enabled,undefined);assert.equal(result.settings.automation,undefined);assert.equal(result.settings.generationPolicy,undefined);
 });
 test('recovery records reject unexpected settings, forged identity and mismatched slot types',async()=>{
   const row=await mutation.createStoryboardMutation({namespace:'st-user:test',chatKey:'chat',fileHash:'a'.repeat(64),settings:{enabled:false},chat:{},draft:{settings:{enabled:true},chat:{}}});

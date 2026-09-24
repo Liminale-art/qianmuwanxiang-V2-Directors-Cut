@@ -33,6 +33,18 @@ test('classic mounts are inert, idempotent and do not request the optional skin'
     off(); off(); assert.equal(f.session.size, 0); f.session.reset();
 });
 
+test('opt-in dialog classic inheritance is applied once and participates in later classic repaint',async()=>{
+    const root=element();let probes=0,attached=0,settings={theme:'light'};
+    const document={body:{appendChild(){attached++;}},createElement(){probes++;return {...element(),remove(){attached--;}};},
+        defaultView:{getComputedStyle:probe=>({getPropertyValue:key=>['--sd-text','--sd-card','--sd-glass','--sd-accent'].includes(key)?`${probe.className.includes('sd-theme-dark')?'dark':'light'}-${key}`:''})}};
+    root.ownerDocument=document;root.classList={contains:()=>false,remove(){},add(){}};
+    const session=createQianmuAppearanceSession({document,readSettings:()=>settings,loadStyles:()=>assert.fail('Classic needs no optional skin')});
+    const release=session.mountPortal(root,{inheritTheme:true});assert.equal(root.style.getPropertyValue('--sd-text'),'light---sd-text');
+    assert.equal(session.mountPortal(root,{inheritTheme:true}),release);assert.equal(probes,1);assert.equal(attached,0);
+    settings={theme:'dark'};session.repaintClassic();assert.equal(root.style.getPropertyValue('--sd-text'),'dark---sd-text');
+    release();assert.equal(session.size,0);session.reset();
+});
+
 test('owned mounts isolate input once and release it on unmount, detach, role changes and reset', async () => {
     const f = fixture(), root = eventElement(), portal = eventElement();
     const off = f.session.mount(root); f.session.mount(root);

@@ -451,6 +451,7 @@
     "qianmu-gallery-keywords.js",
     "qianmu-gallery-keywords-view.js",
     "qianmu-ensemble-editor.js",
+    "qianmu-ensemble-target-picker.js",
     "qianmu-ensemble-view.js",
     "qianmu-ensemble-recovery.js",
     "qianmu-ensemble-record.js",

@@ -110,7 +110,7 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
 export function createCharacterArchiveController({resolveNamespace,getContext,getScope,isCurrent=()=>true,onIcons=()=>{},identity,notify=()=>{},confirm=async()=>false,download,saveReference,onUserAliases,requestHeaders=()=>({}),
   onCollapse=()=>{},collapsed={},store=createCharacterArchiveStore()}={}) {
   const view={rows:[],bindings:[],subjects:[],chatKey:'',search:'',draft:null,bindingEditor:null,legacyImports:[],legacyReview:null,collapsed:{...collapsed},shown:{},bindingShown:24,busy:false,error:''};
-  let host=null,namespace='',entry=0,disposed=false,verified=-1,events=null;const scrolls={list:0,editor:0,restore:0};
+  let host=null,namespace='',entry=0,disposed=false,verified=-1,events=null,loaded=false,listRead=null,listCache=null;const scrolls={list:0,editor:0,restore:0};
   const clearRestore=()=>{const r=view.restoring;r?.session?.close();r?.workflows?.close();r?.journal?.close();view.restoring=null;};
   const visible=()=>!disposed&&host?.isConnected&&isCurrent();
   const position=()=>host?.closest('.sd-storyboard-scroll');
@@ -119,34 +119,49 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
   const restore=()=>{const node=position();if(node)node.scrollTop=scrolls[scrollMode()];};
   const draw=()=>{
     if(!visible())return;
-    if(verified!==entry)host.innerHTML=`<div role="status">${escape(view.error||'正在读取角色库')}<button type="button" class="sd-btn" data-archive-action="refresh">重试</button></div>`;
+    if(verified!==entry||!loaded)host.innerHTML=`<div role="${view.error?'alert':'status'}" aria-busy="${view.busy}">${escape(view.error||'正在读取角色库')}${view.error?`<button type="button" class="sd-btn" data-archive-action="refresh" ${view.busy?'disabled':''}>重试</button>`:''}</div>`;
     else host.innerHTML=renderCharacterArchive(view,{identity});
     bind();onIcons(host);
   };
   async function authorize(expected=entry) {
     const next=await resolveNamespace();
     if(!visible()||expected!==entry)throw Error('页面已切换，操作未继续');
-    if(namespace&&next!==namespace){clearRestore();view.legacyReview=null;view.legacyImports=[];view.draft=null;view.rows=[];view.bindings=[];view.bindingEditor=null;verified=-1;namespace=next;throw Error('账户已切换，请刷新角色库');}
+    if(namespace&&next!==namespace){clearRestore();view.legacyReview=null;view.legacyImports=[];view.draft=null;view.rows=[];view.bindings=[];view.bindingEditor=null;verified=-1;loaded=false;listCache=null;namespace=next;throw Error('账户已切换，请刷新角色库');}
     namespace=next;
     const context=await getContext();
     if(!visible()||expected!==entry)throw Error('页面已切换，操作未继续');
     if(view.chatKey!==context.chatKey)view.bindingEditor=null;
     view.chatKey=context.chatKey;view.subjects=context.subjects;verified=entry;return next;
   }
-  const loadList=async expected=>{
-    const data=store.overview?await store.overview(namespace):await Promise.all([store.list(namespace),store.bindings(namespace)]).then(([rows,bindings])=>({rows,bindings,imports:[]}));
-    await authorize(expected);view.rows=data.rows;view.bindings=data.bindings;view.legacyImports=data.imports;view.migrationStatus=data.migrationStatus||null;
+  const loadList=async(expected,{reuse=false}={})=>{
+    const account=namespace;
+    if(!reuse)listCache=null;
+    let data=reuse&&listCache?.namespace===account&&Date.now()-listCache.at<30000?listCache.data:null;
+    if(!data){
+      if(!listRead||listRead.namespace!==account){
+        const read={namespace:account,promise:null};
+        read.promise=Promise.resolve().then(()=>store.overview?store.overview(account):Promise.all([store.list(account),store.bindings(account)]).then(([rows,bindings])=>({rows,bindings,imports:[]})))
+          .then(value=>{if(!disposed&&namespace===account)listCache={namespace:account,at:Date.now(),data:value};return value;})
+          .finally(()=>{if(listRead===read)listRead=null;});
+        listRead=read;
+      }
+      data=await listRead.promise;
+    }
+    // Rebuilt DOM reuses the same read, never its old authorization. A failed
+    // initial read must not be presented as a successfully loaded empty list.
+    await authorize(expected);if(account!==namespace)throw Error('账户已切换，请刷新角色库');
+    view.rows=data.rows;view.bindings=data.bindings;view.legacyImports=data.imports;view.migrationStatus=data.migrationStatus||null;loaded=true;
   };
   const run=async work=>{
     if(view.busy||!visible())return;const expected=entry;view.busy=true;view.error='';draw();
     const guard=()=>authorize(expected);
     try{await guard();await work(guard,expected);}catch(error){if(visible()&&expected===entry){view.error=error.message||'角色库操作失败';notify(view.error,'warning');}}
-    finally{view.busy=false;if(expected===entry)draw();else if(visible())void run((_guard,next)=>loadList(next));}
+    finally{view.busy=false;if(expected===entry)draw();else if(visible())void run((_guard,next)=>loadList(next,{reuse:true}));}
   };
   const nativeChanged=()=>{
     const active=events?.activeElement;
     if(!visible()||view.busy||view.draft||view.restoring||view.legacyReview||active&&host.contains(active)&&active.matches?.('input,textarea,select,[contenteditable="true"]'))return;
-    remember();void run((_guard,expected)=>loadList(expected)).then(()=>{if(visible())restore();});
+    listCache=null;remember();void run((_guard,expected)=>loadList(expected)).then(()=>{if(visible())restore();});
   };
   const listen=node=>{events?.removeEventListener?.('qianmu-character-library-changed',nativeChanged);events=node;events?.addEventListener?.('qianmu-character-library-changed',nativeChanged);};
   // Existing archives have no version history: keep legacy fields on edit, not on new/copy drafts.
@@ -310,8 +325,8 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
     });});
   }
   return Object.freeze({
-    mount(element){if(disposed)return;const changed=host!==element;if(changed)view.legacyReview=null;if(changed&&view.restoring){clearRestore();notify('恢复页面已重建，请重新选择原备份核对；已保存部分保留','info');}host=element;listen(host?.ownerDocument||globalThis.document);if(changed)entry++;draw();if(changed||verified!==entry)void run((_guard,expected)=>loadList(expected));},
+    mount(element){if(disposed)return;const changed=host!==element;if(changed)view.legacyReview=null;if(changed&&view.restoring){clearRestore();notify('恢复页面已重建，请重新选择原备份核对；已保存部分保留','info');}host=element;listen(host?.ownerDocument||globalThis.document);if(changed)entry++;draw();if(changed||verified!==entry||!loaded)void run((_guard,expected)=>loadList(expected,{reuse:true}));},
     detach(){remember();clearRestore();view.legacyReview=null;listen(null);host=null;entry++;},
-    dispose(){clearRestore();view.legacyReview=null;listen(null);disposed=true;host=null;view.draft=null;entry++;store.close();},
+    dispose(){clearRestore();view.legacyReview=null;listen(null);disposed=true;host=null;view.draft=null;listCache=null;entry++;store.close();},
   });
 }

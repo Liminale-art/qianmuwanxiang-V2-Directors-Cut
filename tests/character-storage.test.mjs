@@ -60,14 +60,14 @@ test('focus originals join the space meter exactly once and are not recoverable 
   assert.equal(data.trackedBytes,1244);assert.equal(data.manageableBytes,1244);assert.equal(data.recoverableBytes,0);
   assert.equal(data.categories.find(row=>row.category==='audio').bytes,1234);assert.equal(data.origin.quota,999999);
 });
-test('actual global card includes role metadata once, not as recoverable cache, and explains server image exclusion',async()=>{
+test('actual global card includes role metadata once without exposing a duplicate management shortcut',async()=>{
   const {rows}=fixture(),summary=summarizeCharacterStorage(namespace,rows),context=globalFixture(summary);vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10+summary.bytes);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);assert.equal(data.categories.find(row=>row.category==='characters').bytes,summary.bytes);
-  const html=context.renderStorageManagementCard();assert.match(html,/角色库 · 1 份档案/);assert.match(html,/绑定 1 项/);assert.match(html,/不含服务器参考图/);assert.match(html,/sd-storage-characters/);
+  const html=context.renderStorageManagementCard();assert.match(html,new RegExp(`<span>角色资料</span><span>${summary.documents.bytes} B</span>`));assert.doesNotMatch(html,/<button[^>]+sd-storage-characters|绑定 1 项|不含服务器参考图/);
 });
-test('unavailable role summary remains explicitly uncounted and keeps the existing management route',async()=>{
+test('unavailable role summary stays unknown rather than zero and does not print internal errors',async()=>{
   const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'broken <index>'});vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
-  assert.equal(data.trackedBytes,10);const html=context.renderStorageManagementCard();assert.match(html,/角色库占用暂不可读取/);assert.match(html,/broken &lt;index&gt;/);assert.doesNotMatch(html,/角色库 · 0 份档案/);
+  assert.equal(data.trackedBytes,10);assert.equal(data.characterStorage.bytes,null);const html=context.renderStorageManagementCard();assert.match(html,/<span>角色资料<\/span><span>暂未读取<\/span>/);assert.match(html,/部分数据暂不可读取/);assert.doesNotMatch(html,/broken <index>|<span>角色资料<\/span><span>0 B/);
 });
 test('actual role management shortcut changes only the view and never rewrites engine, prompts or bindings',()=>{
   let click;const routes=[],state={source:'comfy',prompt:'unchanged',bindings:['bound']},before=clone(state);

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { normalizeComfyRouteBinding, retainComfyRouteBinding } from '../qianmu-comfy-route-contract.js';
 import { pinComfyRouteWorkflow, readPinnedComfyRouteWorkflow } from '../qianmu-comfy-route.js';
-import {openComfyRoutePicker} from '../qianmu-comfy-route-view.js';
-import { normalizeStoryboardState, routeStoryboardShot } from '../qianmu-storyboard.js';
+import {openComfyRoutePicker,renderComfyRoutePicker} from '../qianmu-comfy-route-view.js';
+import { normalizeStoryboardState } from '../qianmu-storyboard.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
 const namespace = 'st-user:tester';
@@ -31,7 +31,7 @@ async function binding() { return (await pinComfyRouteWorkflow(fixture().options
 
 test('actual picker retains explicit workflow and reference selection without querying a retired role control',async()=>{
   const f=fixture(),before=copy(f.document),prior=globalThis.document;
-  const fields={'[data-comfy-route-pick=workflow]':{value:selection.id,addEventListener(){}},'[data-comfy-route-pick=revision]':{value:selection.revision},'[role=status]':{},'[data-comfy-route-references]':{checked:true}};
+  const fields={'[data-comfy-route-pick=workflow]':{value:selection.id,addEventListener(){}},'[role=status]':{},'[data-comfy-route-references]':{checked:true},'[data-comfy-route-retry]':{addEventListener(){}}};
   globalThis.document={createElement:()=>({innerHTML:'',querySelector:selector=>{assert.ok(Object.hasOwn(fields,selector),selector);return fields[selector];}})};
   try{
     const result=await openComfyRoutePicker({...f.options,binding:selection,roles:true,hasReferences:true,context:{POPUP_TYPE:{CONFIRM:1},Popup:class {async show(){return true;}}}});
@@ -39,6 +39,21 @@ test('actual picker retains explicit workflow and reference selection without qu
     assert.equal(result.recipe.binding.id,selection.id);assert.deepEqual(f.document,before);
     assert.equal(f.opens,f.closes);assert.ok(f.guards>0);
   }finally{if(prior===undefined)delete globalThis.document;else globalThis.document=prior;}
+});
+
+test('workflow picker opens before its account list resolves, and current version is selected without a version query for display',async()=>{
+  const f=fixture(),prior=globalThis.document,events=[];let release;
+  const gate=new Promise(resolve=>{release=resolve;});const createStore=f.options.createStore;f.options.createStore=()=>{const store=createStore(),list=store.list;return {...store,list:async ns=>{events.push('list');await gate;return list(ns);}};};
+  const fields={'[data-comfy-route-pick=workflow]':{value:selection.id,addEventListener(){}},'[role=status]':{},'[data-comfy-route-retry]':{addEventListener(){}}};
+  globalThis.document={createElement:()=>({innerHTML:'',querySelector:selector=>fields[selector]})};
+  try{const result=await openComfyRoutePicker({...f.options,binding:selection,context:{POPUP_TYPE:{CONFIRM:1},Popup:class{show(){events.push('show');release();return Promise.resolve(true);}}}});
+    assert.equal(events[0],'show');assert.equal(result.recipe.binding.revision,selection.revision);assert.equal(f.reads.filter(row=>row[0]==='versions').length,1,'only exact recipe validation reads versions');assert.equal(f.opens,f.closes);
+  }finally{if(prior===undefined)delete globalThis.document;else globalThis.document=prior;}
+});
+
+test('the workflow reference checkbox reflects an existing reference selection without workbench-specific wording',()=>{
+  const html=renderComfyRoutePicker({hasReferences:true,useReferences:true});
+  assert.match(html,/data-comfy-route-references[^>]*checked/);assert.match(html,/使用参考图/);assert.doesNotMatch(html,/使用当前参考图|版本|复制当前工作台/);
 });
 
 for(const outcome of ['confirm','cancel','reject','show-throws','mount-throws','dispose-throws'])test(`picker appearance follows only its own attached dialog and releases on ${outcome}`,async()=>{
@@ -73,9 +88,9 @@ for(const outcome of ['confirm','cancel','reject','show-throws','mount-throws','
 });
 
 test('both production fixed-workflow picker bridges supply their existing appearance owner',()=>{
-  for(const name of ['storyboardPickComfyPoolWorkflow','storyboardBindRouteWorkflow']){
+  for(const name of ['storyboardPickComfyPoolWorkflow','storyboardConfigureEnsembleTarget']){
     // Scope names are checked against the actual extracted production functions.
-    assert.match(section(name),/mountAppearance: dialog=>appearanceSession\.mountPortal\(dialog\)/);
+    assert.match(section(name),/mountAppearance:\s*dialog\s*=>\s*appearanceSession\.mountPortal\(dialog,\s*\{inheritTheme:true\}\)/);
   }
 });
 
@@ -174,7 +189,8 @@ test('route normalization retains only explicit Comfy bindings and preserves old
   const state = normalizeStoryboardState({ routing: { enabled: true, rules: [{ id: 'one', shotTypes: ['portrait'], target: {
     providerId: 'comfy', modelId: 'comfy-workflow', comfyWorkflowBinding: good,
   } }] } });
-  assert.deepEqual(routeStoryboardShot({ shotType: 'portrait' }, state.routing).comfyWorkflowBinding, good);
+  assert.deepEqual(state.routing.rules[0].target.comfyWorkflowBinding, good);
+  assert.equal(state.routing.single, undefined);
   const original = normalizeStoryboardState({ routing: { enabled: true, rules: [{ id: 'one', target: { providerId: 'comfy', modelId: 'comfy-workflow' } }] } });
   assert.equal(Object.hasOwn(original.routing.rules[0].target, 'comfyWorkflowBinding'), false);
   state.routing.rules[0].target.comfyWorkflowBinding = { invalid: true };

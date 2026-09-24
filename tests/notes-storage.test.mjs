@@ -73,11 +73,10 @@ test('unreadable account notes remain uncounted and a foreign-account snapshot i
   const other=inventory({status:'ready',namespace,bytes:700,count:3});other.setAccount('st-user:another');await assert.rejects(other.context.collectStorageInventory(),/账户已变化/);
 });
 
-test('backup text distinguishes current account, local estimates and separate legacy originals, without new cleanup actions',async()=>{
+test('notes backup stays direct and compact while legacy cleanup risk remains at the destructive boundary',async()=>{
   const html=renderStorageBackupSection({status:'ready',count:3,pinned:1,bytes:700},bytes=>`${bytes} B`);
-  assert.match(html,/本机已保存 3 条（常驻 1 条）/);assert.match(html,/700 B 内容及同步记录估算/);assert.match(html,/不含其他设备尚未同步/);
-  assert.match(html,/旧版清理不会删除账户便笺/);assert.match(html,/所有便笺都保存/);assert.equal((html.match(/data-storage-export="notes"/g)||[]).length,1);
-  const failed=renderStorageBackupSection({status:'unavailable',error:'bad <img src=x onerror=alert(1)>'});assert.match(failed,/统计未包含/);assert.doesNotMatch(failed,/<img|已保存 0/);
+  assert.doesNotMatch(html,/内容及同步记录估算|不含其他设备尚未同步|旧版清理/);assert.equal((html.match(/data-storage-export="notes"/g)||[]).length,1);assert.equal((html.match(/data-storage-import="notes"/g)||[]).length,1);
+  const failed=renderStorageBackupSection({status:'unavailable',error:'bad <img src=x onerror=alert(1)>'});assert.match(failed,/data-storage-export="notes"/);assert.doesNotMatch(failed,/<img|已保存 0/);
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8');assert.match(source,/notes: \['不可恢复 · 仅旧版本机原件，不删除账户便笺'/);
   assert.doesNotMatch(section('collectStorageInventory'),/syncQianmuNotes\(|deleteQianmuNote\(/);
 });

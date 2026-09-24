@@ -30,7 +30,10 @@ test('configured default factory and actual pinned-route consumers read the same
   const pinned=await pinComfyRouteWorkflow({namespace,selection:{id:local.first.id,revision:local.first.revision,version:1}});
   const empty=comfyLibraryIdbFixture();globalThis.indexedDB=empty.indexedDB;globalThis.IDBKeyRange=empty.keyRange;
   f.reset();const result=await readPinnedComfyRouteWorkflow({namespace,binding:pinned.binding});assert.deepEqual(result.document,pinned.document);assert.equal(result.document.positivePrompt,'original positive');
-  assert.equal(f.calls.filter(row=>row.request.method==='GET').length,9);assert.equal(f.uploads,0);
+  assert.equal(f.calls.filter(row=>row.request.method==='GET').length,7);assert.equal(f.uploads,0);
+  assert.equal(f.calls.filter(row=>row.path.endsWith(`-${COMFY_NATIVE_SLOT}.json`)).length,4);
+  assert.equal(f.calls.filter(row=>new RegExp(`-${COMFY_NATIVE_SLOT}-[a-f0-9]{64}\\.json$`).test(row.path)).length,2);
+  assert.equal(f.calls.filter(row=>/-comfy-workflow-version-[a-f0-9]{64}\.json$/.test(row.path)).length,1);
 });
 
 test('new compatible local revisions extend the complete native chain once, with no silent rebinding',async t=>{
@@ -86,7 +89,7 @@ test('lost migration acknowledgement is not retried; next verified read reuses r
 
 test('conflict recovery renders retained/export/copy controls without exposing graph bodies or promising disk deletion',async t=>{
   const local=await legacy(t),f=await characterNativeFixture(t),store=open(t,f,local);await store.list(namespace);await store.archive(namespace,local.first.id,local.second.revision,true);await local.store.save(namespace,{id:local.first.id,expectedRevision:local.second.revision,name:'Changed',document:document('sensitive graph')});
-  const view=await store.view(namespace,{archived:true}),html=renderComfyLibrary({...view,archived:true});for(const action of ['export-legacy','keep-legacy','copy-legacy'])assert.ok(html.includes(`data-comfy-action="${action}"`));assert.match(html,/ST 账户保存/);assert.doesNotMatch(html,/永久清理|sensitive graph/);
+  const view=await store.view(namespace,{archived:true}),html=renderComfyLibrary({...view,archived:true});for(const action of ['export-legacy','keep-legacy','copy-legacy'])assert.ok(html.includes(`data-comfy-action="${action}"`));assert.match(html,/sd-comfy-library-management/);assert.doesNotMatch(html,/ST 账户保存|当前目录正文量|永久清理|sensitive graph/);
   const snapshot=await store.backup(namespace);assert.equal(typeof await comfyLibraryBackupDigest(snapshot),'string');
 });
 

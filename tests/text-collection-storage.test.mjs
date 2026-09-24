@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {collectTextCollectionStorage,cleanupTextCollectionPending} from '../qianmu-text-collection-storage.js';
 import {textCollectionSyncQuery,textCollectionSyncResponse} from '../qianmu-text-collection-sync-contract.js';
-import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection,collectionCleanupOptions} from '../qianmu-storage-backup-view.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 import {createTextCollectionOutboxEntry,emptyTextCollectionOutbox,summarizeTextCollectionOutbox} from '../qianmu-text-collection-outbox-store.js';
 
@@ -46,12 +46,12 @@ test('account and page changes during either success or failure invalidate the e
   }
 });
 
-test('resource display distinguishes server originals, file overhead and browser quota without making a cleanup choice',()=>{
+test('resource display keeps only the known collection size while preserving explicit cleanup accounting',()=>{
   const data={collectionStorage:{status:'ready',...usage()}};
   const html=renderStorageBackupSection(null,value=>`${value} B`,{data});
-  assert.match(html,/1 条原件 · 文件 2200 B/);assert.match(html,/正文 UTF-8 10 B/);assert.match(html,/1 条删除标记/);assert.match(html,/不计入浏览器配额/);
+  assert.match(html,/<span>正文收藏<\/span><span>2200 B<\/span>/);assert.doesNotMatch(html,/正文 UTF-8|删除标记|<button[^>]*data-storage-clean/);const choice=collectionCleanupOptions(data)[0];assert.equal(choice.bytes,2200);assert.match(choice.risk[0],/不可恢复.*不删聊天/);
   const failed=renderStorageBackupSection(null,String,{data:{collectionStorage:{status:'unavailable',error:'bad <img src=x>'}}});
-  assert.match(failed,/bad &lt;img/);assert.doesNotMatch(failed,/<img|0 条原件/);
+  assert.match(failed,/<span>正文收藏<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(failed,/<img|<span>正文收藏<\/span><span>0/);
 });
 
 const localState=()=>({...emptyTextCollectionOutbox(expectedAccount),entries:[createTextCollectionOutboxEntry({version:1,expectedAccount,mutationId:'pending-1',operation:'create',id:'local-01',baseRevision:0,
@@ -67,10 +67,10 @@ test('local read failure preserves unknown scope while remote statistics remain 
   assert.equal(result.status,'ready');assert.equal(result.pending.status,'unavailable');assert.equal(result.pending.bytes,null);assert.doesNotMatch(result.pending.error,/PRIVATE/);
   let account='st-user:alice',calls=0;await assert.rejects(collectTextCollectionStorage({resolveNamespace:async()=>account,isCurrent:()=>true,outboxStore:{read:async()=>{account='st-user:bob';return localState();}},fetchImpl:async()=>{calls++;return response(usage());}}),{code:'text_collection_storage_stale'});assert.equal(calls,0);
 });
-test('pending resource row explains local estimates independently of a failed server inventory and escapes errors',()=>{
-  const html=renderStorageBackupSection(null,value=>`${value} B`,{data:{collectionStorage:{status:'unavailable',pending:summarizeTextCollectionOutbox(localState())}}});
-  assert.match(html,/收藏待存 · 当前账户本机/);assert.match(html,/1 条 · \d+ B 内容及请求记录估算 · 冲突 0 条/);assert.match(html,/不是可重建缓存/);assert.doesNotMatch(html,/私人待存原文/);
-  const failed=renderStorageBackupSection(null,String,{data:{collectionStorage:{pending:{status:'unavailable',error:'<bad>'}}}});assert.match(failed,/&lt;bad&gt;/);assert.doesNotMatch(failed,/0 条 ·/);
+test('pending local originals remain explicit cleanup choices but never replace an unknown server summary',()=>{
+  const data={collectionStorage:{status:'unavailable',pending:summarizeTextCollectionOutbox(localState())}},html=renderStorageBackupSection(null,value=>`${value} B`,{data});
+  assert.match(html,/<span>正文收藏<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(html,/私人待存原文|内容及请求记录估算/);const choices=collectionCleanupOptions(data);assert.equal(choices.length,1);assert.equal(choices[0].id,'__collection_pending__');assert.equal(choices[0].count,1);assert.ok(choices[0].bytes>0);assert.match(choices[0].risk[0],/不可恢复.*不删除或取消服务器保存/);
+  const failed=renderStorageBackupSection(null,String,{data:{collectionStorage:{pending:{status:'unavailable',error:'<bad>'}}}});assert.match(failed,/<span>正文收藏<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(failed,/<bad>|<span>正文收藏<\/span><span>0/);
 });
 
 test('pending cleanup confirms exact local originals, explains skipped modules and never calls server headers',async()=>{

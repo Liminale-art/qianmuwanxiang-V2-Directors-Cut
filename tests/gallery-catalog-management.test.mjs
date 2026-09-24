@@ -71,11 +71,12 @@ test('busy inspection prevents overlapping deletion and second inspection', asyn
     await assert.rejects(session.inspect(), /正在处理/); await assert.rejects(session.clear({}, { confirmed: true }));
     release({ count: 2, bytes: 20, revision: 1, nextCursor: null }); await pending; session.close();
 });
-test('data manager lists catalog once, does not pretend it contains media and preserves unavailable state', () => {
-    const html = renderStorageBackupSection(null, n => `${n} B`, { data: { galleryCatalogStorage: { status: 'ready', count: 3, bytes: 90 } } });
-    assert.equal((html.match(/sd-storage-gallery-catalog/g) || []).length, 1); assert.match(html, /3 条引用/); assert.match(html, /不含图片、影片原件/);
-    const missing = renderStorageBackupSection(null, String, { data: { galleryCatalogStorage: { status: 'unavailable', bytes: null, error: '<script>unavailable</script>' } } });
-    assert.match(missing, /当前总计不含此部分/); assert.doesNotMatch(missing, /<script>/);
+test('ordinary data manager does not duplicate gallery navigation or expose internal catalog accounting', () => {
+    const data={galleryCatalogStorage: { status: 'ready', count: 3, bytes: 90 }},before=structuredClone(data);
+    const html = renderStorageBackupSection(null, n => `${n} B`, { data });
+    assert.doesNotMatch(html,/sd-storage-gallery-catalog|3 条引用|不含图片、影片原件/);assert.deepEqual(data,before);
+    const unknown={galleryCatalogStorage:{status:'unavailable',bytes:null,error:'<script>unavailable</script>'}},missing=renderStorageBackupSection(null,String,{data:unknown});
+    assert.equal(unknown.galleryCatalogStorage.bytes,null);assert.doesNotMatch(missing,/<script>|0 条引用/);
 });
 test('actual inventory counts catalog once, preserves unavailable status and rechecks account', async () => {
     const code = section('collectStorageInventory');

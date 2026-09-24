@@ -4,7 +4,6 @@ import {
   STORYBOARD_MODEL_REGISTRY,
   createStoryboardDefaults,
   normalizeStoryboardState,
-  routeStoryboardShot,
 } from '../qianmu-storyboard.js';
 
 const browserSource = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
@@ -28,27 +27,11 @@ assert.ok(STORYBOARD_MODEL_REGISTRY.novel.find((item) => item.id === 'nai-diffus
 assert.ok(!STORYBOARD_MODEL_REGISTRY.novel.find((item) => item.id === 'nai-diffusion-5-curated').label.includes('💕'));
 
 const defaults = createStoryboardDefaults();
-assert.equal(defaults.routing.enabled, false, 'the shot router must be opt-in');
+assert.deepEqual(defaults.routing,{rules:[]},'only explicit style target bindings remain');
 assert.equal(STORYBOARD_MODEL_REGISTRY.novel.find((item) => item.id === 'nai-diffusion-5-full').capabilities.contentPolicy, 'full');
 assert.equal(STORYBOARD_MODEL_REGISTRY.novel.find((item) => item.id === 'nai-diffusion-5-curated').capabilities.contentPolicy, 'filtered');
 
-const routed = routeStoryboardShot({ shotType: 'portrait', sensitive: true }, {
-  enabled: true,
-  single: { providerId: 'novel', modelId: 'nai-diffusion-5-full' },
-  rules: [
-    { id: 'portrait', shotTypes: ['portrait'], sensitive: false, target: { providerId: 'openai', modelId: 'gpt-image-2' } },
-  ],
-});
-assert.equal(routed.ruleId, 'portrait');
-assert.equal(routed.modelId, 'gpt-image-2');
-
-const disabled = routeStoryboardShot({ shotType: 'portrait', sensitive: true }, {
-  enabled: false,
-  single: { providerId: 'openai', modelId: 'gpt-image-2' },
-  rules: [{ id: 'paid', target: { providerId: 'seedream', modelId: 'doubao-seedream-5-0-260128' } }],
-});
-assert.equal(disabled.providerId, 'openai');
-assert.equal(disabled.ruleId, '');
+assert.doesNotMatch(browserSource,/routeStoryboardShot|routing\.single/,'the obsolete shot-type engine is not injected into either generation path');
 
 const normalized = normalizeStoryboardState({
   schemaVersion: 4,
@@ -81,12 +64,12 @@ assert.doesNotMatch(browserSource, /modelPresets[\s\S]*item\.model === profile\.
 assert.match(browserSource, /const channelPresets = connection\.group\?\.presets \|\| \[\]/, 'API presets must be listed by image channel');
 assert.match(browserSource, /const legacy = profileOverride \|\| state\.profiles\[providerId\][\s\S]*resolveStoryboardProfileBinding\(providerId, legacy\)/, 'the selected image model must come from drawing settings, not the connection preset');
 assert.doesNotMatch(browserSource, /data-storyboard-routing-mode=/, 'the old single-model versus ensemble selector must be removed');
-assert.match(routeSource, /class="sd-storyboard-routing-enabled"/, 'the retained legacy router has its original master switch');
+assert.doesNotMatch(routeSource, /sd-storyboard-routing-enabled|添加绘制线路/, 'the unpublished routing editor is removed');
 assert.match(ensembleSource, /data-ensemble-action="enabled"/, 'native styles use the per-chat enable control');
-assert.match(browserSource, /renderEnsembleRoutePanel\(state/, 'the production entry must mount the new route renderer');
-assert.match(browserSource, /renderStoryboardModelPicker\(provider.id, modelId, target.capabilityModelId, true\)/, 'each assignment uses the shared searchable model selector');
+assert.match(browserSource, /renderEnsembleRoutePanel\(/, 'the production entry must mount the scheme library');
+assert.match(browserSource, /configureTarget:[\s\S]*?storyboardConfigureEnsembleTarget/, 'each scheme directly configures its own model or workflow');
 assert.doesNotMatch(browserSource, /sd-storyboard-route-rating|仅 SFW|仅 NSFW/, 'the configuration UI must not expose redundant SFW/NSFW routing states');
-assert.match(routeSource, /sd-storyboard-safety-notice[\s\S]*受限制模型[\s\S]*安全但叙事一致/, 'the safety policy must be explained once in configuration');
+assert.doesNotMatch(routeSource, /受限制模型|安全但叙事一致/, 'implementation policy is not a permanent user instruction');
 assert.match(browserSource, /function storyboardAdaptShotForModel[\s\S]*contentPolicy[\s\S]*safePrompt/, 'filtered models must receive the compiler-provided safe narrative equivalent');
 assert.match(browserSource, /function renderStoryboardParameterVibes[\s\S]*!capabilities\.supportsVibe[\s\S]*sd-vibe-workbench-strip/, 'only capable workbenches show Vibe selection entries; unsupported families can still manage the independent library');
 assert.match(browserSource, /modelId: route\.modelId[\s\S]*connectionPresetId: route\.connectionPresetId/, 'the routed concrete model must reach the generation job');

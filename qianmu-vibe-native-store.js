@@ -50,13 +50,17 @@ export function createNativeVibeAssetStore({legacy,createStorage=createConfigure
       const transport={guard:check,signal:options.signal},originals=createVibeNativeOriginals(client,{...transport,onProgress});
       const read=async()=>{const result=await client.read(VIBE_NATIVE_SLOT,transport);await check();if(!result.exists&&known)fail('已确认的Vibe目录缺失，未重建空库');
         if(result.exists){inspectIndex(result.value,namespace,client.scope);known=true;}return result;};
+      const readFingerprint=async()=>{
+        const fingerprint=typeof client.readFingerprint==='function'?await client.readFingerprint(VIBE_NATIVE_SLOT,transport):(await read()).fingerprint;
+        await check();if(fingerprint===null&&known)fail('已确认的Vibe目录缺失，未重建空库');return fingerprint;
+      };
       const old=async()=>{const value=await legacy.inventory(namespace);await check();return value;};
       let found=await read(),index=found.exists?structuredClone(found.value):empty(namespace);const baseline=await old();
       const unchanged=async()=>{if(!same(await old(),baseline))fail('旧页面修改了Vibe资料，未覆盖，请重新核对');};
       const save=async next=>{
         inspectIndex(next,namespace,client.scope);await unchanged();
         const result=await client.write(VIBE_NATIVE_SLOT,next,{...transport,expectedFingerprint:found.fingerprint});known=true;await check();
-        if(!same(result.value,next))fail('Vibe目录尚未完整读回');await unchanged();if((await read()).fingerprint!==result.fingerprint)fail('另一端修改了Vibe目录，请重新核对');
+        if(!same(result.value,next))fail('Vibe目录尚未完整读回');await unchanged();if(await readFingerprint()!==result.fingerprint)fail('另一端修改了Vibe目录，请重新核对');
         found=result;index=structuredClone(next);await onProgress({kind:'vibe-catalogue',stage:'verified'});await check();
       };
       const find=id=>[...index.assets,...index.retired].find(row=>row.assetId===id);
@@ -79,7 +83,7 @@ export function createNativeVibeAssetStore({legacy,createStorage=createConfigure
       if(staged){index.revision++;await save(index);}
       const state={get index(){return index;},find:id=>index.assets.find(row=>row.assetId===id),originals,check,
         save:async next=>{next.revision=index.revision+1;await save(next);}};
-      const result=await work(state);await check();await unchanged();if((await read()).fingerprint!==found.fingerprint)fail('Vibe目录在读取期间变化，请重新核对');return result;
+      const result=await work(state);await check();await unchanged();if(await readFingerprint()!==found.fingerprint)fail('Vibe目录在读取期间变化，请重新核对');return result;
     });queue=task;return task;
   }
   const inventory=state=>{

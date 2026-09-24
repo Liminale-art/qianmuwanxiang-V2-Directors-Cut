@@ -1,6 +1,5 @@
 import {createConfiguredStAccountStorage,getStAccountStorageReadScope} from './qianmu-st-account-storage.js';
 import {scheduleCollectionMigrationSteps} from './qianmu-text-collection-migration-idle.js';
-import {createCharacterReconciliation} from './qianmu-character-reconciliation.js';
 
 const jobs=new WeakMap();
 export function getCharacterMigrationStatus(namespace){
@@ -26,6 +25,8 @@ export function requestCharacterMigration({namespace,createLocal,readScope=getSt
     async step(){try {
       job.status='running';
       if(!migration){
+        const {createCharacterReconciliation}=await import('./qianmu-character-reconciliation.js');
+        if(!current())return {done:true};
         storage=await createStorage({maxBytes:8*1024*1024,isCurrent:current});
         if(!current()||storage.namespace!==namespace)throw Error('character migration account changed');
         local=createLocal();migration=createCharacterReconciliation({storage,local,isCurrent:current});

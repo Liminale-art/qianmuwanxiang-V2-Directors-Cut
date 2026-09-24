@@ -1,5 +1,5 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.369';
+import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.370';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
@@ -19,13 +19,13 @@ import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryb
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.369';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.369';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.369';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.370';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.370';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.370';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.369';
-import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.369';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.370';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.370';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -40,7 +40,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './qianmu-gallery-shot-reader.js';
-import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, collectionCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.369';
+import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, collectionCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.370';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -182,9 +182,9 @@ import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
-import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.202';
+import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.370';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.212';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.369';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.370';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -207,7 +207,6 @@ import {
   STORYBOARD_PLAN_SCHEMA,
   STORYBOARD_PROVIDER_REGISTRY,
   STORYBOARD_RATIOS,
-  STORYBOARD_SHOT_GROUP_TEMPLATES,
   STORYBOARD_MAX_SHOTS, STORYBOARD_MAX_CONCURRENCY,
   STORYBOARD_SOURCES,
   STORYBOARD_TAG_CATEGORIES,
@@ -268,7 +267,6 @@ import {
   resolveStoryboardComposition,
   normalizeStoryboardCompositionPolicy,
   resolveStoryboardArtistAssignment,
-  routeStoryboardShot,
   storyboardRouteUsesComfyAuto,
   sanitizeStoryboardDiagnosticData,
   sanitizeStoryboardSnapshot,
@@ -282,12 +280,12 @@ import {
   storyboardRecipeRecordMetadata,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.369';
+} from './qianmu-storyboard.js?v=1.59.370';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.369';
+const VERSION = '1.59.370';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -296,11 +294,11 @@ let reader = null;
 let feedbackOpenScope = null;
 const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(),headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 const featureRuntime = createFeatureRuntime({
-  feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.369') },
-  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.369') },
-  recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.369') },
-  vibeLibrary: { label: 'Vibe 库', load: () => import('./qianmu-vibe-library-view.js?v=1.59.202') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => import('./qianmu-ensemble-ui.js?v=1.59.369') },
+  feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.370') },
+  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.370') },
+  recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.370') },
+  vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.370') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.370') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -311,9 +309,9 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.202') },
   storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.202') },
   storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.202') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.369') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.369') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.369') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.370') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.370') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.370') },
   storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.202') },
   characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.202') },
   characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.202') },
@@ -345,7 +343,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => import('./qianmu-image-admission.js?v=1.59.369'),
+    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.370'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -373,7 +371,7 @@ const featureRuntime = createFeatureRuntime({
   },
   characterArchive: {
     label: '角色档案',
-    load: () => import('./qianmu-character-archive-view.js?v=1.59.202'),
+    load: () => loadLocalChunk('./qianmu-character-archive-view.js?v=1.59.370'),
   },
   characterCasting: {
     label: '角色取景绑定',
@@ -381,15 +379,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.369'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.370'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.369'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.370'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.369'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.370'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -425,7 +423,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => import('./qianmu-comfy-route.js?v=1.59.202'),
+    load: () => loadLocalChunk('./qianmu-comfy-route.js?v=1.59.370'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
@@ -437,11 +435,11 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => import('./qianmu-comfy-library-view.js?v=1.59.202'),
+    load: () => loadLocalChunk('./qianmu-comfy-library-view.js?v=1.59.370'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => import('./qianmu-comfy-pool-view.js?v=1.59.202'),
+    load: () => loadLocalChunk('./qianmu-comfy-pool-view.js?v=1.59.370'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
@@ -481,11 +479,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.369'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.370'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.369'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.370'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -573,9 +571,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.369'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.370'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.369')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.370')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -7970,7 +7968,7 @@ function renderStorageManagementCard() {
     <div class="sd-storage-ios-bar" role="img" aria-label="储存空间分布">${storageBar}</div>
     <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
     ${pressureNotice}
-    ${incomplete ? '<p class="sd-storage-pressure is-warning" role="status">部分数据暂不可读取，统计尚不完整。请在资料管理对应条目核对；未读取的部分不会按零占用处理。</p>' : ''}
+    ${incomplete ? '<p class="sd-storage-pressure is-warning" role="status">部分数据暂不可读取，请稍后刷新；未读取的部分不会按零占用处理。</p>' : ''}
     <p class="sd-storage-scope">此处是浏览器分配给当前 ST 站点来源的空间，不代表 VPS 磁盘总容量；千幕仅统计可明确归因的本地内容。</p>
     ${backupSection}
     ${serviceStatus}
@@ -12096,7 +12094,6 @@ function renderPlugTab() {
         <label><span>最大输出</span><input class="text_pole sd-max-output" type="number" min="0" step="256" placeholder="0 表示不限" value="${htmlEscape(settings.maxOutputTokens ?? 32000)}"></label>
         <label><span>上下文长度</span><input class="text_pole sd-context-budget" type="number" min="0" step="1000" placeholder="0 表示不限" value="${htmlEscape(settings.contextBudget ?? 1000000)}"></label>
       </div>
-      <details><summary>兼容选项</summary><p class="sd-muted">仅对支持 JSON Schema 的渠道及已提供结构定义的请求生效，用于约束返回字段；不会提高模型能力，也不能防止输出截断。不确定时保持关闭。</p><button type="button" class="sd-structured-output-toggle ${settings.structuredOutputMode === 'json_schema' ? 'active' : ''}" aria-pressed="${settings.structuredOutputMode === 'json_schema' ? 'true' : 'false'}"><span>启用 JSON Schema 约束</span></button></details>
       </div>
       <div class="sd-button-row sd-api-action-row">
         <button class="sd-btn sd-save-api" ${isExternal ? '' : 'hidden'}>保存API</button>
@@ -12540,6 +12537,7 @@ function storyboardEndSession() {
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagCompleteCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdTagLibraryCleanup?.();
   storyboardTagDraft = null;
+  storyboardTagEditorState = null;
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyReadinessCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyTargetsCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyInboxCleanup?.();
@@ -12604,21 +12602,17 @@ function storyboardConnectionState(state, providerId = state.source) {
   return { group, active, draft: group?.draft || active || {} };
 }
 
-function renderStoryboardModelPicker(providerId, selected, capabilityModelId = '', route = false) {
+function renderStoryboardModelPicker(providerId, selected, capabilityModelId = '') {
   const id = uid('model-picker');
-  return `<div class="sd-model-picker" data-storyboard-model-picker="${providerId}" data-route="${route}">
-    <div class="sd-model-picker-input-row"><input id="${id}" class="text_pole ${route ? 'sd-storyboard-route-model' : 'sd-storyboard-model-select'}" role="combobox" aria-label="模型：可搜索或填写完整 ID" aria-autocomplete="list" aria-expanded="false" autocomplete="off" spellcheck="false" maxlength="240" value="${htmlEscape(selected)}"><button type="button" class="sd-icon-btn sd-model-picker-pull" title="拉取模型（只读）" aria-label="拉取模型" ${providerId === 'comfy' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></div>
+  return `<div class="sd-model-picker" data-storyboard-model-picker="${providerId}">
+    <div class="sd-model-picker-input-row"><input id="${id}" class="text_pole sd-storyboard-model-select" role="combobox" aria-label="模型：可搜索或填写完整 ID" aria-autocomplete="list" aria-expanded="false" autocomplete="off" spellcheck="false" maxlength="240" value="${htmlEscape(selected)}"><button type="button" class="sd-icon-btn sd-model-picker-pull" title="拉取模型（只读）" aria-label="拉取模型" ${providerId === 'comfy' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></div>
     <div class="sd-model-picker-panel" hidden></div>
   </div>`;
 }
 
-function storyboardApplyModelBinding(root, state, providerId, binding, rule = null) {
+function storyboardApplyModelBinding(root, state, providerId, binding) {
   if (!root.isConnected || state !== storyboardState()) return false;
   binding = resolveStoryboardModelBinding(providerId, binding);
-  if (rule) {
-    if (!state.routing.rules.includes(rule) || rule.target.providerId !== providerId) return false;
-    Object.assign(rule.target, { modelId: binding.remoteModelId, capabilityModelId: binding.capabilityModelId, parameterPresetId: '' });
-  } else {
     if (state.source !== providerId) return false;
     const previousModel = String(state.profiles[providerId]?.model || STORYBOARD_PROVIDER_REGISTRY[providerId]?.defaultModel || '');
     storyboardCaptureWorkbench(root, providerId, { rememberModel: false });
@@ -12631,50 +12625,44 @@ function storyboardApplyModelBinding(root, state, providerId, binding, rule = nu
       : { ...createStoryboardDefaults().profiles[providerId], model: binding.remoteModelId, capabilityModelId: binding.capabilityModelId, loaded: false };
     rememberStoryboardModelProfile(state.modelProfiles, providerId, state.profiles[providerId]);
     state.parameterPresetSelection[providerId] = '';
-  }
   saveSettings(); renderModal(); return true;
 }
 
 function bindStoryboardModelPicker(root, host, state) {
   const providerId = host.dataset.storyboardModelPicker;
-  const row = host.closest('[data-storyboard-route-rule]');
-  const rule = row ? state.routing.rules.find((item) => item.id === row.dataset.storyboardRouteRule) : null;
-  if (row && !rule) return;
   let loading = null, instance = null;
   const ensure = () => {
     if (instance && !instance.isCurrent()) { instance.dispose(); instance = null; loading = null; }
     return loading ||= (async () => {
     if (!host.isConnected || state !== storyboardState()) return null;
-    if (!rule) storyboardCaptureWorkbench(root);
+    storyboardCaptureWorkbench(root);
     const read = () => {
       const group = storyboardConnectionState(state, providerId);
-      const connection = rule?.target.connectionPresetId
-        ? group.group.presets.find((item) => item.id === rule.target.connectionPresetId) : group.draft;
-      return { connection, preset: rule?.target.connectionPresetId || group.group.activePresetId,
-        keyRevision: storyboardCredentialRevision, draftKey: rule?.target.connectionPresetId ? '' : storyboardDraftApiKeys.get(providerId),
-        model: rule?.target.modelId || state.profiles[providerId]?.model, capability: rule?.target.capabilityModelId || state.profiles[providerId]?.capabilityModelId,
-        source: rule?.target.providerId || state.source,
+      const connection = group.draft;
+      return { connection, preset: group.group.activePresetId,
+        keyRevision: storyboardCredentialRevision, draftKey: storyboardDraftApiKeys.get(providerId),
+        model: state.profiles[providerId]?.model, capability: state.profiles[providerId]?.capabilityModelId,
+        source: state.source,
         // Include live unsaved fields too: a quick click must not beat the workbench's debounced save.
-        fields: rule ? [] : [...root.querySelectorAll('.sd-comfy-transport, .sd-storyboard-private-network, .sd-storyboard-protocol, .sd-storyboard-base-url, .sd-storyboard-api-key-memory, .sd-storyboard-openai-compat input, .sd-storyboard-openai-compat textarea, .sd-storyboard-openai-compat select')].map((field) => [field.value, field.checked]) };
+        fields: [...root.querySelectorAll('.sd-comfy-transport, .sd-storyboard-private-network, .sd-storyboard-protocol, .sd-storyboard-base-url, .sd-storyboard-api-key-memory, .sd-storyboard-openai-compat input, .sd-storyboard-openai-compat textarea, .sd-storyboard-openai-compat select')].map((field) => [field.value, field.checked]) };
     };
     // Ephemeral comparison only; never use connection credentials as a cache key or persist this snapshot.
     const initial = read(), snapshot = JSON.stringify(initial), chatKey = getChatKey();
     const isCurrent = () => host.isConnected && state === storyboardState() && chatKey === getChatKey()
-      && (!rule || state.routing.rules.includes(rule)) && snapshot === JSON.stringify(read());
+      && snapshot === JSON.stringify(read());
     const runtime = await featureRuntime.load('modelPicker');
     if (!isCurrent()) { loading = null; return null; }
-    const profile = rule ? { model: rule.target.modelId, capabilityModelId: rule.target.capabilityModelId } : storyboardProviderProfile(state, providerId);
+    const profile = storyboardProviderProfile(state, providerId);
     return instance = runtime.attachModelPicker(host, {
       provider: providerId, models: STORYBOARD_MODEL_REGISTRY[providerId], current: profile, isCurrent,
       apply: (selection) => {
         const binding = resolveStoryboardModelBinding(providerId, selection);
         if (providerId === 'comfy' && binding.remoteModelId !== 'comfy-workflow') throw new Error('ComfyUI 模型请在 API Workflow 中设置');
-        return storyboardApplyModelBinding(root, state, providerId, binding, rule);
+        return storyboardApplyModelBinding(root, state, providerId, binding);
       },
       fetchModels: async () => {
         if (!initial.connection) throw new Error('API 预设已失效，请重新选择');
         const connection = clone(initial.connection);
-        if (rule?.target.connectionPresetId && !connection.credentialId) throw new Error('API 预设没有凭据引用，请重新保存连接');
         const apiKey = initial.draftKey || await storyboardResolveApiKey(providerId, connection.credentialId);
         if (!isCurrent()) throw new Error('模型或连接已变化，请重新打开模型选择');
         const request = { provider: providerId, baseUrl: connection.baseUrl || STORYBOARD_PROVIDER_REGISTRY[providerId].defaultBaseUrl,
@@ -12892,7 +12880,7 @@ async function storyboardReviewLegacyRecipe(record,parent) {
   const epoch=storyboardSnapshotEpoch,metadata=ctx().chatMetadata;
   const isCurrent=()=>parent.isConnected&&epoch===storyboardSnapshotEpoch&&metadata===ctx().chatMetadata;
   try {
-    const runtime=await loadLocalChunk('./qianmu-gallery-recipe-review-view.js?v=1.59.369');
+    const runtime=await loadLocalChunk('./qianmu-gallery-recipe-review-view.js?v=1.59.370');
     if(!isCurrent())return;
     const result=await runtime.openGalleryRecipeReview({parent,recordId:record.id,isCurrent,getContext:ctx,epoch:()=>storyboardSnapshotEpoch,
       account:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(),headers:storyboardRequestHeaders}).finished;
@@ -12916,7 +12904,7 @@ async function storyboardReadSnapshotForRecord(record) {
   }
   if (!record?.snapshot && record?.snapshotRef) {
     const epoch=storyboardSnapshotEpoch,metadata=ctx().chatMetadata;
-    const runtime = await loadLocalChunk('./qianmu-gallery-local-recipe-current.js?v=1.59.369');
+    const runtime = await loadLocalChunk('./qianmu-gallery-local-recipe-current.js?v=1.59.370');
     if(epoch!==storyboardSnapshotEpoch||metadata!==ctx().chatMetadata)throw new Error('原画面来源已变化，请重新打开');
     return runtime.readCurrentGalleryLocalRecipe({record,getContext:ctx,epoch:()=>storyboardSnapshotEpoch,
       account:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace()});
@@ -14099,9 +14087,9 @@ async function storyboardMountCharacterArchive(root) {
       storyboardCharacterArchiveController = {...controller,state};
     }
     storyboardCharacterArchiveController.mount(host);
-  } catch (_) {
-    if (host.isConnected && state.view === 'characters') {
-      host.innerHTML = '<div role="status">角色库未能载入 <button type="button" class="sd-btn sd-character-retry">重试</button></div>';
+  } catch (error) {
+    if (host.isConnected && storyboardState() === state && state.view === 'characters') {
+      host.innerHTML = `<div role="status">${htmlEscape(error?.code==='qianmu_chunk_load'?error.message:'角色库未能载入')} <button type="button" class="sd-btn sd-character-retry">重试</button></div>`;
       host.querySelector('.sd-character-retry')?.addEventListener('click', () => void storyboardMountCharacterArchive(root));
     }
   }
@@ -14118,6 +14106,7 @@ async function storyboardMountComfyLibrary(root, retry = false) {
       storyboardComfyLibraryController?.dispose();
       const controller = module.createComfyLibraryController({
         resolveNamespace: () => identity.resolveImageAccountNamespace(), getCurrentRecipe: () => storyboardCurrentComfyRecipe(state),
+        getConnection: () => storyboardConnectionState(state, 'comfy').draft,
         isCurrent: () => activeTab === 'imagegen' && storyboardState() === state && state.view === 'workflows' && state.source === 'comfy',
         onApply: recipe => storyboardApplyComfyLibraryRecipe(document.querySelector('#story-director-modal'), state, recipe),
         onCandidates: () => storyboardNavigate(document.querySelector('#story-director-modal'), { view: 'comfy-pools' }),
@@ -14126,10 +14115,10 @@ async function storyboardMountComfyLibrary(root, retry = false) {
       storyboardComfyLibraryController = { ...controller, state };
     }
     storyboardComfyLibraryController.mount(host);
-  } catch (_) {
-    storyboardComfyLibraryError = 'load_failed';
+  } catch (error) {
+    storyboardComfyLibraryError = error?.code==='qianmu_chunk_load'?error.message:'工作流库未能载入';
     if (host.isConnected && storyboardState() === state && state.view === 'workflows') {
-      host.innerHTML = '<div role="status">工作流库未能载入 <button type="button" class="sd-btn sd-comfy-library-retry">重试</button></div>';
+      host.innerHTML = `<div role="status">${htmlEscape(storyboardComfyLibraryError)} <button type="button" class="sd-btn sd-comfy-library-retry">重试</button></div>`;
       host.querySelector('.sd-comfy-library-retry')?.addEventListener('click', () => void storyboardMountComfyLibrary(root, true));
     }
   }
@@ -14143,7 +14132,7 @@ async function storyboardPickComfyPoolWorkflow(state, { namespace, previous, gua
   };
   const runtime = await featureRuntime.load('comfyRoutes'); await check();
   const picked = await runtime.openComfyRoutePicker({ context: ctx(), namespace, binding: previous?.target.comfyWorkflowBinding,
-    hasReferences: references?.enabled === true, guard: check, mountAppearance: dialog=>appearanceSession.mountPortal(dialog) });
+    hasReferences: references?.enabled === true, guard: check, mountAppearance: dialog=>appearanceSession.mountPortal(dialog,{inheritTheme:true}) });
   await check(); return picked ? { ...picked, references } : null;
 }
 
@@ -14169,9 +14158,9 @@ async function storyboardMountComfyPools(root) {
       storyboardComfyPoolController = { ...controller, state };
     }
     storyboardComfyPoolController.mount(host);
-  } catch (_) {
+  } catch (error) {
     if (host.isConnected && storyboardState() === state && state.view === 'comfy-pools') {
-      host.innerHTML = '<div role="status">候选方案未能载入 <button type="button" class="sd-btn sd-comfy-pool-retry">重试</button></div>';
+      host.innerHTML = `<div role="status">${htmlEscape(error?.code==='qianmu_chunk_load'?error.message:'方案库未能载入')} <button type="button" class="sd-btn sd-comfy-pool-retry">重试</button></div>`;
       host.querySelector('.sd-comfy-pool-retry')?.addEventListener('click', () => void storyboardMountComfyPools(root));
     }
   }
@@ -14217,7 +14206,7 @@ async function storyboardShowComfySceneLinks(root) {
   storyboardCaptureWorkbench(root);
   const floor=storyboardTargetFloor(state),chatKey=String(getChatKey()||''),epoch=storyboardAdmissionEpoch,message=ctx().chat?.[floor];
   const plan=storyboardPlanForMessage(state,floor,message),poolSnapshot=JSON.stringify(state.comfyPoolSelection);
-  const snapshot=()=>JSON.stringify([state.promptDraft,state.compositionPolicy,state.generationPolicy,state.routing,plan?.revisionId]);
+  const snapshot=()=>JSON.stringify([state.promptDraft,state.compositionPolicy,state.generationPolicy,state.routing,plan?.revisionId,plan?.ensembleRecovery,plan?.ensembleRecoveryRetired]);
   const baseline=snapshot(),messageText=message?.mes,swipe=message?.swipe_id;
   const current=()=>root.isConnected&&host.isConnected&&!host.hidden&&host.comfyLinkSequence===sequence&&storyboardState()===state
     &&state.source==='comfy'&&state.view==='create'&&state.comfyAutoEnabled===true&&epoch===storyboardAdmissionEpoch
@@ -14233,7 +14222,15 @@ async function storyboardShowComfySceneLinks(root) {
     if(!pool.styleLock)throw new Error('当前候选方案未启用连续场景风格锁');
     const {planned,coverage}=storyboardPrepareDraftGroup(state,plan);
     const scopes=await storyboardComfyPlanScopes(runtime,{namespace,chatKey,plan,planned,coverage,draftPlanId:state.promptDraft.planId,guard});await guard();
-    const routes=planned.map(shot=>state.routing.enabled?routeStoryboardShot(shot,state.routing):{providerId:state.source});
+    let routes=planned.map(()=>({providerId:state.source}));
+    if(state.promptDraft?.ensembleRequired||Object.hasOwn(plan,'ensembleRecovery')&&plan.ensembleRecoveryRetired!==true){
+      const preparation=storyboardCreatePreparationGuard(state,{plan,freshComfy:true});let selection;
+      try{
+        const styles=await featureRuntime.load('storyboardContract');await guard();preparation.assertCurrent();
+        selection=await styles.restoreStoryboardEnsemblePlan(state,plan,planned,preparation,storyboardEnsembleHost());await guard();
+        routes=selection.routes;await selection.assertCurrent();await guard();
+      }finally{selection?.close();preparation.dispose();}
+    }
     const groups=coverage.sceneGroups.filter(group=>group.shotIds.some(id=>{const index=planned.findIndex(shot=>shot.id===id);return index>=0&&storyboardRouteUsesComfyAuto(state,routes[index]);}));
     const rows=(await manager.list(namespace,chatKey)).filter(row=>row.lock&&row.established&&!row.pending&&!row.uncertain
       &&row.lock.poolKey===pool.poolKey&&Number.isInteger(row.label.floor)&&row.label.floor<floor).sort((a,b)=>b.label.floor-a.label.floor||b.updatedAt-a.updatedAt);await guard();
@@ -14395,6 +14392,7 @@ function storyboardFilteredTags(state) {
 }
 
 let storyboardTagDraft = null;
+let storyboardTagEditorState = null;
 function storyboardTagFormValues(root) {
   const value=selector=>String(root.querySelector(selector)?.value||'').trim();
   return {name:value('.sd-storyboard-tag-name'),content:value('.sd-storyboard-tag-rendering'),category:value('.sd-storyboard-tag-category'),
@@ -14413,72 +14411,49 @@ function renderStoryboardTagLibrary(state) {
   const form=draft||{name:editing?.name||'',content:editing?storyboardTagContent(editing):'',category:editing?.category||'custom',customCategory:editing?.customCategory||'',positive:editing?.positive!==false,naturalLanguage:editing?.naturalLanguage||'',rendering:editing?.renderings?.[state.source]||'',aliases:(editing?.aliases||[]).join(', ')};
   const tags=storyboardFilteredTags(state),page=Math.min(Math.max(0,Number(state.tagPage)||0),Math.max(0,Math.ceil(tags.length/100)-1));
   const chips=tags.slice(page*100,page*100+100).map(item=>`<button type="button" class="sd-tag-library-chip ${item.positive===false?'negative':'positive'} ${item.name?'is-group':''}" data-storyboard-edit-tag="${htmlEscape(item.id)}" title="${htmlEscape(storyboardTagText(item,state.source))}">${htmlEscape(snip(item.name||storyboardTagContent(item),80))}</button>`).join('');
-  return `<details class="sd-card sd-storyboard-tag-editor" data-storyboard-card="asset-tag-create" data-tag-editor="${htmlEscape(id)}" data-tag-source="${state.source}" ${state.collapsedCards['asset-tag-create']?'':'open'}><summary><b>${editing?'编辑 Tag':'新建 Tag'}</b></summary><div class="sd-storyboard-card-body">
+  return `${storyboardTagEditorState===state?`<section class="sd-card sd-storyboard-tag-editor" data-tag-editor="${htmlEscape(id)}" data-tag-source="${state.source}"><div class="sd-storyboard-card-body"><div class="sd-tag-edit-actions"><b>${editing?'编辑 Tag':'新建 Tag'}</b><button type="button" class="sd-icon-btn sd-storyboard-cancel-tag-edit" aria-label="关闭编辑"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>组名（可空）</span><input class="text_pole sd-storyboard-tag-name" maxlength="100" value="${htmlEscape(form.name)}"></label><label><span>分类</span><select class="text_pole sd-storyboard-tag-category">${STORYBOARD_TAG_CATEGORIES.map(key=>`<option value="${key}" ${form.category===key?'selected':''}>${STORYBOARD_TAG_CATEGORY_LABELS[key]}</option>`).join('')}</select></label></div>
     <label class="sd-storyboard-tag-custom-category ${form.category==='custom'?'':'hidden'}"><span>自定义分类</span><input class="text_pole" maxlength="80" value="${htmlEscape(form.customCategory)}"></label>
     <label><span>内容</span><textarea class="text_pole sd-storyboard-tag-rendering" maxlength="6000" spellcheck="false">${htmlEscape(form.content)}</textarea></label>
     <details class="sd-tag-expressions"><summary>其他模型表达</summary><small>专属写法优先；只替换，不叠加。留空沿用内容。</small><label><span>${htmlEscape(STORYBOARD_PROVIDER_REGISTRY[state.source].label)} 专属写法</span><textarea class="text_pole sd-storyboard-tag-override" maxlength="6000">${htmlEscape(form.rendering)}</textarea></label><label><span>自然语言通用表达</span><textarea class="text_pole sd-storyboard-tag-description" maxlength="2000">${htmlEscape(form.naturalLanguage)}</textarea></label><label><span>搜索别名</span><input class="text_pole sd-storyboard-tag-aliases" maxlength="3000" value="${htmlEscape(form.aliases)}"></label></details>
     <div class="sd-tag-save-row"><button type="button" class="sd-btn sd-storyboard-tag-negative ${form.positive?'':'active'}" aria-pressed="${!form.positive}">负面</button><button type="button" class="sd-btn sd-primary sd-storyboard-create-tag">保存</button></div>
-    ${editing?'<div class="sd-tag-edit-actions"><button type="button" class="sd-btn sd-storyboard-cancel-tag-edit">新建</button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-current-tag" aria-label="删除 Tag"><i class="fa-solid fa-trash-can"></i></button></div>':''}</div></details>
+    ${editing?'<div class="sd-tag-edit-actions"><button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-current-tag" aria-label="删除 Tag"><i class="fa-solid fa-trash-can"></i></button></div>':''}</div></section>`:'<button type="button" class="sd-btn sd-storyboard-new-tag"><i class="fa-solid fa-plus"></i>新建 Tag</button>'}
     <div class="sd-tag-library-tools"><input class="text_pole sd-storyboard-asset-search" aria-label="搜索 Tag" value="${htmlEscape(state.assetSearch||'')}" placeholder="搜索 Tag"><select class="text_pole sd-storyboard-asset-category" aria-label="筛选分类"><option value="all">全部分类</option>${STORYBOARD_TAG_CATEGORIES.map(key=>`<option value="${key}" ${state.assetCategory===key?'selected':''}>${STORYBOARD_TAG_CATEGORY_LABELS[key]}</option>`).join('')}</select><button type="button" class="sd-btn sd-storyboard-tag-sort" title="切换最近添加 / 最多使用">${state.tagSort==='used'?'常用':'最近'}</button></div>
     <div class="sd-tag-library-chips">${chips}</div>${tags.length>100?`<div class="sd-tag-library-pages"><button type="button" class="sd-btn" data-tag-page="${page-1}" ${page?'':'disabled'}>上一页</button><span>${page+1} / ${Math.ceil(tags.length/100)}</span><button type="button" class="sd-btn" data-tag-page="${page+1}" ${(page+1)*100>=tags.length?'disabled':''}>下一页</button></div>`:''}`;
 }
 
 const STORYBOARD_SHOT_TYPE_LABELS = Object.freeze({ portrait: '人物', group: '群像', environment: '场景', object: '物件', action: '动作', closeup: '特写', custom: '其他' });
 
-function storyboardRoutingTargetOptions(state, providerId, target = {}) {
-  const provider = STORYBOARD_PROVIDER_REGISTRY[providerId] || STORYBOARD_PROVIDER_REGISTRY[state.source];
-  const modelId = target.modelId || provider.defaultModel;
-  let issue = '';
-  try { resolveStoryboardProfileBinding(provider.id, { model: modelId, capabilityModelId: target.capabilityModelId }); }
-  catch (error) { issue = `<small class="sd-storyboard-safety-notice" role="status">${htmlEscape(error.message)}</small>`; }
-  const connections = state.connections[provider.id]?.presets || [];
-  if (provider.id === 'comfy') {
-    const fixed = target.comfyWorkflowBinding;
-    const missing = target.connectionPresetId && !connections.some(item => item.id === target.connectionPresetId);
-    return `<label><span>生图渠道</span><select class="text_pole sd-storyboard-route-provider">${Object.values(STORYBOARD_PROVIDER_REGISTRY).map(item => `<option value="${item.id}" ${item.id === 'comfy' ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select></label>
-      <label><span>工作流分工</span><button type="button" class="sd-btn sd-storyboard-bind-route-workflow">${htmlEscape(fixed ? fixed.invalid ? '绑定已失效 · 重新选择' : `${fixed.name} · v${fixed.version}` : '选择固定工作流')}</button></label>
-      <label><span>API 预设</span><select class="text_pole sd-storyboard-route-connection"><option value="">当前 Comfy API</option>${missing ? `<option value="${htmlEscape(target.connectionPresetId)}" selected>API 预设已失效</option>` : ''}${connections.map(item => `<option value="${htmlEscape(item.id)}" ${target.connectionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select></label>
-      ${fixed ? `<div class="sd-storyboard-route-fixed"><small>参考图 ${target.comfyReferences?.items?.length || 0} 张 · 工作流与参数随固定版本</small><button type="button" class="sd-btn sd-storyboard-clear-route-workflow">解除固定</button>${target.comfyReferences ? '<button type="button" class="sd-btn sd-storyboard-clear-route-references">移除本分工参考图</button>' : ''}</div>` : `<small class="sd-storyboard-safety-notice">未固定：沿用当前 Comfy 工作台${target.parameterPresetId ? '与旧参数样式' : ''}</small>`}${issue}`;
-  }
-  const parameters = storyboardParameterPresets(provider.id, modelId, target.capabilityModelId, state);
-  const missingConnection = target.connectionPresetId && !connections.some((item) => item.id === target.connectionPresetId)
-    ? `<option value="${htmlEscape(target.connectionPresetId)}" selected>API 预设已失效 · 请重选</option>` : '';
-  const missingParameters = target.parameterPresetId && !parameters.some((item) => item.id === target.parameterPresetId)
-    ? `<option value="${htmlEscape(target.parameterPresetId)}" selected>参数方案已失效 · 请重选</option>` : '';
-  if (!issue && (missingConnection || missingParameters)) issue = '<small class="sd-storyboard-safety-notice" role="status">请重新选择失效的镜组配置</small>';
-  return `<select class="text_pole sd-storyboard-route-provider" aria-label="生图渠道">${Object.values(STORYBOARD_PROVIDER_REGISTRY).map((item) => `<option value="${item.id}" ${provider.id === item.id ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select>${renderStoryboardModelPicker(provider.id, modelId, target.capabilityModelId, true)}<select class="text_pole sd-storyboard-route-connection" aria-label="API 预设"><option value="">当前渠道 API</option>${missingConnection}${connections.map((item) => `<option value="${htmlEscape(item.id)}" ${target.connectionPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select><select class="text_pole sd-storyboard-route-style" aria-label="绘制样式"><option value="">不套用样式</option>${missingParameters}${parameters.map((item) => `<option value="${htmlEscape(item.id)}" ${target.parameterPresetId === item.id ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select>${issue}`;
-}
-
-async function storyboardBindRouteWorkflow(root, rule) {
-  const state = storyboardState(), epoch = storyboardAdmissionEpoch, chatKey = String(getChatKey() || '');
-  if (root._sdRouteBindingBusy || !state.routing.rules.includes(rule) || rule.target?.providerId !== 'comfy') return;
-  const original = JSON.stringify(rule.target), references = clone(state.profiles.comfy.comfyReferences || null);
-  root._sdRouteBindingBusy = true;
-  try {
-    const [runtime, identity] = await Promise.all([featureRuntime.load('comfyRoutes'), featureRuntime.load('imageAdmission')]);
-    const namespace = await identity.resolveImageAccountNamespace();
-    const current = () => root.isConnected && storyboardState() === state && epoch === storyboardAdmissionEpoch && chatKey === String(getChatKey() || '')
-      && state.view === 'assets' && state.assetView === 'routing' && state.routing.rules.includes(rule) && original === JSON.stringify(rule.target)
-      && JSON.stringify(references) === JSON.stringify(state.profiles.comfy.comfyReferences || null);
-    const guard = async () => {
-      if (!current() || namespace !== await identity.resolveImageAccountNamespace() || !current()) throw Error('页面、账户或分工已变化，请重新选择');
-    };
-    await guard();
-    const picked = await runtime.openComfyRoutePicker({ context: ctx(), namespace, binding: rule.target.comfyWorkflowBinding,
-      hasReferences: references?.enabled === true, guard, mountAppearance: dialog=>appearanceSession.mountPortal(dialog) });
-    await guard(); if (!picked) return;
-    const next = { ...rule.target, parameterPresetId: '', modelId: 'comfy-workflow', capabilityModelId: 'comfy-workflow',
-      comfyWorkflowBinding: picked.recipe.binding, comfyCharacterEnabled: false,
-      comfyReferences: picked.useReferences ? references : clone(rule.target.comfyReferences || null) };
-    runtime.applyComfyRouteRecipe({}, next, picked.recipe); // Verify reference ownership/graph before saving the small selection.
-    await guard(); rule.target = next; saveSettings(); renderModal(); toast('工作流分工已绑定，未开始生成', 'success');
-  } catch (error) { if (state === storyboardState()) toast(error.message || '工作流未绑定，原分工保留', 'warning'); }
-  finally { root._sdRouteBindingBusy = false; }
+async function storyboardConfigureEnsembleTarget(state, runtime, identity, namespace, target) {
+  const epoch=storyboardAdmissionEpoch,chat=String(getChatKey()||'');
+  const current=()=>state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')&&activeTab==='imagegen'&&state.view==='assets'&&state.assetView==='routing';
+  const guard=async()=>{if(!current()||namespace!==await identity.resolveImageAccountNamespace()||!current())throw Error('页面或账户已变化，请重新打开');};
+  return runtime.openEnsembleTargetPicker({context:ctx(),target,providers:STORYBOARD_PROVIDER_REGISTRY,
+    models:id=>STORYBOARD_MODEL_REGISTRY[id]||[],
+    defaultTarget:(providerId=state.source)=>{const profile=state.profiles[providerId];return {providerId,modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''};},
+    connections:id=>state.connections[id]?.presets||[],parameterPresets:t=>storyboardParameterPresets(t.providerId,t.modelId,t.capabilityModelId,state),
+    pickWorkflow:async draft=>{
+      const ownReferences=draft.comfyReferences?.enabled===true,workbenchReferences=clone(state.profiles.comfy.comfyReferences||null),references=clone(ownReferences?draft.comfyReferences:workbenchReferences),routes=await featureRuntime.load('comfyRoutes');await guard();
+      const picked=await routes.openComfyRoutePicker({context:ctx(),namespace,binding:draft.comfyWorkflowBinding,hasReferences:references?.enabled===true,defaultUseReferences:ownReferences,guard,mountAppearance:dialog=>appearanceSession.mountPortal(dialog,{inheritTheme:true})});
+      await guard();if(!picked)return null;
+      if(!ownReferences&&JSON.stringify(workbenchReferences)!==JSON.stringify(state.profiles.comfy.comfyReferences||null))throw Error('参考图已变化，请重新选择');
+      const next={...draft,parameterPresetId:'',modelId:'comfy-workflow',capabilityModelId:'comfy-workflow',comfyWorkflowBinding:picked.recipe.binding,comfyCharacterEnabled:false,comfyReferences:picked.useReferences===true?references:picked.useReferences===false?null:clone(draft.comfyReferences||null)};
+      routes.applyComfyRouteRecipe({},next,picked.recipe);await guard();return next;
+    },
+    validateTarget:async draft=>{
+      const binding=resolveStoryboardProfileBinding(draft.providerId,{model:draft.modelId,capabilityModelId:getStoryboardModel(draft.providerId,draft.modelId)?.id||draft.capabilityModelId||STORYBOARD_PROVIDER_REGISTRY[draft.providerId].defaultModel});
+      const next={...draft,modelId:binding.remoteModelId,capabilityModelId:binding.capabilityModelId};
+      const group=state.connections[next.providerId],connections=next.connectionPresetId?(group?.presets||[]).filter(row=>row.id===next.connectionPresetId):[group?.draft||{}];
+      if(connections.length!==1)throw Error('请重新选择 API 预设');
+      const capabilities=getStoryboardCapabilities(next.providerId,next.capabilityModelId,undefined,connections[0]);
+      if(capabilities.protocolIssue)throw Error(capabilities.protocolIssue);
+      if(next.providerId!=='comfy')storyboardResolveRoutingProfile(state,next);
+      await guard();return {target:next,artistCapable:capabilities.supportsArtistSyntax===true,label:next.providerId==='comfy'?next.comfyWorkflowBinding.name:next.modelId};
+    },guard,mountAppearance:dialog=>appearanceSession.mountPortal(dialog,{inheritTheme:true})});
 }
 
 function renderStoryboardRouting(state) {
-  return renderEnsembleRoutePanel(state,{targetOptions:target=>storyboardRoutingTargetOptions(state,target.providerId,target),shotTypes:STORYBOARD_SHOT_TYPE_LABELS,templates:STORYBOARD_SHOT_GROUP_TEMPLATES,policy:getStoryboardGenerationPolicy(state)});
+  return renderEnsembleRoutePanel(state);
 }
 
 async function storyboardMountEnsembleLibrary(root) {
@@ -14495,6 +14470,7 @@ async function storyboardMountEnsembleLibrary(root) {
         isCurrent:()=>state===storyboardState()&&chat===String(getChatKey()||'')&&epoch===storyboardAdmissionEpoch,
         resolveNamespace:identity.resolveImageAccountNamespace,uid,
         readTargets:()=>ensembleRouteTargets(state,{providers:STORYBOARD_PROVIDER_REGISTRY,resolveBinding:resolveStoryboardProfileBinding,getCapabilities:getStoryboardCapabilities}),
+        configureTarget:({target})=>storyboardConfigureEnsembleTarget(state,runtime,identity,namespace,target),
         readArtists:()=>state.artistPresets.map(row=>({id:row.id,name:row.name})),changed:()=>{storyboardEnsembleRevision++;},
         publish:()=>{saveSettings();queueMicrotask(()=>{if(current())renderModal();});}});
     }
@@ -14554,7 +14530,7 @@ async function storyboardMountVibeLibrary(root,{manager=''}={}) {
   const state=storyboardState(),epoch=storyboardAdmissionEpoch,chat=String(getChatKey()||''),ticket={};root._sdVibeMountTicket=ticket;
   const current=()=>host.isConnected&&root._sdVibeMountTicket===ticket&&state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')&&activeTab==='imagegen';
   try{
-    const [runtime,identity]=await Promise.all([featureRuntime.load('vibeLibrary'),featureRuntime.load('imageAdmission')]);
+    const [runtime,identity,assetRuntime]=await Promise.all([featureRuntime.load('vibeLibrary'),featureRuntime.load('imageAdmission'),featureRuntime.load('vibeAssets')]);
     const namespace=await identity.resolveImageAccountNamespace();if(!current())return;
     const ctx=storyboardVibeControllerContext;
     if(!ctx||ctx.state!==state||ctx.epoch!==epoch||ctx.chat!==chat||ctx.namespace!==namespace){
@@ -14562,7 +14538,6 @@ async function storyboardMountVibeLibrary(root,{manager=''}={}) {
       if(ctx&&ctx.namespace!==namespace)storyboardVibeSelection=null;
       const same=()=>state===storyboardState()&&epoch===storyboardAdmissionEpoch&&chat===String(getChatKey()||'')&&activeTab==='imagegen';
       const guard=async()=>{if(!same()||namespace!==await identity.resolveImageAccountNamespace()||!same())throw Error('Vibe 会话或账户已变化，请重新打开');};
-      const assetRuntime=await featureRuntime.load('vibeAssets');if(!current())return;
       storyboardVibeControllerContext={state,epoch,chat,namespace};
       const assets=assetRuntime.createVibeLibraryAssets({state,namespace,guard,isCurrent:same,call:assetRuntime.callVibeAsset,publish:saveSettings,uid,notify:message=>toast(message,'success')});
       const createPreservation=async onClose=>{const preservation=await featureRuntime.load('vibePreservation');await guard();return preservation.createVibePreservationController({
@@ -14582,7 +14557,6 @@ async function storyboardMountVibeLibrary(root,{manager=''}={}) {
         items:()=>state.vibeLibrary,gallery:()=>storyboardGalleryRecords().filter(item=>item.mediaType!=='video'&&item.kind!=='film'),
         isCurrent:same,icons:node=>applyQianmuIcons(node),onNotice:message=>{if(same())toast(message,'warning');},
         onEdit:id=>{if(same())state.editingVibeId=id;},
-        collapsed:()=>state.collapsedCards['asset-vibe-create']===true,onCollapse:value=>{if(same()&&state.collapsedCards['asset-vibe-create']!==value){state.collapsedCards['asset-vibe-create']=value;saveSettings();}},
         save:async(node,options)=>{await guard();return storyboardSaveVibeFromForm(node,options);},
         remove:async item=>{await guard();const session=storyboardVibeSelection,before=JSON.stringify(state.selectedVibeIds||[]);const deleted=await storyboardDeleteVibe(item,{onDeleted:()=>{}});
           if(deleted&&session&&session===storyboardVibeSelection&&session.original===before)session.original=JSON.stringify(state.selectedVibeIds||[]);return deleted;},
@@ -14630,10 +14604,10 @@ function renderStoryboardAssets(state) {
 function storyboardBindTagLibrary(root) {
   root._sdTagLibraryCleanup?.();
   const state=storyboardState(),editor=root.querySelector('[data-tag-editor]'),source=state.source;
-  if(!editor)return;
-  let timer=0;const current=()=>editor.isConnected&&state===storyboardState()&&source===state.source;
+  let timer=0;const current=()=>root.isConnected&&(!editor||editor.isConnected)&&state===storyboardState()&&source===state.source;
   root._sdTagLibraryCleanup=()=>{clearTimeout(timer);root._sdTagLibraryCleanup=null;};
   const listen=(selector,type,callback)=>root.querySelectorAll(selector).forEach(element=>element.addEventListener(type,event=>{if(current())callback(event);}));
+  listen('.sd-storyboard-new-tag','click',()=>{state.editingTagId='';storyboardTagDraft=null;storyboardTagEditorState=state;renderModal();});
   listen('.sd-storyboard-asset-search','input',event=>{state.assetSearch=String(event.target.value||'').slice(0,120);state.tagPage=0;saveSettings();clearTimeout(timer);timer=setTimeout(()=>{if(current())renderModal();},220);});
   listen('.sd-storyboard-asset-category','change',event=>{state.assetCategory=event.target.value||'all';state.tagPage=0;saveSettings();renderModal();});
   listen('.sd-storyboard-create-tag','click',()=>storyboardSaveTagFromForm(root));
@@ -14641,10 +14615,10 @@ function storyboardBindTagLibrary(root) {
   listen('.sd-storyboard-tag-negative','click',event=>{const active=event.currentTarget.getAttribute('aria-pressed')!=='true';event.currentTarget.setAttribute('aria-pressed',String(active));event.currentTarget.classList.toggle('active',active);});
   listen('.sd-storyboard-tag-sort','click',()=>{state.tagSort=state.tagSort==='used'?'recent':'used';state.tagPage=0;saveSettings();renderModal();});
   listen('[data-tag-page]','click',event=>{state.tagPage=Math.max(0,Number(event.currentTarget.dataset.tagPage)||0);saveSettings();renderModal();});
-  listen('.sd-storyboard-cancel-tag-edit','click',()=>{state.editingTagId='';storyboardTagDraft=null;editor.dataset.tagEditor='cleared';saveSettings();renderModal();});
+  listen('.sd-storyboard-cancel-tag-edit','click',()=>{state.editingTagId='';storyboardTagDraft=null;storyboardTagEditorState=null;editor.dataset.tagEditor='cleared';saveSettings();renderModal();});
   listen('.sd-storyboard-delete-current-tag','click',()=>void storyboardDeleteTag(state.tagLibrary.find(item=>item.id===state.editingTagId)));
   listen('[data-storyboard-edit-tag]','click',event=>{const item=state.tagLibrary.find(entry=>entry.id===event.currentTarget.dataset.storyboardEditTag);if(!item)return;
-    state.editingTagId=item.id;storyboardTagDraft=null;state.collapsedCards['asset-tag-create']=false;storyboardPendingRestoreScroll=0;saveSettings();renderModal();root.querySelector('.sd-storyboard-tag-rendering')?.focus({preventScroll:true});});
+    state.editingTagId=item.id;storyboardTagDraft=null;storyboardTagEditorState=state;storyboardPendingRestoreScroll=0;saveSettings();renderModal();root.querySelector('.sd-storyboard-tag-rendering')?.focus({preventScroll:true});});
 }
 
 function storyboardSaveTagFromForm(root) {
@@ -14662,7 +14636,7 @@ function storyboardSaveTagFromForm(root) {
     aliases:uniqueClean(values.aliases.split(/[,，\n]/).map(value=>value.trim().slice(0,100))).slice(0,30),positive:values.positive,
     renderings,naturalLanguage:values.naturalLanguage,updatedAt:now};
   if(existing)state.tagLibrary=state.tagLibrary.map(row=>row===existing?item:row);else state.tagLibrary=[...state.tagLibrary,item];
-  state.editingTagId='';storyboardTagDraft=null;editor.dataset.tagEditor='saved';
+  state.editingTagId='';storyboardTagDraft=null;storyboardTagEditorState=null;editor.dataset.tagEditor='saved';
   saveSettings();toast('Tag 已保存','success');renderModal();return true;
 }
 
@@ -14674,7 +14648,7 @@ async function storyboardDeleteTag(item) {
   for (const preset of state.promptPresets) preset.tagIds = (preset.tagIds || []).filter((id) => id !== item.id);
   for (const vibe of state.vibeLibrary) vibe.tags = (vibe.tags || []).filter((id) => id !== item.id);
   if (state.editingTagId === item.id) state.editingTagId = '';
-  storyboardTagDraft=null;
+  storyboardTagDraft=null;storyboardTagEditorState=null;
   saveSettings(); renderModal();
 }
 
@@ -18576,8 +18550,8 @@ async function storyboardCompilerContext(state, inputGuard) {
     : null;
   const worldResult = await storyboardCompilerWorldText(state);
   inputGuard?.assertCurrent();
-  const includeReferences = state.profiles?.novel?.characterReferenceEnabled === true
-    && (state.source === 'novel' || state.routing?.enabled && state.routing.rules.some(rule => rule.enabled !== false && rule.target?.providerId === 'novel'));
+  const includeReferences = inputGuard?.ensemble?.useReference === true
+    || (state.source === 'novel' && state.profiles?.novel?.characterReferenceEnabled === true);
   const includeComfy = storyboardUsesComfyCharacters(state, inputGuard?.comfyRoutes, inputGuard?.freshComfy);
   const casting = await storyboardCompilerCharacterCasting(paragraphs.join('\n'), inputGuard, includeReferences, includeComfy);
   await sources.guard();
@@ -18596,8 +18570,6 @@ function storyboardCompilerRequestConfig(state, profile, preparedRoutes = null) 
   const extra = presetItems.length
     ? presetItems.map((item, index) => `${index + 1}. ${item.name}\n${item.instruction}`).join('\n\n')
     : String(preset?.instruction || '').trim();
-  const ensemble = Boolean(state.routing.enabled)&&state.routing.styleLibrary!==true;
-  const groupTemplate = STORYBOARD_SHOT_GROUP_TEMPLATES[state.routing.templateId] || STORYBOARD_SHOT_GROUP_TEMPLATES.smart;
   const allowedRatioIds = state.compositionPolicy?.mode === 'fixed' && state.compositionPolicy?.fixedRatioId
     ? [state.compositionPolicy.fixedRatioId]
     : state.compositionPolicy?.allowedRatioIds || STORYBOARD_RATIOS.map((item) => item.id);
@@ -18615,8 +18587,6 @@ function storyboardCompilerRequestConfig(state, profile, preparedRoutes = null) 
       ? state.compositionPolicy?.fixedRatioId
       : state.compositionPolicy?.preferredRatioId,
     compositionRuleOverride: state.compositionPolicy?.ruleOverride || '',
-    groupLabel: ensemble ? groupTemplate.label : '独立关键画面',
-    groupInstruction: ensemble ? groupTemplate.instruction : '',
     extraInstructions: extra,
     galleryKeywords: selectedGalleryKeywords(state),
     ...(preparedRoutes?.promptFormats?.length ? {promptFormats:preparedRoutes.promptFormats} : {}),
@@ -18639,18 +18609,7 @@ async function storyboardCompilerResult(raw, context, capabilities, state, contr
 }
 
 function storyboardCompilerRoutes(state, profile) {
-  const fallback = { providerId: state.source, modelId: profile.model, capabilityModelId: profile.capabilityModelId, connectionPresetId: '', parameterPresetId: '' };
-  if (!state.routing.enabled||state.routing.styleLibrary===true) return [fallback];
-  // Generation refreshes routing.single from the workbench too; never trust an old persisted fallback here.
-  const routing = { ...state.routing, single: fallback };
-  const routes = new Map();
-  for (const shotType of Object.keys(STORYBOARD_SHOT_TYPE_LABELS)) {
-    const route = routeStoryboardShot({ shotType }, routing);
-    const key = JSON.stringify([route.providerId, route.modelId, route.capabilityModelId, route.connectionPresetId, route.parameterPresetId,
-      route.comfyWorkflowBinding, route.comfyCharacterEnabled, route.comfyReferences]);
-    if (!routes.has(key)) routes.set(key, route);
-  }
-  return [...routes.values()];
+  return [{providerId:state.source,modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''}];
 }
 
 function storyboardCertainCompilerRoute(state, profile) {
@@ -18659,11 +18618,7 @@ function storyboardCertainCompilerRoute(state, profile) {
 }
 
 async function storyboardPrepareComfyRoutes(state, inputGuard, requestedRoutes = null) {
-  const hasWorkbench=Object.values(state.profiles || {}).some(profile=>Object.hasOwn(profile || {},'comfyWorkbenchBinding'))
-    || (state.parameterPresets || []).some(preset=>preset.source==='comfy' && Object.hasOwn(preset.profile || {},'comfyWorkbenchBinding'))
-    || Object.values(state.modelProfiles?.comfy || {}).some(profile=>Object.hasOwn(profile || {},'comfyWorkbenchBinding'))
-    || (state.modelProfiles?.bindings?.comfy || []).some(profile=>Object.hasOwn(profile || {},'comfyWorkbenchBinding'));
-  if (!requestedRoutes && !state.comfyAutoEnabled && !hasWorkbench && (!state.routing.enabled || !state.routing.rules.some(rule=>rule.enabled!==false && rule.target?.providerId==='comfy' && rule.target.comfyWorkflowBinding!=null))) return null;
+  if(!requestedRoutes&&state.source!=='comfy')return null;
   const requested = requestedRoutes || storyboardCompilerRoutes(state, storyboardProviderProfile(state));
   const autoRequested=requested.some(route=>storyboardRouteUsesComfyAuto(state,route));
   const routes = requested.filter(route=>!storyboardRouteUsesComfyAuto(state,route));
@@ -18716,17 +18671,9 @@ async function storyboardPrepareComfyRoutes(state, inputGuard, requestedRoutes =
 function storyboardUsesComfyCharacters(state, preparedRoutes = null, freshComfy = false) {
   if(freshComfy===true)return false;
   if(preparedRoutes?.candidates?.some(row=>row.target.comfyCharacterEnabled))return true;
-  if (state.source !== 'comfy' && (!state.routing?.enabled || !state.routing.rules.some(rule=>rule.enabled!==false && rule.target?.providerId==='comfy'))) return false;
-  const profile=state.profiles[state.source],fallback={providerId:state.source,modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''};
-  const routing={...state.routing,single:fallback},visited=new Set();
-  for(const shotType of Object.keys(STORYBOARD_SHOT_TYPE_LABELS)) {
-    const route=state.routing?.enabled?routeStoryboardShot({shotType},routing):fallback;
-    if(route.providerId!=='comfy'||storyboardRouteUsesComfyAuto(state,route))continue;
-    const key=JSON.stringify([route.modelId,route.capabilityModelId,route.connectionPresetId,route.parameterPresetId,route.comfyWorkflowBinding,route.comfyCharacterEnabled,route.comfyReferences]);
-    if(visited.has(key))continue;visited.add(key);
-    if(storyboardResolveRoutingProfile(state,route,state.source==='comfy'?profile:null,preparedRoutes).comfyCharacterEnabled===true)return true;
-  }
-  return false;
+  if(state.source!=='comfy')return false;
+  const profile=state.profiles.comfy,route={providerId:'comfy',modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''};
+  return !storyboardRouteUsesComfyAuto(state,route)&&storyboardResolveRoutingProfile(state,route,profile,preparedRoutes).comfyCharacterEnabled===true;
 }
 
 async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGuard, automatic = false, context = null, requestedRoutes = null) {
@@ -18796,7 +18743,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     if(!styles)await storyboardPrepareComfyRoutes(state, inputGuard);
     const comfyRoles=storyboardUsesComfyCharacters(state, inputGuard.comfyRoutes, inputGuard.freshComfy);
     let context=comfyRoles?await storyboardCompilerContext(state,inputGuard):null;
-    if (!styles&&(state.source === 'comfy' || state.routing.enabled && state.routing.rules.some(rule => rule.enabled !== false && rule.target?.providerId === 'comfy'))) {
+    if (!styles&&state.source === 'comfy') {
       await storyboardPreflightComfyForCompiler(state, profile, plan, inputGuard, automatic, context);
       inputGuard.assertCurrent();
     }
@@ -19800,7 +19747,7 @@ async function storyboardGenerateProductionPacket(root, packetId, {automatic=fal
     const fallback = {providerId:state.source,modelId:profile.model,capabilityModelId:profile.capabilityModelId};
     const styles=state.routing.styleLibrary===true?await worldRuntime.prepareWorldStyleSelection(state,preparationGuard,storyboardEnsembleHost(),{automatic}):null;assertCurrent();
     if(preparationGuard.ensemble?.unavailable.length)toast(`${preparationGuard.ensemble.unavailable.length} 个风格方案暂不可用，本次已排除`,'warning');
-    let route = state.routing.enabled ? routeStoryboardShot(draft,{...state.routing,single:fallback}) : fallback;
+    let route = fallback;
     if(!preparationGuard.ensemble)await storyboardPrepareComfyRoutes(state, preparationGuard, [route]); assertCurrent();
     let finalProfile = storyboardResolveRoutingProfile(state,route,route.providerId===state.source ? profile : null,preparationGuard.comfyRoutes),sourceId=route.providerId;
     const useReference = styles?.useReference||(sourceId === 'novel' && finalProfile.characterReferenceEnabled === true);
@@ -19885,7 +19832,7 @@ async function storyboardSubmitStreamPrepared(prepared) {
   const runtime=await featureRuntime.load('storyboardContract');prepared.inputGuard.assertCurrent();
   return runtime.submitStoryboardStreamPrepared(prepared,{
     storyboardState,getChatKey,storyboardProviderProfile,sanitizeStoryboardDiagnosticData,uid,storyboardPrepareDraftGroup,
-    storyboardPlansForPortableExport,storyboardPlanIsTerminal,createStoryboardWorkflowTicket,routeStoryboardShot,
+    storyboardPlansForPortableExport,storyboardPlanIsTerminal,createStoryboardWorkflowTicket,
     storyboardChooseComfyGenerationRoutes,STORYBOARD_PROVIDER_REGISTRY,storyboardResolveRoutingProfile,storyboardAdaptShotForModel,
     storyboardCreateJob,STORYBOARD_QUEUE_LIMIT,storyboardQueue,storyboardActiveJobs,storyboardDeletePlanArchives,saveSettings,
     storyboardRecordComfyPreparationFailure,storyboardQueueJob,storyboardRecordPreparedJobFailure,
@@ -19987,21 +19934,12 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     const staged=productionHandoff?(await featureRuntime.load('worldShot')).consumeWorldGenerationHandoff(productionHandoff,storyboardState()):null;
     productionGuard?.assertCurrent();
     const { state: owner, profile, workflowResult } = storyboardCaptureWorkbench(root),state=staged||owner;
-    const legacyRouting=state.routing.enabled&&state.routing.styleLibrary!==true;
     const generationChatKey = String(getChatKey() || '');
     if (!state.enabled) return toast('请先启用分镜。', 'warning');
     try { resolveStoryboardProfileBinding(state.source, profile); }
     catch (error) { return toast(error.message, 'warning'); }
-    if (legacyRouting&&!state.promptDraft?.ensembleRequired&&(!Object.hasOwn(plan||{},'ensembleRecovery')||plan.ensembleRecoveryRetired===true)) {
-      try {
-        for (const rule of state.routing.rules.filter((item) => item.enabled)) {
-          try { if (rule.target?.providerId !== 'comfy' || rule.target.comfyWorkflowBinding == null) storyboardResolveRoutingProfile(state, rule.target); }
-          catch (error) { throw new Error(`${rule.name || '镜组分工'}：${error.message}`); }
-        }
-      } catch (error) { return toast(error.message, 'warning'); }
-    }
     if (automatic && plan?.manualReviewRequired) return false;
-    if (state.source === 'comfy' && !legacyRouting && !state.comfyAutoEnabled && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
+    if (state.source === 'comfy' && !state.comfyAutoEnabled && (!workflowResult.ok || workflowResult.removedFields.length || profile.comfyWorkflowNotice)) {
       return toast(profile.comfyWorkflowNotice || storyboardWorkflowIssue(workflowResult), 'warning');
     }
     const productionDraft = state.promptDraft?.shots?.find((item) => storyboardProductionContext(item).packetId) || null;
@@ -20046,8 +19984,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     if (deliveryPolicy.target === 'floor' && (!String(state.floor || '').trim() || !Number.isInteger(Number(state.floor)))) {
       return toast('请输入有效的正文楼层。', 'warning');
     }
-    state.routing.single = { providerId: state.source, modelId: profile.model, capabilityModelId: profile.capabilityModelId, connectionPresetId: '', parameterPresetId: '' };
-    const routingEnabled = Boolean(legacyRouting);
+    const currentTarget = { providerId: state.source, modelId: profile.model, capabilityModelId: profile.capabilityModelId, connectionPresetId: '', parameterPresetId: '' };
     const {generationPolicy,manualSupplement,coverage,planned}=storyboardPrepareDraftGroup(state,plan,productionDraft);
     if (!planned.length) return toast('没有可用的独立画面，未发起生图', 'info');
     if (!productionDraft && !manualSupplement && planned.length < generationPolicy.minImages) toast(`可用画面 ${planned.length}/${generationPolicy.minImages}；不为凑数重复出图`, 'info');
@@ -20074,7 +20011,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
     const inputGuard = storyboardCreatePreparationGuard(owner, { plan, upstreamGuard:productionGuard, freshComfy:true });
     let queued=0,queueFailures=0;
     try {
-      let selectedRoutes = planned.map(shot => routingEnabled ? routeStoryboardShot(shot, state.routing) : state.routing.single);
+      let selectedRoutes = planned.map(() => currentTarget);
       if(staged){const runtime=await featureRuntime.load('worldShot');inputGuard.assertCurrent();inputGuard.ensemble=await runtime.resolveWorldGenerationStyles(staged,planned,()=>inputGuard.isCurrent());
         if(inputGuard.ensemble){selectedRoutes=inputGuard.ensemble.routes;inputGuard.comfyRoutes=inputGuard.ensemble.preparedRoutes;inputGuard.comfyAuto=inputGuard.ensemble.comfyAuto;}}
       if(!inputGuard.ensemble&&(state.promptDraft?.ensembleRequired||Object.hasOwn(plan||{},'ensembleRecovery')&&plan.ensembleRecoveryRetired!==true)){
@@ -20146,7 +20083,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
         return toast(`当前队列只剩 ${Math.max(0, remainingSlots)} 个空位，请先完成或移除部分任务。`, 'warning');
       }
       const generationDemand = summarizeStoryboardGenerationDemand(jobs);
-      const requiresPlanConfirmation = generationDemand.requestCount > 1 && state.routing.confirmMultipleRequests !== false;
+      const requiresPlanConfirmation = generationDemand.requestCount > 1;
       const requiresCountConfirmation = generationDemand.hasMultiImageRequest;
       if (!automatic && (requiresPlanConfirmation || requiresCountConfirmation)) {
         const providers = jobs.map((job) => STORYBOARD_PROVIDER_REGISTRY[job.source]?.label || '模型');
@@ -22501,7 +22438,7 @@ function bindStoryboardTabEvents(root) {
   if (state.view === 'workflows') {
     if (storyboardComfyLibraryError) {
       const host = root.querySelector('.sd-comfy-library-host');
-      if (host) host.innerHTML = '<div role="status">工作流库未能载入 <button type="button" class="sd-btn sd-comfy-library-retry">重试</button></div>';
+      if (host) host.innerHTML = `<div role="status">${htmlEscape(storyboardComfyLibraryError)} <button type="button" class="sd-btn sd-comfy-library-retry">重试</button></div>`;
       host?.querySelector('.sd-comfy-library-retry')?.addEventListener('click', () => void storyboardMountComfyLibrary(root, true));
     } else void storyboardMountComfyLibrary(root);
   }
@@ -22545,8 +22482,8 @@ function bindStoryboardTabEvents(root) {
     const current=()=>button.isConnected&&root.classList.contains('open')&&epoch===storyboardAdmissionEpoch&&state===storyboardState()&&state.view==='gallery'&&storyboardGalleryKind==='stills';
     if(button.disabled)return;button.disabled=true;
     try{
-      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.369'),featureRuntime.load('imageAdmission')]);
-      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.369');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
+      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.370'),featureRuntime.load('imageAdmission')]);
+      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.370');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
       if(current()){const result=await module.openGalleryArchive({parent:root,account:()=>identity.resolveImageAccountNamespace(),headers:storyboardRequestHeaders,isCurrent:current,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,canPrepare:()=>!storyboardImportPackage.busy&&!storyboardExportPackage.busy&&!storyboardActiveJobs.size&&!storyboardQueue.length,locate}).finished;
         if(current()&&result?.restored){storyboardScheduleInlineRender(0);renderModal();}}
     }catch(error){if(current())toast(error?.message||'已保存图库暂不可用','warning');}
@@ -22558,7 +22495,7 @@ function bindStoryboardTabEvents(root) {
       && epoch === storyboardAdmissionEpoch && state === storyboardState() && state.view === 'gallery' && storyboardGalleryKind === 'stills';
     if (button.disabled) return; button.disabled = true;
     try {
-      const module = await loadLocalChunk('./qianmu-gallery-directory-view.js?v=1.59.202');
+      const module = await loadLocalChunk('./qianmu-gallery-directory-view.js?v=1.59.370');
       if (current()) await module.openGalleryDirectory({ parent: root, getContext: ctx, epoch: () => storyboardAdmissionEpoch,
         isCurrent: current, locate: record => storyboardOpenLightbox(record), save: ttsDownloadBlob }).finished;
     } catch (error) { if (current()) toast(error?.message || '图库目录暂不可用', 'warning'); }
@@ -23027,7 +22964,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
   if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
-    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.212').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.370').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
       root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
       apply: value => storyboardSetArtistPreview(root, value), notify: toast,
     })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });
@@ -23350,13 +23287,6 @@ function bindStoryboardTabEvents(root) {
     } catch (error) { toast(`导入失败：${error?.message || error}`, 'error'); }
     finally { event.target.value = ''; }
   });
-  root.querySelector('.sd-storyboard-routing-enabled')?.addEventListener('change', (event) => {
-    state.routing.enabled = Boolean(event.target.checked);
-    state.routing.mode = state.routing.enabled ? 'ensemble' : 'single';
-    const profile = storyboardProviderProfile(state);
-    state.routing.single = { providerId: state.source, modelId: profile.model, capabilityModelId: profile.capabilityModelId, connectionPresetId: '', parameterPresetId: '' };
-    saveSettings(); renderModal();
-  });
   root.querySelectorAll('[data-generation-field]').forEach(field => field.addEventListener('change', () => {
     if (!root.isConnected || storyboardState() !== state) return;
     const key = field.dataset.generationField;
@@ -23371,46 +23301,6 @@ function bindStoryboardTabEvents(root) {
     saveSettings(); renderModal();
     if (key === 'concurrency' && storyboardQueue.length) void storyboardPumpQueue();
   }));
-  root.querySelector('.sd-storyboard-route-template')?.addEventListener('change', (event) => {
-    state.routing.templateId = STORYBOARD_SHOT_GROUP_TEMPLATES[event.target.value] ? event.target.value : 'smart'; saveSettings();
-  });
-  root.querySelector('.sd-storyboard-route-confirm')?.addEventListener('change', (event) => { state.routing.confirmMultipleRequests = event.target.checked; saveSettings(); });
-  root.querySelector('.sd-storyboard-add-route')?.addEventListener('click', () => {
-    if (!root.isConnected || storyboardState() !== state) return;
-    const { model: modelId, capabilityModelId } = storyboardProviderProfile(state);
-    const rules = state.routing.rules;
-    rules.push({
-      id: uid('shotroute'), name: `分工 ${rules.length + 1}`, shotTypes: [],
-      target: { providerId: state.source, modelId, capabilityModelId, connectionPresetId: '', parameterPresetId: '' }, enabled: true,
-      priority: rules.length,
-    });
-    saveSettings(); renderModal();
-  });
-  root.querySelectorAll('[data-storyboard-route-rule]').forEach((row) => {
-    const rule = state.routing.rules.find((item) => item.id === row.dataset.storyboardRouteRule);
-    if (!rule) return;
-    row.querySelector('.sd-storyboard-route-name')?.addEventListener('input', (event) => { rule.name = String(event.target.value || '').slice(0, 80); saveSettings(); });
-    row.querySelector('.sd-storyboard-route-type')?.addEventListener('change', (event) => { rule.shotTypes = event.target.value ? [event.target.value] : []; saveSettings(); });
-    row.querySelector('.sd-storyboard-route-enabled')?.addEventListener('change', (event) => { rule.enabled = event.target.checked; saveSettings(); });
-    row.querySelector('.sd-storyboard-route-provider')?.addEventListener('change', (event) => {
-      const providerId = event.target.value;
-      const provider = getStoryboardProvider(providerId);
-      if (!provider) return;
-      rule.target = { providerId, modelId: provider.defaultModel, capabilityModelId: provider.defaultModel, connectionPresetId: '', parameterPresetId: '' }; saveSettings(); renderModal();
-    });
-    row.querySelector('.sd-storyboard-route-connection')?.addEventListener('change', (event) => { rule.target.connectionPresetId = event.target.value; saveSettings(); renderModal(); });
-    row.querySelector('.sd-storyboard-route-style')?.addEventListener('change', (event) => { rule.target.parameterPresetId = event.target.value; saveSettings(); renderModal(); });
-    row.querySelector('.sd-storyboard-bind-route-workflow')?.addEventListener('click', () => void storyboardBindRouteWorkflow(root, rule));
-    row.querySelector('.sd-storyboard-clear-route-references')?.addEventListener('click', () => { rule.target.comfyReferences = null; saveSettings(); renderModal(); });
-    row.querySelector('.sd-storyboard-clear-route-workflow')?.addEventListener('click', () => {
-      delete rule.target.comfyWorkflowBinding; delete rule.target.comfyCharacterEnabled; delete rule.target.comfyReferences;
-      saveSettings(); renderModal(); toast('已解除固定，后续沿用当前 Comfy 工作台', 'info');
-    });
-    row.querySelector('.sd-storyboard-delete-route')?.addEventListener('click', async () => {
-      if (!await confirmDialog('删除镜头分工', `确定删除「${rule.name}」？`)) return;
-      state.routing.rules = state.routing.rules.filter((item) => item.id !== rule.id); saveSettings(); renderModal();
-    });
-  });
   root.querySelector('.sd-storyboard-use-floor')?.addEventListener('click', () => {
     const floor = storyboardCurrentAssistantFloor();
     if (floor < 0) return;
@@ -24890,11 +24780,6 @@ function bindActiveTabEvents(root) {
 
   root.querySelector('.sd-provider-select')?.addEventListener('change', (event) => {
     settings.providerMode = event.target.value === 'external' ? 'external' : 'sillytavern';
-    saveSettings();
-    renderModal();
-  });
-  root.querySelector('.sd-structured-output-toggle')?.addEventListener('click', () => {
-    settings.structuredOutputMode = settings.structuredOutputMode === 'json_schema' ? 'none' : 'json_schema';
     saveSettings();
     renderModal();
   });

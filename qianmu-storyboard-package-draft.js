@@ -40,8 +40,7 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   for(const key of STORYBOARD_IMPORT_FIELDS){if(!Object.hasOwn(raw,key)||key==='connections')continue;touched.add(key);
     base[key]=Object.hasOwn(limits,key)?mergeStoryboardPackageRows(base[key]||[],raw[key],limits[key],key):structuredClone(raw[key]);
   }
-  // Old packages used routing as the count policy; retain that conservative migration explicitly.
-  if(Object.hasOwn(raw,'generationPolicy')||(!modern&&Object.hasOwn(raw,'routing'))){base.generationPolicy=modern?structuredClone(raw.generationPolicy):normalizeStoryboardGenerationPolicy(raw.generationPolicy,raw.routing||{},raw.compositionPolicy);touched.add('generationPolicy');}
+  if(Object.hasOwn(raw,'generationPolicy')){base.generationPolicy=modern?structuredClone(raw.generationPolicy):normalizeStoryboardGenerationPolicy(raw.generationPolicy);touched.add('generationPolicy');}
   if(Object.hasOwn(raw,'parameterPresetSelection'))base.parameterPresetSelection=mergeStoryboardParameterSelection(settings.parameterPresetSelection,raw.parameterPresetSelection);
   // Imported display IDs are not authority to use a same-ID LLM profile on this installation.
   if(Object.hasOwn(raw,'promptCompiler'))base.promptCompiler={...base.promptCompiler,apiProfileId:settings.promptCompiler?.apiProfileId||'',connectionPresetId:settings.promptCompiler?.connectionPresetId||''};

@@ -149,6 +149,18 @@ function useActualWorldGeneration(e,functions) {
   e.context.storyboardGenerate=(root,options)=>{e.context.lastProductionOptions=options;return generate(root,options);};
 }
 
+async function selectNativeWorldStyle(e,routeId) {
+  e.state.routing.styleLibrary=true;
+  const transport=e.styleTransport||e.transport||streamCheckpointTransport(e.namespace);transport.configure();
+  const store=await createEnsembleStorage({namespace:e.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>e.namespace});
+  try{
+    const library=await store.readLibrary();await store.saveLibrary({...library.value,schemes:[{id:'alternative',revision:'r1',name:'世界画风',description:'已明确选用的绘制风格',tags:[],archived:false,binding:{routeId,artistPresetId:''}}]},library);
+    const selection=await store.readSelection();await store.saveSelection({...selection.value,revision:'s1',enabled:true,schemeIds:['alternative']},selection);
+  }finally{store.close();}
+  e.styleTransport=transport;
+}
+const selectedWorldStyle=(options,schemeId='alternative')=>options.jsonSchema.properties.style_selections?{style_selections:[{shot_id:'S1',scheme_id:schemeId,reason:'适合当前已确认画面'}]}:{};
+
 async function automaticWorldHarness({comfy=false}={}){
   const e=comfy?await classifiedWorld():harness();
   const source=(await buildWorldSourceIndex({npc_updates:[{name:'Alice',action:'stirs soup'}]},{chatKey:'chat-a',revisionId:'plan-1'})).entries[0].source;
@@ -156,7 +168,7 @@ async function automaticWorldHarness({comfy=false}={}){
   const ledger=adaptProductionPacketToNarrativeLedgerEntry(e.packet);Object.assign(e.candidate,scoreNarrativeDirectorCandidate(ledger,{chatKey:'chat-a',viewerId:'user'}));
   e.context.directorCandidatePoolState.ledger.entries=[ledger];e.state.directorBridge.worldAutoGenerate=true;e.state.automation.autoGenerate=false;
   if(comfy)e.state.connections.comfy.draft.baseUrl='https://comfy.fixture.invalid';
-  const transport=streamCheckpointTransport(e.namespace),load=e.context.featureRuntime.load,rows=new Map(),checks=[];
+  const transport=e.styleTransport||streamCheckpointTransport(e.namespace),load=e.context.featureRuntime.load,rows=new Map(),checks=[];
   transport.configure();
   e.context.featureRuntime.load=async key=>key==='worldAutomatic'?{...worldAutomatic,
     beginWorldAutomaticAttempt:options=>worldAutomatic.beginWorldAutomaticAttempt({...options,createStorage:transport.createStorage}),
@@ -166,7 +178,7 @@ async function automaticWorldHarness({comfy=false}={}){
     e.calls.push('llm');e.lastRequest={messages,profile,options};
     const claims=[...transport.files.values()].map(JSON.parse).filter(row=>row.value?.schema==='qianmu.world-automatic-attempt.v1');
     assert.ok(claims.some(row=>row.value.record.status==='preparing'),'model must not run ahead of durable preparation');
-    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats),...(options.jsonSchema.properties.gallery_keywords?{gallery_keywords:[]}:{} )});
+    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats),...selectedWorldStyle(options),...(options.jsonSchema.properties.gallery_keywords?{gallery_keywords:[]}:{} )});
   };
   const run=(scope,apply)=>{const key=imageAttemptScopeKey(scope),result=apply(rows.get(key));rows.set(key,structuredClone(result.ledger));return result;};
   const admission=createImageAdmission({account:async()=>e.namespace,ownerId:'world-page',
@@ -195,7 +207,7 @@ async function nativeWorldEnsembleHarness({comfy=false,artist=false}={}){
   if(artist)e.state.artistPresets.push({id:'world-artist',name:'World ink',value:'ink style',positivePrompt:'ink world texture',negativePrompt:'flat shading'});
   const store=await createEnsembleStorage({namespace:e.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>e.namespace});
   try{
-    const library=await store.readLibrary();await store.saveLibrary({...library.value,schemes:[{id:'alternative',revision:'r1',name:'世界画风',description:'突出幕后世界氛围',tags:['气氛'],archived:false,
+    const library=await store.readLibrary();await store.saveLibrary({...library.value,schemes:[{id:'alternative',revision:'native-r1',name:'世界画风',description:'突出幕后世界氛围',tags:['气氛'],archived:false,
       binding:{routeId:comfy?'world-fixed':'world-style',artistPresetId:artist?'world-artist':''}}]},library);
     const selection=await store.readSelection();await store.saveSelection({...selection.value,revision:'s1',enabled:true,schemeIds:['alternative']},selection);
   }finally{store.close();}
@@ -313,6 +325,7 @@ for(const comfy of [false,true])test(`automatic world ${comfy?'fixed Comfy':'NAI
     const before=copy(e.state.promptDraft);assert.equal(await e.runAutomatic(),true,e.notices.join(';')+' '+JSON.stringify(e.state.pipelineLogs.map(row=>row.stages.map(stage=>stage.error))));
     assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.filter(value=>value==='llm').length,1);
     assert.equal(e.context.storyboardQueue.length,1);const job=e.context.storyboardQueue[0];
+    assert.equal(job.source,comfy?'comfy':'novel');if(comfy)assert.deepEqual(copy(job.profile.comfyRouteBinding),copy(e.recipe.binding));
     assert.equal(job.automatic,true);assert.equal(job.profile.count,'1');assert.equal(job.target,'gallery');assert.equal(job.floor,null);
     assert.equal(job.shotSpec.directorDecision.approval.mode,'world_setting');assert.match(job.imageAdmission.messageKey,/^world-item:/);
     assert.deepEqual(e.state.promptDraft,before);assert.equal(e.state.prompt,'original');assert.equal(e.checks.length,2);
@@ -343,10 +356,12 @@ for(const kind of ['prose-draft','unused-route','both'])test(`native world gener
   }finally{await e.admission.close();}
 });
 
-test('the unchanged legacy world mode still refuses a broken configured route',async()=>{
+test('native world refuses a missing required current connection before confirmation, model work or gallery admission',async()=>{
   const e=await automaticWorldHarness();try{
-    e.state.routing.enabled=true;e.state.routing.rules=[{id:'bad',enabled:true,shotTypes:[],target:{providerId:'novel',modelId:e.state.profiles.novel.model,connectionPresetId:'missing-connection'}}];
+    e.state.routing.rules=[{id:'alternative',enabled:true,target:{providerId:'banana',modelId:e.state.profiles.banana.model}}];
+    await selectNativeWorldStyle(e,'alternative');e.state.connections.novel.draft=null;e.state.connections.novel.presets=[];
     assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,0);assert.equal(e.calls.includes('llm'),false);
+    assert.equal(e.calls.includes('confirm'),false);assert.equal(e.reads.length,0);assert.match(e.notices.join(';'),/API|连接|预设/);
   }finally{await e.admission.close();}
 });
 
@@ -600,13 +615,17 @@ async function classifiedWorld({confirm,format='tags'}={}){
   const e=harness({confirm:confirm || (async options=>({...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,await options.prepareRenderings(options.shot),{formats:options.promptFormats,guard:options.guard})}))});
   const f=await recipesFixture({formats:[format]});f.rows.forEach(row=>row.namespace=e.namespace);
   const recipe=await comfyRoutes.pinComfyRouteWorkflow({namespace:e.namespace,selection:f.rows[0],createStore:f.createStore});
-  e.state.routing.enabled=true;e.state.routing.rules=[{id:'world-fixed',enabled:true,shotTypes:[],target:{providerId:'comfy',modelId:'comfy-workflow',comfyWorkflowBinding:recipe.binding,comfyCharacterEnabled:false}}];
-  const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...comfyRoutes,prepareComfyRouteRecipes:options=>comfyRoutes.prepareComfyRouteRecipes({...options,createStore:f.createStore})}:load(key);
+  e.state.routing.enabled=true;e.state.routing.rules=[{id:'world-fixed',enabled:true,target:{providerId:'comfy',modelId:'comfy-workflow',comfyWorkflowBinding:recipe.binding,comfyCharacterEnabled:false}}];
+  const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...comfyRoutes,prepareComfyRouteRecipes:options=>comfyRoutes.prepareComfyRouteRecipes({...options,createStore:f.createStore}),prepareComfyWorkbenchBinding:(profile,options)=>comfyRoutes.prepareComfyWorkbenchBinding(profile,{...options,createStore:f.createStore})}:load(key);
+  e.context.storyboardPreflightComfyForCompiler=async(_state,_profile,_plan,_input,_automatic,_ticket,routes)=>{
+    assert.equal(routes.length,1);assert.equal(routes[0].providerId,'comfy');return [{localConfigurationReady:true}];
+  };
   e.context.storyboardCallCompiler=async(messages,profile,options)=>{
     e.calls.push('llm');e.lastRequest={messages,profile,options};
-    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats),...(options.jsonSchema.properties.gallery_keywords?{gallery_keywords:[]}:{} )});
+    return JSON.stringify({schema:world.WORLD_RENDERING_SCHEMA,prompt_renderings:renderingsFor(JSON.parse(messages[1].content).shot,options.promptFormats),...selectedWorldStyle(options),...(options.jsonSchema.properties.gallery_keywords?{gallery_keywords:[]}:{} )});
   };
   vm.runInContext(['storyboardProfileSnapshot','storyboardResolveRoutingProfile'].map(section).join('\n'),e.context);
+  await selectNativeWorldStyle(e,'world-fixed');
   return {...e,f,recipe};
 }
 
@@ -622,14 +641,15 @@ test('classified world confirmation prepares exact expressions and the real shar
   assert.doesNotMatch(JSON.stringify(stages),/PRIVATE-QUALIFICATION/);
   const shot=e.context.worldDraft.promptDraft.shots[0].shotSpec;await world.verifyWorldPromptRenderings(shot,['tags']);
   assert.equal(shot.subject,'厨房');assert.equal(shot.characters[0].identity[0],'Alice silver hair');
-  assert.equal(jobs.length,1);const job=jobs[0];assert.equal(job.target,'gallery');assert.equal(job.payload.promptRendering.format,'tags');
+  assert.equal(jobs.length,1);const job=jobs[0];assert.equal(job.source,'comfy');assert.equal(job.target,'gallery');assert.equal(job.payload.promptRendering.format,'tags');
+  assert.equal(job.ensembleStyleOrigin.schemeId,'alternative');assert.deepEqual(copy(job.profile.comfyRouteBinding),copy(e.recipe.binding));
   assert.match(job.payload.prompt,/^kitchen, soft light/);assert.match(job.payload.prompt,/"Alice":/);
   assert.doesNotMatch(job.payload.prompt,/厨房|silver hair/);assert.match(job.payload.prompt,/blue hair, no coat, stirs soup/);
   assert.equal(job.shotSpec.subject,'厨房');assert.equal(job.shotSpec.productionContext.truthMode,'speculative');
 });
 
 test('world manual expression works without LLM and cancellation or stale confirmation preserves previous draft',async()=>{
-  const e=await classifiedWorld({confirm:async options=>({...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderingsFor(options.shot,options.promptFormats),{formats:options.promptFormats})})});
+  const e=await classifiedWorld({confirm:async options=>{options.useManualStyle(options.shot);return {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderingsFor(options.shot,options.promptFormats),{formats:options.promptFormats})};}});
   assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.calls.includes('llm'),false);
   for(const reason of ['cancel','account','facts']){
     let e;e=await classifiedWorld({confirm:async options=>{
@@ -644,6 +664,7 @@ test('world manual expression works without LLM and cancellation or stale confir
 test('invalid world rendering can be manually repaired after explicit retry; trace stays bounded and final pack is independently checked',async()=>{
   const e=await classifiedWorld({confirm:async options=>{
     for(let i=0;i<6;i++)await assert.rejects(()=>options.prepareRenderings(options.shot),/JSON/);
+    options.useManualStyle(options.shot);
     return {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderingsFor(options.shot,options.promptFormats),{formats:options.promptFormats})};
   }});
   e.context.storyboardCallCompiler=async()=>{e.calls.push('llm');return 'not json';};
@@ -654,7 +675,7 @@ test('invalid world rendering can be manually repaired after explicit retry; tra
   const missing=await classifiedWorld({confirm:async options=>options.shot});assert.equal(await missing.run(),false);assert.equal(missing.calls.includes('generate'),false);
 });
 
-test('world auto candidates determine both prompt format union and casting, independently of the closed workbench and its inactive workflow',async()=>{
+test('world current Comfy auto candidates and a native closed style determine prompt format union without borrowing the inactive workflow or private casting',async()=>{
   const e=await classifiedWorld({confirm:async options=>{
     assert.deepEqual([...options.promptFormats],['tags','natural_language']);
     assert.equal(options.shot.characters[0].archiveSnapshot.comfyImplementation,undefined);
@@ -662,12 +683,14 @@ test('world auto candidates determine both prompt format union and casting, inde
     const renderings=await options.prepareRenderings(options.shot);
     return {...options.shot,promptRenderingPack:await formats.bindStoryboardPromptRenderings(options.shot,renderings,{formats:options.promptFormats})};
   }});
-  e.state.comfyAutoEnabled=true;e.state.routing.rules[0].target={providerId:'comfy',modelId:'comfy-workflow'};
-  e.state.profiles.comfy.comfyCharacterEnabled=false;let closed=0;
-  const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyAuto'?{prepareComfyAutoSession:async()=>({
-    candidates:[{id:'a',target:{comfyCharacterEnabled:false}},{id:'b',target:{comfyCharacterEnabled:true}}],promptFormats:['tags','natural_language'],close:()=>{closed++;},
-  })}:load(key);
-  assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.state.source,'novel');assert.equal(closed,1);
+  e.state.source='comfy';e.state.comfyAutoEnabled=true;e.state.routing.rules[0].target={providerId:'novel',modelId:e.state.profiles.novel.model};
+  e.state.profiles.comfy.comfyCharacterEnabled=false;let closed=0,opened=0;
+  const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyAuto'?{prepareComfyAutoSession:async()=>{
+    opened++;let disposed=false;return {candidates:[{id:'a',target:{comfyCharacterEnabled:false}},{id:'b',target:{comfyCharacterEnabled:true}}],promptFormats:['tags','natural_language'],
+      // The real shared session is idempotently closed by both preparation owners.
+      close:()=>{if(!disposed){disposed=true;closed++;}}};
+  }}:load(key);
+  assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.state.source,'comfy');assert.equal(opened,1);assert.equal(closed,1);
   assert.deepEqual(Object.keys(e.context.worldDraft.promptDraft.shots[0].shotSpec.promptRenderingPack.renderings),['tags','natural_language']);
 });
 
@@ -711,10 +734,9 @@ test('duplicate clicks open one confirmation and release the lock after cancella
   const running=e.run();await ready;assert.equal(await e.run(),false);release(null);await running;
   assert.equal(e.calls.filter(x=>x==='confirm').length,1);assert.equal(e.context.storyboardGenerationPreparing.size,0);
 });
-test('the final routed engine determines private casting fields, not the visible workbench mode',async()=>{
-  const e=harness();e.state.routing.enabled=true;e.state.profiles.comfy.comfyCharacterEnabled=true;
-  e.context.routeStoryboardShot=()=>({providerId:'comfy',modelId:'comfy-workflow'});
-  assert.equal(await e.run(),true);const snapshot=e.context.worldDraft.promptDraft.shots[0].shotSpec.characters[0].archiveSnapshot;
+test('the native selected Comfy style retains public casting only despite an enabled retired private-character flag',async()=>{
+  const e=await classifiedWorld();e.state.profiles.comfy.comfyCharacterEnabled=true;e.state.routing.rules[0].target.comfyCharacterEnabled=true;
+  assert.equal(await e.run(),true,e.notices.join(';'));assert.equal(e.state.source,'novel');const snapshot=e.context.worldDraft.promptDraft.shots[0].shotSpec.characters[0].archiveSnapshot;
   assert.equal(snapshot.comfyImplementation,undefined);assert.equal(snapshot.imageReference,undefined);
   assert.equal(snapshot.archiveId,'alice');
 });
@@ -736,14 +758,12 @@ test('world confirmation escapes imported names and all editable text, without r
   assert.doesNotMatch(html,/<script|<img|<svg/);assert.match(html,/&lt;script/);assert.doesNotMatch(html,/PRIVATE-QUALIFICATION|sha256/);
 });
 
-for(const invalid of [false,true])test(`world fixed workflow ${invalid?'fails before confirmation if missing':'prepares an exact recipe and reaches shared gallery-only generation'}`,async()=>{
-  const e=harness(),f=await recipesFixture();f.rows.forEach(row=>row.namespace=e.namespace);
-  const recipe=await comfyRoutes.pinComfyRouteWorkflow({namespace:e.namespace,selection:f.rows[0],createStore:f.createStore});
-  e.state.routing.enabled=true;e.state.routing.rules=[{id:'fixed',enabled:true,shotTypes:[],target:{providerId:'comfy',modelId:'comfy-workflow',comfyWorkflowBinding:recipe.binding,comfyCharacterEnabled:false}}];
-  if(invalid)f.rows[0].archived=true;
-  const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...comfyRoutes,prepareComfyRouteRecipes:options=>comfyRoutes.prepareComfyRouteRecipes({...options,createStore:f.createStore})}:load(key);
-  vm.runInContext(['storyboardProfileSnapshot','storyboardResolveRoutingProfile'].map(section).join('\n'),e.context);
-  if(invalid){assert.equal(await e.run(),false,e.notices.join(';'));assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.includes('generate'),false);return;}
+for(const invalid of [false,true])test(`world native fixed workflow ${invalid?'fails before confirmation when its required current workbench version is missing':'prepares an exact recipe and reaches shared gallery-only generation'}`,async()=>{
+  const e=await classifiedWorld(),{f,recipe}=e;
+  // An unavailable optional style is excluded, not fatal. The missing-version
+  // case makes that same saved recipe the required current workbench instead.
+  if(invalid){e.state.source='comfy';Object.assign(e.state.profiles.comfy,{comfyWorkflow:recipe.document.workflow,comfyWorkbenchBinding:{schemaVersion:1,binding:recipe.binding,classification:recipe.document.classification}});f.rows[0].archived=true;}
+  if(invalid){assert.equal(await e.run(),false,e.notices.join(';'));assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.includes('generate'),false);assert.equal(e.calls.includes('llm'),false);assert.equal(e.reads.length,0);return;}
   const queued=[];Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,storyboardQueueJob:async job=>{queued.push(job);return true;},
     storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],storyboardAdaptShotForModel:async shot=>shot,
     confirmDialog:async()=>true,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',environment:'',custom:''}});

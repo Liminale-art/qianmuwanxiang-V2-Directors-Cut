@@ -5,6 +5,9 @@ import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
 import { parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
+import {renderEnsembleTargetPicker,openEnsembleTargetPicker} from '../qianmu-ensemble-target-picker.js';
+import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.370';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.370';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';
@@ -48,7 +51,7 @@ function environment(capability = V3, model = alias, extra = {}) {
     'storyboardPromptsForArtist', 'storyboardJoinPrompt', 'storyboardParameterPresets',
     'renderStoryboardParameterPresets', 'renderStoryboardParameterVibes', 'renderStoryboardModelCreate', 'renderStoryboardVariantControls', 'renderStoryboardCreate', 'renderStoryboardConnectionCompatibility', 'renderStoryboardOpenAICompatibility', 'renderStoryboardImageOutputFields', 'renderStoryboardGenerationCard',
     'storyboardProfileSnapshot', 'storyboardCaptureWorkbench', 'storyboardGenerationPayload', 'storyboardRestoreSnapshotConnection',
-    'storyboardPrepareComfyRoutes', 'storyboardCreatePreparationGuard', 'storyboardResolveRoutingProfile', 'storyboardRoutingTargetOptions', 'storyboardCreateJob', 'storyboardGatewayRequest', 'storyboardLoadLogToWorkbench', 'storyboardSafeShotSpecFromPrompt', 'storyboardAdaptShotForModel'];
+    'storyboardPrepareComfyRoutes', 'storyboardCreatePreparationGuard', 'storyboardResolveRoutingProfile', 'storyboardCreateJob', 'storyboardGatewayRequest', 'storyboardLoadLogToWorkbench', 'storyboardSafeShotSpecFromPrompt', 'storyboardShotSpecForSelection', 'storyboardAdaptShotForModel'];
   for (const call of section('renderStoryboardCreate').matchAll(/\b(renderStoryboard\w+)\(/g)) {
     if (!names.includes(call[1])) context[call[1]] = () => '';
   }
@@ -224,11 +227,12 @@ test('routing validates connection references and exact model/capability paramet
   assert.equal(builtin.capabilityModelId, V5);
 });
 
-test('route rendering keeps bound aliases selected and exposes stale references without changing state', () => {
+test('style target rendering keeps bound aliases selected and exposes stale references without changing state', () => {
   const { state, context } = environment(V3);
   const route = { providerId: 'novel', modelId: 'vendor/<alias>', capabilityModelId: V45, connectionPresetId: 'missing-api', parameterPresetId: 'missing-style' };
   const before = structuredClone(state);
-  const html = context.storyboardRoutingTargetOptions(state, 'novel', route);
+  const html = renderEnsembleTargetPicker({target:route,providers:storyboard.STORYBOARD_PROVIDER_REGISTRY,models:storyboard.STORYBOARD_MODEL_REGISTRY.novel,
+    connections:state.connections.novel.presets,parameters:[{id:'available-style',name:'Available'}]});
   assert.match(html, /value="vendor\/&lt;alias&gt;"/);
   assert.match(html, /value="missing-api" selected/);
   assert.match(html, /value="missing-style" selected/);
@@ -237,34 +241,27 @@ test('route rendering keeps bound aliases selected and exposes stale references 
   assert.deepEqual(state, before);
 });
 
-function routeHandlers(context, state) {
-  const start = source.indexOf("  root.querySelectorAll('[data-storyboard-route-rule]').forEach");
-  const end = source.indexOf("  root.querySelector('.sd-storyboard-use-floor')", start);
-  const callbacks = {};
-  const row = { dataset: { storyboardRouteRule: 'r' }, querySelector: (selector) => ({ addEventListener: (name, callback) => { callbacks[`${selector}:${name}`] = callback; } }) };
-  context.state = state;
-  context.root = { querySelectorAll: () => [row] };
-  vm.runInContext(source.slice(start, end), context);
-  return callbacks;
-}
-
-test('actual routing model/provider handlers switch identities atomically and preserve channel connections on model changes', () => {
-  const { state, context, notices } = environment(V3);
+test('actual style model/provider handlers edit a private target and preserve channel connections on model changes', async () => {
+  const { state } = environment(V3);
   const rule = { id: 'r', target: { providerId: 'novel', modelId: alias, capabilityModelId: V45, connectionPresetId: 'api', parameterPresetId: 'params' } };
   state.routing.rules = [rule];
-  const callbacks = routeHandlers(context, state);
-  const root = { isConnected: true };
-  context.storyboardApplyModelBinding(root, state, 'novel', { remoteModelId: V3 }, rule);
-  assert.equal(rule.target.modelId, V3);
-  assert.equal(rule.target.capabilityModelId, V3);
-  assert.equal(rule.target.connectionPresetId, 'api');
-  assert.equal(rule.target.parameterPresetId, '');
   const before = structuredClone(rule.target);
-  assert.throws(() => context.storyboardApplyModelBinding(root, state, 'novel', { remoteModelId: 'new-unbound-alias' }, rule), { code: 'missing_capability_model' });
-  assert.deepEqual(rule.target, before);
-  callbacks['.sd-storyboard-route-provider:change']({ target: { value: 'openai' } });
-  assert.equal(rule.target.capabilityModelId, 'gpt-image-2');
-  assert.equal(rule.target.connectionPresetId, '');
+  const events=new Map(),previous=globalThis.document;
+  globalThis.document={createElement:()=>({innerHTML:'',addEventListener:(name,callback)=>events.set(name,callback),removeEventListener:name=>events.delete(name)})};
+  try{
+    const modelPicked=await openEnsembleTargetPicker({target:rule.target,providers:storyboard.STORYBOARD_PROVIDER_REGISTRY,
+      models:id=>storyboard.STORYBOARD_MODEL_REGISTRY[id]||[],defaultTarget:()=>rule.target,
+      validateTarget:target=>({target}),context:{POPUP_TYPE:{CONFIRM:1},Popup:class{async show(){events.get('change')({target:{dataset:{ensembleTarget:'modelId'},value:V3}});return true;}}}});
+    assert.equal(modelPicked.target.modelId,V3);assert.equal(modelPicked.target.capabilityModelId,V3);
+    assert.equal(modelPicked.target.connectionPresetId,'api');assert.equal(modelPicked.target.parameterPresetId,'');
+    assert.deepEqual(rule.target,before,'model changes stay in the private draft');
+    const picked=await openEnsembleTargetPicker({target:rule.target,providers:storyboard.STORYBOARD_PROVIDER_REGISTRY,
+      models:id=>storyboard.STORYBOARD_MODEL_REGISTRY[id]||[],
+      defaultTarget:providerId=>({providerId,modelId:'gpt-image-2',capabilityModelId:'gpt-image-2',connectionPresetId:'',parameterPresetId:''}),
+      validateTarget:target=>({target}),context:{POPUP_TYPE:{CONFIRM:1},Popup:class{async show(){events.get('change')({target:{dataset:{ensembleTarget:'providerId'},value:'openai'}});return true;}}}});
+    assert.equal(picked.target.capabilityModelId,'gpt-image-2');assert.equal(picked.target.connectionPresetId,'');
+    assert.deepEqual(rule.target,before,'choosing a style target must not write the live route before saving the scheme');
+  }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
 });
 
 function generationEnvironment() {
@@ -274,23 +271,47 @@ function generationEnvironment() {
     storyboardGenerationPreparing: new Set(),
     storyboardProductionContext: () => ({}), storyboardQueue: [], storyboardActiveJobs: new Map(), STORYBOARD_QUEUE_LIMIT: 100,
     storyboardQueueJob: (job) => { queued.push(job); return true; }, confirmDialog: async () => true,
+    storyboardSetPlanStatus:(plan,status,extra={})=>{if(plan)Object.assign(plan,{status,...extra});},
   });
   vm.runInContext(section('storyboardPlanHasGeneration')+section('storyboardPrepareDraftGroup')+section('storyboardGenerate'), context);
   state.source = 'openai';
   state.profiles.openai = { ...state.profiles.openai, model: 'gpt-image-2' };
   state.promptDraft.shots = [{ id: 'garden', prompt: 'quiet garden', shotType: 'environment',
     shotSpec: { evidence: { quote: 'quiet garden' }, visualDuty: 'establish the quiet location', narrativePurpose: 'establish the scene' } }];
-  state.routing.enabled = true;
+  const styleSelection = {enabled:true};
   state.connections.novel.presets = [{ id: 'api', baseUrl: 'https://route.example', credentialId: 'route-key', model: V5 }];
   state.parameterPresets = [{ id: 'style', source: 'novel', profile: { model: alias, capabilityModelId: V45, steps: '17', count: '2', cfg: '0' } }];
   state.routing.rules = [{ id: 'r', enabled: true, name: '人物分工', target: { providerId: 'novel', modelId: alias, capabilityModelId: V45, connectionPresetId: 'api', parameterPresetId: 'style' } }];
-  return { ...env, queued };
+  // Already compiled style choices use the real binding and sealed handoff.
+  // Only account-file persistence is isolated here; its full real-ST transport
+  // and recovery checks live in storyboard-stream-compiler.test.mjs.
+  const namespace='st-user:identity',library={schema:'qianmu.ensemble.library.v1',namespace,schemes:[{id:'style',revision:'one',name:'人物风格',description:'',tags:[],binding:{routeId:'r',artistPresetId:''}}]};
+  context.storyboardEnsembleHost=()=>({});
+  context.featureRuntime={load:async key=>{
+    assert.equal(key,'storyboardContract');return {
+      resolveStoryboardEnsembleDraftPlan:()=>{const plan={id:`identity-plan-${state.shotPlans.length}`,chatKey:'chat-a',status:'prompt_ready',shots:[],origin:'manual'};state.shotPlans.push(plan);return plan;},
+      restoreStoryboardEnsemblePlan:async(_state,_plan,planned,guard)=>{
+        const binding=await prepareEnsembleStyleBindings({library,selection:{schema:'qianmu.ensemble.chat-selection.v1',namespace,chatKey:'chat-a',revision:'one',enabled:true,schemeIds:['style']},
+          namespace,chatKey:'chat-a',preparationId:'identity-style',readState:()=>state,assertCurrent:()=>{guard.assertCurrent();return true;},guard:async()=>{guard.assertCurrent();return true;},
+          resolveProfile:({route})=>context.storyboardResolveRoutingProfile(state,route),verifyTarget:async()=>({ready:true,promptFormats:['tags']})});
+        try{
+          const ids=planned.map((_,index)=>`S${index+1}`),receipt=binding.session.resolve(ids.map(shot_id=>({shot_id,scheme_id:'style',reason:'selected style'})),ids);
+          const result={shouldGenerate:true,shots:planned};attachEnsembleCompilerResult(result,{session:binding.session,receipt});
+          await sealEnsembleCompilerResult(result,async()=>{guard.assertCurrent();return true;});
+          const resolved=await resolveEnsembleCompiledRoutes(result,planned,{guard:async()=>{guard.assertCurrent();return true;}});return {...resolved,close:()=>binding.close()};
+        }catch(error){binding.close();throw error;}
+      },
+    };
+  }};
+  const generate=context.storyboardGenerate;
+  context.storyboardGenerate=(...args)=>{state.promptDraft.ensembleRequired=styleSelection.enabled;return generate(...args);};
+  return { ...env, queued, styleSelection };
 }
 
 for (const grouped of [false, true]) {
   test(`actual ${grouped ? 'grouped' : 'independent'} automatic generation shares max budget and never multiplies saved Count`, async () => {
-    const {state, context, queued} = generationEnvironment();
-    state.routing.enabled = grouped;
+    const {state, context, queued, styleSelection} = generationEnvironment();
+    styleSelection.enabled = grouped;
     state.generationPolicy = {version:1, minImages:1, maxImages:2, concurrency:2};
     state.profiles.openai.count = '4';
     state.promptDraft.shots = ['garden', 'river', 'city', 'forest'].map((scene, index) => ({
@@ -312,7 +333,7 @@ test('automatic single shot also ignores saved variant count, but explicit manua
 });
 
 test('real generation freezes batch/shot/request order independently of mutable plan and engine state', async () => {
-  const { state, context, queued } = generationEnvironment(); let sequence = 0;
+  const { state, context, queued, styleSelection } = generationEnvironment(); let sequence = 0;
   context.uid = () => `order-${++sequence}`;
   assert.equal(await context.storyboardGenerate(null), true);
   assert.deepEqual(queued.map(job => job.inlineOrder.requestIndex), [1, 2]);
@@ -320,7 +341,7 @@ test('real generation freezes batch/shot/request order independently of mutable 
   assert.equal(queued[0].inlineOrder.batchStartedAt, queued[1].inlineOrder.batchStartedAt);
   const first = structuredClone(queued[0].inlineOrder);
   queued.length = 0;
-  state.routing.enabled = false;
+  styleSelection.enabled = false;
   state.promptDraft.shots = ['garden', 'river'].map(scene => ({ id: scene, prompt: scene, shotType: 'environment',
     shotSpec: { sourceParagraphIds: ['p1'], scene, location: scene, narrativePurpose: `show ${scene}` } }));
   assert.equal(await context.storyboardGenerate(null), true);
@@ -350,9 +371,9 @@ test('real generation and asynchronous queue preserve the preparation guard acro
 });
 
 test('explicit manual multi-shot selection still has one output per shot and confirms only that demand',async()=>{
-  const {state,context,queued}=generationEnvironment();let confirmation='';
+  const {state,context,queued,styleSelection}=generationEnvironment();let confirmation='';
   context.confirmDialog=async(_title,text)=>{confirmation=text;return true;};
-  state.routing.enabled=false;state.profiles.openai.count='4';
+  styleSelection.enabled=false;state.profiles.openai.count='4';
   state.promptDraft.shots=['garden','river'].map(scene=>({id:scene,prompt:scene,shotType:'environment',shotSpec:{sourceParagraphIds:['p1'],scene,location:scene,narrativePurpose:`show ${scene}`}}));
   assert.equal(await context.storyboardGenerate(null),true);
   assert.equal(queued.length,2);assert.ok(queued.every(job=>job.payload.parameters.count===1));
@@ -360,8 +381,8 @@ test('explicit manual multi-shot selection still has one output per shot and con
 });
 
 test('duplicate or ungrounded candidates never fill a minimum target with extra generation',async()=>{
-  const {state,context,queued,notices}=generationEnvironment();
-  state.routing.enabled=false;state.generationPolicy={minImages:3,maxImages:3,concurrency:2};
+  const {state,context,queued,notices,styleSelection}=generationEnvironment();
+  styleSelection.enabled=false;state.generationPolicy={minImages:3,maxImages:3,concurrency:2};
   const original=structuredClone(state.promptDraft.shots[0]);state.promptDraft.shots=[original,{...original,id:'duplicate'}];
   assert.equal(await context.storyboardGenerate(null,{automatic:true}),true);
   assert.equal(queued.length,1);assert.ok(notices.some(message=>message.includes('可用画面 1/3')));
@@ -387,15 +408,14 @@ test('actual generation routes across families and preserves applied style and p
   }
 });
 
-test('broken active routes stop before extraction/queues, but disabled routing cannot block ordinary generation', async () => {
-  const { state, context, queued, notices } = generationEnvironment();
+test('a missing connection in the selected style stops queues, but disabled styles cannot block ordinary generation', async () => {
+  const { state, context, queued, notices, styleSelection } = generationEnvironment();
   state.routing.rules[0].target.connectionPresetId = 'missing';
-  state.prompt = '';
   context.storyboardCompilePrompt = async () => { throw new Error('must not call extraction'); };
   assert.equal(await context.storyboardGenerate(null), false);
-  assert.match(notices.at(-1), /人物分工.*API 预设已失效/);
+  assert.match(notices.at(-1), /风格选择.*未启用/);
   assert.equal(queued.length, 0);
-  state.routing.enabled = false;
+  styleSelection.enabled = false;
   state.prompt = 'quiet garden';
   assert.equal(await context.storyboardGenerate(null), true);
   assert.equal(queued[0].source, 'openai');

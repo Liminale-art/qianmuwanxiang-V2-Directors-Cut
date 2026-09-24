@@ -30,7 +30,8 @@ assert.match(apiCard, /sd-api-generation-row[\s\S]*温度[\s\S]*最大输出[\s\
 assert.doesNotMatch(apiCard, /Temperature|最大输出 token/);
 assert.match(apiCard, /sd-api-action-row[\s\S]*sd-save-api[\s\S]*sd-save-api-profile[\s\S]*sd-test-api[\s\S]*sd-stream-toggle[\s\S]*>流式传输<\/button>/, '保存操作与测试、流式仍使用原有操作组');
 assert.doesNotMatch(apiCard, /仅支持自定义|sd-source-pick|<h3>API<\/h3>/);
-assert.match(apiCard, /sd-provider-select[\s\S]*兼容选项[\s\S]*不会提高模型能力/);
+assert.match(apiCard, /sd-provider-select/);
+assert.doesNotMatch(apiCard, /兼容选项|不会提高模型能力|启用 JSON Schema 约束/, '连接兼容处理不应由用户承担或显示工程说明');
 assert.match(source, /<section class="sd-card sd-widget-card">\s*<h3>小组件<\/h3>[\s\S]*data-widget-toggle="floating"[\s\S]*data-widget-toggle="notes"[\s\S]*data-widget-toggle="wheel"[\s\S]*data-widget-toggle="dock"[\s\S]*sd-float-size-control[\s\S]*renderQuickWheelSettings/, '小组件卡必须以标签态统一管理悬浮球、便笺、快捷盘和蜂巢收纳');
 assert.match(css, /\.sd-api-generation-row\s*\{[^}]*grid-template-columns:\s*repeat\(3/, '三个生成参数必须三列同排');
 assert.match(css, /\.sd-api-action-row\s*\{[^}]*grid-template-columns:\s*repeat\(2/, 'API四项操作必须两列等宽、固定两排');

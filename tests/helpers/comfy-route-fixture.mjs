@@ -4,6 +4,8 @@ import * as runtime from '../../qianmu-comfy-route.js';
 import * as preflight from '../../qianmu-comfy-preflight.js';
 import {hashText} from '../../qianmu-storyboard-utils.js';
 import {projectNewComfyExecution} from '../../qianmu-comfy-new-execution.js';
+import {prepareEnsembleStyleBindings} from '../../qianmu-ensemble-bindings.js';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../../qianmu-ensemble-handoff.js';
 import { storyboardFunctionSource as section } from './storyboard-form-fixture.mjs';
 export const namespace = 'st-user:route-test';
 export const graph = label => ({
@@ -30,17 +32,23 @@ export async function recipesFixture({formats=null,tiers=null}={}) {
   return {rows,calls,createStore,recipes,routes};
 }
 export async function routeEnvironment(options={}) {
-  const f=await recipesFixture(options),state=storyboard.createStoryboardDefaults(),jobs=[],notices=[],calls=[]; let account=namespace,sequence=0;
+  const f=await recipesFixture({formats:['tags','natural_language'],...options}),state=storyboard.createStoryboardDefaults(),jobs=[],notices=[],calls=[]; let account=namespace,sequence=0;
   Object.assign(state,{enabled:true,target:'gallery',source:'novel',prompt:'one scene'});
   Object.assign(state.profiles.comfy,{comfyWorkflow:JSON.stringify(graph('global')),comfyOutputNodeId:'save',count:'3',width:'512',height:'512'});
   state.connections.comfy.draft.options.comfyTransport='browser';
-  state.routing.enabled=true;
   state.routing.rules=f.routes.map((target,index)=>({id:`rule-${index}`,name:target.comfyWorkflowBinding.name,enabled:true,shotTypes:[index ? 'environment' : 'portrait'],target}));
   state.generationPolicy={version:1,minImages:1,maxImages:3,concurrency:2};
   state.promptDraft.shots=['portrait','environment','object'].map((shotType,index)=>{
     const scene=['woman reading a letter','wide river and mountains','broken cup on the wooden table'][index];
     return {id:`shot-${index}`,prompt:scene,shotType,shotSpec:{sourceParagraphIds:[`p${index}`],scene,location:scene,evidence:{quote:scene},visualDuty:scene,narrativePurpose:scene}};
   });
+  // Synthetic, already chosen styles. These are explicit scheme bindings, not
+  // the retired shot-type router. Real ST persistence is covered separately by
+  // storyboard-stream-compiler's nativeEnsembleFixture.
+  const styleLibrary={schema:'qianmu.ensemble.library.v1',namespace,schemes:f.routes.map((_,index)=>({id:`fixture-style-${index}`,revision:'one',name:`Style ${index+1}`,description:'synthetic rendering style',tags:[],binding:{routeId:`rule-${index}`,artistPresetId:''}}))};
+  const styleSelection={schema:'qianmu.ensemble.chat-selection.v1',namespace,chatKey:'chat-a',revision:'one',enabled:true,schemeIds:styleLibrary.schemes.map(row=>row.id)};
+  const styleAssignments=new Map([['shot-0','fixture-style-0'],['shot-1','fixture-style-1'],['shot-2','current']]);
+  state.promptDraft.ensembleRequired=true;
   const context=vm.createContext({...storyboard,projectNewComfyExecution,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},clone:structuredClone,settings:{apiProfiles:[]},storyboardState:()=>state,
     getChatKey:()=> 'chat-a',ctx:()=>({chat:[]}),getCharacterDescription:()=>'',getPersonaDescription:()=>'',
     storyboardCompilerBusy:false,storyboardTargetFloor:()=>-1,storyboardCredentialRevision:0,storyboardAdmissionEpoch:1,storyboardDraftApiKeys:new Map(),
@@ -60,6 +68,14 @@ export async function routeEnvironment(options={}) {
         prepareComfyRouteRecipes:options=>runtime.prepareComfyRouteRecipes({...options,createStore:f.createStore})};
       if(key==='imageAdmission')return {resolveImageAccountNamespace:async()=>account};
       if(key==='comfyPreflight')return preflight;
+      if(key==='storyboardContract')return {
+        resolveStoryboardEnsembleDraftPlan:()=>{let plan=state.shotPlans.find(row=>row.id==='fixture-style-plan');if(!plan){plan={id:'fixture-style-plan',chatKey:'chat-a',status:'prompt_ready',shots:[],origin:'manual'};state.shotPlans.push(plan);}return plan;},
+        restoreStoryboardEnsemblePlan:async(_state,_plan,planned,guard)=>{
+          const binding=await prepareStyles(guard),receipt=binding.session.resolve(planned.map((shot,index)=>({shot_id:`S${index+1}`,scheme_id:styleSelection.enabled?styleAssignments.get(shot.id)||'current':'current',reason:'synthetic selected style'})),planned.map((_,i)=>`S${i+1}`));
+          const result={shouldGenerate:true,shots:planned};attachEnsembleCompilerResult(result,{session:binding.session,receipt});await sealEnsembleCompilerResult(result,async()=>{guard.assertCurrent();return true;});
+          const resolved=await resolveEnsembleCompiledRoutes(result,planned,{guard:async()=>{guard.assertCurrent();return true;}});return {...resolved,close:()=>binding.close()};
+        },
+      };
       throw Error(`Unexpected external feature: ${key}`);
     }},
     htmlEscape:value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),
@@ -68,8 +84,19 @@ export async function routeEnvironment(options={}) {
     'storyboardPromptDefaultsKey','storyboardProviderPromptDefaults','storyboardPromptLayerForArtist','storyboardPromptsForArtist','storyboardJoinPrompt',
     'storyboardCaptureWorkbench','storyboardResolveRoutingProfile','storyboardCreatePreparationGuard','storyboardPrepareComfyRoutes','storyboardCompilerRoutes','storyboardCertainCompilerRoute',
     'storyboardUsesComfyCharacters','storyboardPreflightComfyForCompiler','storyboardComfyReferenceMetadata','storyboardWorkflowIssue',
-    'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardVerifyComfyRouteJob','storyboardRoutingTargetOptions','storyboardBindRouteWorkflow',
-    'storyboardComfySelectionMessage','storyboardComfyPreparationDraft','storyboardRecordComfyPreparationFailure','storyboardReprepareComfyLog','storyboardStoreLog','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus'];
+    'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardVerifyComfyRouteJob',
+    'storyboardComfySelectionMessage','storyboardComfyPreparationDraft','storyboardRecordComfyPreparationFailure','storyboardReprepareComfyLog','storyboardStoreLog','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus','storyboardEnsembleHost'];
   vm.runInContext(names.map(section).join('\n'),context);
-  return {...f,state,context,jobs,notices,calls,setAccount:value=>account=value};
+  const compilerRoutes=context.storyboardCompilerRoutes,prepareRoutes=context.storyboardPrepareComfyRoutes;
+  const selectedRoutes=()=>styleSelection.enabled?styleSelection.schemeIds.map(id=>styleLibrary.schemes.find(row=>row.id===id)).filter(Boolean).map(row=>state.routing.rules.find(rule=>rule.id===row.binding.routeId)?.target).filter(Boolean):[];
+  context.storyboardCompilerRoutes=(...args)=>{const routes=selectedRoutes();return routes.length?[...compilerRoutes(...args),...routes]:compilerRoutes(...args);};
+  context.storyboardPrepareComfyRoutes=(current,guard,requested)=>prepareRoutes(current,guard,requested||context.storyboardCompilerRoutes(current,context.storyboardProviderProfile(current)));
+  async function prepareStyles(guard,{prepared=false}={}){
+    if(!prepared)await context.storyboardPrepareComfyRoutes(state,guard);guard.assertCurrent();
+    return prepareEnsembleStyleBindings({library:styleLibrary,selection:{...styleSelection,enabled:styleSelection.enabled},namespace,chatKey:'chat-a',preparationId:'fixture-selected-styles',readState:()=>state,
+      assertCurrent:()=>{guard.assertCurrent();return true;},guard:async()=>{guard.assertCurrent();return account===namespace;},
+      resolveProfile:({route})=>context.storyboardResolveRoutingProfile(state,route,null,guard.comfyRoutes),
+      verifyTarget:async descriptor=>{if(descriptor.route.comfyWorkflowBinding)await runtime.assertComfyRouteProfile(descriptor.profile,{namespace,guard:async()=>{guard.assertCurrent();return account===namespace;}});return {ready:true,promptFormats:descriptor.route.providerId==='comfy'?(descriptor.profile.comfyRoutePromptFormat?[descriptor.profile.comfyRoutePromptFormat]:guard.comfyRoutes?.promptFormats||[]):['tags']};}});
+  }
+  return {...f,state,context,jobs,notices,calls,styleLibrary,styleSelection,styleAssignments,prepareStyles,setAccount:value=>account=value};
 }

@@ -4,7 +4,6 @@ import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
 import {characterBindingTarget} from './qianmu-character-archive.js';
 import {characterBackupBindingKey, validateCharacterLibraryBackup, planCharacterLibraryRestore, characterLibraryBackupDigest} from './qianmu-character-library-backup.js';
 import {readCharacterImport,planCharacterImport} from './qianmu-character-import.js';
-import {backupNativeCharacterSources,previewNativeCharacterSources,restoreNativeCharacterSources,verifyNativeCharacterSources} from './qianmu-character-source-native.js';
 import {CHARACTER_NATIVE_SLOT, characterNativeFail as fail, characterNativeAccount, characterNativeId, characterNativeBytes as bytes,
   characterNativeEqual as equal, characterNativeStoredHead as storedHead, characterNativeStoredBinding as storedBinding,
   characterNativeUsage, emptyCharacterNativeIndex, validateCharacterNativeIndex, characterNativeBackup, createCharacterNativeOriginals} from './qianmu-character-native-contract.js';
@@ -191,10 +190,10 @@ export function createCharacterNativeStore({createStorage = createConfiguredStAc
         }); return {removed: true};
       });
     },
-    backupSources(namespace,options={}){return operation(namespace,options,backupNativeCharacterSources);},
-    previewSources(namespace,input,options={}){const captured=structuredClone(input);return operation(namespace,options,ctx=>previewNativeCharacterSources(ctx,captured));},
-    verifySources(namespace,input,options={}){const captured=structuredClone(input);return operation(namespace,options,ctx=>verifyNativeCharacterSources(ctx,captured));},
-    restoreSources(namespace,input,options={}){if(options.confirmed!==true)fail('backup','请明确确认保全角色旧来源');const captured=structuredClone(input);return operation(namespace,options,ctx=>restoreNativeCharacterSources(ctx,captured));},
+    backupSources(namespace,options={}){return operation(namespace,options,async ctx=>{const module=await import('./qianmu-character-source-native.js');ctx.check();return module.backupNativeCharacterSources(ctx);});},
+    previewSources(namespace,input,options={}){const captured=structuredClone(input);return operation(namespace,options,async ctx=>{const module=await import('./qianmu-character-source-native.js');ctx.check();return module.previewNativeCharacterSources(ctx,captured);});},
+    verifySources(namespace,input,options={}){const captured=structuredClone(input);return operation(namespace,options,async ctx=>{const module=await import('./qianmu-character-source-native.js');ctx.check();return module.verifyNativeCharacterSources(ctx,captured);});},
+    restoreSources(namespace,input,options={}){if(options.confirmed!==true)fail('backup','请明确确认保全角色旧来源');const captured=structuredClone(input);return operation(namespace,options,async ctx=>{const module=await import('./qianmu-character-source-native.js');ctx.check();return module.restoreNativeCharacterSources(ctx,captured);});},
     backup(namespace, {isCurrent = () => true, signal} = {}) { return operation(namespace, {isCurrent, signal}, async ({read, originals, transport, check}) => snapshot((await read()).index, originals, transport, check)); },
     restoreBackup(namespace, input, {expectedDigest, decisions = {}, confirmed = false, isCurrent = () => true, signal} = {}) {
       if (confirmed !== true || typeof expectedDigest !== 'string' || !/^[a-f0-9]{64}$/.test(expectedDigest)) fail('backup', '请先核对并明确确认角色库恢复');

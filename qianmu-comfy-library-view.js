@@ -2,10 +2,10 @@
 import {createComfyWorkflowStore,normalizeComfyLibraryDocument,inspectComfyLibraryDocument,importComfyLibraryDocument,exportComfyLibraryDocument,COMFY_LIBRARY_PARAMETERS} from './qianmu-comfy-library.js';
 import {COMFY_CLASSIFICATION_VALUES,normalizeComfyClassification} from './qianmu-comfy-selection.js';
 import {renderRunningHubInstanceOptions} from './qianmu-comfy-workbench.js';
+import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const icon=(action,label,glyph,extra='')=>`<button type="button" class="sd-icon-btn" data-comfy-action="${action}" aria-label="${escape(label)}" title="${escape(label)}" ${extra}><i class="fa-solid fa-${glyph}"></i></button>`;
 const clone=value=>JSON.parse(JSON.stringify(value));
-const size=bytes=>bytes<1024*1024?`${Math.ceil(bytes/1024)} KB`:`${(bytes/1024/1024).toFixed(1)} MB`;
 const emptyDocument=()=>({workflow:'',outputNodeId:'',parameters:{},positivePrompt:'',negativePrompt:''});
 const titles={width:'Width',height:'Height',count:'Count',steps:'Steps',cfg:'CFG',seed:'Seed',sampler:'Sampler',scheduler:'Scheduler'};
 const classificationLabels={visualKinds:'画面偏好',castSizes:'人数偏好',narrativeLayers:'叙事层',contentClasses:'内容范围',
@@ -23,8 +23,8 @@ function classificationEditor(document){
   let value;try{value=classificationOf(document);}catch(error){return `<div role="alert">${escape(error.message)}</div>`;}
   return `<details class="sd-card sd-comfy-classification"><summary><b>适用分类</b></summary><div class="sd-storyboard-card-body">
     ${classificationGroups.map(key=>`<div class="sd-comfy-classification-group" role="group" aria-label="${classificationLabels[key]}"><span>${classificationLabels[key]}</span><div class="sd-comfy-classification-tags">${COMFY_CLASSIFICATION_VALUES[key].map(choice=>`<button type="button" class="sd-btn" data-comfy-class-group="${key}" data-comfy-class-choice="${choice}" aria-pressed="${value[key].includes(choice)}">${classificationLabels[choice]}</button>`).join('')}</div></div>`).join('')}
-    <div class="sd-comfy-classification-fields"><label><span>提示格式</span><select class="text_pole" data-comfy-class-field="promptFormat"><option value="">未声明</option>${COMFY_CLASSIFICATION_VALUES.promptFormats.map(format=>`<option value="${format}" ${value.promptFormat===format?'selected':''}>${classificationLabels[format]}</option>`).join('')}</select></label><label><span>人物硬上限</span><input class="text_pole" type="number" inputmode="numeric" min="0" max="12" step="1" data-comfy-class-field="maxSubjects" value="${escape(value.maxSubjects??'')}"></label></div>
-    <div class="sd-comfy-library-tools"><span class="sd-comfy-library-note">分类仅用于候选匹配，保存不启用自动选择。人物上限留空为未声明。</span>${icon('clear-classification','清除分类声明','rotate-left',Object.hasOwn(document,'classification')?'':'disabled')}</div>
+    <div class="sd-comfy-classification-fields"><label><span>提示格式</span><select class="text_pole" data-comfy-class-field="promptFormat"><option value="">未设置</option>${COMFY_CLASSIFICATION_VALUES.promptFormats.map(format=>`<option value="${format}" ${value.promptFormat===format?'selected':''}>${classificationLabels[format]}</option>`).join('')}</select></label><label><span>最多人物</span><input class="text_pole" type="number" inputmode="numeric" min="0" max="12" step="1" placeholder="未设置" data-comfy-class-field="maxSubjects" value="${escape(value.maxSubjects??'')}"></label></div>
+    <div class="sd-comfy-library-tools">${icon('clear-classification','清除分类','rotate-left',Object.hasOwn(document,'classification')?'':'disabled')}</div>
   </div></details>`;
 }
 export function renderComfyClassificationBadges(row){
@@ -42,36 +42,34 @@ const options=document=>{
 };
 export function renderComfyLibrary(view) {
   const draft=view.draft,disabled=view.busy?'disabled':'',native=view.usage?.persistence==='st-account-file';
+  let runninghub=false;try{runninghub=resolveStoryboardComfyCloud(view.connection)?.provider==='runninghub';}catch(_){/* Invalid connections are reported by API settings, never guessed here. */}
   const message=view.error||(view.busy?'正在处理，请稍候…':!draft&&!view.rows?.length?(view.archived?'归档中还没有工作流。':'还没有保存的工作流，可新建或导入。'):'');
   const feedback=message?`<p class="sd-comfy-library-note" role="${view.error?'alert':'status'}">${escape(message)}</p>`:'';
   if(draft){
     let inspection;try{inspection=inspectComfyLibraryDocument(draft.document);}catch(error){inspection={issue:error.message,slots:[]};}
     return `<div class="sd-comfy-library sd-comfy-library-editor" aria-busy="${Boolean(view.busy)}">${feedback}<fieldset ${disabled}>
-      <div class="sd-comfy-library-tools">${icon('cancel','取消编辑','xmark')}<span>${escape(draft.name||'新工作流')}${draft.version?` · v${draft.version}`:''}</span>${icon('save-copy','另存新方案','copy')}${icon('save','保存版本','floppy-disk')}</div>
+      <div class="sd-comfy-library-tools">${icon('cancel','取消编辑','xmark')}<span>${escape(draft.name||'新工作流')}</span>${icon('save-copy','另存新方案','copy')}${icon('save','保存','floppy-disk')}</div>
       <section class="sd-card"><div class="sd-storyboard-card-body">
         <label><span>方案名</span><input class="text_pole" data-comfy-draft="name" maxlength="80" value="${escape(draft.name)}"></label>
-        ${draft.versions?.length?`<label><span>已保存版本</span><select class="text_pole" data-comfy-version>${draft.versions.map(row=>`<option value="${escape(row.revision)}" ${row.revision===draft.revision?'selected':''}>v${row.version} · ${escape(new Date(row.updatedAt).toLocaleString())}</option>`).join('')}</select></label><button type="button" class="sd-btn" data-comfy-action="apply-version">应用此已保存版本</button>`:''}
+        ${draft.versions?.length?`<details class="sd-comfy-library-history"><summary>历史版本</summary><label><span>版本</span><select class="text_pole" data-comfy-version>${draft.versions.map(row=>`<option value="${escape(row.revision)}" ${row.revision===draft.revision?'selected':''}>v${row.version} · ${escape(new Date(row.updatedAt).toLocaleString())}</option>`).join('')}</select></label><button type="button" class="sd-btn" data-comfy-action="apply-version">应用此版本</button></details>`:''}
         <label><span>API Workflow</span><textarea class="text_pole sd-comfy-library-json" data-comfy-draft="workflow" spellcheck="false" aria-label="API Workflow JSON">${escape(draft.document.workflow)}</textarea></label>
         <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="inspect">检查接线</button>${icon('import','导入工作流','upload')}${icon('export-draft','导出当前草稿','download')}</div>
         <label><span>最终静帧输出</span><select class="text_pole" data-comfy-draft="outputNodeId">${options(draft.document)}</select></label>
-        <div class="sd-comfy-library-note">${escape(inspection.issue||`${inspection.slots.length} 个输入槽位；本地接线检查不代表远端执行验证`)}</div>
+        ${inspection.issue?`<div class="sd-comfy-library-note" role="alert">${escape(inspection.issue)}</div>`:''}
       </div></section>
       ${classificationEditor(draft.document)}
-      <label><span>RunningHub 运行配置</span><select class="text_pole" data-comfy-runtime aria-label="RunningHub 运行配置">${renderRunningHubInstanceOptions(draft.document.runninghubInstanceType)}</select></label>
-      <label><span>RunningHub 工作流链接</span><input class="text_pole" data-comfy-console type="url" maxlength="2048" aria-label="RunningHub 工作流链接" value="${escape(draft.document.consoleUrl||'')}"></label>
+      ${runninghub?`<label><span>运行配置</span><select class="text_pole" data-comfy-runtime aria-label="RunningHub 运行配置">${renderRunningHubInstanceOptions(draft.document.runninghubInstanceType)}</select></label>
+      <label><span>工作流链接</span><input class="text_pole" data-comfy-console type="url" maxlength="2048" aria-label="RunningHub 工作流链接" value="${escape(draft.document.consoleUrl||'')}"></label>`:''}
       <details class="sd-card"><summary><b>参数默认值</b></summary><div class="sd-storyboard-card-body sd-storyboard-grid sd-storyboard-grid-two">${COMFY_LIBRARY_PARAMETERS.map(key=>`<label><span>${titles[key]}</span><input class="text_pole" data-comfy-parameter="${key}" maxlength="120" value="${escape(draft.document.parameters[key]||'')}" ${['sampler','scheduler'].includes(key)?'':'inputmode="decimal"'}></label>`).join('')}</div></details>
-      <p class="sd-comfy-library-note">仅已接入工作流的参数生效。保存不切换当前配方；返回列表后可明确应用。</p>
     </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
   }
   return `<div class="sd-comfy-library" aria-busy="${Boolean(view.busy)}">${feedback}<fieldset ${disabled}>
     <div class="sd-comfy-library-tools"><input class="text_pole" data-comfy-search type="search" aria-label="搜索工作流" value="${escape(view.search||'')}">${icon('import','导入工作流','upload')}${icon('new','新建工作流','plus')}</div>
-    <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="from-current">保存当前配方到库</button><button type="button" class="sd-btn ${view.archived?'active':''}" aria-pressed="${Boolean(view.archived)}" data-comfy-action="archived">归档</button>${icon('refresh','刷新列表','rotate')}</div>
-    <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="candidates">候选方案</button>${icon('backup-library','备份整个工作流库（含历史版本）','download')}${icon('restore-library','恢复工作流库备份','folder')}</div>
-    ${view.usage?`<div class="sd-comfy-library-note">${view.usage.count} 个方案 · ${view.usage.versions} 个版本 · ${size(view.usage.bytes)} / ${size(view.usage.limit)}（${native?'ST 账户保存 · 当前目录正文量，非磁盘总占用':'当前浏览器 · 正文估算'}）</div>`:''}
-    ${native?renderRecovery(view.recovery):''}
+    <div class="sd-comfy-library-tools"><button type="button" class="sd-btn" data-comfy-action="from-current">保存当前工作流</button><button type="button" class="sd-btn" data-comfy-action="candidates">自动选用方案</button>${icon('refresh','刷新列表','rotate')}</div>
+    <details class="sd-comfy-library-management" ${view.archived?'open':''}><summary>管理</summary><div class="sd-comfy-library-tools"><button type="button" class="sd-btn ${view.archived?'active':''}" aria-pressed="${Boolean(view.archived)}" data-comfy-action="archived">${view.archived?'返回全部':'已归档'}</button>${icon('backup-library','备份工作流库','download')}${icon('restore-library','恢复工作流库备份','folder')}</div>${native?renderRecovery(view.recovery):''}</details>
     <div class="sd-comfy-library-rows">${(view.rows||[]).map(row=>`<section class="sd-card sd-comfy-library-row" data-comfy-id="${escape(row.id)}" data-comfy-name="${escape(row.name.toLocaleLowerCase())}" ${view.search&&!row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase())?'hidden':''}>
-      <div class="sd-comfy-library-row-head"><button type="button" class="sd-comfy-library-name" data-comfy-action="${view.archived?'export':'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div>
-      <div class="sd-comfy-library-note">${row.nodes} 个节点 · ${size(row.totalBytes)}${row.issue?` · ${escape(row.issue)}`:''}</div>
+      <div class="sd-comfy-library-row-head"><button type="button" class="sd-comfy-library-name" data-comfy-action="${view.archived?'export':'edit'}">${escape(row.name)}</button></div>
+      ${row.issue?`<div class="sd-comfy-library-note" role="alert">${escape(row.issue)}</div>`:''}
       ${renderComfyClassificationBadges(row)}
       <div class="sd-comfy-library-row-actions">${view.archived?`${icon('restore','恢复方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge',native?'移出目录（原件保留）':'永久清理全部版本','trash-can')}`:`<button type="button" class="sd-btn" data-comfy-action="apply">应用</button>${icon('edit','编辑版本','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div>
     </section>`).join('')}</div>
@@ -81,32 +79,33 @@ export function renderComfyLibrary(view) {
 function renderRecovery(value){
   if(!value||!value.sources.length&&!value.retired.length)return '';
   const pending=value.sources.reduce((n,row)=>n+row.pending.length,0);
-  return `<details class="sd-card" ${pending?'open':''}><summary>旧库与保留原件${pending?` · ${pending} 项待核对`:''}</summary><div class="sd-storyboard-card-body">
-    <p class="sd-comfy-library-note">同账户旧库已保全。不同版本不自动覆盖；另存副本保留全部历史，但不会改绑现用配方。移出目录不代表释放磁盘。</p>
-    ${value.sources.map(source=>`<div data-comfy-id="${escape(source.census)}"><div class="sd-comfy-library-tools"><span>来源 ${escape(source.census.slice(0,8))} · ${source.count} 个方案 / ${source.versions} 个版本</span>${icon('export-legacy','导出此完整旧库','download')}</div>
-      ${source.pending.map(head=>`<div class="sd-comfy-library-tools" data-comfy-id="${escape(source.census+':'+head.id)}"><span>${escape(head.name)} · v${head.version}</span><button type="button" class="sd-btn" data-comfy-action="keep-legacy">保留 ST 当前版</button><button type="button" class="sd-btn" data-comfy-action="copy-legacy">另存完整副本</button></div>`).join('')}</div>`).join('')}
-    ${value.retired.map(head=>`<div class="sd-comfy-library-tools" data-comfy-id="${escape(head.id)}"><span>${escape(head.name)} · 已移出 / ${head.version} 个版本</span><button type="button" class="sd-btn" data-comfy-action="restore-retired">恢复到归档</button></div>`).join('')}
+  return `<details class="sd-card" ${pending?'open':''}><summary>可恢复方案${pending?` · ${pending} 项待处理`:''}</summary><div class="sd-storyboard-card-body">
+    ${value.sources.map(source=>`<div data-comfy-id="${escape(source.census)}"><div class="sd-comfy-library-tools"><span>${source.count} 个方案</span>${icon('export-legacy','导出备份','download')}</div>
+      ${source.pending.map(head=>`<div class="sd-comfy-library-tools" data-comfy-id="${escape(source.census+':'+head.id)}"><span>${escape(head.name)}</span><button type="button" class="sd-btn" data-comfy-action="keep-legacy">保留当前方案</button><button type="button" class="sd-btn" data-comfy-action="copy-legacy">另存副本</button></div>`).join('')}</div>`).join('')}
+    ${value.retired.map(head=>`<div class="sd-comfy-library-tools" data-comfy-id="${escape(head.id)}"><span>${escape(head.name)}</span><button type="button" class="sd-btn" data-comfy-action="restore-retired">恢复到归档</button></div>`).join('')}
   </div></details>`;
 }
 
-export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,onApply,onCandidates=()=>{},isCurrent=()=>true,notify=()=>{},confirm=async()=>false,onIcons=()=>{},download,store=createComfyWorkflowStore()}={}) {
+export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,getConnection=()=>null,onApply,onCandidates=()=>{},isCurrent=()=>true,notify=()=>{},confirm=async()=>false,onIcons=()=>{},download,now=()=>Date.now(),store=createComfyWorkflowStore()}={}) {
   const view={rows:[],usage:null,recovery:null,search:'',archived:false,draft:null,busy:false,error:''};
-  let host=null,namespace='',disposed=false,loaded=false,entry=0,operationEntry=0,verifiedEntry=-1;const scrolls={list:0,editor:0};
+  let host=null,namespace='',disposed=false,loaded=false,loadedAt=0,entry=0,operationEntry=0,verifiedEntry=-1;const scrolls={list:0,editor:0};
   const visible=()=>!disposed&&host?.isConnected&&isCurrent()&&(!view.busy||operationEntry===entry);
   const scroller=()=>host?.closest('.sd-storyboard-scroll');
   const remember=()=>{scrolls[view.draft?'editor':'list']=scroller()?.scrollTop||0;};
   const restore=()=>{const node=scroller();if(node)node.scrollTop=scrolls[view.draft?'editor':'list'];};
   const changed=()=>{if(!visible())return;
     if(verifiedEntry!==entry){host.innerHTML=`<div role="status">${escape(view.error||'正在读取工作流库')}${view.error?'<button type="button" class="sd-btn" data-comfy-action="refresh">重试</button>':''}</div>`;bind();return;}
-    host.innerHTML=renderComfyLibrary(view);bind();onIcons(host);};
+    view.connection=getConnection();host.innerHTML=renderComfyLibrary(view);bind();onIcons(host);};
   const authorize=async()=>{const expected=entry,value=await resolveNamespace();if(!visible()||entry!==expected)throw Error('页面已切换，操作未继续');
-    if(namespace&&namespace!==value){namespace=value;loaded=false;view.rows=[];view.draft=null;view.usage=null;view.recovery=null;verifiedEntry=entry;throw Error('账户已切换，请刷新工作流库');}namespace=value;verifiedEntry=entry;return value;};
+    if(namespace&&namespace!==value){namespace=value;loaded=false;loadedAt=0;view.rows=[];view.draft=null;view.usage=null;view.recovery=null;verifiedEntry=entry;throw Error('账户已切换，请刷新工作流库');}namespace=value;verifiedEntry=entry;return value;};
   const loadList=async()=>{
+    loaded=false;
     const account=namespace,result=store.view?await store.view(account,{archived:view.archived}):{rows:await store.list(account,{archived:view.archived}),usage:await store.usage(account)};
     // A slow read must not publish the previous account's list after a switch.
     // Reuse the same ownership guard used by explicit workflow operations.
-    await authorize();if(!visible())return;view.rows=result.rows;view.usage=result.usage;view.recovery=result.recovery||null;loaded=true;
+    await authorize();if(!visible())return;view.rows=result.rows;view.usage=result.usage;view.recovery=result.recovery||null;loaded=true;loadedAt=now();
   };
+  const loadOnMount=async()=>{if(!loaded||now()-loadedAt>=30000)await loadList();};
   const guarded=async work=>{
     if(view.busy||!visible())return;operationEntry=entry;view.busy=true;view.error='';changed();
     try{await authorize();await work();}catch(error){if(visible()){view.error=error.message||'工作流操作失败';notify(view.error,'warning');}}
@@ -247,7 +246,7 @@ export function createComfyLibraryController({resolveNamespace,getCurrentRecipe,
     });
   }
   return Object.freeze({
-    mount(element){const was=host;host=element;if(was!==element)entry++;changed();if(!loaded||was!==element)void guarded(loadList);},
+    mount(element){const was=host;host=element;if(was!==element)entry++;changed();if(!loaded||was!==element)void guarded(loadOnMount);},
     detach(){remember();host=null;entry++;},
     dispose(){disposed=true;host=null;view.draft=null;entry++;store.close();},
   });

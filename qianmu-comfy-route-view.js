@@ -1,62 +1,49 @@
 import { createComfyWorkflowStore } from './qianmu-comfy-library.js';
 import { pinComfyRouteWorkflow } from './qianmu-comfy-route.js';
-const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-export function renderComfyRoutePicker({ heads, selectedId, versions = [], selectedRevision = '', useReferences = false, hasReferences = false, message = '' }) {
-  return `<div class="sd-comfy-route-picker"><h3>固定工作流分工</h3>
-    <label><span>工作流方案</span><select class="text_pole" data-comfy-route-pick="workflow"><option value="">选择工作流</option>${heads.map(row => `<option value="${escape(row.id)}" ${row.id === selectedId ? 'selected' : ''}>${escape(row.name)}</option>`).join('')}</select></label>
-    <label><span>已保存版本</span><select class="text_pole" data-comfy-route-pick="revision"><option value="">选择版本</option>${versions.map(row => `<option value="${escape(row.revision)}" ${row.revision === selectedRevision ? 'selected' : ''}>v${row.version} · ${escape(row.name)}</option>`).join('')}</select></label>
-    <label class="sd-comfy-route-check"><input type="checkbox" data-comfy-route-references ${useReferences ? 'checked' : ''} ${hasReferences ? '' : 'disabled'}><span>复制当前工作台参考图（须匹配此图）</span></label>
-    <small>本分工使用该版本的工作流与参数，不改变当前工作台。保留本分工已绑参考图；换图不匹配时须先移除。本地核对不等于远端执行验证，确认不会生成。</small>
-    <p role="status">${escape(message || (!heads.length ? '请先在 Comfy 工作流库保存方案。' : ''))}</p></div>`;
+const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const choices=(heads,selectedId)=>'<option value="">选择工作流</option>'+heads.map(row=>`<option value="${escape(row.id)}" ${row.id===selectedId?'selected':''}>${escape(row.name)}</option>`).join('');
+export function renderComfyRoutePicker({heads=[],selectedId='',useReferences=false,hasReferences=false,message='',loading=false}){
+  return `<div class="sd-comfy-route-picker"><h3>选择工作流</h3><label><span>工作流方案</span><select class="text_pole" data-comfy-route-pick="workflow" ${loading?'disabled':''}>${choices(heads,selectedId)}</select></label>
+    ${hasReferences?`<label class="sd-comfy-route-check"><input type="checkbox" data-comfy-route-references ${useReferences?'checked':''}><span>使用参考图</span></label>`:''}
+    <p role="status" aria-live="polite">${escape(message||(!heads.length&&!loading?'还没有工作流方案':''))}</p><button type="button" class="sd-btn" data-comfy-route-retry hidden>重试</button></div>`;
 }
 
-export async function openComfyRoutePicker({ context, namespace, binding, hasReferences = false, guard = async () => {}, createStore = createComfyWorkflowStore, mountAppearance }) {
-  if (!context?.Popup || !context.POPUP_TYPE) throw Error('当前 ST 不支持工作流选择面板');
-  await guard(); const store = createStore();
-  try {
-    const heads = await store.list(namespace); await guard();
-    let selectedId = heads.some(row => row.id === binding?.id) ? binding.id : '', selectedRevision = binding?.revision || '', useReferences = false, message = '';
-    for (;;) {
-      await guard();
-      let versions = selectedId ? await store.versions(namespace, selectedId) : []; await guard();
-      if (!versions.some(row => row.revision === selectedRevision)) selectedRevision = '';
-      const wrap = document.createElement('div');
-      wrap.innerHTML = renderComfyRoutePicker({ heads, selectedId, versions, selectedRevision, useReferences, hasReferences, message });
-      const select = wrap.querySelector('[data-comfy-route-pick=workflow]'), revision = wrap.querySelector('[data-comfy-route-pick=revision]'), status = wrap.querySelector('[role=status]');
-      let alive = true, request = 0, loadedId = selectedId, loading = false;
-      select.addEventListener('change', async () => {
-        const id = select.value, token = ++request; loading = true; loadedId = ''; revision.innerHTML = '<option value="">正在读取版本</option>'; revision.disabled = true;
-        try {
-          await guard(); const next = id ? await store.versions(namespace, id) : []; await guard();
-          if (!alive || token !== request) return;
-          versions = next; loadedId = id;
-          revision.innerHTML = '<option value="">选择版本</option>' + versions.map(row => `<option value="${escape(row.revision)}">v${row.version} · ${escape(row.name)}</option>`).join('');
-          status.textContent = '';
-        } catch (error) { if (alive && token === request) status.textContent = error.message || '版本读取失败'; }
-        finally { if (alive && token === request) { loading = false; revision.disabled = false; } }
-      });
-      let result, releaseAppearance;
-      try {
-        const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '绑定分工', cancelButton: '取消' });
-        popup.dlg?.classList.add('sd-comfy-route-dialog');
-        // ST attaches its owned dialog synchronously at the start of show().
-        // Mount before the opening animation, without moving it under our modal
-        // or replacing ST's focus, close, cancellation and result lifecycle.
-        const shown = popup.show();
-        try { if (popup.dlg?.isConnected) releaseAppearance = mountAppearance?.(popup.dlg); }
-        catch (_) { console.warn('[千幕] 工作流选择面板外观未接入，保留原样式'); }
-        result = await shown;
-      } finally {
-        alive = false; request++;
-        try { releaseAppearance?.(); } catch (_) { console.warn('[千幕] 工作流选择面板外观清理失败'); }
-      }
-      await guard(); if (!result) return null;
-      selectedId = select.value; selectedRevision = revision.value;
-      useReferences = hasReferences && wrap.querySelector('[data-comfy-route-references]').checked;
-      const row = !loading && loadedId === selectedId && versions.find(item => item.revision === selectedRevision && item.id === selectedId);
-      if (!row) { message = '请选择已读取的工作流与具体版本'; continue; }
-      const recipe = await pinComfyRouteWorkflow({ namespace, selection: row, guard, createStore }); await guard();
-      return { recipe, roles:false, useReferences };
+// Open the owned themed surface before network reads. Selecting a workflow uses
+// its saved current recipe; version pinning remains an execution invariant, not
+// a second user choice. Reopening an unchanged binding retains its exact recipe.
+export async function openComfyRoutePicker({context,namespace,binding,hasReferences=false,defaultUseReferences=false,guard=async()=>{},createStore=createComfyWorkflowStore,mountAppearance}){
+  if(!context?.Popup||!context.POPUP_TYPE)throw Error('当前 ST 不支持工作流选择面板');
+  const store=createStore();let selectedId=binding?.id||'',selected=binding||null,useReferences=hasReferences&&defaultUseReferences===true,message='';
+  try{
+    for(;;){
+      const wrap=document.createElement('div');wrap.innerHTML=renderComfyRoutePicker({selectedId,hasReferences,useReferences,message,loading:true});
+      const select=wrap.querySelector('[data-comfy-route-pick=workflow]'),status=wrap.querySelector('[role=status]'),retry=wrap.querySelector('[data-comfy-route-retry]');
+      let alive=true,heads=[],pending=null,loadError=null,changed=false;
+      const load=()=>{
+        if(pending)return pending;select.disabled=true;loadError=null;if(retry)retry.hidden=true;status.textContent='正在读取工作流…';
+        pending=(async()=>{await guard();if(!alive)return;const rows=await store.list(namespace);await guard();heads=rows.filter(row=>!row.archived);
+          if(alive){select.innerHTML=choices(heads,selectedId);select.value=heads.some(row=>row.id===selectedId)?selectedId:'';status.textContent=heads.length?'':'还没有工作流方案';}
+        })().catch(error=>{loadError=error;if(alive){status.textContent='工作流读取失败，请重试';if(retry)retry.hidden=false;}}).finally(()=>{pending=null;if(alive)select.disabled=Boolean(loadError);});
+        return pending;
+      };
+      select.addEventListener('change',()=>{changed=true;selectedId=select.value;selected=heads.find(row=>row.id===selectedId)||null;status.textContent='';});
+      retry?.addEventListener('click',()=>void load());
+      let result,releaseAppearance,loading;
+      try{
+        const popup=new context.Popup(wrap,context.POPUP_TYPE.CONFIRM,'',{okButton:'选用',cancelButton:'取消'});popup.dlg?.classList.add('sd-comfy-route-dialog');
+        const shown=popup.show();
+        try{if(popup.dlg?.isConnected)releaseAppearance=mountAppearance?.(popup.dlg);}catch(_){console.warn('[千幕] 工作流选择面板外观未接入，保留原样式');}
+        loading=load();result=await shown;
+        if(result)await (pending||loading);
+      }finally{alive=false;try{releaseAppearance?.();}catch(_){console.warn('[千幕] 工作流选择面板外观清理失败');}}
+      if(!result)return null;await guard();
+      if(loadError){message='工作流读取失败，请重试';continue;}
+      selectedId=select.value;const head=heads.find(row=>row.id===selectedId);
+      if(!head){message='请选择工作流';continue;}
+      if(changed||!selected||selected.id!==head.id)selected=head;
+      useReferences=hasReferences&&wrap.querySelector('[data-comfy-route-references]')?.checked===true;
+      const recipe=await pinComfyRouteWorkflow({namespace,selection:selected,guard,createStore});await guard();
+      return {recipe,roles:false,useReferences};
     }
-  } finally { store.close(); }
+  }finally{store.close();}
 }

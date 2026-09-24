@@ -6,6 +6,7 @@ import * as core from '../qianmu-storyboard.js';
 import {createStoryboardCompilerAttempt} from '../qianmu-storyboard-compiler-diagnostics.js';
 import { retainComfyRoutePromptLayer } from '../qianmu-comfy-route-contract.js';
 import { renderComfyRoutePicker } from '../qianmu-comfy-route-view.js';
+import { renderEnsembleTargetPicker } from '../qianmu-ensemble-target-picker.js';
 import { recipesFixture, routeEnvironment, namespace, graph } from './helpers/comfy-route-fixture.mjs';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
@@ -74,7 +75,7 @@ test('all reachable pinned routes are preflighted before LLM; distinct workflows
   assert.equal(e.context.storyboardCertainCompilerRoute(e.state,e.state.profiles.novel),null);
   const reports=await e.context.storyboardPreflightComfyForCompiler(e.state,e.state.profiles.novel,null,guard,true);
   assert.equal(reports.length,2);assert.ok(reports.every(report=>report.localConfigurationReady&&!report.remoteExecutionVerified));
-  e.state.routing.rules.unshift({id:'all',enabled:true,priority:100,shotTypes:[],target:{providerId:'novel',modelId:'nai-diffusion-5-full'}});
+  e.styleSelection.enabled=false;
   const clean=e.context.storyboardCreatePreparationGuard(e.state);e.calls.length=0;
   assert.equal(await e.context.storyboardPrepareComfyRoutes(e.state,clean),null);assert.equal(e.calls.length,0);
   guard.dispose();clean.dispose();
@@ -103,22 +104,31 @@ test('frozen replay validates original account and graph, without reading a newe
 
 test('route picker markup escapes imported names and keeps selection separate from generation or workbench model choice',async()=>{
   const e=await routeEnvironment();e.state.routing.rules[0].target.comfyWorkflowBinding={...e.routes[0].comfyWorkflowBinding,name:'<script>bad</script>'};
-  const target=e.context.storyboardRoutingTargetOptions(e.state,'comfy',e.state.routing.rules[0].target);
+  const target=renderEnsembleTargetPicker({target:e.state.routing.rules[0].target,providers:core.STORYBOARD_PROVIDER_REGISTRY});
   assert.doesNotMatch(target,/<script>|sd-storyboard-route-model|sd-storyboard-route-parameters|sd-storyboard-route-characters/);assert.match(target,/&lt;script&gt;/);
   const picker=renderComfyRoutePicker({heads:[{id:'safe',name:'<img onerror=bad>'}],selectedId:'safe',roles:true});
-  assert.doesNotMatch(picker,/<img|data-comfy-route-roles|提示补充/);assert.match(picker,/确认不会生成/);assert.match(picker,/disabled/);
+  assert.doesNotMatch(picker,/<img|data-comfy-route-roles|提示补充|确认不会生成|已保存版本/);assert.match(picker,/&lt;img onerror=bad&gt;/);
+  assert.match(target,/data-ensemble-pick-workflow/);
 });
 
-test('binding UI saves only the explicit route selection, and cancellation or late page change preserve the prior target',async()=>{
+test('new binding host returns only a private selection, and cancellation or late page change preserve the prior target',async()=>{
   for(const scenario of ['save','cancel','changed']){
     const e=await routeEnvironment();e.state.view='assets';e.state.assetView='routing';const rule=e.state.routing.rules[0],before=JSON.stringify(rule.target),profile=JSON.stringify(e.state.profiles.comfy);
+    Object.assign(e.context,{activeTab:'imagegen',appearanceSession:{mountPortal:()=>()=>{}}});
+    vm.runInContext(section('storyboardConfigureEnsembleTarget'),e.context);
     const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...runtime,openComfyRoutePicker:async()=>{
       if(scenario==='changed')e.state.assetView='tags';return scenario==='cancel'?null:{recipe:e.recipes[1],roles:true,useReferences:false};
     }}:load(key);
-    const root={isConnected:true};await e.context.storyboardBindRouteWorkflow(root,rule);
-    assert.equal(root._sdRouteBindingBusy,false);assert.equal(JSON.stringify(e.state.profiles.comfy),profile);assert.equal(e.jobs.length,0);
-    if(scenario==='save'){assert.equal(rule.target.comfyWorkflowBinding.id,'landscape');assert.equal(rule.target.comfyCharacterEnabled,false);assert.equal(rule.target.parameterPresetId,'');}
-    else assert.equal(JSON.stringify(rule.target),before);
+    const picker={openEnsembleTargetPicker:async options=>{await options.guard();const selected=await options.pickWorkflow(structuredClone(options.target));return selected?options.validateTarget(selected):null;}};
+    const operation=e.context.storyboardConfigureEnsembleTarget(e.state,picker,{resolveImageAccountNamespace:async()=>namespace},namespace,rule.target);
+    if(scenario==='changed')await assert.rejects(operation,/页面或账户已变化/);
+    else {
+      const result=await operation;
+      if(scenario==='save'){assert.equal(result.target.comfyWorkflowBinding.id,'landscape');assert.equal(result.target.comfyCharacterEnabled,false);assert.equal(result.target.parameterPresetId,'');}
+      else assert.equal(result,null);
+    }
+    assert.equal(JSON.stringify(e.state.profiles.comfy),profile);assert.equal(e.jobs.length,0);
+    assert.equal(JSON.stringify(rule.target),before,'selecting a target does not save the enclosing style');
   }
 });
 
@@ -155,12 +165,19 @@ test('exact routing provenance survives a saved plan without copying the workflo
 
 test('reselecting a fixed workflow keeps its existing references; choosing a different graph cannot silently discard them',async()=>{
   const e=await routeEnvironment();e.state.view='assets';e.state.assetView='routing';const rule=e.state.routing.rules[0];
+  Object.assign(e.context,{activeTab:'imagegen',appearanceSession:{mountPortal:()=>()=>{}}});
+  vm.runInContext(section('storyboardConfigureEnsembleTarget'),e.context);
   rule.target.comfyReferences={version:1,enabled:true,namespace,workflowHash:e.recipes[0].binding.workflowHash,
     items:[{url:'/user/images/test/ref.png',name:'ref',mime:'image/png',bytes:8,sha256:'a'.repeat(64)}]};
   const before=structuredClone(rule.target);let selected=e.recipes[0];const load=e.context.featureRuntime.load;
-  e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...runtime,openComfyRoutePicker:async()=>({recipe:selected,roles:false,useReferences:false})}:load(key);
-  await e.context.storyboardBindRouteWorkflow({isConnected:true},rule);assert.deepEqual(rule.target.comfyReferences,before.comfyReferences);
-  selected=e.recipes[1];await e.context.storyboardBindRouteWorkflow({isConnected:true},rule);
+  e.context.featureRuntime.load=async key=>key==='comfyRoutes'?{...runtime,openComfyRoutePicker:async options=>{
+    assert.equal(options.defaultUseReferences,true);assert.equal(options.hasReferences,true);
+    return {recipe:selected,roles:false,useReferences:true};
+  }}:load(key);
+  const picker={openEnsembleTargetPicker:async options=>options.pickWorkflow(structuredClone(options.target))};
+  const choose=()=>e.context.storyboardConfigureEnsembleTarget(e.state,picker,{resolveImageAccountNamespace:async()=>namespace},namespace,rule.target);
+  const result=await choose();assert.deepEqual(result.comfyReferences,before.comfyReferences);
+  selected=e.recipes[1];await assert.rejects(choose(),/参考图.*不符/);
   assert.deepEqual(rule.target.comfyWorkflowBinding,before.comfyWorkflowBinding);assert.deepEqual(rule.target.comfyReferences,before.comfyReferences);
-  assert.match(e.notices.at(-1),/参考图.*不符/);
+  assert.equal(e.jobs.length,0);
 });

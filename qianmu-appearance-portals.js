@@ -7,8 +7,11 @@ const CLASSIC_KEYS = new Set(THEME_KEYS);
  * reversible theme ownership never mistakes new colors for the classic original.
  * The probe shares the actual stylesheet declarations, has no duplicate ID, and
  * is removed synchronously even if computed-style resolution fails. */
-export function prepareQianmuPortalBaseline(root, themeKey) {
-    const properties = QIANMU_THEME_PROPERTIES.filter(name => root.style.getPropertyValue(name));
+export function prepareQianmuPortalBaseline(root, themeKey, { inheritTheme = false } = {}) {
+    // New body-level dialogs have no modal ancestor to inherit classic tokens
+    // from. Opt them in explicitly; established portals still rebase only the
+    // aliases they already own, preserving their original restoration behavior.
+    const properties = inheritTheme ? QIANMU_THEME_PROPERTIES : QIANMU_THEME_PROPERTIES.filter(name => root.style.getPropertyValue(name));
     if (!properties.length) return;
     const tokens = readClassicTokens(root.ownerDocument, themeKey);
     for (const name of properties) {

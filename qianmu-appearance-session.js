@@ -4,7 +4,7 @@ import { prepareQianmuPortalBaseline, createQianmuClassicPainter } from './qianm
 import { THEME_KEYS } from './qianmu-classic-palettes.js';
 import { mountQianmuInputBoundary } from './qianmu-input-boundary.js';
 
-const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-reader-scroll,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-viewer > aside,.sd-storyboard-video-draft-body,.sd-storyboard-video-draft-picker-grid,.sd-video-confirmation-body,.sd-storyboard-film-viewer > aside,.sd-storyboard-film-viewer-segments,.sd-storyboard-film-source-grid,dialog.sd-bundle-dialog > main,.sd-focus-voice-menu,.sd-focus-library-body,.sd-focus-voice-drawer-list,.sd-comfy-route-picker,.sd-comfy-route-dialog .popup-content,textarea';
+const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-reader-scroll,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-viewer > aside,.sd-storyboard-video-draft-body,.sd-storyboard-video-draft-picker-grid,.sd-video-confirmation-body,.sd-storyboard-film-viewer > aside,.sd-storyboard-film-viewer-segments,.sd-storyboard-film-source-grid,dialog.sd-bundle-dialog > main,.sd-focus-voice-menu,.sd-focus-library-body,.sd-focus-voice-drawer-list,.sd-comfy-route-picker,.sd-comfy-route-dialog .popup-content,.sd-ensemble-target-picker,.sd-ensemble-target-dialog .popup-content,textarea';
 
 // Load once, after the existing stylesheet. Classic sessions make no request.
 export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, schedule = setTimeout, cancelSchedule = clearTimeout } = {}) {
@@ -91,9 +91,9 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
             const key = readSettings()?.theme;
             runtime.rebaseClassic(createQianmuClassicPainter(document, THEME_KEYS.includes(key) ? key : 'light', options));
         },
-        mountPortal(root, options) {
+        mountPortal(root, { inheritTheme = false, ...options } = {}) {
             if (!root?.isConnected || !runtime.supported) return () => {};
-            if (!runtime.has(root) && readAppearancePreferences(readSettings()).family !== 'classic') prepareQianmuPortalBaseline(root, readSettings()?.theme);
+            if (!runtime.has(root) && (inheritTheme || readAppearancePreferences(readSettings()).family !== 'classic')) prepareQianmuPortalBaseline(root, readSettings()?.theme, { inheritTheme });
             return mount(root, options);
         },
         mountHive(root) {

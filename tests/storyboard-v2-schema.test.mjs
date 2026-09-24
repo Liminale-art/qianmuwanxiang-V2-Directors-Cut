@@ -19,7 +19,6 @@ import {
   normalizeStoryboardState,
   pruneStoryboardPipelineLogs,
   resolveStoryboardVisualState,
-  routeStoryboardShot,
   sanitizeStoryboardDiagnosticData,
   sanitizeStoryboardSnapshot,
   sanitizeStoryboardWorkflow,
@@ -299,13 +298,12 @@ assert.equal(materialState.vibeLibrary.length, 1);
 assert.deepEqual(materialState.vibeLibrary[0].providerIds, ['novel']);
 assert.deepEqual(materialState.vibeLibrary[0].modelIds, ['nai-diffusion-4-5-full']);
 assert.deepEqual(materialState.selectedVibeIds, ['vibe-a']);
-assert.equal(materialState.routing.single.connectionPresetId, 'missing', 'broken explicit connections must not silently become the current draft');
-assert.equal(materialState.routing.single.parameterPresetId, 'nai-params');
+assert.equal(materialState.routing.single,undefined,'the workbench target is no longer mirrored into saved routing');
 assert.equal(materialState.routing.rules.length, 1);
 assert.equal(materialState.routing.rules[0].target.providerId, 'openai');
 assert.equal(materialState.routing.rules[0].target.connectionPresetId, 'wrong-provider');
-const invalidRoute = routeStoryboardShot({ shotType: 'portrait' }, { mode: 'ensemble', rules: [{ id: 'bad', target: { providerId: 'removed-provider' } }], single: { providerId: 'openai' } });
-assert.equal(invalidRoute.providerId, 'openai', 'an obsolete routing rule must fall back, never silently reroute to another paid provider');
+const invalidRoute = normalizeStoryboardState({routing:{rules:[{id:'bad',target:{providerId:'removed-provider'}}]}});
+assert.equal(invalidRoute.routing.rules.length,0,'an invalid style target cannot silently become another paid provider');
 
 const v5MaterialState = normalizeStoryboardState({
   schemaVersion: 2, source: 'novel', connections: { novel: { draft: { model: 'nai-diffusion-5-full' } } },
@@ -326,14 +324,8 @@ assert.equal(Object.hasOwn(hostileState.values, '__proto__'), true);
 assert.equal(hostileState.values.__proto__, 'safe');
 assert.equal(Object.getPrototypeOf(hostileState.values), Object.prototype);
 
-const route = routeStoryboardShot({ shotType: 'environment', sensitive: false }, {
-  mode: 'ensemble', single: { providerId: 'novel' }, rules: [
-    { id: 'general', shotTypes: [], target: { providerId: 'openai' }, priority: 1 },
-    { id: 'landscape', shotTypes: ['environment'], target: { providerId: 'banana' }, priority: 10 },
-  ],
-});
-assert.equal(route.providerId, 'banana');
-assert.equal(route.ruleId, 'landscape');
+assert.equal(materialState.routing.rules[0].priority,undefined);
+assert.equal(materialState.routing.rules[0].shotTypes,undefined);
 
 const anchor = createStoryboardParagraphAnchor({ chatKey: 'chat-a', floor: 88, swipeId: 2, messageText: 'First\nSecond paragraph', paragraphIndex: 1, paragraphText: 'Second paragraph', previousText: 'First' });
 assert.equal(scoreStoryboardParagraphAnchor(anchor, 'Second paragraph', 1, 'First'), 93);

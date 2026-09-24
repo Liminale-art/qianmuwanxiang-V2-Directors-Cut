@@ -15,7 +15,7 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 import {compilerEnvironment as environment,casting} from './helpers/comfy-compiler-fixture.mjs';
 const plain=value=>JSON.parse(JSON.stringify(value));
 async function workbenchEnvironment(){
-  const e=await environment(); e.state.source='comfy';e.state.view='workflows';e.state.routing.enabled=false;
+  const e=await environment(); e.state.source='comfy';e.state.view='workflows';e.styleSelection.enabled=false;
   Object.assign(e.context,{storyboardNavigate:(_root,patch)=>Object.assign(e.state,patch)});
   vm.runInContext(['storyboardRememberPromptLayer','storyboardApplyComfyLibraryRecipe','storyboardCurrentComfyRecipe'].map(section).join('\n'),e.context);
   const root={isConnected:true};
@@ -184,12 +184,13 @@ test('ordinary workbench generation honors format and parameters without revivin
   assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);assert.equal(e.llmCalls.length,2);
 });
 test('ordinary and fixed routes negotiate only reachable formats, and a fixed route removes workbench provenance',async()=>{
-  const e=await workbenchEnvironment();e.state.routing.enabled=true;e.state.routing.rules=e.state.routing.rules.slice(1);
+  const e=await workbenchEnvironment();e.styleSelection.enabled=true;e.state.routing.rules=e.state.routing.rules.slice(1);
   const input=e.context.storyboardCreatePreparationGuard(e.state),prepared=await e.context.storyboardPrepareComfyRoutes(e.state,input);
   assert.deepEqual(plain(prepared.promptFormats),['tags','natural_language']);
   const selected=e.context.storyboardResolveRoutingProfile(e.state,e.routes[1],null,prepared);
   assert.equal(selected.comfyWorkbenchBinding,undefined);assert.equal(selected.comfyRoutePromptFormat,'natural_language');
-  e.state.routing.rules=[{id:'all',enabled:true,shotTypes:Object.keys(e.context.STORYBOARD_SHOT_TYPE_LABELS),target:e.routes[1]}];
+  e.state.view='workflows';await e.context.storyboardApplyComfyLibraryRecipe(e.root,e.state,e.rows[1]);
+  e.styleSelection.schemeIds=['fixture-style-1'];
   const fixedOnly=await e.context.storyboardPrepareComfyRoutes(e.state,e.context.storyboardCreatePreparationGuard(e.state));
   assert.deepEqual(plain(fixedOnly.promptFormats),['natural_language']);
 });

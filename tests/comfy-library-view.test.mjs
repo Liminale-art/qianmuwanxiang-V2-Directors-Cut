@@ -106,7 +106,7 @@ test('workflow route and selection survive reload without library documents in s
 });
 test('library and its document store are shipped lazily, and the existing legacy DB is unchanged',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  assert.ok(source.includes("load: () => import('./qianmu-comfy-library-view.js?v="));
+  assert.match(source,/load: \(\) => (?:import|loadLocalChunk)\('\.\/qianmu-comfy-library-view\.js\?v=/);
   for(const file of ['qianmu-comfy-library.js','qianmu-comfy-library-view.js'])assert.ok(release.files.includes(file));
   const module=await readFile(new URL('../qianmu-comfy-library.js',import.meta.url),'utf8');assert.doesNotMatch(module,/qianmu-blobstore|fetch\(|\.generate\(/);
 });

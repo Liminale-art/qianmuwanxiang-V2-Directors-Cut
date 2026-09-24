@@ -23,6 +23,11 @@ export function createNativeComfyWorkflowStore({createStorage=createConfiguredSt
       }).catch(error=>{opening=null;throw error;});await opening;await check();if(client.namespace!==namespace)fail('工作流会话不能切换账户');
       const transport={guard:check,signal:captured.signal},originals=createComfyNativeOriginals(client),validate=value=>validateComfyNativeIndex(value,namespace,client.scope,{maxBytes});
       async function read(){const result=await client.read(COMFY_NATIVE_SLOT,transport);await check();if(!result.exists&&known)fail('已确认的ST工作流目录缺失，未建立空库');if(result.exists){validate(result.value);known=true;}return result;}
+      async function readFingerprint(){
+        // Older injected store adapters can still provide the complete read.
+        const fingerprint=typeof client.readFingerprint==='function'?await client.readFingerprint(COMFY_NATIVE_SLOT,transport):(await read()).fingerprint;
+        await check();if(fingerprint===null&&known)fail('已确认的ST工作流目录缺失，未建立空库');return fingerprint;
+      }
       let found=await read(),index=validate(found.exists?structuredClone(found.value):emptyComfyNativeIndex(namespace)),stable=async()=>{};
       async function save(next){
         next.revision=index.revision+1;validate(next);await stable();await check();const saved=await client.write(COMFY_NATIVE_SLOT,next,{...transport,expectedFingerprint:found.fingerprint});known=true;await check();
@@ -31,7 +36,7 @@ export function createNativeComfyWorkflowStore({createStorage=createConfiguredSt
       const ctx={get index(){return index;},get exists(){return found.exists;},originals,transport,check,save,validate};
       if(!captured.inventoryOnly)stable=await prepareComfyLegacy({legacy,namespace,ctx,current:()=>!closed&&!captured.signal?.aborted&&current()===true,maxBytes});
       const result=await work(ctx);await stable();
-      await check();if((await read()).fingerprint!==found.fingerprint)fail('工作流库在读取期间变化，请重新核对');return structuredClone(result);
+      await check();if(await readFingerprint()!==found.fingerprint)fail('工作流库在读取期间变化，请重新核对');return structuredClone(result);
     });queue=task.then(()=>{},()=>{});return task;
   }
   const find=(index,value)=>index.workflows.find(row=>row.head.id===value);

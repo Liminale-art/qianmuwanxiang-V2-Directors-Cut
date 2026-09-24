@@ -37,7 +37,7 @@ test('exact duplicates retain original weights and unsuccessful insertion does n
 
 function setup(){
   const state=core.createStoryboardDefaults(),notices=[];let saved=0;
-  const context=vm.createContext({...core,...tags,storyboardComfyPromptFormat,storyboardState:()=>state,htmlEscape:value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),
+  const context=vm.createContext({...core,...tags,storyboardTagEditorState:null,storyboardTagDraft:null,storyboardComfyPromptFormat,storyboardState:()=>state,htmlEscape:value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),
     STORYBOARD_TAG_CATEGORY_LABELS:Object.fromEntries(core.STORYBOARD_TAG_CATEGORIES.map(key=>[key,key])),snip:(value,max)=>String(value).slice(0,max),uid:()=> 'new-tag',uniqueClean:values=>[...new Set(values.filter(Boolean))],saveSettings(){saved++;},renderModal(){},toast:message=>{notices.push(message);return false;}});
   vm.runInContext(['storyboardFilteredTags','storyboardTagFormValues','storyboardCaptureTagDraft','renderStoryboardTagLibrary','storyboardSaveTagFromForm','storyboardBindTagCompletion'].map(section).join('\n'),context);
   const fields={'.sd-storyboard-tag-name':'','.sd-storyboard-tag-rendering':'soft light','.sd-storyboard-tag-category':'lighting','.sd-storyboard-tag-description':'gentle light','.sd-storyboard-tag-override':'','.sd-storyboard-tag-aliases':'柔光，gentle'};
@@ -56,9 +56,17 @@ test('invalid unnamed group, capacity limits, and stale editor source leave the 
 });
 test('library renders bounded chips, visible negative selection, no favorites and preserves unsaved editor during filtering',()=>{
   const e=setup();e.state.tagLibrary=Array.from({length:105},(_,i)=>({id:String(i),content:'tag '+i,name:i?'':'group',createdAt:i,positive:i!==0}));
-  e.context.storyboardCaptureTagDraft(e.root);const html=e.context.renderStoryboardTagLibrary(e.state);
+  vm.runInContext('storyboardTagEditorState=storyboardState()',e.context);e.context.storyboardCaptureTagDraft(e.root);const html=e.context.renderStoryboardTagLibrary(e.state);
   assert.equal((html.match(/data-storyboard-edit-tag=/g)||[]).length,100);assert.match(html,/sd-storyboard-tag-negative active/);assert.match(html,/aria-pressed="true"/);assert.doesNotMatch(html,/favorite|data-storyboard-add-tag/);assert.match(html,/>soft light<\/textarea>/);
 });
+test('library first opens with browse tools and new button but no editor; save closes editor',()=>{
+  const e=setup();e.state.tagLibrary=[{id:'existing',content:'a tag'}];
+  let html=e.context.renderStoryboardTagLibrary(e.state);
+  assert.match(html,/sd-storyboard-new-tag/);assert.match(html,/data-storyboard-edit-tag="existing"/);assert.match(html,/sd-storyboard-asset-search/);assert.doesNotMatch(html,/data-tag-editor=|<textarea/);
+  vm.runInContext('storyboardTagEditorState=storyboardState()',e.context);assert.match(e.context.renderStoryboardTagLibrary(e.state),/data-tag-editor="new"/);
+  assert.equal(e.context.storyboardSaveTagFromForm(e.root),true);assert.equal(vm.runInContext('storyboardTagEditorState',e.context),null);
+});
+
 test('lazy component binding rejects obsolete page and counts successful use only, without changing creation time',async()=>{
   const e=setup(),page={isConnected:true,querySelector:()=>({})};e.root.querySelector=()=>page;e.state.tagLibrary=[{id:'one',content:'x',usageCount:2,createdAt:7}];let resolve,mounted=0,options;
   Object.assign(e.context,{activeTab:'imagegen',storyboardAdmissionEpoch:1,featureRuntime:{load:()=>new Promise(r=>resolve=r)}});

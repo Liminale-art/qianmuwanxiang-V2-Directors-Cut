@@ -1,5 +1,4 @@
 import { normalizeCharacterArchive, characterBindingTarget, characterArchiveError } from './qianmu-character-archive.js';
-import { comfyLibraryBackupDigest } from './qianmu-comfy-library-backup.js';
 
 export const CHARACTER_LIBRARY_BACKUP_SCHEMA = 'qianmu.character.library-backup.v1';
 export const CHARACTER_LIBRARY_BACKUP_BYTES = 24 * 1024 * 1024;
@@ -93,4 +92,6 @@ export function planCharacterLibraryRestore(local, incoming, { decisions = {} } 
   validateCharacterLibraryBackup(value);
   return { value, archiveWrites, bindingWrites, conflicts, ready: conflicts.every(row => row.choice), summary: { added, replaced, kept, conflicts: conflicts.length, archives: value.usage.count, bindings: value.usage.bindings, bytes: value.usage.bytes } };
 }
-export const characterLibraryBackupDigest = comfyLibraryBackupDigest;
+// Backup hashing must not pull the entire Comfy import/restore graph into
+// ordinary character-library reads. Preserve the exact existing digest format.
+export const characterLibraryBackupDigest = async value => (await import('./qianmu-comfy-library-backup.js')).comfyLibraryBackupDigest(value);

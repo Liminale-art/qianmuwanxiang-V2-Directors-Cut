@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {collectProseAssistantLocalStorage as collect} from '../qianmu-prose-assistant-storage.js';
-import {renderStorageBackupSection,storageDiagnosticSnapshot,storageSettingsSnapshotWithoutDiagnostics,STORAGE_CATEGORY_LABELS} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection,collectionCleanupOptions,storageDiagnosticSnapshot,storageSettingsSnapshotWithoutDiagnostics,STORAGE_CATEGORY_LABELS} from '../qianmu-storage-backup-view.js';
 const namespace='st-user:alice',account='st-user:'+createHash('sha256').update('alice').digest('hex');
 const measured=()=>({namespace:account,status:'ready',scope:'current-account-local',estimated:true,bytes:1000,count:3,records:2,chats:1,markers:1,complete:1,failed:1,cancelled:1});
 
@@ -16,9 +16,10 @@ test('unavailable or invalid observations never turn into zero, while account/pa
  for(const bad of [null,{...measured(),namespace:'foreign'},{...measured(),count:99}]){const result=await collect({resolveNamespace:async()=>namespace,isCurrent:()=>true,store:{usage:async()=>{if(bad===null)throw Error('PRIVATE');return bad;}}});assert.equal(result.status,'unavailable');assert.equal(result.bytes,null);assert.doesNotMatch(result.error,/PRIVATE/);}
  for(const mode of ['account','page']){let owner=namespace,live=true;await assert.rejects(collect({resolveNamespace:async()=>owner,isCurrent:()=>live,store:{usage:async()=>{if(mode==='account')owner='st-user:bob';else live=false;return measured();}}}),{code:'prose_assistant_storage_stale'});}
 });
-test('resource row explains local logical estimates and unsaved exclusions without offering destructive generic cleanup',()=>{
- const html=renderStorageBackupSection(null,n=>`${n} B`,{data:{assistantStorage:measured()}});assert.match(html,/场外特助 · 当前账户旧本机副本/);assert.match(html,/1 个会话 · 3 轮问答 · 1000 B 逻辑估算/);assert.match(html,/完整 1 · 失败 1 · 停止 1/);assert.match(html,/1 份清空版本标记/);assert.match(html,/不含未保存回复/);assert.match(html,/非可重建缓存/);assert.equal(STORAGE_CATEGORY_LABELS.assistant,'场外特助');
- const failed=renderStorageBackupSection(null,String,{data:{assistantStorage:{status:'unavailable',error:'<bad>'}}});assert.match(failed,/&lt;bad&gt;/);assert.doesNotMatch(failed,/<bad>|0 个会话/);
+test('routine assistant row hides storage internals while explicit cleanup keeps the original risks and known bytes',()=>{
+ const data={assistantStorage:measured()},html=renderStorageBackupSection(null,n=>`${n} B`,{data});assert.match(html,/<span>场外特助<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(html,/逻辑估算|清空版本标记|不含未保存回复/);assert.equal(STORAGE_CATEGORY_LABELS.assistant,'场外特助');
+ const choices=collectionCleanupOptions(data);assert.equal(choices.length,1);assert.equal(choices[0].bytes,1000);assert.match(choices[0].risk[0],/不可恢复.*不删除ST记录/);
+ const failed=renderStorageBackupSection(null,String,{data:{assistantStorage:{status:'unavailable',error:'<bad>'}}});assert.match(failed,/<span>场外特助<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(failed,/<bad>|<span>场外特助<\/span><span>0/);
 });
 test('extracted settings/diagnostic accounting snapshots preserve the original partition without mutating settings',()=>{
  const settings={value:1,logHistory:['API'],logOpenState:{a:true},imagegen:{model:'model',logs:['image'],pipelineLogs:['pipe']}},original=structuredClone(settings);

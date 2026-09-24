@@ -92,7 +92,11 @@ export function createFeatureRuntime(definitions = {}) {
 }
 
 // Explicit local allowlist only. No rewriting dependency graphs or executing URLs from errors.
-const localChunkNames=new Set(['qianmu-reader.js','builtin-theaters.js','qianmu-theaters.js','qianmu-focus-dialogue.js','qianmu-focus-dialogue-ui.js','qianmu-focus-library-ui.js']);
+const localChunkNames=new Set(['qianmu-reader.js','builtin-theaters.js','qianmu-theaters.js','qianmu-focus-dialogue.js','qianmu-focus-dialogue-ui.js','qianmu-focus-library-ui.js',
+  'qianmu-character-archive-view.js','qianmu-vibe-library-view.js','qianmu-ensemble-ui.js','qianmu-comfy-library-view.js','qianmu-comfy-pool-view.js','qianmu-comfy-route.js','qianmu-image-admission.js',
+  'qianmu-prose-assistant-panel.js','qianmu-prose-assistant-native.js','qianmu-text-collection-library.js','qianmu-text-collection-capture.js','qianmu-gallery-catalog-management-view.js',
+  'qianmu-storage-gallery-check.js','qianmu-gallery-recipe-review-view.js','qianmu-gallery-local-recipe-current.js','qianmu-storyboard-export-scope-view.js',
+  'qianmu-gallery-archive-view.js','qianmu-gallery-location-view.js','qianmu-gallery-directory-view.js','qianmu-historical-gallery-consumer.js']);
 export function createLocalChunkLoader({importer=url=>import(url),pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
   const entries=new Map();
   return function load(relative){
@@ -102,10 +106,15 @@ export function createLocalChunkLoader({importer=url=>import(url),pause=ms=>new 
     if(entry.value)return Promise.resolve(entry.value);if(entry.promise)return entry.promise;
     entry.promise=(async()=>{
       for(let retry=0;retry<2;retry++){
-        if(entry.attempt>=8)throw Error('组件仍未载入，请确认网络和插件更新后刷新页面');
+        if(entry.attempt>=8)throw Object.assign(Error('组件仍未载入，请确认网络后刷新页面'),{code:'qianmu_chunk_load'});
         const attempt=entry.attempt++,target=new URL(key);if(attempt)target.searchParams.set('qm_retry',String(attempt));
         try{return entry.value=await importer(target.href);}
-        catch(error){if(error?.name!=='TypeError'||!/(fetch.*dynamically imported|importing a module script failed|error loading dynamically imported)/i.test(error.message)||retry)throw error;await pause(180);}
+        catch(error){
+          const network=error?.name==='TypeError'&&/(fetch.*dynamically imported|importing a module script failed|error loading dynamically imported)/i.test(error.message);
+          if(!network)throw error;
+          if(retry)throw Object.assign(new Error('组件未能载入，请重试；若仍失败，请刷新页面',{cause:error}),{code:'qianmu_chunk_load'});
+          await pause(180);
+        }
       }
     })().finally(()=>{entry.promise=null;});return entry.promise;
   };

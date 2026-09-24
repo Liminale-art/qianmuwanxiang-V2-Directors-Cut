@@ -1,6 +1,6 @@
-import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.369';
-import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.369';
-import {resolveStoryboardProfileBinding} from './qianmu-storyboard.js?v=1.59.369';
+import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.370';
+import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.370';
+import {resolveStoryboardProfileBinding} from './qianmu-storyboard.js?v=1.59.370';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const key=route=>{
@@ -12,7 +12,7 @@ const key=route=>{
 };
 const fail=message=>{throw Object.assign(Error(message),{code:'ensemble_host',submissionState:'not_submitted'});};
 
-// Explicit new-library mode only. The old mode incurs no account-file reads.
+// Only previously configured style selections need account-file reads.
 // Each optional route owns its preparation: a broken workflow cannot discard
 // another route's recipes or silently borrow the current Comfy workbench.
 export async function prepareStoryboardEnsembleSession(state,inputGuard,d,{plan=null,automatic=false}={}){

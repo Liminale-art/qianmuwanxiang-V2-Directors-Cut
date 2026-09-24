@@ -7,7 +7,7 @@ export function captureStoryboardRelationData(state){
 }
 
 // Compare the detached pre-normalization graph, including local selectors affected by a partial import.
-// Defaults may be added. Rules are keyed by ID because routing deliberately sorts them by priority.
+// Defaults may be added. Style targets are identified by their stable route ID.
 export function assertStoryboardRelationsRetained(before,after){
   let nodes=0;
   function retained(a,b,field,path=[]){
@@ -23,7 +23,6 @@ export function assertStoryboardRelationsRetained(before,after){
     }
     if(object(a))return object(b)&&Object.keys(a).every(key=>{
       if(field==='promptCompiler'&&path.length===0&&key==='excludedTags'&&Array.isArray(a.tagRules))return true;
-      if(field==='routing'&&path.length===0&&key==='mode'&&typeof a.enabled==='boolean')return true;
       // Encoded Vibe originals, not temporary preview URLs, are authoritative for these library rows.
       if(field==='vibeLibrary'&&path.length===1&&key==='previewUrl'&&object(a.assetRef))return true;
       return Object.hasOwn(b,key)&&retained(a[key],b[key],field,[...path,key]);

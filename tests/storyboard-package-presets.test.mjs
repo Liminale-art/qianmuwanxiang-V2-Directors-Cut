@@ -91,10 +91,11 @@ test('format-only workflow normalization and derived preset summaries do not mas
   after.promptPresets[0].items[0].instruction='cut';assert.throws(()=>assertStoryboardPresetDataRetained(before,after),/完整保留/);
 });
 
-test('future schema refuses a lossy downgrade while supported old routing conversions remain available',()=>{
+test('future schema refuses a lossy downgrade while current explicit style targets retain remote capability identity',()=>{
   assert.throws(()=>prepare(state(),{schemaVersion:board.STORYBOARD_SCHEMA_VERSION+1,profiles:{}}),/版本尚不支持/);
   assert.throws(()=>prepare(state(),{schemaVersion:'invalid'}),/版本尚不支持/);
-  const result=prepare(state(),{schemaVersion:2,routing:{mode:'ensemble',maxShotsPerFloor:2}});assert.equal(result.settings.routing.enabled,true);
+  const result=prepare(state(),modern({routing:{rules:[{id:'relay',name:'Relay',enabled:false,target:{providerId:'openai',modelId:'third-party-gpt',capabilityModelId:'gpt-image-2'}}]}}));
+  assert.equal(result.settings.routing.rules[0].id,'relay');assert.equal(result.settings.routing.rules[0].enabled,false);assert.equal(result.settings.routing.rules[0].target.modelId,'third-party-gpt');assert.equal(result.settings.routing.rules[0].target.capabilityModelId,'gpt-image-2');assert.equal(result.settings.generationPolicy,undefined);
 });
 
 test('merged parameter memory and prompt defaults use reversible patches and reject concurrent same-field edits',async()=>{

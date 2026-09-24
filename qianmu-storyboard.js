@@ -8,12 +8,12 @@ import {retainStoryboardArtDirection} from './qianmu-art-directions.js';
 export {STORYBOARD_ART_DIRECTIONS,retainStoryboardArtDirection,storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.369';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.369';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.370';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.370';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.369';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.369';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.369';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.370';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.370';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.370';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -34,8 +34,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.369';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.369';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.370';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.370';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -57,13 +57,6 @@ export const STORYBOARD_WORKFLOW_STATES = Object.freeze([
   'completed', 'skipped', 'failed', 'cancelled', 'stale', 'orphaned',
 ]);
 export const STORYBOARD_MESSAGE_LINK_STATES = Object.freeze(['active', 'stale', 'inactive_swipe', 'orphaned', 'foreign']);
-export const STORYBOARD_SHOT_GROUP_TEMPLATES = Object.freeze({
-  smart: Object.freeze({ id: 'smart', label: '智能镜组', instruction: '按镜头台数量范围和叙事价值选择不重复镜头；优先建立场景、推进动作、落到情绪或关键细节。' }),
-  threeBeat: Object.freeze({ id: 'threeBeat', label: '三拍叙事', instruction: '优先采用建立关系的全景、推进人物或动作的近景、完成情绪落点的特写；没有价值的节拍可以省略。' }),
-  dialogue: Object.freeze({ id: 'dialogue', label: '对话组', instruction: '围绕双人或多人关系组织同框、越肩或单人近景与反应镜头，避免只改变焦段而不推进信息。' }),
-  action: Object.freeze({ id: 'action', label: '动作组', instruction: '组织环境与站位、关键动作、冲击或结果三个节拍，保持方向、人物和关键物件连续。' }),
-  atmosphere: Object.freeze({ id: 'atmosphere', label: '氛围组', instruction: '用环境、人物状态和细节物件共同建立情绪，镜头必须承担不同信息。' }),
-});
 
 const BASE_CAPS = { prompt: true, negative: false, size: true, ratio: true, seed: false, steps: false, cfg: false, cfgRescale: false, sampler: false, scheduler: false, sm: false, smDyn: false, decrisper: false, varietyBoost: false, reference: false, multipleReferences: false, imageEdit: false, mask: false, vibe: false, preciseReference: false, multiCharacter: false, workflow: false, contentPolicy: 'filtered' };
 const caps = (extra = {}) => Object.freeze({ ...BASE_CAPS, ...extra });
@@ -346,21 +339,20 @@ const connection = (id) => ({
     ...(id === 'openai' ? { compatibility: normalizeOpenAIImageCompatibility(), headers: {} } : {}),
   },
 });
-const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'smart', frameStrategy: 'main_secondary', single: { providerId: 'novel', modelId: 'nai-diffusion-5-full', connectionPresetId: '', parameterPresetId: '' }, rules: [], confirmMultipleRequests: true });
-export function normalizeStoryboardGenerationPolicy(value, legacyRouting, legacyComposition) {
+const routingDefaults = () => ({ rules: [] });
+export function normalizeStoryboardGenerationPolicy(value) {
   const r = obj(value) ? value : {};
-  const legacy = obj(legacyRouting) ? legacyRouting : null;
   // Old malformed/out-of-range values were capped at four: upgrading must not
   // reinterpret them as permission for more paid work. Only an explicit v2
   // selection (or a fully validated v2 import) can use the expanded range.
   const version = r.version === 2 ? 2 : 1;
   const limit = version === 2 ? STORYBOARD_MAX_SHOTS : STORYBOARD_LEGACY_MAX_SHOTS;
-  const maxImages = int(r.maxImages, 1, limit, legacy ? (legacy.enabled && legacyComposition?.groupStrategy !== 'single' ? int(legacy.maxShotsPerFloor, 1, STORYBOARD_LEGACY_MAX_SHOTS, 3) : 1) : 3);
+  const maxImages = int(r.maxImages, 1, limit, 3);
   return { version, minImages: int(r.minImages, 1, maxImages, 1), maxImages,
-    concurrency: int(r.concurrency, 1, STORYBOARD_MAX_CONCURRENCY, legacy ? int(legacy.providerConcurrency, 1, STORYBOARD_MAX_CONCURRENCY, 1) : 2) };
+    concurrency: int(r.concurrency, 1, STORYBOARD_MAX_CONCURRENCY, 2) };
 }
 export function getStoryboardGenerationPolicy(state = {}) {
-  return normalizeStoryboardGenerationPolicy(state.generationPolicy, state.routing, state.compositionPolicy);
+  return normalizeStoryboardGenerationPolicy(state.generationPolicy);
 }
 const automationDefaults = () => ({ autoGenerate: true, streamEnabled: false });
 const directorBridgeDefaults = () => ({ worldSideShotsEnabled: false,worldAutoGenerate:false,worldAutoMaxImages:1 });
@@ -400,7 +392,7 @@ export function createStoryboardDefaults() {
     promptPresets: [], editingPromptPresetId: '', editingPromptItemId: '', promptItemDraft: null,galleryKeywords:[...DEFAULT_GALLERY_KEYWORDS],
     artistPresets: [], artistCollections: [], artistCollectionId: '', selectedArtistPresetId: '', artistSearch: '', editingArtistPresetId: '',
     artistPools: [], selectedArtistPoolId: '',compositionSchemes:[],compositionSchemeId:'',
-    tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], taskStates: [], collapsedCards: { model: true, context: true, worldbook: true, prompt: true, params: true, composition: true, production: true, 'routing-rules': true }, logs: [], pipelineLogs: [],
+    tagLibrary: [], vibeLibrary: [], selectedVibeIds: [], compositionPolicy: compositionDefaults(), routing: routingDefaults(), shotPlans: [], taskStates: [], collapsedCards: { model: true, context: true, worldbook: true, prompt: true, params: true, composition: true, production: true }, logs: [], pipelineLogs: [],
   };
 }
 
@@ -725,7 +717,7 @@ export function requireStoryboardComfyTransport(connection) {
 
 export function migrateStoryboardState(value) {
   const s = obj(value) ? clone(value) : {};
-  s.generationPolicy = normalizeStoryboardGenerationPolicy(s.generationPolicy, obj(value) && Object.keys(value).length ? (value.routing || {}) : undefined, value?.compositionPolicy);
+  s.generationPolicy = normalizeStoryboardGenerationPolicy(s.generationPolicy);
   const fromVersion = Number(s.schemaVersion) || 0;
   const defaults = createStoryboardDefaults();
   if (fromVersion < 2) {
@@ -741,18 +733,6 @@ export function migrateStoryboardState(value) {
     // 已经使用过分镜的用户升级后维持原行为；全新安装则由 defaults 保持关闭，避免意外请求与费用。
     if (s.enabled === undefined) s.enabled = true;
     s.automation ||= automationDefaults();
-  }
-  if (fromVersion < 4) {
-    s.routing ||= routingDefaults();
-    if (s.routing.enabled === undefined) s.routing.enabled = s.routing.mode === 'ensemble';
-  }
-  if (fromVersion < 7 && Array.isArray(s.routing?.rules)) {
-    s.routing.rules = s.routing.rules.map((rule) => {
-      if (!obj(rule)) return rule;
-      const migratedRule = { ...rule };
-      delete migratedRule.sensitive;
-      return migratedRule;
-    });
   }
   if (fromVersion < 8) {
     s.promptCompiler ||= {};
@@ -799,8 +779,6 @@ export function migrateStoryboardState(value) {
   }
   if (fromVersion < 12) {
     s.compositionPolicy ||= compositionDefaults();
-    s.routing ||= routingDefaults();
-    s.routing.frameStrategy ||= s.compositionPolicy.groupStrategy || 'main_secondary';
     s.pendingParagraphSelection ||= null;
   }
   if (fromVersion < 24) s.directorBridge = directorBridgeDefaults();
@@ -1953,11 +1931,8 @@ function normalizeRouting(value) {
         connectionPresetId, parameterPresetId, ...workflowBinding };
     }
   };
-  const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名分工', 80), shotTypes: uniqueStrings(rule.shotTypes, 30, 60), target: target(rule.target, ''), enabled: rule.enabled !== false, priority: int(rule.priority, -1000, 1000, 0) })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
-  const enabled = r.enabled === undefined ? r.mode === 'ensemble' : Boolean(r.enabled);
-  const templateId = STORYBOARD_SHOT_GROUP_TEMPLATES[r.templateId] ? r.templateId : 'smart';
-  const frameStrategy = STORYBOARD_GROUP_FRAME_STRATEGIES.includes(r.frameStrategy) ? r.frameStrategy : 'main_secondary';
-  return { enabled, mode: enabled ? 'ensemble' : 'single', ...(r.styleLibrary===true?{styleLibrary:true}:{}), templateId, frameStrategy, single: target(r.single), rules, confirmMultipleRequests: r.confirmMultipleRequests !== false };
+  const rules = dedupeById((Array.isArray(r.rules) ? r.rules : []).filter(obj).map((rule) => ({ id: cleanId(rule.id), name: str(rule.name || '未命名风格', 80), target: target(rule.target, ''), enabled: rule.enabled !== false })).filter((rule) => rule.id && rule.target.providerId)).slice(0, 50);
+  return { ...(r.styleLibrary===true?{styleLibrary:true}:{}), rules };
 }
 
 export function storyboardRouteUsesComfyAuto(state,route) {
@@ -2247,8 +2222,6 @@ export function resolveStoryboardVisualState(facts) {
   for (const fact of ordered) if (!accepted.has(fact.key)) { accepted.set(fact.key, fact); decisions.push({ key: fact.key, action: 'accepted', source: fact.source, value: fact.value, evidence: fact.evidence }); } else decisions.push({ key: fact.key, action: 'suppressed', source: fact.source, value: fact.value, winner: accepted.get(fact.key).source, evidence: fact.evidence });
   return { values: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.value])), sources: Object.fromEntries([...accepted].map(([key, fact]) => [key, fact.source])), decisions };
 }
-
-export function routeStoryboardShot(shot, routing) { const r = normalizeRouting(routing); if (!r.enabled||r.styleLibrary===true) return { ...r.single, ruleId: '' }; const type = str(shot?.shotType || 'custom', 60), rule = r.rules.find((x) => x.enabled && (!x.shotTypes.length || x.shotTypes.includes(type))); return rule ? { ...rule.target, ruleId: rule.id } : { ...r.single, ruleId: '' }; }
 
 export function summarizeStoryboardGenerationDemand(jobs) {
   const requests = (Array.isArray(jobs) ? jobs : []).filter(obj);

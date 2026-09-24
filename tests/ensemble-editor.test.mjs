@@ -101,3 +101,12 @@ test('the renderer escapes names, tags, descriptions and bindings while using lo
     const html=renderEnsembleLibrary(f.editor.snapshot());assert.doesNotMatch(html,/<img|<script|onerror="|https?:\/\//);assert.match(html,/&lt;img/);assert.match(html,/stroke-width="2.25"/);assert.doesNotMatch(html,/API Key|password|requestPath/);
   }finally{f.close();}
 });
+
+test('style list and edit surface expose no route-management or development instructions',async()=>{
+  const f=await fixture();try{await f.editor.load();let html=renderEnsembleLibrary(f.editor.snapshot());
+    assert.doesNotMatch(html,/全局方案库|已归档|线路|复用|保存 Key|镜头数量/);assert.doesNotMatch(html,/sd-ensemble-editor/);
+    fill(f.editor);html=renderEnsembleLibrary(f.editor.snapshot());assert.match(html,/生成方式|适用画面/);assert.doesNotMatch(html,/data-ensemble-list|data-ensemble-search|绘制线路|画师绑定|复用|保存 Key/);
+    await f.editor.save();const row=f.editor.snapshot().library.schemes[0];f.editor.edit(row.id);assert.match(renderEnsembleLibrary(f.editor.snapshot()),/data-ensemble-action="remove"/);
+    await f.editor.remove(row.id);assert.equal(f.editor.snapshot().library.schemes.length,0);assert.equal(f.editor.snapshot().draft,null);
+  }finally{f.close();}
+});

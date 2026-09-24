@@ -8,16 +8,16 @@ import {createStoryboardFormFixture,storyboardFunctionSource as fn} from './help
 import * as packageAssets from '../qianmu-storyboard-package-assets.js';
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
 const plain=x=>JSON.parse(JSON.stringify(x));
-test('new installations get 1-3/2 while disabled legacy shot groups keep their original single-image behavior',()=>{
+test('new installations get 1-3/2 and discarded shot-group fields never define the generation budget',()=>{
   assert.deepEqual(board.createStoryboardDefaults().generationPolicy,{version:1,minImages:1,maxImages:3,concurrency:2});
   for(const enabled of [false,true]){
     const state=board.normalizeStoryboardState({schemaVersion:24,routing:{enabled,maxShotsPerFloor:4,providerConcurrency:3}});
-    assert.deepEqual(state.generationPolicy,{version:1,minImages:1,maxImages:enabled?4:1,concurrency:3});
+    assert.deepEqual(state.generationPolicy,{version:1,minImages:1,maxImages:3,concurrency:2});
     assert.equal(state.routing.maxShotsPerFloor,undefined);assert.equal(state.routing.providerConcurrency,undefined);
     const before=structuredClone(state.generationPolicy);board.normalizeStoryboardState(state);assert.deepEqual(state.generationPolicy,before);
   }
   const fixedLegacy=board.normalizeStoryboardState({schemaVersion:24,routing:{enabled:true,maxShotsPerFloor:4},compositionPolicy:{groupStrategy:'single'}});
-  assert.equal(fixedLegacy.generationPolicy.maxImages,1,'fixing the old shared-frame bug must not increase automatic spending on upgrade');
+  assert.deepEqual(fixedLegacy.generationPolicy,{version:1,minImages:1,maxImages:3,concurrency:2},'neither discarded routing fields nor composition strategy owns image count');
 });
 test('policy is canonical even if obsolete routing budget reappears and min never exceeds max',()=>{
   const state=board.normalizeStoryboardState({schemaVersion:24,generationPolicy:{minImages:4,maxImages:2,concurrency:99},routing:{enabled:true,maxShotsPerFloor:4,providerConcurrency:1}});
@@ -55,7 +55,7 @@ test('compiler constraints use same budget without requiring a shot group; minim
     state.routing.enabled=enabled;
     const config=context.storyboardCompilerRequestConfig(state,{model:'nai-diffusion-5-full'});
     assert.equal(config.minShots,2);assert.equal(config.maxShots,4);
-    if(!enabled)assert.equal(config.groupInstruction,'');
+    assert.equal(Object.hasOwn(config,'groupInstruction'),false,'retired templates never enter extraction');
     for(const manualSupplement of [false,true]){
       assert.equal(config.focused,true);
       const request=buildStoryboardPlanContractRequest({floor:0,paragraphs:['garden'],compilerSources},{...config,manualSupplement});
@@ -68,7 +68,7 @@ test('compiler constraints use same budget without requiring a shot group; minim
 test('real policy handlers keep min/max coherent and reject detached old-page edits',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
   const start=source.indexOf("  root.querySelectorAll('[data-generation-field]')");
-  const end=source.indexOf("  root.querySelector('.sd-storyboard-route-template')",start);
+  const end=source.indexOf("  root.querySelector('.sd-storyboard-use-floor')",start);
   assert.ok(start>0&&end>start);
   const state=board.createStoryboardDefaults(),callbacks={};
   const fields=['minImages','maxImages','concurrency'].map(key=>({dataset:{generationField:key},value:'',addEventListener:(_name,cb)=>callbacks[key]=cb}));
@@ -119,7 +119,7 @@ test('Comfy origin ordering is credential-independent and cannot be bypassed by 
   assert.equal(board.canRunStoryboardComfyJob({source:'novel'},[job('https://cloud.comfy.org')]),true);
 });
 
-for(const policy of [{version:1,minImages:2,maxImages:4,concurrency:3},{version:2,minImages:3,maxImages:6,concurrency:2}])test(`actual portable export/import preserves policy v${policy.version} and imports old packages with conservative counts`,async()=>{
+for(const policy of [{version:1,minImages:2,maxImages:4,concurrency:3},{version:2,minImages:3,maxImages:6,concurrency:2}])test(`actual portable export/import preserves explicit policy v${policy.version} and absent policy never transfers old routing counts`,async()=>{
   const state=board.createStoryboardDefaults(),store={};state.generationPolicy={...policy};
   let exported=null;const noop=()=>{};
   const context=vm.createContext({...board,Blob,clone:structuredClone,storyboardState:()=>state,STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,
@@ -141,13 +141,15 @@ for(const policy of [{version:1,minImages:2,maxImages:4,concurrency:3},{version:
   await importer.import(new Blob([text]));
   assert.deepEqual(plain(importer.e.state.generationPolicy),policy);
   importer.e.choice='3';await importer.recover();
-  const modern=JSON.parse(text);delete modern.settings.generationPolicy;modern.settings.routing={enabled:false};
+  const modern=JSON.parse(text);delete modern.settings.generationPolicy;modern.settings.routing={rules:[]};
   await importer.import(new Blob([JSON.stringify(modern)]));
+  assert.ok(importer.e.pending,JSON.stringify(importer.e.notices));
   assert.deepEqual(plain(importer.e.state.generationPolicy),policy);await importer.recover();
   for(const enabled of [false,true]){
     const legacy=JSON.parse(text);legacy.settings.schemaVersion=2;delete legacy.settings.generationPolicy;legacy.settings.routing={enabled,maxShotsPerFloor:2,providerConcurrency:1};
     await importer.import(new Blob([JSON.stringify(legacy)]));
-    assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:1,maxImages:enabled?2:1,concurrency:1});
+    assert.ok(importer.e.pending,JSON.stringify(importer.e.notices));
+    assert.deepEqual(plain(importer.e.state.generationPolicy),policy,'without an explicit imported policy the existing local budget remains unchanged');
     await importer.recover();
   }
 });
@@ -161,14 +163,15 @@ test('explicit v2 range permits six shots without upgrading any old spending lim
   assert.deepEqual(board.normalizeStoryboardGenerationPolicy(policy),policy);
   assert.deepEqual(board.normalizeStoryboardState({generationPolicy:policy}).generationPolicy,policy);
   assert.deepEqual(board.normalizeStoryboardGenerationPolicy({version:2,minImages:99,maxImages:99,concurrency:99}),{version:2,minImages:6,maxImages:6,concurrency:4});
-  assert.equal(board.normalizeStoryboardGenerationPolicy(null,{enabled:true,maxShotsPerFloor:6}).maxImages,4);
+  assert.deepEqual(board.normalizeStoryboardGenerationPolicy(null),{version:1,minImages:1,maxImages:3,concurrency:2});
+  assert.deepEqual(board.normalizeStoryboardGenerationPolicy({enabled:true,maxShotsPerFloor:6,providerConcurrency:4}),{version:1,minImages:1,maxImages:3,concurrency:2},'discarded route fields cannot authorize extra paid work');
 });
 
 test('actual form and handler distinguish six floor shots from four-way concurrency',async()=>{
   const {content}=createStoryboardFormFixture();
   for(const key of ['minImages','maxImages'])assert.match(content,new RegExp(`data-generation-field="${key}"[^>]*max="6"`));
   assert.match(content,/data-generation-field="concurrency"[^>]*max="4"/);
-  const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=source.indexOf("  root.querySelectorAll('[data-generation-field]')"),end=source.indexOf("  root.querySelector('.sd-storyboard-route-template')",start);
+  const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=source.indexOf("  root.querySelectorAll('[data-generation-field]')"),end=source.indexOf("  root.querySelector('.sd-storyboard-use-floor')",start);
   const state=board.createStoryboardDefaults(),callbacks={};let saves=0;
   const fields=['minImages','maxImages','concurrency'].map(key=>({dataset:{generationField:key},value:'',addEventListener:(_event,callback)=>callbacks[key]=callback}));
   const root={isConnected:true,querySelectorAll:()=>fields};

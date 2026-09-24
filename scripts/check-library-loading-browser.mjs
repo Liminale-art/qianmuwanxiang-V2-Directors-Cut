@@ -32,13 +32,13 @@ try{
     window.startLibrary=kind=>{
       window.controller?.dispose();window.host?.remove();
       window.host=document.createElement('div');host.id='host';document.querySelector('.sd-storyboard-scroll').replaceChildren(host);
-      window.state={account:'st-user:first',visible:true},window.reads=[],window.operations={close:0,writes:0,apply:0,download:0,icons:0},window.notices=[];
+      window.state={account:'st-user:first',visible:true},window.reads=[],window.operations={close:0,writes:0,apply:0,download:0,icons:0,authorizations:0},window.notices=[];
       const noWrite=()=>{operations.writes++;throw Error('unexpected write');};
       let rowCount=0;
       const store={list:namespace=>new Promise((resolve,reject)=>reads.push({namespace,resolve:rows=>{rowCount=rows.length;resolve(rows);},reject})),
         usage:async namespace=>({namespace,count:rowCount,versions:rowCount,bytes:rowCount*10,limit:10000}),bindings:async()=>[],close:()=>operations.close++,
         save:noWrite,remove:noWrite,archive:noWrite,purge:noWrite,bind:noWrite};
-      const common={store,resolveNamespace:async()=>state.account,isCurrent:()=>state.visible,
+      const common={store,resolveNamespace:async()=>{operations.authorizations++;return state.account;},isCurrent:()=>state.visible,
         onIcons:node=>{operations.icons++;applyQianmuIcons(node);},notify:message=>notices.push(message),
         onApply:()=>operations.apply++,onSelect:()=>operations.apply++,download:()=>operations.download++,confirm:async()=>false};
       window.controller=kind==='workflow'?createComfyLibraryController(common):kind==='pool'?createComfyPoolController(common):createCharacterArchiveController({...common,getContext:async()=>({chatKey:'synthetic-chat',subjects:[]})});
@@ -51,7 +51,12 @@ try{
   const waitRead=index=>page.waitForFunction(index=>reads.length>index,index);
   const action=kind=>`[data-${kind==='workflow'?'comfy':kind==='pool'?'pool':'archive'}-action="refresh"]`;
   const list=kind=>kind==='character'?'.sd-character-library':'.sd-comfy-library';
-  const done=kind=>page.waitForSelector(`${list(kind)}[aria-busy="false"]`);
+  const done=(kind,host='#host')=>page.waitForSelector(`${host} [aria-busy="false"]`);
+  const refresh=async(kind,host='#host')=>{
+    const button=page.locator(`${host} ${action(kind)}`);
+    if(!await button.isVisible())await page.locator(`${host} .sd-comfy-library-management > summary`).click();
+    await button.click();
+  };
   const themeRoundtrip=async(family,mode,label)=>{
     const result=await page.evaluate(async({family,mode})=>{
       const root=host,nodes=[...root.querySelectorAll('*')],html=root.innerHTML,calls=JSON.stringify(operations),count=reads.length;
@@ -73,19 +78,19 @@ try{
         ok(label+' read failure remains visible and escaped',await page.locator('#host [role="alert"]').count()===1&&(await page.locator('#host [role="alert"]').innerText()).includes('测试读取失败 <标签>')&&await page.locator('#host 标签').count()===0);
         await themeRoundtrip(family,mode,label+' failure');
         if(family==='glass'&&mode==='light'&&width===320&&kind==='workflow')await page.screenshot({caret:'initial',path:fileURLToPath(new URL('glass-light-workflow-failed-320.png',qa))});
-        await page.locator(action(kind)).click();await waitRead(1);
+        await refresh(kind);await waitRead(1);
         await page.evaluate(()=>reads[1].resolve([]));await done(kind);
         ok(label+' retry becomes an explicit, non-error empty state',await page.locator('#host [role="alert"]').count()===0&&/还没有|暂无/.test(await page.locator('#host').innerText()));
         await themeRoundtrip(family,mode,label+' empty');
         ok(label+' empty controls remain within the scroll surface',await page.locator(list(kind)).evaluate(node=>node.scrollWidth<=node.clientWidth+1));
         if(family==='editorial'&&mode==='dark'&&width===393&&kind==='pool')await page.screenshot({caret:'initial',path:fileURLToPath(new URL('editorial-dark-pool-empty-393.png',qa))});
-        await page.locator(action(kind)).click();await waitRead(2);
+        await refresh(kind);await waitRead(2);
         await page.evaluate(()=>reads[2].resolve([row('已恢复的资料')]));await done(kind);
         ok(label+' next retry shows data without changing saved state',/已恢复的资料/.test(await page.locator('#host').innerText())&&await page.evaluate(()=>operations.writes===0&&operations.apply===0&&operations.download===0));
-        await page.locator(action(kind)).click();await waitRead(3);
+        await refresh(kind);await waitRead(3);
         await page.evaluate(()=>reads[3].reject(Error('刷新失败，保留已有资料')));await done(kind);
         ok(label+' a failed refresh keeps the previously verified rows and reports the error',/已恢复的资料/.test(await page.locator('#host').innerText())&&await page.locator('#host [role="alert"]').count()===1);
-        await page.locator(action(kind)).click();await waitRead(4);
+        await refresh(kind);await waitRead(4);
         await page.evaluate(()=>{controller.dispose();host.innerHTML='<p id="departed">已离开资料库</p>';reads[4].resolve([row('迟到的资料')]);});await settle();
         ok(label+' a disposed view ignores late read completion',await page.locator('#departed').count()===1&&!/迟到的资料/.test(await page.locator('#host').innerText())&&await page.evaluate(()=>operations.close===1));
         // The next start must not dispose the already-disposed test owner twice.
@@ -99,20 +104,34 @@ try{
     await page.evaluate(kind=>startLibrary(kind),kind);await waitRead(0);
     await page.evaluate(()=>{state.account='st-user:second';reads[0].resolve([row('旧账户私有资料')]);});await settle();
     ok(kind+' rechecks account after pending list reads',!/旧账户私有资料/.test(await page.locator('#host').innerText()));
-    await page.locator(action(kind)).click();await waitRead(1);
+    await refresh(kind);await waitRead(1);
     ok(kind+' explicit retry uses the new account',await page.evaluate(()=>reads[1].namespace==='st-user:second'));
     await page.evaluate(()=>reads[1].resolve([row('新账户资料')]));await done(kind);
-    await page.locator(action(kind)).click();await waitRead(2);
+    await page.evaluate(()=>{
+      window.authorizedBeforeRemount=operations.authorizations;controller.detach();window.cachedHost=host;
+      host=document.createElement('div');host.id='cached-host';cachedHost.replaceWith(host);controller.mount(host);
+    });await done(kind,'#cached-host');await settle();
+    ok(kind+' recent remount rechecks the account, reuses the verified list and performs no duplicate read',await page.evaluate(()=>operations.authorizations>authorizedBeforeRemount&&reads.length===2)&&/新账户资料/.test(await page.locator('#cached-host').innerText()));
+    await refresh(kind,'#cached-host');await waitRead(2);
     await page.evaluate(()=>{
       controller.detach();window.oldHost=host;oldHost.innerHTML='<p>原页面保留</p>';
       host=document.createElement('div');host.id='new-host';oldHost.after(host);controller.mount(host);
       reads[2].resolve([row('旧页面迟到的资料')]);
-    });await waitRead(3);
-    ok(kind+' remount waits for its own read instead of showing the departed list',!/旧页面迟到的资料/.test(await page.locator('#new-host').innerText())&&await page.evaluate(()=>oldHost.textContent==='原页面保留'));
-    await page.evaluate(()=>reads[3].resolve([row('新页面资料')]));await page.waitForSelector(`#new-host ${list(kind)}[aria-busy="false"]`);
-    ok(kind+' remount can recover without writes',/新页面资料/.test(await page.locator('#new-host').innerText())&&await page.evaluate(()=>operations.writes===0));
-    await page.locator(`#new-host ${action(kind)}`).click();await waitRead(4);
-    await page.evaluate(()=>{window.noticeCount=notices.length;controller.dispose();host.textContent='已关闭新页面';reads[4].reject(Error('关闭后的迟到失败'));});await settle();
+    });
+    let nextRead;
+    if(kind==='character'){
+      await done(kind,'#new-host');await settle();
+      ok(kind+' remount reauthorizes and reuses the same account pending read without repainting the departed host',await page.evaluate(()=>reads.length===3&&oldHost.textContent==='原页面保留')&&/旧页面迟到的资料/.test(await page.locator('#new-host').innerText()));
+      nextRead=3;
+    }else{
+      await waitRead(3);
+      ok(kind+' remount waits for its own read instead of showing the departed list',!/旧页面迟到的资料/.test(await page.locator('#new-host').innerText())&&await page.evaluate(()=>oldHost.textContent==='原页面保留'));
+      await page.evaluate(()=>reads[3].resolve([row('新页面资料')]));await done(kind,'#new-host');
+      ok(kind+' remount can recover without writes',/新页面资料/.test(await page.locator('#new-host').innerText())&&await page.evaluate(()=>operations.writes===0));
+      nextRead=4;
+    }
+    await refresh(kind,'#new-host');await waitRead(nextRead);
+    await page.evaluate(index=>{window.noticeCount=notices.length;controller.dispose();host.textContent='已关闭新页面';reads[index].reject(Error('关闭后的迟到失败'));},nextRead);await settle();
     ok(kind+' a late rejection after disposal does not repaint or notify',await page.evaluate(()=>host.textContent==='已关闭新页面'&&notices.length===noticeCount&&operations.close===1));
     await page.evaluate(()=>window.controller=null);
     await page.evaluate(()=>oldHost.remove());

@@ -1,4 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.370';
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   let floorStatus=null,statusLoading=null,detachStatus=null;
@@ -48,7 +49,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     opening=true;button.disabled=true;let portal,chooser,detach;
     try{
       stylesheet();portal=root.ownerDocument.createElement('section');portal.dataset.qmTextCollectionPortal='';root.ownerDocument.body.append(portal);host=portal;detach=mountPortal?.(portal);
-      const runtime=await import('./qianmu-text-collection-capture.js');
+      const runtime=await loadLocalChunk('./qianmu-text-collection-capture.js');
       if(!valid())throw Error('楼层或页面已变化，请重新点击收藏');
       chooser=await runtime.openPersistentTextCollectionCapture({parent:portal,source,sourceElement:node.querySelector('.mes_text'),resolveNamespace,isCurrent:valid,headers});
       active=chooser;opening=false;
@@ -70,7 +71,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     const valid=()=>library===entry&&!entry.closed&&parent.isConnected&&isCurrent()===true;
     try{
       stylesheet(document);portal.dataset.qmTextCollectionPortal='';parent.append(portal);entry.detach=mountPortal?.(portal);
-      const runtime=await import('./qianmu-text-collection-library.js');if(!valid()){closeLibrary(entry);return null;}
+      const runtime=await loadLocalChunk('./qianmu-text-collection-library.js');if(!valid()){closeLibrary(entry);return null;}
       entry.view=await runtime.openTextCollectionLibrary({parent:portal,resolveNamespace,isCurrent:valid,headers,confirm,copy,download});
       entry.view.finished.then(()=>closeLibrary(entry));return entry.view;
     }catch(cause){if(valid())notify?.(String(cause?.message||'收藏管理暂不可用').slice(0,240),'warning');closeLibrary(entry);return null;}

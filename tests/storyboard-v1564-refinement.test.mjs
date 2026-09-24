@@ -21,21 +21,30 @@ const normalized = normalizeStoryboardState({
     },
   },
   routing: {
-    enabled: true,
-    single: {
+    styleLibrary: true,
+    rules: [{ id: 'style-target', name: '画面风格', enabled: true, target: {
       providerId: 'novel',
       modelId: 'nai-diffusion-4-5-full',
+      capabilityModelId: 'nai-diffusion-4-5-full',
       connectionPresetId: 'channel-api',
-    },
+    } }],
   },
 });
 
 assert.equal(normalized.connections.novel.activePresetId, 'channel-api');
-assert.equal(normalized.routing.single.connectionPresetId, 'channel-api', 'channel API presets must survive a different selected model');
+const styleTarget = normalized.routing.rules[0];
+assert.equal(styleTarget.id, 'style-target');
+assert.equal(styleTarget.enabled, true);
+assert.equal(styleTarget.target.providerId, 'novel');
+assert.equal(styleTarget.target.modelId, 'nai-diffusion-4-5-full');
+assert.equal(styleTarget.target.capabilityModelId, 'nai-diffusion-4-5-full');
+assert.equal(styleTarget.target.connectionPresetId, 'channel-api', 'channel API presets must survive a different selected model');
+assert.equal(normalized.connections.novel.presets[0].model, 'nai-diffusion-5-full', 'the style model must not rewrite the connection preset model');
+assert.equal(Object.hasOwn(normalized.routing, 'single'), false);
 assert.match(source, /<span>生图渠道<\/span>/);
 assert.match(source, /const channelPresets = connection\.group\?\.presets \|\| \[\]/);
 assert.doesNotMatch(source, /const modelPresets = .*item\.model === profile\.model/);
-assert.doesNotMatch(source, /sd-storyboard-route-model'[\s\S]{0,220}connectionPresetId = ''/, 'changing a model must keep the selected channel API preset');
+assert.doesNotMatch(source, /sd-storyboard-route-model|data-storyboard-route-rule/, 'the retired route model controls must not return');
 assert.match(source, /promptInput\('保存 API 预设', '输入预设名称。'/);
 assert.match(source, /placeholder="输入 API Key"/);
 assert.doesNotMatch(source, /savedKey \? '已保存'/);

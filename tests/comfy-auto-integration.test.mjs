@@ -28,7 +28,7 @@ async function environment({mixed=false,styleLock=true}={}){
   const row={namespace,id:pool.id,revision:pool.revision,version:1,name:'QA pool',archived:false,pool};
   const createStore=()=>({list:async()=>[copy(row)],versions:async()=>[copy(row)],load:async()=>copy(row),close(){}});
   e.state.comfyPoolSelection=(await auto.pinComfyAutoPool({namespace,selection:row,createStore})).binding;
-  e.state.comfyAutoEnabled=true;e.state.source='comfy';e.state.routing.enabled=mixed;
+  e.state.comfyAutoEnabled=true;e.state.source='comfy';e.styleSelection.enabled=mixed;
   if(mixed){e.state.routing.rules[0].target={providerId:'novel',modelId:'nai-diffusion-4-5-full',capabilityModelId:'nai-diffusion-4-5-full'};e.state.routing.rules[1].target.comfyWorkflowBinding=recipes[1].binding;}
   Object.assign(e.state.connections.comfy.draft,{baseUrl:'https://comfy.test/api'});
   e.state.connections.comfy.draft.options.comfyTransport='browser';

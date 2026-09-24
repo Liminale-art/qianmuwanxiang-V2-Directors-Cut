@@ -10,7 +10,7 @@ const copy=value=>JSON.parse(JSON.stringify(value));
 async function fixture(){
   const e=await compilerEnvironment(),chat=e.context.ctx().chat,reference=core.createStoryboardMessageReference({message:chat[0],chatKey:'chat-a',floor:0});
   const plan=core.createStoryboardWorkflowTicket({messageRef:reference,chatKey:'chat-a',floor:0});
-  e.state.shotPlans=[plan];e.state.source='novel';e.state.routing.enabled=false;e.state.target='floor';e.state.floor='0';e.state.connections.novel.draft.baseUrl='https://image.test';
+  e.state.shotPlans=[plan];e.state.source='novel';e.styleSelection.enabled=false;e.state.target='floor';e.state.floor='0';e.state.connections.novel.draft.baseUrl='https://image.test';
   for(const shot of e.response.shots){delete shot.prompt_renderings.natural_language;shot.gallery_keywords=['相伴'];} // NAI negotiates only tags; no Comfy route in this fixture.
   let attempts=0,fail=true,postAdmission=()=>{};
   Object.assign(e.context,{hashText,STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardPipelineArchiveCache:new Map(),blobStore:{deleteStoryboardPipelineLogs:async()=>{}},

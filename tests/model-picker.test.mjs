@@ -116,10 +116,18 @@ test('actual workbench fetch uses the typed key without saving or clearing it', 
   assert.equal(e.context.storyboardDraftApiKeys.get('novel'), 'typed-key');
   assert.equal(e.fetchCalls.length, 0);
 });
-test('actual route fetch reads its own connection, not the workbench draft key', async () => {
-  const e = await bindingEnvironment({ route: true }); await e.options().fetchModels();
-  assert.equal(e.sent[0].baseUrl, 'https://route.example'); assert.equal(e.sent[0].apiKey, 'stored-key');
-  assert.equal(e.reads[0][1], 'route-key');
+test('workbench fetch ignores injected retired route markup and cannot redirect its key to a style connection', async () => {
+  const e = await bindingEnvironment({ route: true });
+  e.host.dataset.route = 'true';
+  const before = structuredClone(e.state.routing.rules);
+  await e.options().fetchModels();
+  assert.equal(e.sent.length, 1);
+  assert.equal(e.sent[0].baseUrl, 'https://relay.example');
+  assert.equal(e.sent[0].apiKey, 'typed-key');
+  assert.equal(e.reads.length, 0, 'the stale route marker must not resolve another connection credential');
+  assert.equal(e.context.storyboardDraftApiKeys.get('novel'), 'typed-key');
+  assert.deepEqual(e.state.routing.rules, before);
+  assert.equal(e.fetchCalls.length, 0);
 });
 test('actual binding guards unsaved URL edits, key revisions, changed models and detached controls', async () => {
   for (const mutate of [e => { e.fields[0].value = 'https://different.example'; }, e => { e.context.storyboardCredentialRevision++; },

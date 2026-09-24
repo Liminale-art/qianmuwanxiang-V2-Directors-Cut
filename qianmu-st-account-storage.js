@@ -192,6 +192,12 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
   }
   return Object.freeze({namespace,scope,
     read(slot,options){return queue(slot,op=>readDocument(slot,op),options);},
+    // A consistency check for an already fully validated snapshot, not a
+    // substitute for reading/verifying its body. Use the same slot queue and
+    // operation guards as read/write; no identity or fingerprint is cached.
+    readFingerprint(slot,options){return queue(slot,async op=>{
+      const head=await readHead(slot,op);await op.check();return head?.fingerprint??null;
+    },options);},
     readImmutable(reference,options){
       try{const captured=stAccountImmutableReference(reference,{scope,maxBytes:maxBytes+1024});return queue(captured.slot,op=>readImmutable(captured,op),options);}
       catch(cause){return Promise.reject(cause);}

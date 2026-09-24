@@ -20,15 +20,15 @@ function relations(){
   local.artistPresets=[{id:'artist',name:'A',value:'line art'}];local.artistPools=[{id:'pool',name:'P',members:[{artistId:'artist',weight:1}]}];local.selectedArtistPresetId='artist';local.selectedArtistPoolId='pool';
   local.parameterPresets=[{id:'style',name:'Style',source:'novel',profile:local.profiles.novel}];local.parameterPresetSelection.novel='style';
   local.compositionPolicy={...local.compositionPolicy,allowedRatioIds:['3:2','2:3'],preferredRatioId:'2:3',ruleOverride:'Custom composition',userEdited:true};
-  local.routing={...local.routing,enabled:true,rules:[{id:'wide',name:'Wide',shotTypes:['landscape'],priority:2,target:{providerId:'novel',modelId:'nai-diffusion-3',connectionPresetId:'repairable-missing-connection',parameterPresetId:'style'}},{id:'detail',name:'Detail',shotTypes:['detail'],priority:1,target:{providerId:'openai',modelId:'relay',capabilityModelId:'gpt-image-2'}}]};
+  local.routing={styleLibrary:true,rules:[{id:'wide',name:'Wide',enabled:true,target:{providerId:'novel',modelId:'nai-diffusion-3',connectionPresetId:'repairable-missing-connection',parameterPresetId:'style'}},{id:'detail',name:'Detail',enabled:false,target:{providerId:'openai',modelId:'relay',capabilityModelId:'gpt-image-2'}}]};
   return board.normalizeStoryboardState(local);
 }
 
-test('modern routing-only restore does not rewrite count or concurrency policy; old routing still migrates',()=>{
+test('style-target-only restore leaves count and concurrency alone; explicit generation policy restores independently',()=>{
   const local=state();local.generationPolicy={version:1,minImages:2,maxImages:4,concurrency:3};const before=clone(local);
-  const result=prepare(local,modern({routing:{enabled:false}}));assert.equal(Object.hasOwn(result.settings,'generationPolicy'),false);
+  const result=prepare(local,modern({routing:{rules:[]}}));assert.equal(Object.hasOwn(result.settings,'generationPolicy'),false);
   assert.deepEqual(board.normalizeStoryboardState({...clone(local),...result.settings}).generationPolicy,before.generationPolicy);assert.deepEqual(local,before);
-  const old=prepare(local,{schemaVersion:2,routing:{mode:'ensemble',maxShotsPerFloor:2,providerConcurrency:2}});assert.equal(old.settings.generationPolicy.maxImages,2);assert.equal(old.settings.generationPolicy.concurrency,2);
+  const explicit=prepare(local,modern({routing:{rules:[]},generationPolicy:{version:2,minImages:1,maxImages:4,concurrency:2}}));assert.equal(explicit.settings.generationPolicy.maxImages,4);assert.equal(explicit.settings.generationPolicy.concurrency,2);assert.equal(explicit.settings.generationPolicy.version,2);
 });
 
 test('generation policy validates original values before migration can clamp them, while explicit valid counts restore',()=>{
@@ -56,10 +56,10 @@ test('all linked creative libraries retain source fields and current selections 
   assert.equal(reloaded.vibeLibrary[0].strength,0);assert.equal(reloaded.vibeLibrary[0].informationExtracted,0);assert.equal(reloaded.routing.rules[0].target.parameterPresetId,'style');assert.equal(reloaded.compositionPolicy.ruleOverride,'Custom composition');assert.deepEqual(source,before);
 });
 
-test('routing priority reordering and compiler derived summaries are allowed but rule values and identities cannot vanish',()=>{
-  const original=relations(),before=captureStoryboardRelationData(original);before.routing.rules.reverse();before.routing.mode='single';before.promptCompiler.excludedTags='stale derived value';
+test('style targets may reorder by stable route ID and compiler summaries may derive, but values and identities cannot vanish',()=>{
+  const original=relations(),before=captureStoryboardRelationData(original);before.routing.rules.reverse();before.promptCompiler.excludedTags='stale derived value';
   assertStoryboardRelationsRetained(before,original);
-  for(const mutate of [s=>s.routing.rules.pop(),s=>s.routing.rules[0].target.parameterPresetId='',s=>s.routing.rules[0].shotTypes=[],s=>s.routing.rules.push(clone(s.routing.rules[0]))]){
+  for(const mutate of [s=>s.routing.rules.pop(),s=>s.routing.rules[0].target.parameterPresetId='',s=>s.routing.rules[0].enabled=false,s=>s.routing.rules.push(clone(s.routing.rules[0]))]){
     const after=clone(original);mutate(after);assert.throws(()=>assertStoryboardRelationsRetained(before,after),/routing.*完整保留/);
   }
 });
@@ -87,7 +87,7 @@ test('composition and compiler manual rules must survive exactly, not get shorte
 });
 
 test('routing cannot discard disabled rules or change invalid channels, remote capability bindings and extra rule fields',()=>{
-  for(const mutate of [r=>r.rules[0].target.providerId='unknown',r=>r.rules[0].priority=2000,r=>r.rules[0].future='original',r=>r.rules[0].target.capabilityModelId='x'.repeat(241),r=>r.rules[0].shotTypes=Array.from({length:31},(_,i)=>`type-${i}`)]){
+  for(const mutate of [r=>r.rules[0].target.providerId='unknown',r=>r.rules[0].name='x'.repeat(81),r=>r.rules[0].future='original',r=>r.rules[0].target.capabilityModelId='x'.repeat(241),r=>r.rules[0].target.connectionPresetId='x'.repeat(201)]){
     const source=relations();mutate(source.routing);source.routing.rules[0].enabled=false;assert.throws(()=>prepare(state(),source),/routing.*完整保留/);
   }
 });

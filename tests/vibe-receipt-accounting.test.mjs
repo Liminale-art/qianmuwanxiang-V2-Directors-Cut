@@ -139,9 +139,8 @@ test('actual Vibe manager presents the independent history-file partition after 
   assert.doesNotMatch(host.innerHTML,/删除历史原件|清理历史原件|original-attempt/);
 });
 
-test('the accounting runtime is shipped and both views label independent registered scope, not deletion authority or VPS capacity',async()=>{
+test('accounting details remain in the explicit manager rather than the ordinary inventory summary',async()=>{
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('qianmu-vibe-receipt-accounting.js'));
-  for(const path of ['qianmu-vibe-storage.js','qianmu-storage-backup-view.js']){
-    const code=await readFile(new URL('../'+path,import.meta.url),'utf8');assert.match(code,/已登记费用原件/);assert.match(code,/历史独有文件/);assert.match(code,/未登记残留/);assert.match(code,/不与.*相加/);
-  }
+  const code=await readFile(new URL('../qianmu-vibe-storage.js',import.meta.url),'utf8');assert.match(code,/已登记费用原件/);assert.match(code,/历史独有文件/);assert.match(code,/未登记残留/);assert.match(code,/不与.*相加/);
+  const summary=await readFile(new URL('../qianmu-storage-backup-view.js',import.meta.url),'utf8');assert.doesNotMatch(summary,/已登记费用原件|历史独有文件|未登记残留/);
 });

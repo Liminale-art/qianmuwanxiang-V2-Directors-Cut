@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { prepareQianmuPortalBaseline } from '../qianmu-appearance-portals.js';
-import { createQianmuThemeSurfaceController, createQianmuThemeSnapshot } from '../qianmu-theme-surfaces.js';
+import { createQianmuThemeSurfaceController, createQianmuThemeSnapshot, QIANMU_THEME_PROPERTIES } from '../qianmu-theme-surfaces.js';
 
 function element() {
     const styles = new Map(), attrs = new Map();
@@ -38,6 +38,15 @@ test('probe cleanup is guaranteed and a computed-style failure leaves the portal
 test('roots without copied aliases do not create a probe; unknown classic keys fall back safely', () => {
     const f = fixture(); prepareQianmuPortalBaseline(f.root, 'light'); assert.equal(f.probe, undefined);
     f.root.style.setProperty('--sd-text', 'copied'); prepareQianmuPortalBaseline(f.root, 'dark another-class'); assert.equal(f.probe.className, 'qm-classic-theme-probe sd-theme-light'); assert.equal(f.attached, 0);
+});
+
+test('a new dialog may explicitly inherit classic color aliases without touching geometry, font or other host dialogs',()=>{
+    const f=fixture(),other=element();f.root.style.setProperty('left','14px');f.root.style.setProperty('--sd-font','custom');
+    prepareQianmuPortalBaseline(f.root,'dark',{inheritTheme:true});
+    assert.equal(f.root.style.getPropertyValue('--sd-text'),'classic-ink');assert.equal(f.root.style.getPropertyValue('--sd-accent'),'classic-accent');
+    assert.equal(f.root.style.getPropertyValue('--sd-font'),'custom');assert.equal(f.root.style.getPropertyValue('left'),'14px');
+    assert.equal(f.probe.className,'qm-classic-theme-probe sd-theme-dark');assert.equal(f.attached,0);assert.deepEqual(f.root.children,['unchanged']);
+    for(const key of QIANMU_THEME_PROPERTIES)assert.equal(other.style.getPropertyValue(key),'');
 });
 
 test('reader surfaces remain opaque and restore their original background and portal color', () => {

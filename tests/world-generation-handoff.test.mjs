@@ -20,11 +20,17 @@ test('world handoff leaves every editable workbench value intact and clears inhe
   assert.equal(draft.prompt,'rain, kitchen');assert.equal(draft.negative,'');assert.equal(draft.promptDraft.userEditedCompiled,false);
   assert.doesNotMatch(JSON.stringify([draft.promptDraft,draft.pendingCompilerStages]),/USER DRAFT|old prose|PRIVATE PROSE|prose-plan/);
 });
-test('world-owned routing, shot, prompt rows and trace are isolated from the original objects',()=>{
-  const {owner,input}=fixture(),token=create(owner,input);input.shotSpec.characters[0].identity=['red hair'];input.stages[0].output.approved=false;
-  const draft=consume(token,owner);draft.routing.single.modelId='only-this-job';draft.promptDraft.shots[0].prompt='private edit';
-  assert.notEqual(owner.routing.single.modelId,'only-this-job');assert.equal(owner.promptDraft.shots[0].prompt,'old prose');
+test('world-owned native style targets, shot, prompt rows and trace are isolated from the original objects',()=>{
+  const {owner,input}=fixture();
+  owner.routing={styleLibrary:true,rules:[{id:'style-a',name:'Ink',enabled:true,target:{providerId:'novel',modelId:'nai-diffusion-4-5-full',connectionPresetId:'connection-a',parameterPresetId:'parameters-a'}}]};
+  const before=structuredClone(owner),token=create(owner,input);input.shotSpec.characters[0].identity=['red hair'];input.stages[0].output.approved=false;
+  const draft=consume(token,owner);
+  assert.notEqual(draft.routing,owner.routing);assert.notEqual(draft.routing.rules,owner.routing.rules);
+  assert.notEqual(draft.routing.rules[0],owner.routing.rules[0]);assert.notEqual(draft.routing.rules[0].target,owner.routing.rules[0].target);
+  assert.deepEqual(draft.routing,owner.routing);draft.routing.rules[0].target.modelId='only-this-job';draft.promptDraft.shots[0].prompt='private edit';
+  assert.equal(owner.routing.rules[0].target.modelId,'nai-diffusion-4-5-full');assert.equal(owner.promptDraft.shots[0].prompt,'old prose');
   assert.deepEqual(draft.promptDraft.shots[0].shotSpec.characters[0].identity,['silver hair']);assert.equal(draft.pendingCompilerStages[0].output.approved,true);
+  assert.deepEqual(owner,before);
 });
 
 test('world handoff cannot inherit prose ensemble recovery or unknown prose-only execution metadata',()=>{

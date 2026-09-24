@@ -31,7 +31,7 @@ async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nSh
   const storage=streamCheckpointTransport();storage.configure();
   host.eventSource=events;host.chat.splice(0,host.chat.length,...Array.from({length:floor},(_,index)=>({mes:`earlier ${index}`,send_date:String(index),is_user:index%2===0})),
     {mes:text,name:'Alice',is_user:false,send_date:'live-start',gen_started:'live-generation',swipe_id:0});
-  e.state.routing.enabled=false;e.state.prompt='MANUAL WORKBENCH';e.state.negative='manual exclusions';e.state.floor='99';e.state.target='gallery';
+  e.styleSelection.enabled=false;e.state.prompt='MANUAL WORKBENCH';e.state.negative='manual exclusions';e.state.floor='99';e.state.target='gallery';
   e.state.promptDraft.userEditedCompiled=true;e.state.pendingCompilerStages=[{type:'manual',input:{owned:'user'}}];
   const initial=editable(e.state),calls=[],domEvents=new Map();let prepared,modelHook=null,preparedHook=null,worldHook=null,requests=0,hostSaves=0,saves=0,renders=0,wakes=0;
   host.saveMetadata=async()=>hostSaves++;
@@ -646,17 +646,20 @@ test('an account or source interruption after first acceptance cannot submit lat
 });
 
 test('pinned mixed Comfy/NAI stream jobs keep their own workflow, model prompt format and single-image count',async()=>{
-  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);useShotSet(f,[0,1,2]);f.state.routing.enabled=true;
+  const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);f.styleSelection.enabled=true;
   f.state.connections.comfy.draft.baseUrl='https://comfy.invalid';
   f.context.storyboardPreflightComfyForCompiler=async()=>[]; // No real Comfy endpoint: readiness is outside this isolated queue test.
   f.context.storyboardConfirmComfyExecution=async()=>true;
   f.context.storyboardParseWorkflow=value=>typeof value==='string'?JSON.parse(value):value;
+  const styleGuard=f.context.storyboardCreatePreparationGuard(f.state),binding=await f.prepareStyles(styleGuard),config=f.context.storyboardCompilerRequestConfig;
+  f.context.storyboardCompilerRequestConfig=(...args)=>({...config(...args),styleSession:binding.session,promptFormats:binding.session.promptFormats});
+  useShotSet(f,[0,1,2],({reply,options})=>{if(options.jsonSchemaName==='qianmu.storyboard.expression.v1')reply.style_assignments=['fixture-style-0','fixture-style-1','current'].map((scheme_id,index)=>({shot_id:`S${index+1}`,scheme_id,reason:'selected style'}));});
   assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message),notices:f.notices}));
   assert.deepEqual(q.queue.map(job=>job.source),['comfy','comfy','novel'],JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.profile.count),['1','1','1']);
   assert.deepEqual(q.queue.map(job=>job.messageRef.stream.moment.paragraphId),['P1','P2','P3']);
   assert.equal(q.queue[0].profile.comfyRouteBinding.id,'portrait');assert.equal(q.queue[1].profile.comfyRouteBinding.id,'landscape');
   assert.equal(q.queue[0].profile.comfyRoutePromptFormat,'tags');assert.equal(q.queue[1].profile.comfyRoutePromptFormat,'natural_language');
-  assert.equal(q.queue[2].payload.compiledPrompt.promptFormat,'tags');assert.equal(q.rows.size,1);f.assertReleased();
+  assert.equal(q.queue[2].payload.compiledPrompt.promptFormat,'tags');assert.equal(q.rows.size,1);binding.close();styleGuard.dispose();f.assertReleased();
 });
 
 test('terminal retention removes only the oldest terminal plan after successful stream preparation',async()=>{
@@ -679,8 +682,11 @@ test('reopening an archived generation restores its full earlier shots before ap
 });
 
 test('auto-selected stream Comfy jobs attach the captured selection and close the batch with the compiler',async()=>{
-  const f=await fixture(),q=installStreamQueue(f);f.state.routing.enabled=true;f.state.connections.comfy.draft.baseUrl='https://comfy.invalid';
+  const f=await fixture(),q=installStreamQueue(f);f.styleSelection.enabled=true;f.state.connections.comfy.draft.baseUrl='https://comfy.invalid';
   f.context.storyboardPreflightComfyForCompiler=async()=>[];f.context.storyboardConfirmComfyExecution=async()=>true;f.context.storyboardParseWorkflow=value=>value;
+  const styleGuard=f.context.storyboardCreatePreparationGuard(f.state),binding=await f.prepareStyles(styleGuard),config=f.context.storyboardCompilerRequestConfig;
+  f.context.storyboardCompilerRequestConfig=(...args)=>({...config(...args),styleSession:binding.session,promptFormats:binding.session.promptFormats});
+  f.modelHook=({reply,options})=>{if(options.jsonSchemaName==='qianmu.storyboard.expression.v1')reply.style_assignments=[{shot_id:'S1',scheme_id:'fixture-style-0',reason:'selected style'}];};
   let attached=0,closed=0;
   f.context.storyboardChooseComfyGenerationRoutes=async(_state,guard,planned,routes)=>{
     const batch={attach:async(job)=>{attached++;assert.ok(job.messageRef.stream.moment);},close:()=>closed++};guard.comfyBatch=batch;
@@ -688,7 +694,7 @@ test('auto-selected stream Comfy jobs attach the captured selection and close th
   };
   f.preparedHook=async value=>{value.inputGuard.comfyAuto={close(){}};q.outcomes.push(await f.context.storyboardSubmitStreamPrepared(value));};
   assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,notices:f.notices}));assert.equal(attached,1);assert.equal(closed,1);
-  assert.equal(q.queue[0].comfyAutoSelected,true);assert.ok(q.queue[0].compilerStages.some(row=>row.type==='comfy_selection'));f.assertReleased();
+  assert.equal(q.queue[0].comfyAutoSelected,true);assert.ok(q.queue[0].compilerStages.some(row=>row.type==='comfy_selection'));binding.close();styleGuard.dispose();f.assertReleased();
 });
 
 test('a missing archived plan blocks only the new stream batch and preserves its original archive marker',async()=>{
@@ -1265,7 +1271,7 @@ test('a disabled native per-chat selection ignores old shot-type rules and reads
   const {f,q,binding,compile,generate}=await nativeEnsembleFixture();
   const store=await createEnsembleStorage({namespace:binding.library.namespace,chatKey:'chat-a',isCurrent:()=>true,resolveNamespace:async()=>binding.library.namespace});
   const before=await store.readSelection();await store.saveSelection({...before.value,enabled:false,revision:'disabled'},before);store.close();
-  f.state.routing.enabled=true;f.state.routing.rules[0].target.comfyWorkflowBinding.revision='missing';useShotSet(f,[0]);
+  f.styleSelection.enabled=true;f.state.routing.rules[0].target.comfyWorkflowBinding.revision='missing';useShotSet(f,[0]);
   const start=f.storage.calls.length;assert.equal(await compile(),true,JSON.stringify(f.errors));
   assert.equal(f.storage.calls.slice(start).filter(row=>row.path.includes('ensemble-library')).length,0);
   assert.equal(f.state.promptDraft.ensembleRequired,false);assert.equal(await generate(),true,JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.source),['novel']);f.assertReleased();
@@ -1289,7 +1295,7 @@ test('native library mode also constructs the style session for streaming withou
 });
 
 test('all optional schemes unavailable leaves only the current engine and no invented style assignment',async()=>{
-  const {f,q,compile,generate}=await nativeEnsembleFixture();f.state.routing.rules=[];f.state.routing.enabled=true;useShotSet(f,[0]);
+  const {f,q,compile,generate}=await nativeEnsembleFixture();f.state.routing.rules=[];f.styleSelection.enabled=true;useShotSet(f,[0]);
   assert.equal(await compile(),true,JSON.stringify(f.errors));assert.equal(f.counts.requests,2);assert.equal(f.state.promptDraft.ensembleRequired,false);
   assert.match(f.notices.join('\n'),/2 个风格方案暂不可用/);assert.equal(await generate(),true,JSON.stringify(f.notices));assert.deepEqual(q.queue.map(job=>job.source),['novel']);f.assertReleased();
 });

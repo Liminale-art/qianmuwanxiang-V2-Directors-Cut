@@ -15,14 +15,16 @@ test('local preflight is pure and never claims a real node/model execution was v
   assert.equal(result.localConfigurationReady,true);assert.equal(result.remoteExecutionVerified,false);assert.equal(result.requiresManualQuantityReview,false);assert.deepEqual(input,before);
 });
 
-test('actual routing includes only reachable Comfy role recipes, including a mixed mirror-group parameter preset',async()=>{
+test('only the current workbench and prepared style candidates enable Comfy character extraction',async()=>{
   const e=environment();e.state.profiles.comfy.comfyCharacterEnabled=true;e.state.routing.enabled=true;
   e.state.routing.rules=[{id:'all',priority:10,enabled:true,shotTypes:[],target:target('novel')},{id:'shadow',enabled:true,shotTypes:['portrait'],target:target()}];
-  assert.equal(e.context.storyboardUsesComfyCharacters(e.state),false);
+  assert.equal(e.context.storyboardUsesComfyCharacters(e.state),true);
   e.state.source='novel';e.state.profiles.comfy.comfyCharacterEnabled=false;
   e.state.parameterPresets=[{id:'role',source:'comfy',profile:{comfyCharacterEnabled:true}}];
   e.state.routing.rules=[{id:'portrait',enabled:true,shotTypes:['portrait'],target:target('comfy','role')}];
-  assert.equal(e.context.storyboardUsesComfyCharacters(e.state),true);
+  assert.equal(e.context.storyboardUsesComfyCharacters(e.state),false);
+  assert.equal(e.context.storyboardUsesComfyCharacters(e.state,{candidates:[{target:{comfyCharacterEnabled:true}}]}),true);
+  assert.equal(e.context.storyboardUsesComfyCharacters(e.state,{candidates:[{target:{comfyCharacterEnabled:true}}]},true),false);
   e.state.parameterPresets[0].profile.comfyCharacterEnabled=false;
   assert.equal(e.context.storyboardUsesComfyCharacters(e.state),false);
 });
@@ -66,6 +68,7 @@ function environment({automatic=false}={}) {
     storyboardSetPlanStatus:(p,status,extra={})=>Object.assign(p||{}, {status,...extra}),renderModal:()=>{},saveSettings:()=>{},
     storyboardScheduleAutomaticCapture:()=>{},storyboardScheduleInlineRender:()=>{},storyboardSchedulePlanArchive:()=>{},
     storyboardResolveRoutingProfile:(s,route)=>({...s.profiles[route.providerId],...(s.parameterPresets.find(p=>p.id===route.parameterPresetId)?.profile||{})}),
+    storyboardProviderProfile:(s,providerId=s.source)=>s.profiles[providerId],
     storyboardCompilerContext:async()=>{calls.push('context');return {floor:0,messages:[],worldRows:[]};},
     storyboardRequestHeaders:()=>({}),storyboardGalleryRecords:()=>[],
     featureRuntime:{load:async key=>{calls.push(key);return key==='comfyPreflight'?preflight:key==='comfyTargets'?{requireTrustedComfyConnection:async()=>calls.push('trust-check')}:{...contract,
@@ -99,25 +102,36 @@ test('invalid fixed Comfy requester stops before context/LLM without changing th
   await e.context.storyboardCompilePrompt(null, { plan: e.plan });
   assert.ok(!e.calls.includes('llm')); assert.equal(e.state.connections.comfy.draft.options.comfyTransport, 'unsupported');
 });
-test('a catch-all model route does not load/validate the unused broken Comfy workbench',async()=>{
+test('an unpublished catch-all rule cannot bypass preflight of the active Comfy workbench',async()=>{
   const e=environment();e.state.profiles.comfy.comfyWorkflow='';e.state.routing.enabled=true;e.state.routing.rules=[{id:'all',enabled:true,shotTypes:[],target:target('novel')}];
-  await e.context.storyboardCompilePrompt(null,{plan:e.plan});assert.ok(e.calls.includes('llm'));assert.ok(!e.calls.includes('comfyPreflight'));
+  await e.context.storyboardCompilePrompt(null,{plan:e.plan});assert.ok(!e.calls.includes('llm'));assert.ok(e.calls.includes('comfyPreflight'));assert.equal(e.plan.status,'failed');
 });
-test('the actual highest-priority reachable route is checked, not a shadowed broken Comfy rule',async()=>{
+test('unselected internal routes never activate a broken Comfy workbench behind the active model',async()=>{
   const e=environment();e.state.source='novel';e.state.profiles.comfy.comfyWorkflow='';e.state.routing.enabled=true;
   e.state.routing.rules=[{id:'high',priority:10,enabled:true,shotTypes:[],target:target('novel')},{id:'low',enabled:true,shotTypes:[],target:target()}];
   assert.equal(e.context.storyboardCertainCompilerRoute(e.state,e.state.profiles.novel).providerId,'novel');
   await e.context.storyboardCompilePrompt(null,{plan:e.plan});assert.ok(e.calls.includes('llm'));assert.ok(!e.calls.includes('comfyPreflight'));
 });
-test('a catch-all Comfy route checks its explicit parameter recipe, not the current other engine',async()=>{
+
+test('ordinary NAI extraction never invokes Comfy preparation or preflight for unselected orphan rules, auto flags or saved workbench bindings',async()=>{
+  const e=environment();e.state.source='novel';e.state.routing.enabled=true;e.state.comfyAutoEnabled=true;
+  Object.assign(e.state.profiles.comfy,{comfyWorkflow:'broken inactive workflow',comfyCharacterEnabled:true,comfyWorkbenchBinding:{invalid:true}});
+  e.state.routing.rules=[{id:'orphan',enabled:true,shotTypes:[],target:{...target(),comfyCharacterEnabled:true,comfyWorkflowBinding:{invalid:true}}}];
+  let preflights=0;e.context.storyboardPreflightComfyForCompiler=async()=>{preflights++;throw Error('inactive Comfy must not preflight');};
+  await e.context.storyboardCompilePrompt(null,{plan:e.plan});
+  assert.equal(preflights,0);assert.equal(e.calls.includes('llm'),true);
+  for(const feature of ['comfyRoutes','comfyAuto','comfyCharacters','comfyPreflight','imageAdmission'])assert.equal(e.calls.includes(feature),false,feature);
+  assert.equal(e.context.storyboardUsesComfyCharacters(e.state),false);
+});
+test('an unselected Comfy parameter recipe does not block extraction by the active model',async()=>{
   const e=environment();e.state.source='novel';e.state.routing.enabled=true;e.state.parameterPresets=[{id:'broken',profile:{comfyWorkflow:''}}];
   e.state.routing.rules=[{id:'all',enabled:true,shotTypes:[],target:target('comfy','broken')}];
-  await e.context.storyboardCompilePrompt(null,{plan:e.plan});assert.equal(e.calls.includes('llm'),false);assert.equal(e.plan.status,'failed');
+  await e.context.storyboardCompilePrompt(null,{plan:e.plan});assert.equal(e.calls.includes('llm'),true);assert.ok(!e.calls.includes('comfyPreflight'));
 });
-test('unmatched types use current workbench fallback; genuinely conditional routes are not prematurely guessed',()=>{
+test('retired shot-type assignments cannot replace or make the active compiler route ambiguous',()=>{
   const e=environment();e.state.routing.enabled=true;e.state.routing.single=target('novel');
   assert.equal(e.context.storyboardCertainCompilerRoute(e.state,e.state.profiles.comfy).providerId,'comfy');
-  e.state.routing.rules=[{id:'portrait',enabled:true,shotTypes:['portrait'],target:target('novel')}];assert.equal(e.context.storyboardCertainCompilerRoute(e.state,e.state.profiles.comfy),null);
+  e.state.routing.rules=[{id:'portrait',enabled:true,shotTypes:['portrait'],target:target('novel')}];assert.equal(e.context.storyboardCertainCompilerRoute(e.state,e.state.profiles.comfy).providerId,'comfy');
 });
 test('configuration changed while lazy preflight loaded cannot continue to the LLM',async()=>{
   const e=environment();e.context.featureRuntime.load=async()=>{e.invalidate();return preflight;};

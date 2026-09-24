@@ -55,20 +55,20 @@ test('actual global inventory keeps native retired originals in Vibe totals with
   for(const retained of [{count:0,bytes:1},{count:1,bytes:0},{count:8193,bytes:1},{count:1,bytes:67*1048576}])assert.throws(()=>validateVibeStorageSummary({...value,retained},namespace));
 });
 
-test('registered fee-original bytes render separately in the real global card without increasing logical totals or browser quota',async()=>{
+test('registered fee originals remain accounted without exposing internal receipt prose or double counting',async()=>{
   const feeOriginals={version:1,scope:'registered-fee-original-files',complete:true,versions:4,selectedVersions:3,total:{count:8,bytes:8000},selected:{count:6,bytes:6000},history:{count:2,bytes:2000}};
   const value={...summary(),version:4,persistence:'st-account-file',retained:{count:1,bytes:100},bytes:630,feeOriginals};
   const context=globalContext(value);vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
-  assert.equal(data.trackedBytes,1250);assert.equal(data.origin.quota,10000);assert.match(html,/已登记费用原件 · 8000 B/);assert.match(html,/当前版本文件 6000 B · 历史独有文件 2000 B/);assert.match(html,/不与内容估算相加/);assert.match(html,/不是 VPS 总占用或可清理量/);
+  assert.equal(data.trackedBytes,1250);assert.equal(data.origin.quota,10000);assert.deepEqual(data.vibeStorage.feeOriginals,feeOriginals);assert.match(html,/<span>Vibe 素材<\/span><span>440 B<\/span>/);assert.doesNotMatch(html,/已登记费用原件|当前版本文件|历史独有文件|<span>Vibe 素材<\/span><span>8440 B/);
   for(const patch of [{version:3},{feeOriginals:{...feeOriginals,selectedVersions:2}},{feeOriginals:{...feeOriginals,receipt:'private body'}}])assert.throws(()=>validateVibeStorageSummary({...value,...patch},namespace));
 });
 
-test('actual global card reports unmeasured Vibe content without losing its management entry or implying zero',async()=>{
+test('actual global card reports unknown Vibe content without duplicate navigation or implying zero',async()=>{
   const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
-  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/当前总计不含此部分/);assert.match(html,/未盘点站点数据/);assert.match(html,/sd-storage-vibes/);assert.match(html,/bad &lt;metadata&gt;/);
-  assert.doesNotMatch(html,/Vibe 文件 · 0/);
+  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/部分数据暂不可读取/);assert.match(html,/未盘点站点数据/);assert.match(html,/<span>Vibe 素材<\/span><span>暂未读取<\/span>/);
+  assert.doesNotMatch(html,/bad <metadata>|<span>Vibe 素材<\/span><span>0 B|<button[^>]+sd-storage-vibes/);
 });
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const settled=()=>new Promise(resolve=>setImmediate(resolve));

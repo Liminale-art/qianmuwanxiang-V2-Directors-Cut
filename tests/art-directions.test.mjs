@@ -96,7 +96,7 @@ test('overlong style plus remembered defaults fail instead of truncating user te
 });
 
 test('actual compiler to queue preserves three ordered shots and frozen styles with only the original two LLM steps',async()=>{
-  const e=await compilerEnvironment();e.state.routing.enabled=false;e.state.profiles.novel.artDirection='cg';
+  const e=await compilerEnvironment();e.styleSelection.enabled=false;e.state.profiles.novel.artDirection='cg';
   assert.equal(await e.context.storyboardCompilePrompt(null),true,JSON.stringify(e.errors));assert.equal(e.llmCalls.length,2);
   await e.context.storyboardGenerate(null);assert.equal(e.jobs.length,3,JSON.stringify(e.notices));assert.equal(e.llmCalls.length,2);
   const prefix=art.STORYBOARD_ART_DIRECTIONS[1].tags;

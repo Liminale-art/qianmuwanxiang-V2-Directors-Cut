@@ -2,9 +2,9 @@ import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.369';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.369';
-import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.369';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.370';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.370';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.370';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -40,7 +40,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       contentRating:result.shots.some(shot=>shot.sensitive) ? 'nsfw' : 'sfw', promptMode:'auto',
       paragraphMode:'auto', manualParagraphIndex:null, pendingParagraphIndex:null, pendingParagraphSelection:null,
       promptDraft:{...state.promptDraft, planId:'', shots:result.shots, userEditedCompiled:false, userEditedNegative:false},
-      routing:{...state.routing, single:{providerId:state.source, modelId:profile.model, capabilityModelId:profile.capabilityModelId, connectionPresetId:'', parameterPresetId:''}},
+      routing:state.routing,
       pendingCompilerStages:[d.sanitizeStoryboardDiagnosticData({id:d.uid('stage-stream'),type:'prompt_compiler',status:'success',
         startedAt:Date.now(),finishedAt:Date.now(),input:prepared.compilerInput,
         output:{contract:result.contractMeta,trace:result.contractTrace,streaming:true},decisions:result.decisions || [],error:''})],
@@ -91,7 +91,8 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       status:'cancelled',resultIds:[],error:'本镜尚未提交',partialFailureCount:0,attempt:0,sensitive:Boolean(shot.sensitive),promptLocked:false,userEdited:false}));
     const planView = {...plan, shots:newShots};
     const inlineBatch = {version:1,batchId:plan.id,batchStartedAt:plan.createdAt};
-    let routes = planned.map(shot=>projected.routing.enabled ? d.routeStoryboardShot(shot,projected.routing) : projected.routing.single);
+    const currentTarget={providerId:state.source,modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''};
+    let routes = planned.map(()=>currentTarget);
     // Use the compiler's exact draft-ID mapping; style choice never uses an
     // array position after coverage has dropped a redundant mirror.
     ensemble=await resolveEnsembleCompiledRoutes(result,planned,{guard:async()=>{inputGuard.assertCurrent();await context.compilerSources.guard();inputGuard.assertCurrent();}});

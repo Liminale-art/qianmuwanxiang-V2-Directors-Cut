@@ -1,4 +1,4 @@
-import {normalizeEnsembleLibrary,normalizeEnsembleChatSelection} from './qianmu-ensemble-selection.js?v=1.59.369';
+import {normalizeEnsembleLibrary,normalizeEnsembleChatSelection} from './qianmu-ensemble-selection.js?v=1.59.370';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const fail=message=>{throw Object.assign(Error(message),{code:'ensemble_editor'});};
 const id=prefix=>`${prefix}-${crypto.randomUUID()}`;
@@ -6,7 +6,7 @@ const messages=error=>error?.code==='st_account_storage_conflict'?'另一端已�
 
 // Session model, independent of DOM. It borrows an account-scoped store rather
 // than closing/recreating its verified cache each time a panel is rendered.
-export function createEnsembleLibraryEditor({store,chatKey,isCurrent,readTargets,readArtists=()=>[],onChange=()=>{},beforeCommit=()=>{},afterCommit=()=>{},onCommitted=()=>{},uid=id}={}){
+export function createEnsembleLibraryEditor({store,chatKey,isCurrent,readTargets,readArtists=()=>[],configureTarget,onChange=()=>{},beforeCommit=()=>{},afterCommit=()=>{},onCommitted=()=>{},uid=id}={}){
   if(!store||typeof isCurrent!=='function'||typeof readTargets!=='function')fail('方案库环境未就绪');
   if((store.chatKey||null)!==(chatKey||null))fail('方案库聊天归属不一致');
   let library=null,selection=null,draft=null,busy=false,closed=false,retired=false,search='',archived=false,message='',error='',needsRefresh=false,pending=null,draftExpected=null;
@@ -14,16 +14,17 @@ export function createEnsembleLibraryEditor({store,chatKey,isCurrent,readTargets
   const retire=()=>{library=null;selection=null;draft=null;draftExpected=null;error='方案库页面或账户已变化，请重新打开。';};
   const check=()=>{if(!current()){retire();emit('view');fail('方案库页面或账户已变化');}};
   const view=()=>({ready:Boolean(library),busy,chatKey:chatKey||null,library:library?copy(library.value):null,selection:selection?copy(selection.value):null,
-    draft:draft?copy(draft):null,search,archived,message,error,needsRefresh,targets:current()?copy(readTargets()):[],artists:current()?copy(readArtists()):[]});
+    draft:draft?copy(draft):null,search,archived,message,error,needsRefresh,canConfigure:typeof configureTarget==='function',targets:current()?copy(targets()):[],artists:current()?copy(readArtists()):[]});
   let notifying=false;const observers=new Set([onChange]);
   const emit=kind=>{if(closed||notifying)return;if(!current())retire();notifying=true;try{const snapshot=view();for(const observer of observers)try{const value=observer(snapshot,kind);value?.catch?.(()=>{});}catch(_){/* Observers do not turn a confirmed save into an error. */}}finally{notifying=false;}};
   const available=()=>{check();if(busy)fail('正在读取或保存，请稍候');if(!library)fail('请先读取方案库');};
-  const targets=()=>{const rows=readTargets();if(!Array.isArray(rows)||rows.length>64||new Set(rows.map(r=>r.id)).size!==rows.length)fail('绘制线路列表无效');return rows;};
+  const targets=()=>{const rows=readTargets();if(!Array.isArray(rows)||rows.length>160||new Set(rows.map(r=>r.id)).size!==rows.length)fail('生成设置暂不可用');return draft?.configuredTarget?[...rows.filter(row=>row.id!==draft.configuredTarget.id),draft.configuredTarget]:rows;};
   async function run(work,committing=false){
     check();if(busy)fail('正在读取或保存，请稍候');busy=true;error='';message='';emit('view');
-    try{const result=await work();check();return result;}
-    catch(cause){if(!closed){if(['st_account_storage_account','st_account_storage_scope'].includes(cause?.code)){retired=true;retire();}else{error=messages(cause);if(cause?.code==='st_account_storage_conflict'||cause?.writeState==='unconfirmed')needsRefresh=true;}}throw cause;}
-    finally{try{if(committing)await afterCommit();}finally{busy=false;emit('view');}}
+    const transaction={confirmed:false,error:null};
+    try{const result=await work(transaction);check();return result;}
+    catch(cause){transaction.error=cause;if(!closed){if(['st_account_storage_account','st_account_storage_scope'].includes(cause?.code)){retired=true;retire();}else{error=messages(cause);if(cause?.code==='st_account_storage_conflict'||cause?.writeState==='unconfirmed')needsRefresh=true;}}throw cause;}
+    finally{try{if(committing)await afterCommit(transaction);}finally{busy=false;emit('view');}}
   }
   async function load({fresh=false}={}){
     check();if(pending)return pending;if(library&&!fresh)return view();
@@ -46,18 +47,26 @@ export function createEnsembleLibraryEditor({store,chatKey,isCurrent,readTargets
     else if(field==='artistPresetId')draft.binding.artistPresetId=String(value);
     else fail('未知方案字段');error='';message='';emit(field==='routeId'?'view':'draft');
   }
+  async function configure(){
+    available();if(!draft||typeof configureTarget!=='function')fail('请先打开方案编辑');
+    const original=draft;
+    return run(async()=>{const picked=await configureTarget({routeId:original.binding.routeId,schemeId:original.id,configuredTarget:original.configuredTarget?copy(original.configuredTarget):null});check();
+      if(draft!==original)fail('当前方案已变化，请重新打开');if(!picked)return view();
+      if(typeof picked.id!=='string'||!picked.target||picked.available===false)fail('请选择可用的生成设置');
+      draft.configuredTarget=copy(picked);draft.binding.routeId=picked.id;if(!picked.artistCapable)draft.binding.artistPresetId='';return view();});
+  }
   async function save(){
     available();if(!draft||needsRefresh)fail('请先刷新并重新打开方案编辑');
-    const target=targets().find(row=>row.id===draft.binding.routeId&&row.available!==false);if(!target)fail('请选择仍可用的绘制线路');
-    if(draft.binding.artistPresetId&&(!target.artistCapable||!readArtists().some(row=>row.id===draft.binding.artistPresetId)))fail('画师绑定不适用于此线路，请重新选择');
-    const row={...copy(draft),revision:uid('revision'),tags:[...new Set(draft.tagText.split(/[,，\n]/).map(t=>t.trim()).filter(Boolean))]};delete row.tagText;
+    const target=targets().find(row=>row.id===draft.binding.routeId&&row.available!==false);if(!target)fail('请先选择生成方式');
+    if(draft.binding.artistPresetId&&(!target.artistCapable||!readArtists().some(row=>row.id===draft.binding.artistPresetId)))fail('此模型不支持所选画师，请重新选择');
+    const editing=copy(draft),row={...editing,revision:uid('revision'),tags:[...new Set(draft.tagText.split(/[,，\n]/).map(t=>t.trim()).filter(Boolean))]};delete row.tagText;delete row.configuredTarget;
     const previous=draftExpected,next=normalizeEnsembleLibrary({...copy(previous.value),schemes:previous.value.schemes.some(item=>item.id===row.id)?previous.value.schemes.map(item=>item.id===row.id?row:item):[...previous.value.schemes,row]});
-    return run(async()=>{await beforeCommit('library');check();const saved=await store.saveLibrary(next,previous);check();library=saved;draft=null;draftExpected=null;needsRefresh=false;await onCommitted({kind:'library',value:saved.value});check();message='方案已保存';return view();},true);
+    return run(async transaction=>{await beforeCommit('library',{draft:editing,library:previous.value});check();const saved=await store.saveLibrary(next,previous);transaction.confirmed=true;check();library=saved;draft=null;draftExpected=null;needsRefresh=false;await onCommitted({kind:'library',value:saved.value});check();message='方案已保存';return view();},true);
   }
   async function select(change){
     available();if(!chatKey||!selection)fail('请先进入聊天，再选择本聊天方案');if(needsRefresh)fail('请先刷新方案库');
     const previous=selection,next=normalizeEnsembleChatSelection({...copy(previous.value),...change,revision:uid('selection')},{namespace:store.namespace,chatKey});
-    return run(async()=>{await beforeCommit('selection');check();const saved=await store.saveSelection(next,previous);check();selection=saved;await onCommitted({kind:'selection',value:saved.value,change});check();message='本聊天选择已保存';return view();},true);
+    return run(async transaction=>{await beforeCommit('selection');check();const saved=await store.saveSelection(next,previous);transaction.confirmed=true;check();selection=saved;await onCommitted({kind:'selection',value:saved.value,change});check();message='';return view();},true);
   }
   async function toggleScheme(schemeId){
     available();const row=library.value.schemes.find(row=>row.id===schemeId);if(!row||row.archived)fail('此方案不存在或已归档');
@@ -68,7 +77,12 @@ export function createEnsembleLibraryEditor({store,chatKey,isCurrent,readTargets
     const next=normalizeEnsembleLibrary({...copy(previous.value),schemes:previous.value.schemes.map(item=>item.id===schemeId?{...item,archived:!item.archived,revision:uid('revision')}:item)});
     return run(async()=>{await beforeCommit('library');check();const saved=await store.saveLibrary(next,previous);check();library=saved;if(draft?.id===schemeId){draft=null;draftExpected=null;}await onCommitted({kind:'library',value:saved.value});check();message=row.archived?'方案已恢复':'方案已归档，历史记录与其他聊天选择保留';return view();},true);
   }
-  return Object.freeze({load,refresh:()=>load({fresh:true}),edit,setField,save,toggleScheme,archive,
+  async function remove(schemeId){
+    available();if(needsRefresh)fail('请先刷新方案库');const previous=library;if(!previous.value.schemes.some(row=>row.id===schemeId))fail('方案不存在');
+    const next=normalizeEnsembleLibrary({...copy(previous.value),schemes:previous.value.schemes.filter(row=>row.id!==schemeId)});
+    return run(async transaction=>{await beforeCommit('library');check();const saved=await store.saveLibrary(next,previous);transaction.confirmed=true;check();library=saved;if(draft?.id===schemeId){draft=null;draftExpected=null;}await onCommitted({kind:'library',value:saved.value});check();message='方案已删除';return view();},true);
+  }
+  return Object.freeze({load,refresh:()=>load({fresh:true}),edit,setField,save,configure,remove,toggleScheme,archive,
     setEnabled:value=>select({enabled:value}),setStyleLock:value=>select({styleLock:value}),
     setSearch(value){available();search=String(value).slice(0,300);emit('list');},
     showArchived(value){available();archived=Boolean(value);emit('list');},

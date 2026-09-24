@@ -6,7 +6,7 @@ import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 
 for(const fixed of [false,true])test(`${fixed?'fixed recipe':'workbench'} fresh preparation omits retired roles but keeps original workflow preflight`,async()=>{
   const e=await routeEnvironment();e.context.projectNewComfyExecution=projectNewComfyExecution;
-  e.state.source='comfy';e.state.routing.enabled=fixed;
+  e.state.source='comfy';e.styleSelection.enabled=fixed;
   e.state.profiles.comfy.comfyCharacterEnabled=true;
   e.state.profiles.comfy.comfyWorkflow=e.rows[0].document.workflow;
   e.routes.forEach(route=>route.comfyCharacterEnabled=true);
@@ -37,7 +37,7 @@ for(const fixed of [false,true])test(`${fixed?'fixed recipe':'workbench'} fresh 
 });
 
 test('one preparation boundary supplies the same explicit policy to automatic candidate selection',async()=>{
-  const e=await routeEnvironment();e.state.source='comfy';e.state.routing.enabled=false;e.state.comfyAutoEnabled=true;
+  const e=await routeEnvironment();e.state.source='comfy';e.styleSelection.enabled=false;e.state.comfyAutoEnabled=true;
   const seen=[],load=e.context.featureRuntime.load;let closed=0;
   e.context.featureRuntime.load=async key=>key==='comfyAuto'?{prepareComfyAutoSession:async options=>{
     seen.push(options.freshComfy);return {candidates:[],promptFormats:[],close(){closed++;}};
@@ -51,7 +51,7 @@ test('one preparation boundary supplies the same explicit policy to automatic ca
 
 test('fresh preparation still rejects a malformed graph before any retired role lookup',async()=>{
   const e=await routeEnvironment();e.context.projectNewComfyExecution=projectNewComfyExecution;
-  e.state.source='comfy';e.state.routing.enabled=false;
+  e.state.source='comfy';e.styleSelection.enabled=false;
   Object.assign(e.state.profiles.comfy,{comfyCharacterEnabled:true,comfyWorkflow:'[]'});
   const guard=e.context.storyboardCreatePreparationGuard(e.state,{freshComfy:true});
   try{

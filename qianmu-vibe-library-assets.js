@@ -16,9 +16,25 @@ export function mountVibeWorkbenchPreviews(root,{items,preview,isCurrent=()=>tru
 }
 
 // The caller owns the live account/page guards and publishes settings only after the entire operation succeeds.
-export function createVibeLibraryAssets({state,namespace,call,guard,isCurrent,publish,uid,notify=()=>{}}){
+export function createVibeLibraryAssets({state,namespace,call,guard,isCurrent,publish,uid,notify=()=>{},now=()=>Date.now()}){
   const ref=value=>{const result=retainVibeAssetRef(value);if(result.invalid||result.namespace!==namespace)throw Error('Vibe 资产不属于当前账户，请重新导入');return result;};
   const current=()=>{if(!isCurrent())throw Error('Vibe 页面已变化，未应用素材');};
+  // Account-local, short-lived thumbnails only. Library repaint/search must not
+  // fetch every visible file again. Failed/missing reads never poison retries;
+  // full originals and model validation remain uncached.
+  const previews=new Map(),pendingPreviews=new Map();let previewBytes=0;
+  const expirePreviews=()=>{const at=now();for(const [id,row] of previews)if(row.until<=at){previews.delete(id);previewBytes-=row.blob.size;}};
+  const readPreview=async id=>{
+    expirePreviews();const cached=previews.get(id);if(cached){previews.delete(id);previews.set(id,cached);return cached.blob;}
+    if(pendingPreviews.has(id))return pendingPreviews.get(id);
+    const pending=Promise.resolve().then(()=>call('preview',{namespace,id})).then(blob=>{
+      if(blob&&Number.isInteger(blob.size)&&blob.size>0&&blob.size<=1024*1024){
+        expirePreviews();while(previews.size>=32||previewBytes+blob.size>4*1024*1024){const first=previews.keys().next().value;if(first===undefined)break;previewBytes-=previews.get(first).blob.size;previews.delete(first);}
+        previews.set(id,{blob,until:now()+30000});previewBytes+=blob.size;
+      }
+      return blob;
+    }).finally(()=>pendingPreviews.delete(id));pendingPreviews.set(id,pending);return pending;
+  };
   return Object.freeze({
     async adopt(value,{model,information,expectedSourceId}){
       const asset=ref(value);await guard();current();const before=JSON.stringify(state.vibeLibrary),head=await call('library-info',{namespace,id:asset.id,model,information,expectedSourceId});await guard();current();
@@ -44,7 +60,7 @@ export function createVibeLibraryAssets({state,namespace,call,guard,isCurrent,pu
       if(added){state.vibeLibrary=next;publish();}notify(added?`已导入 ${added} 项 Vibe`:'这些 Vibe 已在库中');return true;
     },
     async head(value){const asset=ref(value);await guard();const head=await call('head',{namespace,id:asset.id});await guard();return head;},
-    async preview(value,{original=false}={}){const asset=ref(value);await guard();let blob=await call('preview',{namespace,id:asset.id});await guard();if(!blob&&original){blob=await call('original-preview',{namespace,id:asset.id});await guard();}return blob;},
+    async preview(value,{original=false}={}){const asset=ref(value);await guard();current();let blob=await readPreview(asset.id);await guard();current();if(!blob&&original){blob=await call('original-preview',{namespace,id:asset.id});await guard();current();}return blob;},
     async validate(rows,model){
       await guard();for(const row of rows){if(!row.assetRef)continue;const asset=ref(row.assetRef);await call('check',{namespace,id:asset.id,model,information:row.informationExtracted});await guard();}return true;
     },

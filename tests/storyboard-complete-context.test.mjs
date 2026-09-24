@@ -57,3 +57,21 @@ test('actual compiler context publishes through its guarded ST session and reope
  const second=makeGuard(),output=await context.storyboardCompilerContext(state,second);assert.equal(output.continuity.records[0].events[0].value,'removed');assert.equal(writes,1);
  assert.doesNotMatch(JSON.stringify(buildStoryboardPlanContractRequest(output).messages),/st-user:test|continuity-store|paragraphDigest/,'host identity and cache storage headers are never dumped into legacy model messages');second.dispose();
 });
+
+test('actual compiler reference preparation follows the current workbench and prepared style, never dormant NAI settings or removed routing flags',async()=>{
+ const host={chatId:'chat',characterId:0,characters:[{avatar:'Alice.png',chat:'chat'}],chatMetadata:{story_director_liminale:{}},chat:[{mes:'Alice holds a cup.',name:'Alice',send_date:'one'}]};
+ let includeReferences;
+ const context=vm.createContext({ctx:()=>host,storyboardAdmissionEpoch:0,
+  featureRuntime:{load:async key=>key==='storyboardContract'?{captureStoryboardCompilerSources,openStoryboardCompilerContinuity}:{resolveImageAccountNamespace:async()=> 'st-user:test'}},
+  storyboardTargetFloor:()=>0,storyboardCleanWithTagRules:x=>x,storyboardCleanMessageText:x=>x,resolveMacro:async x=>x,
+  getCharacterDescription:()=>'',getPersonaDescription:()=>'',storyboardMessageParagraphs:x=>[x],
+  storyboardCompilerWorldText:async()=>({text:'',rows:[]}),storyboardUsesComfyCharacters:()=>false,
+  storyboardCompilerCharacterCasting:async(_text,_guard,useReferences)=>{includeReferences=useReferences;return {prepared:null,assertCurrent:async()=>{}};}});
+ vm.runInContext(storyboardFunctionSource('storyboardCompilerContext'),context);
+ for(const [source,workbenchEnabled,styleEnabled,expected] of [['openai',true,false,false],['openai',false,true,true],['novel',true,false,true],['novel',false,false,false]]){
+  const state={source,promptCompiler:{includeRecentFloors:0,includeCharacterCards:false,includeUserPersona:false},profiles:{novel:{characterReferenceEnabled:workbenchEnabled}},paragraphMode:'auto',routing:{enabled:true,rules:[{enabled:true,target:{providerId:'novel'}}]}};
+  const guard={ensemble:{useReference:styleEnabled},isCurrent:()=>true,assertCurrent(){this.compilerSources?.assertCurrent();}};
+  try{await context.storyboardCompilerContext(state,guard);assert.equal(includeReferences,expected,JSON.stringify({source,workbenchEnabled,styleEnabled}));}
+  finally{guard.continuityStore?.close();guard.compilerSources?.close();}
+ }
+});

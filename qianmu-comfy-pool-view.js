@@ -5,7 +5,6 @@ import { readPinnedComfyRouteWorkflow, applyComfyRouteRecipe } from './qianmu-co
 import { renderComfyClassificationBadges } from './qianmu-comfy-library-view.js';
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const clone = value => structuredClone(value);
-const size = bytes => bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 const icon = (action, label, glyph) => `<button type="button" class="sd-icon-btn" data-pool-action="${action}" aria-label="${escape(label)}" title="${escape(label)}"><i class="fa-solid fa-${glyph}"></i></button>`;
 const freshId = () => { if (!globalThis.crypto?.randomUUID) throw Error('请使用 HTTPS 或本机地址编辑候选方案'); return globalThis.crypto.randomUUID(); };
 const classificationOf = document => normalizeComfyClassification(Object.hasOwn(document, 'classification') ? document.classification : { version: 1 });
@@ -37,47 +36,46 @@ export async function verifyComfyPoolCandidate({ candidate, namespace, connectio
 function renderMember(candidate, view) {
   const target = candidate.target, binding = target.comfyWorkflowBinding, missing = target.connectionPresetId && !view.connections.some(row => row.id === target.connectionPresetId);
   return `<details class="sd-card sd-comfy-pool-member" data-pool-member="${escape(candidate.id)}" ${view.openMembers?.has(candidate.id) ? 'open' : ''}>
-    <summary><b>${escape(binding.name)} · v${binding.version}</b><small>${candidate.enabled ? '参与选择' : '未参与'}</small></summary><div class="sd-storyboard-card-body">
-    <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="replace-member">更换固定版本</button><button type="button" class="sd-btn" data-pool-action="toggle-member" aria-pressed="${candidate.enabled}">参与选择</button>${icon('remove-member','移除候选','trash-can')}</div>
-    <div class="sd-comfy-pool-fields"><label><span>API 预设</span><select class="text_pole" data-pool-member-field="connectionPresetId"><option value="">当前 Comfy API</option>${missing ? `<option value="${escape(target.connectionPresetId)}" selected>API 预设已失效</option>` : ''}${view.connections.map(row => `<option value="${escape(row.id)}" ${row.id === target.connectionPresetId ? 'selected' : ''}>${escape(row.name)}</option>`).join('')}</select></label><label><span>同等匹配优先级</span><input class="text_pole" data-pool-member-field="priority" type="number" min="-100" max="100" step="1" inputmode="numeric" value="${escape(candidate.priority)}"></label></div>
-    <div class="sd-comfy-pool-tools"><span class="sd-comfy-library-note">参考图 ${target.comfyReferences?.items.length || 0} 张</span>${target.comfyReferences ? icon('clear-references','移除本候选参考图','xmark') : ''}</div>
+    <summary><b>${escape(binding.name)}</b><small>${candidate.enabled ? '已启用' : '未启用'}</small></summary><div class="sd-storyboard-card-body">
+    <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="replace-member">更换工作流</button><button type="button" class="sd-btn" data-pool-action="toggle-member" aria-pressed="${candidate.enabled}">启用</button>${icon('remove-member','移除工作流','trash-can')}</div>
+    <details class="sd-comfy-pool-options" ${missing?'open':''}><summary>连接与优先级</summary><div class="sd-comfy-pool-fields"><label><span>API 预设</span><select class="text_pole" data-pool-member-field="connectionPresetId"><option value="">当前 Comfy API</option>${missing ? `<option value="${escape(target.connectionPresetId)}" selected>API 预设已失效</option>` : ''}${view.connections.map(row => `<option value="${escape(row.id)}" ${row.id === target.connectionPresetId ? 'selected' : ''}>${escape(row.name)}</option>`).join('')}</select></label><label><span>同等匹配优先级</span><input class="text_pole" data-pool-member-field="priority" type="number" min="-100" max="100" step="1" inputmode="numeric" value="${escape(candidate.priority)}"></label></div></details>
+    ${target.comfyReferences?`<div class="sd-comfy-pool-tools"><span class="sd-comfy-library-note">参考图 ${target.comfyReferences.items.length} 张</span>${icon('clear-references','移除参考图','xmark')}</div>`:''}
     ${renderComfyClassificationBadges(candidate)}
-    <small class="sd-comfy-library-note">${escape(view.checks?.get(candidate.id) || (readyClassification(candidate.classification) ? '分类随固定版本；更改请在工作流库保存新版本后重绑。' : '分类待完善：请先声明内容范围和提示格式。'))}</small>
+    ${view.checks?.get(candidate.id)||!readyClassification(candidate.classification)?`<small class="sd-comfy-library-note">${escape(view.checks?.get(candidate.id)==='固定版本已核对，执行资格将在生成前检查'?'配置已核对':view.checks?.get(candidate.id)||'请在工作流中设置内容范围和提示格式')}</small>`:''}
   </div></details>`;
 }
 export function renderComfyPools(view) {
   view = { connections: [], ...view };
   const draft = view.draft, disabled = view.busy ? 'disabled' : '',native=view.usage?.persistence==='st-account-file';
-  const choose=row=>view.canSelect?`<button type="button" class="sd-btn" data-pool-action="${row===draft?'select-version':'select'}" aria-pressed="${view.selection?.id===row.id && view.selection?.revision===row.revision}" ${row===draft&&draft.dirty?'disabled':''}>选用此版本</button>`:'';
-  const body = draft ? `<div class="sd-comfy-pool-tools">${icon('cancel','取消编辑','xmark')}<span>${escape(draft.name || '新候选方案')}${draft.version ? ` · v${draft.version}` : ''}</span>${icon('export-draft','导出草稿','download')}${icon('save-copy','另存新方案','copy')}${icon('save','保存方案版本','floppy-disk')}</div>
+  const choose=row=>view.canSelect?`<button type="button" class="sd-btn" data-pool-action="${row===draft?'select-version':'select'}" aria-pressed="${view.selection?.id===row.id && view.selection?.revision===row.revision}" ${row===draft&&draft.dirty?'disabled':''}>选用</button>`:'';
+  const body = draft ? `<div class="sd-comfy-pool-tools">${icon('cancel','取消编辑','xmark')}<span>${escape(draft.name || '新建自动选用方案')}</span>${icon('export-draft','导出草稿','download')}${icon('save-copy','另存新方案','copy')}${icon('save','保存方案','floppy-disk')}</div>
     <section class="sd-card"><div class="sd-storyboard-card-body"><label><span>方案名</span><input class="text_pole" data-pool-name maxlength="80" value="${escape(draft.name)}"></label>
-    ${draft.versions?.length ? `<label><span>已保存版本</span><select class="text_pole" data-pool-version>${draft.versions.map(row => `<option value="${escape(row.revision)}" ${row.revision === draft.revision ? 'selected' : ''}>v${row.version} · ${escape(row.name)}</option>`).join('')}</select></label>` : ''}
+    ${draft.versions?.length ? `<details class="sd-comfy-library-history"><summary>历史版本</summary><label><span>版本</span><select class="text_pole" data-pool-version>${draft.versions.map(row => `<option value="${escape(row.revision)}" ${row.revision === draft.revision ? 'selected' : ''}>v${row.version} · ${escape(row.name)}</option>`).join('')}</select></label></details>` : ''}
     <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="style-lock" aria-label="连续场景风格锁" title="连续场景风格锁" aria-pressed="${draft.pool.styleLock}">续场风格锁</button><button type="button" class="sd-btn" data-pool-action="check-members">核对版本</button>${icon('add-member','添加候选工作流','plus')}</div>
     ${draft.id?choose(draft):''}
-    <small class="sd-comfy-library-note">保存前核对固定版本；在镜头台启用自动择流后使用。不会自动修改工作流。</small></div></section>
+    </div></section>
     <div class="sd-comfy-pool-members">${draft.pool.candidates.map(candidate => renderMember(candidate, view)).join('')}</div>`
     : `<div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="library">工作流库</button><input class="text_pole" type="search" data-pool-search aria-label="搜索候选方案" value="${escape(view.search || '')}">${icon('import','导入候选方案','upload')}${icon('new','新建候选方案','plus')}</div>
-    <div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="archived" aria-pressed="${Boolean(view.archived)}">归档</button><span class="sd-comfy-library-note">${view.usage ? `${view.usage.count} 个方案 · ${view.usage.versions} 个版本 · ${size(view.usage.bytes)} / ${size(view.usage.limit)}` : ''}</span>${icon('backup-resources','备份候选方案及工作流库','download')}${icon('restore-resources','恢复候选方案及工作流库','folder')}${icon('refresh','刷新候选方案','rotate')}</div>
-    ${native?'<p class="sd-comfy-library-note">ST 账户保存 · 当前目录正文量，非磁盘总占用</p>'+renderPoolRecovery(view.recovery):''}
-    <div class="sd-comfy-pool-rows">${(view.rows || []).map(row => `<section class="sd-card" data-pool-id="${escape(row.id)}" data-pool-search-name="${escape(row.name.toLocaleLowerCase())}" ${view.search && !row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase()) ? 'hidden' : ''}><div class="sd-comfy-pool-tools"><button type="button" class="sd-comfy-library-name" data-pool-action="${view.archived ? 'export' : 'edit'}">${escape(row.name)}</button><span>v${row.version}</span></div><small class="sd-comfy-library-note">${row.candidateCount} 个候选 · ${size(row.totalBytes)}</small><div class="sd-comfy-pool-tools sd-comfy-pool-row-actions">${view.archived ? `${icon('restore','恢复候选方案','rotate-left')}${icon('export','导出最新版本','download')}${icon('purge',native?'移出目录（原件保留）':'永久清理全部版本','trash-can')}` : `${choose(row)}${icon('edit','编辑方案','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出最新版本','download')}${icon('archive','归档方案','box-archive')}`}</div></section>`).join('')}</div>`;
-  const selection=view.canSelect&&view.selection?`<div class="sd-comfy-pool-tools"><small>已选：${escape(view.selection.invalid?'方案待核对':`${view.selection.name} · v${view.selection.version}`)}</small>${icon('clear-selection','清除所选方案','xmark')}</div>`:'';
+    <details class="sd-comfy-library-management" ${view.archived?'open':''}><summary>管理</summary><div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="archived" aria-pressed="${Boolean(view.archived)}">${view.archived?'返回全部':'已归档'}</button>${icon('backup-resources','备份方案与工作流','download')}${icon('restore-resources','恢复方案与工作流','folder')}${icon('refresh','刷新列表','rotate')}</div>${native?renderPoolRecovery(view.recovery):''}</details>
+    <div class="sd-comfy-pool-rows">${(view.rows || []).map(row => `<section class="sd-card" data-pool-id="${escape(row.id)}" data-pool-search-name="${escape(row.name.toLocaleLowerCase())}" ${view.search && !row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase()) ? 'hidden' : ''}><div class="sd-comfy-pool-tools"><button type="button" class="sd-comfy-library-name" data-pool-action="${view.archived ? 'export' : 'edit'}">${escape(row.name)}</button><small>${row.candidateCount} 个工作流</small></div><div class="sd-comfy-pool-tools sd-comfy-pool-row-actions">${view.archived ? `${icon('restore','恢复方案','rotate-left')}${icon('export','导出方案','download')}${icon('purge',native?'移出目录（原件保留）':'永久清理全部版本','trash-can')}` : `${choose(row)}${icon('edit','编辑方案','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出方案','download')}${icon('archive','归档方案','box-archive')}`}</div></section>`).join('')}</div>`;
+  const selection=view.canSelect&&view.selection?`<div class="sd-comfy-pool-tools"><small>已选：${escape(view.selection.invalid?'方案待核对':view.selection.name)}</small>${icon('clear-selection','清除所选方案','xmark')}</div>`:'';
   const message=view.error||(!draft&&!view.busy&&!view.rows?.length?(view.archived?'归档中还没有候选方案。':'还没有保存的候选方案，可新建或导入。'):'');
   return `<div class="sd-comfy-library sd-comfy-pools" aria-busy="${Boolean(view.busy)}">${message ? `<p role="${view.error?'alert':'status'}" class="sd-comfy-library-note">${escape(message)}</p>` : ''}<fieldset ${disabled}>${selection}${body}</fieldset><input type="file" data-pool-file accept=".json,application/json" hidden><input type="file" data-pool-backup-file accept=".json,application/json" hidden></div>`;
 }
 
 function renderPoolRecovery(value){
   if(!value||!value.sources.length&&!value.retired.length)return '';const pending=value.sources.reduce((n,row)=>n+row.pending.length,0);
-  return `<details class="sd-card" ${pending?'open':''}><summary>旧方案与保留原件${pending?` · ${pending} 项待核对`:''}</summary><div class="sd-storyboard-card-body"><p class="sd-comfy-library-note">完整旧源已保全，不自动覆盖分叉。另存副本保留所有历史与原绑定，不改变所选方案或启动任务；移出目录不代表释放磁盘。</p>
-    ${value.sources.map(source=>`<div data-pool-id="${escape(source.census)}"><div class="sd-comfy-pool-tools"><span>来源 ${escape(source.census.slice(0,8))} · ${source.count} 个方案 / ${source.versions} 个版本</span>${icon('export-legacy','导出完整旧候选方案库','download')}</div>${source.pending.map(head=>`<div class="sd-comfy-pool-tools" data-pool-id="${escape(source.census+':'+head.id)}"><span>${escape(head.name)} · v${head.version}</span><button type="button" class="sd-btn" data-pool-action="keep-legacy">保留 ST 当前版</button><button type="button" class="sd-btn" data-pool-action="copy-legacy">另存完整副本</button></div>`).join('')}</div>`).join('')}
-    ${value.retired.map(head=>`<div class="sd-comfy-pool-tools" data-pool-id="${escape(head.id)}"><span>${escape(head.name)} · 已移出 / ${head.version} 个版本</span><button type="button" class="sd-btn" data-pool-action="restore-retired">恢复到归档</button></div>`).join('')}</div></details>`;
+  return `<details class="sd-card" ${pending?'open':''}><summary>可恢复方案${pending?` · ${pending} 项待处理`:''}</summary><div class="sd-storyboard-card-body">
+    ${value.sources.map(source=>`<div data-pool-id="${escape(source.census)}"><div class="sd-comfy-pool-tools"><span>${source.count} 个方案</span>${icon('export-legacy','导出备份','download')}</div>${source.pending.map(head=>`<div class="sd-comfy-pool-tools" data-pool-id="${escape(source.census+':'+head.id)}"><span>${escape(head.name)}</span><button type="button" class="sd-btn" data-pool-action="keep-legacy">保留当前方案</button><button type="button" class="sd-btn" data-pool-action="copy-legacy">另存副本</button></div>`).join('')}</div>`).join('')}
+    ${value.retired.map(head=>`<div class="sd-comfy-pool-tools" data-pool-id="${escape(head.id)}"><span>${escape(head.name)}</span><button type="button" class="sd-btn" data-pool-action="restore-retired">恢复到归档</button></div>`).join('')}</div></details>`;
 }
 
 export function createComfyPoolController({ resolveNamespace, getScopeKey = () => '', getConnections = () => [], pickWorkflow,
   getSelection=()=>null,onSelect=null,
   onLibrary = () => {}, isCurrent = () => true, notify = () => {}, confirm = async () => false, onIcons = () => {}, download,
-  store = createComfyPoolStore(), readRecipe = readPinnedComfyRouteWorkflow, openWorkflowStore = null } = {}) {
+  store = createComfyPoolStore(), readRecipe = readPinnedComfyRouteWorkflow, openWorkflowStore = null, now = () => Date.now() } = {}) {
   const view = { rows: [], usage: null, recovery:null, search: '', archived: false, draft: null, busy: false, error: '', connections: [], openMembers: new Set(), checks: new Map() };
-  let host = null, entry = 0, namespace = '', verifiedEntry = -1, disposed = false;
+  let host = null, entry = 0, namespace = '', verifiedEntry = -1, disposed = false, loaded = false, loadedAt = 0;
   const scrolls = { list: 0, draft: 0 };
   const visible = () => !disposed && host?.isConnected && isCurrent();
   const scroller = () => host?.closest('.sd-storyboard-scroll');
@@ -92,7 +90,7 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
     host.innerHTML = verifiedEntry === entry ? renderComfyPools(view) : `<div role="status">${escape(view.error || '正在读取候选方案')}${view.error ? '<button type="button" class="sd-btn" data-pool-action="refresh">重试</button>' : ''}</div>`;
     bind(); onIcons(host); restore();
   };
-  const resetAccount = value => { namespace = value; view.rows = []; view.usage = null; view.recovery=null; view.draft = null; view.checks.clear(); view.openMembers.clear(); scrolls.list = scrolls.draft = 0; };
+  const resetAccount = value => { namespace = value; loaded = false; loadedAt = 0; view.rows = []; view.usage = null; view.recovery=null; view.draft = null; view.checks.clear(); view.openMembers.clear(); scrolls.list = scrolls.draft = 0; };
   async function run(work) {
     if (!visible() || view.busy) return; if (verifiedEntry === entry) remember(); const token = entry, scope = getScopeKey(); view.busy = true; view.error = '';
     const originalDraft = view.draft, active = host.contains(globalThis.document?.activeElement) ? globalThis.document.activeElement : null;
@@ -122,9 +120,11 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
     }
   }
   const loadList = async guard => {
+    loaded=false;
     const account = namespace,result=store.view?await store.view(account,{archived:view.archived,guard}):{rows:await store.list(account,{archived:view.archived}),usage:await store.usage(account)};await guard();
-    view.rows=result.rows;view.usage=result.usage;view.recovery=result.recovery||null;
+    view.rows=result.rows;view.usage=result.usage;view.recovery=result.recovery||null;loaded=true;loadedAt=now();
   };
+  const loadOnMount=async guard=>{if(!loaded||now()-loadedAt>=30000)await loadList(guard);};
   const draftFrom = (value, versions = [], copy = false) => {
     remember(); view.draft = { id: copy ? '' : value.id || '', revision: copy ? '' : value.revision || '', version: copy ? 0 : value.version || 0,
       name: value.name, pool: clone(value.pool), versions: copy ? [] : versions, dirty: copy };
@@ -256,7 +256,7 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
     });
   }
   return Object.freeze({
-    mount(element) { const previous = host; host = element; if (previous !== element) entry++; render(); if (previous !== element || verifiedEntry !== entry) void run(loadList); },
+    mount(element) { const previous = host; host = element; if (previous !== element) entry++; render(); if (previous !== element || verifiedEntry !== entry) void run(loadOnMount); },
     detach() { remember(); host = null; entry++; },
     dispose() { disposed = true; host = null; entry++; view.draft = null; view.checks.clear(); store.close(); },
   });
