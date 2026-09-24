@@ -19,7 +19,8 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
       await check();opening??=Promise.resolve().then(()=>createStorage({maxBytes:8*1024*1024,isCurrent:()=>!closed})).then(value=>{if(closed||value.namespace!==namespace){value.close();fail('续场运行账户不符');}client=value;return value;}).catch(e=>{opening=null;throw e;});
       await opening;await check();if(client.namespace!==namespace)fail('续场运行会话不能切换账户');const transport={guard:check,signal:captured.signal};
       const read=async()=>{const result=await client.read(slot,transport);await check();if(!result.exists&&(known||captured.requireExisting))fail('已确认的ST续场目录缺失，未建立空库');if(result.exists){validateSceneDirectory(result.value,namespace,client.scope);known=true;}return result;};
-      let found=await read(),directory=await readSceneDirectory(found.exists?found.value:emptySceneIndex(namespace),{namespace,scope:client.scope,readImmutable:reference=>client.readImmutable(reference,transport),check}),index=directory.index;
+      let found=await read(),directory=await readSceneDirectory(found.exists?found.value:emptySceneIndex(namespace),{namespace,scope:client.scope,readImmutable:reference=>client.readImmutable(reference,transport),
+        ...(typeof client.readImmutableBatch==='function'?{readImmutableBatch:references=>client.readImmutableBatch(references,transport)}:{}),check}),index=directory.index;
       const baseline=await legacy.snapshot(namespace,{isCurrent:valid}),sourceDigest=await sceneHash(baseline);await check();
       const stable=async()=>{await legacy.assertSnapshot(baseline,{isCurrent:valid});await check();};
       const save=async next=>{

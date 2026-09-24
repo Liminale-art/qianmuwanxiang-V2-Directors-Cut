@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {createNativeComfySceneStore} from '../qianmu-comfy-scene-native-store.js';
 import {COMFY_SCENE_NATIVE_SLOT as slot,sceneBytes} from '../qianmu-comfy-scene-native-contract.js';
-import {COMFY_SCENE_DIRECTORY_SCHEMA as schema,COMFY_SCENE_HISTORY_SLOT as pageSlot,readSceneDirectory} from '../qianmu-comfy-scene-directory.js';
+import {COMFY_SCENE_HYBRID_SCHEMA as schema,COMFY_SCENE_HISTORY_SLOT as pageSlot,readSceneDirectory} from '../qianmu-comfy-scene-directory.js';
 import {prepareSceneDirectoryWrite,shouldPageSceneDirectory} from '../qianmu-comfy-scene-directory-write.js';
 import {COMFY_SCENE_SNAPSHOT_SCHEMA} from '../qianmu-comfy-scene-backup.js';
 import {comfySceneScopeKey} from '../qianmu-comfy-scene-lock.js';
@@ -85,7 +85,7 @@ test('page readback mismatch prevents root publication while preserving the tran
 test('clearing and style links keep generation and complete histories through subsequent paged writes',async t=>{
   const f=await fixture(t);await f.complete('next');const before=await f.a.store.inspect(scope),target={...scope,continuityId:'linked'};
   await f.a.store.linkStyle(scope,target,{expectedSourceRevision:before.revision,expectedRevision:0,expectedGeneration:0,label:{planId:'link',floor:2}});
-  const root=await f.root();assert.equal(root.entries.length,2);assert.equal(root.entries[1].history.count,1);assert.equal((await f.a.store.inspect(target)).styleOrigin.sourceFloor,1);
+  const root=await f.root();assert.equal(root.entries.length,2);assert.equal(root.entries[1].versions.length,1);assert.equal((await f.a.store.inspect(target)).styleOrigin.sourceFloor,1);
   const result=await f.a.store.clearAccount(namespace,{expectedGeneration:0});assert.equal(result.generation,1);assert.deepEqual(await f.a.store.list(namespace,'chat'),[]);
   const packet=await f.a.store.exportAll(namespace);assert.equal(packet.entries.length,2);assert.ok(packet.entries.every(entry=>entry.versions.at(-1).action.type==='clear'));
   const reserved=await f.reserve('after-clear');assert.equal(reserved.view.generation,1);assert.equal((await f.root()).schema,schema);
