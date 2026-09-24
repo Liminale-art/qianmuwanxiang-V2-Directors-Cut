@@ -3,7 +3,7 @@ import {chatGalleryEvidenceRequest} from './qianmu-chat-gallery-evidence.js';
 import {chatGalleryReceiptSummary,CHAT_GALLERY_STREAM_LIMITS} from './qianmu-chat-gallery-receipt.js';
 import {projectChatGalleryState} from './qianmu-chat-gallery-state.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
-import {GALLERY_SUPPLEMENT_FIELDS,GALLERY_CONTINUITY_FIELDS,projectGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.373';
+import {GALLERY_SUPPLEMENT_FIELDS,GALLERY_CONTINUITY_FIELDS,projectGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.374';
 import {parseBoundedJson} from './qianmu-json-input.js';
 
 // The gallery bodies are already preserved as separate immutable records. This

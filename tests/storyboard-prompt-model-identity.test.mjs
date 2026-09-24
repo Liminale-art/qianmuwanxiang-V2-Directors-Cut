@@ -136,7 +136,7 @@ test('workbench payload uses the same capability for captions, parameters, Vibe 
     assert.equal(payload.compiledPrompt.modelBinding.capabilityModelId, capabilityModelId);
     assert.equal(Boolean(payload.parameters.providerOptions.v4_prompt), capabilityModelId !== V3);
     assert.equal(payload.parameters.providerOptions.sm, capabilityModelId === V5 ? undefined : true);
-    assert.equal(payload.parameters.scheduler, capabilityModelId === V5 ? '' : 'karras');
+    assert.equal(payload.parameters.scheduler, capabilityModelId === V5 ? undefined : 'karras');
     assert.equal(payload.parameters.providerOptions.cfg_rescale, 0);
     assert.equal(payload.selectedVibeIds.length, capabilityModelId === V5 ? 0 : 1);
     assert.ok(payload.prompt.includes(capabilityModelId === V3 ? 'quality v3' : capabilityModelId === V45 ? 'quality v45' : 'quality v5'));

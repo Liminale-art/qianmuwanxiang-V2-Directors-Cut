@@ -1,5 +1,5 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {collectAssistantHistoryPage} from './qianmu-assistant-storage-client.js?v=1.59.373';
+import {collectAssistantHistoryPage} from './qianmu-assistant-storage-client.js?v=1.59.374';
 import {assistantCatalogueResponse} from './qianmu-assistant-storage-contract.js';
 import {proseAssistantAccountForNamespace} from './qianmu-prose-assistant-source.js';
 import {proseAssistantHistoryKey,validateProseAssistantHistory,PROSE_ASSISTANT_HISTORY_LIMITS as LIMIT} from './qianmu-prose-assistant-history-contract.js';
