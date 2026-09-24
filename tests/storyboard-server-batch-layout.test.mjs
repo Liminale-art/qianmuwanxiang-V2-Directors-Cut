@@ -133,6 +133,9 @@ test('layout checkpoint contains no I/O, route, execution or fee operation', asy
   assert.doesNotMatch(source, /from ['"]node:fs|\bfetch\(|\bwriteFile\(|\bmkdir\(|\brename\(|\bunlink\(/);
   assert.match(source, /partition persistence and directory pagination[\s\S]*not implemented here/i);
   const plugin = await readFile(new URL('../server-plugin.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(plugin, /qianmu-storyboard-server-batch-store|scope:\s*['"]storyboard-batch['"]/,
-    'the never-activated v1 batch writer must not become a production route');
+  assert.doesNotMatch(plugin, /qianmu-storyboard-server-batch-(?:store|v2-store)|scope:\s*['"]storyboard-batch['"]/,
+    'neither batch ledger may become a production route before input and fee gates are complete');
+  const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
+  assert.equal(release.files.includes('qianmu-storyboard-server-batch-v2-store.js'), true);
+  assert.equal(release.files.includes('qianmu-storyboard-server-batch-store.js'), false);
 });

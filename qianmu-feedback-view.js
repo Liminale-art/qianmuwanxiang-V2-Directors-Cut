@@ -1,4 +1,4 @@
-import { feedbackPlatform, feedbackDiagnostics, feedbackReport } from './qianmu-feedback-report.js?v=1.59.374';
+import { feedbackPlatform, feedbackDiagnostics, feedbackReport } from './qianmu-feedback-report.js?v=1.59.375';
 
 // Opaque account/runtime identities keep drafts separate without inspecting
 // settings or persisting private user text into host storage.

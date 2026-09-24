@@ -139,7 +139,9 @@ test('accepted task persistence precedes history; receipt failure preserves acce
 
 test('store scopes are a closed host choice and never move existing NAI records', async t => {
   const f = await fixture(t);
-  for (const scope of ['../other', 'all', '', null]) assert.throws(() => createImageServiceStore({ dataRoot: f.dir, scope }));
+  for (const scope of ['../other', 'all', '', null, 'storyboard-batch']) {
+    assert.throws(() => createImageServiceStore({ dataRoot: f.dir, scope }), { code: 'image_service_storage_scope' });
+  }
   const novel = createImageServiceStore({ dataRoot: f.dir }); t.after(() => novel.close());
   const key = imageServiceChannelKey('nai-key'); await novel.transaction(key, state => ({ state: normalizeImageServiceChannel(state, key), result: null }));
   await f.service().submit(req(), input());

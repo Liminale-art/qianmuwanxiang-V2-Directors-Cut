@@ -7,22 +7,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
 import {normalizeNovelServiceChannel} from './qianmu-novel-service-channel-state.js';
 import {normalizeComfyCloudChannel} from './qianmu-comfy-cloud-channel-state.js';
-import {batchPublicView,isStoryboardServerBatchBusinessError,normalizeBatchRecord} from './qianmu-storyboard-server-batch-contract.js';
 
 const DISK_SCHEMA = 'qianmu.image-service-disk.v1';
 const HASH = /^[a-f0-9]{64}$/;
-const BATCH_ACCOUNT = /^st-user:[a-f0-9]{64}$/;
-const BATCH_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const sha = value => createHash('sha256').update(value).digest('hex');
 const error = (code, message) => Object.assign(new Error(message), {
   name: 'ImageServiceStoreError', code: `image_service_storage_${code}`, status: 409, submissionState: 'not_submitted',
 });
 const safeError = cause => String(cause?.code || '').startsWith('image_service_') ? cause
   : error('unavailable', '生图服务记录暂不可用，未授权新请求');
-const BATCH_BUSINESS_ERRORS = new Set([
-  'storyboard_server_batch_account_changed', 'storyboard_server_batch_conflict',
-  'storyboard_server_batch_not_found', 'storyboard_server_batch_identity', 'storyboard_server_batch_revision',
-]);
 const isMissing = cause => cause?.code === 'ENOENT';
 const sameFile = (one, two) => one.dev === two.dev && one.ino === two.ino;
 
@@ -32,11 +25,9 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
     throw error('root', '增强服务缺少可信的 ST 数据目录');
   }
   // Host-only, closed choice. Existing NAI data stays at its original path.
-  if (!['novel', 'comfy', 'vibe', 'novel-channel', 'comfy-cloud', 'storyboard-batch'].includes(scope)) throw error('scope', '生图服务记录范围无效');
-  const safeScopedError = cause => scope === 'storyboard-batch' && isStoryboardServerBatchBusinessError(cause)
-    && BATCH_BUSINESS_ERRORS.has(cause.code) ? cause : safeError(cause);
-  const queueDirectory = scope === 'storyboard-batch' ? 'storyboard-batches-v1' : scope === 'comfy-cloud' ? 'comfy-cloud-queue-v1' : scope === 'novel-channel' ? 'novel-channel-v1' : scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
-  const normalize=scope==='storyboard-batch'?normalizeBatchRecord:scope==='comfy-cloud'?normalizeComfyCloudChannel:scope==='novel-channel'?normalizeNovelServiceChannel:normalizeImageServiceChannel;
+  if (!['novel', 'comfy', 'vibe', 'novel-channel', 'comfy-cloud'].includes(scope)) throw error('scope', '生图服务记录范围无效');
+  const queueDirectory = scope === 'comfy-cloud' ? 'comfy-cloud-queue-v1' : scope === 'novel-channel' ? 'novel-channel-v1' : scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
+  const normalize=scope==='comfy-cloud'?normalizeComfyCloudChannel:scope==='novel-channel'?normalizeNovelServiceChannel:normalizeImageServiceChannel;
   const channelLimit = Math.max(1, Math.min(128, Math.trunc(Number(maxChannels) || 128)));
   const recordLimit = Math.max(1024, Math.min(2 * 1024 * 1024, Math.trunc(Number(maxRecordBytes) || 2 * 1024 * 1024)));
   const pendingLimit = Math.max(1, Math.min(64, Math.trunc(Number(maxPending) || 64)));
@@ -166,16 +157,8 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
     return exclusive(async () => {
       const previous = await readRecord(key);
       await checkCapacity(Boolean(previous));
-      // Only the new batch scope needs an idempotent no-write result. Its reducer
-      // must return the exact prior object untouched; legacy scopes keep their
-      // original revision/write behavior, even if they pass an extra flag.
-      const before = scope === 'storyboard-batch' && previous ? JSON.stringify(previous.state) : undefined;
       const next = reduce(previous?.state);
       if (!next || typeof next !== 'object' || typeof next.then === 'function' || !next.state) throw error('transaction', '生图服务记录事务无效');
-      if (scope === 'storyboard-batch' && next.unchanged === true) {
-        if (!previous || next.state !== previous.state || JSON.stringify(next.state) !== before) throw error('transaction', '批次记录未变更标记与内容不一致');
-        return next.result;
-      }
       await atomicWrite(key, previous, next.state);
       return next.result;
     });
@@ -185,10 +168,10 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
       assertOpen();
       if (pending >= pendingLimit) throw error('busy', '生图服务记录等待已满，请稍后重试');
       pending++;
-      const work = tail.then(async () => { assertOpen(); return operation(); }).catch(cause => { throw safeScopedError(cause); });
+      const work = tail.then(async () => { assertOpen(); return operation(); }).catch(cause => { throw safeError(cause); });
       const settled = work.then(result => { pending--; return result; }, cause => { pending--; throw cause; });
       tail = settled.then(() => {}, () => {}); return settled;
-    } catch (cause) { return Promise.reject(safeScopedError(cause)); }
+    } catch (cause) { return Promise.reject(safeError(cause)); }
   };
   return {
     readOnly(operation) {
@@ -196,7 +179,6 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
       return enqueue(async () => { await initialize(false); return operation(); });
     },
     inspectAccount(namespace, { cursor = null, limit = 40, select = [] } = {}) {
-      if (scope === 'storyboard-batch') return Promise.reject(error('scope', '批次记录不支持单镜任务目录检查'));
       const validLocator = value => HASH.test(value?.channelKey || '') && typeof value.attemptId === 'string' && value.attemptId.length > 0 && value.attemptId.length <= 240 && !/[\u0000-\u001f\u007f]/.test(value.attemptId);
       if (typeof namespace !== 'string' || !namespace || namespace.length > 240 || /[\u0000-\u001f\u007f]/.test(namespace)
         || !Number.isInteger(limit) || limit < 1 || limit > 50
@@ -229,56 +211,6 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
         return { entries, selected, total, nextCursor: remaining > entries.length ? { channelKey: last.channelKey, attemptId: last.attemptId } : null };
       });
     },
-    inspectStoryboardBatchAccount(namespace, options = {}) {
-      if (scope !== 'storyboard-batch') return Promise.reject(error('scope', '仅分镜批次记录支持批次目录检查'));
-      if (!options || typeof options !== 'object' || Array.isArray(options)) return Promise.reject(error('identity', '批次目录分页信息无效'));
-      let cursor, limit;
-      try {
-        const suppliedCursor = options.cursor, suppliedLimit = options.limit;
-        cursor = suppliedCursor === undefined ? null : suppliedCursor;
-        limit = suppliedLimit === undefined ? 40 : suppliedLimit;
-      } catch (_) { return Promise.reject(error('identity', '批次目录分页信息无效')); }
-      if (typeof namespace !== 'string' || !BATCH_ACCOUNT.test(namespace)
-        || !Number.isInteger(limit) || limit < 1 || limit > 50
-        || (cursor !== null && (typeof cursor !== 'string' || !BATCH_ID.test(cursor)))) {
-        return Promise.reject(error('identity', '批次目录分页信息无效'));
-      }
-      return enqueue(async () => {
-        if (!await initialize(false)) return { entries: [], total: 0, nextCursor: null, full: false };
-        await checkMaintenance();
-        const stream = await io.opendir(directory), keys = []; let files = 0;
-        for await (const entry of stream) {
-          if (++files > channelLimit + 32) throw error('full', '批次目录需要整理');
-          if (/^[a-f0-9]{64}\.json$/.test(entry.name)) {
-            if (!entry.isFile() || keys.length >= channelLimit) throw error('path', '批次目录包含异常记录');
-            keys.push(entry.name.slice(0, -5));
-          } else if (!entry.isFile() || !/^(?:\.(?:transaction|maintenance)\.lock|\.write-[a-f0-9-]{36}\.tmp)$/.test(entry.name)) {
-            throw error('path', '批次目录包含未知文件，请先核查');
-          }
-        }
-        const owned = [];
-        for (const key of keys) {
-          // Validate every envelope before account filtering: a damaged or
-          // foreign record must never be silently hidden by a successful page.
-          const record = await readRecord(key);
-          if (!record) throw error('changed', '读取时分镜批次记录已变化');
-          if (record.state.expectedAccount === namespace) owned.push(batchPublicView(record.state));
-        }
-        owned.sort((a, b) => b.createdAt - a.createdAt
-          || (a.batchId < b.batchId ? -1 : a.batchId > b.batchId ? 1 : 0));
-        const start = cursor === null ? 0 : owned.findIndex(row => row.batchId === cursor) + 1;
-        if (cursor !== null && start === 0) throw error('identity', '批次目录游标不属于当前账户');
-        const entries = owned.slice(start, start + limit);
-        // Live bounded view, not a cross-process transactional snapshot.
-        // Refuse a page if offline maintenance began while records were read.
-        await checkMaintenance();
-        return {
-          entries, total: owned.length,
-          nextCursor: start + entries.length < owned.length ? entries.at(-1).batchId : null,
-          full: keys.length >= channelLimit,
-        };
-      });
-    },
     exclusive(operation) {
       if (typeof operation !== 'function') return Promise.reject(error('transaction', '缺少服务存储操作'));
       return enqueue(() => exclusive(operation));
@@ -288,11 +220,11 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
         checkKey(key);
         if (typeof reduce !== 'function') throw error('transaction', '缺少生图服务记录事务');
         return enqueue(() => lockedTransaction(key, reduce));
-      } catch (cause) { return Promise.reject(safeScopedError(cause)); }
+      } catch (cause) { return Promise.reject(safeError(cause)); }
     },
     inspectChannel(key) {
       try { checkKey(key); return enqueue(async () => { if (!await initialize(false)) return undefined; return (await readRecord(key))?.state; }); }
-      catch (cause) { return Promise.reject(safeScopedError(cause)); }
+      catch (cause) { return Promise.reject(safeError(cause)); }
     },
     close() { closed = true; return tail; },
     inspect() { return { initialized: Boolean(directory), closed, paused: poisoned, pending }; },
