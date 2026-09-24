@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
+import {readFileSync} from 'node:fs';
 import {createStoryboardStreamHost} from '../qianmu-storyboard-stream-host.js';
+import {createStoryboardMessageReference} from '../qianmu-storyboard.js';
+import {storyboardStreamGeneration,storyboardStreamFingerprint} from '../qianmu-storyboard-stream-reference.js';
 const deferred=()=>{let resolve;return {promise:new Promise(done=>resolve=done),resolve};};
 async function tick(){for(let i=0;i<40;i++)await Promise.resolve();}
 function fixture(extra={}){
   const events=new EventEmitter(),timers=new Map(),dom=new Map(),notices=[],calls=[];
-  const host={chat:[{is_user:true,mes:'Question'}],chatMetadata:{},eventSource:events,streamingProcessor:null};
+  const host={chatId:'chat-a',chat:[{is_user:true,mes:'Question'}],chatMetadata:{},eventSource:events,streamingProcessor:null};
   let epoch=0,enabled=true,valid=true,sequence=0,opened=0,disposed=0,validated=0,busy=false,runHook=null,frameSignal;
   const document={addEventListener:(event,fn)=>{const rows=dom.get(event)||new Set();rows.add(fn);dom.set(event,rows);},removeEventListener:(event,fn)=>dom.get(event)?.delete(fn)};
-  const runtime=createStoryboardStreamHost({getContext:()=>host,epoch:()=>epoch,enabled:()=>enabled,busy:()=>busy,document,intervalMs:0,
+  const runtime=createStoryboardStreamHost({getContext:()=>host,getChatKey:()=>host.chatId,epoch:()=>epoch,enabled:()=>enabled,busy:()=>busy,document,intervalMs:0,
     setTimer:fn=>{const id=++sequence;timers.set(id,fn);return id;},clearTimer:id=>timers.delete(id),
     openFrame:({floor,signal})=>{opened++;frameSignal=signal;assert.equal(floor,1);return {assertCurrent(){validated++;if(!valid)throw Error('changed');},dispose(){disposed++;}};},
     run:async options=>{calls.push(options);return runHook?runHook(options):{status:'advanced',queued:1};},notify:message=>notices.push(message),...extra});
@@ -23,6 +26,12 @@ function fixture(extra={}){
     finish:()=>runtime.beforeAutomatic(1,host.chat[1],host.streamingProcessor?.type),
     input:({search=false,owned=true}={})=>{for(const fn of dom.get('input')||[])fn({target:{type:search?'search':'text',className:search?'sd-search':'sd-storyboard-prompt',closest:()=>owned?{}:null,matches:()=>true}});},
     listeners:()=>events.eventNames().reduce((n,name)=>n+events.listenerCount(name),0)+[...dom.values()].reduce((n,rows)=>n+rows.size,0)};
+}
+
+function leaseReference(f){
+  const message=f.host.chat[1],prefix='A kitchen.';
+  return {...createStoryboardMessageReference({message,chatKey:f.host.chatId,floor:1}),stream:{generation:storyboardStreamGeneration(message),
+    prefixLength:prefix.length,prefixHash:storyboardStreamFingerprint(prefix)}};
 }
 
 test('stream host coalesces raw notifications and reads only processed prose after the delayed handoff',async()=>{
@@ -102,6 +111,23 @@ test('busy work waits for explicit wake without polling and respects a later sou
   f.busy=false;f.runtime.wake();assert.equal(f.timers.size,1);f.valid=false;await f.step();assert.equal(f.calls.length,0);assert.equal(await f.finish(),false);f.runtime.close();
 });
 
+test('an unfinished deferred image batch blocks another stream extraction until its own completion wakes the host',async()=>{
+  let batchPending=false;
+  const f=fixture({busy:()=>batchPending});f.start();const message=f.begin();
+  f.run=async()=>{batchPending=true;return {status:'advanced',queued:0};};
+  f.token();await f.step();await f.step();assert.equal(f.calls.length,1);assert.equal(f.timers.size,0);
+  message.mes+='\n\nThe conversation moves on.';f.token();f.runtime.wake();
+  assert.equal(f.timers.size,0,'new prose cannot buy a second pass while the prior batch owns unsubmitted shots');
+  batchPending=false;f.run=async()=>({status:'advanced',queued:1});f.runtime.wake();await f.step();
+  assert.equal(f.calls.length,2,'one saved dirty pulse resumes after the batch finishes');f.runtime.close();
+});
+
+test('the real entry includes deferred stream batches in the busy gate and wakes only the same source after completion',()=>{
+  const source=readFileSync(new URL('../index.js',import.meta.url),'utf8');
+  assert.match(source,/busy:\(\)=>storyboardCompilerBusy\|\|Boolean\(storyboardAutomaticCurrent\)\|\|\[\.\.\.storyboardQueueBatches\]\.some\(entry=>entry\.stream&&!entry\.complete/);
+  assert.match(source,/if\(entry\.stream&&entry\.sourceCurrent\(\)\)\{[\s\S]*?result\.stopped\|\|result\.failedCount\)storyboardStreamRuntime\?\.takeover\?\.\(\);[\s\S]*?storyboardStreamRuntime\?\.wake\?\.\(\)/);
+});
+
 test('a failed pass blocks final fallback and optional notification errors cannot escape into ST',async()=>{
   const f=fixture({notify:async()=>{throw Error('optional toast rejected');}});f.start();f.begin();f.run=async()=>({status:'failed',queued:1});f.token();await f.step();await f.step();
   assert.equal(await f.finish(),false);assert.equal(f.calls.length,1);await tick();f.runtime.close();
@@ -137,4 +163,62 @@ test('a new generation aborts the old frame but its late completion cannot close
   f.start();f.host.chat[1].gen_started='new-generation';f.host.streamingProcessor={type:undefined,messageId:1,abortController:new AbortController()};f.token();
   assert.equal(oldSignal.aborted,true);gate.resolve({status:'advanced',queued:1});await tick();assert.equal(f.timers.size,1);
   await f.step();assert.equal(f.signal.aborted,false);assert.equal(f.counts.opened,2);f.runtime.close();assert.equal(f.counts.disposed,2);
+});
+
+test('stream lease keeps the exact completed generation after successful final release, then revokes it on a new start',async()=>{
+  const f=fixture();f.start();f.begin();f.token();await f.step();await f.step();
+  const ref=leaseReference(f),lease=f.runtime.leaseFor(ref);assert.ok(lease);assert.equal(lease.isCurrent(),true);
+  assert.equal(await f.finish(),true);assert.equal(f.signal.aborted,true,'terminal frame is released');
+  f.host.streamingProcessor=null;
+  assert.equal(lease.isCurrent(),true,'the frozen batch owner survives only normal finalization');
+  const finalLease=f.runtime.leaseFor(ref);assert.ok(finalLease,'final expression can request a new lease after the frame is released');
+  assert.equal(finalLease.isCurrent(),true);
+  f.start('regenerate');assert.equal(lease.isCurrent(),false);assert.equal(finalLease.isCurrent(),false);f.runtime.close();
+});
+
+test('stopping a deferred batch after terminal handoff revokes repeated final receipts',async()=>{
+  const f=fixture();f.start();const message=f.begin();f.token();await f.step();await f.step();
+  assert.equal(await f.finish(),true);f.runtime.takeover();
+  assert.equal(f.runtime.beforeAutomatic(1,message,undefined),false,'a completed compiler receipt cannot revive a cancelled image batch');
+  f.runtime.close();
+});
+
+test('stream lease follows host epoch, chat object and metadata ownership after terminal release',async()=>{
+  for(const change of ['epoch','chat','metadata']){
+    const f=fixture();f.start();f.begin();f.token();await f.step();await f.step();
+    const lease=f.runtime.leaseFor(leaseReference(f));assert.ok(lease);assert.equal(await f.finish(),true);
+    if(change==='epoch')f.bump();
+    if(change==='chat')f.host.chat=[...f.host.chat];
+    if(change==='metadata')f.host.chatMetadata={};
+    assert.equal(lease.isCurrent(),false,change);f.runtime.close();
+  }
+});
+
+test('stream lease rejects a different source identity and a silent edit to the saved paragraph',async()=>{
+  const f=fixture();f.start();f.begin();f.token();await f.step();await f.step();
+  const ref=leaseReference(f),lease=f.runtime.leaseFor(ref);assert.ok(lease);
+  assert.equal(f.runtime.leaseFor({...ref,chatKey:'other'}),null);
+  assert.equal(f.runtime.leaseFor({...ref,messageKey:'another-message'}),null);
+  assert.equal(f.runtime.leaseFor({...ref,lastKnownFloor:0}),null);
+  assert.equal(f.runtime.leaseFor({...ref,stream:{...ref.stream,generation:{...ref.stream.generation,id:'another-generation'}}}),null);
+  f.host.chat[1].mes='Another kitchen.\n\nMore';assert.equal(lease.isCurrent(),false);f.runtime.close();
+});
+
+for(const event of ['generation_stopped','message_edited','message_deleted','message_swiped','chat_id_changed'])
+  test(`${event} revokes a stream lease before any deferred batch may submit`,async()=>{
+    const f=fixture();f.start();f.begin();f.token();await f.step();await f.step();
+    const lease=f.runtime.leaseFor(leaseReference(f));assert.ok(lease);
+    f.events.emit(event);assert.equal(lease.isCurrent(),false);f.runtime.close();
+  });
+
+test('failed finalization, settings edit, changed chat owner and extension close revoke a stream lease',async()=>{
+  const failed=fixture();failed.start();failed.begin();failed.run=async()=>({status:'failed',queued:1});failed.token();await failed.step();await failed.step();
+  const badLease=failed.runtime.leaseFor(leaseReference(failed));assert.ok(badLease);assert.equal(await failed.finish(),false);
+  assert.equal(badLease.isCurrent(),false);failed.runtime.close();
+  const changed=fixture();changed.start();changed.begin();changed.token();await changed.step();await changed.step();
+  const lease=changed.runtime.leaseFor(leaseReference(changed));assert.ok(lease);
+  changed.input();assert.equal(lease.isCurrent(),false);changed.runtime.close();
+  const scope=fixture();scope.start();scope.begin();scope.token();await scope.step();await scope.step();
+  const owner=scope.runtime.leaseFor(leaseReference(scope));assert.ok(owner);scope.host.chatId='chat-b';assert.equal(owner.isCurrent(),false);
+  scope.runtime.close();assert.equal(owner.isCurrent(),false);
 });

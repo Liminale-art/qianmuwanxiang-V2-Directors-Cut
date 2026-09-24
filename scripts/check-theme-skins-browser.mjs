@@ -61,17 +61,20 @@ try {
     Object.assign(form.context, { storyboardReconcileGalleryLinks() {}, storyboardVibeLibraryController: null });
     vm.runInContext(['storyboardPageTitle', 'storyboardPageKey', 'renderStoryboardTab'].map(storyboardFunctionSource).join('\n'), form.context);
     const content = form.context.renderStoryboardTab();
-    await page.evaluate(content => {
+    await page.evaluate(({ content, family }) => {
       window.controller?.dispose();
       document.body.innerHTML = `<button id="host-control">ST 原有按钮</button><main id="story-director-modal" class="sd-theme-dream sd-storyboard-mode open"><div class="sd-backdrop"></div><section class="sd-window" role="dialog"><main class="sd-body sd-storyboard-body">${content}</main></section></main>`;
       const root = document.getElementById('story-director-modal');
       root.querySelectorAll('details').forEach(node => node.open = true);
       icons.applyQianmuIcons(root);
       window.controller = themeModule.createQianmuThemeSurfaceController(); controller.register(root);
-      window.draft = [...root.querySelectorAll('textarea')].find(node => node.getClientRects().length && !node.disabled);
-      if (!draft) throw Error('Real renderer has no visible editable textarea');
+      // Comfy's empty-workflow workbench deliberately has no prompt textarea;
+      // its connection editor remains a real input. Other families must retain a prompt editor.
+      window.draft = [...root.querySelectorAll(family === 'comfy' ? 'input.sd-storyboard-base-url' : 'textarea')]
+        .find(node => node.getClientRects().length && !node.disabled && !node.readOnly);
+      if (!draft) throw Error(`${family}: real renderer has no visible editable draft control`);
       draft.value = '切换主题保留的草稿';
-    }, content);
+    }, { content, family });
     await page.setViewportSize({ width: 1280, height: 900 }); await frame();
     const classic = await inspect();
     if (!skinAdded) { const style = await page.addStyleTag({ content: skin }); await style.evaluate(node => node.id = 'theme-skin-stylesheet'); skinAdded = true; await frame(); assert.deepEqual(await inspect(), classic, 'new CSS must be a no-op without opt-in'); }

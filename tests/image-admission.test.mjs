@@ -269,7 +269,9 @@ function liveHarness({ failure = '', confirm = async () => true } = {}) {
   const context = vm.createContext({ ...floorTakes, runningHubUsageFields,storyboardAutomaticJobEnabled,
     clone: structuredClone, storyboardAdmission: runtime, storyboardImageAdmissionRuntime: async () => runtime, storyboardState: () => state,
     getChatKey: () => 'chat-a', storyboardValidatedAnchor: () => ({ valid: true, floor: 0 }),
-    STORYBOARD_QUEUE_LIMIT: 8, storyboardQueue: waiting, storyboardActiveJobs: new Map(),
+    STORYBOARD_QUEUE_LIMIT: 8, storyboardQueue: waiting, storyboardActiveJobs: new Map(), storyboardQueueSettling: 0,
+    storyboardQueueWindow: { reservedCount: 0, has: () => false, notify: () => {} },
+    storyboardStopQueueBatches: () => {},
     getStoryboardGenerationPolicy: () => ({ maxImages: 1 }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:()=>[],
     resolveStoryboardJobModelIdentity: () => ({ modelFamily: 'openai' }),
     storyboardStartLog: value => { const log = { id: `log-${state.logs.length}`, status: 'queued', snapshot: structuredClone(value) }; state.logs.push(log); return log; },
@@ -294,7 +296,7 @@ function liveHarness({ failure = '', confirm = async () => true } = {}) {
     storyboardFinishLog: (log, status, detail) => Object.assign(log, { status }, detail),
     toast: message => { notices.push(message); return false; },
   });
-  vm.runInContext(['storyboardSettleImageAdmission', 'storyboardQueueJob', 'storyboardDeliverGatewayResult', 'storyboardRunJob', 'storyboardClearWaitingQueue', 'storyboardRetryLog'].map(section).join('\n'), context);
+  vm.runInContext(['storyboardSettleImageAdmission', 'storyboardQueueJob', 'storyboardDeliverGatewayResult', 'storyboardRunJob', 'storyboardReleaseWaitingJob', 'storyboardClearWaitingQueue', 'storyboardRetryLog'].map(section).join('\n'), context);
   return { context, state, gallery, waiting, notices, writes, store, runtime };
 }
 const liveJob = extra => job({ source: 'openai', profile: { count: '1', model: 'gpt-image-1' },

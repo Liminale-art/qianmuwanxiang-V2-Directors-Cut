@@ -304,6 +304,7 @@ test('actual queue acquires the scene after technical confirmation and releases 
   const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe}),shot=await e.makeShot(),choice=await batch.choose(shot,scope),job=e.makeJob(choice,shot,'queue');await batch.attach(job,choice);
   const state=core.createStoryboardDefaults();state.enabled=true;let submitted=0,admissions=0;
   const context=vm.createContext({...core,storyboardState:()=>state,getChatKey:()=>scope.chatKey,storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:10,
+    storyboardQueueSettling:0,storyboardQueueWindow:{has:()=>false,reservedCount:0,notify:()=>{}},
     storyboardConfirmComfyExecution:async()=>{assert.equal(e.store.calls.length,0);return true;},storyboardComfySceneRuntime:async()=>e.manager,
     storyboardImageAdmissionRuntime:async()=>({admit:async()=>{admissions++;assert.equal((await e.store.inspect(scope)).pending,1);throw Error('admission denied');}}),
     storyboardSettleImageAdmission:(job,outcome)=>e.manager.settle(job,outcome),storyboardGalleryRecords:()=>[],toast:()=>false,

@@ -84,6 +84,7 @@ test('editing one native character rebuilds that person only, preserves others t
 test('actual admission and last submission boundary check expressions before acquiring paid execution eligibility',async()=>{
   const e=await setup(),events=[];
   Object.assign(e.context,{storyboardAdmissionEpoch:1,storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:10,
+    storyboardQueueSettling:0,storyboardQueueWindow:{has:()=>false,reservedCount:0,notify:()=>{}},
     getChatKey:()=> 'chat-a',storyboardImageAdmissionRuntime:async()=>({admit:async()=>events.push('admit')}),
     storyboardGalleryRecords:()=>[],storyboardStartLog:()=>({id:'log'}),storyboardPlanForJob:()=>null,storyboardSetPlanStatus(){},saveSettings(){},renderModal(){},storyboardPumpQueue(){},
     storyboardScheduleInlineRender(){},toast:message=>events.push(message),storyboardValidatedAnchor:()=>({valid:true})});

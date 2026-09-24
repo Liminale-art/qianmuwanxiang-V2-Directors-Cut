@@ -22,6 +22,7 @@ function environment() {
   const context = vm.createContext({
     ...board, MODULE_NAME: 'test', STORYBOARD_QUEUE_LIMIT: 8,storyboardContinuationRuntime:null,storyboardStreamRuntime:null,storyboardWorldAutomaticRuntime:null,
     storyboardAutomaticPending: new Map(), storyboardAutomaticCurrent: null, storyboardAutomaticTimer: null, storyboardAutomaticEpoch: 0, storyboardCompilerBusy: false,
+    storyboardStopQueueBatches: () => {},
     storyboardState: () => state, getChatKey: () => chatKey, ctx: () => ({ chat }), storyboardCurrentAssistantFloor: () => chat.length - 1,
     storyboardPlanCompilerSignature: () => 'compiler', storyboardDeletePlanArchives: async () => {}, uid: () => `id-${++seq}`,
     saveSettings: () => {}, storyboardScheduleInlineRender: () => {}, toast: message => notices.push(message), console: { warn: (...args) => errors.push(args) },

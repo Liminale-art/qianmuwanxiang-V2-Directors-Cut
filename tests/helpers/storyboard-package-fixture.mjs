@@ -20,8 +20,10 @@ export function createPackageImportFixture(){
     checkpoint:async(row,phase)=>{const next={...row,phase,revision:row.revision+1};e.checkpoints.set(row.key,next);return structuredClone(next);}};
   const modules={storyboardPackageAssets:assets,storyboardPackageInput:input,storyboardPackageDraft:draft,storyboardPackageMutation:mutation,storyboardPackageJournal:{createStoryboardPackageJournal:()=>journal},
     storyboardPackageStage:{createStoryboardPackageStage:args=>createStoryboardPackageStage({...args,locks})},storyboardPackageStore:{createVibeAssetStore:()=>assetStore},imageAdmission:{resolveImageAccountNamespace:async()=>e.namespace}};
-  const noop=()=>{},context=vm.createContext({...board,Blob,structuredClone,JSON,globalThis:null,navigator:{locks:{request:async(name,opts,run)=>run({name})}},storyboardAdmissionEpoch:1,
-    storyboardState:()=>e.state,getChatStore:()=>e.store,getChatKey:()=>e.chatKey,storyboardActiveJobs:new Map(),storyboardQueue:[],STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,featureRuntime:{load:async name=>modules[name]},
+  const noop=()=>{},queueBatches=new Set(),context=vm.createContext({...board,Blob,structuredClone,JSON,globalThis:null,navigator:{locks:{request:async(name,opts,run)=>run({name})}},storyboardAdmissionEpoch:1,
+    storyboardState:()=>e.state,getChatStore:()=>e.store,getChatKey:()=>e.chatKey,storyboardActiveJobs:new Map(),storyboardQueue:[],
+    storyboardQueueBatches:queueBatches,storyboardQueuePendingCount:()=>[...queueBatches].reduce((count,entry)=>count+entry.handle.pendingCount,0),storyboardQueueSettling:0,
+    STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,featureRuntime:{load:async name=>modules[name]},
     clone:structuredClone,ctx:()=>({chat:e.messages}),getCharacterName:()=> 'fixture',storyboardGalleryRecords:()=>e.store.storyboardImages||[],storyboardGalleryCollections:()=>e.store.storyboardCollections||[],
     confirmDialog:async(...args)=>{e.lastConfirmation=args;return typeof e.confirm==='function'?e.confirm():e.confirm;},promptInput:async()=>e.choice,storyboardUtilsModule:async()=>({saveBase64AsFile:async(...args)=>{e.events.push('media');if(e.upload)return e.upload(...args);return '/restored.png';}}),
     storyboardSafeUrl:url=>typeof url==='string'&&url.startsWith('/')?url:'',saveSettings:()=>{e.events.push('settings');},saveMetadata:async()=>{e.events.push('metadata');if(e.persist)await e.persist();},

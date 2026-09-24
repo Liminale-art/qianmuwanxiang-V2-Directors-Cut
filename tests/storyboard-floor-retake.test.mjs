@@ -10,8 +10,8 @@ import {migrateQianmuChatStoreV2} from '../qianmu-data-migrations.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.371';
-import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.371';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.372';
+import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.372';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
 const ref=core.createStoryboardMessageReference({chatKey:'chat',floor:0,message:{mes:'Alice cooks.',send_date:'synthetic',swipe_id:0}});
@@ -130,6 +130,7 @@ async function entryFixture(){
   e.context.storyboardAdmissionEpoch=0;let choice={mode:'auto',paragraphIndex:null,selection:null},saveFailure=false;
   const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='storyboardFloorCapture'?capture:key==='imageAdmission'?{resolveImageAccountNamespace:async()=> 'st-user:route-test'}:load(key);
   Object.assign(e.context,{storyboardMessageFloor:()=>0,storyboardChooseCaptureMode:async()=>choice,storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:()=>history,
+    storyboardQueueBatches:new Set(),
     storyboardProductionDeliveryPolicy:core.storyboardProductionDeliveryPolicy,
     storyboardReconcileGalleryLinks:()=>{},storyboardInlineRecordValid:r=>r.inline,storyboardDeletePlanArchives:async()=>{},storyboardPlanCompilerSignature:()=> 'same compiler',
     storyboardPlanForJob:job=>e.state.shotPlans.find(p=>p.id===job.planId),galleryMembershipSnapshot,uniqueClean:v=>v,
@@ -306,6 +307,20 @@ test('a second click while the chooser is open cannot start another extraction, 
   e.context.storyboardChooseCaptureMode=async()=>{prompts++;opened.resolve();return choice.promise;};
   const first=e.click();await opened.promise;assert.equal(prompts,1);assert.equal(await e.click(),false);assert.equal(prompts,1);assert.equal(e.llmCalls.length,0);
   choice.resolve(null);assert.equal(await first,false);identity.resolve('st-user:route-test');assert.equal(e.jobs.length,0);
+});
+
+test('a pending batch blocks another retake of the same floor, including one registered while the chooser is open',async()=>{
+  const pending=floor=>({complete:false,chatKey:'chat-a',plan:{floor},handle:{pendingCount:13}});
+  const already=await entryFixture();already.context.storyboardQueueBatches.add(pending(0));
+  assert.equal(await already.click(),false);assert.equal(already.llmCalls.length,0);assert.equal(already.jobs.length,0);
+  const during=await entryFixture();
+  during.context.storyboardChooseCaptureMode=async()=>{
+    during.context.storyboardQueueBatches.add(pending(0));
+    return {mode:'auto'};
+  };
+  assert.equal(await during.click(),false);assert.equal(during.llmCalls.length,0);assert.equal(during.jobs.length,0);
+  const unrelated=await entryFixture();unrelated.context.storyboardQueueBatches.add(pending(1));
+  assert.equal(await unrelated.click(),true);assert.equal(unrelated.jobs.length,3);
 });
 
 test('failed capture restores untouched controls but never overwrites a concurrent user edit',()=>{

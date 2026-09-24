@@ -1,12 +1,12 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.371';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.371';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.371';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.371';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.371';
-import {verifyStoryboardStreamAttemptPrefix} from './qianmu-storyboard-stream-attempt.js?v=1.59.371';
-import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.371';
-import {createStoryboardStreamFinalStorage} from './qianmu-storyboard-stream-final-storage.js?v=1.59.371';
-import {probeStoryboardStreamRecovery} from './qianmu-storyboard-stream-recovery.js?v=1.59.371';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.372';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.372';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.372';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.372';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.372';
+import {verifyStoryboardStreamAttemptPrefix} from './qianmu-storyboard-stream-attempt.js?v=1.59.372';
+import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.372';
+import {createStoryboardStreamFinalStorage} from './qianmu-storyboard-stream-final-storage.js?v=1.59.372';
+import {probeStoryboardStreamRecovery} from './qianmu-storyboard-stream-recovery.js?v=1.59.372';
 
 // Finished host notifications share the existing automatic-capture queue. A
 // persisted final-pass marker prevents repeated notifications/reloads from
@@ -58,6 +58,11 @@ export async function finishStoryboardStreamCapture(ticket,d){
     const matches=state.shotPlans.filter(row=>row.revisionId===root.revisionId&&row.messageRef?.messageKey===root.messageKey&&row.chatKey===ticket.chatKey&&row.origin==='automatic');
     if(matches.length!==1)throw Error('本层原流式计划缺失或重复，请手动核对，未重复提交');
     [plan]=matches;
+    // A stopped queue window can already be gone by the time ST emits its
+    // terminal notification. Its unsent mirrors remain in the durable plan;
+    // never reinterpret those rows as free slots for an automatic final pass.
+    if((plan.shots||[]).some(shot=>shot.status==='cancelled'||/未提交/.test(String(shot.error||'')))
+      ||/未提交/.test(String(plan.error||'')))throw Error('本层有未提交镜头，请手动核对后重新提取');
     await verifyStoryboardStreamAttemptPrefix(plan,{message:()=>message,guard:()=>{if(!valid())throw Error('终稿来源已变化，未继续补图');}});
     if(!plan.id||root.stream&&plan.id!==`stream-${root.stream.generationKey}`)throw Error('本层原流式计划编号不一致，未重复提交');
     if(!valid())return false;
@@ -89,11 +94,11 @@ export async function finishStoryboardStreamCapture(ticket,d){
       try{outcome=await d.storyboardSubmitStreamPrepared(prepared);await prepared.context.compilerSources.guard();prepared.inputGuard.assertCurrent();}
       catch(error){attemptError=error;outcome=error.streamOutcome||outcome;throw error;}
     }});
-    return Boolean(outcome?.queued);
+    return Boolean(outcome?.queued||outcome?.scheduled===true);
   }catch(error){
     attemptError=error;
     if(valid())d.toast(String(d.sanitizeStoryboardDiagnosticData(error?.message||'终稿补图准备失败')).slice(0,160),'warning');
-    return Boolean(outcome?.queued);
+    return Boolean(outcome?.queued||outcome?.scheduled===true);
   }finally{
     try{
       if(marker&&valid()&&namespace===await d.resolveNamespace().catch(()=>null)&&valid()){

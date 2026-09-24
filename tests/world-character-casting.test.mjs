@@ -29,6 +29,8 @@ import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImag
 import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
 import {planCharacterReference,assertCharacterReferencePlan,characterReferenceNotice} from '../qianmu-character-reference.js';
 import {installWorldComfyAuto} from './helpers/world-comfy-auto-fixture.mjs';
+import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
+import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 export function worldEnvironment() {
@@ -120,6 +122,7 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
   const candidate=scoreNarrativeDirectorCandidate(ledger,{chatKey:'chat-a',viewerId:'user'});
   let account=e.namespace,chat='chat-a';const calls=[],notices=[],chatData=[{mes:'unrelated prose'}];
   Object.assign(context,{storyboardCompilerBusy:false,projectNewComfyExecution,storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardGenerationPreparing:new Set(),directorNarrativeBridgeEpoch:1,
+    resolveImageAccountNamespace:async()=>account,
     directorProductionPacketState:{chatKey:chat,packets:[packet]},directorCandidatePoolState:{chatKey:chat,ledger:{entries:[ledger]},pool:{candidates:[candidate]}},
     getChatKey:()=>chat,storyboardTargetFloor:()=>0,storyboardScheduleAutomaticCapture(){},ctx:()=>({chat:chatData,Popup:class{},POPUP_TYPE:{CONFIRM:1}}),
     getCharacterDescription:()=>'',getPersonaDescription:()=>'',storyboardCharacterArchiveContext:async()=>({chatKey:chat,subjects:e.subjects}),
@@ -148,7 +151,17 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
   return {...e,state,context,calls,notices,packet,candidate,run:()=>context.storyboardGenerateProductionPacket({isConnected:true},'packet-a'),setAccount:value=>{account=value;},setChat:value=>{chat=value;}};
 }
 function useActualWorldGeneration(e,functions) {
-  vm.runInContext(functions.map(section).join('\n'),e.context);
+  const context=e.context;
+  context.storyboardQueue ||= [];
+  context.storyboardActiveJobs ||= new Map();
+  context.STORYBOARD_QUEUE_LIMIT ||= 8;
+  context.storyboardQueueSettling ||= 0;
+  context.storyboardQueueBatches ||= new Set();
+  context.storyboardQueueWindow=createStoryboardQueueWindow({limit:context.STORYBOARD_QUEUE_LIMIT,
+    occupied:()=>context.storyboardQueue.length+context.storyboardActiveJobs.size+context.storyboardQueueSettling,pollMs:5});
+  context.startStoryboardQueueWindowBatch=startStoryboardQueueWindowBatch;
+  const queueFunctions=functions.includes('storyboardEnqueuePreparedBatch')?functions:[...functions,'storyboardEnqueuePreparedBatch'];
+  vm.runInContext(queueFunctions.map(section).join('\n'),context);
   const generate=e.context.storyboardGenerate;
   e.context.storyboardGenerate=(root,options)=>{e.context.lastProductionOptions=options;return generate(root,options);};
 }
@@ -190,7 +203,7 @@ async function automaticWorldHarness({comfy=false}={}){
     store:{claim:async(scope,input,seeds)=>run(scope,value=>claimImageAttempt(importImageAttempts(value,scope,seeds,1000),scope,input,1000)),
       preflight:async groups=>{for(const group of groups){const checked=preflightImageAttempts(rows.get(imageAttemptScopeKey(group.scope)),group.scope,group.inputs,group.history,1000);if(!checked.ok)return checked;}return {ok:true};},
       settle:async(scope,input)=>run(scope,value=>settleImageAttempt(value,scope,input,1000)),close(){}}});
-  Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,
+  Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:8,
     storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],
     storyboardAdaptShotForModel:async shot=>shot,confirmDialog:async()=>assert.fail('automatic world must not open dialogs'),
     STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',environment:'',custom:''},storyboardImageAdmissionRuntime:async()=>admission,
@@ -200,7 +213,7 @@ async function automaticWorldHarness({comfy=false}={}){
   useActualWorldGeneration(e,['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardProfileSnapshot','storyboardResolveRoutingProfile',
     'storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate',
     'storyboardVerifyWorldAutomaticApproval','storyboardSettleImageAdmission','storyboardPreflightImageBatch','storyboardQueueJob']);
-  return {...e,transport,checks,admission,source,runAutomatic:()=>e.context.storyboardGenerateProductionPacket(null,'packet-a',{automatic:true})};
+  return {...e,transport,checks,admission,attemptRows:rows,source,runAutomatic:()=>e.context.storyboardGenerateProductionPacket(null,'packet-a',{automatic:true})};
 }
 
 async function nativeWorldEnsembleHarness({comfy=false,artist=false}={}){
@@ -336,6 +349,26 @@ for(const comfy of [false,true])test(`automatic world ${comfy?'fixed Comfy':'NAI
     assert.deepEqual(e.state.promptDraft,before);assert.equal(e.state.prompt,'original');assert.equal(e.checks.length,3,'batch preflight plus both original per-job approval checks');
     const rows=[...e.transport.files.values()].map(JSON.parse);assert.ok(rows.some(row=>row.value?.record?.status==='queued'));
     assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.calls.filter(value=>value==='llm').length,1);
+  }finally{await e.admission.close();}
+});
+
+test('automatic world single-frame handoff refuses a full eight-slot queue without a deferred acceptance or queued anti-repeat claim',async()=>{
+  const e=await automaticWorldHarness();try{
+    const occupied=Array.from({length:8},(_,index)=>({id:`other-job-${index}`}));
+    e.context.storyboardQueue.push(...occupied);
+    assert.equal(await e.runAutomatic(),false,e.notices.join(';'));
+    assert.equal(e.calls.filter(value=>value==='llm').length,1);
+    assert.ok(e.context.lastProductionOptions?.productionHandoff,'the refusal must come from the real world-image handoff');
+    assert.deepEqual(e.context.storyboardQueue.map(job=>job.id),occupied.map(job=>job.id));
+    assert.equal(e.context.storyboardQueueBatches.size,0,'one world frame must not register a background batch when no slot exists');
+    assert.equal(e.context.storyboardQueueWindow.reservedCount,0);
+    assert.equal(e.attemptRows.size,0,'capacity refusal must not claim an image attempt');
+    assert.equal(e.state.logs.length,0,'capacity refusal must not save a queued image log');
+    assert.equal(e.context.storyboardGenerationPreparing.size,0);
+    const attempts=[...e.transport.files.values()].map(JSON.parse).filter(row=>row.value?.schema==='qianmu.world-automatic-attempt.v1');
+    assert.ok(attempts.some(row=>row.value.record.status==='failed'));
+    assert.ok(attempts.every(row=>row.value.record.status!=='queued'));
+    assert.match(e.notices.join(';'),/队列已满|尚未提交/);
   }finally{await e.admission.close();}
 });
 

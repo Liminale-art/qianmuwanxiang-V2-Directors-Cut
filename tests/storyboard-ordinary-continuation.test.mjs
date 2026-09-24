@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {normalizeStoryboardContinuationLinks,storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.371';
-import {storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.371';
+import {normalizeStoryboardContinuationLinks,storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.372';
+import {storyboardStreamDigest} from '../qianmu-storyboard-stream-reference.js?v=1.59.372';
 import {verifyStoryboardOrdinaryContinuation as verify} from '../qianmu-storyboard-ordinary-continuation.js';
 import {createImageAdmission,createImageAdmissionIdentity} from '../qianmu-image-admission.js';
 import {beginImageAttempt,continueImageAttempt,claimImageAttempt,importImageAttempts,settleImageAttempt,imageAttemptScopeKey} from '../qianmu-image-attempts.js';
@@ -167,6 +167,7 @@ test('actual automatic entry never turns missing ordinary plan provenance into a
   Object.assign(state,{enabled:true});Object.assign(state.automation,{autoCapture:true,autoGenerate:true});state.promptCompiler.enabled=true;
   state.logs=[{id:'old-ordinary-log',status:'success',snapshot:{messageRef:copy(f.ref)}}];
   const before=copy(state),context=vm.createContext({...core,storyboardAutomaticEpoch:0,ctx:()=>f.host,getChatKey:()=>f.host.chatId,storyboardState:()=>state,
+    storyboardStreamFinalWaits:new Map(),storyboardQueueBatches:new Set(),
     storyboardGalleryRecords:()=>[],storyboardCompilePrompt:()=>assert.fail('must not call the model'),storyboardSubmitStreamPrepared:()=>assert.fail('must not queue'),
     storyboardEnsurePlan:()=>assert.fail('must not create a second plan'),uid:()=> 'test',saveSettings:()=>assert.fail('must not change state'),
     toast:message=>notices.push(message),sanitizeStoryboardDiagnosticData:v=>v,

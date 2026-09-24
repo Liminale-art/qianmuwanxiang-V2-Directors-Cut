@@ -123,6 +123,6 @@ assert.doesNotMatch(loadConnectionSource, /Object\.assign\([^\n]+preset\.options
 const generateSource = browserSource.slice(browserSource.indexOf('async function storyboardGenerate'), browserSource.indexOf('function storyboardRetryLog'));
 assert.match(generateSource, /summarizeStoryboardGenerationDemand\(jobs\)/, 'multi-image Count must be included in the preflight cost confirmation');
 assert.match(generateSource, /confirmDialog\('确认生成数量'/, 'multiple requested images must require an explicit confirmation');
-assert.match(generateSource, /jobs\.length > remainingSlots/, 'a multi-shot plan must not be partially enqueued when capacity is insufficient');
+assert.match(generateSource, /await storyboardPreflightImageBatch\(jobs,inputGuard\.isCurrent\)[\s\S]*if\(jobs\.length<=freeSlots\)[\s\S]*storyboardEnqueuePreparedBatch\(jobs,/, 'all shots must pass batch preflight before excess shots are scheduled across queue windows');
 
 console.log('Storyboard parameter contract OK');

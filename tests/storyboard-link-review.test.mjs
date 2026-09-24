@@ -83,7 +83,8 @@ async function production({ pending = false, changeAt = '', lock = true, saveFai
   const context = vm.createContext({ console, structuredClone, storyboardImportPackage: {}, storyboardExportPackage: {}, storyboardState: () => state, getChatStore: () => store,
     getChatKey: () => 'chat', storyboardAdmissionEpoch: 1, featureRuntime: { load: async name => modules[name] },
     document: { getElementById: () => ({ classList: { contains: () => true } }) }, MODAL_ID: 'modal',
-    storyboardActiveJobs: new Set(), storyboardQueue: [], navigator: { locks: { request: async (_, __, fn) => fn(lock ? {} : null) } },
+    storyboardActiveJobs: new Set(), storyboardQueue: [], storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0,
+    navigator: { locks: { request: async (_, __, fn) => fn(lock ? {} : null) } },
     storyboardSafeUrl: url => url, ctx: () => ({ chat: f.messages }), storyboardLinkReviewParagraphs: text => text.split('\n'), applyQianmuIcons() {}, storyboardLinkReview: null,
     saveMetadata: async () => { writes++; if (changeAt === 'save') f.messages[1].mes = 'changed'; if (saveFail) throw new Error('write failed'); },
     storyboardScheduleInlineRender: () => scheduler++, renderModal: () => rendered++, toast: message => notices.push(message) });

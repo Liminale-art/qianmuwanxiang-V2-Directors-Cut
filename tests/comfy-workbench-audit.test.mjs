@@ -19,6 +19,7 @@ function harness({ automatic = false, uncertain = false, batch = 1, choice = 'ac
   let chat='a';
   const context=vm.createContext({
     ...storyboard,clone:structuredClone,storyboardState:()=>state,getChatKey:()=>chat,storyboardQueue:waiting,storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:8,
+    storyboardQueueSettling:0,storyboardQueueWindow:{has:()=>false,reservedCount:0,notify:()=>{}},
     storyboardValidatedAnchor:()=>({valid:true}),getStoryboardGenerationPolicy:()=>({maxImages:1}),storyboardGalleryRecords:()=>[],
     resolveStoryboardJobModelIdentity:()=>({modelFamily:'comfy',remoteModelId:'comfy-workflow',protocol:'comfy'}),
     resolveStoryboardConnectionBinding:()=>({}),directImageRuntime:async()=>runtime,

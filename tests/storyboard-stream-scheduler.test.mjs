@@ -100,8 +100,9 @@ test('pass adapter preserves accepted partial counts after handoff failure and n
 });
 
 test('pass adapter distinguishes busy, wait, valid submissions and missing outcomes without inventing a successful handoff',async()=>{
-  for(const [reported,outcome,expected]of [['busy',null,'busy'],['waiting',{queued:0},'waiting'],['ready',{queued:2},'advanced'],['ready',{queued:0},'waiting'],[null,null,'failed']]){
+  for(const [reported,outcome,expected]of [['busy',null,'busy'],['waiting',{queued:0},'waiting'],['ready',{queued:2},'advanced'],['ready',{queued:0,scheduled:true},'advanced'],['ready',{queued:0},'waiting'],[null,null,'failed']]){
     const result=await runStoryboardStreamPass({compile:async(_,{onPrepared,onStreamOutcome})=>{if(outcome)await onPrepared({});if(reported)onStreamOutcome({status:reported});},submit:async()=>outcome},{floor:0});
     assert.equal(result.status,expected);
+    if(outcome?.scheduled)assert.equal(result.queued,0,'scheduling is not a claim that a provider request was accepted');
   }
 });

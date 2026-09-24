@@ -55,8 +55,10 @@ export async function routeEnvironment(options={}) {
     storyboardSelectedArtistPreset:()=>null,storyboardGalleryRecords:()=>[],storyboardFloorTakeReceipts:()=>[],STORYBOARD_NAI_QUALITY_DEFAULTS:{},STORYBOARD_NAI_NEGATIVE_DEFAULTS:{},STORYBOARD_GENERIC_PROMPT_DEFAULTS:{positive:'global quality',negative:'global negative'},
     storyboardProductionDeliveryPolicy:(_shot,policy)=>policy,storyboardProductionContext:()=>({}),storyboardAnchorForMessage:()=>null,
     storyboardCredentialId:()=> 'fixture-key',hashText,sanitizeStoryboardDiagnosticData:value=>value,uid:()=>`id-${++sequence}`,uniqueClean:items=>[...new Set(items.filter(Boolean))],
+    resolveImageAccountNamespace:async()=>account,
     saveSettings(){},renderModal(){},toast:message=>{notices.push(message);return false;},
-    storyboardGenerationPreparing:new Set(),storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:100,
+    storyboardGenerationPreparing:new Set(),storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:100,storyboardQueueSettling:0,
+    storyboardQueueWindow:{reservedCount:0,has:()=>false,notify:()=>{}},
     storyboardPipelineArchiveCache:new Map(),storyboardPreparationRetries:new Set(),storyboardScheduleInlineRender(){},storyboardPlanIsTerminal:()=>false,
     blobStore:{deleteStoryboardPipelineLogs:async()=>{}},storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>state.pipelineLogs.find(row=>row.id===log.pipelineId),
     // This fixture ends at the route/queue seam; ledger-backed admission is

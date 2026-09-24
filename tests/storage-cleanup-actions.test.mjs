@@ -14,6 +14,7 @@ function fixture(result, kind = 'chat') {
   const selected=['a','b'].map(chatKey=>({name:'storyboard_plan_archives',chatKey}));
   const calls={save:0,clear:0};
   const c=vm.createContext({settings:{logHistory:['original']},storyboardAdmissionEpoch:1,releasePlanReferencesForChats,storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
+    storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0,
     storageInventoryState:{data:{idb:{stores:[]}}},storyboardState:()=>state,
     openStorageChatCleanupDialog:async()=>selected,openStorageCleanupDialog:async()=>['__diagnostics__'],blobStore:{clearChatScopedStorage:async entries=>{calls.clear++;assert.equal(entries,selected);return result;},clearStorageItems:async()=>{calls.clear++;return result;}},
     getChatKey:()=> 'a',reconcileClearedStorageItems:()=>({chatMetadataChanged:false}),saveSettings(){calls.save++;},

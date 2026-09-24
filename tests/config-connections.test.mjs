@@ -244,6 +244,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
   const c=vm.createContext({...base,settings:{focusClock:{status:'idle'}},focusClockVoicePreparation:null,focusLibraryRuntime:null,ttsExportAudioCache:{busy:false},ttsImportAudioCache:{busy:false},
     storyboardActiveJobs:new Map(),storyboardGenerationPreparing:new Set(),storyboardPreparationRetries:new Set(),storyboardComfyRecovery:null,storyboardReceiveComfyImage:{},storyboardImageService:null,storyboardReceiveServiceImage:{},storyboardQueue:[],storyboardAutomaticPending:new Map(),
+    storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0,
     storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},exportPinnedNotesBackup:{busy:false},exportTtsFavoritesBackup:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
   c.collectionFloorTools={restoreBusy:false,restoreBackup:()=>{}};

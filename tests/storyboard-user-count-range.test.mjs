@@ -12,9 +12,13 @@ import {prepareStoryboardPackageDraft} from '../qianmu-storyboard-package-draft.
 import {compilerEnvironment,casting,response} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
+import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
+import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const indexes=count=>Array.from({length:count},(_,index)=>index);
+const fixtureWindows=new Set();
+test.afterEach(()=>{for(const window of fixtureWindows)window.close();fixtureWindows.clear();});
 
 test('explicit v3 counts do not retroactively enlarge defaults or saved v1/v2 spending permissions',()=>{
   assert.deepEqual(board.createStoryboardDefaults().generationPolicy,{version:1,minImages:1,maxImages:3,concurrency:2});
@@ -45,6 +49,7 @@ function examples(count){
 // and admission run unchanged. Only model/provider I/O and ST persistence are fixtures.
 async function fixture(count,{mixed=false}={}){
   const f=await compilerEnvironment(),host=f.context.ctx(),events=new EventEmitter(),shots=examples(count),calls=[],rows=new Map();
+  const acceptedJobs=[],seenJobs=new Set();let peakQueued=0;
   events.setMaxListeners(100);host.eventSource=events;
   host.chat.splice(0,host.chat.length,{mes:shots.map(shot=>shot.subject).join('\n\n')+'\n\nUnfinished',name:'Alice',is_user:false,send_date:'count-test-floor',gen_started:'count-generation',swipe_id:0});
   host.saveMetadata=async()=>{};
@@ -65,13 +70,18 @@ async function fixture(count,{mixed=false}={}){
   const resolve=job=>board.resolveStoryboardMessageReference(job.messageRef,host.chat,{chatKey:'chat-a',namespace:'st-user:route-test',metadata:host.chatMetadata});
   const admission=createImageAdmission({store,account:async()=> 'st-user:route-test',ownerId:'count-page',resolveSource:resolve});
   Object.assign(f.context,{
-    storyboardStreamRuntime:null,storyboardCleanWithTagRules:value=>value,storyboardCleanMessageText:value=>value.trim(),resolveMacro:async value=>value,
+    settings:{...f.context.settings,enabled:true},resolveImageAccountNamespace:async()=> 'st-user:route-test',
+    storyboardStreamRuntime:{leaseFor:ref=>({isCurrent:()=>resolve({messageRef:ref}).state==='active'})},
+    storyboardCleanWithTagRules:value=>value,storyboardCleanMessageText:value=>value.trim(),resolveMacro:async value=>value,
     storyboardMessageParagraphs:value=>value.split(/\n\s*\n/).map(row=>row.trim()).filter(Boolean),
     storyboardCompilerWorldText:async()=>({text:'',rows:[]}),
     storyboardCompilerCharacterCasting:async()=>({prepared:casting,assertCurrent:async()=>{},apply:applyCharacterCasting}),
     document:{addEventListener(){},removeEventListener(){}},STORYBOARD_PIPELINE_LOG_LIMIT:100,
     storyboardPlansForPortableExport:async plans=>copy(plans),storyboardDeletePlanArchives:async()=>{},
-    storyboardValidatedAnchor:job=>({valid:resolve(job).state==='active'}),storyboardPumpQueue(){},
+    storyboardValidatedAnchor:job=>({valid:resolve(job).state==='active'}),storyboardPumpQueue(){
+      peakQueued=Math.max(peakQueued,f.context.storyboardQueue.length);
+      for(const job of f.context.storyboardQueue)if(!seenJobs.has(job.id)){seenJobs.add(job.id);acceptedJobs.push(job);}
+    },
     storyboardImageAdmissionRuntime:async()=>admission,storyboardSettleImageAdmission:(job,status)=>admission.settle(job,status),
     storyboardConfirmComfyExecution:async()=>true,storyboardParseWorkflow:value=>typeof value==='string'?JSON.parse(value):value,
     storyboardCallCompiler:async(messages,_id,options)=>{
@@ -94,20 +104,52 @@ async function fixture(count,{mixed=false}={}){
       }),...(mixed?{style_assignments:payload.shots.map((item,index)=>({shot_id:item.shot_id,scheme_id:index<2?`fixture-style-${index}`:'current',reason:'Rendering style only'}))}:{})});
     },
   });
-  vm.runInContext(['storyboardCompilerContext','storyboardSubmitStreamPrepared','storyboardChooseComfyGenerationRoutes','storyboardPreflightImageBatch','storyboardQueueJob','storyboardStartLog','storyboardFinishLog',
+  Object.assign(f.context,{STORYBOARD_QUEUE_LIMIT:8,storyboardQueueSettling:0,storyboardQueueBatches:new Set(),startStoryboardQueueWindowBatch});
+  f.context.storyboardQueueWindow=createStoryboardQueueWindow({limit:8,
+    occupied:()=>f.context.storyboardQueue.length+f.context.storyboardActiveJobs.size+f.context.storyboardQueueSettling,pollMs:5});
+  fixtureWindows.add(f.context.storyboardQueueWindow);
+  f.context.storyboardQueuePendingCount=()=>[...f.context.storyboardQueueBatches].reduce((count,entry)=>count+entry.handle.pendingCount,0);
+  vm.runInContext(['storyboardCompilerContext','storyboardSubmitStreamPrepared','storyboardChooseComfyGenerationRoutes','storyboardPreflightImageBatch','storyboardQueueJob','storyboardEnqueuePreparedBatch','storyboardStartLog','storyboardFinishLog',
     'storyboardRecordPreparedJobFailure','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus'].map(section).join('\n'),f.context);
-  return {...f,host,shots,calls,rows,admission,
+  const waitFor=async(predicate,phase)=>{for(let attempt=0;attempt<1000;attempt++){
+    if(predicate())return;
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }assert.fail(`${phase}: accepted=${acceptedJobs.length}, queued=${f.context.storyboardQueue.length}, pending=${f.context.storyboardQueuePendingCount()}, notices=${JSON.stringify(f.notices)}`);};
+  const awaitAccepted=async(expected,{onFirstWindow}={})=>{
+    if(expected>8){
+      await waitFor(()=>acceptedJobs.length>=8,'first queue window');
+      assert.equal(f.context.storyboardQueue.length,8,'first eight jobs must occupy only the eight live slots');
+      onFirstWindow?.(acceptedJobs.slice(0,8));
+    }
+    while(acceptedJobs.length<expected){
+      await waitFor(()=>acceptedJobs.length>=expected||f.context.storyboardQueue.length===8,'next free queue slot');
+      if(acceptedJobs.length>=expected)break;
+      const job=f.context.storyboardQueue[0];
+      await admission.beforeSubmit(job,()=>resolve(job).state==='active');
+      await admission.settle(job,'succeeded');
+      assert.equal(f.context.storyboardQueue.shift(),job);
+      f.context.storyboardQueueWindow.notify();
+    }
+    await waitFor(()=>acceptedJobs.length>=expected,'final queue handoff');
+    await waitFor(()=>f.context.storyboardQueuePendingCount()===0,'batch completion');
+    assert.ok(peakQueued<=8,`live queue exceeded eight slots: ${peakQueued}`);
+    assert.equal(f.context.storyboardQueueWindow.reservedCount,0);
+    return acceptedJobs.slice(0,expected);
+  };
+  return {...f,host,shots,calls,rows,admission,acceptedJobs,awaitAccepted,get peakQueued(){return peakQueued;},
     select:value=>{selected=value;},get requests(){return requests;},get prepared(){return prepared;},
     run:options=>f.context.storyboardCompilePrompt(null,{quiet:true,stream:{floor:0,signal:new AbortController().signal},
       onPrepared:async value=>{prepared=value;await f.context.storyboardSubmitStreamPrepared(value);},...options}),
-    assertReleased(){assert.equal(events.eventNames().reduce((sum,key)=>sum+events.listenerCount(key),0),0);assert.equal(f.context.storyboardCompilerBusy,false);},
+    assertReleased(){assert.equal(events.eventNames().reduce((sum,key)=>sum+events.listenerCount(key),0),0);assert.equal(f.context.storyboardCompilerBusy,false);
+      assert.equal(f.context.storyboardQueuePendingCount(),0);assert.equal(f.context.storyboardQueueWindow.reservedCount,0);},
   };
 }
 
 for(const count of [3,7,13,17,21])test(`explicit ${count}-shot v3 range survives real streaming compiler, plan, admission and persisted order`,async()=>{
   const f=await fixture(count);assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,notices:f.notices,repair:f.calls.filter(call=>call.payload.validation_errors)}));
-  const queue=f.context.storyboardQueue;
+  const queue=await f.awaitAccepted(count);
   assert.equal(queue.length,count);assert.equal(f.requests,2);assert.equal(f.state.shotPlans[0].shots.length,count);
+  assert.ok(f.context.storyboardQueue.length<=8);
   assert.ok(queue.every(job=>job.inlineOrder),`all ${count} jobs must retain an inline-order identity`);
   assert.deepEqual(queue.map(job=>job.inlineOrder.shotIndex),indexes(count));
   assert.deepEqual(queue.map(job=>job.messageRef.stream.moment.paragraphId),indexes(count).map(index=>`P${index+1}`));
@@ -131,7 +173,8 @@ for(const count of [7,13])test(`${count} ordinary mixed Comfy/NAI shots keep dir
   f.state.shotPlans=[plan];
   assert.equal(await f.run({stream:null,onPrepared:null,plan,automatic:true}),true,JSON.stringify(f.errors));
   assert.equal(await f.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify(f.notices));
-  const queue=f.context.storyboardQueue;assert.equal(queue.length,count);
+  const queue=await f.awaitAccepted(count);assert.equal(queue.length,count);
+  assert.ok(f.context.storyboardQueue.length<=8);
   assert.deepEqual(queue.map(job=>job.source),['comfy','comfy',...Array(count-2).fill('novel')]);
   assert.deepEqual(queue.map(job=>job.inlineOrder.shotIndex),indexes(count));
   assert.ok(queue.every(job=>job.profile.count==='1'&&job.imageAdmission.automaticSlot));
@@ -140,16 +183,18 @@ for(const count of [7,13])test(`${count} ordinary mixed Comfy/NAI shots keep dir
 
 test('seven early plus six later shots share the explicit thirteen-slot allowance through state reload and final extraction',async()=>{
   const f=await fixture(13);f.select(indexes(7));assert.equal(await f.run(),true,JSON.stringify(f.errors));
-  const first=copy(f.context.storyboardQueue),planId=f.state.shotPlans[0].id;
+  const first=copy(await f.awaitAccepted(7)),planId=f.state.shotPlans[0].id;
   Object.assign(f.state,board.normalizeStoryboardState(copy(f.state)));
   f.select(indexes(6).map(index=>index+7));assert.equal(await f.run(),true,JSON.stringify(f.errors));
-  assert.deepEqual(copy(f.context.storyboardQueue.slice(0,7)),first);
+  const accepted=await f.awaitAccepted(13);
+  assert.deepEqual(copy(accepted.slice(0,7)),first);
   assert.equal(f.calls[2].payload.constraints.committed_images.occupied,7);assert.equal(f.calls[2].payload.constraints.max_shots,6);
   assert.equal(f.state.shotPlans[0].id,planId);assert.equal(f.state.shotPlans[0].shots.length,13);assert.equal(f.rows.size,1);
   f.host.chat[0].mes=f.shots.map(shot=>shot.subject).join('\n\n');f.select([]);
   Object.assign(f.state,{target:'floor',floor:'0'});
   assert.equal(await f.run({stream:null,onPrepared:null,automatic:true}),false,JSON.stringify(f.errors));
-  assert.equal(f.context.storyboardQueue.length,13);assert.equal([...f.rows.values()][0].entries.length,13);f.assertReleased();
+  assert.equal(accepted.length,13);assert.ok(f.context.storyboardQueue.length<=8);
+  assert.equal([...f.rows.values()][0].entries.length,13);f.assertReleased();
 });
 
 test('model output above the explicitly chosen seven-shot maximum never queues a truncated paid batch',async()=>{
@@ -160,10 +205,16 @@ test('model output above the explicitly chosen seven-shot maximum never queues a
   assert.ok(f.errors.length||f.notices.length);f.assertReleased();
 });
 
-test('a valid twenty-one-shot plan refuses insufficient queue capacity before publishing any job or reservation',async()=>{
-  const f=await fixture(21);f.context.STORYBOARD_QUEUE_LIMIT=8;
-  assert.equal(await f.run(),false);assert.equal(f.context.storyboardQueue.length,0);assert.equal(f.rows.size,0);
-  assert.ok(f.notices.some(message=>/队列|任务/.test(message)),JSON.stringify(f.notices));f.assertReleased();
+test('a valid twenty-one-shot plan fills eight slots, then admits the rest one freed slot at a time',async()=>{
+  const f=await fixture(21);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  const jobs=await f.awaitAccepted(21,{onFirstWindow:first=>{
+    assert.equal(first.length,8);assert.deepEqual(first.map(job=>job.inlineOrder.shotIndex),indexes(8));
+    assert.equal(f.rows.size,1);assert.equal([...f.rows.values()][0].entries.length,8);
+  }});
+  assert.deepEqual(jobs.map(job=>job.inlineOrder.shotIndex),indexes(21));
+  assert.equal(f.peakQueued,8);assert.equal(f.context.storyboardQueue.length,8);
+  assert.equal([...f.rows.values()][0].entries.length,21);f.assertReleased();
 });
 
 test('later streaming batch exceeding remaining ledger capacity reserves none of its six new jobs',async()=>{
@@ -202,21 +253,27 @@ async function exportState(state){
   vm.runInContext(['ttsDownloadBlob','storyboardPackageContext','storyboardPipelineForLog','storyboardExportPackage'].map(section).join('\n'),context);
   await context.storyboardExportPackage({originals:false});assert.ok(exported,`portable export must produce a complete file: ${JSON.stringify(notices)}`);return exported.text();
 }
+function idlePackageImporter(){
+  const importer=createPackageImportFixture();
+  Object.assign(importer.context,{storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0});
+  return importer;
+}
 
 for(const count of [7,13,21])test(`actual portable export/import keeps explicit v3 ${count}-shot policy exactly`,async()=>{
   const state=board.createStoryboardDefaults(),policy={version:3,minImages:7,maxImages:count,concurrency:4};state.generationPolicy=policy;
   const text=await exportState(state);
   assert.deepEqual(JSON.parse(text).settings.generationPolicy,policy);
-  const importer=createPackageImportFixture();await importer.import(new Blob([text]));
+  const importer=idlePackageImporter();await importer.import(new Blob([text]));
   assert.deepEqual(copy(importer.e.state.generationPolicy),policy,JSON.stringify(importer.e.notices));
 });
 
 for(const count of [1,21])test(`actual portable export/import preserves all ${count} compiled plan shots and their order`,async()=>{
   const f=await fixture(count);f.context.storyboardCredentialId=()=>'';
   assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  await f.awaitAccepted(count);
   const persisted=board.normalizeStoryboardState(copy(f.state)),original=copy(persisted.shotPlans[0]),text=await exportState(persisted),pack=JSON.parse(text);
   assert.equal(pack.settings.shotPlans[0].shots.length,count);
-  const importer=createPackageImportFixture();await importer.import(new Blob([text]));
+  const importer=idlePackageImporter();await importer.import(new Blob([text]));
   assert.ok(importer.e.pending,JSON.stringify(importer.e.notices));
   const plan=importer.e.state.shotPlans.find(row=>row.id===original.id);assert.ok(plan);
   assert.equal(plan.shots.length,count);assert.deepEqual(plan.shots.map(shot=>shot.id),original.shots.map(shot=>shot.id));

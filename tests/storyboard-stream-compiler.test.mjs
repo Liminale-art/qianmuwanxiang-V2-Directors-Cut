@@ -14,6 +14,8 @@ import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuatio
 import {createStoryboardStreamScheduler,runStoryboardStreamPass} from '../qianmu-storyboard-stream-scheduler.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createStoryboardStreamHost} from '../qianmu-storyboard-stream-host.js';
+import {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamParagraphBoundary} from '../qianmu-storyboard-stream-reference.js';
+import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
 import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
 import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
 import {prepareComfyRouteRecipes,assertComfyRouteProfile} from '../qianmu-comfy-route.js';
@@ -36,7 +38,20 @@ async function fixture({floor=0,text='Alice reads a letter in the kitchen.\n\nSh
   const initial=editable(e.state),calls=[],domEvents=new Map();let prepared,modelHook=null,preparedHook=null,worldHook=null,requests=0,hostSaves=0,saves=0,renders=0,wakes=0;
   host.saveMetadata=async()=>hostSaves++;
   Object.assign(e.context,{
-    storyboardStreamRuntime:null,
+    storyboardStreamRuntime:{beforeAutomatic:()=>null,leaseFor:reference=>{
+      const message=host.chat[reference?.lastKnownFloor],proof=reference?.stream;
+      const key=message?createStoryboardMessageReference({message,chatKey:'chat-a',floor:reference.lastKnownFloor}):null;
+      const current=()=>Boolean(message&&host.chat[reference.lastKnownFloor]===message&&proof
+        &&reference.chatKey==='chat-a'&&reference.messageKey===key?.messageKey
+        &&JSON.stringify(proof.generation)===JSON.stringify(storyboardStreamGeneration(message))
+        &&storyboardStreamParagraphBoundary(message.mes,proof.prefixLength)
+        &&storyboardStreamFingerprint(message.mes.slice(0,proof.prefixLength))===proof.prefixHash);
+      return current()?{isCurrent:current}:null;
+    }},
+    resolveImageAccountNamespace:async()=> 'st-user:route-test',
+    storyboardQueueSettling:0,
+    storyboardQueueBatches:new Set(),storyboardStreamFinalWaits:new Map(),
+    storyboardQueueWindow:createStoryboardQueueWindow({limit:8,occupied:()=>e.context.storyboardQueue.length+e.context.storyboardActiveJobs.size}),
     storyboardCleanWithTagRules:value=>value.replace(/<think>[\s\S]*?<\/think>/g,''),storyboardCleanMessageText:value=>value.trim(),resolveMacro:async value=>value,
     storyboardMessageParagraphs:value=>value.split(/\n\s*\n/).map(row=>row.trim()).filter(Boolean),
     storyboardCompilerWorldText:async()=>{if(worldHook)await worldHook();return {text:'',rows:[]};},
@@ -335,15 +350,197 @@ function manyShotExamples(count){
   });return {descriptions,shots};
 }
 
-for(const count of [7,13,21])test(`${count} configured streaming shots preserve the contract without exceeding the existing eight-job queue`,async()=>{
+for(const count of [7])test(`${count} configured streaming shots preserve the contract within the existing eight-job queue`,async()=>{
   const sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
   f.context.STORYBOARD_QUEUE_LIMIT=8;
   f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
-  assert.equal(await f.run(),count<=8,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));
+  assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));
   assert.equal(f.prepared.result.shots.length,count);assert.equal(f.prepared.shotReferences.length,count);
-  if(count<=8){assert.equal(q.queue.length,count);assert.equal(f.state.shotPlans[0].shots.length,count);}
-  else {assert.match(q.errors[0].message,/队列空间不足/);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);assert.equal(f.state.shotPlans.length,0);}
+  assert.equal(q.queue.length,count);assert.equal(f.state.shotPlans[0].shots.length,count);
   assert.equal(f.state.generationPolicy.concurrency,2);f.assertReleased();
+});
+
+function installDeferredStreamWindow(f,q){
+  let handoff=null,beforeFinish=null;
+  f.context.settings.enabled=true;
+  f.context.storyboardEnqueuePreparedBatch=(jobs,callbacks)=>{
+    assert.equal(handoff,null,'one compiler handoff owns one deferred batch');
+    let resolveDone;
+    const done=new Promise(resolve=>{resolveDone=resolve;});
+    handoff={jobs,callbacks,next:0,finished:false};
+    const handle={done,get pendingCount(){return jobs.length-handoff.next;}};
+    const entry={stream:true,plan:callbacks.plan,chatKey:callbacks.chatKey,sourceCurrent:callbacks.sourceCurrent,
+      handle,complete:false};
+    f.context.storyboardQueueBatches.add(entry);
+    handoff.finish=stopped=>{
+      if(handoff.finished)return;
+      handoff.finished=true;
+      const result={acceptedCount:handoff.next,failedCount:0,pendingCount:jobs.length-handoff.next,stopped,
+        reason:stopped?'原流式生成已变化，余镜未提交':null,remainingJobs:jobs.slice(handoff.next),reportingErrors:[]};
+      callbacks.onFinish?.(result);resolveDone(result);
+    };
+    void done.then(()=>{entry.complete=true;f.context.storyboardQueueBatches.delete(entry);});
+    return handle;
+  };
+  return {
+    get handoff(){return handoff;},
+    set beforeFinish(callback){beforeFinish=callback;},
+    async admit(limit){
+      assert.ok(handoff);let accepted=0;
+      while(handoff.next<handoff.jobs.length&&accepted<limit){
+        if(!handoff.callbacks.isCurrent()){
+          handoff.callbacks.onStop?.({reason:'原流式生成已变化，余镜未提交',remainingJobs:handoff.jobs.slice(handoff.next),acceptedCount:handoff.next,failedCount:0});
+          handoff.finish(true);
+          break;
+        }
+        const job=handoff.jobs[handoff.next++];let reason='';
+        await handoff.callbacks.prepare?.(job,handoff.next-1,handoff.callbacks.isCurrent,new AbortController().signal);
+        if(await f.context.storyboardQueueJob(job,handoff.callbacks.isCurrent,message=>{reason=message;})){
+          handoff.callbacks.onAccepted?.(job);accepted++;
+        }else handoff.callbacks.onRefused?.(job,reason||'本镜未提交');
+      }
+      if(handoff.next===handoff.jobs.length){await beforeFinish?.();handoff.finish(false);}
+      return accepted;
+    },
+    stop(reason='新一轮生成开始，余镜未提交'){
+      assert.ok(handoff);handoff.callbacks.onStop?.({reason,remainingJobs:handoff.jobs.slice(handoff.next),acceptedCount:handoff.next,failedCount:0});
+      handoff.finish(true);
+    },
+  };
+}
+
+for(const count of [13,21])test(`${count} stream mirrors use one bounded queue window and preserve the deferred shot order after compiler disposal`,async()=>{
+  const sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
+  const window=installDeferredStreamWindow(f,q);
+  assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));
+  assert.equal(f.prepared.inputGuard.isCurrent(),false,'the compiler guard must be disposed after handing off');
+  assert.ok(window.handoff);assert.equal(window.handoff.jobs.length,count);
+  assert.equal(window.handoff.callbacks.isCurrent(),true,'deferred ownership cannot reuse the disposed compiler guard');
+  const plan=f.state.shotPlans[0];assert.equal(plan.shots.length,count);
+  assert.ok(plan.shots.every(shot=>shot.status==='prompt_ready'),'all prepared mirrors must remain visible before queue admission');
+  assert.equal(q.queue.length,0);assert.equal(f.state.logs.length,0);assert.equal(q.rows.size,0);
+  let submitted=0;
+  while(submitted<count){
+    const size=Math.min(8,count-submitted);assert.equal(await window.admit(size),size);
+    assert.ok(q.queue.length<=8,'the actual queue never exceeds eight accepted jobs');
+    assert.deepEqual(q.queue.map(job=>job.inlineOrder.shotIndex),Array.from({length:size},(_,index)=>submitted+index));
+    assert.ok(plan.shots.slice(submitted,submitted+size).every(shot=>shot.status==='queued'));
+    assert.ok(plan.shots.slice(submitted+size).every(shot=>shot.status==='prompt_ready'));
+    for(const job of q.queue){await q.admission.beforeSubmit(job);await q.admission.settle(job,'succeeded');}
+    q.queue.splice(0,q.queue.length);submitted+=size;
+  }
+  assert.equal(q.outcomes[0].queued,count);assert.equal(f.state.logs.length,count);
+  assert.equal([...q.rows.values()][0].entries.length,count);f.assertReleased();
+});
+
+for(const change of ['model connection','unsubmitted shot'])test(`deferred stream stops before the ninth paid claim when ${change} changes`,async()=>{
+  const count=13,sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
+  const window=installDeferredStreamWindow(f,q);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(await window.admit(8),8);
+  const plan=f.state.shotPlans[0],accepted=copy(q.queue),logs=copy(f.state.logs);
+  if(change==='model connection')f.state.connections.novel.draft.baseUrl='https://different.invalid';
+  else plan.shots[8].prompt='A different picture';
+  assert.equal(window.handoff.callbacks.isCurrent(),false);
+  assert.equal(await window.admit(1),0);
+  assert.deepEqual(copy(q.queue),accepted,'the first eight accepted jobs remain owned by their original requests');
+  assert.deepEqual(copy(f.state.logs),logs,'the changed ninth mirror has no paid admission or log');
+  assert.ok(plan.shots.slice(8).every(shot=>shot.status==='cancelled'));
+  f.assertReleased();
+});
+
+for(const notification of ['while pending','at final admission'])test(`terminal capture waits ${notification} for all deferred mirrors and runs the LLM only once`,async()=>{
+  const count=13,sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
+  const window=installDeferredStreamWindow(f,q);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(f.counts.requests,2);
+  f.host.chat[0].mes=sample.descriptions.join('\n\n');
+  useShotSet(f,[],({reply,options})=>{if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
+    reply.should_generate=false;reply.skip_reason='本层画面已覆盖';
+  }},sample.shots);
+  const final=installFinalNotifications(f),before=f.counts.requests;
+  if(notification==='while pending'){
+    const originalTicket=final.ticket();
+    assert.equal(await f.context.storyboardFinishStreamCapture(originalTicket),true);
+    originalTicket.createdAt-=6*60_000; // The window may drain after the original 5-minute ticket expires.
+    assert.equal(await final.finish(),true,'repeat ST completion receipts join the same waiting final');
+    assert.equal(f.context.storyboardStreamFinalWaits.size,1);
+    assert.equal(f.counts.requests,before,'pending mirrors must not trigger a second LLM pass');
+  }
+  assert.equal(await window.admit(8),8);
+  for(const job of q.queue){await q.admission.beforeSubmit(job);await q.admission.settle(job,'succeeded');}
+  q.queue.splice(0,q.queue.length);
+  assert.equal(f.counts.requests,before);
+  if(notification==='at final admission')window.beforeFinish=async()=>{
+    assert.equal(window.handoff.jobs.length-window.handoff.next,0);
+    assert.equal(await final.finish(),true,'the final admission still belongs to its unfinished batch');
+    assert.equal(await final.finish(),true);
+    assert.equal(f.counts.requests,before);
+  };
+  assert.equal(await window.admit(5),5);
+  const wait=[...f.context.storyboardStreamFinalWaits.values()][0];assert.ok(wait);
+  await wait;
+  assert.equal(f.counts.requests,before+1,'one final narrative pass starts after all mirrors are admitted');
+  assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete',JSON.stringify({notices:f.notices,errors:f.errors}));
+  assert.equal(f.context.storyboardStreamFinalWaits.size,0);
+  assert.equal(await final.finish(),false);assert.equal(f.counts.requests,before+1,'later ST completion receipts are idempotent');
+  f.assertReleased();
+});
+
+test('terminal capture does not resume after the source changes between last admission and batch completion',async()=>{
+  const count=13,sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
+  const window=installDeferredStreamWindow(f,q);
+  assert.equal(await f.run(),true);f.host.chat[0].mes=sample.descriptions.join('\n\n');
+  const final=installFinalNotifications(f),before=f.counts.requests;
+  assert.equal(await final.finish(),true);const wait=[...f.context.storyboardStreamFinalWaits.values()][0];assert.ok(wait);
+  assert.equal(await window.admit(8),8);
+  for(const job of q.queue){await q.admission.beforeSubmit(job);await q.admission.settle(job,'succeeded');}
+  q.queue.splice(0,q.queue.length);
+  window.beforeFinish=async()=>{f.host.chat[0].mes='A different scene replaced the same floor.';};
+  assert.equal(await window.admit(5),5);assert.equal(await wait,false);
+  assert.equal(f.counts.requests,before,'source drift may not launch a final LLM pass');
+  assert.equal(f.state.shotPlans[0].streamFinalCapture,undefined);f.assertReleased();
+});
+
+test('a new stream generation keeps the accepted window and cancels only mirrors that have not entered the queue',async()=>{
+  const count=13,sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
+  const window=installDeferredStreamWindow(f,q),host=installActualStreamHost(f);
+  host.pulse();await host.bootstrap();await host.pass();assert.ok(window.handoff);assert.equal(await window.admit(8),8);
+  const accepted=copy(q.queue),plan=f.state.shotPlans[0],logs=copy(f.state.logs);
+  f.events.emit('generation_after_commands','regenerate',{},false);
+  assert.equal(window.handoff.callbacks.isCurrent(),false);
+  assert.equal(await window.admit(1),0);
+  assert.deepEqual(copy(q.queue),accepted,'accepted work is not silently removed by later stream ownership loss');
+  assert.deepEqual(copy(f.state.logs),logs,'unsubmitted mirrors have no paid log');
+  assert.ok(plan.shots.slice(0,8).every(shot=>shot.status==='queued'));
+  assert.ok(plan.shots.slice(8).every(shot=>shot.status==='cancelled'&&/未提交|重取/.test(shot.error)));
+  const calls=f.counts.requests;
+  assert.equal(await installFinalNotifications(f).run(),false,'terminal notification may not retry mirrors dropped after host reset');
+  assert.equal(f.counts.requests,calls);assert.equal(q.queue.length,8);
+  assert.equal([...q.rows.values()][0].entries.length,8);host.runtime.close();f.assertReleased();
+});
+
+test('a scheduled stream batch cancelled before its first queue claim records zero paid requests',async()=>{
+  const count=13,sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
+  const window=installDeferredStreamWindow(f,q),host=installActualStreamHost(f);
+  host.pulse();await host.bootstrap();await host.pass();assert.ok(window.handoff);
+  assert.equal(q.queue.length,0);assert.equal(f.state.logs.length,0);assert.equal(q.rows.size,0);
+  f.events.emit('generation_after_commands','regenerate',{},false);
+  assert.equal(await window.admit(1),0);
+  assert.equal(q.queue.length,0);assert.equal(f.state.logs.length,0);assert.equal(q.rows.size,0);
+  assert.equal(f.state.shotPlans[0].shots.length,count);
+  assert.ok(f.state.shotPlans[0].shots.every(shot=>shot.status==='cancelled'&&/未提交|重取/.test(shot.error)));
+  host.runtime.close();f.assertReleased();
 });
 
 test('three completed seven-shot streaming batches keep all twenty-one plan rows and the original allowance',async()=>{
@@ -1064,7 +1261,7 @@ test('host terminal whitespace cleanup preserves the actual admitted picture and
   const sent=f.calls[0].payload.source_catalogue.find(row=>row.floor===0);assert.match(JSON.stringify(sent),/Alice reads a letter/);
   f.host.chat[0].mes=raw.trimEnd();await q.admission.beforeSubmit(q.queue[0]);
   const final=installFinalNotifications(f);assert.equal(await final.run(),false,JSON.stringify(f.errors));
-  assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete');assert.equal(f.counts.requests,3);assert.equal(f.counts.hostSaves,1);
+  assert.equal(f.state.shotPlans[0].streamFinalCapture.status,'complete',JSON.stringify({notices:f.notices,errors:f.errors}));assert.equal(f.counts.requests,3);assert.equal(f.counts.hostSaves,1);
   assert.equal(q.queue.length,1);assert.equal(q.rows.size,1);assert.equal(await final.run(),false);assert.equal(f.counts.requests,3);f.assertReleased();
 });
 
@@ -1077,7 +1274,7 @@ test('a joined continuation after actual stream queue admission cannot be dispat
 test('normalization and lightweight plan archives preserve terminal-pass idempotency after restart',async()=>{
   const f=await fixture(),q=installStreamQueue(f);assert.equal(await f.run(),true);const final=installFinalNotifications(f);
   assert.equal(await final.run(),false);assert.equal(f.counts.requests,3);const marker=copy(f.state.shotPlans[0].streamFinalCapture);
-  assert.equal(marker.status,'complete');
+  assert.equal(marker.status,'complete',JSON.stringify({notices:f.notices,errors:f.errors}));
   f.state.shotPlans=normalizeStoryboardState(f.state).shotPlans;assert.deepEqual(f.state.shotPlans[0].streamFinalCapture,marker);
   f.state.shotPlans[0]=f.context.storyboardPlanLightweightSummary(f.state.shotPlans[0],'archive-only-test');
   assert.deepEqual(copy(f.state.shotPlans[0].streamFinalCapture),marker);assert.equal(await final.run(),false);

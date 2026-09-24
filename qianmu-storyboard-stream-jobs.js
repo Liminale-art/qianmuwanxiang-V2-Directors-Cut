@@ -1,9 +1,9 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.371';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.371';
-import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.371';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.372';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.372';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.372';
 import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -136,7 +136,16 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     }
     await check();
     if (existing && JSON.stringify(plan)!==planSnapshot) throw stop('已有镜头状态在准备期间变化，请等待下一次取景，未新增请求');
-    if (jobs.length > d.STORYBOARD_QUEUE_LIMIT-d.storyboardQueue.length-d.storyboardActiveJobs.size) throw stop('当前生图队列空间不足，未提交此批流式画面');
+    if(!Number.isSafeInteger(d.STORYBOARD_QUEUE_LIMIT)||d.STORYBOARD_QUEUE_LIMIT<1)throw stop('当前生图队列空间不足，未提交此批流式画面');
+    const freeSlots=typeof d.storyboardQueueFreeSlots==='function'?d.storyboardQueueFreeSlots()
+      :d.STORYBOARD_QUEUE_LIMIT-d.storyboardQueue.length-d.storyboardActiveJobs.size;
+    if(!Number.isSafeInteger(freeSlots)||freeSlots<0)throw stop('当前生图队列占用状态无法确认，未提交此批流式画面');
+    const deferred=jobs.length>0&&jobs.length>freeSlots;
+    if(deferred&&typeof d.storyboardQueueWindowEnqueue!=='function')throw stop('当前生图队列空间不足，未提交此批流式画面');
+    if(deferred){
+      const ready=new Set(jobs.map(job=>job.planShotId));
+      for(const shot of newShots)if(ready.has(shot.id)){shot.status='prompt_ready';shot.error='';}
+    }
     const nextPlan={...plan,messageRef:copy(budgetRef),floor:context.floor,status:'prompt_ready',autoGenerate:true,
       shots:[...(restored?.shots || plan.shots || []).map(shot=>oldMoments.has(shot.id)?{...shot,narrativeMoment:copy(oldMoments.get(shot.id))}:shot),...newShots],updatedAt:Date.now(),
       continuityLedger:copy(coverage.continuityLedger || {}),continuityLedgerLayer:coverage.continuityLedgerLayer};
@@ -158,6 +167,54 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       d.storyboardRecordComfyPreparationFailure({...failure.preparation,messageRef:copy(refs.get(planned[index].id)),
         inlineOrder:{...inlineBatch,shotIndex:offset+index,requestIndex:1}},failure.message,failure.diagnostics);
       outcome.failed++;
+    }
+    if(deferred){
+      // The compiler closes inputGuard in its finally block. The host joins
+      // this stable plan owner with its own stream-generation lease before it
+      // hands any deferred mirror to the ordinary admission/queue path.
+      const planShots=new Set(newShots.filter(shot=>shot.status==='prompt_ready').map(shot=>shot.id));
+      const ownsBatch=()=>state===d.storyboardState()&&state.enabled&&state.automation.autoGenerate
+        &&chatKey===String(d.getChatKey()||'')&&state.shotPlans.includes(plan)&&plan.id===planId
+        &&plan.chatKey===chatKey&&plan.revisionId===budgetRef.revisionId
+        &&plan.messageRef?.messageKey===budgetRef.messageKey&&plan.status!=='cancelled'
+        &&!plan.promptLocked&&!plan.manualReviewRequired
+        &&jobs.every(job=>planShots.has(job.planShotId)&&plan.shots.some(shot=>shot.id===job.planShotId));
+      const markStopped=details=>{
+        const remaining=Array.isArray(details?.remainingJobs)?details.remainingJobs:[];
+        let changed=0;
+        for(const job of remaining){
+          const shot=plan.shots?.find(row=>row.id===job.planShotId);
+          if(shot?.status!=='prompt_ready')continue;
+          shot.status='cancelled';shot.error='未提交，可重新提取';changed++;
+        }
+        if(!changed||!state.shotPlans.includes(plan))return;
+        plan.updatedAt=Date.now();
+        if(plan.status==='prompt_ready'){
+          if(plan.shots.every(shot=>shot.status==='cancelled'))plan.status='cancelled';
+          else if(plan.shots.some(shot=>shot.status==='generating'))plan.status='generating';
+          else if(plan.shots.some(shot=>shot.status==='queued'))plan.status='queued';
+          else if(plan.shots.some(shot=>shot.status==='completed'))plan.status='completed';
+          else if(plan.shots.every(shot=>['cancelled','failed'].includes(shot.status)))plan.status='failed';
+        }
+        plan.error=`后续 ${changed} 镜未提交，可重新提取`;
+        if(state===d.storyboardState()&&chatKey===String(d.getChatKey()||''))d.saveSettings();
+      };
+      try{
+        const scheduled=d.storyboardQueueWindowEnqueue(jobs,{plan,valid:ownsBatch,
+          onAccepted:()=>{outcome.queued++;},
+          onRefused:(job,reason)=>{
+            if(!reason||!ownsBatch())return markStopped({remainingJobs:[job]});
+            outcome.failed++;
+            try{d.storyboardRecordPreparedJobFailure(job,reason||'本镜未提交');}
+            catch(_){const shot=plan.shots?.find(row=>row.id===job.planShotId);if(shot?.status==='prompt_ready'){
+              shot.status='failed';shot.error='本镜未提交';
+              if(state===d.storyboardState()&&chatKey===String(d.getChatKey()||''))d.saveSettings();
+            }}
+          },onStop:markStopped});
+        if(!scheduled?.scheduled)throw stop('流式画面未能进入等待队列，未提交');
+        outcome.scheduled=true;
+        return outcome;
+      }catch(error){markStopped({remainingJobs:jobs});throw error;}
     }
     for (const job of jobs) {
       await check(); let reason='';

@@ -272,6 +272,8 @@
     "qianmu-gallery-preview-zoom.js",
     "qianmu-current-chat-source.js",
     "qianmu-storyboard-preparation-guard.js",
+    "qianmu-storyboard-queue-window.js",
+    "qianmu-storyboard-queue-batch.js",
     "qianmu-ensemble-preparation.js",
     "qianmu-ensemble-ui.js",
     "qianmu-ensemble-route-view.js",

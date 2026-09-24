@@ -44,11 +44,14 @@ test('production wiring mounts once with ST events, resets and closes with owner
 
 test('actual host factory requires every opt-in gate and gives existing automatic work priority',()=>{
   const state=createStoryboardDefaults(),settings={enabled:true};state.enabled=true;state.promptCompiler.enabled=true;state.automation.streamEnabled=true;
-  const context=vm.createContext({settings,storyboardState:()=>state,ctx:()=>({}),storyboardAutomaticEpoch:0,document:{},setTimeout,clearTimeout,
-    storyboardCompilerBusy:false,storyboardAutomaticCurrent:null,createStoryboardStreamHost:options=>options});
+  const context=vm.createContext({settings,storyboardState:()=>state,ctx:()=>({}),getChatKey:()=> 'chat-a',storyboardAutomaticEpoch:0,document:{},setTimeout,clearTimeout,
+    storyboardCompilerBusy:false,storyboardAutomaticCurrent:null,storyboardQueueBatches:new Set(),createStoryboardStreamHost:options=>options});
   vm.runInContext(section('storyboardCreateStreamHost'),context);const host=context.storyboardCreateStreamHost();assert.equal(host.enabled(),true);assert.equal(host.busy(),false);
   for(const [owner,key] of [[settings,'enabled'],[state,'enabled'],[state.promptCompiler,'enabled'],[state.automation,'autoGenerate'],[state.automation,'streamEnabled']]){
     owner[key]=false;assert.equal(host.enabled(),false);owner[key]=true;
   }
   context.storyboardAutomaticCurrent={};assert.equal(host.busy(),true);context.storyboardAutomaticCurrent=null;context.storyboardCompilerBusy=true;assert.equal(host.busy(),true);
+  context.storyboardCompilerBusy=false;
+  const batch={stream:true,complete:false,chatKey:'chat-a'};context.storyboardQueueBatches.add(batch);assert.equal(host.busy(),true);
+  batch.complete=true;assert.equal(host.busy(),false);batch.complete=false;batch.chatKey='another-chat';assert.equal(host.busy(),false);
 });

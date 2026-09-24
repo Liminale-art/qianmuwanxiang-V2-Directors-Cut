@@ -1,6 +1,6 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.371';
+import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.372';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
@@ -20,13 +20,15 @@ import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryb
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.371';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.371';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.371';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.372';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.372';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.372';
+import {createStoryboardQueueWindow} from './qianmu-storyboard-queue-window.js?v=1.59.372';
+import {startStoryboardQueueWindowBatch} from './qianmu-storyboard-queue-batch.js?v=1.59.372';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.371';
-import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.371';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.372';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.372';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -41,7 +43,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './qianmu-gallery-shot-reader.js';
-import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, collectionCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.371';
+import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, collectionCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.372';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -184,9 +186,9 @@ import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
-import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.371';
+import { createFeatureRuntime, loadLocalChunk } from './qianmu-feature-runtime.js?v=1.59.372';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.212';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.371';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.372';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -282,12 +284,12 @@ import {
   storyboardRecipeRecordMetadata,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.371';
+} from './qianmu-storyboard.js?v=1.59.372';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.371';
+const VERSION = '1.59.372';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -296,11 +298,11 @@ let reader = null;
 let feedbackOpenScope = null;
 const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 const featureRuntime = createFeatureRuntime({
-  feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.371') },
-  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.371') },
-  recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.371') },
-  vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.371') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.371') },
+  feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.372') },
+  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.372') },
+  recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.372') },
+  vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.372') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.372') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -311,9 +313,9 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.202') },
   storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.202') },
   storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.202') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.371') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.371') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.371') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.372') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.372') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.372') },
   storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.202') },
   characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.202') },
   characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.202') },
@@ -345,7 +347,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.371'),
+    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.372'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -374,7 +376,7 @@ const featureRuntime = createFeatureRuntime({
   characterArchive: {
     label: '角色档案',
     intent: '[data-storyboard-view="characters"]',
-    load: () => loadLocalChunk('./qianmu-character-archive-view.js?v=1.59.371'),
+    load: () => loadLocalChunk('./qianmu-character-archive-view.js?v=1.59.372'),
   },
   characterCasting: {
     label: '角色取景绑定',
@@ -382,15 +384,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.371'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.372'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.371'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.372'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.371'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.372'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -426,7 +428,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => loadLocalChunk('./qianmu-comfy-route.js?v=1.59.371'),
+    load: () => loadLocalChunk('./qianmu-comfy-route.js?v=1.59.372'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
@@ -438,11 +440,11 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => loadLocalChunk('./qianmu-comfy-library-view.js?v=1.59.371'),
+    load: () => loadLocalChunk('./qianmu-comfy-library-view.js?v=1.59.372'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => loadLocalChunk('./qianmu-comfy-pool-view.js?v=1.59.371'),
+    load: () => loadLocalChunk('./qianmu-comfy-pool-view.js?v=1.59.372'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
@@ -482,11 +484,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.371'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.372'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.371'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.372'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -574,9 +576,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.371'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.372'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.371')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.372')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -1484,6 +1486,14 @@ let storyboardAdmissionEpoch = 0;
 const storyboardGenerationPreparing = new Set();
 const storyboardPlanRetries = new WeakSet();
 let storyboardQueue = [];            // 千幕内串行队列，避免同一连接并发误耗额度
+let storyboardQueueSettling = 0;
+const storyboardQueueWindow = createStoryboardQueueWindow({ limit: STORYBOARD_QUEUE_LIMIT, occupied: () => storyboardQueue.length + storyboardActiveJobs.size + storyboardQueueSettling });
+const storyboardQueueBatches = new Set(); // In-memory only: never resume unsubmitted requests after refresh.
+const storyboardStreamFinalWaits = new Map();
+const storyboardQueuePendingCount = () => [...storyboardQueueBatches].reduce((count, entry) => count + entry.handle.pendingCount, 0);
+function storyboardStopQueueBatches(reason, predicate = () => true) {
+  for (const entry of [...storyboardQueueBatches]) if (predicate(entry)) entry.handle.stop(reason);
+}
 const storyboardPipelineArchiveCache = new Map(); // 已结束的完整流水；settings 只保留轻量日志摘要
 const storyboardPipelineArchiveWrites = new Map();
 let storyboardPipelineArchiveHydration = null;
@@ -8540,7 +8550,7 @@ function bindStorageManagementEvents(root) {
       if (selected.includes('__image_service_receipts__')) { const service = await storyboardImageServiceRuntime(); cleanup.check(); await service.manage({ remove: true, expectedNamespace:inventory?.serviceReceipts?.namespace, check:()=>cleanup.check() }); }
       cleanup.check();
       if (selected.includes('__image_attempts__')) {
-        if (storyboardQueue.length || storyboardActiveJobs.size || storyboardGenerationPreparing.size) throw new Error('仍有等待或生成中的画面，请结束后再清理防重记录');
+        if (storyboardQueue.length || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardQueuePendingCount() || storyboardQueueSettling) throw new Error('仍有等待或生成中的画面，请结束后再清理防重记录');
         const module = await featureRuntime.load('imageAdmission'); cleanup.check();
         await module.manageImageAdmissionStorage({ remove: true, expectedNamespace:inventory?.imageAttempts?.namespace, check:()=>cleanup.check() }); cleanup.check();
       }
@@ -12905,7 +12915,7 @@ async function storyboardReviewLegacyRecipe(record,parent) {
   const epoch=storyboardSnapshotEpoch,metadata=ctx().chatMetadata;
   const isCurrent=()=>parent.isConnected&&epoch===storyboardSnapshotEpoch&&metadata===ctx().chatMetadata;
   try {
-    const runtime=await loadLocalChunk('./qianmu-gallery-recipe-review-view.js?v=1.59.371');
+    const runtime=await loadLocalChunk('./qianmu-gallery-recipe-review-view.js?v=1.59.372');
     if(!isCurrent())return;
     const result=await runtime.openGalleryRecipeReview({parent,recordId:record.id,isCurrent,getContext:ctx,epoch:()=>storyboardSnapshotEpoch,
       account:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(),headers:storyboardRequestHeaders}).finished;
@@ -12929,7 +12939,7 @@ async function storyboardReadSnapshotForRecord(record) {
   }
   if (!record?.snapshot && record?.snapshotRef) {
     const epoch=storyboardSnapshotEpoch,metadata=ctx().chatMetadata;
-    const runtime = await loadLocalChunk('./qianmu-gallery-local-recipe-current.js?v=1.59.371');
+    const runtime = await loadLocalChunk('./qianmu-gallery-local-recipe-current.js?v=1.59.372');
     if(epoch!==storyboardSnapshotEpoch||metadata!==ctx().chatMetadata)throw new Error('原画面来源已变化，请重新打开');
     return runtime.readCurrentGalleryLocalRecipe({record,getContext:ctx,epoch:()=>storyboardSnapshotEpoch,
       account:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace()});
@@ -13704,13 +13714,14 @@ async function storyboardAttachProductionRecord(record, {verify=async()=>{}} = {
 
 function renderStoryboardQueue() {
   const activeJobs = [...storyboardActiveJobs.values()];
-  if (!activeJobs.length && !storyboardQueue.length) return '';
+  const pending = storyboardQueuePendingCount();
+  if (!activeJobs.length && !storyboardQueue.length && !pending) return '';
   const activeText = activeJobs.length
     ? `${activeJobs.some((job) => job.discardRequested) ? '正在放弃部分收片' : `正在生成 ${activeJobs.length} 个镜头`}`
-    : '正在准备下一项';
+    : pending ? '等待下一批镜头' : '正在准备下一项';
   return `<section class="sd-card sd-storyboard-queue-card">
-    <div><span class="sd-storyboard-queue-pulse"></span><b>${htmlEscape(activeText)}</b><small>${storyboardQueue.length ? `等待 ${storyboardQueue.length} 项` : '队列已空'}</small></div>
-    <div>${activeJobs.length ? `<button type="button" class="sd-btn sd-storyboard-discard-active" ${activeJobs.every((job) => job.discardRequested) ? 'disabled' : ''}>放弃进行中</button>` : ''}${storyboardQueue.length ? '<button type="button" class="sd-btn sd-storyboard-clear-queue">清空等待</button>' : ''}</div>
+    <div><span class="sd-storyboard-queue-pulse"></span><b>${htmlEscape(activeText)}</b><small>${[storyboardQueue.length ? `等待 ${storyboardQueue.length}` : '',pending ? `待入队 ${pending}` : ''].filter(Boolean).join(' · ')}</small></div>
+    <div>${activeJobs.length ? `<button type="button" class="sd-btn sd-storyboard-discard-active" ${activeJobs.every((job) => job.discardRequested) ? 'disabled' : ''}>放弃进行中</button>` : ''}${storyboardQueue.length || pending ? '<button type="button" class="sd-btn sd-storyboard-clear-queue">清空等待</button>' : ''}</div>
   </section>`;
 }
 
@@ -17734,7 +17745,7 @@ function renderStoryboardLogs(state) {
   return `<div class="sd-storyboard-logs-page">
     <details class="sd-storyboard-log-maintenance"><summary>日志管理</summary>
     <div><div class="sd-storyboard-receipt-tools"><button type="button" class="sd-btn sd-storyboard-open-service-inbox">NAI 收片</button><button type="button" class="sd-btn sd-storyboard-open-comfy-inbox">Comfy 收片</button></div><div class="sd-storyboard-service-inbox" role="status"></div><div class="sd-storyboard-comfy-inbox"></div></div>
-    ${state.logs.length ? `<div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length ? 'disabled' : ''}>清空</button></div>` : ''}
+    ${state.logs.length ? `<div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length || storyboardQueuePendingCount() || storyboardQueueSettling ? 'disabled' : ''}>清空</button></div>` : ''}
     <section class="sd-card sd-storyboard-pack-card"><div><b>分镜资源联包</b><small>当前聊天与资源库，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜资源联包" aria-label="导出分镜资源联包"><i class="fa-solid fa-file-export"></i></button><button type="button" class="sd-icon-btn sd-storyboard-pack-recover" title="核对导入" aria-label="核对导入"><i class="fa-solid fa-rotate-left"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入联包或旧分镜包" aria-label="导入联包或旧分镜包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept=".qmb,application/json,.json"></label></div></section>
     </details>
     ${rows}
@@ -19445,7 +19456,7 @@ async function storyboardPreflightImageBatch(jobs, preparationCurrent = () => tr
     history: [...state.logs, ...storyboardGalleryRecords()], valid });
 }
 
-async function storyboardQueueJob(job, preparationCurrent = () => true, onFailure = () => {}) {
+async function storyboardQueueJob(job, preparationCurrent = () => true, onFailure = () => {}, permit = null) {
   const refuse=message=>{const detail=String(message||'本镜未能入队');onFailure(detail);toast(detail,'warning');return false;};
   if (!job?.payload?.prompt?.trim()) return refuse('请先写下画面描述。');
   try {
@@ -19476,15 +19487,18 @@ async function storyboardQueueJob(job, preparationCurrent = () => true, onFailur
   if (job.source !== 'comfy' && !String(job.profile?.model || '').trim()) {
     return refuse('请先选择生图模型。');
   }
-  if (storyboardQueue.length + storyboardActiveJobs.size >= STORYBOARD_QUEUE_LIMIT) {
+  const hasPermit=()=>permit!==null&&storyboardQueueWindow.has(permit);
+  const hasRoom=()=>storyboardQueue.length+storyboardActiveJobs.size+storyboardQueueSettling+storyboardQueueWindow.reservedCount-(hasPermit()?1:0)<STORYBOARD_QUEUE_LIMIT;
+  if (!hasRoom()) {
     return refuse(`等待队列最多 ${STORYBOARD_QUEUE_LIMIT} 项，请先完成或移除部分任务。`);
   }
   const state = storyboardState(), chatKey = String(getChatKey() || '');
   const valid = () => storyboardState() === state && state.enabled && !job.discardRequested
     && String(getChatKey() || '') === chatKey && preparationCurrent()
+    && (!job.expectedImageAccountNamespace || !job.imageAdmission || job.imageAdmission.namespace === job.expectedImageAccountNamespace)
     && storyboardAutomaticJobEnabled(job,state)
     && (job.target === 'gallery' || storyboardValidatedAnchor(job).valid)
-    && storyboardQueue.length + storyboardActiveJobs.size < STORYBOARD_QUEUE_LIMIT;
+    && hasRoom();
   try {
     if (job.source === 'comfy' && !await storyboardConfirmComfyExecution(job, valid)) return false;
     if(job.source!=='comfy' && job.payload?.compiledPrompt?.promptFormat){
@@ -19517,6 +19531,8 @@ async function storyboardQueueJob(job, preparationCurrent = () => true, onFailur
   job.logId = log.id;
   storyboardQueue.push(job);
   Object.defineProperty(job,'queueAccepted',{value:true,enumerable:false});
+  if(hasPermit())permit.release(); // Atomically exchange this reservation for its queued slot.
+  storyboardQueueWindow.notify();
   const plan=storyboardPlanForJob(job);if(plan)plan.generationStarted=true;
   try {
     storyboardSetPlanStatus(plan, 'queued', { job });
@@ -19524,6 +19540,26 @@ async function storyboardQueueJob(job, preparationCurrent = () => true, onFailur
     if(!job.messageRef?.stream)renderModal();
   } finally { void storyboardPumpQueue(); }
   return true;
+}
+
+function storyboardEnqueuePreparedBatch(jobs,{plan=null,chatKey=getChatKey(),isCurrent,admissionCurrent=isCurrent,prepare=()=>{},onAccepted=()=>{},onRefused=()=>{},onStop=()=>{},onFinish=()=>{},stream=false,sourceCurrent=()=>true}={}) {
+  const reasons=new WeakMap(),entry={planId:plan?.id||'',plan,chatKey:String(chatKey||''),handle:null,stream,sourceCurrent,complete:false};
+  const handle=startStoryboardQueueWindowBatch(storyboardQueueWindow,{jobs,isCurrent,prepare,
+    enqueue:async(job,permit,current)=>{let reason='';const accepted=await storyboardQueueJob(job,()=>current()&&admissionCurrent(),message=>{reason=message;},permit);if(!accepted)reasons.set(job,reason);return accepted;},
+    onAccepted,onRefused:(job,index)=>onRefused(job,reasons.get(job)||'',index),onStop,onFinish});
+  entry.handle=handle;storyboardQueueBatches.add(entry);
+  if(entry.chatKey===String(getChatKey()||''))renderModal();
+  void handle.done.then(result=>{
+    entry.complete=true;
+    storyboardQueueBatches.delete(entry);
+    if(result.reportingErrors.length)console.warn(`[${MODULE_NAME}] storyboard queue batch report`,result.reportingErrors[0]);
+    if(entry.stream&&entry.sourceCurrent()){
+      if(result.stopped||result.failedCount)storyboardStreamRuntime?.takeover?.();
+      else storyboardStreamRuntime?.wake?.();
+    }
+    if(entry.chatKey===String(getChatKey()||''))renderModal();
+  });
+  return handle;
 }
 
 function storyboardSafePromptFallback(shot) {
@@ -19864,12 +19900,35 @@ function storyboardPlanHasGeneration(plan) {
 
 async function storyboardSubmitStreamPrepared(prepared) {
   prepared.inputGuard.assertCurrent();
+  const noWork=prepared.result?.shouldGenerate===false&&Array.isArray(prepared.result.shots)&&prepared.result.shots.length===0;
+  const lease=noWork?null:storyboardStreamRuntime?.leaseFor(prepared.messageRef);
+  if(!noWork&&!lease?.isCurrent())throw new Error('流式正文来源已变化，未提交画面');
   const runtime=await featureRuntime.load('storyboardContract');prepared.inputGuard.assertCurrent();
+  const owner=storyboardState(),chatKey=String(getChatKey()||''),epoch=storyboardAdmissionEpoch,credentialRevision=storyboardCredentialRevision;
+  const namespace=await resolveImageAccountNamespace();prepared.inputGuard.assertCurrent();
   return runtime.submitStoryboardStreamPrepared(prepared,{
     storyboardState,getChatKey,storyboardProviderProfile,sanitizeStoryboardDiagnosticData,uid,storyboardPrepareDraftGroup,
     storyboardPlansForPortableExport,storyboardPlanIsTerminal,createStoryboardWorkflowTicket,
     storyboardChooseComfyGenerationRoutes,STORYBOARD_PROVIDER_REGISTRY,storyboardResolveRoutingProfile,storyboardAdaptShotForModel,
     storyboardCreateJob,STORYBOARD_QUEUE_LIMIT,storyboardQueue,storyboardActiveJobs,storyboardDeletePlanArchives,saveSettings,
+    storyboardQueueFreeSlots:()=>Math.max(0,STORYBOARD_QUEUE_LIMIT-storyboardQueue.length-storyboardActiveJobs.size-storyboardQueueSettling-storyboardQueueWindow.reservedCount),
+    storyboardQueueWindowEnqueue:(jobs,{plan,valid,onAccepted,onRefused,onStop})=>{
+      if(!lease?.isCurrent()||!valid())return {scheduled:false,pendingCount:jobs.length};
+      const batchGuard=storyboardCreatePreparationGuard(owner,{plan,includeDraft:false,stream:{floor:plan.floor,complete:false},freshComfy:true});
+      try{
+        const shots=plan.shots,rows=shots.slice(),content=JSON.stringify(rows.map(shot=>[shot.id,shot.prompt,shot.safePrompt,shot.negative,shot.shotSpec]));
+        for(const job of jobs)Object.defineProperty(job,'expectedImageAccountNamespace',{value:namespace,enumerable:false});
+        const current=()=>lease.isCurrent()&&valid()&&batchGuard.isCurrent()&&owner===storyboardState()&&owner.enabled&&settings.enabled
+          &&chatKey===String(getChatKey()||'')&&epoch===storyboardAdmissionEpoch&&credentialRevision===storyboardCredentialRevision
+          &&plan.shots===shots&&plan.shots.length===rows.length&&plan.shots.every((shot,index)=>shot===rows[index])
+          &&JSON.stringify(plan.shots.map(shot=>[shot.id,shot.prompt,shot.safePrompt,shot.negative,shot.shotSpec]))===content;
+        if(!current()){batchGuard.dispose();return {scheduled:false,pendingCount:jobs.length};}
+        const handle=storyboardEnqueuePreparedBatch(jobs,{plan,chatKey,isCurrent:current,stream:true,sourceCurrent:()=>lease.isCurrent(),
+          prepare:async()=>{if(await resolveImageAccountNamespace()!==namespace)throw new Error('ST 账户已变化，后续镜头未提交');},
+          onAccepted,onRefused,onStop,onFinish:()=>batchGuard.dispose()});
+        return {scheduled:true,pendingCount:handle.pendingCount};
+      }catch(error){batchGuard.dispose();throw error;}
+    },
     storyboardRecordComfyPreparationFailure,storyboardPreflightImageBatch,storyboardQueueJob,storyboardRecordPreparedJobFailure,
   });
 }
@@ -19964,6 +20023,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
   const preparationKey = JSON.stringify([String(getChatKey() || ''), productionHandoff?'world-submit':storyboardTargetFloor(storyboardState())]);
   if (storyboardGenerationPreparing.has(preparationKey)) return toast('本层画面正在准备，请勿重复生成', 'info');
   storyboardGenerationPreparing.add(preparationKey);
+  let backgroundBatch=null;
   try {
     productionGuard?.assertCurrent();
     const staged=productionHandoff?(await featureRuntime.load('worldShot')).consumeWorldGenerationHandoff(productionHandoff,storyboardState()):null;
@@ -20113,10 +20173,6 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
           jobs.push(job);
         }
       }
-      const remainingSlots = STORYBOARD_QUEUE_LIMIT - storyboardQueue.length - storyboardActiveJobs.size;
-      if (jobs.length > remainingSlots) {
-        return toast(`当前队列只剩 ${Math.max(0, remainingSlots)} 个空位，请先完成或移除部分任务。`, 'warning');
-      }
       const generationDemand = summarizeStoryboardGenerationDemand(jobs);
       const requiresPlanConfirmation = generationDemand.requestCount > 1;
       const requiresCountConfirmation = generationDemand.hasMultiImageRequest;
@@ -20133,30 +20189,50 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       bindStoryboardFloorTakeJobs(plan,jobs);
       for(const failure of autoSelection?.failures.values()||[])storyboardRecordComfyPreparationFailure({...failure.preparation,...(plan?.floorTake?{floorTake:plan.floorTake}:{})},failure.message,failure.diagnostics);
       if(autoSelection?.failures.size)toast(`${autoSelection.failures.size} 镜待选工作流；可从正文或日志重新准备本镜${jobs.length?'，其余镜头继续':'，尚无可入队镜头'}`,'warning');
-      for (const job of jobs) {
-        await inputGuard.comfyRoutes?.assertCurrent();
-        await inputGuard.ensemble?.assertCurrent();
-        if (productionGuard?.verify) await productionGuard.verify();
-        inputGuard.assertCurrent();
-        let reason='';
-        try {
-          if(await storyboardQueueJob(job,inputGuard.isCurrent,message=>{reason=message;}))queued++;
-          else if(reason&&inputGuard.isCurrent()){
-            queueFailures++;
-            try{storyboardRecordPreparedJobFailure(job,reason);}catch(_){toast('本镜未入队，失败记录未能完整保存；已入队镜头不受影响','warning');}
-          }
-        }catch(error){
-          if(job.queueAccepted||storyboardQueue.some(item=>item.id===job.id)||storyboardActiveJobs.has(job.id))queued++;
-          throw error;
+      if(!jobs.length)return false;
+      const freeSlots=STORYBOARD_QUEUE_LIMIT-storyboardQueue.length-storyboardActiveJobs.size-storyboardQueueSettling-storyboardQueueWindow.reservedCount;
+      if(productionHandoff&&jobs.length>freeSlots)return toast('生图队列已满，造物之眼本次未提交；请手动核对后重新创作','warning');
+      if(jobs.length<=freeSlots){
+        for(const job of jobs){
+          await inputGuard.comfyRoutes?.assertCurrent();await inputGuard.ensemble?.assertCurrent();
+          if(productionGuard?.verify)await productionGuard.verify();inputGuard.assertCurrent();
+          let reason='';
+          try{
+            if(await storyboardQueueJob(job,inputGuard.isCurrent,message=>{reason=message;}))queued++;
+            else if(reason&&inputGuard.isCurrent()){
+              queueFailures++;
+              try{storyboardRecordPreparedJobFailure(job,reason);}catch(_){toast('本镜未入队，失败记录未能完整保存；已入队镜头不受影响','warning');}
+            }
+          }catch(error){if(job.queueAccepted||storyboardQueue.some(item=>item.id===job.id)||storyboardActiveJobs.has(job.id))queued++;throw error;}
         }
+        if(queued>0&&!automatic&&plan?.manualReviewRequired){plan.manualReviewRequired=false;for(const shot of plan.shots||[])shot.requiresManualConfirmation=false;saveSettings();}
+        if(queueFailures&&inputGuard.ownsCurrentContext())toast(`已入队 ${queued}/${jobs.length}；${queueFailures} 镜未提交，可从正文或日志单独重试`,'warning');
+        return queued>0;
       }
-      if (queued > 0 && !automatic && plan?.manualReviewRequired) {
-        plan.manualReviewRequired = false;
-        for (const shot of plan.shots || []) shot.requiresManualConfirmation = false;
-        saveSettings();
-      }
-      if(queueFailures&&inputGuard.ownsCurrentContext())toast(`已入队 ${queued}/${jobs.length}；${queueFailures} 镜未提交，可从正文或日志单独重试`,'warning');
-      return queued > 0;
+      const batchEpoch=storyboardAdmissionEpoch,batchCredentialRevision=storyboardCredentialRevision;
+      const batchNamespace=await resolveImageAccountNamespace();inputGuard.assertCurrent();
+      for(const job of jobs)Object.defineProperty(job,'expectedImageAccountNamespace',{value:batchNamespace,enumerable:false});
+      const batchShotsArray=plan?.shots,batchShots=plan?.shots?.slice(),batchPlanSource=plan?JSON.stringify([plan.floor,plan.revisionId,plan.messageRef?.messageKey]):'';
+      const batchShotSource=plan?JSON.stringify(batchShots.map(shot=>[shot.id,shot.prompt,shot.safePrompt,shot.negative,shot.shotSpec])):'';
+      const isCurrent=()=>settings.enabled&&owner===storyboardState()&&owner.enabled&&String(getChatKey()||'')===generationChatKey
+        &&storyboardAdmissionEpoch===batchEpoch&&storyboardCredentialRevision===batchCredentialRevision
+        &&(!plan||owner.shotPlans.includes(plan)&&plan.status!=='cancelled'&&plan.shots===batchShotsArray&&plan.shots?.length===batchShots.length
+          &&plan.shots.every((shot,index)=>shot===batchShots[index])&&JSON.stringify([plan.floor,plan.revisionId,plan.messageRef?.messageKey])===batchPlanSource)
+        &&(!automatic||(productionHandoff?owner.directorBridge.worldAutoGenerate===true:owner.automation.autoGenerate===true));
+      const admissionCurrent=()=>{if(!isCurrent())return false;if(!plan||JSON.stringify(plan.shots.map(shot=>[shot.id,shot.prompt,shot.safePrompt,shot.negative,shot.shotSpec]))===batchShotSource)return true;
+        backgroundBatch?.stop('镜头内容已变化，余下未提交');return false;};
+      backgroundBatch=storyboardEnqueuePreparedBatch(jobs,{plan,chatKey:generationChatKey,isCurrent,admissionCurrent,
+        prepare:async()=>{if(!admissionCurrent()||await resolveImageAccountNamespace()!==batchNamespace||!admissionCurrent())throw new Error('账户或镜头内容已变化，余下未提交');},
+        onAccepted:()=>{queued++;if(!automatic&&plan?.manualReviewRequired){plan.manualReviewRequired=false;for(const shot of plan.shots||[])shot.requiresManualConfirmation=false;saveSettings();}},
+        onRefused:(job,reason)=>{if(reason&&isCurrent()){queueFailures++;try{storyboardRecordPreparedJobFailure(job,reason);}catch(_){toast('本镜未入队，失败记录未能完整保存','warning');}}},
+        onStop:result=>{
+          const message='本批未提交，可重新取景';
+          for(const job of result.remainingJobs){const shot=plan?.shots?.find(item=>item.id===job.planShotId);if(shot&&!(owner.taskStates||[]).some(task=>task.planId===plan.id&&task.shotId===shot.id&&['queued','generating','completed'].includes(task.status))){shot.status='cancelled';shot.error=message;}}
+          if(owner===storyboardState()&&generationChatKey===String(getChatKey()||'')){if(plan){if(!queued)plan.status='cancelled';plan.error=`已入队 ${queued}/${jobs.length}；余镜未提交`;plan.updatedAt=Date.now();saveSettings();storyboardScheduleInlineRender(30,plan.floor);}toast(`已入队 ${queued}/${jobs.length}；余下未提交，请勿整批重试`,'warning');}
+        },
+        onFinish:result=>{try{if(queueFailures&&isCurrent())toast(`已入队 ${queued}/${jobs.length}；${queueFailures} 镜未提交`,'warning');}finally{try{inputGuard.dispose();}finally{storyboardGenerationPreparing.delete(preparationKey);}}}
+      });
+      return true;
     } catch (error) {
       if(queued>0){
         const detail=String(sanitizeStoryboardDiagnosticData(String(error?.message||'准备中断'))).slice(0,120);
@@ -20170,8 +20246,8 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       if (error?.code !== 'storyboard_input_changed') throw error;
       if (inputGuard.ownsCurrentContext() && !automatic) toast('生图设置已变化，未提交旧任务；请按当前设置生成', 'info');
       return false;
-    } finally { inputGuard.dispose(); }
-  } finally { storyboardGenerationPreparing.delete(preparationKey); }
+    } finally { if(!backgroundBatch)inputGuard.dispose(); }
+  } finally { if(!backgroundBatch)storyboardGenerationPreparing.delete(preparationKey); }
 }
 
 async function storyboardRetryLog(log, { isCurrent = () => true } = {}) {
@@ -20271,15 +20347,25 @@ function storyboardDiscardActive() {
   renderModal();
 }
 
+function storyboardReleaseWaitingJob(job) {
+  storyboardQueueSettling++;
+  void storyboardSettleImageAdmission(job, 'not_submitted').finally(() => {
+    storyboardQueueSettling--;
+    storyboardQueueWindow.notify();
+  }).catch(error => console.warn(`[${MODULE_NAME}] queued image settlement`,error));
+}
+
 function storyboardClearWaitingQueue(reason = '已从等待队列移除') {
+  storyboardStopQueueBatches(reason);
   const state = storyboardState();
   for (const job of storyboardQueue) {
-    void storyboardSettleImageAdmission(job, 'not_submitted');
+    storyboardReleaseWaitingJob(job);
     const log = state.logs.find((item) => item.id === job.logId);
     storyboardFinishLog(log, 'cancelled', { error: reason });
     storyboardSetPlanStatus(storyboardPlanForJob(job), 'cancelled', { error: reason, job });
   }
   storyboardQueue = [];
+  storyboardQueueWindow.notify();
   saveSettings();
   renderModal();
 }
@@ -20288,9 +20374,10 @@ function storyboardRemoveQueuedLog(log) {
   const index = storyboardQueue.findIndex((job) => job.logId === log?.id);
   if (index < 0) return;
   const [job] = storyboardQueue.splice(index, 1);
-  void storyboardSettleImageAdmission(job, 'not_submitted');
+  storyboardReleaseWaitingJob(job);
   storyboardFinishLog(log, 'cancelled', { error: '已从等待队列移除' });
   storyboardSetPlanStatus(storyboardPlanForJob(job), 'cancelled', { error: '已从等待队列移除', job });
+  storyboardQueueWindow.notify();
   renderModal();
 }
 
@@ -20835,6 +20922,7 @@ async function storyboardRunQueuedJob(job) {
     await storyboardRunJob(job, log);
   } finally {
     storyboardActiveJobs.delete(job.id);
+    storyboardQueueWindow.notify();
     storyboardBusy = storyboardActiveJobs.size > 0;
     renderModal();
     if (storyboardQueue.length) queueMicrotask(() => void storyboardPumpQueue());
@@ -21565,7 +21653,7 @@ async function storyboardImportAnyPackage(file) {
     const format = await featureRuntime.load('storyboardBundleFormat');
     if (/\.qmb$/i.test(file.name || '') || await format.isStoryboardBundleFile(file)) {
       const header=await format.openStoryboardBundle(file);
-      if(header.manifest.scope===format.HISTORICAL_BUNDLE_SCOPE)return importHistoricalStoryboardBundle(file,[storyboardPackageContext(storyboardImportPackage),ctx,storyboardImportPackage,storyboardExportPackage,MODAL_ID,()=>storyboardActiveJobs.size||storyboardQueue.length,()=>storyboardAdmissionEpoch,featureRuntime,applyQianmuIcons,storyboardScheduleInlineRender,renderModal,toast]);
+      if(header.manifest.scope===format.HISTORICAL_BUNDLE_SCOPE)return importHistoricalStoryboardBundle(file,[storyboardPackageContext(storyboardImportPackage),ctx,storyboardImportPackage,storyboardExportPackage,MODAL_ID,()=>storyboardActiveJobs.size||storyboardQueue.length||storyboardQueuePendingCount()||storyboardQueueSettling,()=>storyboardAdmissionEpoch,featureRuntime,applyQianmuIcons,storyboardScheduleInlineRender,renderModal,toast]);
       return storyboardImportBundle(file);
     }
     return storyboardImportPackage(file);
@@ -21616,7 +21704,7 @@ async function storyboardReviewRecordLink(record, {verify=async()=>{}} = {}) {
       await verify();
       await scope.guard();
       if (!isCurrent()) throw new Error('核对页面或聊天已变化，请重新选择；已保存部分请核对导入');
-      if (storyboardActiveJobs.size || storyboardQueue.length || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜仍在工作，请结束当前任务后核对');
+      if (storyboardActiveJobs.size || storyboardQueue.length || storyboardQueuePendingCount() || storyboardQueueSettling || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜仍在工作，请结束当前任务后核对');
     };
     await guard();
     if (!navigator.locks?.request) throw new Error('浏览器不支持跨页核对锁，未修改正文位置');
@@ -21671,7 +21759,7 @@ async function storyboardImportBundle(file) {
     const guard = async () => {
       await scope.guard();
       if (!isCurrent()) throw new Error('恢复页面已变化，请核对可能保存的部分');
-      if (storyboardActiveJobs.size || storyboardQueue.length || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜正在工作，请结束当前任务后再恢复');
+      if (storyboardActiveJobs.size || storyboardQueue.length || storyboardQueuePendingCount() || storyboardQueueSettling || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜正在工作，请结束当前任务后再恢复');
     };
     await guard(); if (!navigator.locks?.request) throw new Error('浏览器不支持跨页导入锁，未修改分镜数据');
     journal = journalModule.createStoryboardPackageJournal();
@@ -21719,7 +21807,7 @@ async function storyboardImportPackage(file, { recoverOnly = false } = {}) {
     const isCurrent = () => { const live = context(); return live.state === initial.state && live.store === initial.store && live.chatKey === initial.chatKey && live.epoch === initial.epoch; };
     const guard = async () => {
       await session.guard();
-      if (storyboardActiveJobs.size || storyboardQueue.length || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜正在工作，请结束当前任务后再导入');
+      if (storyboardActiveJobs.size || storyboardQueue.length || storyboardQueuePendingCount() || storyboardQueueSettling || initial.state.shotPlans.some(plan => ['screening','compiling','generating','queued'].includes(plan.status))) throw new Error('分镜正在工作，请结束当前任务后再导入');
     };
     await guard();
     if (!globalThis.navigator?.locks?.request) throw new Error('浏览器不支持跨页导入锁，未修改分镜数据');
@@ -22247,9 +22335,11 @@ async function storyboardEditPrompt({ plan = null, record = null } = {}) {
 
 function storyboardCancelPlan(plan) {
   if (!plan) return;
+  storyboardStopQueueBatches('用户取消补图', entry => entry.planId === plan.id);
   for (let index = storyboardQueue.length - 1; index >= 0; index--) {
     if (storyboardQueue[index]?.planId !== plan.id) continue;
     const [job] = storyboardQueue.splice(index, 1);
+    storyboardReleaseWaitingJob(job);
     const log = storyboardState().logs.find((item) => item.id === job.logId);
     storyboardFinishLog(log, 'cancelled', { error: '用户取消补图' });
     storyboardSyncTaskState(job, 'cancelled', { error: '用户取消补图', plan });
@@ -22261,6 +22351,7 @@ function storyboardCancelPlan(plan) {
   plan.status = 'cancelled';
   for (const shot of plan.shots || []) if (!['completed', 'failed'].includes(shot.status)) shot.status = 'cancelled';
   plan.updatedAt = Date.now();
+  storyboardQueueWindow.notify();
   saveSettings(); storyboardSchedulePlanArchive(); storyboardScheduleInlineRender(20, plan.floor); renderModal();
 }
 
@@ -22348,7 +22439,8 @@ async function storyboardOnChatClick(event) {
     const runtime=await featureRuntime.load('storyboardFloorCapture');
     if(epoch!==storyboardAdmissionEpoch||chatKey!==getChatKey())return;
     return runtime.captureStoryboardFloor(floor,message,{
-      state:storyboardState,chat:()=>ctx().chat,chatKey:()=>String(getChatKey()||''),epoch:()=>storyboardAdmissionEpoch,busy:()=>storyboardCompilerBusy,
+      state:storyboardState,chat:()=>ctx().chat,chatKey:()=>String(getChatKey()||''),epoch:()=>storyboardAdmissionEpoch,
+      busy:()=>storyboardCompilerBusy||[...storyboardQueueBatches].some(entry=>!entry.complete&&entry.chatKey===String(getChatKey()||'')&&entry.plan?.floor===floor),
       namespace:async()=>{const identity=await featureRuntime.load('imageAdmission');return identity.resolveImageAccountNamespace();},
       choose:storyboardChooseCaptureMode,planFor:storyboardPlanForMessage,ensurePlan:storyboardEnsurePlan,
       records:()=>{storyboardReconcileGalleryLinks();return storyboardGalleryRecords();},visible:storyboardInlineRecordValid,
@@ -22519,9 +22611,9 @@ function bindStoryboardTabEvents(root) {
     const current=()=>button.isConnected&&root.classList.contains('open')&&epoch===storyboardAdmissionEpoch&&state===storyboardState()&&state.view==='gallery'&&storyboardGalleryKind==='stills';
     if(button.disabled)return;button.disabled=true;
     try{
-      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.371'),featureRuntime.load('imageAdmission')]);
-      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.371');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
-      if(current()){const result=await module.openGalleryArchive({parent:root,account:()=>identity.resolveImageAccountNamespace(),headers:storyboardRequestHeaders,isCurrent:current,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,canPrepare:()=>!storyboardImportPackage.busy&&!storyboardExportPackage.busy&&!storyboardActiveJobs.size&&!storyboardQueue.length,locate}).finished;
+      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.372'),featureRuntime.load('imageAdmission')]);
+      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.372');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
+      if(current()){const result=await module.openGalleryArchive({parent:root,account:()=>identity.resolveImageAccountNamespace(),headers:storyboardRequestHeaders,isCurrent:current,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,canPrepare:()=>!storyboardImportPackage.busy&&!storyboardExportPackage.busy&&!storyboardActiveJobs.size&&!storyboardQueue.length&&!storyboardQueuePendingCount()&&!storyboardQueueSettling,locate}).finished;
         if(current()&&result?.restored){storyboardScheduleInlineRender(0);renderModal();}}
     }catch(error){if(current())toast(error?.message||'已保存图库暂不可用','warning');}
     finally{if(button.isConnected)button.disabled=false;}
@@ -22532,7 +22624,7 @@ function bindStoryboardTabEvents(root) {
       && epoch === storyboardAdmissionEpoch && state === storyboardState() && state.view === 'gallery' && storyboardGalleryKind === 'stills';
     if (button.disabled) return; button.disabled = true;
     try {
-      const module = await loadLocalChunk('./qianmu-gallery-directory-view.js?v=1.59.371');
+      const module = await loadLocalChunk('./qianmu-gallery-directory-view.js?v=1.59.372');
       if (current()) await module.openGalleryDirectory({ parent: root, getContext: ctx, epoch: () => storyboardAdmissionEpoch,
         isCurrent: current, locate: record => storyboardOpenLightbox(record), save: ttsDownloadBlob }).finished;
     } catch (error) { if (current()) toast(error?.message || '图库目录暂不可用', 'warning'); }
@@ -22566,7 +22658,7 @@ function bindStoryboardTabEvents(root) {
     if (!state.enabled) {
       storyboardResetAutomaticCapture();
       for (const job of storyboardActiveJobs.values()) job.discardRequested = true;
-      if (storyboardQueue.length) storyboardClearWaitingQueue('分镜总开关已关闭');
+      storyboardClearWaitingQueue('分镜总开关已关闭');
       resetDirectorNarrativeBridge();
     }
     saveSettings();
@@ -23001,7 +23093,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
   if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
-    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.371').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.372').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
       root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
       apply: value => storyboardSetArtistPreview(root, value), notify: toast,
     })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });
@@ -25077,7 +25169,7 @@ function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
     reader: (ownTransfer !== coreadExportData && readerView) || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy || (ownTransfer!==focusLibraryRuntime&&focusLibraryRuntime?.busy),
     director: busy || theaterBusy,
-    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || (includeCleanup ? storyboardImageService?.busy : storyboardImageService?.busyExcept('manage')) || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
+    image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardQueuePendingCount() || storyboardQueueSettling || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || (includeCleanup ? storyboardImageService?.busy : storyboardImageService?.busyExcept('manage')) || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
     transfer: (ownTransfer!==collectionFloorTools.restoreBackup&&collectionFloorTools.restoreBusy) || (ownTransfer!==storyboardImportPackage&&(storyboardImportPackage.busy||storyboardBundleReview?.isOpen)) || (ownTransfer!==storyboardExportPackage&&storyboardExportPackage.busy) || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
@@ -35316,6 +35408,7 @@ let eventBindings = [];
 
 function storyboardResetAutomaticCapture() {
   storyboardStreamRuntime?.reset();
+  storyboardStopQueueBatches('聊天来源已变化，未提交后续镜头', entry => entry.chatKey !== String(getChatKey() || ''));
   storyboardContinuationRuntime?.reset();
   storyboardAutomaticEpoch++;
   storyboardAutomaticPending.clear();
@@ -35438,7 +35531,29 @@ async function storyboardHandleAutomaticCapture(messageIndex, generationType) {
   return true;
 }
 
-async function storyboardFinishStreamCapture(ticket) {
+async function storyboardFinishStreamCapture(ticket,resume=false) {
+  const key=JSON.stringify([ticket.chatKey,ticket.messageRef.messageKey,ticket.messageRef.revisionId]);
+  if(!resume&&storyboardStreamFinalWaits.has(key))return true;
+  const floor=storyboardAutomaticTicketFloor(ticket);
+  const pending=floor<0?[]:[...storyboardQueueBatches].filter(entry=>entry.stream&&entry.chatKey===ticket.chatKey
+    &&entry.plan?.floor===floor&&entry.plan?.messageRef?.messageKey===ticket.messageRef.messageKey&&!entry.complete);
+  if(pending.length){
+    if(!storyboardStreamFinalWaits.has(key)){
+      const wait=Promise.all(pending.map(entry=>entry.handle.done)).then(results=>{
+        const fresh={...ticket,createdAt:Date.now()};
+        if(results.some(result=>result.stopped||result.failedCount||result.pendingCount)
+          ||pending.some(entry=>!entry.sourceCurrent()||!ticket.state.shotPlans.includes(entry.plan))
+          ||storyboardAutomaticTicketFloor(fresh)<0){
+          if(storyboardAutomaticTicketFloor(fresh)>=0)toast('提前取景有镜头未入队，请手动核对本层','warning');
+          return false;
+        }
+        return storyboardFinishStreamCapture(fresh,true);
+      }).catch(error=>{console.warn(`[${MODULE_NAME}] deferred stream final failed`,error);return false;})
+        .finally(()=>storyboardStreamFinalWaits.delete(key));
+      storyboardStreamFinalWaits.set(key,wait);
+    }
+    return true;
+  }
   const runtime=await featureRuntime.load('storyboardContract');
   return runtime.finishStoryboardStreamCapture(ticket,{storyboardAutomaticTicketFloor,storyboardGalleryRecords,storyboardCompilePrompt,
     storyboardSubmitStreamPrepared,uid,saveSettings,toast,sanitizeStoryboardDiagnosticData,getContext:ctx,
@@ -35493,9 +35608,9 @@ async function storyboardPerformAutomaticCapture(ticket) {
 }
 
 function storyboardCreateStreamHost() {
-  return createStoryboardStreamHost({getContext:ctx,epoch:()=>storyboardAutomaticEpoch,document,setTimer:setTimeout,clearTimer:clearTimeout,
+  return createStoryboardStreamHost({getContext:ctx,getChatKey,epoch:()=>storyboardAutomaticEpoch,document,setTimer:setTimeout,clearTimer:clearTimeout,
     enabled:()=>{const state=storyboardState();return settings.enabled&&state.enabled&&state.promptCompiler?.enabled&&state.automation.autoGenerate&&state.automation.streamEnabled===true;},
-    busy:()=>storyboardCompilerBusy||Boolean(storyboardAutomaticCurrent),notify:message=>toast(message,'info'),
+    busy:()=>storyboardCompilerBusy||Boolean(storyboardAutomaticCurrent)||[...storyboardQueueBatches].some(entry=>entry.stream&&!entry.complete&&entry.chatKey===String(getChatKey()||'')),notify:message=>toast(message,'info'),
     openFrame:({floor,signal})=>storyboardCreatePreparationGuard(storyboardState(),{requireCompiler:true,stream:{floor,signal}}),
     run:async stream=>{const runtime=await featureRuntime.load('storyboardContract');return runtime.runStoryboardStreamPass({compile:storyboardCompilePrompt,submit:storyboardSubmitStreamPrepared},stream);}});
 }
@@ -35782,6 +35897,7 @@ function cleanupRuntime(resetSettings = false) {
     clean('storyboard queue', () => {
       storyboardGalleryPreserver?.close();storyboardGalleryPreserver=null;
       storyboardResetAutomaticCapture();
+      storyboardStopQueueBatches('扩展已停用或更新，余下镜头未提交');storyboardQueueWindow.close();
       storyboardAdmissionEpoch++;
       void storyboardAdmission?.close();
       storyboardAdmission = null;

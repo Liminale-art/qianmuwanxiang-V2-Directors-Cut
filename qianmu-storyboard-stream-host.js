@@ -1,5 +1,6 @@
-import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.371';
-import {createStoryboardStreamScheduler} from './qianmu-storyboard-stream-scheduler.js?v=1.59.371';
+import {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamParagraphBoundary} from './qianmu-storyboard-stream-reference.js?v=1.59.372';
+import {createStoryboardStreamScheduler} from './qianmu-storyboard-stream-scheduler.js?v=1.59.372';
+import {createStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.372';
 
 const kind=value=>value==null||value===''?'normal':value;
 const identity=message=>JSON.stringify([message.name,message.is_user===true,message.is_system===true,message.swipe_id||0,
@@ -23,6 +24,35 @@ export function createStoryboardStreamHost(d){
   const current=entry=>{try{return !entry.cancelled&&!entry.controller.signal.aborted&&sameContext(entry)&&d.enabled()===true
     &&(!entry.processor||d.getContext().streamingProcessor===entry.processor&&!entry.processor.abortController.signal.aborted
       &&entry.chat[entry.floor]===entry.message&&identity(entry.message)===entry.identity);}catch(_){return false;}};
+  // A compiled batch may outlive the compiler's preparation guard and this
+  // host's final frame. Keep only its generation ownership, not the borrowed
+  // processor or aborted frame, after a successful terminal handoff.
+  const owns=entry=>{try{return !entry.cancelled&&entry.finalSucceeded!==false&&sameContext(entry)&&d.enabled()===true
+    &&entry.chat[entry.floor]===entry.message&&identity(entry.message)===entry.identity; }catch(_){return false;}};
+  function leaseFor(messageRef){
+    const entry=active;
+    // Final expression may need a fresh lease after the host has released its
+    // processor/frame. That is safe only after a successful terminal handoff;
+    // the immutable generation and paragraph proof are still verified below.
+    if(!entry?.message||!(current(entry)||entry.finalSucceeded===true&&owns(entry))||typeof d.getChatKey!=='function')return null;
+    let chatKey,reference;
+    try{
+      chatKey=String(d.getChatKey()||'');
+      reference=createStoryboardMessageReference({message:entry.message,chatKey,floor:entry.floor});
+    }catch(_){return null;}
+    const proof=messageRef?.stream;
+    if(!chatKey||messageRef?.chatKey!==chatKey||messageRef.messageKey!==reference.messageKey
+      ||messageRef.role!=='assistant'||messageRef.lastKnownFloor!==entry.floor||messageRef.swipeId!==reference.swipeId
+      ||!proof?.generation||!Number.isSafeInteger(proof.prefixLength)||proof.prefixLength<1
+      ||JSON.stringify(proof.generation)!==JSON.stringify(storyboardStreamGeneration(entry.message)))return null;
+    const sourceCurrent=()=>{try{const raw=entry.message.mes;
+      return typeof raw==='string'&&storyboardStreamParagraphBoundary(raw,proof.prefixLength)
+        &&storyboardStreamFingerprint(raw.slice(0,proof.prefixLength))===proof.prefixHash
+        &&String(d.getChatKey()||'')===chatKey;
+    }catch(_){return false;}};
+    if(!sourceCurrent())return null;
+    return Object.freeze({isCurrent:()=>owns(entry)&&sourceCurrent()});
+  }
   const notice=entry=>{if(entry.notified)return;entry.notified=true;optional(d.notify,'提前取景已停止，已入队画面保留；可在正文完成后手动核对');};
   function start(type,options={},dryRun=false){
     if(closed||dryRun!==false)return;
@@ -32,7 +62,7 @@ export function createStoryboardStreamHost(d){
     const previousMessage=context.chat.at(-1);
     const entry={type,chat:context.chat,metadata:context.chatMetadata,epoch:d.epoch(),previous:context.streamingProcessor,previousMessage,
       previousIdentity:previousMessage?identity(previousMessage):null,
-      signal:options?.signal,controller:new AbortController(),timer:null,cancelled:false,released:false,notified:false,terminal:false,frame:null,scheduler:null,final:null};
+      signal:options?.signal,controller:new AbortController(),timer:null,cancelled:false,released:false,notified:false,terminal:false,finalSucceeded:null,frame:null,scheduler:null,final:null};
     entry.abort=()=>{if(active===entry)cancel();};active=entry;
     if(entry.signal?.aborted){cancel();return;}entry.signal?.addEventListener('abort',entry.abort,{once:true});
   }
@@ -68,14 +98,17 @@ export function createStoryboardStreamHost(d){
       const entry=active;if(!entry||!sameContext(entry)||kind(type)!==entry.type)return null;
       if(entry.message&&(entry.floor!==floor||entry.message!==message))return null;
       if(!entry.message&&(entry.chat[floor]!==message||floor!==entry.chat.length-1))return null;
+      if(entry.cancelled)return false;
       if(entry.final)return entry.final;
       const processor=d.getContext().streamingProcessor;
       if(entry.cancelled||entry.signal?.aborted||processor&&processor!==entry.previous&&kind(processor.type)===entry.type&&processor.abortController?.signal?.aborted){cancel();return false;}
       entry.terminal=true;clear(entry);
       if(!entry.scheduler){release(entry);return null;}
       entry.final=entry.scheduler.finalize().then(ok=>{
-        if(!ok&&sameContext(entry))notice(entry);return Boolean(ok&&current(entry));
-      }).catch(()=>false).finally(()=>release(entry));
+        entry.finalSucceeded=Boolean(ok&&current(entry));
+        if(!entry.finalSucceeded&&sameContext(entry))notice(entry);
+        return entry.finalSucceeded;
+      }).catch(()=>{entry.finalSucceeded=false;return false;}).finally(()=>release(entry));
       return entry.final;
     }catch(_){cancel();return false;}
   }
@@ -96,5 +129,5 @@ export function createStoryboardStreamHost(d){
       d.document?.addEventListener('input',input,true);d.document?.addEventListener('change',input,true);
     }catch(_){close();}
   }
-  return Object.freeze({beforeAutomatic,reset,close,takeover:cancel,wake(){try{active?.scheduler?.wake();}catch(_){cancel();}}});
+  return Object.freeze({beforeAutomatic,reset,close,takeover:cancel,leaseFor,wake(){try{active?.scheduler?.wake();}catch(_){cancel();}}});
 }

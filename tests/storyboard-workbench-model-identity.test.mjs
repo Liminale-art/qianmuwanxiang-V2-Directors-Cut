@@ -6,8 +6,10 @@ import * as storyboard from '../qianmu-storyboard.js';
 import { parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 import {renderEnsembleTargetPicker,openEnsembleTargetPicker} from '../qianmu-ensemble-target-picker.js';
-import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.371';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.371';
+import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.372';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.372';
+import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
+import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';
@@ -28,7 +30,9 @@ function environment(capability = V3, model = alias, extra = {}) {
   const context = vm.createContext({
     ...storyboard, storyboardCompilerBusy:false, clone: structuredClone, parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders,
     settings: { apiProfiles: [] }, storyboardState: () => state, getChatKey: () => 'chat-a', ctx: () => ({ chat: [] }),
-    storyboardTargetFloor: () => -1, storyboardCredentialRevision: 0, getCharacterDescription: () => '', getPersonaDescription: () => '',
+    storyboardTargetFloor: () => -1, storyboardCredentialRevision: 0, storyboardAdmissionEpoch: 1,
+    resolveImageAccountNamespace: async () => 'st-user:identity',
+    getCharacterDescription: () => '', getPersonaDescription: () => '',
     storyboardSelectedArtistPreset: () => null, storyboardGalleryRecords: () => [],
     uniqueClean: (items) => [...new Set(items.filter(Boolean))],
     htmlEscape: (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
@@ -270,6 +274,7 @@ function generationEnvironment() {
   Object.assign(context, {
     storyboardGenerationPreparing: new Set(),
     storyboardProductionContext: () => ({}), storyboardQueue: [], storyboardActiveJobs: new Map(), STORYBOARD_QUEUE_LIMIT: 100,
+    storyboardQueueSettling: 0, storyboardQueueWindow: {reservedCount:0,has:()=>false,notify:()=>{}},
     // Model-routing fixture stops at the queue seam; ledger preflight is covered
     // by the separate user-count-range and stream compiler integration suites.
     storyboardPreflightImageBatch: async (_jobs,valid) => { if(!valid())throw Error('preparation changed'); },
@@ -371,6 +376,180 @@ test('real generation and asynchronous queue preserve the preparation guard acro
   assert.equal(await context.storyboardGenerate(null), true);
   assert.equal(admitted, 2); assert.equal(queued.length, 2); assert.equal(state.logs.length, 2);
   assert.equal(context.storyboardGenerationPreparing.size, 0);
+});
+
+function boundedGenerationEnvironment() {
+  const env=generationEnvironment(),{state,context,styleSelection}=env;
+  styleSelection.enabled=false;
+  state.generationPolicy={version:3,minImages:1,maxImages:21,concurrency:2};
+  state.promptDraft.shots=Array.from({length:21},(_,index)=>{
+    const scene=`scene ${index+1} by the river`;
+    return {id:`scene-${index+1}`,prompt:scene,shotType:'environment',shotSpec:{sourceParagraphIds:[`p${index+1}`],scene,sceneId:`scene-${index+1}`,location:scene,
+      evidence:{quote:scene},visualDuty:`show ${scene}`,narrativePurpose:`establish ${scene}`}};
+  });
+  context.settings.enabled=true;
+  context.STORYBOARD_QUEUE_LIMIT=8;
+  context.storyboardQueueSettling=0;
+  context.storyboardQueueBatches=new Set();
+  let sequence=0;
+  context.uid=prefix=>`${prefix||'job'}-${++sequence}`;
+  context.storyboardScheduleInlineRender=()=>{};
+  context.startStoryboardQueueWindowBatch=startStoryboardQueueWindowBatch;
+  context.storyboardQueueWindow=createStoryboardQueueWindow({limit:8,pollMs:10,occupied:()=>
+    context.storyboardQueue.length+context.storyboardActiveJobs.size+context.storyboardQueueSettling});
+  const admissions=[],accepted=[],preflights=[];
+  context.storyboardImageAdmissionRuntime=async()=>({admit:async(job,{valid})=>{
+    assert.equal(valid(),true);
+    admissions.push(job.inlineOrder.shotIndex);
+  }});
+  context.storyboardPreflightImageBatch=async(jobs,valid)=>{
+    assert.equal(valid(),true);
+    preflights.push(jobs.map(job=>job.inlineOrder.shotIndex));
+  };
+  context.storyboardStartLog=job=>{
+    const log={id:`bounded-log-${accepted.length+1}`,snapshot:structuredClone(job)};
+    state.logs.push(log);accepted.push(job.inlineOrder.shotIndex);return log;
+  };
+  context.storyboardPlanForJob=()=>null;
+  context.storyboardPumpQueue=()=>{};
+  context.storyboardSettleImageAdmission=async()=>{};
+  context.storyboardCompilePrompt=()=>assert.fail('21 prepared shots must not re-extract or re-prompt');
+  vm.runInContext(section('storyboardQueueJob')+section('storyboardEnqueuePreparedBatch'),context);
+  return {...env,admissions,accepted,preflights};
+}
+
+async function waitUntil(predicate) {
+  for(let attempt=0;attempt<200;attempt++){
+    if(predicate())return;
+    await new Promise(resolve=>setImmediate(resolve));
+  }
+  assert.fail('bounded queue did not reach the expected state');
+}
+
+test('21 selected shots register one bounded batch and enter eight queue slots in narrative order',async()=>{
+  const {context,admissions,accepted,preflights}=boundedGenerationEnvironment();
+  assert.equal(await context.storyboardGenerate(null),true);
+  assert.equal(context.storyboardQueueBatches.size,1);
+  const entry=[...context.storyboardQueueBatches][0];
+  assert.equal(preflights.length,1);
+  assert.equal(preflights[0].length,21);
+  await waitUntil(()=>accepted.length===8);
+  assert.deepEqual(accepted,[0,1,2,3,4,5,6,7]);
+  assert.deepEqual(admissions,accepted);
+  assert.equal(context.storyboardQueue.length,8);
+  assert.equal(entry.handle.pendingCount,13);
+  for(let index=8;index<21;index++){
+    context.storyboardQueue.shift();
+    context.storyboardQueueWindow.notify();
+    await waitUntil(()=>accepted.length===index+1);
+    assert.equal(accepted.at(-1),index);
+    assert.equal(context.storyboardQueue.length,8);
+  }
+  await entry.handle.done;
+  assert.deepEqual(admissions,Array.from({length:21},(_,index)=>index));
+  assert.equal(new Set(context.storyboardQueue.map(job=>job.id)).size,8);
+  assert.equal(context.storyboardQueueWindow.reservedCount,0);
+  context.storyboardQueueWindow.close();
+});
+
+test('stopping an unsubmitted 21-shot remainder keeps exactly the already admitted eight shots',async()=>{
+  const {context,admissions,accepted}=boundedGenerationEnvironment();
+  assert.equal(await context.storyboardGenerate(null),true);
+  await waitUntil(()=>accepted.length===8);
+  const entry=[...context.storyboardQueueBatches][0];
+  assert.equal(entry.handle.stop('用户取消本批未提交余项'),true);
+  const outcome=await entry.handle.done;
+  assert.equal(outcome.acceptedCount,8);
+  assert.equal(outcome.pendingCount,13);
+  assert.deepEqual(accepted,[0,1,2,3,4,5,6,7]);
+  assert.deepEqual(admissions,accepted);
+  assert.equal(context.storyboardQueue.length,8);
+  context.storyboardQueue.shift();context.storyboardQueueWindow.notify();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(admissions.length,8);
+  assert.equal(context.storyboardQueueWindow.reservedCount,0);
+  context.storyboardQueueWindow.close();
+});
+
+for(const scenario of ['replaced shots array','changed source evidence']){
+  test(`a 21-shot plan stops unsubmitted remainder after ${scenario} without losing admitted work`,async()=>{
+    const {state,context,admissions,accepted}=boundedGenerationEnvironment();
+    const plan={id:`bounded-${scenario}`,chatKey:'chat-a',status:'prompt_ready',origin:'manual',shots:[]};
+    state.shotPlans.push(plan);
+    context.storyboardPlanForJob=job=>job.planId===plan.id?plan:null;
+    let entry=null;
+    try{
+      assert.equal(await context.storyboardGenerate(null,{plan}),true);
+      await waitUntil(()=>accepted.length===8);
+      entry=[...context.storyboardQueueBatches][0];
+      assert.equal(plan.shots.length,21);
+      if(scenario==='replaced shots array')plan.shots=[...plan.shots];
+      else plan.shots[12].shotSpec.evidence.quote='changed evidence after the first queue window';
+      // A completed accepted job frees a slot; stale source data must not use it.
+      context.storyboardQueue.shift();
+      context.storyboardQueueWindow.notify();
+      const outcome=await entry.handle.done;
+      assert.equal(outcome.stopped,true);
+      assert.equal(outcome.acceptedCount,8);
+      assert.equal(outcome.pendingCount,13);
+      assert.deepEqual(accepted,[0,1,2,3,4,5,6,7]);
+      assert.deepEqual(admissions,accepted);
+      assert.equal(state.logs.length,8);
+      assert.equal(context.storyboardQueue.length,7);
+      assert.match(plan.error,/已入队 8\/21；余镜未提交/,'partial completion remains recorded after accepted jobs finish');
+      assert.equal(context.storyboardQueueWindow.reservedCount,0);
+    }finally{
+      entry?.handle.stop('测试结束');
+      if(entry)await entry.handle.done;
+      context.storyboardQueueWindow.close();
+    }
+  });
+}
+
+test('source mutation during an asynchronous ninth admission settles it and keeps the first eight accepted jobs',async()=>{
+  const {state,context,admissions,accepted}=boundedGenerationEnvironment();
+  const plan={id:'bounded-admission-race',chatKey:'chat-a',status:'prompt_ready',origin:'manual',shots:[]};
+  state.shotPlans.push(plan);
+  context.storyboardPlanForJob=job=>job.planId===plan.id?plan:null;
+  const priorRuntime=context.storyboardImageAdmissionRuntime;
+  const ninthEntered=new Promise(resolve=>{context.ninthEntered=resolve;});
+  let resumeNinth;
+  const ninthGate=new Promise(resolve=>{resumeNinth=resolve;});
+  const settlements=[];
+  context.storyboardImageAdmissionRuntime=async()=>({admit:async(job,options)=>{
+    if(job.inlineOrder.shotIndex===8){
+      assert.equal(options.valid(),true);
+      context.ninthEntered();
+      await ninthGate;
+      return;
+    }
+    return (await priorRuntime()).admit(job,options);
+  }});
+  context.storyboardSettleImageAdmission=async(job,result)=>settlements.push([job.inlineOrder.shotIndex,result]);
+  let entry=null;
+  try{
+    assert.equal(await context.storyboardGenerate(null,{plan}),true);
+    await waitUntil(()=>accepted.length===8);
+    entry=[...context.storyboardQueueBatches][0];
+    context.storyboardQueue.shift();context.storyboardQueueWindow.notify();
+    await ninthEntered;
+    plan.shots[12].shotSpec.evidence.quote='changed while image admission awaited';
+    resumeNinth();
+    const outcome=await entry.handle.done;
+    assert.equal(outcome.stopped,true);
+    assert.equal(outcome.acceptedCount,8);
+    assert.equal(outcome.pendingCount,13);
+    assert.deepEqual(admissions,[0,1,2,3,4,5,6,7]);
+    assert.deepEqual(accepted,admissions);
+    assert.deepEqual(settlements,[[8,'not_submitted']]);
+    assert.equal(state.logs.length,8);
+    assert.equal(context.storyboardQueue.length,7);
+  }finally{
+    resumeNinth();
+    entry?.handle.stop('测试结束');
+    if(entry)await entry.handle.done;
+    context.storyboardQueueWindow.close();
+  }
 });
 
 test('explicit manual multi-shot selection still has one output per shot and confirms only that demand',async()=>{

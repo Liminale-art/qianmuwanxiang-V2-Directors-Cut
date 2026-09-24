@@ -1,4 +1,4 @@
-import {storyboardStableStreamBoundary} from './qianmu-storyboard-stream-source.js?v=1.59.371';
+import {storyboardStableStreamBoundary} from './qianmu-storyboard-stream-source.js?v=1.59.372';
 
 // One explicit compiler pass. A boolean return alone cannot distinguish a
 // harmless wait from an exhausted format-repair batch. No extra repair budget.
@@ -11,7 +11,7 @@ export async function runStoryboardStreamPass(api,stream){
   }catch(_){status='failed';}
   const queued=Number.isSafeInteger(outcome?.queued)&&outcome.queued>=0?outcome.queued:0;
   if(outcome?.failed)status='failed';
-  else if(status==='ready')status=queued?'advanced':'waiting';
+  else if(status==='ready')status=queued||outcome?.scheduled===true?'advanced':'waiting';
   if(!['busy','waiting','advanced','cancelled','failed'].includes(status))status='failed';
   return Object.freeze({status,queued});
 }

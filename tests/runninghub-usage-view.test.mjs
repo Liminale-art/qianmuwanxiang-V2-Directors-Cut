@@ -49,7 +49,8 @@ test('actual log finish and collapsed renderer preserve summary without opening 
   const log={id:'log',source:'comfy',startedAt:1},state={logs:[log]};
   const c=vm.createContext({renderRunningHubTaskUsage,storyboardPipelineForLog:()=>null,saveSettings:()=>{},storyboardArchivePipelineLog:()=>{},
     STORYBOARD_SOURCES:{comfy:{label:'Comfy'}},storyboardLogPresentation:()=>({tone:'green',kind:'生图',tokens:'token 未提供'}),
-    htmlEscape:String,formatDateTime:()=>'',storyboardCanReceiveComfyLog:()=>false,storyboardActiveJobs:new Map(),storyboardQueue:[]});
+    htmlEscape:String,formatDateTime:()=>'',storyboardCanReceiveComfyLog:()=>false,storyboardActiveJobs:new Map(),storyboardQueue:[],
+    storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0});
   vm.runInContext(section('storyboardFinishLog')+'\n'+section('renderStoryboardLogs'),c);
   c.storyboardFinishLog(log,'success',runningHubUsageFields(response()));
   const html=c.renderStoryboardLogs(state);assert.match(html,/整次任务用量（非单张）/);assert.match(html,/999999999999999999/);
