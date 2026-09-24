@@ -8,7 +8,7 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 import {applyCharacterCasting} from '../qianmu-character-casting.js';
 import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState,sortStoryboardInlineRecords,buildStoryboardInlineTasks,storyboardInlineDisplayIndexes,storyboardProductionDeliveryPolicy} from '../qianmu-storyboard.js';
 import {createImageAdmission} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuation-host.js';
 import {createStoryboardStreamScheduler,runStoryboardStreamPass} from '../qianmu-storyboard-stream-scheduler.js';
@@ -194,6 +194,7 @@ test('streaming Comfy preparation always uses automatic preflight even if a call
 function installStreamQueue(f){
   const rows=new Map(),now=Date.now(),run=(scope,fn)=>{const key=imageAttemptScopeKey(scope),value=fn(rows.get(key));rows.set(key,copy(value.ledger));return value;};
   const store={close(){},claim:async(scope,input,seeds=[])=>run(scope,value=>claimImageAttempt(importImageAttempts(value,scope,seeds,now),scope,input,now)),
+    preflight:async groups=>{for(const group of groups){const result=preflightImageAttempts(rows.get(imageAttemptScopeKey(group.scope)),group.scope,group.inputs,group.history,now);if(!result.ok)return result;}return {ok:true};},
     begin:async(scope,input)=>run(scope,value=>beginImageAttempt(value,scope,input,now)),continue:async(scope,input)=>run(scope,value=>continueImageAttempt(value,scope,input,now)),
     settle:async(scope,input)=>run(scope,value=>settleImageAttempt(value,scope,input,now))};
   const resolve=job=>resolveStoryboardMessageReference(job.messageRef,f.host.chat,{chatKey:'chat-a',namespace:'st-user:route-test',metadata:f.host.chatMetadata});
@@ -202,7 +203,7 @@ function installStreamQueue(f){
   Object.assign(f.context,{STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardPlansForPortableExport:async plans=>copy(plans),storyboardDeletePlanArchives:async()=>{},
     storyboardValidatedAnchor:job=>({valid:resolve(job).state==='active'}),storyboardPumpQueue(){},
     storyboardImageAdmissionRuntime:async()=>admission,storyboardSettleImageAdmission:(job,status)=>admission.settle(job,status)});
-  vm.runInContext(['storyboardSubmitStreamPrepared','storyboardChooseComfyGenerationRoutes','storyboardQueueJob','storyboardStartLog','storyboardFinishLog',
+  vm.runInContext(['storyboardSubmitStreamPrepared','storyboardPreflightImageBatch','storyboardChooseComfyGenerationRoutes','storyboardQueueJob','storyboardStartLog','storyboardFinishLog',
     'storyboardRecordPreparedJobFailure','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus'].map(section).join('\n'),f.context);
   const outcomes=[],errors=[];
   f.preparedHook=async value=>{try{outcomes.push(await f.context.storyboardSubmitStreamPrepared(value));}catch(error){errors.push(error);throw error;}};
@@ -323,6 +324,43 @@ for(const streaming of [false,true])test(`six-shot ${streaming?'streaming':'ordi
   for(const job of q.queue)await q.admission.beforeSubmit(job);
   assert.equal([...q.rows.values()][0].entries.filter(row=>row.status==='submitting').length,6);
   f.assertReleased();
+});
+
+function manyShotExamples(count){
+  const descriptions=Array.from({length:count},(_,i)=>`A distinct still life ${i+1} rests on the table.`);
+  const shots=descriptions.map((description,index)=>{
+    const shot=copy(response().shots[2]);Object.assign(shot,{source_paragraph_ids:[`P${index+1}`],insert_after:`P${index+1}`,subject:description,narrative_purpose:description});
+    shot.scene.location=`scene-${index+1}`;shot.composition.focus=description;shot.composition.intent=description;shot.composition.continuity_key=`scene-${index+1}`;
+    shot.prompt_atoms.global=[description];for(const format of Object.values(shot.prompt_renderings))format.global=description;return shot;
+  });return {descriptions,shots};
+}
+
+for(const count of [7,13,21])test(`${count} configured streaming shots preserve the contract without exceeding the existing eight-job queue`,async()=>{
+  const sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
+  assert.equal(await f.run(),count<=8,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));
+  assert.equal(f.prepared.result.shots.length,count);assert.equal(f.prepared.shotReferences.length,count);
+  if(count<=8){assert.equal(q.queue.length,count);assert.equal(f.state.shotPlans[0].shots.length,count);}
+  else {assert.match(q.errors[0].message,/队列空间不足/);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);assert.equal(f.state.shotPlans.length,0);}
+  assert.equal(f.state.generationPolicy.concurrency,2);f.assertReleased();
+});
+
+test('three completed seven-shot streaming batches keep all twenty-one plan rows and the original allowance',async()=>{
+  const {descriptions,shots}=manyShotExamples(21),f=await fixture({text:descriptions.slice(0,7).join('\n\n')+'\n\n'}),q=installStreamQueue(f);
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:21,concurrency:2};let planId;
+  for(let batch=0;batch<3;batch++){
+    f.host.chat[0].mes=descriptions.slice(0,(batch+1)*7).join('\n\n')+'\n\n';useShotSet(f,Array.from({length:7},(_,i)=>batch*7+i),null,shots);
+    assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));
+    planId??=f.state.shotPlans[0].id;assert.equal(f.state.shotPlans[0].id,planId);assert.equal(f.state.shotPlans[0].shots.length,(batch+1)*7);
+    assert.equal(q.queue.length,7);assert.deepEqual(q.queue.map(job=>job.inlineOrder.shotIndex),Array.from({length:7},(_,i)=>batch*7+i));
+    for(const job of q.queue){await q.admission.beforeSubmit(job);await q.admission.settle(job,'succeeded');
+      const log=f.state.logs.find(row=>row.id===job.logId);log.status='success';}
+    q.queue.splice(0,q.queue.length);
+  }
+  const saved=normalizeStoryboardState(copy(f.state));assert.equal(saved.shotPlans[0].shots.length,21);
+  assert.equal([...q.rows.values()][0].entries.length,21);assert.equal(f.counts.requests,6);f.assertReleased();
 });
 
 test('three early plus three later stream shots share one six-slot plan through reload and final notification',async()=>{
@@ -1500,7 +1538,7 @@ test('legacy accepted jobs never acquire a guessed scheme from their model, arti
 
 test('a style handoff without admission does not publish an accepted style origin in logs',async()=>{
   const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f),binding=await installEnsembleChoices(f);useLockedEnsembleShots(f);
-  f.context.storyboardImageAdmissionRuntime=async()=>({admit:async()=>{throw Error('synthetic admission refused');}});
+  f.context.storyboardImageAdmissionRuntime=async()=>({preflight:(...args)=>q.admission.preflight(...args),admit:async()=>{throw Error('synthetic admission refused');}});
   try{assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,0);
     assert.ok(f.state.logs.every(log=>log.status==='failed'&&log.submissionState==='not_submitted'));
     assert.equal(f.counts.requests,2);f.assertReleased();

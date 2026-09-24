@@ -37,6 +37,25 @@ test('3→1→2 receipts retain the old inline take until every slot is saved, w
   assert.deepEqual(core.sortStoryboardInlineRecords(rows.filter(row=>row.floorTake)).map(row=>row.planShotId),['s0','s1','s2']);
 });
 
+for(const count of [7,13,21,41])test(`${count}-shot retake keeps every receipt slot and only switches after all originals are saved`,()=>{
+  const f=prepared({count}),rows=[...f.old];
+  assert.equal(f.plan.floorTake.slots.length,count);
+  for(const job of f.jobs.slice(0,-1))rows.push(image(job));
+  takes.settleStoryboardFloorTakes(rows);assert.equal(rows[0].inline,true);
+  rows.push(image(f.jobs.at(-1)));takes.settleStoryboardFloorTakes(rows);
+  assert.equal(rows[0].inline,false);assert.equal(rows.filter(row=>row.inline).length,count);
+  assert.equal(takes.normalizeStoryboardFloorTake(f.plan.floorTake).slots.length,count);
+});
+
+test('oversized retake manifest fails before assigning any job receipt instead of truncating slots',()=>{
+  const f=prepared({count:1}),before=copy(f.plan.floorTake);
+  const shots=Array.from({length:1500},(_,index)=>({id:`${index}-${'x'.repeat(145)}`}));
+  f.plan.shots=shots;
+  const jobs=shots.map(shot=>({...f.jobs[0],planShotId:shot.id,floorTake:undefined}));
+  assert.throws(()=>takes.bindStoryboardFloorTakeJobs(f.plan,jobs),/未提交/);
+  assert.deepEqual(f.plan.floorTake,before);assert.ok(jobs.every(job=>job.floorTake===undefined));
+});
+
 test('new first-time images can appear incrementally; a failed/missing retake slot cannot replace existing images',()=>{
   const first=prepared({old:[]}),retake=prepared();assert.equal(takes.storyboardFloorTakeInitialInline(first.jobs[0]),true);
   const rows=[...retake.old,image(retake.jobs[0]),image(retake.jobs[2])];takes.settleStoryboardFloorTakes(rows);

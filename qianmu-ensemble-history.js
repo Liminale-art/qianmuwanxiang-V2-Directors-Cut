@@ -6,6 +6,7 @@ import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from '.
 import {assertStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 import {captureEnsembleSceneAnchor} from './qianmu-ensemble-continuation.js';
 import {storyboardHistoryOccupiesImageSlot} from './qianmu-storyboard-stream-coverage.js?v=1.59.371';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 const histories=new WeakMap();
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const fail=()=>{throw Object.assign(Error('所选楼层的镜组历史来源无法完整核对'),{code:'ensemble_history_source',submissionState:'not_submitted'});};
@@ -16,7 +17,7 @@ export async function captureEnsembleWindowHistory(window,rows,{namespace,resolv
   if(histories.has(window)||!Array.isArray(rows)||rows.length>2000||typeof resolve!=='function')fail();
   const sources=window.sources.filter(source=>source.messageRef.lastKnownFloor<window.floor),floors=new Set(sources.map(source=>source.messageRef.lastKnownFloor));
   const keys=new Set(sources.map(source=>source.messageRef.messageKey)),byFloor=new Map(sources.map(source=>[source.messageRef.lastKnownFloor,source]));
-  const selected=[],signatures=new Set(),counts=new Map();let guarded=false;
+  const selected=[],signatures=new Set();let guarded=false;
   for(const row of rows){
     const job=row?.snapshot||row,ref=job?.messageRef||row?.messageRef,admission=job?.imageAdmission||row?.imageAdmission;
     if(!job||!Object.hasOwn(job,'ensembleStyleOrigin')||!storyboardHistoryOccupiesImageSlot(row)||ref?.chatKey!==window.current.messageRef.chatKey
@@ -40,10 +41,10 @@ export async function captureEnsembleWindowHistory(window,rows,{namespace,resolv
     const owner=source.messageRef;
     const entry={id:JSON.stringify([owner.lastKnownFloor,admission.logicalShotId]),source:{floor:owner.lastKnownFloor,messageKey:owner.messageKey,revisionId:owner.revisionId},anchor};
     const signature=JSON.stringify(entry);if(signatures.has(signature))continue;
-    signatures.add(signature);selected.push(entry);const n=(counts.get(owner.lastKnownFloor)||0)+1;counts.set(owner.lastKnownFloor,n);
-    if(n>8||selected.length>160)fail();
+    signatures.add(signature);selected.push(entry);
   }
   if(guarded)await window.guard();window.assertCurrent();
+  assertStoryboardStructureBytes(selected,1024*1024,'所选楼层风格来源');
   const result=freeze({namespace,rows:selected});histories.set(window,result);return result.rows.length;
 }
 

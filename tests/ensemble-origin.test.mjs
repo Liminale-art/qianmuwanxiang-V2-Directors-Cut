@@ -25,9 +25,16 @@ test('missing, duplicate, invented or over-budget origins fail rather than parti
 
 test('origins cannot gain execution authority and reject incomplete, future or injected fields',()=>{
   for(const change of [v=>v.executionAuthorized=true,v=>delete v.executionAuthorized,v=>v.schema='future',v=>v.route={},v=>v.apiKey='secret',v=>delete v.bindingKey,v=>v.bindingKey='partial',
-    v=>v.namespace='other',v=>v.namespace+='\n',v=>v.chatKey='',v=>v.chatKey='x'.repeat(1025),v=>v.preparationId='bad id',v=>v.selectionRevision='',v=>v.shotId='S21',v=>v.revision='']){
+    v=>v.namespace='other',v=>v.namespace+='\n',v=>v.chatKey='',v=>v.chatKey='x'.repeat(1025),v=>v.preparationId='bad id',v=>v.selectionRevision='',v=>v.shotId='S01',v=>v.revision='']){
     const value=copy(origin());change(value);assert.throws(()=>normalize(value),{code:'ensemble_style_origin'});
     const invalid=retain(value);assert.deepEqual(invalid,{schema,invalid:true,executionAuthorized:false});assert.deepEqual(retain(invalid),invalid);
+  }
+});
+
+test('style origin numbers use exact positive safe integers, independent of narrative examples',()=>{
+  for(const shotId of ['S7','S13','S21','S169',`S${Number.MAX_SAFE_INTEGER}`])assert.equal(normalize({...origin(),shotId}).shotId,shotId);
+  for(const shotId of ['S0','S01','S-1','S1.5','S1e2','S+1','S1 ','S9007199254740992','S999999999999999999999999',1,null]){
+    assert.throws(()=>normalize({...origin(),shotId}),{code:'ensemble_style_origin'});
   }
 });
 

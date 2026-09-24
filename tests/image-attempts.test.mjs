@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMAGE_ATTEMPT_SCHEMA, IMAGE_ATTEMPT_LIMIT, IMAGE_RESERVATION_TTL_MS, imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, beginImageAttempt, settleImageAttempt, summarizeImageAttempts, reviewImageAttempt, confirmImageAttemptResult, importImageAttempts } from '../qianmu-image-attempts.js';
+import { IMAGE_ATTEMPT_SCHEMA, IMAGE_ATTEMPT_LIMIT, IMAGE_RESERVATION_TTL_MS, imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, preflightImageAttempts, beginImageAttempt, settleImageAttempt, summarizeImageAttempts, reviewImageAttempt, confirmImageAttemptResult, importImageAttempts } from '../qianmu-image-attempts.js';
 
 const NOW = 1_780_000_000_000;
 const scope = { namespace: 'test-account', chatKey: 'chat', messageKey: 'floor-stable-id', revisionId: 'revision-a' };
@@ -188,7 +188,8 @@ test('manual supplements and legacy redraws do not multiply the automatic quota'
 
 test('automatic count multiplication and invalid quota inputs fail before any reservation', () => {
   for (const value of [0, 2, 4, '1', NaN, undefined]) assert.throws(() => reserve(null, request({ imageCount: value })), { code: 'image_attempt_count' });
-  for (const value of [0, 7, 1.5, '3', NaN]) assert.throws(() => reserve(null, request({ maxAutomatic: value })), { code: 'image_attempt_budget' });
+  for (const value of [0, Number.MAX_SAFE_INTEGER+1, 1.5, '3', NaN]) assert.throws(() => reserve(null, request({ maxAutomatic: value })), { code: 'image_attempt_budget' });
+  assert.throws(() => reserve(null, request({maxAutomatic:IMAGE_ATTEMPT_LIMIT+1})),{code:'image_attempt_capacity'});
   for (const value of [-1, NaN, Infinity, Number.MAX_SAFE_INTEGER]) assert.throws(() => reserve(null, request(), value), { code: 'image_attempt_time' });
 });
 
@@ -203,6 +204,26 @@ test('explicit six-slot allowance survives ledger reload; seventh or lowered-bud
     assert.equal(result.ok,false);assert.equal(result.code,'budget_exhausted');assert.equal(result.automaticUsed,6);
     assert.deepEqual(result.ledger.entries,ledger.entries);
   }
+});
+
+for(const size of [7,13,21])test(`configured ${size}-shot allowance survives reload and still refuses an extra automatic charge`,()=>{
+  let ledger=null;
+  const inputs=Array.from({length:size},(_,i)=>request({attemptId:`a${i}`,logicalShotId:`s${i}`,operationKey:`o${i}`,maxAutomatic:size}));
+  assert.equal(preflightImageAttempts(ledger,scope,inputs,[],NOW).ok,true);
+  for(const input of inputs){const next=reserve(ledger,input);assert.equal(next.ok,true);ledger=JSON.parse(JSON.stringify(next.ledger));}
+  const before=structuredClone(ledger),extra=request({attemptId:'extra',logicalShotId:'extra',operationKey:'extra',maxAutomatic:size});
+  assert.equal(preflightImageAttempts(ledger,scope,[extra],[],NOW).code,'budget_exhausted');
+  assert.equal(reserve(ledger,extra).code,'budget_exhausted');assert.deepEqual(ledger,before);
+  assert.equal(reserve(ledger,{...inputs[0],attemptId:'duplicate'}).code,'busy');
+});
+
+test('batch capacity preflight is read only, considers imported history, and refuses before a partial ledger reservation',()=>{
+  const history=Array.from({length:250},(_,i)=>({attemptId:`old${i}`,logicalShotId:`old${i}`,operationKey:`old${i}`,status:'unknown',automaticSlot:false}));
+  const inputs=Array.from({length:7},(_,i)=>request({attemptId:`new${i}`,logicalShotId:`new${i}`,operationKey:`new${i}`,maxAutomatic:7})),before=structuredClone(history);
+  assert.equal(preflightImageAttempts(null,scope,inputs,history,NOW).code,'ledger_full');assert.deepEqual(history,before);
+  assert.equal(preflightImageAttempts(null,scope,inputs.slice(0,6),history,NOW).ok,true);
+  assert.throws(()=>preflightImageAttempts(null,scope,[inputs[0],inputs[0]],[],NOW),{code:'image_attempt_identity'});
+  assert.throws(()=>preflightImageAttempts(null,scope,[inputs[0],{...inputs[0],attemptId:'different'}],[],NOW),{code:'image_attempt_identity'});
 });
 
 test('capacity is explicit and cannot evict old uncertain records to free budget', () => {

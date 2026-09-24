@@ -1,6 +1,7 @@
 // Pure lifecycle for a program-confirmed scene. No scope inference, workflow execution or storage.
 import {normalizeComfySceneScope,normalizeComfySceneLock} from './qianmu-comfy-selection.js';
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 export const COMFY_SCENE_LOCK_SCHEMA='qianmu.comfy.scene-lock.v1';
 export const COMFY_SCENE_RESERVATION_MS=10*60_000;
 export const COMFY_SCENE_HOLDER_LIMIT=32;
@@ -55,10 +56,11 @@ export function copyComfySceneStyleRecord(sourceValue,targetValue,input,at=Date.
 }
 export async function createComfyBatchSceneScopes({namespace,chatKey,batchKey,groups,guard=async()=>{}}){
   namespace=assertComfyRouteNamespace(namespace);text(chatKey,'聊天',512);text(batchKey,'本批次',240);
-  if(!Array.isArray(groups)||!groups.length||groups.length>32||!globalThis.crypto?.subtle)fail('scope','缺少本批次已划分的场景范围');
+  if(!Array.isArray(groups)||!groups.length||!globalThis.crypto?.subtle)fail('scope','缺少本批次已划分的场景范围');
+  assertStoryboardStructureBytes(groups,2*1024*1024,'Comfy 场景范围');
   const captured=copy(groups),source=JSON.stringify(groups),scopes=new Map();await guard();
   for(const [index,group] of captured.entries()){
-    if(!Array.isArray(group.shotIds)||!group.shotIds.length||group.shotIds.length>32)fail('scope','场景缺少镜头编号');
+    if(!Array.isArray(group.shotIds)||!group.shotIds.length)fail('scope','场景缺少镜头编号');
     const fp=group.sceneFingerprint || {},narrativeLayer=fp.narrativeLayer || 'present';
     const content=JSON.stringify([namespace,chatKey,batchKey,index,text(group.id,'分组'),String(fp.sceneId||'').slice(0,160),String(fp.location||'').slice(0,1000),String(fp.time||'').slice(0,240),narrativeLayer]);
     const continuityId=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(content)))].map(byte=>byte.toString(16).padStart(2,'0')).join('');await guard();
@@ -69,7 +71,8 @@ export async function createComfyBatchSceneScopes({namespace,chatKey,batchKey,gr
 }
 export async function createComfyDraftSceneScopes({namespace,chatKey,planId,revisionId,groups,shots,guard=async()=>{}}){
   namespace=assertComfyRouteNamespace(namespace);text(chatKey,'聊天',512);text(planId,'取景计划',240);text(revisionId,'正文版本',80);
-  if(!Array.isArray(shots)||!shots.length||shots.length>32||!globalThis.crypto?.subtle)fail('scope','请先提取当前楼层');
+  if(!Array.isArray(shots)||!shots.length||!globalThis.crypto?.subtle)fail('scope','请先提取当前楼层');
+  assertStoryboardStructureBytes([groups,shots],2*1024*1024,'Comfy 续场草稿');
   const read=()=>JSON.stringify([namespace,chatKey,planId,revisionId,groups,shots.map(shot=>({id:shot.id,prompt:shot.prompt,negative:shot.negative,shotSpec:shot.shotSpec}))]);
   const captured=read(),bytes=new TextEncoder().encode(captured);if(bytes.byteLength>2*1024*1024)fail('capacity','本次续场草稿过大，请拆分取景');
   await guard();const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(byte=>byte.toString(16).padStart(2,'0')).join('');await guard();

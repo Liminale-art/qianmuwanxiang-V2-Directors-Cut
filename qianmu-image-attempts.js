@@ -1,4 +1,3 @@
-import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 // Pure still-frame admission rules. Persistence must apply each operation inside one
 // read/write transaction; this module does not open storage or authorize network I/O.
 export const IMAGE_ATTEMPT_SCHEMA = 'qianmu.image-attempts.v1';
@@ -83,7 +82,10 @@ export function claimImageAttempt(value, scope, input, now) {
   const attemptId = id(input.attemptId, '请求编号'), logicalShotId = id(input.logicalShotId, '镜头编号');
   const operationKey = id(input.operationKey, '操作编号'), ownerId = id(input.ownerId, '页面会话');
   const automatic = input.kind === 'automatic';
-  if (!Number.isInteger(input.maxAutomatic) || input.maxAutomatic < 1 || input.maxAutomatic > STORYBOARD_MAX_SHOTS) fail('image_attempt_budget', '自动镜头上限无效');
+  if (!Number.isSafeInteger(input.maxAutomatic) || input.maxAutomatic < 1) fail('image_attempt_budget', '自动镜头上限无效');
+  // This is the existing durable anti-replay ledger capacity, not a creative
+  // shot-count preset. Refuse an unsupported allowance before reserving work.
+  if (input.maxAutomatic > IMAGE_ATTEMPT_LIMIT) fail('image_attempt_capacity', '本层数量超过防重记录容量，未提交，请减少本次数量');
   if (automatic && input.imageCount !== 1) fail('image_attempt_count', '自动镜头每次只能生成一张');
   expireReservations(ledger, now);
   const previous = ledger.entries.find(row => row.attemptId === attemptId);
@@ -115,6 +117,36 @@ export function claimImageAttempt(value, scope, input, now) {
   };
   ledger.entries.push(attempt);
   return result(ledger, true, 'reserved', { attempt: { ...attempt } });
+}
+
+// Read-only whole-batch capacity check. It is not a reservation, consent, or a
+// dispatch receipt: each job must still claim its slot immediately before queueing.
+export function preflightImageAttempts(value, scope, inputs, history, now) {
+  now = time(now);
+  const ledger = importImageAttempts(value, scope, history, now);
+  if (!Array.isArray(inputs) || !inputs.length) fail('image_attempt_request', '缺少本批画面清单');
+  if (inputs.length > IMAGE_ATTEMPT_LIMIT) return result(ledger, false, 'ledger_full');
+  expireReservations(ledger, now);
+  const attempts = new Set(ledger.entries.map(row => row.attemptId)), batchIds = new Set(), batchShots = new Set();
+  const occupied = new Set(ledger.entries.filter(row => row.automaticSlot && OCCUPIED.has(row.status)).map(row => row.logicalShotId));
+  let limit = Infinity;
+  for (const input of inputs) {
+    if (!plain(input) || !KINDS.has(input.kind)) fail('image_attempt_request', '缺少明确的生图操作类型');
+    const attemptId = id(input.attemptId, '请求编号'), logicalShotId = id(input.logicalShotId, '镜头编号');
+    id(input.operationKey, '操作编号'); id(input.ownerId, '页面会话');
+    if (!Number.isSafeInteger(input.maxAutomatic) || input.maxAutomatic < 1) fail('image_attempt_budget', '自动镜头上限无效');
+    if (input.maxAutomatic > IMAGE_ATTEMPT_LIMIT) fail('image_attempt_capacity', '本层数量超过防重记录容量，未提交，请减少本次数量');
+    if (batchIds.has(attemptId)) fail('image_attempt_identity', '本批生图请求编号重复，未提交');
+    batchIds.add(attemptId); attempts.add(attemptId);
+    if (input.kind === 'automatic') {
+      if (input.imageCount !== 1) fail('image_attempt_count', '自动镜头每次只能生成一张');
+      if (batchShots.has(logicalShotId)) fail('image_attempt_identity', '本批自动画面重复，未提交');
+      batchShots.add(logicalShotId); occupied.add(logicalShotId); limit = Math.min(limit, input.maxAutomatic);
+    }
+  }
+  if (attempts.size > IMAGE_ATTEMPT_LIMIT) return result(ledger, false, 'ledger_full');
+  if (occupied.size > limit) return result(ledger, false, 'budget_exhausted');
+  return result(ledger, true, 'capacity_available', { attemptsAfterBatch: attempts.size });
 }
 
 export function beginImageAttempt(value, scope, { attemptId, ownerId }, now) {

@@ -1,4 +1,4 @@
-import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 import {normalizeEnsembleStyleOrigin,retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
 import {createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -28,7 +28,8 @@ export function configureEnsembleSceneContinuation({history,session,schema,paylo
   if(session?.enabled===false||session?.styleLock!==true)return null;
   session.assertCurrent();window.assertCurrent();
   if(!history)return null;
-  if(!Array.isArray(history.rows)||history.rows.length>168)fail();if(!history.rows.length)return null;
+  if(!Array.isArray(history.rows))fail();if(!history.rows.length)return null;
+  assertStoryboardStructureBytes(history.rows,1024*1024,'连续场景来源');
   const floor=window.floor??window.current.messageRef.lastKnownFloor??0;
   const anchors=[];
   for(const row of history.rows){
@@ -42,7 +43,6 @@ export function configureEnsembleSceneContinuation({history,session,schema,paylo
     if(previous){if(JSON.stringify(previous.anchor)!==JSON.stringify(value))fail();continue;}
     anchors.push({id:`E${anchors.length+1}`,logicalId:row.id,anchor:value});
   }
-  if(anchors.length>STORYBOARD_MAX_SHOTS*(window.sources?.length||1))fail();
   const byId=new Map(anchors.map(row=>[row.id,row.anchor]));
   const shot=schema.properties.shots.items;shot.properties.scene_predecessor={type:'string',enum:['',...byId.keys()]};shot.required.push('scene_predecessor');
   payload.prior_scene_anchors=anchors.map(({id,anchor:{moment,scene,source}})=>({id,floor:source.floor,branch_id:moment.branchId,narrative_layer:moment.layer,

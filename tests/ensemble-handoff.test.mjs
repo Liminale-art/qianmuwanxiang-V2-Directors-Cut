@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.371';
 const copy=value=>JSON.parse(JSON.stringify(value));
-function fixture(){
+function fixture(count=3){
   let live=true,hook=null;const calls=[];
-  const result={shouldGenerate:true,shots:Array.from({length:3},(_,i)=>({id:'draft-'+i,prompt:'scene '+i,negative:'',paragraphIndex:i,shotType:'environment',sensitive:false,
+  const result={shouldGenerate:true,shots:Array.from({length:count},(_,i)=>({id:'draft-'+i,prompt:'scene '+i,negative:'',paragraphIndex:i,shotType:'environment',sensitive:false,
     shotSpec:normalizeStoryboardShotSpec({id:'spec-'+i,subject:'scene '+i,scene:'room',characters:[],composition:{ratioId:'3:2'},promptAtoms:{global:['scene '+i]}})}))};
   const receipt={namespace:'st-user:fixture',chatKey:'chat-a',preparationId:'prep-1',selectionRevision:'selection-1',executionAuthorized:false,
-    assignments:result.shots.map((_,i)=>({shotId:'S'+(i+1),schemeId:'S'+(i+1),revision:'r1',bindingKey:String(i+1).repeat(64)}))};
+    assignments:result.shots.map((_,i)=>({shotId:'S'+(i+1),schemeId:'S'+(i+1),revision:'r1',bindingKey:String(i+1).padStart(64,'0')}))};
   const session={assertCurrent(){if(!live)throw Error('expired');},async resolveAssignment(value,id){this.assertCurrent();assert.equal(value,receipt);calls.push(id);if(hook)await hook();this.assertCurrent();return {...receipt.assignments.find(row=>row.shotId===id),route:{providerId:'novel',modelId:id},artistPresetId:'artist-'+id};}};
   const bind=()=>attachEnsembleCompilerResult(result,{session,receipt});
   return {result,receipt,session,calls,bind,seal:()=>sealEnsembleCompilerResult(result,async()=>{session.assertCurrent();}),resolve:planned=>resolveEnsembleCompiledRoutes(result,planned,{guard:async()=>{session.assertCurrent();}}),stop:()=>{live=false;},set hook(value){hook=value;}};
@@ -20,9 +20,21 @@ test('model S ids bind to exact newly minted draft ids; coverage may drop earlie
   const f=fixture();f.bind();await f.seal();const planned=copy(f.result.shots.slice(1)),resolved=await f.resolve(planned);
   assert.deepEqual(resolved.routes.map(r=>r.modelId),['S2','S3']);assert.deepEqual(resolved.artistPresetIds,['artist-S2','artist-S3']);assert.equal(resolved.executionAuthorized,false);assert.ok(Object.isFrozen(resolved.routes[0]));
   await resolved.assertCurrent();assert.deepEqual(f.calls,['S1','S2','S3','S2','S3']);
-  assert.deepEqual(resolved.origins.map(row=>[row.shotId,row.schemeId,row.revision,row.bindingKey]),[['S2','S2','r1','2'.repeat(64)],['S3','S3','r1','3'.repeat(64)]]);
+  assert.deepEqual(resolved.origins.map(row=>[row.shotId,row.schemeId,row.revision,row.bindingKey]),[['S2','S2','r1','2'.padStart(64,'0')],['S3','S3','r1','3'.padStart(64,'0')]]);
   assert.ok(Object.isFrozen(resolved.origins[0]));assert.equal(resolved.origins[0].executionAuthorized,false);
   assert.deepEqual(resolved.stages.map(row=>row.input.shot),['S2','S3']);assert.deepEqual(resolved.stages.map(row=>row.output.schemeId),['S2','S3']);
+});
+
+for(const count of [7,13,21,33])test(`${count} narrative shots keep exact style identities through sealing and omitted-shot handoff`,async()=>{
+  const f=fixture(count);f.bind();await f.seal();
+  const resolved=await f.resolve(copy(f.result.shots));
+  assert.equal(resolved.routes.length,count);assert.deepEqual(resolved.origins.map(row=>row.shotId),Array.from({length:count},(_,i)=>`S${i+1}`));
+  const last=await f.resolve(copy(f.result.shots.slice(-1)));assert.equal(last.origins[0].shotId,`S${count}`);await last.assertCurrent();
+});
+
+test('oversize handoff fails before any route binding or partial batch marker',()=>{
+  const f=fixture(21);f.result.shots[0].prompt='x'.repeat(256*1024);
+  assert.throws(f.bind,{code:'storyboard_structure_capacity'});assert.equal(f.result.ensembleRequired,undefined);assert.deepEqual(f.calls,[]);
 });
 test('serialized, cloned and forged marked results cannot be promoted to a live handoff',async()=>{
   const f=fixture();f.bind();await f.seal();for(const result of [copy(f.result),{...f.result},{shouldGenerate:true,shots:f.result.shots,ensembleRequired:true}]){

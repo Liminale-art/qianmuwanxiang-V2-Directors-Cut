@@ -59,6 +59,9 @@ export async function routeEnvironment(options={}) {
     storyboardGenerationPreparing:new Set(),storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:100,
     storyboardPipelineArchiveCache:new Map(),storyboardPreparationRetries:new Set(),storyboardScheduleInlineRender(){},storyboardPlanIsTerminal:()=>false,
     blobStore:{deleteStoryboardPipelineLogs:async()=>{}},storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>state.pipelineLogs.find(row=>row.id===log.pipelineId),
+    // This fixture ends at the route/queue seam; ledger-backed admission is
+    // exercised by storyboard-user-count-range and storyboard-stream-compiler.
+    storyboardPreflightImageBatch:async (_jobs,valid)=>{if(!valid())throw Error('preparation changed');},
     storyboardQueueJob:async job=>{jobs.push(job);return true;},confirmDialog:async()=>true,
     featureRuntime:{load:async key=>{
       calls.push(key);

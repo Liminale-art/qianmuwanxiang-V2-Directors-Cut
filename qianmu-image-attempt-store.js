@@ -1,4 +1,4 @@
-import { imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, beginImageAttempt, continueImageAttempt, importImageAttempts, settleImageAttempt, confirmImageAttemptResult, reviewImageAttempt, summarizeImageAttempts } from './qianmu-image-attempts.js';
+import { imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, preflightImageAttempts, beginImageAttempt, continueImageAttempt, importImageAttempts, settleImageAttempt, confirmImageAttemptResult, reviewImageAttempt, summarizeImageAttempts } from './qianmu-image-attempts.js';
 
 // Separate, lazy database: image budget upgrades must not block voice, reading or
 // legacy public data stores. No database is opened at module import/factory time.
@@ -94,6 +94,33 @@ export function createImageAttemptStore({ indexedDB = globalThis.indexedDB, dbNa
   }
 
   return {
+    async preflight(groups) {
+      if(!Array.isArray(groups)||!groups.length)throw problem('image_attempt_request','缺少本批画面清单');
+      const captured=groups.map(group=>({scope:{...group.scope},inputs:group.inputs.map(row=>({...row})),history:group.history.map(row=>({...row}))}));
+      const keys=captured.map(group=>imageAttemptScopeKey(group.scope));
+      if(new Set(keys).size!==keys.length)throw problem('image_attempt_identity','本批画面范围重复，未提交');
+      if(keys.length>capacity)return {ok:false,code:'storage_full'};
+      const db=await ensureOpen();if(disposed)throw problem('image_attempt_closed','生图请求记录会话已结束');
+      return new Promise((resolve,reject)=>{
+        let tx,localError=null,output={ok:true,code:'capacity_available'},completed=false,missing=0,at;
+        const finish=cause=>{if(completed)return;completed=true;clearTimeout(timer);transactions.delete(tx);
+          if(cause||disposed)reject(cause||problem('image_attempt_closed','生图请求记录会话已结束'));else resolve(output);};
+        const abort=cause=>{localError=cause?.code?.startsWith?.('image_attempt_')?cause:storageProblem();if(!tx){finish(localError);return;}try{tx.abort();}catch(_){finish(localError);}};
+        const timer=setTimeout(()=>{const cause=problem('image_attempt_storage_timeout','生图请求记录读取超时，未提交此批画面');abort(cause);finish(cause);},timeout);
+        try{
+          at=now();tx=db.transaction(STORE,'readonly');transactions.add(tx);
+          tx.oncomplete=()=>finish();tx.onabort=()=>finish(localError||storageProblem());tx.onerror=()=>{localError||=storageProblem();};
+          const store=tx.objectStore(STORE),count=store.count();let scopeCount=0,reads=0;
+          const complete=()=>{if(reads===captured.length&&scopeCount+missing>capacity)output={ok:false,code:'storage_full'};};
+          count.onsuccess=()=>{scopeCount=count.result;complete();};
+          captured.forEach((group,index)=>{const request=store.get(keys[index]);request.onsuccess=()=>{try{
+            if(request.result===undefined)missing++;
+            const checked=preflightImageAttempts(request.result,group.scope,group.inputs,group.history,at);
+            if(!checked.ok&&output.ok)output={ok:false,code:checked.code};reads++;complete();
+          }catch(cause){abort(cause);}};});
+        }catch(cause){abort(cause);}
+      });
+    },
     async manage(namespace, { remove = false, check = () => {} } = {}) {
       // Validate the account without opening storage. Only the selected account's
       // metadata is visited; another ST account's records are never cleared.

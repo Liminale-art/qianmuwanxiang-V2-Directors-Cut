@@ -20,7 +20,7 @@ test('partial/mutating/unbounded drafts and cancellation cannot establish a prog
   await assert.rejects(()=>runtime.createComfyDraftSceneScopes({...input(),revisionId:''}));
   await assert.rejects(()=>runtime.createComfyDraftSceneScopes({...input(),shots:[]}));
   await assert.rejects(()=>runtime.createComfyDraftSceneScopes({...input(),shots:[{id:'other'}]}));
-  await assert.rejects(()=>runtime.createComfyDraftSceneScopes({...input(),shots:[{id:'shot',prompt:'x'.repeat(2*1024*1024)}]}),/过大/);
+  await assert.rejects(()=>runtime.createComfyDraftSceneScopes({...input(),shots:[{id:'shot',prompt:'x'.repeat(2*1024*1024)}]}),error=>error.code==='storyboard_structure_capacity');
   const a=input();await assert.rejects(()=>runtime.createComfyDraftSceneScopes({...a,guard:async()=>{a.shots[0].prompt='changed while waiting';}}),/已变化/);
   await assert.rejects(()=>runtime.createComfyDraftSceneScopes({...input(),guard:async()=>{throw Error('closed');}}),/closed/);
 });

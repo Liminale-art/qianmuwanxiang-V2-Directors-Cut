@@ -116,7 +116,8 @@ export async function resolveStoryboardCompilerResult(raw, context, capabilities
   const allowedRoles = new Set(['establishing', 'relationship', 'medium', 'closeup', 'reaction', 'detail', 'action', 'atmosphere', 'turn', 'custom']);
   const rawShots = Array.isArray(object.shots) ? object.shots : [object];
   const limit = manualSupplement ? 1 : getStoryboardGenerationPolicy(state).maxImages;
-  const shots = rawShots.slice(0, limit).map((item, index) => {
+  if(rawShots.length>limit)throw Object.assign(new Error(`本次最多允许 ${limit} 个镜头，提取返回 ${rawShots.length} 个，未截断或提交`),{code:'storyboard_shot_limit',submissionState:'not_submitted'});
+  const shots = rawShots.map((item, index) => {
     const rawPrompt = String(item?.prompt || item?.positive_prompt || item?.final_prompt || (index === 0 && !Object.keys(object).length ? raw : '') || '')
       .replace(/^```(?:json)?|```$/gi, '').trim().slice(0, 24000);
     const shotSpec = normalizeStoryboardShotSpec(item?.shotSpec || {

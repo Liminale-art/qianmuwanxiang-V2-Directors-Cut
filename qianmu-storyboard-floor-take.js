@@ -8,6 +8,9 @@ const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=m
 const integer=(value,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max;
 const clone=value=>structuredClone(value);
 const invalid=()=>({invalid:true});
+// Frozen per-job manifests are bounded by encoded size, not a narrative count.
+// This also protects receivers when a custom plan contains many small slots.
+export const STORYBOARD_FLOOR_TAKE_MAX_BYTES=262144;
 const saving=new WeakMap();
 const provisionalReceipts=new WeakMap();
 export const storyboardFloorTakeSavePending=receipts=>Boolean(receipts&&(saving.has(receipts)||provisionalReceipts.has(receipts)));
@@ -46,19 +49,22 @@ export function normalizeStoryboardFloorTake(value) {
     ||!integer(value.swipeId,0,Number.MAX_SAFE_INTEGER)||!integer(value.floor,0,Number.MAX_SAFE_INTEGER)
     ||!integer(value.startedAt,1,Number.MAX_SAFE_INTEGER)||!Array.isArray(value.baselineIds)||value.baselineIds.length>400
     ||value.baselineIds.some(id=>!text(id,160))||new Set(value.baselineIds).size!==value.baselineIds.length
-    ||!Array.isArray(value.slots)||value.slots.length>40
+    ||!Array.isArray(value.slots)
     ||Object.hasOwn(value,'baselineTaskIds')&&(!Array.isArray(value.baselineTaskIds)||value.baselineTaskIds.length>400
       ||value.baselineTaskIds.some(id=>!text(id,160)||/[\u0000-\u001f\u007f]/.test(id))||new Set(value.baselineTaskIds).size!==value.baselineTaskIds.length))return invalid();
-  const slots=[],seen=new Set();
+  const slots=[],seen=new Set();let slotBytes=0;
   for(const slot of value.slots) {
     if(!obj(slot)||!text(slot.shotId,160)||!integer(slot.requestIndex,1,8)||!integer(slot.imageCount,1,8))return invalid();
     const key=JSON.stringify([slot.shotId,slot.requestIndex]);if(seen.has(key))return invalid();seen.add(key);
-    slots.push({shotId:slot.shotId,requestIndex:slot.requestIndex,imageCount:slot.imageCount});
+    const normalized={shotId:slot.shotId,requestIndex:slot.requestIndex,imageCount:slot.imageCount};
+    slotBytes+=new TextEncoder().encode(JSON.stringify(normalized)).byteLength+1;if(slotBytes>STORYBOARD_FLOOR_TAKE_MAX_BYTES)return invalid();
+    slots.push(normalized);
   }
-  return {version:value.version,id:value.id,chatKey:value.chatKey,messageKey:value.messageKey,revisionId:value.revisionId,swipeId:value.swipeId,floor:value.floor,
+  const normalized={version:value.version,id:value.id,chatKey:value.chatKey,messageKey:value.messageKey,revisionId:value.revisionId,swipeId:value.swipeId,floor:value.floor,
     startedAt:value.startedAt,baselineIds:[...value.baselineIds],slots,
     ...(value.version===2?{messageKeys:storyboardFloorTakeMessageKeys(value)}:{}),
     ...(Object.hasOwn(value,'baselineTaskIds')?{baselineTaskIds:[...value.baselineTaskIds]}:{})};
+  return new TextEncoder().encode(JSON.stringify(normalized)).byteLength>STORYBOARD_FLOOR_TAKE_MAX_BYTES?invalid():normalized;
 }
 const scope=take=>JSON.stringify([take.chatKey,take.messageKey,take.swipeId]);
 const order=(left,right)=>left.startedAt-right.startedAt||left.id.localeCompare(right.id);

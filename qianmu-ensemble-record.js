@@ -1,4 +1,5 @@
 // Descriptive persisted data only. Loading a plan never imports a live execution session.
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 export const ENSEMBLE_RECOVERY_SCHEMA='qianmu.ensemble.recovery.v1';
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const fail=message=>{throw Object.assign(Error(message),{code:'ensemble_recovery',submissionState:'not_submitted'});};
@@ -13,7 +14,9 @@ export function normalizeEnsembleRecoveryScope(scope){
 }
 export function normalizeEnsembleRecoveryRecord(value){
   if(!fields(value,['schema','scope','selectionRevision','shots','executionAuthorized'])||value.schema!==ENSEMBLE_RECOVERY_SCHEMA||value.executionAuthorized!==false
-    ||!id(value.selectionRevision)||!Array.isArray(value.shots)||!value.shots.length||value.shots.length>20)fail('镜组恢复记录无效');
+    ||!id(value.selectionRevision)||!Array.isArray(value.shots)||!value.shots.length)fail('镜组恢复记录无效');
+  // Keep the existing persisted-record byte ceiling, now before allocation.
+  try{assertStoryboardStructureBytes(value,65536,'镜组恢复记录');}catch{fail('镜组恢复记录过大或结构无效');}
   const ids=new Set();const shots=value.shots.map((row,index)=>{
     if(!fields(row,['id','shotId','contentHash','schemeId','revision','bindingKey','reason'])||!id(row.id)||ids.has(row.id)||row.shotId!==`S${index+1}`
       ||!hash(row.contentHash)||!id(row.schemeId)||!id(row.revision)||!hash(row.bindingKey)||typeof row.reason!=='string'||row.reason.length>600

@@ -9,7 +9,7 @@ import {routeEnvironment,namespace} from './helpers/comfy-route-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createEnsemblePlanStorage} from '../qianmu-ensemble-plan-storage.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
-async function fixture({keepFirst=false}={}){
+async function fixture({keepFirst=false,count=3}={}){
   const e=await routeEnvironment(),profile=e.context.storyboardProviderProfile(e.state,'novel');
   e.state.routing.rules.push({id:'nai',enabled:true,target:{providerId:'novel',modelId:profile.model,capabilityModelId:profile.capabilityModelId,connectionPresetId:'',parameterPresetId:''}});
   e.state.artistPresets.push({id:'ink',name:'Ink',value:'artist:fixture'});
@@ -17,9 +17,9 @@ async function fixture({keepFirst=false}={}){
   const selection={schema:ENSEMBLE_SELECTION_SCHEMA,namespace,chatKey:'chat-a',revision:'r1',enabled:true,schemeIds:['ink'],styleLock:true};
   let active=true,preparations=0,checks=0;const guard=async()=>active,open=()=>prepareEnsembleStyleBindings({library,selection,namespace,chatKey:'chat-a',preparationId:'prepare-'+(++preparations),readState:()=>e.state,
     resolveProfile:({state,route})=>e.context.storyboardResolveRoutingProfile(state,route),assertCurrent:()=>active,guard,verifyTarget:async()=>({ready:true})});
-  const result={shouldGenerate:true,shots:Array.from({length:3},(_,i)=>({id:'draft-'+i,prompt:'private scene '+i,negative:'bad',paragraphIndex:i,shotType:'environment',sensitive:false,
+  const result={shouldGenerate:true,shots:Array.from({length:count},(_,i)=>({id:'draft-'+i,prompt:'private scene '+i,negative:'bad',paragraphIndex:i,shotType:'environment',sensitive:false,
     shotSpec:normalizeStoryboardShotSpec({subject:'private scene '+i,scene:'room',characters:[],composition:{ratioId:'3:2'},promptAtoms:{global:['scene']}})}))};
-  const first=await open(),receipt=first.session.resolve(result.shots.map((_,i)=>({shot_id:'S'+(i+1),scheme_id:i===1?'current':'ink',reason:i===1?'':'静谧留白'})),['S1','S2','S3']);
+  const first=await open(),receipt=first.session.resolve(result.shots.map((_,i)=>({shot_id:'S'+(i+1),scheme_id:i===1?'current':'ink',reason:i===1?'':'静谧留白'})),result.shots.map((_,i)=>`S${i+1}`));
   attachEnsembleCompilerResult(result,{session:first.session,receipt});await sealEnsembleCompilerResult(result,guard);
   const scope={namespace,chatKey:'chat-a',planId:'plan-a',messageKey:'message-a',revisionId:'revision-a'};
   const record=await createEnsembleRecoveryRecord(result,{scope,guard});let saved=copy(record);if(!keepFirst)first.close();
@@ -36,6 +36,21 @@ test('a closed compiler can be recovered only through a new actual binding sessi
   const f=await fixture(),restored=await restoreEnsembleRecoveryRecord(copy(f.record),f.options);
   assert.deepEqual(restored.artistPresetIds,['ink','','ink']);assert.equal(restored.routes.length,3);assert.ok(Object.isFrozen(restored.routes[0]));assert.equal(restored.executionAuthorized,false);
   assert.equal(f.checks(),2);await restored.assertCurrent();assert.equal(f.checks(),3);assert.equal(f.jobs.length,0);
+});
+
+for(const count of [7,13,21,33])test(`${count} sealed styles roundtrip complete recovery records and fresh verified bindings`,async()=>{
+  const f=await fixture({count}),roundtrip=normalizeEnsembleRecoveryRecord(copy(f.record));
+  assert.equal(roundtrip.shots.length,count);assert.equal(roundtrip.shots.at(-1).shotId,`S${count}`);
+  const restored=await restoreEnsembleRecoveryRecord(roundtrip,f.options);assert.equal(restored.routes.length,count);
+  assert.equal(restored.origins.at(-1).shotId,`S${count}`);await restored.assertCurrent();assert.equal(f.jobs.length,0);
+});
+
+test('recovery retains the exact existing byte ceiling and never returns a shortened record',async()=>{
+  const f=await fixture(),large=copy(f.record),source=large.shots[0];
+  large.shots=Array.from({length:80},(_,i)=>({...copy(source),id:`draft-${i}`,shotId:`S${i+1}`,reason:'r'.repeat(600)}));
+  const before=JSON.stringify(large);assert.ok(new TextEncoder().encode(before).byteLength>65536);
+  assert.throws(()=>normalizeEnsembleRecoveryRecord(large),error=>error.code==='ensemble_recovery'&&/过大/.test(error.message));
+  assert.equal(JSON.stringify(large),before);assert.equal(f.jobs.length,0);
 });
 test('coverage may omit a mirror without shifting its original style or narrative order',async()=>{
   const f=await fixture(),restored=await restoreEnsembleRecoveryRecord(f.record,{...f.options,planned:f.options.planned.slice(1)});

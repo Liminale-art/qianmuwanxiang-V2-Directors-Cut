@@ -1,12 +1,14 @@
 // Request-local continuity constraints for the expression stage. The caller
 // supplies the already verified narrative, never raw/unselected chat history.
 // This owns no model, storage, route, image-count or generation permission.
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 const fail=()=>{throw Object.assign(Error('连续场景风格核对失败'),{code:'ensemble_scene_lock',submissionState:'not_submitted'});};
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const text=(value,max)=>typeof value==='string'&&value.trim()&&value.length<=max&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 const signal=value=>value.normalize('NFKC').trim().toLowerCase().replace(/\s+/gu,' ');
 function sceneRows(narrative){
-  if(!Array.isArray(narrative?.shots)||narrative.shots.length>20)fail();
+  if(!Array.isArray(narrative?.shots))fail();
+  assertStoryboardStructureBytes(narrative.shots,undefined,'连续场景画面');
   return narrative.shots.map((shot,index)=>{
     const branch=shot?.state_point?.branchId,layer=shot?.narrative_layer,key=shot?.composition?.continuity_key;
     const location=shot?.scene?.location,time=shot?.scene?.time;

@@ -1,4 +1,3 @@
-import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.371';
 import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.371';
 import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.371';
@@ -85,12 +84,12 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
     const moment=proof?assertStoryboardStreamMoment(proof.moment,window):readStoryboardOrdinaryMoment(job,oldWindow,stagesFor(job,row)),id=admission.logicalShotId,old=pins.get(id);
     if(moment)assertStoryboardStreamMoment(moment,window);
     const anchor=captureEnsembleSceneAnchor(job,moment);
-    if(anchor&&styleHistory.length<=8){const entry={id,anchor};if(!styleHistory.some(row=>JSON.stringify(row)===JSON.stringify(entry)))styleHistory.push(entry);}
+    if(anchor){const entry={id,anchor};if(!styleHistory.some(row=>JSON.stringify(row)===JSON.stringify(entry)))styleHistory.push(entry);}
     remember(ref);
     if(slot){coveredSlots.add(slot);const slots=pinSlots.get(id)||new Map();slots.set(slot,{planId:job.planId,shotId:job.planShotId});pinSlots.set(id,slots);}
     if(!moment){pendingMoments.push({id,spec:job.shotSpec,oldWindow});continue;}
     if(old&&JSON.stringify(old.moment)!==JSON.stringify(moment))fail();
-    pins.set(id,{id,moment});if(pins.size>STORYBOARD_MAX_SHOTS)fail();
+    pins.set(id,{id,moment});
   }
   for(const {id,spec,oldWindow} of pendingMoments){const pin=pins.get(id);if(!pin)fail();assertStoryboardOrdinaryMomentSpec(pin.moment,spec);assertStoryboardStreamMoment(pin.moment,oldWindow);}
   // A retained plan with missing delivery/log evidence is not an empty budget.
@@ -117,7 +116,9 @@ export function storyboardStreamStyleHistory(coverage,window){
 export function configureStoryboardStreamCoverage(context,payload,config){
   const coverage=context.streamCoverage;if(!coverage)return null;
   if(coverages.get(coverage)!==context.compilerSources||config.manualSupplement)fail();context.compilerSources.assertCurrent();
-  const total=payload.constraints.max_shots,used=coverage.pins.length,remaining=Math.max(0,total-used);
+  const total=payload.constraints.max_shots,used=coverage.pins.length;
+  if(!Number.isSafeInteger(total)||total<1)fail();
+  const remaining=Math.max(0,total-used);
   payload.constraints.max_shots=remaining;payload.constraints.min_shots_target=Math.max(0,payload.constraints.min_shots_target-used);
   payload.constraints.committed_images={total_floor_limit:total,occupied:used,remaining,rule:'supplement_only_never_replace_retry_or_redraw'};
   payload.committed_images=coverage.pins.map(({id,moment})=>({id,...copy(moment)}));
@@ -145,6 +146,6 @@ export function filterStoryboardStreamCoveredNarrative(data,states,context,reque
 export function bindStoryboardStreamShotReferences(reference,result,window){
   if(!result.shouldGenerate)return [];
   const shots=result.contractTrace?.narrative?.shots;
-  if(!reference||!Array.isArray(shots)||shots.length!==result.shots.length||!shots.length||shots.length>STORYBOARD_MAX_SHOTS)fail();
+  if(!reference||!Array.isArray(shots)||shots.length!==result.shots.length||!shots.length)fail();
   return shots.map(shot=>freeze({...copy(reference),stream:{...copy(reference.stream),moment:createStoryboardStreamMoment(shot,window)}}));
 }

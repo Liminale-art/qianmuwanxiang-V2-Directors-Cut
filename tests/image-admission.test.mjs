@@ -7,7 +7,7 @@ import { runningHubUsageFields } from '../qianmu-runninghub-usage.js';
 import { readFile } from 'node:fs/promises';
 import { generateDirectImage, isDirectImageTransportError } from '../qianmu-image-direct.js';
 import { createImageAdmission, createImageAdmissionIdentity, createImageHistorySeeds, resolveImageAccountNamespace } from '../qianmu-image-admission.js';
-import { beginImageAttempt, continueImageAttempt, claimImageAttempt, importImageAttempts, settleImageAttempt, imageAttemptScopeKey, summarizeImageAttempts, IMAGE_RESERVATION_TTL_MS } from '../qianmu-image-attempts.js';
+import { beginImageAttempt, continueImageAttempt, claimImageAttempt, preflightImageAttempts, importImageAttempts, settleImageAttempt, imageAttemptScopeKey, summarizeImageAttempts, IMAGE_RESERVATION_TTL_MS } from '../qianmu-image-attempts.js';
 
 const NOW = 1_780_000_000_000;
 const job = (extra = {}) => ({ id: 'job-a', chatKey: 'chat-a', messageRef: { messageKey: 'floor-a', revisionId: 'rev-a' },
@@ -22,6 +22,7 @@ function storage(rows = new Map()) {
   };
   return {
     rows, advance: ms => { time += ms; }, close: () => { closed = true; },
+    preflight:async groups=>{for(const group of groups){const result=preflightImageAttempts(rows.get(imageAttemptScopeKey(group.scope)),group.scope,group.inputs,group.history,time);if(!result.ok)return result;}return {ok:true};},
     claim: async (scope, input, seeds = []) => run(scope, value => claimImageAttempt(importImageAttempts(value, scope, seeds, time), scope, input, time)),
     begin: async (scope, input) => run(scope, value => beginImageAttempt(value, scope, input, time)),
     continue: async (scope, input) => run(scope, value => continueImageAttempt(value, scope, input, time)),
@@ -35,6 +36,29 @@ const setup = (options = {}) => {
 };
 const admit = (runtime, value, extra = {}) => runtime.admit(value, { maxAutomatic: 3, ...extra });
 const scopeOf = value => ({ namespace: 'account-a', chatKey: value.chatKey, messageKey: value.messageRef.messageKey, revisionId: value.messageRef.revisionId });
+
+for(const count of [7,13,21])test(`read-only ${count}-job preflight preserves capacity but is not a dispatch receipt`,async()=>{
+  const e=setup(),jobs=Array.from({length:count},(_,index)=>job({id:`job-${index}`,prompt:`scene-${index}`}));
+  assert.equal(await e.runtime.preflight(jobs,{maxAutomatic:count}),true);assert.equal(e.store.rows.size,0);
+  await assert.rejects(e.runtime.beforeSubmit(jobs[0]),{code:'image_attempt_missing_reservation'});
+  assert.ok(jobs.every(value=>!value.imageAdmission));
+  for(const value of jobs)await e.runtime.admit(value,{maxAutomatic:count});
+  assert.equal(e.store.inspect(scopeOf(jobs[0])).attempts,count);
+  await assert.rejects(e.runtime.preflight([job({id:'extra',prompt:'extra'})],{maxAutomatic:count}),{code:'image_attempt_budget_exhausted'});
+});
+
+test('batch preflight rejects a known full ledger, foreign account, modified jobs and missing storage support without claiming',async()=>{
+  const e=setup(),first=job(),scope=scopeOf(first);
+  e.store.rows.set(imageAttemptScopeKey(scope),importImageAttempts(null,scope,Array.from({length:250},(_,index)=>({attemptId:`old-${index}`,logicalShotId:`old-${index}`,operationKey:`old-${index}`,automaticSlot:false,status:'unknown'})),NOW));
+  const before=JSON.stringify([...e.store.rows]),jobs=Array.from({length:7},(_,i)=>job({id:`next${i}`,prompt:`scene${i}`}));
+  await assert.rejects(e.runtime.preflight(jobs,{maxAutomatic:7}),{code:'image_attempt_ledger_full'});assert.equal(JSON.stringify([...e.store.rows]),before);
+  let accountCalls=0;const other=setup({account:async()=>++accountCalls===1?'account-a':'account-b'});
+  await assert.rejects(other.runtime.preflight([job()],{maxAutomatic:3}),{code:'image_attempt_account_changed'});assert.equal(other.store.rows.size,0);
+  const mutable=job(),modified=setup({account:async()=>{mutable.prompt+=' changed';return 'account-a';}});
+  await assert.rejects(modified.runtime.preflight([mutable],{maxAutomatic:3}),{code:'image_attempt_identity'});assert.equal(modified.store.rows.size,0);
+  const unsupported=setup();delete unsupported.store.preflight;
+  await assert.rejects(unsupported.runtime.preflight([job()],{maxAutomatic:3}),{code:'image_attempt_storage'});
+});
 
 test('service-mode manual retries route to original review before fee consent or a fresh reservation',async()=>{
   let prompts=0;const e=setup({confirm:async()=>{prompts++;return true;}}),old=job();

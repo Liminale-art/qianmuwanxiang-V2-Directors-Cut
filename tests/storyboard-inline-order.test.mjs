@@ -16,10 +16,11 @@ test('inline order is bounded, explicit, detached and does not coerce malformed 
   const input = { ...order(), workflow: { private: true } }, normalized = core.normalizeStoryboardInlineOrder(input);
   assert.deepEqual(normalized, order()); input.shotIndex = 4; assert.equal(normalized.shotIndex, 0);
   for (const change of [{ version: 2 }, { batchId: '' }, { batchId: 'x'.repeat(161) }, { batchId: 'a\nb' }, { batchStartedAt: 0 },
-    { batchStartedAt: NaN }, { batchStartedAt: Infinity }, { shotIndex: '0' }, { shotIndex: 20 }, { shotIndex: -1 }, { shotIndex: 1.5 }, { requestIndex: 0 }, { requestIndex: 21 }]) {
+    { batchStartedAt: NaN }, { batchStartedAt: Infinity }, { shotIndex: '0' }, { shotIndex: Number.MAX_SAFE_INTEGER+1 }, { shotIndex: -1 }, { shotIndex: 1.5 }, { requestIndex: 0 }, { requestIndex: 21 }]) {
     assert.equal(core.normalizeStoryboardInlineOrder({ ...order(), ...change }), null);
   }
   assert.equal(core.normalizeStoryboardInlineOrder(null), null);
+  for(const index of [20,32,100])assert.deepEqual(core.normalizeStoryboardInlineOrder(order(index)),order(index));
 });
 
 test('3 → 1 → 2 completion keeps narrative order for mixed engines without mutating storage', () => {

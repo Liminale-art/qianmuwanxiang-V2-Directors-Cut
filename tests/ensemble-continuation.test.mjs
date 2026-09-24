@@ -23,11 +23,15 @@ test('only bounded narrative anchor data reaches the director; explicit inherita
   assert.equal(control.validate({shots:[f.shot]}),true);assert.deepEqual(control.resolve({shots:[f.shot]}),[{shotId:'S1',schemeId:'ink'}]);
 });
 
-test('six distinct prior logical shots fit a floor while a seventh remains outside the narrative cap',()=>{
+for(const count of [7,13,21,169])test(`${count} verified logical shots remain complete in the selected floor history`,()=>{
   const f=fixture(),row=copy(f.history.rows[0]);
-  f.history.rows=Array.from({length:6},(_,i)=>({...copy(row),id:String(i+1).repeat(64)}));
-  f.open();assert.equal(f.payload.prior_scene_anchors.length,6);
-  f.history.rows.push({...copy(row),id:'7'.repeat(64)});assert.throws(f.open,{code:'ensemble_scene_continuation'});
+  f.history.rows=Array.from({length:count},(_,i)=>({...copy(row),id:String(i+1).padStart(64,'0')}));
+  f.open();assert.equal(f.payload.prior_scene_anchors.length,count);assert.equal(f.payload.prior_scene_anchors.at(-1).id,`E${count}`);
+});
+
+test('history over the existing request byte budget fails without publishing a partial anchor list',()=>{
+  const f=fixture();f.history.rows[0]={...copy(f.history.rows[0]),extra:'x'.repeat(1024*1024)};
+  assert.throws(f.open,{code:'storyboard_structure_capacity'});assert.deepEqual(f.payload,{});
 });
 
 test('a similar scene name without an explicit predecessor never inherits style',()=>{

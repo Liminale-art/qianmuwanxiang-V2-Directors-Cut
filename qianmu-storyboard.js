@@ -1,5 +1,6 @@
-import {STORYBOARD_MAX_SHOTS,STORYBOARD_LEGACY_MAX_SHOTS,STORYBOARD_MAX_CONCURRENCY} from './qianmu-storyboard-limits.js';
-export {STORYBOARD_MAX_SHOTS,STORYBOARD_MAX_CONCURRENCY} from './qianmu-storyboard-limits.js';
+import {STORYBOARD_LEGACY_MAX_SHOTS,STORYBOARD_LEGACY_V2_MAX_SHOTS,STORYBOARD_MAX_CONCURRENCY,storyboardShotCount} from './qianmu-storyboard-limits.js';
+export {STORYBOARD_MAX_CONCURRENCY,storyboardShotCount} from './qianmu-storyboard-limits.js';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 import {retainEnsembleRecoveryRecord} from './qianmu-ensemble-record.js';
 import {galleryMembershipSnapshot} from './qianmu-gallery-membership.js';
 import {DEFAULT_GALLERY_KEYWORDS} from './qianmu-gallery-keywords.js';
@@ -343,11 +344,13 @@ const routingDefaults = () => ({ rules: [] });
 export function normalizeStoryboardGenerationPolicy(value) {
   const r = obj(value) ? value : {};
   // Old malformed/out-of-range values were capped at four: upgrading must not
-  // reinterpret them as permission for more paid work. Only an explicit v2
-  // selection (or a fully validated v2 import) can use the expanded range.
-  const version = r.version === 2 ? 2 : 1;
-  const limit = version === 2 ? STORYBOARD_MAX_SHOTS : STORYBOARD_LEGACY_MAX_SHOTS;
-  const maxImages = int(r.maxImages, 1, limit, 3);
+  // reinterpret them as permission for more paid work. Explicit edits now use
+  // v3; retained legacy budgets are interpreted exactly as before.
+  const version = r.version === 3 ? 3 : r.version === 2 ? 2 : 1;
+  const limit = version === 2 ? STORYBOARD_LEGACY_V2_MAX_SHOTS : STORYBOARD_LEGACY_MAX_SHOTS;
+  const maxImages = version === 3
+    ? (Number.isSafeInteger(Number(r.maxImages)) && Number(r.maxImages) > 0 ? Number(r.maxImages) : 3)
+    : int(r.maxImages, 1, limit, 3);
   return { version, minImages: int(r.minImages, 1, maxImages, 1), maxImages,
     concurrency: int(r.concurrency, 1, STORYBOARD_MAX_CONCURRENCY, 2) };
 }
@@ -459,7 +462,7 @@ export function normalizeStoryboardInlineOrder(value) {
   if (!obj(value) || value.version !== 1 || typeof value.batchId !== 'string'
     || !value.batchId || value.batchId.length > 160 || /[\u0000-\u001f\u007f]/.test(value.batchId)
     || !Number.isSafeInteger(value.batchStartedAt) || value.batchStartedAt < 1
-    || !Number.isSafeInteger(value.shotIndex) || value.shotIndex < 0 || value.shotIndex >= 20
+    || !Number.isSafeInteger(value.shotIndex) || value.shotIndex < 0
     || !Number.isSafeInteger(value.requestIndex) || value.requestIndex < 1 || value.requestIndex > 20) return null;
   return { version: 1, batchId: value.batchId, batchStartedAt: value.batchStartedAt, shotIndex: value.shotIndex, requestIndex: value.requestIndex };
 }
@@ -787,6 +790,12 @@ export function migrateStoryboardState(value) {
 }
 
 export function normalizeStoryboardState(value) {
+  // Reject complete oversized structures before migration or any in-place
+  // assignment can replace the caller's original draft/plan data.
+  if (Array.isArray(value?.promptDraft?.shots)) assertStoryboardStructureBytes(value.promptDraft.shots, 2*1024*1024, '镜头草稿');
+  for (const plan of Array.isArray(value?.shotPlans) ? value.shotPlans : []) {
+    if (Array.isArray(plan?.shots)) assertStoryboardStructureBytes(plan.shots, 2*1024*1024, '镜头计划');
+  }
   const migrated = migrateStoryboardState(value), defaults = createStoryboardDefaults(), state = obj(value) ? value : {};
   Object.assign(state, migrated); for (const [key, val] of Object.entries(defaults)) if (state[key] === undefined) state[key] = clone(val);
   state.schemaVersion = STORYBOARD_SCHEMA_VERSION; state.enabled = Boolean(state.enabled); state.automation = normalizeStoryboardAutomation(state.automation); state.directorBridge = { worldSideShotsEnabled: Boolean(state.directorBridge?.worldSideShotsEnabled),worldAutoGenerate:state.directorBridge?.worldAutoGenerate===true,worldAutoMaxImages:[1,2,3,4].includes(Number(state.directorBridge?.worldAutoMaxImages))?Number(state.directorBridge.worldAutoMaxImages):1 }; state.view = ['create', 'characters', 'assets', 'artists', 'presets', 'workflows', 'comfy-pools', 'gallery', 'logs'].includes(state.view) ? state.view : 'create'; state.workspaceView = ['workbench', 'assets', 'artists', 'presets', 'gallery', 'logs'].includes(state.workspaceView) ? state.workspaceView : 'workbench'; state.logFilter = ['all', 'success', 'failed'].includes(state.logFilter) ? state.logFilter : 'all';
@@ -808,7 +817,7 @@ export function normalizeStoryboardState(value) {
   state.promptDraft = { ...(obj(safeDraft) ? safeDraft : {}), compiled: str(d.compiled ?? state.prompt, 24000), negative: str(d.negative ?? state.negative, 12000), artistString: str(d.artistString, 6000), compiledAt: pos(d.compiledAt), compiledBy: str(d.compiledBy, 160), userEditedCompiled: Boolean(d.userEditedCompiled), userEditedNegative: Boolean(d.userEditedNegative), artistPositiveBaked: Boolean(d.artistPositiveBaked), artistNegativeBaked: Boolean(d.artistNegativeBaked), sourceSummary: Array.isArray(d.sourceSummary) ? d.sourceSummary.slice(0, 40).map((x) => str(x, 240)).filter(Boolean) : [] };
   // A draft has two extra container levels versus a plan shot. Generic depth cleanup erased its cast.
   // Preserve only the typed visual facts, not arbitrary deeply nested metadata or binary/secret fields.
-  if (Array.isArray(draftShots)) state.promptDraft.shots = draftShots.slice(0, 100).filter(obj).map(raw => {
+  if (Array.isArray(draftShots)) state.promptDraft.shots = draftShots.filter(obj).map(raw => {
     const { shotSpec, ...metadata } = raw;
     const row = safeData(metadata, 3) || {};
     if (obj(shotSpec)) row.shotSpec = normalizeStoryboardShotSpec(shotSpec);
@@ -1845,8 +1854,8 @@ export function synchronizeStoryboardCaptionBase(payload) {
 
 export function prepareStoryboardShotGroup(value = {}) {
   const policy = normalizeStoryboardCompositionPolicy(value.policy), manual = Boolean(value.manual);
-  const source = (Array.isArray(value.shots) ? value.shots : []).map(normalizeStoryboardShotSpec);
-  const kept = [], skipped = [], seen = new Set(), limit = int(value.maxShots, 1, 12, 4);
+  const source = assertStoryboardStructureBytes(Array.isArray(value.shots) ? value.shots : [], 2*1024*1024, '镜头计划').map(normalizeStoryboardShotSpec);
+  const kept = [], skipped = [], seen = new Set(), limit = storyboardShotCount(value.maxShots, 4);
   const eligibleSource = source.filter(shot => !storyboardNarrativeSourceIssues(shot, value.chatKey).length);
   const continuityLedgerLayer=eligibleSource.some(shot=>shot.narrativeLayer==='present')?'present':eligibleSource[0]?.narrativeLayer || 'present';
   const priorLayer=value.continuityLedgerLayer || continuityLedgerLayer;
@@ -2062,7 +2071,7 @@ function shotPlans(value, state = {}) {
         sensitive: Boolean(shot.sensitive || shotSpec?.sensitive), safetyAdapted: Boolean(shot.safetyAdapted), userEdited: Boolean(shot.userEdited),
         promptLocked: Boolean(shot.promptLocked || shot.userEdited), requiresManualConfirmation: Boolean(shot.requiresManualConfirmation),
       };
-    }).filter((shot) => shot.id)).slice(0, 20);
+    }).filter((shot) => shot.id));
     const messageRef = plan.messageRef ? normalizeStoryboardMessageReference(plan.messageRef) : null;
     const continuityInput = obj(plan.continuityLedger) ? plan.continuityLedger : null;
     return {

@@ -3,13 +3,30 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {COMFY_SCENE_LOCK_SCHEMA,COMFY_SCENE_RESERVATION_MS as TTL,normalizeComfySceneRecord,normalizeComfySceneReceipt,
-  comfySceneScopeKey,changeComfySceneRecord as change,inspectComfySceneRecord as inspect} from '../qianmu-comfy-scene-lock.js';
+  comfySceneScopeKey,changeComfySceneRecord as change,inspectComfySceneRecord as inspect,createComfyBatchSceneScopes,createComfyDraftSceneScopes} from '../qianmu-comfy-scene-lock.js';
 import {createComfySceneLockStore,COMFY_SCENE_STORE_LIMITS} from '../qianmu-comfy-lock-store.js';
 const namespace='st-user:scene-test',scope={namespace,chatKey:'chat-a',continuityId:'confirmed-scene-a',narrativeLayer:'present'};
 const lock={schema:COMFY_SELECTION_SCHEMA,scope,poolKey:'a'.repeat(64),candidateId:'candidate-a',executionKey:'b'.repeat(64)};
 const request=(overrides={})=>({type:'reserve',expectedRevision:0,lock,attemptId:'attempt-a',ownerId:'page-a',token:'token-a',...overrides});
 const reserve=()=>change(null,scope,request(),100);
 const next=(row,type,receipt,extra={})=>change(row,scope,{type,receipt,...extra},101).row;
+
+for(const count of [7,13,21,33,65])test(`${count} Comfy shots and independent scenes retain every supplied scope`,async()=>{
+  const shots=Array.from({length:count},(_,i)=>({id:`shot-${i}`,prompt:'room',negative:'',shotSpec:{}}));
+  for(const separate of [false,true]){
+    const groups=separate?shots.map(shot=>({id:shot.id,shotIds:[shot.id]})):[{id:'scene',shotIds:shots.map(shot=>shot.id)}];
+    const result=await createComfyDraftSceneScopes({namespace,chatKey:'chat-a',planId:'plan',revisionId:'revision',groups,shots});
+    assert.equal(result.size,count);assert.ok(result.has(shots.at(-1).id));
+  }
+});
+
+test('Comfy scope construction preserves duplicate protection and the existing draft byte capacity',async()=>{
+  const input={namespace,chatKey:'chat-a',batchKey:'batch',groups:[{id:'scene',shotIds:['one','one']}]};
+  await assert.rejects(createComfyBatchSceneScopes(input),/重复归组/);
+  const shots=[{id:'one',prompt:'x'.repeat(2*1024*1024)}],groups=[{id:'scene',shotIds:['one']}];let guards=0;
+  await assert.rejects(createComfyDraftSceneScopes({namespace,chatKey:'chat-a',planId:'plan',revisionId:'revision',groups,shots,guard:()=>{guards++;}}),{code:'storyboard_structure_capacity'});
+  assert.equal(guards,0);assert.equal(shots[0].prompt.length,2*1024*1024);
+});
 
 test('confirmed original removes only its submitting holder and retains both style and unrelated pending shots',()=>{
   const a=reserve(),b=change(a.row,scope,request({expectedRevision:1,attemptId:'other',token:'other'}),101);

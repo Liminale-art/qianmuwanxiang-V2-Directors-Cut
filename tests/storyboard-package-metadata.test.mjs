@@ -21,7 +21,9 @@ test('merge caps, duplicates, filtered entries and missing archive bodies are re
   assert.throws(()=>mergeStoryboardPackageRows([{id:'a'}],[{id:'b'}],1,'test'),/超过/);assert.throws(()=>mergeStoryboardPackageRows([],[{id:'a'},{id:'a'}],3,'test'),/重复/);
   const args=request(board.createStoryboardDefaults());args.incoming.artistPresets=[artist('empty','')];assert.throws(()=>draft(args),/完整保留/);
   args.incoming={shotPlans:[{id:'plan',archiveRef:'other-device',shots:[]}]};assert.throws(()=>draft(args),/缺少原文/);
-  args.incoming={shotPlans:[{id:'plan',shots:Array.from({length:21},(_,n)=>({id:`shot${n}`}))}]};assert.throws(()=>draft(args),/20/);
+  args.incoming={shotPlans:[{id:'plan',shots:Array.from({length:21},(_,n)=>({id:`shot${n}`}))}]};
+  assert.deepEqual(draft(args).settings.shotPlans[0].shots.map(shot=>shot.id),args.incoming.shotPlans[0].shots.map(shot=>shot.id));
+  args.incoming.shotPlans[0].shots[20].prompt='x'.repeat(2*1024*1024);assert.throws(()=>draft(args),/安全容量/);
 });
 test('connection credentials are local, preserved for unchanged endpoints only, with draft and selection untouched',()=>{
   const state=board.createStoryboardDefaults(),connection=board.normalizeStoryboardConnectionProfile({id:'connection',baseUrl:'https://local.test',credentialId:'local-secret-id'},'novel');state.connections.novel.presets=[connection];state.connections.novel.activePresetId=connection.id;

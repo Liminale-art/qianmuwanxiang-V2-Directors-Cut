@@ -6,7 +6,7 @@ import * as contract from '../qianmu-storyboard-contract.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardStreamMoment} from '../qianmu-storyboard-stream-moment.js?v=1.59.224';
 import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.371';
-import {readStoryboardStreamCoverage,configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,storyboardStreamCoverageScope} from '../qianmu-storyboard-stream-coverage.js?v=1.59.371';
+import {readStoryboardStreamCoverage,configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,storyboardStreamCoverageScope,storyboardStreamStyleHistory} from '../qianmu-storyboard-stream-coverage.js?v=1.59.371';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const namespace='st-user:test';
 async function fixture({legacy=false}={}){
@@ -52,16 +52,29 @@ test('legacy focused compiler trace recovers a unique matching shot without a ne
   assert.deepEqual(coverage.pins[0].moment,f.moment);assert.deepEqual(f.row,old);assert.equal(f.row.snapshot.shotSpec.narrativeMoment,undefined);f.close();
 });
 
-test('retained focused trace can recover the exact sixth shot, without accepting a seventh or rewriting old evidence',async()=>{
+for(const size of [7,13,21])test(`retained focused trace recovers the exact ${size}th shot without rewriting old evidence`,async()=>{
   const f=await fixture({legacy:true});
   try{
     const output=f.row.snapshot.compilerStages[0].output,original=copy(output.shots[0]),raw=copy(output.trace.narrative.shots[0]);
-    output.shots=[...Array.from({length:5},(_,i)=>({...copy(original),id:`unrelated-${i}`})),original];
-    output.trace.narrative.shots=Array.from({length:6},()=>copy(raw));
+    output.shots=[...Array.from({length:size-1},(_,i)=>({...copy(original),id:`unrelated-${i}`})),original];
+    output.trace.narrative.shots=Array.from({length:size},()=>copy(raw));
     const before=copy(f.row);assert.deepEqual((await f.read()).pins[0].moment,f.moment);assert.deepEqual(f.row,before);
-    output.shots.push({...copy(original),id:'seventh'});output.trace.narrative.shots.push(copy(raw));
+    output.shots.push({...copy(original),id:'unmatched'});
     await assert.rejects(f.read(),{code:'storyboard_stream_coverage'});
   }finally{f.close();}
+});
+
+test('coverage preserves all thirteen occupied slots and style anchors instead of silently dropping the tail',async()=>{
+  const f=await fixture();f.plan.shots=[];
+  const rows=Array.from({length:13},(_,index)=>{const row=copy(f.row);row.id=`log-${index}`;row.snapshot.planShotId=`shot-${index}`;
+    row.snapshot.imageAdmission.logicalShotId=index.toString(16).padStart(64,'0');
+    // Invalid style data is retained as invalid evidence, not discarded; its
+    // opt-in consumer will stop instead of guessing an older style for this slot.
+    row.snapshot.ensembleStyleOrigin={invalid:true};return row;});
+  const coverage=await f.read(rows);assert.equal(coverage.pins.length,13);assert.equal(storyboardStreamStyleHistory(coverage,f.window).rows.length,13);
+  f.context.streamCoverage=coverage;const payload={constraints:{max_shots:21,min_shots_target:1}},control=configureStoryboardStreamCoverage(f.context,payload,{});
+  assert.equal(control.remaining,8);assert.equal(payload.committed_images.length,13);
+  assert.throws(()=>filterStoryboardStreamCoveredNarrative({shots:Array.from({length:9},(_,i)=>({...f.shot,subject:`New subject ${i}`}))},Array.from({length:9},()=>({})),f.context,{streamCoverage:control}),{code:'storyboard_stream_budget'});f.close();
 });
 
 test('legacy trace cannot guess by array position, prompt similarity or a duplicated shot ID',async()=>{

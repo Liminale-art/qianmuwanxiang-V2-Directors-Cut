@@ -270,6 +270,9 @@ function generationEnvironment() {
   Object.assign(context, {
     storyboardGenerationPreparing: new Set(),
     storyboardProductionContext: () => ({}), storyboardQueue: [], storyboardActiveJobs: new Map(), STORYBOARD_QUEUE_LIMIT: 100,
+    // Model-routing fixture stops at the queue seam; ledger preflight is covered
+    // by the separate user-count-range and stream compiler integration suites.
+    storyboardPreflightImageBatch: async (_jobs,valid) => { if(!valid())throw Error('preparation changed'); },
     storyboardQueueJob: (job) => { queued.push(job); return true; }, confirmDialog: async () => true,
     storyboardSetPlanStatus:(plan,status,extra={})=>{if(plan)Object.assign(plan,{status,...extra});},
   });

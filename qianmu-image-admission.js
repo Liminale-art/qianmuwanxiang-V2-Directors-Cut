@@ -126,6 +126,32 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
     if((await worldIdentity(job,identity.scope.namespace)).worldReference!==identity.worldReference)throw error('world_identity','造物之眼任务来源已变化，未提交');
   };
   return {
+    async preflight(jobs,{maxAutomatic,history=[],valid=()=>true}={}) {
+      current(valid);
+      if(!Array.isArray(jobs)||!jobs.length)throw error('request','缺少本批画面清单');
+      if(typeof store.preflight!=='function')throw error('storage','当前环境无法核对整批生图容量，未提交');
+      const namespace=await account();current(valid);
+      const groups=new Map(),proofs=[];
+      for(const job of jobs){
+        current(valid);
+        const proof=canonical(job);proofs.push([job,proof]);
+        if(hasStoryboardStreamReference(job.messageRef))await verifyStoryboardStreamReference(job.messageRef,resolveSource&&(()=>resolveSource(job)));
+        const identity=await createImageAdmissionIdentity(job,namespace);await verifyWorld(job,identity,valid);
+        if(!hasStoryboardStreamReference(job.messageRef))await verifyStoryboardOrdinaryContinuation(job.messageRef,resolveContinuation&&(()=>resolveContinuation(job)),{namespace});
+        const key=imageAttemptScopeKey(identity.scope);let group=groups.get(key);
+        if(!group){group={scope:identity.scope,inputs:[],history:await createImageHistorySeeds(history,identity)};groups.set(key,group);}
+        const kind=job.automatic?'automatic':job.imageAdmission||job.variantRootId||Number(job.attempt)>1?'redraw':job.manualSupplement?'supplement':'manual';
+        group.inputs.push({attemptId:job.id,logicalShotId:identity.logicalShotId,operationKey:identity.operationKey,ownerId,kind,
+          maxAutomatic:identity.worldReference?1:maxAutomatic,imageCount:Number(job.payload?.parameters?.count??job.profile?.count??1)});
+      }
+      current(valid);
+      const decision=await store.preflight([...groups.values()]);current(valid);
+      if(await account()!==namespace)throw error('account_changed','ST 账户已变化，未提交此批画面');
+      current(valid);
+      if(proofs.some(([job,proof])=>canonical(job)!==proof))throw error('identity','本批生图清单已变化，未提交');
+      if(!decision?.ok)throw error(decision?.code||'storage',MESSAGES[decision?.code]||'本批生图容量无法确认，未提交');
+      return true;
+    },
     async admit(job, { maxAutomatic, history = [], valid = () => true } = {}) {
       if (preparing.has(job) || receipts.has(job)) throw error('busy', MESSAGES.busy);
       preparing.add(job);

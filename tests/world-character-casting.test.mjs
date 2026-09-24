@@ -25,7 +25,7 @@ import * as candidateRuntime from '../qianmu-director-candidate.js';
 import {buildWorldSourceIndex} from '../qianmu-world-source.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createImageAdmission} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,settleImageAttempt} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImageAttempts,settleImageAttempt} from '../qianmu-image-attempts.js';
 import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
 import {planCharacterReference,assertCharacterReferencePlan,characterReferenceNotice} from '../qianmu-character-reference.js';
 import {installWorldComfyAuto} from './helpers/world-comfy-auto-fixture.mjs';
@@ -139,6 +139,10 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
     storyboardPreflightComfyForCompiler:async()=>assert.fail('configure the fixed-workflow preflight fixture explicitly'),
     storyboardArchivePipelineLog:async log=>{calls.push(['archive',log.pipelineId]);return false;},
     storyboardGenerate:async(root,options)=>{options.productionGuard.assertCurrent();context.lastProductionOptions=options;calls.push('generate');assert.equal(root,null);assert.equal(options.automatic,false);return true;},
+    // Pure projection/route tests replace queueing and do not own an admission
+    // ledger. The full automatic harness below replaces this with the real host
+    // helper plus read-only batch preflight and per-job claims.
+    storyboardPreflightImageBatch:async(_jobs,valid)=>assert.equal(valid(),true),
   });
   vm.runInContext(['storyboardStoreLog','storyboardPrepareComfyRoutes','storyboardCreatePreparationGuard','storyboardCompilerCharacterCasting','storyboardEnsembleHost','storyboardGenerateProductionPacket'].map(section).join('\n'),context);
   return {...e,state,context,calls,notices,packet,candidate,run:()=>context.storyboardGenerateProductionPacket({isConnected:true},'packet-a'),setAccount:value=>{account=value;},setChat:value=>{chat=value;}};
@@ -184,6 +188,7 @@ async function automaticWorldHarness({comfy=false}={}){
   const admission=createImageAdmission({account:async()=>e.namespace,ownerId:'world-page',
     resolveWorldApproval:(job,approval)=>e.context.storyboardVerifyWorldAutomaticApproval(job,approval),
     store:{claim:async(scope,input,seeds)=>run(scope,value=>claimImageAttempt(importImageAttempts(value,scope,seeds,1000),scope,input,1000)),
+      preflight:async groups=>{for(const group of groups){const checked=preflightImageAttempts(rows.get(imageAttemptScopeKey(group.scope)),group.scope,group.inputs,group.history,1000);if(!checked.ok)return checked;}return {ok:true};},
       settle:async(scope,input)=>run(scope,value=>settleImageAttempt(value,scope,input,1000)),close(){}}});
   Object.assign(e.context,{storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:20,
     storyboardCredentialId:()=> 'test-key',storyboardAnchorForMessage:()=>null,uniqueClean:items=>[...new Set(items.filter(Boolean))],
@@ -194,7 +199,7 @@ async function automaticWorldHarness({comfy=false}={}){
   });
   useActualWorldGeneration(e,['storyboardPromptsForArtist','storyboardJoinPrompt','storyboardProfileSnapshot','storyboardResolveRoutingProfile',
     'storyboardGenerationPayload','storyboardCreateJob','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardGenerate',
-    'storyboardVerifyWorldAutomaticApproval','storyboardSettleImageAdmission','storyboardQueueJob']);
+    'storyboardVerifyWorldAutomaticApproval','storyboardSettleImageAdmission','storyboardPreflightImageBatch','storyboardQueueJob']);
   return {...e,transport,checks,admission,source,runAutomatic:()=>e.context.storyboardGenerateProductionPacket(null,'packet-a',{automatic:true})};
 }
 
@@ -328,7 +333,7 @@ for(const comfy of [false,true])test(`automatic world ${comfy?'fixed Comfy':'NAI
     assert.equal(job.source,comfy?'comfy':'novel');if(comfy)assert.deepEqual(copy(job.profile.comfyRouteBinding),copy(e.recipe.binding));
     assert.equal(job.automatic,true);assert.equal(job.profile.count,'1');assert.equal(job.target,'gallery');assert.equal(job.floor,null);
     assert.equal(job.shotSpec.directorDecision.approval.mode,'world_setting');assert.match(job.imageAdmission.messageKey,/^world-item:/);
-    assert.deepEqual(e.state.promptDraft,before);assert.equal(e.state.prompt,'original');assert.equal(e.checks.length,2);
+    assert.deepEqual(e.state.promptDraft,before);assert.equal(e.state.prompt,'original');assert.equal(e.checks.length,3,'batch preflight plus both original per-job approval checks');
     const rows=[...e.transport.files.values()].map(JSON.parse);assert.ok(rows.some(row=>row.value?.record?.status==='queued'));
     assert.equal(await e.runAutomatic(),false);assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.calls.filter(value=>value==='llm').length,1);
   }finally{await e.admission.close();}

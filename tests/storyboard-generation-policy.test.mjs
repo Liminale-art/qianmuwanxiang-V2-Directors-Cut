@@ -75,7 +75,7 @@ test('real policy handlers keep min/max coherent and reject detached old-page ed
   const root={isConnected:true,querySelectorAll:()=>fields};let saves=0,pumps=0;
   const context=vm.createContext({...board,state,root,storyboardState:()=>state,saveSettings:()=>saves++,renderModal:()=>{},storyboardQueue:[{}],storyboardPumpQueue:()=>pumps++});
   vm.runInContext(source.slice(start,end),context);
-  fields[0].value='4';callbacks.minImages();assert.deepEqual(plain(state.generationPolicy),{version:1,minImages:4,maxImages:4,concurrency:2});
+  fields[0].value='4';callbacks.minImages();assert.deepEqual(plain(state.generationPolicy),{version:3,minImages:4,maxImages:4,concurrency:2});
   fields[1].value='2';callbacks.maxImages();assert.equal(state.generationPolicy.minImages,2);
   fields[2].value='3';callbacks.concurrency();assert.equal(pumps,1);
   root.isConnected=false;fields[1].value='4';callbacks.maxImages();assert.equal(saves,3);assert.equal(state.generationPolicy.maxImages,2);
@@ -155,7 +155,7 @@ for(const policy of [{version:1,minImages:2,maxImages:4,concurrency:3},{version:
 });
 
 test('explicit v2 range permits six shots without upgrading any old spending limit or concurrency',()=>{
-  for(const version of [undefined,1,3])for(const maxImages of [5,6,99]){
+  for(const version of [undefined,1,4])for(const maxImages of [5,6,99]){
     const policy=board.normalizeStoryboardGenerationPolicy({version,minImages:6,maxImages,concurrency:9});
     assert.deepEqual(policy,{version:1,minImages:4,maxImages:4,concurrency:4});
   }
@@ -167,19 +167,34 @@ test('explicit v2 range permits six shots without upgrading any old spending lim
   assert.deepEqual(board.normalizeStoryboardGenerationPolicy({enabled:true,maxShotsPerFloor:6,providerConcurrency:4}),{version:1,minImages:1,maxImages:3,concurrency:2},'discarded route fields cannot authorize extra paid work');
 });
 
-test('actual form and handler distinguish six floor shots from four-way concurrency',async()=>{
+test('actual form and handler keep user floor counts independent from four-way concurrency',async()=>{
   const {content}=createStoryboardFormFixture();
-  for(const key of ['minImages','maxImages'])assert.match(content,new RegExp(`data-generation-field="${key}"[^>]*max="6"`));
+  for(const key of ['minImages','maxImages'])assert.doesNotMatch(content.match(new RegExp(`data-generation-field="${key}"[^>]*`))[0],/max=/);
   assert.match(content,/data-generation-field="concurrency"[^>]*max="4"/);
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=source.indexOf("  root.querySelectorAll('[data-generation-field]')"),end=source.indexOf("  root.querySelector('.sd-storyboard-use-floor')",start);
   const state=board.createStoryboardDefaults(),callbacks={};let saves=0;
   const fields=['minImages','maxImages','concurrency'].map(key=>({dataset:{generationField:key},value:'',addEventListener:(_event,callback)=>callbacks[key]=callback}));
   const root={isConnected:true,querySelectorAll:()=>fields};
-  const context=vm.createContext({...board,state,root,storyboardState:()=>state,saveSettings:()=>saves++,renderModal(){},storyboardQueue:[]});
+  const notices=[];
+  const context=vm.createContext({...board,state,root,storyboardState:()=>state,saveSettings:()=>saves++,renderModal(){},toast:message=>notices.push(message),storyboardQueue:[]});
   vm.runInContext(source.slice(start,end),context);
-  fields[1].value='6';callbacks.maxImages();assert.deepEqual(plain(state.generationPolicy),{version:2,minImages:1,maxImages:6,concurrency:2});
+  fields[1].value='6';callbacks.maxImages();assert.deepEqual(plain(state.generationPolicy),{version:3,minImages:1,maxImages:6,concurrency:2});
   fields[0].value='6';callbacks.minImages();assert.equal(state.generationPolicy.minImages,6);
   fields[2].value='6';callbacks.concurrency();assert.equal(state.generationPolicy.concurrency,4);
   fields[1].value='3';callbacks.maxImages();assert.equal(state.generationPolicy.minImages,3);assert.equal(state.generationPolicy.maxImages,3);
   assert.equal(saves,4);
+  for (const invalid of ['', '0', '-1', '1.5', 'Infinity', '9007199254740992']) {
+    fields[1].value=invalid;callbacks.maxImages();assert.equal(fields[1].value,'3');
+  }
+  assert.equal(saves,4);assert.equal(notices.length,6);
+});
+
+test('oversized draft and plan rejection leaves the complete caller-owned state untouched',()=>{
+  for(const field of ['draft','plan']) {
+    const shots=[{id:'full-original',prompt:'界'.repeat(720000)}];
+    const state={schemaVersion:24,enabled:true,...(field==='draft'?{promptDraft:{shots}}:{shotPlans:[{id:'original-plan',shots}]})};
+    const before=structuredClone(state);
+    assert.throws(()=>board.normalizeStoryboardState(state),error=>error.code==='storyboard_structure_capacity');
+    assert.deepEqual(state,before);
+  }
 });

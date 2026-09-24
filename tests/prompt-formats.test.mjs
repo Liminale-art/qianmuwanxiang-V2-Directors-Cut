@@ -112,9 +112,9 @@ test('no WebCrypto yields a concise failure, not an unverified hash substitute',
   const descriptor=Object.getOwnPropertyDescriptor(globalThis,'crypto');Object.defineProperty(globalThis,'crypto',{configurable:true,value:{}});
   try {await assert.rejects(bindStoryboardPromptRenderings(shot(),forms()),/无法核对/);} finally {if(descriptor)Object.defineProperty(globalThis,'crypto',descriptor);else delete globalThis.crypto;}
 });
-test('legacy plan request/response and shared schema are unchanged unless formats are explicitly requested', () => {
+test('plan schema uses the requested budget without adding formats or mutating the shared schema', () => {
   const request=buildStoryboardPlanContractRequest({paragraphs:['text']},{providerId:'novel'});
-  assert.equal(request.schema,STORYBOARD_PLAN_RESPONSE_SCHEMA);assert.equal(request.promptFormats,undefined);assert.equal(JSON.parse(request.messages[1].content).constraints.prompt_formats,undefined);
+  assert.equal(request.schema.properties.shots.maxItems,request.maxShots);assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.maxItems,undefined);assert.equal(request.promptFormats,undefined);assert.equal(JSON.parse(request.messages[1].content).constraints.prompt_formats,undefined);
   assert.equal(parseStoryboardContractResponse(JSON.stringify(plan())).ok,true);
   assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.items.properties.prompt_renderings,undefined);
 });

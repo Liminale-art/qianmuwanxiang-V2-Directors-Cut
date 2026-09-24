@@ -209,7 +209,7 @@ import {
   STORYBOARD_PLAN_SCHEMA,
   STORYBOARD_PROVIDER_REGISTRY,
   STORYBOARD_RATIOS,
-  STORYBOARD_MAX_SHOTS, STORYBOARD_MAX_CONCURRENCY,
+  storyboardShotCount, STORYBOARD_MAX_CONCURRENCY,
   STORYBOARD_SOURCES,
   STORYBOARD_TAG_CATEGORIES,
   aggregateStoryboardShotTasks,
@@ -13899,7 +13899,7 @@ function renderStoryboardGenerationCard(state) {
   return `<details class="sd-card" data-storyboard-card="generation" ${state.collapsedCards.generation ? '' : 'open'}>
     <summary><span><b>生成安排</b></span></summary><div class="sd-storyboard-card-body">
       <div class="sd-storyboard-grid sd-storyboard-grid-two">
-        ${[['minImages', '每层最少插图'], ['maxImages', '每层最多插图'], ['concurrency', '同时生成数']].map(([key, title]) => `<label><span>${title}</span><input class="text_pole sd-storyboard-generation-field" data-generation-field="${key}" type="number" min="1" max="${key==='concurrency'?STORYBOARD_MAX_CONCURRENCY:STORYBOARD_MAX_SHOTS}" step="1" value="${policy[key]}"></label>`).join('')}
+        ${[['minImages', '每层最少插图'], ['maxImages', '每层最多插图'], ['concurrency', '同时生成数']].map(([key, title]) => `<label><span>${title}</span><input class="text_pole sd-storyboard-generation-field" data-generation-field="${key}" type="number" min="1" ${key==='concurrency'?`max="${STORYBOARD_MAX_CONCURRENCY}"`:''} step="1" value="${policy[key]}"></label>`).join('')}
       </div>
       <label class="sd-option-chip sd-storyboard-stream-option"><input type="checkbox" class="sd-storyboard-stream-enabled" ${state.automation.streamEnabled ? 'checked' : ''} ${!state.enabled || !state.automation.autoGenerate ? 'disabled' : ''}><span>流式生图</span></label>
       <small class="sd-storyboard-stream-note">新回复边写边出图；续写完成后补图。可能增加取景次数。</small>
@@ -13909,7 +13909,7 @@ function renderStoryboardGenerationCard(state) {
 function renderStoryboardVariantControls(state, profile, capabilities, protocolBinding) {
   const supported = (state.source === 'comfy' || protocolBinding.imageProtocolVersion) ? capabilities.count : true;
   if (!supported) return '';
-  return `<details class="sd-storyboard-variants"><summary><span>单镜变体</span></summary><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>手动单镜张数</span><input class="text_pole sd-storyboard-field" data-storyboard-field="count" type="number" min="1" max="4" step="1" value="${htmlEscape(profile.count)}"></label></div>${state.source === 'comfy' ? '<small>仅调整已绑定的数量输入；内部批量及最终输出仍须核查。</small>' : ''}</details>`;
+  return `<details class="sd-storyboard-variants"><summary><span>单镜变体</span></summary><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>手动单镜张数</span><input class="text_pole sd-storyboard-field" data-storyboard-field="count" type="number" min="1" max="4" step="1" value="${htmlEscape(profile.count)}"></label></div></details>`;
 }
 
 function renderStoryboardCaptureSettings(state) {
@@ -19435,6 +19435,16 @@ async function storyboardPrepareComfyCharacterJob(job,{prepare=false,readiness=f
   return {...plan,definitionWarnings};
 }
 
+async function storyboardPreflightImageBatch(jobs, preparationCurrent = () => true) {
+  if (!jobs.length) return;
+  const state = storyboardState(), policy = getStoryboardGenerationPolicy(state);
+  const valid = () => preparationCurrent() && storyboardState() === state
+    && JSON.stringify(getStoryboardGenerationPolicy(state)) === JSON.stringify(policy);
+  const admission = await storyboardImageAdmissionRuntime();
+  await admission.preflight(jobs, { maxAutomatic: policy.maxImages,
+    history: [...state.logs, ...storyboardGalleryRecords()], valid });
+}
+
 async function storyboardQueueJob(job, preparationCurrent = () => true, onFailure = () => {}) {
   const refuse=message=>{const detail=String(message||'本镜未能入队');onFailure(detail);toast(detail,'warning');return false;};
   if (!job?.payload?.prompt?.trim()) return refuse('请先写下画面描述。');
@@ -19860,7 +19870,7 @@ async function storyboardSubmitStreamPrepared(prepared) {
     storyboardPlansForPortableExport,storyboardPlanIsTerminal,createStoryboardWorkflowTicket,
     storyboardChooseComfyGenerationRoutes,STORYBOARD_PROVIDER_REGISTRY,storyboardResolveRoutingProfile,storyboardAdaptShotForModel,
     storyboardCreateJob,STORYBOARD_QUEUE_LIMIT,storyboardQueue,storyboardActiveJobs,storyboardDeletePlanArchives,saveSettings,
-    storyboardRecordComfyPreparationFailure,storyboardQueueJob,storyboardRecordPreparedJobFailure,
+    storyboardRecordComfyPreparationFailure,storyboardPreflightImageBatch,storyboardQueueJob,storyboardRecordPreparedJobFailure,
   });
 }
 
@@ -20117,6 +20127,8 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
           : `1 次生图请求，预计生成 ${generationDemand.imageCount} 张图片`;
         if (!await confirmDialog('确认生成数量', `本次将发起 ${detail}。是否继续？`)) return false;
       }
+      inputGuard.assertCurrent();
+      await storyboardPreflightImageBatch(jobs,inputGuard.isCurrent);
       inputGuard.assertCurrent();
       bindStoryboardFloorTakeJobs(plan,jobs);
       for(const failure of autoSelection?.failures.values()||[])storyboardRecordComfyPreparationFailure({...failure.preparation,...(plan?.floorTake?{floorTake:plan.floorTake}:{})},failure.message,failure.diagnostics);
@@ -23317,8 +23329,11 @@ function bindStoryboardTabEvents(root) {
     const key = field.dataset.generationField;
     if (!['minImages', 'maxImages', 'concurrency'].includes(key)) return;
     const policy = getStoryboardGenerationPolicy(state);
-    const value = Math.max(1, Math.min(key === 'concurrency' ? STORYBOARD_MAX_CONCURRENCY : STORYBOARD_MAX_SHOTS, Math.round(Number(field.value) || policy[key])));
-    if (key !== 'concurrency' && value > 4) policy.version = 2;
+    let value;
+    try { if (!String(field.value).trim()) throw new Error('empty'); value = storyboardShotCount(field.value); }
+    catch (_) { field.value = String(policy[key]); toast('数量请输入正整数', 'warning'); return; }
+    if (key === 'concurrency') value = Math.min(STORYBOARD_MAX_CONCURRENCY, value);
+    else policy.version = 3;
     policy[key] = value;
     if (key === 'minImages') policy.maxImages = Math.max(policy.maxImages, value);
     if (key === 'maxImages') policy.minImages = Math.min(policy.minImages, value);

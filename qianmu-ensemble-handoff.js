@@ -1,13 +1,15 @@
 import {storyboardPromptRenderingSource} from './qianmu-prompt-formats.js';
 import {ensembleStyleOrigins} from './qianmu-ensemble-origin.js';
 import {ensembleSelectionStages} from './qianmu-ensemble-diagnostics.js';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 const records=new WeakMap();
 const fail=message=>{throw Object.assign(Error(message),{code:'ensemble_handoff',submissionState:'not_submitted'});};
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const snapshot=shot=>JSON.stringify({id:shot.id,prompt:shot.prompt,negative:shot.negative,paragraphIndex:shot.paragraphIndex,shotType:shot.shotType,sensitive:shot.sensitive,
   narrativeMoment:shot.shotSpec?.narrativeMoment||null,visual:storyboardPromptRenderingSource(shot.shotSpec)});
 function shots(result){
-  if(result?.shouldGenerate!==true||!Array.isArray(result.shots)||!result.shots.length||result.shots.length>20)fail('镜组结果缺少有效镜头');
+  if(result?.shouldGenerate!==true||!Array.isArray(result.shots)||!result.shots.length)fail('镜组结果缺少有效镜头');
+  assertStoryboardStructureBytes(result.shots,undefined,'镜组画面');
   const seen=new Set();for(const shot of result.shots){if(typeof shot?.id!=='string'||!shot.id||seen.has(shot.id))fail('镜组镜头编号缺失或重复');seen.add(shot.id);}return result.shots;
 }
 function recordFor(result){

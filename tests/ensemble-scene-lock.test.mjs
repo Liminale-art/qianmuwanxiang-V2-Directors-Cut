@@ -24,6 +24,15 @@ test('continuous shots lock one freely chosen style without changing narrative d
   assert.throws(()=>lock.validate(choices('ink','cg','ink')),{code:'ensemble_scene_lock'});assert.equal(JSON.stringify(narrative),before);
 });
 
+for(const count of [7,13,21,33])test(`${count} shots retain their single-scene style lock without a count-based cap`,()=>{
+  const lock=open(Array.from({length:count},()=>shot()));assert.equal(lock.constraints.groups[0].shot_ids.length,count);
+  assert.equal(lock.constraints.groups[0].shot_ids.at(-1),`S${count}`);assert.equal(lock.validate(choices(...Array(count).fill('ink'))),true);
+});
+
+test('oversize scene data fails before constructing a partial style lock',()=>{
+  assert.throws(()=>open([shot({scene:{location:'x'.repeat(256*1024),time:'day'}})]),{code:'storyboard_structure_capacity'});
+});
+
 test('flashback and return preserve independent scene groups, not one style for the entire floor',()=>{
   const lock=open([shot(),shot({state_point:{branchId:'past'},narrative_layer:'memory'}),shot()]);
   assert.deepEqual(lock.constraints.groups.map(row=>row.shot_ids),[['S1','S3'],['S2']]);assert.equal(lock.validate(choices('cg','ink','cg')),true);

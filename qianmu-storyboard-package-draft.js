@@ -6,12 +6,13 @@ import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js'
 import {GALLERY_PACKAGE_COLLECTION_LIMIT,assertGalleryPackageCollections} from './qianmu-gallery-package-collections.js';
 import {STORYBOARD_ADDED_IMPORT_FIELDS,assertStoryboardSelectionRestoreScope,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 import {storyboardConnectionsShareTarget,storyboardConnectionRestoreReview} from './qianmu-storyboard-connection-identity.js';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 const fail=message=>{throw new Error(message);};
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const limits={parameterPresets:200,promptPresets:200,artistPresets:200,artistCollections:100,artistPools:100,tagLibrary:2000,vibeLibrary:500,logs:STORYBOARD_PIPELINE_LOG_LIMIT,pipelineLogs:STORYBOARD_PIPELINE_LOG_LIMIT,shotPlans:300,taskStates:300};
 const idle=['idle','screening','compiling','prompt_ready','queued','generating','running','ready','draft'];
 function ids(rows,label,limit){
-  if(!Array.isArray(rows)||rows.length>limit)fail(`${label}条目超过 ${limit} 项或不是列表，未裁剪导入`);
+  if(!Array.isArray(rows)||limit!==undefined&&rows.length>limit)fail(limit===undefined?`${label}不是列表，未裁剪导入`:`${label}条目超过 ${limit} 项或不是列表，未裁剪导入`);
   const seen=new Set();for(const row of rows){if(!object(row)||typeof row.id!=='string'||!row.id.trim()||row.id.length>160||seen.has(row.id))fail(`${label}编号无效或重复`);seen.add(row.id);}return seen;
 }
 export function mergeStoryboardPackageRows(local,incoming,limit,label){
@@ -66,7 +67,7 @@ export function prepareStoryboardPackageDraft({settings,chat,incoming,images,col
   }
   const transfer=new Set((raw.shotPlans||[]).map(row=>row.id));for(const plan of base.shotPlans||[]){if(!transfer.has(plan.id))continue;
     if((raw.shotPlans.find(row=>row.id===plan.id)?.archiveRef))fail('导入计划仍指向设备内归档，缺少原文');
-    ids(plan.shots||[],'计划镜头',20);plan.chatKey=chatKey;plan.archiveRef='';plan.archiveVersion=0;plan.archivedAt=0;plan.autoGenerate=false;plan.manualReviewRequired=true;
+    assertStoryboardStructureBytes(plan.shots||[],2*1024*1024,'计划镜头');ids(plan.shots||[],'计划镜头');plan.chatKey=chatKey;plan.archiveRef='';plan.archiveVersion=0;plan.archivedAt=0;plan.autoGenerate=false;plan.manualReviewRequired=true;
     if(plan.messageRef)plan.messageRef={...plan.messageRef,chatKey};if(idle.includes(plan.status))plan.status='cancelled';
     for(const shot of plan.shots||[]){shot.requiresManualConfirmation=true;if(idle.includes(shot.status)){shot.status='cancelled';shot.error='从备份导入，未自动续跑';}}
   }

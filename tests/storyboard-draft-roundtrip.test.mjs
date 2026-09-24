@@ -69,7 +69,7 @@ test('legacy flat manual drafts and missing/invalid shot collections keep safe b
   assert.equal(result.promptDraft.userEditedCompiled,true);assert.deepEqual(result.promptDraft.shots,[{id:'flat',prompt:'user exact words',userEdited:true,promptLocked:true}]);
   assert.equal(roundtrip({promptDraft:{shots:'invalid'}}).promptDraft.shots,undefined);assert.equal(roundtrip({}).promptDraft.shots,undefined);
 });
-test('existing draft item ceiling is retained and typed limits do not expand on restoration',()=>{
-  const value=state();value.promptDraft.shots=Array.from({length:110},(_,index)=>({id:String(index),prompt:'legacy'}));assert.equal(roundtrip(value).promptDraft.shots.length,100);
+test('complete draft collections are retained within byte capacity and typed limits do not expand on restoration',()=>{
+  const value=state();value.promptDraft.shots=Array.from({length:110},(_,index)=>({id:String(index),prompt:'legacy'}));assert.equal(roundtrip(value).promptDraft.shots.length,110);
   const raw=state();raw.promptDraft.shots[0].shotSpec.characters[0].identity=Array(50).fill(0).map((_,index)=>`trait ${index}`);assert.equal(roundtrip(raw).promptDraft.shots[0].shotSpec.characters[0].identity.length,30);
 });

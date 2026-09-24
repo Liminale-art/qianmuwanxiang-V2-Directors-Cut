@@ -1,7 +1,8 @@
 // Pure, request-scoped style selection. This is not narrative planning, model
 // execution, persistence, or permission to alter a Comfy graph or image budget.
 import {STORYBOARD_PROMPT_FORMATS} from './qianmu-prompt-formats.js';
-import {normalizeEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
+import {normalizeEnsembleStyleOrigin,isEnsembleShotId} from './qianmu-ensemble-origin.js';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 export const ENSEMBLE_LIBRARY_SCHEMA='qianmu.ensemble.library.v1';
 export const ENSEMBLE_SELECTION_SCHEMA='qianmu.ensemble.chat-selection.v1';
 export const ENSEMBLE_CURRENT_STYLE='current';
@@ -74,7 +75,11 @@ export function createEnsembleStyleSession({library,selection,namespace:owner,ch
     ...captured.entries.map(({scheme})=>({id:scheme.id,name:scheme.name,description:scheme.description,tags:scheme.tags}))]);
   const available=new Map(captured.entries.map(row=>[row.scheme.id,{revision:row.scheme.revision,bindingKey:row.proof.bindingKey}]));
   available.set(ENSEMBLE_CURRENT_STYLE,{revision:captured.base.revision,bindingKey:captured.base.bindingKey});
-  const normalizeShots=values=>unique(values,20,value=>id(value,'镜头'),'镜头');
+  const normalizeShots=values=>{
+    assertStoryboardStructureBytes(values,undefined,'镜组镜头编号');
+    if(!Array.isArray(values)||values.some(value=>!isEnsembleShotId(value))||new Set(values).size!==values.length)fail('镜头编号无效或重复');
+    return [...values];
+  };
   function responseSchema(shotIds){
     assertCurrent();const shots=normalizeShots(shotIds);
     return {type:'array',minItems:shots.length,maxItems:shots.length,items:{type:'object',additionalProperties:false,
@@ -83,9 +88,10 @@ export function createEnsembleStyleSession({library,selection,namespace:owner,ch
   function resolve(rows,shotIds){
     assertCurrent();const shots=normalizeShots(shotIds),byShot=new Map();
     if(!Array.isArray(rows)||rows.length!==shots.length)fail('风格选择不能增加或减少镜头');
+    assertStoryboardStructureBytes(rows,undefined,'镜组风格选择');const allowedShots=new Set(shots);
     for(const row of rows){
       if(!object(row)||Object.keys(row).some(key=>!['shot_id','scheme_id','reason'].includes(key))||Object.keys(row).length!==3
-        ||!shots.includes(row.shot_id)||byShot.has(row.shot_id)||!available.has(row.scheme_id))fail('风格选择包含未知、重复或未启用项');
+        ||!allowedShots.has(row.shot_id)||byShot.has(row.shot_id)||!available.has(row.scheme_id))fail('风格选择包含未知、重复或未启用项');
       const reason=text(row.reason,600,'选择理由',true);if(row.scheme_id!==ENSEMBLE_CURRENT_STYLE&&!reason)fail('切换风格需说明叙事表现增益');
       byShot.set(row.shot_id,{shotId:row.shot_id,schemeId:row.scheme_id,...available.get(row.scheme_id),reason});
     }

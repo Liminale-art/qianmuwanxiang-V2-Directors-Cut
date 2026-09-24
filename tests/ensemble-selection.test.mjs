@@ -68,6 +68,19 @@ test('response schema names only existing shot and style ids and no-illustration
   const session=fixture().open(),schema=session.responseSchema(['S1','S2']);assert.deepEqual(schema.items.properties.shot_id.enum,['S1','S2']);assert.deepEqual(schema.items.properties.scheme_id.enum,['current','ink','cg']);assert.equal(schema.minItems,2);assert.equal(schema.maxItems,2);
   assert.deepEqual(session.resolve([],[]).assignments,[]);assert.throws(()=>session.responseSchema(['S1','S1']));assert.throws(()=>session.responseSchema(Array.from({length:21},(_,i)=>'S'+i)));
 });
+
+for(const count of [7,13,21,33])test(`${count} verified narrative shots keep one style assignment each without example limits`,()=>{
+  const session=fixture().open(),shots=Array.from({length:count},(_,i)=>`S${i+1}`),schema=session.responseSchema(shots);
+  assert.equal(schema.minItems,count);assert.equal(schema.maxItems,count);assert.deepEqual(schema.items.properties.shot_id.enum,shots);
+  const rows=shots.map(shot=>choose('ink',shot));assert.deepEqual(session.resolve(rows.reverse(),shots).assignments.map(row=>row.shotId),shots);
+});
+
+test('model shot IDs remain exact safe integers and oversize assignments stop before resolving styles',()=>{
+  const session=fixture().open();
+  for(const id of ['S0','S01','S1e2','S9007199254740992','freeform'])assert.throws(()=>session.responseSchema([id]),{code:'storyboard_style_selection'});
+  const rows=Array.from({length:500},(_,i)=>choose('ink',`S${i+1}`));for(const row of rows)row.reason='r'.repeat(600);
+  assert.throws(()=>session.resolve(rows,rows.map(row=>row.shot_id)),{code:'storyboard_structure_capacity'});
+});
 test('edits to a selected style, reference, selection or eligibility invalidate the pending session, never rewrite frozen results',()=>{
   for(const change of [f=>f.library.schemes[0].name='changed',f=>f.library.schemes[0].binding.routeId='other',f=>f.library.schemes[0].revision='new',f=>f.selection.schemeIds.pop(),f=>f.selection.enabled=false,f=>f.eligibility.get('ink').bindingKey='b'.repeat(64),f=>f.base.revision='new']){
     const f=fixture(),session=f.open(),before=session.resolve([choose()],['S1']);change(f);assert.throws(()=>session.resolve([choose()],['S1']),{code:'storyboard_style_selection'});assert.equal(before.assignments[0].bindingKey,key);

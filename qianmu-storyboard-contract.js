@@ -1,4 +1,5 @@
-import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
+import {storyboardShotCount} from './qianmu-storyboard-limits.js';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 import {
   STORYBOARD_CONTINUITY_FACT_CATEGORIES,
   STORYBOARD_CONTINUITY_FACT_PERSISTENCE,
@@ -204,7 +205,7 @@ export const STORYBOARD_PLAN_RESPONSE_SCHEMA = deepFreeze({
     schema: { const: STORYBOARD_PLAN_RESPONSE_SCHEMA_ID },
     should_generate: { type: 'boolean' },
     skip_reason: { type: 'string' },
-    shots: { type: 'array', maxItems: STORYBOARD_MAX_SHOTS, items: shotSchema },
+    shots: { type: 'array', items: shotSchema },
     continuity_updates: { type: 'array', maxItems: 80, items: continuityUpdateSchema },
     decisions: stringArraySchema(12),
   },
@@ -519,7 +520,7 @@ function validateContinuityUpdate(value, index, options, errors) {
 }
 
 function normalizedOptions(options = {}) {
-  const maxShots = Math.max(1, Math.min(STORYBOARD_MAX_SHOTS, Number(options.maxShots) || STORYBOARD_MAX_SHOTS));
+  const maxShots = storyboardShotCount(options.maxShots, Number.MAX_SAFE_INTEGER);
   const characterTermsById = object(options.characterTermsById)
     ? Object.fromEntries(Object.entries(options.characterTermsById).map(([id, terms]) => [String(id), Array.isArray(terms) ? terms.map(String).filter(Boolean).slice(0, 120) : []]))
     : {};
@@ -540,6 +541,8 @@ function normalizedOptions(options = {}) {
 
 export function validateStoryboardPlanContract(value, rawOptions = {}) {
   const errors = [];
+  try { assertStoryboardStructureBytes(value, STORYBOARD_CONTRACT_MAX_BYTES, '取景结果'); }
+  catch (error) { return {ok:false,data:null,errors:[{code:'max_bytes',path:'$',message:error.message}]}; }
   const options = normalizedOptions(rawOptions);
   const keys = ['schema', 'should_generate', 'skip_reason', 'shots', 'continuity_updates', 'decisions'];
   if (!exactKeys(value, keys, keys, '$', errors)) return { ok: false, data: null, errors };
@@ -799,7 +802,7 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
   const promptFormats = normalizeStoryboardPromptFormats(config.promptFormats);
   const requirePrimarySubject = context.characterCasting?.referenceMode === 'novel-primary';
   const paragraphIds = paragraphIdsForContext(context);
-  const maxShots = Math.max(1, Math.min(STORYBOARD_MAX_SHOTS, Number(config.maxShots) || 1));
+  const maxShots = storyboardShotCount(config.maxShots, 1);
   const manualSupplement = config.manualSupplement === true;
   const forcedIndexes = Array.isArray(context.forcedParagraphIndexes)
     ? [...new Set(context.forcedParagraphIndexes.filter((index) => Number.isInteger(index) && index >= 0 && index < paragraphIds.length))].sort((a, b) => a - b)
@@ -919,8 +922,9 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
   const payloadText=JSON.stringify(payload);if(config.deferInputBudget!==true)assertStoryboardInputBudget(system+payloadText);
   return {
     messages: [{ role: 'system', content: system }, { role: 'user', content: payloadText }],
-    schema: requirePrimarySubject || promptFormats.length || manualSupplement && requiredParagraphIds.length ? (() => {
+    schema: (() => {
       const schema = JSON.parse(JSON.stringify(STORYBOARD_PLAN_RESPONSE_SCHEMA));
+      schema.properties.shots.maxItems = manualSupplement ? 1 : maxShots;
       if (manualSupplement && requiredParagraphIds.length) {
         schema.properties.shots.items.properties.source_paragraph_ids = {
           type:'array', minItems:requiredParagraphIds.length, maxItems:requiredParagraphIds.length,
@@ -936,7 +940,7 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
         schema.properties.shots.items.required.push('prompt_renderings');
       }
       return schema;
-    })() : STORYBOARD_PLAN_RESPONSE_SCHEMA,
+    })(),
     schemaId: STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,
     paragraphIds,
     requiredSourceParagraphIds: requiredParagraphIds,

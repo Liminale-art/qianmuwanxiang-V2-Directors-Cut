@@ -105,7 +105,7 @@ const validationOptions = {
 };
 
 assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.additionalProperties, false);
-assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.maxItems, 6);
+assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.maxItems, undefined);
 assert.equal(Object.isFrozen(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.items), true);
 assert.equal(STORYBOARD_SAFETY_RESPONSE_SCHEMA.additionalProperties, false);
 assert.equal(STORYBOARD_CONTRACT_MAX_BYTES, 256 * 1024);
@@ -366,7 +366,7 @@ const smartRequest = buildStoryboardPlanContractRequest({ paragraphs: ['单人�
 });
 assert.match(smartRequest.messages[0].content, /不得按单人竖幅\/多人横幅机械映射/);
 assert.match(smartRequest.messages[0].content, /16:9 只是主画幅偏好，不是强制值/);
-assert.equal(smartRequest.schema,STORYBOARD_PLAN_RESPONSE_SCHEMA);
+assert.equal(smartRequest.schema.properties.shots.maxItems,smartRequest.maxShots);
 assert.equal(smartRequest.schema.properties.shots.items.properties.source_paragraph_ids.maxItems,80);
 
 for(const count of [1,80,81,281]){

@@ -1,10 +1,10 @@
-import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
 import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.371';
 import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.371';
 import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.371';
+import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -17,7 +17,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
   const outcome = {queued:0, failed:0, prepared:0};
   if (!result.shouldGenerate) return outcome;
   if (result.manualRequired || !messageRef?.stream || !Array.isArray(result.shots) || !result.shots.length
-    || result.shots.length !== shotReferences?.length || result.shots.length > STORYBOARD_MAX_SHOTS) throw stop('流式结果缺少已核对的画面来源，未提交');
+    || result.shots.length !== shotReferences?.length) throw stop('流式结果缺少已核对的画面来源，未提交');
   const state = d.storyboardState(), chatKey = messageRef.chatKey;
   let plan, existing=false, restored=null, planSnapshot='',ensemble=null;
   const valid = () => inputGuard.isCurrent() && state === d.storyboardState() && state.enabled
@@ -70,7 +70,6 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       if (!restored || restored.id!==plan.id || restored.revisionId!==plan.revisionId) throw stop('历史流式计划无法完整恢复，未提交');
     }
     const offset = plan?.shots?.length || 0;
-    if (offset + planned.length > 20) throw stop('本层任务记录已满，请从已有镜头记录中重试，未新增请求');
     const oldMoments=new Map();
     for(const pin of context.streamCoverage?.pins||[])for(const slot of pin.slots||[]){
       if(slot.planId!==planId)continue;
@@ -138,15 +137,19 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     await check();
     if (existing && JSON.stringify(plan)!==planSnapshot) throw stop('已有镜头状态在准备期间变化，请等待下一次取景，未新增请求');
     if (jobs.length > d.STORYBOARD_QUEUE_LIMIT-d.storyboardQueue.length-d.storyboardActiveJobs.size) throw stop('当前生图队列空间不足，未提交此批流式画面');
+    const nextPlan={...plan,messageRef:copy(budgetRef),floor:context.floor,status:'prompt_ready',autoGenerate:true,
+      shots:[...(restored?.shots || plan.shots || []).map(shot=>oldMoments.has(shot.id)?{...shot,narrativeMoment:copy(oldMoments.get(shot.id))}:shot),...newShots],updatedAt:Date.now(),
+      continuityLedger:copy(coverage.continuityLedger || {}),continuityLedgerLayer:coverage.continuityLedgerLayer};
+    assertStoryboardStructureBytes(nextPlan,256*1024,'本层镜头计划');
+    await d.storyboardPreflightImageBatch(jobs,valid); await check();
+    if(existing&&JSON.stringify(plan)!==planSnapshot)throw stop('已有镜头状态在核对容量期间变化，未新增请求');
     // No asynchronous gap between the final source check and publishing plan rows.
     if (!existing) {
       const removed=new Set(dropped);
       state.shotPlans=[plan,...state.shotPlans.filter(row=>!removed.has(row))];
       if (dropped.length) void Promise.resolve(d.storyboardDeletePlanArchives(dropped)).catch(()=>{});
     }
-    Object.assign(plan,{messageRef:copy(budgetRef),floor:context.floor,status:'prompt_ready',autoGenerate:true,
-      shots:[...(restored?.shots || plan.shots || []).map(shot=>oldMoments.has(shot.id)?{...shot,narrativeMoment:copy(oldMoments.get(shot.id))}:shot),...newShots],updatedAt:Date.now(),
-      continuityLedger:copy(coverage.continuityLedger || {}),continuityLedgerLayer:coverage.continuityLedgerLayer});
+    Object.assign(plan,nextPlan);
     // Retain the previous archive as recovery data until the next terminal
     // archive replaces it. Never delete the only full copy during preparation.
     delete plan.archiveRef; delete plan.archiveVersion; delete plan.archivedAt;

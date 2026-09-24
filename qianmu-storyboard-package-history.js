@@ -1,3 +1,6 @@
+import {STORYBOARD_PLAN_SCHEMA,normalizeStoryboardSceneFingerprint} from './qianmu-storyboard.js';
+import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js';
+import {normalizeNarrativeContext} from './qianmu-narrative-context.js';
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const fields=Object.freeze(['shotPlans','taskStates','logs','pipelineLogs']);
 const fail=field=>{throw Object.assign(new Error(`分镜历史 ${field} 无法完整保留，未静默裁剪正文锚点、镜头顺序或任务记录`),{code:'storyboard_portable_history',submissionState:'not_submitted'});};
@@ -9,11 +12,36 @@ const runtimeFields=new Set(['status','stage','error','finishedAt','chatKey','ma
 const executionArrays=new Set(['taskStates','logs','pipelineLogs']);
 const identityArray=(field,path)=>path.length===0&&executionArrays.has(field);
 const orderedArray=(field,path)=>field==='shotPlans'&&((path.length===0)||(path.at(-1)==='shots')) || field==='pipelineLogs'&&path.at(-1)==='stages';
-const shotSpecKeys=new Set(['id','sourceParagraphIds','source_paragraph_ids','insertAfter','insert_after','narrativeLayer','narrative_layer','narrativePurpose','narrative_purpose','purpose','shotPattern','shot_pattern','visualDuty','visual_duty','subjectKind','subject_kind','shotRole','shot_role','role','shotScale','shot_scale','shotType','subject','scene','sceneId','scene_id','characters','primarySubjectId','characterReferenceDisabled','sharedRelations','shared_relations','composition','promptAtoms','prompt_atoms','promptRenderingPack','sensitive','safetyNotes','safety_notes','evidence','productionContext','production_context','directorDecision','director_decision','continuityUpdates','continuity_updates','decisions']);
+const shotSpecKeys=new Set(['schema','id','sourceParagraphIds','source_paragraph_ids','insertAfter','insert_after','narrativeLayer','narrative_layer','narrativePurpose','narrative_purpose','purpose','shotPattern','shot_pattern','visualDuty','visual_duty','subjectKind','subject_kind','shotRole','shot_role','role','shotScale','shot_scale','shotType','subject','scene','sceneId','scene_id','sceneFingerprint','narrativeMoment','characters','primarySubjectId','characterReferenceDisabled','sharedRelations','shared_relations','composition','promptAtoms','prompt_atoms','promptRenderingPack','sensitive','safetyNotes','safety_notes','evidence','productionContext','production_context','directorDecision','director_decision','continuityUpdates','continuity_updates','decisions']);
+// Only canonical fields written by the current shot normalizer are accepted.
+// Compare recursively, ignoring object key order but preserving array order;
+// malformed types or unknown nested fields must not be normalized away.
+function canonicalEqual(left,right){
+  if(left===right)return true;
+  if(Array.isArray(left))return Array.isArray(right)&&left.length===right.length&&left.every((value,index)=>canonicalEqual(value,right[index]));
+  if(!object(left)||!object(right))return false;
+  const keys=Object.keys(left);return keys.length===Object.keys(right).length&&keys.every(key=>Object.hasOwn(right,key)&&canonicalEqual(left[key],right[key]));
+}
+function assertCanonicalShotFields(value,path){
+  const invalid=key=>fail(`${path.join('.')}.${key} 格式无效`);
+  if(Object.hasOwn(value,'schema')&&value.schema!==STORYBOARD_PLAN_SCHEMA)invalid('schema');
+  if(Object.hasOwn(value,'sceneFingerprint')){
+    const fingerprint=value.sceneFingerprint;
+    if(!object(fingerprint)||!canonicalEqual(fingerprint,normalizeStoryboardSceneFingerprint(fingerprint)))invalid('sceneFingerprint');
+    if(Object.hasOwn(fingerprint,'narrativeContext')){
+      try{if(!canonicalEqual(fingerprint.narrativeContext,normalizeNarrativeContext(fingerprint.narrativeContext)))invalid('sceneFingerprint.narrativeContext');}
+      catch{invalid('sceneFingerprint.narrativeContext');}
+    }
+  }
+  if(Object.hasOwn(value,'narrativeMoment')&&(!object(value.narrativeMoment)||!canonicalEqual(value.narrativeMoment,normalizeStoryboardStreamMoment(value.narrativeMoment))))invalid('narrativeMoment');
+}
 function assertHistoryInput(value,path=[]){
   if(Array.isArray(value)){value.forEach((item,index)=>assertHistoryInput(item,[...path,index]));return;}
   if(!object(value))return;
-  if(path.at(-1)==='shotSpec')for(const key of Object.keys(value))if(!shotSpecKeys.has(key))fail(`${path.join('.')} 含未支持字段 ${key}`);
+  if(path.at(-1)==='shotSpec'){
+    for(const key of Object.keys(value))if(!shotSpecKeys.has(key))fail(`${path.join('.')} 含未支持字段 ${key}`);
+    assertCanonicalShotFields(value,path);
+  }
   for(const [key,item] of Object.entries(value))assertHistoryInput(item,[...path,key]);
 }
 const rowId=value=>typeof value?.id==='string'&&value.id.trim()?value.id:'';

@@ -54,6 +54,17 @@ test('actual selected-floor capture binds a compact old style anchor and an empt
   }finally{f.close();}
 });
 
+for(const count of [7,13,21,169])test(`${count} distinct selected-floor style anchors are retained without the old per-floor eight limit`,async()=>{
+  const f=await fixture();try{
+    const rows=Array.from({length:count},(_,i)=>{
+      const row=copy(f.row);row.id=`old-${i}`;row.snapshot.imageAdmission.logicalShotId=(i+1).toString(16).padStart(64,'0');row.snapshot.imageAdmission.attemptId=`task-${i}`;return row;
+    });
+    const request=await f.prepare(rows),history=readEnsembleWindowHistory(f.window),payload=JSON.parse(request.messages[1].content);
+    assert.equal(history.rows.length,count);assert.equal(payload.prior_scene_anchors.length,count);assert.equal(payload.prior_scene_anchors.at(-1).id,`E${count}`);
+    assert.equal(f.calls.length,0);assert.equal(f.saves,0);
+  }finally{f.close();}
+});
+
 test('a declared predecessor without a verified cross-floor chain is repaired locally and never reaches expression',async()=>{
   const f=await fixture();try{const request=await f.prepare();f.narrative.continuity_links=[];
     await assert.rejects(f.run(request,async(payload)=>{assert.equal(payload.stage,'narrative');assert.deepEqual(payload.context.prior_scene_anchors.map(row=>row.floor),[0]);
