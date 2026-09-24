@@ -127,7 +127,7 @@ export function createNativeComfySceneStore({legacy,createStorage,indexedDB=glob
     usage(namespace){return run(namespace,{},async opts=>{await deliver(namespace,opts);const value=await catalogue.all(namespace,opts);return {count:value.rows.length,bytes:value.rows.reduce((n,row)=>n+sceneBytes(row.record),0),generation:value.generation,limit:4*1024*1024};});},
     storageSummary(namespace,options={}){return run(namespace,{...options,inventoryOnly:true},async opts=>{const value=await catalogue.all(namespace,opts),documentBytes=value.rows.reduce((n,row)=>n+sceneBytes(row.record),0);return {status:'ready',count:value.rows.length,documentBytes,indexBytes:value.indexBytes,bytes:documentBytes+value.indexBytes,generation:value.generation};});},
     clearChat:(namespace,chatKey,options)=>clear(namespace,chatKey,options),clearAccount:(namespace,options)=>clear(namespace,null,options),
-    exportAll:(namespace,options={})=>run(namespace,options,async opts=>({...await catalogue.exportAll(namespace,opts),localJournal:await journal.read(namespace)})),
+    exportAll:(namespace,options={})=>run(namespace,{...options,reviewOnly:true},async opts=>({...await catalogue.exportAll(namespace,opts),localJournal:await journal.read(namespace)})),
     close(){closed=true;catalogue.close();legacy.close();journal.close();},
   });
 }

@@ -61,6 +61,11 @@ export function validateSceneProposal(value){
 }
 export const sceneLeaves=entry=>{if(!entry)return [];const used=new Set(entry.versions.flatMap(v=>v.parents));return entry.versions.filter(v=>!used.has(v.digest));};
 export function emptySceneIndex(namespace){return {schema:COMFY_SCENE_NATIVE_SCHEMA,namespace,revision:0,generation:0,cleared:false,entries:[],sources:[]};}
+export function validateSceneMetadata(value,scope){
+  if(!exact(value,['digest','stateHash','stateBytes','reference','parents'])||!hash(value.digest)||!hash(value.stateHash)||!integer(value.stateBytes)||value.stateBytes>32768
+    ||!Array.isArray(value.parents)||new Set(value.parents).size!==value.parents.length||value.parents.some(parent=>!hash(parent)))fail('续场操作元数据无效');
+  sceneReference(value.reference,scope);return value;
+}
 export function validateSceneIndex(value,namespace,scope){
   assertComfyRouteNamespace(namespace);
   if(!exact(value,['schema','namespace','revision','generation','cleared','entries','sources'])||value.schema!==COMFY_SCENE_NATIVE_SCHEMA||value.namespace!==namespace||!integer(value.revision)||!integer(value.generation)||typeof value.cleared!=='boolean'
@@ -68,7 +73,7 @@ export function validateSceneIndex(value,namespace,scope){
   const keys=new Set();let live=0,total=0;for(const entry of value.entries){
     if(!exact(entry,['scope','blocked','versions'])||typeof entry.blocked!=='boolean'||!Array.isArray(entry.versions)||!entry.versions.length||entry.versions.length>8192)fail('续场版本目录无效');
     const s=comfySceneScope(entry.scope),key=comfySceneScopeKey(s);if(!sceneSame(s,entry.scope)||s.namespace!==namespace||keys.has(key))fail('续场范围重复或账户不符');keys.add(key);
-    const seen=new Set();for(const v of entry.versions){if(!exact(v,['digest','stateHash','stateBytes','reference','parents'])||!hash(v.digest)||!hash(v.stateHash)||!integer(v.stateBytes)||v.stateBytes>32768||seen.has(v.digest)||!Array.isArray(v.parents)||new Set(v.parents).size!==v.parents.length||v.parents.some(p=>!seen.has(p)))fail('续场操作前序不完整');sceneReference(v.reference,scope);seen.add(v.digest);}
+    const seen=new Set();for(const v of entry.versions){validateSceneMetadata(v,scope);if(seen.has(v.digest)||v.parents.some(p=>!seen.has(p)))fail('续场操作前序不完整');seen.add(v.digest);}
     const leaves=sceneLeaves(entry);if(entry.blocked||leaves.some(v=>v.stateBytes>0)){live++;total+=Math.max(...leaves.map(v=>v.stateBytes));}
   }if(live>1024||total>4*1024*1024)fail('续场记录超过原有场景数量或容量');return value;
 }

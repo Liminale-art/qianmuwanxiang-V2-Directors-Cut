@@ -1,5 +1,5 @@
 import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
-import {createCurrentGalleryArchiveSession} from './qianmu-gallery-archive-source.js?v=1.59.359';
+import {createCurrentGalleryArchiveSession} from './qianmu-gallery-archive-source.js?v=1.59.360';
 
 export function galleryRecipeReviewSummary(snapshot){
   const fields=[['渠道',({novel:'NovelAI',openai:'兼容图像模型',comfy:'ComfyUI'})[snapshot.source]||snapshot.source],['模型',snapshot.profile?.model],
