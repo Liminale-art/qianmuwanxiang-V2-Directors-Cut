@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
 import {normalizeNovelServiceChannel} from './qianmu-novel-service-channel-state.js';
 import {normalizeComfyCloudChannel} from './qianmu-comfy-cloud-channel-state.js';
+import {isStoryboardServerBatchBusinessError,normalizeBatchRecord} from './qianmu-storyboard-server-batch-contract.js';
 
 const DISK_SCHEMA = 'qianmu.image-service-disk.v1';
 const HASH = /^[a-f0-9]{64}$/;
@@ -16,6 +17,10 @@ const error = (code, message) => Object.assign(new Error(message), {
 });
 const safeError = cause => String(cause?.code || '').startsWith('image_service_') ? cause
   : error('unavailable', '生图服务记录暂不可用，未授权新请求');
+const BATCH_BUSINESS_ERRORS = new Set([
+  'storyboard_server_batch_account_changed', 'storyboard_server_batch_conflict',
+  'storyboard_server_batch_not_found', 'storyboard_server_batch_identity', 'storyboard_server_batch_revision',
+]);
 const isMissing = cause => cause?.code === 'ENOENT';
 const sameFile = (one, two) => one.dev === two.dev && one.ino === two.ino;
 
@@ -25,9 +30,11 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
     throw error('root', '增强服务缺少可信的 ST 数据目录');
   }
   // Host-only, closed choice. Existing NAI data stays at its original path.
-  if (!['novel', 'comfy', 'vibe', 'novel-channel', 'comfy-cloud'].includes(scope)) throw error('scope', '生图服务记录范围无效');
-  const queueDirectory = scope === 'comfy-cloud' ? 'comfy-cloud-queue-v1' : scope === 'novel-channel' ? 'novel-channel-v1' : scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
-  const normalize=scope==='comfy-cloud'?normalizeComfyCloudChannel:scope==='novel-channel'?normalizeNovelServiceChannel:normalizeImageServiceChannel;
+  if (!['novel', 'comfy', 'vibe', 'novel-channel', 'comfy-cloud', 'storyboard-batch'].includes(scope)) throw error('scope', '生图服务记录范围无效');
+  const safeScopedError = cause => scope === 'storyboard-batch' && isStoryboardServerBatchBusinessError(cause)
+    && BATCH_BUSINESS_ERRORS.has(cause.code) ? cause : safeError(cause);
+  const queueDirectory = scope === 'storyboard-batch' ? 'storyboard-batches-v1' : scope === 'comfy-cloud' ? 'comfy-cloud-queue-v1' : scope === 'novel-channel' ? 'novel-channel-v1' : scope === 'vibe' ? 'vibe-queue-v1' : scope === 'comfy' ? 'comfy-queue-v1' : 'image-queue-v1';
+  const normalize=scope==='storyboard-batch'?normalizeBatchRecord:scope==='comfy-cloud'?normalizeComfyCloudChannel:scope==='novel-channel'?normalizeNovelServiceChannel:normalizeImageServiceChannel;
   const channelLimit = Math.max(1, Math.min(128, Math.trunc(Number(maxChannels) || 128)));
   const recordLimit = Math.max(1024, Math.min(2 * 1024 * 1024, Math.trunc(Number(maxRecordBytes) || 2 * 1024 * 1024)));
   const pendingLimit = Math.max(1, Math.min(64, Math.trunc(Number(maxPending) || 64)));
@@ -157,8 +164,16 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
     return exclusive(async () => {
       const previous = await readRecord(key);
       await checkCapacity(Boolean(previous));
+      // Only the new batch scope needs an idempotent no-write result. Its reducer
+      // must return the exact prior object untouched; legacy scopes keep their
+      // original revision/write behavior, even if they pass an extra flag.
+      const before = scope === 'storyboard-batch' && previous ? JSON.stringify(previous.state) : undefined;
       const next = reduce(previous?.state);
       if (!next || typeof next !== 'object' || typeof next.then === 'function' || !next.state) throw error('transaction', '生图服务记录事务无效');
+      if (scope === 'storyboard-batch' && next.unchanged === true) {
+        if (!previous || next.state !== previous.state || JSON.stringify(next.state) !== before) throw error('transaction', '批次记录未变更标记与内容不一致');
+        return next.result;
+      }
       await atomicWrite(key, previous, next.state);
       return next.result;
     });
@@ -168,10 +183,10 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
       assertOpen();
       if (pending >= pendingLimit) throw error('busy', '生图服务记录等待已满，请稍后重试');
       pending++;
-      const work = tail.then(async () => { assertOpen(); return operation(); }).catch(cause => { throw safeError(cause); });
+      const work = tail.then(async () => { assertOpen(); return operation(); }).catch(cause => { throw safeScopedError(cause); });
       const settled = work.then(result => { pending--; return result; }, cause => { pending--; throw cause; });
       tail = settled.then(() => {}, () => {}); return settled;
-    } catch (cause) { return Promise.reject(safeError(cause)); }
+    } catch (cause) { return Promise.reject(safeScopedError(cause)); }
   };
   return {
     readOnly(operation) {
@@ -179,6 +194,7 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
       return enqueue(async () => { await initialize(false); return operation(); });
     },
     inspectAccount(namespace, { cursor = null, limit = 40, select = [] } = {}) {
+      if (scope === 'storyboard-batch') return Promise.reject(error('scope', '批次记录不支持单镜任务目录检查'));
       const validLocator = value => HASH.test(value?.channelKey || '') && typeof value.attemptId === 'string' && value.attemptId.length > 0 && value.attemptId.length <= 240 && !/[\u0000-\u001f\u007f]/.test(value.attemptId);
       if (typeof namespace !== 'string' || !namespace || namespace.length > 240 || /[\u0000-\u001f\u007f]/.test(namespace)
         || !Number.isInteger(limit) || limit < 1 || limit > 50
@@ -220,11 +236,11 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
         checkKey(key);
         if (typeof reduce !== 'function') throw error('transaction', '缺少生图服务记录事务');
         return enqueue(() => lockedTransaction(key, reduce));
-      } catch (cause) { return Promise.reject(safeError(cause)); }
+      } catch (cause) { return Promise.reject(safeScopedError(cause)); }
     },
     inspectChannel(key) {
       try { checkKey(key); return enqueue(async () => { if (!await initialize(false)) return undefined; return (await readRecord(key))?.state; }); }
-      catch (cause) { return Promise.reject(safeError(cause)); }
+      catch (cause) { return Promise.reject(safeScopedError(cause)); }
     },
     close() { closed = true; return tail; },
     inspect() { return { initialized: Boolean(directory), closed, paused: poisoned, pending }; },

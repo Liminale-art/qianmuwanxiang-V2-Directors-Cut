@@ -573,6 +573,8 @@
     "qianmu-image-service-access.js",
     "qianmu-image-service-queue.js",
     "qianmu-image-service-store.js",
+    "qianmu-storyboard-server-batch-contract.js",
+    "qianmu-storyboard-server-batch-store.js",
     "qianmu-image-service-results.js",
     "qianmu-image-service-recovery.js",
     "qianmu-image-recovery-cli.js",
