@@ -5,7 +5,8 @@ import {STORYBOARD_NARRATIVE_SCHEMA, STORYBOARD_EXPRESSION_SCHEMA} from '../../q
 export function authoredNarrative(id) {
   const sample = getStillPromptCase(id), paragraphs = sample.texts.at(-1).split('\n\n');
   const noImage = ['uncertain-person', 'stream-wait'].includes(id);
-  const selections = id === 'kitchen-three' ? [[2, ['A', 'B']], [4, ['B', 'M'], 'memory'], [6, ['A', 'B']]]
+  const selections = id === 'kitchen-six' ? [[1, ['A', 'B']], [2, ['A', 'B']], [3, ['B']], [4, ['B', 'M'], 'memory'], [5, ['A', 'B']], [6, ['A', 'B']]]
+    : id === 'kitchen-three' ? [[2, ['A', 'B']], [4, ['B', 'M'], 'memory'], [6, ['A', 'B']]]
     : id === 'memory-branches' ? [[1, ['A']], [2, ['A'], 'memory'], [3, ['A']]]
       : [[1, id === 'landscape' ? [] : id === 'contact' ? ['A', 'B'] : ['A']]];
   const shots = noImage ? [] : selections.map(([p, ids, layer = 'present'], index) => {

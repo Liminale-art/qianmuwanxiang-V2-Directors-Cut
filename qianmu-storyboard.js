@@ -1,3 +1,5 @@
+import {STORYBOARD_MAX_SHOTS,STORYBOARD_LEGACY_MAX_SHOTS,STORYBOARD_MAX_CONCURRENCY} from './qianmu-storyboard-limits.js';
+export {STORYBOARD_MAX_SHOTS,STORYBOARD_MAX_CONCURRENCY} from './qianmu-storyboard-limits.js';
 import {retainEnsembleRecoveryRecord} from './qianmu-ensemble-record.js';
 import {galleryMembershipSnapshot} from './qianmu-gallery-membership.js';
 import {DEFAULT_GALLERY_KEYWORDS} from './qianmu-gallery-keywords.js';
@@ -6,12 +8,12 @@ import {retainStoryboardArtDirection} from './qianmu-art-directions.js';
 export {STORYBOARD_ART_DIRECTIONS,retainStoryboardArtDirection,storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.368';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.368';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.369';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.369';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.368';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.368';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.368';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.369';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.369';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.369';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -32,8 +34,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.368';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.368';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.369';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.369';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -56,7 +58,7 @@ export const STORYBOARD_WORKFLOW_STATES = Object.freeze([
 ]);
 export const STORYBOARD_MESSAGE_LINK_STATES = Object.freeze(['active', 'stale', 'inactive_swipe', 'orphaned', 'foreign']);
 export const STORYBOARD_SHOT_GROUP_TEMPLATES = Object.freeze({
-  smart: Object.freeze({ id: 'smart', label: '智能镜组', instruction: '按叙事价值自由选择 1-4 个不重复镜头；优先建立场景、推进动作、落到情绪或关键细节。' }),
+  smart: Object.freeze({ id: 'smart', label: '智能镜组', instruction: '按镜头台数量范围和叙事价值选择不重复镜头；优先建立场景、推进动作、落到情绪或关键细节。' }),
   threeBeat: Object.freeze({ id: 'threeBeat', label: '三拍叙事', instruction: '优先采用建立关系的全景、推进人物或动作的近景、完成情绪落点的特写；没有价值的节拍可以省略。' }),
   dialogue: Object.freeze({ id: 'dialogue', label: '对话组', instruction: '围绕双人或多人关系组织同框、越肩或单人近景与反应镜头，避免只改变焦段而不推进信息。' }),
   action: Object.freeze({ id: 'action', label: '动作组', instruction: '组织环境与站位、关键动作、冲击或结果三个节拍，保持方向、人物和关键物件连续。' }),
@@ -348,9 +350,14 @@ const routingDefaults = () => ({ enabled: false, mode: 'single', templateId: 'sm
 export function normalizeStoryboardGenerationPolicy(value, legacyRouting, legacyComposition) {
   const r = obj(value) ? value : {};
   const legacy = obj(legacyRouting) ? legacyRouting : null;
-  const maxImages = int(r.maxImages, 1, 4, legacy ? (legacy.enabled && legacyComposition?.groupStrategy !== 'single' ? int(legacy.maxShotsPerFloor, 1, 4, 3) : 1) : 3);
-  return { version: 1, minImages: int(r.minImages, 1, maxImages, 1), maxImages,
-    concurrency: int(r.concurrency, 1, 4, legacy ? int(legacy.providerConcurrency, 1, 4, 1) : 2) };
+  // Old malformed/out-of-range values were capped at four: upgrading must not
+  // reinterpret them as permission for more paid work. Only an explicit v2
+  // selection (or a fully validated v2 import) can use the expanded range.
+  const version = r.version === 2 ? 2 : 1;
+  const limit = version === 2 ? STORYBOARD_MAX_SHOTS : STORYBOARD_LEGACY_MAX_SHOTS;
+  const maxImages = int(r.maxImages, 1, limit, legacy ? (legacy.enabled && legacyComposition?.groupStrategy !== 'single' ? int(legacy.maxShotsPerFloor, 1, STORYBOARD_LEGACY_MAX_SHOTS, 3) : 1) : 3);
+  return { version, minImages: int(r.minImages, 1, maxImages, 1), maxImages,
+    concurrency: int(r.concurrency, 1, STORYBOARD_MAX_CONCURRENCY, legacy ? int(legacy.providerConcurrency, 1, STORYBOARD_MAX_CONCURRENCY, 1) : 2) };
 }
 export function getStoryboardGenerationPolicy(state = {}) {
   return normalizeStoryboardGenerationPolicy(state.generationPolicy, state.routing, state.compositionPolicy);

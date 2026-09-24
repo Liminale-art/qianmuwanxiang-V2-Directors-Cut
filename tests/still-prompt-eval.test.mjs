@@ -24,17 +24,17 @@ async function completed(id, metrics) {
   return {transcript, report: await evaluateStillCase(id, transcript)};
 }
 
-test('eleven synthetic scenarios remain explicit, including the unsupported six-shot case', async () => {
+test('eleven synthetic scenarios retain their chosen range, including all six kitchen shots', async () => {
   const result = await auditStillCorpus();
   assert.equal(result.cases.length, 11); assert.equal(new Set(result.cases.map(row => row.caseId)).size, 11);
   assert.equal(result.networkCalls, 0); assert.equal(result.releaseQualified, false);
   const six = result.cases.find(row => row.caseId === 'kitchen-six');
-  assert.equal(six.status, 'unsupported_shot_range'); assert.equal(six.effectiveMaxShots, 4); assert.deepEqual(six.desiredShots, {min: 6, max: 6});
-  assert.equal(six.requestDigest, null); assert.equal(result.cases.filter(row => row.status === 'awaiting_response').length, 10);
+  assert.equal(six.status, 'awaiting_response'); assert.equal(six.effectiveMaxShots, 6); assert.deepEqual(six.desiredShots, {min: 6, max: 6});
+  assert.match(six.requestDigest, /^[a-f0-9]{64}$/); assert.equal(result.cases.filter(row => row.status === 'awaiting_response').length, 11);
   assert.deepEqual(getStillPromptCase('kitchen-six').texts, getStillPromptCase('kitchen-three').texts);
 });
 
-for (const sample of STILL_PROMPT_CASES.filter(row => row.id !== 'kitchen-six')) test(`actual two-stage replay of authored fixture: ${sample.id}`, async () => {
+for (const sample of STILL_PROMPT_CASES) test(`actual two-stage replay of authored fixture: ${sample.id}`, async () => {
   const {report} = await completed(sample.id);
   assert.equal(report.status, 'structurally_valid', JSON.stringify(report.failure));
   assert.equal(report.result.plan.shots.length, authoredNarrative(sample.id).shots.length);
@@ -131,7 +131,7 @@ test('untrusted transcript fields, counts, sizes and claimed metrics are rejecte
     const value = structuredClone(base); change(value); assert.throws(() => validateTranscript(value, 'contact'));
   }
   const six = emptyTranscript('kitchen-six'); six.responses = [row];
-  await assert.rejects(evaluateStillCase('kitchen-six', six), /无法承接/);
+  await assert.rejects(evaluateStillCase('kitchen-six', six), /请求\/阶段\/修复顺序/);
 });
 
 test('bounded local file reader accepts complete records and rejects oversized / invalid UTF8', async () => {
@@ -159,10 +159,10 @@ test('offline audit needs no network and produces no release assets', async () =
   assert.doesNotMatch(source, /process\.env|writeFile|fetch\(|https?:\/\//);
 });
 
-test('CLI rejects network flags and reports unsupported range without changing runtime settings', () => {
+test('CLI rejects network flags and prepares six shots without changing runtime settings', () => {
   const script = new URL('../scripts/still-prompt-eval.mjs', import.meta.url);
   const run = args => spawnSync(process.execPath, [fileURLToPath(script), ...args], {encoding: 'utf8'});
-  const six = run(['--case', 'kitchen-six']); assert.equal(six.status, 2, six.stderr); assert.equal(JSON.parse(six.stdout).status, 'unsupported_shot_range');
+  const six = run(['--case', 'kitchen-six']); assert.equal(six.status, 0, six.stderr); assert.equal(JSON.parse(six.stdout).effectiveMaxShots, 6);
   const bad = run(['--api', 'https://invalid.example']); assert.equal(bad.status, 1); assert.match(bad.stderr, /用法/);
 });
 
@@ -197,4 +197,21 @@ test('invalid second-stage digest is an input error, not a hidden expression-mod
   const {transcript} = await completed('contact');
   transcript.responses[1].requestDigest = 'b'.repeat(64);
   await assert.rejects(evaluateStillCase('contact', transcript), {code: 'evaluation_input'});
+});
+
+test('six expression IDs preserve narrative order even when their response rows arrive reversed', async () => {
+  const transcript=emptyTranscript('kitchen-six'),expression=authoredExpression('kitchen-six');
+  expression.shots.reverse();await append(transcript,authoredNarrative('kitchen-six'));await append(transcript,expression);
+  const report=await evaluateStillCase('kitchen-six',transcript);
+  assert.equal(report.status,'structurally_valid');assert.equal(report.result.repairCalls,0);
+  assert.deepEqual(report.result.plan.shots.map(row=>row.insert_after),['P1','P2','P3','P4','P5','P6']);
+});
+
+test('expanded expression IDs still reject zero, padded, seventh and duplicated shot identifiers', async () => {
+  for(const shot_id of ['S0','S06','S7','S1']){
+    const transcript=emptyTranscript('kitchen-six'),expression=authoredExpression('kitchen-six');
+    expression.shots[5].shot_id=shot_id;await append(transcript,authoredNarrative('kitchen-six'));await append(transcript,expression);
+    const report=await evaluateStillCase('kitchen-six',transcript);
+    assert.equal(report.status,'awaiting_response');assert.equal(report.nextRequest.stage,'expression');assert.equal(report.nextRequest.repair,true);
+  }
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mountFeedback } from '../qianmu-feedback-view.js';
 import { feedbackFixture, settleFeedback } from './helpers/feedback-fixture.mjs';
 
-const environment = { qianmuVersion: '1.59.368', backendVersion: '1.2.3', backendStatus: 'ready' };
+const environment = { qianmuVersion: '1.59.369', backendVersion: '1.2.3', backendStatus: 'ready' };
 function setup(options = {}, fixtureOptions) {
     const f = feedbackFixture(fixtureOptions);
     f.dispose = mountFeedback(f.host, { scope: {}, environment, download: f.download, ...options }); return f;
@@ -34,7 +34,7 @@ test('diagnostic exclusions update preview and copy together', async () => {
     const f = setup(); await write(f, '问题描述', '错误');
     for (const node of f.all().filter(node => node.type === 'checkbox')) { node.checked = false; await node.emit('change'); }
     await f.button('复制报告').emit('click');
-    assert.match(f.copied[0], /无（未附带诊断）/); assert.doesNotMatch(f.copied[0], /Firefox|Windows|1.59.368/); f.dispose();
+    assert.match(f.copied[0], /无（未附带诊断）/); assert.doesNotMatch(f.copied[0], /Firefox|Windows|1.59.369/); f.dispose();
 });
 test('draft survives panel rerender for the same scope, but not another scope', async () => {
     const scope = {}, f = setup({ scope }); await write(f, '问题描述', '会话草稿');

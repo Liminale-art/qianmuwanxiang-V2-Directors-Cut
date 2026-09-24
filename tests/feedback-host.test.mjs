@@ -16,7 +16,7 @@ function setup({ loader = async () => ({ mountFeedback }), open = false } = {}) 
     card.append(f.host); root.append(card); let loads = 0;
     const scope = {};
     const c = vm.createContext({ settings: scope, extensionSettings: { story_director_liminale: scope }, MODULE_NAME: 'story_director_liminale', feedbackOpenScope: null, initialized: true, isRuntimeOwner: () => true,
-        VERSION: '1.59.368', ctx: () => ({ version: '1.12.0', extensionSettings: c.extensionSettings }), optionalServiceState: { status: 'ready', version: '1.2.3', message: 'PRIVATE', services: ['PRIVATE'] },
+        VERSION: '1.59.369', ctx: () => ({ version: '1.12.0', extensionSettings: c.extensionSettings }), optionalServiceState: { status: 'ready', version: '1.2.3', message: 'PRIVATE', services: ['PRIVATE'] },
         featureRuntime: { load: async key => { assert.equal(key, 'feedback'); loads++; return loader(); } }, applyQianmuIcons() {}, ttsDownloadBlob: f.download });
     vm.runInContext(section('bindFeedbackEvents'), c); c.bindFeedbackEvents(root);
     return { ...f, root, card, c, get loads() { return loads; }, async open() { card.open = true; await card.emit('toggle'); }, async close() { card.open = false; await card.emit('toggle'); } };

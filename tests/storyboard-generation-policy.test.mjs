@@ -119,8 +119,8 @@ test('Comfy origin ordering is credential-independent and cannot be bypassed by 
   assert.equal(board.canRunStoryboardComfyJob({source:'novel'},[job('https://cloud.comfy.org')]),true);
 });
 
-test('actual portable export/import preserves the policy and imports old packages with conservative counts',async()=>{
-  const state=board.createStoryboardDefaults(),store={};state.generationPolicy={version:1,minImages:2,maxImages:4,concurrency:3};
+for(const policy of [{version:1,minImages:2,maxImages:4,concurrency:3},{version:2,minImages:3,maxImages:6,concurrency:2}])test(`actual portable export/import preserves policy v${policy.version} and imports old packages with conservative counts`,async()=>{
+  const state=board.createStoryboardDefaults(),store={};state.generationPolicy={...policy};
   let exported=null;const noop=()=>{};
   const context=vm.createContext({...board,Blob,clone:structuredClone,storyboardState:()=>state,STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,
     storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?packageAssets:{resolveImageAccountNamespace:async()=> 'st-user:fixture'}},
@@ -136,18 +136,47 @@ test('actual portable export/import preserves the policy and imports old package
   context.setTimeout=noop;
   vm.runInContext(fn('ttsDownloadBlob')+'\n'+fn('storyboardPackageContext')+'\n'+fn('storyboardExportPackage'),context);
   await context.storyboardExportPackage({originals:false});const text=await exported.text();
-  assert.deepEqual(JSON.parse(text).settings.generationPolicy,{version:1,minImages:2,maxImages:4,concurrency:3});
+  assert.deepEqual(JSON.parse(text).settings.generationPolicy,policy);
   const importer=createPackageImportFixture();importer.e.state.generationPolicy={version:1,minImages:1,maxImages:1,concurrency:1};
   await importer.import(new Blob([text]));
-  assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:2,maxImages:4,concurrency:3});
+  assert.deepEqual(plain(importer.e.state.generationPolicy),policy);
   importer.e.choice='3';await importer.recover();
   const modern=JSON.parse(text);delete modern.settings.generationPolicy;modern.settings.routing={enabled:false};
   await importer.import(new Blob([JSON.stringify(modern)]));
-  assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:2,maxImages:4,concurrency:3});await importer.recover();
+  assert.deepEqual(plain(importer.e.state.generationPolicy),policy);await importer.recover();
   for(const enabled of [false,true]){
     const legacy=JSON.parse(text);legacy.settings.schemaVersion=2;delete legacy.settings.generationPolicy;legacy.settings.routing={enabled,maxShotsPerFloor:2,providerConcurrency:1};
     await importer.import(new Blob([JSON.stringify(legacy)]));
     assert.deepEqual(plain(importer.e.state.generationPolicy),{version:1,minImages:1,maxImages:enabled?2:1,concurrency:1});
     await importer.recover();
   }
+});
+
+test('explicit v2 range permits six shots without upgrading any old spending limit or concurrency',()=>{
+  for(const version of [undefined,1,3])for(const maxImages of [5,6,99]){
+    const policy=board.normalizeStoryboardGenerationPolicy({version,minImages:6,maxImages,concurrency:9});
+    assert.deepEqual(policy,{version:1,minImages:4,maxImages:4,concurrency:4});
+  }
+  const policy={version:2,minImages:3,maxImages:6,concurrency:2};
+  assert.deepEqual(board.normalizeStoryboardGenerationPolicy(policy),policy);
+  assert.deepEqual(board.normalizeStoryboardState({generationPolicy:policy}).generationPolicy,policy);
+  assert.deepEqual(board.normalizeStoryboardGenerationPolicy({version:2,minImages:99,maxImages:99,concurrency:99}),{version:2,minImages:6,maxImages:6,concurrency:4});
+  assert.equal(board.normalizeStoryboardGenerationPolicy(null,{enabled:true,maxShotsPerFloor:6}).maxImages,4);
+});
+
+test('actual form and handler distinguish six floor shots from four-way concurrency',async()=>{
+  const {content}=createStoryboardFormFixture();
+  for(const key of ['minImages','maxImages'])assert.match(content,new RegExp(`data-generation-field="${key}"[^>]*max="6"`));
+  assert.match(content,/data-generation-field="concurrency"[^>]*max="4"/);
+  const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=source.indexOf("  root.querySelectorAll('[data-generation-field]')"),end=source.indexOf("  root.querySelector('.sd-storyboard-route-template')",start);
+  const state=board.createStoryboardDefaults(),callbacks={};let saves=0;
+  const fields=['minImages','maxImages','concurrency'].map(key=>({dataset:{generationField:key},value:'',addEventListener:(_event,callback)=>callbacks[key]=callback}));
+  const root={isConnected:true,querySelectorAll:()=>fields};
+  const context=vm.createContext({...board,state,root,storyboardState:()=>state,saveSettings:()=>saves++,renderModal(){},storyboardQueue:[]});
+  vm.runInContext(source.slice(start,end),context);
+  fields[1].value='6';callbacks.maxImages();assert.deepEqual(plain(state.generationPolicy),{version:2,minImages:1,maxImages:6,concurrency:2});
+  fields[0].value='6';callbacks.minImages();assert.equal(state.generationPolicy.minImages,6);
+  fields[2].value='6';callbacks.concurrency();assert.equal(state.generationPolicy.concurrency,4);
+  fields[1].value='3';callbacks.maxImages();assert.equal(state.generationPolicy.minImages,3);assert.equal(state.generationPolicy.maxImages,3);
+  assert.equal(saves,4);
 });

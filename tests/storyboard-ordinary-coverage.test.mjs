@@ -5,8 +5,8 @@ import * as core from '../qianmu-storyboard.js';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardStreamMoment} from '../qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.368';
-import {readStoryboardStreamCoverage,configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,storyboardStreamCoverageScope} from '../qianmu-storyboard-stream-coverage.js?v=1.59.368';
+import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.369';
+import {readStoryboardStreamCoverage,configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,storyboardStreamCoverageScope} from '../qianmu-storyboard-stream-coverage.js?v=1.59.369';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const namespace='st-user:test';
 async function fixture({legacy=false}={}){
@@ -50,6 +50,18 @@ test('ordinary coverage reduces remaining shots, filters exact old moments and k
 test('legacy focused compiler trace recovers a unique matching shot without a new model request or persistent rewrite',async()=>{
   const f=await fixture({legacy:true}),old=copy(f.row),coverage=await f.read();
   assert.deepEqual(coverage.pins[0].moment,f.moment);assert.deepEqual(f.row,old);assert.equal(f.row.snapshot.shotSpec.narrativeMoment,undefined);f.close();
+});
+
+test('retained focused trace can recover the exact sixth shot, without accepting a seventh or rewriting old evidence',async()=>{
+  const f=await fixture({legacy:true});
+  try{
+    const output=f.row.snapshot.compilerStages[0].output,original=copy(output.shots[0]),raw=copy(output.trace.narrative.shots[0]);
+    output.shots=[...Array.from({length:5},(_,i)=>({...copy(original),id:`unrelated-${i}`})),original];
+    output.trace.narrative.shots=Array.from({length:6},()=>copy(raw));
+    const before=copy(f.row);assert.deepEqual((await f.read()).pins[0].moment,f.moment);assert.deepEqual(f.row,before);
+    output.shots.push({...copy(original),id:'seventh'});output.trace.narrative.shots.push(copy(raw));
+    await assert.rejects(f.read(),{code:'storyboard_stream_coverage'});
+  }finally{f.close();}
 });
 
 test('legacy trace cannot guess by array position, prompt similarity or a duplicated shot ID',async()=>{

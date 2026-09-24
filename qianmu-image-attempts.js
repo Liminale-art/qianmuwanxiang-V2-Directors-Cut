@@ -1,3 +1,4 @@
+import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 // Pure still-frame admission rules. Persistence must apply each operation inside one
 // read/write transaction; this module does not open storage or authorize network I/O.
 export const IMAGE_ATTEMPT_SCHEMA = 'qianmu.image-attempts.v1';
@@ -82,7 +83,7 @@ export function claimImageAttempt(value, scope, input, now) {
   const attemptId = id(input.attemptId, '请求编号'), logicalShotId = id(input.logicalShotId, '镜头编号');
   const operationKey = id(input.operationKey, '操作编号'), ownerId = id(input.ownerId, '页面会话');
   const automatic = input.kind === 'automatic';
-  if (!Number.isInteger(input.maxAutomatic) || input.maxAutomatic < 1 || input.maxAutomatic > 4) fail('image_attempt_budget', '自动镜头上限无效');
+  if (!Number.isInteger(input.maxAutomatic) || input.maxAutomatic < 1 || input.maxAutomatic > STORYBOARD_MAX_SHOTS) fail('image_attempt_budget', '自动镜头上限无效');
   if (automatic && input.imageCount !== 1) fail('image_attempt_count', '自动镜头每次只能生成一张');
   expireReservations(ledger, now);
   const previous = ledger.entries.find(row => row.attemptId === attemptId);

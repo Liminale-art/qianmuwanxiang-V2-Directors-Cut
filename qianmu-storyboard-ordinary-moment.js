@@ -1,3 +1,4 @@
+import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 import {assertStoryboardStreamMoment,createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 const fail=()=>{throw Object.assign(new Error('旧镜头的叙事位置无法完整核对，未重复自动生成'),{code:'storyboard_stream_coverage'});};
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -21,7 +22,7 @@ export function readStoryboardOrdinaryMoment(job,window,pipelineStages=[]){
     if(stage?.type!=='prompt_compiler'||stage.status!=='success')continue;
     const output=stage.output,shots=output?.shots,narrative=output?.trace?.narrative?.shots;
     if(!shots||!narrative)continue;
-    if(!Array.isArray(shots)||!Array.isArray(narrative)||shots.length!==narrative.length||shots.length>4)fail();
+    if(!Array.isArray(shots)||!Array.isArray(narrative)||shots.length!==narrative.length||shots.length>STORYBOARD_MAX_SHOTS)fail();
     const id=job.planShotId||spec?.id;if(!id)continue;
     const matches=shots.map((shot,index)=>({shot,index})).filter(({shot})=>shot.id===id);
     if(matches.length>1)fail();if(!matches.length)continue;

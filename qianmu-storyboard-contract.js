@@ -1,3 +1,4 @@
+import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 import {
   STORYBOARD_CONTINUITY_FACT_CATEGORIES,
   STORYBOARD_CONTINUITY_FACT_PERSISTENCE,
@@ -10,7 +11,7 @@ import {
 import { characterCastingInput } from './qianmu-character-casting.js';
 import {completeStoryboardText,assertStoryboardInputBudget} from './qianmu-storyboard-complete-context.js';
 import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings, storyboardPromptFormatBudget, STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS } from './qianmu-prompt-formats.js';
-import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.368';
+import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.369';
 export {createStoryboardCompilerAttempt} from './qianmu-storyboard-compiler-diagnostics.js?v=1.59.217';
 export {callStoryboardCompiler} from './qianmu-storyboard-compiler-transport.js?v=1.59.217';
 // Pass the shared contract helpers explicitly, avoiding a circular versioned
@@ -203,7 +204,7 @@ export const STORYBOARD_PLAN_RESPONSE_SCHEMA = deepFreeze({
     schema: { const: STORYBOARD_PLAN_RESPONSE_SCHEMA_ID },
     should_generate: { type: 'boolean' },
     skip_reason: { type: 'string' },
-    shots: { type: 'array', maxItems: 4, items: shotSchema },
+    shots: { type: 'array', maxItems: STORYBOARD_MAX_SHOTS, items: shotSchema },
     continuity_updates: { type: 'array', maxItems: 80, items: continuityUpdateSchema },
     decisions: stringArraySchema(12),
   },
@@ -518,7 +519,7 @@ function validateContinuityUpdate(value, index, options, errors) {
 }
 
 function normalizedOptions(options = {}) {
-  const maxShots = Math.max(1, Math.min(4, Number(options.maxShots) || 4));
+  const maxShots = Math.max(1, Math.min(STORYBOARD_MAX_SHOTS, Number(options.maxShots) || STORYBOARD_MAX_SHOTS));
   const characterTermsById = object(options.characterTermsById)
     ? Object.fromEntries(Object.entries(options.characterTermsById).map(([id, terms]) => [String(id), Array.isArray(terms) ? terms.map(String).filter(Boolean).slice(0, 120) : []]))
     : {};
@@ -798,7 +799,7 @@ export function buildStoryboardPlanContractRequest(context = {}, config = {}) {
   const promptFormats = normalizeStoryboardPromptFormats(config.promptFormats);
   const requirePrimarySubject = context.characterCasting?.referenceMode === 'novel-primary';
   const paragraphIds = paragraphIdsForContext(context);
-  const maxShots = Math.max(1, Math.min(4, Number(config.maxShots) || 1));
+  const maxShots = Math.max(1, Math.min(STORYBOARD_MAX_SHOTS, Number(config.maxShots) || 1));
   const manualSupplement = config.manualSupplement === true;
   const forcedIndexes = Array.isArray(context.forcedParagraphIndexes)
     ? [...new Set(context.forcedParagraphIndexes.filter((index) => Number.isInteger(index) && index >= 0 && index < paragraphIds.length))].sort((a, b) => a - b)
@@ -1400,17 +1401,17 @@ export function adaptStoryboardPlanContract(value, options = {}) {
     decisions: value.decisions,
   };
 }
-export {captureStoryboardCompilerSources,openStoryboardCompilerContinuity,captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference,captureStoryboardStreamCoverage,captureStoryboardEnsembleHistory,prepareStoryboardStreamHandoff,createStoryboardFinalStreamReference} from './qianmu-storyboard-compiler-sources.js?v=1.59.368';
-export {resolveStoryboardCompilerResult} from './qianmu-storyboard-compiler-result.js?v=1.59.368';
-export {submitStoryboardStreamPrepared} from './qianmu-storyboard-stream-jobs.js?v=1.59.368';
-export {sealEnsembleCompilerResult} from './qianmu-ensemble-handoff.js?v=1.59.368';
-export {prepareStoryboardEnsembleSession} from './qianmu-ensemble-preparation.js?v=1.59.368';
-export {persistStoryboardEnsemblePlan,finalizeStoryboardEnsemblePlan,resolveStoryboardEnsembleDraftPlan,restoreStoryboardEnsemblePlan} from './qianmu-ensemble-host.js?v=1.59.368';
-export {finishStoryboardStreamCapture} from './qianmu-storyboard-stream-final.js?v=1.59.368';
-export {captureStoryboardContinuation,prepareStoryboardContinuation,saveStoryboardContinuation} from './qianmu-storyboard-continuation.js?v=1.59.368';
-export {createStoryboardStreamScheduler,runStoryboardStreamPass} from './qianmu-storyboard-stream-scheduler.js?v=1.59.368';
-export {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.368';
-export {createStoryboardStreamPlanReference} from './qianmu-storyboard-compiler-sources.js?v=1.59.368';
-export {beginStoryboardCompilerStreamAttempt} from './qianmu-storyboard-compiler-sources.js?v=1.59.368';
-export {beginStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.368';
-export {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.368';
+export {captureStoryboardCompilerSources,openStoryboardCompilerContinuity,captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference,captureStoryboardStreamCoverage,captureStoryboardEnsembleHistory,prepareStoryboardStreamHandoff,createStoryboardFinalStreamReference} from './qianmu-storyboard-compiler-sources.js?v=1.59.369';
+export {resolveStoryboardCompilerResult} from './qianmu-storyboard-compiler-result.js?v=1.59.369';
+export {submitStoryboardStreamPrepared} from './qianmu-storyboard-stream-jobs.js?v=1.59.369';
+export {sealEnsembleCompilerResult} from './qianmu-ensemble-handoff.js?v=1.59.369';
+export {prepareStoryboardEnsembleSession} from './qianmu-ensemble-preparation.js?v=1.59.369';
+export {persistStoryboardEnsemblePlan,finalizeStoryboardEnsemblePlan,resolveStoryboardEnsembleDraftPlan,restoreStoryboardEnsemblePlan} from './qianmu-ensemble-host.js?v=1.59.369';
+export {finishStoryboardStreamCapture} from './qianmu-storyboard-stream-final.js?v=1.59.369';
+export {captureStoryboardContinuation,prepareStoryboardContinuation,saveStoryboardContinuation} from './qianmu-storyboard-continuation.js?v=1.59.369';
+export {createStoryboardStreamScheduler,runStoryboardStreamPass} from './qianmu-storyboard-stream-scheduler.js?v=1.59.369';
+export {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.369';
+export {createStoryboardStreamPlanReference} from './qianmu-storyboard-compiler-sources.js?v=1.59.369';
+export {beginStoryboardCompilerStreamAttempt} from './qianmu-storyboard-compiler-sources.js?v=1.59.369';
+export {beginStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.369';
+export {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.369';

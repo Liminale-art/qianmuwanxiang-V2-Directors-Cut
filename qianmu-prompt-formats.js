@@ -1,3 +1,4 @@
+import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 // Representation is not routing, content permission, or workflow execution permission.
 // No translation requests, guessed formats, or workflow edits are performed here.
 export const STORYBOARD_PROMPT_FORMATS = Object.freeze(['tags', 'natural_language', 'character_blocks']);
@@ -130,7 +131,7 @@ async function digest(value) {
 export function storyboardPromptFormatBudget(formats, maxShots = 1) {
   const count = normalizeStoryboardPromptFormats(formats).length;
   if (!count) return 2200;
-  if (!Number.isInteger(maxShots) || maxShots < 1 || maxShots > 4) fail('本次取景数量预算无效');
+  if (!Number.isInteger(maxShots) || maxShots < 1 || maxShots > STORYBOARD_MAX_SHOTS) fail('本次取景数量预算无效');
   // A bounded output allowance, not a promise about model quality or a second translation request.
   return Math.min(16384, maxShots * (1600 + 1000 * count));
 }

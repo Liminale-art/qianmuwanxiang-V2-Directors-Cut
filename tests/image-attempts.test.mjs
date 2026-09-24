@@ -188,8 +188,21 @@ test('manual supplements and legacy redraws do not multiply the automatic quota'
 
 test('automatic count multiplication and invalid quota inputs fail before any reservation', () => {
   for (const value of [0, 2, 4, '1', NaN, undefined]) assert.throws(() => reserve(null, request({ imageCount: value })), { code: 'image_attempt_count' });
-  for (const value of [0, 5, 1.5, '3', NaN]) assert.throws(() => reserve(null, request({ maxAutomatic: value })), { code: 'image_attempt_budget' });
+  for (const value of [0, 7, 1.5, '3', NaN]) assert.throws(() => reserve(null, request({ maxAutomatic: value })), { code: 'image_attempt_budget' });
   for (const value of [-1, NaN, Infinity, Number.MAX_SAFE_INTEGER]) assert.throws(() => reserve(null, request(), value), { code: 'image_attempt_time' });
+});
+
+test('explicit six-slot allowance survives ledger reload; seventh or lowered-budget work never evicts occupied slots', () => {
+  let ledger=null;
+  for(let i=0;i<6;i++){
+    const result=reserve(ledger,request({attemptId:`a${i}`,logicalShotId:`s${i}`,operationKey:`o${i}`,maxAutomatic:6}));
+    assert.equal(result.ok,true);ledger=JSON.parse(JSON.stringify(result.ledger));
+  }
+  for(const maxAutomatic of [3,4,6]){
+    const result=reserve(ledger,request({attemptId:'seventh',logicalShotId:'seventh',operationKey:'seventh',maxAutomatic}));
+    assert.equal(result.ok,false);assert.equal(result.code,'budget_exhausted');assert.equal(result.automaticUsed,6);
+    assert.deepEqual(result.ledger.entries,ledger.entries);
+  }
 });
 
 test('capacity is explicit and cannot evict old uncertain records to free budget', () => {

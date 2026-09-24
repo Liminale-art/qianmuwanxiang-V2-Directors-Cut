@@ -23,6 +23,13 @@ test('only bounded narrative anchor data reaches the director; explicit inherita
   assert.equal(control.validate({shots:[f.shot]}),true);assert.deepEqual(control.resolve({shots:[f.shot]}),[{shotId:'S1',schemeId:'ink'}]);
 });
 
+test('six distinct prior logical shots fit a floor while a seventh remains outside the narrative cap',()=>{
+  const f=fixture(),row=copy(f.history.rows[0]);
+  f.history.rows=Array.from({length:6},(_,i)=>({...copy(row),id:String(i+1).repeat(64)}));
+  f.open();assert.equal(f.payload.prior_scene_anchors.length,6);
+  f.history.rows.push({...copy(row),id:'7'.repeat(64)});assert.throws(f.open,{code:'ensemble_scene_continuation'});
+});
+
 test('a similar scene name without an explicit predecessor never inherits style',()=>{
   const f=fixture(),control=f.open();f.shot.scene_predecessor='';assert.deepEqual(control.resolve({shots:[f.shot]}),[]);
 });

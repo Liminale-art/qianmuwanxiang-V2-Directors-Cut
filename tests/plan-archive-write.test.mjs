@@ -34,15 +34,15 @@ test('missing, extra or unrelated returned keys fail closed instead of discardin
   }
 });
 
-test('actual archive callback preserves heavy settings on failed mapping or changed epoch',async()=>{
+for(const count of [1,6])test(`actual archive callback preserves ${count} complete shots on failed mapping or changed epoch`,async()=>{
   for(const mode of ['invalid','stale','valid']){
-    const plan={id:'plan',chatKey:'chat',status:'completed',updatedAt:1,shots:[{id:'s',prompt:'kept',status:'completed'}]},state={shotPlans:[plan]};let saved=0;
+    const plan={id:'plan',chatKey:'chat',status:'completed',updatedAt:1,shots:Array.from({length:count},(_,i)=>({id:`s${i}`,prompt:'kept',status:'completed'}))},state={shotPlans:[plan]};let saved=0;
     const key='chat␟plan␟revision:'+'a'.repeat(64);
     const c=vm.createContext({configUndo:createConfigUndoSlot(),settings:state,clone:structuredClone,preserveCapturedPlanArchives,storyboardState:()=>state,storyboardPlanArchiveEpoch:0,storyboardPlanArchiveCache:new Map(),saveSettings(){saved++;},console:{warn(){}},storyboardPackageArchiveAllowed:async()=>true});
     c.blobStore={blobStoreAvailable:()=>true,putStoryboardPlanArchives:async()=>{if(mode==='stale')c.storyboardPlanArchiveEpoch++;return mode==='invalid'?{stored:[]}:{stored:[key]};}};
     vm.runInContext('"use strict";\n'+['storyboardPlanIsTerminal','storyboardPlanArchiveKey','storyboardPlanHasHeavyPayload','storyboardPlanArchivePayload','storyboardPlanLightweightSummary','storyboardArchiveShotPlans'].map(section).join('\n'),c);
     assert.equal(await c.storyboardArchiveShotPlans(),mode==='valid'?1:0);
-    if(mode==='valid'){assert.equal(state.shotPlans[0].archiveRef,key);assert.equal(c.storyboardPlanArchiveCache.get(key).shots[0].prompt,'kept');assert.equal(saved,1);}
+    if(mode==='valid'){assert.equal(state.shotPlans[0].archiveRef,key);assert.equal(c.storyboardPlanArchiveCache.get(key).shots[0].prompt,'kept');assert.equal(c.storyboardPlanArchiveCache.get(key).shots.length,count);assert.equal(state.shotPlans[0].shots.length,count);assert.equal(saved,1);}
     else{assert.equal(state.shotPlans[0],plan);assert.equal(plan.shots[0].prompt,'kept');assert.equal(saved,0);assert.equal(c.storyboardPlanArchiveCache.size,0);}
   }
 });

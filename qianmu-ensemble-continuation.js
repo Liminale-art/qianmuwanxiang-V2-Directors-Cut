@@ -1,3 +1,4 @@
+import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 import {normalizeEnsembleStyleOrigin,retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
 import {createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -41,7 +42,7 @@ export function configureEnsembleSceneContinuation({history,session,schema,paylo
     if(previous){if(JSON.stringify(previous.anchor)!==JSON.stringify(value))fail();continue;}
     anchors.push({id:`E${anchors.length+1}`,logicalId:row.id,anchor:value});
   }
-  if(anchors.length>4*(window.sources?.length||1))fail();
+  if(anchors.length>STORYBOARD_MAX_SHOTS*(window.sources?.length||1))fail();
   const byId=new Map(anchors.map(row=>[row.id,row.anchor]));
   const shot=schema.properties.shots.items;shot.properties.scene_predecessor={type:'string',enum:['',...byId.keys()]};shot.required.push('scene_predecessor');
   payload.prior_scene_anchors=anchors.map(({id,anchor:{moment,scene,source}})=>({id,floor:source.floor,branch_id:moment.branchId,narrative_layer:moment.layer,

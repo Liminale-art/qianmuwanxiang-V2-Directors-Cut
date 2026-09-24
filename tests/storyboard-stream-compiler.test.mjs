@@ -273,25 +273,73 @@ test('stream job preparation waits without touching plans when narrative request
   assert.deepEqual(q.outcomes,[{queued:0,failed:0,prepared:0}]);assert.equal(f.state.shotPlans.length,0);assert.equal(q.queue.length,0);assert.equal(q.rows.size,0);f.assertReleased();
 });
 
-function useShotSet(f,indexes,after){
+function useShotSet(f,indexes,after,sourceShots=response().shots){
   f.modelHook=({reply,payload:wire,options})=>{
     const payload=wire.context?.verified_handoff||wire;
     if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){
       reply.shots=indexes.map(index=>{
-        const {prompt_atoms,prompt_renderings,...shot}=response().shots[index],id=`P${index+1}`;
+        const {prompt_atoms,prompt_renderings,...shot}=sourceShots[index],id=`P${index+1}`;
         const quote=payload.source_catalogue.find(row=>row.floor===0).passages.find(row=>row.paragraph_id===id).text;
         const anchor={floor:0,branch_id:'present',paragraph_id:id,quote};
         return {...shot,...(options.jsonSchema.properties.shots.items.properties.gallery_keywords?{gallery_keywords:[]}:{}),state_point:{branchId:'present',paragraphId:id,evidence:quote},
           ...(payload.constraints.streaming?{stream_support:{scene:anchor,content:anchor,presence:shot.characters.map(character=>({character_id:character.character_id,source:anchor}))}}:{})};
       });
     }else reply.shots=payload.shots.map(item=>{
-      const shot=response().shots.find(shot=>shot.subject===item.plan.subject);
+      const shot=sourceShots.find(shot=>shot.subject===item.plan.subject);
       return {shot_id:item.shot_id,prompt_atoms:shot.prompt_atoms,prompt_renderings:Object.fromEntries(options.promptFormats.map(format=>[format,shot.prompt_renderings[format]]))};
     });
     after?.({reply,payload,options});
   };
 }
 const threeParagraphs='Alice reads a letter in the kitchen.\n\nA mountain valley stretches into the sunlight.\n\nA broken cup rests on the table.\n\nUnfinished';
+
+const sixDescriptions=['Alice reads a letter in the kitchen.','A mountain valley stretches into the sunlight.','A broken cup rests on the table.',
+  'Alice watches the rain beside a bedroom window.','A river bends around the forest.','A red umbrella leans against the stone wall.'];
+function sixShotExamples(){return sixDescriptions.map((description,index)=>{
+  const shot=copy(response().shots[index%3]);Object.assign(shot,{source_paragraph_ids:[`P${index+1}`],insert_after:`P${index+1}`,subject:description,narrative_purpose:description});
+  shot.scene.location=`scene-${index+1}`;shot.composition.focus=description;shot.composition.intent=description;shot.composition.continuity_key=`scene-${index+1}`;
+  shot.prompt_atoms.global=[description];for(const format of Object.values(shot.prompt_renderings))format.global=description;
+  return shot;
+});}
+
+for(const streaming of [false,true])test(`six-shot ${streaming?'streaming':'ordinary'} compiler preserves all jobs, order and one image per admission`,async()=>{
+  const f=await fixture({text:sixDescriptions.join('\n\n')+(streaming?'\n\nUnfinished':'')}),q=installStreamQueue(f);
+  f.state.generationPolicy={version:2,minImages:3,maxImages:6,concurrency:2};useShotSet(f,[0,1,2,3,4,5],null,sixShotExamples());
+  if(streaming)assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));
+  else{
+    Object.assign(f.state,{target:'floor',floor:'0'});
+    const ref=createStoryboardMessageReference({message:f.host.chat[0],chatKey:'chat-a',floor:0});
+    const plan=f.context.createStoryboardWorkflowTicket({id:'ordinary-six',chatKey:'chat-a',floor:0,messageRef:ref,origin:'automatic',autoGenerate:true});
+    f.state.shotPlans=[plan];assert.equal(await f.run({stream:null,onPrepared:null,plan,automatic:true}),true,JSON.stringify(f.errors));
+    assert.equal(await f.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify(f.notices));
+  }
+  assert.equal(q.queue.length,6);assert.equal(f.state.shotPlans[0].shots.length,6);assert.equal(q.rows.size,1);
+  assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2,3,4,5]);
+  assert.ok(q.queue.every(row=>row.imageAdmission.automaticSlot&&row.profile.count==='1'));
+  assert.equal(f.counts.requests,2);assert.equal(f.state.generationPolicy.concurrency,2);
+  const saved=normalizeStoryboardState(copy(f.state));
+  assert.deepEqual(saved.generationPolicy,{version:2,minImages:3,maxImages:6,concurrency:2});
+  assert.equal(saved.shotPlans[0].shots.length,6);assert.equal(saved.taskStates.length,6);
+  for(const job of q.queue)await q.admission.beforeSubmit(job);
+  assert.equal([...q.rows.values()][0].entries.filter(row=>row.status==='submitting').length,6);
+  f.assertReleased();
+});
+
+test('three early plus three later stream shots share one six-slot plan through reload and final notification',async()=>{
+  const f=await fixture({text:sixDescriptions.slice(0,3).join('\n\n')+'\n\n'}),q=installStreamQueue(f),shots=sixShotExamples();
+  f.state.generationPolicy={version:2,minImages:3,maxImages:6,concurrency:2};useShotSet(f,[0,1,2],null,shots);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));const first=copy(q.queue),planId=f.state.shotPlans[0].id;
+  f.host.chat[0].mes=sixDescriptions.join('\n\n')+'\n\nUnfinished';useShotSet(f,[3,4,5],null,shots);
+  assert.equal(await f.run(),true,JSON.stringify(f.errors));assert.equal(q.queue.length,6);assert.deepEqual(copy(q.queue.slice(0,3)),first);
+  assert.equal(f.calls[2].payload.constraints.committed_images.occupied,3);assert.equal(f.calls[2].payload.constraints.max_shots,3);
+  Object.assign(f.state,normalizeStoryboardState(copy(f.state)));assert.equal(f.state.shotPlans[0].id,planId);
+  f.host.chat[0].mes=sixDescriptions.join('\n\n');
+  useShotSet(f,[],({reply,options})=>{if(options.jsonSchemaName==='qianmu.storyboard.narrative.v1'){reply.should_generate=false;reply.skip_reason='本层六个画面已覆盖';}},shots);
+  const final=installFinalNotifications(f);assert.equal(await final.run(),false,JSON.stringify(f.errors));
+  assert.equal(f.state.shotPlans.length,1);assert.equal(f.state.shotPlans[0].shots.length,6);assert.equal(q.rows.size,1);assert.equal(q.queue.length,6);
+  const calls=f.counts.requests;assert.equal(await final.run(),false);assert.equal(f.counts.requests,calls);
+  f.assertReleased();
+});
 
 test('covered stream shots keep old tags and a later surviving mirror keeps its own keywords',async()=>{
   const f=await fixture({text:threeParagraphs}),q=installStreamQueue(f);f.state.galleryKeywords=['人物','物件'];
@@ -333,6 +381,21 @@ test('actual compiler maps verified style IDs through cast remapping into mixed 
     assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','novel']);assert.equal(q.queue[0].profile.comfyRouteBinding.id,'portrait');assert.equal(q.queue[1].artistPresetId,'style-artist');
     assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2]);assert.ok(q.queue.every(row=>row.profile.count==='1'&&row.imageAdmission.automaticSlot));
     assert.equal(f.calls.length,2);assert.equal(f.prepared.result.ensembleRequired,true);f.assertReleased();
+  }finally{binding.close();}
+});
+
+test('six narrative shots keep six matching styles across the actual mixed Comfy and NAI handoff',async()=>{
+  const f=await fixture({text:sixDescriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  f.state.generationPolicy={version:2,minImages:3,maxImages:6,concurrency:2};const binding=await installEnsembleChoices(f);
+  useShotSet(f,[0,1,2,3,4,5],({reply,options})=>{
+    if(options.jsonSchemaName==='qianmu.storyboard.expression.v1')reply.style_assignments=['cg','ink','current','cg','ink','current'].map((scheme_id,index)=>({shot_id:`S${index+1}`,scheme_id,reason:'同镜画风匹配'}));
+  },sixShotExamples());
+  try{
+    assert.equal(await f.run(),true,JSON.stringify({errors:f.errors,queue:q.errors.map(e=>e.message)}));
+    assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','novel','comfy','novel','novel']);
+    assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2,3,4,5]);
+    assert.equal(q.queue[1].artistPresetId,'style-artist');assert.equal(q.queue[4].artistPresetId,'style-artist');
+    assert.equal(f.counts.requests,2);assert.equal(f.prepared.result.shots.length,6);f.assertReleased();
   }finally{binding.close();}
 });
 test('actual coverage filtering preserves original wire-to-draft style mapping instead of assigning the omitted first style to the second mirror',async()=>{

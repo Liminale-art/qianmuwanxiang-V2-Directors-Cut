@@ -1,7 +1,8 @@
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.368';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.368';
-import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.368';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.368';
+import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.369';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.369';
+import {readStoryboardOrdinaryMoment,assertStoryboardOrdinaryMomentSpec} from './qianmu-storyboard-ordinary-moment.js?v=1.59.369';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.369';
 import {assertStoryboardStreamMoment,createStoryboardStreamMoment,storyboardStreamMomentsOverlap} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 import {captureEnsembleSceneAnchor} from './qianmu-ensemble-continuation.js';
 const coverages=new WeakMap();
@@ -89,7 +90,7 @@ export async function readStoryboardStreamCoverage(window,rows,{message,namespac
     if(slot){coveredSlots.add(slot);const slots=pinSlots.get(id)||new Map();slots.set(slot,{planId:job.planId,shotId:job.planShotId});pinSlots.set(id,slots);}
     if(!moment){pendingMoments.push({id,spec:job.shotSpec,oldWindow});continue;}
     if(old&&JSON.stringify(old.moment)!==JSON.stringify(moment))fail();
-    pins.set(id,{id,moment});if(pins.size>4)fail();
+    pins.set(id,{id,moment});if(pins.size>STORYBOARD_MAX_SHOTS)fail();
   }
   for(const {id,spec,oldWindow} of pendingMoments){const pin=pins.get(id);if(!pin)fail();assertStoryboardOrdinaryMomentSpec(pin.moment,spec);assertStoryboardStreamMoment(pin.moment,oldWindow);}
   // A retained plan with missing delivery/log evidence is not an empty budget.
@@ -144,6 +145,6 @@ export function filterStoryboardStreamCoveredNarrative(data,states,context,reque
 export function bindStoryboardStreamShotReferences(reference,result,window){
   if(!result.shouldGenerate)return [];
   const shots=result.contractTrace?.narrative?.shots;
-  if(!reference||!Array.isArray(shots)||shots.length!==result.shots.length||!shots.length||shots.length>4)fail();
+  if(!reference||!Array.isArray(shots)||shots.length!==result.shots.length||!shots.length||shots.length>STORYBOARD_MAX_SHOTS)fail();
   return shots.map(shot=>freeze({...copy(reference),stream:{...copy(reference.stream),moment:createStoryboardStreamMoment(shot,window)}}));
 }

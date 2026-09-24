@@ -632,6 +632,7 @@
     "qianmu-storyboard-continuity-link.js",
     "qianmu-storyboard-utils.js",
     "qianmu-storyboard.js",
+    "qianmu-storyboard-limits.js",
     "qianmu-theaters.js",
     "qianmu-tts-doubao.js",
     "qianmu-tts-elevenlabs.js",

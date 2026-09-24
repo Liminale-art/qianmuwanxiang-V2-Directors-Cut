@@ -1,9 +1,10 @@
+import {STORYBOARD_MAX_SHOTS} from './qianmu-storyboard-limits.js';
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.368';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.368';
-import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.368';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.369';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.369';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.369';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -16,7 +17,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
   const outcome = {queued:0, failed:0, prepared:0};
   if (!result.shouldGenerate) return outcome;
   if (result.manualRequired || !messageRef?.stream || !Array.isArray(result.shots) || !result.shots.length
-    || result.shots.length !== shotReferences?.length || result.shots.length > 4) throw stop('流式结果缺少已核对的画面来源，未提交');
+    || result.shots.length !== shotReferences?.length || result.shots.length > STORYBOARD_MAX_SHOTS) throw stop('流式结果缺少已核对的画面来源，未提交');
   const state = d.storyboardState(), chatKey = messageRef.chatKey;
   let plan, existing=false, restored=null, planSnapshot='',ensemble=null;
   const valid = () => inputGuard.isCurrent() && state === d.storyboardState() && state.enabled

@@ -105,7 +105,7 @@ const validationOptions = {
 };
 
 assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.additionalProperties, false);
-assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.maxItems, 4);
+assert.equal(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.maxItems, 6);
 assert.equal(Object.isFrozen(STORYBOARD_PLAN_RESPONSE_SCHEMA.properties.shots.items), true);
 assert.equal(STORYBOARD_SAFETY_RESPONSE_SCHEMA.additionalProperties, false);
 assert.equal(STORYBOARD_CONTRACT_MAX_BYTES, 256 * 1024);
