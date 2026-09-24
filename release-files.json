@@ -3,6 +3,8 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-feedback-report.js",
+    "qianmu-feedback-view.js",
     "qianmu-vibe-receipt-lineage.js",
     "qianmu-vibe-receipt-accounting.js",
     "qianmu-vibe-encoding-contract.js",

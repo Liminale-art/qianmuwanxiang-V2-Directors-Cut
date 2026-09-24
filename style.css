@@ -10966,3 +10966,21 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-comfy-scene-review .sd-comfy-scene-task { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 6px;margin-block:6px; }
 .sd-comfy-scene-review .sd-comfy-scene-task>code,.sd-comfy-scene-review .sd-comfy-scene-task>small { grid-column:1; }
 .sd-comfy-scene-review .sd-comfy-scene-task>button { grid-column:2;grid-row:1 / span 2;align-self:center; }
+
+/* Feedback stays inside the API page; no viewport overlay or background upload. */
+#story-director-modal .sd-feedback-card { min-width:0; }
+#story-director-modal .sd-feedback-card>summary { cursor:pointer;text-align:left; }
+#story-director-modal .sd-feedback-form { display:grid;gap:10px;min-width:0;margin-top:10px; }
+#story-director-modal .sd-feedback-field { display:grid;gap:5px;min-width:0;margin:0;text-align:left; }
+#story-director-modal .sd-feedback-field :is(select,textarea) { width:100%;min-width:0;max-width:100%;box-sizing:border-box;margin:0;font:inherit;text-align:left; }
+#story-director-modal .sd-feedback-field textarea { min-height:76px;resize:vertical; }
+#story-director-modal .sd-feedback-optional>summary { margin-bottom:6px;text-align:left;cursor:pointer; }
+#story-director-modal .sd-feedback-diagnostic { display:flex;gap:8px;align-items:center;min-height:32px;margin:0;text-align:left; }
+#story-director-modal .sd-feedback-diagnostic input { flex:0 0 auto;accent-color:var(--sd-accent); }
+#story-director-modal .sd-feedback-preview { white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:260px;max-height:min(36dvh,260px);min-width:0;margin:0;padding:10px;border-radius:var(--qm-control-radius,8px);background:var(--sd-input-bg,var(--sd-card-bg));color:var(--sd-text);font:inherit;line-height:1.6;text-align:left; }
+#story-director-modal .sd-feedback-actions { display:flex;gap:8px;flex-wrap:wrap; }
+#story-director-modal .sd-feedback-actions>.sd-btn { flex:1 1 120px;min-width:0;justify-content:center; }
+#story-director-modal .sd-feedback-contact { display:flex;gap:8px;flex-wrap:wrap;min-width:0; }
+#story-director-modal .sd-feedback-form p { margin:0;overflow-wrap:anywhere; }
+#story-director-modal .sd-feedback-contact>p { flex-basis:100%; }
+#story-director-modal .sd-feedback-status:empty { display:none; }
