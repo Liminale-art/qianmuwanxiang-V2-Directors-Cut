@@ -8,6 +8,13 @@ import {CHARACTER_NATIVE_SLOT, characterNativeFail as fail, characterNativeAccou
   characterNativeEqual as equal, characterNativeStoredHead as storedHead, characterNativeStoredBinding as storedBinding,
   characterNativeUsage, emptyCharacterNativeIndex, validateCharacterNativeIndex, characterNativeBackup, createCharacterNativeOriginals} from './qianmu-character-native-contract.js';
 
+// Pure presentation projection of an already validated directory. Session
+// selection may reuse its own read for the first overview, never for a write.
+export function characterNativeOverview(namespace,index){
+  return {rows:index.archives.map(row=>storedHead(namespace,row.head)).sort((a,b)=>b.updatedAt-a.updatedAt||a.id.localeCompare(b.id)),
+    bindings:index.bindings.map(row=>storedBinding(namespace,row)),imports:(index.imports||[]).filter(row=>row.pending.length).map(row=>({digest:row.digest,count:row.pending.length}))};
+}
+
 // Native archive-store interface, selected by the common archive session in
 // both main-thread and Worker consumers. Existing local originals are migrated
 // separately; selection never sends reads and writes to different libraries.
@@ -83,8 +90,7 @@ export function createCharacterNativeStore({createStorage = createConfiguredStAc
   }
   return Object.freeze({
     overview(namespace){return operation(namespace,null,async({read})=>{
-      const {index}=await read();return {rows:index.archives.map(row=>storedHead(namespace,row.head)).sort((a,b)=>b.updatedAt-a.updatedAt||a.id.localeCompare(b.id)),
-        bindings:index.bindings.map(row=>storedBinding(namespace,row)),imports:(index.imports||[]).filter(row=>row.pending.length).map(row=>({digest:row.digest,count:row.pending.length}))};
+      const {index}=await read();return characterNativeOverview(namespace,index);
     });},
     legacyImports(namespace){return operation(namespace,null,async({read})=>(await read()).index.imports?.filter(row=>row.pending.length).map(row=>({digest:row.digest,count:row.pending.length}))||[]);},
     previewLegacyImport(namespace,digest){checkDigest(digest);return operation(namespace,null,async({read,client,transport})=>{

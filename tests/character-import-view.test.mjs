@@ -96,7 +96,9 @@ test('review is bounded to 24 items per page, escapes names and disables unsafe 
 
 test('completed background changes refresh an idle list but never replace an open conflict review or detached panel',async t=>{
   const {host,store,controller,f}=await fixture(t);await store.save(namespace,{document:document('Fresh background')});
-  host.ownerDocument.dispatchEvent(new Event('qianmu-character-library-changed'));await settled(host);assert.match(host.innerHTML,/Fresh background/);
+  host.ownerDocument.dispatchEvent(new Event('qianmu-character-library-changed'));
+  assert.doesNotMatch(host.innerHTML,/aria-busy="true"/,'background validation must leave the list interactive');
+  await settled(host,()=>host.innerHTML.includes('Fresh background'));assert.match(host.innerHTML,/Fresh background/);
   host.button('legacy-open').emit('click');await settled(host);const before=host.innerHTML;f.reset();host.ownerDocument.dispatchEvent(new Event('qianmu-character-library-changed'));await settled(host);
   assert.equal(host.innerHTML,before);assert.equal(f.calls.length,0);controller.detach();host.ownerDocument.dispatchEvent(new Event('qianmu-character-library-changed'));await settled(host);assert.equal(f.calls.length,0);
 });

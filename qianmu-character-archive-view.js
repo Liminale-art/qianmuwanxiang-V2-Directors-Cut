@@ -108,9 +108,10 @@ export function renderCharacterArchive(view,{identity=()=>''}={}) {
 }
 
 export function createCharacterArchiveController({resolveNamespace,getContext,getScope,isCurrent=()=>true,onIcons=()=>{},identity,notify=()=>{},confirm=async()=>false,download,saveReference,onUserAliases,requestHeaders=()=>({}),
-  onCollapse=()=>{},collapsed={},store=createCharacterArchiveStore()}={}) {
+  onCollapse=()=>{},collapsed={},store,createStore=createCharacterArchiveStore,now=Date.now}={}) {
+  const ownsStore=!store;store ||= createStore();
   const view={rows:[],bindings:[],subjects:[],chatKey:'',search:'',draft:null,bindingEditor:null,legacyImports:[],legacyReview:null,collapsed:{...collapsed},shown:{},bindingShown:24,busy:false,error:''};
-  let host=null,namespace='',entry=0,disposed=false,verified=-1,events=null,loaded=false,listRead=null,listCache=null;const scrolls={list:0,editor:0,restore:0};
+  let host=null,namespace='',entry=0,disposed=false,verified=-1,events=null,loaded=false,listRead=null,listCache=null,contextScope,listEpoch=0,refreshWanted=false,refreshTask=null;const scrolls={list:0,editor:0,restore:0};
   const clearRestore=()=>{const r=view.restoring;r?.session?.close();r?.workflows?.close();r?.journal?.close();view.restoring=null;};
   const visible=()=>!disposed&&host?.isConnected&&isCurrent();
   const position=()=>host?.closest('.sd-storyboard-scroll');
@@ -123,45 +124,89 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
     else host.innerHTML=renderCharacterArchive(view,{identity});
     bind();onIcons(host);
   };
-  async function authorize(expected=entry) {
-    const next=await resolveNamespace();
+  const forgetList=()=>{listCache=null;listEpoch++;};
+  const sensitiveFailure=error=>/account|auth|scope|identity/.test(String(error?.code||''))||[401,403].includes(error?.status);
+  const forgetIdentity=()=>{clearRestore();view.legacyReview=null;view.legacyImports=[];view.draft=null;view.rows=[];view.bindings=[];view.bindingEditor=null;verified=-1;loaded=false;forgetList();};
+  async function authorize(expected=entry,{context=false}={}) {
+    let next;
+    try{next=await resolveNamespace();}catch(cause){if(!disposed&&expected===entry)forgetIdentity();throw Object.assign(new Error(cause?.message||'无法确认当前账户'),{code:'character_archive_identity',cause});}
     if(!visible()||expected!==entry)throw Error('页面已切换，操作未继续');
-    if(namespace&&next!==namespace){clearRestore();view.legacyReview=null;view.legacyImports=[];view.draft=null;view.rows=[];view.bindings=[];view.bindingEditor=null;verified=-1;loaded=false;listCache=null;namespace=next;throw Error('账户已切换，请刷新角色库');}
+    if(namespace&&next!==namespace){forgetIdentity();if(ownsStore){store.close();store=createStore();}namespace=next;throw Object.assign(new Error('账户已切换，请刷新角色库'),{code:'character_archive_account'});}
     namespace=next;
-    const context=await getContext();
-    if(!visible()||expected!==entry)throw Error('页面已切换，操作未继续');
-    if(view.chatKey!==context.chatKey)view.bindingEditor=null;
-    view.chatKey=context.chatKey;view.subjects=context.subjects;verified=entry;return next;
+    const scope=getScope?.();
+    // Resolve avatars/subjects once per interaction, not on every transport or
+    // post-read guard. The cheap scope and live account still gate every result.
+    if(context||verified!==entry||!getScope||scope!==contextScope){
+      const current=await getContext();
+      if(!visible()||expected!==entry||getScope&&scope!==getScope())throw Error('页面已切换，操作未继续');
+      if(view.chatKey!==current.chatKey)view.bindingEditor=null;
+      view.chatKey=current.chatKey;view.subjects=current.subjects;contextScope=scope;
+    }
+    verified=entry;return next;
   }
+  const applyList=data=>{view.rows=data.rows;view.bindings=data.bindings;view.legacyImports=data.imports;view.migrationStatus=data.migrationStatus||null;loaded=true;};
+  const readList=account=>{
+    if(!listRead||listRead.namespace!==account||listRead.epoch!==listEpoch){
+      const read={namespace:account,epoch:listEpoch,promise:null};
+      read.promise=Promise.resolve().then(()=>store.overview?store.overview(account):Promise.all([store.list(account),store.bindings(account)]).then(([rows,bindings])=>({rows,bindings,imports:[]})))
+        .then(value=>{if(!disposed&&namespace===account&&read.epoch===listEpoch)listCache={namespace:account,at:now(),data:value};return value;})
+        .finally(()=>{if(listRead===read)listRead=null;});
+      listRead=read;
+    }
+    return listRead.promise;
+  };
   const loadList=async(expected,{reuse=false}={})=>{
     const account=namespace;
-    if(!reuse)listCache=null;
-    let data=reuse&&listCache?.namespace===account&&Date.now()-listCache.at<30000?listCache.data:null;
-    if(!data){
-      if(!listRead||listRead.namespace!==account){
-        const read={namespace:account,promise:null};
-        read.promise=Promise.resolve().then(()=>store.overview?store.overview(account):Promise.all([store.list(account),store.bindings(account)]).then(([rows,bindings])=>({rows,bindings,imports:[]})))
-          .then(value=>{if(!disposed&&namespace===account)listCache={namespace:account,at:Date.now(),data:value};return value;})
-          .finally(()=>{if(listRead===read)listRead=null;});
-        listRead=read;
-      }
-      data=await listRead.promise;
-    }
+    if(!reuse)forgetList();
+    const age=listCache?now()-listCache.at:Infinity;
+    let data=reuse&&listCache?.namespace===account&&age>=0&&age<30*60*1000?listCache.data:null;
+    if(data&&age>=30000)refreshWanted=true;
+    if(reuse&&!data)loaded=false;
     // Rebuilt DOM reuses the same read, never its old authorization. A failed
     // initial read must not be presented as a successfully loaded empty list.
-    await authorize(expected);if(account!==namespace)throw Error('账户已切换，请刷新角色库');
-    view.rows=data.rows;view.bindings=data.bindings;view.legacyImports=data.imports;view.migrationStatus=data.migrationStatus||null;loaded=true;
+    let epoch=listEpoch;
+    for(;;){
+      if(!data){refreshWanted=false;epoch=listEpoch;data=await readList(account);}
+      await authorize(expected);if(account!==namespace)throw Error('账户已切换，请刷新角色库');
+      if(epoch===listEpoch)break;data=null;
+    }
+    applyList(data);
+  };
+  const editingField=()=>{const active=events?.activeElement;return active&&host?.contains(active)&&active.matches?.('input,textarea,select,[contenteditable="true"]');};
+  const idleList=()=>visible()&&!view.busy&&!view.draft&&!view.restoring&&!view.legacyReview&&!view.bindingEditor&&!editingField();
+  const revalidate=()=>{
+    if(!refreshWanted||refreshTask||!idleList())return;
+    refreshWanted=false;const expected=entry,account=namespace,epoch=listEpoch,task={};refreshTask=task;
+    // A read-only refresh does not disable controls, erase the list or replace
+    // an editor opened while the response was in flight.
+    void (async()=>{
+      try{
+        await authorize(expected);
+        const age=listCache?now()-listCache.at:Infinity;
+        // A previous host may have just completed this same read. Hand its
+        // verified result to the new host instead of fetching it a second time.
+        const data=listCache?.namespace===account&&age>=0&&age<30000?listCache.data:await readList(account);
+        await authorize(expected);
+        if(account===namespace&&epoch===listEpoch&&idleList()){remember();applyList(data);view.error='';draw();restore();}
+      }catch(error){
+        if(visible()&&expected===entry&&(epoch===listEpoch||sensitiveFailure(error))){
+          if(sensitiveFailure(error)){forgetIdentity();view.error=error.message||'无法确认当前账户';draw();}
+          else if(idleList()){view.error=error.message||'角色库暂未更新，请重试';draw();}
+        }
+      }finally{if(refreshTask===task)refreshTask=null;if(refreshWanted)revalidate();}
+    })();
   };
   const run=async work=>{
     if(view.busy||!visible())return;const expected=entry;view.busy=true;view.error='';draw();
     const guard=()=>authorize(expected);
-    try{await guard();await work(guard,expected);}catch(error){if(visible()&&expected===entry){view.error=error.message||'角色库操作失败';notify(view.error,'warning');}}
-    finally{view.busy=false;if(expected===entry)draw();else if(visible())void run((_guard,next)=>loadList(next,{reuse:true}));}
+    try{await authorize(expected,{context:true});await work(guard,expected);}catch(error){if(visible()&&expected===entry){if(sensitiveFailure(error))forgetIdentity();view.error=error.message||'角色库操作失败';notify(view.error,'warning');}}
+    finally{view.busy=false;if(expected===entry){draw();revalidate();}else if(visible())void run((_guard,next)=>loadList(next,{reuse:true}));}
   };
   const nativeChanged=()=>{
+    forgetList();refreshWanted=true;
     const active=events?.activeElement;
     if(!visible()||view.busy||view.draft||view.restoring||view.legacyReview||active&&host.contains(active)&&active.matches?.('input,textarea,select,[contenteditable="true"]'))return;
-    listCache=null;remember();void run((_guard,expected)=>loadList(expected)).then(()=>{if(visible())restore();});
+    revalidate();
   };
   const listen=node=>{events?.removeEventListener?.('qianmu-character-library-changed',nativeChanged);events=node;events?.addEventListener?.('qianmu-character-library-changed',nativeChanged);};
   // Existing archives have no version history: keep legacy fields on edit, not on new/copy drafts.
@@ -326,7 +371,7 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
   }
   return Object.freeze({
     mount(element){if(disposed)return;const changed=host!==element;if(changed)view.legacyReview=null;if(changed&&view.restoring){clearRestore();notify('恢复页面已重建，请重新选择原备份核对；已保存部分保留','info');}host=element;listen(host?.ownerDocument||globalThis.document);if(changed)entry++;draw();if(changed||verified!==entry||!loaded)void run((_guard,expected)=>loadList(expected,{reuse:true}));},
-    detach(){remember();clearRestore();view.legacyReview=null;listen(null);host=null;entry++;},
+    detach(){remember();clearRestore();view.legacyReview=null;host=null;entry++;},
     dispose(){clearRestore();view.legacyReview=null;listen(null);disposed=true;host=null;view.draft=null;listCache=null;entry++;store.close();},
   });
 }

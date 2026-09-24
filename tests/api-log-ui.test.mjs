@@ -6,6 +6,7 @@ import { renderModelDiagnostics } from '../qianmu-director-live.js';
 
 const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const skinCss = await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
 const start = entry.indexOf('const LOG_STATUS_LABELS =');
 const end = entry.indexOf('\nfunction renderTtsVoiceMapRows', start);
 assert.ok(start > 0 && end > start, 'production log renderer is available');
@@ -52,4 +53,13 @@ test('log signals are fixed-size circles with semantic green, red, yellow and ne
   assert.match(css, /\.sd-log-status\.error \{ color: #c95e5e; \}/);
   assert.match(css, /\.sd-log-status\.cancelled,\s*#story-director-modal \.sd-log-status\.loading \{ color: #a58035; \}/);
   assert.match(css, /\.sd-log-meta \{[^}]*font-size: \.85em;/);
+});
+
+test('daylight theme signals retain saturated semantic colors without dark-ink blending or night overrides', () => {
+  for (const [selector, color] of [['success', '#159461'], ['error', '#df4c5e'], ['is(.cancelled,.loading)', '#b88008']]) {
+    const suffix = selector.startsWith('is(') ? `:${selector}` : `.${selector}`;
+    assert.ok(skinCss.includes(`#story-director-modal[data-qm-theme][data-qm-mode="light"] .sd-log-status${suffix} { color: ${color}; }`));
+  }
+  assert.match(skinCss, /\[data-qm-theme\] \.sd-log-status\.success \{ color: color-mix\(in srgb, #4f9e6b 50%, var\(--qm-ink\)\); \}/);
+  assert.match(skinCss, /\[data-qm-theme\] \.sd-log-status\.error \{ color: color-mix\(in srgb, #c05050 50%, var\(--qm-ink\)\); \}/);
 });

@@ -373,6 +373,7 @@ const featureRuntime = createFeatureRuntime({
   },
   characterArchive: {
     label: '角色档案',
+    intent: '[data-storyboard-view="characters"]',
     load: () => loadLocalChunk('./qianmu-character-archive-view.js?v=1.59.371'),
   },
   characterCasting: {
@@ -31582,7 +31583,7 @@ function coreadIdentityAvatar(kind, { followHost = false } = {}) {
       const power = context?.powerUserSettings || context?.power_user || globalThis.power_user || {};
       // 冷启动缓存直接来自 ST 的 user_avatar 模块导出；DOM 与聊天头像仅作旧版本兼容兜底。
       const selectedAvatar = document.querySelector('#user_avatar_block .avatar-container.selected img, #user_avatar_block .avatar.selected img, #user_avatar_block .selected img');
-      const chatAvatar = [...document.querySelectorAll('#chat .mes[is_user="true"] .avatar img, #chat .mes.is_user .avatar img')].pop();
+      const chatAvatar = !coreadPersonaAvatarRaw && !selectedAvatar ? [...document.querySelectorAll('#chat .mes[is_user="true"] .avatar img, #chat .mes.is_user .avatar img')].pop() : null;
       raw = coreadPersonaAvatarRaw || selectedAvatar?.currentSrc || selectedAvatar?.src || chatAvatar?.currentSrc || chatAvatar?.src || '';
       // ST 当前激活人设头像由 user_avatar 维护；default_persona 只是最后兜底，二者并不等价。
       raw ||= context?.user_avatar || context?.userAvatar || globalThis.user_avatar

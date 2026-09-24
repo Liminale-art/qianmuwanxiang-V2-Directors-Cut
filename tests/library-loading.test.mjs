@@ -15,15 +15,14 @@ for(const [kind,render] of Object.entries(renderers)){
   });
 }
 
-function characterFixture({read=async()=>({rows:[],bindings:[],imports:[]}),account=async()=> 'st-user:fixture'}={}){
+function characterFixture({read=async()=>({rows:[],bindings:[],imports:[]}),account=async()=> 'st-user:fixture',...options}={}){
   let reads=0,closes=0;const document=new EventTarget();document.activeElement=null;
   const host=()=>({isConnected:true,ownerDocument:document,innerHTML:'',closest:()=>null,contains:()=>false,querySelector:()=>null,
     querySelectorAll(selector){if(selector!=='[data-archive-action]')return [];
-      if(!this.innerHTML.includes('data-archive-action="refresh"'))return [];const parent=this;
-      const button={dataset:{archiveAction:'refresh'},addEventListener(_type,fn){parent.retry=()=>fn({preventDefault(){},stopPropagation(){}});}};return [button];}});
+      const parent=this;return [...this.innerHTML.matchAll(/data-archive-action="([^"]+)"/g)].map(([,action])=>({dataset:{archiveAction:action,category:'char'},addEventListener(_type,fn){const invoke=()=>fn({preventDefault(){},stopPropagation(){}});if(action==='refresh')parent.retry=invoke;if(action==='new')parent.create=invoke;}}));}});
   const store={overview:async namespace=>{reads++;return read(namespace);},close(){closes++;}};
-  const controller=createCharacterArchiveController({store,resolveNamespace:account,getContext:async()=>({chatKey:'chat',subjects:[]})});
-  return {controller,host,get reads(){return reads;},get closes(){return closes;}};
+  const controller=createCharacterArchiveController({store,resolveNamespace:account,getContext:async()=>({chatKey:'chat',subjects:[]}),...options});
+  return {controller,host,document,get reads(){return reads;},get closes(){return closes;}};
 }
 
 test('character initial read failure stays a failure and its retry really reads again',async()=>{
@@ -54,6 +53,102 @@ test('character remount does not publish a cached account before a new live iden
     owner='st-user:new';first.isConnected=false;const second=f.host();f.controller.mount(second);assert.doesNotMatch(second.innerHTML,/st-user:old/);await flush();
     assert.match(second.innerHTML,/账户已切换/);assert.doesNotMatch(second.innerHTML,/st-user:old/);second.retry();await flush();assert.equal(f.reads,2);assert.match(second.innerHTML,/st-user:new/);
   }finally{f.controller.dispose();}
+});
+
+test('character reopens a confirmed empty library after freshness expires without another blocking screen',async()=>{
+  let time=1,finish,accounts=0,contexts=0;
+  const f=characterFixture({now:()=>time,getScope:()=> 'chat',account:async()=>{accounts++;return 'st-user:fixture';},
+    getContext:async()=>{contexts++;return {chatKey:'chat',subjects:[]};},read:()=>f.reads===1?Promise.resolve({rows:[],bindings:[],imports:[]}):new Promise(resolve=>finish=resolve)});
+  const first=f.host();
+  try{
+    f.controller.mount(first);await flush();assert.equal(f.reads,1);assert.equal(contexts,1);assert.ok(accounts>=2);
+    f.controller.detach();first.isConnected=false;time+=31000;const second=f.host();f.controller.mount(second);await flush();
+    assert.equal(f.reads,2);assert.match(second.innerHTML,/还没有保存/);assert.doesNotMatch(second.innerHTML,/正在读取角色库|aria-busy="true"/);assert.equal(contexts,2);
+    f.controller.mount(second);await flush();assert.equal(f.reads,2);
+    second.create();await flush();assert.match(second.innerHTML,/sd-character-editor/);
+    finish({rows:[{id:'one',name:'background',category:'char',aliases:[],cover:''}],bindings:[],imports:[]});await flush();
+    assert.match(second.innerHTML,/sd-character-editor/);assert.doesNotMatch(second.innerHTML,/background/);
+  }finally{f.controller.dispose();}
+});
+
+test('character close/reopen within freshness uses no catalogue read but still refreshes current subjects',async()=>{
+  let contexts=0;const f=characterFixture({getScope:()=> 'chat',getContext:async()=>{contexts++;return {chatKey:'chat',subjects:[]};}}),first=f.host();
+  try{f.controller.mount(first);await flush();f.controller.detach();first.isConnected=false;const second=f.host();f.controller.mount(second);await flush();
+    assert.equal(f.reads,1);assert.equal(contexts,2);assert.match(second.innerHTML,/还没有保存/);
+  }finally{f.controller.dispose();}
+});
+
+test('character changes while detached invalidate the otherwise fresh empty snapshot',async()=>{
+  const f=characterFixture(),first=f.host();
+  try{f.controller.mount(first);await flush();f.controller.detach();first.isConnected=false;f.document.dispatchEvent(new Event('qianmu-character-library-changed'));
+    const next=f.host();f.controller.mount(next);await flush();assert.equal(f.reads,2);assert.match(next.innerHTML,/还没有保存/);
+  }finally{f.controller.dispose();}
+});
+
+test('character invalidation during a pending read never paints the obsolete response or schedules a third read',async()=>{
+  const pending=[],f=characterFixture({read:()=>new Promise(resolve=>pending.push(resolve))}),host=f.host();
+  try{f.controller.mount(host);await flush();f.document.dispatchEvent(new Event('qianmu-character-library-changed'));
+    pending[0]({rows:[{id:'old',name:'obsolete-row',category:'char',aliases:[],cover:''}],bindings:[],imports:[]});await flush();
+    assert.equal(f.reads,2);assert.doesNotMatch(host.innerHTML,/obsolete-row/);
+    pending[1]({rows:[],bindings:[],imports:[]});await flush();assert.equal(f.reads,2);assert.match(host.innerHTML,/还没有保存/);
+  }finally{f.controller.dispose();}
+});
+
+test('character background response does not rebuild the focused search input',async()=>{
+  let time=1,finish;const f=characterFixture({now:()=>time,getScope:()=> 'chat',read:()=>f.reads===1?Promise.resolve({rows:[],bindings:[],imports:[]}):new Promise(resolve=>finish=resolve)}),first=f.host();
+  try{f.controller.mount(first);await flush();f.controller.detach();first.isConnected=false;time+=31000;const next=f.host();f.controller.mount(next);await flush();
+    const before=next.innerHTML;f.document.activeElement={matches:()=>true};next.contains=()=>true;
+    finish({rows:[{id:'new',name:'deferred-new-row',category:'char',aliases:[],cover:''}],bindings:[],imports:[]});await flush();
+    assert.equal(next.innerHTML,before);f.document.activeElement=null;f.controller.detach();next.isConnected=false;
+    const third=f.host();f.controller.mount(third);await flush();assert.equal(f.reads,2);assert.match(third.innerHTML,/deferred-new-row/);
+  }finally{f.controller.dispose();}
+});
+
+test('character detach/remount during stale background refresh hands off the completed read without fetching twice',async()=>{
+  let time=1,finish;const f=characterFixture({now:()=>time,getScope:()=> 'chat',read:()=>f.reads===1?Promise.resolve({rows:[],bindings:[],imports:[]}):new Promise(resolve=>finish=resolve)}),first=f.host();
+  try{f.controller.mount(first);await flush();f.controller.detach();first.isConnected=false;time+=31000;
+    const second=f.host();f.controller.mount(second);await flush();assert.equal(f.reads,2);
+    f.controller.detach();second.isConnected=false;const third=f.host();f.controller.mount(third);await flush();
+    finish({rows:[{id:'ready',name:'handed-off-result',category:'char',aliases:[],cover:''}],bindings:[],imports:[]});await flush();
+    assert.equal(f.reads,2);assert.match(third.innerHTML,/handed-off-result/);
+  }finally{f.controller.dispose();}
+});
+
+test('character owned store is replaced on account switch so a retry is not trapped in the old session',async()=>{
+  let owner='st-user:first';const created=[],closed=[];
+  const f=characterFixture({store:undefined,account:async()=>owner,createStore:()=>{
+    const account=owner;created.push(account);return {overview:async namespace=>{assert.equal(namespace,account);return {rows:[],bindings:[],imports:[]};},close:()=>closed.push(account)};
+  }}),first=f.host();
+  try{f.controller.mount(first);await flush();f.controller.detach();first.isConnected=false;owner='st-user:second';const second=f.host();f.controller.mount(second);await flush();
+    assert.match(second.innerHTML,/账户已切换/);second.retry();await flush();assert.match(second.innerHTML,/还没有保存/);
+    assert.deepEqual(created,['st-user:first','st-user:second']);assert.deepEqual(closed,['st-user:first']);
+  }finally{f.controller.dispose();assert.deepEqual(closed,['st-user:first','st-user:second']);}
+});
+
+test('character snapshots older than the retention window cannot mask a failed first read',async()=>{
+  let time=1,fail=false;const f=characterFixture({now:()=>time,read:async()=>{if(fail)throw Error('offline');return {rows:[],bindings:[],imports:[]};}}),first=f.host();
+  try{f.controller.mount(first);await flush();f.controller.detach();first.isConnected=false;time+=31*60*1000;fail=true;const next=f.host();f.controller.mount(next);await flush();
+    assert.equal(f.reads,2);assert.match(next.innerHTML,/offline/);
+  }finally{f.controller.dispose();}
+});
+
+for(const failure of ['account','auth','network'])test(`character stale-background ${failure} failure does not expose foreign data or mislabel first-load success`,async()=>{
+  let time=1,owner='st-user:first',finish;
+  const f=characterFixture({now:()=>time,getScope:()=> 'chat',account:async()=>owner,
+    read:()=>f.reads===1?Promise.resolve({rows:[{id:'one',name:'private-old',category:'char',aliases:[],cover:''}],bindings:[],imports:[]}):new Promise((resolve,reject)=>finish={resolve,reject})}),first=f.host();
+  try{f.controller.mount(first);await flush();f.controller.detach();first.isConnected=false;time+=31000;const next=f.host();f.controller.mount(next);await flush();
+    assert.match(next.innerHTML,/private-old/);
+    if(failure==='account'){owner='st-user:second';finish.resolve({rows:[],bindings:[],imports:[]});}
+    else finish.reject(Object.assign(Error(failure==='auth'?'not authorized':'offline'),failure==='auth'?{status:401}:{}));
+    await flush();assert.match(next.innerHTML,/role="alert"/);
+    if(failure==='network')assert.match(next.innerHTML,/private-old/);else assert.doesNotMatch(next.innerHTML,/private-old/);
+  }finally{f.controller.dispose();}
+});
+
+test('character scope changes during avatar resolution cannot publish a wrong-chat binding',async()=>{
+  let scope='chat-a';const f=characterFixture({getScope:()=>scope,getContext:async()=>{scope='chat-b';return {chatKey:'chat-a',subjects:[]};}}),host=f.host();
+  try{f.controller.mount(host);await flush();assert.equal(f.reads,0);assert.match(host.innerHTML,/页面已切换/);assert.doesNotMatch(host.innerHTML,/还没有保存/);}
+  finally{f.controller.dispose();}
 });
 
 test('workflow errors remain readable inside an editor without removing the draft or adding an apply action',()=>{

@@ -6,6 +6,7 @@ import {createCharacterArchiveSession} from '../qianmu-character-archive-session
 import {readCharacterCasting} from '../qianmu-character-casting.js';
 import {readStoryboardBoundSubjects} from '../qianmu-storyboard-subject-evidence.js';
 import {characterLibraryBackupDigest} from '../qianmu-character-library-backup.js';
+import {emptyCharacterNativeIndex} from '../qianmu-character-native-contract.js';
 
 const emptySummary = () => ({version: 1, status: 'ready', namespace, bytes: 0, filesIncluded: false,
   documents: {count: 0, bytes: 0}, bindings: {count: 0, bytes: 0}, indexes: {count: 0, bytes: 0}});
@@ -31,6 +32,63 @@ test('new empty library selects ST by validated local metadata audit, without ea
   assert.deepEqual(legacy.calls, ['storageSummary']); assert.equal(legacy.state.closed, 1); assert.equal(f.uploads, 0);
   const head = await store.save(namespace, {document: document()}); assert.equal((await f.open().load(namespace, head.id)).document.name, 'Alice');
   assert.equal(legacy.calls.includes('save'), false);
+});
+
+test('first empty overview consumes its two live missing-head checks without a third download or any empty upload',async t=>{
+  const f=await characterNativeFixture(t),{store,legacy}=session(t,f);f.reset();
+  const view=await store.overview(namespace);
+  assert.deepEqual(view.rows,[]);assert.deepEqual(view.bindings,[]);assert.deepEqual(view.imports,[]);
+  assert.equal(f.calls.length,2);assert.ok(f.calls.every(call=>call.request.method==='GET'&&call.path.endsWith('-character-library.json')));
+  assert.deepEqual(legacy.calls,['storageSummary']);assert.equal(legacy.state.closed,1);assert.equal(f.uploads,0);
+  f.reset();await store.overview(namespace);assert.equal(f.calls.length,1,'later explicit reads still probe the remote head');
+});
+
+test('first existing empty overview fetches one head and one immutable directory, never IDB or originals',async t=>{
+  const f=await characterNativeFixture(t);await f.writeIndex(emptyCharacterNativeIndex(namespace));
+  const {store,legacy}=session(t,f);f.reset();const view=await store.overview(namespace);
+  assert.deepEqual(view.rows,[]);assert.deepEqual(view.bindings,[]);assert.equal(f.calls.length,2);
+  assert.equal(f.calls.filter(call=>call.path.endsWith('-character-library.json')).length,1);
+  assert.equal(legacy.state.opened,0);assert.equal(f.originalReads,0);assert.equal(f.uploads,0);
+  f.reset();await store.overview(namespace);assert.equal(f.calls.length,2,'the selection snapshot is never a cross-call cache');
+});
+
+test('concurrent first overviews share only their validated selection snapshot',async t=>{
+  const f=await characterNativeFixture(t);await seed(f);const {store,legacy}=session(t,f);f.reset();
+  const views=await Promise.all([store.overview(namespace),store.overview(namespace)]);
+  assert.deepEqual(views.map(view=>view.rows[0].name),['Alice','Alice']);assert.equal(f.calls.length,2);assert.equal(f.originalReads,0);
+  assert.equal(legacy.state.opened,0);views[0].rows.length=0;assert.equal(views[1].rows.length,1);
+  f.reset();await store.overview(namespace);assert.equal(f.calls.length,2);
+});
+
+test('overview sees native publication during local empty audit instead of reusing the first absent head',async t=>{
+  const f=await characterNativeFixture(t),legacy=localFixture();
+  legacy.store.storageSummary=async()=>{await seed(f);f.reset();return legacy.summary;};
+  const {store}=session(t,f,legacy),view=await store.overview(namespace);
+  assert.equal(view.rows[0].name,'Alice');assert.equal(f.calls.length,2);assert.equal(f.originalReads,0);assert.equal(f.uploads,0);
+});
+
+test('first overview rejects an unreadable or corrupt directory without treating it as an empty library',async t=>{
+  const f=await characterNativeFixture(t);await f.writeIndex(emptyCharacterNativeIndex(namespace));
+  const {store,legacy}=session(t,f);
+  for(const status of [401,503]){
+    f.hook(()=>new Response('{}',{status,headers:{'content-type':'application/json'}}));
+    await assert.rejects(()=>store.overview(namespace));assert.equal(legacy.state.opened,0);
+  }
+  f.hook(null);const remote=await f.readIndex();remote.value.unknown=true;await f.writeIndex(remote.value);f.reset();
+  await assert.rejects(()=>store.overview(namespace),/目录/);assert.equal(legacy.state.opened,0);assert.equal(f.uploads,0);
+});
+
+test('a previously observed native head cannot become empty after its first overview snapshot',async t=>{
+  const f=await characterNativeFixture(t);await f.writeIndex(emptyCharacterNativeIndex(namespace));const {store}=session(t,f);
+  await store.overview(namespace);f.files.delete([...f.files.keys()].find(name=>name.endsWith('-character-library.json')));f.reset();
+  await assert.rejects(()=>store.overview(namespace),/空库/);
+  await assert.rejects(()=>store.save(namespace,{document:document()}),/空库/);assert.equal(f.uploads,0);
+});
+
+test('a first empty overview never supplies a stale snapshot to a subsequent save',async t=>{
+  const f=await characterNativeFixture(t),{store}=session(t,f);await store.overview(namespace);await seed(f);
+  await store.save(namespace,{document:document('Second')});
+  assert.deepEqual((await store.overview(namespace)).rows.map(row=>row.name).sort(),['Alice','Second']);
 });
 
 test('existing native directory never opens IDB, even if that browser DB is inaccessible', async t => {

@@ -1,6 +1,6 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {createCharacterNativeStore} from './qianmu-character-native-store.js';
-import {CHARACTER_NATIVE_SLOT, characterNativeAccount, validateCharacterNativeIndex, characterNativeFail as fail} from './qianmu-character-native-contract.js';
+import {createCharacterNativeStore,characterNativeOverview} from './qianmu-character-native-store.js';
+import {CHARACTER_NATIVE_SLOT, characterNativeAccount, emptyCharacterNativeIndex, validateCharacterNativeIndex, characterNativeFail as fail} from './qianmu-character-native-contract.js';
 import {validateCharacterStorageSummary} from './qianmu-character-storage.js';
 import {requestCharacterMigration,getCharacterMigrationStatus} from './qianmu-character-migration-idle.js';
 import {emptyCharacterSources} from './qianmu-character-source-backup.js';
@@ -56,21 +56,31 @@ export function createCharacterArchiveSession({createLocal, createStorage = crea
     if (result.exists) validateCharacterNativeIndex(result.value, {namespace: owner, scope: storage.scope});
     return result.exists;
   }
-  async function select(namespace, transport, check) {
-    await connect(namespace); check(); if (native) { requestMigration({namespace,createLocal,createStorage});return native; }
+  async function select(namespace, transport, check, readOverview = false) {
+    await connect(namespace); check(); if (native) { requestMigration({namespace,createLocal,createStorage});return {store:native}; }
     if (!selecting) selecting = (async () => {
-      if (await inspectNative(transport)) return activateNative();
+      let overviewIndex;
+      const inspect=async()=>{
+        if(!readOverview)return inspectNative(transport);
+        // Keep selection and the first overview in one read. Do not memoize a
+        // missing head across calls or use this snapshot for any write path.
+        const result=await storage.read(CHARACTER_NATIVE_SLOT,transport);check();
+        overviewIndex=validateCharacterNativeIndex(result.exists?result.value:emptyCharacterNativeIndex(namespace),{namespace,scope:storage.scope});
+        return result.exists;
+      };
+      const activate=(required=true)=>({store:activateNative(required),overviewIndex});
+      if (await inspect()) return activate();
       if (!inspectedLocal) {
         const summary = validateCharacterStorageSummary(await getLocal().storageSummary(namespace, {isCurrent: () => { check(); return true; }}), namespace); check();
         // The atomic IDB metadata/key audit detects orphan originals without
         // loading or normalizing old documents just to decide whether it is empty.
         // Recheck after the IDB audit: another device may have published ST.
-        if (await inspectNative(transport)) return activateNative();
+        if (await inspect()) return activate();
         inspectedLocal = true;
-        if (!summary.documents.count && !summary.bindings.count) return activateNative(false);
+        if (!summary.documents.count && !summary.bindings.count) return activate(false);
       }
       requestMigration({namespace,createLocal,createStorage});
-      return getLocal();
+      return {store:getLocal()};
     })().finally(() => { selecting = null; });
     const selected = await selecting; check(); return selected;
   }
@@ -80,11 +90,12 @@ export function createCharacterArchiveSession({createLocal, createStorage = crea
     if (typeof current !== 'function') fail('changed','角色库缺少当前身份保护');
     const check = () => { alive(); if (options.signal?.aborted || current() !== true) fail('changed','角色库页面或账户已变化'); };
     const transport = {signal: options.signal, guard: () => { check(); return true; }};
-    check(); const selected = await select(namespace, transport, check); check();
+    check(); const selection = await select(namespace, transport, check, method==='overview'),selected=selection.store; check();
     let wrote = false;
     try {
       let result;
-      if(selected!==native&&method==='legacyImports')result=[];
+      if(selected===native&&method==='overview'&&selection.overviewIndex)result=characterNativeOverview(namespace,selection.overviewIndex);
+      else if(selected!==native&&method==='legacyImports')result=[];
       else if(selected!==native&&method==='backupSources')result=emptyCharacterSources(namespace);
       else if(selected!==native&&['previewSources','verifySources','restoreSources'].includes(method))fail('setup','旧本机角色库尚未完成ST保全，请保留原包，待自动迁移完成后重新核对');
       else if(selected!==native&&method==='overview'){const [rows,bindings]=await Promise.all([selected.list(namespace),selected.bindings(namespace)]);result={rows,bindings,imports:[]};}

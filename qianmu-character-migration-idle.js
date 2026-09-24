@@ -1,5 +1,5 @@
 import {createConfiguredStAccountStorage,getStAccountStorageReadScope} from './qianmu-st-account-storage.js';
-import {scheduleCollectionMigrationSteps} from './qianmu-text-collection-migration-idle.js';
+import {scheduleCollectionMigrationSteps} from './qianmu-idle-migration-scheduler.js';
 
 const jobs=new WeakMap();
 export function getCharacterMigrationStatus(namespace){

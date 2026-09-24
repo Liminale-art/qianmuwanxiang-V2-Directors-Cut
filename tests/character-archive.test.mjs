@@ -108,3 +108,29 @@ test('archive runtime is lazy and disposed with the main plugin; no separate set
   assert.match(storyboardFunctionSource('storyboardEndSession'),/storyboardCharacterArchiveController\?\.detach\(\)/);
   assert.match(code,/storyboardCharacterArchiveController\?\.dispose\(\)/);
 });
+
+test('actual storyboard owner retains the same empty-library controller across closing and reopening the whole panel',async()=>{
+  let reads=0,creations=0,closed=0;
+  const state={view:'characters'},host=()=>({isConnected:true,innerHTML:'',closest:()=>null,querySelector:()=>null,querySelectorAll:()=>[]});
+  const noop=()=>{},context=vm.createContext({
+    storyboardState:()=>state,activeTab:'imagegen',ctx:()=>({chatId:'chat',groupId:null,characterId:0}),
+    resolveImageAccountNamespace:async()=> 'st-user:fixture',storyboardCharacterArchiveContext:async()=>({chatKey:'chat',subjects:[]}),
+    featureRuntime:{load:async()=>({createCharacterArchiveController:options=>{creations++;return createCharacterArchiveController({...options,
+      store:{overview:async()=>{reads++;return {rows:[],bindings:[],imports:[]};},close:()=>closed++}});}})},
+    storyboardCharacterArchiveController:null,storyboardOpenUserAliases:noop,storyboardRequestHeaders:()=>({}),renderCoreadIdentity:noop,
+    toast:noop,confirmDialog:noop,applyQianmuIcons:noop,ttsDownloadBlob:noop,saveSettings:noop,htmlEscape:String,
+    storyboardEnsembleController:null,storyboardLinkReview:null,storyboardBundleReview:null,storyboardVibeLibraryController:null,
+    storyboardVibeControllerContext:null,storyboardVibeSelection:null,storyboardTagDraft:null,storyboardTagEditorState:null,
+    storyboardComfyLibraryController:null,storyboardComfyPoolController:null,storyboardPendingRestoreScroll:null,storyboardPresetUndo:null,
+    storyboardPresetUndoTimer:null,clearTimeout:noop,document:{getElementById:()=>null},MODAL_ID:'fixture',
+  });
+  vm.runInContext(storyboardFunctionSource('storyboardMountCharacterArchive')+'\n'+storyboardFunctionSource('storyboardEndSession'),context);
+  const settle=async()=>{for(let i=0;i<5;i++)await new Promise(resolve=>setImmediate(resolve));};
+  const first=host();
+  try{
+    await context.storyboardMountCharacterArchive({querySelector:()=>first});await settle();assert.equal(reads,1);
+    context.storyboardEndSession();first.isConnected=false;
+    const next=host();await context.storyboardMountCharacterArchive({querySelector:()=>next});await settle();
+    assert.equal(creations,1);assert.equal(reads,1);assert.equal(closed,0);assert.match(next.innerHTML,/还没有保存/);
+  }finally{context.storyboardCharacterArchiveController?.dispose();assert.equal(closed,1);}
+});

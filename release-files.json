@@ -33,6 +33,7 @@
     "qianmu-character-reconciliation.js",
     "qianmu-character-migration.js",
     "qianmu-character-migration-idle.js",
+    "qianmu-idle-migration-scheduler.js",
     "qianmu-gallery-collections-view.js",
     "qianmu-gallery-choice-picker.js",
     "qianmu-gallery-membership.js",

@@ -1,6 +1,7 @@
 // Production API-log renderer and theme styles, with synthetic in-memory records only.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -13,6 +14,8 @@ const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHAN
 const context = await browser.newContext(), page = await context.newPage(), checks = [], errors = [];
 let external = 0;
 const deadline = setTimeout(() => { void browser.close(); }, 90000);
+const screenshotDirectory = process.env.QIANMU_VISUAL_QA_DIR;
+if (screenshotDirectory) await mkdir(screenshotDirectory, { recursive: true });
 const ok = (name, result) => { assert.ok(result, name); checks.push(name); };
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
@@ -47,7 +50,7 @@ try {
         const bg=[...draw.getImageData(Math.floor(rect.x+rect.width/2),Math.floor(rect.y+rect.height/2),1,1).data];
         draw.clearRect(0,0,1,1);draw.fillStyle=`rgb(${bg.slice(0,3).join(',')})`;draw.fillRect(0,0,1,1);draw.fillStyle=style.backgroundColor;draw.fillRect(0,0,1,1);
         const fg=[...draw.getImageData(0,0,1,1).data], a=luminance(bg),b=luminance(fg);
-        return {label:node.getAttribute('aria-label'),title:node.title,role:node.getAttribute('role'),text:node.textContent,width:rect.width,height:rect.height,radius:style.borderRadius,color:style.backgroundColor,contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),metaSize:parseFloat(getComputedStyle(meta).fontSize),summarySize:parseFloat(getComputedStyle(summary).fontSize)};
+        return {label:node.getAttribute('aria-label'),title:node.title,role:node.getAttribute('role'),text:node.textContent,width:rect.width,height:rect.height,radius:style.borderRadius,color:style.backgroundColor,rgb:fg.slice(0,3),contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),metaSize:parseFloat(getComputedStyle(meta).fontSize),summarySize:parseFloat(getComputedStyle(summary).fontSize)};
       });
     };
   }, source);
@@ -64,10 +67,18 @@ try {
     ok(label+' round small stable signals',signals.every(x=>x.width===8 && x.height===8 && x.radius==='50%'));
     ok(label+' yellow active/cancelled and neutral unknown',signals[2].color===signals[3].color && signals[4].color===signals[5].color && new Set([signals[0].color,signals[1].color,signals[2].color,signals[4].color]).size===4);
     ok(label+' graphical contrast at least 3:1 '+signals.map(x=>x.contrast.toFixed(2)).join(','),signals.every(x=>x.contrast>=3));
+    if (family !== 'classic' && mode === 'light') {
+      ok(label+' daylight green red amber keep saturated color rather than text-ink mixing',
+        JSON.stringify(signals.slice(0,4).map(x=>x.rgb))===JSON.stringify([[21,148,97],[223,76,94],[184,128,8],[184,128,8]]));
+    }
     ok(label+' date and duration use smaller type',signals.every(x=>x.metaSize<x.summarySize));
     await page.locator('.sd-log-entry > summary').first().focus(); await page.keyboard.press('Enter');
     ok(label+' keyboard details preserve original response',await page.evaluate(()=>document.querySelector('.sd-log-entry').open && document.querySelector('.sd-log-entry .sd-log-detail').textContent.includes('原始回复 {"kept":true}') && !document.querySelector('.sd-log-list script')));
     ok(label+' no horizontal overflow',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    if (screenshotDirectory && family === 'glass' && width === 393) {
+      await page.locator('.sd-log-entry > summary').first().click();
+      await page.screenshot({ path: join(screenshotDirectory, `api-log-glass-${mode}.png`) });
+    }
   }
   ok('no external network and no browser errors',external===0 && errors.length===0);
   console.log(JSON.stringify({passed:checks.length,checks,external,errors},null,2));

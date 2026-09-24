@@ -9,7 +9,7 @@ import {characterNativeFixture,namespace,document} from './helpers/character-nat
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const origin='https://st.fixture.invalid',rtt=35;
 
-test('cold character selection removes one serial catalogue body RTT, not authorization or native validation',async t=>{
+test('cold character overview shares one validated head/body pair regardless of fingerprint-only adapter support',async t=>{
  const f=await characterNativeFixture(t);await f.open().save(namespace,{document:document()});
  const snapshots=[];
  for(const oldAdapter of [true,false]){
@@ -22,9 +22,9 @@ test('cold character selection removes one serial catalogue body RTT, not author
   snapshots.push({requests:f.calls.length,elapsed,bodies:f.calls.filter(row=>/-character-library-[a-f0-9]{64}\.json$/.test(row.path)).length});
   store.close();
  }
- assert.deepEqual(snapshots.map(row=>row.requests),[4,3]);assert.deepEqual(snapshots.map(row=>row.bodies),[2,1]);
- assert.ok(snapshots[1].elapsed< snapshots[0].elapsed-rtt*.5,JSON.stringify({rtt,snapshots}));
- t.diagnostic(JSON.stringify({scope:'synthetic sequential ST GETs',rttMs:rtt,before:snapshots[0],after:snapshots[1]}));
+ assert.deepEqual(snapshots.map(row=>row.requests),[2,2]);assert.deepEqual(snapshots.map(row=>row.bodies),[1,1]);
+ for(const row of snapshots)assert.ok(row.elapsed>=rtt*1.8,'both file transports must still be awaited');
+ t.diagnostic(JSON.stringify({scope:'synthetic sequential ST GETs',rttMs:rtt,withoutFingerprint:snapshots[0],withFingerprint:snapshots[1]}));
 });
 
 test('Worker live verification uses one uncached identity RTT per guard, without repeating a CSRF handoff',async t=>{

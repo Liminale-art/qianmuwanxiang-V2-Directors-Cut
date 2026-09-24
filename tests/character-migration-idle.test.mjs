@@ -4,6 +4,7 @@ import {characterNativeFixture,namespace} from './helpers/character-native-fixtu
 import {characterLegacyFixture,legacyPacket} from './helpers/character-legacy-fixture.mjs';
 import {requestCharacterMigration,getCharacterMigrationStatus} from '../qianmu-character-migration-idle.js';
 import {createCharacterArchiveStore} from '../qianmu-character-archive-store.js';
+import {readFile} from 'node:fs/promises';
 
 function browser(t,{expose=false}={}){
   const window=new EventTarget(),document=new EventTarget(),timers=new Map();let time=0,id=0,stream=null;
@@ -19,6 +20,26 @@ function browser(t,{expose=false}={}){
 }
 async function setup(t){const f=await characterNativeFixture(t),old=characterLegacyFixture(t),b=browser(t);f.configure();f.reset();
   const request=()=>requestCharacterMigration({...b,namespace,createLocal:old.createLocal,createStorage:f.createStorage});return {f,old,b,request};}
+
+test('role idle scheduling imports no collection migration and preserves its shared scheduler export',async()=>{
+  const source=await readFile(new URL('../qianmu-character-migration-idle.js',import.meta.url),'utf8');
+  assert.match(source,/from '\.\/qianmu-idle-migration-scheduler\.js'/);assert.doesNotMatch(source,/from '\.\/qianmu-text-collection/);
+  const [{scheduleCollectionMigrationSteps:a},{scheduleCollectionMigrationSteps:b}]=await Promise.all([
+    import('../qianmu-idle-migration-scheduler.js'),import('../qianmu-text-collection-migration-idle.js')]);
+  assert.equal(a,b);
+  const scheduler=await readFile(new URL('../qianmu-idle-migration-scheduler.js',import.meta.url),'utf8');
+  assert.doesNotMatch(scheduler,/\bimport\s*(?:\(|\{|['"])/);
+  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
+  assert.ok(release.files.includes('qianmu-idle-migration-scheduler.js'));
+});
+
+test('empty-library deferred audit creates no native directory and emits no redundant changed event',async t=>{
+  const f=await characterNativeFixture(t),packet=legacyPacket({count:0});packet.bindings=[];packet.usage.bindings=0;
+  const old=characterLegacyFixture(t,packet),b=browser(t);f.configure();let events=0;
+  b.document.addEventListener('qianmu-character-library-changed',()=>events++);
+  requestCharacterMigration({...b,namespace,createLocal:old.createLocal,createStorage:f.createStorage});await b.drain();
+  assert.equal(events,0);assert.equal(f.uploads,0);assert.equal(getCharacterMigrationStatus(namespace).status,'complete');
+});
 
 test('idle migration opens neither IDB nor network before quiet time, coalesces requests and closes its own clients',async t=>{
   const {f,old,b,request}=await setup(t);request();request();assert.equal(b.timers.size,1);assert.equal(old.opened,0);assert.equal(f.calls.length,0);

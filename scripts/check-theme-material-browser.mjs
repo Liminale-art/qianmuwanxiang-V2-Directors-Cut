@@ -53,7 +53,7 @@ try {
       window.root = document.getElementById('story-director-modal');
       root.querySelectorAll('details').forEach(node => node.open = true);
       window.controller = theme.createQianmuThemeSurfaceController(); controller.register(root);
-      window.draft = [...root.querySelectorAll('textarea')].find(node => !node.disabled && node.getClientRects().length);
+      window.draft = [...root.querySelectorAll('textarea, input:not([type]), input[type="text"]')].find(node => !node.disabled && node.getClientRects().length);
       if (!draft) throw Error('Missing real editable form field');
       draft.value = '切换外观仍保留这份草稿';
       window.originalFields = [...root.querySelectorAll('button,input,textarea,select')];
@@ -120,6 +120,9 @@ try {
       // CSSOM may omit the optional "circle" keyword for a single pixel radius.
       const circles = [...result.image.matchAll(/radial-gradient\((?:circle )?([\d.]+)px at /g)].map(match => +match[1]);
       assert.equal(circles.length, 2, result.image); assert.ok(circles[0] > circles[1]);
+      assert.ok(circles[0] >= 440 * 1.3 && circles[1] >= 320 * 1.3, 'both diffusion fields expand by at least 30% from the prior desktop radii');
+      assert.match(result.image, /\/ 0\.76\)/, 'primary diffusion opacity increases');
+      assert.match(result.image, /\/ 0\.58\)/, 'secondary diffusion opacity increases');
       if (image) assert.equal(result.image, image); else image = result.image;
       checks.push(`glass/${mode}/${width}x${height}: two undistorted circular fields retain primary/secondary balance`);
     }

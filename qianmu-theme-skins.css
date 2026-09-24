@@ -44,10 +44,10 @@
   --qm-skin-shadow: inset 0 1px 0 #ffffff26, 0 5px 24px #00000008;
   /* An isotropic field can move or be cropped by a resized panel, but cannot
      squash into a stripe. Separate radii retain the primary/secondary balance. */
-  --qm-glow-radius-primary: clamp(240px, 44vmin, 560px);
-  --qm-glow-radius-secondary: clamp(180px, 32vmin, 410px);
-  --qm-skin-window: radial-gradient(circle var(--qm-glow-radius-primary) at 17% 67%, color-mix(in srgb, var(--qm-glow-1) 57%, transparent), transparent 77%),
-    radial-gradient(circle var(--qm-glow-radius-secondary) at 85% 24%, color-mix(in srgb, var(--qm-glow-2) 37%, transparent), transparent 75%), var(--qm-bg);
+  --qm-glow-radius-primary: clamp(320px, 58vmin, 740px);
+  --qm-glow-radius-secondary: clamp(250px, 43vmin, 550px);
+  --qm-skin-window: radial-gradient(circle var(--qm-glow-radius-primary) at 17% 67%, color-mix(in srgb, var(--qm-glow-1) 76%, transparent), transparent 82%),
+    radial-gradient(circle var(--qm-glow-radius-secondary) at 85% 24%, color-mix(in srgb, var(--qm-glow-2) 58%, transparent), transparent 81%), var(--qm-bg);
 }
 
 /* No geometry override for the main window: retain saved/host-constrained dimensions. */
@@ -393,6 +393,11 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
 #story-director-modal[data-qm-theme] .sd-log-status.success { color: color-mix(in srgb, #4f9e6b 50%, var(--qm-ink)); }
 #story-director-modal[data-qm-theme] .sd-log-status.error { color: color-mix(in srgb, #c05050 50%, var(--qm-ink)); }
 #story-director-modal[data-qm-theme] .sd-log-status:is(.cancelled,.loading) { color: color-mix(in srgb, #b08c3f 50%, var(--qm-ink)); }
+/* Tiny daylight signals need their own chroma: mixing halfway into text ink
+   makes green/yellow/red converge toward muddy dark dots. Keep night intact. */
+#story-director-modal[data-qm-theme][data-qm-mode="light"] .sd-log-status.success { color: #159461; }
+#story-director-modal[data-qm-theme][data-qm-mode="light"] .sd-log-status.error { color: #df4c5e; }
+#story-director-modal[data-qm-theme][data-qm-mode="light"] .sd-log-status:is(.cancelled,.loading) { color: #b88008; }
 #story-director-modal[data-qm-theme] :is(.sd-widget-toggle.active, .sd-structured-output-toggle.active) { color: var(--qm-action-ink) !important; }
 /* The request/response readout deliberately keeps its dark terminal canvas. */
 #story-director-modal[data-qm-theme] .sd-term { scrollbar-width: none; }
