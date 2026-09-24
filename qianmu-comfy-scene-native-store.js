@@ -30,49 +30,68 @@ export function createNativeComfySceneStore({legacy,createStorage,indexedDB=glob
       // A persisted operation is replayed only as the exact same metadata
       // proposal. No provider job or imported receipt is ever submitted here.
       if(local.pending&&!captured.reviewOnly){if(opts.inventoryOnly)fail('本机续场仍有待核对的保存操作，请先打开续场管理');
-        try{await catalogue.publish(local.pending.proposal,opts);await journal.acknowledge(namespace,local.pending.id);}
+        let acknowledged=false;
+        try{await catalogue.publish(local.pending.proposal,opts);await journal.acknowledge(namespace,local.pending.id);acknowledged=true;}
         catch(error){if(error?.code!=='comfy_scene_predecessor')throw error;await check();await journal.retainConflict(namespace,local.pending.id);}
+        if(acknowledged&&['settle','confirm_result','branch_result'].includes(local.pending.proposal.kind)){
+          const scope=local.pending.proposal.events[0].scope,state=await catalogue.reviewScope(scope,opts),claims=await journalClaims(namespace,{scope});
+          await retireFinished(scope,state.branches.map(branch=>branch.record),claims.map(row=>row.receipt),opts);
+        }
         await check();}
       const result=await work(opts,check);await check();if(!opts.inventoryOnly&&!local.nativeKnown&&catalogue.confirmed)await journal.observeNative(namespace);await check();return structuredClone(result);
     });queue=task.then(()=>{},()=>{});return task;
   };
-  async function apply(state,action,opts,{source=null,receipt=null,outcomeId='',kind=action.type}={}){
+  async function apply(state,action,opts,{source=null,receipt=null,outcomeId='',kind=action.type,onSaved}={}){
     const at=now(),result=sceneMutation(state.record,state.scope,action,at,source);
     if(sceneSame(result.row,state.record)||result.unchanged){
       if(result.receipt&&!(await journalAuthority(result.receipt)).executable)fail('此浏览器没有有效原预留，未导入旧票据');
       if(outcomeId)await journal.acknowledgeOutcome(state.scope.namespace,receipt,outcomeId);
+      onSaved?.(result.row);
       return {view:view(state),...(result.receipt?{receipt:result.receipt}:{})};
     }
     const event={schema:COMFY_SCENE_EVENT_SCHEMA,namespace:state.scope.namespace,scope:state.scope,record:result.row,before:state.record,action,source,at,generation:state.generation,parents:state.heads};
     const proposal={id:crypto.randomUUID(),namespace:state.scope.namespace,kind,generation:state.generation,cleared:false,events:[event],receipt:result.receipt||receipt,outcomeId};
     await journal.stage(proposal.namespace,proposal);await catalogue.publish(proposal,opts);await journal.acknowledge(proposal.namespace,proposal.id);
+    onSaved?.(result.row);
     return {view:view({...state,record:result.row}),...(result.receipt?{receipt:result.receipt}:{})};
   }
   async function applyResults(state,changes,opts,{receipt=null,outcomeId=''}={}){
-    if(!changes.length){if(outcomeId)await journal.acknowledgeOutcome(state.scope.namespace,receipt,outcomeId);return {view:resultView(state)};}
-    if(state.branches.length===1&&!state.blocked)return apply({...state,record:state.branches[0].record},changes[0].operation,opts,{receipt,outcomeId});
+    if(!changes.length){if(outcomeId)await journal.acknowledgeOutcome(state.scope.namespace,receipt,outcomeId);return {view:resultView(state),records:state.branches.map(branch=>branch.record)};}
+    if(state.branches.length===1&&!state.blocked){let saved;const result=await apply({...state,record:state.branches[0].record},changes[0].operation,opts,{receipt,outcomeId,onSaved:record=>{saved=record;}});return {view:result.view,records:[saved]};}
     const at=now(),events=changes.map(({branch,operation})=>{const action={type:'branch_result',operation,heads:state.heads},result=sceneMutation(branch.record,state.scope,action,at);
       return {schema:COMFY_SCENE_EVENT_SCHEMA,namespace:state.scope.namespace,scope:state.scope,record:result.row,before:branch.record,action,source:null,at,generation:state.generation,parents:[branch.digest]};});
     const proposal={id:crypto.randomUUID(),namespace:state.scope.namespace,kind:'branch_result',generation:state.generation,cleared:false,events,receipt,outcomeId};
     await journal.stage(proposal.namespace,proposal);await catalogue.publish(proposal,opts);await journal.acknowledge(proposal.namespace,proposal.id);
-    return {view:resultView({...state,branches:state.branches.map(branch=>({...branch,record:events.find(event=>event.parents[0]===branch.digest)?.record??branch.record}))})};
+    const committed={...state,branches:state.branches.map(branch=>({...branch,record:events.find(event=>event.parents[0]===branch.digest)?.record??branch.record}))};
+    return {view:resultView(committed),records:committed.branches.map(branch=>branch.record)};
+  }
+  async function retireFinished(scope,records,receipts,opts){
+    // Records are complete verified branches, plus only acknowledged changes.
+    // Never retire from display counts, task labels, age or a partial winner.
+    const retired=receipts.filter(receipt=>!records.some(record=>record?.holders.some(holder=>sameReceipt({...receipt,...holder},receipt))));
+    // The same atomic journal operation still protects newly arrived outcomes
+    // and pending work. Only runtime tickets retire, not ST/conflict originals.
+    if(retired.length){await opts.guard();await journal.retire(scope.namespace,retired);}
   }
   async function deliver(namespace,opts,filter={}){
     const claims=await journalClaims(namespace,{...filter,pendingOnly:true});
-    for(const claim of claims)for(const outcome of claim.outcomes){
+    for(const claim of claims){let applied;for(const outcome of claim.outcomes){
       const state=await catalogue.reviewScope(claim.receipt.scope,opts),changes=state.branches.filter(branch=>branch.record?.holders.some(row=>sameReceipt({...claim.receipt,...row},claim.receipt)))
         .map(branch=>({branch,operation:captureComfySceneAction({type:'settle',receipt:claim.receipt,outcome:outcome.outcome},state.scope)}));
       if(changes.some(change=>!sceneSame(change.branch.record.lock,changes[0].branch.record.lock)))fail('同一原任务对应不同风格来源，结果已保留，请核查原任务');
-      await applyResults(state,changes,opts,{receipt:claim.receipt,outcomeId:outcome.id});
-    }
+      applied=await applyResults(state,changes,opts,{receipt:claim.receipt,outcomeId:outcome.id});
+    }if(applied)await retireFinished(claim.receipt.scope,applied.records,[claim.receipt],opts);}
   }
   const read=(scope,options,work)=>{scope=comfySceneScope(scope);return run(scope.namespace,options,async opts=>{await deliver(scope.namespace,opts,{scope});const state=await catalogue.checkout(scope,opts),claims=await journalClaims(scope.namespace,{scope});
     const retired=claims.filter(row=>!row.outcomes.length&&!state.record?.holders.some(holder=>sameReceipt({...row.receipt,...holder},row.receipt))).map(row=>row.receipt);
     if(retired.length)await journal.retire(scope.namespace,retired);return work(state,opts);});};
   const action=(scope,input,options={})=>{scope=comfySceneScope(scope);const captured=captureComfySceneAction(input,scope),expected=input.expectedGeneration;
     return read(scope,options,async(state,opts)=>{if(['reserve','orphan','unlock','confirm_result'].includes(captured.type)&&expected!==state.generation)fail('续场清理代数已变化，请重新准备');
-      if(['begin','settle'].includes(captured.type)&&!(await journalAuthority(captured.receipt)).owned)fail('此浏览器没有原任务预留，未接受导入票据');
-      if(captured.type==='begin'&&!(await journalAuthority(captured.receipt)).executable)fail('原预留已因保存冲突取消，未提交生成');
+      if(['begin','settle'].includes(captured.type)){
+        const authority=await journalAuthority(captured.receipt);
+        if(!authority.owned)fail('此浏览器没有原任务预留，未接受导入票据');
+        if(captured.type==='begin'&&!authority.executable)fail('原预留已因保存冲突取消，未提交生成');
+      }
       if(captured.type==='orphan'&&!(await localOwners(state)).includes(captured.ownerId))fail('不能用本机空闲页面锁核定另一设备的任务');
       return apply(state,captured,opts,{receipt:captured.receipt});});};
   const clear=(namespace,chatKey,options={})=>run(namespace,options,async opts=>{
@@ -117,7 +136,8 @@ export function createNativeComfySceneStore({legacy,createStorage,indexedDB=glob
         const changes=state.branches.filter(branch=>branch.record?.holders.some(holder=>holder.attemptId===operation.attemptId)&&sceneSame(branch.record.lock,operation.lock))
           .map(branch=>({branch,operation:{...operation,expectedRevision:branch.record.revision}}));
         if(!changes.length&&state.branches.some(branch=>branch.record?.holders.some(holder=>holder.attemptId===operation.attemptId)))fail('原图与在途续场记录不匹配');
-        return applyResults(state,changes,opts);
+        const applied=await applyResults(state,changes,opts),claims=await journalClaims(scope.namespace,{scope});
+        await retireFinished(scope,applied.records,claims.map(row=>row.receipt),opts);return {view:applied.view};
       });
     },
     linkStyle(sourceScope,targetScope,request){const captured=captureComfySceneStyleLink(sourceScope,targetScope,request);return read(targetScope,{},async(state,opts)=>{

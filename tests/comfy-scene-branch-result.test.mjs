@@ -39,7 +39,7 @@ test('an actual local late result updates all and only exact-receipt branches wi
   const row=(await f.a.store.review(namespace,'chat')).rows[0];assert.equal(row.branches.length,2);assert.ok(row.branches.every(branch=>!branch.record.holders.some(holder=>holder.attemptId==='A')));
   assert.equal(row.branches.reduce((n,branch)=>n+branch.record.holders.filter(holder=>holder.attemptId==='B').length,0),1);await assert.rejects(f.a.store.inspect(scope),/分叉/);
   const packet=await f.a.store.exportScene(scope),updates=packet.versions.filter(event=>event.action?.type==='branch_result');assert.equal(updates.length,2);assert.ok(updates.every(event=>event.parents.length===1&&event.action.heads.length===2));
-  assert.equal((await f.a.journal.read(namespace)).claims[0].outcomes.length,0);assert.ok(f.calls.every(call=>call.path==='/api/files/upload'||call.path.startsWith('/user/files/')));
+  assert.equal((await f.a.journal.read(namespace)).claims.length,0);assert.ok(f.calls.every(call=>call.path==='/api/files/upload'||call.path.startsWith('/user/files/')));
 });
 
 test('actual archive-proof coordinator confirms an imported task branch but never imports a receipt or auto-resolves the fork',async t=>{
@@ -75,7 +75,7 @@ test('a missing branch result does not block unrelated scene execution, another 
   const next={...scope,chatKey:'other-chat',continuityId:'healthy'},reserved=await f.a.store.reserve(next,request('healthy',next));await f.a.store.begin(reserved.receipt);await f.a.store.settle(reserved.receipt,'succeeded');
   assert.equal((await f.a.store.list(namespace,'other-chat')).length,1);const manager=createComfySceneCoordinator({store:f.a.store,resolveNamespace:async()=>namespace,ownerId:'cleanup',locks:fakeWebLocks()});t.after(()=>manager.close());
   assert.equal((await manager.clearChat(namespace,'other-chat')).removed,1);assert.equal((await f.a.journal.read(namespace)).claims.find(row=>row.receipt.attemptId==='A').outcomes.length,1);
-  f.files.set(removed.name,removed.body);assert.deepEqual(await f.a.store.synchronize(namespace),{errors:[]});assert.equal((await f.a.journal.read(namespace)).claims.find(row=>row.receipt.attemptId==='A').outcomes.length,0);
+  f.files.set(removed.name,removed.body);assert.deepEqual(await f.a.store.synchronize(namespace),{errors:[]});assert.ok(!(await f.a.journal.read(namespace)).claims.some(row=>row.receipt.attemptId==='A'));
 });
 
 test('explicit synchronization reports a damaged scene but saves healthy queued results and keeps unresolved originals',async t=>{
@@ -102,6 +102,7 @@ test('a valid archived result only changes its matching style branch and cannot 
   const evidence=archiveProof('A');await manager.confirmArchived(evidence.proof,evidence.job);const branches=(await f.a.store.review(namespace,'chat')).rows[0].branches;
   assert.ok(branches.find(branch=>branch.record.lock.candidateId==='different-candidate').record.holders.some(holder=>holder.attemptId==='A'));
   assert.ok(!branches.find(branch=>branch.record.lock.candidateId==='candidate').record.holders.some(holder=>holder.attemptId==='A'));
+  assert.deepEqual((await f.a.journal.read(namespace)).claims.map(row=>row.receipt),[f.receipt]);
   await assert.rejects(f.a.store.inspect(scope),/分叉/);
 });
 
@@ -123,7 +124,7 @@ test('a staged single-source result survives a newly discovered fork without rep
   assert.equal((await f.a.journal.read(namespace)).pending.proposal.kind,'settle');
   const old=comfySceneIdbFixture({schema:COMFY_SCENE_SNAPSHOT_SCHEMA,namespace,usage:{count:1,bytes,generation:0},rows:[{key:comfySceneScopeKey(scope),value:{namespace,chatKey:scope.chatKey,bytes,record}}]});
   await f.open(old).store.review(namespace,'chat');assert.deepEqual(await f.a.store.synchronize(namespace),{errors:[]});
-  const local=await f.a.journal.read(namespace);assert.equal(local.pending,null);assert.equal(local.conflicts.length,1);assert.equal(local.claims[0].outcomes.length,0);
+  const local=await f.a.journal.read(namespace);assert.equal(local.pending,null);assert.equal(local.conflicts.length,1);assert.equal(local.claims.length,0);
   const row=(await f.a.store.review(namespace,'chat')).rows[0];assert.equal(row.branches.length,2);assert.ok(row.branches.every(branch=>branch.record.holders.length===0));
   const events=(await f.a.store.exportScene(scope)).versions;assert.equal(events.filter(event=>event.action?.type==='settle').length,0);assert.equal(events.filter(event=>event.action?.type==='branch_result').length,2);
 });

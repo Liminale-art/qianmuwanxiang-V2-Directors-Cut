@@ -76,6 +76,7 @@ export function createComfySceneJournal({indexedDB=globalThis.indexedDB,dbName='
         const key=receiptKey(receipt),existing=value.claims.find(row=>receiptKey(row.receipt)===key);
         if(captured.kind==='reserve'){if(!existing)value.claims.push({receipt,outcomes:[]});}
         else if(['begin','settle','branch_result'].includes(captured.kind)&&!existing)fail('此浏览器没有原任务的本机预留，未接受导入票据');
+        if(captured.kind==='begin'&&value.conflicts.some(row=>['reserve','begin'].includes(row.proposal.kind)&&receiptKey(row.proposal.receipt)===key))fail('原预留已因保存冲突取消，未提交生成');
       }
       value.pending={id:captured.id,proposal:captured};return value.pending;
     });},
