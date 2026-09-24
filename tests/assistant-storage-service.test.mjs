@@ -6,7 +6,7 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createAssistantStorageService, installAssistantStorageRoutes } from '../qianmu-assistant-storage-service.js';
-import { assistantStorageRequest, assistantStorageResponse, assistantStorageErrorPayload } from '../qianmu-assistant-storage-contract.js';
+import { assistantStorageRequest, assistantStorageResponse, assistantStorageErrorPayload, assistantCatalogueRequest, assistantCatalogueResponse } from '../qianmu-assistant-storage-contract.js';
 import { createNativeProseAssistantHistoryStore } from '../qianmu-prose-assistant-native.js';
 import { emptyProseAssistantHistory } from '../qianmu-prose-assistant-history-contract.js';
 import { streamCheckpointTransport } from './helpers/stream-checkpoint-fixture.mjs';
@@ -115,11 +115,43 @@ test('request/response whitelist validates arithmetic and strips no failures int
 test('actual installed route uses host root, no-store and authenticated identity and has no mutation route', async t => {
     const f = await fixture(t); await f.add('A', 1); const routes = new Map(), services = [];
     installAssistantStorageRoutes({ post: (route, fn) => routes.set(route, fn) }, { dataRoot: () => f.root, register: service => services.push(service) });
-    t.after(async () => { for (const service of services) await service.close(); }); assert.deepEqual([...routes.keys()], ['/assistant/storage']);
+    t.after(async () => { for (const service of services) await service.close(); }); assert.deepEqual([...routes.keys()], ['/assistant/storage','/assistant/history-catalogue']);
     const response = () => Object.assign(new EventEmitter(), { headers: {}, code: 200, writableEnded: false, set(k, v) { this.headers[k] = v; }, status(code) { this.code = code; return this; }, json(body) { this.body = body; this.writableEnded = true; return this; } });
     const req = Object.assign(new EventEmitter(), f.req, { body: f.input() }), res = response(); await routes.get('/assistant/storage')(req, res);
     assert.equal(res.body.total.count, 2); assert.equal(res.headers['Cache-Control'], 'no-store'); assert.equal(res.headers['X-Content-Type-Options'], 'nosniff'); assert.equal(req.listenerCount('aborted'), 0); assert.equal(res.listenerCount('close'), 0);
     const denied = response(); await routes.get('/assistant/storage')(Object.assign(new EventEmitter(), { body: f.input({ path: f.root }) }), denied); assert.equal(denied.code, 401);
+    const catalogue=response();await routes.get('/assistant/history-catalogue')(Object.assign(new EventEmitter(),f.req,{body:f.input({offset:0,snapshot:null})}),catalogue);
+    assert.equal(catalogue.code,200);assert.equal(catalogue.body.total,1);assert.equal(catalogue.body.entries.length,1);assert.equal(catalogue.headers['Cache-Control'],'no-store');
+});
+
+test('catalogue pages actual native references, reads only eight small heads, and never writes or reads bodies',async t=>{
+ const f=await fixture(t);for(let i=0;i<10;i++)await f.add('Chat-'+i,1);const before=await f.snapshot(),input=f.input({offset:0,snapshot:null});
+ const first=await f.service.inspect(f.req,input,{catalogue:true});assert.equal(first.entries.length,8);assert.equal(first.total,10);assert.equal(first.nextOffset,8);assert.equal(f.opened.length,8);
+ assert.ok(f.opened.every(name=>/-assistant-[a-f0-9]{64}\.json$/.test(name)));assert.doesNotMatch(JSON.stringify(first),/PRIVATE|Chat-|A\.png|alice|qianmu-v2/);
+ const reader=await f.transport.createStorage();t.after(()=>reader.close());
+ for(const reference of first.entries){const body=await reader.readImmutable(reference);assert.equal(body.value.rows[0].user,'PRIVATE_QUESTION');}
+ const second=await f.service.inspect(f.req,{...input,offset:8,snapshot:first.snapshot},{catalogue:true});assert.equal(second.entries.length,2);assert.equal(second.nextOffset,null);
+ assert.equal(new Set([...first.entries,...second.entries].map(row=>row.slot)).size,10);assert.equal(f.opened.length,10);assert.deepEqual(await f.snapshot(),before);
+});
+test('catalogue snapshot changes reject navigation instead of silently skipping or repeating histories',async t=>{
+ const f=await fixture(t);await f.add('A',1);const input=f.input({offset:0,snapshot:null}),first=await f.service.inspect(f.req,input,{catalogue:true});await f.add('B',1);f.opened.length=0;
+ await assert.rejects(f.service.inspect(f.req,{...input,snapshot:first.snapshot},{catalogue:true}),{code:'assistant_storage_changed'});assert.equal(f.opened.length,0);
+ assert.equal((await f.service.inspect(f.req,input,{catalogue:true})).total,2);
+});
+test('catalogue missing current bodies and foreign accounts are not represented as empty pages',async t=>{
+ const f=await fixture(t);await f.add('A',1);const input=f.input({offset:0,snapshot:null});
+ await assert.rejects(f.service.inspect(f.req,{...input,expectedAccount:'st-user:'+sha('bob')},{catalogue:true}),{code:'assistant_storage_account'});
+ const body=[...f.transport.files.keys()].find(name=>/-[a-f0-9]{64}-[a-f0-9]{64}\.json$/.test(name)&&JSON.parse(f.transport.files.get(name)).schema==='qianmu.st-account-document.v1');
+ assert.ok(body);await fs.unlink(path.join(f.folder,body));await assert.rejects(f.service.inspect(f.req,input,{catalogue:true}),{code:'assistant_storage_missing'});
+});
+test('catalogue contract rejects uncontrolled paths, accessors, incomplete pages, duplicates and mismatched versions',()=>{
+ const request={version:1,expectedAccount,offset:0,snapshot:null},scope='a'.repeat(64),reference={version:1,scope,slot:'assistant-'+'b'.repeat(64),fingerprint:'c'.repeat(64),bytes:500};
+ const response={ok:true,version:1,expectedAccount,scope,offset:0,snapshot:'d'.repeat(64),total:1,nextOffset:null,entries:[reference]};
+ assert.equal(assistantCatalogueResponse(response,request).entries[0].bytes,500);
+ for(const patch of [{path:'PRIVATE'},{offset:-1},{offset:1},{snapshot:'bad'},{offset:0.1}])assert.throws(()=>assistantCatalogueRequest({...request,...patch}));
+ const getter={...request};Object.defineProperty(getter,'offset',{enumerable:true,get(){assert.fail('getter must not execute');}});assert.throws(()=>assistantCatalogueRequest(getter));
+ for(const patch of [{total:2},{nextOffset:8},{scope:'bad'},{entries:[{...reference,bytes:99999999}]},{entries:[{...reference,path:'PRIVATE'}]},{total:2,entries:[reference,reference]},{expectedAccount:'st-user:'+sha('bob')}])assert.throws(()=>assistantCatalogueResponse({...response,...patch},request));
+ assert.throws(()=>assistantCatalogueResponse(response,{...request,snapshot:'e'.repeat(64)}));
 });
 
 test('expired slow IO keeps its concurrency slot until work actually settles', async t => {

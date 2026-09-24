@@ -3,6 +3,9 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-assistant-history-manager.js",
+    "qianmu-assistant-history-view.js",
+    "qianmu-assistant-history-view.css",
     "qianmu-prose-assistant-rename.js",
     "qianmu-assistant-storage-contract.js",
     "qianmu-assistant-storage-service.js",

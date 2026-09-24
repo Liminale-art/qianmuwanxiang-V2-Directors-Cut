@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
-import { assistantStorageRequest, assistantStorageResponse, assistantStorageError, assistantStorageErrorPayload, ASSISTANT_STORAGE_LIMITS as LIMIT } from './qianmu-assistant-storage-contract.js';
+import { assistantStorageRequest, assistantStorageResponse, assistantStorageError, assistantStorageErrorPayload, assistantCatalogueRequest, assistantCatalogueResponse, ASSISTANT_CATALOGUE_LIMITS, ASSISTANT_STORAGE_LIMITS as LIMIT } from './qianmu-assistant-storage-contract.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 
 const sha = text => createHash('sha256').update(text).digest('hex');
@@ -82,35 +82,40 @@ export function createAssistantStorageService({ dataRoot, io = fs, timeoutMs = L
             await roots(context); return value;
         } finally { await handle.close(); }
     }
-    async function inspect(req, input, signal) {
-        const context = capture(req, input, signal), generation = stamp(await roots(context)), files = await scan(context), active = new Set();
+    async function inspect(req, input, signal, catalogue=false) {
+        const page=catalogue?assistantCatalogueRequest(input):null;
+        const context = capture(req, page?{version:page.version,expectedAccount:page.expectedAccount}:input, signal), generation = stamp(await roots(context)), files = await scan(context), active = new Set();
         if (stamp(await roots(context)) !== generation) fail('changed', '目录在扫描期间已变化');
+        const heads=[...files].filter(([,file])=>!file.fingerprint).sort(([a],[b])=>a<b?-1:a>b?1:0),entries=[];
+        const snapshot=page?sha(JSON.stringify([...files].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([name,{stat}])=>[name,String(stat.size),stamp(stat)]))):null;
+        if(page&&(page.offset>heads.length||page.snapshot!==null&&page.snapshot!==snapshot))fail('changed','助手目录已变化，请从第一页刷新');
         const result = { ok: true, version: 1, expectedAccount: context.input.expectedAccount, scope: 'st-account-assistant-files', observation: 'file-sizes-not-disk-allocation', contentVerified: false,
             heads: { count: 0, bytes: 0 }, current: { count: 0, bytes: 0 }, retained: { count: 0, bytes: 0 }, total: { count: 0, bytes: 0 } };
         function add(target, stat) { target.count++; target.bytes += Number(stat.size); if (!Number.isSafeInteger(target.bytes)) fail('capacity', '文件大小超过统计精度'); }
-        for (const [name, file] of files) {
-            if (file.fingerprint) continue;
+        for (const [name, file] of page?heads.slice(page.offset,page.offset+ASSISTANT_CATALOGUE_LIMITS.page):heads) {
             const head = await readHead(context, name, file.stat);
             if (!head || typeof head !== 'object' || Array.isArray(head) || Object.keys(head).sort().join(',') !== 'fingerprint,schema,scope,slot' || head.schema !== 'qianmu.st-account-head.v1'
                 || head.scope !== context.scope || head.slot !== file.slot || typeof head.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(head.fingerprint)) fail('content', '助手入口与账户范围不符');
             const body = name.slice(0, -5) + '-' + head.fingerprint + '.json';
             if (!files.has(body) || active.has(body)) fail('missing', '助手当前版本文件缺失，未作为零占用', 404);
             active.add(body); add(result.heads, file.stat);
+            if(page)entries.push({version:1,scope:context.scope,slot:file.slot,fingerprint:head.fingerprint,bytes:Number(files.get(body).stat.size)});
         }
         for (const [name, file] of files) { add(result.total, file.stat); if (file.fingerprint) add(active.has(name) ? result.current : result.retained, file.stat); }
         // A second metadata pass rejects additions/removals and in-place file
         // changes, not only mutable head replacements. No partial summary escapes.
         const final = await scan(context);
         if (final.size !== files.size || [...files].some(([name, file]) => !sameVersion(file.stat, final.get(name)?.stat)) || stamp(await roots(context)) !== generation) fail('changed', '盘点期间文件已变化，请刷新');
-        context.guard(); return assistantStorageResponse(result, context.input.expectedAccount);
+        context.guard(); return page?assistantCatalogueResponse({ok:true,version:1,expectedAccount:page.expectedAccount,scope:context.scope,offset:page.offset,snapshot,total:heads.length,
+            nextOffset:page.offset+entries.length<heads.length?page.offset+entries.length:null,entries},page):assistantStorageResponse(result, context.input.expectedAccount);
     }
-    return Object.freeze({ inspect(req, input, { signal } = {}) {
+    return Object.freeze({ inspect(req, input, { signal, catalogue=false } = {}) {
         if (closed || pending.size >= LIMIT.pending) return Promise.reject(assistantStorageError('busy', '盘点正忙或已关闭', 503));
         const controller = new AbortController(); let rejectStop;
         const stopped = new Promise((_, reject) => { rejectStop = reject; });
         const abort = () => { controller.abort(); rejectStop(assistantStorageError('changed', '盘点已取消或超时')); };
         pending.add(abort); signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) abort();
-        const timer = setTimeout(abort, timeoutMs), work = Promise.resolve().then(() => inspect(req, input, controller.signal));
+        const timer = setTimeout(abort, timeoutMs), work = Promise.resolve().then(() => inspect(req, input, controller.signal,catalogue));
         void work.finally(() => pending.delete(abort)).catch(() => {});
         return Promise.race([work, stopped]).catch(error => {
             if (/^assistant_storage_/.test(error?.code || '')) throw error;
@@ -122,14 +127,14 @@ export function createAssistantStorageService({ dataRoot, io = fs, timeoutMs = L
 
 export function installAssistantStorageRoutes(router, { dataRoot, register, serviceOptions = {} }) {
     let service;
-    router.post('/assistant/storage', async (req, res) => {
+    for(const route of ['/assistant/storage','/assistant/history-catalogue'])router.post(route, async (req, res) => {
         res.set('Cache-Control', 'no-store'); res.set('X-Content-Type-Options', 'nosniff');
         const controller = new AbortController(), abort = () => controller.abort(), onClose = () => { if (!res.writableEnded) abort(); };
         req.once?.('aborted', abort); res.once?.('close', onClose);
         try {
             try { imageServiceAccount(req); } catch { fail('account', '请先登录 ST', 401); }
             if (!service) { service = createAssistantStorageService({ ...serviceOptions, dataRoot: dataRoot() }); register(service); }
-            const result = await service.inspect(req, req.body, { signal: controller.signal });
+            const result = await service.inspect(req, req.body, { signal: controller.signal,catalogue:route==='/assistant/history-catalogue' });
             if (!res.destroyed && !res.writableEnded) return res.json(result);
         } catch (error) { const result = assistantStorageErrorPayload(error); if (!res.destroyed && !res.writableEnded) return res.status(result.status).json(result.body); }
         finally { req.off?.('aborted', abort); res.off?.('close', onClose); }

@@ -14,7 +14,7 @@ export function storageSettingsSnapshotWithoutDiagnostics(settings){
 export function collectionCleanupOptions(data){
   const collection=data?.collectionStorage,pending=collection?.pending,assistant=data?.assistantStorage;
   return [...(collection?.status==='ready'?[{id:'__collections__',label:'正文收藏原件（当前账户 · 服务器）',bytes:collection.count>0?collection.bytes:0,count:collection.count,
-    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[]),...(pending?.status==='ready'?[{id:'__collection_pending__',label:'收藏待存（当前账户 · 本机）',bytes:pending.bytes,count:pending.count,risk:['不可恢复 · 先备份；不删除或取消服务器保存',true]}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'场外特助旧副本（当前账户 · 本机）',bytes:assistant.bytes,count:assistant.count,risk:['不可恢复 · 请先复制留存；不删除ST记录，版本标记保留',true]}]:[])];
+    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[]),...(pending?.status==='ready'?[{id:'__collection_pending__',label:'收藏待存（当前账户 · 本机）',bytes:pending.bytes,count:pending.count,risk:['不可恢复 · 先备份；不删除或取消服务器保存',true]}]:[]),...(assistant?.native?.status==='ready'&&assistant.native.heads?.count>0?[{id:'__assistant_native__',label:'场外特助会话（当前账户 · ST）',bytes:assistant.native.heads.bytes+assistant.native.current.bytes,count:assistant.native.heads.count,risk:['逐项查阅/备份/清空会话；保留旧版本，不回收磁盘空间',true]}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'场外特助旧副本（当前账户 · 本机）',bytes:assistant.bytes,count:assistant.count,risk:['不可恢复 · 请先复制留存；不删除ST记录，版本标记保留',true]}]:[])];
 }
 
 export function renderAssistantStorageSummary(assistant,formatStorageBytes,htmlEscape){

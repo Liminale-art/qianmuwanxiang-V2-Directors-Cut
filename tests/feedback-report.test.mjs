@@ -9,7 +9,7 @@ test('feedback defaults have no recipient or sending capability', () => {
     assert.ok(Object.isFrozen(FEEDBACK_MODULES));
 });
 test('diagnostics use own whitelisted data properties and never inspect secrets', () => {
-    const source = { qianmuVersion: '1.59.366', backendStatus: 'ready', os: 'Windows', browser: 'Firefox' };
+    const source = { qianmuVersion: '1.59.367', backendStatus: 'ready', os: 'Windows', browser: 'Firefox' };
     for (const key of ['stVersion', 'backendVersion', 'apiKey', 'headers', 'logHistory', 'chat', 'workflow', 'toJSON']) Object.defineProperty(source, key, { enumerable: true, get() { throw Error('must not read ' + key); } });
     const rows = feedbackDiagnostics(source);
     assert.deepEqual(rows.map(row => row.key), ['qianmuVersion', 'backendStatus', 'os', 'browser']);
