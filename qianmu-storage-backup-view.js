@@ -121,6 +121,7 @@ export function renderStorageBackupSection(notesStorage, formatBytes = value => 
       <button type="button" class="sd-btn sd-undo-config" hidden>撤回本次恢复</button>
       ${[['notes','便笺','application/json,.json'],['favorites','语音收藏','application/json,.json'],['audio','音频缓存','application/json,.json']].map(([key,label,accept])=>storagePackageRow(key,label,accept)).join('')}
       ${storagePackageRow('collections','正文收藏','application/json,.json')}
+      <div class="sd-storage-backup-row"><span>场外特助会话</span><button type="button" class="sd-btn sd-storage-assistant-library">管理 / 恢复</button></div>
       <p class="sd-storage-scope">正文收藏备份读取当前 ST 账户的服务器原件，不含已删除条目；与聊天及本机缓存清理独立。导入仅新增副本，不覆盖现有收藏。</p>
       <div class="sd-storage-backup-row"><span>专注语音原件</span><button type="button" class="sd-btn sd-storage-focus-library">管理</button></div>
       <p class="sd-storage-scope">音频缓存是本浏览器当前 ST 站点的本机记录，可含多个聊天；旧记录没有可靠账户归属，不代表当前账户专属，也不自动跨端。清理请在本卡选择「音频缓存」，不会删除语音收藏。重新合成可能收费。</p>

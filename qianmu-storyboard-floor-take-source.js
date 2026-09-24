@@ -1,7 +1,7 @@
-import {createStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.367';
-import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.367';
-import {readStoryboardContinuationLinks,storyboardContinuationSavePending,storyboardContinuationIdentityInput} from './qianmu-storyboard-continuation-proof.js?v=1.59.367';
-import {storyboardStreamDigest,storyboardStreamFingerprint,storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.367';
+import {createStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.368';
+import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.368';
+import {readStoryboardContinuationLinks,storyboardContinuationSavePending,storyboardContinuationIdentityInput} from './qianmu-storyboard-continuation-proof.js?v=1.59.368';
+import {storyboardStreamDigest,storyboardStreamFingerprint,storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.368';
 const fail=()=>{throw Object.assign(new Error('续写前后的原图归属无法核对，未开始整层重拍'),{code:'storyboard_retake_source'});};
 
 // Only the explicit retake action uses this bounded strong check. It reads one

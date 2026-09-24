@@ -1,22 +1,23 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {collectAssistantHistoryPage} from './qianmu-assistant-storage-client.js?v=1.59.367';
+import {collectAssistantHistoryPage} from './qianmu-assistant-storage-client.js?v=1.59.368';
 import {assistantCatalogueResponse} from './qianmu-assistant-storage-contract.js';
 import {proseAssistantAccountForNamespace} from './qianmu-prose-assistant-source.js';
 import {proseAssistantHistoryKey,validateProseAssistantHistory,PROSE_ASSISTANT_HISTORY_LIMITS as LIMIT} from './qianmu-prose-assistant-history-contract.js';
+import {createAssistantHistoryTransfer} from './qianmu-assistant-history-transfer.js';
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const fail=(code,message)=>{throw Object.assign(Error(message),{code:'assistant_history_manager_'+code});};
-const publicError=cause=>String(cause?.code||'').startsWith('assistant_history_manager_')||cause?.code==='assistant_history_catalogue_unavailable'?cause:Object.assign(Error('助手记录操作未确认，原件保留；请核对账户或刷新重试。'),{code:'assistant_history_manager_unavailable'});
+const publicError=cause=>/^assistant_history_(manager|transfer)_/.test(cause?.code||'')||cause?.code==='assistant_history_catalogue_unavailable'?cause:Object.assign(Error('助手记录操作未确认，原件保留；请核对账户或刷新重试。'),{code:'assistant_history_manager_unavailable'});
 const sha=async text=>Array.from(new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),v=>v.toString(16).padStart(2,'0')).join('');
 
 // One explicitly opened page, at most eight complete histories. No startup
 // scan, cross-page selection, local migration, content truncation or file delete.
 export async function createAssistantHistoryManager({resolveNamespace,isCurrent,headers,fetchImpl,loadPage=collectAssistantHistoryPage,
- storageFactory=createConfiguredStAccountStorage,now=Date.now}={}){
- let closed=false,busy=false,store=null,namespace,account,pending=null;const rows=new Map(),controller=new AbortController();
+ storageFactory=createConfiguredStAccountStorage,now=Date.now,captureDestination,legacyFactory}={}){
+ let closed=false,busy=false,store=null,namespace,account,pending=null,transfer=null;const rows=new Map(),controller=new AbortController();
  const check=()=>{if(closed||isCurrent()!==true)fail('scope','助手历史管理页面或账户已变化');};
  const guard=async()=>{check();if(await resolveNamespace()!==namespace)fail('scope','助手历史管理账户已变化');check();return true;};
- const close=()=>{closed=true;controller.abort();store?.close();rows.clear();pending=null;};
+ const close=()=>{closed=true;controller.abort();transfer?.close();store?.close();rows.clear();pending=null;};
  try{check();namespace=await resolveNamespace();check();account=await proseAssistantAccountForNamespace(namespace);await guard();
   store=await storageFactory({maxBytes:LIMIT.bytes+2048,isCurrent:()=>!closed&&isCurrent()===true});await guard();if(store.namespace!==namespace)fail('scope','助手历史存储账户不一致');
  }catch(cause){close();throw publicError(cause);}
@@ -37,12 +38,13 @@ export async function createAssistantHistoryManager({resolveNamespace,isCurrent,
    owner:offstage?'独立对话':tuple[3].kind==='character'?tuple[3].avatar.replace(/\.png$/,''):'群组 '+tuple[2].slice(6),
    updatedAt:row.state.updatedAt,count:row.state.rows.length,bytes:row.reference.bytes};
  }
- const progress=()=>pending?{total:pending.items.length,confirmed:pending.items.filter(item=>item.done).length,uncertain:pending.items.some(item=>item.attempted&&!item.done)}:null;
+ transfer=createAssistantHistoryTransfer({store,account,guard,assertCurrent:()=>{check();return true;},signal:controller.signal,describe,captureDestination,legacyFactory});
+ const progress=()=>pending?{total:pending.items.length,confirmed:pending.items.filter(item=>item.done).length,uncertain:pending.items.some(item=>item.attempted&&!item.done)}:transfer.progress();
  async function readCurrent(item){const value=await store.read(item.reference.slot,options);await guard();if(!value.exists)fail('changed','助手记录入口已变化，未覆盖新版本');return value;}
  async function unchanged(item){const current=await readCurrent(item);if(current.fingerprint!==item.reference.fingerprint||!same(current.value,item.state))fail('changed','助手记录在选择后已变化，请刷新核对；未清空新版本');return current;}
  return Object.freeze({close,guard,progress,
   page(offset=0,snapshot=null){return execute(async()=>{
-   if(pending)fail('pending','清空进度尚未结束，请重试当前批次或关闭后重新核对');
+   if(progress())fail('pending','当前操作尚未结束，请重试原批次或关闭后重新核对');
    const received=await loadPage({resolveNamespace,isCurrent:()=>!closed&&isCurrent()===true,headers,fetchImpl,offset,snapshot,signal:controller.signal});await guard();
    const {namespace:raw,status,...wire}=received;if(raw!==namespace||status!=='ready')fail('scope','助手目录账户不一致');
    const page=assistantCatalogueResponse(wire,{version:1,expectedAccount:account,offset,snapshot});if(page.scope!==store.scope)fail('scope','助手目录与存储账户不一致');
@@ -57,12 +59,18 @@ export async function createAssistantHistoryManager({resolveNamespace,isCurrent,
    return {offset:page.offset,nextOffset:page.nextOffset,total:page.total,snapshot:page.snapshot,rows:loaded.map(describe)};
   });},
   view(id){return execute(async()=>{const row=selected([id])[0];return structuredClone(row.state);});},
+  reviewBackup(text){return execute(()=>{if(pending)fail('pending','请先结束原清空范围');return transfer.reviewBackup(text);});},
+  viewBackup(id){return execute(()=>transfer.viewBackup(id));},
+  discardBackup(){return execute(()=>transfer.discardBackup());},
+  restoreBackup(ids,confirm){return execute(()=>{if(pending)fail('pending','请先结束原清空范围');return transfer.restoreBackup(ids,confirm);});},
+  reassociate(id,{fromBackup=false,confirm}={}){return execute(()=>{if(pending)fail('pending','请先结束原清空范围');return transfer.reassociate(id,{row:fromBackup?null:selected([id])[0],fromBackup,confirm});});},
   backup(ids){return execute(async()=>{
    const items=selected(ids).map(row=>({reference:structuredClone(row.reference),history:structuredClone(row.state)}));
    const text=JSON.stringify({schema:'qianmu.assistant-history-backup.v1',account,createdAt:now(),items},null,2);
    if(new TextEncoder().encode(text).byteLength>48*1024*1024)fail('capacity','所选完整备份过大，请减少本次选择；未截断内容');await guard();return text;
   });},
   clear(ids,confirm){return execute(async()=>{
+   if(transfer.progress())fail('pending','请先结束原恢复范围');
    if(typeof confirm!=='function')fail('confirmation','缺少明确的清空确认');
    if(!pending){
     const chosen=selected(ids);for(const row of chosen)await unchanged(row);

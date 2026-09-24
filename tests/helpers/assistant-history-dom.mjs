@@ -15,6 +15,7 @@ export function assistantHistoryDom(){
   removeEventListener(name,handler){this.listeners.get(name)?.delete(handler);}
   emit(name,extra={}){for(const handler of this.listeners.get(name)||[])handler({target:this,preventDefault(){},stopPropagation(){},...extra});}
   focus(){doc.activeElement=this;}
+  click(){this.emit('click');}
   showModal(){this.open=true;}
   close(){this.open=false;this.emit('close');}
   querySelectorAll(){return [];}
