@@ -1881,8 +1881,21 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   gap: 10px 14px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--sd-border);
   color: var(--sd-muted); font-size: 12px;
 }
-#story-director-modal .sd-storage-service-status { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
-#story-director-modal .sd-storage-service-status b { color: var(--sd-text); font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+#story-director-modal .sd-storage-service-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+#story-director-modal .sd-storage-service-status .sd-optional-service-label {
+  display: inline-flex; align-items: center; min-height: 24px; padding: 2px 8px; box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: var(--sd-radius-control, 8px);
+  background: color-mix(in srgb, currentColor 9%, var(--sd-glass)); color: #626974;
+  font-size: 11px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere;
+}
+#story-director-modal .sd-storage-service-status .sd-optional-service-label[data-status="ready"] { color: #217445; }
+#story-director-modal .sd-storage-service-status .sd-optional-service-label:is([data-status="error"], [data-status="unsupported"]) { color: #b0313a; }
+#story-director-modal:is(.sd-theme-dark, [data-qm-mode="dark"]) .sd-storage-service-status .sd-optional-service-label { color: #b2b8c0; }
+#story-director-modal:is(.sd-theme-dark, [data-qm-mode="dark"]) .sd-storage-service-status .sd-optional-service-label[data-status="ready"] { color: #79d6a0; }
+#story-director-modal:is(.sd-theme-dark, [data-qm-mode="dark"]) .sd-storage-service-status .sd-optional-service-label:is([data-status="error"], [data-status="unsupported"]) { color: #ff999f; }
+#story-director-modal .sd-storage-service-versions { display: flex; flex-wrap: wrap; gap: 4px 12px; width: 100%; font-size: 11px; line-height: 1.5; }
+#story-director-modal .sd-storage-service-versions > span { min-width: 0; overflow-wrap: anywhere; }
+#story-director-modal .sd-storage-service-versions b { color: var(--sd-text); font-size: inherit; font-weight: 500; }
 #story-director-modal .sd-storage-service-refresh { flex-shrink: 0; min-height: 36px; font-size: 12px; }
 #story-director-modal .sd-storage-service-refresh[aria-busy="true"] { opacity: .65; cursor: progress; }
 #story-director-modal .sd-storage-overview > span:not(.sd-storage-hero) { flex-wrap: wrap; line-height: 1.5; }
@@ -8989,10 +9002,6 @@ dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) :is(.popup-button-o
 #qianmu-storage-cleanup-layer .sd-storage-chat-group label em { color: var(--sd-muted); font-size: 9.5px; font-style: normal; }
 #qianmu-storage-cleanup-layer .sd-storage-chat-group label.is-destructive { border-color: color-mix(in srgb, #d35c5c 34%, var(--sd-hairline)); }
 #qianmu-storage-cleanup-layer .sd-storage-chat-group label.is-destructive em { color: #c65252; }
-#qianmu-storage-cleanup-layer .sd-storage-backup-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 0 14px 4px; }
-#qianmu-storage-cleanup-layer .sd-storage-backups { margin: 0 14px 4px; border: 1px solid var(--sd-hairline); border-radius: var(--sd-radius-control); }
-#qianmu-storage-cleanup-layer .sd-storage-backups > summary { padding: 9px 11px; color: var(--sd-muted); cursor: pointer; font-size: var(--sd-font-secondary); }
-#qianmu-storage-cleanup-layer .sd-storage-backups .sd-storage-backup-actions { padding: 0 9px 9px; }
 
 #qianmu-notes-panel-layer {
   position: fixed !important;
@@ -10936,13 +10945,7 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-feedback-field { display:grid;gap:5px;min-width:0;margin:0;text-align:left; }
 #story-director-modal .sd-feedback-field :is(select,textarea) { width:100%;min-width:0;max-width:100%;box-sizing:border-box;margin:0;font:inherit;text-align:left; }
 #story-director-modal .sd-feedback-field textarea { min-height:76px;resize:vertical; }
-#story-director-modal .sd-feedback-optional>summary { margin-bottom:6px;text-align:left;cursor:pointer; }
-#story-director-modal .sd-feedback-diagnostic { display:flex;gap:8px;align-items:center;min-height:32px;margin:0;text-align:left; }
-#story-director-modal .sd-feedback-diagnostic input { flex:0 0 auto;accent-color:var(--sd-accent); }
-#story-director-modal .sd-feedback-preview { white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:260px;max-height:min(36dvh,260px);min-width:0;margin:0;padding:10px;border-radius:var(--qm-control-radius,8px);background:var(--sd-input-bg,var(--sd-card-bg));color:var(--sd-text);font:inherit;line-height:1.6;text-align:left; }
-#story-director-modal .sd-feedback-actions { display:flex;gap:8px;flex-wrap:wrap; }
-#story-director-modal .sd-feedback-actions>.sd-btn { flex:1 1 120px;min-width:0;justify-content:center; }
-#story-director-modal .sd-feedback-contact { display:flex;gap:8px;flex-wrap:wrap;min-width:0; }
+#story-director-modal .sd-feedback-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+#story-director-modal .sd-feedback-actions>.sd-btn { min-width:0;justify-content:center; }
 #story-director-modal .sd-feedback-form p { margin:0;overflow-wrap:anywhere; }
-#story-director-modal .sd-feedback-contact>p { flex-basis:100%; }
 #story-director-modal .sd-feedback-status:empty { display:none; }

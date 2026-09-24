@@ -24,16 +24,17 @@ test('workbench is a library-entry strip, never a first-24 inline selector, and 
 });
 test('actual mount rejects obsolete lazy results and apply rejects cancellation or external selection changes after its await',async()=>{
   const state=createStoryboardDefaults();state.view='assets';state.assetView='vibes';state.vibeLibrary=[item()];let options,resolve,mounts=0;
+  const identity={resolveImageAccountNamespace:async()=> 'st-user:one'};
   const host={isConnected:true},root={querySelector:()=>host};
   const profile={model:'nai-diffusion-5-full',capabilityModelId:'nai-diffusion-5-full'},controller={mount:()=>mounts++,detach(){},dispose(){},edit(){},beginSelection(){},cancelSelection(){}};
   const runtime={createStoryboardVibeLibraryController:value=>{options=value;return controller;},checkStoryboardVibeSelection};
-  const context=vm.createContext({storyboardState:()=>state,storyboardAdmissionEpoch:1,getChatKey:()=> 'chat',activeTab:'imagegen',storyboardVibeControllerContext:null,storyboardVibeLibraryController:null,storyboardVibeSelection:null,
+  const context=vm.createContext({resolveImageAccountNamespace:()=>identity.resolveImageAccountNamespace(),storyboardState:()=>state,storyboardAdmissionEpoch:1,getChatKey:()=> 'chat',activeTab:'imagegen',storyboardVibeControllerContext:null,storyboardVibeLibraryController:null,storyboardVibeSelection:null,
     storyboardProviderProfile:()=>profile,storyboardConnectionState:()=>({draft:{}}),getStoryboardCapabilities,storyboardGalleryRecords:()=>[],applyQianmuIcons(){},toast(){},saveSettings(){},storyboardNavigate(){},storyboardFinishVibeSelection(){},uid:()=> 'fixture-new',
     featureRuntime:{load:async key=>key==='vibeLibrary'?runtime:{resolveImageAccountNamespace:async()=> 'st-user:one'}}});
   vm.runInContext(['storyboardVibeSelectionKey','storyboardMountVibeLibrary'].map(section).join('\n'),context);
   context.featureRuntime.load=key=>key==='vibeLibrary'?new Promise(r=>resolve=r):Promise.resolve({resolveImageAccountNamespace:async()=> 'st-user:one'});
   const obsolete=context.storyboardMountVibeLibrary(root);host.isConnected=false;resolve(runtime);await obsolete;assert.equal(mounts,0);
-  host.isConnected=true;const identity={resolveImageAccountNamespace:async()=> 'st-user:one'};context.featureRuntime.load=async key=>key==='vibeLibrary'?runtime:key==='vibeAssets'?{createVibeLibraryAssets,callVibeAsset:async()=>null}:identity;await context.storyboardMountVibeLibrary(root);assert.equal(mounts,1);
+  host.isConnected=true;context.featureRuntime.load=async key=>key==='vibeLibrary'?runtime:key==='vibeAssets'?{createVibeLibraryAssets,callVibeAsset:async()=>null}:identity;await context.storyboardMountVibeLibrary(root);assert.equal(mounts,1);
   const session=()=>({state,epoch:1,chat:'chat',original:JSON.stringify(state.selectedVibeIds),key:context.storyboardVibeSelectionKey(state)});
   context.storyboardVibeSelection=session();identity.resolveImageAccountNamespace=()=>new Promise(r=>resolve=r);const cancelled=options.onApply(['one']);context.storyboardVibeSelection=null;resolve('st-user:one');await assert.rejects(cancelled,/变化/);assert.deepEqual(state.selectedVibeIds,[]);
   identity.resolveImageAccountNamespace=async()=> 'st-user:one';context.storyboardVibeSelection=session();state.selectedVibeIds=['other'];await assert.rejects(options.onApply(['one']),/变化/);assert.deepEqual(state.selectedVibeIds,['other']);
@@ -43,7 +44,7 @@ test('actual asset selection rejects an edited source after asynchronous model/I
   const state=createStoryboardDefaults();state.source='novel';state.view='assets';state.assetView='vibes';state.vibeLibrary=[item('one',{previewUrl:'',assetRef:{version:1,namespace:'st-user:one',id:'a'.repeat(64)}})];
   let options,release;const host={isConnected:true},root={querySelector:()=>host},profile={model:'nai-diffusion-4-5-full',capabilityModelId:'nai-diffusion-4-5-full'};
   const runtime={checkStoryboardVibeSelection,createStoryboardVibeLibraryController:value=>{options=value;return {mount(){},dispose(){},edit(){},beginSelection(){},cancelSelection(){}};}};
-  const context=vm.createContext({storyboardState:()=>state,storyboardAdmissionEpoch:1,getChatKey:()=> 'chat',activeTab:'imagegen',storyboardVibeControllerContext:null,storyboardVibeLibraryController:null,storyboardVibeSelection:null,
+  const context=vm.createContext({resolveImageAccountNamespace:async()=> 'st-user:one',storyboardState:()=>state,storyboardAdmissionEpoch:1,getChatKey:()=> 'chat',activeTab:'imagegen',storyboardVibeControllerContext:null,storyboardVibeLibraryController:null,storyboardVibeSelection:null,
     storyboardProviderProfile:()=>profile,storyboardConnectionState:()=>({draft:{}}),getStoryboardCapabilities,storyboardGalleryRecords:()=>[],applyQianmuIcons(){},toast(){},saveSettings(){},storyboardNavigate(){},storyboardFinishVibeSelection(){},uid:()=> 'new',
     featureRuntime:{load:async key=>key==='vibeLibrary'?runtime:key==='vibeAssets'?{createVibeLibraryAssets,callVibeAsset:()=>new Promise(resolve=>release=resolve)}:{resolveImageAccountNamespace:async()=> 'st-user:one'}}});
   vm.runInContext(['storyboardVibeSelectionKey','storyboardMountVibeLibrary'].map(section).join('\n'),context);await context.storyboardMountVibeLibrary(root);

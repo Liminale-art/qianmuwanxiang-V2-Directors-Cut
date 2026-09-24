@@ -6,8 +6,8 @@ import * as storyboard from '../qianmu-storyboard.js';
 import { parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 import {renderEnsembleTargetPicker,openEnsembleTargetPicker} from '../qianmu-ensemble-target-picker.js';
-import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.370';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.370';
+import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.371';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.371';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';

@@ -34,6 +34,7 @@ try {
       MODULE_NAME: 'fixture', NOTES_PANEL_LAYER_ID: 'qianmu-notes-panel-layer', fixture: { notices: [], downloads: [], settingsSaves: 0, confirm: true, confirms: 0 },
       clone: structuredClone, isPlainObject: value => value && typeof value === 'object',
       mergeDefaults: (target, defaults) => { for (const [key, value] of Object.entries(defaults)) if (target[key] === undefined) target[key] = structuredClone(value); },
+      resolveImageAccountNamespace: async () => 'st-user:fixture-ui',
       featureRuntime: { load: async () => ({ resolveImageAccountNamespace: async () => 'st-user:fixture-ui' }) }, storyboardRequestHeaders: () => ({}),
       toast: (...args) => fixture.notices.push(args), confirmDialog: async () => { fixture.confirms++; return fixture.confirm; }, ttsDownloadBlob: (blob, name) => fixture.downloads.push({ blob, name }),
       coreadCopyText: async () => {}, saveSettings: () => fixture.settingsSaves++, renderFloatingNotes() {}, closeQuickWheel() {},

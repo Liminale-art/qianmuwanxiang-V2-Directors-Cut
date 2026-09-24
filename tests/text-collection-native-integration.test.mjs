@@ -54,6 +54,21 @@ test('reconfiguring native storage rejects a cached read from the old client lif
     const next=await f.open();assert.equal((await next.list({cursor:null,limit:50})).total,1);
 });
 
+test('floor star reads do not invalidate shared list/detail cache or redownload verified originals on reopen',async t=>{
+    const f=fixture(t),first=await f.open(),original=record();await first.prepareCreate(original).submit();
+    await first.get(original.id);const before=f.calls.length;
+    const sources=await first.sources();assert.deepEqual(sources,{expectedAccount:account,items:[{account,chatId:'original-chat',messageId:4}]});
+    assert.doesNotMatch(JSON.stringify(sources),/厨房|当时 CHAR|original-reply/);
+    assert.equal(f.calls.length,before,'painting stars must use verified browsing data, not backup export');first.close();
+    const second=await f.open();assert.equal((await second.list({cursor:null,limit:50},{preferCache:true})).total,1);
+    assert.deepEqual(await second.sources(),sources);assert.deepEqual((await second.get(original.id)).record,original);
+    assert.equal(f.calls.length,before,'reopening after star refresh causes no file requests');
+    await second.sources({revalidate:true});const checked=f.calls.length;assert.ok(checked>before,'explicit focus refresh still checks remote files');
+    assert.deepEqual((await second.get(original.id)).record,original);assert.equal(f.calls.length,checked,'revalidation does not clear unchanged originals');
+    await second.prepareDelete(original.id,1).submit();assert.deepEqual((await second.sources()).items,[]);
+    f.setAccount('st-user:other');await assert.rejects(second.sources());
+});
+
 test('configured real session uses native ST files without an installed backend and new clients can read, edit and delete',async t=>{
     const f=fixture(t),first=await f.open();assert.equal(first.expectedAccount,account);
     assert.equal((await first.list()).total,0,'legacy 404 is not an installation requirement');

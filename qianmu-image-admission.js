@@ -1,7 +1,9 @@
 import { createImageAttemptStore } from './qianmu-image-attempt-store.js';
 import { imageAttemptScopeKey } from './qianmu-image-attempts.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.370';
-import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.370';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.371';
+import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.371';
+import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
+export {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 
 const error = (code, message) => Object.assign(new Error(message), { code: `image_attempt_${code}` });
 const MESSAGES = {
@@ -16,32 +18,11 @@ const canonical = value => JSON.stringify(value, (_, item) => item && typeof ite
 const hasWorldReference=job=>job?.shotSpec?.directorDecision?.approval?.mode==='world_setting'
   ||Object.hasOwn(job?.shotSpec?.directorDecision?.approval||{},'worldAutomation')
   ||String(job?.imageAdmission?.messageKey||'').startsWith('world-item:');
-const worldIdentity=async(job,namespace)=>(await import('./qianmu-world-image-admission.js?v=1.59.370')).createWorldImageIdentity(job,namespace);
+const worldIdentity=async(job,namespace)=>(await import('./qianmu-world-image-admission.js?v=1.59.371')).createWorldImageIdentity(job,namespace);
 async function digest(value) {
   if (!globalThis.crypto?.subtle) throw error('identity', '当前环境不能安全识别生图请求，请使用 HTTPS 或本机地址');
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical(value)));
   return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
-// Read the actual ST account, never a character/persona name. In account mode
-// user.js's default handle is also used while loading, so it is not sufficient.
-export async function resolveImageAccountNamespace({ loadUser = () => import('/scripts/user.js'), fetchImpl = globalThis.fetch, timeoutMs = 6000 } = {}) {
-  let handle, expired = false, timer;
-  const controller = new AbortController();
-  const deadline = new Promise(resolve => { timer = setTimeout(() => { expired = true; controller.abort(); resolve(null); }, Math.max(100, Math.min(15000, Number(timeoutMs) || 6000))); });
-  try {
-    const userModule = await Promise.race([Promise.resolve().then(loadUser).catch(() => null), deadline]);
-    handle = userModule?.currentUser?.handle;
-    // accountsEnabled starts as false before ST initializes it. Missing user
-    // data therefore always requires a verified authenticated response.
-    if (!handle && !expired) {
-      const response = await Promise.race([fetchImpl('/api/users/me', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal }), deadline]);
-      if (response?.ok) handle = (await Promise.race([response.json(), deadline]))?.handle;
-    }
-  } catch (_) { /* Do not invent a shared identity on auth/network failure. */ }
-  finally { clearTimeout(timer); }
-  if (typeof handle !== 'string' || !handle.trim() || handle.length > 160 || /[\u0000-\u001f]/.test(handle)) throw error('account', '暂未确认当前 ST 账户，未提交生图，请稍后重试');
-  return `st-user:${handle}`;
 }
 
 export async function manageImageAdmissionStorage(options = {}) {

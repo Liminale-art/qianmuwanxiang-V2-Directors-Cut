@@ -6,7 +6,7 @@ const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext(),page=await context.newPage(),errors=[],checks=[];let external=0;
-const files=new Set(['qianmu-text-collection-floor.js','qianmu-text-collection-floor-status.js','qianmu-icon-renderer.js']);
+const files=new Set(['qianmu-text-collection-floor.js','qianmu-text-collection-floor-status.js','qianmu-icon-renderer.js','qianmu-feature-runtime.js']);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url()),file=url.pathname.slice(1);
@@ -29,7 +29,7 @@ try{
     fixture.records=[row(0,'swipe:2'),row(0,'swipe:4')];
     fixture.tools=createTextCollectionFloorTools({getContext:()=>({chat:fixture.messages}),getChatKey:()=>fixture.chatKey,names:()=>({}),resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,applyIcons:applyQianmuIcons,statusSessionFactory:async()=>{
       const expectedAccount=fixture.namespace==='st-user:alice'?'account-alice':'account-bob';
-      return {expectedAccount,guard:async()=>{},close:()=>fixture.closed++,snapshot:async()=>{fixture.reads++;const records=structuredClone(fixture.records);if(fixture.mode==='hold')await new Promise(resolve=>fixture.release=resolve);if(fixture.mode==='error')throw Error('offline');return {backup:{sourceAccount:expectedAccount,records}};}};
+      return {expectedAccount,guard:async()=>{},close:()=>fixture.closed++,sources:async()=>{fixture.reads++;const records=structuredClone(fixture.records);if(fixture.mode==='hold')await new Promise(resolve=>fixture.release=resolve);if(fixture.mode==='error')throw Error('offline');return {expectedAccount,items:records.map(record=>record.source)};}};
     }});
     fixture.tools.refresh(chat);fixture.tools.refresh(chat);
     injectStoryboardMessageButtons(chat,{floorOf:node=>Number(node.getAttribute('mesid')),getContext:()=>({chat:fixture.messages}),getState:()=>({}),planForMessage:()=>null,applyIcons:applyQianmuIcons});

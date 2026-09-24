@@ -1,5 +1,5 @@
 import {vibeFileError} from './qianmu-vibe-file.js';
-import {isStAccountStorageConfigured,captureStAccountStorageWorkerContext,getStAccountStorageReadScope} from './qianmu-st-account-storage.js';
+import {isStAccountStorageConfigured,captureStAccountStorageWorkerContext,verifyStAccountStorageWorkerContext,getStAccountStorageReadScope} from './qianmu-st-account-storage.js';
 import {createVerifiedProgressWatch} from './qianmu-verified-progress-watch.js';
 import {createVibeEncodingRetention} from './qianmu-vibe-encoding-retention.js';
 export {createVibeLibraryAssets,mountVibeWorkbenchPreviews} from './qianmu-vibe-library-assets.js';
@@ -37,7 +37,7 @@ function callNative(type,options){
     const live=()=>{if(worker!==current||waiting.get(id)!==row||scope!==getStAccountStorageReadScope())throw vibeFileError('account','Vibe账户或会话已变化');};
     const ready=preparing.catch(()=>{}).then(async()=>{
       live();const context=await captureStAccountStorageWorkerContext();live();if(context.namespace!==captured.namespace)throw vibeFileError('account','Vibe操作不属于当前ST账户');
-      row.guard=async()=>{live();const latest=await captureStAccountStorageWorkerContext();live();if(latest.namespace!==context.namespace||latest.origin!==context.origin)throw vibeFileError('account','Vibe账户已变化');};
+      row.guard=async()=>{live();await verifyStAccountStorageWorkerContext(context);live();};
       current.postMessage({...captured,type,ticket:id,nativeStorage:context});
     });preparing=ready;void ready.catch(error=>finish(id,error));
   });

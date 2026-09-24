@@ -5,14 +5,12 @@ import {mkdir, readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import vm from 'node:vm';
-import {renderStorageBackupSection, replaceStorageManagementCard} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection, replaceStorageManagementCard, collectionCleanupOptions, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 
 const require = createRequire(import.meta.url);
 const {chromium} = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
-const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
-const constants = source.slice(source.indexOf('const STORAGE_CATEGORY_LABELS'), source.indexOf('function renderStorageManagementCard'));
 const MB = 1024 * 1024;
 const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota: 2000 * MB}, trackedBytes: 400 * MB, manageableBytes: 400 * MB,
   categories: [{category: 'images', bytes: 240 * MB}, {category: 'audio', bytes: 120 * MB}, {category: 'reader', bytes: 40 * MB}],
@@ -21,11 +19,11 @@ const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota
   characterStorage: {status: 'ready', documents: {count: 0, bytes: 0}, bindings: {count: 0, bytes: 0}, indexes: {bytes: 0}},
   comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}, notesStorage: {status:'ready',bytes:200,count:3,pinned:1}};
 function render(data = snapshot, status = 'ready') {
-  const state = vm.createContext({renderStorageBackupSection, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
+  const state = vm.createContext({renderStorageBackupSection, collectionCleanupOptions, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
     optionalServiceState: {status: 'ready', services: [], version: 'fixture'},
     htmlEscape: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: bytes => `${((Number(bytes) || 0) / MB).toFixed(1)} MB`, blobStore: {classifyStoragePressure: () => ({level: 'normal'})}});
-  vm.runInContext(constants + ['optionalServiceLabel', 'optionalServiceDetail', 'renderStorageServiceStatus', 'renderStorageManagementCard'].map(section).join('\n'), state);
+  vm.runInContext(['optionalServiceLabel', 'optionalServiceDetail', 'renderStorageServiceStatus', 'renderStorageManagementCard'].map(section).join('\n'), state);
   return state.renderStorageManagementCard();
 }
 
@@ -36,7 +34,7 @@ await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({contentType: 'text/html', body: '<!doctype html><html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>'});
   if (url === 'https://qianmu.test/qianmu-icon-renderer.js') return route.fulfill({contentType: 'text/javascript', body: await readFile(new URL('../qianmu-icon-renderer.js', import.meta.url), 'utf8')});
-  for(const file of ['qianmu-theme-surfaces.js','qianmu-theme-palette.js'])if(url===`https://qianmu.test/${file}`)return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
+  for(const file of ['qianmu-theme-surfaces.js','qianmu-theme-palette.js','qianmu-storage-backup-view.js'])if(url===`https://qianmu.test/${file}`)return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
   // Stylesheet background art does not belong to the storage renderer under test.
   if (url.startsWith('https://qianmu.test/') && /\.(?:png|jpe?g|webp|woff2?)(?:\?|$)/.test(url)) return route.fulfill({status: 204, body: ''});
   external++; return route.abort();
@@ -46,6 +44,10 @@ try {
   if (process.env.QIANMU_STORAGE_SCREENSHOT_DIR) await mkdir(process.env.QIANMU_STORAGE_SCREENSHOT_DIR, {recursive: true});
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('https://qianmu.test/');
+  await page.evaluate(async()=>{
+    Object.assign(window,await import('/qianmu-storage-backup-view.js'));
+    for(const name of ['coreadExportData','exportTtsFavoritesBackup','ttsExportAudioCache','exportPinnedNotesBackup','storyboardImportAnyPackage','coreadImportDataFile'])window[name]=()=>{throw Error('Unexpected transfer: '+name);};
+  });
   await page.addStyleTag({content: css});
   await page.addStyleTag({content:await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')});
   await page.addStyleTag({content: 'body{margin:0;background:#555}#story-director-modal{box-sizing:border-box}#story-director-modal .sd-storage-card{width:min(620px,100%);box-sizing:border-box;margin:0 auto}'});
@@ -71,18 +73,19 @@ try {
     assert.ok(metrics.heroSize >= 30, `${theme}/${width}: hero ${metrics.heroSize}px`);
     assert.equal(metrics.heroText, '400.0 MB');
     assert.equal(metrics.rowsAligned, true); assert.ok(metrics.minRowHeight >= 41); assert.ok(metrics.minButtonHeight >= 44);
-    assert.deepEqual(metrics.icons, Array(3).fill('qm-regular-arrow-right')); assert.equal(metrics.backups, 1); assert.equal(metrics.expanded, 0);
+    assert.deepEqual(metrics.icons, ['qm-regular-arrow-right']); assert.equal(metrics.backups, 1); assert.equal(metrics.expanded, 0);
     if (process.env.QIANMU_STORAGE_SCREENSHOT_DIR && ((width === 393 && theme === 'dark') || (width === 1280 && theme === 'light'))) {
       await page.screenshot({path: join(process.env.QIANMU_STORAGE_SCREENSHOT_DIR, `storage-real-renderer-${theme}-${width}.png`), fullPage: true});
     }
-    await page.locator('.sd-storage-backup-section summary').click();
+    await page.locator('.sd-storage-backup-section > summary').click();
     assert.equal(await page.locator('.sd-storage-backup-section').getAttribute('open'), null);
-    await page.locator('.sd-storage-backup-section summary').click();
+    await page.locator('.sd-storage-backup-section > summary').click();
     assert.equal(await page.locator('.sd-storage-backup-section').getAttribute('open'), '');
     assert.equal(await page.locator('.sd-storage-details').count(), 0);
     assert.equal(await page.locator('.sd-storage-backup-section .sd-storage-clean').count(), 1);
-    assert.equal(await page.locator('.sd-storage-backup-section .sd-storage-characters').count(), 1);
-    assert.equal(await page.locator('.sd-storage-server-recipes').count(),1);assert.match(await page.locator('.sd-storage-server-recipes').textContent(),/10 个归档文件 · 5.0 MB/);
+    assert.equal(await page.locator('.sd-storage-backup-section .sd-storage-characters').count(), 0);
+    const recipe=page.locator('.sd-storage-resource-list .sd-storage-backup-row').filter({hasText:'图片配置'});
+    assert.equal(await recipe.count(),1);assert.match(await recipe.textContent(),/图片配置5.0 MB/);assert.equal(await recipe.locator('button').count(),0);
     checks.push(`${theme}/${width}: single resource list, real layout, local arrows, unique controls`);
   }
   for(const width of [320,393,1280])for(const theme of ['editorial','glass'])for(const mode of ['light','dark']){
@@ -91,8 +94,8 @@ try {
       window.storageTheme?.dispose();document.body.innerHTML=`<div id="story-director-modal" class="open sd-theme-light"><section class="sd-window"><main class="sd-body">${html}</main></section></div>`;
       const root=document.getElementById('story-director-modal'),{createQianmuThemeSurfaceController}=await import('/qianmu-theme-surfaces.js');
       window.storageTheme=createQianmuThemeSurfaceController();storageTheme.register(root);storageTheme.setTheme({theme,mode,accent:'#5c79d3'});
-      root.querySelector('details').open=true;await new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)));
-      const row=root.querySelector('.sd-storage-server-recipes'),card=root.querySelector('.sd-storage-card'),box=row.getBoundingClientRect();
+      root.querySelectorAll('details').forEach(item=>item.open=true);await new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)));
+      const row=[...root.querySelectorAll('.sd-storage-resource-list .sd-storage-backup-row')].find(row=>row.firstElementChild.textContent==='图片配置'),card=root.querySelector('.sd-storage-card'),box=row.getBoundingClientRect();
       return {fit:box.left>=0&&box.right<=innerWidth&&row.scrollWidth<=row.clientWidth,hero:root.querySelector('.sd-storage-hero b').textContent,
         row:row.textContent,radius:getComputedStyle(card).borderRadius,inputs:root.querySelectorAll('input[data-storage-import="notes"]').length};
     },{html:render(),theme,mode});
@@ -116,33 +119,34 @@ try {
     backup.open=true;const input=backup.querySelector('input[data-storage-import="notes"]'),button=backup.querySelector('[data-storage-export="notes"]');
     button.focus();let clicks=0;button.addEventListener('click',()=>clicks++);
     (0,eval)(`(${replace})`)(card,after,{icons(){},bind(){}});button.click();
-    return {sameInput:input===document.querySelector('input[data-storage-import="notes"]'),sameBackup:backup===document.querySelector('.sd-storage-backup-section'),open:backup.open,clicks,text:backup.querySelector('.sd-storage-notes-summary').textContent,recipe:backup.querySelector('.sd-storage-server-recipes').textContent};
+    return {sameInput:input===document.querySelector('input[data-storage-import="notes"]'),sameBackup:backup===document.querySelector('.sd-storage-backup-section'),open:backup.open,clicks,
+      recipe:[...backup.querySelectorAll('.sd-storage-resource-list .sd-storage-backup-row')].find(row=>row.firstElementChild.textContent==='图片配置').textContent};
   },{before:render(),after:render(changed),replace:replaceStorageManagementCard.toString()});
-  assert.equal(summaryRefresh.sameInput&&summaryRefresh.sameBackup&&summaryRefresh.open,true);assert.equal(summaryRefresh.clicks,1);assert.match(summaryRefresh.text,/已保存 7 条（常驻 2 条）/);
-  checks.push('live account notes summary refresh retains the original backup file chooser, listeners and disclosure');
+  assert.equal(summaryRefresh.sameInput&&summaryRefresh.sameBackup&&summaryRefresh.open,true);assert.equal(summaryRefresh.clicks,1);
+  checks.push('inventory refresh retains the original backup file chooser, listeners and disclosure');
   assert.match(summaryRefresh.recipe,/暂未读取/);assert.doesNotMatch(summaryRefresh.recipe,/5.0 MB|0.0 MB/);checks.push('server observation refresh clears stale numbers without replacing live backup inputs');
   const resourceRefresh=await page.evaluate(async ({before,after,loading,failed,replace,source})=>{
     Object.assign(window,{settings:{},configUndo:{available:()=>false},MODAL_ID:'story-director-modal',storageInventoryState:{data:{mappingStorage:{namespace:'before'}}}});
-    let calls=0,lastNamespace='';window.storyboardOpenRestoreStorage=(_root,namespace)=>{calls++;lastNamespace=namespace;};
+    let calls=0;window.storyboardOpenRestoreStorage=()=>{calls++;};
     const bind=new Function(source+';return bindStorageManagementEvents;')(),swap=(0,eval)(`(${replace})`);
     document.body.innerHTML=`<div id="story-director-modal" class="open">${before}</div>`;
     let card=document.querySelector('.sd-storage-card');const backup=card.querySelector('.sd-storage-backup-section'),input=backup.querySelector('input[data-storage-import="notes"]');
     backup.open=true;const dt=new DataTransfer();dt.items.add(new File(['fixture'],'keep.json'));input.files=dt.files;
-    bind(card);bind(card);card.querySelector('.sd-storage-mappings').click();
-    if(calls!==1)throw Error('manager action bound more than once');
+    bind(card);bind(card);
+    if(card.querySelector('.sd-storage-mappings'))throw Error('removed duplicate manager returned');
     for(let i=0;i<3;i++) {
       storageInventoryState.data.mappingStorage.namespace='after';
-      swap(card,after,{icons(){},bind});card=document.querySelector('.sd-storage-card');bind(card);card.querySelector('.sd-storage-mappings').click();
+      swap(card,after,{icons(){},bind});card=document.querySelector('.sd-storage-card');bind(card);
     }
     const stable=input===card.querySelector('input[data-storage-import="notes"]')&&input.files[0]?.name==='keep.json'&&backup.open;
-    const manager=calls===4&&lastNamespace==='after'&&card.querySelectorAll('button.sd-storage-mappings').length===1;
-    const updated=card.querySelector('.sd-storage-resource-list').textContent.includes('迁移映射凭据 · 8 份');
+    const manager=calls===0&&card.querySelectorAll('button.sd-storage-mappings,button.sd-storage-characters').length===0;
+    const updated=card.querySelector('.sd-storage-resource-list').textContent.includes('角色资料8.0 MB');
     swap(card,loading,{icons(){},bind});card=document.querySelector('.sd-storage-card');
     const pending=card.querySelector('.sd-storage-clean').disabled&&card.querySelector('.sd-storage-chat-clean').disabled;
     swap(card,failed,{icons(){},bind});card=document.querySelector('.sd-storage-card');
     const error=card.querySelectorAll('.sd-storage-clean,.sd-storage-chat-clean,.sd-storage-mappings').length===0&&input===card.querySelector('input[data-storage-import="notes"]');
     return {stable,manager,updated,pending,error};
-  },{before:render(),after:render({...snapshot,mappingStorage:{status:'ready',count:8,bytes:800}}),loading:render(snapshot,'loading'),failed:render(null,'error'),replace:replaceStorageManagementCard.toString(),source:section('bindStorageManagementEvents')});
+  },{before:render(),after:render({...snapshot,characterStorage:{...snapshot.characterStorage,documents:{count:8,bytes:8*MB}}}),loading:render(snapshot,'loading'),failed:render(null,'error'),replace:replaceStorageManagementCard.toString(),source:section('bindStorageManagementEvents')});
   for(const [key,value]of Object.entries(resourceRefresh)){assert.equal(value,true,key);checks.push(`resource refresh ${key}`);}
   const serviceSource = ['optionalServiceLabel', 'optionalServiceDetail', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n');
   const serviceChecks = await page.evaluate(async ({html, source, replace}) => {
@@ -169,7 +173,7 @@ try {
     const rebound = fresh !== button && probeCount === 2;
     const again = optionalServiceProbePromise;
     resolveProbe({status: 'missing', services: [], checkedAt: Date.now()}); await again;
-    return {checking, stable, rebound, result: root.querySelector('.sd-optional-service-label').textContent === '未安装（可选）',
+    return {checking, stable, rebound, result: root.querySelector('.sd-optional-service-label').textContent === '未安装',
       focus: document.activeElement === draft, draft: draft.value === 'https://unsaved.invalid/v1'};
   }, {html: render(), source: serviceSource, replace: replaceStorageManagementCard.toString()});
   for (const [key, value] of Object.entries(serviceChecks)) {assert.equal(value, true, `service ${key}`); checks.push(`service ${key}`);}

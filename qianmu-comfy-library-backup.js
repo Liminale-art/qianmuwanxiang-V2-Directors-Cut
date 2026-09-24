@@ -1,5 +1,4 @@
 import {normalizeComfyLibraryDocument,inspectComfyLibraryDocument,comfyLibraryError} from './qianmu-comfy-library.js';
-import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 
 export const COMFY_LIBRARY_BACKUP_SCHEMA='qianmu.comfy.library-backup.v1';
@@ -84,5 +83,8 @@ export async function readComfyLibraryBackup(file){
   if(!(file instanceof Blob)||file.size<1||file.size>COMFY_LIBRARY_BACKUP_BYTES)fail('请选择 80 MiB 以内的工作流库备份');
   const bytes=await file.arrayBuffer();if(bytes.byteLength!==file.size)fail('备份文件读取大小不符');let text;
   try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(_){fail('备份文件不是完整 UTF-8');}
+  // Parsing an explicitly selected backup can load the package parser. Normal
+  // library/list/version reads must not pull its import/export graph at startup.
+  const {parseStrictStoryboardJson}=await import('./qianmu-storyboard-package-input.js');
   const value=parseStrictStoryboardJson(text,{maxBytes:COMFY_LIBRARY_BACKUP_BYTES});validateComfyLibraryBackup(value);return value;
 }

@@ -18,9 +18,15 @@ export async function createNativeProseAssistantHistoryStore({source,isCurrent,s
  const close=()=>{closed=true;store.close();};
  const safe=cause=>cause?.code==='st_account_storage_conflict'?error('conflict','助手对话已在其他设备更新，请重新打开'):String(cause?.code||'').startsWith('prose_assistant_history_')?cause:error('storage','ST 未能确认保存助手对话，请保留本页内容后重试');
  async function guard(options){await check();if(options?.guard&&await options.guard()!==true)throw error('scope','助手操作来源已变化');return true;}
+ // The configured native store already verifies the live account before and
+ // after each transport. Nesting source.guard there duplicates network identity
+ // checks. Keep operation checks and all chat/closure guards, not an auth cache.
+ const transportGuard=options=>storageFactory===createConfiguredStAccountStorage?async()=>{
+  if(closed||isCurrent()!==true||source.assertCurrent()!==true||options?.guard&&await options.guard()!==true||closed||isCurrent()!==true)throw error('scope','助手操作来源已变化');return true;
+ }:()=>guard(options);
  function identity(account,requested){if(account!==namespace||requested!==key)throw error('scope','助手对话不属于当前聊天');}
  async function readRecord(options){
-  const result=await store.read(slot,{guard:()=>guard(options)});await guard(options);
+  await guard(options);const result=await store.read(slot,{guard:transportGuard(options)});await guard(options);
   if(result.exists)return {state:structuredClone(validateProseAssistantHistory(result.value,key)),fingerprint:result.fingerprint};
   const legacy=legacyFactory();let prior;
   try{prior=validateProseAssistantHistory(await legacy.read(namespace,key,{guard:()=>!closed&&isCurrent()===true&&source.assertCurrent()===true}),key);await guard(options);}
@@ -28,8 +34,8 @@ export async function createNativeProseAssistantHistoryStore({source,isCurrent,s
   // Preserve old local records, including an explicit local clear revision. A
   // remote record always wins; never merge or resurrect local data over it.
   if(prior.revision>0){
-   try{const migrated=await store.write(slot,prior,{expectedFingerprint:null,guard:()=>guard(options)});await guard(options);return {state:structuredClone(validateProseAssistantHistory(migrated.value,key)),fingerprint:migrated.fingerprint};}
-   catch(cause){if(cause?.code!=='st_account_storage_conflict')throw cause;const current=await store.read(slot,{guard:()=>guard(options)});if(!current.exists)throw cause;return {state:structuredClone(validateProseAssistantHistory(current.value,key)),fingerprint:current.fingerprint};}
+   try{const migrated=await store.write(slot,prior,{expectedFingerprint:null,guard:transportGuard(options)});await guard(options);return {state:structuredClone(validateProseAssistantHistory(migrated.value,key)),fingerprint:migrated.fingerprint};}
+   catch(cause){if(cause?.code!=='st_account_storage_conflict')throw cause;const current=await store.read(slot,{guard:transportGuard(options)});await guard(options);if(!current.exists)throw cause;return {state:structuredClone(validateProseAssistantHistory(current.value,key)),fingerprint:current.fingerprint};}
   }
   return {state:emptyProseAssistantHistory(key),fingerprint:null};
  }
@@ -40,7 +46,7 @@ export async function createNativeProseAssistantHistoryStore({source,isCurrent,s
     identity(account,requested);if(!Number.isSafeInteger(revision)||revision<0||revision>=Number.MAX_SAFE_INTEGER)throw error('invalid','助手历史版本无效');
     const next=structuredClone(validateProseAssistantHistory({version:1,namespace:key,revision:revision+1,updatedAt:now(),rows},key));
     const current=await readRecord(options);if(current.state.revision!==revision)throw error('conflict','助手历史已更新');
-    const saved=await store.write(slot,next,{expectedFingerprint:current.fingerprint,guard:()=>guard(options)});await guard(options);
+    const saved=await store.write(slot,next,{expectedFingerprint:current.fingerprint,guard:transportGuard(options)});await guard(options);
     const state=validateProseAssistantHistory(saved.value,key);if(JSON.stringify(state)!==JSON.stringify(next))throw error('invalid','助手保存回执不一致');return structuredClone(state);
    }catch(cause){throw safe(cause);}
   },close,

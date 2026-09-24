@@ -66,6 +66,18 @@ export async function captureStAccountStorageWorkerContext(){
   if(!['https:','http:'].includes(url.protocol)||url.origin!==origin||globalThis.location?.origin&&origin!==globalThis.location.origin)fail('setup','ST 储存只能使用当前站点');
   return {namespace,origin,csrf};
 }
+// Subsequent Worker guards validate the live owner, not capture a second CSRF
+// handoff. Every call still resolves the current account and checks the same
+// configuration/page lifetime before and after that await; no authorization is
+// cached between guards. Capture retains its extra check around header loading.
+export async function verifyStAccountStorageWorkerContext(expected){
+  if(!configured)fail('setup','ST 储存环境尚未就绪');const base=configured,epoch=configurationEpoch;
+  const check=()=>{if(epoch!==configurationEpoch||base.isCurrent()!==true)fail('scope','ST 储存账户已变化');};
+  check();const namespace=namespaceName(await base.resolveNamespace());check();
+  const origin=base.origin||globalThis.location?.origin;
+  if(!expected||namespace!==expected.namespace||origin!==expected.origin||globalThis.location?.origin&&origin!==globalThis.location.origin)fail('account','ST 储存账户已变化');
+  return true;
+}
 export function createConfiguredStAccountStorage(options={}){
   if(!configured)fail('setup','ST 储存环境尚未就绪');const epoch=configurationEpoch,base=configured;
   // A caller cannot replace the account resolver with another account by override.

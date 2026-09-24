@@ -68,6 +68,15 @@ test('character first-use static graph excludes workflow backup and legacy recon
   for(const name of ['qianmu-comfy-library-backup.js','qianmu-character-source-native.js','qianmu-character-reconciliation.js'])assert.ok(![...seen].some(file=>file.endsWith('/'+name)),name);
 });
 
+test('Comfy library cold graph does not eagerly load the explicit backup package parser and its transfer graph',async()=>{
+  const seen=new Set();async function visit(url){const key=url.href.split('?')[0];if(seen.has(key))return;seen.add(key);const source=await readFile(new URL(key),'utf8');
+    for(const found of source.matchAll(/(?:import|export)\s+(?:[^;\n]+?\s+from\s+)?['"](\.\/[^'"]+)['"]/g))await visit(new URL(found[1],key));
+  }
+  await visit(new URL('../qianmu-comfy-library-view.js',import.meta.url));
+  assert.ok(seen.size<=55,`工作流库首开依赖回涨：${seen.size}`);
+  for(const name of ['qianmu-storyboard-package-input.js','qianmu-storyboard-package-assets.js'])assert.ok(![...seen].some(file=>file.endsWith('/'+name)),name);
+});
+
 test('all production local-loader calls, injected history loaders and idle chunks are explicit shipped modules',async()=>{
   const root=new URL('../',import.meta.url),release=JSON.parse(await readFile(new URL('release-files.json',root),'utf8'));
   const shipped=new Set(release.files),entries=await readdir(root,{withFileTypes:true});

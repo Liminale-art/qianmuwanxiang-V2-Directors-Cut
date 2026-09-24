@@ -28,6 +28,7 @@ test('actual API renderer puts feedback last and keeps it collapsed until explic
     vm.runInContext(section('renderPlugTab'), c);
     const html = c.renderPlugTab(); assert.ok(html.indexOf('sd-feedback-card') > html.indexOf('storage-marker'));
     assert.match(html, /sd-feedback-card" ><summary>问题反馈/); assert.match(html, /<\/details>\s*$/);
+    assert.match(html, /<div class="sd-feedback-host"><\/div>/);
     c.feedbackOpenScope = settings; assert.match(c.renderPlugTab(), /sd-feedback-card" open>/);
 });
 test('actual host only imports after opening and connects real controls with picked environment primitives', async () => {
@@ -80,6 +81,6 @@ test('release includes both feedback modules and CSS is scoped to the actual mai
     const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
     for (const file of ['qianmu-feedback-report.js', 'qianmu-feedback-view.js']) assert.ok(release.files.includes(file));
     const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
-    assert.match(css, /#story-director-modal \.sd-feedback-preview[^}]*white-space:pre-wrap/);
-    assert.match(css, /#story-director-modal \.sd-feedback-actions[^}]*flex-wrap:wrap/);
+    assert.match(css, /#story-director-modal \.sd-feedback-field[^}]*text-align:left/);
+    assert.match(css, /#story-director-modal \.sd-feedback-actions[^}]*gap:8px/);
 });

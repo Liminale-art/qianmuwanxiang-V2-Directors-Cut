@@ -6,8 +6,9 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { webcrypto } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { createStAccountStorage, configureStAccountStorage } from '../qianmu-st-account-storage.js';
-import { resolveImageAccountNamespace } from '../qianmu-image-admission.js';
+import { resolveImageAccountNamespace } from '../qianmu-account-identity.js';
 import { createCharacterArchiveSession } from '../qianmu-character-archive-session.js';
 import { createNativeComfyWorkflowStore } from '../qianmu-comfy-native-store.js';
 import { createNativeVibeAssetStore } from '../qianmu-vibe-native-store.js';
@@ -22,6 +23,8 @@ import { vibeLegacyFixture, vibeInput } from '../tests/helpers/vibe-legacy-fixtu
 import { receiptWritableFixture } from '../tests/helpers/vibe-receipt-writable-fixture.mjs';
 
 const origin = 'https://st.fixture.invalid';
+const rttMs = Number(process.argv.find(arg => arg.startsWith('--rtt-ms='))?.slice(9) || 0);
+assert.ok(Number.isFinite(rttMs) && rttMs >= 0 && rttMs <= 100, 'Synthetic RTT must be between 0 and 100 ms');
 const handle = namespace.slice('st-user:'.length);
 const workerSource = await readFile(new URL('../qianmu-vibe-assets-worker.js', import.meta.url), 'utf8');
 const workerEntry = workerSource.indexOf('let pending=Promise.resolve()');
@@ -35,7 +38,13 @@ const results = [];
 
 async function scenario(identityMode) {
   const cleanup = [], t = { after: callback => cleanup.push(callback) };
-  let identityChecks = 0, identityHttpRequests = 0, measuring = false;
+  let identityChecks = 0, identityHttpRequests = 0, measuring = false, began = 0, waterfall = [];
+  const waitForRtt = async kind => {
+    if (!measuring) return;
+    const event = {kind, startMs: +(performance.now() - began).toFixed(3)};waterfall.push(event);
+    if (rttMs) await new Promise(resolve => setTimeout(resolve, rttMs));
+    event.endMs = +(performance.now() - began).toFixed(3);
+  };
   const fixture = await characterNativeFixture(t), local = vibeLegacyFixture(t), ledger = receiptWritableFixture();
   const keep = client => { cleanup.push(() => client.close()); return client; };
   const input = await vibeInput();
@@ -61,24 +70,26 @@ async function scenario(identityMode) {
       fetchImpl: async (url, options) => {
         assert.equal(url, '/api/users/me'); assert.equal(options.credentials, 'same-origin');
         assert.equal(options.cache, 'no-store'); identityHttpRequests++;
-        return Response.json({ handle });
+        await waitForRtt('identity');return Response.json({ handle });
       },
     });
   };
   const storageOptions = { resolveNamespace, isCurrent: () => true, origin, cryptoImpl: webcrypto,
-    headers: () => ({ 'X-CSRF-Token': 'synthetic' }), fetchImpl: fixture.fetchImpl };
+    headers: () => ({ 'X-CSRF-Token': 'synthetic' }), fetchImpl: async (...args) => {
+      await waitForRtt('file');return fixture.fetchImpl(...args);
+    } };
   const createStorage = options => createStAccountStorage({ ...storageOptions, ...options,
     resolveNamespace, isCurrent: () => !options?.isCurrent || options.isCurrent() === true });
   const workers = [];
   async function measure(surface, operation, run) {
-    fixture.reset(); identityChecks = 0; identityHttpRequests = 0;
+    fixture.reset(); identityChecks = 0; identityHttpRequests = 0;waterfall=[];began=performance.now();
     const eventsBefore = workers.reduce((sum, worker) => sum + worker.received.length, 0);
     const before = new Map(fixture.files);
     measuring = true;
     try { await run(); } finally { measuring = false; }
     assert.deepEqual(fixture.files, before, 'Measured reads must leave synthetic ST files unchanged');
     const events = workers.flatMap(worker => worker.received).slice(eventsBefore);
-    results.push({ identityMode, surface, operation, identityChecks, identityHttpRequests,
+    results.push({ identityMode, surface, operation, identityChecks, identityHttpRequests, elapsedMs: +(performance.now()-began).toFixed(3), waterfall,
       fileGetRequests: fixture.calls.filter(call => call.request.method === 'GET').length,
       fileWriteRequests: fixture.calls.filter(call => call.request.method !== 'GET').length,
       workerGuardMessages: events.filter(event => Object.hasOwn(event, 'guard')).length,
@@ -121,7 +132,7 @@ async function scenario(identityMode) {
       terminate() { this.closed = true; vm.runInContext('runtime?.store.close();runtime?.encodings.close();', this.realm); }
     }
     configureStAccountStorage(storageOptions);
-    globalThis.fetch = fixture.fetchImpl; globalThis.Worker = MemoryWorker;
+    globalThis.fetch = storageOptions.fetchImpl; globalThis.Worker = MemoryWorker;
     await measure('worker-bridge', 'vibe-cold-list', () => callVibeAsset('list', { namespace }));
     await measure('worker-bridge', 'vibe-warm-preview-one-part', () => callVibeAsset('preview', { namespace, id: input.asset.assetId }));
   } finally {
@@ -134,14 +145,14 @@ try {
   await scenario('initialized-user');
   await scenario('identity-fallback');
   console.log(JSON.stringify({ schema: 'qianmu.native-read-cost.v1', isolation: 'in-memory-only',
-    input: { recordsPerLibrary: 1, previewParts: 1, responseDataChunks: 1, migrations: false, controllers: false,
+    input: { syntheticRttMs:rttMs, recordsPerLibrary: 1, previewParts: 1, responseDataChunks: 1, migrations: false, controllers: false,
       realNetwork: false, realWorkers: false, realAccounts: false, realWrites: false },
     notes: ['Counts are measured, not hard-coded expectations.',
       'Native-store measurements exclude the two controller authorization checks around a cold list.',
       'Worker measurements include the actual native client, guard RPC and progress guard paths.',
       'Vibe library cards come from settings; the native list case is an adapter baseline, not a claim that every UI mount calls list.',
       'More stream chunks, preview parts, migrations or retries change request counts; these are not universal upper bounds.',
-      'Elapsed production latency and visual responsiveness are not measured.'], results }, null, 2));
+      'Elapsed time and request waterfalls use only the specified synthetic RTT, never production latency.'], results }, null, 2));
 } finally {
   closeVibeAssetRuntime();
   for (const [key, descriptor] of globals) {

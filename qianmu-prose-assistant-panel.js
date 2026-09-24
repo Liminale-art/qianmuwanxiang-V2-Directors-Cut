@@ -11,8 +11,8 @@ import {qianmuIconElement} from './qianmu-icon-renderer.js';
 export async function openProseAssistantPanel({parent,source,sourceFactory,profiles=[],selection,referenceFloors=3,systemPrompt='',getRequestHeaders,fetchImpl,copy,confirm,isCurrent,preferences,applyIcons,historyFactory=openProseAssistantHistory}={}){
   const document=parent?.ownerDocument,view=document?.defaultView;
   if(!parent?.isConnected||!view||!Array.isArray(profiles)||typeof systemPrompt!=='string'||typeof isCurrent!=='function'||typeof copy!=='function'||typeof confirm!=='function'||typeof historyFactory!=='function')throw TypeError('场外特助面板环境不可用');
-  const seed=await captureProseAssistantChatSource(source);
-  if(!parent.isConnected||isCurrent()!==true){seed.close();throw Error('场外特助页面已变化');}
+  let seed;
+  if(!parent.isConnected||isCurrent()!==true)throw Error('场外特助页面已变化');
   const previousFocus=document.activeElement,dialog=document.createElement('section');dialog.className='qm-prose-assistant-dialog';dialog.tabIndex=-1;dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','false');dialog.setAttribute('aria-label','场外特助');
   let closed=false,busy=false,saving=false,closing=false,sequence=0,resolve,session,observer,history,historyTask=null,historyWorking=true,pendingSnapshot=null,pendingClear=false,disposeWindow,autosave;
   const listeners=[],rows=new Map(),finished=new Promise(done=>{resolve=done;});
@@ -40,20 +40,22 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   status.dataset.paStatus='';status.setAttribute('role','status');status.setAttribute('aria-live','polite');historyNotice.dataset.paHistory='';historyNotice.setAttribute('role','status');retry.hidden=true;
   composer.className='qm-pa-composer';composer.append(question,send);footer.append(historyNotice,retry,status,composer);
   const resize=node('span');resize.dataset.paResize='';resize.tabIndex=0;resize.setAttribute('role','separator');resize.setAttribute('aria-label','调整窗口大小');dialog.append(header,main,config,footer,resize);
-  function dispose(){if(closed)return;const restoreFocus=dialog.contains(document.activeElement);closed=true;sequence++;autosave?.close();session?.close();history?.close();seed.close();disposeWindow?.();observer?.disconnect();listeners.splice(0).forEach(remove=>remove());key.value='';question.value='';rows.clear();dialog.remove();if(restoreFocus&&previousFocus?.isConnected)previousFocus.focus({preventScroll:true});resolve(null);}
-  function alive(){if(closed)return false;try{seed.assertCurrent();if(isCurrent()!==true||!parent.isConnected||!dialog.isConnected)throw Error();return true;}catch(_){dispose();return false;}}
+  function dispose(){if(closed)return;const restoreFocus=dialog.contains(document.activeElement);closed=true;sequence++;autosave?.close();session?.close();history?.close();seed?.close();disposeWindow?.();observer?.disconnect();listeners.splice(0).forEach(remove=>remove());key.value='';question.value='';rows.clear();dialog.remove();if(restoreFocus&&previousFocus?.isConnected)previousFocus.focus({preventScroll:true});resolve(null);}
+  function alive(){if(closed)return false;try{seed?.assertCurrent();if(source?.signal?.aborted||isCurrent()!==true||!parent.isConnected||!dialog.isConnected)throw Error();return true;}catch(_){dispose();return false;}}
   const validRange=()=>range.value!==''&&Number.isSafeInteger(Number(range.value))&&Number(range.value)>=0&&Number(range.value)<=9;
   function controls(){
     const blocked=!session||historyWorking||!!pendingSnapshot;
     send.disabled=busy?closing:saving||closing||blocked||!profile.value||!question.value.trim()||!validRange();
     const action=busy?'stop':'send';if(send.dataset.paAction!==action){send.dataset.paAction=action;icon(send,busy?'停止':'发送',action);}
     clear.disabled=busy||saving||closing||blocked;retry.disabled=historyWorking||closing;closeButton.disabled=closing;
-    for(const element of [profile,range,url,model,key,eye,persona])element.disabled=busy||closing||(element===range&&seed.scope.offstage===true);dialog.setAttribute('aria-busy',String(busy||saving||historyWorking));
+    for(const element of [profile,range,url,model,key,eye,persona])element.disabled=!seed||busy||closing||(element===range&&seed.scope.offstage===true);dialog.setAttribute('aria-busy',String(busy||saving||historyWorking));
   }
   function historyFailure(cause){historyNotice.textContent=/^prose_assistant_history_/.test(cause?.code||'')?String(cause.message).slice(0,240):'对话保存未确认，请保留本页内容并重试';}
   async function loadHistory(){
     historyWorking=true;retry.hidden=true;controls();
-    try{const loaded=await historyFactory({source:seed,isCurrent:alive});if(!alive()){loaded.close();return;}history=loaded;session=createProseAssistantSession({key:seed.key,isCurrent:alive,onChange:render,initialHistory:history.initialHistory()});render(session.view());historyNotice.textContent='';}
+    try{
+      if(!seed){const captured=await captureProseAssistantChatSource(source);if(!alive()){captured.close();return;}seed=captured;disposeWindow.setStorageKey('qianmu-assistant-window:'+seed.scope.namespace);}
+      const loaded=await historyFactory({source:seed,isCurrent:alive});if(!alive()){loaded.close();return;}history=loaded;session=createProseAssistantSession({key:seed.key,isCurrent:alive,onChange:render,initialHistory:history.initialHistory()});render(session.view());historyNotice.textContent='';}
     catch(cause){if(alive()){historyFailure(cause);icon(retry,'重新读取','retry');retry.hidden=false;}}
     finally{historyWorking=false;if(alive())controls();}
   }
@@ -111,7 +113,8 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   listen(dialog,'keydown',event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();if(!config.hidden)showSettings(false);else void requestClose();}});
   for(const event of ['pointerdown','pointerup','mousedown','mouseup','touchstart','click'])listen(dialog,event,value=>value.stopPropagation());listen(view,'pagehide',dispose);
   listen(view,'beforeunload',event=>{if(autosave?.state().dirty){event.preventDefault();event.returnValue='';}});
-  parent.append(dialog);disposeWindow=bindProseAssistantWindow(dialog,{handle:header,storageKey:'qianmu-assistant-window:'+seed.scope.namespace});
-  observer=new view.MutationObserver(()=>{if(!closed)alive();});observer.observe(document.documentElement,{childList:true,subtree:true});controls();dialog.focus({preventScroll:true});await loadHistory();
-  return Object.freeze({element:dialog,finished,dispose});
+  if(source?.signal)listen(source.signal,'abort',dispose);
+  parent.append(dialog);disposeWindow=bindProseAssistantWindow(dialog,{handle:header});
+  observer=new view.MutationObserver(()=>{if(!closed)alive();});observer.observe(document.documentElement,{childList:true,subtree:true});controls();dialog.focus({preventScroll:true});const ready=loadHistory();
+  return Object.freeze({element:dialog,finished,ready,dispose});
 }

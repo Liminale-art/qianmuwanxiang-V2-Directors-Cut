@@ -46,6 +46,12 @@ export function createCharacterArchiveSession({createLocal, createStorage = crea
     requestMigration({namespace:owner,createLocal,createStorage});return native;
   };
   async function inspectNative(transport) {
+    // Selection only asks whether a native head exists. The delegated native
+    // operation reads and validates the complete index before returning data;
+    // never download the same catalogue body twice merely to choose a store.
+    if(typeof storage.readFingerprint==='function'){
+      const fingerprint=await storage.readFingerprint(CHARACTER_NATIVE_SLOT,transport);alive();return fingerprint!==null;
+    }
     const result = await storage.read(CHARACTER_NATIVE_SLOT, transport); alive();
     if (result.exists) validateCharacterNativeIndex(result.value, {namespace: owner, scope: storage.scope});
     return result.exists;

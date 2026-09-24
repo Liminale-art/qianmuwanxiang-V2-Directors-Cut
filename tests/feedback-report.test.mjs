@@ -1,12 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FEEDBACK_CONTACT, FEEDBACK_MODULES, FEEDBACK_TEXT_LIMIT, feedbackPlatform, feedbackDiagnostics, feedbackReport, feedbackMailLink } from '../qianmu-feedback-report.js';
+import { feedbackPlatform, feedbackDiagnostics, feedbackReport } from '../qianmu-feedback-report.js';
+import * as feedback from '../qianmu-feedback-report.js';
 
-test('feedback defaults have no recipient or sending capability', () => {
-    assert.deepEqual(FEEDBACK_CONTACT, { address: '', identityVerified: false });
-    assert.equal(feedbackMailLink(), null);
-    assert.ok(Object.isFrozen(FEEDBACK_CONTACT));
-    assert.ok(Object.isFrozen(FEEDBACK_MODULES));
+test('feedback exports only local report and coarse diagnostic helpers without a receiving service', () => {
+    assert.deepEqual(Object.keys(feedback).sort(), ['feedbackDiagnostics','feedbackPlatform','feedbackReport']);
 });
 test('diagnostics use own whitelisted data properties and never inspect secrets', () => {
     const source = { qianmuVersion: '1.59.369', backendStatus: 'ready', os: 'Windows', browser: 'Firefox' };
@@ -39,36 +37,26 @@ for (const [ua, os, browser] of [
     ['PRIVATE unknown client', '', ''],
 ]) test(`platform reduces ${os || 'unknown'} / ${browser || 'unknown'} to family names only`, () => assert.deepEqual(feedbackPlatform(ua), { os, browser }));
 test('unknown non-string user agents are not coerced', () => assert.deepEqual(feedbackPlatform({ toString() { throw Error(); } }), { os: '', browser: '' }));
-test('report preserves intentional user text as text and omits empty optional steps', () => {
-    const report = feedbackReport({ description: ' <script>手动输入</script>\n第二段 ', module: '便笺' });
-    assert.match(report, /<script>手动输入<\/script>\n第二段/); assert.match(report, /功能模块：便笺/);
-    assert.doesNotMatch(report, /复现步骤/); assert.match(report, /无（未附带诊断）/);
+test('report preserves intentional input including boundary whitespace without separate module or steps fields', () => {
+    const text=' <script>手动输入</script>\n第二段 ';
+    const report=feedbackReport({description:text});
+    assert.ok(report.includes('问题描述\n'+text+'\n\n附带诊断'));
+    assert.doesNotMatch(report,/功能模块：|复现步骤/);assert.match(report,/暂无可识别的诊断信息/);
 });
-test('every diagnostic can be excluded and unsupported exclusion keys add nothing', () => {
-    const diagnostics = { qianmuVersion: '1.2.3', stVersion: '1.12.0', backendVersion: '1.2.0', backendStatus: 'error', os: 'iOS', browser: 'Safari' };
-    const excluded = feedbackDiagnostics(diagnostics).map(row => row.key);
-    const report = feedbackReport({ description: '问题', steps: '第一步\n第二步', diagnostics, excluded: [...excluded, 'apiKey'] });
-    assert.match(report, /复现步骤\n第一步\n第二步/); assert.match(report, /无（未附带诊断）/);
-    assert.doesNotMatch(report, /1.12|Safari|iOS|apiKey/);
+
+test('diagnostics are always attached and obsolete exclusions cannot hide them or add private fields', () => {
+    const diagnostics={qianmuVersion:'1.2.3',stVersion:'1.12.0',backendVersion:'1.2.0',backendStatus:'error',os:'iOS',browser:'Safari'};
+    const excluded=feedbackDiagnostics(diagnostics).map(row=>row.key);
+    const report=feedbackReport({description:'问题',steps:'PRIVATE steps',module:'PRIVATE module',diagnostics,excluded:[...excluded,'apiKey']});
+    for(const row of feedbackDiagnostics(diagnostics))assert.ok(report.includes(row.label+'：'+row.value));
+    assert.doesNotMatch(report,/PRIVATE|apiKey/);
 });
-test('oversized descriptions and steps fail explicitly instead of truncating', () => {
-    const text = '文'.repeat(FEEDBACK_TEXT_LIMIT);
-    assert.ok(feedbackReport({ description: text }).includes(text));
-    assert.throws(() => feedbackReport({ description: text + '尾' }), /最多/);
-    assert.throws(() => feedbackReport({ description: '问题', steps: text + '尾' }), /最多/);
+
+test('long input is complete including multibyte characters and the last line', () => {
+    const text='文🙂\n'.repeat(30000)+'不可丢失的结尾';
+    assert.ok(feedbackReport({description:text}).includes(text));
 });
-test('empty input and unknown modules fail without an exportable report', () => {
-    for (const description of ['', ' \n ', null, 1]) assert.throws(() => feedbackReport({ description }), /描述/);
-    assert.throws(() => feedbackReport({ description: '问题', module: '私人角色名' }), /功能模块/);
-});
-test('a future verified brand mail link never carries report data and is not a send operation', () => {
-    const value = feedbackMailLink({ address: 'feedback@example.test', identityVerified: true, apiKey: 'PRIVATE' });
-    assert.equal(value.address, 'feedback@example.test'); assert.match(value.href, /^mailto:feedback@example\.test\?subject=/);
-    assert.doesNotMatch(value.href, /PRIVATE/); assert.match(decodeURIComponent(value.href), /粘贴已核对/);
-});
-test('unverified contacts and mail header/URL injection are unavailable', () => {
-    assert.equal(feedbackMailLink({ address: 'feedback@example.test', identityVerified: false }), null);
-    for (const address of ['x@example.test\r\nBcc:a@evil.test', 'a@example.test?body=secret', 'a@example.test,b@example.test', 'javascript:alert(1)', 'a%0A@example.test', '']) assert.equal(feedbackMailLink({ address, identityVerified: true }), null);
-    const contact = {}; Object.defineProperty(contact, 'address', { get() { throw Error('private'); } });
-    assert.equal(feedbackMailLink(contact), null);
+
+test('empty or non-string descriptions fail without an exportable report', () => {
+    for(const description of ['', ' \n ', null, 1])assert.throws(()=>feedbackReport({description}),/描述/);
 });

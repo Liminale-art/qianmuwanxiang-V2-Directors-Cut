@@ -14,6 +14,7 @@ function seed(){
  files.set(`${prefix}-${fingerprint}.json`,text);files.set(`${prefix}.json`,JSON.stringify({schema:'qianmu.st-account-head.v1',scope,slot:'collections',fingerprint}));
 }
 seed();let gets=0,posts=0,external=0,hold=false,release=null,entered=null,rejected=false;
+const rttMs=40;
 const checks=[],errors=[],browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
 const deadline=setTimeout(()=>void browser.close(),90000);
 page.on('pageerror',error=>errors.push(error.message));
@@ -23,6 +24,7 @@ await context.route('**/*',async route=>{
  if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><main id="root"></main>'});
  if(/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url),'utf8')});
  if(url.pathname.startsWith('/user/files/')){
+  await new Promise(resolve=>setTimeout(resolve,rttMs));
   if(rejected)return route.fulfill({status:401,contentType:'application/json',body:'{}'});
   gets++;if(hold){hold=false;entered?.();await new Promise(resolve=>{release=resolve;});}
   const text=files.get(url.pathname.split('/').at(-1));return route.fulfill({status:text?200:404,contentType:'application/json',body:text||'{}'});
@@ -42,7 +44,13 @@ try{
   fixture.open=async()=>{fixture.ui=await openTextCollectionLibrary({parent:document.getElementById('root'),resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.active,headers:()=>({}),copy:text=>{fixture.copied=text;}});};
   await fixture.open();
  },namespace);await ready();assert.equal(gets,2);assert.equal(await page.locator('[data-collection-id]').count(),1);checks.push('cold open reads the native head/body once');
- await click('close');gets=0;await page.evaluate(()=>fixture.open());await ready();assert.equal(gets,0);
+ await click('close');gets=0;
+ await page.evaluate(async()=>{
+  const {createTextCollectionFloorStatus}=await import('/qianmu-text-collection-floor-status.js');
+  const scope={chatId:'test-only',chat:[]};fixture.stars=createTextCollectionFloorStatus({getScope:()=>scope,resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.active});
+  await fixture.stars.refresh();if(fixture.stars.status(0)!==true)throw Error('star source missing');
+ });assert.equal(gets,0,'floor stars must not call the force-refresh backup path');
+ const reopenAt=performance.now();await page.evaluate(()=>fixture.open());await ready();const reopenMs=performance.now()-reopenAt;assert.equal(gets,0);
  await page.locator('[data-collection-id]').click();await ready();assert.equal(gets,0);
  await click('copy');await ready();assert.equal(await page.evaluate(()=>fixture.copied),'第一段\n\n\n\n第二段');
  await click('edit');await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'第一段\n\n第二段');
@@ -65,5 +73,5 @@ try{
  await page.waitForFunction(()=>!document.querySelector('dialog'));
  checks.push('background 401 closes the cached view even when ST still exposes the old account handle');
  assert.equal(posts,0);assert.equal(external,0);assert.deepEqual(errors,[]);
- console.log(JSON.stringify({passed:checks.length,checks,errors,external,writes:posts,scope:'actual UI/native storage; intercepted local fixture files only, not real VPS timings'}));
+ console.log(JSON.stringify({passed:checks.length,checks,errors,external,writes:posts,rttMs,reopenMs,scope:'actual UI/native storage with floor-star refresh; intercepted local fixture files only, not real VPS timings'}));
 }finally{release?.();clearTimeout(deadline);await context.close();await browser.close();}

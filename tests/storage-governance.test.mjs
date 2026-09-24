@@ -85,9 +85,9 @@ assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cl
 assert.match(source, /__orphan_reader_blobs__[\s\S]*孤儿封面与书内插图/, 'orphaned reader blobs retain a clearly labelled explicit cleanup choice, not a duplicate accounting row');
 assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(cleanup\)/, 'orphan cleanup must only run after explicit selection under its initiating session');
 assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.scopeCount[\s\S]*个聊天/, 'cleanup rows must reveal how many chat buckets each registered store contains');
-assert.match(source, /openStorageChatCleanupDialog[\s\S]*sd-storage-backup-home[\s\S]*clearChatScopedStorage\(selected, cleanup\)/, 'chat cleanup returns to the single backup home before session-scoped per-item deletion');
+assert.match(source, /openStorageChatCleanupDialog[\s\S]*clearChatScopedStorage\(selected, cleanup\)/, 'chat cleanup retains session-scoped per-item deletion');
 assert.doesNotMatch(source,/sd-storage-export-(?:reader|audio)/,'cleanup must not run duplicate exports while holding the cleanup lock');
-assert.match(source, /openStorageCleanupDialog[\s\S]*sd-storage-backup-home[\s\S]*先返回资料管理备份/, 'module cleanup must route to the single backup home rather than running imports inside a stale selection');
+assert.doesNotMatch(source, /sd-storage-backup-home|先返回资料管理备份/, 'cleanup choosers must not duplicate the backup navigation or own backup actions');
 const notesExport=source.slice(source.indexOf('async function exportPinnedNotesBackup'),source.indexOf('async function importPinnedNotesBackup'));
 assert.match(notesExport, /listQianmuNotes\(/, 'notes backup reads the current account library, not the unowned legacy library');
 assert.doesNotMatch(notesExport,/filter\(\(note\) => note\.pinned\)/,'non-prominent automatically saved notes must be included in backups');

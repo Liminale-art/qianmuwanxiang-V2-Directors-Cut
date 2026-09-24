@@ -102,6 +102,7 @@ function clientFixture(){
   const source=sources[3].replace(/^import[^\n]*\n/gm,'').replace(/^export \{[^\n]*\n/gm,'').replaceAll('export ','').replaceAll('import.meta.url',JSON.stringify(new URL('../qianmu-vibe-assets.js',import.meta.url).href));
   const context=vm.createContext({Worker,URL,structuredClone,Date:{now:()=>clock.time},vibeFileError,isStAccountStorageConfigured:()=>true,getStAccountStorageReadScope:()=>scope,
     captureStAccountStorageWorkerContext:async()=>{await captureHook?.();return {namespace:account,origin,csrf:'synthetic'};},
+    verifyStAccountStorageWorkerContext:async expected=>{await captureHook?.();if(account!==expected.namespace||origin!==expected.origin)throw vibeFileError('account','Vibe账户已变化');return true;},
     setTimeout:clock.setTimer,clearTimeout:clock.clearTimer,createVerifiedProgressWatch:options=>createVerifiedProgressWatch({...options,setTimer:clock.setTimer,clearTimer:clock.clearTimer})});vm.runInContext(source,context);
   return {clock,workers,context,setAccount:value=>account=value,hook:value=>captureHook=value};
 }

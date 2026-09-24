@@ -7,11 +7,11 @@ function fixture(){
   const account=()=>state.namespace==='st-user:alice'?'account-a':'account-b';
   const manager=createTextCollectionFloorStatus({getScope:()=>state.scope,resolveNamespace:async()=>{state.identity++;return state.namespace;},isCurrent:()=>state.current,now:()=>state.clock,maxAgeMs:1000,onChange:()=>state.changes++,sessionFactory:async()=>{
     state.created++;const expectedAccount=account();
-    return {expectedAccount,guard:async()=>{if(account()!==expectedAccount)throw Error('account changed');},close:()=>state.closed++,snapshot:async({signal})=>{
+    return {expectedAccount,guard:async()=>{if(account()!==expectedAccount)throw Error('account changed');},close:()=>state.closed++,sources:async({signal})=>{
       state.reads++;state.signal=signal;const records=structuredClone(state.records);
       if(state.mode==='hold')await new Promise(resolve=>{state.hold=resolve;});
       if(state.mode==='error')throw Error('network');
-      return {backup:{sourceAccount:expectedAccount,records}};
+      return {expectedAccount,items:records.map(record=>record.source)};
     }};
   }});
   const row=(messageId,overrides={})=>({source:{account:'account-a',chatId:'chat-a',messageId,replyId:'swipe:0',...overrides},text:'PRIVATE BODY NOT RETAINED'});
@@ -77,7 +77,7 @@ test('dispose aborts pending reads, drops all floor state and emits no late upda
 test('malformed snapshot or changed source account is unknown rather than a false success',async()=>{
   const scope={chatId:'chat-a',chat:[]};
   for(const backup of [{sourceAccount:'wrong',records:[]},{sourceAccount:'a',records:null},{sourceAccount:'a',records:Array(10001).fill({})}]){
-    const manager=createTextCollectionFloorStatus({getScope:()=>scope,resolveNamespace:async()=>'st-user:alice',isCurrent:()=>true,sessionFactory:async()=>({expectedAccount:'a',snapshot:async()=>({backup}),close(){}})});
+    const manager=createTextCollectionFloorStatus({getScope:()=>scope,resolveNamespace:async()=>'st-user:alice',isCurrent:()=>true,sessionFactory:async()=>({expectedAccount:'a',sources:async()=>({expectedAccount:backup.sourceAccount,items:backup.records}),close(){}})});
     await manager.refresh();assert.equal(manager.status(0),null);manager.dispose();
   }
 });

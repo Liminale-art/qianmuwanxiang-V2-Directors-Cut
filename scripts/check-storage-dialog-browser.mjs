@@ -21,12 +21,13 @@ try{
     window.storageCleanupSession=createStorageCleanupSession({owner:()=>settings,scope:()=>getChatKey(),epoch:()=>storyboardAdmissionEpoch});
     new Function(source+';window.bindCleanup=bindStorageManagementEvents;')();
     const checks=[];
-    for(const kind of ['module','chat'])for(const action of ['cancel','close','backdrop','escape','remove','modal-close','modal-remove','card-replace','pagehide','backup']){
+    for(const kind of ['module','chat'])for(const action of ['cancel','close','backdrop','escape','remove','modal-close','modal-remove','card-replace','pagehide']){
       document.body.innerHTML='<section id="fixture-modal" class="open"><section class="sd-storage-card"><button class="sd-storage-clean">Module</button><button class="sd-storage-chat-clean">Chat</button></section></section>';
       const modal=document.getElementById(MODAL_ID),card=modal.firstElementChild;bindCleanup(card);
       card.querySelector(kind==='module'?'.sd-storage-clean':'.sd-storage-chat-clean').click();
       const layer=document.getElementById(STORAGE_CLEANUP_LAYER_ID);
       if(!layer||!storageCleanupSession.busy)throw Error('chooser did not acquire its session');
+      if(layer.querySelector('.sd-storage-backup-home,input[type=file]')||layer.textContent.includes('先返回资料管理备份'))throw Error('cleanup still duplicates backup controls');
       if(['cancel','close'].includes(action))layer.querySelector('.sd-storage-cleanup-'+action).click();
       if(action==='backdrop')layer.querySelector('.sd-storage-cleanup-backdrop').click();
       if(action==='escape')document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
@@ -35,12 +36,6 @@ try{
       if(action==='modal-remove')modal.remove();
       if(action==='card-replace')card.replaceWith(card.cloneNode(true));
       if(action==='pagehide')dispatchEvent(new Event('pagehide'));
-      if(action==='backup'){
-        if(layer.querySelector('input[type=file]'))throw Error('cleanup still owns import inputs');
-        const backup=document.createElement('details');backup.className='sd-storage-backup-section';backup.innerHTML='<summary>Backup</summary>';card.append(backup);
-        layer.querySelector('.sd-storage-backup-home').click();
-        if(!backup.open||document.activeElement!==backup.firstElementChild)throw Error('backup home was not revealed and focused');
-      }
       await new Promise(resolve=>setTimeout(resolve,0));
       if(storageCleanupSession.busy||layer.isConnected)throw Error(kind+'/'+action+' left the cleanup locked');
       const retry=storageCleanupSession.begin({isConnected:true});if(!retry)throw Error('retry blocked');retry.release();
@@ -99,5 +94,5 @@ try{
     }
     return checks;
   },['storageChatScopeLabel','openStorageCleanupDialog','openStorageChatCleanupDialog','bindStorageManagementEvents'].map(section).join('\n'));
-  assert.equal(checks.length,31);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
+  assert.equal(checks.length,29);assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors}));
 }finally{await context.close();await browser.close();}
