@@ -21,7 +21,7 @@ async function fixture(t){
   };
   const a=open(),complete=async(target=scope,id='A')=>{const reserved=await a.store.reserve(target,request(id,target));await a.store.begin(reserved.receipt);await a.store.settle(reserved.receipt,'succeeded');return reserved.receipt;};
   const writeRoot=async value=>{const found=await f.storage.read(slot);return f.storage.write(slot,value,{expectedFingerprint:found.fingerprint});};
-  // Test-only future-format fixture: production exposes no writer or migration.
+  // Test-only forced small pages exercise compatibility across many boundaries.
   const paginate=async(size=2)=>{
     const source=(await f.storage.read(slot)).value,directory={...structuredClone(source),schema,entries:[]},pages=[];
     for(const entry of source.entries){let previous=null;
@@ -73,17 +73,19 @@ test('missing transition original cannot masquerade as a verified current state 
   const review=await f.a.store.review(namespace,'chat');assert.ok(review.rows[0].error);assert.deepEqual(review.rows[0].branches,[]);await assert.rejects(f.a.store.inspect(scope));await assert.rejects(f.a.store.exportAll(namespace));assert.equal(f.uploads,0);
 });
 
-test('read-compatible directories reject new publication before uploads and preserve the exact pending intent for later recovery',async t=>{
+test('paged directories accept ordinary new scenes while retaining every existing historical original',async t=>{
   const f=await fixture(t);await f.complete();await f.paginate();const before=new Map(f.files);f.reset();
-  await assert.rejects(f.a.store.reserve({...scope,continuityId:'new'},request('B',{...scope,continuityId:'new'})),/仅兼容读取/);
-  const journal=await f.a.journal.read(namespace);assert.equal(journal.pending.proposal.kind,'reserve');assert.equal(f.uploads,0);
-  const packet=await f.a.store.exportAll(namespace);assert.deepEqual(packet.localJournal,journal);assert.equal(packet.entries.length,1);assert.deepEqual(f.files,before);
+  const target={...scope,continuityId:'new'},reserved=await f.a.store.reserve(target,request('B',target));assert.equal(reserved.view.pending,1);
+  const journal=await f.a.journal.read(namespace);assert.equal(journal.pending,null);assert.ok(f.uploads>0);
+  const packet=await f.a.store.exportAll(namespace);assert.deepEqual(packet.localJournal,journal);assert.equal(packet.entries.length,2);
+  for(const [name,body]of before)if(JSON.parse(body).schema!=='qianmu.st-account-head.v1')assert.equal(f.files.get(name),body);
 });
 
-test('new legacy sources on a read-compatible root stop before preservation uploads and leave both old tables intact',async t=>{
+test('new legacy sources are preserved and appended to paged roots without mutating either old table',async t=>{
   const f=await fixture(t);await f.complete();await f.paginate();const old=comfySceneIdbFixture(),legacy=old.open();t.after(()=>legacy.close());await legacy.reserve(scope,request('B'));
-  const snapshot=structuredClone(old.state.tables),b=f.open(old),before=new Map(f.files);f.reset();await assert.rejects(b.store.review(namespace,'chat'),/仅兼容读取/);
-  assert.equal(f.uploads,0);assert.deepEqual(old.state.tables,snapshot);assert.deepEqual(f.files,before);assert.equal((await b.journal.read(namespace)).pending,null);
+  const snapshot=structuredClone(old.state.tables),b=f.open(old),before=new Map(f.files);f.reset();const review=await b.store.review(namespace,'chat');
+  assert.equal(review.rows[0].branches.length,2);assert.ok(f.uploads>0);assert.deepEqual(old.state.tables,snapshot);assert.equal((await b.journal.read(namespace)).pending,null);
+  for(const [name,body]of before)if(JSON.parse(body).schema!=='qianmu.st-account-head.v1')assert.equal(f.files.get(name),body);
 });
 
 test('lost v1 acknowledgement can be proved from paginated full history without publishing a second operation',async t=>{

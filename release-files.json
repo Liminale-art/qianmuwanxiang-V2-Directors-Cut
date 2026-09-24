@@ -462,6 +462,7 @@
     "qianmu-comfy-scene-journal.js",
     "qianmu-comfy-scene-native-contract.js",
     "qianmu-comfy-scene-directory.js",
+    "qianmu-comfy-scene-directory-write.js",
     "qianmu-comfy-scene-catalogue.js",
     "qianmu-comfy-scene-native-store.js",
     "qianmu-comfy-scene-review.js",

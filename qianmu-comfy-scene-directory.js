@@ -2,7 +2,6 @@ import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {comfySceneScope,comfySceneScopeKey} from './qianmu-comfy-scene-lock.js';
 import {COMFY_SCENE_NATIVE_SCHEMA,validateSceneIndex,validateSceneMetadata,sceneLeaves,sceneSame,sceneBytes,sceneNativeFail as fail} from './qianmu-comfy-scene-native-contract.js';
 
-// Read-compatibility stage only. No v2 writer, migration or deletion is exposed.
 // A root retains every current branch. Linked immutable pages retain the full
 // chronological metadata catalogue; transition originals remain unchanged.
 export const COMFY_SCENE_DIRECTORY_SCHEMA='qianmu.comfy.scene-runtime.v2';
@@ -42,18 +41,20 @@ export function validateSceneHistoryPage(value,{namespace,scope,storageScope,cou
 
 // Every page and every declared branch is checked before returning the v1
 // semantic view consumed by the existing runtime. This cold compatibility
-// path intentionally does not claim lazy/history-free reads or enable v2 writes.
+// path intentionally does not claim lazy/history-free reads. Tails are returned
+// only as verified preparation data for the append writer, never execution rights.
 export async function readSceneDirectory(value,{namespace,scope,readImmutable,check=async()=>{}}={}){
   value=structuredClone(value);
   validateSceneDirectory(value,namespace,scope);await check();
-  if(value.schema!==COMFY_SCENE_DIRECTORY_SCHEMA)return {index:value,metadataBytes:sceneBytes(value),readOnly:false};
+  if(value.schema!==COMFY_SCENE_DIRECTORY_SCHEMA)return {root:value,index:value,metadataBytes:sceneBytes(value),historyBytes:0,tails:new Map()};
   if(typeof readImmutable!=='function')fail('续场历史读取器不可用');
-  const index={...structuredClone(value),schema:COMFY_SCENE_NATIVE_SCHEMA,entries:[]};let historyBytes=0;
+  const index={...structuredClone(value),schema:COMFY_SCENE_NATIVE_SCHEMA,entries:[]},tails=new Map();let historyBytes=0;
   for(const entry of value.entries){
     const pages=[],seen=new Set();let locator=sceneHistoryLocator(entry.history,scope);
     while(locator){
       if(seen.has(locator.reference.fingerprint))fail('续场历史分页循环引用');seen.add(locator.reference.fingerprint);await check();
       const saved=await readImmutable(locator.reference),original=structuredClone(saved.value);await check();const page=validateSceneHistoryPage(original,{namespace,scope:entry.scope,storageScope:scope,count:locator.count});
+      if(!pages.length)tails.set(comfySceneScopeKey(entry.scope),{page,locator});
       historyBytes+=sceneBytes(page);if(historyBytes>COMFY_SCENE_HISTORY_LIMITS.totalBytes)fail('续场完整历史超过本版兼容读取范围，未截断');pages.push(page.versions);
       locator=page.previous===null?null:sceneHistoryLocator(page.previous,scope);
     }
@@ -61,5 +62,5 @@ export async function readSceneDirectory(value,{namespace,scope,readImmutable,ch
     if(expanded.versions.length!==entry.history.count||!sceneSame(sceneLeaves(expanded),entry.heads))fail('续场完整历史与当前分支不一致');index.entries.push(expanded);
   }
   // Full original predecessor ordering, duplicate detection and quotas remain.
-  validateSceneIndex(index,namespace,scope);await check();return {index,metadataBytes:sceneBytes(value)+historyBytes,readOnly:true};
+  validateSceneIndex(index,namespace,scope);await check();return {root:value,index,metadataBytes:sceneBytes(value)+historyBytes,historyBytes,tails};
 }

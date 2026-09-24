@@ -3,6 +3,7 @@ import {createComfyScenePreservation} from './qianmu-comfy-scene-preservation.js
 import {comfySceneScope,comfySceneScopeKey} from './qianmu-comfy-scene-lock.js';
 import {assertComfyRouteNamespace} from './qianmu-comfy-route-contract.js';
 import {validateSceneDirectory,readSceneDirectory} from './qianmu-comfy-scene-directory.js';
+import {prepareSceneDirectoryWrite} from './qianmu-comfy-scene-directory-write.js';
 import {COMFY_SCENE_NATIVE_SLOT as slot,COMFY_SCENE_EVENT_SLOT,COMFY_SCENE_EVENT_SCHEMA,sceneNativeFail as fail,scenePredecessorFail,sceneSame,sceneHash,sceneBytes,sceneReference,sceneLeaves,emptySceneIndex,validateSceneIndex,validateSceneEvent,validateSceneEventLink,validateSceneProposal} from './qianmu-comfy-scene-native-contract.js';
 
 // Per-scene immutable transition originals, not a whole 4MiB account upload for
@@ -18,14 +19,18 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
       await check();opening??=Promise.resolve().then(()=>createStorage({maxBytes:8*1024*1024,isCurrent:()=>!closed})).then(value=>{if(closed||value.namespace!==namespace){value.close();fail('续场运行账户不符');}client=value;return value;}).catch(e=>{opening=null;throw e;});
       await opening;await check();if(client.namespace!==namespace)fail('续场运行会话不能切换账户');const transport={guard:check,signal:captured.signal};
       const read=async()=>{const result=await client.read(slot,transport);await check();if(!result.exists&&(known||captured.requireExisting))fail('已确认的ST续场目录缺失，未建立空库');if(result.exists){validateSceneDirectory(result.value,namespace,client.scope);known=true;}return result;};
-      let found=await read();const directory=await readSceneDirectory(found.exists?found.value:emptySceneIndex(namespace),{namespace,scope:client.scope,readImmutable:reference=>client.readImmutable(reference,transport),check});
-      let index=directory.index;const assertWritable=()=>{if(directory.readOnly)fail('本版仅兼容读取轻目录，未改写原件；请使用支持写入的后续版本');};
+      let found=await read(),directory=await readSceneDirectory(found.exists?found.value:emptySceneIndex(namespace),{namespace,scope:client.scope,readImmutable:reference=>client.readImmutable(reference,transport),check}),index=directory.index;
       const baseline=await legacy.snapshot(namespace,{isCurrent:valid}),sourceDigest=await sceneHash(baseline);await check();
       const stable=async()=>{await legacy.assertSnapshot(baseline,{isCurrent:valid});await check();};
-      const save=async next=>{assertWritable();next.revision=index.revision+1;validateSceneIndex(next,namespace,client.scope);await stable();known=true;found=await client.write(slot,next,{...transport,expectedFingerprint:found.fingerprint});if(!sceneSame(found.value,next))fail('续场目录尚未读回');index=structuredClone(found.value);await stable();};
+      const save=async next=>{
+        next.revision=index.revision+1;validateSceneIndex(next,namespace,client.scope);await stable();
+        const prepared=await prepareSceneDirectoryWrite(next,{current:directory,namespace,scope:client.scope,preserveImmutable:(name,value)=>client.preserveImmutable(name,value,transport),check});
+        await stable();known=true;found=await client.write(slot,prepared.root,{...transport,expectedFingerprint:found.fingerprint});
+        if(!sceneSame(found.value,prepared.root))fail('续场目录尚未读回');directory=prepared;index=prepared.index;await stable();
+      };
       const validateLoaded=async(saved,entry,meta)=>{const value=validateSceneEvent(saved.value,namespace);if(value.generation>index.generation)fail('续场原件来自未确认的清理代数');await validateSceneEventLink(value,entry,meta);await check();return value;};
       const load=async(entry,meta)=>validateLoaded(await client.readImmutable(sceneReference(meta.reference,client.scope),transport),entry,meta);
-      const preserve=async event=>{assertWritable();validateSceneEvent(event,namespace);const saved=await client.preserveImmutable(COMFY_SCENE_EVENT_SLOT,event,transport);await check();if(!sceneSame(saved.value,event))fail('续场操作原件尚未读回');return {digest:await sceneHash(event),stateHash:await sceneHash(event.record),stateBytes:event.record===null?0:sceneBytes(event.record),reference:sceneReference(saved.reference,client.scope),parents:event.parents};};
+      const preserve=async event=>{validateSceneEvent(event,namespace);const saved=await client.preserveImmutable(COMFY_SCENE_EVENT_SLOT,event,transport);await check();if(!sceneSame(saved.value,event))fail('续场操作原件尚未读回');return {digest:await sceneHash(event),stateHash:await sceneHash(event.record),stateBytes:event.record===null?0:sceneBytes(event.record),reference:sceneReference(saved.reference,client.scope),parents:event.parents};};
       const find=(value,scope)=>value.entries.find(row=>comfySceneScopeKey(row.scope)===comfySceneScopeKey(scope));
       const review=async scope=>{
         const entry=find(index,scope),heads=sceneLeaves(entry),branches=[];for(const head of heads){const event=await load(entry,head);branches.push({digest:head.digest,record:event.record});}
@@ -56,7 +61,6 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
         return {scope,record:events[0]?.record??null,heads:heads.map(row=>row.digest),generation:index.generation};
       };
       if(!index.sources.includes(sourceDigest)&&(baseline.usage!==null||baseline.rows.length)){
-        assertWritable();
         if(captured.inventoryOnly)fail('旧续场来源尚未接入，请先打开续场管理核对；未在只读盘点时上传');
         const kept=await preservation.preserve(namespace,{...transport,isCurrent:valid});if(!sceneSame(kept.snapshot,baseline))fail('旧续场来源在接入期间变化');await stable();
         const next=structuredClone(index),initial=!found.exists;if(initial)next.generation=baseline.usage?.generation??0;
@@ -67,7 +71,7 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
         }
         next.sources.push(sourceDigest);await save(next);
       }
-      const ctx={get index(){return index;},get exists(){return found.exists;},get metadataBytes(){return directory.readOnly?directory.metadataBytes:sceneBytes(index);},assertWritable,resolve,review,reviewMany,find,load,preserve,save,check,stable};
+      const ctx={get index(){return index;},get exists(){return found.exists;},get metadataBytes(){return directory.metadataBytes;},resolve,review,reviewMany,find,load,preserve,save,check,stable};
       const result=await work(ctx);await stable();if((await read()).fingerprint!==found.fingerprint)fail('续场目录在核对期间变化');return structuredClone(result);
     });queue=task.then(()=>{},()=>{});return task;
   };
@@ -89,7 +93,6 @@ export function createComfySceneCatalogue({legacy,createStorage=createConfigured
     publish(proposal,options={}){const input=structuredClone(proposal);validateSceneProposal(input);return operation(input.namespace,options,async ctx=>{
       const digests=await Promise.all(input.events.map(sceneHash)),already=input.events.every((event,i)=>ctx.find(ctx.index,event.scope)?.versions.some(v=>v.digest===digests[i]));
       if(already){for(const [i,event]of input.events.entries()){const entry=ctx.find(ctx.index,event.scope);await ctx.load(entry,entry.versions.find(v=>v.digest===digests[i]));}return true;}
-      ctx.assertWritable();
       if(ctx.index.generation!==input.generation)scenePredecessorFail('续场清理代数已变化，未重放旧操作');const next=structuredClone(ctx.index);
       const states=new Map();
       for(const event of input.events){const key=comfySceneScopeKey(event.scope);if(!states.has(key))states.set(key,await ctx.review(event.scope));const state=states.get(key),branch=event.action.type==='branch_result';

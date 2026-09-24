@@ -1,8 +1,8 @@
 // Old ordinary jobs retain their original revision and budget. A saved v2
 // continue bridge may prove that exact completed revision remains a prefix;
 // similar prose, matching names and a reused floor are never sufficient.
-import {normalizeStoryboardContinuationLinks,storyboardContinuationPath,storyboardContinuationSourceMatches,storyboardContinuationIdentityInput} from './qianmu-storyboard-continuation-proof.js?v=1.59.360';
-import {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamDigest} from './qianmu-storyboard-source-proof.js?v=1.59.360';
+import {normalizeStoryboardContinuationLinks,storyboardContinuationPath,storyboardContinuationSourceMatches,storyboardContinuationIdentityInput} from './qianmu-storyboard-continuation-proof.js?v=1.59.361';
+import {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamDigest} from './qianmu-storyboard-source-proof.js?v=1.59.361';
 const fail=()=>{throw Object.assign(new Error('续写前的原正文无法完整核对，未继续提交'),{code:'storyboard_ordinary_continuation'});};
 
 export function resolveStoryboardOrdinaryContinuation(reference,messages,createReference,{continuationLinks,namespace}={}){
