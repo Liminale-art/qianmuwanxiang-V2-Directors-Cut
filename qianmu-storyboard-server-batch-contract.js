@@ -116,6 +116,7 @@ function frozenFields(input, expectedAccount) {
   exactObject(input.source, ['chatHash', 'floor', 'sourceDigest', 'originPlanId']);
   if (!validHash(input.source.chatHash) || !Number.isSafeInteger(input.source.floor) || input.source.floor < 0
     || !validHash(input.source.sourceDigest) || !validOriginPlanId(input.source.originPlanId)
+    || STREAM_BATCH_ID.test(input.originBatch.batchId) !== STREAM_BATCH_ID.test(input.source.originPlanId)
     || (STREAM_BATCH_ID.test(input.originBatch.batchId)
       && input.originBatch.batchId !== input.source.originPlanId)) {
     fail('分镜批次来源无效，未创建任务');

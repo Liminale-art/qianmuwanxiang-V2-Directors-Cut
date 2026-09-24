@@ -24,7 +24,7 @@ await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' });
   if (url === 'https://qianmu.test/qianmu-theme-skins.css') { skinRequests++; if(holdSkin)await new Promise(resolve=>releaseSkin=resolve); return route.fulfill({status:failSkin?404:200,contentType:'text/css',body:failSkin?'':await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')}); }
-  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-settings.js', 'qianmu-appearance-portals.js', 'qianmu-notes-theme.js', 'qianmu-classic-palettes.js', 'qianmu-appearance-actions.js', 'qianmu-hive-theme-logo.js']) {
+  for (const file of ['qianmu-storyboard-nav-lifecycle.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-settings.js', 'qianmu-appearance-portals.js', 'qianmu-input-boundary.js', 'qianmu-notes-theme.js', 'qianmu-classic-palettes.js', 'qianmu-appearance-actions.js', 'qianmu-hive-theme-logo.js']) {
     if (url === `https://qianmu.test/${file}`) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
   }
   external++; return route.abort();
@@ -40,20 +40,20 @@ try {
       storyboardState: () => window.state, clone: structuredClone, htmlEscape: value => String(value), MODAL_ID: 'story-director-modal',
       activeTab: 'imagegen', settings: { theme: 'light', lastTab: 'dashboard' }, THEME_KEYS: themes.map(theme => theme.key), THEMES: themes,currentHiveThemeKey:()=>THEME_KEYS.includes(settings.theme)?settings.theme:'light',
       readerView: null, focusClockLockConfirming: false, coreadOpenRequestId: 0, editorView: null, theaterView: null,
-      storyboardVibeLibraryController: null, storyboardVibeSelection: null, focusClockLockGuard: null,
+      storyboardVibeLibraryController: null, storyboardEnsembleController: null, storyboardVibeSelection: null, storyboardGalleryKind: 'stills', storyboardGalleryInspectorRecordId: '', focusClockLockGuard: null,
       modalJustOpened: false, EXTENSION_NAME: '千幕', COREAD_VISIBLE: false, COREAD_ENABLED: false, worldPage: 'front',
       featureRuntime: { bindIntent: noop }, storyboardPendingRestoreScroll: null, storyboardPageScrolls: new Map(),
       performanceRuntime: { modalRenderCount: 0, modalRenderTotalMs: 0, modalRenderLastMs: 0, modalRenderMaxMs: 0, slowModalRenderCount: 0, rendersByTab: {} },
       focusClockActiveLock: () => false, focusClockCancelEntry: noop, focusClockPauseForReadingExit: noop,
       storyboardCaptureTagDraft: noop, prepareDirectorWorldEntryLinks: noop, snapshotAccState: noop,
       saveSettings: () => counters.saves++, storyboardCaptureWorkbench: () => counters.captures++,
-      closeModal: noop, bindQianmuVersionBadge: noop, bindNotesPanelEvents: noop, applyAccState: noop, renderBusyState: noop, syncFontWithST: noop,
+      closeModal: noop, bindQianmuVersionBadge: noop, bindNotesPanelEvents: noop, applyAccState: noop, renderBusyState: noop, refreshDirectorLiveUI: noop, syncFontWithST: noop,
       focusClockBlockExit: () => false, focusClockCloseVoiceDrawer: noop, unmountReaderPortal: noop, unmountTheaterFullscreen: noop,
       renderFloatButton: () => counters.float++, syncNotesTheme: () => counters.notes++,
       storyboardReconcileGalleryLinks: noop, renderStoryboardCreate: () => form,
       renderStoryboardAssets: () => '<section class="sd-card" style="height:1200px">隔离的素材内容</section>',
       renderStoryboardGallery: () => '<section class="sd-card">隔离的阅片室内容</section>', renderStoryboardLogs: () => '<section class="sd-card">隔离的日志内容</section>',
-      qianmuVersionBadgeMarkup: () => '', renderInjectDock: () => '', updateTabsFade: noop, bindTabsScrollControls: noop,
+      qianmuVersionBadgeMarkup: () => '', renderInjectDock: () => '', renderQianmuMainTabs: () => '', updateTabsFade: noop, bindTabsScrollControls: noop,
     });
     const {createQianmuAppearanceSession} = await import('./qianmu-appearance-session.js');
     window.appearanceSession = createQianmuAppearanceSession({readSettings:()=>settings,loadStyles:()=>({promise:Promise.resolve(true),cancel:noop})});
@@ -87,7 +87,8 @@ try {
           expectedInline: originalInline,
           aria: selected.getAttribute('aria-current'), saves: counters.saves, captures: counters.captures, renders: performanceRuntime.modalRenderCount };
       });
-      assert.equal(mid.same, true); assert.equal(mid.buttons, true); assert.equal(mid.view, destination); assert.equal(mid.focused, true); assert.equal(mid.aria, 'page');
+      assert.deepEqual({same:mid.same,buttons:mid.buttons,view:mid.view,focused:mid.focused,aria:mid.aria},
+        {same:true,buttons:true,view:destination,focused:true,aria:'page'}, `${width}/${mode}/${destination}: ${errors.join('; ')}`);
       assert.deepEqual(mid.inline, mid.expectedInline, 'temporary animation values must restore exact inline styles and priority');
       assert.equal(mid.saves, before.saves + 1); assert.equal(mid.captures, before.captures + (before.view === 'create' ? 1 : 0)); assert.equal(mid.renders, before.renders + 1);
       assert.ok(mid.width > (width === 393 ? 40 : 48) && mid.width < (width === 393 ? 100 : 112), `actual route ${destination}: transition did not continue (${mid.width})`);
@@ -212,7 +213,7 @@ try {
     Object.assign(window,await import('./qianmu-notes-theme.js'),await import('./qianmu-appearance-settings.js'),await import('./qianmu-hive-theme-logo.js'),{
       MODULE_NAME:'isolated-qianmu',QUICK_HIVE_THEME_PALETTES:palettes,NOTES_PANEL_LAYER_ID:'qianmu-notes-panel-layer',NOTES_FLOAT_LAYER_ID:'qianmu-notes-float-layer',FLOAT_ID:'story-director-float',
       NOTES_THEME_VARIABLES:['--sd-text','--sd-muted','--sd-accent','--sd-card','--sd-primary'],QUICK_HEX_BORDER_SVG:'',FLOAT_LOGO_URLS:{},FLOAT_LOGO_URL:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>',
-      notesPanelOpen:false,notesFeatureSettings:()=>settings.notes,notesFeatureEnabled:()=>true,stopNotesPanelResizeTracking:noop,bindNotesPanelResize:noop,
+      notesPanelOpen:false,notesFeatureSettings:()=>settings.notes,notesFeatureEnabled:()=>true,collectionFloorTools:{renderHive:noop},notesSyncControls:()=>({mount:noop}),stopNotesPanelResizeTracking:noop,bindNotesPanelResize:noop,
       renderNotesPanel:()=>'<div class="sd-notes-stage"><section class="sd-notes-panel"><textarea class="sd-note-body">真实挂载测试草稿</textarea></section></div>',
       clampDetachedNotesEntry:value=>value,detachedNotesGeometry:()=>({width:60,height:68}),detachedNoteCanReturnHome:()=>false,toast:noop,openNotesPanel:noop,
       bindFloatDrag:noop,closeQuickWheel:noop,closeFloorNavigator:noop,applyFloatPosition:btn=>{btn.style.left='15px';btn.style.top='140px';},

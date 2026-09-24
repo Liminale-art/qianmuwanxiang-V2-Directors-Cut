@@ -35,6 +35,9 @@ test('real preparation/queue stores a failed unsubmitted middle mirror and retry
   const retryIdentity=await createImageAdmissionIdentity({...failed.snapshot},'st-user:test');
   assert.deepEqual(await createImageHistorySeeds([failed],retryIdentity),[],'a preparation log is not an executed-image history seed');
   for(const job of [...queue]){e.context.storyboardFinishLog(e.state.logs.find(log=>log.id===job.logId),'success',{recordIds:['image-'+job.inlineOrder.shotIndex]});e.context.storyboardSetPlanStatus(e.plan,'completed',{job,resultIds:['image-'+job.inlineOrder.shotIndex]});}
+  assert.equal(e.plan.status,'completed','persisted legacy status stays compatible with existing images');
+  assert.equal(core.storyboardPartialCompletion(e.plan)?.incompleteCount,1);
+  assert.equal(e.notices.filter(text=>text==='部分完成 · 1 镜未完成').length,1,'the settled batch is announced once');
   queue.splice(0);const saved=JSON.stringify(e.plan.shots),count=e.state.logs.length;
   assert.equal(await e.context.storyboardGenerate(null,{plan:e.plan}),false);assert.equal(e.state.logs.length,count);assert.equal(JSON.stringify(e.plan.shots),saved);assert.equal(e.attempts(),3);
   e.repair();const original=JSON.stringify(failed.snapshot);e.state.profiles.novel.model='a-totally-different-current-model';
@@ -46,6 +49,7 @@ test('real preparation/queue stores a failed unsubmitted middle mirror and retry
   assert.doesNotMatch(JSON.stringify(retry),/queueAccepted/);
   e.context.storyboardSetPlanStatus(e.plan,'completed',{job:retry,resultIds:['recovered-image']});
   assert.equal(e.plan.shots[1].partialFailureCount,0);assert.equal(e.plan.shots[1].error,'');assert.equal(e.plan.status,'completed');
+  assert.equal(core.storyboardPartialCompletion(e.plan),null,'successful retry clears only the derived partial badge');
 });
 
 test('a scope change after one queue acceptance reports partial progress and cannot reset accepted plan data',async()=>{
@@ -55,6 +59,21 @@ test('a scope change after one queue acceptance reports partial progress and can
   assert.equal(await e.context.storyboardGenerate(null,{plan:e.plan}),true);assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.attempts(),1);
   assert.ok(e.notices.some(text=>text.includes('1 个请求已进入队列')));assert.equal(e.plan.generationStarted,true);
   assert.equal(e.state.logs.filter(log=>log.status==='failed').length,0,'global cancellation must not write a late per-mirror failure');
+});
+
+test('ordinary deferred stop after a saved picture ends as visibly partial without replaying accepted work',async()=>{
+  const e=await fixture();e.repair();e.context.STORYBOARD_QUEUE_LIMIT=1;
+  e.context.storyboardEnqueuePreparedBatch=(jobs,callbacks)=>{
+    callbacks.onAccepted(jobs[0]);
+    e.context.storyboardSetPlanStatus(e.plan,'completed',{job:jobs[0],resultIds:['saved-image']});
+    callbacks.onStop({remainingJobs:jobs.slice(1)});
+    return {pendingCount:0,done:Promise.resolve()};
+  };
+  assert.equal(await e.context.storyboardGenerate(null,{plan:e.plan}),true);
+  assert.equal(e.plan.status,'completed');assert.deepEqual(e.plan.shots.map(shot=>shot.status),['completed','cancelled','cancelled']);
+  assert.equal(core.storyboardPartialCompletion(e.plan)?.incompleteCount,2);
+  assert.equal(e.notices.filter(text=>text==='部分完成 · 2 镜未完成').length,1);
+  assert.equal(e.attempts(),0,'this presentation-only test never opens provider admission');
 });
 
 test('an exception after pushing a job is recognized as queue acceptance, not recorded as unsubmitted',async()=>{

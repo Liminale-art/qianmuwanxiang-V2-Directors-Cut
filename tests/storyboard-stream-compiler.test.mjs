@@ -6,7 +6,7 @@ import {EventEmitter} from 'node:events';
 import {compilerEnvironment,casting,response} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {applyCharacterCasting} from '../qianmu-character-casting.js';
-import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState,sortStoryboardInlineRecords,buildStoryboardInlineTasks,storyboardInlineDisplayIndexes,storyboardProductionDeliveryPolicy} from '../qianmu-storyboard.js';
+import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState,sortStoryboardInlineRecords,buildStoryboardInlineTasks,storyboardInlineDisplayIndexes,storyboardProductionDeliveryPolicy,storyboardPartialCompletion} from '../qianmu-storyboard.js';
 import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
@@ -450,6 +450,24 @@ for(const change of ['model connection','unsubmitted shot'])test(`deferred strea
   assert.deepEqual(copy(f.state.logs),logs,'the changed ninth mirror has no paid admission or log');
   assert.ok(plan.shots.slice(8).every(shot=>shot.status==='cancelled'));
   f.assertReleased();
+});
+
+test('stopped stream with saved pictures announces partial completion and refreshes the inline strip',async()=>{
+  const count=13,sample=manyShotExamples(count),f=await fixture({text:sample.descriptions.join('\n\n')+'\n\nUnfinished'}),q=installStreamQueue(f);
+  let inlineRenders=0;f.context.storyboardScheduleInlineRender=()=>inlineRenders++;
+  f.context.STORYBOARD_QUEUE_LIMIT=8;
+  f.state.generationPolicy={version:3,minImages:1,maxImages:count,concurrency:2};useShotSet(f,Array.from({length:count},(_,i)=>i),null,sample.shots);
+  const window=installDeferredStreamWindow(f,q);
+  assert.equal(await f.run(),true);assert.equal(await window.admit(8),8);
+  const plan=f.state.shotPlans[0];
+  for(const [index,job] of q.queue.entries()){
+    f.context.storyboardFinishLog(f.state.logs.find(log=>log.id===job.logId),'success',{recordIds:[`image-${index}`]});
+    f.context.storyboardSetPlanStatus(plan,'completed',{job,resultIds:[`image-${index}`]});
+  }
+  const before=inlineRenders;window.stop();
+  assert.equal(plan.status,'completed');assert.equal(storyboardPartialCompletion(plan)?.incompleteCount,5);
+  assert.equal(f.notices.filter(text=>text==='部分完成 · 5 镜未完成').length,1);
+  assert.equal(inlineRenders,before+1);f.assertReleased();
 });
 
 for(const notification of ['while pending','at final admission'])test(`terminal capture waits ${notification} for all deferred mirrors and runs the LLM only once`,async()=>{

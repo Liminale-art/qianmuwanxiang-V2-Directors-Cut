@@ -9,12 +9,12 @@ import {retainStoryboardArtDirection} from './qianmu-art-directions.js';
 export {STORYBOARD_ART_DIRECTIONS,retainStoryboardArtDirection,storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.372';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.372';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.373';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.373';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.372';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.372';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.372';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.373';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.373';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.373';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -35,8 +35,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.372';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.372';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.373';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.373';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -2284,6 +2284,35 @@ export function aggregateStoryboardShotTasks(value, fallbackStatus = 'queued') {
     error: str(matchingError, 4000),
     partialFailureCount: status === 'completed' ? failedTasks.length : 0,
   };
+}
+
+// A presentation-only outcome: persisted plans and partially successful shots
+// stay `completed`, so accepted pictures remain visible and independently retryable.
+export function storyboardPartialCompletion(plan) {
+  const shots = Array.isArray(plan?.shots) ? plan.shots : [];
+  const terminal = ['completed', 'failed', 'cancelled', 'stale', 'orphaned', 'skipped'];
+  if (!terminal.includes(plan?.status) || !shots.length || shots.some(shot => !terminal.includes(shot?.status))) return null;
+  const completedCount = shots.filter(shot => shot.status === 'completed').length;
+  if (!completedCount) return null;
+  const incompleteCount = shots.length - completedCount;
+  const failedRequestCount = shots.reduce((total, shot) => total + (shot.status === 'completed' ? Math.max(0, Number(shot.partialFailureCount) || 0) : 0), 0);
+  if (!incompleteCount && !failedRequestCount) return null;
+  const details = [incompleteCount && `${incompleteCount} 镜未完成`, failedRequestCount && `${failedRequestCount} 次出图失败`].filter(Boolean).join('，');
+  return { completedCount, incompleteCount, failedRequestCount, totalCount: shots.length, label: `部分完成 · ${details}` };
+}
+
+export function storyboardPartialPlanMap(plans, chatKey) {
+  return new Map((Array.isArray(plans) ? plans : []).filter(plan => plan.chatKey === chatKey && storyboardPartialCompletion(plan))
+    .map(plan => [plan.id, plan]));
+}
+
+export function storyboardInlinePartialCompletion(entries, plans, shownPlans = null) {
+  const linked = new Set((Array.isArray(entries) ? entries : []).map(entry => entry.planId).filter(Boolean));
+  const unseen = plan => plan && !shownPlans?.has(plan.id) && storyboardPartialCompletion(plan);
+  const affected = plans instanceof Map ? [...linked].map(id => plans.get(id)).filter(unseen)
+    : (Array.isArray(plans) ? plans : []).filter(plan => linked.has(plan.id) && unseen(plan));
+  if (shownPlans instanceof Set) affected.forEach(plan => shownPlans.add(plan.id));
+  return affected.length ? storyboardPartialCompletion({status:'completed',shots:affected.flatMap(plan => plan.shots)}) : null;
 }
 
 export function createStoryboardParagraphAnchor(input = {}) {

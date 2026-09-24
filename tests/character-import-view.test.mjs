@@ -23,7 +23,9 @@ function hostFixture(){
   };return host;
 }
 async function settled(host,predicate=()=>!host.innerHTML.includes('aria-busy="true"')){
-  for(let i=0;i<400;i++){await new Promise(resolve=>setImmediate(resolve));if(predicate())return;}assert.fail('controller did not settle');
+  const deadline=Date.now()+2000;
+  while(Date.now()<deadline){await new Promise(resolve=>setTimeout(resolve,2));if(predicate())return;}
+  assert.fail('controller did not settle');
 }
 async function fixture(t,callbacks={}){
   const f=await characterNativeFixture(t),old=characterLegacyFixture(t,legacyPacket()),store=f.open();

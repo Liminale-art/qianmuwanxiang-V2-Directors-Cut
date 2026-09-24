@@ -1,10 +1,11 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.372';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.372';
-import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.372';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.373';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.373';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.373';
 import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
+import {storyboardPartialCompletion} from './qianmu-storyboard.js?v=1.59.373';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -181,6 +182,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
         &&jobs.every(job=>planShots.has(job.planShotId)&&plan.shots.some(shot=>shot.id===job.planShotId));
       const markStopped=details=>{
         const remaining=Array.isArray(details?.remainingJobs)?details.remainingJobs:[];
+        const wasPartial=storyboardPartialCompletion(plan);
         let changed=0;
         for(const job of remaining){
           const shot=plan.shots?.find(row=>row.id===job.planShotId);
@@ -197,7 +199,11 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
           else if(plan.shots.every(shot=>['cancelled','failed'].includes(shot.status)))plan.status='failed';
         }
         plan.error=`后续 ${changed} 镜未提交，可重新提取`;
-        if(state===d.storyboardState()&&chatKey===String(d.getChatKey()||''))d.saveSettings();
+        if(state===d.storyboardState()&&chatKey===String(d.getChatKey()||'')){
+          d.saveSettings();d.storyboardScheduleInlineRender?.(30,plan.floor);
+          const partial=storyboardPartialCompletion(plan);
+          if(partial&&!wasPartial)d.toast?.(partial.label,'warning');
+        }
       };
       try{
         const scheduled=d.storyboardQueueWindowEnqueue(jobs,{plan,valid:ownsBatch,

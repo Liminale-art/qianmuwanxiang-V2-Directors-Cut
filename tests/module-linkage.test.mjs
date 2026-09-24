@@ -22,8 +22,10 @@ const checker = String.raw`
   const linker = (specifier, referencingModule) => (
     getModule(new URL(specifier, referencingModule.identifier))
   );
+  // Server-only batch ledgers legitimately import node:fs/crypto. This probe
+  // checks browser module linkage; their Node graph has dedicated tests.
   const roots = fs.readdirSync('.')
-    .filter((file) => file === 'index.js' || /^qianmu-storyboard-.*\.js$/.test(file));
+    .filter((file) => file === 'index.js' || /^qianmu-storyboard-(?!server-).*\.js$/.test(file));
   for (const file of roots) {
     const module = getModule(pathToFileURL(path.resolve(file)));
     if (module.status === 'unlinked') await module.link(linker);

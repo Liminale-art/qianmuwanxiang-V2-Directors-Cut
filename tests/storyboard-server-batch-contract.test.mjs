@@ -154,6 +154,7 @@ test('duplicate IDs, missing rows, non-safe floor, malformed IDs and oversized c
   const controlPlan = input(); controlPlan.source.originPlanId = 'story-\nsecret';
   const prosePlan = input(); prosePlan.source.originPlanId = 'private narrative in an ID field';
   const wrongStreamPlan = input(); wrongStreamPlan.originBatch.batchId = `stream-${digest('generation')}`;
+  const wrongOrdinaryPlan = input(); wrongOrdinaryPlan.source.originPlanId = `stream-${digest('generation')}`;
   const noFloor = input(); noFloor.source.floor = -1;
   const noOriginTime = input(); noOriginTime.originBatch.batchStartedAt = 0;
   const wrongMode = input(); wrongMode.requestedMode = 'redraw';
@@ -161,7 +162,7 @@ test('duplicate IDs, missing rows, non-safe floor, malformed IDs and oversized c
   const unsafeIndex = input(); unsafeIndex.shots[1].shotIndex = Number.MAX_SAFE_INTEGER + 1;
   for (const bad of [repeatedShot, repeatedAttempt, missing, extraArraySlot, unsafeFloor, malformed, keyAsId,
     reusedBatchId, reusedStreamId, wrongOrigin, wrongShot, wrongAttempt, uuidAttempt,
-    sAlias, hashAlias, noPlan, hugePlan, controlPlan, prosePlan, wrongStreamPlan,
+    sAlias, hashAlias, noPlan, hugePlan, controlPlan, prosePlan, wrongStreamPlan, wrongOrdinaryPlan,
     noFloor, noOriginTime, wrongMode, badIndex, unsafeIndex]) {
     reject(() => normalizePreparedBatch(bad, account, 1));
   }

@@ -2,7 +2,7 @@ import {projectChatGallerySupplement} from './qianmu-chat-gallery-supplement.js'
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
 import {chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
 import {captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
-import {mergeGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.372';
+import {mergeGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.373';
 
 const same=(a,b)=>chatGalleryReceiptText([{value:a}]).text===chatGalleryReceiptText([{value:b}]).text;
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_restore_merge',writeState:'not_started'});};

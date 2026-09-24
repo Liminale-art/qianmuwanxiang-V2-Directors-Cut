@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { readFile } from 'node:fs/promises';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
+const style = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 function fixture(ids = ['a', 'b', 'c']) {
   const doc = { body: {}, activeElement: null }; doc.activeElement = doc.body;
@@ -96,6 +98,10 @@ test('unchanged inline markup is compared before any new element or image is par
   assert.match(render, /const wrapper = reusable \? old : document.createElement/);
   assert.match(render, /old\?\.dataset.storyboardChatKey === currentChatKey/);
   assert.match(render, /existing.forEach\(storyboardDisposeInlineWrapper\)/);
+  assert.match(render, /partialPlans=storyboardPartialPlanMap\(plans,currentChatKey\)/);
+  assert.match(render, /storyboardInlinePartialCompletion\(entries, partialPlans,seen\)/);
+  assert.match(render, /role="status" class="sd-storyboard-inline-outcome"/);
+  assert.match(style, /#chat \.mes \.sd-storyboard-inline > \.sd-storyboard-inline-outcome\s*\{[^}]*color: var\(--sd-shot-ink\)/);
   assert.doesNotMatch(render, /storyboardReleaseInlineVideoPlaybacks\(scopedFloor\)/);
   assert.match(section('storyboardInsertInlineWrapper'), /tail.nextElementSibling !== wrapper/);
 });

@@ -7,6 +7,9 @@ import {
   getStoryboardCapabilities,
   normalizeStoryboardState,
   planStoryboardProviderRequests,
+  storyboardPartialCompletion,
+  storyboardPartialPlanMap,
+  storyboardInlinePartialCompletion,
 } from '../qianmu-storyboard.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -63,6 +66,38 @@ assert.equal(aggregateStoryboardShotTasks([
   { id: 'a', status: 'completed', resultIds: ['image-a'] },
   { id: 'b', status: 'queued' },
 ], 'queued').status, 'queued', 'a shared shot remains active until every split request settles');
+assert.equal(storyboardPartialCompletion({status:'completed',shots:[{status:'completed'},{status:'queued'}]}),null);
+assert.equal(storyboardPartialCompletion({status:'compiling',shots:[{status:'completed'},{status:'failed'}]}),null,'re-extraction must not show an old terminal badge');
+assert.equal(storyboardPartialCompletion({status:'failed',shots:[{status:'failed'},{status:'cancelled'}]}),null);
+assert.deepEqual(storyboardPartialCompletion({status:'completed',shots:[{status:'completed'},{status:'failed'},{status:'cancelled'}]}),{
+  completedCount:1,incompleteCount:2,failedRequestCount:0,totalCount:3,label:'部分完成 · 2 镜未完成',
+});
+assert.equal(storyboardPartialCompletion({status:'completed',shots:[{status:'completed',partialFailureCount:1}]}).label,'部分完成 · 1 次出图失败');
+assert.equal(storyboardPartialCompletion({status:'completed',shots:[{status:'completed'}]}),null);
+assert.equal(storyboardInlinePartialCompletion([{planId:'old'},{planId:'old'},{planId:'new'}],[
+  {id:'new',status:'completed',shots:[{status:'completed'},{status:'cancelled'}]},
+  {id:'old',status:'completed',shots:[{status:'completed',partialFailureCount:1}]},
+])?.label,'部分完成 · 1 镜未完成，1 次出图失败','linked same-paragraph plans aggregate without duplicate labels');
+const sameIdPlans = [
+  {id:'shared',chatKey:'other-chat',status:'completed',shots:[{status:'completed'},{status:'failed'}]},
+  {id:'shared',chatKey:'current-chat',status:'completed',shots:[{status:'completed'},{status:'cancelled'}]},
+];
+assert.equal(storyboardPartialPlanMap(sameIdPlans,'current-chat').get('shared'),sameIdPlans[1],
+  'an inline partial badge cannot borrow a same-ID plan from another chat');
+assert.equal(storyboardPartialPlanMap(sameIdPlans,'missing-chat').size,0);
+assert.equal(storyboardInlinePartialCompletion([{planId:'old'},{planId:'new'},{planId:'new'}],new Map([
+  ['old',{id:'old',status:'completed',shots:[{status:'completed',partialFailureCount:1}]}],
+  ['new',{id:'new',status:'completed',shots:[{status:'completed'},{status:'failed'}]}],
+]))?.label,'部分完成 · 1 镜未完成，1 次出图失败','preindexed plans avoid scanning the full library per paragraph');
+const shownPartialPlans=new Set(),splitParagraphPlans=new Map([
+  ['split',{id:'split',status:'completed',shots:[{status:'completed'},{status:'failed'}]}],
+  ['later',{id:'later',status:'completed',shots:[{status:'completed',partialFailureCount:1}]}],
+]);
+assert.equal(storyboardInlinePartialCompletion([{planId:'split'}],splitParagraphPlans,shownPartialPlans)?.label,'部分完成 · 1 镜未完成');
+assert.equal(storyboardInlinePartialCompletion([{planId:'split'}],splitParagraphPlans,shownPartialPlans),null,
+  'the same plan does not repeat its partial badge under a later paragraph');
+assert.equal(storyboardInlinePartialCompletion([{planId:'split'},{planId:'later'}],splitParagraphPlans,shownPartialPlans)?.label,'部分完成 · 1 次出图失败',
+  'a new plan can still show its own outcome at a shared later anchor');
 
 assert.equal(preservedManualMode.routing.rules[0].shotTypes,undefined,'shot-type assignments are not persisted');
 assert.equal(preservedManualMode.routing.enabled,undefined,'per-chat style selection is the only mirror enable authority');
