@@ -1,19 +1,19 @@
 import {createGalleryDiscoveryClient} from './qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.365';
+import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.366';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
-import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js?v=1.59.365';
+import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js?v=1.59.366';
 import {decodeGalleryOriginalBlob} from './qianmu-gallery-original-preview.js';
-import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.365';
-import {verifyGalleryRestoreOriginals} from './qianmu-gallery-restore-originals.js?v=1.59.365';
+import {createGalleryRestoreSource} from './qianmu-gallery-restore-source.js?v=1.59.366';
+import {verifyGalleryRestoreOriginals} from './qianmu-gallery-restore-originals.js?v=1.59.366';
 
 // Browsing remains read-only. Current-chat preservation is lazy and reachable
 // only through the explicit preparation action, never directory opening.
 export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
   getContext,epoch,canPrepare=()=>false,
   createDiscovery=createGalleryDiscoveryClient,createArchive=createGalleryArchiveStorage,
-  createRestoration=async options=>(await import('./qianmu-gallery-restore-execution.js?v=1.59.365')).createGalleryRestoreExecution(options),
+  createRestoration=async options=>(await import('./qianmu-gallery-restore-execution.js?v=1.59.366')).createGalleryRestoreExecution(options),
   loadImage=loadGalleryPreviewImage,createOriginal=createGalleryOriginalClient,decodeOriginal=decodeGalleryOriginalBlob,timeoutMs=45000}={}){
   if(typeof account!=='function'||typeof headers!=='function'||typeof isCurrent!=='function'
     ||!Number.isFinite(timeoutMs)||timeoutMs<100||timeoutMs>60000)throw Error('图库读取环境尚未就绪');
@@ -111,7 +111,7 @@ export function createGalleryArchiveBrowser({account,headers,isCurrent=()=>true,
     prepare({onProgress=()=>{}}={}){return run(async()=>{
       if(!selection||!storage)throw Error('请先选择已保存版本');
       if(typeof getContext!=='function'||typeof epoch!=='function')throw Error('请在准确的原聊天中准备恢复');
-      const {prepareCurrentGalleryRestore}=await import('./qianmu-gallery-restore-runtime.js?v=1.59.365');await check();
+      const {prepareCurrentGalleryRestore}=await import('./qianmu-gallery-restore-runtime.js?v=1.59.366');await check();
       restoration?.close();restoration=null;preparation=null;
       const result=await prepareCurrentGalleryRestore({selection,archive:storage,getContext,epoch,account,headers,guard:check,isCurrent:current,
         canPrepare,signal:cancellation.signal,onProgress});await check();if(result.compatible)preparation=structuredClone(result.reference);return result;

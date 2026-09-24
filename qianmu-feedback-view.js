@@ -1,4 +1,4 @@
-import { FEEDBACK_CONTACT, FEEDBACK_TEXT_LIMIT, FEEDBACK_MODULES, feedbackPlatform, feedbackDiagnostics, feedbackReport, feedbackMailLink } from './qianmu-feedback-report.js?v=1.59.365';
+import { FEEDBACK_CONTACT, FEEDBACK_TEXT_LIMIT, FEEDBACK_MODULES, feedbackPlatform, feedbackDiagnostics, feedbackReport, feedbackMailLink } from './qianmu-feedback-report.js?v=1.59.366';
 
 // Scope is an opaque identity, not a settings source. Weak keys allow old
 // accounts/runtime settings to be collected; drafts never go into ST/storage.

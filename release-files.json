@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-prose-assistant-rename.js",
     "qianmu-assistant-storage-contract.js",
     "qianmu-assistant-storage-service.js",
     "qianmu-assistant-storage-client.js",

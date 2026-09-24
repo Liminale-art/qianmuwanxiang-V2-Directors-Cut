@@ -52,3 +52,43 @@ export async function openNativeProseAssistantHistory(options={}){
  try{const runtime=await openProseAssistantHistory({...options,store});return Object.freeze({...runtime,close(){runtime.close();store.close();}});}
  catch(cause){store.close();throw cause;}
 }
+
+// A successful host rename supplies the exact old filename; the live source is
+// the reloaded destination. Copy forward, never move/delete the old document or
+// merge with an existing destination. ST writes remain optimistic, not CAS.
+export async function copyRenamedProseAssistantHistory({source,oldChatId,isCurrent,storageFactory=createConfiguredStAccountStorage,legacyFactory=createProseAssistantHistoryStore,cryptoImpl=globalThis.crypto}={}){
+ const account=source?.scope?.namespace,newKey=proseAssistantHistoryKey(source?.key,account),tuple=JSON.parse(newKey);
+ if(tuple.length!==5||tuple[3].chatId===oldChatId)throw error('scope','助手改名来源无效');
+ const prior=structuredClone(tuple);prior[3].chatId=oldChatId;
+ const oldKey=proseAssistantHistoryKey(JSON.stringify(prior),account);
+ const check=async()=>{if(isCurrent()!==true||source.assertCurrent()!==true||await source.guard()!==true||isCurrent()!==true)throw error('scope','助手改名来源已变化');return true;};
+ await check();const store=await storageFactory({maxBytes:PROSE_ASSISTANT_HISTORY_LIMITS.bytes+2048,isCurrent});
+ try{
+  if(await proseAssistantAccountForNamespace(store.namespace,{cryptoImpl})!==account)throw error('scope','助手改名账户不一致');
+  const slot=async key=>'assistant-'+Array.from(new Uint8Array(await cryptoImpl.subtle.digest('SHA-256',new TextEncoder().encode(key))),v=>v.toString(16).padStart(2,'0')).join('');
+  const oldSlot=await slot(oldKey),newSlot=await slot(newKey),options={guard:check};await check();
+  const destination=await store.read(newSlot,options);await check();
+  if(destination.exists){validateProseAssistantHistory(destination.value,newKey);return {status:'existing'};}
+  const original=await store.read(oldSlot,options);await check();let history;
+  if(original.exists)history=structuredClone(validateProseAssistantHistory(original.value,oldKey));
+  else history=await readLegacy();
+  async function readLegacy(){
+   const legacy=legacyFactory();try{const value=structuredClone(validateProseAssistantHistory(await legacy.read(account,oldKey,{guard:()=>isCurrent()===true&&source.assertCurrent()===true}),oldKey));await check();return value;}finally{legacy.close();}
+  }
+  if(!history.revision)return {status:'empty'};
+  const next=validateProseAssistantHistory({...history,namespace:newKey},newKey);
+  const before=await store.read(oldSlot,options);await check();
+  if(before.fingerprint!==original.fingerprint)throw error('conflict','原助手记录已更新，未继续改名接续');
+  if(!original.exists&&JSON.stringify(await readLegacy())!==JSON.stringify(history))throw error('conflict','原本机助手记录已更新，未继续改名接续');
+  try{
+   const result=await store.write(newSlot,next,{expectedFingerprint:null,guard:check});await check();
+   if(JSON.stringify(validateProseAssistantHistory(result.value,newKey))!==JSON.stringify(next))throw error('invalid','助手改名保存回执不一致');
+  }catch(cause){
+   // A lost acknowledgement may already have saved the exact destination. Read
+   // once to reconcile, without repeating a write or replacing competing data.
+   await check();const found=await store.read(newSlot,options);await check();
+   if(!found.exists||JSON.stringify(validateProseAssistantHistory(found.value,newKey))!==JSON.stringify(next))throw cause;
+  }
+  return {status:'copied',turns:next.rows.length};
+ }finally{store.close();}
+}
