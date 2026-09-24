@@ -128,14 +128,20 @@ test('wrong-account, wrong-ID or damaged existing records cannot be silently sel
   }
 });
 
-test('layout checkpoint contains no I/O, route, execution or fee operation', async () => {
+test('layout remains pure and published HTTP wiring is read-only without execution', async () => {
   const source = await readFile(new URL('../qianmu-storyboard-server-batch-layout.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /from ['"]node:fs|\bfetch\(|\bwriteFile\(|\bmkdir\(|\brename\(|\bunlink\(/);
   assert.match(source, /partition persistence and directory pagination[\s\S]*not implemented here/i);
   const plugin = await readFile(new URL('../server-plugin.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(plugin, /qianmu-storyboard-server-batch-(?:store|v2-store)|scope:\s*['"]storyboard-batch['"]/,
-    'neither batch ledger may become a production route before input and fee gates are complete');
+  const routes = await readFile(new URL('../qianmu-storyboard-server-batch-v2-routes.js', import.meta.url), 'utf8');
+  assert.match(plugin, /installStoryboardServerBatchV2Routes\(router,/);
+  assert.doesNotMatch(plugin, /enableWrites:\s*true|scope:\s*['"]storyboard-batch['"]/,
+    'production must not turn on writes or the old batch scope');
+  assert.match(routes, /if \(config\.write && enableWrites !== true\) continue/);
+  assert.doesNotMatch(routes, /\b(?:generateImage|createImageService|comfyTasksFor|tasksFor|fetch)\s*\(/,
+    'metadata routes cannot submit or query a paid provider');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.equal(release.files.includes('qianmu-storyboard-server-batch-v2-store.js'), true);
+  assert.equal(release.files.includes('qianmu-storyboard-server-batch-v2-routes.js'), true);
   assert.equal(release.files.includes('qianmu-storyboard-server-batch-store.js'), false);
 });

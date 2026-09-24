@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { createImageService, imageServiceTaskErrorPayload, IMAGE_SERVICE_TASK_VERSION } from './qianmu-image-service.js';
 import { imageServiceAccount } from './qianmu-image-service-access.js';
+import { installStoryboardServerBatchV2Routes } from './qianmu-storyboard-server-batch-v2-routes.js';
 import { createImageRestoreService } from './qianmu-image-restore-service.js';
 import { createSourceIdentityService } from './qianmu-source-identity-service.js';
 import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source-identity-contract.js';
@@ -194,6 +195,7 @@ export async function init(router, options = {}) {
 
   let imageTasks;
   const hostDataRoot = () => options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
+  installStoryboardServerBatchV2Routes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service)});
   installTextCollectionRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.textCollectionOptions});
   let notesSync;
   for (const [method, route] of [['get','/notes'],['post','/notes/write']]) router[method](route, async (req,res) => {
