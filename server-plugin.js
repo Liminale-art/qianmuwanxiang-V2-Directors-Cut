@@ -11,6 +11,7 @@ import { createNotesSyncService } from './qianmu-notes-sync-service.js';
 import { notesSyncError, notesSyncErrorPayload } from './qianmu-notes-sync-contract.js';
 import { installTextCollectionRoutes } from './qianmu-text-collection-routes.js';
 import {installGalleryDiscoveryRoutes} from './qianmu-gallery-discovery-routes.js';
+import {installAssistantStorageRoutes} from './qianmu-assistant-storage-service.js';
 import {installGalleryOriginalRoutes} from './qianmu-gallery-original-routes.js';
 import { createChatCharacterReceiptService } from './qianmu-chat-character-receipt-service.js';
 import { createRecipeArchiveService } from './qianmu-recipe-archive-service.js';
@@ -244,6 +245,7 @@ export async function init(router, options = {}) {
     finally{res.off?.('close',onClose);}
   });
   installGalleryDiscoveryRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.galleryDiscoveryOptions});
+  installAssistantStorageRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.assistantStorageOptions});
   installGalleryOriginalRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.galleryOriginalOptions});
   let chatCharacterReceipt;
   for(const [route,method] of [['/chat-characters/receipt','inspect'],['/chat-gallery/receipt','inspectGallery'],['/chat-gallery/record','readGalleryRecord'],['/chat-gallery/details','readGalleryDetails'],['/chat-gallery/evidence','readGalleryEvidence'],['/chat-gallery/evidence-source','readGalleryEvidenceSource'],['/chat-gallery/state','readGalleryState'],['/chat-gallery/supplement','readGallerySupplement']])router.post(route, async (req, res) => {

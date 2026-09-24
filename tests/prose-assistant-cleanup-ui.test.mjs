@@ -16,6 +16,7 @@ test('explicit second confirmation owns exact observed plan and explains origina
  const f=fixture(),result=await cleanup(f.options);assert.equal(f.writes,1);assert.equal(result.clearedTurns,2);assert.equal(f.confirmations.length,1);
  for(const value of ['不可恢复','1 个会话、2 轮','复制留存','不删除正文','版本标记','其他 2 个模块本次不执行','新增记录不清'])assert.ok(f.confirmations[0][1].includes(value),value);
  assert.doesNotMatch(f.confirmations[0][1],/alice|apiKey|PRIVATE/);
+ assert.match(f.confirmations[0][0],/旧本机副本/);assert.match(f.confirmations[0][1],/不删除ST中的助手记录/);
 });
 test('cancel and empty account do not clear records, while context/account change after confirmation invalidates permission',async()=>{
  for(const accepted of [false,null,1]){const f=fixture();f.accepted=accepted;assert.equal((await cleanup(f.options)).status,'cancelled');assert.equal(f.writes,0);}

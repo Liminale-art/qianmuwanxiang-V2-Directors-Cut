@@ -1,4 +1,4 @@
-export const STORAGE_CATEGORY_LABELS=Object.freeze({images:'图片',vibes:'参考素材',characters:'角色资料',audio:'音频',video:'影片',reader:'伴读资料',notes:'便笺',collections:'收藏待存',assistant:'正文助手',logs:'日志与记录',cache:'临时缓存',settings:'设置与预设',chat:'当前聊天数据',other:'其他'});
+export const STORAGE_CATEGORY_LABELS=Object.freeze({images:'图片',vibes:'参考素材',characters:'角色资料',audio:'音频',video:'影片',reader:'伴读资料',notes:'便笺',collections:'收藏待存',assistant:'场外特助',logs:'日志与记录',cache:'临时缓存',settings:'设置与预设',chat:'当前聊天数据',other:'其他'});
 export const STORAGE_CATEGORY_COLORS=Object.freeze({images:'#5aa9ff',vibes:'#b29bc9',characters:'#c985b1',audio:'#ff9f43',video:'#6f8fff',reader:'#9b7cff',notes:'#f2c94c',collections:'#75b6ab',assistant:'#ce9f72',logs:'#ff647c',cache:'#3dc7c9',settings:'#65c466',chat:'#8d94a6',other:'#747b88'});
 
 // Pure accounting snapshots extracted from the entry without changing contents.
@@ -14,7 +14,17 @@ export function storageSettingsSnapshotWithoutDiagnostics(settings){
 export function collectionCleanupOptions(data){
   const collection=data?.collectionStorage,pending=collection?.pending,assistant=data?.assistantStorage;
   return [...(collection?.status==='ready'?[{id:'__collections__',label:'正文收藏原件（当前账户 · 服务器）',bytes:collection.count>0?collection.bytes:0,count:collection.count,
-    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[]),...(pending?.status==='ready'?[{id:'__collection_pending__',label:'收藏待存（当前账户 · 本机）',bytes:pending.bytes,count:pending.count,risk:['不可恢复 · 先备份；不删除或取消服务器保存',true]}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'正文助手记录（当前账户 · 本机）',bytes:assistant.bytes,count:assistant.count,risk:['不可恢复 · 请先复制留存；不删正文，版本标记保留',true]}]:[])];
+    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[]),...(pending?.status==='ready'?[{id:'__collection_pending__',label:'收藏待存（当前账户 · 本机）',bytes:pending.bytes,count:pending.count,risk:['不可恢复 · 先备份；不删除或取消服务器保存',true]}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'场外特助旧副本（当前账户 · 本机）',bytes:assistant.bytes,count:assistant.count,risk:['不可恢复 · 请先复制留存；不删除ST记录，版本标记保留',true]}]:[])];
+}
+
+export function renderAssistantStorageSummary(assistant,formatStorageBytes,htmlEscape){
+  const native=assistant?.native,format=value=>htmlEscape(formatStorageBytes(value));
+  return `<p class="sd-storage-scope sd-storage-assistant-native-summary" role="status" style="overflow-wrap:anywhere">场外特助 · 当前账户 ST 文件<br>${native?.status==='ready'
+    ? `${native.heads.count} 份当前会话文件（含场外与清空标记）· ${format(native.heads.bytes+native.current.bytes)}<br>保留版本/残留文件 ${native.retained.count} 份 · ${format(native.retained.bytes)}；合计 ${native.total.count} 个文件 · ${format(native.total.bytes)}<br>按文件大小统计，不是磁盘分配量、可释放容量或浏览器配额；不含未保存回复。仅核对入口与文件元数据，不读取问答或核验历史正文；未自动删除旧版本。当前会话可在特助设置内清空，储存清理中的旧副本选项仅针对本机。`
+    : `暂未盘点 · ${htmlEscape(native?.error||'ST助手文件尚未读取；请确认配套后端可用后刷新。未读取不代表零占用。')}<br>日常助手保存和跨端读取仍通过ST原生存储，不依赖这项盘点。`}</p>
+<p class="sd-storage-scope sd-storage-assistant-summary" role="status" style="overflow-wrap:anywhere">场外特助 · 当前账户旧本机副本<br>${assistant?.status==='ready'
+    ? `${assistant.chats} 个会话 · ${assistant.count} 轮问答 · ${format(assistant.bytes)} 逻辑估算<br>完整 ${assistant.complete} · 失败 ${assistant.failed} · 停止 ${assistant.cancelled}；含 ${assistant.markers} 份清空版本标记。不含未保存回复、其他账户或设备，旧版归属未核实的记录不认领；非可重建缓存。可选择清理项目中的旧本机副本，不删除ST记录。`
+    : `暂未读取 · ${htmlEscape(assistant?.error||'助手本机历史尚未盘点，当前本机总计不含此部分。')}`}</p>`;
 }
 
 // A detached/hidden chooser is cancellation, never an implicit confirmation.
@@ -144,9 +154,7 @@ ${data.galleryCatalogStorage?.status==='unavailable'?`<p class="sd-storage-press
 <p class="sd-storage-scope sd-storage-collection-pending-summary" role="status" style="overflow-wrap:anywhere">收藏待存 · 当前账户本机<br>${data.collectionStorage?.pending?.status==='ready'
   ? `${data.collectionStorage.pending.count} 条 · ${htmlEscape(formatStorageBytes(data.collectionStorage.pending.bytes))} 内容及请求记录估算 · 冲突 ${data.collectionStorage.pending.conflicts} 条<br>计入本设备统计，不含服务器原件或其他设备待存。不是可重建缓存；在正文收藏→本机待存中备份、恢复或移除。`
   : `暂未读取 · ${htmlEscape(data.collectionStorage?.pending?.error||'本机待存尚未盘点，当前总计不含此部分。')}`}</p>
-<p class="sd-storage-scope sd-storage-assistant-summary" role="status" style="overflow-wrap:anywhere">正文助手 · 当前账户本机<br>${data.assistantStorage?.status==='ready'
-  ? `${data.assistantStorage.chats} 个会话 · ${data.assistantStorage.count} 轮问答 · ${htmlEscape(formatStorageBytes(data.assistantStorage.bytes))} 逻辑估算<br>完整 ${data.assistantStorage.complete} · 失败 ${data.assistantStorage.failed} · 停止 ${data.assistantStorage.cancelled}；含 ${data.assistantStorage.markers} 份清空版本标记。不含未保存回复、其他账户或设备，旧版归属未核实的记录不认领；非可重建缓存。可在对应助手面板清空，或选择清理项目中的正文助手记录。`
-  : `暂未读取 · ${htmlEscape(data.assistantStorage?.error||'助手本机历史尚未盘点，当前总计不含此部分。')}`}</p>
+${renderAssistantStorageSummary(data.assistantStorage,formatStorageBytes,htmlEscape)}
 ${data.imageChannels?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.imageChannels.error)}</p>` : ''}
 ${data.serviceReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.serviceReceipts.error)}</p>` : ''}
 ${data.comfyReceipts?.error ? `<p class="sd-storage-pressure is-warning">${htmlEscape(data.comfyReceipts.error)}</p>` : ''}

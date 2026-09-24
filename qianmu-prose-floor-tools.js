@@ -1,5 +1,5 @@
 import {createTextCollectionFloorTools} from './qianmu-text-collection-floor.js';
-import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js';
+import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.365';
 import {createProseHive} from './qianmu-prose-hive.js';
 import {configureStAccountStorage} from './qianmu-st-account-storage.js';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js';

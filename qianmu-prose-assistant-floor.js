@@ -45,16 +45,16 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
   }
   async function storageSummary(valid){
     const live=()=>isCurrent()===true&&valid();let module;
-    try{module=await import('./qianmu-prose-assistant-storage.js');}catch{if(!live())throw Error('助手储存页面已变化');return {status:'unavailable',bytes:null,count:null,error:'助手统计组件未加载，请刷新重试。'};}
-    return module.collectProseAssistantStorage({resolveNamespace,isCurrent:live});
+    try{module=await import('./qianmu-prose-assistant-storage.js?v=1.59.365');}catch{if(!live())throw Error('助手储存页面已变化');return {status:'unavailable',bytes:null,count:null,error:'助手统计组件未加载，请刷新重试。'};}
+    return module.collectProseAssistantStorage({resolveNamespace,isCurrent:live,headers});
   }
   async function cleanupStorage(parent,confirm,check,expectedNamespace,otherModules=0){
     check();if(entry||cleaning)throw Error('请先关闭场外特助或结束清理');const token={};cleaning=token;
     const valid=()=>cleaning===token&&parent?.isConnected===true&&isCurrent()===true&&!entry;
     try{
-      const runtime=await import('./qianmu-prose-assistant-storage.js');check();
+      const runtime=await import('./qianmu-prose-assistant-storage.js?v=1.59.365');check();
       const result=await runtime.cleanupProseAssistantStorage({resolveNamespace,isCurrent:valid,expectedNamespace,check,confirm,otherModules});
-      check();if(valid()&&result.status!=='cancelled')notify?.(result.status==='empty'?'本机没有可清理的助手问答。':`已清空 ${result.clearedConversations} 个助手会话、${result.clearedTurns} 轮问答；版本标记保留。`,'success');return result;
+      check();if(valid()&&result.status!=='cancelled')notify?.(result.status==='empty'?'本机没有可清理的助手问答。':`已清空本机 ${result.clearedConversations} 个助手会话、${result.clearedTurns} 轮问答；ST记录未删除，版本标记保留。`,'success');return result;
     }finally{if(cleaning===token)cleaning=null;}
   }
   return Object.freeze({bindRoot,refreshNode,click,openAssistant,disposeFloor,storageSummary,cleanupStorage,get busy(){return entry!==null;}});

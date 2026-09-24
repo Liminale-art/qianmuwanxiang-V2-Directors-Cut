@@ -3,6 +3,9 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-assistant-storage-contract.js",
+    "qianmu-assistant-storage-service.js",
+    "qianmu-assistant-storage-client.js",
     "qianmu-feedback-report.js",
     "qianmu-feedback-view.js",
     "qianmu-vibe-receipt-lineage.js",
