@@ -7,10 +7,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
 import {normalizeNovelServiceChannel} from './qianmu-novel-service-channel-state.js';
 import {normalizeComfyCloudChannel} from './qianmu-comfy-cloud-channel-state.js';
-import {isStoryboardServerBatchBusinessError,normalizeBatchRecord} from './qianmu-storyboard-server-batch-contract.js';
+import {batchPublicView,isStoryboardServerBatchBusinessError,normalizeBatchRecord} from './qianmu-storyboard-server-batch-contract.js';
 
 const DISK_SCHEMA = 'qianmu.image-service-disk.v1';
 const HASH = /^[a-f0-9]{64}$/;
+const BATCH_ACCOUNT = /^st-user:[a-f0-9]{64}$/;
+const BATCH_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const sha = value => createHash('sha256').update(value).digest('hex');
 const error = (code, message) => Object.assign(new Error(message), {
   name: 'ImageServiceStoreError', code: `image_service_storage_${code}`, status: 409, submissionState: 'not_submitted',
@@ -225,6 +227,56 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
         }
         const last = entries.at(-1);
         return { entries, selected, total, nextCursor: remaining > entries.length ? { channelKey: last.channelKey, attemptId: last.attemptId } : null };
+      });
+    },
+    inspectStoryboardBatchAccount(namespace, options = {}) {
+      if (scope !== 'storyboard-batch') return Promise.reject(error('scope', '仅分镜批次记录支持批次目录检查'));
+      if (!options || typeof options !== 'object' || Array.isArray(options)) return Promise.reject(error('identity', '批次目录分页信息无效'));
+      let cursor, limit;
+      try {
+        const suppliedCursor = options.cursor, suppliedLimit = options.limit;
+        cursor = suppliedCursor === undefined ? null : suppliedCursor;
+        limit = suppliedLimit === undefined ? 40 : suppliedLimit;
+      } catch (_) { return Promise.reject(error('identity', '批次目录分页信息无效')); }
+      if (typeof namespace !== 'string' || !BATCH_ACCOUNT.test(namespace)
+        || !Number.isInteger(limit) || limit < 1 || limit > 50
+        || (cursor !== null && (typeof cursor !== 'string' || !BATCH_ID.test(cursor)))) {
+        return Promise.reject(error('identity', '批次目录分页信息无效'));
+      }
+      return enqueue(async () => {
+        if (!await initialize(false)) return { entries: [], total: 0, nextCursor: null, full: false };
+        await checkMaintenance();
+        const stream = await io.opendir(directory), keys = []; let files = 0;
+        for await (const entry of stream) {
+          if (++files > channelLimit + 32) throw error('full', '批次目录需要整理');
+          if (/^[a-f0-9]{64}\.json$/.test(entry.name)) {
+            if (!entry.isFile() || keys.length >= channelLimit) throw error('path', '批次目录包含异常记录');
+            keys.push(entry.name.slice(0, -5));
+          } else if (!entry.isFile() || !/^(?:\.(?:transaction|maintenance)\.lock|\.write-[a-f0-9-]{36}\.tmp)$/.test(entry.name)) {
+            throw error('path', '批次目录包含未知文件，请先核查');
+          }
+        }
+        const owned = [];
+        for (const key of keys) {
+          // Validate every envelope before account filtering: a damaged or
+          // foreign record must never be silently hidden by a successful page.
+          const record = await readRecord(key);
+          if (!record) throw error('changed', '读取时分镜批次记录已变化');
+          if (record.state.expectedAccount === namespace) owned.push(batchPublicView(record.state));
+        }
+        owned.sort((a, b) => b.createdAt - a.createdAt
+          || (a.batchId < b.batchId ? -1 : a.batchId > b.batchId ? 1 : 0));
+        const start = cursor === null ? 0 : owned.findIndex(row => row.batchId === cursor) + 1;
+        if (cursor !== null && start === 0) throw error('identity', '批次目录游标不属于当前账户');
+        const entries = owned.slice(start, start + limit);
+        // Live bounded view, not a cross-process transactional snapshot.
+        // Refuse a page if offline maintenance began while records were read.
+        await checkMaintenance();
+        return {
+          entries, total: owned.length,
+          nextCursor: start + entries.length < owned.length ? entries.at(-1).batchId : null,
+          full: keys.length >= channelLimit,
+        };
       });
     },
     exclusive(operation) {

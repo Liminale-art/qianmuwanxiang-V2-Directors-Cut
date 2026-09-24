@@ -66,6 +66,18 @@ export function createStoryboardServerBatchStore({ dataRoot, store, now = Date.n
     return batchPublicView(record);
   }
 
+  async function listOwned(request, { cursor = null, limit = 40 } = {}) {
+    const account = imageServiceAccount(request);
+    // Older/fake ledgers can still serve prepare/query/stop, but must not
+    // silently guess an account directory when this read capability is absent.
+    if (typeof ledger.inspectStoryboardBatchAccount !== 'function') {
+      throw fail('storage', '当前增强服务尚未提供批次目录', 503);
+    }
+    const page = await ledger.inspectStoryboardBatchAccount(account.namespace, { cursor, limit });
+    current(request, account);
+    return page;
+  }
+
   async function stop(request, batchId, expectedRevision) {
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
       throw createStoryboardServerBatchBusinessError('revision', '请先核对原批次版本后再停止', 400);
@@ -93,5 +105,5 @@ export function createStoryboardServerBatchStore({ dataRoot, store, now = Date.n
     return result;
   }
 
-  return Object.freeze({ prepare, query, stop, close: () => ledger.close() });
+  return Object.freeze({ prepare, query, listOwned, stop, close: () => ledger.close() });
 }
