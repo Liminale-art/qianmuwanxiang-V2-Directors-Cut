@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { createStoryboardServerBatchV2Store } from '../qianmu-storyboard-server-batch-v2-store.js';
+import { createStoryboardServerBatchV2Store, STORYBOARD_BATCH_V2_HARD_CAPACITY } from '../qianmu-storyboard-server-batch-v2-store.js';
 import { storyboardBatchV2Location } from '../qianmu-storyboard-server-batch-layout.js';
 import { imageServiceAccount } from '../qianmu-image-service-access.js';
 import { uid } from '../qianmu-storyboard-utils.js';
@@ -35,6 +36,7 @@ async function fixture(t, options = {}) {
 const accountDirectory = (root, req) => path.join(root,
   ...storyboardBatchV2Location(imageServiceAccount(req).namespace,
     '00000000-0000-4000-8000-000000000000').segments.slice(0, 3));
+const v2Directory = root => path.join(root, '.qianmu-service', 'storyboard-batches-v2');
 async function recordPath(root, req, batchId) {
   const location = storyboardBatchV2Location(imageServiceAccount(req).namespace, batchId);
   const shard = path.join(root, ...location.segments);
@@ -47,7 +49,7 @@ async function recordPath(root, req, batchId) {
 test('read-only empty query/list never creates directories; prepare remains server-only metadata', async t => {
   const { root, store } = await fixture(t), req = request(), input = manifest();
   assert.equal(await store.query(req, input.batchId), null);
-  assert.deepEqual(await store.listOwned(req), { entries: [], total: 0, nextCursor: null, full: false });
+  assert.deepEqual(await store.listOwned(req), { entries: [], total: 0, nextCursor: null });
   await assert.rejects(fs.lstat(path.join(root, '.qianmu-service')), { code: 'ENOENT' });
   const prepared = await store.prepare(req, input);
   assert.equal(prepared.state, 'prepared_unrunnable');
@@ -75,27 +77,261 @@ test('same digest is idempotent, changed content conflicts, stop is sticky CAS a
   assert.deepEqual(await another.query(req, input.batchId), stopped);
 });
 
-test('1000 batches are listable beyond v1 capacity, opening only page records and cursor anchor', async t => {
-  let clock = 1000, recordOpens = 0;
+test('capacity options only lower hard ceilings; full account and service reject before new directories', async t => {
+  const { root, store } = await fixture(t, { maxAccountRecords: 2, maxTotalRecords: 3 });
+  for (const bad of [0, -1, STORYBOARD_BATCH_V2_HARD_CAPACITY.account + 1, 1.5, '2']) {
+    assert.throws(() => createStoryboardServerBatchV2Store({ dataRoot: root,
+      maxAccountRecords: bad }), { code: 'storyboard_server_batch_v2_storage_root' });
+  }
+  for (const bad of [0, -1, STORYBOARD_BATCH_V2_HARD_CAPACITY.total + 1, 1.5, '3']) {
+    assert.throws(() => createStoryboardServerBatchV2Store({ dataRoot: root,
+      maxTotalRecords: bad }), { code: 'storyboard_server_batch_v2_storage_root' });
+  }
+  const alice = request(), bob = request('bob'), charlie = request('charlie');
+  const first = manifest(), second = manifest();
+  await store.prepare(alice, first);
+  await store.prepare(alice, second);
+  const stopped = await store.stop(alice, first.batchId, 1);
+  const before = await fs.readdir(accountDirectory(root, alice));
+  let extra = manifest();
+  while (before.includes(storyboardBatchV2Location(imageServiceAccount(alice).namespace,
+    extra.batchId).segments[3])) extra = manifest();
+  await assert.rejects(store.prepare(alice, extra), {
+    code: 'storyboard_server_batch_v2_storage_full',
+  });
+  assert.deepEqual(await fs.readdir(accountDirectory(root, alice)), before,
+    'full account must not acquire a new shard');
+  assert.deepEqual(await store.prepare(alice, first), stopped,
+    'a full account still accepts an exact idempotent retry');
+  await assert.rejects(store.prepare(alice, { ...first, planDigest: hash('f') }), {
+    code: 'storyboard_server_batch_conflict',
+  });
+  await store.prepare(bob, manifest());
+  const rootBefore = await fs.readdir(v2Directory(root));
+  await assert.rejects(store.prepare(charlie, manifest()), {
+    code: 'storyboard_server_batch_v2_storage_full',
+  });
+  assert.deepEqual(await fs.readdir(v2Directory(root)), rootBefore,
+    'full service must not acquire a new account directory');
+  await assert.rejects(fs.lstat(accountDirectory(root, charlie)), { code: 'ENOENT' });
+  assert.equal((await store.listOwned(alice)).total, 2);
+  assert.equal((await store.listOwned(bob)).total, 1);
+});
+
+test('global lock serializes cross-instance quota claims and preserves a failed contender', async t => {
+  const { root, store } = await fixture(t, { maxAccountRecords: 2, maxTotalRecords: 2,
+    lockWaitMs: 1000 });
+  const second = createStoryboardServerBatchV2Store({ dataRoot: root, now: () => 1000,
+    maxAccountRecords: 2, maxTotalRecords: 2, lockWaitMs: 1000 });
+  t.after(() => second.close());
+  const alice = request();
+  await store.prepare(alice, manifest());
+  const bob = request('bob'), charlie = request('charlie');
+  const contenders = await Promise.allSettled([
+    store.prepare(bob, manifest()), second.prepare(charlie, manifest()),
+  ]);
+  assert.equal(contenders.filter(row => row.status === 'fulfilled').length, 1);
+  assert.equal(contenders.filter(row => row.status === 'rejected').length, 1);
+  assert.equal(contenders.find(row => row.status === 'rejected').reason.code,
+    'storyboard_server_batch_v2_storage_full');
+  assert.equal((await store.listOwned(alice)).total
+    + (await store.listOwned(bob)).total + (await second.listOwned(charlie)).total, 2);
+  assert.equal((await fs.readdir(v2Directory(root))).length, 2);
+});
+
+test('independent OS processes cannot both claim the final durable slot', async t => {
+  const { root, store } = await fixture(t, { maxAccountRecords: 1, maxTotalRecords: 1 });
+  const source = `
+    import { createStoryboardServerBatchV2Store } from ${JSON.stringify(new URL('../qianmu-storyboard-server-batch-v2-store.js', import.meta.url).href)};
+    const value = JSON.parse(process.argv[1]);
+    const store = createStoryboardServerBatchV2Store({ dataRoot: value.root,
+      maxAccountRecords: 1, maxTotalRecords: 1, lockWaitMs: 2000 });
+    let result;
+    try { result = { ok: true, view: await store.prepare({ user: { profile: {
+      handle: value.handle, enabled: true } } }, value.input) }; }
+    catch (error) { result = { ok: false, code: error.code }; }
+    await store.close(); process.stdout.write(JSON.stringify(result));
+  `;
+  function child(handle) {
+    return new Promise((resolve, reject) => {
+      const processHandle = spawn(process.execPath,
+        ['--input-type=module', '-e', source, JSON.stringify({ root, handle, input: manifest() })],
+        { stdio: ['ignore', 'pipe', 'pipe'], signal: AbortSignal.timeout(15_000) });
+      let output = '', errors = '';
+      processHandle.stdout.setEncoding('utf8').on('data', chunk => { output += chunk; });
+      processHandle.stderr.setEncoding('utf8').on('data', chunk => { errors += chunk; });
+      processHandle.on('error', reject);
+      processHandle.on('close', code => {
+        if (code !== 0) reject(new Error(`child exited ${code}: ${errors.slice(0, 400)}`));
+        else { try { resolve(JSON.parse(output)); } catch (error) { reject(error); } }
+      });
+    });
+  }
+  const outcomes = await Promise.all([child('alice'), child('bob')]);
+  assert.deepEqual(outcomes.map(row => row.ok).sort(), [false, true]);
+  assert.equal(outcomes.find(row => !row.ok).code, 'storyboard_server_batch_v2_storage_full');
+  assert.equal((await store.listOwned(request())).total
+    + (await store.listOwned(request('bob'))).total, 1);
+  assert.equal((await fs.readdir(v2Directory(root))).length, 1);
+});
+
+test('128-account cold scan remains bounded and two contenders observe full rather than a false free slot', async t => {
+  let directoryReads = 0;
+  const counted = { ...fs, async readdir(target, ...options) {
+    directoryReads++; return fs.readdir(target, ...options);
+  } };
+  const { root, store } = await fixture(t, { fileSystem: counted,
+    maxAccountRecords: 1, maxTotalRecords: 129 });
+  for (let index = 0; index < 127; index++) {
+    await store.prepare(request(`account-${index}`), manifest());
+  }
+  const cold = createStoryboardServerBatchV2Store({ dataRoot: root, fileSystem: counted,
+    now: () => 1000, maxAccountRecords: 1, maxTotalRecords: 129 });
+  t.after(() => cold.close());
+  directoryReads = 0;
+  const started = performance.now();
+  await cold.prepare(request('account-127'), manifest());
+  const coldMs = performance.now() - started;
+  t.diagnostic(`local fresh-store 128-account prepare: ${coldMs.toFixed(1)}ms, ${directoryReads} readdir calls; not a 4096-account or VPS benchmark`);
+  const candidates = ['account-128', 'account-129'];
+  const outcomes = await Promise.allSettled([
+    store.prepare(request(candidates[0]), manifest()),
+    cold.prepare(request(candidates[1]), manifest()),
+  ]);
+  assert.equal(outcomes.filter(row => row.status === 'fulfilled').length, 1);
+  assert.equal(outcomes.find(row => row.status === 'rejected').reason.code,
+    'storyboard_server_batch_v2_storage_full');
+  const rejected = candidates[outcomes.findIndex(row => row.status === 'rejected')];
+  await assert.rejects(fs.lstat(accountDirectory(root, request(rejected))), { code: 'ENOENT' });
+  assert.equal((await fs.readdir(v2Directory(root))).length, 129);
+  assert.equal((await store.listOwned(request('account-0'))).total, 1,
+    'a paged read does not take the global capacity lock');
+});
+
+test('orphan global lock and unrelated shard temp fail closed without deleting evidence', async t => {
+  const { root, store } = await fixture(t, { maxAccountRecords: 2, maxTotalRecords: 3,
+    lockWaitMs: 0 });
+  const alice = request(), bob = request('bob'), first = manifest();
+  await store.prepare(alice, first);
+  const globalLock = path.join(v2Directory(root), '.capacity.lock');
+  await fs.writeFile(globalLock, 'orphan-capacity-lock');
+  await assert.rejects(store.prepare(bob, manifest()), {
+    code: 'storyboard_server_batch_v2_storage_busy',
+  });
+  assert.equal(await fs.readFile(globalLock, 'utf8'), 'orphan-capacity-lock');
+  assert.equal((await store.query(alice, first.batchId)).batchId, first.batchId,
+    'readers do not wait for the global write-capacity lock');
+  await fs.unlink(globalLock);
+  const shard = path.dirname(await recordPath(root, alice, first.batchId));
+  const temp = path.join(shard, `.write-${randomUUID()}.tmp`);
+  await fs.writeFile(temp, 'incomplete');
+  await assert.rejects(store.prepare(bob, manifest()), error =>
+    ['storyboard_server_batch_v2_storage_temporary', 'storyboard_server_batch_v2_storage_path']
+      .includes(error.code));
+  assert.equal(await fs.readFile(temp, 'utf8'), 'incomplete');
+  await assert.rejects(fs.lstat(accountDirectory(root, bob)), { code: 'ENOENT' });
+});
+
+test('a damaged record still consumes capacity instead of becoming an empty slot', async t => {
+  const { root, store } = await fixture(t, { maxAccountRecords: 1, maxTotalRecords: 1 });
+  const alice = request(), first = manifest();
+  await store.prepare(alice, first);
+  const target = await recordPath(root, alice, first.batchId);
+  const original = JSON.parse(await fs.readFile(target, 'utf8'));
+  await fs.writeFile(target, JSON.stringify({ ...original, checksum: hash('0') }));
+  await assert.rejects(store.query(alice, first.batchId), {
+    code: 'storyboard_server_batch_v2_storage_corrupt',
+  });
+  await assert.rejects(store.prepare(alice, manifest()), {
+    code: 'storyboard_server_batch_v2_storage_full',
+  });
+  assert.equal((await fs.readdir(path.dirname(target))).length, 1);
+});
+
+test('stop keeps only the account lock; a simultaneous capacity scan fails busy and may retry', async t => {
+  const { root, store } = await fixture(t, { maxAccountRecords: 2, maxTotalRecords: 2,
+    lockWaitMs: 0 });
+  const alice = request(), bob = request('bob'), first = manifest();
+  await store.prepare(alice, first);
+  let enter, release;
+  const entered = new Promise(resolve => { enter = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const delayed = { ...fs, async rename(...args) {
+    enter(); await gate; return fs.rename(...args);
+  } };
+  const stopper = createStoryboardServerBatchV2Store({ dataRoot: root, fileSystem: delayed,
+    maxAccountRecords: 2, maxTotalRecords: 2, lockWaitMs: 1000 });
+  t.after(() => stopper.close());
+  const stopping = stopper.stop(alice, first.batchId, 1);
+  await entered;
+  await assert.rejects(store.prepare(bob, manifest()), {
+    code: 'storyboard_server_batch_v2_storage_busy',
+  });
+  assert.equal((await store.query(bob, first.batchId)), null);
+  release();
+  assert.equal((await stopping).state, 'stopped_unrunnable');
+  assert.equal((await store.prepare(bob, manifest())).state, 'prepared_unrunnable');
+});
+
+test('changed global lock identity before a capacity decision poisons the instance and preserves the lock', async t => {
+  const { root, store } = await fixture(t, { maxAccountRecords: 2, maxTotalRecords: 2 });
+  const alice = request(), first = manifest();
+  await store.prepare(alice, first);
+  const globalLock = path.join(v2Directory(root), '.capacity.lock');
+  let lockChecks = 0;
+  const fake = { ...fs,
+    async lstat(target, ...options) {
+      const value = await fs.lstat(target, ...options);
+      return String(target).endsWith('.capacity.lock') && ++lockChecks >= 3
+        ? Object.assign(Object.create(value), { dev: -1, ino: -1 }) : value;
+    },
+  };
+  const unsafe = createStoryboardServerBatchV2Store({ dataRoot: root, fileSystem: fake,
+    maxAccountRecords: 2, maxTotalRecords: 2 });
+  t.after(() => unsafe.close());
+  await assert.rejects(unsafe.prepare(alice, manifest()), {
+    code: 'storyboard_server_batch_v2_storage_changed',
+  });
+  assert.ok(lockChecks >= 3);
+  assert.equal(unsafe.inspect().paused, true);
+  assert.equal((await fs.lstat(globalLock)).isFile(), true);
+  await assert.rejects(unsafe.prepare(alice, manifest()), {
+    code: 'storyboard_server_batch_v2_storage_closed',
+  });
+});
+
+test('1001 batches are listable beyond v1 capacity, opening only page records and cursor anchor', async t => {
+  let clock = 1000, recordOpens = 0, directoryReads = 0;
   const counted = { ...fs, async open(target, ...args) {
     if (String(target).endsWith('.json')) recordOpens++;
     return fs.open(target, ...args);
-  } };
+  }, async readdir(target, ...args) { directoryReads++; return fs.readdir(target, ...args); } };
   const { store } = await fixture(t, { now: () => clock++, fileSystem: counted });
   const req = request(), inputs = Array.from({ length: 1000 }, () => manifest());
-  for (const input of inputs) await store.prepare(req, input);
+  const timings = [];
+  for (const input of inputs) {
+    const started = performance.now();
+    await store.prepare(req, input);
+    timings.push(performance.now() - started);
+  }
+  const sorted = [...timings].sort((a, b) => a - b);
+  t.diagnostic(`local 1000 sequential prepare: p50 ${sorted[499].toFixed(1)}ms, p95 ${sorted[949].toFixed(1)}ms, last ${timings.at(-1).toFixed(1)}ms; ${directoryReads} readdir calls; not a VPS benchmark`);
+  directoryReads = 0;
+  const extraStarted = performance.now();
+  await store.prepare(req, manifest());
+  t.diagnostic(`local 1001st prepare: ${(performance.now() - extraStarted).toFixed(1)}ms, ${directoryReads} readdir calls; not a VPS benchmark`);
   recordOpens = 0;
   const started = performance.now();
   const forty = await store.listOwned(req, { limit: 40 });
   const firstFortyMs = performance.now() - started;
   assert.equal(forty.entries.length, 40);
   assert.equal(recordOpens, 40);
-  t.diagnostic(`local 1000-batch list(40): ${firstFortyMs.toFixed(1)}ms, 40 record opens; not a VPS benchmark`);
+  t.diagnostic(`local 1001-batch list(40): ${firstFortyMs.toFixed(1)}ms, 40 record opens; not a VPS benchmark`);
   recordOpens = 0;
   const first = await store.listOwned(req, { limit: 20 });
-  assert.equal(first.total, 1000);
+  assert.equal(first.total, 1001);
   assert.equal(first.entries.length, 20);
-  assert.equal(recordOpens, 20, 'page one must not cold-read the other 980 records');
+  assert.equal(recordOpens, 20, 'page one must not cold-read the other 981 records');
   recordOpens = 0;
   const second = await store.listOwned(req, { limit: 20, cursor: first.nextCursor });
   assert.equal(second.entries.length, 20);
@@ -389,7 +625,7 @@ test('lock open/write/unlink failures are sanitized; uncertain cleanup poisons t
     const handle = await fs.open(target, ...args);
     if (path.resolve(target) !== path.resolve(lockPath) || !failWrite) return handle;
     failWrite = false;
-    return { stat: () => handle.stat(), writeFile: () => { throw new Error(marker); },
+    return { stat: (...options) => handle.stat(...options), writeFile: () => { throw new Error(marker); },
       sync: () => handle.sync(), close: () => handle.close() };
   } };
   const failedWrite = createStoryboardServerBatchV2Store({ dataRoot: root, fileSystem: writeFails });

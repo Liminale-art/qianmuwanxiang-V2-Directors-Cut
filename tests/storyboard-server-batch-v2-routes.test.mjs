@@ -86,7 +86,7 @@ test('production registers only authenticated query/list; no write route or dire
   assert.equal(listed.headers.get('cache-control'), 'no-store');
   assert.equal(listed.headers.get('x-content-type-options'), 'nosniff');
   assert.deepEqual((await listed.json()).page,
-    { entries: [], total: 0, nextCursor: null, full: false });
+    { entries: [], total: 0, nextCursor: null });
   assert.deepEqual(await fs.readdir(f.root), []);
 });
 

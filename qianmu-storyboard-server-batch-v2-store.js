@@ -19,10 +19,15 @@ const SCHEMA = 'qianmu.storyboard-batch-disk.v2';
 const MAX_RECORD_BYTES = 72 * 1024;
 const MAX_SHARD_RECORDS = 256;
 const MAX_PENDING = 64;
+export const STORYBOARD_BATCH_V2_HARD_CAPACITY = Object.freeze({ account: 2048, total: 4096 });
 const BATCH_ID = '[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}';
 const RECORD_NAME = new RegExp(`^(\\d{16})-(${BATCH_ID})\\.json$`);
 const SHARD_NAME = /^[a-f0-9]{2}$/;
+const ACCOUNT_DIRECTORY_NAME = /^[a-f0-9]{64}$/;
 const ACCOUNT_PROBE_ID = '00000000-0000-4000-8000-000000000000';
+// The shard depends on batchId, not account. This validated namespace lets a
+// capacity scan count opaque account directories without knowing their handle.
+const CAPACITY_PROBE_ACCOUNT = `st-user:${'0'.repeat(64)}`;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const sameFile = (a, b) => a.dev === b.dev && a.ino === b.ino;
 const isMissing = cause => cause?.code === 'ENOENT';
@@ -66,10 +71,15 @@ const cursorFor = record => ({ batchId: record.batchId, createdAt: record.create
   digest: record.digest });
 
 export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, now = Date.now,
-  lockWaitMs = 250 } = {}) {
+  lockWaitMs = 250, maxAccountRecords = STORYBOARD_BATCH_V2_HARD_CAPACITY.account,
+  maxTotalRecords = STORYBOARD_BATCH_V2_HARD_CAPACITY.total } = {}) {
   if (typeof dataRoot !== 'string' || !path.isAbsolute(dataRoot) || dataRoot.includes('\0')
     || path.resolve(dataRoot) === path.parse(path.resolve(dataRoot)).root || typeof now !== 'function'
-    || !Number.isSafeInteger(lockWaitMs) || lockWaitMs < 0 || lockWaitMs > 2000) {
+    || !Number.isSafeInteger(lockWaitMs) || lockWaitMs < 0 || lockWaitMs > 2000
+    || !Number.isSafeInteger(maxAccountRecords) || maxAccountRecords < 1
+    || maxAccountRecords > STORYBOARD_BATCH_V2_HARD_CAPACITY.account
+    || !Number.isSafeInteger(maxTotalRecords) || maxTotalRecords < 1
+    || maxTotalRecords > STORYBOARD_BATCH_V2_HARD_CAPACITY.total) {
     throw storageError('root', '增强服务缺少可信的 ST 数据目录');
   }
   const io = fileSystem;
@@ -132,8 +142,8 @@ export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, 
     // namespace. Never migrate, delete, or silently fall back to that writer.
     throw createStoryboardServerBatchBusinessError('conflict', '旧批次目录仍存在，未新建或更改 v2 批次');
   }
-  async function accountPath(root, namespace, create) {
-    const segments = storyboardBatchV2Location(namespace, ACCOUNT_PROBE_ID).segments.slice(0, 3);
+  async function namespacePath(root, create) {
+    const segments = storyboardBatchV2Location(CAPACITY_PROBE_ACCOUNT, ACCOUNT_PROBE_ID).segments.slice(0, 2);
     let parent = root;
     for (const segment of segments) {
       const next = path.join(parent, segment);
@@ -141,6 +151,13 @@ export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, 
       parent = next;
     }
     return parent;
+  }
+  async function accountPath(root, namespace, create) {
+    const parent = await namespacePath(root, create);
+    if (!parent) return null;
+    const name = storyboardBatchV2Location(namespace, ACCOUNT_PROBE_ID).segments[2];
+    const target = path.join(parent, name);
+    return await checkedDirectory(target, create) ? target : null;
   }
   async function shardPath(accountDirectory, namespace, batchId, create = false) {
     const shard = storyboardBatchV2Location(namespace, batchId).segments[3];
@@ -269,8 +286,8 @@ export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, 
       if (created && !renameAttempted) await io.unlink(temporary).catch(() => { poisoned = true; });
     }
   }
-  async function exclusive(accountDirectory, operation) {
-    const lock = path.join(accountDirectory, '.transaction.lock');
+  async function exclusive(directory, operation, lockName = '.transaction.lock') {
+    const lock = path.join(directory, lockName);
     let handle, owner;
     const deadline = Date.now() + lockWaitMs;
     while (!handle) {
@@ -279,27 +296,39 @@ export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, 
         if (cause?.code !== 'EEXIST') throw cause;
         if (Date.now() >= deadline) throw storageError('busy', '分镜批次记录正在写入或等待恢复', 503);
         await new Promise(resolve => setTimeout(resolve, 25));
-        await checkedDirectory(accountDirectory);
+        await checkedDirectory(directory);
       }
     }
     try {
-      owner = await handle.stat();
-      await handle.writeFile(JSON.stringify({ schema: 'qianmu.storyboard-batch-lock.v2',
+      // Windows inode numbers may exceed Number's exact integer range.
+      // Compare lock ownership using bigint metadata on both sides.
+      owner = await handle.stat({ bigint: true });
+      await handle.writeFile(JSON.stringify({ schema: lockName === '.capacity.lock'
+        ? 'qianmu.storyboard-batch-capacity-lock.v2' : 'qianmu.storyboard-batch-lock.v2',
         owner: randomUUID(), pid: process.pid }));
       await handle.sync();
-      await checkedDirectory(accountDirectory);
-      return await operation();
+      await checkedDirectory(directory);
+      const verify = async () => {
+        await checkedDirectory(directory);
+        const currentLock = await io.lstat(lock, { bigint: true });
+        if (!owner || !currentLock.isFile() || currentLock.isSymbolicLink()
+          || currentLock.nlink !== 1n || !sameFile(owner, currentLock)) {
+          throw storageError('changed', '分镜批次写入锁已变化，请先核查');
+        }
+      };
+      await verify();
+      return await operation(verify);
     } finally {
       await handle.close().catch(() => { poisoned = true; });
       try {
-        await checkedDirectory(accountDirectory);
-        const currentLock = await io.lstat(lock);
+        await checkedDirectory(directory);
+        const currentLock = await io.lstat(lock, { bigint: true });
         if (!owner || !currentLock.isFile() || currentLock.isSymbolicLink()
-          || currentLock.nlink !== 1 || !sameFile(owner, currentLock)) {
+          || currentLock.nlink !== 1n || !sameFile(owner, currentLock)) {
           throw storageError('changed', '分镜批次写入锁已变化，请先核查');
         }
         await io.unlink(lock);
-        await syncDirectory(accountDirectory);
+        await syncDirectory(directory);
       } catch (cause) { poisoned = true; throw cause; }
     }
   }
@@ -363,31 +392,107 @@ export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, 
     return rows.sort(sortRows);
   }
 
+  async function countAccountRecords(directory, namespace, ownAccountLock) {
+    const entries = await io.readdir(directory, { withFileTypes: true });
+    const seen = new Set();
+    let count = 0;
+    for (const entry of entries) {
+      if (entry.name === '.transaction.lock') {
+        if (!entry.isFile()) throw storageError('path', '分镜批次账户锁类型异常，请先核查');
+        if (!ownAccountLock) throw storageError('busy', '其他账户批次记录正在写入，请稍后重试', 503);
+        continue;
+      }
+      if (!SHARD_NAME.test(entry.name) || !entry.isDirectory()) {
+        throw storageError('path', '分镜批次账户目录包含异常文件，请先核查');
+      }
+      const shard = path.join(directory, entry.name);
+      await checkedDirectory(shard);
+      // A damaged but structurally recognizable record still occupies one
+      // slot. Do not read or discard it to make apparent capacity available.
+      for (const row of await shardRows(shard, namespace, entry.name)) {
+        if (seen.has(row.batchId)) throw storageError('duplicate', '分镜批次编号出现重复记录，请先核查');
+        seen.add(row.batchId); count++;
+      }
+    }
+    return count;
+  }
+  async function capacityUsage(v2Directory, targetAccountName, targetNamespace, ownAccountLock) {
+    await checkedDirectory(v2Directory);
+    const entries = await io.readdir(v2Directory, { withFileTypes: true });
+    if (entries.length > maxTotalRecords + 1) {
+      throw storageError('full', '分镜批次账户目录超过安全容量');
+    }
+    const seen = new Set();
+    let total = 0, account = 0;
+    for (const entry of entries) {
+      if (entry.name === '.capacity.lock') {
+        if (!entry.isFile()) throw storageError('path', '分镜批次容量锁类型异常，请先核查');
+        continue;
+      }
+      if (!ACCOUNT_DIRECTORY_NAME.test(entry.name) || !entry.isDirectory() || seen.has(entry.name)) {
+        throw storageError('path', '分镜批次容量目录包含异常项目，请先核查');
+      }
+      seen.add(entry.name);
+      const directory = path.join(v2Directory, entry.name);
+      await checkedDirectory(directory);
+      const selected = entry.name === targetAccountName;
+      const count = await countAccountRecords(directory,
+        selected ? targetNamespace : CAPACITY_PROBE_ACCOUNT, selected && ownAccountLock);
+      if (selected) account = count;
+      total += count;
+      if (total > maxTotalRecords) throw storageError('full', '分镜批次总记录超过安全容量');
+    }
+    await checkedDirectory(v2Directory);
+    return { total, account };
+  }
+
   async function prepare(request, input) {
     const account = imageServiceAccount(request);
     const prepared = normalizePreparedBatch(input, account.namespace, time());
     return enqueue(async () => {
       const root = await rootPath();
       await legacyAbsent(root);
-      const directory = await accountPath(root, account.namespace, true);
-      const result = await exclusive(directory, async () => {
+      const v2Directory = await namespacePath(root, true);
+      const accountName = storyboardBatchV2Location(account.namespace, prepared.batchId).segments[2];
+      const result = await exclusive(v2Directory, async verifyCapacityLock => {
         await legacyAbsent(root);
         current(request, account);
-        const existingRow = await findRow(directory, account.namespace, prepared.batchId);
-        const existing = existingRow ? await readRecord(existingRow, account.namespace) : null;
-        const decision = decideStoryboardBatchV2Prepare(prepared, {
-          legacyDirectoryStatus: 'absent', v2Record: existing,
-        });
-        if (decision.kind === 'existing_v2') return decision.view;
-        const shard = await shardPath(directory, account.namespace, prepared.batchId, true);
-        if ((await shardRows(shard, account.namespace, path.basename(shard))).length >= MAX_SHARD_RECORDS) {
-          throw storageError('full', '分镜批次分片已达到安全容量');
+        const existingDirectory = await accountPath(root, account.namespace, false);
+        let usageBeforeCreation = null;
+        if (!existingDirectory) {
+          // A full global quota must not leave an empty new account or shard.
+          usageBeforeCreation = await capacityUsage(v2Directory, accountName, account.namespace, false);
+          if (usageBeforeCreation.total >= maxTotalRecords) {
+            throw storageError('full', '分镜批次总记录已达到安全容量');
+          }
+          await verifyCapacityLock(); current(request, account);
         }
-        const row = { batchId: prepared.batchId, createdAt: prepared.createdAt,
-          directory: shard, name: filename(prepared) };
-        current(request, account);
-        return batchPublicView(await atomicWrite(row, account.namespace, decision.record, false));
-      });
+        const directory = existingDirectory || await accountPath(root, account.namespace, true);
+        return exclusive(directory, async verifyAccountLock => {
+          await legacyAbsent(root);
+          await verifyCapacityLock(); current(request, account);
+          const existingRow = await findRow(directory, account.namespace, prepared.batchId);
+          const existing = existingRow ? await readRecord(existingRow, account.namespace) : null;
+          const decision = decideStoryboardBatchV2Prepare(prepared, {
+            legacyDirectoryStatus: 'absent', v2Record: existing,
+          });
+          if (decision.kind === 'existing_v2') return decision.view;
+          const usage = usageBeforeCreation || await capacityUsage(v2Directory,
+            accountName, account.namespace, true);
+          if (usage.account >= maxAccountRecords || usage.total >= maxTotalRecords) {
+            throw storageError('full', '分镜批次记录已达到安全容量');
+          }
+          await verifyCapacityLock(); await verifyAccountLock(); current(request, account);
+          const shard = await shardPath(directory, account.namespace, prepared.batchId, true);
+          if ((await shardRows(shard, account.namespace, path.basename(shard))).length >= MAX_SHARD_RECORDS) {
+            throw storageError('full', '分镜批次分片已达到安全容量');
+          }
+          const row = { batchId: prepared.batchId, createdAt: prepared.createdAt,
+            directory: shard, name: filename(prepared) };
+          await verifyCapacityLock(); await verifyAccountLock(); current(request, account);
+          return batchPublicView(await atomicWrite(row, account.namespace, decision.record, false));
+        });
+      }, '.capacity.lock');
       current(request, account);
       return result;
     });
@@ -436,7 +541,7 @@ export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, 
       if (!directory) {
         if (anchor) throw storageError('cursor', '批次目录游标已变化，请重新打开目录');
         current(request, account);
-        return { entries: [], total: 0, nextCursor: null, full: false };
+        return { entries: [], total: 0, nextCursor: null };
       }
       const page = await readConsistently(directory, async () => {
         await legacyAbsent(root);
@@ -458,8 +563,7 @@ export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, 
         // Live ordered view, not a cross-page snapshot: later inserts ahead
         // of the anchor do not retroactively appear on page two.
         return { entries, total: rows.length,
-          nextCursor: start + entries.length < rows.length ? cursorFor(entries.at(-1)) : null,
-          full: false };
+          nextCursor: start + entries.length < rows.length ? cursorFor(entries.at(-1)) : null };
       });
       current(request, account);
       return page;

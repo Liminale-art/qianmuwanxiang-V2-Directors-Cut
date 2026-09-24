@@ -17,7 +17,7 @@ export function bindHistoricalGalleryPreviewSelection({ root, ctx, epoch,
     button.addEventListener('click', async event => {
         event.preventDefault(); if (button.disabled) return; button.disabled = true;
         try {
-            const directory = await load('./qianmu-gallery-directory-view.js?v=1.59.376');
+            const directory = await load('./qianmu-gallery-directory-view.js?v=1.59.377');
             if (current()) await directory.openGalleryDirectory({ parent: root, getContext: ctx, epoch, isCurrent: current,
                 locate: () => {}, save, select: async preview => {
                     if (!current()) throw new Error('画师串编辑页面已变化，请重新打开');

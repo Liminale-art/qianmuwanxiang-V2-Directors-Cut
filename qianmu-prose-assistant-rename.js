@@ -26,7 +26,7 @@ async function canonicalName(value,{headers,fetchImpl,signal,guard}){
 // Only the exact currently reloaded destination is eligible. Foreign/unopened
 // chats are untouched. No scans, model requests, metadata writes or alias IDs.
 export function createProseAssistantRenameCoordinator({getContext,resolveNamespace,isCurrent,headers,notify,fetchImpl=globalThis.fetch,
- copy=async options=>(await import('./qianmu-prose-assistant-native.js?v=1.59.376')).copyRenamedProseAssistantHistory(options),timeoutMs=15000}={}){
+ copy=async options=>(await import('./qianmu-prose-assistant-native.js?v=1.59.377')).copyRenamedProseAssistantHistory(options),timeoutMs=15000}={}){
  let eventSource=null,eventType=null,remove=null,closed=false,epoch=0,pending=null,controller=null,failed=null;
  const current=()=>!closed&&isCurrent()===true;
  async function renamed(event,expectedKey){
