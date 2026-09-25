@@ -578,6 +578,7 @@
     "qianmu-storyboard-server-batch-v2-store.js",
     "qianmu-storyboard-server-batch-v2-routes.js",
     "qianmu-storyboard-server-shot-input-contract.js",
+    "qianmu-storyboard-server-novel-shot-evidence.js",
     "qianmu-image-service-results.js",
     "qianmu-image-service-recovery.js",
     "qianmu-image-recovery-cli.js",

@@ -6,6 +6,7 @@ import { createImageServiceResults } from './qianmu-image-service-results.js';
 import { imageServiceAccount, imageServiceAccountStillMatches, imageServiceTaskView } from './qianmu-image-service-access.js';
 import {createNovelServiceChannel} from './qianmu-novel-service-channel.js';
 import {createNativeRequestReview} from './qianmu-native-review-service.js';
+import { inspectStoryboardNovelShotLedger } from './qianmu-storyboard-server-novel-shot-evidence.js';
 
 export const IMAGE_SERVICE_TASK_VERSION = 1;
 const fail = (code, message, state = 'not_submitted', status = 409) => Object.assign(new Error(message), {
@@ -93,6 +94,11 @@ export function createImageService({ dataRoot, store = createImageServiceStore({
     return work.finally(() => { if (retrieving.get(id) === work) retrieving.delete(id); });
   }
   return {
+    // Internal only: the caller must derive this exact locator from a verified,
+    // server-held sealed shot. No HTTP route accepts it as a client assertion.
+    inspectStoryboardNovelShotLedger(request, sealedIdentity) {
+      return inspectStoryboardNovelShotLedger(request, sealedIdentity, { store });
+    },
     async catalog(request, input) {
       const account = imageServiceAccount(request);
       if (closed || catalogs.size >= 2) throw fail('catalog_busy', '服务目录正在读取，请稍后刷新');

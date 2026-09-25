@@ -43,9 +43,9 @@ test('repeated binding and clicks coalesce; completion only updates live footer 
   await flush();
   assert.equal(f.counters.probe, 1); assert.equal(f.attributes['aria-busy'], 'true'); assert.equal(f.label.textContent, '检测中');
   const pending = f.context.optionalServiceProbePromise;
-  f.resolve({status: 'ready', services: ['doubao-tts'], version: '1.59.377', checkedAt: Date.now()}); await pending;
+  f.resolve({status: 'ready', services: ['doubao-tts'], version: '1.59.378', checkedAt: Date.now()}); await pending;
   assert.equal(f.label.textContent, '正常'); assert.equal(f.label.title, '豆包语音网关');
-  assert.equal(f.versions.current.textContent, 'v1.59.377'); assert.equal(f.versions.latest.textContent, '未获取');
+  assert.equal(f.versions.current.textContent, 'v1.59.378'); assert.equal(f.versions.latest.textContent, '未获取');
   await flush(); assert.equal(f.counters.video, 0, 'retired video settings are not probed by the shared service footer');
   assert.equal(f.attributes['aria-busy'], 'false'); assert.equal(f.attributes['aria-disabled'], 'false');
   await f.context.refreshOptionalServiceState(false); assert.equal(f.counters.probe, 1, 'fresh result remains cached');
@@ -93,10 +93,10 @@ test('current and latest versions stay distinct and only verified version string
 });
 
 test('health refresh preserves a separately verified latest version through missing and failed probes', async () => {
-  const f=fixture();f.context.optionalServiceState.latestVersion='1.59.377';
+  const f=fixture();f.context.optionalServiceState.latestVersion='1.59.378';
   let pending=f.context.refreshOptionalServiceState(true);await flush();
   f.resolve({status:'missing',services:[],checkedAt:Date.now()});await pending;
-  assert.equal(f.versions.latest.textContent,'v1.59.377');assert.equal(f.versions.current.textContent,'未安装');
+  assert.equal(f.versions.latest.textContent,'v1.59.378');assert.equal(f.versions.current.textContent,'未安装');
   pending=f.context.refreshOptionalServiceState(true);await flush();f.reject(Error('synthetic'));await pending;
-  assert.equal(f.versions.latest.textContent,'v1.59.377');assert.equal(f.versions.current.textContent,'未获取');
+  assert.equal(f.versions.latest.textContent,'v1.59.378');assert.equal(f.versions.current.textContent,'未获取');
 });

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import * as core from '../qianmu-storyboard.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.377';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.378';
 import {bindStoryboardStreamBudgetFamily as bind,storyboardStreamBudgetReference as budget,normalizeStoryboardStreamReference as normalize,
-  verifyStoryboardStreamReference as verify} from '../qianmu-storyboard-stream-reference.js?v=1.59.377';
+  verifyStoryboardStreamReference as verify} from '../qianmu-storyboard-stream-reference.js?v=1.59.378';
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,settleImageAttempt,summarizeImageAttempts} from '../qianmu-image-attempts.js';
 const copy=value=>JSON.parse(JSON.stringify(value));

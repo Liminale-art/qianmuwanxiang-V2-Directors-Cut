@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js';
 import {ENSEMBLE_LIBRARY_SCHEMA,ENSEMBLE_SELECTION_SCHEMA} from '../qianmu-ensemble-selection.js';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult} from '../qianmu-ensemble-handoff.js?v=1.59.377';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult} from '../qianmu-ensemble-handoff.js?v=1.59.378';
 import {normalizeEnsembleRecoveryRecord,createEnsembleRecoveryRecord,restoreEnsembleRecoveryRecord} from '../qianmu-ensemble-recovery.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 import {routeEnvironment,namespace} from './helpers/comfy-route-fixture.mjs';
