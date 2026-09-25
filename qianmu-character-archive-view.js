@@ -289,7 +289,7 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
       if(action==='more'){view.shown[category]=(view.shown[category]||24)+24;return;}
       if(action==='more-bindings'){view.bindingShown+=24;return;}
       if(action==='edit'){const saved=await store.load(namespace,id);await guard();if(!saved)throw Error('档案已不存在，请刷新列表');edit(saved.document,saved.head);return;}
-      if(action==='cancel'){if(view.draft?.dirty&&!await confirm('放弃尚未保存的档案修改？'))return;await guard();toList();await loadList(expected);return;}
+      if(action==='cancel'){if(view.draft?.dirty&&!await confirm('放弃尚未保存的档案修改？'))return;await guard();toList();await loadList(expected,{reuse:true});return;}
       if(action==='copy'){const doc=normalizeCharacterArchive(view.draft.document);edit({...doc,name:`${doc.name.slice(0,74)} 副本`});view.draft.dirty=true;return;}
       if(action==='clear-image'){view.draft.document.imagegen.reference=null;view.draft.document.imagegen.preview=null;view.draft.dirty=true;return;}
       if(action==='export'){exportDocument(view.draft.document);return;}

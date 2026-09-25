@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {renderComfyLibrary,createComfyLibraryController} from '../qianmu-comfy-library-view.js';
 import {renderComfyPools} from '../qianmu-comfy-pool-view.js';
 import {renderCharacterArchive,createCharacterArchiveController} from '../qianmu-character-archive-view.js';
+import {newCharacterArchive} from '../qianmu-character-archive.js';
 
 const renderers={workflow:renderComfyLibrary,pool:renderComfyPools,character:renderCharacterArchive};
 const blank=()=>({rows:[],bindings:[],subjects:[],search:'',shown:{},collapsed:{},busy:false,error:''});
@@ -15,12 +16,23 @@ for(const [kind,render] of Object.entries(renderers)){
   });
 }
 
-function characterFixture({read=async()=>({rows:[],bindings:[],imports:[]}),account=async()=> 'st-user:fixture',...options}={}){
+function characterFixture({read=async()=>({rows:[],bindings:[],imports:[]}),load=async()=>null,account=async()=> 'st-user:fixture',...options}={}){
   let reads=0,closes=0;const document=new EventTarget();document.activeElement=null;
   const host=()=>({isConnected:true,ownerDocument:document,innerHTML:'',closest:()=>null,contains:()=>false,querySelector:()=>null,
-    querySelectorAll(selector){if(selector!=='[data-archive-action]')return [];
-      const parent=this;return [...this.innerHTML.matchAll(/data-archive-action="([^"]+)"/g)].map(([,action])=>({dataset:{archiveAction:action,category:'char'},addEventListener(_type,fn){const invoke=()=>fn({preventDefault(){},stopPropagation(){}});if(action==='refresh')parent.retry=invoke;if(action==='new')parent.create=invoke;}}));}});
-  const store={overview:async namespace=>{reads++;return read(namespace);},close(){closes++;}};
+    querySelectorAll(selector){const parent=this;
+      if(selector==='[data-archive-field]')return [...this.innerHTML.matchAll(/<(?:input|textarea|select)\b[^>]*data-archive-field="([^"]+)"/g)].map(([,name])=>({dataset:{archiveField:name},value:'',addEventListener(_type,fn){if(name==='name')parent.editName=value=>{this.value=value;fn();};}}));
+      if(selector!=='[data-archive-action]')return [];
+      const attribute=(tag,name)=>tag.match(new RegExp(`${name}="([^"]*)"`))?.[1];
+      return [...this.innerHTML.matchAll(/<button\b[^>]*data-archive-action="([^"]+)"[^>]*>/g)].map(([tag,action])=>({
+        dataset:{archiveAction:action,category:attribute(tag,'data-category')||'char',archiveId:attribute(tag,'data-archive-id')},
+        addEventListener(_type,fn){const invoke=()=>fn({preventDefault(){},stopPropagation(){}});
+          if(action==='refresh')parent.retry=invoke;
+          if(action==='new'&&attribute(tag,'data-category')==='char')parent.create=invoke;
+          if(action==='edit')parent.edit=invoke;
+          if(action==='cancel')parent.cancel=invoke;
+        },
+      }));}});
+  const store={overview:async namespace=>{reads++;return read(namespace);},load,close(){closes++;}};
   const controller=createCharacterArchiveController({store,resolveNamespace:account,getContext:async()=>({chatKey:'chat',subjects:[]}),...options});
   return {controller,host,document,get reads(){return reads;},get closes(){return closes;}};
 }
@@ -75,6 +87,65 @@ test('character close/reopen within freshness uses no catalogue read but still r
   let contexts=0;const f=characterFixture({getScope:()=> 'chat',getContext:async()=>{contexts++;return {chatKey:'chat',subjects:[]};}}),first=f.host();
   try{f.controller.mount(first);await flush();f.controller.detach();first.isConnected=false;const second=f.host();f.controller.mount(second);await flush();
     assert.equal(f.reads,1);assert.equal(contexts,2);assert.match(second.innerHTML,/还没有保存/);
+  }finally{f.controller.dispose();}
+});
+
+test('character cancelling a new draft returns to the verified overview without rereading it',async()=>{
+  const f=characterFixture(),host=f.host();
+  try{f.controller.mount(host);await flush();assert.equal(f.reads,1);
+    host.create();await flush();assert.match(host.innerHTML,/sd-character-editor/);
+    host.cancel();await flush();assert.equal(f.reads,1);assert.doesNotMatch(host.innerHTML,/sd-character-editor|正在读取角色库/);
+  }finally{f.controller.dispose();}
+});
+
+test('character cancelling an existing draft reuses the overview rather than invoking overview again',async()=>{
+  let loads=0;
+  const f=characterFixture({read:async()=>({rows:[{id:'archive-one',name:'Original',category:'char',aliases:[],cover:''}],bindings:[],imports:[]}),
+    load:async(_account,id)=>{loads++;assert.equal(id,'archive-one');return {head:{id,revision:'rev-one',version:1},document:{...newCharacterArchive('char'),name:'Original'}};}}),host=f.host();
+  try{f.controller.mount(host);await flush();assert.equal(f.reads,1);
+    host.edit();await flush();assert.equal(loads,1);assert.match(host.innerHTML,/sd-character-editor/);
+    host.cancel();await flush();assert.equal(f.reads,1);assert.match(host.innerHTML,/Original/);assert.doesNotMatch(host.innerHTML,/sd-character-editor/);
+  }finally{f.controller.dispose();}
+});
+
+test('character cancel shows a stale-but-verified overview while its read-only refresh completes',async()=>{
+  let time=1,finish;
+  const f=characterFixture({now:()=>time,getScope:()=> 'chat',read:()=>f.reads===1
+    ?{rows:[{id:'old',name:'Current archive',category:'char',aliases:[],cover:''}],bindings:[],imports:[]}
+    :new Promise(resolve=>finish=resolve)}),host=f.host();
+  try{f.controller.mount(host);await flush();assert.equal(f.reads,1);
+    host.create();await flush();time+=31000;host.cancel();await flush();
+    assert.equal(f.reads,2);assert.match(host.innerHTML,/Current archive/);assert.doesNotMatch(host.innerHTML,/sd-character-editor|aria-busy="true"/);
+    finish({rows:[{id:'new',name:'Refreshed archive',category:'char',aliases:[],cover:''}],bindings:[],imports:[]});await flush();
+    assert.match(host.innerHTML,/Refreshed archive/);
+  }finally{f.controller.dispose();}
+});
+
+test('dirty character edit still requires confirmation, while cancelling after approval does not reread',async()=>{
+  let approvals=false,prompts=0;
+  const f=characterFixture({confirm:async()=>{prompts++;return approvals;},
+    read:async()=>({rows:[{id:'archive-one',name:'Original',category:'char',aliases:[],cover:''}],bindings:[],imports:[]}),
+    load:async(_account,id)=>({head:{id,revision:'rev-one',version:1},document:{...newCharacterArchive('char'),name:'Original'}})}),host=f.host();
+  try{f.controller.mount(host);await flush();host.edit();await flush();
+    host.editName('Modified');host.cancel();await flush();assert.equal(prompts,1);assert.match(host.innerHTML,/sd-character-editor/);assert.equal(f.reads,1);
+    approvals=true;host.cancel();await flush();assert.equal(prompts,2);assert.equal(f.reads,1);assert.doesNotMatch(host.innerHTML,/sd-character-editor/);
+  }finally{f.controller.dispose();}
+});
+
+test('native character change during an editor invalidates the reusable overview before cancel',async()=>{
+  const f=characterFixture({read:async()=>({rows:f.reads===1?[]:[{id:'new',name:'Updated archive',category:'char',aliases:[],cover:''}],bindings:[],imports:[]})}),host=f.host();
+  try{f.controller.mount(host);await flush();assert.equal(f.reads,1);host.create();await flush();
+    f.document.dispatchEvent(new Event('qianmu-character-library-changed'));assert.equal(f.reads,1);
+    host.cancel();await flush();assert.equal(f.reads,2);assert.match(host.innerHTML,/Updated archive/);
+  }finally{f.controller.dispose();}
+});
+
+test('character account switch while editing cannot reuse the old overview on cancel',async()=>{
+  let owner='st-user:old';
+  const f=characterFixture({account:async()=>owner,read:async namespace=>({rows:[{id:'one',name:`Private ${namespace}`,category:'char',aliases:[],cover:''}],bindings:[],imports:[]})}),host=f.host();
+  try{f.controller.mount(host);await flush();assert.equal(f.reads,1);host.create();await flush();
+    owner='st-user:new';host.cancel();await flush();assert.equal(f.reads,1);assert.match(host.innerHTML,/账户已切换/);assert.doesNotMatch(host.innerHTML,/Private st-user:old/);
+    host.retry();await flush();assert.equal(f.reads,2);assert.match(host.innerHTML,/Private st-user:new/);
   }finally{f.controller.dispose();}
 });
 
