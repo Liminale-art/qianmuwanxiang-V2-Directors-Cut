@@ -27,6 +27,16 @@ test('new search also cancels the old background refresh without showing an offl
   const newest=f.calls.at(-1);assert.equal(newest.input.search,'新');newest.resolve(1);await f.settle();assert.match(f.status,/共 1 条/);
 });
 
+test('a newer cached search is revalidated after an uncooperative old background read settles',async t=>{
+  const f=await collectionLibraryFixture(t,{ignoreAbort:true,background:true}),old=f.calls.find(call=>call.options.revalidate);assert.ok(old);
+  await f.input('新');await f.tick();const cached=f.calls.at(-1);
+  assert.equal(old.options.signal.aborted,true);assert.equal(cached.input.search,'新');cached.resolve(2);await f.settle();
+  assert.match(f.status,/共 2 条/);assert.equal(f.calls.filter(call=>call.options.revalidate&&call.input.search==='新').length,0);
+  old.resolve(7);await f.settle();
+  const fresh=f.calls.at(-1);assert.equal(fresh.options.revalidate,true);assert.equal(fresh.input.search,'新');
+  assert.doesNotMatch(f.status,/共 7 条/);fresh.resolve(3);await f.settle();assert.match(f.status,/共 3 条/);
+});
+
 test('a genuine active search error is still visible rather than hidden by cancellation handling',async t=>{
   const f=await collectionLibraryFixture(t);await f.input('关键词');await f.tick();f.calls.at(-1).reject(Object.assign(Error('原件缺失，请核对'),{code:'text_collection_sync_original'}));await f.settle();
   assert.match(f.status,/原件缺失/);

@@ -1,9 +1,9 @@
-import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.381';
-import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.381';
+import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.382';
+import {prepareEnsembleStyleBindings} from './qianmu-ensemble-bindings.js?v=1.59.382';
 import {createEnsemblePlanStorage} from './qianmu-ensemble-plan-storage.js';
-import {createEnsembleRecoveryRecord,restoreEnsembleRecoveryRecord} from './qianmu-ensemble-recovery.js?v=1.59.381';
+import {createEnsembleRecoveryRecord,restoreEnsembleRecoveryRecord} from './qianmu-ensemble-recovery.js?v=1.59.382';
 import {normalizeEnsembleRecoveryScope,normalizeEnsembleRecoveryRecord} from './qianmu-ensemble-record.js';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.381';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.382';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);

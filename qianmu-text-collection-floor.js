@@ -1,5 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.381';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.382';
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   let floorStatus=null,statusLoading=null,detachStatus=null;
@@ -22,9 +22,11 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     statusLoading=import('./qianmu-text-collection-floor-status.js').then(({createTextCollectionFloorStatus})=>{
       if(!current()||epoch!==token)return;
       floorStatus=createTextCollectionFloorStatus({getScope:()=>({chatId:String(getChatKey()||''),chat:getContext().chat}),resolveNamespace,isCurrent:()=>!!current(),headers,onChange:paintStatus,...(statusSessionFactory?{sessionFactory:statusSessionFactory}:{})});
-      const changed=()=>refreshStatus(true),visible=()=>{if(document.visibilityState==='visible')changed();};
-      document.addEventListener('qianmu-text-collections-changed',changed);document.addEventListener('visibilitychange',visible);document.defaultView.addEventListener('focus',changed);
-      detachStatus=()=>{document.removeEventListener('qianmu-text-collections-changed',changed);document.removeEventListener('visibilitychange',visible);document.defaultView.removeEventListener('focus',changed);};
+      const resumed=createTextCollectionResumeRefresh(()=>refreshStatus(true));
+      const changed=()=>resumed.changed(),visible=()=>{if(document.visibilityState==='visible')resumed.schedule();};
+      const focused=()=>{if(document.visibilityState==='visible')resumed.schedule();};
+      document.addEventListener('qianmu-text-collections-changed',changed);document.addEventListener('visibilitychange',visible);document.defaultView.addEventListener('focus',focused);
+      detachStatus=()=>{resumed.dispose();document.removeEventListener('qianmu-text-collections-changed',changed);document.removeEventListener('visibilitychange',visible);document.defaultView.removeEventListener('focus',focused);};
       return floorStatus.refresh();
     }).catch(()=>{if(current()&&epoch===token)paintStatus();}).finally(()=>{if(epoch===token)statusLoading=null;});
   }
@@ -145,6 +147,19 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     return module.collectTextCollectionStorage({resolveNamespace,isCurrent:()=>isCurrent()===true&&valid(),headers});
   };
   return Object.freeze({refresh,dispose,openLibrary,exportBackup,restoreBackup,cleanupOriginals,storageSummary,cleanupAssistant:(...args)=>extraFloorTools.cleanupStorage(...args),assistantStorageSummary:valid=>extraFloorTools.storageSummary(valid),get restoreBusy(){return restoring!==null;},get assistantBusy(){return extraFloorTools?.busy===true;}});
+}
+
+// A browser resume commonly emits both focus and visibilitychange. Refresh
+// once after that pair, while an actual collection mutation stays immediate.
+export function createTextCollectionResumeRefresh(refresh,{delayMs=120,scheduleTimer=setTimeout,cancelTimer=clearTimeout}={}){
+  if(typeof refresh!=='function')throw new TypeError('收藏状态刷新函数无效');
+  let timer=null,closed=false;
+  const cancel=()=>{if(timer!==null){cancelTimer(timer);timer=null;}};
+  return Object.freeze({
+    schedule(){if(closed||timer!==null)return;timer=scheduleTimer(()=>{timer=null;if(!closed)refresh();},delayMs);},
+    changed(){if(closed)return;cancel();refresh();},
+    dispose(){closed=true;cancel();},
+  });
 }
 
 // Save rendered prose as plain text; never collect embedded media or plugin controls.

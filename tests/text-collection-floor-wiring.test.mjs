@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
+import {createTextCollectionResumeRefresh} from '../qianmu-text-collection-floor.js';
 test('collection toolbar refresh runs independently before storyboard enable gate and is disposed with the owner runtime',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
   const render=source.slice(source.indexOf('function storyboardRenderInlineImages('),source.indexOf('function storyboardScheduleInlineRender('));
@@ -30,4 +31,19 @@ test('central collection export and restore use host page guards and the exclusi
   const html=renderStorageBackupSection();assert.match(html,/data-storage-export="collections"/);assert.match(html,/data-storage-import="collections"/);assert.match(html,/正文收藏/);
   assert.match(source,/collections:\(file,input\)=>collectionFloorTools.restoreBackup\(file,input,confirmDialog,\(\)=>createStorageBackupCheck\(input,collectionFloorTools.restoreBackup,'导入'\)\)/);
   assert.match(source,/transfer: \(ownTransfer!==collectionFloorTools.restoreBackup&&collectionFloorTools.restoreBusy\)/);
+});
+
+test('focus and visibility resume share one read; a collection change stays immediate',()=>{
+  const scheduled=new Map();let next=0,reads=0;
+  const resume=createTextCollectionResumeRefresh(()=>reads++,{
+    scheduleTimer:callback=>{const id=++next;scheduled.set(id,callback);return id;},
+    cancelTimer:id=>scheduled.delete(id),
+  });
+  resume.schedule();resume.schedule();
+  assert.equal(scheduled.size,1);assert.equal(reads,0);
+  scheduled.get(1)();scheduled.delete(1);assert.equal(reads,1);
+  resume.schedule();assert.equal(scheduled.size,1);
+  resume.changed();assert.equal(reads,2);assert.equal(scheduled.size,0);
+  resume.schedule();resume.dispose();assert.equal(scheduled.size,0);
+  resume.changed();resume.schedule();assert.equal(reads,2);
 });

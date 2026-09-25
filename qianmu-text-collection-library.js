@@ -9,7 +9,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   const document=parent?.ownerDocument,view=document?.defaultView;
   if(!parent?.isConnected||typeof isCurrent!=='function')throw TypeError('收藏管理环境不可用');
   let closed=false,busy=false,record=null,operation=null,pageIndex=0,cursors=[null],nextCursor=null,searchValue='',resolve,session,outbox;
-  let selecting=false,searchTimer=null,pendingSearch=null,exporter=null,viewEpoch=0,backgroundReading=null,listSignature='';
+  let selecting=false,searchTimer=null,pendingSearch=null,exporter=null,viewEpoch=0,backgroundReading=null,pendingRevalidation=null,listSignature='';
   let pageRequest=null,backgroundRequest=null;
   const selected=new Map(),deletions=new Map();
   const current=()=>!closed&&parent.isConnected&&isCurrent()===true;
@@ -51,7 +51,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     }
   }
   function stop(){
-    if(closed)return;closed=true;view.clearTimeout(searchTimer);pageRequest?.abort();backgroundRequest?.abort();exporter?.stop();outbox?.close();session?.close();observer.disconnect();view.removeEventListener('pagehide',stop);
+    if(closed)return;closed=true;view.clearTimeout(searchTimer);pageRequest?.abort();backgroundRequest?.abort();pendingRevalidation=null;exporter?.stop();outbox?.close();session?.close();observer.disconnect();view.removeEventListener('pagehide',stop);
     dialog.removeEventListener('click',click);dialog.removeEventListener('keydown',stopEscape);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('close',stop);search.removeEventListener('input',searchChanged);
     if(dialog.open)dialog.close();dialog.remove();
     if(focused?.isConnected&&document.visibilityState!=='hidden')focused.focus({preventScroll:true});resolve(null);
@@ -87,10 +87,11 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     list.replaceChildren(fragment);listSignature=JSON.stringify(page);showList();
     status.textContent=`共 ${page.total} 条收藏${page.total?` · 第 ${pageIndex+1} 页`:''}`;
   }
-  function revalidatePage(input,index,query){
-    if(backgroundReading||!session.readCacheNeedsRefresh?.())return;
+  function revalidatePage(input,index,query,force=false){
+    if(backgroundReading){pendingRevalidation={input,index,query,token:viewEpoch};return;}
+    if(!force&&!session.readCacheNeedsRefresh?.())return;
     const token=viewEpoch,request=new view.AbortController();backgroundRequest=request;
-    backgroundReading=(async()=>{
+    backgroundReading=Promise.resolve().then(async()=>{
       try{
         const page=await session.list(input,{revalidate:true,signal:request.signal});
         if(!current()||token!==viewEpoch||record||selecting||busy||search.value.trim()!==query)return;
@@ -100,14 +101,24 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
         if(['st_account_storage_account','text_collection_sync_account'].includes(cause?.code)){stop();return;}
         try{await session.guard();}catch{stop();return;}
         if(token===viewEpoch&&!record)status.textContent='已显示本次会话的收藏，后台更新未完成；可点击刷新';
-      }finally{backgroundReading=null;if(backgroundRequest===request)backgroundRequest=null;}
-    })();
+      }finally{
+        if(backgroundRequest===request){
+          backgroundRequest=null;backgroundReading=null;
+          const pending=pendingRevalidation;pendingRevalidation=null;
+          // The old read cannot validate a newer displayed query, even when it
+          // refreshed the shared cache before this page finished rendering.
+          if(pending&&current()&&pending.token===viewEpoch&&!record&&pageIndex===pending.index&&search.value.trim()===pending.query)
+            revalidatePage(pending.input,pending.index,pending.query,true);
+        }
+      }
+    });
   }
   async function loadPage(index=0,reset=false,query=searchValue){
     const cursor=reset?null:cursors[index],input={cursor,limit:50,...query?{search:query}:{}};
+    const overlappedBackground=Boolean(backgroundReading);
     const request=new view.AbortController();pageRequest?.abort();pageRequest=request;
     try{const page=await session.list(input,{preferCache:true,signal:request.signal});if(!current()||request.signal.aborted)return;
-      displayPage(page,index,reset,query);revalidatePage(input,index,query);
+      displayPage(page,index,reset,query);revalidatePage(input,index,query,overlappedBackground);
     }finally{if(pageRequest===request)pageRequest=null;}
   }
   async function openRecord(id){

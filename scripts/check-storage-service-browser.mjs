@@ -29,7 +29,7 @@ try{
     window.setup=async(family,mode,status='ready')=>{
       window.appearanceSession?.reset();document.body.replaceChildren();
       window.settings={theme:mode,appearance:{version:1,family,mode,source:'manual',accent:'#64833d'}};
-      window.optionalServiceState={status,services:[],version:'1.59.381',latestVersion:'1.59.381'};
+      window.optionalServiceState={status,services:[],version:'1.59.382',latestVersion:'1.59.382'};
       const root=document.createElement('section');root.id=MODAL_ID;root.className=`open sd-theme-${mode}`;
       root.innerHTML=`<div class="sd-backdrop"></div><section class="sd-window"><main class="sd-body"><section class="sd-card sd-storage-card"><h3>数据管理</h3>${renderStorageServiceStatus()}</section></main></section>`;
       document.body.append(root);
@@ -52,7 +52,7 @@ try{
       assert.equal(result.border,'1px');assert.ok(result.height>=24&&result.height<=34);
       const rgb=mode==='dark'?{ready:'rgb(121, 214, 160)',error:'rgb(255, 153, 159)',gray:'rgb(178, 184, 192)'}:{ready:'rgb(33, 116, 69)',error:'rgb(176, 49, 58)',gray:'rgb(98, 105, 116)'};
       assert.equal(result.color,rgb[status==='ready'?'ready':['error','unsupported'].includes(status)?'error':'gray']);
-      assert.equal(result.current,status==='ready'?'v1.59.381':status==='missing'?'未安装':'未获取');assert.equal(result.latest,'v1.59.381');
+      assert.equal(result.current,status==='ready'?'v1.59.382':status==='missing'?'未安装':'未获取');assert.equal(result.latest,'v1.59.382');
       checks.push(`${family}/${mode}/${width}/${status}: compact colored status, distinct versions, no overflow`);
       if(process.env.QIANMU_STORAGE_SCREENSHOT_DIR&&((family==='classic'&&mode==='light'&&width===320&&status==='ready')||(family==='glass'&&mode==='dark'&&width===1280&&status==='error')))await page.screenshot({path:join(process.env.QIANMU_STORAGE_SCREENSHOT_DIR,`service-${family}-${mode}-${width}.png`)});
     }
@@ -73,14 +73,14 @@ try{
   const live=await page.evaluate(async()=>{
     const root=await setup('glass','dark'),card=root.querySelector('.sd-card');
     const input=document.createElement('input');input.value='keep my draft';card.prepend(input);input.focus();input.setSelectionRange(5,7);
-    window.optionalServiceState={status:'idle',services:[],latestVersion:'1.59.381',checkedAt:0};window.optionalServiceProbePromise=null;
+    window.optionalServiceState={status:'idle',services:[],latestVersion:'1.59.382',checkedAt:0};window.optionalServiceProbePromise=null;
     let calls=0;window.ctx=()=>({getRequestHeaders:()=>({})});window.featureRuntime={load:async()=>({probeQianmuOptionalService:async()=>{calls++;return new Promise(resolve=>window.resolveProbe=resolve);}})};
     bindStorageManagementEvents(root);const button=root.querySelector('.sd-storage-service-refresh');button.click();button.click();await new Promise(done=>setTimeout(done,0));
-    const pending=optionalServiceProbePromise;resolveProbe({status:'ready',version:'1.59.381',services:[],checkedAt:Date.now()});await pending;
+    const pending=optionalServiceProbePromise;resolveProbe({status:'ready',version:'1.59.382',services:[],checkedAt:Date.now()});await pending;
     await refreshOptionalServiceState(false);
     return {calls,sameCard:card===root.querySelector('.sd-card'),sameInput:input===document.activeElement&&input.value==='keep my draft'&&input.selectionStart===5&&input.selectionEnd===7,
       current:root.querySelector('.sd-storage-service-current').textContent,latest:root.querySelector('.sd-storage-service-latest').textContent};
   });
-  assert.equal(live.calls,1);assert.equal(live.sameCard,true);assert.equal(live.sameInput,true);assert.equal(live.current,'v1.59.381');assert.equal(live.latest,'v1.59.381');checks.push('live refresh coalesces and preserves unsaved input, selection, card, and known latest');
+  assert.equal(live.calls,1);assert.equal(live.sameCard,true);assert.equal(live.sameInput,true);assert.equal(live.current,'v1.59.382');assert.equal(live.latest,'v1.59.382');checks.push('live refresh coalesces and preserves unsaved input, selection, card, and known latest');
   assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,external,errors,productionDataRead:false}));
 }finally{await context.close();await browser.close();}
