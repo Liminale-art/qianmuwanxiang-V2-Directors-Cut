@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {galleryLocationFixture as fixture,locationGate as gate} from './helpers/gallery-location-fixture.mjs';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.388';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.389';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardMessageReference,createStoryboardParagraphAnchor} from '../qianmu-storyboard.js';
-import {stageStoryboardContinuationLinks} from '../qianmu-storyboard-continuation-proof.js?v=1.59.388';
+import {stageStoryboardContinuationLinks} from '../qianmu-storyboard-continuation-proof.js?v=1.59.389';
 
 test('preserved record absent from current gallery locates exact floor/paragraph without writing or media access',async t=>{
   const f=fixture(t),before=JSON.stringify([f.context.chat,f.context.chatMetadata,f.record]);

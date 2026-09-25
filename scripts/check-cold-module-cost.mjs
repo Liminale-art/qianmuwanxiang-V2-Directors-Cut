@@ -30,9 +30,9 @@ try{
     return {elapsedMs:performance.now()-start,namespace};
    }
    if(scenario==='comfy-library-cold'){
-    const module=await import('/qianmu-comfy-library-view.js?v=1.59.388');return {elapsedMs:performance.now()-start,exports:Object.keys(module).length};
+    const module=await import('/qianmu-comfy-library-view.js?v=1.59.389');return {elapsedMs:performance.now()-start,exports:Object.keys(module).length};
    }
-   const {loadLocalChunk}=await import('/qianmu-feature-runtime.js?v=1.59.388');
+   const {loadLocalChunk}=await import('/qianmu-feature-runtime.js?v=1.59.389');
    let stop=()=>{},idleStarted=false;
    if(scenario==='vibe-during-idle'){
     const {scheduleQianmuIdlePreload,QIANMU_IDLE_CHUNKS}=await import('/qianmu-idle-preload.js');
@@ -42,7 +42,7 @@ try{
     // already underway remain owned by the browser's module map.
     document.dispatchEvent(new Event('pointerdown'));stop();
    }
-   const clicked=performance.now(),module=await loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.388');
+   const clicked=performance.now(),module=await loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.389');
    return {elapsedMs:performance.now()-clicked,exports:Object.keys(module).length,idleStarted};
   },scenario);
   assert.equal(external,0);assert.deepEqual(errors,[]);

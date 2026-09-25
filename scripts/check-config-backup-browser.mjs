@@ -137,7 +137,7 @@ try{
   await page.addStyleTag({content:css});
   await page.evaluate(source=>{
     window.storageInventoryState={status:'loading',data:null};window.htmlEscape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;');
-    window.optionalServiceState={status:'idle',services:[]};window.VERSION='1.59.388';
+    window.optionalServiceState={status:'idle',services:[]};window.VERSION='1.59.389';
     window.renderFixtureStorage=new Function(source+';return renderStorageManagementCard;')();
   },['formatStorageBytes','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'));
   const layouts=[];
