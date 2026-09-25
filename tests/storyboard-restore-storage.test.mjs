@@ -113,7 +113,7 @@ test('the record manager is unchecked by default, names destructive consequences
 });
 
 function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'not sampled'}){
-  return vm.createContext({renderStorageBackupSection,VERSION:'1.59.385',optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
+  return vm.createContext({renderStorageBackupSection,VERSION:'1.59.386',optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},collectionFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},

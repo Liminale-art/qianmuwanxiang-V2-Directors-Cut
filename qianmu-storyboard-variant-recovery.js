@@ -1,4 +1,4 @@
-import {aggregateStoryboardShotTasks,normalizeStoryboardInlineOrder,sanitizeStoryboardDiagnosticData} from './qianmu-storyboard.js?v=1.59.385';
+import {aggregateStoryboardShotTasks,normalizeStoryboardInlineOrder,sanitizeStoryboardDiagnosticData} from './qianmu-storyboard.js?v=1.59.386';
 
 export async function recordPreparedJobFailure(job,message,isCurrent,{state,chat,account,queue,active,uid,startLog,finishLog,setPlanStatus,planForJob,syncTaskState,save},{suppressPlanStatus=false}={}) {
   const owner=job?.imageOwnerState,origin=job?.imageAccountNamespace||job?.imageAdmission?.namespace;
@@ -80,11 +80,11 @@ export async function currentVariantBatchOwner({owner,chatKey,namespace,plan,sho
 }
 
 export async function finishStoppedVariantBatch(result,{owner,chatKey,namespace,plan,jobs,queued,current,record,state,chat,account,save,schedule,partial,toast}) {
-  const message='本批未提交，可重新取景';
+  const message='后续请求未提交';
   if(!await current()){
     let sameAccount=false;try{sameAccount=await account()===namespace;}catch(_){}
     if(sameAccount&&owner===state()&&chatKey===String(chat()||'')&&result.acceptedCount>0)
-      toast(`已入队 ${queued}/${jobs.length}；余下未提交，请勿整批重试`,'warning');
+      toast(`生图请求已入队 ${queued}/${jobs.length}；余下未提交，请勿整批重试`,'warning');
     return;
   }
   if(result.acceptedCount>0)await record(result.remainingJobs,result.reason?.message||message);
@@ -92,6 +92,6 @@ export async function finishStoppedVariantBatch(result,{owner,chatKey,namespace,
   for(const job of result.remainingJobs){const shot=plan?.shots?.find(item=>item.id===job.planShotId);
     if(shot&&!(owner.taskStates||[]).some(task=>task.planId===plan.id&&task.shotId===shot.id&&['queued','generating','completed'].includes(task.status))){shot.status='cancelled';shot.error=message;}}
   if(plan){if(!queued)plan.status='cancelled';else if(plan.status==='prompt_ready'&&partial({...plan,status:'completed'}))plan.status='completed';
-    plan.error=`已入队 ${queued}/${jobs.length}；余镜未提交`;plan.updatedAt=Date.now();save();schedule(30,plan.floor);}
-  toast(partial(plan)?.label||`已入队 ${queued}/${jobs.length}；余下未提交，请勿整批重试`,'warning');
+    plan.error=`已入队 ${queued}/${jobs.length}；余下请求未提交`;plan.updatedAt=Date.now();save();schedule(30,plan.floor);}
+  toast(partial(plan)?.label||`生图请求已入队 ${queued}/${jobs.length}；余下未提交，请勿整批重试`,'warning');
 }

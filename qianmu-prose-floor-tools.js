@@ -1,17 +1,17 @@
 import {createTextCollectionFloorTools} from './qianmu-text-collection-floor.js';
-import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.385';
+import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.386';
 import {createProseHive} from './qianmu-prose-hive.js';
 import {configureStAccountStorage} from './qianmu-st-account-storage.js';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js';
 import {createProseAssistantRenameCoordinator} from './qianmu-prose-assistant-rename.js';
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.385';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.386';
 export {injectStoryboardMessageButtons} from './qianmu-text-collection-floor.js';
 
 // One host refresh/cleanup path; collection and assistant retain separate state.
 export function createProseFloorTools(options){
   configureStAccountStorage({resolveNamespace:options.resolveNamespace,isCurrent:options.isCurrent,headers:options.headers||(()=>({}))});
   let renames=null;const bindRenames=()=>{renames??=createProseAssistantRenameCoordinator(options);renames.refresh();};
-  const assistant=createProseAssistantFloorTools({...options,assistantHistoryFactory:async input=>{await renames?.settled(input.source);return options.assistantHistoryFactory?options.assistantHistoryFactory(input):(await loadLocalChunk('./qianmu-prose-assistant-native.js?v=1.59.385')).openNativeProseAssistantHistory(input);}});
+  const assistant=createProseAssistantFloorTools({...options,assistantHistoryFactory:async input=>{await renames?.settled(input.source);return options.assistantHistoryFactory?options.assistantHistoryFactory(input):(await loadLocalChunk('./qianmu-prose-assistant-native.js?v=1.59.386')).openNativeProseAssistantHistory(input);}});
   const collection=createTextCollectionFloorTools({...options,extraFloorTools:assistant});let hive=null,autosave=null,loading=null,disposed=false,generation=0,stopPreload=null;
   const start=()=>{if(disposed||autosave||loading)return;const owner=generation;const pending=import('./qianmu-text-collection-autosave.js').then(module=>{if(!disposed&&generation===owner){autosave=module.createCollectionAutosave(options);autosave.start();}}).catch(()=>{}).finally(()=>{if(loading===pending)loading=null;});loading=pending;};
   return Object.freeze({...collection,openAssistant:()=>assistant.openAssistant(),

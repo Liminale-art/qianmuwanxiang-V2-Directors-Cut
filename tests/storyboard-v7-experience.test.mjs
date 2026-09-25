@@ -72,12 +72,12 @@ assert.equal(storyboardPartialCompletion({status:'failed',shots:[{status:'failed
 assert.deepEqual(storyboardPartialCompletion({status:'completed',shots:[{status:'completed'},{status:'failed'},{status:'cancelled'}]}),{
   completedCount:1,incompleteCount:2,failedRequestCount:0,totalCount:3,label:'部分完成 · 2 镜未完成',
 });
-assert.equal(storyboardPartialCompletion({status:'completed',shots:[{status:'completed',partialFailureCount:1}]}).label,'部分完成 · 1 次出图失败');
+assert.equal(storyboardPartialCompletion({status:'completed',shots:[{status:'completed',partialFailureCount:1}]}).label,'部分完成 · 1 次出图未完成');
 assert.equal(storyboardPartialCompletion({status:'completed',shots:[{status:'completed'}]}),null);
 assert.equal(storyboardInlinePartialCompletion([{planId:'old'},{planId:'old'},{planId:'new'}],[
   {id:'new',status:'completed',shots:[{status:'completed'},{status:'cancelled'}]},
   {id:'old',status:'completed',shots:[{status:'completed',partialFailureCount:1}]},
-])?.label,'部分完成 · 1 镜未完成，1 次出图失败','linked same-paragraph plans aggregate without duplicate labels');
+])?.label,'部分完成 · 1 镜未完成，1 次出图未完成','linked same-paragraph plans aggregate without duplicate labels');
 const sameIdPlans = [
   {id:'shared',chatKey:'other-chat',status:'completed',shots:[{status:'completed'},{status:'failed'}]},
   {id:'shared',chatKey:'current-chat',status:'completed',shots:[{status:'completed'},{status:'cancelled'}]},
@@ -88,7 +88,7 @@ assert.equal(storyboardPartialPlanMap(sameIdPlans,'missing-chat').size,0);
 assert.equal(storyboardInlinePartialCompletion([{planId:'old'},{planId:'new'},{planId:'new'}],new Map([
   ['old',{id:'old',status:'completed',shots:[{status:'completed',partialFailureCount:1}]}],
   ['new',{id:'new',status:'completed',shots:[{status:'completed'},{status:'failed'}]}],
-]))?.label,'部分完成 · 1 镜未完成，1 次出图失败','preindexed plans avoid scanning the full library per paragraph');
+]))?.label,'部分完成 · 1 镜未完成，1 次出图未完成','preindexed plans avoid scanning the full library per paragraph');
 const shownPartialPlans=new Set(),splitParagraphPlans=new Map([
   ['split',{id:'split',status:'completed',shots:[{status:'completed'},{status:'failed'}]}],
   ['later',{id:'later',status:'completed',shots:[{status:'completed',partialFailureCount:1}]}],
@@ -96,7 +96,7 @@ const shownPartialPlans=new Set(),splitParagraphPlans=new Map([
 assert.equal(storyboardInlinePartialCompletion([{planId:'split'}],splitParagraphPlans,shownPartialPlans)?.label,'部分完成 · 1 镜未完成');
 assert.equal(storyboardInlinePartialCompletion([{planId:'split'}],splitParagraphPlans,shownPartialPlans),null,
   'the same plan does not repeat its partial badge under a later paragraph');
-assert.equal(storyboardInlinePartialCompletion([{planId:'split'},{planId:'later'}],splitParagraphPlans,shownPartialPlans)?.label,'部分完成 · 1 次出图失败',
+assert.equal(storyboardInlinePartialCompletion([{planId:'split'},{planId:'later'}],splitParagraphPlans,shownPartialPlans)?.label,'部分完成 · 1 次出图未完成',
   'a new plan can still show its own outcome at a shared later anchor');
 
 assert.equal(preservedManualMode.routing.rules[0].shotTypes,undefined,'shot-type assignments are not persisted');

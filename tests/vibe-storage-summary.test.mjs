@@ -32,7 +32,7 @@ test('account or page changes during success and error paths reject the old summ
   await assert.rejects(()=>collectVibeStorage({...options,call:async()=>{live=false;throw Error('read error');}}),{code:'vibe_storage_stale'});
 });
 function globalContext(value=summary()){
-  return vm.createContext({renderStorageBackupSection,VERSION:'1.59.385',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
+  return vm.createContext({renderStorageBackupSection,VERSION:'1.59.386',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},collectionFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[{category:'images',bytes:10,count:1}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},

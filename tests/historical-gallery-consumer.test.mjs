@@ -26,7 +26,7 @@ test('historical gallery consumer binds once and applies the verified preview to
     });
     assert.equal(listeners.has('click'), true);
     await listeners.get('click')({ preventDefault() {} });
-    assert.equal(loadedPath, './qianmu-gallery-directory-view.js?v=1.59.385');
+    assert.equal(loadedPath, './qianmu-gallery-directory-view.js?v=1.59.386');
     assert.equal(opened.parent, root);
     assert.equal(button.disabled, false);
     assert.equal(applied, 'data:image/png;base64,verified');

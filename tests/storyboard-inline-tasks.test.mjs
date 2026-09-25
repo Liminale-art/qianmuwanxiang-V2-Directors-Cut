@@ -113,6 +113,7 @@ test('task markup escapes diagnosis and identities and uses task controls, not i
   const html = context.storyboardInlineTaskMarkup(entry);
   assert.match(html, /&lt;img/); assert.doesNotMatch(html, /<img|data-storyboard-record=/);
   assert.match(html, /data-storyboard-chat-action="retry-task"/); assert.match(html, /data-storyboard-inline-slot=/);
+  assert.match(html,/单独重试/);assert.doesNotMatch(html,/重试本镜/);
 });
 
 test('task text controls and hidden reels override legacy inline icon-only sizing', () => {

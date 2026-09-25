@@ -7,7 +7,7 @@ import { storyboardFunctionSource as section } from './helpers/storyboard-form-f
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function fixture(data = null, status = 'ready') {
-  const context = vm.createContext({renderStorageBackupSection,VERSION:'1.59.385',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS, storageInventoryState: { data, status, error: '<unavailable>' },
+  const context = vm.createContext({renderStorageBackupSection,VERSION:'1.59.386',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS, storageInventoryState: { data, status, error: '<unavailable>' },
     optionalServiceState: {status: 'idle'},
     htmlEscape: x => String(x ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: x => `${Number(x) || 0} B`, blobStore: { classifyStoragePressure: () => ({ level: 'normal' }) } });

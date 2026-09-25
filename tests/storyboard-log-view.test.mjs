@@ -8,6 +8,20 @@ test('all records render despite persisted old filter, initially folded with fou
   const html=c.renderStoryboardLogs(state);assert.equal((html.match(/data-storyboard-log=/g)||[]).length,5);assert.doesNotMatch(html,/<details[^>]*\sopen|<unsafe model>|data-storyboard-log-filter/);
   for(const tone of ['grey','yellow','red','green'])assert.match(html,new RegExp(`data-tone="${tone}"`));
 });
+test('log status distinguishes an unsent request from an accepted result needing review',()=>{
+  const {state,context:c}=logFixture();
+  state.logs=[{id:'unsent',status:'failed',submissionState:'not_submitted',source:'novel',params:{}},
+    {id:'uncertain',status:'failed',submissionState:'unknown',source:'novel',params:{}},
+    {id:'accepted',status:'failed',submissionState:'accepted',source:'novel',params:{}},
+    {id:'rejected',status:'failed',submissionState:'rejected',source:'novel',params:{}}];
+  const html=c.renderStoryboardLogs(state);
+  const row=id=>html.split(`data-storyboard-log="${id}"`)[1]?.split('</details>')[0]||'';
+  assert.match(row('unsent'),/sd-storyboard-log-status">未提交</);
+  assert.match(row('uncertain'),/sd-storyboard-log-status">待核查</);
+  assert.match(row('accepted'),/sd-storyboard-log-status">待核查</);
+  assert.match(row('uncertain'),/>核查并重试<\/button>/);
+  assert.match(row('rejected'),/sd-storyboard-log-status">失败</);
+});
 test('collapsed rendering never serializes large inputs or outputs and preserves receive/retry/diagnostic tools',()=>{
   const {state,context:c}=logFixture();state.logs=[{id:'one',status:'failed',source:'comfy',pipelineId:'p',comfyReceipt:true}];
   state.pipelineLogs=[{id:'p',stages:[{id:'s',type:'provider_request',status:'failed',input:{get request(){throw Error('must not read a closed payload');}},output:{response:{}}}]}];

@@ -29,7 +29,7 @@ try{
       document.body.innerHTML='<main id="story-director-modal" class="open sd-theme-'+mode+'"><section class="sd-window"><header class="sd-header"><strong>API 与日志</strong></header><main class="sd-body"><details class="sd-card sd-feedback-card" open><summary>问题反馈</summary><div id="feedback-fixture"></div></details></main></section></main>';
       const root=document.getElementById('story-director-modal');window.surface=theme.createQianmuThemeSurfaceController();surface.register(root);if(skin!=='classic')surface.setTheme({theme:skin,mode,accent:'#719782'});
       window.scope={};window.valid=true;window.copies=[];window.downloads=[];window.holdCopy=false;
-      const environment={qianmuVersion:'1.59.385',stVersion:'1.12.0',backendStatus:'ready'};
+      const environment={qianmuVersion:'1.59.386',stVersion:'1.12.0',backendStatus:'ready'};
       for(const key of ['apiKey','url','headers','chat','workflow'])Object.defineProperty(environment,key,{get(){throw Error('unexpected private read');}});
       window.options={scope,environment,isCurrent:()=>valid,applyIcons:icons.applyQianmuIcons,download:(blob,name)=>downloads.push({blob,name})};
       window.host=document.getElementById('feedback-fixture');window.dispose=feedback.mountFeedback(host,options);
@@ -68,7 +68,7 @@ try{
     await input.fill(text);await copy.click();await save.click();
     const exported=await page.evaluate(async()=>({copied:copies[0],saved:await downloads[0].blob.text(),name:downloads[0].name}));
     assert.equal(exported.copied,exported.saved,key);assert.ok(exported.saved.includes('问题描述\n'+text+'\n\n附带诊断'),key);
-    assert.match(exported.saved,/千幕版本：1.59.385/);assert.match(exported.saved,/ST 版本：1.12.0/);assert.doesNotMatch(exported.saved,/apiKey|workflow|https:|private read/);
+    assert.match(exported.saved,/千幕版本：1.59.386/);assert.match(exported.saved,/ST 版本：1.12.0/);assert.doesNotMatch(exported.saved,/apiKey|workflow|https:|private read/);
     assert.equal(exported.name,'qianmu-feedback.txt',key);
     await page.evaluate(()=>{window.valid=false;});await save.click();await copy.click();
     assert.deepEqual(await page.evaluate(()=>({copies:copies.length,downloads:downloads.length})),{copies:1,downloads:1},key+' account invalidation guards both actions');

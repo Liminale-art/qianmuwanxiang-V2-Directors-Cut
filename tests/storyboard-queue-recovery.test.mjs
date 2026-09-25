@@ -11,12 +11,19 @@ import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.
 const copy=value=>JSON.parse(JSON.stringify(value));
 const fixtureWindows=new Set();
 test.afterEach(()=>{for(const window of fixtureWindows)window.close();fixtureWindows.clear();});
-async function fixture(){
+async function fixture({restoredState=null}={}){
   const e=await compilerEnvironment(),chat=e.context.ctx().chat,reference=core.createStoryboardMessageReference({message:chat[0],chatKey:'chat-a',floor:0});
-  const plan=core.createStoryboardWorkflowTicket({messageRef:reference,chatKey:'chat-a',floor:0});
-  e.state.shotPlans=[plan];e.state.source='novel';e.styleSelection.enabled=false;e.state.target='floor';e.state.floor='0';e.state.connections.novel.draft.baseUrl='https://image.test';
+  let plan=core.createStoryboardWorkflowTicket({messageRef:reference,chatKey:'chat-a',floor:0});
+  if(restoredState){
+    const restored=core.normalizeStoryboardState(copy(restoredState));
+    for(const key of Object.keys(e.state))delete e.state[key];
+    Object.assign(e.state,restored);plan=e.state.shotPlans[0];
+  }else{
+    e.state.shotPlans=[plan];e.state.source='novel';e.state.target='floor';e.state.floor='0';e.state.connections.novel.draft.baseUrl='https://image.test';
+  }
+  e.styleSelection.enabled=false;
   for(const shot of e.response.shots){delete shot.prompt_renderings.natural_language;shot.gallery_keywords=['相伴'];} // NAI negotiates only tags; no Comfy route in this fixture.
-  let attempts=0,fail=true,postAdmission=()=>{};
+  let attempts=0,fail=!restoredState,postAdmission=()=>{};
   Object.assign(e.context,{hashText,STORYBOARD_PIPELINE_LOG_LIMIT:40,storyboardPipelineArchiveCache:new Map(),blobStore:{deleteStoryboardPipelineLogs:async()=>{}},
     STORYBOARD_QUEUE_LIMIT:8,storyboardQueueBatches:new Set(),startStoryboardQueueWindowBatch,
     storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>e.state.pipelineLogs.find(p=>p.id===log.pipelineId),storyboardPlanIsTerminal:()=>false,
@@ -32,7 +39,7 @@ async function fixture(){
   const generate=e.context.storyboardGenerate;
   e.context.storyboardGenerate=async(...args)=>{const result=await generate(...args);
     await Promise.all([...e.context.storyboardQueueBatches].map(entry=>entry.handle.done));return result;};
-  assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify({errors:e.errors,notices:e.notices,plan}));
+  if(!restoredState)assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify({errors:e.errors,notices:e.notices,plan}));
   return {...e,plan,chat,rawGenerate:generate,attempts:()=>attempts,repair:()=>{fail=false;},afterAdmission:fn=>postAdmission=fn};
 }
 
@@ -121,6 +128,49 @@ test('three same-shot NAI requests keep the direct path and persist only unsubmi
   assert.equal(e.plan.status,'completed');assert.deepEqual(copy(e.plan.shots[0].resultIds),['first-image']);
   assert.equal(e.plan.shots[0].partialFailureCount,2);assert.equal(core.storyboardPartialCompletion(e.plan)?.failedRequestCount,2);
   assert.ok(e.notices.some(message=>message.includes('1 个请求已进入队列')));
+});
+
+test('an already-saved same-shot NAI snapshot reopens with only its missing variant slots available for manual retry',async()=>{
+  const e=await fixture();e.repair();
+  e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.profiles.novel.count='3';e.state.profiles.novel.loaded=true;
+  let changed=false;const queue=e.context.storyboardQueueJob;
+  e.context.storyboardQueueJob=async(...args)=>{const accepted=await queue(...args);if(accepted&&!changed){changed=true;e.state.negative='changed after first admission';}return accepted;};
+  assert.equal(await e.rawGenerate(null,{plan:e.plan}),true);
+  const first=e.context.storyboardQueue[0];assert.equal(first.requestIndex,1);
+  e.context.storyboardFinishLog(e.state.logs.find(log=>log.id===first.logId),'success',{recordIds:['saved-first-image']});
+  e.context.storyboardSetPlanStatus(e.plan,'completed',{job:first,resultIds:['saved-first-image']});
+  // This is the boundary *after* ST has saved the settings snapshot. The host's
+  // saveSettingsDebounced has no synchronous durability acknowledgement here.
+  const savedSettings=copy(e.state),savedGallery=[{id:'saved-first-image',taskId:first.id}];
+  e.context.storyboardQueue.splice(0);e.context.storyboardQueueWindow.notify();
+  const reopened=await fixture({restoredState:savedSettings});
+  const plan=reopened.plan;
+  assert.ok(plan&&plan!==e.plan);assert.equal(plan.status,'completed');
+  assert.deepEqual(copy(plan.shots[0].resultIds),['saved-first-image']);
+  assert.equal(core.storyboardPartialCompletion(plan)?.failedRequestCount,2);
+  const missing=reopened.state.logs.filter(log=>log.status==='failed'&&log.submissionState==='not_submitted');
+  assert.deepEqual(copy(missing.map(log=>log.snapshot.requestIndex).sort()),[2,3]);
+  const inline=()=>core.buildStoryboardInlineTasks(reopened.state.taskStates,{chatKey:'chat-a',chat:reopened.chat,logs:reopened.state.logs,records:savedGallery});
+  assert.deepEqual(copy(inline().map(entry=>[entry.inlineOrder.requestIndex,entry.label,entry.action]).sort((a,b)=>a[0]-b[0])),
+    [[2,'本次请求未提交','retry-task'],[3,'本次请求未提交','retry-task']]);
+  const admissions=reopened.attempts(),logCount=reopened.state.logs.length;
+  assert.equal(await reopened.context.storyboardGenerate(null,{plan}),false,'a reopened accepted plan cannot automatically replay the whole batch');
+  assert.equal(reopened.attempts(),admissions);assert.equal(reopened.state.logs.length,logCount);
+  const second=missing.find(log=>log.snapshot.requestIndex===2),originalSnapshot=JSON.stringify(second.snapshot);
+  assert.equal(await reopened.context.storyboardRetryLog(second),true);
+  assert.equal(reopened.attempts(),admissions+1);assert.equal(reopened.context.storyboardQueue.length,1);
+  const retry=reopened.context.storyboardQueue[0];
+  assert.equal(retry.requestIndex,2);assert.equal(retry.requestTotal,3);assert.equal(retry.attempt,2);
+  assert.deepEqual(copy(retry.inlineOrder),copy(second.snapshot.inlineOrder));
+  assert.equal(JSON.stringify(second.snapshot),originalSnapshot,'manual retry reads the original frozen variant, not current workbench settings');
+  assert.deepEqual(copy(plan.shots[0].resultIds),['saved-first-image']);
+  assert.equal(reopened.state.logs.filter(log=>log.snapshot?.requestIndex===3&&log.submissionState==='not_submitted').length,1);
+  reopened.context.storyboardFinishLog(reopened.state.logs.find(log=>log.id===retry.logId),'success',{recordIds:['saved-second-image']});
+  reopened.context.storyboardSetPlanStatus(plan,'completed',{job:retry,resultIds:['saved-second-image']});
+  assert.deepEqual(copy(plan.shots[0].resultIds),['saved-first-image','saved-second-image']);
+  assert.equal(core.storyboardPartialCompletion(plan)?.failedRequestCount,1);
+  assert.deepEqual(copy(inline().map(entry=>entry.inlineOrder.requestIndex)),[3],
+    'a successful single-slot retry retires only its own failure, not the other missing request');
 });
 
 test('gallery-only same-shot NAI variants retain the missing request without inventing a plan',async()=>{
@@ -253,7 +303,7 @@ test('real preparation/queue stores a failed unsubmitted middle mirror and retry
   assert.equal(core.normalizeStoryboardState(copy(e.state)).logs.find(log=>log.id===failed.id).snapshot.imageAccountNamespace,'st-user:route-test');
   const pipeline=e.state.pipelineLogs.find(row=>row.id===failed.pipelineId);assert.equal(pipeline.status,'failed');assert.ok(pipeline.stages.some(s=>s.type==='queue_preparation'&&s.output.submissionState==='not_submitted'));
   const entries=core.buildStoryboardInlineTasks(e.state.taskStates,{chatKey:'chat-a',chat:e.chat,logs:e.state.logs,waitingIds:new Set(queue.map(j=>j.id))});
-  const failure=entries.find(row=>row.status==='failed');assert.equal(failure.label,'本镜尚未提交');assert.equal(failure.action,'retry-task');assert.equal(failure.inlineOrder.shotIndex,1);
+  const failure=entries.find(row=>row.status==='failed');assert.equal(failure.label,'本次请求未提交');assert.equal(failure.action,'retry-task');assert.equal(failure.inlineOrder.shotIndex,1);
   const retryIdentity=await createImageAdmissionIdentity({...failed.snapshot},'st-user:route-test');
   assert.deepEqual(await createImageHistorySeeds([failed],retryIdentity),[],'a preparation log is not an executed-image history seed');
   for(const job of [...queue]){e.context.storyboardFinishLog(e.state.logs.find(log=>log.id===job.logId),'success',{recordIds:['image-'+job.inlineOrder.shotIndex]});e.context.storyboardSetPlanStatus(e.plan,'completed',{job,resultIds:['image-'+job.inlineOrder.shotIndex]});}

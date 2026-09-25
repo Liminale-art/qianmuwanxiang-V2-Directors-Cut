@@ -9,12 +9,12 @@ import {retainStoryboardArtDirection} from './qianmu-art-directions.js';
 export {STORYBOARD_ART_DIRECTIONS,retainStoryboardArtDirection,storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.385';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.385';
+import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.386';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.386';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.385';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.385';
-import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.385';
+import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.386';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.386';
+import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.386';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
 import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
@@ -35,8 +35,8 @@ import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
 import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
-import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.385';
-export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.385';
+import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.386';
+export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.386';
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
@@ -547,7 +547,7 @@ export function buildStoryboardInlineTasks(tasks, { chatKey = '', chat = [], log
       ...(task.narrativeMoment?{narrativeMoment:normalizeStoryboardStreamMoment(task.narrativeMoment)||{version:1,invalid:true}}:{}),
       paragraphAnchor: task.paragraphAnchor, paragraphSelection: task.paragraphSelection,
       imageIndex: Number.MAX_SAFE_INTEGER, createdAt: Number(task.requestedAt || 0),
-      status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? (preparation?'本镜待选工作流':task.stage==='queue'&&log?.submissionState==='not_submitted'?'本镜尚未提交':'本镜生成失败') : status === 'queued' ? '等待生图' : stageLabel,
+      status, label: status === 'unconfirmed' ? '结果待核对' : status === 'failed' ? (preparation?'本镜待选工作流':log?.submissionState==='not_submitted'?'本次请求未提交':'本次生成失败') : status === 'queued' ? '等待生图' : stageLabel,
       detail: status === 'unconfirmed' ? '请先核查原任务，勿重复生成' : status === 'failed'
         ? str(sanitizeStoryboardDiagnosticData(task.error || '请查看日志'), 120).replace(/\s+/g, ' ').split('；')[0] : '',
       action: retry ? (preparation?(log.preparation?.version===1?'reprepare-task':''):'retry-task') : (waitingIds.has(task.id) ? 'cancel-task' : ''),
@@ -2300,7 +2300,7 @@ export function storyboardPartialCompletion(plan) {
   const incompleteCount = shots.length - completedCount;
   const failedRequestCount = shots.reduce((total, shot) => total + (shot.status === 'completed' ? Math.max(0, Number(shot.partialFailureCount) || 0) : 0), 0);
   if (!incompleteCount && !failedRequestCount) return null;
-  const details = [incompleteCount && `${incompleteCount} 镜未完成`, failedRequestCount && `${failedRequestCount} 次出图失败`].filter(Boolean).join('，');
+  const details = [incompleteCount && `${incompleteCount} 镜未完成`, failedRequestCount && `${failedRequestCount} 次出图未完成`].filter(Boolean).join('，');
   return { completedCount, incompleteCount, failedRequestCount, totalCount: shots.length, label: `部分完成 · ${details}` };
 }
 

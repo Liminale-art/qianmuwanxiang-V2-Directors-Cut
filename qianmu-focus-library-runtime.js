@@ -1,6 +1,6 @@
 import {createFocusLibraryStore} from './qianmu-focus-library-store.js';
 import {createFocusLibraryPicker} from './qianmu-focus-library.js';
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.385';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.386';
 // Lazy media storage and UI: no generation outside an explicit editor action.
 export function createFocusLibraryRuntime({resolveNamespace,owner,context,choices,generate,ui,notify,save,available=()=>true,watchView=()=>null}) {
   let portal=null,openEpoch=0,management=null;const previous=new Map();
