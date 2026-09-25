@@ -214,9 +214,10 @@ test('actual job runner keeps encoding consent separate from image admission and
         if(init.method==='GET')return new Response('{}');imagePosts++;return new Response(Buffer.from(image,'base64'),{headers:{'content-type':'image/png'}});
       }})}),
       storyboardConfirmGatewayModelBinding:()=>assert.fail('no fallback'),storyboardDeliverGatewayResult:async()=>true,
+      resolveImageAccountNamespace:async()=>namespace,
       storyboardFinishLog:(_log,status,details)=>Object.assign(log,{status,...details}),storyboardPipelineForLog:()=>null,MODULE_NAME:'test',console:{error(){}},
     });
-    vm.runInContext(['storyboardPrepareGatewayAssets','storyboardRunJob'].map(section).join('\n'),context);await context.storyboardRunJob(job,log);
+    vm.runInContext(['storyboardResultOwned','storyboardAssertResultOwner','storyboardPrepareGatewayAssets','storyboardRunJob'].map(section).join('\n'),context);await context.storyboardRunJob(job,log);
     assert.equal(imagePosts,unknown?0:1);assert.equal(admissions,unknown?0:1);assert.equal(channelSubmissions,unknown?0:1);
     assert.equal(outcomes.at(-1),unknown?'not_submitted':'succeeded');assert.equal(log.submissionState,unknown?'not_submitted':'accepted');
     if(unknown){assert.equal(log.status,'failed');assert.equal([...e.receipts.values()][0].status,'unknown');}

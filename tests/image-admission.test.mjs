@@ -327,7 +327,7 @@ function liveHarness({ failure = '', confirm = async () => true } = {}) {
     storyboardFinishLog: (log, status, detail) => Object.assign(log, { status }, detail),
     toast: message => { notices.push(message); return false; },
   });
-  vm.runInContext(['storyboardSettleImageAdmission', 'storyboardQueueJob', 'storyboardDeliverGatewayResult', 'storyboardRunJob', 'storyboardReleaseWaitingJob', 'storyboardClearWaitingQueue', 'storyboardRetryLog'].map(section).join('\n'), context);
+  vm.runInContext(['storyboardResultOwned', 'storyboardAssertResultOwner', 'storyboardSettleImageAdmission', 'storyboardQueueJob', 'storyboardDeliverGatewayResult', 'storyboardRunJob', 'storyboardReleaseWaitingJob', 'storyboardClearWaitingQueue', 'storyboardRetryLog'].map(section).join('\n'), context);
   return { context, state, gallery, waiting, notices, writes, store, runtime };
 }
 const liveJob = extra => job({ source: 'openai', profile: { count: '1', model: 'gpt-image-1' },

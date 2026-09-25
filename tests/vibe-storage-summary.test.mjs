@@ -32,7 +32,7 @@ test('account or page changes during success and error paths reject the old summ
   await assert.rejects(()=>collectVibeStorage({...options,call:async()=>{live=false;throw Error('read error');}}),{code:'vibe_storage_stale'});
 });
 function globalContext(value=summary()){
-  return vm.createContext({renderStorageBackupSection,STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
+  return vm.createContext({renderStorageBackupSection,VERSION:'1.59.384',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},collectionFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[{category:'images',bytes:10,count:1}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
@@ -58,14 +58,14 @@ test('actual global inventory keeps native retired originals in Vibe totals with
 test('registered fee originals remain accounted without exposing internal receipt prose or double counting',async()=>{
   const feeOriginals={version:1,scope:'registered-fee-original-files',complete:true,versions:4,selectedVersions:3,total:{count:8,bytes:8000},selected:{count:6,bytes:6000},history:{count:2,bytes:2000}};
   const value={...summary(),version:4,persistence:'st-account-file',retained:{count:1,bytes:100},bytes:630,feeOriginals};
-  const context=globalContext(value);vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
+  const context=globalContext(value);vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
   assert.equal(data.trackedBytes,1250);assert.equal(data.origin.quota,10000);assert.deepEqual(data.vibeStorage.feeOriginals,feeOriginals);assert.match(html,/<span>Vibe 素材<\/span><span>440 B<\/span>/);assert.doesNotMatch(html,/已登记费用原件|当前版本文件|历史独有文件|<span>Vibe 素材<\/span><span>8440 B/);
   for(const patch of [{version:3},{feeOriginals:{...feeOriginals,selectedVersions:2}},{feeOriginals:{...feeOriginals,receipt:'private body'}}])assert.throws(()=>validateVibeStorageSummary({...value,...patch},namespace));
 });
 
 test('actual global card reports unknown Vibe content without duplicate navigation or implying zero',async()=>{
-  const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
+  const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
   assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/部分数据暂不可读取/);assert.match(html,/未盘点站点数据/);assert.match(html,/<span>Vibe 素材<\/span><span>暂未读取<\/span>/);
   assert.doesNotMatch(html,/bad <metadata>|<span>Vibe 素材<\/span><span>0 B|<button[^>]+sd-storage-vibes/);

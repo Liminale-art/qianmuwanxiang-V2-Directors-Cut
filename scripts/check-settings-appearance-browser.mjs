@@ -9,13 +9,14 @@ import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from '../qianmu-hive-comm
 import {isQianmuOwnedDockDescriptor} from '../qianmu-hive-ownership.js';
 
 const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-const declarations = ['FLOAT_SIZE_MIN', 'FLOAT_SIZE_MAX', 'LOG_LIMIT', 'QUICK_HIVE_SAFETY_LIMIT', 'LOG_STATUS_LABELS', 'LOG_KIND_LABELS'].map(name => {
+const declarations = ['VERSION', 'FLOAT_SIZE_MIN', 'FLOAT_SIZE_MAX', 'LOG_LIMIT', 'QUICK_HIVE_SAFETY_LIMIT', 'LOG_STATUS_LABELS', 'LOG_KIND_LABELS'].map(name => {
     const found = index.match(new RegExp('^const ' + name + ' = .+;', 'm')); assert.ok(found, name); return found[0];
 });
 declarations.push(`const QUICK_COMMANDS = ${JSON.stringify(QIANMU_HIVE_COMMANDS)};`,upgradeProseHiveCommands.toString(),isQianmuOwnedDockDescriptor.toString(), 'const QUICK_COMMAND_IDS = QUICK_COMMANDS.map(item => item.id);');
+declarations.push('let feedbackOpenScope = null;');
 const names = ['renderActiveTab', 'renderPlugTab', 'renderQuickWheelSettings', 'normalizeQuickWheelSettings',
     'storyboardVideoBudgetPolicy',
-    'renderLogEntry', 'renderStorageServiceStatus', 'formatStorageBytes', 'optionalServiceLabel', 'optionalServiceDetail', 'renderStorageManagementCard'];
+    'renderLogEntry', 'renderStorageServiceStatus', 'formatStorageBytes', 'optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'renderStorageManagementCard'];
 const source = declarations.join('\n') + '\n' + names.map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n'
     + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
@@ -120,7 +121,7 @@ try {
                 if (state === 'host') return document.querySelector('.sd-api-external-fields').hidden && document.querySelector('.sd-provider-select').value === 'sillytavern'
                     && !document.querySelector('.sd-save-api').getClientRects().length && document.querySelector('.sd-stream-toggle').getClientRects().length;
                 if (state === 'error') return document.querySelector('.sd-storage-card').textContent.includes('盘点失败') && !document.querySelector('.sd-storage-hero');
-                if (state === 'partial') return document.querySelector('.sd-storage-card').textContent.includes('统计尚不完整') && !!document.querySelector('.is-critical') && document.querySelector('.sd-storage-legend').textContent.includes('未盘点站点数据');
+                if (state === 'partial') return document.querySelector('.sd-storage-card').textContent.includes('部分数据暂不可读取') && !!document.querySelector('.is-critical') && document.querySelector('.sd-storage-legend').textContent.includes('未盘点站点数据');
                 return document.querySelector('.sd-storage-hero b').textContent === '400 MB';
             }, state));
             await page.evaluate(() => document.querySelectorAll('details').forEach(node => { node.open = true; }));

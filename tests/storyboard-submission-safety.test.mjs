@@ -141,9 +141,9 @@ test('NAI partial variant success cannot be reclassified as wholly unaccepted by
 
 test('actual job runner falls back only after actual read-only preflight failure, never after POST', async () => {
   for (const failureAt of ['preflight', 'direct', 'cancel']) {
-  const state = { enabled: true }, job = { target: 'gallery', source: 'openai',imageAccountNamespace:'account-a' }, log = {}; const finished = [], posts = [];
+  const state = { enabled: true }, job = { target: 'gallery', source: 'openai',imageAccountNamespace:'account-a',imageAdmission:{namespace:'account-a'} }, log = {}; const finished = [], posts = [];
   const directMethods = [];
-  const run = vm.runInNewContext(`${section('storyboardRunJob')}\nstoryboardRunJob`, {
+  const run = vm.runInNewContext(`${section('storyboardResultOwned')}\n${section('storyboardAssertResultOwner')}\n${section('storyboardRunJob')}\nstoryboardRunJob`, {
     storyboardAutomaticJobEnabled,
     storyboardAdmission: { beforeSubmit: async () => {} }, storyboardSettleImageAdmission: async () => {},resolveImageAccountNamespace:async()=> 'account-a',
     MODULE_NAME: 'test', storyboardState: () => state, storyboardPlanForJob: () => null, storyboardValidatedAnchor: () => ({ valid: true }),

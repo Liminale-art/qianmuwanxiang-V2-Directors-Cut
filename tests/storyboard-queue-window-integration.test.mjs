@@ -20,7 +20,12 @@ function fixture({ activeCount = 0, admit = async () => {} } = {}) {
     storyboardQueueWindow: window, storyboardQueueSettling: 0, storyboardState: () => state, getChatKey: () => 'chat-a',
     applyStoryboardFloorTakeToJob() {}, resolveStoryboardJobModelIdentity: () => ({ providerId: 'openai', model: 'image-model' }),
     storyboardAutomaticJobEnabled: () => true, storyboardValidatedAnchor: () => ({ valid: true }),
-    storyboardImageAdmissionRuntime: async () => ({ admit }),
+    storyboardImageAdmissionRuntime: async () => ({ admit: async job => {
+      await admit(job);
+      job.imageAdmission = { namespace: 'account-a' };
+      job.imageAccountNamespace = 'account-a';
+    } }),
+    resolveImageAccountNamespace: async () => 'account-a',
     getStoryboardGenerationPolicy: () => ({ maxImages: 21 }), storyboardGalleryRecords: () => [],
     storyboardStartLog: () => { const log = { id: `log-${++logId}` }; state.logs.push(log); return log; },
     storyboardPlanForJob: () => null, storyboardSetPlanStatus() {}, storyboardPumpQueue() {},

@@ -45,9 +45,12 @@ const runJob = storyboardFunctionSource('storyboardRunJob');
 const block = runJob.slice(runJob.indexOf('    const generateTransport = async () => {'), runJob.indexOf('    let response;', runJob.indexOf('    const generateTransport = async () => {')));
 assert.ok(block.includes('generateDirectImage') && block.includes('/image/generate'));
 function transport(mode, { error, provider = 'comfy', currentMode = 'gateway' } = {}) {
-  const calls = [], job = { source: provider, profile: {}, connection: mode === undefined ? {} : { comfyTransport: mode } };
+  const calls = [], accountNamespace='st-user:comfy-transport',
+    state = { enabled: true, connections: { comfy: { draft: { options: { comfyTransport: currentMode } } } } },
+    job = { source: provider, profile: {}, connection: mode === undefined ? {} : { comfyTransport: mode },
+      imageAccountNamespace:accountNamespace,imageAdmission:{version:1,namespace:accountNamespace,attemptId:'fixed'},imageOwnerState:state };
   const context = vm.createContext({ ...core, job, log: {}, beforeSubmit: async () => calls.push('beforeSubmit'),
-    storyboardState: () => ({ enabled: true, connections: { comfy: { draft: { options: { comfyTransport: currentMode } } } } }),
+    storyboardState: () => state, resolveImageAccountNamespace:async()=>accountNamespace,
     storyboardPrepareGatewayAssets: async () => { calls.push('assets'); return {}; }, storyboardGatewayRequest: () => ({}),
     storyboardPipelineStage() {}, storyboardRequestHeaders: () => ({}), apiKey: 'secret',
     storyboardComfyRecoveryRuntime: async () => ({ prepare: async value => { assert.equal(value, job); return { version: 1, attemptId: 'fixed' }; } }),
@@ -58,7 +61,7 @@ function transport(mode, { error, provider = 'comfy', currentMode = 'gateway' } 
       if (provider === 'comfy') assert.equal(JSON.parse(options.body).comfyQueue.attemptId, 'fixed');
       return new Response(JSON.stringify({ ok: true })); },
   });
-  vm.runInContext(`async function runTransport() {${block}\nreturn generateTransport();}`, context);
+  vm.runInContext(`${storyboardFunctionSource('storyboardResultOwned')}\n${storyboardFunctionSource('storyboardAssertResultOwner')}\nasync function runTransport() {${block}\nreturn generateTransport();}`, context);
   return { calls, job, context, run: () => context.runTransport() };
 }
 

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import * as core from '../qianmu-storyboard.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.383';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.384';
 import {bindStoryboardStreamBudgetFamily as bind,storyboardStreamBudgetReference as budget,normalizeStoryboardStreamReference as normalize,
-  verifyStoryboardStreamReference as verify,storyboardStreamDigest as digest,storyboardStreamFingerprint as fingerprint} from '../qianmu-storyboard-stream-reference.js?v=1.59.383';
-import {storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.383';
+  verifyStoryboardStreamReference as verify,storyboardStreamDigest as digest,storyboardStreamFingerprint as fingerprint} from '../qianmu-storyboard-stream-reference.js?v=1.59.384';
+import {storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.384';
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 const copy=value=>JSON.parse(JSON.stringify(value));

@@ -5,6 +5,9 @@ import test from 'node:test';
 const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const store = readFileSync(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../qianmu-gallery-snapshot-migration.js', import.meta.url), 'utf8');
+const deliveryDrain = readFileSync(new URL('../qianmu-storyboard-delivery-drain.js', import.meta.url), 'utf8');
+const galleryArchive = readFileSync(new URL('../qianmu-gallery-archive-coordinator.js', import.meta.url), 'utf8');
+const galleryRecord = readFileSync(new URL('../qianmu-gallery-archive-record.js', import.meta.url), 'utf8');
 
 test('storyboard redraw snapshots use an additive private IndexedDB store', () => {
 assert.match(store, /const DB_VERSION = 15/);
@@ -54,8 +57,18 @@ test('gallery view binding and export cannot prewarm recipes or retain an unused
 
 test('gallery lifecycle archives, prunes, clears and invalidates snapshots safely', () => {
   assert.match(source, /async function storyboardHandleChatChanged[\s\S]*?storyboardSnapshotEpoch\+\+[\s\S]*?storyboardArchiveGallerySnapshots/);
-  assert.match(source, /receivedRecords\.push\(record\)[\s\S]*?storyboardArchiveGallerySnapshots\(receivedRecords\)/);
-  assert.match(source, /gallery\.some\(item => item.id === record.id\)\) gallery.push\(record\)[\s\S]*?storyboardArchiveGallerySnapshots\(records\)/);
+  // Current and deferred results share the metadata-save path. The idle
+  // preservation pass archives the saved inline snapshot with its record;
+  // eager per-result migration is no longer required for delivery.
+  const metadataSave = source.slice(source.indexOf('async function saveMetadata()'), source.indexOf('\nfunction getChatKey()'));
+  const gatewayDelivery = source.slice(source.indexOf('async function storyboardDeliverGatewayResult'), source.indexOf('async function storyboardRunJob'));
+  assert.match(metadataSave, /await ctx\(\)\.saveMetadata\(\); storyboardScheduleGalleryPreservation\(\)/);
+  assert.match(gatewayDelivery, /gallery\.push\(record\)[\s\S]*?saveStoryboardFloorTakes\(gallery,async\(\)=>\{[\s\S]*?await saveMetadata\(\)/);
+  assert.match(deliveryDrain, /receivedRecords\.push\(record\)[\s\S]*?saveStoryboardFloorTakes\(gallery, async \(\) => \{[\s\S]*?await saveMetadata\(\)/);
+  assert.match(source, /function storyboardScheduleGalleryPreservation\(\)[\s\S]*?storyboardGalleryPreserver\.schedule\(\)/);
+  assert.match(galleryArchive, /await opened\.preserveAll\(\)/);
+  assert.match(galleryRecord, /galleryArchiveRecordEnvelope\(source,raw\)[\s\S]*?record:checked/);
+  assert.match(galleryRecord, /if\(record\.snapshot!=null\)[\s\S]*?return 'inline'/);
   assert.match(source, /storyboard_snapshots: \['不可恢复 · 阅片精确重绘设置', true\]/);
   assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*storyboard_snapshots/);
   assert.match(source, /cleared\.has\('storyboard_snapshots'\)[\s\S]*?delete record\.snapshotRef/);

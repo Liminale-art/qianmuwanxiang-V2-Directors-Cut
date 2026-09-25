@@ -16,6 +16,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';
 const makeJob = (extra = {}) => ({
   source: 'novel', profile: { model: V3, cfg: '5', steps: '28' }, target: 'gallery',
+  imageAccountNamespace: 'account-a', imageAdmission: { namespace: 'account-a' },
   connection: { id: 'conn-a', credentialId: 'key-ref-a', baseUrl: 'https://relay.example', model: V3 },
   payload: { prompt: 'original garden', negative: 'original negative', parameters: { scale: 5, steps: 28 } },
   prompt: 'original garden', negative: 'original negative', ...extra,
@@ -28,8 +29,9 @@ function section(name) {
   return next < 0 ? tail : tail.slice(0, next + 1);
 }
 function load(name, deps = {}) {
-  return vm.runInNewContext(`${section('storyboardConfirmGatewayProtocolBinding')}\n${name==='storyboardStartLog'?section('storyboardStoreLog'):''}\n${section(name)}\n${name}`, {
-    clone: structuredClone, STORYBOARD_PROVIDER_REGISTRY, resolveStoryboardJobModelIdentity, resolveStoryboardConnectionBinding, applyStoryboardFloorTakeToJob, storyboardAutomaticJobEnabled, ...deps,
+  return vm.runInNewContext(`${section('storyboardConfirmGatewayProtocolBinding')}\n${name==='storyboardStartLog'?section('storyboardStoreLog'):''}\n${name==='storyboardRunJob'?`${section('storyboardResultOwned')}\n${section('storyboardAssertResultOwner')}`:''}\n${section(name)}\n${name}`, {
+    clone: structuredClone, STORYBOARD_PROVIDER_REGISTRY, resolveStoryboardJobModelIdentity, resolveStoryboardConnectionBinding, applyStoryboardFloorTakeToJob, storyboardAutomaticJobEnabled,
+    resolveImageAccountNamespace: async () => 'account-a', ...deps,
   });
 }
 

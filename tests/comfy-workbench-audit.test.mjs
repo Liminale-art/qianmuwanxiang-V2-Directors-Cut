@@ -16,6 +16,7 @@ function harness({ automatic = false, uncertain = false, batch = 1, choice = 'ac
   const job={source:'comfy',automatic,profile:{model:'comfy-workflow',comfyOutputNodeId:output},connection:{baseUrl:'https://comfy.example',comfyTransport:'browser'},target:'gallery',
     payload:{prompt:'garden',parameters:{workflow:graph,count:1}}};
   const state={enabled:true,automation:{autoCapture:true,autoGenerate:true},logs:[]},waiting=[],notices=[],confirmations=[],admissions=[];
+  const accountNamespace='st-user:workbench-audit';
   let chat='a';
   const context=vm.createContext({
     ...storyboard,clone:structuredClone,storyboardState:()=>state,getChatKey:()=>chat,storyboardQueue:waiting,storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:8,
@@ -24,14 +25,15 @@ function harness({ automatic = false, uncertain = false, batch = 1, choice = 'ac
     resolveStoryboardJobModelIdentity:()=>({modelFamily:'comfy',remoteModelId:'comfy-workflow',protocol:'comfy'}),
     resolveStoryboardConnectionBinding:()=>({}),directImageRuntime:async()=>runtime,
     storyboardAdmissionEpoch:1,storyboardCredentialRevision:0,storyboardResolveApiKey:async()=>'',storyboardRequestHeaders:()=>({}),
-    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>'st-user:workbench-audit'}:
+    resolveImageAccountNamespace:async()=>accountNamespace,
+    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>accountNamespace}:
       key==='comfyCharacterReadiness'?{checkComfyCharacterReadiness:(request,options)=>checkComfyCharacterReadiness(request,{...options,fetchImpl:async url=>{
         const name=decodeURIComponent(new URL(url).pathname.split('/').at(-1));
         const definitions={EmptyImage:{input:{required:{width:['INT'],height:['INT'],batch_size:['INT']}},output:['IMAGE']},
           CLIPTextEncode:{input:{required:{text:['STRING']}},output:['CONDITIONING']},SaveImage:{input:{required:{images:['IMAGE']}},output:[],output_node:true}};
         return new Response(JSON.stringify({[name]:definitions[name]}));
       }})}:Promise.reject(Error(`unexpected ${key}`))},
-    storyboardImageAdmissionRuntime:async()=>({admit:async job=>{admissions.push(job.id||'job');}}),
+    storyboardImageAdmissionRuntime:async()=>({admit:async job=>{admissions.push(job.id||'job');job.imageAccountNamespace=accountNamespace;job.imageAdmission={version:1,namespace:accountNamespace,attemptId:`admission-${admissions.length}`};}}),
     storyboardStartLog:job=>{const log={id:'log',snapshot:structuredClone(job)};state.logs.push(log);return log;},
     storyboardPlanForJob:()=>null,storyboardSetPlanStatus:()=>{},saveSettings:()=>{},renderModal:()=>{},storyboardPumpQueue:()=>{},
     storyboardSettleImageAdmission:async()=>{},toast:message=>{notices.push(message);return false;},

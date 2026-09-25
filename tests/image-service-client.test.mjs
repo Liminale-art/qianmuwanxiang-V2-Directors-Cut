@@ -8,6 +8,7 @@ import { createImageServiceClient, createImageServiceClientStore } from '../qian
 import { receiveServiceImage } from '../qianmu-service-recovery-action.js';
 import { normalizeStoryboardState, sanitizeStoryboardSnapshot, storyboardAutomaticJobEnabled } from '../qianmu-storyboard.js';
 import { confirmImageAttemptResult, claimImageAttempt, beginImageAttempt } from '../qianmu-image-attempts.js';
+import { captureForeignAccountOriginals } from '../qianmu-storyboard-result-inbox.js';
 
 const capability = { ok: true, schemaVersion: 1, taskLocatorVersion: 1, accountBindingVersion: 1, nativeReviewVersion: 1, scope: 'coordinated-endpoints-only', providers: ['novel'], protocols: ['novelai'], resultRetrieval: true, resultAcknowledgement: true };
 const request = { provider: 'novel', protocol: 'novelai', apiKey: 'mock-only-key', model: 'nai-diffusion-5-full', prompt: 'garden' };
@@ -204,6 +205,17 @@ test('partial or foreign delivery retains service image without ACK', async () =
   await s.client.retrieve('job-a', async (_data, row) => { assert.equal(row.archiveRecords[0].id, 'saved'); count++; return true; });
   assert.equal(count, 1); assert.equal(s.calls.filter(call => call.action === 'submit').length, 1);
 });
+test('account switch before a service checkpoint keeps the accepted receipt for A without another submission',async()=>{
+  const s=setup();
+  await assert.rejects(submit(s,{deliver:async(_data,_row,checkpoint)=>{
+    s.changeAccount('st-user:bob');await checkpoint([{id:'should-not-write'}]);
+  }}),{submissionState:'accepted'});
+  assert.equal(s.calls.some(call=>call.action==='acknowledge'),false);
+  s.changeAccount('st-user:alice');
+  const pending=(await s.client.list())[0];assert.equal(pending.status,'available');assert.equal(pending.archiveRecords.length,0);
+  assert.equal((await s.client.retrieve('job-a',async()=>true)).archived,true);
+  assert.equal(s.calls.filter(call=>call.action==='submit').length,1);
+});
 test('failed ACK retries only ACK and does not rearchive or regenerate', async () => {
   let acknowledgements = 0;
   const s = setup({ fetch: (action, body) => { if (action === 'acknowledge' && ++acknowledgements === 1) throw Error('lost ack'); return response(action === 'capabilities' ? capability : action === 'submit' ? image(body.attemptId) : { ok: true }); } });
@@ -269,17 +281,51 @@ test('exact recovered result settles old admission without granting a new dispat
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) { const found = new RegExp(`^(?:async )?function ${name}\\(`, 'm').exec(source); assert.ok(found, name); const tail = source.slice(found.index), next = tail.slice(1).search(/^(?:async )?function /m); return next < 0 ? tail : tail.slice(0,next+1); }
 function deliverySetup({ foreign = false, failSave = false } = {}) {
-  const gallery = [], rows = [], log = {}, notices = []; let writes = 0, saved = 0;
+  const gallery = [], rows = [], log = {}, notices = [], pendingOriginals = [], state = {shotPlans:[]}; let writes = 0, saved = 0, stages = 0, plans = 0, account = 'st-user:alice';
   const context = vm.createContext({ ...floorTakes, runningHubUsageFields, clone: structuredClone, sanitizeStoryboardSnapshot, storyboardPlanForJob: () => null, storyboardValidatedAnchor: () => ({ valid: !foreign, floor: foreign ? null : 2, linkState: foreign ? 'foreign' : 'active' }),
-    storyboardSetPlanStatus() {}, storyboardPipelineStage() {}, storyboardFinishLog: (_log, status) => { log.status = status; },
+    storyboardSetPlanStatus() { plans++; }, storyboardPipelineStage() { stages++; }, storyboardFinishLog: (_log, status) => { log.status = status; },
     storyboardPersistGatewayImage: async () => { writes++; return '/user/images/a.png'; }, storyboardCreateRecord: (job, _log, url, index) => ({ id: 'new', taskId: job.id, imageIndex: index, url }),
-    getChatKey: () => foreign ? 'other' : 'chat-a', ctx: () => ({ saveMetadata() {} }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:()=>[],storyboardState:()=>({shotPlans:[]}),
+    getChatKey: () => foreign ? 'other' : 'chat-a', ctx: () => ({ saveMetadata() {} }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:()=>[],storyboardState:()=>state,
+    resolveImageAccountNamespace: async () => account,
     saveMetadata: async () => { saved++; if (failSave && saved === 1) throw Error('metadata failed'); }, storyboardArchiveGallerySnapshots: async () => {},
     storyboardStoreDeferredDelivery: async (_job, records) => { rows.push(...records); return 'pending_chat'; }, toast: message => notices.push(message),
+    captureForeignAccountOriginals, blobStore:{putStoryboardPendingOriginals:async(_id,metadata,blobs)=>{pendingOriginals.push({metadata,blobs});}},
+    storyboardVolatileDeliveries:new Map(), Blob,
   });
-  vm.runInContext(section('storyboardDeliverGatewayResult'), context);
-  return { context, gallery, rows, log, notices, get writes() { return writes; } };
+  vm.runInContext(['storyboardResultOwned','storyboardAssertResultOwner','storyboardStoreForeignAccountResult','storyboardDeliverGatewayResult'].map(section).join('\n'), context);
+  return { context, gallery, rows, log, notices, pendingOriginals, state, changeAccount: value => { account = value; },
+    get writes() { return writes; }, get saved(){return saved;},get stages(){return stages;},get plans(){return plans;} };
 }
+test('accepted A result in unchanged state but ST account B stores original-only under A without B file, gallery, log or task writes', async () => {
+  const s=deliverySetup(),value=job({imageAccountNamespace:'st-user:alice'});value.imageOwnerState=s.state;
+  s.changeAccount('st-user:bob');
+  assert.equal(await s.context.storyboardDeliverGatewayResult(value,{},image(value.id)),false);
+  assert.equal(s.writes,0);assert.equal(s.saved,0);assert.equal(s.stages,0);assert.equal(s.plans,0);
+  assert.equal(s.gallery.length,0);assert.equal(s.log.status,undefined);assert.equal(s.pendingOriginals.length,1);
+  const {metadata,blobs}=s.pendingOriginals[0];assert.equal(metadata.namespace,'st-user:alice');assert.equal(metadata.originalOnly,true);
+  assert.equal(blobs.length,1);assert.equal(blobs[0].type,'image/png');
+  for(const key of ['prompt','negative','connection','apiKey','snapshot','payload','records'])assert.equal(metadata[key],undefined,key);
+});
+test('account switch during ST file-save await still captures A original and never completes B gallery or log',async()=>{
+  const s=deliverySetup(),value=job({imageAccountNamespace:'st-user:alice'});value.imageOwnerState=s.state;
+  s.context.storyboardPersistGatewayImage=async()=>{s.changeAccount('st-user:bob');throw Error('ST account changed');};
+  assert.equal(await s.context.storyboardDeliverGatewayResult(value,{},image(value.id)),false);
+  assert.equal(s.gallery.length,0);assert.equal(s.log.status,undefined);assert.equal(s.saved,0);
+  assert.equal(s.pendingOriginals.length,1);assert.equal(s.pendingOriginals[0].metadata.namespace,'st-user:alice');
+});
+test('A-to-B switch while resolving API Key stops before asset preparation or another provider request',async()=>{
+  const s=deliverySetup(),value=job({imageAccountNamespace:'st-user:alice'});value.imageOwnerState=s.state;s.state.enabled=true;
+  const entered=deferred(),release=deferred();let prepared=0,submitted=0,settled=0;
+  Object.assign(s.context,{storyboardAutomaticJobEnabled:()=>true,resolveStoryboardJobModelIdentity:()=>({modelFamily:'novel'}),
+    storyboardMarkLogGenerating(){},storyboardResolveApiKey:async()=>{entered.resolve();await release.promise;return 'secret';},
+    storyboardPrepareGatewayAssets:async()=>{prepared++;return {};},storyboardImageChannelRuntime:async()=>{submitted++;throw Error('must not submit');},
+    storyboardSettleImageAdmission:async()=>{settled++;},MODULE_NAME:'test',console:{error(){},warn(){}}});
+  vm.runInContext(section('storyboardRunJob'),s.context);
+  const running=s.context.storyboardRunJob(value,{snapshot:value});await entered.promise;
+  const previous={stages:s.stages,plans:s.plans};s.changeAccount('st-user:bob');release.resolve();await running;
+  assert.equal(prepared,0);assert.equal(submitted,0);assert.equal(settled,1);
+  assert.equal(s.stages,previous.stages);assert.equal(s.plans,previous.plans);assert.equal(s.gallery.length,0);
+});
 test('shared archival helper retries checkpointed records without duplicate images', async () => {
   const s = deliverySetup({ failSave: true }); let records = [];
   const options = () => ({ service: true, archiveRecords: records, checkpoint: async value => { records = structuredClone(value); } });

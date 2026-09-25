@@ -101,6 +101,8 @@
     "qianmu-gallery-archive-record.js",
     "qianmu-gallery-page-index.js",
     "qianmu-storyboard-ordinary-moment.js",
+    "qianmu-storyboard-result-inbox.js",
+    "qianmu-storyboard-delivery-drain.js",
     "qianmu-storyboard-source-proof.js",
     "qianmu-hive-ownership.js",
     "qianmu-idle-preload.js",

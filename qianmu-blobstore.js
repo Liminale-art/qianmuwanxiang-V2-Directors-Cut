@@ -21,7 +21,7 @@ const STORE_TTS_LINES = 'tts_lines';       // key: chatKey value: { lines:{conte
 // ── 便笺模块（v6 新增）──
 const STORE_NOTES = 'notes';               // key: noteId value: QianmuNote（只存 pinned=true；临时便笺留在本次页面运行态）
 // ── 分镜模块（v7 新增）──
-const STORE_STORYBOARD_INBOX = 'storyboard_inbox'; // key: taskId value: 跨聊天完成后等待原聊天接收的轻量成片记录
+const STORE_STORYBOARD_INBOX = 'storyboard_inbox'; // namespaced metadata and bounded original-image Blob keys
 const STORE_STORYBOARD_PIPELINE_LOGS = 'storyboard_pipeline_logs'; // key: pipelineId value: 已结束的完整生成流水；轻摘要仍留设置
 const STORE_STORYBOARD_SNAPSHOTS = 'storyboard_snapshots'; // key: chatKey + recordId value: 阅片记录的完整精确重绘快照
 const STORE_STORYBOARD_PLAN_ARCHIVES = 'storyboard_plan_archives'; // key: chatKey + planId value: 已结束分镜计划的完整重数据
@@ -814,28 +814,78 @@ export async function listNotes({requireCommit = false} = {}) {
   return out.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
 }
 
-// ── 分镜：跨聊天完成后的待归档收片箱 ───────────────────────
-// ST 只允许扩展安全保存“当前聊天”的 metadata。用户在生图期间切走时，先把已经落盘的
-// 成片记录按原 chatKey 放进本地收片箱；返回原聊天后再校验 messageRef 并写回该聊天。
+// ── 分镜：跨聊天/账户待归档收片箱 ───────────────────────
+// Metadata and original-image Blobs use separate key prefixes so listing never
+// deserializes large images. Unnamespaced old entries are intentionally invisible.
+const deliveryScope = (namespace, taskId) => {
+  const owner = String(namespace || '').trim(), id = String(taskId || '').trim();
+  if (!owner || owner.length > 512 || !id || id.length > 160 || /[\u0000-\u001f\u007f]/.test(owner + id))
+    throw new Error('storyboard delivery owner or task id is invalid');
+  return `${encodeURIComponent(owner)}\u241f${encodeURIComponent(id)}`;
+};
+const deliveryMetaKey = (namespace, taskId) => `m:${deliveryScope(namespace, taskId)}`;
+const deliveryImageKey = (namespace, taskId, index) => {
+  if (!Number.isInteger(index) || index < 0 || index > 7) throw new Error('storyboard delivery image index is invalid');
+  return `i:${deliveryScope(namespace, taskId)}\u241f${index}`;
+};
 export async function putStoryboardDelivery(taskId, record) {
   const id = String(taskId || '').trim();
-  if (!id) throw new Error('storyboard delivery task id is required');
+  const namespace = String(record?.namespace || '').trim(), key = deliveryMetaKey(namespace, id);
   const s = await store(STORE_STORYBOARD_INBOX, 'readwrite');
-  await reqP(s.put({ ...(record || {}), taskId: id, createdAt: Number(record?.createdAt) || Date.now(), updatedAt: Date.now() }, id));
+  await reqP(s.put({ ...(record || {}), namespace, taskId: id, createdAt: Number(record?.createdAt) || Date.now(), updatedAt: Date.now() }, key));
   return id;
 }
 
-export async function listStoryboardDeliveries(chatKey = '') {
+export async function putStoryboardPendingOriginals(taskId, record, originals) {
+  const namespace = String(record?.namespace || '').trim(), id = String(taskId || '').trim();
+  const metaKey = deliveryMetaKey(namespace, id);
+  if (record?.originalOnly !== true || !String(record?.chatKey || '').trim() || record?.imageCount !== originals?.length)
+    throw new Error('storyboard pending original metadata is invalid');
+  if (!Array.isArray(originals) || !originals.length || originals.length > 8 || originals.some(blob =>
+    !(blob instanceof Blob) || !/^image\/(?:png|jpeg|webp|gif)$/i.test(blob.type) || !blob.size || blob.size > 24 * 1024 * 1024)
+    || originals.reduce((sum, blob) => sum + blob.size, 0) > 64 * 1024 * 1024)
+    throw new Error('storyboard pending originals exceed the bounded image allowance');
+  const pending = (await listStoryboardDeliveries(namespace)).filter(item => item.originalOnly);
+  if (pending.length >= 8 && !pending.some(item => item.taskId === id))
+    throw new Error('此账户待领取原图已达 8 项，请先领取旧图');
+  const db = await openDB();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_STORYBOARD_INBOX, 'readwrite');
+    const s = transaction.objectStore(STORE_STORYBOARD_INBOX);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error('pending originals write aborted'));
+    for (let index = 0; index < originals.length; index++)
+      s.put({ namespace, taskId: id, index, blob: originals[index] }, deliveryImageKey(namespace, id, index));
+    s.put({ namespace, taskId: id, chatKey: String(record.chatKey), target: String(record.target || 'gallery'),
+      source: String(record.source || ''), logId: String(record.logId || ''), planId: String(record.planId || ''),
+      shotId: String(record.shotId || ''), imageCount: originals.length, originalOnly: true,
+      createdAt: Number(record.createdAt) || Date.now(), updatedAt: Date.now() }, metaKey);
+  });
+  return id;
+}
+
+export async function getStoryboardPendingImage(namespace, taskId, index) {
+  const key = deliveryImageKey(namespace, taskId, index);
+  const s = await store(STORE_STORYBOARD_INBOX, 'readonly');
+  const row = await reqP(s.get(key));
+  return row?.namespace === namespace && row.taskId === taskId && row.index === index && row.blob instanceof Blob ? row.blob : null;
+}
+
+export async function listStoryboardDeliveries(namespace, chatKey = '') {
+  const owner = String(namespace || '').trim();
+  deliveryScope(owner, 'scope-check');
+  const prefix = `m:${encodeURIComponent(owner)}\u241f`;
   const expected = String(chatKey || '');
   const s = await store(STORE_STORYBOARD_INBOX, 'readonly');
   const out = [];
   await new Promise((resolve, reject) => {
-    const cursor = s.openCursor();
+    const cursor = s.openCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
     cursor.onsuccess = () => {
       const current = cursor.result;
       if (!current) { resolve(); return; }
       const value = current.value || {};
-      if (!expected || String(value.chatKey || '') === expected) out.push({ ...value, taskId: String(current.key) });
+      if (value.namespace === owner && (!expected || String(value.chatKey || '') === expected)) out.push(value);
       current.continue();
     };
     cursor.onerror = () => reject(cursor.error);
@@ -843,11 +893,18 @@ export async function listStoryboardDeliveries(chatKey = '') {
   return out.sort((left, right) => Number(left.createdAt || 0) - Number(right.createdAt || 0));
 }
 
-export async function deleteStoryboardDelivery(taskId) {
-  const id = String(taskId || '').trim();
-  if (!id) return;
-  const s = await store(STORE_STORYBOARD_INBOX, 'readwrite');
-  await reqP(s.delete(id));
+export async function deleteStoryboardDelivery(taskId, namespace) {
+  const key = deliveryMetaKey(namespace, taskId);
+  const db = await openDB();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_STORYBOARD_INBOX, 'readwrite');
+    const s = transaction.objectStore(STORE_STORYBOARD_INBOX);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error('pending originals delete aborted'));
+    s.delete(key);
+    for (let index = 0; index < 8; index++) s.delete(deliveryImageKey(namespace, taskId, index));
+  });
 }
 
 // ── 分镜：已结束的详细流水日志 ──────────────────────────────
@@ -1857,7 +1914,7 @@ function readerBucketScope(key, value = {}) {
 function storageRecordChatKey(name, key, value) {
   if (name === STORE_TTS_LINES) return exactStorageChatKey(key);
   if (name === STORE_CHATS || name === STORE_VECTORS) return readerBucketScope(key, value);
-  if (name === STORE_STORYBOARD_INBOX) return exactStorageChatKey(value?.chatKey);
+  if (name === STORE_STORYBOARD_INBOX) return ''; // No unscoped A/B chat inventory for pending originals.
   if (name === STORE_STORYBOARD_SNAPSHOTS) return exactStorageChatKey(value?.chatKey);
   if (name === STORE_STORYBOARD_PLAN_ARCHIVES) return exactStorageChatKey(value?.chatKey);
   if (name === STORE_VIDEO_TASKS || name === STORE_VIDEO_BUDGET || name === STORE_VIDEO_DRAFTS || name === STORE_VIDEO_TIMELINES || name === STORE_VIDEO_POSTPRODUCTION) return exactStorageChatKey(value?.chatKey);
@@ -2004,7 +2061,7 @@ export async function clearRecoverableCategories(categories = []) {
 // 储存管理页按 IndexedDB 项目逐项清理。目标仍只能来自本模块登记过的 store，
 // 但不再替用户隐去不可恢复项目；是否删除由界面上的风险说明与用户勾选决定。
 export async function clearStorageItems(storeNames = [], {check = () => {}} = {}) {
-  const allowedNames = new Set(Object.keys(STORAGE_STORE_INFO));
+  const allowedNames = new Set(Object.keys(STORAGE_STORE_INFO).filter(name => name !== STORE_STORYBOARD_INBOX));
   const selected = new Set((Array.isArray(storeNames) ? storeNames : [])
     .map((value) => String(value || ''))
     .filter((value) => allowedNames.has(value)));

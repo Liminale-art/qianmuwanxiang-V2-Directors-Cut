@@ -9,6 +9,7 @@ import {
 
 const indexSource = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const blobSource = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
+const drainSource = await readFile(new URL('../qianmu-storyboard-delivery-drain.js', import.meta.url), 'utf8');
 
 assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 const pending = transitionStoryboardTaskState(createStoryboardTaskState({ id: 'job-a', chatKey: 'chat-a', floor: 5, now: 100 }), 'completed', {
@@ -38,7 +39,8 @@ assert.match(blobSource, /export async function putStoryboardDelivery/);
 assert.match(blobSource, /export async function listStoryboardDeliveries/);
 assert.match(blobSource, /export async function deleteStoryboardDelivery/);
 assert.match(indexSource, /function storyboardStoreDeferredDelivery[\s\S]*blobStore\.putStoryboardDelivery/);
-assert.match(indexSource, /function storyboardDrainPendingDeliveries[\s\S]*resolveStoryboardMessageReference[\s\S]*blobStore\.deleteStoryboardDelivery/);
+assert.match(indexSource, /function storyboardDrainPendingDeliveries[\s\S]*drainStoryboardDeliveries\(expectedChatKey/);
+assert.match(drainSource, /resolveStoryboardMessageReference[\s\S]*blobStore\.deleteStoryboardDelivery\(delivery\.taskId, namespace\)/);
 
 // Switching chats no longer cancels paid work; a foreign result is deferred instead of entering the visible chat.
 const chatChanged = indexSource.slice(indexSource.indexOf('async function storyboardHandleChatChanged'), indexSource.indexOf('async function storyboardPrepareGatewayAssets'));

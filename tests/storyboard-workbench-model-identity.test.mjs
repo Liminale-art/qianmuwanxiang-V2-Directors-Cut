@@ -6,8 +6,8 @@ import * as storyboard from '../qianmu-storyboard.js';
 import { parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 import {renderEnsembleTargetPicker,openEnsembleTargetPicker} from '../qianmu-ensemble-target-picker.js';
-import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.383';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.383';
+import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.384';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.384';
 import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
 import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.js';
 
@@ -370,8 +370,12 @@ test('real generation and asynchronous queue preserve the preparation guard acro
   const { state, context } = generationEnvironment(), queued = []; let admitted = 0, sequence = 0;
   Object.assign(context, {
     uid: () => `job-${++sequence}`, storyboardQueue: queued,
-    storyboardImageAdmissionRuntime: async () => ({ admit: async (_job, options) => {
-      await Promise.resolve(); assert.equal(options.valid(), true); admitted++;
+    storyboardImageAdmissionRuntime: async () => ({ admit: async (job, options) => {
+      await Promise.resolve(); assert.equal(options.valid(), true);
+      const namespace = await context.resolveImageAccountNamespace();
+      job.imageAdmission = { namespace };
+      job.imageAccountNamespace = namespace;
+      admitted++;
     } }),
     storyboardStartLog: job => { const log = { id: `log-${sequence}`, snapshot: structuredClone(job) }; state.logs.push(log); return log; },
     storyboardPlanForJob: () => null, storyboardSetPlanStatus: () => {}, storyboardPumpQueue: () => {},
@@ -405,6 +409,9 @@ function boundedGenerationEnvironment() {
   const admissions=[],accepted=[],preflights=[];
   context.storyboardImageAdmissionRuntime=async()=>({admit:async(job,{valid})=>{
     assert.equal(valid(),true);
+    const namespace=await context.resolveImageAccountNamespace();
+    job.imageAdmission={namespace};
+    job.imageAccountNamespace=namespace;
     admissions.push(job.inlineOrder.shotIndex);
   }});
   context.storyboardPreflightImageBatch=async(jobs,valid)=>{

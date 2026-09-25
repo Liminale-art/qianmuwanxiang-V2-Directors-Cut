@@ -85,7 +85,8 @@ test('actual admission and last submission boundary check expressions before acq
   const e=await setup(),events=[];
   Object.assign(e.context,{storyboardAdmissionEpoch:1,storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:10,
     storyboardQueueSettling:0,storyboardQueueWindow:{has:()=>false,reservedCount:0,notify:()=>{}},
-    getChatKey:()=> 'chat-a',storyboardImageAdmissionRuntime:async()=>({admit:async()=>events.push('admit')}),
+    getChatKey:()=> 'chat-a',resolveImageAccountNamespace:async()=> 'account-a',
+    storyboardImageAdmissionRuntime:async()=>({admit:async job=>{events.push('admit');job.imageAccountNamespace='account-a';job.imageAdmission={namespace:'account-a'};}}),
     storyboardGalleryRecords:()=>[],storyboardStartLog:()=>({id:'log'}),storyboardPlanForJob:()=>null,storyboardSetPlanStatus(){},saveSettings(){},renderModal(){},storyboardPumpQueue(){},
     storyboardScheduleInlineRender(){},toast:message=>events.push(message),storyboardValidatedAnchor:()=>({valid:true})});
   vm.runInContext(section('storyboardQueueJob'),e.context);

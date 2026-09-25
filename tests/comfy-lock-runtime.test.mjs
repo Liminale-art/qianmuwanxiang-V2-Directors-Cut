@@ -314,10 +314,12 @@ test('actual queue acquires the scene after technical confirmation and releases 
 });
 test('actual final callback reaches scene begin after image and channel gates and blocks a lost claim before marking submission unknown',async()=>{
   const e=await fixture(),batch=e.manager.createBatch({prepared:e.prepared,probe:e.probe}),shot=await e.makeShot(),choice=await batch.choose(shot,scope),job=e.makeJob(choice,shot,'submit');await batch.attach(job,choice);await e.manager.reserve(job);
+  job.imageAccountNamespace=namespace;job.imageAdmission={version:1,namespace,attemptId:job.id};
   const state=core.createStoryboardDefaults();state.enabled=true;const events=[];
   const context=vm.createContext({...core,job,log:{},admissionOutcome:'not_submitted',storyboardState:()=>state,storyboardValidatedAnchor:()=>({valid:true}),
     storyboardPrepareComfyPromptJob:async()=>{},storyboardAdmission:{beforeSubmit:async()=>events.push('image')},channelTicket:{beforeSubmit:async()=>events.push('channel')},
-    storyboardComfySceneRuntime:async()=>({beforeSubmit:async(...args)=>{events.push('scene');return e.manager.beforeSubmit(...args);}}),saveSettings:()=>{}});
+    storyboardComfySceneRuntime:async()=>({beforeSubmit:async(...args)=>{events.push('scene');return e.manager.beforeSubmit(...args);}}),
+    resolveImageAccountNamespace:async()=>namespace,saveSettings:()=>{}});
   const source=section('storyboardRunJob'),start=source.indexOf('  const beforeSubmit = async () => {'),end=source.indexOf('\n  };\n  try {',start)+5;
   vm.runInContext(`${source.slice(start,end)}\nglobalThis.submit=beforeSubmit;`,context);
   try{await context.submit();assert.deepEqual(events,['image','channel','scene']);assert.equal(job.submissionState,'unknown');

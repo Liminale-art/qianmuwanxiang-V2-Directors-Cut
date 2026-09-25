@@ -10,8 +10,9 @@ import {migrateQianmuChatStoreV2} from '../qianmu-data-migrations.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.383';
-import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.383';
+import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.384';
+import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.384';
+import {drainStoryboardDeliveries} from '../qianmu-storyboard-delivery-drain.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
 const fixtureWindows=new Set();
@@ -133,6 +134,8 @@ async function entryFixture(){
   fixtureWindows.add(e.context.storyboardQueueWindow);
   const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='storyboardFloorCapture'?capture:key==='imageAdmission'?{resolveImageAccountNamespace:async()=> 'st-user:route-test'}:load(key);
   Object.assign(e.context,{storyboardMessageFloor:()=>0,storyboardChooseCaptureMode:async()=>choice,storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:()=>history,
+    resolveImageAccountNamespace:async()=> 'st-user:route-test',drainStoryboardDeliveries,
+    storyboardUtilsModule:async()=>({}),storyboardBlobToBase64:async()=>'',storyboardSafeUrl:value=>value,storyboardImageExtension:()=> 'png',getCharacterName:()=> 'Qianmu',
     storyboardProductionDeliveryPolicy:core.storyboardProductionDeliveryPolicy,
     storyboardReconcileGalleryLinks:()=>{},storyboardInlineRecordValid:r=>r.inline,storyboardDeletePlanArchives:async()=>{},storyboardPlanCompilerSignature:()=> 'same compiler',
     storyboardPlanForJob:job=>e.state.shotPlans.find(p=>p.id===job.planId),galleryMembershipSnapshot,uniqueClean:v=>v,
@@ -140,7 +143,7 @@ async function entryFixture(){
     runningHubUsageFields:()=>({}),storyboardPipelineStage:()=>{},storyboardFinishLog:()=>{},saveMetadata:async()=>{if(saveFailure)throw Error('metadata save failed');},
     storyboardArchiveGallerySnapshots:()=>{},storyboardDeleteRecordSnapshots:()=>{},
   });
-  vm.runInContext(['storyboardPlanForMessage','storyboardEnsurePlan','storyboardOnChatClick','storyboardCreateRecord','storyboardDeliverGatewayResult'].map(section).join('\n'),e.context);
+  vm.runInContext(['storyboardPlanForMessage','storyboardEnsurePlan','storyboardOnChatClick','storyboardCreateRecord','storyboardResultOwned','storyboardAssertResultOwner','storyboardDeliverGatewayResult'].map(section).join('\n'),e.context);
   const button={dataset:{storyboardChatAction:'capture-floor'},closest:()=>({})};
   const click=()=>e.context.storyboardOnChatClick({target:{closest:()=>button},preventDefault(){},stopPropagation(){}});
   return {...e,gallery,history,oldPlan,setChoice:value=>choice=value,setSaveFailure:value=>saveFailure=value,
@@ -349,8 +352,9 @@ test('cross-chat cold delivery preserves originals until committed and a failed 
   e.gallery.push(...Array.from({length:499},(_,i)=>({id:`old-${i}`,inline:false,snapshot:{prompt:`saved-${i}`},unknown:{keep:i}})));
   const older=copy(e.gallery.slice(1));e.context.storyboardDeleteRecordSnapshots=()=>assert.fail('cross-chat delivery must not delete prior recipes');
   Object.assign(e.context,{storyboardDeliveryDrainPromise:null,storyboardVolatileDeliveries:new Map(),rerenderIfOpen(){},
-    blobStore:{listStoryboardDeliveries:async()=>[...inbox.values(),{chatKey:'other',taskId:'foreign',records:[{id:'foreign'}]}],deleteStoryboardDelivery:async id=>{inbox.delete(id);foreign.push(id);}},
-    storyboardStoreDeferredDelivery:async(job,records)=>{inbox.set(job.id,{taskId:job.id,chatKey:job.chatKey,target:job.target,records:copy(records)});return 'pending_chat';}});
+    blobStore:{listStoryboardDeliveries:async()=>[...inbox.values(),{namespace:'st-user:route-test',chatKey:'other',taskId:'foreign',records:[{id:'foreign'}]}],deleteStoryboardDelivery:async(id,namespace)=>{assert.equal(namespace,'st-user:route-test');inbox.delete(id);foreign.push(id);}},
+    storyboardStoreDeferredDelivery:async(job,records)=>{inbox.set(job.id,{namespace:'st-user:route-test',taskId:job.id,chatKey:job.chatKey,target:job.target,
+      planId:job.planId||'',shotId:job.planShotId||'',records:copy(records)});return 'pending_chat';}});
   vm.runInContext(['storyboardValidatedAnchor','storyboardDrainPendingDeliveries'].map(section).join('\n'),e.context);
   e.context.getChatKey=()=> 'other';for(const job of e.jobs)await e.deliver(job);assert.equal(e.gallery.length,500);assert.equal(inbox.size,3);
   e.context.getChatKey=key;e.setSaveFailure(true);await assert.rejects(e.context.storyboardDrainPendingDeliveries('chat-a'),/metadata save failed/);
@@ -502,10 +506,11 @@ test('actual invalid or full receipt metadata stops before extraction and does n
 test('cold inbox late output remains gallery-only after replacement deletion and survives failed receipt save for retry',async()=>{
   const e=await entryFixture(),reference=e.gallery[0].messageRef,task=pendingTask('late-inbox',{chatKey:'chat-a',messageRef:copy(reference)});
   e.state.taskStates=[task];assert.equal(await e.clickWithBatchReceipts(),true);for(const job of e.jobs)await e.deliver(job);e.gallery.splice(1);
-  const inbox=new Map([[task.id,{taskId:task.id,chatKey:'chat-a',target:'floor',records:[{...lateImage(task),requestedInline:true}]}]]);
+  const inbox=new Map([[task.id,{namespace:'st-user:route-test',taskId:task.id,chatKey:'chat-a',target:'floor',
+    planId:task.planId,shotId:'',records:[{...lateImage(task),chatKey:'chat-a',planShotId:'',imageIndex:0,requestedInline:true}]}]]);
   e.history.splice(0,e.history.length,...copy(e.history));
   Object.assign(e.context,{storyboardDeliveryDrainPromise:null,storyboardVolatileDeliveries:new Map(),rerenderIfOpen(){},
-    blobStore:{listStoryboardDeliveries:async()=>[...inbox.values()],deleteStoryboardDelivery:async id=>inbox.delete(id)}});
+    blobStore:{listStoryboardDeliveries:async()=>[...inbox.values()],deleteStoryboardDelivery:async(id,namespace)=>{assert.equal(namespace,'st-user:route-test');inbox.delete(id);}}});
   vm.runInContext(['storyboardValidatedAnchor','storyboardDrainPendingDeliveries'].map(section).join('\n'),e.context);
   e.setSaveFailure(true);await assert.rejects(e.context.storyboardDrainPendingDeliveries('chat-a'),/metadata save failed/);
   assert.equal(inbox.size,1);assert.equal(e.gallery.at(-1).inline,false);assert.equal(e.history.length,1);

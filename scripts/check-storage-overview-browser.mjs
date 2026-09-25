@@ -20,10 +20,10 @@ const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota
   comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}, notesStorage: {status:'ready',bytes:200,count:3,pinned:1}};
 function render(data = snapshot, status = 'ready') {
   const state = vm.createContext({renderStorageBackupSection, collectionCleanupOptions, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
-    optionalServiceState: {status: 'ready', services: [], version: 'fixture'},
+    optionalServiceState: {status: 'ready', services: [], version: 'fixture'}, VERSION: '1.59.384',
     htmlEscape: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: bytes => `${((Number(bytes) || 0) / MB).toFixed(1)} MB`, blobStore: {classifyStoragePressure: () => ({level: 'normal'})}});
-  vm.runInContext(['optionalServiceLabel', 'optionalServiceDetail', 'renderStorageServiceStatus', 'renderStorageManagementCard'].map(section).join('\n'), state);
+  vm.runInContext(['optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'renderStorageServiceStatus', 'renderStorageManagementCard'].map(section).join('\n'), state);
   return state.renderStorageManagementCard();
 }
 
@@ -148,13 +148,13 @@ try {
     return {stable,manager,updated,pending,error};
   },{before:render(),after:render({...snapshot,characterStorage:{...snapshot.characterStorage,documents:{count:8,bytes:8*MB}}}),loading:render(snapshot,'loading'),failed:render(null,'error'),replace:replaceStorageManagementCard.toString(),source:section('bindStorageManagementEvents')});
   for(const [key,value]of Object.entries(resourceRefresh)){assert.equal(value,true,key);checks.push(`resource refresh ${key}`);}
-  const serviceSource = ['optionalServiceLabel', 'optionalServiceDetail', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n');
+  const serviceSource = ['optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n');
   const serviceChecks = await page.evaluate(async ({html, source, replace}) => {
     document.body.innerHTML = `<div id="story-director-modal" class="open"><div class="sd-body" style="height:400px;overflow:auto"><input class="api-draft" value="https://unsaved.invalid/v1"><div style="height:200px"></div>${html}<div style="height:800px"></div></div></div>`;
-    Object.assign(window, {MODAL_ID: 'story-director-modal', optionalServiceState: {status: 'idle', services: [], checkedAt: 0}, optionalServiceProbePromise: null,
+    Object.assign(window, {MODAL_ID: 'story-director-modal', VERSION: '1.59.384', optionalServiceState: {status: 'idle', services: [], checkedAt: 0}, optionalServiceProbePromise: null,
       settings: {}, configUndo: {available: () => false}, ctx: () => ({getRequestHeaders: () => ({})}), probeCount: 0,
       renderModal: () => {throw Error('Unexpected modal redraw');}, paintStorageManagementCard: () => {throw Error('Unexpected card redraw');},
-      storyboardPaintVideoConnectionState: async () => {},
+      storyboardPaintVideoConnectionState: async () => {}, refreshQianmuUpdateStatus: async () => {},
       featureRuntime: {load: async () => ({probeQianmuOptionalService: async () => {probeCount++; return new Promise(resolve => {window.resolveProbe = resolve;});}})}});
     (0, eval)(source); window.replaceCard = (0, eval)(`(${replace})`);
     const root = document.getElementById(MODAL_ID), body = root.querySelector('.sd-body'), draft = root.querySelector('.api-draft');

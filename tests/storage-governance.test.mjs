@@ -46,7 +46,7 @@ assert.match(storeSource, /Object\.entries\(STORAGE_STORE_INFO\)[\s\S]*filter\(\
 assert.match(storeSource, /export async function clearRecoverableCategories\(categories = \[\]\)/, 'must expose category-scoped cleanup');
 assert.match(storeSource, /allowedCategories = new Set\(\['audio', 'logs', 'cache'\]\)/, 'category cleanup must use an explicit allow-list');
 assert.match(storeSource, /export async function clearStorageItems\(storeNames = \[\], \{check = \(\) => \{\}\} = \{\}\)/, 'explicit per-store cleanup must retain optional scope checks');
-assert.match(storeSource, /allowedNames = new Set\(Object\.keys\(STORAGE_STORE_INFO\)\)/, 'per-store cleanup must remain constrained to registered Qianmu stores');
+assert.match(storeSource, /allowedNames = new Set\(Object\.keys\(STORAGE_STORE_INFO\)\.filter\(name => name !== STORE_STORYBOARD_INBOX\)\)/, 'per-store cleanup must exclude account-owned pending originals');
 assert.match(storeSource, /clearStorageItems[\s\S]*const failed = \[\][\s\S]*catch \(error\)[\s\S]*failed\.push/, 'one failed store must not prevent later selected stores from being cleared');
 assert.match(storeSource, /export async function auditOrphanedReaderBlobs\(\)/, 'reader blob orphan audit must be available');
 assert.match(storeSource, /STORE_COVERS[\s\S]*STORE_IMAGES[\s\S]*books\.has\(bookId\)/, 'only reader cover/image records without a canonical book may be marked orphaned');
@@ -78,7 +78,7 @@ assert.match(source, /不代表 VPS 磁盘总容量/, 'browser quota must not be
 assert.match(source, /classifyStoragePressure\(originEstimate \|\| \{\}\)[\s\S]*pressureNotice[\s\S]*千幕不会自动清理/, 'high origin usage must produce a visible warning without automatic cleanup');
 assert.match(styles, /\.sd-storage-pressure[\s\S]*\.sd-storage-pressure\.is-critical/, 'warning and critical storage pressure need distinct restrained styles');
 assert.match(source, /if \(activeTab === 'plug'\)[\s\S]*refreshStorageInventory/, 'inventory refresh belongs to API and logs');
-assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]*不可恢复[\s\S]*input type="checkbox"/, 'cleanup must list every registered store and require explicit item selection');
+assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]*item\.name !== 'storyboard_inbox'[\s\S]*不可恢复[\s\S]*input type="checkbox"/, 'cleanup must show registered stores except account-owned pending originals');
 assert.match(source, /blobStore\.clearStorageItems\(stores, cleanup\)[\s\S]*selected\.includes\('__diagnostics__'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected stores and diagnostics must be cleared independently under the initiating session');
 assert.match(source, /cleared\.has\('storyboard_pipeline_logs'\)[\s\S]*storyboardPipelineArchiveEpoch\+\+[\s\S]*filter\(\(item\) => !storyboardPipelineIsTerminal\(item\)\)/, 'clearing detailed logs must invalidate archive callbacks while preserving active pipelines');
 assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cleared\.has\('tts_lines'\)[\s\S]*ttsLineCache\.clear\(\)/, 'the TTS cache item must include and clear its portable chat snapshot');

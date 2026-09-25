@@ -129,7 +129,7 @@ test('probe bridge never enqueues, grants persistent locks, calls an LLM or rewr
 
 test('actual queue blocks missing installed nodes before durable admission and does not cache a successful check',async()=>{
   const e=await environment();e.close();let admitted=0;
-  Object.assign(e.context,{storyboardImageAdmissionRuntime:async()=>({admit:async()=>{admitted++;}}),storyboardGalleryRecords:()=>[],
+  Object.assign(e.context,{storyboardImageAdmissionRuntime:async()=>({admit:async job=>{admitted++;job.imageAccountNamespace=namespace;job.imageAdmission={version:1,namespace,attemptId:`admission-${admitted}`};}}),storyboardGalleryRecords:()=>[],
     storyboardStartLog:()=>({id:'log'}),storyboardPlanForJob:()=>null,storyboardSetPlanStatus:()=>{},storyboardPumpQueue:()=>{},storyboardSettleImageAdmission:async()=>{}});
   vm.runInContext(section('storyboardQueueJob'),e.context);
   const create=()=>({source:'comfy',automatic:true,target:'gallery',profile:{model:'comfy-workflow'},connection:{baseUrl:'https://comfy.test',comfyTransport:'browser'},payload:{prompt:'x',parameters:{workflow:JSON.parse(e.recipes[0].document.workflow),width:832,height:1216,count:1}}});

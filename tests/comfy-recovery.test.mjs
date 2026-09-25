@@ -176,6 +176,7 @@ assert.ok(deliveryStart > 0 && deliveryBlock.includes('runtime.deliver'));
 for (const archived of [true, false]) test(`actual Comfy delivery ${archived ? 'acknowledges only after durable archive' : 'retains server cache and accepted state when archive is incomplete'}`, async () => {
   const calls = [], job = { source: 'comfy' };
   const context = vm.createContext({ job, log: {}, data: { comfyTask: { version: 1 } }, storyboardRequestHeaders() {}, toast() {},
+    storyboardResultOwned:async()=>true,
     storyboardComfyRecoveryRuntime: async () => ({ deliver: async (value, data, deliver) => {
       assert.equal(value, job); const saved = await deliver(data, [], async () => {}, async () => calls.push('guard'));
       if (saved) calls.push('acknowledge'); return { archived: saved };

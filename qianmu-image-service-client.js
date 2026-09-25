@@ -336,7 +336,7 @@ export function createImageServiceClient({ store = createImageServiceClientStore
         const row = checkedRow({ version: 1, namespace, attemptId: job.id, channelKey: await imageChannelKey(request.apiKey),
           status: 'prepared', createdAt: Date.now(), logId: job.logId, snapshot: job }, namespace);
         const body = { schemaVersion: 1, expectedAccount: await accountBinding(namespace), attemptId: job.id, automatic: Boolean(job.automatic), request: structuredClone(request) };
-        await store.put(row); onPrepared(structuredClone(row));
+        await store.put(row); await onPrepared(structuredClone(row));
         const send = async () => {
           await assertAccount(namespace); if (!valid()) throw fail('cancelled', '上下文已变化，未提交生图');
           await beforeSubmit(); row.status = 'submitted'; await store.put(row);

@@ -124,12 +124,12 @@ test('task text controls and hidden reels override legacy inline icon-only sizin
 function actionFixture() {
   const state = core.createStoryboardDefaults(), calls = [], entry = { taskId: 'task', logId: 'log', action: 'retry-task' };
   state.enabled = true; state.logs = [{ id: 'log', status: 'failed', snapshot: { source: 'novel', target: 'floor', floor: 0, chatKey: 'chat-a',
-    profile: { model: 'nai-diffusion-5-full' }, payload: { prompt: 'original' }, connection: { baseUrl: 'https://example.test', credentialId: 'ref-only' }, inlineOrder: inlineOrder() } }];
+    profile: { model: 'nai-diffusion-5-full' }, payload: { prompt: 'original' }, connection: { baseUrl: 'https://example.test', credentialId: 'ref-only' }, inlineOrder: inlineOrder(), imageAccountNamespace: 'account-a' } }];
   const wrapper = { dataset: { storyboardChatKey: 'chat-a' } };
   const button = { dataset: { storyboardChatAction: 'retry-task' }, isConnected: true,
     closest: selector => selector === '.sd-storyboard-inline' ? wrapper : { dataset: { storyboardTask: 'task' } } };
   const context = vm.createContext({ ...core, clone: structuredClone, uid: () => 'new-job',
-    storyboardState: () => state, getChatKey: () => 'chat-a', storyboardAdmissionEpoch: 0,
+    storyboardState: () => state, getChatKey: () => 'chat-a', resolveImageAccountNamespace: async () => 'account-a', storyboardAdmissionEpoch: 0,
     storyboardInlineTaskActions: new Set(), storyboardCurrentInlineTasks: () => [entry], storyboardGalleryRecords: () => [],
     toast: (...args) => { calls.push(['notice', ...args]); return false; },
     storyboardQueueJob: async (job, valid) => { if (!valid()) return false; calls.push(['queue', job]); return true; },
