@@ -18,7 +18,7 @@ function officialBranch(info) {
 async function fetchVersion(url, fetchImpl, timeoutMs) {
   const controller = new AbortController(); let timer;
   const reading = (async () => {
-    const response = await fetchImpl(url, {method:'GET', credentials:'omit', referrerPolicy:'no-referrer', redirect:'error', signal:controller.signal});
+    const response = await fetchImpl(url, {method:'GET', credentials:'omit', referrerPolicy:'no-referrer', redirect:'error', cache:'no-store', signal:controller.signal});
     if (!response.ok || response.redirected || !response.body || Number(response.headers.get('content-length')) > MAX_BYTES) {
       controller.abort();void response.body?.cancel().catch(()=>{});return '';
     }
@@ -48,7 +48,7 @@ async function fetchVersion(url, fetchImpl, timeoutMs) {
 }
 
 export function createQianmuReleaseVersionReader({fetchImpl=globalThis.fetch,now=Date.now,timeoutMs=5000}={}) {
-  const cache = new Map(), pending = new Map();
+  const cache = new Map(), pending = new Map(); let requestSerial = 0;
   return async (info,{force=false}={}) => {
     const branch = officialBranch(info);
     if (!branch || typeof fetchImpl !== 'function') return '';
@@ -56,7 +56,9 @@ export function createQianmuReleaseVersionReader({fetchImpl=globalThis.fetch,now
     const cached = cache.get(branch);
     const age = cached ? now() - cached.checkedAt : Infinity;
     if (!force && cached && age >= 0 && age < (cached.version ? MAX_AGE : FAILURE_MAX_AGE)) return cached.version;
-    const url = `https://raw.githubusercontent.com/${REPOSITORY}/${encodeURIComponent(branch)}/package.json`;
+    // A branch URL can remain stale in an intermediary cache immediately after a push.
+    // The query contains no account data and only changes when this bounded reader really refetches.
+    const url = `https://raw.githubusercontent.com/${REPOSITORY}/${encodeURIComponent(branch)}/package.json?qianmu_release=${Math.max(0,Math.floor(Number(now())||0))}-${++requestSerial}`;
     const request = fetchVersion(url,fetchImpl,Math.max(1,Math.min(5000,Number(timeoutMs)||5000))).then(version=>{
       if (pending.get(branch) === request) {
         pending.delete(branch);cache.delete(branch);cache.set(branch,{version,checkedAt:now()});

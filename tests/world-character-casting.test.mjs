@@ -31,6 +31,7 @@ import {planCharacterReference,assertCharacterReferencePlan,characterReferenceNo
 import {installWorldComfyAuto} from './helpers/world-comfy-auto-fixture.mjs';
 import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
 import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.js';
+import * as variantRecovery from '../qianmu-storyboard-variant-recovery.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 export function worldEnvironment() {
@@ -152,6 +153,7 @@ function harness({confirm=async options=>options.promptFormats.length ? {...opti
 }
 function useActualWorldGeneration(e,functions) {
   const context=e.context;
+  Object.assign(context,variantRecovery);
   context.storyboardQueue ||= [];
   context.storyboardActiveJobs ||= new Map();
   context.STORYBOARD_QUEUE_LIMIT ||= 8;
@@ -160,7 +162,7 @@ function useActualWorldGeneration(e,functions) {
   context.storyboardQueueWindow=createStoryboardQueueWindow({limit:context.STORYBOARD_QUEUE_LIMIT,
     occupied:()=>context.storyboardQueue.length+context.storyboardActiveJobs.size+context.storyboardQueueSettling,pollMs:5});
   context.startStoryboardQueueWindowBatch=startStoryboardQueueWindowBatch;
-  const queueFunctions=functions.includes('storyboardEnqueuePreparedBatch')?functions:[...functions,'storyboardEnqueuePreparedBatch'];
+  const queueFunctions=[...new Set(['storyboardRecordPreparedJobFailure',...functions,'storyboardEnqueuePreparedBatch'])];
   vm.runInContext(queueFunctions.map(section).join('\n'),context);
   const generate=e.context.storyboardGenerate;
   e.context.storyboardGenerate=(root,options)=>{e.context.lastProductionOptions=options;return generate(root,options);};

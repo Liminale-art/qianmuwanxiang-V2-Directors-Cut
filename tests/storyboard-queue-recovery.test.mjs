@@ -105,16 +105,142 @@ test('registration render failure keeps the batch owner and later accepts each m
   assert.equal(e.context.storyboardQueuePendingCount(),0);
 });
 
-test('two NAI requests for one shot keep the direct path when slots exist, without replay after a changed input',async()=>{
+test('three same-shot NAI requests keep the direct path and persist only unsubmitted variants after a setting change',async()=>{
   const e=await fixture();e.repair();
-  e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.profiles.novel.count='2';e.state.profiles.novel.loaded=true;
+  e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.profiles.novel.count='3';e.state.profiles.novel.loaded=true;
   let changed=false;const queue=e.context.storyboardQueueJob;
   e.context.storyboardQueueJob=async(...args)=>{const accepted=await queue(...args);if(accepted&&!changed){changed=true;e.state.negative='changed after first admission';}return accepted;};
   assert.equal(await e.rawGenerate(null,{plan:e.plan}),true);
   assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.attempts(),1);
-  assert.equal(e.plan.shots.length,1);assert.equal(e.context.storyboardQueue[0].requestTotal,2);
+  assert.equal(e.plan.shots.length,1);assert.equal(e.context.storyboardQueue[0].requestTotal,3);
   assert.equal(e.context.storyboardQueueBatches.size,0);assert.equal(e.context.storyboardQueuePendingCount(),0);
+  const missing=e.state.logs.filter(log=>log.status==='failed'&&log.submissionState==='not_submitted');
+  assert.deepEqual(copy(missing.map(log=>log.snapshot.requestIndex).sort()),[2,3]);
+  assert.ok(missing.every(log=>log.startedAt===0&&log.snapshot.planShotId===e.plan.shots[0].id));
+  e.context.storyboardSetPlanStatus(e.plan,'completed',{job:e.context.storyboardQueue[0],resultIds:['first-image']});
+  assert.equal(e.plan.status,'completed');assert.deepEqual(copy(e.plan.shots[0].resultIds),['first-image']);
+  assert.equal(e.plan.shots[0].partialFailureCount,2);assert.equal(core.storyboardPartialCompletion(e.plan)?.failedRequestCount,2);
   assert.ok(e.notices.some(message=>message.includes('1 个请求已进入队列')));
+});
+
+test('gallery-only same-shot NAI variants retain the missing request without inventing a plan',async()=>{
+  const e=await fixture();e.repair();
+  e.state.target='gallery';e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);
+  e.state.profiles.novel.count='2';e.state.profiles.novel.loaded=true;
+  let changed=false;const queue=e.context.storyboardQueueJob;
+  e.context.storyboardQueueJob=async(...args)=>{const accepted=await queue(...args);if(accepted&&!changed){changed=true;e.state.negative='changed after first gallery admission';}return accepted;};
+  assert.equal(await e.rawGenerate(null,{}),true,JSON.stringify(e.notices));
+  assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.attempts(),1);
+  const first=e.context.storyboardQueue[0];assert.equal(first.planId,'');assert.equal(first.planShotId,'');
+  const missing=e.state.logs.filter(log=>log.status==='failed'&&log.submissionState==='not_submitted');
+  assert.equal(missing.length,1);assert.equal(missing[0].snapshot.requestIndex,2);
+  assert.equal(missing[0].snapshot.planId,'');assert.equal(missing[0].snapshot.planShotId,'');
+  assert.equal(e.state.taskStates.some(task=>task.inlineOrder?.requestIndex===2&&task.status==='failed'),true);
+  assert.equal(e.plan.shots.length,3,'unrelated compiled plan is unchanged');
+});
+
+test('a stopped one-slot queue preserves the first NAI image and only retries the missing same-shot variant',async()=>{
+  const e=await fixture();e.repair();
+  e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.profiles.novel.count='2';e.state.profiles.novel.loaded=true;
+  e.context.storyboardQueueWindow.close();e.context.STORYBOARD_QUEUE_LIMIT=1;
+  e.context.storyboardQueueWindow=createStoryboardQueueWindow({limit:1,pollMs:5,
+    occupied:()=>e.context.storyboardQueue.length+e.context.storyboardActiveJobs.size+e.context.storyboardQueueSettling});
+  fixtureWindows.add(e.context.storyboardQueueWindow);
+  assert.equal(await e.rawGenerate(null,{plan:e.plan}),true);
+  const [entry]=e.context.storyboardQueueBatches;assert.ok(entry);
+  for(let i=0;i<50&&entry.handle.acceptedCount<1;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(entry.handle.acceptedCount,1);assert.equal(e.context.storyboardQueue.length,1);
+  assert.equal(e.attempts(),1);assert.equal(entry.handle.pendingCount,1);
+  const first=e.context.storyboardQueue[0];e.context.storyboardSetPlanStatus(e.plan,'completed',{job:first,resultIds:['first-image']});
+  assert.equal(entry.handle.stop('用户停止等待'),true);
+  const result=await entry.handle.done;assert.equal(result.acceptedCount,1);assert.equal(result.pendingCount,1);
+  assert.equal(e.attempts(),1,'the missing variant never entered provider admission');
+  const missing=e.state.logs.filter(log=>log.status==='failed'&&log.submissionState==='not_submitted');
+  assert.equal(missing.length,1);assert.equal(missing[0].snapshot.requestIndex,2);
+  assert.deepEqual(copy(e.plan.shots[0].resultIds),['first-image']);assert.equal(e.plan.shots[0].partialFailureCount,1);
+  assert.equal(core.storyboardPartialCompletion(e.plan)?.failedRequestCount,1);
+  e.context.storyboardQueue.splice(0);e.context.storyboardQueueWindow.notify();
+  assert.equal(await e.context.storyboardRetryLog(missing[0]),true);
+  assert.equal(e.attempts(),2);assert.equal(e.context.storyboardQueue.length,1);
+  assert.equal(e.context.storyboardQueue[0].requestIndex,2);assert.equal(e.context.storyboardQueue[0].attempt,2);
+  assert.deepEqual(copy(e.plan.shots[0].resultIds),['first-image']);
+});
+
+test('a silent second-slot queue refusal is recorded even though the batch has already advanced past that job',async()=>{
+  const e=await fixture();e.repair();
+  e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.profiles.novel.count='2';e.state.profiles.novel.loaded=true;
+  e.context.storyboardQueueWindow.close();e.context.STORYBOARD_QUEUE_LIMIT=1;
+  e.context.storyboardQueueWindow=createStoryboardQueueWindow({limit:1,pollMs:5,
+    occupied:()=>e.context.storyboardQueue.length+e.context.storyboardActiveJobs.size+e.context.storyboardQueueSettling});
+  fixtureWindows.add(e.context.storyboardQueueWindow);
+  const queue=e.context.storyboardQueueJob;
+  e.context.storyboardQueueJob=(job,...args)=>job.requestIndex===2?Promise.resolve(false):queue(job,...args);
+  assert.equal(await e.rawGenerate(null,{plan:e.plan}),true);
+  const [entry]=e.context.storyboardQueueBatches;assert.ok(entry);
+  for(let i=0;i<50&&entry.handle.acceptedCount<1;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(entry.handle.acceptedCount,1);const first=e.context.storyboardQueue[0];
+  e.context.storyboardQueue.splice(0);e.context.storyboardQueueWindow.notify();
+  const result=await entry.handle.done;assert.equal(result.acceptedCount,1);assert.equal(result.failedCount,1);
+  assert.equal(result.pendingCount,0);assert.equal(e.attempts(),1);
+  const missing=e.state.logs.filter(log=>log.status==='failed'&&log.submissionState==='not_submitted');
+  assert.equal(missing.length,1);assert.equal(missing[0].snapshot.requestIndex,2);
+  e.context.storyboardSetPlanStatus(e.plan,'completed',{job:first,resultIds:['first-image']});
+  assert.equal(e.plan.shots[0].partialFailureCount,1);assert.deepEqual(copy(e.plan.shots[0].resultIds),['first-image']);
+});
+
+test('cancelled plan records an unsubmitted sibling before provider acknowledgement without reviving the plan',async()=>{
+  for(const acknowledged of [false,true]){
+    const e=await fixture();e.repair();
+    e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.profiles.novel.count='2';e.state.profiles.novel.loaded=true;
+    e.context.storyboardQueueWindow.close();e.context.STORYBOARD_QUEUE_LIMIT=1;
+    e.context.storyboardQueueWindow=createStoryboardQueueWindow({limit:1,pollMs:5,
+      occupied:()=>e.context.storyboardQueue.length+e.context.storyboardActiveJobs.size+e.context.storyboardQueueSettling});
+    fixtureWindows.add(e.context.storyboardQueueWindow);
+    assert.equal(await e.rawGenerate(null,{plan:e.plan}),true);
+    const [entry]=e.context.storyboardQueueBatches;assert.ok(entry);
+    for(let i=0;i<50&&entry.handle.acceptedCount<1;i++)await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(entry.handle.acceptedCount,1);const first=e.context.storyboardQueue[0];
+    if(acknowledged)first.submissionState='unknown';
+    e.plan.status='cancelled';e.plan.shots[0].status='cancelled';
+    assert.equal(entry.handle.stop('用户取消补图'),true);await entry.handle.done;
+    const missing=e.state.logs.filter(log=>log.status==='failed'&&log.submissionState==='not_submitted');
+    assert.equal(missing.length,1);assert.equal(e.plan.status,'cancelled');assert.equal(e.attempts(),1);
+    assert.equal(missing[0].snapshot.requestIndex,2);
+    assert.equal(e.state.taskStates.some(task=>task.inlineOrder?.requestIndex===2&&task.status==='failed'),true);
+    e.context.storyboardSetPlanStatus(e.plan,'completed',{job:first,resultIds:['late-image']});
+    assert.equal(e.plan.status,'completed');assert.equal(e.plan.shots[0].partialFailureCount,1);
+    assert.deepEqual(copy(e.plan.shots[0].resultIds),['late-image']);
+  }
+});
+
+test('cancelling during the failure-writer account check never revives a queued sibling plan',async()=>{
+  const e=await fixture();e.repair();
+  e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.profiles.novel.count='2';e.state.profiles.novel.loaded=true;
+  const queue=e.context.storyboardQueueJob;
+  e.context.storyboardQueueJob=async(...args)=>{const accepted=await queue(...args);if(accepted)e.state.negative='changed after first admission';return accepted;};
+  let release,checking=false;const wait=new Promise(resolve=>release=resolve),account=e.context.resolveImageAccountNamespace;
+  e.context.resolveImageAccountNamespace=()=>checking?wait:account();
+  const record=e.context.storyboardRecordPreparedJobFailure;
+  e.context.storyboardRecordPreparedJobFailure=(...args)=>{checking=true;return record(...args);};
+  const pending=e.rawGenerate(null,{plan:e.plan});
+  for(let i=0;i<100&&!checking;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(checking,true);assert.equal(e.context.storyboardQueue.length,1);
+  e.plan.status='cancelled';e.plan.shots[0].status='cancelled';
+  release('st-user:route-test');assert.equal(await pending,true);
+  const missing=e.state.logs.filter(log=>log.submissionState==='not_submitted');
+  assert.equal(missing.length,1);assert.equal(missing[0].snapshot.requestIndex,2);
+  assert.equal(e.plan.status,'cancelled');assert.equal(e.attempts(),1);
+});
+
+test('same-shot missing variant is not recorded across an ST account change',async()=>{
+  const e=await fixture();e.repair();
+  e.state.promptDraft.shots=e.state.promptDraft.shots.slice(0,1);e.state.profiles.novel.count='2';e.state.profiles.novel.loaded=true;
+  let changed=false;const queue=e.context.storyboardQueueJob;
+  e.context.storyboardQueueJob=async(...args)=>{const accepted=await queue(...args);if(accepted&&!changed){changed=true;e.setAccount('st-user:another');e.state.negative='changed after account switch';}return accepted;};
+  assert.equal(await e.rawGenerate(null,{plan:e.plan}),true);
+  assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.attempts(),1);
+  assert.equal(e.state.logs.length,1);assert.equal(e.state.logs.filter(log=>log.submissionState==='not_submitted').length,0);
+  assert.equal(e.state.taskStates.filter(task=>task.inlineOrder?.requestIndex===2).length,0);
 });
 
 test('real preparation/queue stores a failed unsubmitted middle mirror and retry uses only its frozen request and original slot',async()=>{
@@ -183,7 +309,7 @@ test('a scope change after one queue acceptance reports partial progress and can
   const old=e.context.storyboardQueueJob;
   e.context.storyboardQueueJob=async(...args)=>{const result=await old(...args);if(result&&!observed){observed=true;e.plan.shots[1].prompt='changed while queueing';}return result;};
   assert.equal(await e.context.storyboardGenerate(null,{plan:e.plan}),true);assert.equal(e.context.storyboardQueue.length,1);assert.equal(e.attempts(),1);
-  assert.ok(e.notices.some(text=>text.includes('已入队 1/3')));assert.equal(e.plan.generationStarted,true);
+  assert.ok(e.notices.some(text=>text.includes('已入队 1/3')),JSON.stringify(e.notices));assert.equal(e.plan.generationStarted,true);
   assert.equal(e.state.logs.filter(log=>log.status==='failed').length,0,'global cancellation must not write a late per-mirror failure');
 });
 

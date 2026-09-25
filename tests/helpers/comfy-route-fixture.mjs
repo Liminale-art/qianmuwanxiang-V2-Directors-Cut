@@ -8,6 +8,7 @@ import {prepareEnsembleStyleBindings} from '../../qianmu-ensemble-bindings.js';
 import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../../qianmu-ensemble-handoff.js';
 import {createStoryboardQueueWindow} from '../../qianmu-storyboard-queue-window.js';
 import {startStoryboardQueueWindowBatch} from '../../qianmu-storyboard-queue-batch.js';
+import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from '../../qianmu-storyboard-variant-recovery.js';
 import { storyboardFunctionSource as section } from './storyboard-form-fixture.mjs';
 export const namespace = 'st-user:route-test';
 export const graph = label => ({
@@ -51,7 +52,7 @@ export async function routeEnvironment(options={}) {
   const styleSelection={schema:'qianmu.ensemble.chat-selection.v1',namespace,chatKey:'chat-a',revision:'one',enabled:true,schemeIds:styleLibrary.schemes.map(row=>row.id)};
   const styleAssignments=new Map([['shot-0','fixture-style-0'],['shot-1','fixture-style-1'],['shot-2','current']]);
   state.promptDraft.ensembleRequired=true;
-  const context=vm.createContext({...storyboard,projectNewComfyExecution,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},clone:structuredClone,settings:{apiProfiles:[],enabled:true},storyboardState:()=>state,
+  const context=vm.createContext({...storyboard,projectNewComfyExecution,preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},clone:structuredClone,settings:{apiProfiles:[],enabled:true},storyboardState:()=>state,
     getChatKey:()=> 'chat-a',ctx:()=>({chat:[]}),getCharacterDescription:()=>'',getPersonaDescription:()=>'',
     storyboardCompilerBusy:false,storyboardTargetFloor:()=>-1,storyboardCredentialRevision:0,storyboardAdmissionEpoch:1,storyboardDraftApiKeys:new Map(),
     storyboardSelectedArtistPreset:()=>null,storyboardGalleryRecords:()=>[],storyboardFloorTakeReceipts:()=>[],STORYBOARD_NAI_QUALITY_DEFAULTS:{},STORYBOARD_NAI_NEGATIVE_DEFAULTS:{},STORYBOARD_GENERIC_PROMPT_DEFAULTS:{positive:'global quality',negative:'global negative'},
@@ -65,7 +66,7 @@ export async function routeEnvironment(options={}) {
     blobStore:{deleteStoryboardPipelineLogs:async()=>{}},storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>state.pipelineLogs.find(row=>row.id===log.pipelineId),
     // This fixture ends at the route/queue seam; ledger-backed admission is
     // exercised by storyboard-user-count-range and storyboard-stream-compiler.
-    storyboardPreflightImageBatch:async (jobs,valid)=>{if(!valid())throw Error('preparation changed');for(const job of jobs){job.imageAccountNamespace=account;Object.defineProperty(job,'imageOwnerState',{value:state,configurable:true});const plan=state.shotPlans.find(row=>row.id===job.planId),shot=plan?.shots?.find(row=>row.id===job.planShotId);if(shot){Object.defineProperty(job,'imageOwnerPlan',{value:plan});Object.defineProperty(job,'imageOwnerShot',{value:shot});}}},
+    storyboardPreflightImageBatch:async (jobs,valid)=>{if(!valid())throw Error('preparation changed');for(const job of jobs){job.imageAccountNamespace=account;Object.defineProperty(job,'imageOwnerState',{value:state,configurable:true});const plan=state.shotPlans.find(row=>row.id===job.planId),shot=plan?.shots?.find(row=>row.id===job.planShotId);if(shot){Object.defineProperty(job,'imageOwnerPlan',{value:plan});Object.defineProperty(job,'imageOwnerShot',{value:shot});Object.defineProperty(job,'imageOwnerSource',{value:preparedShotSource(plan,shot)});}}},
     storyboardQueueJob:async job=>{jobs.push(job);return true;},confirmDialog:async()=>true,
     featureRuntime:{load:async key=>{
       calls.push(key);
@@ -94,7 +95,7 @@ export async function routeEnvironment(options={}) {
     'storyboardCaptureWorkbench','storyboardResolveRoutingProfile','storyboardCreatePreparationGuard','storyboardPrepareComfyRoutes','storyboardCompilerRoutes','storyboardCertainCompilerRoute',
     'storyboardUsesComfyCharacters','storyboardPreflightComfyForCompiler','storyboardComfyReferenceMetadata','storyboardWorkflowIssue',
     'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardEnqueuePreparedBatch','storyboardVerifyComfyRouteJob',
-    'storyboardComfySelectionMessage','storyboardComfyPreparationDraft','storyboardRecordComfyPreparationFailure','storyboardReprepareComfyLog','storyboardStoreLog','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus','storyboardEnsembleHost'];
+    'storyboardComfySelectionMessage','storyboardComfyPreparationDraft','storyboardRecordComfyPreparationFailure','storyboardReprepareComfyLog','storyboardStoreLog','storyboardRecordPreparedJobFailure','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus','storyboardEnsembleHost'];
   vm.runInContext(names.map(section).join('\n'),context);
   const compilerRoutes=context.storyboardCompilerRoutes,prepareRoutes=context.storyboardPrepareComfyRoutes;
   const selectedRoutes=()=>styleSelection.enabled?styleSelection.schemeIds.map(id=>styleLibrary.schemes.find(row=>row.id===id)).filter(Boolean).map(row=>state.routing.rules.find(rule=>rule.id===row.binding.routeId)?.target).filter(Boolean):[];

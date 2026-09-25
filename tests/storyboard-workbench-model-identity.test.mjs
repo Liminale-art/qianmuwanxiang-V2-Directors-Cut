@@ -6,10 +6,11 @@ import * as storyboard from '../qianmu-storyboard.js';
 import { parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 import {renderEnsembleTargetPicker,openEnsembleTargetPicker} from '../qianmu-ensemble-target-picker.js';
-import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.384';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.384';
+import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.385';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.385';
 import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
 import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.js';
+import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from '../qianmu-storyboard-variant-recovery.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';
@@ -28,7 +29,8 @@ function environment(capability = V3, model = alias, extra = {}) {
   state.connections.novel.draft = { id: 'draft-a', credentialId: 'key-ref', baseUrl: 'https://relay.example', model: V5 };
   const notices = [], saved = [];
   const context = vm.createContext({
-    ...storyboard, storyboardCompilerBusy:false, clone: structuredClone, parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders,
+    ...storyboard, preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch,
+    storyboardCompilerBusy:false, clone: structuredClone, parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders,
     settings: { apiProfiles: [] }, storyboardState: () => state, getChatKey: () => 'chat-a', ctx: () => ({ chat: [] }),
     storyboardTargetFloor: () => -1, storyboardCredentialRevision: 0, storyboardAdmissionEpoch: 1,
     resolveImageAccountNamespace: async () => 'st-user:identity',
@@ -55,7 +57,7 @@ function environment(capability = V3, model = alias, extra = {}) {
     'storyboardPromptsForArtist', 'storyboardJoinPrompt', 'storyboardParameterPresets',
     'renderStoryboardParameterPresets', 'renderStoryboardParameterVibes', 'renderStoryboardModelCreate', 'renderStoryboardVariantControls', 'renderStoryboardCreate', 'renderStoryboardConnectionCompatibility', 'renderStoryboardOpenAICompatibility', 'renderStoryboardImageOutputFields', 'renderStoryboardGenerationCard',
     'storyboardProfileSnapshot', 'storyboardCaptureWorkbench', 'storyboardGenerationPayload', 'storyboardRestoreSnapshotConnection',
-    'storyboardPrepareComfyRoutes', 'storyboardCreatePreparationGuard', 'storyboardResolveRoutingProfile', 'storyboardCreateJob', 'storyboardGatewayRequest', 'storyboardLoadLogToWorkbench', 'storyboardSafeShotSpecFromPrompt', 'storyboardShotSpecForSelection', 'storyboardAdaptShotForModel'];
+    'storyboardPrepareComfyRoutes', 'storyboardCreatePreparationGuard', 'storyboardResolveRoutingProfile', 'storyboardCreateJob', 'storyboardGatewayRequest', 'storyboardRecordPreparedJobFailure', 'storyboardLoadLogToWorkbench', 'storyboardSafeShotSpecFromPrompt', 'storyboardShotSpecForSelection', 'storyboardAdaptShotForModel'];
   for (const call of section('renderStoryboardCreate').matchAll(/\b(renderStoryboard\w+)\(/g)) {
     if (!names.includes(call[1])) context[call[1]] = () => '';
   }
@@ -484,7 +486,7 @@ test('stopping an unsubmitted 21-shot remainder keeps exactly the already admitt
 });
 
 for(const scenario of ['replaced shots array','changed source evidence']){
-  test(`a 21-shot plan stops unsubmitted remainder after ${scenario} without losing admitted work`,async()=>{
+  test(`a 21-shot plan stops unsubmitted remainder after ${scenario} without writing the changed plan`,async()=>{
     const {state,context,admissions,accepted}=boundedGenerationEnvironment();
     const plan={id:`bounded-${scenario}`,chatKey:'chat-a',status:'prompt_ready',origin:'manual',shots:[]};
     state.shotPlans.push(plan);
@@ -508,7 +510,8 @@ for(const scenario of ['replaced shots array','changed source evidence']){
       assert.deepEqual(admissions,accepted);
       assert.equal(state.logs.length,8);
       assert.equal(context.storyboardQueue.length,7);
-      assert.match(plan.error,/已入队 8\/21；余镜未提交/,'partial completion remains recorded after accepted jobs finish');
+      // Once source/shot identity changes, the old batch cannot write status onto this plan.
+      assert.equal(plan.error,undefined,'stale batch must not mutate the changed plan');
       assert.equal(context.storyboardQueueWindow.reservedCount,0);
     }finally{
       entry?.handle.stop('测试结束');
