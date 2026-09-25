@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
-import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments} from '../qianmu-storage-backup-view.js';
 import { collectRestoreStorage, clearRestoreStorage, validateRestoreStorageSummary } from '../qianmu-storyboard-restore-storage.js';
 import { runRestoreStorage, collectStoryboardRestoreStorage } from '../qianmu-storyboard-restore-storage-runtime.js';
 import { renderRestoreStorageReview } from '../qianmu-storyboard-restore-storage-view.js';
@@ -113,7 +113,7 @@ test('the record manager is unchecked by default, names destructive consequences
 });
 
 function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'not sampled'}){
-  return vm.createContext({renderStorageBackupSection,VERSION:'1.59.386',optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
+  return vm.createContext({renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments,VERSION:'1.59.387',optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},collectionFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
@@ -128,7 +128,7 @@ test('actual space card adds journal bytes exactly once without calling them rec
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
   assert.equal(data.trackedBytes,10+summary.bytes);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);assert.equal(data.origin.quota,99999);
   assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes);
-  const html=context.renderStorageManagementCard();assert.doesNotMatch(html,/分镜恢复记录 ·|<button[^>]+sd-storage-restores/);assert.match(html,/不代表 VPS 磁盘总容量/);assert.match(html,/选择清理项目/);
+  const html=context.renderStorageManagementCard();assert.doesNotMatch(html,/分镜恢复记录 ·|<button[^>]+sd-storage-restores/);assert.match(html,/不代表 VPS 总容量/);assert.match(html,/选择清理项目/);
 });
 
 test('actual space card keeps unavailable recovery accounting unknown without surfacing a second manager',async()=>{
@@ -157,9 +157,10 @@ test('actual mapping entry is available when accounting fails and never routes t
 test('actual module cleanup opens per-record choices and does not clear a whole module or save settings on cancel',async()=>{
   let click,opened=0;
   const root={isConnected:true,querySelector:selector=>selector==='.sd-storage-clean'?{addEventListener:(_event,fn)=>click=fn}:null,querySelectorAll:()=>[]};
-  const context=vm.createContext({renderStorageBackupSection,storyboardAdmissionEpoch:1,storageInventoryState:{data:{restoreStorage:{namespace}}},openStorageCleanupDialog:async()=>['__storyboard_restores__'],
+  const scope=JSON.stringify([1,namespace]);
+  const context=vm.createContext({renderStorageBackupSection,storyboardAdmissionEpoch:1,storageInventoryState:{status:'ready',scope,data:{restoreStorage:{namespace}}},storageInventoryScope:async()=>scope,openStorageCleanupDialog:async()=>['__storyboard_restores__'],
     storyboardOpenRestoreStorage:async(target,scope)=>{assert.equal(target,root);assert.equal(scope,namespace);opened++;},
     blobStore:{clearStorageItems:()=>assert.fail('no whole-module deletion')},saveSettings:()=>assert.fail('no unrelated save'),toast:()=>assert.fail('do not claim cancelled selection was cleared')});
   context.storageCleanupSession=createStorageCleanupSession({owner:()=>context.settings,scope:()=>'',epoch:()=>context.storyboardAdmissionEpoch});
-  vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);await click();assert.equal(opened,1);
+  vm.runInContext([section('ensureStorageScanCurrent'),section('bindStorageManagementEvents')].join('\n'),context);context.bindStorageManagementEvents(root);await click();assert.equal(opened,1);
 });

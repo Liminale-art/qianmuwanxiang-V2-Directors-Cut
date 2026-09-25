@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import {renderStorageBackupSection,bindStoragePackageActions,STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection,bindStoragePackageActions,storageOverviewSegments,STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
 import { readFile } from 'node:fs/promises';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function fixture(data = null, status = 'ready') {
-  const context = vm.createContext({renderStorageBackupSection,VERSION:'1.59.386',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS, storageInventoryState: { data, status, error: '<unavailable>' },
+  const context = vm.createContext({renderStorageBackupSection,storageOverviewSegments,VERSION:'1.59.387',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS, storageInventoryState: { data, status, error: '<unavailable>' },
     optionalServiceState: {status: 'idle'},
     htmlEscape: x => String(x ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: x => `${Number(x) || 0} B`, blobStore: { classifyStoragePressure: () => ({ level: 'normal' }) } });
@@ -26,8 +26,8 @@ test('server recipe file sizes occupy one read-only row without changing browser
   const snapshot=data();snapshot.recipeStorage={status:'ready',state:'present',files:3,bytes:12345678,limitFiles:4096,limitBytes:268435456};
   const html=fixture(snapshot).renderStorageManagementCard();
   assert.equal((html.match(/<span>图片配置<\/span>/g)||[]).length,1);assert.match(html,/<span>图片配置<\/span><span>12345678 B<\/span>/);
-  assert.doesNotMatch(html,/不代表可恢复配方数量|归档文件 ·/);assert.match(html,/千幕已盘点<b>1000 B/);
-  assert.match(html,/<em>其他 ST 数据<\/em><b>3000 B/);assert.match(html,/<em>可用空间<\/em><b>6000 B/);
+  assert.doesNotMatch(html,/不代表可恢复配方数量|归档文件 ·/);assert.match(html,/千幕资料已盘点<b>1000 B/);
+  assert.doesNotMatch(html,/<em>其他 ST 数据<\/em>/);assert.match(html,/本机浏览器站点已用 4000 B/);assert.match(html,/可用空间 6000 B/);
   const row=html.match(/<div[^>]*><span>图片配置<\/span>[\s\S]*?<\/div>/)?.[0];assert.ok(row);assert.doesNotMatch(row,/<button|<input/);
 });
 
@@ -48,7 +48,11 @@ test('storage backup remains accessible before inventory and after inventory fai
     assert.match(html, /sd-import-config-file/);
     assert.match(html, /sd-storage-service[\s\S]*后端服务[\s\S]*重新检测/);
     for (const name of ['storyboard', 'reader', 'favorites', 'notes']) assert.match(html, new RegExp(`data-storage-import="${name}"`));
-    assert.doesNotMatch(html, /sd-storage-clean"|sd-storage-chat-clean"/);
+    if(status==='loading'){
+      assert.match(html,/准备扫描/);
+      assert.match(html,/sd-storage-clean" disabled/);
+      assert.match(html,/sd-storage-chat-clean" disabled/);
+    }else assert.doesNotMatch(html, /sd-storage-clean"|sd-storage-chat-clean"/);
     if (status === 'error') { assert.match(html, /&lt;unavailable&gt;/); assert.doesNotMatch(html, /<unavailable>/); }
   }
 });
@@ -60,15 +64,15 @@ test('backup and cleanup keep one compact read-only inventory instead of duplica
   assert.ok(html.indexOf('Vibe 素材') > details);
   assert.doesNotMatch(html,/Comfy 本机领取记录|迁移映射凭据|来源记录 ·/);
   assert.ok(html.indexOf('sd-storage-clean"') > details);
-  assert.equal((html.match(/<details\b/g)||[]).length,2);
+  assert.equal((html.match(/<details\b/g)||[]).length,3);
   assert.doesNotMatch(html,/占用明细与维护|sd-storage-details/);
   assert.ok(html.indexOf('data-storage-export="notes"') < html.indexOf('data-storage-export="storyboard"'));
   assert.ok(html.indexOf('sd-storage-clean"') < html.lastIndexOf('</details>'));
   for (const key of ['characters','vibes','restores','mappings','comfy-receipts','focus-library']) assert.equal((html.match(new RegExp(`class="sd-btn sd-storage-${key}"`,'g'))||[]).length,0,key);
   assert.match(html, /<em>参考素材<\/em>/);
   assert.doesNotMatch(html, /<details[^>]*\sopen(?:\s|=|>)/);
-  assert.match(html, /千幕已盘点<b>1000 B/);
-  assert.match(html, /不代表 VPS 磁盘总容量/);
+  assert.match(html, /千幕资料已盘点<b>1000 B/);
+  assert.match(html, /不代表 VPS 总容量/);
   for(const name of ['notes','storyboard','collections'])assert.match(html,new RegExp(`data-storage-export="${name}"`));
   assert.ok(html.indexOf('class="sd-storage-service"') > html.lastIndexOf('</details>'), 'service status remains at the card end outside any disclosure');
   assert.deepEqual(snapshot, before, 'render must not mutate accounting, assets, or recovery data');
@@ -96,9 +100,9 @@ test('missing browser quota does not prevent module backup or invent a device di
 test('data management promotes real accounted bytes without changing quota accounting or entry ownership', () => {
   const snapshot = data(), html = fixture(snapshot).renderStorageManagementCard();
   assert.match(html, /<h3>数据管理<\/h3>/);
-  assert.match(html, /class="sd-storage-hero">千幕已盘点<b>1000 B<\/b>/);
-  assert.match(html, /本设备 · 站点已用 \/ 配额<b>4000 B \/ 10000 B<\/b>/);
-  for (const [category, bytes] of [['参考素材', 1000], ['其他 ST 数据', 3000], ['可用空间', 6000]]) {
+  assert.match(html, /class="sd-storage-hero">千幕资料已盘点<b>1000 B<\/b>/);
+  assert.match(html, /本设备 ST 站点已用 \/ 配额<b>4000 B \/ 10000 B<\/b>/);
+  for (const [category, bytes] of [['参考素材', 1000]]) {
     assert.match(html, new RegExp(`<em>${category}</em><b>${bytes} B</b>`));
   }
   assert.equal((html.match(/class="sd-btn sd-primary sd-storage-clean"/g) || []).length, 1);
@@ -110,8 +114,8 @@ test('data management promotes real accounted bytes without changing quota accou
 test('incomplete inventory never promotes unaccounted bytes to the large Qianmu total', () => {
   const snapshot = data(); snapshot.vibeStorage = {status: 'unavailable', error: '<not read>'};
   const html = fixture(snapshot).renderStorageManagementCard();
-  assert.match(html, /class="sd-storage-hero">千幕已盘点<b>1000 B<\/b>/);
-  assert.match(html, /<em>未盘点站点数据<\/em><b>3000 B<\/b>/);
+  assert.match(html, /class="sd-storage-hero">千幕资料已盘点<b>1000 B<\/b>/);
+  assert.doesNotMatch(html, /<em>未盘点站点数据<\/em>/);
   assert.match(html, /未读取的部分不会按零占用处理/);
   assert.match(html, /<span>Vibe 素材<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(html, /<not read>|<span>Vibe 素材<\/span><span>0 B/);
 });
@@ -126,6 +130,17 @@ test('inventory refresh disables destructive entry until current results are rea
   const html=fixture(data()).renderStorageManagementCard();
   assert.match(html,/sd-storage-clean" >/);
   assert.match(html,/sd-storage-chat-clean" >/);
+});
+
+test('opening data management keeps backups usable until an explicit scan and reports measured scan progress',()=>{
+  const idle=fixture(null,'idle').renderStorageManagementCard();
+  assert.match(idle,/扫描资料/);assert.match(idle,/备份可直接使用/);assert.match(idle,/data-storage-export="storyboard"/);
+  assert.doesNotMatch(idle,/资料扫描进度|sd-storage-clean"/);
+  const context=fixture(data(),'loading');context.storageInventoryState.progress={done:5,total:20};
+  const scanning=context.renderStorageManagementCard();
+  assert.match(scanning,/已检查 5\/20 项 · 25%/);assert.match(scanning,/<progress max="20" value="5"/);
+  assert.match(scanning,/sd-storage-clean" disabled/);assert.match(scanning,/sd-storage-chat-clean" disabled/);
+  assert.match(scanning,/data-storage-export="storyboard"/);
 });
 
 test('resource-manager binding is idempotent without routing or starting work during render', async () => {

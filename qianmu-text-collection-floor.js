@@ -1,5 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.386';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.387';
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   let floorStatus=null,statusLoading=null,detachStatus=null;
@@ -10,25 +10,26 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     for(const button of root.querySelectorAll('[data-qm-collect-floor]')){
       const saved=floorStatus?.status(floorOf(button.closest('.mes')))??null;
       button.classList.toggle('is-collected',saved===true);button.dataset.qmCollectionState=saved===null?'unknown':saved?'saved':'empty';
-      button.title=saved===true?'本层已有收藏（含其他回复版本），点击继续收藏正文':saved===false?'收藏正文':'收藏正文（收藏状态正在确认或暂不可读取）';
+      button.title=saved===true?'取消本层全部正文收藏（含其他回复版本）':saved===false?'收藏正文':'收藏正文（收藏状态正在确认或暂不可读取）';
       button.setAttribute('aria-label',button.title);
     }
   }
-  function refreshStatus(force=false){
+  function refreshStatus(force=false,retain=false){
     if(!current()||!root.querySelector('[data-qm-collect-floor]'))return;
-    if(floorStatus){void floorStatus.refresh({force});return;}
-    if(statusLoading)return;
+    if(floorStatus)return floorStatus.refresh({force,retain});
+    if(statusLoading)return statusLoading;
     const token=epoch,document=root.ownerDocument;
     statusLoading=import('./qianmu-text-collection-floor-status.js').then(({createTextCollectionFloorStatus})=>{
       if(!current()||epoch!==token)return;
       floorStatus=createTextCollectionFloorStatus({getScope:()=>({chatId:String(getChatKey()||''),chat:getContext().chat}),resolveNamespace,isCurrent:()=>!!current(),headers,onChange:paintStatus,...(statusSessionFactory?{sessionFactory:statusSessionFactory}:{})});
-      const resumed=createTextCollectionResumeRefresh(()=>refreshStatus(true));
+      const resumed=createTextCollectionResumeRefresh(()=>refreshStatus(true,true));
       const changed=()=>resumed.changed(),visible=()=>{if(document.visibilityState==='visible')resumed.schedule();};
       const focused=()=>{if(document.visibilityState==='visible')resumed.schedule();};
       document.addEventListener('qianmu-text-collections-changed',changed);document.addEventListener('visibilitychange',visible);document.defaultView.addEventListener('focus',focused);
       detachStatus=()=>{resumed.dispose();document.removeEventListener('qianmu-text-collections-changed',changed);document.removeEventListener('visibilitychange',visible);document.defaultView.removeEventListener('focus',focused);};
-      return floorStatus.refresh();
+      void floorStatus.refresh().catch(()=>{if(current()&&epoch===token)paintStatus();});return floorStatus;
     }).catch(()=>{if(current()&&epoch===token)paintStatus();}).finally(()=>{if(epoch===token)statusLoading=null;});
+    return statusLoading;
   }
   const stylesheet=(document=root.ownerDocument)=>{
     if(document.querySelector('link[data-qm-text-collections]'))return;
@@ -44,10 +45,35 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     if(!message||message.is_system)return;
     event.preventDefault();event.stopPropagation();
     const token=epoch,chatKey=String(getChatKey()||''),raw=message.mes,swipe=message.swipe_id??0;
+    const valid=()=>current()&&epoch===token&&node.isConnected&&String(getChatKey()||'')===chatKey&&getContext().chat?.[floor]===message&&message.mes===raw&&(message.swipe_id??0)===swipe;
+    if(floorStatus?.status(floor)===true){
+      opening=true;button.disabled=true;button.classList.add('is-removing');button.setAttribute('aria-busy','true');let session,confirmed=0,result=null,failure=null,owner=null;
+      try{
+        const [{createTextCollectionSession},{deleteTextCollectionFloor}]=await Promise.all([import('./qianmu-text-collection-session.js'),import('./qianmu-text-collection-floor-delete.js')]);
+        if(!valid())return;
+        session=await createTextCollectionSession({resolveNamespace,isCurrent:valid,headers,cryptoImpl:root.ownerDocument.defaultView.crypto});
+        owner=session.namespace;
+        result=await deleteTextCollectionFloor({session,chatId:chatKey,messageId:floor,check:()=>{if(!valid())throw Error('楼层或页面已变化，未继续删除');},onProgress:progress=>{
+          confirmed=progress.confirmed;if(valid())floorStatus?.markUnknown(floor);
+        }});
+      }catch(cause){failure=cause;}
+      finally{
+        session?.close();
+        if(current()&&epoch===token)try{await refreshStatus(true,true);}catch{/* Unknown state is not a successful recheck. */}
+        button.classList.remove('is-removing');button.removeAttribute('aria-busy');if(button.isConnected)button.disabled=false;if(epoch===token)opening=false;
+      }
+      if(!valid())return;
+      if(owner)try{if(await resolveNamespace()!==owner||!valid())return;}catch{return;}
+      if(failure){notify?.(confirmed?`已确认取消 ${confirmed} 条；其余未确认，请核对：${String(failure?.message||failure).slice(0,160)}`:`取消收藏未完成，请核对：${String(failure?.message||failure).slice(0,180)}`,'warning');return;}
+      const saved=floorStatus?.status(floor)??null;
+      if(saved===false)notify?.(result.total?`已取消本层 ${result.confirmed} 条正文收藏`:'本层已无正文收藏','success');
+      else if(saved===true)notify?.(`已确认取消 ${result.confirmed} 条，但本层仍有收藏；可能是其他设备新加入的内容`,'info');
+      else notify?.(`已确认取消 ${result.confirmed} 条，但星标状态暂未核对；请稍后刷新`,'warning');
+      return;
+    }
     const capturedNames=names();
     const displayName=(value,missing)=>{const name=String(value??'');return name.trim()?name:missing;};
     const source={chatId:chatKey,messageId:floor,replyId:`swipe:${swipe}`,charName:displayName(!message.is_user&&message.name||capturedNames.charName,'CHAR 名未记录'),userName:displayName(message.is_user&&message.name||capturedNames.userName,'USER 名未记录'),text:floorCollectionText(node.querySelector('.mes_text'))};
-    const valid=()=>current()&&epoch===token&&node.isConnected&&String(getChatKey()||'')===chatKey&&getContext().chat?.[floor]===message&&message.mes===raw&&(message.swipe_id??0)===swipe;
     opening=true;button.disabled=true;let portal,chooser,detach;
     try{
       stylesheet();portal=root.ownerDocument.createElement('section');portal.dataset.qmTextCollectionPortal='';root.ownerDocument.body.append(portal);host=portal;detach=mountPortal?.(portal);
@@ -57,6 +83,9 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       active=chooser;opening=false;
       const result=await chooser.finished;
       if(result&&valid()){
+        if(!floorStatus)await refreshStatus();
+        if(!valid())return;
+        floorStatus?.confirmedCreate(floor,result.expectedAccount);
         notify?.('收藏已保存','success');
         root.ownerDocument.dispatchEvent(new root.ownerDocument.defaultView.Event('qianmu-text-collections-changed'));
       }

@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { createNotesSyncRuntime } from '../qianmu-notes-sync-runtime.js';
 import { emptyNotesLocalState, summarizeNotesLocalState, validateNotesLocalState } from '../qianmu-notes-sync-store.js';
-import { renderStorageBackupSection } from '../qianmu-storage-backup-view.js';
+import { renderStorageBackupSection, runStorageInventoryJobs } from '../qianmu-storage-backup-view.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 const namespace='st-user:inventory';
 function memory(){const states=new Map();let writes=0;return {states,get writes(){return writes;},
@@ -42,7 +42,7 @@ test('malformed or failed local reads reject rather than manufacture zero storag
 function inventory(summary,collectionStorage={status:'unavailable',bytes:null,count:null}) {
   let initialized=0,account=namespace;
   const zero=()=>({status:'ready',bytes:0,count:0});
-  const context=vm.createContext({notesSyncControls:()=>initialized++,getQianmuNotesStorage:async()=>{assert.equal(initialized,1);if(summary instanceof Error)throw summary;return summary;},
+  const context=vm.createContext({runStorageInventoryJobs,notesSyncControls:()=>initialized++,getQianmuNotesStorage:async()=>{assert.equal(initialized,1);if(summary instanceof Error)throw summary;return summary;},
     settings:{},collectionFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),storageSummary:async()=>collectionStorage},
     focusClockLibrary:()=>({summary:async()=>zero()}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:100000,quota:200000})}},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:50,recoverableBytes:0,categories:[{category:'notes',bytes:50,count:2}],stores:[{name:'notes',label:'旧版便笺（本机）',count:2,bytes:50}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},

@@ -55,7 +55,7 @@ try{
   assert.equal(await button(0).locator('svg').evaluate(node=>getComputedStyle(node).fill),'none');
   checks.push('deleting one of two saved excerpts keeps the filled star; deleting the last returns it to outline after the confirmed read');
   await page.evaluate(()=>{fixture.mode='hold';fixture.records=[fixture.row(1)];fixture.change();});await page.waitForFunction(()=>typeof fixture.release==='function');
-  assert.equal(await button(1).getAttribute('data-qm-collection-state'),'unknown');
+  assert.equal(await button(1).getAttribute('data-qm-collection-state'),'empty','known state stays steady during a same-account background refresh');
   await page.evaluate(()=>{fixture.mode='ok';fixture.release();});await page.waitForFunction(()=>document.querySelector('.mes[mesid="1"] [data-qm-collect-floor]')?.dataset.qmCollectionState==='saved');
   await page.evaluate(()=>{fixture.mode='error';fixture.change();});await page.waitForFunction(()=>document.querySelector('.mes[mesid="1"] [data-qm-collect-floor]')?.dataset.qmCollectionState==='unknown');
   const before=await page.evaluate(()=>fixture.reads);await page.evaluate(()=>{for(let i=0;i<100;i++)fixture.tools.refresh(fixture.chat);});await page.waitForTimeout(80);assert.equal(await page.evaluate(()=>fixture.reads),before);

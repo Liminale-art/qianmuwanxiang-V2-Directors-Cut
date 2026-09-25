@@ -23,7 +23,36 @@ curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Dire
 - **VPS 原生部署**：当前目录能看到 `config.yaml`；安装完成后按原方式重启 SillyTavern 后端服务。
 - **VPS Docker Compose 部署**：当前目录能看到 compose 配置文件和 `config` 文件夹；安装程序会检查插件目录挂载，但不会自动重启容器。完成后按原方式启动（常见服务名可使用 `docker compose start sillytavern`）。
 
+首次安装会从仓库默认分支取得服务端代码。若千幕前端使用 `refactor/storyboard-modularization` 开发分支，安装后还要按下节核对并切换服务端分支；只刷新网页或重跑默认分支安装命令，不会取得开发分支的配套版本。
+
 如果出现过 `New-Item: command not found` 或 `Out-Null: command not found`，说明你使用的是 Linux/Git Bash 终端，应使用上面这一行，不要使用 PowerShell 命令。
+
+## 已有 VPS 安装如何更新
+
+在 **SillyTavern 安装目录**（原生部署有 `config.yaml`；Docker Compose 部署有 `config/config.yaml` 和 compose 文件）先核对插件来源、当前分支和本地改动：
+
+```bash
+git -C plugins/Omniscene remote get-url origin
+git -C plugins/Omniscene branch --show-current
+git -C plugins/Omniscene status --short
+```
+
+来源应指向官方仓库 `https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git`（或你确认的对应 SSH 地址）。若不是这个仓库、插件不是 Git 安装，或 `status --short` 有任何输出，先查明并备份本地改动，不要切分支或覆盖。更新前请按自己的 VPS / ST 备份方式保存 ST 数据、配置及插件；安装脚本生成的独立备份只覆盖 ST 配置，不是聊天和素材的完整备份。
+
+等正在生成的任务结束，**停止 ST 后端或容器**后，再更新。若前端使用本开发分支、服务端却还在 `main`（例如显示 `v1.55.0`），先取得官方分支并切换：
+
+```bash
+git -C plugins/Omniscene fetch origin
+git -C plugins/Omniscene switch --track -c refactor/storyboard-modularization origin/refactor/storyboard-modularization
+```
+
+第二行仅适用于本地尚无这个分支；若已经建过本地分支，改用 `git -C plugins/Omniscene switch refactor/storyboard-modularization`。若原本就处于该分支，无需切换。不要通过 `reset --hard` 消除报错；先核查冲突与本地提交。切换后再次检查 `branch --show-current` 和 `status --short`，确认分支正确、工作树干净，再运行**同开发分支的安装脚本**：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/install-server-plugin.sh | sh
+```
+
+脚本会在当前分支上执行快进更新，并再次备份 ST 配置；它不会自动切换分支、停止或重启 ST。更新完成后按原部署方式启动后端或容器，刷新 ST 网页，再到千幕「数据管理 → 后端服务」点右侧刷新图标核对「当前」与「配套 / 最新」版本。健康接口返回 `"ok":true` 才表明服务已加载，不代表各上游渠道都已测试通过。仅更新 `main` 仍会留在 `main`，不能用来验证本开发分支的新功能。
 
 ## 本地部署
 

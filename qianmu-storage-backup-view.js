@@ -1,6 +1,33 @@
 export const STORAGE_CATEGORY_LABELS=Object.freeze({images:'图片',vibes:'参考素材',characters:'角色资料',audio:'音频',video:'影片',reader:'伴读资料',notes:'便笺',collections:'收藏待存',assistant:'场外特助',logs:'日志与记录',cache:'临时缓存',settings:'设置与预设',chat:'当前聊天数据',other:'其他'});
 export const STORAGE_CATEGORY_COLORS=Object.freeze({images:'#5aa9ff',vibes:'#b29bc9',characters:'#c985b1',audio:'#ff9f43',video:'#6f8fff',reader:'#9b7cff',notes:'#f2c94c',collections:'#75b6ab',assistant:'#ce9f72',logs:'#ff647c',cache:'#3dc7c9',settings:'#65c466',chat:'#8d94a6',other:'#747b88'});
 
+export async function runStorageInventoryJobs(jobs,onProgress,isCurrent){
+  const values=Array(jobs.length);let next=0,done=0,failure;
+  const report=count=>{try{onProgress?.(count,jobs.length+1);}catch{}};
+  report(0);
+  await Promise.all(Array.from({length:Math.min(4,jobs.length)},async()=>{
+    while(next<jobs.length&&!failure&&isCurrent()){
+      const slot=next++;
+      try{values[slot]=await jobs[slot]();}catch(error){failure=error;}
+      report(++done);
+    }
+  }));
+  if(failure)throw failure;
+  if(!isCurrent())throw new Error('储存页面已变化，请重新盘点');
+  return values;
+}
+
+export function storageOverviewSegments(data,format,escape){
+  const used=Math.max(0,Number(data.origin.usage)||0),free=data.origin.quota>0?Math.max(0,data.origin.quota-used):0;
+  const scale=Math.max(1,data.origin.quota,used);
+  const parts=[...(used?[{key:'origin-used',label:'本机浏览器站点已用',bytes:used,color:'var(--sd-accent)'}]:[]),...(free?[{key:'free',label:'可用空间',bytes:free,color:'rgba(127, 127, 127, .18)'}]:[])];
+  return {
+    storageBar:parts.map(item=>`<i class="sd-storage-segment sd-storage-${item.key}" style="--sd-storage-weight:${item.bytes/scale};--sd-storage-color:${item.color}" title="${item.label} ${escape(format(item.bytes))}"></i>`).join(''),
+    legend:(data.categories||[]).filter(item=>Number(item.bytes)>0).map(item=>`<span><i style="--sd-storage-color:${STORAGE_CATEGORY_COLORS[item.category]||STORAGE_CATEGORY_COLORS.other}"></i><em>${escape(STORAGE_CATEGORY_LABELS[item.category]||item.category)}</em><b>${escape(format(item.bytes))}</b></span>`).join(''),
+    originText:data.origin.available?`${format(data.origin.usage)} / ${format(data.origin.quota)}`:'浏览器未提供配额信息',
+  };
+}
+
 // Pure accounting snapshots extracted from the entry without changing contents.
 export function storageDiagnosticSnapshot(settings){
   const storyboard=settings?.imagegen||{};
@@ -96,7 +123,7 @@ export function bindStoragePackageActions(root, {exports, imports}) {
 }
 
 // Existing module packages only; this is not an all-device snapshot or sync protocol.
-export function renderStorageBackupSection(notesStorage, formatBytes = value => `${value} B`, {data, ready = false} = {}) {
+export function renderStorageBackupSection(notesStorage, formatBytes = value => `${value} B`, {data, ready = false, scanning = false} = {}) {
   return `<details class="sd-storage-disclosure sd-storage-backup-section" data-storage-section="backups">
     <summary>备份与清理<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></summary>
     <div class="sd-storage-disclosure-body">
@@ -106,7 +133,7 @@ export function renderStorageBackupSection(notesStorage, formatBytes = value => 
       <div class="sd-storage-backup-row"><span>场外特助会话</span><button type="button" class="sd-btn sd-storage-assistant-library">备份 / 恢复</button></div>
       <p class="sd-storage-scope sd-storage-gallery-check-status" role="status" hidden></p>
       <div class="sd-storage-resource-list">${data ? renderStorageResourceRows(data,formatBytes) : ''}</div>
-      <div class="sd-storage-actions sd-storage-manage-actions">${data ? `<button type="button" class="sd-btn sd-primary sd-storage-clean" ${ready && (data.manageableBytes > 0 || collectionCleanupOptions(data).some(row=>row.bytes>0)) ? '' : 'disabled'}>选择清理项目</button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天清理缓存</button>` : ''}</div>
+      <div class="sd-storage-actions sd-storage-manage-actions">${data||scanning ? `<button type="button" class="sd-btn sd-primary sd-storage-clean" ${ready && (data.manageableBytes > 0 || collectionCleanupOptions(data).some(row=>row.bytes>0)) ? '' : 'disabled'}>选择清理项目</button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天清理缓存</button>` : ''}</div>
     </div>
   </details>`;
 }

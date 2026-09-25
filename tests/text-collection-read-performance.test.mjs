@@ -107,6 +107,17 @@ test('verified browsing state survives panel close, with zero file reads on warm
   assert.equal(f.counts().get,0);assert.equal(f.counts().post,0);assert.equal(reopened.readCacheNeedsRefresh(),false);reopened.close();
 });
 
+test('unchanged background and reopened-session revalidation use one head GET, but a changed head reloads the body',async()=>{
+  const f=await fixture(),readScope={},a=f.make({readScope});await a.list();f.reset();
+  assert.equal((await a.list({cursor:null,limit:50},{revalidate:true})).total,1);
+  assert.equal(f.counts().get,1,'same open session checks only the head');a.close();f.reset();
+  const reopened=f.make({readScope});assert.equal((await reopened.list({cursor:null,limit:50},{revalidate:true})).total,1);
+  assert.equal(f.counts().get,1,'a new panel also checks only the head of its verified snapshot');
+  const remote=f.make();await remote.write(edit(f.record,1,'远端变更','mutation-head01'));remote.close();f.reset();
+  const updated=await reopened.list({cursor:null,limit:50},{revalidate:true});
+  assert.equal(updated.items[0].preview,'远端变更');assert.equal(f.counts().get,3,'changed head is followed by a verified head and body');reopened.close();
+});
+
 test('stale-first browsing stays usable while a background refresh is waiting, then sees the remote result',async()=>{
   const f=await fixture(),readScope={},first=f.make({readScope});await first.list();first.close();
   const remote=f.make();await remote.write(edit(f.record,1,'另一端最新正文','mutation-remote01'));remote.close();f.advance(60000);f.reset();

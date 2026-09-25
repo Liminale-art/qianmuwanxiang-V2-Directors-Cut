@@ -162,7 +162,7 @@ try {
             }
         }
         await page.evaluate(() => renderSettingsFixture('loading'));
-        ok(`${family}/${mode} storage loading is not mistaken for zero usage`, await page.locator('.sd-storage-card').textContent().then(text => text.includes('正在盘点本机数据')) && await page.locator('.sd-storage-hero').count() === 0);
+        ok(`${family}/${mode} storage loading is not mistaken for zero usage`, await page.locator('.sd-storage-card').textContent().then(text => text.includes('准备扫描')) && await page.locator('.sd-storage-hero').count() === 0);
         await page.evaluate(() => renderSettingsFixture('empty'));
         ok(`${family}/${mode} empty inventory cannot enable cleanup`, await page.locator('.sd-storage-clean').isDisabled() && await page.locator('.sd-storage-chat-clean').isDisabled() && await page.locator('.sd-log-entry').count() === 0);
     }

@@ -82,12 +82,12 @@ test('closing and reopening during manager loading permanently invalidates its o
 function cleanupFixture(selected=['__storyboard_restores__']){
   const f=fixture(),c=f.c;let click;
   f.root.querySelector=s=>s==='.sd-storage-clean'?{addEventListener:(_name,callback)=>click=callback}:null;f.root.querySelectorAll=()=>[];
-  c.storageInventoryState={data:{restoreStorage:{namespace:'account'}}};c.openStorageCleanupDialog=async()=>selected;
+  c.storageInventoryState={status:'ready',scope:JSON.stringify([1,'account']),data:{restoreStorage:{namespace:'account'}}};c.openStorageCleanupDialog=async()=>selected;
   const activity=c.configRestoreActivity;
   c.configRestoreActivity=(include=true,own=null)=>({...activity(include,own),cleanup:include&&c.storageCleanupSession.busy});
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>f.chat,epoch:()=>c.storyboardAdmissionEpoch,activity:()=>c.configRestoreActivity(false)});
   c.blobStore={clearStorageItems:()=>assert.fail('handoff must not clear unrelated selected stores')};c.saveSettings=()=>assert.fail('handoff must not save unrelated configuration');
-  vm.runInContext(source('bindStorageManagementEvents'),c);c.bindStorageManagementEvents(f.root);f.cleanup=()=>click();return f;
+  vm.runInContext(['storageInventoryScope','ensureStorageScanCurrent','bindStorageManagementEvents'].map(source).join('\n'),c);c.bindStorageManagementEvents(f.root);f.cleanup=()=>click();return f;
 }
 
 test('real cleanup hands off its slot to the real per-record manager without bypassing task protection',async()=>{

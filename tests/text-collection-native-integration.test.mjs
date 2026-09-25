@@ -57,7 +57,7 @@ test('reconfiguring native storage rejects a cached read from the old client lif
 test('floor star reads do not invalidate shared list/detail cache or redownload verified originals on reopen',async t=>{
     const f=fixture(t),first=await f.open(),original=record();await first.prepareCreate(original).submit();
     await first.get(original.id);const before=f.calls.length;
-    const sources=await first.sources();assert.deepEqual(sources,{expectedAccount:account,items:[{account,chatId:'original-chat',messageId:4}]});
+    const sources=await first.sources();assert.deepEqual(sources,{expectedAccount:account,items:[{id:original.id,revision:1,account,chatId:'original-chat',messageId:4}]});
     assert.doesNotMatch(JSON.stringify(sources),/厨房|当时 CHAR|original-reply/);
     assert.equal(f.calls.length,before,'painting stars must use verified browsing data, not backup export');first.close();
     const second=await f.open();assert.equal((await second.list({cursor:null,limit:50},{preferCache:true})).total,1);

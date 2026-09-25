@@ -1,6 +1,6 @@
 import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {textCollectionPreview} from './qianmu-text-collection.js';
-import {textCollectionSyncEntry,textCollectionSyncResponse,textCollectionSyncError as error} from './qianmu-text-collection-sync-contract.js';
+import {TEXT_COLLECTION_SYNC_LIMITS,textCollectionSyncEntry,textCollectionSyncResponse,textCollectionSyncError as error} from './qianmu-text-collection-sync-contract.js';
 
 // One complete, owned text original. No library head, chat or settings mutation.
 // The native library will publish descriptors only after every body is verified.
@@ -49,6 +49,28 @@ export function createTextCollectionOriginalStore({storage,expectedAccount}={}){
     async read(input,transportOptions){
       const captured=textCollectionOriginalDescriptor(input,options),saved=validateResult(await storage.readImmutable(captured.original,transportOptions));
       if(!equal(descriptor(saved.entry,saved.reference),captured))fail();return saved.entry;
+    },
+    async readMany(inputs,transportOptions){
+      if(!Array.isArray(inputs)||inputs.length<1||inputs.length>4)throw error('contract','收藏原件批次范围无效',400);
+      const captured=inputs.map(input=>textCollectionOriginalDescriptor(input,options));
+      if(typeof storage.readImmutableBatch!=='function')return Promise.all(captured.map(input=>this.read(input,transportOptions)));
+      const entries=[];let start=0;
+      while(start<captured.length){
+        let end=start,total=0;
+        while(end<captured.length&&end-start<4&&total+captured[end].original.bytes<=TEXT_COLLECTION_SYNC_LIMITS.bytes+1024){total+=captured[end].original.bytes;end++;}
+        if(end===start)end++;
+        const group=captured.slice(start,end),results=await storage.readImmutableBatch(group.map(input=>input.original),transportOptions);
+        if(!Array.isArray(results)||results.length!==group.length)fail();
+        for(let index=0;index<group.length;index++){
+          const result=results[index];if(result.status==='rejected')throw result.reason;
+          if(result.status!=='fulfilled')fail();
+          const saved=validateResult(result.value);
+          if(!equal(descriptor(saved.entry,saved.reference),group[index]))fail();
+          entries.push(saved.entry);
+        }
+        start=end;
+      }
+      return entries;
     },
   });
 }

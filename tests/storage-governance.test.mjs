@@ -69,15 +69,15 @@ assert.match(plugTab, /renderStorageManagementCard\(\)/, 'storage management mus
 assert.doesNotMatch(plugTab, /renderRuntimeHealthCard|运行与性能/, 'runtime diagnostics must not compete with data management');
 assert.doesNotMatch(plugTab, /sd-export-config|<h3>配置备份/, 'configuration backup must live inside storage management, not a competing card');
 assert.doesNotMatch(tasksTab, /renderStorageManagementCard|storageCard/, 'the task page must remain focused on task data');
-assert.match(source, /sd-storage-ios-bar[\s\S]*sd-storage-legend/, 'storage must use an iOS-style multicolor bar and legend');
-assert.match(styles, /\.sd-storage-ios-bar[\s\S]*\.sd-storage-segment[\s\S]*--sd-storage-color/, 'each category must own a visual segment');
-assert.match(source, /本设备 · 站点已用 \/ 配额[\s\S]*千幕已盘点/, 'device origin and attributable totals remain separate without a duplicate manageable subtotal');
+assert.match(source, /class="sd-storage-legend"[\s\S]*class="sd-storage-ios-bar"/, 'Qianmu categories must be separate from the browser quota bar');
+assert.match(styles, /\.sd-storage-ios-bar[\s\S]*\.sd-storage-segment[\s\S]*--sd-storage-color/, 'the browser quota bar retains distinct used and free segments');
+assert.match(source, /千幕资料已盘点[\s\S]*浏览器暂存空间[\s\S]*本设备 ST 站点已用 \/ 配额/, 'browser quota is a separate collapsed section, not the Qianmu total');
 assert.match(source,/const manageableBytes[\s\S]*manageableBytes,/,'cleanup eligibility still uses the independently calculated manageable total');
-assert.match(source, /浏览器分配给当前 ST 站点来源的空间[\s\S]*千幕仅统计可明确归因的本地内容/, 'origin use must never be mislabeled as Qianmu-only storage');
-assert.match(source, /不代表 VPS 磁盘总容量/, 'browser quota must not be confused with server disk capacity');
+assert.match(source, /浏览器额度不含 ST 服务器上的聊天和资料[\s\S]*两者不可相加/, 'origin use must never be mislabeled as Qianmu or VPS storage');
+assert.match(source, /不代表 VPS 总容量/, 'browser quota must not be confused with server disk capacity');
 assert.match(source, /classifyStoragePressure\(originEstimate \|\| \{\}\)[\s\S]*pressureNotice[\s\S]*千幕不会自动清理/, 'high origin usage must produce a visible warning without automatic cleanup');
 assert.match(styles, /\.sd-storage-pressure[\s\S]*\.sd-storage-pressure\.is-critical/, 'warning and critical storage pressure need distinct restrained styles');
-assert.match(source, /if \(activeTab === 'plug'\)[\s\S]*refreshStorageInventory/, 'inventory refresh belongs to API and logs');
+assert.doesNotMatch(source.slice(source.indexOf("if (activeTab === 'plug')")),/^\s*void refreshStorageInventory\(false\);/m,'opening API and logs must not auto-start a full inventory');
 assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]*item\.name !== 'storyboard_inbox'[\s\S]*不可恢复[\s\S]*input type="checkbox"/, 'cleanup must show registered stores except account-owned pending originals');
 assert.match(source, /blobStore\.clearStorageItems\(stores, cleanup\)[\s\S]*selected\.includes\('__diagnostics__'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected stores and diagnostics must be cleared independently under the initiating session');
 assert.match(source, /cleared\.has\('storyboard_pipeline_logs'\)[\s\S]*storyboardPipelineArchiveEpoch\+\+[\s\S]*filter\(\(item\) => !storyboardPipelineIsTerminal\(item\)\)/, 'clearing detailed logs must invalidate archive callbacks while preserving active pipelines');
@@ -91,6 +91,11 @@ assert.doesNotMatch(source, /sd-storage-backup-home|先返回资料管理备份/
 const notesExport=source.slice(source.indexOf('async function exportPinnedNotesBackup'),source.indexOf('async function importPinnedNotesBackup'));
 assert.match(notesExport, /listQianmuNotes\(/, 'notes backup reads the current account library, not the unowned legacy library');
 assert.doesNotMatch(notesExport,/filter\(\(note\) => note\.pinned\)/,'non-prominent automatically saved notes must be included in backups');
+for (const [start, end] of [['async function importPinnedNotesBackup','async function exportTtsFavoritesBackup'],['async function importTtsFavoritesBackup','const STORAGE_CHAT_CLEARABLE'],['async function transferAudioCache','// 试听某音色：']]) {
+  const action = source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  assert.match(action,/invalidateStorageInventory\(\)/,'successful imports invalidate totals until the next explicit scan');
+  assert.doesNotMatch(action,/await refreshStorageInventory\(true\)/,'successful imports must not wait for a full inventory scan');
+}
 assert.match(source, /function importPinnedNotesBackup[\s\S]*importQianmuNotesBackup\(file, \{check, confirm:confirmDialog, read:\(\)=>listQianmuNotes\(\{strict:true\}\), write:note=>saveImportedQianmuNote\(note,\{check\}\), uid, progress\}\)/, 'the guarded entry must confirm, use strict inventory and preserve confirmed progress through later failures');
 assert.equal(NOTES_BACKUP_LIMITS.bytes,12*1024*1024);assert.equal(NOTES_BACKUP_LIMITS.entries,1000);
 assert.match(notesSource, /function importQianmuNotesBackup[\s\S]*readLibraryBackupFile\(file,'qianmu-notes',\{check\}\)[\s\S]*await read\(\)/, 'notes restore must finish shared strict preflight before accessing the destination; boundary behavior is verified in library-backup tests');

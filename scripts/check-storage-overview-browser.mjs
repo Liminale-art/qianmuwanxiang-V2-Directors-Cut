@@ -5,7 +5,7 @@ import {mkdir, readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import vm from 'node:vm';
-import {renderStorageBackupSection, replaceStorageManagementCard, collectionCleanupOptions, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection, replaceStorageManagementCard, collectionCleanupOptions, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 
 const require = createRequire(import.meta.url);
@@ -19,8 +19,8 @@ const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota
   characterStorage: {status: 'ready', documents: {count: 0, bytes: 0}, bindings: {count: 0, bytes: 0}, indexes: {bytes: 0}},
   comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}, notesStorage: {status:'ready',bytes:200,count:3,pinned:1}};
 function render(data = snapshot, status = 'ready') {
-  const state = vm.createContext({renderStorageBackupSection, collectionCleanupOptions, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
-    optionalServiceState: {status: 'ready', services: [], version: 'fixture'}, VERSION: '1.59.386',
+  const state = vm.createContext({renderStorageBackupSection, collectionCleanupOptions, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
+    optionalServiceState: {status: 'ready', services: [], version: 'fixture'}, VERSION: '1.59.387',
     htmlEscape: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: bytes => `${((Number(bytes) || 0) / MB).toFixed(1)} MB`, blobStore: {classifyStoragePressure: () => ({level: 'normal'})}});
   vm.runInContext(['optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'renderStorageServiceStatus', 'renderStorageManagementCard'].map(section).join('\n'), state);
@@ -107,7 +107,8 @@ try {
     await page.evaluate(html => {document.querySelector('#story-director-modal .sd-body').innerHTML = html;}, render(null, status));
     assert.equal(await page.locator('.sd-storage-hero').count(), 0);
     assert.equal(await page.locator('.sd-storage-backup-section').count(), 1);
-    assert.equal(await page.locator('.sd-storage-clean').count(), 0);
+    assert.equal(await page.locator('.sd-storage-clean').count(), status === 'loading' ? 1 : 0);
+    if(status==='loading')assert.equal(await page.locator('.sd-storage-clean').isDisabled(),true);
     assert.equal(await page.locator('.sd-storage-service-refresh').count(), 1);
     assert.equal(await page.locator('.sd-storage-card > :last-child').getAttribute('class'), 'sd-storage-service');
     checks.push(`${status}: no fake total or cleanup, backup remains available`);
@@ -151,7 +152,7 @@ try {
   const serviceSource = ['optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n');
   const serviceChecks = await page.evaluate(async ({html, source, replace}) => {
     document.body.innerHTML = `<div id="story-director-modal" class="open"><div class="sd-body" style="height:400px;overflow:auto"><input class="api-draft" value="https://unsaved.invalid/v1"><div style="height:200px"></div>${html}<div style="height:800px"></div></div></div>`;
-    Object.assign(window, {MODAL_ID: 'story-director-modal', VERSION: '1.59.386', optionalServiceState: {status: 'idle', services: [], checkedAt: 0}, optionalServiceProbePromise: null,
+    Object.assign(window, {MODAL_ID: 'story-director-modal', VERSION: '1.59.387', optionalServiceState: {status: 'idle', services: [], checkedAt: 0}, optionalServiceProbePromise: null,
       settings: {}, configUndo: {available: () => false}, ctx: () => ({getRequestHeaders: () => ({})}), probeCount: 0,
       renderModal: () => {throw Error('Unexpected modal redraw');}, paintStorageManagementCard: () => {throw Error('Unexpected card redraw');},
       storyboardPaintVideoConnectionState: async () => {}, refreshQianmuUpdateStatus: async () => {},

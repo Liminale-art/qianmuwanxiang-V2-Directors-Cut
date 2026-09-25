@@ -10,7 +10,7 @@ function fixture(){
   const view={isConnected:true,open:true,classList:{contains:()=>view.open}};
   const c=vm.createContext({document:{getElementById:()=>view},MODAL_ID:'fixture',settings:{},storyboardAdmissionEpoch:1,normalizeQianmuNote,importQianmuNotesBackup,
     confirmDialog:async()=>true,listQianmuNotes:async()=>[{id:'same'}],saveQianmuNote:async note=>saved.push(note),uid:()=> 'copy',
-    notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,notesSyncControls(){},renderFloatingNotes(){},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
+    notesRuntime:['original'],notesLoaded:false,notesPanelOpen:false,notesSyncControls(){},renderFloatingNotes(){},invalidateStorageInventory:()=>{c.invalidated=(c.invalidated||0)+1;},refreshStorageInventory:async()=>{},toast:text=>notices.push(text)});
   vm.runInContext(source('createStorageBackupCheck')+'\n'+source('importPinnedNotesBackup'),c);
   c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('页面变化，已写入内容保留');},release(){c.released=(c.released||0)+1;}});
   c.configRestoreActivity=(include=true,own=null)=>({active:c.otherActivity,transfer:[c.importPinnedNotesBackup,c.importTtsFavoritesBackup,c.coreadImportDataFile,c.coreadExportData,c.exportPinnedNotesBackup,c.exportTtsFavoritesBackup,c.storyboardOpenRestoreStorage].some(t=>t!==own&&t.busy)||c.storageCleanupSession.busy});

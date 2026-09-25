@@ -13,6 +13,21 @@ test('actual native session lists compact metadata and reads only the selected c
   assert.equal((await session.get('missing-item')).record,null);assert.equal(f.calls.length,0);
 });
 
+test('compact descriptors verify original provenance once, then reuse exact in-session source metadata',async t=>{
+  const f=await collectionIndexFixture(t,[record(1),record(2)]),s=await f.open();
+  const first=await s.sources();assert.equal(first.items.length,2);assert.equal(f.bodyReads,2);
+  assert.deepEqual(first.items.map(item=>item.id),f.records.map(row=>row.id));
+  f.reset();const checked=await s.sources({revalidate:true});assert.equal(checked.items.length,2);assert.equal(f.bodyReads,0);
+  assert.equal(f.uploads,0,'browsing does not add an incompatible source field to persisted descriptors');
+});
+
+test('compact descriptors verify sources in bounded parallel read-only groups',async t=>{
+  const f=await collectionIndexFixture(t,Array.from({length:5},(_,i)=>record(i+1))),s=await f.open();let active=0,maximum=0;
+  f.hook(async({path})=>{if(path.includes('-collection-record-')){active++;maximum=Math.max(maximum,active);await new Promise(resolve=>setTimeout(resolve,10));active--;}});
+  f.reset();assert.equal((await s.sources()).items.length,5);assert.equal(f.bodyReads,5);assert.ok(maximum>=2,'old originals are fetched concurrently in groups of at most four');
+  assert.equal(f.uploads,0,'status-only reads never rewrite existing descriptors');
+});
+
 test('inventory, cleanup, restore and batch capabilities do not fetch or hydrate any original',async t=>{
   const f=await collectionIndexFixture(t,[record(1,'文本😀'),record(2,'另一个正文')]),s=await f.open();
   const inventory=await s.inventory();assert.equal(inventory.count,2);assert.equal(inventory.textBytes,Buffer.byteLength('文本😀另一个正文'));

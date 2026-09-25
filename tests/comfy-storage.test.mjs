@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
+import {runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
 import {collectComfyStorage,clearComfySceneStorage} from '../qianmu-comfy-storage.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const namespace='st-user:storage-test';
@@ -40,7 +41,7 @@ test('cleanup requires the exact inventoried account and generation and cannot d
 
 test('actual global inventory attributes all Comfy databases without double counting and keeps browser quota separate',async()=>{
   let collects=0;const comfy={namespace,bytes:600,count:6,workflows:{bytes:100,count:1},pools:{bytes:200,count:2},scenes:{bytes:300,count:3,generation:2},errors:[]};
-  const context=vm.createContext({focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:1000,quota:10000})}},
+  const context=vm.createContext({runStorageInventoryJobs,focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:1000,quota:10000})}},
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},collectionFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[{category:'images',bytes:10,count:1}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
@@ -60,14 +61,14 @@ test('actual cleanup handler requires explicit scene selection and refuses a swi
     const module={clearComfySceneStorage:options=>clearComfySceneStorage({...options,createStore:async()=>({
       clearAccount:async(ns,request)=>{assert.equal(ns,namespace);assert.equal(request.expectedGeneration,2);assert.equal(request.valid(),true);if(mode==='busy')throw Error('在途或结果未明');clears++;return {removed:2};},close:()=>closes++,
     })})};
-    const context=vm.createContext({storyboardAdmissionEpoch:1,storageInventoryState:{data:{comfyStorage:{namespace,scenes:{bytes:100,count:2,generation:2}}}},
+    const context=vm.createContext({storyboardAdmissionEpoch:1,storageInventoryState:{status:'ready',scope:JSON.stringify([1,namespace]),data:{comfyStorage:{namespace,scenes:{bytes:100,count:2,generation:2}}}},
       openStorageCleanupDialog:async()=>{if(mode==='switched')account='st-user:other';return mode==='cancel'?null:mode==='unselected'?['__diagnostics__']:['__comfy_scenes__'];},
       featureRuntime:{load:async key=>key==='comfyStorage'?module:{resolveImageAccountNamespace:async()=>account}},
       blobStore:{clearStorageItems:async rows=>{generic++;assert.equal(rows.length,0);return {cleared:[],failed:[]};}},
       reconcileClearedStorageItems:()=>({}),saveSettings:()=>{},refreshStorageInventory:async()=>{},toast:message=>notices.push(message),settings:{},storyboardState:()=>({}),
     });
     context.storageCleanupSession=createStorageCleanupSession({owner:()=>context.settings,scope:()=>'',epoch:()=>context.storyboardAdmissionEpoch});
-    vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);await events['.sd-storage-clean']();
+    vm.runInContext(['storageInventoryScope','ensureStorageScanCurrent','bindStorageManagementEvents'].map(section).join('\n'),context);context.bindStorageManagementEvents(root);await events['.sd-storage-clean']();
     assert.equal(clears,mode==='selected'?1:0);assert.equal(generic,['selected','unselected'].includes(mode)?1:0);
     if(mode==='busy')assert.ok(notices.some(text=>text.includes('结果未明')));if(mode==='switched')assert.ok(notices.some(text=>text.includes('账户')));
     assert.equal(closes,['selected','busy'].includes(mode)?1:0);

@@ -8,7 +8,7 @@ const payload=JSON.stringify({type:'qianmu-tts-favorites',version:1,entries:[{id
 function fixture(){
   const saved=[],notices=[],view={isConnected:true,open:true,classList:{contains:()=>view.open}};
   const c=vm.createContext({FAVORITES_BACKUP_LIMITS,FAVORITE_TEXT_LIMITS,readLibraryBackupFile,confirmLibraryRestore,confirmDialog:async()=>true,settings:{},storyboardAdmissionEpoch:1,document:{getElementById:()=>view},MODAL_ID:'fixture',activeTab:'api',
-    toast:m=>notices.push(m),uid:()=> 'copy',base64ToBlob:()=>({size:1}),storageSafeFavoriteMeta:x=>x,refreshStorageInventory:async()=>{},
+    toast:m=>notices.push(m),uid:()=> 'copy',base64ToBlob:()=>({size:1}),storageSafeFavoriteMeta:x=>x,invalidateStorageInventory:()=>{c.invalidated=(c.invalidated||0)+1;},refreshStorageInventory:async()=>{},
     blobStore:{hasFavorite:async()=>false,addFavorite:async id=>saved.push(id)}});
   vm.runInContext(source('createStorageBackupCheck')+'\n'+source('importTtsFavoritesBackup'),c);
   c.createCoreadImportViewGuard=()=>({check(){if(c.pageChanged)throw Error('页面变化，已写入内容保留');},release(){c.released=(c.released||0)+1;}});
@@ -70,9 +70,9 @@ test('oversized lists are rejected before lookup, and invalid input releases the
   e.input.files[0].text=async()=>'{';await e.run();assert.equal(e.c.importTtsFavoritesBackup.busy,false);
   e.input.files[0].text=async()=>payload;e.c.blobStore.hasFavorite=async()=>false;await e.run();assert.deepEqual(e.saved,['one','two']);
 });
-test('final inventory errors report completed work without calling the whole import a success',async()=>{
+test('a full inventory scan is not required after a successful import',async()=>{
   const e=fixture();e.c.refreshStorageInventory=async()=>{throw Error('synthetic inventory failure');};await e.run();
-  assert.deepEqual(e.saved,['one','two']);assert.match(e.notices.at(-1),/未完成：已导入 2 条/);assert.equal(e.c.importTtsFavoritesBackup.busy,false);
+  assert.deepEqual(e.saved,['one','two']);assert.match(e.notices.at(-1),/已导入 2 条语音收藏/);assert.equal(e.c.invalidated,1);assert.equal(e.c.importTtsFavoritesBackup.busy,false);
 });
 
 test('cancelling favorite confirmation does not inspect destination or show success; retry remains available',async()=>{

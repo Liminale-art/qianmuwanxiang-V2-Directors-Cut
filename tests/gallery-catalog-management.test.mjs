@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGalleryCatalogManagement, collectGalleryCatalogStorage } from '../qianmu-gallery-catalog-management.js';
 import { galleryCatalogMaintenanceQuery as query } from '../qianmu-gallery-catalog-contract.js';
-import { renderStorageBackupSection } from '../qianmu-storage-backup-view.js';
+import { renderStorageBackupSection, runStorageInventoryJobs } from '../qianmu-storage-backup-view.js';
 import vm from 'node:vm';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
@@ -87,7 +87,7 @@ test('actual inventory counts catalog once, preserves unavailable status and rec
             calls++; assert.equal(await options.resolveNamespace(), ns); assert.equal(options.isCurrent(), true);
             if (unavailable) throw Error('fixture unavailable'); return { namespace: ns, status: 'ready', count: 3, bytes: 90 };
         } : name === 'collectRecipeArchiveStorage' ? async () => ({namespace:ns,status:'ready',files:2,bytes:12345678}) : async () => empty() });
-        const context = vm.createContext({ settings: {}, storyboardAdmissionEpoch: 0, navigator: {},
+        const context = vm.createContext({ runStorageInventoryJobs, settings: {}, storyboardAdmissionEpoch: 0, navigator: {},
             featureRuntime: { load: async () => module }, blobStore: { estimateBlobStoreUsage: async () => ({ totalBytes: 0, categories: [] }), auditOrphanedReaderBlobs: async () => ({}), classifyStoragePressure: () => ({}) },
             storyboardManageImageChannels: async () => empty(), storyboardImageServiceRuntime: async () => ({ manage: async () => empty() }), storyboardComfyRecoveryRuntime: async () => ({ usage: async () => empty() }),
             focusClockLibrary: () => ({ summary: async () => empty() }), notesSyncControls: () => {}, getQianmuNotesStorage: () => empty(), storageJsonBytes: () => 0,

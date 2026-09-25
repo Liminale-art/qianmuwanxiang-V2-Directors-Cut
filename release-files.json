@@ -204,6 +204,7 @@
     "qianmu-text-collection-cleanup-batch.js",
     "qianmu-text-collection-restore-view.js",
     "qianmu-text-collection-floor.js",
+    "qianmu-text-collection-floor-delete.js",
     "qianmu-text-collection-floor-status.js",
     "qianmu-text-collection-storage.js",
     "qianmu-text-collection-library.js",

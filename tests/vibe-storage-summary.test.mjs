@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {renderStorageBackupSection,STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments,STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
 import {collectVibeStorage,validateVibeStorageSummary} from '../qianmu-vibe-storage-summary.js';
 import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -32,7 +32,7 @@ test('account or page changes during success and error paths reject the old summ
   await assert.rejects(()=>collectVibeStorage({...options,call:async()=>{live=false;throw Error('read error');}}),{code:'vibe_storage_stale'});
 });
 function globalContext(value=summary()){
-  return vm.createContext({renderStorageBackupSection,VERSION:'1.59.386',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
+  return vm.createContext({renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments,VERSION:'1.59.387',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},collectionFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[{category:'images',bytes:10,count:1}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
@@ -67,7 +67,7 @@ test('registered fee originals remain accounted without exposing internal receip
 test('actual global card reports unknown Vibe content without duplicate navigation or implying zero',async()=>{
   const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
-  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/部分数据暂不可读取/);assert.match(html,/未盘点站点数据/);assert.match(html,/<span>Vibe 素材<\/span><span>暂未读取<\/span>/);
+  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/部分数据暂不可读取/);assert.doesNotMatch(html,/未盘点站点数据/);assert.match(html,/浏览器暂存空间/);assert.match(html,/<span>Vibe 素材<\/span><span>暂未读取<\/span>/);
   assert.doesNotMatch(html,/bad <metadata>|<span>Vibe 素材<\/span><span>0 B|<button[^>]+sd-storage-vibes/);
 });
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};

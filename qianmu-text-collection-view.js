@@ -59,7 +59,7 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
     main.append(choices, preview);
     const footer = element('footer'), status = element('p'), actions = element('div', undefined, 'qm-text-collection-actions qm-text-collection-capture-actions');
     status.dataset.collectionStatus = ''; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-    const edit = button('编辑收藏', 'edit', 'pencil-simple'), save = button('保存收藏', 'save', 'floppy-disk');
+    const edit = button('编辑收藏', 'edit', 'pencil-simple'), save = button('保存收藏', 'save', 'star');
     save.classList.add('qm-text-collection-save'); actions.append(edit, save); actions.hidden = true;
     footer.append(status, actions); dialog.append(header, main, footer);
 
@@ -121,7 +121,8 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
                 throw new Error('Missing persistence acknowledgement');
             }
             status.textContent = '收藏已保存';
-            finish({ id: acknowledgement.id, revision: acknowledgement.revision });
+            finish({ id: acknowledgement.id, revision: acknowledgement.revision,
+                ...(typeof acknowledgement.expectedAccount === 'string' ? { expectedAccount: acknowledgement.expectedAccount } : {}) });
         } catch (cause) {
             if (!alive()) return;
             pending = false; controls();

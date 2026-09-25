@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTextCollectionFloorStatus} from '../qianmu-text-collection-floor-status.js';
+const alice='st-user:'+'a'.repeat(64),bob='st-user:'+'b'.repeat(64);
 
 function fixture(){
   const state={namespace:'st-user:alice',scope:{chatId:'chat-a',chat:[]},current:true,clock:100,reads:0,identity:0,created:0,closed:0,changes:0,records:[],mode:'ok',hold:null};
-  const account=()=>state.namespace==='st-user:alice'?'account-a':'account-b';
+  const account=()=>state.namespace==='st-user:alice'?alice:bob;
   const manager=createTextCollectionFloorStatus({getScope:()=>state.scope,resolveNamespace:async()=>{state.identity++;return state.namespace;},isCurrent:()=>state.current,now:()=>state.clock,maxAgeMs:1000,onChange:()=>state.changes++,sessionFactory:async()=>{
     state.created++;const expectedAccount=account();
     return {expectedAccount,guard:async()=>{if(account()!==expectedAccount)throw Error('account changed');},close:()=>state.closed++,sources:async({signal})=>{
@@ -14,12 +15,12 @@ function fixture(){
       return {expectedAccount,items:records.map(record=>record.source)};
     }};
   }});
-  const row=(messageId,overrides={})=>({source:{account:'account-a',chatId:'chat-a',messageId,replyId:'swipe:0',...overrides},text:'PRIVATE BODY NOT RETAINED'});
+  const row=(messageId,overrides={})=>({source:{account:alice,chatId:'chat-a',messageId,replyId:'swipe:0',...overrides},text:'PRIVATE BODY NOT RETAINED'});
   return {state,manager,row};
 }
 
 test('one current-chat snapshot serves every visible floor; all swipe versions count while foreign sources do not',async()=>{
-  const {state,manager,row}=fixture();state.records=[row(2),row(2,{replyId:'swipe:9'}),row(4,{account:'account-b'}),row(6,{chatId:'other-chat'})];
+  const {state,manager,row}=fixture();state.records=[row(2),row(2,{replyId:'swipe:9'}),row(4,{account:bob}),row(6,{chatId:'other-chat'})];
   await Promise.all(Array.from({length:200},()=>manager.refresh()));
   assert.equal(state.reads,1);assert.equal(state.created,1);assert.equal(state.closed,1);
   assert.equal(state.identity,3,'200 concurrent renders share one identity/read/guard sequence');
@@ -41,6 +42,37 @@ test('save and delete invalidation reflect only acknowledged snapshots; deleting
   state.records.shift();await manager.refresh({force:true});assert.equal(manager.status(1),true);
   state.records=[];await manager.refresh({force:true});assert.equal(manager.status(1),false);
   assert.equal(state.reads,4);manager.dispose();
+});
+
+test('confirmed local save paints immediately and a retained resume refresh does not flash old stars',async()=>{
+  const {state,manager,row}=fixture();await manager.refresh();assert.equal(manager.status(1),false);
+  manager.confirmedCreate(1,alice);assert.equal(manager.status(1),true);
+  state.records=[row(1)];state.mode='hold';const pending=manager.refresh({force:true,retain:true});
+  while(!state.hold)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(manager.status(1),true,'known star remains visible while the authoritative read is held');
+  state.mode='ok';state.hold();await pending;assert.equal(manager.status(1),true);
+  manager.markUnknown(1);assert.equal(manager.status(1),null);
+  state.records=[];await manager.refresh({force:true,retain:true});assert.equal(manager.status(1),false);manager.dispose();
+});
+
+test('a confirmed save lights only its floor when the initial status is unknown',async()=>{
+  const {state,manager,row}=fixture();state.mode='error';await manager.refresh();
+  assert.equal(manager.status(1),null);assert.equal(manager.status(2),null);
+  manager.confirmedCreate(1,alice);assert.equal(manager.status(1),true);assert.equal(manager.status(2),null,'unknown neighbors are not inferred empty');
+  state.mode='ok';state.records=[row(1)];await manager.refresh({force:true,retain:true});
+  assert.equal(manager.status(1),true);assert.equal(manager.status(2),false);manager.dispose();
+});
+
+test('a pre-save read cannot erase a later receipt; account switch or failed reconciliation becomes unknown or scoped anew',async()=>{
+  const {state,manager}=fixture();state.mode='hold';const old=manager.refresh();
+  while(!state.hold)await new Promise(resolve=>setImmediate(resolve));
+  manager.confirmedCreate(1,alice);assert.equal(manager.status(1),true);assert.equal(manager.status(2),null);
+  state.mode='ok';state.hold();await old;
+  assert.equal(manager.status(1),true,'old empty read cannot override the later save receipt');
+  state.mode='error';await manager.refresh({force:true});assert.equal(manager.status(1),null,'failed refresh does not claim empty');
+  manager.confirmedCreate(1,alice);assert.equal(manager.status(1),true);
+  state.mode='ok';state.namespace='st-user:bob';await manager.refresh({force:true});
+  assert.equal(manager.status(1),false,'new account does not inherit the old account confirmation');manager.dispose();
 });
 
 test('network failure is unknown, does not clear a server record or claim an empty library, and backs off render storms',async()=>{

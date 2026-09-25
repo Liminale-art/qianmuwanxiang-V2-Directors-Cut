@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStoryboardStreamLineage as index} from '../qianmu-storyboard-stream-lineage.js?v=1.59.386';
+import {createStoryboardStreamLineage as index} from '../qianmu-storyboard-stream-lineage.js?v=1.59.387';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const generation=n=>({sentAt:`date-${n}`,startedAt:`generation-${n}`,id:'',activeSentAt:'',activeId:''});
 const endpoint=n=>({messageKey:`message-${n}`,swipeId:0,generation:generation(n)});

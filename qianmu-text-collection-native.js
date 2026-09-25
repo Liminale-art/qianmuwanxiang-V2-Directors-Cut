@@ -42,7 +42,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   const available=()=>Boolean(slot.cache&&!slot.writes&&readCacheMs>0&&now()>=slot.cache.at&&now()-slot.cache.at<30*60*1000);
   const cached=()=>available()&&now()-slot.cache.at<readCacheMs;
   function considerMigration(state){if(state.version===1&&storageFactory===createConfiguredStAccountStorage)requestCollectionMigration({readScope,expectedAccount,slot});return state;}
-  function remember(value,epoch,committed=false){const state=validate(value);let result=state;if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0){slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now()}:null;result=slot.cache?.state||state;}return considerMigration(result);}
+  function remember(value,epoch,committed=false,fingerprint=null){const state=validate(value);let result=state;if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0){slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now(),fingerprint,scope:storageScope}:null;result=slot.cache?.state||state;}return considerMigration(result);}
   function validate(value){
     const state=validateNativeCollectionDocument(value,{expectedAccount,scope:storageScope});format=state.version;return state;
   }
@@ -62,6 +62,12 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
           if(owner!==expectedAccount)throw error('account','收藏储存账户不一致',401);
           await check(options);candidateGuard=()=>!closed&&isCurrent()===true;
         }
+        // A verified same-account snapshot needs only its head for a focus or
+        // background recheck. A changed head still downloads the full document.
+        if(options?.revalidate===true&&available()&&slot.cache.fingerprint&&slot.cache.scope===candidate.scope&&typeof candidate.readFingerprint==='function'){
+          const fingerprint=await candidate.readFingerprint('collections',{...options,guard:candidateGuard});await check(options);
+          if(fingerprint===slot.cache.fingerprint){storageScope=candidate.scope;storageGuard=candidateGuard;format=slot.cache.state.version;slot.cache.at=now();storage=candidate;return storage;}
+        }
         let current=await candidate.read('collections',{...options,guard:candidateGuard});await check(options);
         if(!current.exists){
           let prior=null;try{prior=(await legacy.snapshot(options)).backup;}catch(cause){if(cause?.code!=='text_collection_sync_unavailable'||cause.upstreamStatus!==404)throw cause;}
@@ -70,7 +76,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
           const initial={version:prior?.records.length?1:2,expectedAccount,revision:prior?.libraryRevision||0,entries:(prior?.records||[]).map(record=>({id:record.id,revision:record.revision,updatedAt:record.updatedAt,deleted:false,record})),receipts:[],migration:{source:'qianmu-backend-v1',checkedAt:now(),records:prior?.records.length||0}};
           current=await candidate.write('collections',validate(initial),{...options,expectedFingerprint:null,guard:candidateGuard});
         }
-        await check(options);storageScope=candidate.scope;remember(current.value,epoch);storageGuard=candidateGuard;storage=candidate;return storage;
+        await check(options);storageScope=candidate.scope;remember(current.value,epoch,false,current.fingerprint);storageGuard=candidateGuard;storage=candidate;return storage;
       }catch(cause){candidate.close();throw cause;}
     })();try{return await opening;}finally{opening=null;}
   }
@@ -83,10 +89,15 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     await check(options);
     // Initial open has just verified this exact document; don't download it twice.
     if(!wasOpen&&cached())return slot.cache.state;
+    if(options?.revalidate===true&&available()&&slot.cache.fingerprint&&slot.cache.scope===storageScope&&typeof store.readFingerprint==='function'){
+      const fingerprint=await store.readFingerprint('collections',{...options,guard:storageGuard});await check(options);
+      if(epoch!==slot.epoch){if(available())return slot.cache.state;throw error('changed','收藏目录已更新，请刷新后查看');}
+      if(fingerprint===slot.cache.fingerprint){slot.cache.at=now();return considerMigration(slot.cache.state);}
+    }
     const result=await store.read('collections',{...options,guard:storageGuard});await check(options);
     if(!result.exists){invalidateReadCache();throw error('missing','收藏资料已变化，请重新打开');}
     if(epoch!==slot.epoch){if(available())return slot.cache.state;throw error('changed','收藏目录已更新，请刷新后查看');}
-    return remember(result.value,epoch);
+    return remember(result.value,epoch,false,result.fingerprint);
     }catch(cause){return rejectAccount(cause);}
   }
   async function mutate(inputs,options){
@@ -113,7 +124,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     let verified;
     if(format===2)verified=await indexedWrite();
     else try{verified=await legacyWrite();}catch(cause){if(cause?.code!=='text_collection_sync_layout')throw cause;verified=await indexedWrite();}
-    await check(options);remember(verified.value,++slot.epoch,true);return acknowledgements;
+    await check(options);remember(verified.value,++slot.epoch,true,verified.fingerprint);return acknowledgements;
     }catch(cause){invalidateReadCache();return rejectAccount(cause);}finally{slot.writes--;}
   }
   async function query(method,input={},options){
@@ -151,26 +162,35 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   // list snapshot or build a backup of every original just to paint an icon.
   async function sources(options){
     try{
-    const state=await read(options),epoch=slot.epoch,items=[],liveKeys=new Set();let originals,index=0;
+    const state=await read(options),epoch=slot.epoch,items=[],liveKeys=new Set(),missing=[];let originals,index=0;
     const current=async()=>{await check(options);if(epoch!==slot.epoch)throw error('changed','收藏目录已变化，请重试');};
+    const append=(row,key,provenance)=>{
+      const source=Object.freeze({id:row.id,revision:row.revision,account:provenance.account,chatId:provenance.chatId,messageId:provenance.messageId});
+      slot.sources.set(key,source);items.push({...source});
+    };
+    const flush=async()=>{
+      if(!missing.length)return;
+      await current();originals??=createTextCollectionOriginalStore({storage:await open(options),expectedAccount});
+      const entries=await originals.readMany(missing.map(item=>item.row),{...options,guard:storageGuard});await current();
+      for(let i=0;i<missing.length;i++){
+        const {row,key}=missing[i],entry=entries[i];slot.memo.rememberOriginal(row,entry);append(row,key,entry.record.source);
+      }
+      missing.length=0;
+    };
     for(const row of state.entries){
       if(row.deleted)continue;
       // Metadata-only cache hits do not each need their own HTTP identity probe.
       // Yield/check in bounded batches; original reads still check individually.
       if(index++%64===0){await new Promise(resolve=>setTimeout(resolve,0));await current();}
-      const key=JSON.stringify(state.version===2?row:[row.id,row.revision,row.record.source]);liveKeys.add(key);let source=slot.sources.get(key);
-      if(!source){
-        let record=row.record;
-        if(state.version===2){
-          let entry=slot.memo.getOriginal(row);
-          if(!entry){originals??=createTextCollectionOriginalStore({storage:await open(options),expectedAccount});entry=await originals.read(row,{...options,guard:storageGuard});await current();slot.memo.rememberOriginal(row,entry);}
-          record=entry.record;
-        }
-        source=Object.freeze({account:record.source.account,chatId:record.source.chatId,messageId:record.source.messageId});
-        slot.sources.set(key,source);
-      }
-      items.push({...source});
+      const key=JSON.stringify(state.version===2?row:[row.id,row.revision,row.record.source]);liveKeys.add(key);
+      const source=slot.sources.get(key);
+      if(source){await flush();items.push({...source});continue;}
+      if(state.version!==2){await flush();append(row,key,row.record.source);continue;}
+      const entry=slot.memo.getOriginal(row);
+      if(entry){await flush();append(row,key,entry.record.source);continue;}
+      missing.push({row,key});if(missing.length===4)await flush();
     }
+    await flush();
     await current();for(const key of slot.sources.keys())if(!liveKeys.has(key))slot.sources.delete(key);
     return {expectedAccount,items};
     }catch(cause){return rejectAccount(cause);}

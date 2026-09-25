@@ -31,7 +31,7 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
   }
   return Object.freeze({expectedAccount,namespace,guard,invalidateReadCache:()=>client.invalidateReadCache?.(),readCacheNeedsRefresh:()=>client.readCacheNeedsRefresh?.()===true,list:(input,options)=>client.list(input,options),get:(id,options)=>client.get(id,options),
     snapshot:options=>client.snapshot(options),
-    sources:async options=>client.sources?client.sources(options):{expectedAccount,items:(await client.snapshot(options)).backup.records.map(record=>({account:record.source.account,chatId:record.source.chatId,messageId:record.source.messageId}))},
+    sources:async options=>client.sources?client.sources(options):{expectedAccount,items:(await client.snapshot(options)).backup.records.map(record=>({id:record.id,revision:record.revision,account:record.source.account,chatId:record.source.chatId,messageId:record.source.messageId}))},
     inventory:options=>client.inventory(options),
     restoreInfo:options=>client.restoreInfo(options),
     batchInfo:options=>client.batchInfo(options),

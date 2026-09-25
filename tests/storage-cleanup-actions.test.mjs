@@ -13,17 +13,18 @@ function fixture(result, kind = 'chat') {
   }))};
   const selected=['a','b'].map(chatKey=>({name:'storyboard_plan_archives',chatKey}));
   const calls={save:0,clear:0};
+  let currentScanScope=JSON.stringify([1,'st-user:fixture']);
   const c=vm.createContext({settings:{logHistory:['original']},storyboardAdmissionEpoch:1,releasePlanReferencesForChats,storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
     storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0,
-    storageInventoryState:{data:{idb:{stores:[]}}},storyboardState:()=>state,
+    storageInventoryState:{status:'ready',scope:currentScanScope,data:{idb:{stores:[]}}},storageInventoryScope:async()=>currentScanScope,storyboardState:()=>state,
     openStorageChatCleanupDialog:async()=>selected,openStorageCleanupDialog:async()=>['__diagnostics__'],blobStore:{clearChatScopedStorage:async entries=>{calls.clear++;assert.equal(entries,selected);return result;},clearStorageItems:async()=>{calls.clear++;return result;}},
     getChatKey:()=> 'a',reconcileClearedStorageItems:()=>({chatMetadataChanged:false}),saveSettings(){calls.save++;},
     refreshStorageInventory:async()=>{},toast:(...args)=>notices.push(args),formatStorageBytes:()=> '0 B'});
-  vm.runInContext(source('reconcileClearedStoryboardPlanChats')+'\n'+source('bindStorageManagementEvents'),c);
+  vm.runInContext([source('reconcileClearedStoryboardPlanChats'),source('ensureStorageScanCurrent'),source('bindStorageManagementEvents')].join('\n'),c);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>c.getChatKey(),epoch:()=>c.storyboardAdmissionEpoch});
   const root={isConnected:true,querySelector:selector=>selector===(kind==='chat'?'.sd-storage-chat-clean':'.sd-storage-clean')?{addEventListener:(name,callback)=>handlers.set(name,callback)}:null,querySelectorAll:()=>[]};
   c.bindStorageManagementEvents(root);
-  return {c,root,state,notices,calls,selected:kind==='chat'?selected:['__diagnostics__'],run:()=>handlers.get('click')()};
+  return {c,root,state,notices,calls,selected:kind==='chat'?selected:['__diagnostics__'],setScanScope:value=>{currentScanScope=value;},run:()=>handlers.get('click')()};
 }
 const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
 
@@ -34,6 +35,19 @@ test('selected collection module enters its own explicit dialog and never falls 
   f.c.collectionFloorTools={cleanupOriginals:async(root,confirm,check,namespace,others)=>{check();entered++;assert.equal(root,f.root);assert.equal(confirm,f.c.confirmDialog);scoped=[namespace,others];}};
   await f.run();assert.equal(entered,1);assert.deepEqual(scoped,['st-user:fixture',2]);assert.equal(f.calls.clear,0);assert.equal(f.calls.save,0);assert.equal(f.c.storageCleanupSession.busy,false);
   assert.deepEqual(Array.from(f.c.settings.logHistory),['original']);
+});
+
+test('a stale scan scope after selection blocks both cleanup entry points before any deletion',async()=>{
+  for(const kind of ['chat','module']){
+    const e=fixture({cleared:[],failed:[],count:0,bytes:0},kind);let opened=0;
+    e.c[kind==='chat'?'openStorageChatCleanupDialog':'openStorageCleanupDialog']=async()=>{
+      opened++;e.setScanScope(JSON.stringify([1,'st-user:other']));return e.selected;
+    };
+    await e.run();
+    assert.equal(opened,1,kind);assert.equal(e.calls.clear,0,kind);assert.equal(e.calls.save,0,kind);
+    assert.equal(e.state.shotPlans[0].archiveRef,'original-a');
+    assert.match(e.notices.at(-1)[0],/重新扫描/);assert.equal(e.c.storageCleanupSession.busy,false);
+  }
 });
 
 test('cleanup owns its page watcher through mutation and releases it once without releasing a newer operation',()=>{
@@ -140,7 +154,7 @@ for(const phase of ['selection','storage'])test('both cleanup paths stop stale '
 test('duplicate cleanup does not open a second selector and cancellation releases the shared session',async()=>{
   const e=fixture({cleared:[],failed:[],count:0,bytes:0});let release,opened=0;
   e.c.openStorageChatCleanupDialog=()=>{opened++;return new Promise(r=>release=r);};
-  const pending=e.run();await e.run();assert.equal(opened,1);assert.equal(e.c.storageCleanupSession.busy,true);
+  const pending=e.run();await e.run();await new Promise(resolve=>setImmediate(resolve));assert.equal(opened,1);assert.equal(e.c.storageCleanupSession.busy,true);
   release(null);await pending;assert.equal(e.c.storageCleanupSession.busy,false);assert.equal(e.calls.clear,0);
   e.c.openStorageChatCleanupDialog=async()=>null;await e.run();assert.equal(e.c.storageCleanupSession.busy,false);
 });
