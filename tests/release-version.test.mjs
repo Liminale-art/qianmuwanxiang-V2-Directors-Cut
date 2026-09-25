@@ -21,14 +21,34 @@ test('unverified repositories, missing branches and malformed refs never cause a
   assert.equal(calls,0);
 });
 
-test('same-branch checks are single-flight and cached for thirty minutes including failures',async()=>{
+test('same-branch successful checks are single-flight and cached for thirty minutes',async()=>{
   let now=0,calls=0,finish;const read=createQianmuReleaseVersionReader({now:()=>now,fetchImpl:async()=>{calls++;return new Promise(resolve=>finish=resolve);}});
   const a=read(official),b=read(official);assert.equal(calls,1);finish(response());assert.deepEqual(await Promise.all([a,b]),['1.59.383','1.59.383']);
   now=30*60*1000-1;assert.equal(await read(official),'1.59.383');assert.equal(calls,1);
-  now++;const c=read(official);assert.equal(calls,2);finish(new Response('failed',{status:503}));assert.equal(await c,'');
+  now++;const c=read(official);assert.equal(calls,2);finish(response('1.59.384'));assert.equal(await c,'1.59.384');
+  assert.equal(await read(official),'1.59.384');assert.equal(calls,2);
+});
+
+test('failed checks use a one-minute cache and another branch cannot overwrite the original result',async()=>{
+  let now=0,calls=0,finish;const read=createQianmuReleaseVersionReader({now:()=>now,fetchImpl:async()=>{calls++;return new Promise(resolve=>finish=resolve);}});
+  const first=read(official);assert.equal(calls,1);finish(new Response('failed',{status:503}));assert.equal(await first,'');
+  now=60*1000-1;assert.equal(await read(official),'');assert.equal(calls,1);
+  const other=read({...official,currentBranchName:'codex/next'});assert.equal(calls,2);finish(response('1.59.383'));assert.equal(await other,'1.59.383');
   assert.equal(await read(official),'');assert.equal(calls,2);
-  const d=read({...official,currentBranchName:'codex/next'});assert.equal(calls,3);finish(response('1.59.383'));assert.equal(await d,'1.59.383');
-  assert.equal(await read(official),'','another branch cannot overwrite the original failed result');
+  now++;const recovered=read(official);assert.equal(calls,3);finish(response('1.59.384'));assert.equal(await recovered,'1.59.384');
+  assert.equal(await read(official),'1.59.384');assert.equal(calls,3);
+});
+
+test('force bypasses cached results but joins an in-flight check for the same branch',async()=>{
+  let now=0,calls=0,finish;const read=createQianmuReleaseVersionReader({now:()=>now,fetchImpl:async()=>{calls++;return new Promise(resolve=>finish=resolve);}});
+  const first=read(official),joined=read(official,{force:true});assert.equal(calls,1);
+  finish(response('1.59.383'));assert.deepEqual(await Promise.all([first,joined]),['1.59.383','1.59.383']);
+  now=1000;const refreshed=read(official,{force:true}),joinedAgain=read(official,{force:true});assert.equal(calls,2);
+  finish(response('1.59.384'));assert.deepEqual(await Promise.all([refreshed,joinedAgain]),['1.59.384','1.59.384']);
+  assert.equal(await read(official),'1.59.384');assert.equal(calls,2);
+  const failed=read(official,{force:true});assert.equal(calls,3);finish(new Response('failed',{status:503}));assert.equal(await failed,'');
+  assert.equal(await read(official),'');assert.equal(calls,3);
+  const retried=read(official,{force:true});assert.equal(calls,4);finish(response('1.59.385'));assert.equal(await retried,'1.59.385');
 });
 
 test('package identity and version are validated without borrowing the installed frontend version',async()=>{

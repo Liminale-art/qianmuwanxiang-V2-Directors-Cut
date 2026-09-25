@@ -3,6 +3,7 @@
 const REPOSITORY = 'Liminale-art/qianmuwanxiang-V2-Directors-Cut';
 const MAX_BYTES = 16 * 1024;
 const MAX_AGE = 30 * 60 * 1000;
+const FAILURE_MAX_AGE = 60 * 1000;
 const VERSION = /^v?\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?$/;
 
 function officialBranch(info) {
@@ -48,16 +49,19 @@ async function fetchVersion(url, fetchImpl, timeoutMs) {
 
 export function createQianmuReleaseVersionReader({fetchImpl=globalThis.fetch,now=Date.now,timeoutMs=5000}={}) {
   const cache = new Map(), pending = new Map();
-  return async info => {
+  return async (info,{force=false}={}) => {
     const branch = officialBranch(info);
     if (!branch || typeof fetchImpl !== 'function') return '';
     if (pending.has(branch)) return pending.get(branch);
     const cached = cache.get(branch);
-    if (cached && now() - cached.checkedAt < MAX_AGE) return cached.version;
+    const age = cached ? now() - cached.checkedAt : Infinity;
+    if (!force && cached && age >= 0 && age < (cached.version ? MAX_AGE : FAILURE_MAX_AGE)) return cached.version;
     const url = `https://raw.githubusercontent.com/${REPOSITORY}/${encodeURIComponent(branch)}/package.json`;
     const request = fetchVersion(url,fetchImpl,Math.max(1,Math.min(5000,Number(timeoutMs)||5000))).then(version=>{
-      pending.delete(branch);cache.delete(branch);cache.set(branch,{version,checkedAt:now()});
-      if (cache.size > 8) cache.delete(cache.keys().next().value);
+      if (pending.get(branch) === request) {
+        pending.delete(branch);cache.delete(branch);cache.set(branch,{version,checkedAt:now()});
+        if (cache.size > 8) cache.delete(cache.keys().next().value);
+      }
       return version;
     });
     pending.set(branch,request);return request;
