@@ -23,7 +23,7 @@ async function setup(width,stage,{failHistory=false}={}){
     const {openProseAssistantPanel}=await import('./qianmu-prose-assistant-panel.js');
     const {openProseAssistantHistory}=await import('./qianmu-prose-assistant-history-runtime.js');
     const host={chatId:'A',characterId:0,characters:[{avatar:'A.png',chat:'A'}],chatMetadata:{},chat:[{mes:'PRIVATE story text must not be read'}]};
-    const f=window.fixture={live:true,namespace:'st-user:synthetic-a',identityCalls:0,historyCalls:0,sourceReads:0,requests:0,historyClosed:0,failedReads:failHistory?1:0,readySettled:false,geometryReads:[],geometryWrites:[]};
+    const f=window.fixture={live:true,namespace:'st-user:synthetic-a',identityCalls:0,contextChecks:0,historyCalls:0,sourceReads:0,requests:0,historyClosed:0,failedReads:failHistory?1:0,readySettled:false,geometryReads:[],geometryWrites:[]};
     const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('synthetic-a')));
     f.geometryKey='qianmu-assistant-window:st-user:'+Array.from(digest,byte=>byte.toString(16).padStart(2,'0')).join('');
     f.oldGeometry={width:280,height:240,x:10,y:10};
@@ -40,7 +40,7 @@ async function setup(width,stage,{failHistory=false}={}){
     f.endGesture=(selector,cancelled=false)=>document.querySelector(selector).dispatchEvent(new PointerEvent(cancelled?'pointercancel':'pointerup',{bubbles:true,pointerId:7,isPrimary:true,button:0,clientX:132,clientY:140}));
     const controller=f.controller=new AbortController();
     let release;const gate=new Promise(resolve=>{release=resolve;});f.release=()=>{f.released=true;release();};
-    const source={getContext:()=>host,epoch:()=>0,isCurrent:()=>f.live,signal:controller.signal,readText:()=>{f.sourceReads++;throw Error('unexpected story read');},
+    const source={getContext:()=>{f.contextChecks++;return host;},epoch:()=>0,isCurrent:()=>f.live,signal:controller.signal,readText:()=>{f.sourceReads++;throw Error('unexpected story read');},
       resolveNamespace:async()=>{f.identityCalls++;if(stage==='identity'&&!f.released)await gate;return f.namespace;}};
     const historyFactory=async options=>{
       f.historyCalls++;
@@ -163,5 +163,69 @@ try{
     assert.deepEqual(await page.evaluate(()=>({historyCalls:fixture.historyCalls,requests:fixture.requests,reads:fixture.sourceReads})),{historyCalls:2,requests:0,reads:0});
     checks.push('393/history/read failure retains typed question; explicit retry enables send only after real history validation');
   }finally{await context.close();}
+  const {context:pressureContext,page:pressurePage}=await setup(393,'history');
+  try{
+    await pressurePage.evaluate(async()=>{fixture.release();await fixture.panel.ready;});
+    const pressure=await pressurePage.evaluate(async()=>{
+      const before=fixture.contextChecks;
+      for(let index=0;index<48;index++){
+        document.getElementById('entry').append(document.createElement('span'));
+        await new Promise(resolve=>setTimeout(resolve,8));
+      }
+      await new Promise(resolve=>setTimeout(resolve,100));
+      return {checks:fixture.contextChecks-before,dialogs:document.querySelectorAll('.qm-prose-assistant-dialog').length};
+    });
+    assert.equal(pressure.dialogs,1);
+    assert.ok(pressure.checks>=1&&pressure.checks<=12,'unrelated DOM updates should share bounded lifetime checks');
+    console.log(JSON.stringify({assistantObserverPressure:{updates:48,...pressure}}));
+    checks.push('393/history/48 separately scheduled unrelated DOM updates coalesced');
+  }finally{await pressureContext.close();}
+  const {context:accountContext,page:accountPage}=await setup(393,'history');
+  try{
+    await accountPage.evaluate(async()=>{fixture.release();await fixture.panel.ready;});
+    await accountPage.evaluate(()=>{document.getElementById('entry').append(document.createElement('span'));fixture.live=false;fixture.namespace='st-user:synthetic-b';});
+    await accountPage.waitForFunction(()=>!document.querySelector('.qm-prose-assistant-dialog'),null,{timeout:2000});
+    assert.deepEqual(await accountPage.evaluate(()=>({closed:fixture.historyClosed,requests:fixture.requests,reads:fixture.sourceReads,writes:fixture.geometryWrites.length})),{closed:1,requests:0,reads:0,writes:0});
+    checks.push('393/history/late account switch closes without sending or writing');
+  }finally{await accountContext.close();}
+  const {context:sendContext,page:sendPage}=await setup(393,'history');
+  try{
+    await sendPage.evaluate(async()=>{fixture.release();await fixture.panel.ready;});
+    const refused=await sendPage.evaluate(()=>{
+      fixture.live=false;fixture.namespace='st-user:synthetic-b';
+      document.querySelector('[data-pa-action="send"]').click();
+      return {closed:fixture.historyClosed,requests:fixture.requests,reads:fixture.sourceReads,writes:fixture.geometryWrites.length};
+    });
+    assert.deepEqual(refused,{closed:1,requests:0,reads:0,writes:0});
+    checks.push('393/history/send action rechecks account immediately before passive observer');
+  }finally{await sendContext.close();}
+  const {context:detachContext,page:detachPage}=await setup(393,'history');
+  try{
+    await detachPage.evaluate(async()=>{fixture.release();await fixture.panel.ready;});
+    const detached=await detachPage.evaluate(async()=>{
+      document.getElementById('entry').append(document.createElement('span'));
+      await Promise.resolve();
+      document.getElementById('fixture').remove();
+      await new Promise(resolve=>setTimeout(resolve,0));
+      return {closed:fixture.historyClosed,connected:fixture.panel.element.isConnected,requests:fixture.requests,reads:fixture.sourceReads};
+    });
+    assert.deepEqual(detached,{closed:1,connected:false,requests:0,reads:0});
+    checks.push('393/history/parent removal disposes in observer microtask even with check pending');
+  }finally{await detachContext.close();}
+  const {context:closeContext,page:closePage}=await setup(393,'history');
+  try{
+    await closePage.evaluate(async()=>{fixture.release();await fixture.panel.ready;});
+    const afterClose=await closePage.evaluate(async()=>{
+      document.getElementById('entry').append(document.createElement('span'));
+      await Promise.resolve();
+      document.querySelector('[data-pa-action="close"]').click();
+      await fixture.panel.finished;
+      const checks=fixture.contextChecks;
+      await new Promise(resolve=>setTimeout(resolve,100));
+      return {stable:fixture.contextChecks===checks,closed:fixture.historyClosed,requests:fixture.requests,reads:fixture.sourceReads};
+    });
+    assert.deepEqual(afterClose,{stable:true,closed:1,requests:0,reads:0});
+    checks.push('393/history/explicit close cancels pending lifetime timer');
+  }finally{await closeContext.close();}
   assert.deepEqual(errors,[]);assert.equal(external,0);console.log(JSON.stringify({ok:true,passed:checks.length,checks,external,pageErrors:errors,scope:'real assistant code, synthetic identity/storage transports, no production ST or model API'},null,2));
 }finally{clearTimeout(timer);await browser.close();}

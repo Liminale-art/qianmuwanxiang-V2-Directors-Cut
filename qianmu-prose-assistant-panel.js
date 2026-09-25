@@ -14,7 +14,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   let seed;
   if(!parent.isConnected||isCurrent()!==true)throw Error('场外特助页面已变化');
   const previousFocus=document.activeElement,dialog=document.createElement('section');dialog.className='qm-prose-assistant-dialog';dialog.tabIndex=-1;dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','false');dialog.setAttribute('aria-label','场外特助');
-  let closed=false,busy=false,saving=false,closing=false,sequence=0,resolve,session,observer,history,historyTask=null,historyWorking=true,pendingSnapshot=null,pendingClear=false,disposeWindow,autosave;
+  let closed=false,busy=false,saving=false,closing=false,sequence=0,resolve,session,observer,observerCheckTimer=0,history,historyTask=null,historyWorking=true,pendingSnapshot=null,pendingClear=false,disposeWindow,autosave;
   const listeners=[],rows=new Map(),finished=new Promise(done=>{resolve=done;});
   const node=(tag,value)=>{const element=document.createElement(tag);if(value!==undefined)element.textContent=value;return element;};
   const icons={close:'xmark',settings:'gear',back:'arrow-left',send:'arrow-up',stop:'stop',clear:'trash-can',copy:'copy',eye:'eye',save:'check',retry:'rotate-right',resize:'up-right-and-down-left-from-center'};
@@ -40,7 +40,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   status.dataset.paStatus='';status.setAttribute('role','status');status.setAttribute('aria-live','polite');historyNotice.dataset.paHistory='';historyNotice.setAttribute('role','status');retry.hidden=true;
   composer.className='qm-pa-composer';composer.append(question,send);footer.append(historyNotice,retry,status,composer);
   const resize=node('span');resize.dataset.paResize='';resize.tabIndex=0;resize.setAttribute('role','separator');resize.setAttribute('aria-label','调整窗口大小');dialog.append(header,main,config,footer,resize);
-  function dispose(){if(closed)return;const restoreFocus=dialog.contains(document.activeElement);closed=true;sequence++;autosave?.close();session?.close();history?.close();seed?.close();disposeWindow?.();observer?.disconnect();listeners.splice(0).forEach(remove=>remove());key.value='';question.value='';rows.clear();dialog.remove();if(restoreFocus&&previousFocus?.isConnected)previousFocus.focus({preventScroll:true});resolve(null);}
+  function dispose(){if(closed)return;const restoreFocus=dialog.contains(document.activeElement);closed=true;sequence++;if(observerCheckTimer)view.clearTimeout(observerCheckTimer);observerCheckTimer=0;autosave?.close();session?.close();history?.close();seed?.close();disposeWindow?.();observer?.disconnect();listeners.splice(0).forEach(remove=>remove());key.value='';question.value='';rows.clear();dialog.remove();if(restoreFocus&&previousFocus?.isConnected)previousFocus.focus({preventScroll:true});resolve(null);}
   function alive(){if(closed)return false;try{seed?.assertCurrent();if(source?.signal?.aborted||isCurrent()!==true||!parent.isConnected||!dialog.isConnected)throw Error();return true;}catch(_){dispose();return false;}}
   const validRange=()=>range.value!==''&&Number.isSafeInteger(Number(range.value))&&Number(range.value)>=0&&Number(range.value)<=9;
   function controls(){
@@ -115,6 +115,12 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   listen(view,'beforeunload',event=>{if(autosave?.state().dirty){event.preventDefault();event.returnValue='';}});
   if(source?.signal)listen(source.signal,'abort',dispose);
   parent.append(dialog);disposeWindow=bindProseAssistantWindow(dialog,{handle:header});
-  observer=new view.MutationObserver(()=>{if(!closed)alive();});observer.observe(document.documentElement,{childList:true,subtree:true});controls();dialog.focus({preventScroll:true});const ready=loadHistory();
+  observer=new view.MutationObserver(()=>{
+    if(closed)return;
+    if(!parent.isConnected||!dialog.isConnected){alive();return;}
+    // ST may stream many unrelated DOM changes; actions and storage still use
+    // their own immediate guards, while this passive lifetime check is bounded.
+    if(!observerCheckTimer)observerCheckTimer=view.setTimeout(()=>{observerCheckTimer=0;alive();},50);
+  });observer.observe(document.documentElement,{childList:true,subtree:true});controls();dialog.focus({preventScroll:true});const ready=loadHistory();
   return Object.freeze({element:dialog,finished,ready,dispose});
 }
