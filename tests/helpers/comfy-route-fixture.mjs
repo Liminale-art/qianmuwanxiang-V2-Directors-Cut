@@ -6,6 +6,8 @@ import {hashText} from '../../qianmu-storyboard-utils.js';
 import {projectNewComfyExecution} from '../../qianmu-comfy-new-execution.js';
 import {prepareEnsembleStyleBindings} from '../../qianmu-ensemble-bindings.js';
 import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../../qianmu-ensemble-handoff.js';
+import {createStoryboardQueueWindow} from '../../qianmu-storyboard-queue-window.js';
+import {startStoryboardQueueWindowBatch} from '../../qianmu-storyboard-queue-batch.js';
 import { storyboardFunctionSource as section } from './storyboard-form-fixture.mjs';
 export const namespace = 'st-user:route-test';
 export const graph = label => ({
@@ -49,7 +51,7 @@ export async function routeEnvironment(options={}) {
   const styleSelection={schema:'qianmu.ensemble.chat-selection.v1',namespace,chatKey:'chat-a',revision:'one',enabled:true,schemeIds:styleLibrary.schemes.map(row=>row.id)};
   const styleAssignments=new Map([['shot-0','fixture-style-0'],['shot-1','fixture-style-1'],['shot-2','current']]);
   state.promptDraft.ensembleRequired=true;
-  const context=vm.createContext({...storyboard,projectNewComfyExecution,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},clone:structuredClone,settings:{apiProfiles:[]},storyboardState:()=>state,
+  const context=vm.createContext({...storyboard,projectNewComfyExecution,STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},clone:structuredClone,settings:{apiProfiles:[],enabled:true},storyboardState:()=>state,
     getChatKey:()=> 'chat-a',ctx:()=>({chat:[]}),getCharacterDescription:()=>'',getPersonaDescription:()=>'',
     storyboardCompilerBusy:false,storyboardTargetFloor:()=>-1,storyboardCredentialRevision:0,storyboardAdmissionEpoch:1,storyboardDraftApiKeys:new Map(),
     storyboardSelectedArtistPreset:()=>null,storyboardGalleryRecords:()=>[],storyboardFloorTakeReceipts:()=>[],STORYBOARD_NAI_QUALITY_DEFAULTS:{},STORYBOARD_NAI_NEGATIVE_DEFAULTS:{},STORYBOARD_GENERIC_PROMPT_DEFAULTS:{positive:'global quality',negative:'global negative'},
@@ -58,7 +60,7 @@ export async function routeEnvironment(options={}) {
     resolveImageAccountNamespace:async()=>account,
     saveSettings(){},renderModal(){},toast:message=>{notices.push(message);return false;},
     storyboardGenerationPreparing:new Set(),storyboardQueue:[],storyboardActiveJobs:new Map(),STORYBOARD_QUEUE_LIMIT:100,storyboardQueueSettling:0,
-    storyboardQueueWindow:{reservedCount:0,has:()=>false,notify:()=>{}},
+    storyboardQueueBatches:new Set(),startStoryboardQueueWindowBatch,
     storyboardPipelineArchiveCache:new Map(),storyboardPreparationRetries:new Set(),storyboardScheduleInlineRender(){},storyboardPlanIsTerminal:()=>false,
     blobStore:{deleteStoryboardPipelineLogs:async()=>{}},storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>state.pipelineLogs.find(row=>row.id===log.pipelineId),
     // This fixture ends at the route/queue seam; ledger-backed admission is
@@ -85,11 +87,13 @@ export async function routeEnvironment(options={}) {
     }},
     htmlEscape:value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),
   });
+  context.storyboardQueueWindow=createStoryboardQueueWindow({limit:100,occupied:()=>context.storyboardQueue.length+context.storyboardActiveJobs.size+context.storyboardQueueSettling});
+  context.storyboardQueuePendingCount=()=>[...context.storyboardQueueBatches].reduce((count,entry)=>count+entry.handle.pendingCount,0);
   const names=['storyboardConnectionState','storyboardProviderProfile','storyboardProfileSnapshot','storyboardParameterPresets',
     'storyboardPromptDefaultsKey','storyboardProviderPromptDefaults','storyboardPromptLayerForArtist','storyboardPromptsForArtist','storyboardJoinPrompt',
     'storyboardCaptureWorkbench','storyboardResolveRoutingProfile','storyboardCreatePreparationGuard','storyboardPrepareComfyRoutes','storyboardCompilerRoutes','storyboardCertainCompilerRoute',
     'storyboardUsesComfyCharacters','storyboardPreflightComfyForCompiler','storyboardComfyReferenceMetadata','storyboardWorkflowIssue',
-    'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardVerifyComfyRouteJob',
+    'storyboardGenerationPayload','storyboardCreateJob','storyboardShotSpecForSelection','storyboardAdaptShotForModel','storyboardPlanHasGeneration','storyboardPrepareDraftGroup','storyboardComfyPlanScopes','storyboardGenerate','storyboardEnqueuePreparedBatch','storyboardVerifyComfyRouteJob',
     'storyboardComfySelectionMessage','storyboardComfyPreparationDraft','storyboardRecordComfyPreparationFailure','storyboardReprepareComfyLog','storyboardStoreLog','storyboardPlanForJob','storyboardSyncTaskState','storyboardSetPlanStatus','storyboardEnsembleHost'];
   vm.runInContext(names.map(section).join('\n'),context);
   const compilerRoutes=context.storyboardCompilerRoutes,prepareRoutes=context.storyboardPrepareComfyRoutes;
@@ -103,5 +107,6 @@ export async function routeEnvironment(options={}) {
       resolveProfile:({route})=>context.storyboardResolveRoutingProfile(state,route,null,guard.comfyRoutes),
       verifyTarget:async descriptor=>{if(descriptor.route.comfyWorkflowBinding)await runtime.assertComfyRouteProfile(descriptor.profile,{namespace,guard:async()=>{guard.assertCurrent();return account===namespace;}});return {ready:true,promptFormats:descriptor.route.providerId==='comfy'?(descriptor.profile.comfyRoutePromptFormat?[descriptor.profile.comfyRoutePromptFormat]:guard.comfyRoutes?.promptFormats||[]):['tags']};}});
   }
-  return {...f,state,context,jobs,notices,calls,styleLibrary,styleSelection,styleAssignments,prepareStyles,setAccount:value=>account=value};
+  return {...f,state,context,jobs,notices,calls,styleLibrary,styleSelection,styleAssignments,prepareStyles,setAccount:value=>account=value,
+    awaitScheduled:async()=>{await Promise.all([...context.storyboardQueueBatches].map(entry=>entry.handle.done));}};
 }

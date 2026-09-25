@@ -14,6 +14,7 @@ import {routeEnvironment,recipesFixture,namespace} from './helpers/comfy-route-f
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {compilerEnvironment as environment,casting} from './helpers/comfy-compiler-fixture.mjs';
 const plain=value=>JSON.parse(JSON.stringify(value));
+async function generateSettled(e,...args){const result=await e.context.storyboardGenerate(...args);await e.awaitScheduled();return result;}
 async function workbenchEnvironment(){
   const e=await environment(); e.state.source='comfy';e.state.view='workflows';e.styleSelection.enabled=false;
   Object.assign(e.context,{storyboardNavigate:(_root,patch)=>Object.assign(e.state,patch)});
@@ -51,9 +52,9 @@ test('two-step actual extraction requests the fixed-route format union and binds
   assert.equal(plan.shots[0].shotSpec.promptRenderingPack.sourceHash,shot.promptRenderingPack.sourceHash);
 });
 test('actual extraction -> settings reload -> mixed route jobs -> final workflow inputs preserves formats and narrative order',async()=>{
-  const e=await environment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify(e.errors));
+  const e=await environment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};e.state.shotPlans.push(plan);assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify(e.errors));
   core.normalizeStoryboardState(e.state);
-  assert.equal(await e.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify({notices:e.notices,errors:e.errors}));
+  assert.equal(await generateSettled(e,null,{plan:e.state.shotPlans.find(row=>row.id===plan.id),automatic:true}),true,JSON.stringify({notices:e.notices,errors:e.errors}));
   assert.equal(e.jobs.length,3);assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);assert.equal(e.llmCalls.length,2);
   const [tags,natural,nai]=e.jobs;
   assert.match(tags.payload.prompt,/^tag-scene-0/);assert.match(tags.payload.prompt,/'Alice'|"Alice"/);assert.match(tags.payload.prompt,/coat removed/);
@@ -69,7 +70,7 @@ test('actual extraction -> settings reload -> mixed route jobs -> final workflow
   }
 });
 test('frozen history re-verifies the same expression without reading a newer library version or translating',async()=>{
-  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});const job=e.jobs[0];
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});const job=e.jobs[0];
   const saved=core.sanitizeStoryboardSnapshot(job),loads=e.calls.filter(call=>Array.isArray(call)&&call[0]==='load').length;
   assert.equal(saved.profile.comfyRoutePromptFormat,'tags');assert.equal(saved.payload.shotSpec.promptRenderingPack.invalid,undefined);
   const replay={...saved,payload:saved.payload};await prompts.prepareComfyPromptJob(replay);assert.equal(e.llmCalls.length,2);
@@ -78,20 +79,20 @@ test('frozen history re-verifies the same expression without reading a newer lib
   replay.payload.prompt+=' changed';await assert.rejects(prompts.prepareComfyPromptJob(replay),/已准备的提示表达/);
 });
 test('bad/missing formats, visual edits and safety adaptation stop before a provider request',async()=>{
-  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});
   for(const mutate of [job=>delete job.payload.shotSpec.promptRenderingPack,job=>job.payload.shotSpec.characters[0].action=['dances'],job=>job.safetyAdapted=true,job=>job.profile.comfyRoutePromptFormat='guess']){
     const job=plain(e.jobs[0]);mutate(job);await assert.rejects(prompts.prepareComfyPromptJob(job,{prepare:true}));
   }
   assert.equal(e.llmCalls.length,2);
 });
 test('explicit manual prompt editing bypasses extraction, but submission verifies the exact new text',async()=>{
-  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});const job=plain(e.jobs[0]);
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});const job=plain(e.jobs[0]);
   job.promptLocked=true;job.safetyAdapted=true;delete job.payload.shotSpec.promptRenderingPack;job.payload.prompt='my explicit manual wording';job.payload.negative='manual exclusions';
   await prompts.prepareComfyPromptJob(job,{prepare:true});assert.equal(job.payload.promptRendering.mode,'manual');assert.equal(job.payload.compiledPrompt.prompt,job.payload.prompt);
   await prompts.prepareComfyPromptJob(job);job.payload.prompt+=' changed';await assert.rejects(prompts.prepareComfyPromptJob(job),/已准备的提示表达/);assert.equal(e.llmCalls.length,2);
 });
 test('late async mutations, scope changes and malformed persisted packs cannot be blessed as newly prepared',async()=>{
-  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});let job=plain(e.jobs[0]);
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});let job=plain(e.jobs[0]);
   await assert.rejects(prompts.prepareComfyPromptJob(job,{guard:async()=>{job.profile.comfyRoutePromptLayer.positive='late';}}),/已变化/);
   job=plain(e.jobs[0]);await assert.rejects(prompts.prepareComfyPromptJob(job,{guard:async()=>{throw Error('account changed');}}),/account changed/);
   const spec=plain(job.shotSpec);spec.promptRenderingPack={schema:'v999'};const normalized=core.normalizeStoryboardShotSpec(spec);assert.equal(normalized.promptRenderingPack.invalid,true);
@@ -117,7 +118,7 @@ test('enqueue and pre-submission verify expressions; workflow selection stays ou
   assert.doesNotMatch(section('storyboardGenerate'),/selectComfyWorkflow/);
 });
 test('the actual last-moment submission callback rejects altered expressions before admission',async()=>{
-  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});const job=e.jobs[0];let admissions=0;
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});const job=e.jobs[0];let admissions=0;
   Object.assign(e.context,{job,log:{},storyboardValidatedAnchor:()=>({valid:true}),storyboardAdmission:{beforeSubmit:async()=>{admissions++;}},channelTicket:null,admissionOutcome:'not_submitted'});
   const body=section('storyboardRunJob');const start=body.indexOf('  const beforeSubmit = async () => {'),end=body.indexOf('\n  };\n  try {',start)+5;
   assert.ok(start>0&&end>start);vm.runInContext(`${body.slice(start,end)}\nglobalThis.checkSubmission=beforeSubmit;`,e.context);
@@ -125,7 +126,7 @@ test('the actual last-moment submission callback rejects altered expressions bef
   job.payload.prompt=job.compiledPrompt.prompt;await e.context.checkSubmission();assert.equal(admissions,1);assert.equal(job.submissionState,'unknown');
 });
 test('queued plan details are updated with the actual selected-format compilation',async()=>{
-  const e=await environment();await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});const job=e.jobs[0],plan={id:'p',shots:[{id:'s',compiledPrompt:{prompt:'legacy preview'}}]};job.planShotId='s';
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});const job=e.jobs[0],plan={id:'p',shots:[{id:'s',compiledPrompt:{prompt:'legacy preview'}}]};job.planShotId='s';
   Object.assign(e.context,{storyboardSyncTaskState:()=>null,aggregateStoryboardShotTasks:()=>({status:'queued',error:'',partialFailureCount:0,resultIds:[]}),storyboardPlanIsTerminal:()=>false});
   vm.runInContext(section('storyboardSetPlanStatus'),e.context);e.context.storyboardSetPlanStatus(plan,'queued',{job});
   assert.equal(plan.shots[0].compiledPrompt.prompt,job.payload.prompt);assert.equal(plan.shots[0].compiledPrompt.promptFormat,'tags');
@@ -169,10 +170,11 @@ test('ordinary workbench generation honors format and parameters without revivin
   e.context.storyboardRememberPromptLayer(e.state,null,'comfy',profile.model,'positive','user edited prefix');
   e.context.storyboardRememberPromptLayer(e.state,null,'comfy',profile.model,'negative','user edited exclusion');
   const plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};
+  e.state.shotPlans.push(plan);
   assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify(e.errors));
   assert.deepEqual(e.llmCalls[0].options.promptFormats,['tags']);assert.equal(e.llmCalls[0].options.maxTokens,7400);
   core.normalizeStoryboardState(e.state);
-  assert.equal(await e.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify({errors:e.errors,notices:e.notices}));
+  assert.equal(await generateSettled(e,null,{plan:e.state.shotPlans.find(row=>row.id===plan.id),automatic:true}),true,JSON.stringify({errors:e.errors,notices:e.notices}));
   assert.equal(e.jobs.length,3);assert.ok(e.jobs.every(job=>job.source==='comfy'));
   for(const job of e.jobs){
     assert.equal(job.profile.steps,'19');assert.equal(job.profile.cfg,'6');assert.equal(job.profile.comfyRouteBinding,undefined);
@@ -202,8 +204,8 @@ test('changing a graph or classification stops before the actual LLM call, not b
   }
 });
 test('workbench replay uses frozen classification and additions after library purge, not a fresh head or current UI defaults',async()=>{
-  const e=await workbenchEnvironment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};
-  await e.context.storyboardCompilePrompt(null,{plan});await e.context.storyboardGenerate(null,{plan,automatic:true});
+  const e=await workbenchEnvironment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};e.state.shotPlans.push(plan);
+  await e.context.storyboardCompilePrompt(null,{plan});await generateSettled(e,null,{plan,automatic:true});
   const job=core.sanitizeStoryboardSnapshot(e.jobs[0]),before=job.payload.prompt;e.rows.length=0;
   e.context.storyboardRememberPromptLayer(e.state,null,'comfy','comfy-workflow','positive','do not use this');
   await prompts.prepareComfyPromptJob(job,{namespace});assert.equal(job.payload.prompt,before);
@@ -254,8 +256,8 @@ test('light workbench declarations do not pull candidate selection or reference 
   const declaration=await readFile(new URL('../qianmu-comfy-classification.js',import.meta.url),'utf8');assert.doesNotMatch(declaration,/\b(fetch|indexedDB|WebSocket)\b/);
 });
 test('workbench additions are typed and bounded, never object-to-string prompt coercion',async()=>{
-  const e=await workbenchEnvironment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};
-  await e.context.storyboardCompilePrompt(null,{plan});await e.context.storyboardGenerate(null,{plan,automatic:true});
+  const e=await workbenchEnvironment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};e.state.shotPlans.push(plan);
+  await e.context.storyboardCompilePrompt(null,{plan});await generateSettled(e,null,{plan,automatic:true});
   for(const layer of [{positive:{text:'coerce me'},negative:''},{positive:'x'.repeat(12001),negative:''},{positive:'',negative:null},null]){
     const job=plain(e.jobs[0]);delete job.payload.promptRendering;job.payload.comfyWorkbenchPromptLayer=layer;
     await assert.rejects(()=>prompts.prepareComfyPromptJob(job,{prepare:true,namespace}),/提示补充无效/);assert.equal(job.payload.promptRendering,undefined);
@@ -279,7 +281,7 @@ for(const [name,factory,key] of [['fixed-route',environment,'comfyRoutePromptLay
       // Old saved defaults are a historical fixture, no longer a side effect of applying a recipe.
       for(const field of ['positive','negative'])e.context.storyboardRememberPromptLayer(e.state,null,'comfy',e.state.profiles.comfy.model,field,e.rows[0].document[`${field}Prompt`]);
     }
-    await e.context.storyboardCompilePrompt(null);await e.context.storyboardGenerate(null,{automatic:true});
+    await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});
     const saved=core.sanitizeStoryboardSnapshot(e.jobs[0]),original=JSON.stringify(saved);
     const holder=job=>name==='workbench'?job.payload:job.profile;
     assert.ok(holder(saved)[key].positive);assert.ok(holder(saved)[key].negative);assert.ok(saved.payload.promptRendering);

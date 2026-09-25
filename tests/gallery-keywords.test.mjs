@@ -46,12 +46,13 @@ test('gallery filters are exact intersection, independent of text query, and onl
 });
 test('actual compiler -> normalized settings -> mixed jobs -> gallery records retains per-shot keywords without prompt pollution',async()=>{
   const e=await compilerEnvironment(),plan={id:'plan',chatKey:'chat-a',status:'screening',shots:[]};
+  e.state.shotPlans.push(plan);
   e.state.galleryKeywords=['相伴','风景','物件'];e.response.shots.forEach((shot,i)=>shot.gallery_keywords=[e.state.galleryKeywords[i]]);
   assert.equal(await e.context.storyboardCompilePrompt(null,{plan}),true,JSON.stringify(e.errors));
   assert.equal(e.llmCalls.length,2);assert.deepEqual(e.state.promptDraft.shots.map(shot=>copy(shot.tags)),[['相伴'],['风景'],['物件']]);
   assert.deepEqual(plan.shots.map(shot=>copy(shot.tags)),[['相伴'],['风景'],['物件']]);
   assert.doesNotMatch(e.llmCalls[1].messages[1].content,/gallery_keywords|gallery_keyword_vocabulary|相伴|风景|物件/);
-  core.normalizeStoryboardState(e.state);assert.equal(await e.context.storyboardGenerate(null,{plan,automatic:true}),true,JSON.stringify(e.notices));
+  core.normalizeStoryboardState(e.state);assert.equal(await e.context.storyboardGenerate(null,{plan:e.state.shotPlans.find(row=>row.id===plan.id),automatic:true}),true,JSON.stringify(e.notices));await e.awaitScheduled();
   assert.deepEqual(e.jobs.map(job=>copy(job.tags)),[['相伴'],['风景'],['物件']]);
   vm.runInContext(section('storyboardCreateRecord'),e.context);
   e.context.storyboardProductionDeliveryPolicy=core.storyboardProductionDeliveryPolicy;

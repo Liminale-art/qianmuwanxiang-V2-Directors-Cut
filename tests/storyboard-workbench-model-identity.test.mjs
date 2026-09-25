@@ -6,8 +6,8 @@ import * as storyboard from '../qianmu-storyboard.js';
 import { parseOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility, serializeOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 import {renderEnsembleTargetPicker,openEnsembleTargetPicker} from '../qianmu-ensemble-target-picker.js';
-import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.382';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.382';
+import {prepareEnsembleStyleBindings} from '../qianmu-ensemble-bindings.js?v=1.59.383';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../qianmu-ensemble-handoff.js?v=1.59.383';
 import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
 import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.js';
 
@@ -274,14 +274,17 @@ function generationEnvironment() {
   Object.assign(context, {
     storyboardGenerationPreparing: new Set(),
     storyboardProductionContext: () => ({}), storyboardQueue: [], storyboardActiveJobs: new Map(), STORYBOARD_QUEUE_LIMIT: 100,
-    storyboardQueueSettling: 0, storyboardQueueWindow: {reservedCount:0,has:()=>false,notify:()=>{}},
+    storyboardQueueSettling: 0, storyboardQueueBatches:new Set(), startStoryboardQueueWindowBatch,
     // Model-routing fixture stops at the queue seam; ledger preflight is covered
     // by the separate user-count-range and stream compiler integration suites.
     storyboardPreflightImageBatch: async (_jobs,valid) => { if(!valid())throw Error('preparation changed'); },
     storyboardQueueJob: (job) => { queued.push(job); return true; }, confirmDialog: async () => true,
     storyboardSetPlanStatus:(plan,status,extra={})=>{if(plan)Object.assign(plan,{status,...extra});},
   });
-  vm.runInContext(section('storyboardPlanHasGeneration')+section('storyboardPrepareDraftGroup')+section('storyboardGenerate'), context);
+  context.settings.enabled=true;
+  context.storyboardQueueWindow=createStoryboardQueueWindow({limit:100,occupied:()=>context.storyboardQueue.length+context.storyboardActiveJobs.size+context.storyboardQueueSettling});
+  context.storyboardQueuePendingCount=()=>[...context.storyboardQueueBatches].reduce((count,entry)=>count+entry.handle.pendingCount,0);
+  vm.runInContext(section('storyboardPlanHasGeneration')+section('storyboardPrepareDraftGroup')+section('storyboardGenerate')+section('storyboardEnqueuePreparedBatch'), context);
   state.source = 'openai';
   state.profiles.openai = { ...state.profiles.openai, model: 'gpt-image-2' };
   state.promptDraft.shots = [{ id: 'garden', prompt: 'quiet garden', shotType: 'environment',
@@ -313,12 +316,12 @@ function generationEnvironment() {
   }};
   const generate=context.storyboardGenerate;
   context.storyboardGenerate=(...args)=>{state.promptDraft.ensembleRequired=styleSelection.enabled;return generate(...args);};
-  return { ...env, queued, styleSelection };
+  return { ...env, queued, styleSelection,awaitScheduled:async()=>{await Promise.all([...context.storyboardQueueBatches].map(entry=>entry.handle.done));} };
 }
 
 for (const grouped of [false, true]) {
   test(`actual ${grouped ? 'grouped' : 'independent'} automatic generation shares max budget and never multiplies saved Count`, async () => {
-    const {state, context, queued, styleSelection} = generationEnvironment();
+    const {state, context, queued, styleSelection,awaitScheduled} = generationEnvironment();
     styleSelection.enabled = grouped;
     state.generationPolicy = {version:1, minImages:1, maxImages:2, concurrency:2};
     state.profiles.openai.count = '4';
@@ -326,6 +329,7 @@ for (const grouped of [false, true]) {
       id:scene, prompt:`quiet ${scene}`, shotType:'environment', shotSpec:{sourceParagraphIds:[`p${index}`], scene, location:scene, evidence:{quote:scene}, visualDuty:`establish ${scene}`, narrativePurpose:`establish ${scene}`},
     }));
     assert.equal(await context.storyboardGenerate(null, {automatic:true}),true);
+    if(grouped)await awaitScheduled();
     assert.equal(queued.length,2);
     for(const job of queued){assert.equal(job.payload.parameters.count,1);assert.equal(job.requestTotal,1);assert.equal(job.automatic,true);}
     assert.equal(state.profiles.openai.count,'4');
@@ -395,6 +399,7 @@ function boundedGenerationEnvironment() {
   context.uid=prefix=>`${prefix||'job'}-${++sequence}`;
   context.storyboardScheduleInlineRender=()=>{};
   context.startStoryboardQueueWindowBatch=startStoryboardQueueWindowBatch;
+  context.storyboardQueueWindow.close();
   context.storyboardQueueWindow=createStoryboardQueueWindow({limit:8,pollMs:10,occupied:()=>
     context.storyboardQueue.length+context.storyboardActiveJobs.size+context.storyboardQueueSettling});
   const admissions=[],accepted=[],preflights=[];

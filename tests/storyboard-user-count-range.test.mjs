@@ -219,6 +219,7 @@ test('a valid twenty-one-shot plan fills eight slots, then admits the rest one f
 
 test('later streaming batch exceeding remaining ledger capacity reserves none of its six new jobs',async()=>{
   const f=await fixture(13);f.select(indexes(7));assert.equal(await f.run(),true,JSON.stringify(f.errors));
+  await f.awaitAccepted(7);
   const ledger=[...f.rows.values()][0],sample=copy(ledger.entries[0]);
   for(let index=ledger.entries.length;index<255;index++)ledger.entries.push({...sample,
     attemptId:`old-manual-${index}`,logicalShotId:`old-picture-${index}`,operationKey:`old-action-${index}`,kind:'manual',automaticSlot:false,status:'succeeded'});

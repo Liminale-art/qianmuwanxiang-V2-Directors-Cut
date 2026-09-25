@@ -1,11 +1,11 @@
 // Consume one live compiler handoff without borrowing the editable workbench.
 // Engine selection, prompt safety, admission and transport stay in the existing
 // host pipeline. This adapter neither submits HTTP nor starts a stream watcher.
-import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.382';
-import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.382';
-import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.382';
+import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.383';
+import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.383';
+import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.383';
 import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
-import {storyboardPartialCompletion} from './qianmu-storyboard.js?v=1.59.382';
+import {storyboardPartialCompletion} from './qianmu-storyboard.js?v=1.59.383';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});
@@ -141,7 +141,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
     const freeSlots=typeof d.storyboardQueueFreeSlots==='function'?d.storyboardQueueFreeSlots()
       :d.STORYBOARD_QUEUE_LIMIT-d.storyboardQueue.length-d.storyboardActiveJobs.size;
     if(!Number.isSafeInteger(freeSlots)||freeSlots<0)throw stop('当前生图队列占用状态无法确认，未提交此批流式画面');
-    const deferred=jobs.length>0&&jobs.length>freeSlots;
+    const deferred=jobs.length>0&&(jobs.length>1||jobs.length>freeSlots);
     if(deferred&&typeof d.storyboardQueueWindowEnqueue!=='function')throw stop('当前生图队列空间不足，未提交此批流式画面');
     if(deferred){
       const ready=new Set(jobs.map(job=>job.planShotId));

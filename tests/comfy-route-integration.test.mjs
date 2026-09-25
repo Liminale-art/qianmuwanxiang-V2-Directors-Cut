@@ -41,7 +41,7 @@ test('one preparation reads each exact version once, never opens a global cache 
 test('actual mixed pipeline freezes two independent Comfy graphs and one NAI job in narrative order, without multiplying count',async()=>{
   const e=await routeEnvironment();e.state.profiles.comfy.comfyCharacterEnabled=true;e.routes.forEach(route=>route.comfyCharacterEnabled=true);
   const globalBefore=structuredClone(e.state.profiles.comfy);
-  assert.equal(await e.context.storyboardGenerate(null,{automatic:true}),true);assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);
+  assert.equal(await e.context.storyboardGenerate(null,{automatic:true}),true);await e.awaitScheduled();assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);
   for(const [index,job] of e.jobs.entries()){
     assert.equal(job.inlineOrder.shotIndex,index);assert.equal(job.payload.parameters.count,1);
     assert.equal(job.profile.count,'1');assert.equal(job.automatic,true);
@@ -54,6 +54,22 @@ test('actual mixed pipeline freezes two independent Comfy graphs and one NAI job
   }
   assert.deepEqual(e.state.profiles.comfy,globalBefore);assert.equal(e.context.storyboardGenerationPreparing.size,0);
   assert.equal(e.calls.includes('comfyCharacters'),false);
+});
+
+test('a detached plan stops its visible batch before any frozen mirror enters a reopened queue',async()=>{
+  const e=await routeEnvironment(),plan={id:'detached-plan',chatKey:'chat-a',status:'prompt_ready',shots:[]};
+  e.state.shotPlans.push(plan);
+  for(let index=0;index<100;index++)e.context.storyboardActiveJobs.set(`occupied-${index}`,{});
+  try{
+    assert.equal(await e.context.storyboardGenerate(null,{plan}),true);
+    const [entry]=e.context.storyboardQueueBatches;
+    assert.ok(entry);assert.equal(entry.handle.pendingCount,3);assert.equal(e.jobs.length,0);
+    e.state.shotPlans.splice(e.state.shotPlans.indexOf(plan),1);
+    e.context.storyboardActiveJobs.clear();e.context.storyboardQueueWindow.notify();
+    const result=await entry.handle.done;
+    assert.equal(result.stopped,true);assert.equal(result.acceptedCount,0);assert.equal(result.pendingCount,3);
+    assert.equal(e.jobs.length,0);assert.equal(e.context.storyboardQueuePendingCount(),0);
+  }finally{e.context.storyboardQueueWindow.close();}
 });
 
 test('manual locked text keeps user text and fixed graph identity without retired extra prompt layers',async()=>{
@@ -95,7 +111,7 @@ test('account epoch changes while resolving identity invalidate prepared routes 
 });
 
 test('frozen replay validates original account and graph, without reading a newer or deleted library',async()=>{
-  const e=await routeEnvironment();await e.context.storyboardGenerate(null,{automatic:true});const job=e.jobs[0];e.rows.length=0;e.calls.length=0;
+  const e=await routeEnvironment();await e.context.storyboardGenerate(null,{automatic:true});await e.awaitScheduled();const job=e.jobs[0];e.rows.length=0;e.calls.length=0;
   await e.context.storyboardVerifyComfyRouteJob(job);assert.deepEqual(e.calls,['comfyRoutes','imageAdmission']);
   e.setAccount('st-user:other');await assert.rejects(e.context.storyboardVerifyComfyRouteJob(job),{code:'comfy_route_binding'});
   e.setAccount(namespace);job.profile.comfyWorkflow=JSON.stringify(graph('tampered'));
@@ -156,7 +172,13 @@ test('actual compiler prepares fixed routes before LLM and rejects an account ch
 
 test('exact routing provenance survives a saved plan without copying the workflow into each plan shot',async()=>{
   const e=await routeEnvironment(),plan={id:'plan-a',chatKey:'chat-a',floor:0,status:'screening',shots:[]};
-  await e.context.storyboardGenerate(null,{plan,automatic:true});
+  e.state.shotPlans.push(plan);
+  assert.equal(await e.context.storyboardGenerate(null,{plan,automatic:true}),true);
+  const [entry]=e.context.storyboardQueueBatches;assert.ok(entry);
+  const outcome=await entry.handle.done;assert.equal(outcome.acceptedCount,3);assert.equal(outcome.pendingCount,0);
+  assert.equal(e.jobs.length,3);assert.ok(e.jobs.every(job=>job.planId===plan.id));
+  assert.deepEqual(e.jobs.slice(0,2).map(job=>job.profile.comfyRouteBinding),e.recipes.map(recipe=>recipe.binding));
+  assert.deepEqual(plan.shots[0].comfyRouteBinding,e.recipes[0].binding);
   const normalized=core.normalizeStoryboardState({...e.state,shotPlans:[plan]});
   assert.deepEqual(normalized.shotPlans[0].shots[0].comfyRouteBinding,e.recipes[0].binding);
   assert.equal(Object.hasOwn(normalized.shotPlans[0].shots[2],'comfyRouteBinding'),false);
