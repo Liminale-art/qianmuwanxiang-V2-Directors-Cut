@@ -141,11 +141,11 @@ test('NAI partial variant success cannot be reclassified as wholly unaccepted by
 
 test('actual job runner falls back only after actual read-only preflight failure, never after POST', async () => {
   for (const failureAt of ['preflight', 'direct', 'cancel']) {
-  const state = { enabled: true }, job = { target: 'gallery', source: 'openai' }, log = {}; const finished = [], posts = [];
+  const state = { enabled: true }, job = { target: 'gallery', source: 'openai',imageAccountNamespace:'account-a' }, log = {}; const finished = [], posts = [];
   const directMethods = [];
   const run = vm.runInNewContext(`${section('storyboardRunJob')}\nstoryboardRunJob`, {
     storyboardAutomaticJobEnabled,
-    storyboardAdmission: { beforeSubmit: async () => {} }, storyboardSettleImageAdmission: async () => {},
+    storyboardAdmission: { beforeSubmit: async () => {} }, storyboardSettleImageAdmission: async () => {},resolveImageAccountNamespace:async()=> 'account-a',
     MODULE_NAME: 'test', storyboardState: () => state, storyboardPlanForJob: () => null, storyboardValidatedAnchor: () => ({ valid: true }),
     resolveStoryboardJobModelIdentity: () => ({ capabilityModelId: 'gpt-image-1' }), storyboardMarkLogGenerating: () => {}, storyboardSetPlanStatus: () => {},
     storyboardPrepareGatewayAssets: async () => ({}), storyboardResolveApiKey: async () => 'mock', storyboardGatewayRequest: () => input(),
@@ -168,12 +168,69 @@ test('actual job runner falls back only after actual read-only preflight failure
   }
 });
 
+test('queued work from another ST account cannot touch the current account task state',async()=>{
+  const old={enabled:true,logs:[{id:'old-log'}],taskStates:[]},current={enabled:true,logs:[],taskStates:[]};
+  const value={id:'old-job',logId:'old-log',chatKey:'chat',imageOwnerState:old,imageAccountNamespace:'account-a',imageAdmission:{namespace:'account-a'}};
+  const active=new Map([[value.id,value]]),settled=[];
+  const run=vm.runInNewContext(`${section('storyboardRunQueuedJob')}\nstoryboardRunQueuedJob`,{
+    storyboardState:()=>current,getChatKey:()=> 'chat',resolveImageAccountNamespace:async()=> 'account-b',
+    storyboardSettleImageAdmission:async(job,outcome)=>settled.push([job.id,outcome]),
+    storyboardRunJob:()=>assert.fail('foreign job must not run'),storyboardActiveJobs:active,
+    storyboardQueueWindow:{notify(){}},storyboardQueue:[],renderModal(){},console:{warn:()=>{}},
+  });
+  await run(value);
+  assert.deepEqual(settled,[['old-job','not_submitted']]);assert.equal(active.size,0);
+  assert.deepEqual(current.logs,[]);assert.deepEqual(current.taskStates,[]);
+  assert.deepEqual(old.logs,[{id:'old-log'}]);assert.deepEqual(old.taskStates,[]);
+});
+
+test('queued work may continue after a chat switch within the same ST account',async()=>{
+  const owner={enabled:true,logs:[{id:'old-log'}],taskStates:[]};
+  const value={id:'old-job',logId:'old-log',chatKey:'chat-one',imageOwnerState:owner,
+    imageAccountNamespace:'account-a',imageAdmission:{namespace:'account-a'}};
+  const active=new Map([[value.id,value]]),calls=[];
+  const run=vm.runInNewContext(`${section('storyboardRunQueuedJob')}\nstoryboardRunQueuedJob`,{
+    storyboardState:()=>owner,getChatKey:()=> 'chat-two',resolveImageAccountNamespace:async()=> 'account-a',
+    storyboardSettleImageAdmission:async()=>assert.fail('same-account chat switch must not discard accepted queue work'),
+    storyboardRunJob:async(job,log)=>calls.push([job.id,log.id]),storyboardActiveJobs:active,
+    storyboardQueueWindow:{notify(){}},storyboardQueue:[],renderModal(){},console:{warn:()=>{}},
+  });
+  await run(value);
+  assert.deepEqual(calls,[['old-job','old-log']]);assert.equal(active.size,0);
+  assert.deepEqual(owner.logs,[{id:'old-log'}]);
+});
+
+test('NAI channel handoff account change prevents a provider POST after earlier admission checks',async()=>{
+  let account='account-a',posts=0,currentState;
+  const owner={enabled:true,logs:[{id:'old-log'}],taskStates:[]},foreign={enabled:true,logs:[],taskStates:[]};
+  const log=owner.logs[0],foreignWrites=[],settled=[];currentState=owner;
+  const value={id:'job',source:'novel',target:'gallery',chatKey:'chat',profile:{},payload:{},
+    connection:{imageTransport:'auto'},imageOwnerState:owner,imageAccountNamespace:'account-a',imageAdmission:{namespace:'account-a'}};
+  const run=vm.runInNewContext(`${section('storyboardRunJob')}\nstoryboardRunJob`,{
+    storyboardAutomaticJobEnabled,storyboardState:()=>currentState,storyboardPlanForJob:()=>null,
+    storyboardValidatedAnchor:()=>({valid:true}),resolveStoryboardJobModelIdentity:()=>({capabilityModelId:'nai-diffusion-5-full'}),
+    storyboardMarkLogGenerating(){},storyboardSetPlanStatus(){if(currentState===foreign)foreignWrites.push('plan');},storyboardPipelineStage(){},
+    storyboardResolveApiKey:async()=> 'mock',storyboardPrepareGatewayAssets:async()=>({}),
+    storyboardGatewayRequest:()=>input({provider:'novel',model:'nai-diffusion-5-full'}),
+    storyboardAdmission:{beforeSubmit:async()=>{}},storyboardSettleImageAdmission:async(job,outcome)=>settled.push([job.imageAdmission.namespace,outcome]),
+    storyboardImageChannelRuntime:async()=>({run:async(_options,use)=>use({beforeSubmit:async()=>{account='account-b';currentState=foreign;}})}),
+    directImageRuntime:async()=>({generateDirectImage:async(_request,{beforeSubmit})=>{await beforeSubmit();posts++;return {};},isDirectImageTransportError:()=>false}),
+    resolveImageAccountNamespace:async()=>account,storyboardFinishLog:()=>{if(currentState===foreign)foreignWrites.push('log');},
+    storyboardPipelineForLog:()=>null,saveSettings(){if(currentState===foreign)foreignWrites.push('save');},toast(){},console:{error:()=>{}},MODULE_NAME:'test',
+    confirmDialog:async()=>true,
+  });
+  await run(value,log);
+  assert.equal(posts,0);assert.deepEqual(foreignWrites,[]);
+  assert.deepEqual(foreign.logs,[]);assert.deepEqual(foreign.taskStates,[]);
+  assert.ok(settled.some(([namespace,outcome])=>namespace==='account-a'&&outcome==='not_submitted'));
+});
+
 test('uncertain retry requires explicit consent and discards stale confirmation after a chat change', async () => {
   for (const choice of ['decline', 'approve', 'chat-change', 'snapshot-change', 'removed']) {
     const log = { id: 'log', status: 'failed', submissionState: 'unknown', snapshot: { prompt: 'old' } };
     const state = { logs: [log] }; let chat = 'chat-a', queued = 0, confirmed = 0;
     const retry = vm.runInNewContext(`${section('storyboardRetryLog')}\nstoryboardRetryLog`, {
-      storyboardState: () => state, getChatKey: () => chat, storyboardJobFromLog: () => ({ chatKey: 'chat-a' }),
+      storyboardState: () => state, getChatKey: () => chat, resolveImageAccountNamespace:async()=> 'account-a',storyboardJobFromLog: () => ({ chatKey: 'chat-a',imageAccountNamespace:'account-a' }),
       storyboardGalleryRecords: () => [], storyboardQueueJob: async (_job, stillCurrent) => {
         // The shared admission layer now owns confirmation for every entry.
         confirmed++; if (choice === 'chat-change') chat = 'chat-b'; if (choice === 'snapshot-change') log.snapshot.prompt = 'new'; if (choice === 'removed') state.logs = [];
@@ -190,7 +247,7 @@ test('known rejected retries remain direct, while accepted-but-unreadable retrie
     const log = { id: 'log', status: 'failed', submissionState, snapshot: {} }; let confirmations = 0, queued = 0;
     const state = { logs: [log] };
     const retry = vm.runInNewContext(`${section('storyboardRetryLog')}\nstoryboardRetryLog`, {
-      storyboardState: () => state, getChatKey: () => 'chat', storyboardJobFromLog: () => ({}),
+      storyboardState: () => state, getChatKey: () => 'chat', resolveImageAccountNamespace:async()=> 'account-a',storyboardJobFromLog: () => ({imageAccountNamespace:'account-a'}),
       storyboardGalleryRecords: () => [], storyboardQueueJob: async (_job, stillCurrent) => { if (submissionState === 'accepted') confirmations++; assert.ok(stillCurrent()); queued++; return true; }, toast: () => {},
     });
     await retry(log); assert.equal(queued, 1); assert.equal(confirmations, submissionState === 'accepted' ? 1 : 0);

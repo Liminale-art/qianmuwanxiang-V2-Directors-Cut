@@ -8,10 +8,10 @@ import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.
 const ids=(n=140)=>Array.from({length:n},(_,i)=>'collection-'+i);
 const plain=value=>JSON.parse(JSON.stringify(value));
 function fixture(){
-  const record={id:'image',collectionIds:ids(),collectionId:'legacy-primary'},log={id:'log',recordId:'image',snapshot:{source:'novel',target:'gallery',chatKey:'chat',profile:{model:'nai-diffusion-5-full'},payload:{prompt:'test'},connection:{baseUrl:'https://fixture.invalid',credentialId:'local-reference'}}};
+  const record={id:'image',collectionIds:ids(),collectionId:'legacy-primary'},log={id:'log',recordId:'image',snapshot:{source:'novel',target:'gallery',chatKey:'chat',imageAccountNamespace:'st-user:fixture',profile:{model:'nai-diffusion-5-full'},payload:{prompt:'test'},connection:{baseUrl:'https://fixture.invalid',credentialId:'local-reference'}}};
   const state={logs:[log]},e={record,log,records:[record],jobs:[],guards:[],chatKey:'chat'};
   const c=vm.createContext({...core,galleryMembershipSnapshot,clone:structuredClone,uid:()=> 'new',uniqueClean:values=>[...new Set(values)],
-    storyboardState:()=>state,getChatKey:()=>e.chatKey,storyboardGalleryRecords:()=>e.records,storyboardGalleryGroupId:()=> 'root',
+    storyboardState:()=>state,getChatKey:()=>e.chatKey,resolveImageAccountNamespace:async()=> 'st-user:fixture',storyboardGalleryRecords:()=>e.records,storyboardGalleryGroupId:()=> 'root',
     storyboardQueueJob:(job,guard)=>{e.jobs.push(job);e.guards.push(guard);return guard();},toast:()=>false,
     storyboardLoadLogToWorkbench:()=>{},storyboardFloorTakeReceipts:()=>[],hashText:()=> 'hash'});
   vm.runInContext(['storyboardJobFromLog','storyboardRetryLog','storyboardCreateRecord'].map(fn).join('\n'),c);e.c=c;return e;

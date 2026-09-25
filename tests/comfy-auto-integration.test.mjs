@@ -72,7 +72,7 @@ async function recoveryEnvironment(options={}){
   if(options.sameScene)for(const shot of e.response.shots){shot.scene.location='kitchen';shot.composition.continuity_key='one-scene';}
   for(const shot of e.response.shots)shot.gallery_keywords=['风景'];
   e.context.storyboardProbeComfyCandidate=async(...args)=>{const request=args[3];if(rejected&&request.shot.subject.includes(options.failedText||'mountain'))throw Error('temporary node unavailable');return probe(...args);};
-  Object.assign(e.context,{storyboardPumpQueue(){},storyboardValidatedAnchor:()=>({valid:true}),storyboardImageAdmissionRuntime:async()=>({admit:async()=>{admissions++;}}),
+  Object.assign(e.context,{storyboardPumpQueue(){},storyboardValidatedAnchor:()=>({valid:true}),storyboardImageAdmissionRuntime:async()=>({admit:async job=>{admissions++;job.imageAdmission={namespace:job.imageAccountNamespace};}}),
     storyboardSettleImageAdmission:(job,outcome)=>e.manager.settle(job,outcome)});
   vm.runInContext(['storyboardStartLog','storyboardFinishLog','storyboardRecordPreparedJobFailure','storyboardQueueJob','storyboardJobFromLog','storyboardRetryLog','storyboardSetPlanStatus'].map(section).join('\n'),e.context);
   assert.equal(await e.context.storyboardCompilePrompt(null,{plan:p}),true,JSON.stringify(e.errors));

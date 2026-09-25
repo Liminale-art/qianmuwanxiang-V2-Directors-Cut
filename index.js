@@ -3490,23 +3490,6 @@ function validateApiSettings() {
   return !!getGenerateRaw();
 }
 
-// 推理模型可能把思考放在 reasoning_content / reasoning / analysis 等独立字段。
-// 这些字段永远不拼进正文，只通过专用回调交给需要折叠展示的调用方。
-// modelReasoningText - 已迁移到 qianmu-storyboard-utils.js
-// function modelReasoningText(value) {
-//   if (typeof value === 'string') return value.trim();
-//   if (Array.isArray(value)) return value.map(modelReasoningText).filter(Boolean).join('\n').trim();
-//   if (!value || typeof value !== 'object') return '';
-//   return modelReasoningText(value.text ?? value.content ?? value.summary ?? value.reasoning ?? '');
-// }
-
-// modelMessageReasoning - 已迁移到 qianmu-storyboard-utils.js
-// function modelMessageReasoning(message) {
-//   if (!message || typeof message !== 'object') return '';
-//   return modelReasoningText(message.reasoning_content ?? message.reasoning ?? message.reasoning_details
-//     ?? message.thinking_content ?? message.thinking ?? message.analysis ?? message.thoughts ?? '');
-// }
-
 async function callExternalApi(messages, onDelta = null, cfg = null, controller = null) {
   const { callExternalModel } = await import('./qianmu-model-external.js');
   return callExternalModel(messages, onDelta, cfg, controller || (abortController = new AbortController()),
@@ -17363,6 +17346,7 @@ function storyboardStartLog(job,{preparationError=''}={}) {
       planId: job.planId || '', planShotId: job.planShotId || '', tags:clone(job.tags||[]),
       ...(job.floorTake?{floorTake:normalizeStoryboardFloorTake(job.floorTake)}:{}),
       imageAdmission: job.imageAdmission,
+      imageAccountNamespace: job.imageAccountNamespace || job.imageAdmission?.namespace,
       ...(Object.hasOwn(job,'comfySceneOrigin') ? {comfySceneOrigin:job.comfySceneOrigin} : {}),
       ...(Object.hasOwn(job,'ensembleStyleOrigin') ? {ensembleStyleOrigin:job.ensembleStyleOrigin} : {}),
       ...(job.source === 'comfy' ? { comfyExecution: job.comfyExecution, comfyAudit: job.comfyAudit } : {}),
@@ -17460,8 +17444,13 @@ function storyboardFinishLog(log, status, details = {}) {
   if (status !== 'generating') void storyboardArchivePipelineLog(log);
 }
 
-function storyboardRecordPreparedJobFailure(job,message) {
-  if(!job?.id||job.logId||job.queueAccepted||storyboardQueue.some(item=>item.id===job.id)||storyboardActiveJobs.has(job.id))return null;
+async function storyboardRecordPreparedJobFailure(job,message,isCurrent=()=>true) {
+  const state=job?.imageOwnerState,origin=job?.imageAccountNamespace||job?.imageAdmission?.namespace;
+  if(!origin||!state||!isCurrent()||state!==storyboardState()||job.chatKey!==String(getChatKey()||''))return null;
+  try{if(await resolveImageAccountNamespace()!==origin)return null;}catch(_){return null;}
+  if(!isCurrent()||state!==storyboardState()||job.chatKey!==String(getChatKey()||'')||!job.id||job.logId||job.queueAccepted||storyboardQueue.some(item=>item.id===job.id)||storyboardActiveJobs.has(job.id))return null;
+  if(job.planId&&(!job.imageOwnerPlan||!state.shotPlans.includes(job.imageOwnerPlan)
+    ||!job.imageOwnerPlan.shots?.some(shot=>shot===job.imageOwnerShot&&shot.id===job.planShotId)))return null;
   const error=String(sanitizeStoryboardDiagnosticData(String(message||'本镜未能入队，请核对连接与工作流'))).slice(0,1600);
   job.compilerStages=[...(job.compilerStages||[]),{id:uid('stage-queue-preparation'),type:'queue_preparation',status:'failed',startedAt:Date.now(),finishedAt:Date.now(),
     input:{shotIndex:job.inlineOrder?.shotIndex},output:{submissionState:'not_submitted'},decisions:['未进入执行队列，未发送生图请求'],error}];
@@ -19457,6 +19446,12 @@ async function storyboardPreflightImageBatch(jobs, preparationCurrent = () => tr
   const admission = await storyboardImageAdmissionRuntime();
   await admission.preflight(jobs, { maxAutomatic: policy.maxImages,
     history: [...state.logs, ...storyboardGalleryRecords()], valid });
+  if(!valid())throw new Error('分镜状态已变化，未提交生图');
+  for(const job of jobs){
+    Object.defineProperty(job,'imageOwnerState',{value:state,configurable:true});
+    const plan=state.shotPlans.find(row=>row.id===job.planId),shot=plan?.shots?.find(row=>row.id===job.planShotId);
+    if(plan&&shot){Object.defineProperty(job,'imageOwnerPlan',{value:plan,configurable:true});Object.defineProperty(job,'imageOwnerShot',{value:shot,configurable:true});}
+  }
 }
 
 async function storyboardQueueJob(job, preparationCurrent = () => true, onFailure = () => {}, permit = null) {
@@ -19496,6 +19491,8 @@ async function storyboardQueueJob(job, preparationCurrent = () => true, onFailur
     return refuse(`等待队列最多 ${STORYBOARD_QUEUE_LIMIT} 项，请先完成或移除部分任务。`);
   }
   const state = storyboardState(), chatKey = String(getChatKey() || '');
+  if(job.imageOwnerState&&job.imageOwnerState!==state)return refuse('分镜会话已变化，未提交生图');
+  Object.defineProperty(job,'imageOwnerState',{value:state,configurable:true});
   const valid = () => storyboardState() === state && state.enabled && !job.discardRequested
     && String(getChatKey() || '') === chatKey && preparationCurrent()
     && (!job.expectedImageAccountNamespace || !job.imageAdmission || job.imageAdmission.namespace === job.expectedImageAccountNamespace)
@@ -19517,12 +19514,13 @@ async function storyboardQueueJob(job, preparationCurrent = () => true, onFailur
     const admission = await storyboardImageAdmissionRuntime();
     await admission.admit(job, { maxAutomatic: getStoryboardGenerationPolicy(state).maxImages,
       history: [...state.logs, ...storyboardGalleryRecords()], valid });
-    if (!valid()) {
+    if (!valid() || !job.imageAccountNamespace || job.imageAdmission?.namespace!==job.imageAccountNamespace
+      || await resolveImageAccountNamespace()!==job.imageAccountNamespace || !valid()) {
       await storyboardSettleImageAdmission(job, 'not_submitted');
       return false;
     }
   } catch (error) {
-    if(job.comfySceneClaim)await storyboardSettleImageAdmission(job,'not_submitted');
+    if(job.imageAdmission||job.comfySceneClaim)await storyboardSettleImageAdmission(job,'not_submitted');
     return refuse(error?.message || '未取得生图授权，请核查原任务');
   }
   let log;
@@ -20206,7 +20204,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
             if(await storyboardQueueJob(job,inputGuard.isCurrent,message=>{reason=message;}))queued++;
             else if(reason&&inputGuard.isCurrent()){
               queueFailures++;
-              try{storyboardRecordPreparedJobFailure(job,reason);}catch(_){toast('本镜未入队，失败记录未能完整保存；已入队镜头不受影响','warning');}
+              try{await storyboardRecordPreparedJobFailure(job,reason,inputGuard.isCurrent);}catch(_){toast('本镜未入队，失败记录未能完整保存；已入队镜头不受影响','warning');}
             }
           }catch(error){if(job.queueAccepted||storyboardQueue.some(item=>item.id===job.id)||storyboardActiveJobs.has(job.id))queued++;throw error;}
         }
@@ -20229,7 +20227,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
       backgroundBatch=storyboardEnqueuePreparedBatch(jobs,{plan,chatKey:generationChatKey,isCurrent,admissionCurrent,
         prepare:async()=>{if(!admissionCurrent()||await resolveImageAccountNamespace()!==batchNamespace||!admissionCurrent())throw new Error('账户或镜头内容已变化，余下未提交');},
         onAccepted:()=>{queued++;if(!automatic&&plan?.manualReviewRequired){plan.manualReviewRequired=false;for(const shot of plan.shots||[])shot.requiresManualConfirmation=false;saveSettings();}},
-        onRefused:(job,reason)=>{if(reason&&isCurrent()){queueFailures++;try{storyboardRecordPreparedJobFailure(job,reason);}catch(_){toast('本镜未入队，失败记录未能完整保存','warning');}}},
+        onRefused:async(job,reason)=>{if(reason&&admissionCurrent()){queueFailures++;try{await storyboardRecordPreparedJobFailure(job,reason,admissionCurrent);}catch(_){toast('本镜未入队，失败记录未能完整保存','warning');}}},
         onStop:result=>{
           const message='本批未提交，可重新取景';
           for(const job of result.remainingJobs){const shot=plan?.shots?.find(item=>item.id===job.planShotId);if(shot&&!(owner.taskStates||[]).some(task=>task.planId===plan.id&&task.shotId===shot.id&&['queued','generating','completed'].includes(task.status))){shot.status='cancelled';shot.error=message;}}
@@ -20262,6 +20260,13 @@ async function storyboardRetryLog(log, { isCurrent = () => true } = {}) {
   const state = storyboardState(), chatKey = getChatKey(), snapshot = JSON.stringify(log?.snapshot);
   const job = storyboardJobFromLog(log);
   if (!job) return toast('旧记录缺少完整模型或连接快照，请载入镜头台确认。', 'warning');
+  const origin=job.imageAccountNamespace||job.imageAdmission?.namespace;
+  if(job.imageAccountNamespace&&job.imageAdmission?.namespace&&job.imageAccountNamespace!==job.imageAdmission.namespace)return toast('原记录账户来源冲突，未提交生图','warning');
+  if(!origin)return toast('原记录缺少账户来源，请载入镜头台核对后重新生成','warning');
+  let account;
+  try{account=await resolveImageAccountNamespace();}catch(_){return toast('当前 ST 账户未确认，未提交生图','warning');}
+  if(account!==origin)return toast('原画面属于另一 ST 账户，未提交生图','warning');
+  if(!isCurrent()||state!==storyboardState()||chatKey!==getChatKey()||snapshot!==JSON.stringify(log.snapshot)||!state.logs.includes(log))return false;
   const previous = storyboardGalleryRecords().find((item) => item.id === log.recordId || log.recordIds?.includes(item.id));
   const membership = previous ? JSON.stringify(galleryMembershipSnapshot(previous)) : '';
   if (previous) {
@@ -20314,13 +20319,17 @@ async function storyboardReprepareComfyLog(log,{isCurrent=()=>true}={}) {
       planId:original.planId,planShotId:original.planShotId,inlineOrder:original.inlineOrder,attempt:Number(log.attempt||1)+1,routeTarget:selected,preparedRoutes:inputGuard.comfyRoutes,freshComfy:inputGuard.freshComfy});
     job.paragraphAnchor=clone(original.paragraphAnchor);job.automatic=false;
     applyStoryboardFloorTakeToJob({floorTake:original.floorTake},job);
+    job.imageAccountNamespace=original.pool.namespace;
+    Object.defineProperty(job,'imageOwnerState',{value:state,configurable:true});
+    const ownerPlan=state.shotPlans.find(row=>row.id===job.planId),ownerShot=ownerPlan?.shots?.find(row=>row.id===job.planShotId);
+    if(ownerPlan&&ownerShot){Object.defineProperty(job,'imageOwnerPlan',{value:ownerPlan});Object.defineProperty(job,'imageOwnerShot',{value:ownerShot});}
     Object.defineProperty(job,'comfyAutoSelected',{value:true,enumerable:false});
     await batch.attach(job,choice);await guard();
     job.compilerStages=[{id:uid('stage-selection'),type:'comfy_selection',status:'success',startedAt:Date.now(),finishedAt:Date.now(),
       input:{preparationLogId:log.id,shot:original.inlineOrder.shotIndex+1},output:{workflow:selected.comfyWorkflowBinding.name,version:selected.comfyWorkflowBinding.version},decisions:['用户确认按当前 Comfy 配置重新准备本镜'],error:''}];
     let reason='';
     accepted=await storyboardQueueJob(job,inputGuard.isCurrent,message=>{reason=message;});
-    if(!accepted&&reason&&inputGuard.isCurrent())resolved=Boolean(storyboardRecordPreparedJobFailure(job,reason));
+    if(!accepted&&reason&&inputGuard.isCurrent())resolved=Boolean(await storyboardRecordPreparedJobFailure(job,reason,inputGuard.isCurrent));
     return accepted;
   }catch(error){
     if(valid())toast(String(sanitizeStoryboardDiagnosticData(error?.message||'本镜准备失败')).slice(0,240),'warning');
@@ -20730,6 +20739,8 @@ async function storyboardRunJob(job, log) {
       if(job.comfySceneClaim)await (await storyboardComfySceneRuntime()).beforeSubmit(job,()=>!job.discardRequested&&storyboardState().enabled
         &&storyboardAutomaticJobEnabled(job,storyboardState())
         &&(job.target==='gallery'||storyboardValidatedAnchor(job).valid||storyboardValidatedAnchor(job).linkState==='foreign'));
+      const origin=job.imageAccountNamespace||job.imageAdmission?.namespace;
+      if(!origin||job.imageAdmission?.namespace&&job.imageAdmission.namespace!==origin||await resolveImageAccountNamespace()!==origin)throw new Error('ST 账户已变化，未提交生图');
     } catch (error) {
       throw Object.assign(new Error(error?.message || '生图授权已失效'), { code: 'storyboard_submission_cancelled', submissionState: job.submissionState || 'not_submitted' });
     }
@@ -20900,6 +20911,9 @@ async function storyboardRunJob(job, log) {
       admissionOutcome = 'succeeded';
     }
   } catch (error) {
+    const origin=job.imageAccountNamespace||job.imageAdmission?.namespace;
+    let account='';try{account=await resolveImageAccountNamespace();}catch(_){}
+    if(!origin||account!==origin||job.imageOwnerState&&job.imageOwnerState!==storyboardState())return;
     console.error(`[${MODULE_NAME}] storyboard generation failed`, error);
     const submissionState = error?.submissionState || job.submissionState || 'not_submitted';
     admissionOutcome = submissionState;
@@ -20922,8 +20936,14 @@ async function storyboardRunJob(job, log) {
 }
 
 async function storyboardRunQueuedJob(job) {
-  const log = storyboardState().logs.find((item) => item.id === job.logId);
   try {
+    const origin=job.imageAccountNamespace||job.imageAdmission?.namespace;
+    let owns=false;
+    try{owns=Boolean(origin&&job.imageOwnerState===storyboardState()
+      &&(!job.imageAdmission?.namespace||job.imageAdmission.namespace===origin)&&await resolveImageAccountNamespace()===origin
+      &&job.imageOwnerState===storyboardState());}catch(_){}
+    if(!owns){try{await storyboardSettleImageAdmission(job,'not_submitted');}catch(_){console.warn('[千幕] 旧账户任务授权未能结算');}return;}
+    const log=storyboardState().logs.find(item=>item.id===job.logId);
     await storyboardRunJob(job, log);
   } finally {
     storyboardActiveJobs.delete(job.id);
@@ -34487,24 +34507,6 @@ function coreadImportData() {
   input.click();
 }
 
-// blobToBase64 - 已迁移到 qianmu-storyboard-utils.js
-// function blobToBase64(blob) {
-//   return new Promise((resolve, reject) => {
-//     const r = new FileReader();
-//     r.onload = () => resolve(String(r.result || '').split(',')[1] || '');
-//     r.onerror = reject;
-//     r.readAsDataURL(blob);
-//   });
-// }
-
-// base64ToBlob - 已迁移到 qianmu-storyboard-utils.js
-// function base64ToBlob(b64, mime = 'image/*') {
-//   const bin = atob(b64);
-//   const arr = new Uint8Array(bin.length);
-//   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-//   return new Blob([arr], { type: mime });
-// }
-
 /* ============================================================
    幕外 · 番外小剧场（完全独立于推演：不写聊天、不注入、不入推演提示词）
    ============================================================ */
@@ -34574,15 +34576,6 @@ function seedBuiltinTheaters(owner) {
   t.qianmuRevision = QIANMU_THEATER_REVISION;
   if (!owner) saveSettings(); // Never save a detached copy.
 }
-
-// 规整剧札顺序：用户自建项在前、内置项在后，不设数量上限（保留全部）
-// MIGRATED to qianmu-storyboard-utils.js (commit 20)
-// function normalizeScripts(scripts) {
-//   const list = Array.isArray(scripts) ? scripts : [];
-//   const user = list.filter((s) => !isBuiltinScript(s));
-//   const builtins = list.filter((s) => isBuiltinScript(s));
-//   return [...user, ...builtins];
-// }
 
 function theaterApiConfig() {
   const t = getTheater();
@@ -34655,11 +34648,6 @@ async function buildTheaterDefaultText() {
   if (worldText) output += `\n【世界书】\n${worldText}\n`;
   return output.trim();
 }
-
-// looksLikeHtml - 已迁移到 qianmu-storyboard-utils.js
-// function looksLikeHtml(text) {
-//   return /<\s*(html|body|div|section|article|table|canvas|svg|style|script|button|input|h[1-6]|p|ul|ol|img|iframe)\b/i.test(String(text || ''));
-// }
 
 function isTheaterFavorited(id) {
   return getTheater().favorites.some((f) => f.id === id);
@@ -34755,13 +34743,6 @@ function theaterOpening(scene, n = 28) {
   text = text.replace(/\s+/g, ' ').trim();
   return text ? snip(text, n) : '番外';
 }
-
-// 阅读页副标题：来自剧札则 @剧札名，否则 @即兴
-// theaterSubtitle - 已迁移到 qianmu-storyboard-utils.js
-// function theaterSubtitle(scene) {
-//   const src = String(scene?.source || '').trim();
-//   return src ? `@${src}` : '@即兴';
-// }
 
 const THEATER_READ_TITLE = '幕外一折';
 
@@ -34955,30 +34936,6 @@ async function stageTheaterScene() {
     renderFloatButton();
   }
 }
-
-// stripThinkChain - 已迁移到 qianmu-storyboard-utils.js
-// function stripThinkChain(text) {
-//   return String(text || '')
-//     .replace(/<think(?:ing)?\b[^>]*>[\s\S]*?<\/think(?:ing)?>/gi, '')
-//     .replace(/<think(?:ing)?\b[^>]*>[\s\S]*$/i, '')
-//     .trim();
-// }
-
-// 幕外展示用正文提取：优先取 <幕外正文>…</幕外正文> 标签内的内容（裸思维链一并被挡在标签外丢弃）；
-// 对模型偶发的标签残缺（漏闭合/漏起始/无标签/碎片）全部免疫，绝不因格式问题导致正文取空、连累「最近一幕」与按钮布局。
-// 日志展示不走这里，仍显示完整原文。
-// MIGRATED to qianmu-storyboard-utils.js (commit 19)
-// function extractTheaterBody(text) {
-//   const raw = String(text || '');
-//   let body = '';
-//   let m = raw.match(/<\s*幕外正文\s*>([\s\S]*?)<\s*\/\s*幕外正文\s*>/i);
-//   if (m && m[1].trim()) body = m[1];
-//   if (!body) { m = raw.match(/<\s*幕外正文\s*>([\s\S]*)$/i); if (m && m[1].trim()) body = m[1]; }
-//   if (!body) { m = raw.match(/^([\s\S]*?)<\s*\/\s*幕外正文\s*>/i); if (m && m[1].trim()) body = m[1]; }
-//   if (!body) body = raw;
-//   body = body.replace(/<\s*\/?\s*幕外正文\s*>/gi, '');
-//   return stripThinkChain(body).trim();
-// }
 
 function openTheaterReader(scene) {
   if (!scene) return;

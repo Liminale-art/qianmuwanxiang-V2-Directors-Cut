@@ -21,7 +21,7 @@ async function fixture(){
     STORYBOARD_QUEUE_LIMIT:8,storyboardQueueBatches:new Set(),startStoryboardQueueWindowBatch,
     storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>e.state.pipelineLogs.find(p=>p.id===log.pipelineId),storyboardPlanIsTerminal:()=>false,
     storyboardValidatedAnchor:()=>({valid:true}),storyboardPumpQueue:()=>{},storyboardSettleImageAdmission:async()=>{},
-    storyboardImageAdmissionRuntime:async()=>({admit:async(job)=>{attempts++;if(fail&&job.inlineOrder.shotIndex===1)throw Error('node service unavailable');await postAdmission(job);}})});
+    storyboardImageAdmissionRuntime:async()=>({admit:async(job)=>{attempts++;if(fail&&job.inlineOrder.shotIndex===1)throw Error('node service unavailable');await postAdmission(job);job.imageAdmission={namespace:job.imageAccountNamespace};}})});
   e.context.settings.enabled=true;
   e.context.storyboardQueueWindow=createStoryboardQueueWindow({limit:8,pollMs:5,
     occupied:()=>e.context.storyboardQueue.length+e.context.storyboardActiveJobs.size+e.context.storyboardQueueSettling});
@@ -123,10 +123,12 @@ test('real preparation/queue stores a failed unsubmitted middle mirror and retry
   const queue=e.context.storyboardQueue;assert.equal(queue.length,2);assert.equal(e.attempts(),3);assert.equal(e.plan.generationStarted,true);
   assert.deepEqual(queue.map(job=>job.inlineOrder.shotIndex),[0,2]);assert.deepEqual(e.plan.shots.map(s=>s.status),['queued','failed','queued']);
   const failed=e.state.logs.find(log=>log.status==='failed');assert.equal(failed.submissionState,'not_submitted');assert.equal(failed.startedAt,0);
+  assert.equal(failed.snapshot.imageAccountNamespace,'st-user:route-test');
+  assert.equal(core.normalizeStoryboardState(copy(e.state)).logs.find(log=>log.id===failed.id).snapshot.imageAccountNamespace,'st-user:route-test');
   const pipeline=e.state.pipelineLogs.find(row=>row.id===failed.pipelineId);assert.equal(pipeline.status,'failed');assert.ok(pipeline.stages.some(s=>s.type==='queue_preparation'&&s.output.submissionState==='not_submitted'));
   const entries=core.buildStoryboardInlineTasks(e.state.taskStates,{chatKey:'chat-a',chat:e.chat,logs:e.state.logs,waitingIds:new Set(queue.map(j=>j.id))});
   const failure=entries.find(row=>row.status==='failed');assert.equal(failure.label,'本镜尚未提交');assert.equal(failure.action,'retry-task');assert.equal(failure.inlineOrder.shotIndex,1);
-  const retryIdentity=await createImageAdmissionIdentity({...failed.snapshot},'st-user:test');
+  const retryIdentity=await createImageAdmissionIdentity({...failed.snapshot},'st-user:route-test');
   assert.deepEqual(await createImageHistorySeeds([failed],retryIdentity),[],'a preparation log is not an executed-image history seed');
   for(const job of [...queue]){e.context.storyboardFinishLog(e.state.logs.find(log=>log.id===job.logId),'success',{recordIds:['image-'+job.inlineOrder.shotIndex]});e.context.storyboardSetPlanStatus(e.plan,'completed',{job,resultIds:['image-'+job.inlineOrder.shotIndex]});}
   assert.equal(e.plan.status,'completed','persisted legacy status stays compatible with existing images');
@@ -144,6 +146,36 @@ test('real preparation/queue stores a failed unsubmitted middle mirror and retry
   e.context.storyboardSetPlanStatus(e.plan,'completed',{job:retry,resultIds:['recovered-image']});
   assert.equal(e.plan.shots[1].partialFailureCount,0);assert.equal(e.plan.shots[1].error,'');assert.equal(e.plan.status,'completed');
   assert.equal(core.storyboardPartialCompletion(e.plan),null,'successful retry clears only the derived partial badge');
+});
+
+test('a saved failure cannot be retried from another ST account or without a verified origin',async()=>{
+  const e=await fixture();await e.context.storyboardGenerate(null,{plan:e.plan});
+  const failed=e.state.logs.find(log=>log.status==='failed'),before=e.attempts(),size=e.context.storyboardQueue.length;
+  e.repair();e.setAccount('st-user:another');
+  assert.equal(await e.context.storyboardRetryLog(failed),false);
+  assert.equal(e.attempts(),before);assert.equal(e.context.storyboardQueue.length,size);
+  e.setAccount('st-user:route-test');
+  const legacy=copy(failed);delete legacy.snapshot.imageAccountNamespace;delete legacy.snapshot.imageAdmission;
+  e.state.logs.push(legacy);
+  assert.equal(await e.context.storyboardRetryLog(legacy),false);
+  assert.equal(e.attempts(),before);assert.equal(e.context.storyboardQueue.length,size);
+});
+
+test('an account switch or changed owner during failure logging never writes a new task',async()=>{
+  const e=await fixture();await e.context.storyboardGenerate(null,{plan:e.plan});
+  const failed=e.state.logs.find(log=>log.status==='failed'),job=e.context.storyboardJobFromLog(failed);
+  Object.defineProperty(job,'imageOwnerState',{value:e.state});
+  const count=e.state.logs.length;
+  e.setAccount('st-user:another');
+  assert.equal(await e.context.storyboardRecordPreparedJobFailure(job,'refused'),null);
+  assert.equal(e.state.logs.length,count);
+  e.setAccount('st-user:route-test');
+  let release;const wait=new Promise(resolve=>release=resolve),original=e.context.resolveImageAccountNamespace;
+  e.context.resolveImageAccountNamespace=()=>wait;
+  let current=true;const pending=e.context.storyboardRecordPreparedJobFailure(job,'refused',()=>current);
+  current=false;release('st-user:route-test');
+  assert.equal(await pending,null);assert.equal(e.state.logs.length,count);
+  e.context.resolveImageAccountNamespace=original;
 });
 
 test('a scope change after one queue acceptance reports partial progress and cannot reset accepted plan data',async()=>{
@@ -189,7 +221,7 @@ test('generation replay marker survives plan normalization and lightweight archi
 
 test('failed records never overwrite an accepted job or an existing task log',async()=>{
   const e=await fixture();e.repair();await e.context.storyboardGenerate(null,{plan:e.plan});const count=e.state.logs.length,job=e.context.storyboardQueue[0];
-  assert.equal(e.context.storyboardRecordPreparedJobFailure(job,'late error'),null);assert.equal(e.state.logs.length,count);
+  assert.equal(await e.context.storyboardRecordPreparedJobFailure(job,'late error'),null);assert.equal(e.state.logs.length,count);
   assert.equal(e.state.logs.find(log=>log.id===job.logId).status,'queued');
 });
 

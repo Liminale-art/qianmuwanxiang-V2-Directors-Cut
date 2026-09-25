@@ -65,7 +65,7 @@ export async function routeEnvironment(options={}) {
     blobStore:{deleteStoryboardPipelineLogs:async()=>{}},storyboardArchivePipelineLog:async()=>{},storyboardPipelineForLog:log=>state.pipelineLogs.find(row=>row.id===log.pipelineId),
     // This fixture ends at the route/queue seam; ledger-backed admission is
     // exercised by storyboard-user-count-range and storyboard-stream-compiler.
-    storyboardPreflightImageBatch:async (_jobs,valid)=>{if(!valid())throw Error('preparation changed');},
+    storyboardPreflightImageBatch:async (jobs,valid)=>{if(!valid())throw Error('preparation changed');for(const job of jobs){job.imageAccountNamespace=account;Object.defineProperty(job,'imageOwnerState',{value:state,configurable:true});const plan=state.shotPlans.find(row=>row.id===job.planId),shot=plan?.shots?.find(row=>row.id===job.planShotId);if(shot){Object.defineProperty(job,'imageOwnerPlan',{value:plan});Object.defineProperty(job,'imageOwnerShot',{value:shot});}}},
     storyboardQueueJob:async job=>{jobs.push(job);return true;},confirmDialog:async()=>true,
     featureRuntime:{load:async key=>{
       calls.push(key);

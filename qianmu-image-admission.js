@@ -36,6 +36,9 @@ export async function manageImageAdmissionStorage(options = {}) {
 }
 
 export async function createImageAdmissionIdentity(job, namespace) {
+  if(job.imageAccountNamespace&&job.imageAdmission?.namespace&&job.imageAccountNamespace!==job.imageAdmission.namespace)throw error('identity','原画面账户来源冲突，未提交生图');
+  const origin=job.imageAccountNamespace||job.imageAdmission?.namespace;
+  if(origin&&origin!==namespace)throw error('account_changed','原画面属于另一 ST 账户，未提交生图');
   if(hasWorldReference(job))return worldIdentity(job,namespace);
   const ref = job.messageRef;
   if(hasStoryboardStreamReference(ref)&&(normalizeStoryboardStreamReference(ref).invalid||ref.chatKey!==job.chatKey))throw error('identity','流式原文身份无效，未授权生图');
@@ -150,6 +153,7 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       current(valid);
       if(proofs.some(([job,proof])=>canonical(job)!==proof))throw error('identity','本批生图清单已变化，未提交');
       if(!decision?.ok)throw error(decision?.code||'storage',MESSAGES[decision?.code]||'本批生图容量无法确认，未提交');
+      for(const job of jobs)job.imageAccountNamespace=namespace;
       return true;
     },
     async admit(job, { maxAutomatic, history = [], valid = () => true } = {}) {
@@ -190,10 +194,13 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         current(valid);
         await verifyWorld(job,identity,valid);
         if(sourceReference&&canonical(job.messageRef)!==sourceReference)throw error('identity','生图任务来源已变化，未提交');
+        if(await account()!==identity.scope.namespace)throw error('account_changed','ST 账户已变化，未提交生图');
+        current(valid);
         receipts.set(job, receipt);
         live.add(job);
         job.imageAdmission = { version: 1, ...identity.scope, logicalShotId: identity.logicalShotId,
           attemptId: input.attemptId, automaticSlot: decision.attempt.automaticSlot };
+        job.imageAccountNamespace=identity.scope.namespace;
         // Live consent only: start-log's explicit snapshot whitelist excludes it.
         job.confirmedImageAttempts = confirmedAttempts;
         return true;
@@ -221,6 +228,8 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
       current(valid);
       await verifyWorld(job,receipt,valid);
       if(receipt.sourceReference&&canonical(job.messageRef)!==receipt.sourceReference)throw error('identity','生图任务来源已变化，未提交');
+      if(await account()!==receipt.scope.namespace)throw error('account_changed','ST 账户已变化，未继续提交');
+      current(valid);
     },
     async settle(job, outcome) {
       const receipt = receipts.get(job);

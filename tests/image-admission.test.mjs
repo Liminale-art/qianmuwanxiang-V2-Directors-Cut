@@ -41,7 +41,7 @@ for(const count of [7,13,21])test(`read-only ${count}-job preflight preserves ca
   const e=setup(),jobs=Array.from({length:count},(_,index)=>job({id:`job-${index}`,prompt:`scene-${index}`}));
   assert.equal(await e.runtime.preflight(jobs,{maxAutomatic:count}),true);assert.equal(e.store.rows.size,0);
   await assert.rejects(e.runtime.beforeSubmit(jobs[0]),{code:'image_attempt_missing_reservation'});
-  assert.ok(jobs.every(value=>!value.imageAdmission));
+  assert.ok(jobs.every(value=>!value.imageAdmission&&value.imageAccountNamespace==='account-a'));
   for(const value of jobs)await e.runtime.admit(value,{maxAutomatic:count});
   assert.equal(e.store.inspect(scopeOf(jobs[0])).attempts,count);
   await assert.rejects(e.runtime.preflight([job({id:'extra',prompt:'extra'})],{maxAutomatic:count}),{code:'image_attempt_budget_exhausted'});
@@ -58,6 +58,14 @@ test('batch preflight rejects a known full ledger, foreign account, modified job
   await assert.rejects(modified.runtime.preflight([mutable],{maxAutomatic:3}),{code:'image_attempt_identity'});assert.equal(modified.store.rows.size,0);
   const unsupported=setup();delete unsupported.store.preflight;
   await assert.rejects(unsupported.runtime.preflight([job()],{maxAutomatic:3}),{code:'image_attempt_storage'});
+});
+
+test('an account-pinned image never claims under a different account or ambiguous stored provenance',async()=>{
+  const foreign=job({imageAccountNamespace:'account-a'}),other=setup({account:async()=> 'account-b'});
+  await assert.rejects(other.runtime.preflight([foreign],{maxAutomatic:3}),{code:'image_attempt_account_changed'});
+  await assert.rejects(admit(other.runtime,foreign),{code:'image_attempt_account_changed'});
+  assert.equal(other.store.rows.size,0);
+  await assert.rejects(createImageAdmissionIdentity(job({imageAccountNamespace:'account-a',imageAdmission:{namespace:'account-b'}}),'account-a'),{code:'image_attempt_identity'});
 });
 
 test('service-mode manual retries route to original review before fee consent or a fresh reservation',async()=>{
@@ -110,7 +118,8 @@ test('two pages cannot reserve the same scene through different UI entry points'
 });
 
 test('duplicate clicks on the same in-memory job fail while account resolution is still pending', async () => {
-  let ready; const { runtime } = setup({ account: () => new Promise(resolve => { ready = resolve; }) });
+  let ready,calls=0; const { runtime } = setup({ account: () => ++calls===1
+    ? new Promise(resolve => { ready = resolve; }) : Promise.resolve('account-a') });
   const value = job(), pending = admit(runtime, value);
   await assert.rejects(admit(runtime, value), { code: 'image_attempt_busy' });
   ready('account-a'); assert.equal(await pending, true);
@@ -195,6 +204,27 @@ test('changed account and disabled authorization stop a reserved job before disp
   await runtime.settle(original, 'not_submitted'); assert.equal(store.inspect(scopeOf(original)).automaticUsed, 0);
 });
 
+test('account change during the durable begin step blocks the next provider write',async()=>{
+  let account='account-a';const store=storage(),begin=store.begin;
+  store.begin=async(...args)=>{const result=await begin(...args);account='account-b';return result;};
+  const {runtime}=setup({store,account:async()=>account}),value=job();
+  await admit(runtime,value);
+  await assert.rejects(runtime.beforeSubmit(value),{code:'image_attempt_account_changed'});
+  await runtime.settle(value,'not_submitted');
+  assert.equal(store.inspect(scopeOf(value)).automaticUsed,0);
+});
+
+test('account change after a durable claim releases the original reservation before dispatch',async()=>{
+  let account='account-a',begins=0;const store=storage(),claim=store.claim,begin=store.begin;
+  store.claim=async(...args)=>{const result=await claim(...args);account='account-b';return result;};
+  store.begin=async(...args)=>{begins++;return begin(...args);};
+  const {runtime}=setup({store,account:async()=>account}),value=job();
+  await assert.rejects(admit(runtime,value),{code:'image_attempt_account_changed'});
+  assert.equal(value.imageAdmission,undefined);
+  assert.equal(begins,0);
+  assert.equal(store.inspect(scopeOf(value)).automaticUsed,0);
+});
+
 test('late admission after a context change releases its reservation and never enters dispatch', async () => {
   const store = storage(), claim = store.claim; let valid = true;
   store.claim = async (...args) => { const result = await claim(...args); valid = false; return result; };
@@ -276,6 +306,7 @@ function liveHarness({ failure = '', confirm = async () => true } = {}) {
     resolveStoryboardJobModelIdentity: () => ({ modelFamily: 'openai' }),
     storyboardStartLog: value => { const log = { id: `log-${state.logs.length}`, status: 'queued', snapshot: structuredClone(value) }; state.logs.push(log); return log; },
     storyboardSetPlanStatus: () => {}, storyboardPlanForJob: () => null, storyboardPumpQueue: () => {},
+    resolveImageAccountNamespace: async()=> 'account-a',
     saveSettings: () => {}, renderModal: () => {}, MODULE_NAME: 'isolated-test', console: { error: () => {}, warn: () => {} },
     storyboardMarkLogGenerating: value => { value.status = 'generating'; }, storyboardPipelineStage: () => {}, storyboardPipelineForLog: () => null,
     storyboardPrepareGatewayAssets: async () => ({}), storyboardResolveApiKey: async () => 'mock',

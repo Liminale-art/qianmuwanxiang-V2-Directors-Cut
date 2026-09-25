@@ -160,6 +160,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       if (dropped.length) void Promise.resolve(d.storyboardDeletePlanArchives(dropped)).catch(()=>{});
     }
     Object.assign(plan,nextPlan);
+    for(const job of jobs){const shot=plan.shots.find(row=>row.id===job.planShotId);if(shot){Object.defineProperty(job,'imageOwnerPlan',{value:plan,configurable:true});Object.defineProperty(job,'imageOwnerShot',{value:shot,configurable:true});}}
     // Retain the previous archive as recovery data until the next terminal
     // archive replaces it. Never delete the only full copy during preparation.
     delete plan.archiveRef; delete plan.archiveVersion; delete plan.archivedAt;
@@ -208,10 +209,10 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       try{
         const scheduled=d.storyboardQueueWindowEnqueue(jobs,{plan,valid:ownsBatch,
           onAccepted:()=>{outcome.queued++;},
-          onRefused:(job,reason)=>{
+          onRefused:async(job,reason)=>{
             if(!reason||!ownsBatch())return markStopped({remainingJobs:[job]});
             outcome.failed++;
-            try{d.storyboardRecordPreparedJobFailure(job,reason||'本镜未提交');}
+            try{await d.storyboardRecordPreparedJobFailure(job,reason||'本镜未提交',ownsBatch);}
             catch(_){const shot=plan.shots?.find(row=>row.id===job.planShotId);if(shot?.status==='prompt_ready'){
               shot.status='failed';shot.error='本镜未提交';
               if(state===d.storyboardState()&&chatKey===String(d.getChatKey()||''))d.saveSettings();
@@ -226,7 +227,7 @@ export async function submitStoryboardStreamPrepared(prepared, d) {
       await check(); let reason='';
       try {
         if (await d.storyboardQueueJob(job,valid,message=>{reason=message;})) outcome.queued++;
-        else if (reason && valid()) { outcome.failed++; d.storyboardRecordPreparedJobFailure(job,reason); }
+        else if (reason && valid()) { outcome.failed++; await d.storyboardRecordPreparedJobFailure(job,reason,valid); }
       } catch (error) {
         if (job.queueAccepted || d.storyboardQueue.some(row=>row.id===job.id) || d.storyboardActiveJobs.has(job.id)) outcome.queued++;
         throw error;
