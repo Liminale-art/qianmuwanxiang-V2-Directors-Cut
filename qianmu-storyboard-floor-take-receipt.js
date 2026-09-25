@@ -1,6 +1,6 @@
 // Compact chat metadata, independent of deletable gallery images. These receipts
 // retire only already-known work; they never authorize or modify a generation.
-import {storyboardFloorTakeMessageKeys} from './qianmu-storyboard-floor-take-scope.js?v=1.59.380';
+import {storyboardFloorTakeMessageKeys} from './qianmu-storyboard-floor-take-scope.js?v=1.59.381';
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.length>0&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);
 const integer=value=>Number.isSafeInteger(value)&&value>=0;

@@ -67,6 +67,163 @@ async function seedValidAccounts(root, input, count) {
   }));
 }
 
+const isAccountRead = (root, target) => path.dirname(String(target)) === v2Directory(root)
+  && /^[a-f0-9]{64}$/.test(path.basename(String(target)));
+
+async function firstWave(promise) {
+  let timer;
+  try {
+    return await Promise.race([promise, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('eight account reads did not enter')), 10_000);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+
+test('capacity scan overlaps account reads with a fixed eight-worker ceiling',
+  { timeout: 30_000 }, async t => {
+    const { root, stores } = await temporaryRoot(t);
+    await seedValidAccounts(root, manifest(), 20);
+    let release, reachedEight, active = 0, peak = 0, started = 0;
+    const gate = new Promise(resolve => { release = resolve; });
+    const wave = new Promise(resolve => { reachedEight = resolve; });
+    const counted = { ...fs,
+      async readdir(target, ...args) {
+        if (!isAccountRead(root, target)) return fs.readdir(target, ...args);
+        started++; active++; peak = Math.max(peak, active);
+        if (started === 8) reachedEight();
+        try { await gate; return await fs.readdir(target, ...args); }
+        finally { active--; }
+      },
+    };
+    const store = createStoryboardServerBatchV2Store({ dataRoot: root, fileSystem: counted,
+      now: () => 1000 });
+    stores.push(store);
+    const prepared = store.prepare(request('capacity-parallel-new'), manifest());
+    void prepared.catch(() => {});
+    try {
+      await firstWave(wave);
+      assert.equal(started, 8, 'blocked workers cannot dispatch a ninth account');
+      assert.equal(peak, 8, 'more than one account directory is read concurrently');
+    } finally { release(); }
+    assert.equal((await prepared).state, 'prepared_unrunnable');
+    assert.equal(active, 0);
+    assert.equal(peak, 8);
+    assert.equal(started, 20);
+  });
+
+test('an account read error drains in-flight scans under the global lock and cannot create a batch',
+  { timeout: 30_000 }, async t => {
+    const { root, stores } = await temporaryRoot(t);
+    await seedValidAccounts(root, manifest(), 20);
+    const target = request('capacity-failed-new');
+    let reachedEight, active = 0, started = 0, jsonOpens = 0, releaseAll = false;
+    const wave = new Promise(resolve => { reachedEight = resolve; });
+    const held = [];
+    const faulty = { ...fs,
+      async readdir(directory, ...args) {
+        if (!isAccountRead(root, directory)) return fs.readdir(directory, ...args);
+        started++; active++;
+        if (releaseAll) {
+          try { return await fs.readdir(directory, ...args); }
+          finally { active--; }
+        }
+        let resolve, reject;
+        const gate = new Promise((yes, no) => { resolve = yes; reject = no; });
+        held.push({ resolve, reject });
+        if (started === 8) reachedEight();
+        try { await gate; return await fs.readdir(directory, ...args); }
+        finally { active--; }
+      },
+      async open(targetPath, ...args) {
+        if (String(targetPath).endsWith('.json')) jsonOpens++;
+        return fs.open(targetPath, ...args);
+      },
+    };
+    const store = createStoryboardServerBatchV2Store({ dataRoot: root, fileSystem: faulty,
+      now: () => 1000 });
+    stores.push(store);
+    const pending = store.prepare(target, manifest());
+    void pending.catch(() => {});
+    let settled = false;
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    try {
+      await firstWave(wave);
+      held[0].reject(Object.assign(new Error('injected account readdir failure'), { code: 'EIO' }));
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(settled, false, 'failure must not release the lock while reads are still held');
+      assert.equal((await fs.lstat(path.join(v2Directory(root), '.capacity.lock'))).isFile(), true);
+      held[1].resolve();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(started, 8, 'a drained worker must not dispatch a ninth read after failure');
+      assert.equal(settled, false);
+    } finally {
+      // Also unblock reads dispatched after a failed wave assertion; otherwise
+      // a regressed serial scanner could leave the test fixture hanging.
+      releaseAll = true;
+      held.forEach(item => item.resolve());
+    }
+    await assert.rejects(pending, {
+      code: 'storyboard_server_batch_v2_storage_unavailable', submissionState: 'not_submitted',
+    });
+    assert.equal(started, 8);
+    assert.equal(active, 0, 'all in-flight reads have drained before the lock is released');
+    assert.equal(jsonOpens, 0);
+    await assert.rejects(fs.lstat(accountDirectory(root, target)), { code: 'ENOENT' });
+    await assert.rejects(fs.lstat(path.join(v2Directory(root), '.capacity.lock')), { code: 'ENOENT' });
+  });
+
+test('capacity scan rejects duplicate and foreign root entries before any account read', async t => {
+  const { root, stores } = await temporaryRoot(t);
+  await seedValidAccounts(root, manifest(), 2);
+  const target = request('capacity-invalid-root-new');
+  let mode = 'duplicate', accountReads = 0;
+  const invalid = { ...fs,
+    async readdir(directory, ...args) {
+      if (isAccountRead(root, directory)) accountReads++;
+      const entries = await fs.readdir(directory, ...args);
+      if (String(directory) !== v2Directory(root)) return entries;
+      if (mode === 'duplicate') {
+        return [...entries, entries.find(entry => /^[a-f0-9]{64}$/.test(entry.name))];
+      }
+      return [...entries, { name: 'foreign', isDirectory: () => false, isFile: () => true }];
+    },
+  };
+  const store = createStoryboardServerBatchV2Store({ dataRoot: root, fileSystem: invalid,
+    now: () => 1000 });
+  stores.push(store);
+  for (mode of ['duplicate', 'foreign']) {
+    accountReads = 0;
+    await assert.rejects(store.prepare(target, manifest()), {
+      code: 'storyboard_server_batch_v2_storage_path', submissionState: 'not_submitted',
+    });
+    assert.equal(accountReads, 0, `${mode} fails before reading any account`);
+    await assert.rejects(fs.lstat(accountDirectory(root, target)), { code: 'ENOENT' });
+  }
+});
+
+test('a falsy I/O rejection cannot turn partial capacity counts into a write', async t => {
+  const { root, stores } = await temporaryRoot(t);
+  await seedValidAccounts(root, manifest(), 2);
+  const target = request('capacity-undefined-error-new');
+  let reason;
+  const faulty = { ...fs,
+    readdir(directory, ...args) {
+      return isAccountRead(root, directory) ? Promise.reject(reason)
+        : fs.readdir(directory, ...args);
+    },
+  };
+  const store = createStoryboardServerBatchV2Store({ dataRoot: root, fileSystem: faulty,
+    now: () => 1000 });
+  stores.push(store);
+  for (reason of [undefined, null, false, 0, '']) {
+    await assert.rejects(store.prepare(target, manifest()), {
+      code: 'storyboard_server_batch_v2_storage_unavailable', submissionState: 'not_submitted',
+    });
+    await assert.rejects(fs.lstat(accountDirectory(root, target)), { code: 'ENOENT' });
+    await assert.rejects(fs.lstat(path.join(v2Directory(root), '.capacity.lock')), { code: 'ENOENT' });
+  }
+});
+
 test('default 4096-account boundary accepts slot 4096, refuses 4097 without an empty account',
   { timeout: 120_000 }, async t => {
     const { root, stores } = await temporaryRoot(t);

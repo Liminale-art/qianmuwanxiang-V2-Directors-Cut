@@ -19,6 +19,7 @@ const SCHEMA = 'qianmu.storyboard-batch-disk.v2';
 const MAX_RECORD_BYTES = 72 * 1024;
 const MAX_SHARD_RECORDS = 256;
 const MAX_PENDING = 64;
+const MAX_CAPACITY_SCAN_WORKERS = 8;
 export const STORYBOARD_BATCH_V2_HARD_CAPACITY = Object.freeze({ account: 2048, total: 4096 });
 const BATCH_ID = '[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}';
 const RECORD_NAME = new RegExp(`^(\\d{16})-(${BATCH_ID})\\.json$`);
@@ -423,25 +424,61 @@ export function createStoryboardServerBatchV2Store({ dataRoot, fileSystem = fs, 
       throw storageError('full', '分镜批次账户目录超过安全容量');
     }
     const seen = new Set();
-    let total = 0, account = 0;
+    const accounts = [];
     for (const entry of entries) {
+      if (seen.has(entry.name)) throw storageError('path', '分镜批次容量目录包含异常项目，请先核查');
+      seen.add(entry.name);
       if (entry.name === '.capacity.lock') {
         if (!entry.isFile()) throw storageError('path', '分镜批次容量锁类型异常，请先核查');
         continue;
       }
-      if (!ACCOUNT_DIRECTORY_NAME.test(entry.name) || !entry.isDirectory() || seen.has(entry.name)) {
+      if (!ACCOUNT_DIRECTORY_NAME.test(entry.name) || !entry.isDirectory()) {
         throw storageError('path', '分镜批次容量目录包含异常项目，请先核查');
       }
-      seen.add(entry.name);
-      const directory = path.join(v2Directory, entry.name);
-      await checkedDirectory(directory);
-      const selected = entry.name === targetAccountName;
-      const count = await countAccountRecords(directory,
-        selected ? targetNamespace : CAPACITY_PROBE_ACCOUNT, selected && ownAccountLock);
-      if (selected) account = count;
-      total += count;
-      if (total > maxTotalRecords) throw storageError('full', '分镜批次总记录超过安全容量');
+      accounts.push({ directory: path.join(v2Directory, entry.name),
+        selected: entry.name === targetAccountName });
     }
+    let next = 0, total = 0, account = 0, failed = false, failure;
+    async function scan() {
+      while (!failed) {
+        try {
+          const index = next++;
+          if (index >= accounts.length) return;
+          const { directory, selected } = accounts[index];
+          await checkedDirectory(directory);
+          const count = await countAccountRecords(directory,
+            selected ? targetNamespace : CAPACITY_PROBE_ACCOUNT, selected && ownAccountLock);
+          if (selected) account = count;
+          total += count;
+          if (total > maxTotalRecords) throw storageError('full', '分镜批次总记录超过安全容量');
+        } catch (cause) {
+          // Stop new dispatch, but drain every already-started read before the
+          // caller releases the global capacity lock. Partial counts never
+          // authorize a write.
+          if (!failed) {
+            failed = true;
+            failure = cause ?? storageError('unavailable', '分镜批次记录暂不可用，未授权新请求', 503);
+          }
+          return;
+        }
+      }
+    }
+    const settled = await Promise.allSettled(Array.from(
+      { length: Math.min(MAX_CAPACITY_SCAN_WORKERS, accounts.length) },
+      () => scan().catch(cause => {
+        if (!failed) {
+          failed = true;
+          failure = cause ?? storageError('unavailable', '分镜批次记录暂不可用，未授权新请求', 503);
+        }
+        throw cause;
+      })));
+    const rejected = settled.find(result => result.status === 'rejected');
+    if (rejected && !failed) {
+      failed = true;
+      failure = rejected.reason ?? storageError('unavailable',
+        '分镜批次记录暂不可用，未授权新请求', 503);
+    }
+    if (failed) throw failure;
     await checkedDirectory(v2Directory);
     return { total, account };
   }
