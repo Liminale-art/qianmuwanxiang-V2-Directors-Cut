@@ -742,8 +742,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   #story-director-floor-nav .sd-prose-checks label { min-height: 39px; gap: 5px; padding-inline: 5px; font-size: 11px; white-space: nowrap; }
 }
 
-/* 正文排版只在用户实际调整后生效；提高优先级以覆盖 ST 美化，但不越出聊天正文。 */
-html body.sd-prose-layout #chat .mes .mes_text {
+/* 内嵌样式或结构化卡片交还给正则/主题，正文列宽不应挤窄其内部版式。 */
+html body.sd-prose-layout #chat .mes .mes_text:not(:has(style, .np-min-card, [data-sd-prose-exempt], > div[class] > div)) {
   --sd-prose-auto-side-padding: clamp(12px, 2.2vw, 24px);
   box-sizing: border-box !important;
   width: min(var(--sd-prose-content-width), 100%) !important;
@@ -762,28 +762,28 @@ html body.sd-prose-layout #chat .mes .mes_text {
   text-indent: var(--sd-prose-indent) !important;
 }
 @media screen and (max-width: 720px) {
-  html body.sd-prose-layout #chat .mes .mes_text {
+  html body.sd-prose-layout #chat .mes .mes_text:not(:has(style, .np-min-card, [data-sd-prose-exempt], > div[class] > div)) {
     --sd-prose-auto-side-padding: clamp(1px, .4vw, 2px);
     width: min(var(--sd-prose-content-width), var(--sd-prose-mobile-content-width, 100%), 100%) !important;
   }
   html body.sd-prose-layout #chat .mes .sd-prose-expand-host { overflow: visible !important; }
-  html body.sd-prose-layout #chat .mes .mes_text[data-sd-prose-expanded="1"] {
+  html body.sd-prose-layout #chat .mes .mes_text[data-sd-prose-expanded="1"]:not(:has(style, .np-min-card, [data-sd-prose-exempt], > div[class] > div)) {
     width: var(--sd-prose-expanded-width) !important;
     max-width: none !important;
     margin-left: calc(0px - var(--sd-prose-expand-left, 0px)) !important;
     margin-right: calc(0px - var(--sd-prose-expand-right, 0px)) !important;
   }
 }
-html body.sd-prose-layout #chat .mes .mes_text > p {
+html body.sd-prose-layout #chat .mes .mes_text:not(:has(style, .np-min-card, [data-sd-prose-exempt], > div[class] > div)) > p {
   margin-block: 0 var(--sd-prose-paragraph-gap) !important;
   font-size: inherit !important;
   line-height: inherit !important;
   text-indent: var(--sd-prose-indent) !important;
 }
-html body.sd-prose-layout #chat .mes .mes_text > p:last-child { margin-block-end: 0 !important; }
-html body.sd-prose-layout #chat .mes .mes_text :is(pre, code, blockquote, ul, ol, li, table, thead, tbody, tr, th, td) { text-indent: 0 !important; }
-html body.sd-prose-justify #chat .mes .mes_text,
-html body.sd-prose-justify #chat .mes .mes_text > p { text-align: justify !important; text-justify: inter-character !important; }
+html body.sd-prose-layout #chat .mes .mes_text:not(:has(style, .np-min-card, [data-sd-prose-exempt], > div[class] > div)) > p:last-child { margin-block-end: 0 !important; }
+html body.sd-prose-layout #chat .mes .mes_text:not(:has(style, .np-min-card, [data-sd-prose-exempt], > div[class] > div)) :is(pre, code, blockquote, ul, ol, li, table, thead, tbody, tr, th, td) { text-indent: 0 !important; }
+html body.sd-prose-justify #chat .mes .mes_text:not(:has(style, .np-min-card, [data-sd-prose-exempt], > div[class] > div)),
+html body.sd-prose-justify #chat .mes .mes_text:not(:has(style, .np-min-card, [data-sd-prose-exempt], > div[class] > div)) > p { text-align: justify !important; text-justify: inter-character !important; }
 html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-gap="1"] { display: block !important; width: 100% !important; height: var(--sd-prose-paragraph-gap) !important; overflow: hidden !important; line-height: 0 !important; pointer-events: none !important; }
 html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] { display: inline-block !important; width: var(--sd-prose-indent) !important; height: 0 !important; overflow: hidden !important; pointer-events: none !important; }
 

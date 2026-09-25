@@ -135,6 +135,7 @@
     "qianmu-prose-assistant-history.js",
     "qianmu-prose-assistant-preferences.js",
     "qianmu-prose-floor-tools.js",
+    "qianmu-prose-rich-compat.js",
     "qianmu-prose-assistant-floor.js",
     "qianmu-prose-assistant-panel.js",
     "qianmu-prose-assistant.css",

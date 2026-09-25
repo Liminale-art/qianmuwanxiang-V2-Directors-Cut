@@ -1,5 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.387';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.388';
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   let floorStatus=null,statusLoading=null,detachStatus=null;
