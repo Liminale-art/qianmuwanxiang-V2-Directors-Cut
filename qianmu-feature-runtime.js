@@ -15,6 +15,7 @@ function normalizeDefinition(key, definition) {
 
 function serializeError(error) {
   if (!error) return null;
+  if (error.code === 'qianmu_chunk_exhausted') return { name: 'Error', message: '组件未能载入，请刷新 ST 页面。', exhausted: true };
   return {
     name: String(error.name || 'Error'),
     message: String(error.message || error),
@@ -93,12 +94,13 @@ export function createFeatureRuntime(definitions = {}) {
 
 // Explicit local allowlist only. No rewriting dependency graphs or executing URLs from errors.
 const localChunkNames=new Set(['qianmu-reader.js','builtin-theaters.js','qianmu-theaters.js','qianmu-focus-dialogue.js','qianmu-focus-dialogue-ui.js','qianmu-focus-library-ui.js',
-  'qianmu-character-archive-view.js','qianmu-vibe-library-view.js','qianmu-ensemble-ui.js','qianmu-comfy-library-view.js','qianmu-comfy-pool-view.js','qianmu-comfy-route.js','qianmu-image-admission.js',
+  'qianmu-character-archive-view.js','qianmu-vibe-library-view.js','qianmu-ensemble-ui.js','qianmu-comfy-workbench.js','qianmu-comfy-library-view.js','qianmu-comfy-pool-view.js','qianmu-comfy-route.js','qianmu-image-admission.js',
   'qianmu-prose-assistant-panel.js','qianmu-prose-assistant-native.js','qianmu-text-collection-library.js','qianmu-text-collection-capture.js','qianmu-gallery-catalog-management-view.js',
   'qianmu-storage-gallery-check.js','qianmu-gallery-recipe-review-view.js','qianmu-gallery-local-recipe-current.js','qianmu-storyboard-export-scope-view.js',
   'qianmu-gallery-archive-view.js','qianmu-gallery-location-view.js','qianmu-gallery-directory-view.js','qianmu-historical-gallery-consumer.js']);
 export function createLocalChunkLoader({importer=url=>import(url),pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
   const entries=new Map();
+  const exhausted=cause=>Object.assign(new Error('组件仍未载入，请刷新 ST 页面后重试',{cause}),{code:'qianmu_chunk_exhausted'});
   return function load(relative){
     const url=new URL(relative,import.meta.url),name=url.pathname.split('/').at(-1);
     if(!localChunkNames.has(name)||url.href.split('?')[0]!==new URL('./'+name,import.meta.url).href||url.hash)return Promise.reject(Error('无效的本地组件地址'));
@@ -106,10 +108,11 @@ export function createLocalChunkLoader({importer=url=>import(url),pause=ms=>new 
     if(entry.value)return Promise.resolve(entry.value);if(entry.promise)return entry.promise;
     entry.promise=(async()=>{
       for(let retry=0;retry<2;retry++){
-        if(entry.attempt>=8)throw Object.assign(Error('组件仍未载入，请确认网络后刷新页面'),{code:'qianmu_chunk_load'});
+        if(entry.attempt>=8)throw exhausted();
         const attempt=entry.attempt++,target=new URL(key);if(attempt)target.searchParams.set('qm_retry',String(attempt));
         try{return entry.value=await importer(target.href);}
         catch(error){
+          if(entry.attempt>=8)throw exhausted(error);
           const network=error?.name==='TypeError'&&/(fetch.*dynamically imported|importing a module script failed|error loading dynamically imported)/i.test(error.message);
           if(!network)throw error;
           if(retry)throw Object.assign(new Error('组件未能载入，请重试；若仍失败，请刷新页面',{cause:error}),{code:'qianmu_chunk_load'});
@@ -120,3 +123,19 @@ export function createLocalChunkLoader({importer=url=>import(url),pause=ms=>new 
   };
 }
 export const loadLocalChunk=createLocalChunkLoader();
+
+// A local import may be retried by an explicit click only while its bounded
+// session budget remains. Never render a retry control for an exhausted URL.
+export function localChunkFailure(error,label){
+  const exhausted=error?.code==='qianmu_chunk_exhausted';
+  return Object.freeze({exhausted,message:exhausted?`${label}未能载入，请刷新 ST 页面后重试。`
+    :error?.code==='qianmu_chunk_load'?`${label}未能载入，请重试；若仍失败，请刷新 ST 页面。`
+    :`${label}未能载入，请稍后重试。`});
+}
+export function mountLocalChunkFailure(host,error,label,onRetry){
+  if(!host)return;
+  const failure=localChunkFailure(error,label),safe=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+  host.innerHTML=`<div role="alert">${safe(failure.message)}${failure.exhausted?'':' <button type="button" class="sd-btn sd-local-chunk-retry">重试</button>'}</div>`;
+  if(!failure.exhausted)host.querySelector('.sd-local-chunk-retry')?.addEventListener('click',onRetry);
+  return failure;
+}

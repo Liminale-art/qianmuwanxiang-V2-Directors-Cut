@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import * as storyboard from '../qianmu-storyboard.js';
 import * as comfyView from '../qianmu-comfy-workbench.js';
+import {createFeatureRuntime,createLocalChunkLoader} from '../qianmu-feature-runtime.js';
 import { createStoryboardFormFixture, storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 const graph={node:{class_type:'TestNode',inputs:{text:'%qianmu_prompt%',width:'%qianmu_width%',cfg:'%qianmu_cfg%'}}};
 
@@ -57,6 +58,9 @@ test('global capture remains accessible with a failed lazy Comfy view or invalid
   fixture.context.storyboardComfyViewRuntime=null;fixture.context.storyboardComfyViewError='failed';
   let html=fixture.context.renderStoryboardCreate(fixture.state);
   assert.match(html,/sd-storyboard-enabled/);assert.match(html,/sd-comfy-view-retry/);
+  fixture.context.storyboardComfyViewError='exhausted';
+  html=fixture.context.renderStoryboardCreate(fixture.state);
+  assert.match(html,/刷新 ST 页面/);assert.doesNotMatch(html,/sd-comfy-view-retry/);
   fixture.context.storyboardComfyViewRuntime=comfyView;fixture.state.profiles.comfy.model='not-a-workflow';
   html=fixture.context.renderStoryboardCreate(fixture.state);
   assert.match(html,/sd-storyboard-enabled/);assert.match(html,/sd-storyboard-model-card/);
@@ -130,6 +134,24 @@ test('lazy Comfy view never loads for another mode, repaints a departed page or 
   }
 });
 
+test('Comfy loading card retains Retry for transient imports, then refresh guidance without a dead button',async()=>{
+  let imports=0,renders=0;const load=createLocalChunkLoader({pause:async()=>{},importer:async()=>{imports++;throw new TypeError('Failed to fetch dynamically imported module');}});
+  const runtime=createFeatureRuntime({comfyWorkbench:()=>load('./qianmu-comfy-workbench.js?v=test')});
+  const state={source:'comfy',view:'create'},page={isConnected:true},root={isConnected:true,querySelector:()=>page};
+  const context=vm.createContext({storyboardState:()=>state,storyboardComfyViewRuntime:null,storyboardComfyViewError:'',featureRuntime:runtime,renderModal:()=>renders++});
+  vm.runInContext(['renderStoryboardComfyCreate','storyboardLoadComfyView'].map(section).join('\n'),context);
+  for(let attempt=1;attempt<=4;attempt++){
+    await context.storyboardLoadComfyView(root,attempt>1);
+    assert.equal(imports,attempt*2);
+    const html=context.renderStoryboardComfyCreate(state);
+    if(attempt<4)assert.match(html,/sd-comfy-view-retry/);
+    else{assert.match(html,/刷新 ST 页面/);assert.doesNotMatch(html,/sd-comfy-view-retry/);}
+  }
+  assert.equal(renders,4);
+  await context.storyboardLoadComfyView(root,true);assert.equal(imports,8);
+  assert.doesNotMatch(context.renderStoryboardComfyCreate(state),/sd-comfy-view-retry/);
+});
+
 test('import is data-only, bounded and cannot overwrite another editor after a delayed file read',async()=>{
   for(const scenario of ['valid','invalid','canvas','empty','large','departed','edited']){
     const state={source:'comfy',view:'create',collapsedCards:{}},field={value:'old',isConnected:true,dataset:{}},root={isConnected:true,querySelector:()=>field};let reads=0,saves=0,renders=0;const notices=[];
@@ -151,7 +173,7 @@ test('Comfy title and source-scoped position are read-only and preserve existing
 
 test('independent view is an on-demand shipped module and existing form controls retain their scoped baseline',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),css=await readFile(new URL('../style.css',import.meta.url),'utf8'),release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  assert.match(source,/load: \(\) => import\('\.\/qianmu-comfy-workbench\.js\?v=/);assert.ok(release.files.includes('qianmu-comfy-workbench.js'));
+  assert.match(source,/load: \(\) => loadLocalChunk\('\.\/qianmu-comfy-workbench\.js\?v=/);assert.ok(release.files.includes('qianmu-comfy-workbench.js'));
   assert.match(css,/\.sd-storyboard-engine-modes[^{]*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(comfyView.renderComfyWorkbench({profile:{},capabilities:{}}),/<script|https?:\/\//);
 });

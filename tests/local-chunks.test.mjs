@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile,readdir,stat} from 'node:fs/promises';
-import {createLocalChunkLoader,createFeatureRuntime} from '../qianmu-feature-runtime.js';
+import {createLocalChunkLoader,createFeatureRuntime,localChunkFailure,mountLocalChunkFailure} from '../qianmu-feature-runtime.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {QIANMU_IDLE_CHUNKS} from '../qianmu-idle-preload.js';
 const path='./qianmu-reader.js?v=test';
@@ -13,7 +13,33 @@ test('concurrent opens share one recovery, change only the known module URL, and
 });
 test('a failed load can retry on explicit action, while automatic retries and per-session attempts stay bounded',async()=>{
   let calls=0;const load=createLocalChunkLoader({pause:async()=>{},importer:async()=>{calls++;throw new TypeError('Importing a module script failed.');}});
-  for(let i=0;i<4;i++)await assert.rejects(load(path));assert.equal(calls,8);await assert.rejects(load(path),/刷新/);assert.equal(calls,8);
+  for(let i=0;i<3;i++)await assert.rejects(load(path),error=>error.code==='qianmu_chunk_load');
+  assert.equal(calls,6);
+  await assert.rejects(load(path),error=>error.code==='qianmu_chunk_exhausted'&&/刷新 ST/.test(error.message));assert.equal(calls,8);
+  await assert.rejects(load(path),error=>error.code==='qianmu_chunk_exhausted');assert.equal(calls,8);
+});
+test('the eighth failed non-network import is also exhausted, without an automatic retry',async()=>{
+  let calls=0;const load=createLocalChunkLoader({importer:async()=>{calls++;throw new SyntaxError('invalid module');}});
+  for(let i=0;i<7;i++)await assert.rejects(load(path),SyntaxError);
+  await assert.rejects(load(path),error=>error.code==='qianmu_chunk_exhausted');assert.equal(calls,8);
+  await assert.rejects(load(path),error=>error.code==='qianmu_chunk_exhausted');assert.equal(calls,8);
+});
+test('shared local-chunk failure UI has a real Retry only before exhaustion',()=>{
+  const host={innerHTML:'',retry:null,querySelector(selector){assert.equal(selector,'.sd-local-chunk-retry');return {addEventListener:(_type,handler)=>this.retry=handler};}};
+  let retries=0;
+  const temporary=mountLocalChunkFailure(host,{code:'qianmu_chunk_load'},'角色库',()=>retries++);
+  assert.equal(temporary.exhausted,false);assert.match(host.innerHTML,/role="alert"/);assert.match(host.innerHTML,/sd-local-chunk-retry/);
+  host.retry();assert.equal(retries,1);
+  host.retry=null;
+  const exhausted=mountLocalChunkFailure(host,{code:'qianmu_chunk_exhausted'},'角色库',()=>retries++);
+  assert.equal(exhausted.exhausted,true);assert.match(host.innerHTML,/刷新 ST 页面/);assert.doesNotMatch(host.innerHTML,/重试<\/button>|sd-local-chunk-retry/);
+  assert.equal(host.retry,null);assert.equal(retries,1);
+  assert.match(localChunkFailure({code:'qianmu_chunk_exhausted'},'场外特助').message,/刷新 ST 页面/);
+});
+test('assistant floor uses the same exhausted-aware message instead of calling exhaustion transient',async()=>{
+  const source=await readFile(new URL('../qianmu-prose-assistant-floor.js',import.meta.url),'utf8');
+  assert.match(source,/localChunkFailure\(error,'场外特助'\)\.message/);
+  assert.doesNotMatch(source,/error\?\.code==='qianmu_chunk_load'\?'场外特助/);
 });
 test('evaluation and syntax errors are not automatically executed again; unapproved targets never run',async()=>{
   for(const error of [new SyntaxError('bad syntax'),new TypeError('cannot read undefined')]){let calls=0;const load=createLocalChunkLoader({importer:async()=>{calls++;throw error;}});await assert.rejects(load(path));assert.equal(calls,1);}
@@ -31,6 +57,34 @@ test('entering reader during warmup subscribes to completion instead of leaving 
   const c=vm.createContext({reader:null,featureRuntime:runtime,activeTab:'coread',MODAL_ID:'m',document:{getElementById:()=>({classList:{contains:()=>true}})},renderModal:()=>renders++});
   vm.runInContext(['coreadReaderRuntimeStatus','ensureCoreadReaderRuntime','renderCoreadRuntimeGate'].map(section).join('\n'),c);
   const warm=runtime.load('readerCore');await Promise.resolve();assert.match(c.renderCoreadRuntimeGate(),/正在准备/);finish({ready:true});await warm;await new Promise(r=>setImmediate(r));assert.equal(renders,1);assert.equal(c.reader.ready,true);
+});
+test('reader gate keeps Retry only until the eighth actual import failure, including after rerender',async()=>{
+  let imports=0;const load=createLocalChunkLoader({pause:async()=>{},importer:async()=>{imports++;throw new TypeError('Failed to fetch dynamically imported module');}});
+  const runtime=createFeatureRuntime({readerCore:()=>load(path)});
+  const c=vm.createContext({reader:null,featureRuntime:runtime,activeTab:'coread',MODAL_ID:'m',document:{getElementById:()=>({classList:{contains:()=>true}})},renderModal(){}});
+  vm.runInContext(['coreadReaderRuntimeStatus','ensureCoreadReaderRuntime','renderCoreadRuntimeGate'].map(section).join('\n'),c);
+  for(let attempt=1;attempt<=4;attempt++){
+    await assert.rejects(runtime.load('readerCore'));
+    const html=c.renderCoreadRuntimeGate();assert.equal(imports,attempt*2);
+    if(attempt<4)assert.match(html,/sd-coread-runtime-retry/);
+    else{assert.match(html,/刷新 ST 页面/);assert.doesNotMatch(html,/sd-coread-runtime-retry/);}
+  }
+  await assert.rejects(runtime.load('readerCore'),error=>error.code==='qianmu_chunk_exhausted');
+  assert.equal(imports,8);assert.doesNotMatch(c.renderCoreadRuntimeGate(),/sd-coread-runtime-retry/);
+});
+test('theater catalog keeps its retry only while both bounded local imports can still run',async()=>{
+  const imports=[];const load=createLocalChunkLoader({pause:async()=>{},importer:async url=>{imports.push(url);throw new TypeError('Failed to fetch dynamically imported module');}});
+  const runtime=createFeatureRuntime({theaterCatalog:()=>Promise.all([load('./builtin-theaters.js?v=test'),load('./qianmu-theaters.js?v=test')])});
+  const c=vm.createContext({featureRuntime:runtime,theaterCatalogReady:false,theaterCatalogLoading:null,theaterCatalogError:'',theaterCatalogExhausted:false,
+    activeTab:'theater',MODAL_ID:'m',htmlEscape:String,document:{getElementById:()=>({classList:{contains:()=>true}})},renderModal(){}});
+  vm.runInContext(section('ensureTheaterCatalog').split('const SETTINGS_PANEL_ID')[0]+'\n'+section('renderTheaterTab'),c);
+  for(let attempt=1;attempt<=4;attempt++){
+    assert.equal(await c.ensureTheaterCatalog(),false);assert.equal(imports.length,attempt*4);
+    const html=c.renderTheaterTab();
+    if(attempt<4)assert.match(html,/sd-theater-catalog-retry/);
+    else{assert.match(html,/刷新 ST 页面/);assert.doesNotMatch(html,/sd-theater-catalog-retry/);}
+  }
+  c.renderTheaterTab();assert.equal(imports.length,16,'rerender does not import or reinstate Retry');
 });
 test('ordinary startup and warmup do not migrate dialogue data, seed theaters or generate audio',async()=>{
   const source=await readFile(new URL('../qianmu-focus-library-runtime.js',import.meta.url),'utf8');
