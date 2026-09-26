@@ -4,8 +4,8 @@ import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {createStoryboardMessageReference,createStoryboardParagraphAnchor,resolveStoryboardMessageReference,resolveStoryboardOrdinaryMessageContinuation} from './qianmu-storyboard.js';
 import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js';
 import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js';
-import {readStoryboardContinuationLinks,normalizeStoryboardContinuationLinks,storyboardContinuationSavePending} from './qianmu-storyboard-continuation-proof.js?v=1.59.389';
-import {projectGalleryContinuity,mergeGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.389';
+import {readStoryboardContinuationLinks,normalizeStoryboardContinuationLinks,storyboardContinuationSavePending} from './qianmu-storyboard-continuation-proof.js?v=1.59.390';
+import {projectGalleryContinuity,mergeGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.390';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
 import {hashText} from './qianmu-storyboard-utils.js';
 

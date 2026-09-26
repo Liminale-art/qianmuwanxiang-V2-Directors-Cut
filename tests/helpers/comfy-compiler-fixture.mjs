@@ -4,7 +4,7 @@ import * as prompts from '../../qianmu-comfy-prompt.js';
 import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../../qianmu-character-casting.js';
 import {routeEnvironment} from './comfy-route-fixture.mjs';
 import {installCompilerDiagnosticsFixture} from './compiler-diagnostics-fixture.mjs';
-import {readEnsembleCompilerProof} from '../../qianmu-ensemble-handoff.js?v=1.59.389';
+import {readEnsembleCompilerProof} from '../../qianmu-ensemble-handoff.js?v=1.59.390';
 import {storyboardFunctionSource as section} from './storyboard-form-fixture.mjs';
 const plain=value=>JSON.parse(JSON.stringify(value));
 export const casting={schema:CHARACTER_CASTING_SCHEMA,entries:[{identity:{subjectId:'archive:alice',archiveId:'alice',archiveVersion:1,category:'char',name:'Alice',appearance:'silver hair',aliases:[]},negative:''}],unboundNames:[]};

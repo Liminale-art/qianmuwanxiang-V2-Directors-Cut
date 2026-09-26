@@ -14,6 +14,7 @@ import {createCollectionReadMemo} from './qianmu-text-collection-read-memo.js';
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)))),byte=>byte.toString(16).padStart(2,'0')).join('');
 const sessionSnapshots=new WeakMap();
+const sourceKey=(state,row)=>JSON.stringify(state.version===2?row:[row.id,row.revision,row.record.source]);
 function readSlot(scope,account){
   if(!scope)return {cache:null,epoch:0,writes:0};
   let pool=sessionSnapshots.get(scope);if(!pool){pool=new Map();sessionSnapshots.set(scope,pool);}
@@ -38,15 +39,28 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     if(options?.signal?.aborted)throw error('cancelled','收藏读取已取消');return true;
   };
   const invalidateReadCache=()=>{slot.cache=null;slot.memo.clear();slot.sources.clear();slot.epoch++;};
+  // Invalidate mutable directory/search state before a write, not every already
+  // verified immutable original. The next confirmed directory selects exact
+  // descriptors; writers still read their own fresh baseline from native ST.
+  const invalidateDirectoryCache=()=>{slot.cache=null;slot.memo.clearSearch();slot.epoch++;};
   const rejectAccount=cause=>{if(cause?.code==='st_account_storage_account'||!closed&&cause?.code==='text_collection_sync_account'){slot.revoked=true;invalidateReadCache();}throw cause;};
   const available=()=>Boolean(slot.cache&&!slot.writes&&readCacheMs>0&&now()>=slot.cache.at&&now()-slot.cache.at<30*60*1000);
   const cached=()=>available()&&now()-slot.cache.at<readCacheMs;
   function considerMigration(state){if(state.version===1&&storageFactory===createConfiguredStAccountStorage)requestCollectionMigration({readScope,expectedAccount,slot});return state;}
-  function remember(value,epoch,committed=false,fingerprint=null){const state=validate(value);let result=state;if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0){slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now(),fingerprint,scope:storageScope}:null;result=slot.cache?.state||state;}return considerMigration(result);}
+  function remember(value,epoch,committed=false,fingerprint=null){
+    const state=validate(value);let result=state;
+    if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0){
+      slot.memo.retainOriginals(state.version===2?state.entries:[]);
+      if(slot.sources.size){const live=new Set(state.entries.filter(row=>!row.deleted).map(row=>sourceKey(state,row)));
+        for(const key of slot.sources.keys())if(!live.has(key))slot.sources.delete(key);}
+      slot.cache=bytes(state)<=16*1024*1024?{state:structuredClone(state),at:now(),fingerprint,scope:storageScope}:null;
+      result=slot.cache?.state||state;
+    }return considerMigration(result);
+  }
   function validate(value){
     const state=validateNativeCollectionDocument(value,{expectedAccount,scope:storageScope});format=state.version;return state;
   }
-  async function open(options){
+  async function open(options,writeScope=null){
     await check(options);if(storage)return storage;if(opening)return opening;
     const epoch=slot.epoch;
     opening=(async()=>{
@@ -61,6 +75,12 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
           const owner='st-user:'+Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(candidate.namespace.slice(8)))),byte=>byte.toString(16).padStart(2,'0')).join('');
           if(owner!==expectedAccount)throw error('account','收藏储存账户不一致',401);
           await check(options);candidateGuard=()=>!closed&&isCurrent()===true;
+        }
+        // A reopened warm panel already knows this scope uses the v2 directory.
+        // This is a format hint only: the writer's queued update still reads and
+        // validates the current remote directory, including a format change.
+        if(writeScope&&writeScope===candidate.scope){
+          await check(options);storageScope=candidate.scope;storageGuard=candidateGuard;format=2;storage=candidate;return storage;
         }
         // A verified same-account snapshot needs only its head for a focus or
         // background recheck. A changed head still downloads the full document.
@@ -103,9 +123,10 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   async function mutate(inputs,options){
     inputs=inputs.map(input=>structuredClone(textCollectionSyncMutation(input)));
     for(const input of inputs){if(input.expectedAccount!==expectedAccount)throw error('account','收藏保存账户不一致',401);}
-    invalidateReadCache();slot.writes++;
+    const writeScope=available()&&slot.cache.state.version===2?slot.cache.scope:null;
+    invalidateDirectoryCache();slot.writes++;
     try{
-    const hashes=await Promise.all(inputs.map(hash)),store=await open(options);let acknowledgements;
+    const hashes=await Promise.all(inputs.map(hash)),store=await open(options,writeScope);let acknowledgements;
     const legacyWrite=()=>store.update('collections',value=>{
       const state=validate(value);if(state.version===2)throw error('layout','收藏已使用轻目录');
       const next=structuredClone(state),acks=[];
@@ -182,7 +203,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
       // Metadata-only cache hits do not each need their own HTTP identity probe.
       // Yield/check in bounded batches; original reads still check individually.
       if(index++%64===0){await new Promise(resolve=>setTimeout(resolve,0));await current();}
-      const key=JSON.stringify(state.version===2?row:[row.id,row.revision,row.record.source]);liveKeys.add(key);
+      const key=sourceKey(state,row);liveKeys.add(key);
       const source=slot.sources.get(key);
       if(source){await flush();items.push({...source});continue;}
       if(state.version!==2){await flush();append(row,key,row.record.source);continue;}

@@ -1,7 +1,9 @@
 // Ephemeral, account-scope-owned browsing acceleration. Never persistent, never
 // used by a writer or backup, and never a substitute for the caller's guards.
 // The byte budget counts serialized UTF-16 + keys, NOT a browser heap metric.
-export const COLLECTION_READ_MEMO_LIMITS=Object.freeze({originals:16,bytes:2*1024*1024,searches:4,ttlMs:60000});
+// Immutable bodies may follow the verified browsing directory for up to 30 min.
+// Explicit refresh/account changes still clear them; count/byte caps stay fixed.
+export const COLLECTION_READ_MEMO_LIMITS=Object.freeze({originals:16,bytes:2*1024*1024,searches:4,ttlMs:30*60*1000});
 export function createCollectionReadMemo({now=Date.now}={}){
   const limits=COLLECTION_READ_MEMO_LIMITS,originals=new Map();let bytes=0,searches=new WeakMap();
   const valid=at=>now()>=at&&now()-at<limits.ttlMs;
@@ -18,6 +20,11 @@ export function createCollectionReadMemo({now=Date.now}={}){
       // that verified version, without another complete text copy or mutation.
       originals.set(id,{entry,bytes:size,at:now()});bytes+=size;
     },
+    retainOriginals(rows){
+      prune();const live=new Map(rows.filter(row=>!row.deleted).map(row=>[row.id,row]));
+      for(const [id,item]of originals)if(key(live.get(item.entry.id))!==id)remove(id);
+    },
+    clearSearch(){searches=new WeakMap();},
     getSearch(state,term){const pool=searches.get(state),item=pool?.get(term);if(!item)return null;
       if(!valid(item.at)){pool.delete(term);return null;}pool.delete(term);pool.set(term,item);return item.indices.slice();},
     getCandidates(state,term){let best=null;const pool=searches.get(state);

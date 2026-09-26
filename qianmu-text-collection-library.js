@@ -3,6 +3,7 @@ import {createTextCollectionOutboxRuntime} from './qianmu-text-collection-outbox
 import {textCollectionDisplayLabel,textCollectionListLabel,textCollectionRecord,TEXT_COLLECTION_LIMITS} from './qianmu-text-collection.js';
 import {applyCollectionProseStyle,collectionIconButton,collectionEditorText,collectionEditorValue} from './qianmu-text-collection-presentation.js';
 import {textCollectionParagraphs} from './qianmu-text-collection-paragraphs.js';
+import {partitionTextCollectionMutations,TEXT_COLLECTION_BULK_LIMITS} from './qianmu-text-collection-bulk-contract.js';
 
 // Account originals only. Browsing never loads a chat or resolves its character.
 export async function openTextCollectionLibrary({parent,resolveNamespace,isCurrent,headers,copy,download,sourceElement}={}){
@@ -10,7 +11,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   if(!parent?.isConnected||typeof isCurrent!=='function')throw TypeError('收藏管理环境不可用');
   let closed=false,busy=false,record=null,operation=null,pageIndex=0,cursors=[null],nextCursor=null,searchValue='',resolve,session,outbox;
   let selecting=false,searchTimer=null,pendingSearch=null,exporter=null,viewEpoch=0,backgroundReading=null,pendingRevalidation=null,listSignature='';
-  let pageRequest=null,backgroundRequest=null;
+  let pageRequest=null,backgroundRequest=null,deletionPlan=null;
   const selected=new Map(),deletions=new Map();
   const current=()=>!closed&&parent.isConnected&&isCurrent()===true;
   const announceChange=()=>document.dispatchEvent(new view.Event('qianmu-text-collections-changed'));
@@ -77,7 +78,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   }
   function displayPage(page,index,reset,query){
     searchValue=query;if(reset)cursors=[null];pageIndex=index;nextCursor=page.nextCursor;record=null;operation=null;editor.value='';
-    selected.clear();deletions.clear();
+    selected.clear();deletions.clear();deletionPlan=null;
     const fragment=document.createDocumentFragment();
     for(const item of page.items){
       const row=document.createElement('button');row.type='button';row.className='qm-text-collection-row';row.dataset.collectionId=item.id;row.dataset.collectionRevision=String(item.revision);
@@ -134,15 +135,27 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   }
   async function deleteSelected(){
     let count=0;
-    // Revision and mutation stay fixed for each chosen item. A lost receipt is
-    // retried identically; a concurrent edit is never silently overwritten.
-    for(const [id,revision] of [...selected]){
-      let deletion=deletions.get(id);if(!deletion){deletion=session.prepareDelete(id,revision);deletions.set(id,deletion);}
-      try{await deletion.submit();}
+    // Capture the exact chosen revisions once. Keep the same bounded batches
+    // after a lost receipt; no regrouping, new mutation IDs or version rebasing.
+    if(!deletionPlan){
+      const operations=[...selected].map(([id,revision])=>{
+        let operation=deletions.get(id);if(!operation){operation=session.prepareDelete(id,revision);deletions.set(id,operation);}return operation;
+      });
+      const handles=new Map(operations.map(operation=>[operation.request.id,operation]));
+      const groups=partitionTextCollectionMutations(operations.map(operation=>operation.request),{expectedAccount:session.expectedAccount,maxItems:TEXT_COLLECTION_BULK_LIMITS.items,maxBytes:TEXT_COLLECTION_BULK_LIMITS.bytes});
+      deletionPlan={index:0,batches:groups.map(items=>({items,handle:items.length===1?handles.get(items[0].id):session.prepareBatch(items)}))};
+    }
+    while(deletionPlan.index<deletionPlan.batches.length){
+      const {items,handle}=deletionPlan.batches[deletionPlan.index];
+      try{await session.guard();if(!current())return;await handle.submit();}
       catch(cause){await session.guard();if(count)announceChange();status.textContent=`已删除 ${count} 条；${/^text_collection_/.test(cause?.code||'')?String(cause.message).slice(0,180):'其余未确认，请重试'}`;return;}
       if(!current())return;
-      count++;selected.delete(id);deletions.delete(id);list.querySelectorAll('[data-collection-id]').forEach(row=>{if(row.dataset.collectionId===id)row.remove();});
+      const confirmed=new Set(items.map(item=>item.id));
+      count+=items.length;for(const id of confirmed){selected.delete(id);deletions.delete(id);}
+      list.querySelectorAll('[data-collection-id]').forEach(row=>{if(confirmed.has(row.dataset.collectionId))row.remove();});
+      deletionPlan.index++;
     }
+    deletionPlan=null;
     if(count)announceChange();
     try{await loadPage(0,true);status.textContent+=` · 已删除 ${count} 条收藏`;}
     catch{await session.guard();list.replaceChildren();record=null;showList();cursors=[null];pageIndex=0;nextCursor=null;status.textContent='收藏已删除，列表暂未刷新；请点击刷新';}
@@ -151,8 +164,8 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     const button=event.target.closest?.('button');if(!button||!dialog.contains(button))return;
     const action=button.dataset.collectionManage,id=button.dataset.collectionId;
     if(action==='close'){stop();return;}if(busy)return;
-    if(action==='select'){selecting=!selecting;selected.clear();deletions.clear();status.textContent='';controls();return;}
-    if(id&&selecting){if(selected.has(id)){selected.delete(id);deletions.delete(id);}else selected.set(id,Number(button.dataset.collectionRevision));status.textContent=selected.size?`已选 ${selected.size} 条`:'';controls();return;}
+    if(action==='select'){selecting=!selecting;selected.clear();deletions.clear();deletionPlan=null;status.textContent='';controls();return;}
+    if(id&&selecting){deletionPlan=null;if(selected.has(id)){selected.delete(id);deletions.delete(id);}else selected.set(id,Number(button.dataset.collectionRevision));status.textContent=selected.size?`已选 ${selected.size} 条`:'';controls();return;}
     await run(async()=>{
       if(id){view.clearTimeout(searchTimer);pendingSearch=null;search.value=searchValue;return openRecord(id);}
       if(action==='refresh'){session.invalidateReadCache?.();view.clearTimeout(searchTimer);pendingSearch=null;return loadPage(0,true,search.value.trim());}

@@ -1,10 +1,37 @@
-import {applyTextCollectionMutation,TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncError as error} from './qianmu-text-collection-sync-contract.js';
+import {applyTextCollectionMutation,TEXT_COLLECTION_SYNC_LIMITS as limits,textCollectionSyncEntry,textCollectionSyncError as error} from './qianmu-text-collection-sync-contract.js';
 import {createTextCollectionOriginalStore} from './qianmu-text-collection-original.js';
+
+// Deletion needs only the already validated directory identity/revision. Reading
+// a complete original adds latency and prevents removing an unreadable original.
+// All targets are checked in the same native update queue before any publication;
+// the store retains its head checks, durable receipts and complete read-back.
+async function deleteIndexedCollection({store,expectedAccount,inputs,hashes,validate,check,now,options}){
+  let acknowledgements;
+  const verified=await store.update('collections',value=>{
+    const state=validate(value);if(state.version!==2)throw error('changed','收藏目录格式已变化，未覆盖');
+    const next=structuredClone(state),results=[],common=()=>({ok:true,version:1,expectedAccount,libraryRevision:next.revision});
+    for(let index=0;index<inputs.length;index++){
+      const input=inputs[index],fingerprint=hashes[index],receipt=next.receipts.find(row=>row.mutationId===input.mutationId);
+      if(receipt){if(receipt.hash!==fingerprint)throw error('mutation_conflict','收藏操作编号已对应其他内容');const {hash:ignored,...ack}=receipt;results.push(ack);continue;}
+      if(next.revision>=limits.mutations)throw error('capacity','收藏容量已满，原文未截断',507);
+      const at=next.entries.findIndex(row=>row.id===input.id),previous=at<0?null:next.entries[at];
+      if(!previous||previous.deleted||previous.revision!==input.baseRevision)throw error('conflict','收藏已在其他设备变更，请重新载入；本机内容仍保留');
+      const time=now(),updatedAt=Math.max(time,previous.updatedAt+1),revision=previous.revision+1;
+      if(!Number.isSafeInteger(time)||time<0||time>253402214400000||!Number.isSafeInteger(updatedAt)||updatedAt<0||updatedAt>253402214400000||!Number.isSafeInteger(revision))throw error('clock','收藏版本或保存时钟无效，未写入',503);
+      const entry=textCollectionSyncEntry({id:input.id,revision,updatedAt,deleted:true,record:null},expectedAccount);
+      next.entries[at]=entry;next.revision++;
+      const ack={...common(),mutationId:input.mutationId,id:entry.id,revision:entry.revision,updatedAt:entry.updatedAt};next.receipts.push({...ack,hash:fingerprint});results.push(ack);
+    }
+    acknowledgements={...common(),results};return validate(next);
+  },options);
+  await check();validate(verified.value);return {verified,acknowledgements};
+}
 
 // Publish one lightweight index only after every changed complete original is
 // durable. A conflicting/failed head leaves the old library and new bodies intact.
 // Native ST remains optimistic, not CAS or simultaneous-device linearizability.
 export async function writeIndexedCollection({store,expectedAccount,inputs,hashes,validate,check,now,options}={}){
+  if(inputs.length&&inputs.every(input=>input.operation==='delete'))return deleteIndexedCollection({store,expectedAccount,inputs,hashes,validate,check,now,options});
   const before=await store.read('collections',options);await check();const state=validate(before.value);
   if(state.version!==2)throw error('changed','收藏目录格式已变化，请按最新目录重试');
   const originals=createTextCollectionOriginalStore({storage:store,expectedAccount}),next=structuredClone(state),acks=[],pending=[];
