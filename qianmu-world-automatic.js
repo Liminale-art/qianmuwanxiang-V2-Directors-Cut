@@ -1,9 +1,9 @@
-import {createWorldAutomaticStorage} from './qianmu-world-automatic-storage.js?v=1.59.392';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.392';
+import {createWorldAutomaticStorage} from './qianmu-world-automatic-storage.js?v=1.59.393';
+import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.393';
 import {normalizeStoryboardPromptFormats,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings} from './qianmu-prompt-formats.js';
 import {characterReferenceChoice} from './qianmu-character-reference.js';
 import {carryWorldGalleryKeywords} from './qianmu-world-gallery-keywords.js';
-import {createWorldAutomaticRepairBudget} from './qianmu-world-automatic-host.js?v=1.59.392';
+import {createWorldAutomaticRepairBudget} from './qianmu-world-automatic-host.js?v=1.59.393';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'world_automatic_preparation'});};
 export async function beginWorldAutomaticAttempt({namespace,source,guard,createStorage}={}){

@@ -206,3 +206,22 @@ test('authenticated routes return exact native contracts and sanitize errors wit
   const bad=await call('POST','/text-collections/native-write',{...input,path:f.head});assert.equal(bad.statusCode,400);assert.equal(bad.value.writeState,'not_started');
   assert.equal(handlers.size,2);assert.equal((await fs.readdir(f.accountRoot)).includes('.qianmu-text-collection-v1.json'),false);
 });
+
+test('native routes recover the ST data root during the plugin startup boundary',async t=>{
+  const f=await fixture(t),handlers=new Map(),services=[];
+  const router={get:(route,handler)=>handlers.set('GET '+route,handler),post:(route,handler)=>handlers.set('POST '+route,handler)};
+  // A real ST request already contains its authenticated account directories,
+  // while DATA_ROOT can still be unset for the first plugin request. The route
+  // may derive only the containing root from that host-owned directory.
+  installTextCollectionNativeRoutes(router,{dataRoot:()=>undefined,register:service=>services.push(service),serviceOptions:{now:()=>100}});
+  t.after(()=>Promise.all(services.map(service=>service.close())));
+  const call=async body=>{
+    const req=Object.assign(new EventEmitter(),{body,user:f.req.user}),res=Object.assign(new EventEmitter(),{
+      headers:{},statusCode:200,writableEnded:false,destroyed:false,set(name,value){this.headers[name]=value;return this;},
+      status(code){this.statusCode=code;return this;},json(value){this.value=value;this.writableEnded=true;return this;},
+    });
+    await handlers.get('POST /text-collections/native-write')(req,res);return res;
+  };
+  const input=batch(mutation()),saved=await call(input);await verify(saved.value,input);
+  assert.equal(saved.statusCode,200);assert.equal(services.length,1);assert.equal((await f.read()).value.revision,1);
+});

@@ -21,20 +21,21 @@ test('closing the actual panel aborts its active search and does not start pendi
   f.panel.stop();await f.settle();assert.equal(old.options.signal.aborted,true);assert.equal(f.closed,true);assert.equal(f.timers.size,0);assert.equal(f.calls.length,2);
 });
 
-test('new search also cancels the old background refresh without showing an offline failure banner',async t=>{
-  const f=await collectionLibraryFixture(t,{background:true});const old=f.calls.find(call=>call.options.revalidate);assert.ok(old);
-  await f.input('新');assert.equal(old.options.signal.aborted,true);assert.doesNotMatch(f.status,/后台更新未完成/);await f.tick();
-  const newest=f.calls.at(-1);assert.equal(newest.input.search,'新');newest.resolve(1);await f.settle();assert.match(f.status,/共 1 条/);
+test('stale cached browsing does not start a hidden background refresh on search',async t=>{
+  const f=await collectionLibraryFixture(t,{background:true});
+  assert.equal(f.calls.some(call=>call.options.revalidate),false);
+  await f.input('新');await f.tick();
+  const newest=f.calls.at(-1);assert.equal(newest.input.search,'新');assert.equal(newest.options.revalidate,undefined);
+  newest.resolve(1);await f.settle();assert.match(f.status,/共 1 条/);
+  assert.equal(f.calls.some(call=>call.options.revalidate),false);
 });
 
-test('a newer cached search is revalidated after an uncooperative old background read settles',async t=>{
-  const f=await collectionLibraryFixture(t,{ignoreAbort:true,background:true}),old=f.calls.find(call=>call.options.revalidate);assert.ok(old);
-  await f.input('新');await f.tick();const cached=f.calls.at(-1);
-  assert.equal(old.options.signal.aborted,true);assert.equal(cached.input.search,'新');cached.resolve(2);await f.settle();
-  assert.match(f.status,/共 2 条/);assert.equal(f.calls.filter(call=>call.options.revalidate&&call.input.search==='新').length,0);
-  old.resolve(7);await f.settle();
-  const fresh=f.calls.at(-1);assert.equal(fresh.options.revalidate,true);assert.equal(fresh.input.search,'新');
-  assert.doesNotMatch(f.status,/共 7 条/);fresh.resolve(3);await f.settle();assert.match(f.status,/共 3 条/);
+test('explicit refresh remains a foreground read without hidden revalidation',async t=>{
+  const f=await collectionLibraryFixture(t,{background:true,initialCount:1});
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].options.revalidate,undefined);
+  await f.click('refresh');
+  assert.equal(f.calls.length,2);assert.equal(f.calls.at(-1).options.revalidate,undefined);
+  assert.equal(f.calls.some(call=>call.options.revalidate),false);
 });
 
 test('a genuine active search error is still visible rather than hidden by cancellation handling',async t=>{

@@ -82,16 +82,15 @@ try{
  await page.locator('[data-collection-id]').click();await ready();assert.equal(gets,0);await click('back');await ready();
  checks.push('a late cancelled floor lifecycle cannot evict another same-account library: close/reopen list and detail make zero file GETs');
  await click('close');record=textCollectionRecord({...record,revision:2,updatedAt:2,text:'远端的新文字'});seed();
- hold=true;const waiting=new Promise(resolve=>{entered=resolve;});gets=0;await page.evaluate(()=>{fixture.offset+=60000;return fixture.open();});await waiting;await ready();
+ gets=0;await page.evaluate(()=>{fixture.offset+=60000;return fixture.open();});await ready();
+ assert.equal(gets,0,'reopening an expired snapshot must not start a hidden revalidation');
  assert.equal(await page.locator('[data-collection-id]').count(),1);assert.match(await page.locator('[data-collection-id] small').textContent(),/第一段/);
  await page.locator('[data-collection-id]').click();await ready();assert.equal(await page.locator('[data-collection-prose]').textContent(),'第一段第二段');
- checks.push('expired snapshot renders and opens detail while the remote refresh is deliberately held');
- release();await page.waitForFunction(()=>document.querySelector('[data-collection-prose]')?.textContent==='第一段第二段');
- // Wait for the held response to settle without letting it replace the open detail.
- await page.waitForTimeout(120);await click('back');await ready();assert.match(await page.locator('[data-collection-id] small').textContent(),/远端的新文字/);
- checks.push('background refresh updates subsequent browsing but never replaces the currently read body');
- await page.evaluate(()=>{fixture.listRow=document.querySelector('[data-collection-id]');});await click('refresh');await ready();assert.ok(gets>=3);
- assert.equal(await page.evaluate(()=>document.querySelector('[data-collection-id]')===fixture.listRow),true);checks.push('explicit refresh remains authoritative and does not rebuild unchanged rows');
+ checks.push('expired snapshot reopens and opens detail without a hidden file revalidation');
+ await click('back');await ready();assert.match(await page.locator('[data-collection-id] small').textContent(),/第一段/);
+ checks.push('reopening and returning keeps the cached list until the user explicitly refreshes');
+ await page.evaluate(()=>{fixture.listRow=document.querySelector('[data-collection-id]');});await click('refresh');await ready();assert.ok(gets>=2);
+ assert.equal(await page.evaluate(()=>document.querySelector('[data-collection-id]')===fixture.listRow),true);assert.match(await page.locator('[data-collection-id] small').textContent(),/远端的新文字/);checks.push('explicit refresh remains authoritative and does not rebuild unchanged rows');
  await page.evaluate(()=>{fixture.namespace='st-user:other';});await page.locator('[data-collection-id]').click();await page.waitForFunction(()=>!document.querySelector('dialog'));
  checks.push('account changes close the old view rather than rendering its cached body');
  await page.evaluate(namespace=>{fixture.namespace=namespace;return fixture.open();},namespace);await ready();await click('close');
