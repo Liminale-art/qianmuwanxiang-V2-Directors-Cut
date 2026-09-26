@@ -27,15 +27,20 @@ function readSlot(scope,account){
 
 // Native ST files are optimistic documents, not a cross-device transaction server.
 // The response shape is shared with the UI; the capability is explicitly weaker.
-export function createNativeTextCollectionClient({expectedAccount,guard,isCurrent,headers,storageFactory=createConfiguredStAccountStorage,legacyFactory=createTextCollectionClient,now=Date.now,readCacheMs=15000,readScope=storageFactory===createConfiguredStAccountStorage?getStAccountStorageReadScope():null}={}) {
+export function createNativeTextCollectionClient({expectedAccount,guard,isCurrent,headers,timeoutMs=15000,storageFactory=createConfiguredStAccountStorage,legacyFactory=createTextCollectionClient,now=Date.now,readCacheMs=15000,readScope=storageFactory===createConfiguredStAccountStorage?getStAccountStorageReadScope():null}={}) {
   if(!Number.isFinite(readCacheMs)||readCacheMs<0||readCacheMs>30000)throw error('setup','收藏读取缓存配置无效',503);
-  let closed=false,opening=null,storage=null,storageGuard,storageScope,format=1;const slot=readSlot(readScope,expectedAccount),legacy=legacyFactory({expectedAccount,guard,headers});
+  let closed=false,opening=null,storage=null,storageGuard,storageScope,format=1,accelerator=null;const slot=readSlot(readScope,expectedAccount),legacy=legacyFactory({expectedAccount,guard,headers});
   slot.memo??=createCollectionReadMemo({now});
   slot.sources??=new Map();
   const check=async(options)=>{
     if(options?.signal?.aborted)throw error('cancelled','收藏读取已取消');
     const sameScope=()=>storageFactory!==createConfiguredStAccountStorage||readScope===getStAccountStorageReadScope();
-    try{if(closed||slot.revoked||!sameScope()||await guard()===false||closed||slot.revoked||!sameScope())throw error('account','收藏账户或页面已变化',401);}catch(cause){if(!closed)invalidateReadCache();throw cause;}
+    const checkScope=()=>{if(slot.revoked||!sameScope())throw error('account','收藏账户或储存范围已变化',401);};
+    const checkLifecycle=()=>{if(closed||typeof isCurrent==='function'&&isCurrent()!==true)throw error('cancelled','收藏会话或页面已关闭');};
+    try{
+      checkScope();checkLifecycle();const valid=await guard();checkScope();checkLifecycle();
+      if(valid===false)throw error('cancelled','收藏来源已变化，未继续读取');
+    }catch(cause){return rejectAccount(cause);}
     if(options?.signal?.aborted)throw error('cancelled','收藏读取已取消');return true;
   };
   const invalidateReadCache=()=>{slot.cache=null;slot.memo.clear();slot.sources.clear();slot.epoch++;};
@@ -43,6 +48,8 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   // verified immutable original. The next confirmed directory selects exact
   // descriptors; writers still read their own fresh baseline from native ST.
   const invalidateDirectoryCache=()=>{slot.cache=null;slot.memo.clearSearch();slot.epoch++;};
+  // Losing one panel/chat lifecycle does not revoke another same-account
+  // reader. Only an actual owner/authentication/storage-scope rejection does.
   const rejectAccount=cause=>{if(cause?.code==='st_account_storage_account'||!closed&&cause?.code==='text_collection_sync_account'){slot.revoked=true;invalidateReadCache();}throw cause;};
   const available=()=>Boolean(slot.cache&&!slot.writes&&readCacheMs>0&&now()>=slot.cache.at&&now()-slot.cache.at<30*60*1000);
   const cached=()=>available()&&now()-slot.cache.at<readCacheMs;
@@ -50,6 +57,10 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   function remember(value,epoch,committed=false,fingerprint=null){
     const state=validate(value);let result=state;
     if(!closed&&epoch===slot.epoch&&(!slot.writes||committed)&&readCacheMs>0){
+      // Independent confirmed saves can return out of order over the network.
+      // Their receipts remain valid, but an older receipt's directory must not
+      // hide entries already present in a newer verified same-scope snapshot.
+      if(committed&&slot.cache&&slot.cache.scope===storageScope&&slot.cache.state.version===state.version&&state.revision<slot.cache.state.revision)return slot.cache.state;
       slot.memo.retainOriginals(state.version===2?state.entries:[]);
       if(slot.sources.size){const live=new Set(state.entries.filter(row=>!row.deleted).map(row=>sourceKey(state,row)));
         for(const key of slot.sources.keys())if(!live.has(key))slot.sources.delete(key);}
@@ -60,7 +71,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
   function validate(value){
     const state=validateNativeCollectionDocument(value,{expectedAccount,scope:storageScope});format=state.version;return state;
   }
-  async function open(options,writeScope=null){
+  async function open(options,knownScope=null){
     await check(options);if(storage)return storage;if(opening)return opening;
     const epoch=slot.epoch;
     opening=(async()=>{
@@ -76,10 +87,11 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
           if(owner!==expectedAccount)throw error('account','收藏储存账户不一致',401);
           await check(options);candidateGuard=()=>!closed&&isCurrent()===true;
         }
-        // A reopened warm panel already knows this scope uses the v2 directory.
-        // This is a format hint only: the writer's queued update still reads and
-        // validates the current remote directory, including a format change.
-        if(writeScope&&writeScope===candidate.scope){
+        // A verified same-scope v2 directory is enough to initialize its file
+        // transport. Immutable originals validate their exact descriptors; a
+        // writer still reads and checks a fresh directory inside its update.
+        // Do not download a warm directory again just to open one original.
+        if(knownScope&&knownScope===candidate.scope){
           await check(options);storageScope=candidate.scope;storageGuard=candidateGuard;format=2;storage=candidate;return storage;
         }
         // A verified same-account snapshot needs only its head for a focus or
@@ -127,6 +139,15 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     invalidateDirectoryCache();slot.writes++;
     try{
     const hashes=await Promise.all(inputs.map(hash)),store=await open(options,writeScope);let acknowledgements;
+    // Optional same-origin acceleration, using the very same native-v2 files.
+    // Load only on a write, never on library/floor browsing. Unsupported servers
+    // keep the original path; once the mutation POST starts there is no reroute.
+    if(format===2&&storageFactory===createConfiguredStAccountStorage&&globalThis.location?.origin){
+      const {createNativeCollectionTransport}=await import('./qianmu-text-collection-native-transport.js');await check(options);
+      accelerator??=createNativeCollectionTransport({expectedAccount,scope:storageScope,readScope,guard:()=>check(),headers,timeoutMs});
+      const result=await accelerator.tryWrite({version:1,expectedAccount,mutations:inputs},options);await check(options);
+      if(result){remember(result.verified.value,++slot.epoch,true,result.verified.fingerprint);return result.acknowledgements;}
+    }
     const legacyWrite=()=>store.update('collections',value=>{
       const state=validate(value);if(state.version===2)throw error('layout','收藏已使用轻目录');
       const next=structuredClone(state),acks=[];
@@ -158,7 +179,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
       try{
         let originals;const memo=readCacheMs>0&&['list','get'].includes(method)&&options?.forceRefresh!==true&&options?.revalidate!==true?slot.memo:null;
         const readEntry=async row=>{await current();const hit=memo?.getOriginal(row);if(hit){await current();return hit;}
-          if(!originals)originals=createTextCollectionOriginalStore({storage:await open(options),expectedAccount});
+          if(!originals)originals=createTextCollectionOriginalStore({storage:await open(options,available()&&slot.cache.state===state?slot.cache.scope:null),expectedAccount});
           await current();const entry=await originals.read(row,{...options,guard:storageGuard});await current();memo?.rememberOriginal(row,entry);return entry;};
         response=await queryIndexedCollection(state,method,input,{common,expectedAccount,now,readEntry,check:current,memo});
         await current();return textCollectionSyncResponse(response,method,request);
@@ -191,7 +212,7 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     };
     const flush=async()=>{
       if(!missing.length)return;
-      await current();originals??=createTextCollectionOriginalStore({storage:await open(options),expectedAccount});
+      await current();originals??=createTextCollectionOriginalStore({storage:await open(options,available()&&state.version===2&&slot.cache.state===state?slot.cache.scope:null),expectedAccount});
       const entries=await originals.readMany(missing.map(item=>item.row),{...options,guard:storageGuard});await current();
       for(let i=0;i<missing.length;i++){
         const {row,key}=missing[i],entry=entries[i];slot.memo.rememberOriginal(row,entry);append(row,key,entry.record.source);
@@ -243,5 +264,5 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     snapshot:options=>query('snapshot',{},options),inventory:options=>query('inventory',{},options),restoreInfo:options=>query('restore-info',{},options),batchInfo:options=>query('batch-info',{},options),cleanupPlan:options=>query('cleanup-plan',{},options),
     async write(input,options){return textCollectionSyncResponse((await mutate([input],options)).results[0],'write',input);},
     async writeBatch(input,options){const request=textCollectionBulkRequest(input);return textCollectionBulkResponse(await mutate(request.mutations,options),request);},
-    close(){closed=true;if(!readScope)invalidateReadCache();legacy.close();storage?.close();}});
+    close(){closed=true;if(!readScope)invalidateReadCache();legacy.close();accelerator?.close();storage?.close();}});
 }

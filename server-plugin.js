@@ -11,6 +11,7 @@ import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source
 import { createNotesSyncService } from './qianmu-notes-sync-service.js';
 import { notesSyncError, notesSyncErrorPayload } from './qianmu-notes-sync-contract.js';
 import { installTextCollectionRoutes } from './qianmu-text-collection-routes.js';
+import {installTextCollectionNativeRoutes} from './qianmu-text-collection-native-routes.js';
 import {installGalleryDiscoveryRoutes} from './qianmu-gallery-discovery-routes.js';
 import {installAssistantStorageRoutes} from './qianmu-assistant-storage-service.js';
 import {installGalleryOriginalRoutes} from './qianmu-gallery-original-routes.js';
@@ -197,6 +198,7 @@ export async function init(router, options = {}) {
   const hostDataRoot = () => options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
   installStoryboardServerBatchV2Routes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service)});
   installTextCollectionRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.textCollectionOptions});
+  installTextCollectionNativeRoutes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service),serviceOptions:options.textCollectionNativeOptions});
   let notesSync;
   for (const [method, route] of [['get','/notes'],['post','/notes/write']]) router[method](route, async (req,res) => {
     prepareImageResponse(res);

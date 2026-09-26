@@ -20,7 +20,12 @@ async function fixture({latency=false}={}){
   const record=createTextCollection({id:'collection-perf1',mode:'full',createdAt:10,source:{account,chatId:'synthetic-chat',messageId:0,replyId:'synthetic-reply',charName:'角色',userName:'用户',text:'一条收藏原文'}});
   const seed=await createStAccountStorage(config);
   await seed.write('collections',{version:1,expectedAccount:account,revision:1,entries:[{id:record.id,revision:1,updatedAt:record.updatedAt,deleted:false,record}],receipts:[]},{expectedFingerprint:null});seed.close();
-  const guard=async()=>{if(!live||await resolveNamespace()!==namespace||!live)throw Error('account changed');return true;};
+  const guard=async()=>{
+    if(!live)throw Object.assign(Error('page closed'),{code:'text_collection_sync_cancelled'});
+    const owner=await resolveNamespace();
+    if(!live)throw Object.assign(Error('page closed'),{code:'text_collection_sync_cancelled'});
+    if(owner!==namespace)throw Object.assign(Error('account changed'),{code:'text_collection_sync_account'});return true;
+  };
   const make=(options={})=>createNativeTextCollectionClient({expectedAccount:account,guard,isCurrent:()=>live,storageFactory:options=>createStAccountStorage({...config,...options}),legacyFactory:()=>({snapshot:()=>assert.fail('existing native file must not read the legacy service'),close(){}}),now:()=>clock,...options});
   identity=get=post=0;
   return {make,record,config,files,counts:()=>({identity,get,post}),reset(){identity=get=post=0;},setAccount(value){owner=value;},setCurrent(value){live=value;},setRequestHook(value){onRequest=value;},advance(value){clock+=value;}};
@@ -77,8 +82,9 @@ test('cached reads remain account-guarded, cancellable, bounded to their owner s
   const f=await fixture(),client=f.make();await client.list();f.reset();
   f.setAccount('st-user:other');await assert.rejects(client.get(f.record.id));assert.equal(f.counts().get,0);
   f.setAccount(namespace);const controller=new AbortController();controller.abort();await assert.rejects(client.get(f.record.id,{signal:controller.signal}),{code:'text_collection_sync_cancelled'});assert.equal(f.counts().get,0);
-  f.files.clear();await assert.rejects(client.get(f.record.id,{forceRefresh:true}),{code:'text_collection_sync_missing'});
-  await assert.rejects(client.get(f.record.id),{code:'text_collection_sync_missing'});
+  await assert.rejects(client.get(f.record.id),{code:'text_collection_sync_account'},'a revoked owner session cannot resume after switching back');
+  const fresh=f.make();await fresh.list();f.files.clear();await assert.rejects(fresh.get(f.record.id,{forceRefresh:true}),{code:'text_collection_sync_missing'});
+  await assert.rejects(fresh.get(f.record.id),{code:'text_collection_sync_missing'});fresh.close();
   client.close();await assert.rejects(client.get(f.record.id));
 });
 
@@ -133,8 +139,9 @@ test('shared read state publishes confirmed mutations, invalidates failures and 
   const f=await fixture(),readScope={},a=f.make({readScope}),b=f.make({readScope});await a.list();await b.list();
   await b.write(edit(f.record,1,'已确认修改','mutation-shared01'));f.reset();assert.equal((await a.get(f.record.id,{preferCache:true})).record.text,'已确认修改');assert.equal(f.counts().get,0);
   f.setAccount('st-user:someone-else');await assert.rejects(a.get(f.record.id,{preferCache:true}));f.setAccount(namespace);f.reset();
-  await b.get(f.record.id,{preferCache:true});assert.equal(f.counts().get,2,'an identity failure invalidates the shared snapshot');
-  b.invalidateReadCache();f.reset();await a.list();assert.equal(f.counts().get,2);a.close();b.close();
+  await assert.rejects(b.get(f.record.id,{preferCache:true}),{code:'text_collection_sync_account'});assert.equal(f.counts().get,0,'an identity failure revokes other old readers');
+  const c=f.make({readScope}),d=f.make({readScope});await c.get(f.record.id,{preferCache:true});assert.equal(f.counts().get,2,'new verified sessions must load a directory after identity failure');
+  c.invalidateReadCache();f.reset();await d.list();assert.equal(f.counts().get,2);a.close();b.close();c.close();d.close();
 });
 
 test('new storage lifetime never reuses an earlier configuration snapshot',async()=>{
@@ -162,7 +169,7 @@ test('a closing panel late read cannot revoke another live panel sharing its sna
   const storageFactory=async()=>({read:async()=>{if(wait){const pending=wait;wait=null;entered();await pending;}return {exists:true,value:structuredClone(value)};},close(){}});
   const a=f.make({readScope,storageFactory});await a.list();let release;
   wait=new Promise(resolve=>{release=resolve;});const started=new Promise(resolve=>{entered=resolve;});
-  const refresh=assert.rejects(a.list({cursor:null,limit:50},{revalidate:true}),{code:'text_collection_sync_account'});
+  const refresh=assert.rejects(a.list({cursor:null,limit:50},{revalidate:true}),{code:'text_collection_sync_cancelled'});
   await started;a.close();const b=f.make({readScope,storageFactory});assert.equal((await b.list()).total,1);
   release();await refresh;assert.equal((await b.get(record.id,{preferCache:true})).record.text,record.text);b.close();
 });

@@ -24,10 +24,12 @@ allowed.add('qianmu-account-identity.js');
 allowed.add('qianmu-feature-runtime.js');
 for(const file of ['qianmu-icon-renderer.js','qianmu-text-collection-presentation.js','qianmu-text-collection-paragraphs.js','qianmu-text-collection-image-export.js'])allowed.add(file);
 for(const file of ['qianmu-account-local-store.js','qianmu-text-collection-outbox-store.js','qianmu-text-collection-outbox-runtime.js','qianmu-text-collection-outbox-view.js','qianmu-text-collection-outbox-backup.js'])allowed.add(file);
+for(const file of ['qianmu-text-collection-native-transport.js','qianmu-text-collection-native-contract.js'])allowed.add(file);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin==='https://qianmu.test'){
+    if(url.pathname==='/api/plugins/qianmu-tts/text-collections/native-capabilities'&&route.request().method()==='GET')return route.fulfill({status:404,contentType:'application/json',body:'{}'});
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><main id="fixture"></main>'});
     if(url.pathname==='/qianmu-text-collection.css')return route.fulfill({contentType:'text/css',body:await fs.readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
     const file=url.pathname.slice(1);if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(new URL('../'+file,import.meta.url),'utf8')});

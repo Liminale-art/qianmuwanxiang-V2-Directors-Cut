@@ -6,11 +6,12 @@ const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext(),page=await context.newPage(),errors=[],checks=[];let external=0;
-const files=new Set(['qianmu-text-collection-floor.js','qianmu-text-collection-floor-status.js','qianmu-icon-renderer.js','qianmu-feature-runtime.js']);
+const files=new Set(['qianmu-text-collection-floor.js','qianmu-text-collection-floor-status.js','qianmu-icon-renderer.js','qianmu-feature-runtime.js','qianmu-text-collection-native-transport.js','qianmu-text-collection-native-contract.js']);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url()),file=url.pathname.slice(1);
   if(url.origin==='https://qianmu.test'&&route.request().method()==='GET'){
+    if(url.pathname==='/api/plugins/qianmu-tts/text-collections/native-capabilities')return route.fulfill({status:404,contentType:'application/json',body:'{}'});
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><html><body><div id="chat"></div></body></html>'});
     if(file==='qianmu-text-collection-session.js')return route.fulfill({contentType:'text/javascript',body:'export async function createTextCollectionSession(){return window.fixture.deleteSession();}'});
     if(file==='qianmu-text-collection-floor-delete.js')return route.fulfill({contentType:'text/javascript',body:'export async function deleteTextCollectionFloor(options){return window.fixture.deleteFloor(options);}'});

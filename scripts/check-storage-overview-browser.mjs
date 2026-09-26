@@ -20,7 +20,7 @@ const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota
   comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}, notesStorage: {status:'ready',bytes:200,count:3,pinned:1}};
 function render(data = snapshot, status = 'ready') {
   const state = vm.createContext({renderStorageBackupSection, collectionCleanupOptions, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
-    optionalServiceState: {status: 'ready', services: [], version: 'fixture'}, VERSION: '1.59.391',
+    optionalServiceState: {status: 'ready', services: [], version: 'fixture'}, VERSION: '1.59.392',
     htmlEscape: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: bytes => `${((Number(bytes) || 0) / MB).toFixed(1)} MB`, blobStore: {classifyStoragePressure: () => ({level: 'normal'})}});
   vm.runInContext(['optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'renderStorageServiceStatus', 'renderStorageManagementCard'].map(section).join('\n'), state);
@@ -152,7 +152,7 @@ try {
   const serviceSource = ['optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n');
   const serviceChecks = await page.evaluate(async ({html, source, replace}) => {
     document.body.innerHTML = `<div id="story-director-modal" class="open"><div class="sd-body" style="height:400px;overflow:auto"><input class="api-draft" value="https://unsaved.invalid/v1"><div style="height:200px"></div>${html}<div style="height:800px"></div></div></div>`;
-    Object.assign(window, {MODAL_ID: 'story-director-modal', VERSION: '1.59.391', optionalServiceState: {status: 'idle', services: [], checkedAt: 0}, optionalServiceProbePromise: null,
+    Object.assign(window, {MODAL_ID: 'story-director-modal', VERSION: '1.59.392', optionalServiceState: {status: 'idle', services: [], checkedAt: 0}, optionalServiceProbePromise: null,
       settings: {}, configUndo: {available: () => false}, ctx: () => ({getRequestHeaders: () => ({})}), probeCount: 0,
       renderModal: () => {throw Error('Unexpected modal redraw');}, paintStorageManagementCard: () => {throw Error('Unexpected card redraw');},
       storyboardPaintVideoConnectionState: async () => {}, refreshQianmuUpdateStatus: async () => {},

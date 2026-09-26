@@ -3,6 +3,11 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-text-collection-native-contract.js",
+    "qianmu-text-collection-native-transport.js",
+    "qianmu-text-collection-native-file-store.js",
+    "qianmu-text-collection-native-service.js",
+    "qianmu-text-collection-native-routes.js",
     "qianmu-assistant-history-transfer.js",
     "qianmu-assistant-history-manager.js",
     "qianmu-assistant-history-view.js",

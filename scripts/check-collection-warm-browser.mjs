@@ -21,6 +21,7 @@ page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{
  const url=new URL(route.request().url());
  if(url.origin!=='https://qianmu.test'){external++;return route.abort();}
+ if(url.pathname==='/api/plugins/qianmu-tts/text-collections/native-capabilities'&&route.request().method()==='GET')return route.fulfill({status:404,contentType:'application/json',body:'{}'});
  if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><main id="root"></main>'});
  if(/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url),'utf8')});
  if(url.pathname.startsWith('/user/files/')){
@@ -61,6 +62,25 @@ try{
  await click('back');await ready();assert.equal(gets,0);checks.push('reopen/detail/copy/back use zero file GETs and preserve original blank lines when unedited');
  assert.equal(await page.evaluate(()=>document.querySelector('[data-collection-id]')===fixture.listRow),true);
  assert.equal(await page.locator('[data-collection-list]').evaluate(element=>element.scrollTop),74);checks.push('unchanged detail return retains the same row DOM and restores list scrolling');
+ // A concurrent floor reader can lose its old chat epoch while its identity
+ // await is still pending. That cancellation must not revoke this UI's shared
+ // same-account directory when the library is closed and opened again.
+ gets=0;await page.evaluate(async()=>{
+  const {createTextCollectionSession}=await import('/qianmu-text-collection-session.js');
+  fixture.oldReaderCurrent=true;fixture.holdOldIdentity=false;fixture.oldIdentityHeld=false;
+  fixture.oldReader=await createTextCollectionSession({resolveNamespace:async()=>{
+    if(fixture.holdOldIdentity){fixture.holdOldIdentity=false;fixture.oldIdentityHeld=true;await new Promise(resolve=>fixture.releaseOldIdentity=resolve);}
+    return fixture.namespace;
+  },isCurrent:()=>fixture.oldReaderCurrent,headers:()=>({})});
+  await fixture.oldReader.sources();fixture.holdOldIdentity=true;
+  fixture.oldRead=fixture.oldReader.sources().then(()=>{fixture.oldReadCode='unexpected-success';},error=>{fixture.oldReadCode=error.code;});
+ });await page.waitForFunction(()=>fixture.oldIdentityHeld===true);await click('close');
+ await page.evaluate(async()=>{fixture.oldReaderCurrent=false;fixture.releaseOldIdentity();await fixture.oldRead;fixture.oldReader.close();});
+ assert.equal(await page.evaluate(()=>fixture.oldReadCode),'text_collection_sync_cancelled');
+ await page.evaluate(()=>fixture.open());await ready();assert.equal(gets,0);
+ assert.equal(await page.locator('[data-collection-id]').count(),1);
+ await page.locator('[data-collection-id]').click();await ready();assert.equal(gets,0);await click('back');await ready();
+ checks.push('a late cancelled floor lifecycle cannot evict another same-account library: close/reopen list and detail make zero file GETs');
  await click('close');record=textCollectionRecord({...record,revision:2,updatedAt:2,text:'远端的新文字'});seed();
  hold=true;const waiting=new Promise(resolve=>{entered=resolve;});gets=0;await page.evaluate(()=>{fixture.offset+=60000;return fixture.open();});await waiting;await ready();
  assert.equal(await page.locator('[data-collection-id]').count(),1);assert.match(await page.locator('[data-collection-id] small').textContent(),/第一段/);

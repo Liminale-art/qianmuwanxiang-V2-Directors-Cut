@@ -11,8 +11,13 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
   let closed=false;
   const namespace=await resolveNamespace();
   if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace))throw error('account','尚未确认收藏账户',401);
+  const checkLifecycle=()=>{if(closed||isCurrent()!==true)throw error('cancelled','收藏会话或页面已关闭');};
   const guard=async()=>{
-    if(closed||isCurrent()!==true||namespace!==await resolveNamespace()||closed||isCurrent()!==true)throw error('account','收藏账户或页面已变化，请重新打开',401);
+    checkLifecycle();let owner;
+    try{owner=await resolveNamespace();}
+    catch{checkLifecycle();throw error('account','暂未确认当前收藏账户，请重新打开',401);}
+    checkLifecycle();
+    if(namespace!==owner)throw error('account','收藏账户已变化，请重新打开',401);
     return true;
   };
   await guard();

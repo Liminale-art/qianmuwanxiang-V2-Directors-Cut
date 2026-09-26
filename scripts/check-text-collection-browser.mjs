@@ -11,7 +11,7 @@ const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHAN
 const artifactDirectory=process.env.QIANMU_CAPTURE_ARTIFACTS==='1'?await mkdtemp(path.join(os.tmpdir(),'qianmu-collection-picker-')):null;
 const context = await browser.newContext(), page = await context.newPage();
 const checks = [], errors = [], allowed = new Set(['qianmu-text-collection.js', 'qianmu-text-collection-view.js', 'qianmu-notes-sync-contract.js', 'qianmu-text-collection-backup.js', 'qianmu-json-input.js']);
-for(const file of ['floor','floor-status','capture','session','client','sync-contract','bulk-contract','outbox-store','outbox-runtime','outbox-backup'])allowed.add(`qianmu-text-collection-${file}.js`);
+for(const file of ['floor','floor-status','capture','session','client','sync-contract','bulk-contract','outbox-store','outbox-runtime','outbox-backup','native-transport','native-contract'])allowed.add(`qianmu-text-collection-${file}.js`);
 allowed.add('qianmu-account-local-store.js');
 allowed.add('qianmu-plain-text-range.js');
 allowed.add('qianmu-icon-renderer.js');allowed.add('qianmu-text-collection-paragraphs.js');
@@ -24,6 +24,8 @@ let external = 0;
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
     const url = new URL(route.request().url());
+    if(url.origin==='https://qianmu.test'&&url.pathname==='/api/plugins/qianmu-tts/text-collections/native-capabilities'&&route.request().method()==='GET')
+        return route.fulfill({status:404,contentType:'application/json',body:'{}'});
     if(url.origin==='https://qianmu.test'&&url.pathname==='/api/plugins/qianmu-tts/text-collections/write'&&route.request().method()==='POST'){
         const request=route.request().postDataJSON();writes.push(request);
         assert.equal(route.request().headers()['x-csrf-token'],'fixture-only');
