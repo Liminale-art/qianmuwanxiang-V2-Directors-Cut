@@ -1,5 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.394';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.395';
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   let floorStatus=null,statusLoading=null,detachStatus=null;
@@ -33,7 +33,9 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       const focused=()=>{if(document.visibilityState==='visible')resumed.schedule();};
       document.addEventListener('qianmu-text-collections-changed',changed);document.addEventListener('visibilitychange',visible);document.defaultView.addEventListener('focus',focused);
       detachStatus=()=>{resumed.dispose();document.removeEventListener('qianmu-text-collections-changed',changed);document.removeEventListener('visibilitychange',visible);document.defaultView.removeEventListener('focus',focused);};
-      void floorStatus.refresh().catch(()=>{if(current()&&epoch===token)paintStatus();});return floorStatus;
+      if(library)floorStatus.suspend();
+      else void floorStatus.refresh().catch(()=>{if(current()&&epoch===token)paintStatus();});
+      return floorStatus;
     }).catch(()=>{if(current()&&epoch===token)paintStatus();}).finally(()=>{if(epoch===token)statusLoading=null;});
     return statusLoading;
   }
