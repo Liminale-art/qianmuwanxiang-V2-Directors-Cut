@@ -8,6 +8,7 @@ const css=(await Promise.all(['style.css','qianmu-theme-skins.css'].map(p=>readF
 const out=new URL('../dist/local-qa/ensemble-library/',import.meta.url);await mkdir(out,{recursive:true});
 const assets=new Set(['qianmu-theme-surfaces.js','qianmu-theme-palette.js','qianmu-ensemble-view.js','qianmu-ensemble-editor.js','qianmu-ensemble-selection.js','qianmu-prompt-formats.js','qianmu-icon-renderer.js','qianmu-ensemble-origin.js','qianmu-ensemble-ui.js','qianmu-ensemble-route-view.js','qianmu-ensemble-storage.js','qianmu-st-account-storage.js','qianmu-json-input.js','qianmu-ensemble-target-picker.js']);
 assets.add('qianmu-storyboard-limits.js');
+assets.add('qianmu-account-identity.js');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext(),page=await context.newPage(),errors=[],checks=[],screenshots=[];let external=0;
 page.on('pageerror',error=>errors.push(error.message));

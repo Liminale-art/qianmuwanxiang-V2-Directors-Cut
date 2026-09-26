@@ -2,6 +2,15 @@ import {createTextCollectionOutboxStore,createTextCollectionOutboxEntry,textColl
 import {textCollectionSyncError as error,textCollectionSyncResponse,textCollectionSyncMutation} from './qianmu-text-collection-sync-contract.js';
 import {prepareTextCollectionOutboxBackup,mergeTextCollectionOutboxBackup} from './qianmu-text-collection-outbox-backup.js';
 
+// UI and recovery own separate runtimes over the same default durable outbox.
+// Merge only their in-flight exact operations, not histories or retry outcomes.
+// Injected stores share only when they are the same object/truth source.
+const defaultFlights=new Map(),injectedFlights=new WeakMap();
+function outboxFlights(store,ownsStore){
+  if(ownsStore)return defaultFlights;
+  let flights=injectedFlights.get(store);if(!flights){flights=new Map();injectedFlights.set(store,flights);}return flights;
+}
+
 // Stable identity belongs to this exact conflicted save, not to an editor session.
 // Keep the domain and canonical payload stable across refreshes and future versions.
 export async function textCollectionConflictCopy(input,cryptoImpl=globalThis.crypto){
@@ -20,6 +29,7 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
   const namespace=textCollectionOutboxAccount(session?.expectedAccount),ownsStore=!store;
   if(typeof session.guard!=='function'||typeof session.resumePending!=='function'||typeof isCurrent!=='function')throw error('setup','收藏待存环境未就绪',503);
   store ||= createTextCollectionOutboxStore();let closed=false;const active=new Map(),controllers=new Set();
+  const flights=outboxFlights(store,ownsStore),flightKey=mutationId=>JSON.stringify([namespace,mutationId]),signature=row=>JSON.stringify({request:row.request,base:row.base});
   const current=()=>!closed&&isCurrent()===true;
   const check=async()=>{if(!current())throw error('account','收藏待存页面或账户已变化',401);await session.guard();if(!current())throw error('account','收藏待存页面或账户已变化',401);};
   const read=async()=>{await check();const value=await store.read(namespace,{guard:current});await check();return value;};
@@ -38,7 +48,7 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
     if(typeof globalThis.dispatchEvent==='function'&&typeof globalThis.Event==='function')globalThis.dispatchEvent(new Event('qianmu-collection-save-queued'));
     return structuredClone(saved);
   }
-  async function send(mutationId,{signal}={}){
+  async function send(mutationId,{signal}={},prepared=()=>{}){
     const controller=new AbortController(),abort=()=>controller.abort();controllers.add(controller);signal?.addEventListener('abort',abort,{once:true});
     if(signal?.aborted)abort();let row,started=false;
     const checkSignal=()=>{if(controller.signal.aborted)throw error('cancelled','收藏待存提交已停止；原请求仍保留');};
@@ -49,6 +59,7 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
         if(target.state==='conflict')throw error('conflict','此收藏存在版本冲突，请先保留副本或核对原件');
         target.started=true;row=structuredClone(target);
       });
+      prepared(signature(row));
       checkSignal();await check();started=true;
       const receipt=textCollectionSyncResponse(await session.resumePending(row.request).submit({signal:controller.signal}),'write',row.request);
       checkSignal();await update(state=>{
@@ -68,9 +79,33 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
       throw cause;
     }finally{signal?.removeEventListener('abort',abort);controllers.delete(controller);}
   }
+  async function joinFlight(flight,mutationId,{signal}={}){
+    const controller=new AbortController(),abort=()=>controller.abort();controllers.add(controller);signal?.addEventListener('abort',abort,{once:true});
+    const cancelled=()=>error('cancelled','收藏待存提交已停止；原请求仍保留');
+    let rejectStop;const stopped=new Promise((_,reject)=>{rejectStop=reject;});
+    controller.signal.addEventListener('abort',()=>rejectStop(cancelled()),{once:true});if(signal?.aborted)abort();
+    const checkSignal=()=>{if(controller.signal.aborted)throw cancelled();};
+    try{
+      return await Promise.race([(async()=>{
+        checkSignal();const expected=await flight.prepared;checkSignal();const state=await read();checkSignal();
+        const row=state.entries.find(entry=>entry.request.mutationId===mutationId);
+        // Absence is allowed only for this exact shared in-flight operation: its
+        // owner may already have retired the durable row after a valid receipt.
+        if(row&&signature(row)!==expected)throw error('local_conflict','待存编号已关联其他内容，未采用其他提交的结果');
+        const result=await flight.promise;checkSignal();await check();checkSignal();return result;
+      })(),stopped]);
+    }finally{signal?.removeEventListener('abort',abort);controllers.delete(controller);}
+  }
   function submit(mutationId,options){
     if(active.has(mutationId))return active.get(mutationId);
-    const promise=send(mutationId,options).finally(()=>active.delete(mutationId));active.set(mutationId,promise);return promise;
+    const key=flightKey(mutationId);let flight=flights.get(key),task;
+    if(flight)task=joinFlight(flight,mutationId,options);
+    else{
+      let resolvePrepared,rejectPrepared;flight={prepared:new Promise((resolve,reject)=>{resolvePrepared=resolve;rejectPrepared=reject;}),promise:null};
+      void flight.prepared.catch(()=>{});flights.set(key,flight);
+      flight.promise=send(mutationId,options,resolvePrepared).catch(cause=>{rejectPrepared(cause);throw cause;}).finally(()=>{if(flights.get(key)===flight)flights.delete(key);});task=flight.promise;
+    }
+    const promise=task.finally(()=>active.delete(mutationId));active.set(mutationId,promise);return promise;
   }
   async function save(request,{base=null,signal}={}){
     await enqueue(request,{base});
@@ -90,7 +125,7 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
     if(confirmed!==true)throw error('consent','请确认只移除此机待存原件');
     if(inputs.some(row=>row.started&&row.state!=='conflict')&&acceptUnconfirmed!==true)throw error('consent','原提交结果未知；移除本机待存不会取消或删除服务器保存');
     await update(state=>{
-      for(const id of snapshots.keys())if(active.has(id))throw error('busy','此待存仍在提交中，请等待后重新查看');
+      for(const id of snapshots.keys())if(active.has(id)||flights.has(flightKey(id)))throw error('busy','此待存仍在提交中，请等待后重新查看');
       for(const row of state.entries){const snapshot=snapshots.get(row.request.mutationId);if(!snapshot)continue;
         if(!same(row,snapshot))throw error('local_conflict','待存状态已在另一页面变化，未移除；请刷新核对');removed++;
       }

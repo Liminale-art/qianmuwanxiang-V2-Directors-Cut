@@ -11,7 +11,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   if(!parent?.isConnected||typeof isCurrent!=='function')throw TypeError('收藏管理环境不可用');
   let closed=false,busy=false,record=null,operation=null,pageIndex=0,cursors=[null],nextCursor=null,searchValue='',resolve,session,outbox;
   let selecting=false,searchTimer=null,pendingSearch=null,exporter=null,viewEpoch=0,backgroundReading=null,pendingRevalidation=null,listSignature='';
-  let pageRequest=null,backgroundRequest=null,deletionPlan=null;
+  let pageRequest=null,backgroundRequest=null,deletionPlan=null,renderedIndex=-1,renderedQuery='',listScrollTop=0;
   const selected=new Map(),deletions=new Map();
   const current=()=>!closed&&parent.isConnected&&isCurrent()===true;
   const announceChange=()=>document.dispatchEvent(new view.Event('qianmu-text-collections-changed'));
@@ -77,15 +77,21 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     q('[data-collection-pages]').hidden=false;actions.hidden=true;
   }
   function displayPage(page,index,reset,query){
+    const sameView=renderedIndex===index&&renderedQuery===query,signature=JSON.stringify(page);
+    const scrollTop=sameView?(record?listScrollTop:list.scrollTop||0):0;
+    const unchanged=sameView&&signature===listSignature&&list.children.length===page.items.length;
     searchValue=query;if(reset)cursors=[null];pageIndex=index;nextCursor=page.nextCursor;record=null;operation=null;editor.value='';
     selected.clear();deletions.clear();deletionPlan=null;
-    const fragment=document.createDocumentFragment();
-    for(const item of page.items){
-      const row=document.createElement('button');row.type='button';row.className='qm-text-collection-row';row.dataset.collectionId=item.id;row.dataset.collectionRevision=String(item.revision);
-      const label=document.createElement('span'),preview=document.createElement('small');
-      label.textContent=textCollectionDisplayLabel(item.charName,item.userName,item.createdAt);preview.textContent=item.preview;row.title=label.textContent;row.append(label,preview);fragment.append(row);
+    if(!unchanged){
+      const fragment=document.createDocumentFragment();
+      for(const item of page.items){
+        const row=document.createElement('button');row.type='button';row.className='qm-text-collection-row';row.dataset.collectionId=item.id;row.dataset.collectionRevision=String(item.revision);
+        const label=document.createElement('span'),preview=document.createElement('small');
+        label.textContent=textCollectionDisplayLabel(item.charName,item.userName,item.createdAt);preview.textContent=item.preview;row.title=label.textContent;row.append(label,preview);fragment.append(row);
+      }
+      list.replaceChildren(fragment);
     }
-    list.replaceChildren(fragment);listSignature=JSON.stringify(page);showList();
+    listSignature=signature;renderedIndex=index;renderedQuery=query;showList();list.scrollTop=scrollTop;listScrollTop=scrollTop;
     status.textContent=`共 ${page.total} 条收藏${page.total?` · 第 ${pageIndex+1} 页`:''}`;
   }
   function revalidatePage(input,index,query,force=false){
@@ -125,8 +131,9 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
   async function openRecord(id){
     const result=await session.get(id,{preferCache:true});if(!current())return;
     if(!result.record){status.textContent='此收藏已被删除，请刷新列表';return;}
+    listScrollTop=list.scrollTop||0;
     record=result.record;operation=null;displayRecord();list.hidden=true;detail.hidden=false;searchRow.hidden=true;
-    q('[data-collection-pages]').hidden=true;actions.hidden=false;status.textContent='';
+    q('[data-collection-pages]').hidden=true;actions.hidden=false;status.textContent='';detail.scrollTop=0;
   }
   function searchChanged(){
     view.clearTimeout(searchTimer);

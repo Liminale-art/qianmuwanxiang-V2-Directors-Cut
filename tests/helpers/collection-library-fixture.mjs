@@ -8,11 +8,11 @@ import {partitionTextCollectionMutations,TEXT_COLLECTION_BULK_LIMITS} from '../.
 export async function collectionLibraryFixture(t,{ignoreAbort=false,background=false,initialCount=0,sessionOverrides={}}={}){
   const all=[],queries=new Map(),timers=new Map(),calls=[];let timerId=0,closed=false,current=true,changes=0;
   class Element{
-    constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.dataset={};this.listeners=new Map();this.attrs={};this.isConnected=true;this.value='';this.textContent='';this.hidden=false;this.classList={toggle(){}};all.push(this);}
+    constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.dataset={};this.listeners=new Map();this.attrs={};this.isConnected=true;this.value='';this.textContent='';this.hidden=false;this.scrollTop=0;this.replacements=0;this.classList={toggle(){}};all.push(this);}
     querySelector(selector){if(!queries.has(selector))queries.set(selector,new Element(selector==='input'?'input':'div'));return queries.get(selector);}
     querySelectorAll(selector){return selector==='button'?all.filter(el=>el.isConnected&&el.tagName==='BUTTON'):all.filter(el=>el.isConnected&&el.dataset.collectionId);}
     append(...nodes){this.children.push(...nodes.flatMap(node=>node.tagName==='FRAGMENT'?node.children:[node]));}
-    replaceChildren(...nodes){this.children=[];this.append(...nodes);}
+    replaceChildren(...nodes){this.replacements++;this.children=[];this.append(...nodes);}
     setAttribute(key,value){this.attrs[key]=value;}
     removeAttribute(key){delete this.attrs[key];}
     addEventListener(type,fn){if(!this.listeners.has(type))this.listeners.set(type,new Set());this.listeners.get(type).add(fn);}
@@ -44,7 +44,7 @@ export async function collectionLibraryFixture(t,{ignoreAbort=false,background=f
   const panel=await context.openPanel({parent,resolveNamespace:async()=>'',isCurrent:()=>current});t.after(()=>panel.stop());
   const settle=async()=>{for(let i=0;i<40;i++)await Promise.resolve();};await settle();
   const click=async button=>{await panel.element.emit('click',{target:button});await settle();};
-  return {panel,calls,timers,page,settle,view,session,get closed(){return closed;},get changes(){return changes;},get rows(){return queries.get('[data-collection-list]').children;},get status(){return queries.get('[data-collection-status]').textContent;},
+  return {panel,calls,timers,page,settle,view,session,get closed(){return closed;},get changes(){return changes;},get rows(){return queries.get('[data-collection-list]').children;},get list(){return queries.get('[data-collection-list]');},get scroller(){return queries.get('[data-collection-list]');},get detail(){return queries.get('[data-collection-detail]');},get status(){return queries.get('[data-collection-status]').textContent;},
     setCurrent(value){current=value;},
     click:async action=>click(queries.get(`[data-collection-manage="${action}"]`)),
     choose:async id=>click(all.find(el=>el.isConnected&&el.dataset.collectionId===id)),

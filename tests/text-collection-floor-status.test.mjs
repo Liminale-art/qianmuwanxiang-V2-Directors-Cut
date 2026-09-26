@@ -63,6 +63,21 @@ test('a confirmed save lights only its floor when the initial status is unknown'
   assert.equal(manager.status(1),true);assert.equal(manager.status(2),false);manager.dispose();
 });
 
+test('confirmed full-floor deletion clears only that star before background reconciliation finishes',async()=>{
+  const {state,manager,row}=fixture();state.records=[row(1),row(2)];await manager.refresh();
+  state.mode='hold';const old=manager.refresh({force:true,retain:true});
+  while(!state.hold)await new Promise(resolve=>setImmediate(resolve));
+  manager.confirmedDelete(1,alice);
+  assert.equal(manager.status(1),false);assert.equal(manager.status(2),true);
+  state.mode='ok';state.hold();await old;
+  assert.equal(manager.status(1),false,'a read started before the delete receipt cannot restore the old star');
+  state.records=[row(1,{replyId:'new-from-other-device'}),row(2)];
+  await manager.refresh({force:true,retain:true});assert.equal(manager.status(1),true,'later remote additions are still reconciled');
+  manager.confirmedDelete(1,alice);manager.markUnknown(1);assert.equal(manager.status(1),null,'partial or unknown outcomes cannot claim full deletion');
+  manager.confirmedDelete(1,alice);state.namespace='st-user:bob';await manager.refresh({force:true});
+  assert.equal(manager.status(1),false);manager.dispose();
+});
+
 test('a pre-save read cannot erase a later receipt; account switch or failed reconciliation becomes unknown or scoped anew',async()=>{
   const {state,manager}=fixture();state.mode='hold';const old=manager.refresh();
   while(!state.hold)await new Promise(resolve=>setImmediate(resolve));

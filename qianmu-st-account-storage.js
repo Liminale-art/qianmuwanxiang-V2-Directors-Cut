@@ -125,7 +125,12 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
         await check();
         if(response.redirected||response.type==='opaqueredirect'||response.status>=300&&response.status<400)fail('path','ST 储存接口跳转，未采用返回');
         if(response.url&&response.url!==new URL(path,site).href)fail('path','ST 储存返回路径不一致');
-        if([401,403].includes(response.status))fail('account','ST 登录已失效，请重新登录');
+        if([401,403].includes(response.status)){
+          // Identity is already resident in the host page. Workers and cold
+          // library imports need it only on this exceptional auth-failure path.
+          try{(await import('./qianmu-account-identity.js')).invalidateImageAccountIdentity();}catch{}
+          fail('account','ST 登录已失效，请重新登录');
+        }
         if(allowMissing&&response.status===404)return null;
         if(!response.ok)fail('service','ST 文件储存暂不可用');
         if(!/^(application\/json|text\/plain|application\/octet-stream)\b/i.test(response.headers.get('content-type')||'')||Number(response.headers.get('content-length'))>limit)fail('format','ST 储存返回格式或大小无效');

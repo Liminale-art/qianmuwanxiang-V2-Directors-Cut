@@ -12,6 +12,8 @@ await context.route('**/*',async route=>{
   const url=new URL(route.request().url()),file=url.pathname.slice(1);
   if(url.origin==='https://qianmu.test'&&route.request().method()==='GET'){
     if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><html><body><div id="chat"></div></body></html>'});
+    if(file==='qianmu-text-collection-session.js')return route.fulfill({contentType:'text/javascript',body:'export async function createTextCollectionSession(){return window.fixture.deleteSession();}'});
+    if(file==='qianmu-text-collection-floor-delete.js')return route.fulfill({contentType:'text/javascript',body:'export async function deleteTextCollectionFloor(options){return window.fixture.deleteFloor(options);}'});
     if(files.has(file))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
   }
   external++;await route.abort();
@@ -25,10 +27,11 @@ try{
     const fixture=window.fixture={current:true,chatKey:'chat-a',namespace:'st-user:alice',reads:0,closed:0,records:[],mode:'ok',messages:[{mes:'正文 A'}, {mes:'正文 B'}, {mes:'系统',is_system:true}]};
     const chat=document.getElementById('chat');fixture.chat=chat;
     chat.innerHTML=fixture.messages.map((message,index)=>`<div class="mes" mesid="${index}"><div class="mes_text">${message.mes}</div><div class="mes_buttons"><button class="third-party">不改别人的按钮</button></div></div>`).join('');
-    const row=(floor,reply='swipe:0',account='account-alice')=>({source:{account,chatId:fixture.chatKey,messageId:floor,replyId:reply},text:'PRIVATE'});fixture.row=row;
+    fixture.account='st-user:'+'a'.repeat(64);fixture.notices=[];
+    const row=(floor,reply='swipe:0',account=fixture.account)=>({source:{account,chatId:fixture.chatKey,messageId:floor,replyId:reply},text:'PRIVATE'});fixture.row=row;
     fixture.records=[row(0,'swipe:2'),row(0,'swipe:4')];
-    fixture.tools=createTextCollectionFloorTools({getContext:()=>({chat:fixture.messages}),getChatKey:()=>fixture.chatKey,names:()=>({}),resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,applyIcons:applyQianmuIcons,statusSessionFactory:async()=>{
-      const expectedAccount=fixture.namespace==='st-user:alice'?'account-alice':'account-bob';
+    fixture.tools=createTextCollectionFloorTools({getContext:()=>({chat:fixture.messages}),getChatKey:()=>fixture.chatKey,names:()=>({}),resolveNamespace:async()=>fixture.namespace,isCurrent:()=>fixture.current,notify:(text,type)=>fixture.notices.push({text,type}),applyIcons:applyQianmuIcons,statusSessionFactory:async()=>{
+      const expectedAccount=fixture.namespace==='st-user:alice'?fixture.account:'st-user:'+'b'.repeat(64);
       return {expectedAccount,guard:async()=>{},close:()=>fixture.closed++,sources:async()=>{fixture.reads++;const records=structuredClone(fixture.records);if(fixture.mode==='hold')await new Promise(resolve=>fixture.release=resolve);if(fixture.mode==='error')throw Error('offline');return {expectedAccount,items:records.map(record=>record.source)};}};
     }});
     fixture.tools.refresh(chat);fixture.tools.refresh(chat);
@@ -61,6 +64,45 @@ try{
   const before=await page.evaluate(()=>fixture.reads);await page.evaluate(()=>{for(let i=0;i<100;i++)fixture.tools.refresh(fixture.chat);});await page.waitForTimeout(80);assert.equal(await page.evaluate(()=>fixture.reads),before);
   await page.evaluate(()=>{fixture.mode='ok';window.dispatchEvent(new Event('focus'));});await page.waitForFunction(()=>document.querySelector('.mes[mesid="1"] [data-qm-collect-floor]')?.dataset.qmCollectionState==='saved');
   checks.push('pending writes/events do not optimistically fill stars; read failure stays unknown, render storms do not reread, focus retries');
+  await page.evaluate(()=>{
+    fixture.release=null;
+    fixture.knownFloor=false;
+    fixture.deleteSession=()=>({namespace:fixture.namespace,expectedAccount:fixture.account,knownFloorState:async()=>fixture.knownFloor,close:()=>{}});
+    fixture.deleteFloor=async({onProgress})=>{
+      await new Promise(resolve=>fixture.deleteRelease=resolve);
+      onProgress({total:1,confirmed:1});fixture.records=[];fixture.mode='hold';return {total:1,confirmed:1};
+    };
+  });
+  const noticesBeforeDelete=await page.evaluate(()=>fixture.notices.length);
+  await button(1).click();await page.waitForFunction(()=>typeof fixture.deleteRelease==='function');
+  assert.equal(await button(1).isEnabled(),false,'the actual write must still be awaited');
+  assert.equal(await page.evaluate(()=>fixture.notices.length),noticesBeforeDelete,'a pending write cannot announce success');
+  await page.evaluate(()=>fixture.deleteRelease());await page.waitForFunction(()=>typeof fixture.release==='function');
+  assert.equal(await button(1).isEnabled(),true,'a held post-write reconciliation must not block the star button');
+  assert.equal(await button(1).getAttribute('data-qm-collection-state'),'empty');
+  assert.equal(await page.evaluate(()=>fixture.notices.at(-1)?.type),'success');
+  await page.evaluate(()=>{fixture.mode='ok';fixture.release();});
+  checks.push('acknowledged full-floor deletion paints and releases the button before a held background recheck completes');
+  for(const known of [null,true]){
+    await page.evaluate(()=>{fixture.records=[fixture.row(1)];fixture.change();});
+    await page.waitForFunction(()=>document.querySelector('.mes[mesid="1"] [data-qm-collect-floor]')?.dataset.qmCollectionState==='saved');
+    await page.evaluate(known=>{
+      fixture.release=null;fixture.knownFloor=known;
+      fixture.deleteFloor=async({onProgress})=>{
+        onProgress({total:1,confirmed:1});fixture.records=known===true?[fixture.row(1,'new-from-other-device')]:[];
+        fixture.mode='hold';return {total:1,confirmed:1};
+      };
+    },known);
+    await button(1).click();await page.waitForFunction(()=>typeof fixture.release==='function');
+    assert.equal(await button(1).isEnabled(),true);
+    assert.equal(await button(1).getAttribute('data-qm-collection-state'),known===true?'saved':'unknown');
+    const notice=await page.evaluate(()=>fixture.notices.at(-1));
+    assert.equal(/本层已无|已取消本层/.test(notice.text),false,'a receipt cannot claim an empty floor when remaining sources are unknown or present');
+    if(known===true)assert.match(notice.text,/仍有其他收藏/);
+    await page.evaluate(()=>{fixture.mode='ok';fixture.release();});
+    await page.waitForFunction(known=>document.querySelector('.mes[mesid="1"] [data-qm-collect-floor]')?.dataset.qmCollectionState===(known===true?'saved':'empty'),known);
+  }
+  checks.push('a surviving concurrent collection keeps its star; unknown provenance never claims full-floor deletion, and neither waits for background I/O');
   await page.evaluate(()=>{fixture.namespace='st-user:bob';fixture.tools.refresh(fixture.chat);});await page.waitForFunction(()=>document.querySelector('.mes[mesid="1"] [data-qm-collect-floor]')?.dataset.qmCollectionState==='empty');
   checks.push('switching account cannot reuse another account source index even when the chat name is identical');
   await page.evaluate(()=>fixture.tools.dispose());const stopped=await page.evaluate(()=>fixture.reads);await page.evaluate(()=>{fixture.change();window.dispatchEvent(new Event('focus'));});await page.waitForTimeout(50);

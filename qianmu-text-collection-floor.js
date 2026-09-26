@@ -1,5 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.390';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.391';
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   let floorStatus=null,statusLoading=null,detachStatus=null;
@@ -56,19 +56,30 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
         result=await deleteTextCollectionFloor({session,chatId:chatKey,messageId:floor,check:()=>{if(!valid())throw Error('楼层或页面已变化，未继续删除');},onProgress:progress=>{
           confirmed=progress.confirmed;if(valid())floorStatus?.markUnknown(floor);
         }});
+        const saved=await session.knownFloorState(chatKey,floor);
+        if(valid()){
+          if(saved===false){
+            floorStatus?.confirmedDelete(floor,session.expectedAccount);
+            notify?.(result.total?`已取消本层 ${result.confirmed} 条正文收藏`:'本层已无正文收藏','success');
+          }else if(saved===true){
+            floorStatus?.confirmedCreate(floor,session.expectedAccount);
+            notify?.(`已取消 ${result.confirmed} 条收藏，本层仍有其他收藏`,'info');
+          }else{
+            floorStatus?.markUnknown(floor);
+            notify?.(result.total?`已取消 ${result.confirmed} 条收藏`:'正在更新本层收藏状态',result.total?'success':'info');
+          }
+        }
       }catch(cause){failure=cause;}
       finally{
         session?.close();
-        if(current()&&epoch===token)try{await refreshStatus(true,true);}catch{/* Unknown state is not a successful recheck. */}
         button.classList.remove('is-removing');button.removeAttribute('aria-busy');if(button.isConnected)button.disabled=false;if(epoch===token)opening=false;
+        // The write already completed its authoritative readback. Reconcile
+        // other-device changes in the background, not on the interaction path.
+        if(current()&&epoch===token)void Promise.resolve(refreshStatus(true,true)).catch(()=>{});
       }
-      if(!valid())return;
+      if(!failure||!valid())return;
       if(owner)try{if(await resolveNamespace()!==owner||!valid())return;}catch{return;}
       if(failure){notify?.(confirmed?`已确认取消 ${confirmed} 条；其余未确认，请核对：${String(failure?.message||failure).slice(0,160)}`:`取消收藏未完成，请核对：${String(failure?.message||failure).slice(0,180)}`,'warning');return;}
-      const saved=floorStatus?.status(floor)??null;
-      if(saved===false)notify?.(result.total?`已取消本层 ${result.confirmed} 条正文收藏`:'本层已无正文收藏','success');
-      else if(saved===true)notify?.(`已确认取消 ${result.confirmed} 条，但本层仍有收藏；可能是其他设备新加入的内容`,'info');
-      else notify?.(`已确认取消 ${result.confirmed} 条，但星标状态暂未核对；请稍后刷新`,'warning');
       return;
     }
     const capturedNames=names();

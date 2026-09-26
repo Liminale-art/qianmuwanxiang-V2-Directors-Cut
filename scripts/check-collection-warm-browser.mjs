@@ -36,7 +36,7 @@ const ready=()=>page.waitForFunction(()=>document.querySelector('dialog')?.getAt
 const click=action=>page.locator(`[data-collection-manage="${action}"]`).click();
 try{
  await page.setViewportSize({width:393,height:850});await page.goto('https://qianmu.test/');
- await page.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')+'\n'+await readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')});
+ await page.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')+'\n'+await readFile(new URL('../qianmu-text-collection.css',import.meta.url),'utf8')+'\n.qm-text-collection-library > main {height:100px;flex:none!important}.qm-text-collection-library .qm-text-collection-row {min-height:240px}'});
  await page.evaluate(async namespace=>{
   window.fixture={namespace,active:true,offset:0};const now=Date.now;Date.now=()=>now()+fixture.offset;
   const {configureStAccountStorage}=await import('/qianmu-st-account-storage.js'),{openTextCollectionLibrary}=await import('/qianmu-text-collection-library.js');
@@ -51,11 +51,16 @@ try{
   await fixture.stars.refresh();if(fixture.stars.status(0)!==true)throw Error('star source missing');
  });assert.equal(gets,0,'floor stars must not call the force-refresh backup path');
  const reopenAt=performance.now();await page.evaluate(()=>fixture.open());await ready();const reopenMs=performance.now()-reopenAt;assert.equal(gets,0);
- await page.locator('[data-collection-id]').click();await ready();assert.equal(gets,0);
+ await page.evaluate(()=>{fixture.listRow=document.querySelector('[data-collection-id]');document.querySelector('[data-collection-list]').scrollTop=74;});
+ assert.equal(await page.locator('[data-collection-list]').evaluate(element=>element.scrollTop),74);
+ await page.evaluate(()=>fixture.listRow.click());await ready();assert.equal(gets,0);
+ assert.equal(await page.locator('[data-collection-detail]').evaluate(element=>element.scrollTop),0);
  await click('copy');await ready();assert.equal(await page.evaluate(()=>fixture.copied),'第一段\n\n\n\n第二段');
  await click('edit');await ready();assert.equal(await page.locator('[data-collection-editor]').inputValue(),'第一段\n\n第二段');
  await click('save');await ready();assert.equal(posts,0,'display normalization is not an edit');
  await click('back');await ready();assert.equal(gets,0);checks.push('reopen/detail/copy/back use zero file GETs and preserve original blank lines when unedited');
+ assert.equal(await page.evaluate(()=>document.querySelector('[data-collection-id]')===fixture.listRow),true);
+ assert.equal(await page.locator('[data-collection-list]').evaluate(element=>element.scrollTop),74);checks.push('unchanged detail return retains the same row DOM and restores list scrolling');
  await click('close');record=textCollectionRecord({...record,revision:2,updatedAt:2,text:'远端的新文字'});seed();
  hold=true;const waiting=new Promise(resolve=>{entered=resolve;});gets=0;await page.evaluate(()=>{fixture.offset+=60000;return fixture.open();});await waiting;await ready();
  assert.equal(await page.locator('[data-collection-id]').count(),1);assert.match(await page.locator('[data-collection-id] small').textContent(),/第一段/);
@@ -65,7 +70,8 @@ try{
  // Wait for the held response to settle without letting it replace the open detail.
  await page.waitForTimeout(120);await click('back');await ready();assert.match(await page.locator('[data-collection-id] small').textContent(),/远端的新文字/);
  checks.push('background refresh updates subsequent browsing but never replaces the currently read body');
- await click('refresh');await ready();assert.ok(gets>=3);checks.push('explicit refresh remains authoritative');
+ await page.evaluate(()=>{fixture.listRow=document.querySelector('[data-collection-id]');});await click('refresh');await ready();assert.ok(gets>=3);
+ assert.equal(await page.evaluate(()=>document.querySelector('[data-collection-id]')===fixture.listRow),true);checks.push('explicit refresh remains authoritative and does not rebuild unchanged rows');
  await page.evaluate(()=>{fixture.namespace='st-user:other';});await page.locator('[data-collection-id]').click();await page.waitForFunction(()=>!document.querySelector('dialog'));
  checks.push('account changes close the old view rather than rendering its cached body');
  await page.evaluate(namespace=>{fixture.namespace=namespace;return fixture.open();},namespace);await ready();await click('close');

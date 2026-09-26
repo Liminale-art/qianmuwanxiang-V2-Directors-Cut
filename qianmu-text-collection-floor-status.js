@@ -61,15 +61,23 @@ export function createTextCollectionFloorStatus({getScope,resolveNamespace,isCur
     status(floor){
       if(closed||isCurrent()!==true)return null;
       const scope=scopeNow();
-      if(confirmed&&same(confirmed.scope,scope)&&confirmed.floors.has(floor))return true;
+      if(confirmed&&same(confirmed.scope,scope)&&confirmed.floors.has(floor))return confirmed.floors.get(floor);
       if(!state?.known||!same(state.scope,scope)||confirmed&&confirmed.expectedAccount!==state.expectedAccount)return null;
       return state.unknownFloors?.has(floor)?null:state.floors.has(floor);
     },
     confirmedCreate(floor,expectedAccount){
       const scope=scopeNow();
       if(closed||isCurrent()!==true||!scope||!Number.isSafeInteger(floor)||floor<0||!/^st-user:[a-f0-9]{64}$/.test(expectedAccount||''))return;
-      if(!confirmed||!same(confirmed.scope,scope)||confirmed.expectedAccount!==expectedAccount)confirmed={scope,expectedAccount,floors:new Set()};
-      confirmed.floors.add(floor);confirmationSerial++;announce();
+      if(!confirmed||!same(confirmed.scope,scope)||confirmed.expectedAccount!==expectedAccount)confirmed={scope,expectedAccount,floors:new Map()};
+      confirmed.floors.set(floor,true);confirmationSerial++;announce();
+    },
+    confirmedDelete(floor,expectedAccount){
+      const scope=scopeNow();
+      if(closed||isCurrent()!==true||!scope||!Number.isSafeInteger(floor)||floor<0||!/^st-user:[a-f0-9]{64}$/.test(expectedAccount||''))return;
+      if(!confirmed||!same(confirmed.scope,scope)||confirmed.expectedAccount!==expectedAccount)confirmed={scope,expectedAccount,floors:new Map()};
+      // Only the full, acknowledged floor deletion may clear this star. A
+      // partial batch or a failed request must still use markUnknown instead.
+      confirmed.floors.set(floor,false);confirmationSerial++;announce();
     },
     markUnknown(floor){
       if(closed||isCurrent()!==true)return;

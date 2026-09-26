@@ -16,6 +16,8 @@ allowed.add('qianmu-account-local-store.js');
 allowed.add('qianmu-plain-text-range.js');
 allowed.add('qianmu-icon-renderer.js');allowed.add('qianmu-text-collection-paragraphs.js');
 allowed.add('qianmu-st-account-storage.js');
+allowed.add('qianmu-account-identity.js');
+allowed.add('qianmu-feature-runtime.js');
 allowed.add('qianmu-text-collection-presentation.js');
 const writes=[];let apiMode='ok',held;
 let external = 0;

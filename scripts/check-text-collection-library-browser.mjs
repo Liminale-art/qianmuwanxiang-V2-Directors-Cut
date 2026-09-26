@@ -20,6 +20,8 @@ const allowed=new Set(['qianmu-notes-sync-contract.js','qianmu-text-collection.j
 const checks=[],errors=[],writes=[];let reads=0,external=0,loseAck=false,failListOnce=false,rejectDraftCopy=false;
 let heldSearch=null,searchEntered=null;
 allowed.add('qianmu-st-account-storage.js');
+allowed.add('qianmu-account-identity.js');
+allowed.add('qianmu-feature-runtime.js');
 for(const file of ['qianmu-icon-renderer.js','qianmu-text-collection-presentation.js','qianmu-text-collection-paragraphs.js','qianmu-text-collection-image-export.js'])allowed.add(file);
 for(const file of ['qianmu-account-local-store.js','qianmu-text-collection-outbox-store.js','qianmu-text-collection-outbox-runtime.js','qianmu-text-collection-outbox-view.js','qianmu-text-collection-outbox-backup.js'])allowed.add(file);
 page.on('pageerror',error=>errors.push(error.message));
@@ -193,14 +195,23 @@ try{
   checks.push('invalid backups, declined restore and owner disposal do not write; all restore portals and busy ownership are released');
   const inventory=await page.evaluate(async()=>{
     const data=await fixture.floorTools.storageSummary(()=>true);
-    const {renderStorageBackupSection}=await import('./qianmu-storage-backup-view.js');
-    const host=document.createElement('section');host.id='inventory';host.style.width='100%';host.innerHTML=renderStorageBackupSection(null,value=>`${value} B`,{data:{collectionStorage:data}});document.body.append(host);host.querySelector('details').open=true;return data;
+    const {renderStorageBackupSection,collectionCleanupOptions}=await import('./qianmu-storage-backup-view.js');
+    const host=document.createElement('section');host.id='inventory';host.style.width='100%';
+    // Inventory is gathered only by the explicit scan. The routine view now
+    // shows compact sizes, not a duplicate recovery/pending management menu.
+    host.innerHTML=renderStorageBackupSection(null,value=>`${value} B`,{data:{collectionStorage:data},ready:true});document.body.append(host);
+    host.querySelector('details').open=true;host.querySelector('[data-storage-section="sizes"]').open=true;
+    fixture.scannedCleanupOptions=collectionCleanupOptions({collectionStorage:data});return data;
   });assert.equal(inventory.count,53);assert.equal(inventory.deletedCount,2);assert.equal(inventory.bytes,(await fs.stat(path.join(folder,'.qianmu-text-collection-v1.json'))).size);assert.equal(writes.length,beforeInvalid);
-  assert.match(await page.locator('#inventory .sd-storage-collection-summary').textContent(),/53 条原件.*不计入浏览器配额/);
+  assert.equal(await page.locator('#inventory .sd-storage-collection-summary,#inventory .sd-storage-collection-pending-summary').count(),0,'removed explanatory recovery cards must not return');
+  assert.equal(await page.locator('#inventory .sd-storage-resource-list .sd-storage-backup-row').first().textContent(),`正文收藏${inventory.bytes} B`);
   assert.equal(inventory.pending.status,'ready');assert.equal(inventory.pending.count,1);assert.equal(inventory.pending.conflicts,1);assert.ok(inventory.pending.bytes>0);
-  assert.match(await page.locator('#inventory .sd-storage-collection-pending-summary').textContent(),/1 条.*冲突 1 条.*不是可重建缓存/);
-  for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await page.locator('#inventory .sd-storage-collection-summary').evaluate(node=>({scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(size.scroll<=size.client+1);}
-  checks.push('lazy server inventory shows exact file bytes and tombstone counts without writes or narrow-screen overflow');
+  const cleanupRows=await page.evaluate(()=>fixture.scannedCleanupOptions);
+  assert.deepEqual(cleanupRows.map(row=>({id:row.id,count:row.count,bytes:row.bytes})),[{id:'__collections__',count:53,bytes:inventory.bytes},{id:'__collection_pending__',count:1,bytes:inventory.pending.bytes}]);
+  assert.equal(await page.locator('#inventory .sd-storage-clean').isEnabled(),true);
+  assert.equal(await page.locator('#inventory .sd-storage-chat-clean').isDisabled(),true);
+  for(const width of [320,393,1280]){await page.setViewportSize({width,height:850});const size=await page.locator('#inventory .sd-storage-resource-list').evaluate(node=>({scroll:node.scrollWidth,client:node.clientWidth}));assert.ok(size.scroll<=size.client+1);}
+  checks.push('explicit real scan retains exact original bytes, tombstone and cleanup counts; compact size rows have no redundant recovery cards or narrow-screen overflow');
   checks.push('independent real IndexedDB pending statistics retain conflict counts and do not expose prose or count server originals as browser data');
   await page.evaluate(()=>{
     fixture.cleanupConsent=false;fixture.cleanupAsks=[];fixture.cleanupHost=document.createElement('section');document.body.append(fixture.cleanupHost);

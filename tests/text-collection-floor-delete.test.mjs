@@ -12,6 +12,9 @@ test('filled floor star deletes every excerpt on that floor in one indexed batch
   assert.equal(f.uploads,2,'one index body and head; no per-excerpt write');
   assert.equal((await session.list()).total,1);assert.equal((await session.get(other.id)).record.id,other.id);
   assert.equal((await session.get(first.id)).record,null);assert.equal((await session.get(second.id)).record,null);
+  f.reset();assert.equal(await session.knownFloorState('deleted-chat',1),false);
+  assert.equal(await session.knownFloorState('deleted-chat',3),true);
+  assert.equal(f.calls.length,0,'post-delete floor feedback reuses the verified directory without another request');
 });
 
 test('stale revision rejects the entire floor batch without deleting either excerpt',async t=>{
@@ -27,6 +30,10 @@ test('a collection added by another device after the click snapshot is never swe
   const f=await collectionIndexFixture(t,[first]),a=await f.open(),b=await f.open();
   const snapshot={...a,sources:async options=>{const sources=await a.sources(options);await b.prepareCreate(later).submit();return sources;}};
   assert.deepEqual(await deleteTextCollectionFloor({session:snapshot,chatId:'deleted-chat',messageId:1}),{total:1,confirmed:1});
+  f.reset();assert.equal(await a.knownFloorState('deleted-chat',1),null,'the new original has not been verified, so completion cannot claim an empty floor');
+  assert.equal(f.calls.length,0,'unknown immediate feedback never fetches the new original');
+  await a.sources();f.reset();assert.equal(await a.knownFloorState('deleted-chat',1),true);
+  assert.equal(f.calls.length,0,'a known new source keeps the star without any repeat read');
   const page=await a.list();assert.deepEqual(page.items.map(item=>item.id),[later.id]);
 });
 

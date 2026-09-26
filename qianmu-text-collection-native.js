@@ -216,8 +216,29 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     return {expectedAccount,items};
     }catch(cause){return rejectAccount(cause);}
   }
+  // A completed write already verified its directory. Reuse only that fresh,
+  // exact in-memory directory for immediate floor feedback; missing provenance
+  // remains unknown and never triggers another directory/original request.
+  async function knownFloorState(chatId,messageId){
+    if(typeof chatId!=='string'||!chatId||!Number.isSafeInteger(messageId)||messageId<0)return null;
+    const epoch=slot.epoch;
+    try{
+      await check();if(epoch!==slot.epoch||!cached())return null;
+      const state=slot.cache.state;let saved=false,unknown=false;
+      for(const row of state.entries){
+        if(row.deleted)continue;
+        const provenance=slot.sources.get(sourceKey(state,row))||
+          (state.version===2?slot.memo.getOriginal(row)?.record.source:row.record.source);
+        if(!provenance){unknown=true;continue;}
+        if(provenance.account===expectedAccount&&provenance.chatId===chatId&&provenance.messageId===messageId)saved=true;
+      }
+      await check();
+      if(epoch!==slot.epoch||!cached()||slot.cache.state!==state)return null;
+      return unknown?null:saved;
+    }catch(cause){return rejectAccount(cause);}
+  }
   return Object.freeze({persistence:'st-account-file',concurrency:'optimistic-non-cas',invalidateReadCache,readCacheNeedsRefresh:()=>available()&&!cached(),
-    sources,
+    sources,knownFloorState,
     list:(input={cursor:null,limit:50},options)=>query('list',input,options),get:(id,options)=>query('get',{id},options),
     snapshot:options=>query('snapshot',{},options),inventory:options=>query('inventory',{},options),restoreInfo:options=>query('restore-info',{},options),batchInfo:options=>query('batch-info',{},options),cleanupPlan:options=>query('cleanup-plan',{},options),
     async write(input,options){return textCollectionSyncResponse((await mutate([input],options)).results[0],'write',input);},
