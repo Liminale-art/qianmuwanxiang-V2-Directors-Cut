@@ -225,3 +225,22 @@ test('native routes recover the ST data root during the plugin startup boundary'
   const input=batch(mutation()),saved=await call(input);await verify(saved.value,input);
   assert.equal(saved.statusCode,200);assert.equal(services.length,1);assert.equal((await f.read()).value.revision,1);
 });
+
+test('a cold capability probe never poisons the later native write with an unavailable startup root',async t=>{
+  const f=await fixture(t),handlers=new Map(),services=[];let ready=false;
+  const router={get:(route,handler)=>handlers.set('GET '+route,handler),post:(route,handler)=>handlers.set('POST '+route,handler)};
+  installTextCollectionNativeRoutes(router,{dataRoot:()=>ready?f.root:undefined,register:service=>services.push(service),serviceOptions:{now:()=>100}});
+  t.after(()=>Promise.all(services.map(service=>service.close())));
+  const call=async(method,route,body,user)=>{
+    const req=Object.assign(new EventEmitter(),{body,user}),res=Object.assign(new EventEmitter(),{
+      headers:{},statusCode:200,writableEnded:false,destroyed:false,set(name,value){this.headers[name]=value;return this;},
+      status(code){this.statusCode=code;return this;},json(value){this.value=value;this.writableEnded=true;return this;},
+    });
+    await handlers.get(method+' '+route)(req,res);return res;
+  };
+  const coldUser={profile:{handle:'alice'}};
+  const cap=await call('GET','/text-collections/native-capabilities',undefined,coldUser);
+  nativeCollectionCapabilities(cap.value,expectedAccount);assert.equal(cap.statusCode,200);assert.equal(services.length,0);
+  ready=true;const input=batch(mutation()),saved=await call('POST','/text-collections/native-write',input,f.req.user);
+  await verify(saved.value,input);assert.equal(saved.statusCode,200);assert.equal(services.length,1);assert.equal((await f.read()).value.revision,1);
+});

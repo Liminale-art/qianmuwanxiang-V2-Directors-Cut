@@ -1,5 +1,5 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.393';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.394';
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   let floorStatus=null,statusLoading=null,detachStatus=null;
@@ -16,14 +16,20 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
   }
   function refreshStatus(force=false,retain=false){
     if(!current()||!root.querySelector('[data-qm-collect-floor]'))return;
+    // The library is a separate browsing surface. While it is open, a
+    // visibility/focus refresh of the floor stars would start a second full
+    // directory/provenance read and contend for the same ST file queue as the
+    // list/detail view. Reconcile once after the library closes instead of
+    // making the visible panel intermittently wait on background work.
+    if(library)return Promise.resolve();
     if(floorStatus)return floorStatus.refresh({force,retain});
     if(statusLoading)return statusLoading;
     const token=epoch,document=root.ownerDocument;
     statusLoading=import('./qianmu-text-collection-floor-status.js').then(({createTextCollectionFloorStatus})=>{
       if(!current()||epoch!==token)return;
       floorStatus=createTextCollectionFloorStatus({getScope:()=>({chatId:String(getChatKey()||''),chat:getContext().chat}),resolveNamespace,isCurrent:()=>!!current(),headers,onChange:paintStatus,...(statusSessionFactory?{sessionFactory:statusSessionFactory}:{})});
-      const resumed=createTextCollectionResumeRefresh(()=>refreshStatus(true,true));
-      const changed=()=>resumed.changed(),visible=()=>{if(document.visibilityState==='visible')resumed.schedule();};
+      const resumed=createTextCollectionResumeRefresh(()=>refreshStatus(false,true));
+      const changed=()=>{paintStatus();resumed.schedule();},visible=()=>{if(document.visibilityState==='visible')resumed.schedule();};
       const focused=()=>{if(document.visibilityState==='visible')resumed.schedule();};
       document.addEventListener('qianmu-text-collections-changed',changed);document.addEventListener('visibilitychange',visible);document.defaultView.addEventListener('focus',focused);
       detachStatus=()=>{resumed.dispose();document.removeEventListener('qianmu-text-collections-changed',changed);document.removeEventListener('visibilitychange',visible);document.defaultView.removeEventListener('focus',focused);};
@@ -75,7 +81,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
         button.classList.remove('is-removing');button.removeAttribute('aria-busy');if(button.isConnected)button.disabled=false;if(epoch===token)opening=false;
         // The write already completed its authoritative readback. Reconcile
         // other-device changes in the background, not on the interaction path.
-        if(current()&&epoch===token)void Promise.resolve(refreshStatus(true,true)).catch(()=>{});
+        if(current()&&epoch===token)void Promise.resolve(refreshStatus(false,true)).catch(()=>{});
       }
       if(!failure||!valid())return;
       if(owner)try{if(await resolveNamespace()!==owner||!valid())return;}catch{return;}
@@ -105,10 +111,12 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
   }
   function closeLibrary(entry){
     if(!entry||entry.closed)return;entry.closed=true;entry.view?.dispose();entry.detach?.();entry.portal.remove();if(library===entry)library=null;
+    if(current())void Promise.resolve(floorStatus?.resume?.()).catch(()=>{});
   }
   async function openLibrary(parent,confirm,copy){
     if(library){library.view?.element.focus();return library.view;}
     if(!parent?.isConnected||isCurrent()!==true)return null;
+    floorStatus?.suspend?.();
     const document=parent.ownerDocument,portal=document.createElement('section'),entry={portal,view:null,closed:false};library=entry;
     const valid=()=>library===entry&&!entry.closed&&parent.isConnected&&isCurrent()===true;
     try{

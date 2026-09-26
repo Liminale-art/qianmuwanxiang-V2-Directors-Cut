@@ -114,6 +114,13 @@ test('invalidating in-flight state aborts it and coalesces the trailing read wit
   assert.equal(state.reads,2);assert.equal(manager.status(1),false);assert.equal(state.closed,2);manager.dispose();
 });
 
+test('suspending for the library aborts a floor scan and resumes one reconciliation after close',async()=>{
+  const {state,manager,row}=fixture();await manager.refresh();state.records=[row(1)];state.mode='hold';
+  const pending=manager.refresh({force:true,retain:true});while(!state.hold)await new Promise(resolve=>setImmediate(resolve));
+  manager.suspend();assert.equal(state.signal.aborted,true);const resumed=manager.resume();state.mode='ok';state.hold();
+  await Promise.all([pending,resumed]);assert.equal(state.reads,3);assert.equal(manager.status(1),true);manager.dispose();
+});
+
 test('dispose aborts pending reads, drops all floor state and emits no late updates',async()=>{
   const {state,manager,row}=fixture();state.records=[row(1)];state.mode='hold';const task=manager.refresh();
   while(!state.hold)await new Promise(resolve=>setImmediate(resolve));

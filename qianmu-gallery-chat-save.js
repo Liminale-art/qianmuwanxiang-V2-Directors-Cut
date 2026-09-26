@@ -10,7 +10,7 @@ import {createGalleryWriteProposal} from './qianmu-gallery-write-proposal.js';
 import {createHistoricalChatMutation,inspectHistoricalChatMutation} from './qianmu-historical-chat-journal.js';
 import {acquireChatSaveLock,releaseChatSaveLock} from './qianmu-chat-save-lock.js';
 import {verifyPreparedGalleryFiles} from './qianmu-gallery-write-files.js';
-import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.393';
+import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.394';
 
 const scope='paged-gallery-current-chat',fields=['storyboardImages',...GALLERY_SUPPLEMENT_FIELDS];
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),equal=(a,b)=>chatGalleryReceiptText([{value:a}]).text===chatGalleryReceiptText([{value:b}]).text;

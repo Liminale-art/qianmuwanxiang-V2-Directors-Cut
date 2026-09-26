@@ -33,7 +33,7 @@ test('central collection export and restore use host page guards and the exclusi
   assert.match(source,/transfer: \(ownTransfer!==collectionFloorTools.restoreBackup&&collectionFloorTools.restoreBusy\)/);
 });
 
-test('focus and visibility resume share one read; a collection change stays immediate',()=>{
+test('focus and visibility resume share one read; scheduled changes coalesce',()=>{
   const scheduled=new Map();let next=0,reads=0;
   const resume=createTextCollectionResumeRefresh(()=>reads++,{
     scheduleTimer:callback=>{const id=++next;scheduled.set(id,callback);return id;},

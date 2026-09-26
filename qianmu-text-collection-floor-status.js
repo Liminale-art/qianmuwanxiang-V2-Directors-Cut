@@ -3,12 +3,13 @@
 export function createTextCollectionFloorStatus({getScope,resolveNamespace,isCurrent,headers,onChange=()=>{},now=Date.now,maxAgeMs=30000,sessionFactory=async options=>(await import('./qianmu-text-collection-session.js')).createTextCollectionSession(options)}={}){
   if(typeof getScope!=='function'||typeof resolveNamespace!=='function'||typeof isCurrent!=='function')throw new TypeError('收藏楼层状态需要当前账户与聊天范围');
   const ttl=Number.isFinite(maxAgeMs)?Math.min(60000,Math.max(1000,maxAgeMs)):30000;
-  let closed=false,epoch=0,flight=null,flightScope=null,again=false,controller=null,state=null,revalidate=false,retainKnown=false,confirmed=null,confirmationSerial=0;
+  let closed=false,suspended=false,pendingResume=false,epoch=0,flight=null,flightScope=null,again=false,controller=null,state=null,revalidate=false,retainKnown=false,confirmed=null,confirmationSerial=0;
   const same=(left,right)=>!!left&&!!right&&left.chatId===right.chatId&&left.chat===right.chat;
   const scopeNow=()=>{const value=getScope();return value&&typeof value.chatId==='string'&&value.chatId&&Array.isArray(value.chat)?value:null;};
   const current=(scope,token)=>!closed&&token===epoch&&isCurrent()===true&&same(scope,scopeNow());
   const announce=()=>{if(!closed)onChange();};
   async function read(){
+    if(suspended){again=false;return;}
     const scope=scopeNow(),token=epoch,startedAfterConfirmation=confirmationSerial;
     if(!scope||closed||isCurrent()!==true){state=null;confirmed=null;announce();return;}
     flightScope=scope;
@@ -51,6 +52,7 @@ export function createTextCollectionFloorStatus({getScope,resolveNamespace,isCur
   }
   function refresh({force=false,retain=false}={}){
     if(closed)return Promise.resolve();
+    if(suspended){if(force)pendingResume=true;return Promise.resolve();}
     if(force){epoch++;retainKnown=retain&&state?.known===true;revalidate=true;controller?.abort();if(!retainKnown){state=null;announce();}}
     if(flight){if(force||!same(flightScope,scopeNow()))again=true;return flight;}
     flight=(async()=>{do{again=false;await read();}while(again&&!closed);})();
@@ -58,6 +60,12 @@ export function createTextCollectionFloorStatus({getScope,resolveNamespace,isCur
     return pending.finally(()=>{if(flight===pending)flight=null;});
   }
   return Object.freeze({refresh,
+    // Opening the library must not leave an already-running floor provenance
+    // scan queued ahead of the visible list/detail read. Keep the verified
+    // floor state for immediate paint, abort the scan, and reconcile once the
+    // library closes.
+    suspend(){if(closed||suspended)return;suspended=true;pendingResume=true;epoch++;again=false;revalidate=false;retainKnown=false;controller?.abort();},
+    resume(){if(closed)return Promise.resolve();suspended=false;if(!pendingResume)return Promise.resolve();pendingResume=false;return refresh({force:true,retain:true});},
     status(floor){
       if(closed||isCurrent()!==true)return null;
       const scope=scopeNow();
@@ -86,5 +94,5 @@ export function createTextCollectionFloorStatus({getScope,resolveNamespace,isCur
       if(state?.known&&same(state.scope,scope)){state.unknownFloors??=new Set();state.unknownFloors.add(floor);}
       announce();
     },
-    dispose(){closed=true;epoch++;state=null;confirmed=null;controller?.abort();}});
+    dispose(){closed=true;suspended=true;pendingResume=false;epoch++;state=null;confirmed=null;controller?.abort();}});
 }
