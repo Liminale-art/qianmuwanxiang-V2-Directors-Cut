@@ -1,4 +1,4 @@
-import { captureTextCollectionSource, createTextCollection, textCollectionRecord, textCollectionListLabel, textCollectionPreview, textCollectionText } from './qianmu-text-collection.js';
+import { captureTextCollectionSource, createTextCollection, textCollectionRecord, textCollectionListLabel, textCollectionPreview, textCollectionText, textCollectionStartupRetryable, textCollectionUserMessage } from './qianmu-text-collection.js';
 import { notesSyncOperationId } from './qianmu-notes-sync-contract.js';
 import { qianmuIconElement } from './qianmu-icon-renderer.js';
 import { textCollectionParagraphs, textCollectionParagraphSelection } from './qianmu-text-collection-paragraphs.js';
@@ -108,14 +108,26 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
         if (!alive() || pending || !rangeValid()) return;
         pending = true; controls(); status.textContent = '正在保存…';
         try {
-            if (!draft) {
-                const authorized = resolveSource ? await resolveSource({ signal: controller.signal }) : captured;
-                if (!alive()) return;
-                for (const key of ['text', 'chatId', 'messageId', 'replyId', 'charName', 'userName']) if (authorized?.[key] !== captured[key]) throw Error('收藏来源已变化，请重新打开');
-                draft = createTextCollection({ id: notesSyncOperationId(view.crypto), source: authorized, mode,
-                    ...(mode === 'selection' ? { start: selection.start, end: selection.end } : {}), text: editing ? editedValue() : selection.text, createdAt: Date.now() });
+            let acknowledgement;
+            for (let attempt = 0; ; attempt++) {
+                try {
+                    if (!draft) {
+                        const authorized = resolveSource ? await resolveSource({ signal: controller.signal }) : captured;
+                        if (!alive()) return;
+                        for (const key of ['text', 'chatId', 'messageId', 'replyId', 'charName', 'userName']) if (authorized?.[key] !== captured[key]) throw Error('收藏来源已变化，请重新打开');
+                        draft = createTextCollection({ id: notesSyncOperationId(view.crypto), source: authorized, mode,
+                            ...(mode === 'selection' ? { start: selection.start, end: selection.end } : {}), text: editing ? editedValue() : selection.text, createdAt: Date.now() });
+                    }
+                    acknowledgement = await onSave(draft, { signal: controller.signal });
+                    break;
+                } catch (cause) {
+                    if (attempt > 0 || !textCollectionStartupRetryable(cause)) throw cause;
+                    // Do not ask the user to repeat a click for a cold-start
+                    // data-root race. The exact draft/mutation id is reused.
+                    await new Promise(resolve => setTimeout(resolve, 140));
+                    if (!alive()) return;
+                }
             }
-            const acknowledgement = await onSave(draft, { signal: controller.signal });
             if (!alive()) return;
             if (!acknowledgement || acknowledgement.id !== draft.id || !Number.isInteger(acknowledgement.revision) || acknowledgement.revision < 1) {
                 throw new Error('Missing persistence acknowledgement');
@@ -126,8 +138,7 @@ export function openTextCollectionCapture({ parent, source, sourceElement, resol
         } catch (cause) {
             if (!alive()) return;
             pending = false; controls();
-            status.textContent = '保存未完成，请重试。';
-            if (/^text_collection_sync_[a-z_]+$/.test(cause?.code || '') && typeof cause.message === 'string' && cause.message.length <= 240) status.textContent += ` ${cause.message}`;
+            status.textContent = textCollectionUserMessage(cause, '保存未完成，请重试。');
             if (draft) status.textContent+=' 当前内容已保留。';
         }
     }

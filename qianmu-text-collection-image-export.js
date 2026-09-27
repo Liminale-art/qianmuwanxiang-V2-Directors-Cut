@@ -139,7 +139,7 @@ export function openTextCollectionImageExport({parent,record,isCurrent,guard,dow
                 if(current())status.textContent=`正在导出 ${count} / ${image.total} 张…`;
             }
             if(current())status.textContent=`已生成 ${count} 张图片，请在浏览器下载中查看${count>1?'；如有拦截，请允许多文件下载':''}`;
-        }catch(cause){if(current())status.textContent=String(cause.message||'存图失败，请重试').slice(0,180);}
+        }catch(cause){if(current()){const {textCollectionUserMessage}=await import('./qianmu-text-collection.js');status.textContent=textCollectionUserMessage(cause,'存图失败，请重试。');}}
         finally{busy=false;if(current()){save.disabled=false;annotate.disabled=false;header.disabled=footer.disabled=!annotate.checked;}}
     });
     annotate.addEventListener('change',()=>{header.disabled=footer.disabled=!annotate.checked;});

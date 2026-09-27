@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
-import {createTextCollectionResumeRefresh} from '../qianmu-text-collection-floor.js';
+import {createTextCollectionResumeRefresh,createTextCollectionFloorVisualMemo} from '../qianmu-text-collection-floor.js';
 test('collection toolbar refresh runs independently before storyboard enable gate and is disposed with the owner runtime',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
   const render=source.slice(source.indexOf('function storyboardRenderInlineImages('),source.indexOf('function storyboardScheduleInlineRender('));
@@ -52,4 +52,16 @@ test('focus and visibility resume share one read; scheduled changes coalesce',()
   resume.changed();assert.equal(reads,2);assert.equal(scheduled.size,0);
   resume.schedule();resume.dispose();assert.equal(scheduled.size,0);
   resume.changed();resume.schedule();assert.equal(reads,2);
+});
+
+test('floor visual memo retains a confirmed star across toolbar rebuilds but clears on chat change',()=>{
+  const scope={chatId:'chat-a',chat:[]};
+  const memo=createTextCollectionFloorVisualMemo({getScope:()=>scope});
+  assert.equal(memo.read(4,true),true);
+  assert.equal(memo.read(4,null),true,'a checking snapshot must not flash the confirmed star off');
+  assert.equal(memo.read(5,null),null,'an unseen floor remains unknown, not falsely saved');
+  assert.equal(memo.read(4,false),false);
+  assert.equal(memo.read(4,null),false,'an explicit empty result remains empty while a refresh is pending');
+  scope.chatId='chat-b';scope.chat=[];
+  assert.equal(memo.read(4,null),null,'a new chat cannot inherit the old floor paint');
 });

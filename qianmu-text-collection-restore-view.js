@@ -38,7 +38,7 @@ function openTextCollectionOperation({parent,file,resolveNamespace,isCurrent,hea
     if(busy||!batch||!current())return;busy=true;controls();status.textContent=`正在核对${verb}能力与当前账户…`;
     try{guard();const result=await batch.run();guard();status.textContent=result.status==='complete'?`${summary()} · ${verb}完成`:`${summary()} · 未开始${verb}`;runButton.textContent=`继续${verb}`;}
     catch(cause){if(!current()){stop();return;}try{guard();await session.guard();}catch{stop();return;}
-      status.textContent=`${summary()}。${String(cause?.message||`${verb}未完成，请保留窗口重试`).slice(0,240)}${cleanup&&cause?.code==='text_collection_sync_conflict'?' 请关闭此窗口后重新盘点；不会强删新版本。':''}`;runButton.textContent='重试未确认部分';}
+      const {textCollectionUserMessage}=await import('./qianmu-text-collection.js');status.textContent=`${summary()}。${textCollectionUserMessage(cause,`${verb}未完成，请保留窗口重试。`)}`;runButton.textContent='重试未确认部分';}
     finally{busy=false;if(!closed)controls();}
   }
   async function load(){
@@ -48,7 +48,7 @@ function openTextCollectionOperation({parent,file,resolveNamespace,isCurrent,hea
       const options={session,check:guard,confirm,onProgress:()=>{guard();status.textContent=summary();}};
       if(cleanup){const plan=await session.cleanupPlan();guard();batch=createTextCollectionCleanupBatch({...options,plan,otherModules});q('[data-collection-restore-file]').textContent=`当前账户 · 本次 ${plan.total} 条收藏原件`;}else batch=createTextCollectionRestoreBatch({...options,backup});
       status.textContent=batch.progress.total?`共 ${batch.progress.total} 条；点击确认${verb}后进行后端预检与授权。`:`没有可${verb}的收藏，未写入任何内容。`;
-    }catch(cause){session?.close();if(!current()){stop();return;}status.textContent=`未开始${verb}：${String(cause?.message||'收藏资料无法完整读取').slice(0,240)}`;}
+    }catch(cause){session?.close();if(!current()){stop();return;}const {textCollectionUserMessage}=await import('./qianmu-text-collection.js');status.textContent=`未开始${verb}：${textCollectionUserMessage(cause,'收藏资料无法完整读取，请刷新后重试。')}`;}
     finally{busy=false;if(!closed)controls();}
   }
   const click=event=>{const action=event.target.closest?.('[data-collection-restore]')?.dataset.collectionRestore;if(action==='close')void requestClose();if(action==='run')void run();};

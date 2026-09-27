@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { TEXT_COLLECTION_LIMITS, captureTextCollectionSource, createTextCollection, textCollectionRecord, updateTextCollection, textCollectionListLabel, textCollectionPreview } from '../qianmu-text-collection.js';
+import { TEXT_COLLECTION_LIMITS, captureTextCollectionSource, createTextCollection, textCollectionRecord, updateTextCollection, textCollectionListLabel, textCollectionPreview, textCollectionStartupRetryable, textCollectionUserMessage } from '../qianmu-text-collection.js';
 
 const time = new Date(2026, 8, 19, 12).getTime();
 const input = (text = '第一行\r\n 第二行 😀 ', extra = {}) => ({ account: `st-user:${'a'.repeat(64)}`, chatId: 'chat-1', messageId: 0, replyId: 'reply-1', charName: '角色', userName: '读者', text, ...extra });
@@ -68,6 +68,24 @@ test('HTML-shaped content stays plain text and preview only compresses display w
     assert.equal(textCollectionPreview(record), '<img src=x onerror=alert(1)> 你好😀');
     assert.equal(textCollectionPreview(make('😀😀😀'), 2), '😀😀…');
     assert.throws(() => textCollectionPreview(record, 0), { code: 'text_collection_preview' });
+});
+
+test('user-facing collection errors hide storage revision and readiness details', () => {
+    assert.equal(textCollectionUserMessage(Object.assign(Error('收藏保存环境尚未就绪'), { code: 'text_collection_sync_native_setup' }), '请重试'), '请重试');
+    assert.equal(textCollectionUserMessage(Object.assign(Error('目录已变化，未采用旧原件'), { code: 'text_collection_sync_changed' }), '请刷新后重试。'), '请刷新后重试。');
+    assert.equal(textCollectionUserMessage(Object.assign(Error('保存结果待核对'), { code: 'text_collection_sync_native_connection', writeState: 'unconfirmed' }), '请重试'), '操作结果暂未确认，当前内容已保留，请刷新后核对。');
+    assert.equal(textCollectionUserMessage(Error('自定义校验失败'), '请重试'), '自定义校验失败');
+});
+
+test('startup retry is limited to a pre-write readiness boundary', () => {
+    for (const code of ['text_collection_sync_native_setup', 'text_collection_sync_unavailable', 'st_account_storage_service']) {
+        assert.equal(textCollectionStartupRetryable({ code, writeState: 'not_started' }), true);
+    }
+    for (const cause of [
+        { code: 'text_collection_sync_native_setup', writeState: 'unconfirmed' },
+        { code: 'text_collection_sync_conflict', writeState: 'not_started' },
+        { code: 'text_collection_sync_native_response', writeState: 'not_started' },
+    ]) assert.equal(textCollectionStartupRetryable(cause), false);
 });
 
 test('serialized records reject hidden original text, malformed ranges and unsupported fields', () => {

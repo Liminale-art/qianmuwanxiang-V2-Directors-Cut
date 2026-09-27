@@ -1,4 +1,4 @@
-import {textCollectionDisplayLabel} from './qianmu-text-collection.js';
+import {textCollectionDisplayLabel,textCollectionUserMessage} from './qianmu-text-collection.js';
 import {readTextCollectionOutboxBackupFile} from './qianmu-text-collection-outbox-backup.js';
 
 // Local pending originals are not server-confirmed records. Browsing this view
@@ -40,7 +40,7 @@ export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy,c
     if(busy||!current())return;busy=true;controls();status.textContent='正在读取…';
     try{await session.guard();if(!current())return;await work();}
     catch(cause){if(!current())return;try{await session.guard();}catch{stop();return;}
-      status.textContent=/^text_collection_/.test(cause?.code||'')?String(cause.message).slice(0,240):'操作未确认；本机待存仍保留，请刷新核对';
+      status.textContent=textCollectionUserMessage(cause,'操作未确认；本机待存仍保留，请刷新核对。');
     }finally{busy=false;if(current())controls();}
   }
   async function load(index=0){
@@ -104,7 +104,7 @@ export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy,c
     const file=fileInput.files?.[0];fileInput.value='';if(!file)return;
     await run(async()=>{
       let payload;try{payload=await readTextCollectionOutboxBackupFile(file,{check});}
-      catch(cause){throw Object.assign(new Error(`待存备份未导入：${String(cause?.message||'文件无效').slice(0,180)}`),{code:'text_collection_sync_pending_backup'});}
+      catch(cause){throw Object.assign(new Error(`待存备份未导入：${textCollectionUserMessage(cause,'文件无效，请重新选择。')}`),{code:'text_collection_sync_pending_backup'});}
       await session.guard();check();
       if(payload.namespace!==outbox.namespace){status.textContent='备份属于另一账户，请切回原账户导入；本机内容未改动';return;}
       if(await confirm('导入本机待存',`将 ${payload.entries.length} 条请求合并到当前账户的此浏览器，保留原编号、冲突与待核对状态，不覆盖已有内容。不会自动提交服务器；导入后请逐条核对并手动重试。是否继续？`)!==true){if(current())status.textContent='未导入，本机内容不变';return;}

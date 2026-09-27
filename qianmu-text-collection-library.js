@@ -1,6 +1,6 @@
 import {createTextCollectionSession} from './qianmu-text-collection-session.js';
 import {createTextCollectionOutboxRuntime} from './qianmu-text-collection-outbox-runtime.js';
-import {textCollectionDisplayLabel,textCollectionListLabel,textCollectionRecord,TEXT_COLLECTION_LIMITS} from './qianmu-text-collection.js';
+import {textCollectionDisplayLabel,textCollectionListLabel,textCollectionRecord,textCollectionUserMessage,TEXT_COLLECTION_LIMITS} from './qianmu-text-collection.js';
 import {applyCollectionProseStyle,collectionIconButton,collectionEditorText,collectionEditorValue} from './qianmu-text-collection-presentation.js';
 import {textCollectionParagraphs} from './qianmu-text-collection-paragraphs.js';
 import {partitionTextCollectionMutations,TEXT_COLLECTION_BULK_LIMITS} from './qianmu-text-collection-bulk-contract.js';
@@ -147,7 +147,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     while(deletionPlan.index<deletionPlan.batches.length){
       const {items,handle}=deletionPlan.batches[deletionPlan.index];
       try{await session.guard();if(!current())return;await handle.submit();}
-      catch(cause){await session.guard();if(count)announceChange();status.textContent=`已删除 ${count} 条；${/^text_collection_/.test(cause?.code||'')?String(cause.message).slice(0,180):'其余未确认，请重试'}`;return;}
+      catch(cause){await session.guard();if(count)announceChange();status.textContent=`已删除 ${count} 条；${textCollectionUserMessage(cause,'其余未确认，请刷新后重试。')}`;return;}
       if(!current())return;
       const confirmed=new Set(items.map(item=>item.id));
       count+=items.length;for(const id of confirmed){selected.delete(id);deletions.delete(id);}
@@ -191,7 +191,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
         if(!dirty()){displayRecord();operation=null;status.textContent='内容未改变';return;}
         if(operation?.request.operation!=='edit'||operation.request.text!==editorText())operation=session.prepareEdit(record.id,record.revision,editorText());
         let ack;try{ack=await outbox.save(operation.request,{base:record});}
-        catch(cause){if(cause?.localSaved===true){status.textContent=`保存未完成，当前内容已保留。${/^text_collection_sync_/.test(cause?.code||'')?String(cause.message).slice(0,160):'请重试。'}`;return;}throw cause;}
+        catch(cause){if(cause?.localSaved===true){status.textContent=`保存未完成，当前内容已保留。${textCollectionUserMessage(cause,'请刷新后重试。')}`;return;}throw cause;}
         if(!current())return;
         record=textCollectionRecord({...record,text:operation.request.text,revision:ack.revision,updatedAt:ack.updatedAt});operation=null;cursors=[null];pageIndex=0;displayRecord();announceChange();status.textContent='收藏修改已保存';return;
       }

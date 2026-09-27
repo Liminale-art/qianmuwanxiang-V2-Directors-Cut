@@ -1,6 +1,34 @@
 // Pure text originals, independent of chat lifetime. No DOM, storage or API access.
 // Text/range limits use UTF-16 code units, as do textarea selection offsets.
 export const TEXT_COLLECTION_LIMITS = Object.freeze({ text: 200000, name: 256, identity: 512, preview: 500 });
+
+// Storage/account revisions are implementation details. UI surfaces should
+// never echo their transport messages (for example directory fingerprints or
+// data-root readiness) into a user-facing toast/status line. Keep the small
+// set of actionable states understandable while preserving a conservative
+// fallback for non-collection errors raised by the caller itself.
+export function textCollectionUserMessage(cause, fallback = '操作未完成，请刷新后重试。') {
+    const code = String(cause?.code || '');
+    if (/^(?:text_collection|st_account_storage)_/.test(code)) {
+        if (cause?.writeState === 'unconfirmed') return '操作结果暂未确认，当前内容已保留，请刷新后核对。';
+        if (/(?:account|scope)/.test(code)) return '当前账户状态已变化，请刷新后重试。';
+        if (/cancelled/.test(code)) return '操作已取消。';
+        return fallback;
+    }
+    const message = typeof cause?.message === 'string' ? cause.message.trim() : '';
+    return message && message.length <= 240 ? message : fallback;
+}
+
+// A cold ST start can expose the account-file/native route a few milliseconds
+// before its data root is ready. Only an explicitly not-started setup/read
+// failure is safe to retry automatically; once a write was dispatched the
+// caller must retain the exact mutation for explicit reconciliation instead.
+export function textCollectionStartupRetryable(cause) {
+    const code = String(cause?.code || '');
+    return cause?.writeState === 'not_started'
+        && /^(?:text_collection|st_account_storage)_/.test(code)
+        && /_(?:setup|connection|unavailable|service)$/.test(code);
+}
 const sourceKeys = ['account', 'chatId', 'messageId', 'replyId', 'charName', 'userName'];
 const recordKeys = ['schemaVersion', 'id', 'source', 'mode', 'range', 'text', 'createdAt', 'updatedAt', 'revision'];
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);

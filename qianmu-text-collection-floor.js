@@ -1,22 +1,38 @@
 // Light floor entry; the editor, transport and storage contracts load on demand.
 import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.401';
+import {textCollectionStartupRetryable,textCollectionUserMessage} from './qianmu-text-collection.js';
+
+// Keep the last confirmed paint across an ST toolbar/DOM rebuild. This memo
+// contains only floor booleans; it never stores collection text or account data.
+export function createTextCollectionFloorVisualMemo({getScope=()=>null}={}){
+  let chatId=null,chat=null,hasScope=false,values=new Map();
+  const current=()=>{try{return getScope()||null;}catch{return null;}};
+  const read=(floor,status=null)=>{
+    const next=current();
+    if(!next||!hasScope||next.chatId!==chatId||next.chat!==chat){chatId=next?.chatId??null;chat=next?.chat??null;hasScope=Boolean(next);values=new Map();}
+    if(Number.isSafeInteger(floor)&&typeof status==='boolean')values.set(floor,status);
+    return Number.isSafeInteger(floor)&&status===null&&values.has(floor)?values.get(floor):status;
+  };
+  return Object.freeze({read,clear(){chatId=null;chat=null;hasScope=false;values=new Map();}});
+}
 export function createTextCollectionFloorTools({getContext,getChatKey,names,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,download,extraFloorTools,statusSessionFactory}={}){
   let root=null,active=null,host=null,opening=false,epoch=0,library=null,exporting=null,restoring=null,cleaning=null;
   let floorStatus=null,statusLoading=null,detachStatus=null;
+  const visualMemo=createTextCollectionFloorVisualMemo({getScope:()=>({chatId:String(getChatKey?.()||''),chat:getContext?.().chat})});
   const floorOf=node=>{const raw=node?.getAttribute('mesid')??node?.dataset?.messageId;return raw!==undefined&&raw!==null&&/^(0|[1-9][0-9]*)$/.test(raw)?Number(raw):null;};
   const current=()=>root?.isConnected&&isCurrent()===true;
   function paintStatus(){
     if(!current())return;
     for(const button of root.querySelectorAll('[data-qm-collect-floor]')){
-      const saved=floorStatus?.status(floorOf(button.closest('.mes')))??null;
+      const floor=floorOf(button.closest('.mes')),status=floorStatus?.status(floor)??null,saved=visualMemo.read(floor,status);
       // Unknown/checking is not the same as empty. Keep an already confirmed
       // star painted during a background reconcile, chat redraw, or write
       // acknowledgement; otherwise hive open/close makes saved floors flash
       // empty for the duration of a second directory read.
-      const retainSaved=saved===null&&button.classList.contains('is-collected');
-      button.classList.toggle('is-collected',saved===true||retainSaved);button.dataset.qmCollectionState=saved===null?'unknown':saved?'saved':'empty';
-      button.setAttribute('aria-busy',saved===null?'true':'false');
-      button.title=saved===true?'取消本层全部正文收藏（含其他回复版本）':saved===false?'收藏正文':'收藏正文（收藏状态正在确认或暂不可读取）';
+      const retainSaved=status===null&&button.classList.contains('is-collected');
+      button.classList.toggle('is-collected',saved===true||retainSaved);button.dataset.qmCollectionState=status===null?'unknown':status?'saved':'empty';
+      button.setAttribute('aria-busy',status===null?'true':'false');
+      button.title=status===true?'取消本层全部正文收藏（含其他回复版本）':status===false?'收藏正文':'收藏正文（收藏状态正在确认或暂不可读取）';
       button.setAttribute('aria-label',button.title);
     }
   }
@@ -67,9 +83,16 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
         if(!valid())return;
         session=await createTextCollectionSession({resolveNamespace,isCurrent:valid,headers,cryptoImpl:root.ownerDocument.defaultView.crypto});
         owner=session.namespace;
-        result=await deleteTextCollectionFloor({session,chatId:chatKey,messageId:floor,check:()=>{if(!valid())throw Error('楼层或页面已变化，未继续删除');},onProgress:progress=>{
+        const runDelete=()=>deleteTextCollectionFloor({session,chatId:chatKey,messageId:floor,check:()=>{if(!valid())throw Error('楼层或页面已变化，未继续删除');},onProgress:progress=>{
           confirmed=progress.confirmed;if(valid())floorStatus?.markUnknown(floor);
         }});
+        for(let attempt=0;;attempt++)try{result=await runDelete();break;}catch(cause){
+          // A cold account-file root may report not_started before the first
+          // batch POST. Retry that bounded, pre-write race once; a dispatched
+          // or partially confirmed deletion remains explicit and untouched.
+          if(attempt>0||confirmed||!textCollectionStartupRetryable(cause))throw cause;
+          await new Promise(resolve=>setTimeout(resolve,140));if(!valid())throw cause;
+        }
         const saved=await session.knownFloorState(chatKey,floor);
         if(valid()){
           if(saved===false){
@@ -93,7 +116,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       }
       if(!failure||!valid())return;
       if(owner)try{if(await resolveNamespace()!==owner||!valid())return;}catch{return;}
-      if(failure){notify?.(confirmed?`已确认取消 ${confirmed} 条；其余未确认，请核对：${String(failure?.message||failure).slice(0,160)}`:`取消收藏未完成，请核对：${String(failure?.message||failure).slice(0,180)}`,'warning');return;}
+      if(failure){notify?.(confirmed?`已确认取消 ${confirmed} 条；其余未确认，${textCollectionUserMessage(failure,'请刷新后核对。')}`:`取消收藏未完成，${textCollectionUserMessage(failure,'请刷新后重试。')}`,'warning');return;}
       return;
     }
     const capturedNames=names();
@@ -114,7 +137,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
         notify?.('收藏已保存','success');
         root.ownerDocument.dispatchEvent(new root.ownerDocument.defaultView.Event('qianmu-text-collections-changed'));
       }
-    }catch(cause){if(current()&&epoch===token)notify?.(String(cause?.message||'收藏未保存，请重试').slice(0,240),'warning');}
+    }catch(cause){if(current()&&epoch===token)notify?.(textCollectionUserMessage(cause,'收藏未保存，请刷新后重试。'),'warning');}
     finally{chooser?.dispose();detach?.();portal?.remove();if(host===portal)host=null;if(active===chooser)active=null;if(epoch===token)opening=false;if(button.isConnected)button.disabled=false;}
   }
   function closeLibrary(entry){
@@ -138,7 +161,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       const runtime=await loadLocalChunk('./qianmu-text-collection-library.js');if(!valid()){closeLibrary(entry);return null;}
       entry.view=await runtime.openTextCollectionLibrary({parent:portal,resolveNamespace,isCurrent:valid,headers,confirm,copy,download});
       entry.view.finished.then(()=>closeLibrary(entry));return entry.view;
-    }catch(cause){if(valid())notify?.(String(cause?.message||'收藏管理暂不可用').slice(0,240),'warning');closeLibrary(entry);return null;}
+    }catch(cause){if(valid())notify?.(textCollectionUserMessage(cause,'收藏管理暂不可用，请刷新后重试。'),'warning');closeLibrary(entry);return null;}
   }
   async function exportBackup(button,confirm,download,createCheck){
     if(exporting||!button?.isConnected||isCurrent()!==true)return;
@@ -153,10 +176,10 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
         if(result.status==='download-started')notify?.(`已发起 ${result.count} 条收藏的备份下载，请确认浏览器已保存文件。`,'success');
       }
       return result;
-    }catch(cause){if(valid())notify?.(`收藏导出未完成：${String(cause?.message||cause).slice(0,200)}`,'warning');}
+    }catch(cause){if(valid())notify?.(`收藏导出未完成：${textCollectionUserMessage(cause,'请刷新后重试。')}`,'warning');}
     finally{check?.release?.();if(exporting===entry)exporting=null;button.disabled=disabled;}
   }
-  function disposeFloor(){epoch++;detachStatus?.();detachStatus=null;floorStatus?.dispose();floorStatus=null;statusLoading=null;extraFloorTools?.disposeFloor();root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;}
+  function disposeFloor(preserveVisual=false){epoch++;detachStatus?.();detachStatus=null;floorStatus?.dispose();floorStatus=null;statusLoading=null;extraFloorTools?.disposeFloor();root?.removeEventListener('click',click);root?.querySelectorAll('[data-qm-collect-floor]').forEach(button=>button.remove());active?.dispose();active=null;host?.remove();host=null;opening=false;root=null;if(!preserveVisual)visualMemo.clear();}
   async function restoreBackup(file,input,confirm,createCheck){
     if(restoring){restoring.view?.element.focus();return;}if(!input?.isConnected||isCurrent()!==true)return;
     const parent=input.closest('.sd-storage-backup-section'),document=input.ownerDocument;if(!parent)return;
@@ -166,7 +189,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       check=createCheck();check();stylesheet(document);parent.append(portal);detach=mountPortal?.(portal);
       const runtime=await import('./qianmu-text-collection-restore-view.js');if(!valid())return;
       entry.view=runtime.openTextCollectionRestore({parent:portal,file,resolveNamespace,isCurrent:valid,headers,confirm,check});await entry.view.finished;
-    }catch(cause){if(valid())notify?.(`收藏恢复暂不可用：${String(cause?.message||cause).slice(0,200)}`,'warning');}
+    }catch(cause){if(valid())notify?.(`收藏恢复暂不可用：${textCollectionUserMessage(cause,'请刷新后重试。')}`,'warning');}
     finally{entry.closed=true;entry.view?.dispose();detach?.();portal.remove();check?.release?.();input.disabled=disabled;if(restoring===entry)restoring=null;refreshStatus(true);}
   }
   async function cleanupOriginals(parent,confirm,check,expectedNamespace,otherModules=0,local=false){
@@ -189,7 +212,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
   function dispose(){disposeFloor();closeLibrary(library);if(exporting)exporting.cancelled=true;for(const entry of [restoring,cleaning])if(entry){entry.closed=true;entry.view?.dispose();entry.portal.remove();}}
   function refresh(chatRoot){
     if(!chatRoot?.isConnected||isCurrent()!==true)return;
-    if(root!==chatRoot){disposeFloor();root=chatRoot;root.addEventListener('click',click);}
+    if(root!==chatRoot){disposeFloor(true);root=chatRoot;root.addEventListener('click',click);}
     extraFloorTools?.bindRoot(root);
     for(const node of root.querySelectorAll('.mes')){
       const floor=floorOf(node),message=Number.isInteger(floor)?getContext().chat?.[floor]:null,existing=node.querySelector('[data-qm-collect-floor]');
