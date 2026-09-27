@@ -90,6 +90,8 @@ function referencedFile(fromFile, reference) {
 export async function validateReleasePlan(root = PROJECT_ROOT, config = null, files = null) {
   config ||= await loadReleaseConfig(root);
   files ||= await collectReleaseFiles(root, config);
+  const manifest = JSON.parse(await readFile(path.join(root, 'manifest.json'), 'utf8'));
+  const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   const forbiddenSegments = new Set((config.forbiddenSegments || []).map(portablePath));
   const forbiddenFiles = new Set((config.forbiddenFiles || []).map(portablePath));
   const fileSet = new Set(files);
@@ -107,14 +109,18 @@ export async function validateReleasePlan(root = PROJECT_ROOT, config = null, fi
     if (!stat.isFile() || stat.isSymbolicLink()) invalid.push(normalized);
     if (!/\.(?:js|css|json)$/.test(normalized)) continue;
     const text = await readFile(inside(root, normalized), 'utf8');
+    if (normalized.endsWith('.js')) {
+      const cacheVersions = new Set([...text.matchAll(/\?v=(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)/g)].map(match => match[1]));
+      for (const version of cacheVersions) {
+        if (version !== packageJson.version) invalid.push(`${normalized} has stale cache-buster v${version}; expected v${packageJson.version}`);
+      }
+    }
     for (const reference of localReferences(normalized, text)) {
       const dependency = referencedFile(normalized, reference);
       if (dependency && !fileSet.has(dependency)) dangling.push(`${normalized} -> ${dependency}`);
     }
   }
 
-  const manifest = JSON.parse(await readFile(path.join(root, 'manifest.json'), 'utf8'));
-  const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   if (!manifest.version || manifest.version !== packageJson.version) invalid.push('manifest/package version mismatch');
   for (const required of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'manifest.json', 'index.js', 'style.css']) {
     if (!fileSet.has(required)) missing.push(required);
