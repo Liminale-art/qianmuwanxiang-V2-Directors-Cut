@@ -57,7 +57,18 @@ export function createNativeCollectionTransport({expectedAccount,scope,readScope
         text+=decoder.decode();const value=parseBoundedJson(text,{maxBytes:limit,maxDepth:36,maxNodes:500100,label:'收藏保存'});
         if(!response.ok||value?.ok!==true){
           const known=value?.ok===false&&value.version===1&&/^text_collection_sync_[a-z_]+$/.test(value.code||'')&&typeof value.message==='string'&&value.message.length<=240;
-          throw error(known?value.code.slice('text_collection_sync_'.length):'native_response',known?value.message:'收藏保存未确认，请保留当前内容',response.status);
+          if(known){
+            const cause=error(value.code.slice('text_collection_sync_'.length),value.message,response.status);
+            // The native endpoint distinguishes a rejected write that never
+            // reached durable storage from an accepted write whose receipt is
+            // unknown. Preserve that boundary; the old client overwrote every
+            // POST error as `unconfirmed`, which caused autosave to retry
+            // permanent setup/content failures on every page reopen.
+            const serverWriteState=value.writeState==='unconfirmed'||value.writeState==='not_started'?value.writeState:null;
+            if(serverWriteState) { cause.writeState=serverWriteState; cause.__serverWriteState=true; }
+            throw cause;
+          }
+          throw error('native_response','收藏保存未确认，请保留当前内容',response.status);
         }
         if(value.expectedAccount!==undefined&&value.expectedAccount!==expectedAccount)throw error('account','收藏服务账户已变化',401);
         const result=writing?await nativeCollectionWriteResponse(value,input,{scope}):nativeCollectionCapabilities(value,expectedAccount);
@@ -67,7 +78,9 @@ export function createNativeCollectionTransport({expectedAccount,scope,readScope
       })(),stopped]);
     }catch(cause){
       const known=/^text_collection_sync_/.test(cause?.code||'')?cause:error('native_connection','收藏连接中断，原内容仍保留',503);
-      known.writeState=started?'unconfirmed':'not_started';throw known;
+      if(!known.__serverWriteState||known.writeState!=='unconfirmed'&&known.writeState!=='not_started')known.writeState=started?'unconfirmed':'not_started';
+      try{delete known.__serverWriteState;}catch{}
+      throw known;
     }finally{
       clearTimeout(timer);signal?.removeEventListener('abort',abort);pending.delete(abort);controller.abort();
       try{void(reader?reader.cancel():response?.body?.cancel?.())?.catch(()=>{});}catch{}try{reader?.releaseLock();}catch{}

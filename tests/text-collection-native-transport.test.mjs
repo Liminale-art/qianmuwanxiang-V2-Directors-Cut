@@ -130,6 +130,13 @@ test('a transient native setup failure expires the capability memo for new mutat
   const result=await f.client.tryWrite(next);assert.ok(result);
   assert.deepEqual(f.calls.map(row=>row.options.method),['GET','POST','GET','POST']);
 });
+test('known native rejection preserves the server write boundary for autosave classification',async t=>{
+  const f=fixture(t,(_url,options)=>options.method==='GET'?json(capability):json({ok:false,version:1,code:'text_collection_sync_native_missing',message:'not initialized',writeState:'not_started'},409));
+  await assert.rejects(f.client.tryWrite(request),error=>error.code==='text_collection_sync_native_missing'&&error.writeState==='not_started');
+  assert.equal(f.calls.length,2);
+  const unknown=fixture(t,(_url,options)=>options.method==='GET'?json(capability):json({ok:false,version:1,code:'text_collection_sync_native_missing',message:'not initialized'},409));
+  await assert.rejects(unknown.client.tryWrite(request),error=>error.code==='text_collection_sync_native_missing'&&error.writeState==='unconfirmed');
+});
 test('contract rejects duplicated targets, oversized batches and added path fields',()=>{
   assert.throws(()=>nativeCollectionWriteRequest({...request,path:'elsewhere'}));assert.throws(()=>nativeCollectionWriteRequest({...request,mutations:[mutation,mutation]}));
   assert.throws(()=>nativeCollectionWriteRequest({...request,mutations:Array(33).fill(mutation)}));assert.throws(()=>nativeCollectionCapabilities({...capability,root:'elsewhere'},account));

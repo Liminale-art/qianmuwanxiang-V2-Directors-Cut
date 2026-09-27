@@ -39,7 +39,9 @@ test('missing backend and authentication failures are actionable without fallbac
     await assert.rejects(c.write(mutation()),e=>e.code===`text_collection_sync_${status===401||status===403?'account':'unavailable'}`&&e.writeState==='unconfirmed');assert.equal(calls,1);c.close();
   }
   const c=client({fetchImpl:async()=>response({ok:false,version:1,code:'text_collection_sync_conflict',message:'请重新载入',writeState:'not_started'},409)});
-  await assert.rejects(c.write(mutation()),{code:'text_collection_sync_conflict',writeState:'unconfirmed'});c.close();
+  await assert.rejects(c.write(mutation()),{code:'text_collection_sync_conflict',writeState:'not_started'});c.close();
+  const missingState=client({fetchImpl:async()=>response({ok:false,version:1,code:'text_collection_sync_conflict',message:'请重新载入'},409)});
+  await assert.rejects(missingState.write(mutation()),{code:'text_collection_sync_conflict',writeState:'unconfirmed'});missingState.close();
 });
 
 test('malformed UTF8, truncated JSON, oversized and stalled responses are rejected and cancelled',async()=>{

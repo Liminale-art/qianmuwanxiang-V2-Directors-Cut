@@ -25,6 +25,7 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
     };
     pending.add(abort);signal?.addEventListener('abort',abort,{once:true});
     const timer=setTimeout(()=>cancel('收藏请求超时；保存尚未确认，请保留当前内容'),Math.max(100,Math.min(30000,timeoutMs)));
+    let serverRejected=false;
     try{
       if(signal?.aborted)abort();
       return await Promise.race([(async()=>{
@@ -45,13 +46,22 @@ export function createTextCollectionClient({expectedAccount,guard,headers=()=>({
         body+=decoder.decode();const value=method==='snapshot'?parseBoundedJson(body,{maxBytes:limit,maxDepth:16,maxNodes:500000,label:'收藏快照'}):JSON.parse(body);
         if(!response.ok||value?.ok!==true){
           const known=value?.ok===false&&value.version===1&&/^text_collection_sync_[a-z_]+$/.test(value.code||'')&&typeof value.message==='string'&&value.message.length<=240;
-          throw error(known?value.code.slice('text_collection_sync_'.length):'service',known?value.message:'收藏服务暂不可用，请保留当前内容',response.status);
+          if(known){
+            const cause=error(value.code.slice('text_collection_sync_'.length),value.message,response.status);
+            // Keep the server's durable-write boundary. A known not_started
+            // response is safe to pause/retry; only unconfirmed means a POST
+            // may have committed and must keep its original mutation id.
+            const serverWriteState=value.writeState==='unconfirmed'||value.writeState==='not_started'?value.writeState:null;
+            if(serverWriteState) { cause.writeState=serverWriteState; serverRejected=true; }
+            throw cause;
+          }
+          throw error('service','收藏服务暂不可用，请保留当前内容',response.status);
         }
         const parsed=method==='write-batch'?textCollectionBulkResponse(value,payload):method==='batch-info'?textCollectionBulkInfoResponse(value,payload):method==='cleanup-plan'?textCollectionCleanupPlanResponse(value,payload):textCollectionSyncResponse(value,method,payload);await check();return parsed;
       })(),cancellation]);
     }catch(cause){
       const known=String(cause?.code||'').startsWith('text_collection_sync_')?cause:error('connection','收藏连接中断或返回损坏，请保留内容并核对原操作',503);
-      known.writeState=writeState();throw known;
+      if(!serverRejected||known.writeState!=='unconfirmed'&&known.writeState!=='not_started')known.writeState=writeState();throw known;
     }finally{
       clearTimeout(timer);signal?.removeEventListener('abort',abort);pending.delete(abort);controller.abort();
       try{void(reader?reader.cancel():response?.body?.cancel?.())?.catch(()=>{});}catch{}
