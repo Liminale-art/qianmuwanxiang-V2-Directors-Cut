@@ -11,7 +11,7 @@ const ack=r=>({ok:true,version:1,expectedAccount:namespace,libraryRevision:r.bas
 function fixture(){
   let state=emptyTextCollectionOutbox(namespace),valid=true,failUpdate=0,updates=0,mode='ok';const sent=[];
   const store={read:async()=>structuredClone(state),update:async(_,mutate,{guard})=>{updates++;if(updates===failUpdate)throw error('storage','quota',507);assert.equal(guard(),true);const draft=structuredClone(state);mutate(draft);validateTextCollectionOutbox(draft,namespace);state=structuredClone(draft);return structuredClone(state);}};
-  const session={expectedAccount:namespace,guard:async()=>{if(!valid)throw error('account','changed',401);},resumePending:r=>({submit:async()=>{assert.equal(state.entries.find(row=>row.request.mutationId===r.mutationId)?.started,true);sent.push(structuredClone(r));if(mode==='lost')throw error('connection','lost',503);if(mode==='conflict')throw error('conflict','other edit');if(mode==='switch'){valid=false;return ack(r);}return mode==='bad'?{...ack(r),mutationId:'wrong-id'}:ack(r);}})};
+  const session={expectedAccount:namespace,guard:async()=>{if(!valid)throw error('account','changed',401);},resumePending:r=>({submit:async()=>{assert.equal(state.entries.find(row=>row.request.mutationId===r.mutationId)?.started,true);sent.push(structuredClone(r));if(mode==='lost')throw error('connection','lost',503);if(mode==='attention')throw Object.assign(error('native_missing','not initialized',409),{writeState:'not_started'});if(mode==='conflict')throw error('conflict','other edit');if(mode==='switch'){valid=false;return ack(r);}return mode==='bad'?{...ack(r),mutationId:'wrong-id'}:ack(r);}})};
   return {store,session,sent,get state(){return structuredClone(state);},set valid(value){valid=value;},set mode(value){mode=value;},set failUpdate(value){failUpdate=value;},runtime:()=>createTextCollectionOutboxRuntime({session,store,now:()=>2})};
 }
 test('persist precedes transport; recreation and lost receipts reuse the exact request before retiring it',async()=>{
@@ -36,6 +36,18 @@ test('edit conflict preserves draft and original provenance, never rebases or au
 test('wrong receipts and account changes cannot clear local originals or dispatch old-account drafts',async()=>{
   for(const mode of ['bad','switch','before']){const f=fixture(),runtime=f.runtime();await runtime.enqueue(request());f.mode=mode;if(mode==='before')f.valid=false;
     await assert.rejects(runtime.submit('mutation-1'));assert.equal(f.state.entries.length,1);assert.equal(f.sent.length,mode==='before'?0:1);runtime.close();}
+});
+test('explicit native pre-write rejection parks attention without changing the request',async()=>{
+  const f=fixture(),runtime=f.runtime();await runtime.enqueue(request());f.mode='attention';await assert.rejects(runtime.submit('mutation-1'),{code:'text_collection_sync_native_missing'});
+  assert.equal(f.state.entries[0].state,'attention');assert.equal(f.state.entries[0].started,true);assert.equal(f.sent.length,1);
+  assert.equal((await runtime.remove(await runtime.list().then(rows=>rows[0]),{confirmed:true})).removed,true);
+  await runtime.enqueue(request());
+  f.mode='ok';await runtime.submit('mutation-1');assert.equal(f.state.entries.length,0);runtime.close();
+});
+test('manual retry reopens attention before an ambiguous result',async()=>{
+  const f=fixture(),runtime=f.runtime();await runtime.enqueue(request());f.mode='attention';await assert.rejects(runtime.submit('mutation-1'));
+  f.mode='lost';await assert.rejects(runtime.submit('mutation-1'),{code:'text_collection_sync_connection'});
+  assert.equal(f.state.entries[0].state,'pending');assert.equal(f.state.entries[0].started,true);runtime.close();
 });
 test('repeated enqueue is identity-preserving, differing content cannot overwrite and simultaneous clicks share one submission',async()=>{
   const f=fixture(),runtime=f.runtime(),r=request();await runtime.enqueue(r);await runtime.enqueue(r);assert.equal(f.state.entries.length,1);

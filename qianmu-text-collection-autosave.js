@@ -17,8 +17,12 @@ export function createCollectionAutosave({resolveNamespace,isCurrent,headers,win
       try{
         session=await sessionFactory({resolveNamespace,isCurrent:current,headers});if(!current())return;
         outbox=outboxFactory({session,isCurrent:current});
-        const rows=await outbox.list();
-        for(const row of rows.slice(0,24)){
+        const rows=await outbox.list(),actionable=rows.filter(row=>row.state!=='attention');
+        // Attention rows are durable stop markers for known pre-write
+        // rejections. They remain visible/exportable and can be retried by an
+        // explicit user action, but recovery must not wake them again after a
+        // reload or keep scheduling a permanently failing queue.
+        for(const row of actionable.slice(0,24)){
           if(!current()||window.navigator?.onLine===false)break;
           try{
             const result=row.state==='conflict'?await outbox.keepCopy(row,{confirmed:true}):await outbox.submit(row.request.mutationId);
@@ -33,7 +37,7 @@ export function createCollectionAutosave({resolveNamespace,isCurrent,headers,win
             // being attempted. Never rebase its revision or change its identity.
           }
         }
-        remaining=rows.length>24;
+        remaining=actionable.length>24;
       }catch(cause){if(current()){report(cause);accountLost=invalidAccount(cause);}}
       finally{
         outbox?.close();outbox=null;session?.close();session=null;running=null;

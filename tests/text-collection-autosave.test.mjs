@@ -19,6 +19,10 @@ test('recovery retries are bounded and reconnect can retry without any user sync
 test('conflicts create an independent copy rather than rebasing or discarding the edit',async()=>{
  const f=fixture([{state:'conflict',request:{mutationId:'old-edit'}}]);await f.auto.wake();assert.deepEqual(f.submitted,['copy:old-edit']);assert.equal(f.timers.size,0);f.auto.close();
 });
+test('known pre-write attention rows remain visible but never wake automatic recovery',async()=>{
+ const f=fixture([{state:'attention',started:true,request:{mutationId:'known-rejection'}}]);f.auto.start();await f.auto.wake();
+ assert.deepEqual(f.submitted,[]);assert.equal(f.timers.size,0);f.auto.close();
+});
 
 test('one confirmed recovery batch emits only one payload-free star refresh; failures and empty queues do not',async()=>{
  for(const [rows,fail,expected] of [[[],false,0],[[{state:'pending',request:{mutationId:'a'}},{state:'pending',request:{mutationId:'b'}}],false,1],[[{state:'pending',request:{mutationId:'a'}}],true,0]]){

@@ -1,10 +1,10 @@
 // Persist only a bounded source proof, never a second copy of private prose.
 // The cheap fingerprint is for synchronous UI linking. Paid dispatch verifies
 // both SHA-256 proofs again against the actual selected ST message.
-import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.398';
-import {storyboardContinuationPath,storyboardContinuationIdentityInput,storyboardContinuationSource} from './qianmu-storyboard-continuation-proof.js?v=1.59.398';
-import {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamDigest} from './qianmu-storyboard-source-proof.js?v=1.59.398';
-import {resolveStoryboardOrdinaryContinuation,verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.398';
+import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.399';
+import {storyboardContinuationPath,storyboardContinuationIdentityInput,storyboardContinuationSource} from './qianmu-storyboard-continuation-proof.js?v=1.59.399';
+import {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamDigest} from './qianmu-storyboard-source-proof.js?v=1.59.399';
+import {resolveStoryboardOrdinaryContinuation,verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.399';
 export {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamDigest};
 const fail=()=>{throw Object.assign(new Error('流式原文或回复身份已变化，未继续提交'),{code:'storyboard_stream_source'});};
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);

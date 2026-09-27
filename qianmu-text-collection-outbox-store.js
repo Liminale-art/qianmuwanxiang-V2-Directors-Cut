@@ -14,7 +14,13 @@ export function textCollectionOutboxAccount(value){
 export function textCollectionOutboxEntry(value,namespace){
   textCollectionOutboxAccount(namespace);
   if(!exact(value,['request','base','queuedAt','started','state'])||!Number.isSafeInteger(value.queuedAt)||value.queuedAt<0||value.queuedAt>253402214400000
-    ||typeof value.started!=='boolean'||!['pending','conflict'].includes(value.state)||value.state==='conflict'&&!value.started)fail('收藏待存记录格式无效，未覆盖');
+    ||typeof value.started!=='boolean'||!['pending','attention','conflict'].includes(value.state)
+    // `attention` is a durable, user-action-required stop for a server
+    // rejection that explicitly proves no write was started. It is distinct
+    // from `conflict` (which represents a confirmed remote revision) and from
+    // a started/unconfirmed request. Never allow either stop state on a fresh
+    // queued row.
+    ||['attention','conflict'].includes(value.state)&&!value.started)fail('收藏待存记录格式无效，未覆盖');
   const request=textCollectionSyncMutation(value.request);
   if(request.expectedAccount!==namespace||!['create','edit','restore'].includes(request.operation))fail('收藏待存账户或操作不一致；不排队执行删除');
   let base=null;
@@ -36,8 +42,9 @@ export function validateTextCollectionOutbox(value,namespace){
   return value;
 }
 export function summarizeTextCollectionOutbox(value){
-  const state=validateTextCollectionOutbox(value,value?.namespace),conflicts=state.entries.filter(row=>row.state==='conflict').length;
-  return Object.freeze({namespace:state.namespace,status:'ready',scope:'current-account-local',count:state.entries.length,pending:state.entries.length-conflicts,conflicts,
+  const state=validateTextCollectionOutbox(value,value?.namespace),conflicts=state.entries.filter(row=>row.state==='conflict').length,
+    attention=state.entries.filter(row=>row.state==='attention').length;
+  return Object.freeze({namespace:state.namespace,status:'ready',scope:'current-account-local',count:state.entries.length,pending:state.entries.length-conflicts-attention,attention,conflicts,
     bytes:state.entries.length?new TextEncoder().encode(JSON.stringify(state)).byteLength:0,estimated:true});
 }
 export function createTextCollectionOutboxStore({indexedDB=globalThis.indexedDB,dbName='qianmu-text-collection-outbox',timeoutMs=8000}={}){

@@ -23,6 +23,11 @@ test('strict outbox rejects wrong accounts, destructive work, duplicate identiti
     {entries:[{...row,base:original()}]},{entries:[{...row,request:{...request(),apiKey:'secret'}}]}])assert.throws(()=>validateTextCollectionOutbox({...state,...changed},account));
   const deleted={version:1,expectedAccount:account,mutationId:'mutation-1',id:'collection-1',baseRevision:1,operation:'delete'};assert.throws(()=>createTextCollectionOutboxEntry(deleted));
   const conflict={...row,started:true,state:'conflict'};assert.equal(summarizeTextCollectionOutbox({...state,entries:[conflict]}).conflicts,1);
+  const attention={...row,started:true,state:'attention'},attentionState={...state,entries:[attention]};
+  assert.equal(validateTextCollectionOutbox(attentionState,account),attentionState);
+  assert.equal(summarizeTextCollectionOutbox(attentionState).attention,1);
+  assert.equal(summarizeTextCollectionOutbox(attentionState).pending,0);
+  assert.throws(()=>validateTextCollectionOutbox({...state,entries:[{...row,state:'attention',started:false}] }));
 });
 test('store is lazy, uses a separate database and refuses volatile fallback on unavailable IDB',async()=>{
   let opened=0;const store=createTextCollectionOutboxStore({indexedDB:{open(name){opened++;assert.equal(name,'qianmu-text-collection-outbox');throw Error('unavailable');}}});

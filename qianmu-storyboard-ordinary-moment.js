@@ -1,4 +1,4 @@
-import {assertStoryboardStreamMoment,createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.398';
+import {assertStoryboardStreamMoment,createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.399';
 import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 const fail=()=>{throw Object.assign(new Error('旧镜头的叙事位置无法完整核对，未重复自动生成'),{code:'storyboard_stream_coverage'});};
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);

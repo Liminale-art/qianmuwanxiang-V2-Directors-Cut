@@ -2,6 +2,16 @@ import {createTextCollectionOutboxStore,createTextCollectionOutboxEntry,textColl
 import {textCollectionSyncError as error,textCollectionSyncResponse,textCollectionSyncMutation} from './qianmu-text-collection-sync-contract.js';
 import {prepareTextCollectionOutboxBackup,mergeTextCollectionOutboxBackup} from './qianmu-text-collection-outbox-backup.js';
 
+// These responses are deterministic pre-write rejections from the native
+// endpoint. They are safe to park for user action when the server explicitly
+// reports `writeState=not_started`; transport/account/temporary-busy errors
+// remain retryable and retain the prior pending semantics.
+export const TEXT_COLLECTION_OUTBOX_ATTENTION_CODES=Object.freeze(new Set([
+  'text_collection_sync_native_missing',
+  'text_collection_sync_native_version',
+  'text_collection_sync_native_content',
+]));
+
 // UI and recovery own separate runtimes over the same default durable outbox.
 // Merge only their in-flight exact operations, not histories or retry outcomes.
 // Injected stores share only when they are the same object/truth source.
@@ -57,6 +67,10 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
         checkSignal();const target=state.entries.find(entry=>entry.request.mutationId===mutationId);
         if(!target)throw error('missing','此待存操作已不存在，请刷新列表');
         if(target.state==='conflict')throw error('conflict','此收藏存在版本冲突，请先保留副本或核对原件');
+        // A manual retry reopens an attention-stopped request. If the retry
+        // loses its receipt, it must return to the ordinary pending/unknown
+        // path rather than retaining the safe-to-remove attention label.
+        if(target.state==='attention')target.state='pending';
         target.started=true;row=structuredClone(target);
       });
       prepared(signature(row));
@@ -74,6 +88,18 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
         // Preserve the original edit and its base. Never issue a replacement write.
         await update(state=>{const target=state.entries.find(entry=>entry.request.mutationId===mutationId);
           if(target&&same(target.request,row.request)&&same(target.base,row.base))target.state='conflict';
+        });
+      }
+      // A native endpoint may explicitly reject before durable storage starts
+      // (for example, a missing/invalid local native store). Persist that
+      // boundary as a separate user-action-required state. This prevents the
+      // autosave recovery loop from replaying a known permanent rejection on
+      // every wake or page reopen. The original request remains byte-for-byte
+      // intact and manual submit() is still allowed after the user repairs the
+      // service; unconfirmed receipts are deliberately left untouched.
+      if(started&&cause?.writeState==='not_started'&&TEXT_COLLECTION_OUTBOX_ATTENTION_CODES.has(cause?.code)){
+        await update(state=>{const target=state.entries.find(entry=>entry.request.mutationId===mutationId);
+          if(target&&same(target.request,row.request)&&same(target.base,row.base)&&target.state!=='conflict')target.state='attention';
         });
       }
       throw cause;
@@ -123,7 +149,7 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
     validateTextCollectionOutbox({version:1,namespace,entries:inputs},namespace);
     const snapshots=new Map(inputs.map(row=>{const value=textCollectionOutboxEntry(row,namespace);return [value.request.mutationId,value];}));let removed=0;
     if(confirmed!==true)throw error('consent','请确认只移除此机待存原件');
-    if(inputs.some(row=>row.started&&row.state!=='conflict')&&acceptUnconfirmed!==true)throw error('consent','原提交结果未知；移除本机待存不会取消或删除服务器保存');
+    if(inputs.some(row=>row.started&&!['conflict','attention'].includes(row.state))&&acceptUnconfirmed!==true)throw error('consent','原提交结果未知；移除本机待存不会取消或删除服务器保存');
     await update(state=>{
       for(const id of snapshots.keys())if(active.has(id)||flights.has(flightKey(id)))throw error('busy','此待存仍在提交中，请等待后重新查看');
       for(const row of state.entries){const snapshot=snapshots.get(row.request.mutationId);if(!snapshot)continue;

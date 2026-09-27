@@ -30,6 +30,16 @@ test('merge is account-bound, idempotent and never downgrades started or conflic
   const older={...backup,entries:[{...backup.entries[0],started:false,state:'pending',queuedAt:0}]};assert.deepEqual(mergeTextCollectionOutboxBackup(first.state,older).state,first.state);
   assert.throws(()=>mergeTextCollectionOutboxBackup(emptyTextCollectionOutbox(other),backup),{code:'text_collection_sync_account'});
 });
+test('backup round trips and merge preserves the distinct attention stop',()=>{
+  const attentionState=state();attentionState.entries[0].state='attention';
+  const payload=prepare(attentionState).payload,read=validateTextCollectionOutboxBackup(payload);
+  assert.equal(read.entries[0].state,'attention');
+  const merged=mergeTextCollectionOutboxBackup(emptyTextCollectionOutbox(namespace),payload);
+  assert.equal(merged.state.entries[0].state,'attention');
+  const pendingState=state();pendingState.entries[0].state='pending';
+  const pending=prepare(pendingState).payload;
+  assert.equal(mergeTextCollectionOutboxBackup(merged.state,pending).state.entries[0].state,'attention');
+});
 test('one conflicting operation identity rejects the entire merge without partially adding other rows',()=>{
   const current=state(),before=structuredClone(current),payload=prepare().payload,row=payload.entries[0];
   const input={...payload,entries:[{...row,request:{...row.request,mutationId:'mutation-2'}},{...row,request:{...row.request,text:'同编号不同内容'}}]};

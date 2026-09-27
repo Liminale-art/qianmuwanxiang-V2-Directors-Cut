@@ -21,7 +21,7 @@ export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy,c
   const text=row=>Object.hasOwn(row.request,'text')?row.request.text:row.request.record.text;
   const original=row=>row.base||row.request.record;
   const label=row=>{const item=original(row);return textCollectionDisplayLabel(item.source.charName,item.source.userName,item.createdAt);};
-  const stateLabel=row=>(row.request.operation==='restore'&&Object.hasOwn(row.request,'text')?'副本 · ':'')+(row.state==='conflict'?'版本冲突':row.started?'结果待核对':'待提交');
+  const stateLabel=row=>(row.request.operation==='restore'&&Object.hasOwn(row.request,'text')?'副本 · ':'')+(row.state==='conflict'?'版本冲突':row.state==='attention'?'需处理':row.started?'结果待核对':'待提交');
   function controls(){
     dialog.setAttribute('aria-busy',String(busy));
     for(const button of dialog.querySelectorAll('button'))button.disabled=busy&&button.dataset.pendingAction!=='close';
@@ -71,7 +71,7 @@ export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy,c
       }
       if(id){selected=(await outbox.list()).find(row=>row.request.mutationId===id);if(!current())return;if(!selected)return load(page);
         editor.value=text(selected);q('[data-pending-title]').textContent=label(selected);list.hidden=true;detail.hidden=false;localActions.hidden=false;q('[data-pending-pages]').hidden=true;q('[data-pending-tools]').hidden=false;
-        status.textContent=selected.state==='conflict'?'版本冲突；本机修改与编辑前原件均保留，不覆盖另一端内容。':selected.started?'上次提交结果待核对；重试使用原编号，不重复创建。':'尚未提交服务器，可重试保存。';return;
+        status.textContent=selected.state==='conflict'?'版本冲突；本机修改与编辑前原件均保留，不覆盖另一端内容。':selected.state==='attention'?'自动恢复已暂停；请检查收藏服务后手动重试，原文仍保留。':selected.started?'上次提交结果待核对；重试使用原编号，不重复创建。':'尚未提交服务器，可重试保存。';return;
       }
       if(action==='back'||action==='refresh')return load(page);
       if(action==='prev')return load(page-1);if(action==='next')return load(page+1);
@@ -86,7 +86,7 @@ export function openTextCollectionOutbox({parent,session,outbox,isCurrent,copy,c
         if(!current())return;await load(page);if(current())status.textContent+=' · 新副本已保存，原收藏未覆盖';return;
       }
       if(action==='remove'){
-        const snapshot=selected,unknown=snapshot.started&&snapshot.state!=='conflict';
+        const snapshot=selected,unknown=snapshot.started&&!['conflict','attention'].includes(snapshot.state);
         const warning='仅移除当前设备的这条待存文字及编辑前原件；不会删除服务器收藏，也不会改动聊天。移除后不能撤销，请先复制或备份需要的内容。';
         if(await confirm('移除此机待存',warning+(unknown?' 上次提交结果未知，服务器仍可能已保存；移除此机记录不等于取消原请求。':''))!==true){if(current())status.textContent='未移除，本机待存仍保留';return;}
         await session.guard();if(!current())return;

@@ -34,7 +34,13 @@ export function mergeTextCollectionOutboxBackup(state,input){
     if(at===undefined){index.set(incoming.request.mutationId,rows.length);rows.push(incoming);added++;continue;}
     const prior=rows[at];
     if(JSON.stringify(prior.request)!==JSON.stringify(incoming.request)||JSON.stringify(prior.base)!==JSON.stringify(incoming.base))throw error('local_conflict','同一待存编号对应不同内容，整个导入未执行，请保留双方备份');
-    rows[at]={...prior,started:prior.started||incoming.started,state:prior.state==='conflict'||incoming.state==='conflict'?'conflict':'pending'};duplicates++;
+    // Merge never downgrades evidence: confirmed conflicts stay conflicts;
+    // known pre-write attention stops stay parked instead of becoming an
+    // automatic pending retry. Only two ordinary pending rows merge to
+    // pending. The request/base identity was already validated above.
+    const state=prior.state==='conflict'||incoming.state==='conflict'?'conflict':
+      prior.state==='attention'||incoming.state==='attention'?'attention':'pending';
+    rows[at]={...prior,started:prior.started||incoming.started,state};duplicates++;
   }
   const merged=validateTextCollectionOutbox({version:1,namespace:state.namespace,entries:rows},state.namespace);
   return Object.freeze({state:merged,added,duplicates});
