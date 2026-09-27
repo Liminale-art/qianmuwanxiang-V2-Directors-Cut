@@ -11,7 +11,7 @@ const ack=r=>({ok:true,version:1,expectedAccount:namespace,libraryRevision:r.bas
 function fixture(){
   let state=emptyTextCollectionOutbox(namespace),valid=true,failUpdate=0,updates=0,mode='ok';const sent=[];
   const store={read:async()=>structuredClone(state),update:async(_,mutate,{guard})=>{updates++;if(updates===failUpdate)throw error('storage','quota',507);assert.equal(guard(),true);const draft=structuredClone(state);mutate(draft);validateTextCollectionOutbox(draft,namespace);state=structuredClone(draft);return structuredClone(state);}};
-  const session={expectedAccount:namespace,guard:async()=>{if(!valid)throw error('account','changed',401);},resumePending:r=>({submit:async()=>{assert.equal(state.entries.find(row=>row.request.mutationId===r.mutationId)?.started,true);sent.push(structuredClone(r));if(mode==='lost')throw error('connection','lost',503);if(mode==='attention')throw Object.assign(error('native_missing','not initialized',409),{writeState:'not_started'});if(mode==='conflict')throw error('conflict','other edit');if(mode==='switch'){valid=false;return ack(r);}return mode==='bad'?{...ack(r),mutationId:'wrong-id'}:ack(r);}})};
+  const session={expectedAccount:namespace,guard:async()=>{if(!valid)throw error('account','changed',401);},resumePending:r=>({submit:async()=>{assert.equal(state.entries.find(row=>row.request.mutationId===r.mutationId)?.started,true);sent.push(structuredClone(r));if(mode==='lost')throw error('connection','lost',503);if(mode==='attention'||mode==='attention-capacity')throw Object.assign(error(mode==='attention'?'native_missing':'native_capacity','not initialized',mode==='attention'?409:507),{writeState:'not_started'});if(mode==='conflict')throw error('conflict','other edit');if(mode==='switch'){valid=false;return ack(r);}return mode==='bad'?{...ack(r),mutationId:'wrong-id'}:ack(r);}})};
   return {store,session,sent,get state(){return structuredClone(state);},set valid(value){valid=value;},set mode(value){mode=value;},set failUpdate(value){failUpdate=value;},runtime:()=>createTextCollectionOutboxRuntime({session,store,now:()=>2})};
 }
 test('persist precedes transport; recreation and lost receipts reuse the exact request before retiring it',async()=>{
@@ -43,6 +43,10 @@ test('explicit native pre-write rejection parks attention without changing the r
   assert.equal((await runtime.remove(await runtime.list().then(rows=>rows[0]),{confirmed:true})).removed,true);
   await runtime.enqueue(request());
   f.mode='ok';await runtime.submit('mutation-1');assert.equal(f.state.entries.length,0);runtime.close();
+});
+test('native capacity pre-write rejection parks attention without changing the request',async()=>{
+  const f=fixture(),runtime=f.runtime();await runtime.enqueue(request());f.mode='attention-capacity';await assert.rejects(runtime.submit('mutation-1'),{code:'text_collection_sync_native_capacity'});
+  assert.equal(f.state.entries[0].state,'attention');assert.equal(f.state.entries[0].started,true);assert.equal(f.sent.length,1);runtime.close();
 });
 test('manual retry reopens attention before an ambiguous result',async()=>{
   const f=fixture(),runtime=f.runtime();await runtime.enqueue(request());f.mode='attention';await assert.rejects(runtime.submit('mutation-1'));

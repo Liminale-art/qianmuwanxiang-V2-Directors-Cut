@@ -1,4 +1,4 @@
-import {storyboardStableStreamBoundary} from './qianmu-storyboard-stream-source.js?v=1.59.399';
+import {storyboardStableStreamBoundary} from './qianmu-storyboard-stream-source.js?v=1.59.400';
 
 // One explicit compiler pass. A boolean return alone cannot distinguish a
 // harmless wait from an exhausted format-repair batch. No extra repair budget.

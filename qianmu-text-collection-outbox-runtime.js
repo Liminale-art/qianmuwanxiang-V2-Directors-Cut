@@ -3,14 +3,16 @@ import {textCollectionSyncError as error,textCollectionSyncResponse,textCollecti
 import {prepareTextCollectionOutboxBackup,mergeTextCollectionOutboxBackup} from './qianmu-text-collection-outbox-backup.js';
 
 // These responses are deterministic pre-write rejections from the native
-// endpoint. They are safe to park for user action when the server explicitly
-// reports `writeState=not_started`; transport/account/temporary-busy errors
-// remain retryable and retain the prior pending semantics.
+// endpoint. They are safe to park for user action only when the server explicitly
+// reports `writeState=not_started`. Setup, transport, path, storage and concurrent
+// change errors remain retryable; a 503 alone never establishes a safe boundary.
 export const TEXT_COLLECTION_OUTBOX_ATTENTION_CODES=Object.freeze(new Set([
   'text_collection_sync_native_missing',
   'text_collection_sync_native_version',
   'text_collection_sync_native_content',
+  'text_collection_sync_native_capacity',
 ]));
+const isNativePreWriteAttention=(code,writeState)=>writeState==='not_started'&&TEXT_COLLECTION_OUTBOX_ATTENTION_CODES.has(code);
 
 // UI and recovery own separate runtimes over the same default durable outbox.
 // Merge only their in-flight exact operations, not histories or retry outcomes.
@@ -97,7 +99,7 @@ export function createTextCollectionOutboxRuntime({session,store=null,isCurrent=
       // every wake or page reopen. The original request remains byte-for-byte
       // intact and manual submit() is still allowed after the user repairs the
       // service; unconfirmed receipts are deliberately left untouched.
-      if(started&&cause?.writeState==='not_started'&&TEXT_COLLECTION_OUTBOX_ATTENTION_CODES.has(cause?.code)){
+      if(started&&isNativePreWriteAttention(cause?.code,cause?.writeState)){
         await update(state=>{const target=state.entries.find(entry=>entry.request.mutationId===mutationId);
           if(target&&same(target.request,row.request)&&same(target.base,row.base)&&target.state!=='conflict')target.state='attention';
         });

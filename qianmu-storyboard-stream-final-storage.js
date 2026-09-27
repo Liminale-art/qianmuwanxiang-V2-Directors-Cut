@@ -1,5 +1,5 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {normalizeStoryboardStreamFinalCapture,storyboardStreamDigest} from './qianmu-storyboard-stream-reference.js?v=1.59.399';
+import {normalizeStoryboardStreamFinalCapture,storyboardStreamDigest} from './qianmu-storyboard-stream-reference.js?v=1.59.400';
 
 const schema='qianmu.storyboard.stream-final.v1';
 const fields=['namespace','chatKey','messageKey','revisionId','planId','sourceRevisionId'];
