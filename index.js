@@ -2,8 +2,8 @@
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
-import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.394';
-import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.394';
+import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.403';
+import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.403';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
@@ -23,15 +23,15 @@ import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryb
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.394';
-import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.394';
-import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.394';
-import {createStoryboardQueueWindow} from './qianmu-storyboard-queue-window.js?v=1.59.394';
-import {startStoryboardQueueWindowBatch} from './qianmu-storyboard-queue-batch.js?v=1.59.394';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.403';
+import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.403';
+import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.403';
+import {createStoryboardQueueWindow} from './qianmu-storyboard-queue-window.js?v=1.59.403';
+import {startStoryboardQueueWindowBatch} from './qianmu-storyboard-queue-batch.js?v=1.59.403';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.394';
-import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.394';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.403';
+import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.403';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
@@ -46,7 +46,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './qianmu-gallery-shot-reader.js';
-import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, collectionCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.394';
+import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.403';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -189,10 +189,10 @@ import { readAppearancePreferences } from './qianmu-appearance-settings.js';
 import { createQianmuAppearanceSession } from './qianmu-appearance-session.js';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
-import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.394';
-import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from './qianmu-storyboard-variant-recovery.js?v=1.59.394';
+import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.403';
+import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from './qianmu-storyboard-variant-recovery.js?v=1.59.403';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.212';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.394';
+import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.403';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -291,25 +291,25 @@ import {
   storyboardRecipeRecordMetadata,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.394';
+} from './qianmu-storyboard.js?v=1.59.403';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.394';
+const VERSION = '1.59.403';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
 let feedbackOpenScope = null;
-const collectionFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
+const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 const featureRuntime = createFeatureRuntime({
-  feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.394') },
-  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.394') },
-  recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.394') },
-  vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.394') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.394') },
+  feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.403') },
+  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.403') },
+  recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.403') },
+  vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.403') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.403') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -320,9 +320,9 @@ const featureRuntime = createFeatureRuntime({
   storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.202') },
   storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.202') },
   storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.202') },
-  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.394') },
-  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.394') },
-  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.394') },
+  storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.403') },
+  storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.403') },
+  storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.403') },
   storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.202') },
   characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.202') },
   characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.202') },
@@ -354,7 +354,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.394'),
+    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.403'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -383,7 +383,7 @@ const featureRuntime = createFeatureRuntime({
   characterArchive: {
     label: '角色档案',
     intent: '[data-storyboard-view="characters"]',
-    load: () => loadLocalChunk('./qianmu-character-archive-view.js?v=1.59.394'),
+    load: () => loadLocalChunk('./qianmu-character-archive-view.js?v=1.59.403'),
   },
   characterCasting: {
     label: '角色取景绑定',
@@ -391,15 +391,15 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.394'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.403'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.394'),
+    load: () => import('./qianmu-world-automatic.js?v=1.59.403'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.394'),
+    load: () => import('./qianmu-world-automatic-host.js?v=1.59.403'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -435,7 +435,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
-    load: () => loadLocalChunk('./qianmu-comfy-route.js?v=1.59.394'),
+    load: () => loadLocalChunk('./qianmu-comfy-route.js?v=1.59.403'),
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
@@ -447,11 +447,11 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => loadLocalChunk('./qianmu-comfy-library-view.js?v=1.59.394'),
+    load: () => loadLocalChunk('./qianmu-comfy-library-view.js?v=1.59.403'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
-    load: () => loadLocalChunk('./qianmu-comfy-pool-view.js?v=1.59.394'),
+    load: () => loadLocalChunk('./qianmu-comfy-pool-view.js?v=1.59.403'),
   },
   comfyScene: {
     label: 'Comfy 续场锁',
@@ -491,11 +491,11 @@ const featureRuntime = createFeatureRuntime({
   },
   directorDecision: {
     label: '导演决策单',
-    load: () => import('./qianmu-director-decision.js?v=1.59.394'),
+    load: () => import('./qianmu-director-decision.js?v=1.59.403'),
   },
   directorWorkOrders: {
     label: '导演工作单',
-    load: () => import('./qianmu-director-work-order.js?v=1.59.394'),
+    load: () => import('./qianmu-director-work-order.js?v=1.59.403'),
   },
   videoContract: {
     label: '动态镜头合同',
@@ -583,9 +583,9 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.394'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.403'),
   },
-  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.394')},
+  storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.403')},
   theaterCatalog: {
     label: '内置剧札', intent: '[data-tab="theater"]',
     load: async () => {
@@ -4565,7 +4565,7 @@ function normalizeQuickWheelSettings() {
 function quickWheelPrimaryItems() {
   normalizeQuickWheelSettings();
   const ids = settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id)
-    && !(id === 'notes' && settings?.notes?.detached) && !(id === 'assistant' && collectionFloorTools.assistantDetached));
+    && !(id === 'notes' && settings?.notes?.detached) && !(id === 'assistant' && proseFloorTools.assistantDetached));
   return ids.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
 }
 
@@ -5827,8 +5827,7 @@ async function runQuickWheelCommand(id) {
   }
   if (id === 'floor') return openFloorNavigator();
   if (id === 'notes') return openNotesPanel();
-  if (id === 'assistant') return collectionFloorTools.openAssistant();
-  if (id === 'collections') return collectionFloorTools.openLibrary(document.body,confirmDialog);
+  if (id === 'assistant') return proseFloorTools.openAssistant();
   if (id === 'geopolitics') return openModal('geopolitics');
   if (QUICK_COMMAND_IDS.includes(id)) return openModal(id);
 }
@@ -5914,7 +5913,7 @@ function openQuickWheel(btn) {
     button.innerHTML = `${iconMarkup}${QUICK_HEX_BORDER_SVG}`;
     holder.appendChild(button);
     if (item.id === 'notes') bindNotesHiveDetachDrag(button, item, layout);
-    collectionFloorTools.bindHive(button,item,layout);
+    proseFloorTools.bindHive(button,item,layout);
     if (item.external) {
       quickDockBindIconFallback(button, item);
       bindQuickWheelUndockDrag(button, item, layout);
@@ -6522,7 +6521,7 @@ function clampDetachedNotesEntry(position = {}) {
 }
 
 function renderFloatingNotes() {
-  collectionFloorTools.renderHive();
+  proseFloorTools.renderHive();
   document.getElementById(NOTES_FLOAT_LAYER_ID)?.remove();
   const noteSettings = notesFeatureSettings();
   if (!noteSettings.enabled || !noteSettings.detached || notesPanelOpen) return;
@@ -7856,12 +7855,11 @@ async function collectStorageInventory(onProgress) {
     ()=>Promise.all([featureRuntime.load('recipeStorage'),featureRuntime.load('imageAdmission')]).then(([module,identity])=>module.collectRecipeArchiveStorage({
       resolveNamespace:()=>identity.resolveImageAccountNamespace(),valid:()=>storageEpoch===storyboardAdmissionEpoch,headers:()=>ctx().getRequestHeaders?.(),
     })).catch(error=>{if(error?.code==='recipe_storage_stale')throw error;return {status:'unavailable',bytes:null,files:null,error:'服务器配方暂未读取'};}),
-    ()=>collectionFloorTools.storageSummary(()=>storageEpoch===storyboardAdmissionEpoch),
-    ()=>collectionFloorTools.assistantStorageSummary(()=>storageEpoch===storyboardAdmissionEpoch),
+    ()=>proseFloorTools.assistantStorageSummary(()=>storageEpoch===storyboardAdmissionEpoch),
   ];
   const values=await runStorageInventoryJobs(jobs,onProgress,()=>storageEpoch===storyboardAdmissionEpoch);
-  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage,carrierStorage, focusLibrary, notesStorage, galleryCatalogStorage,recipeStorage,collectionStorage,assistantStorage]=values;
-  for(const storage of [vibeStorage,restoreStorage,mappingStorage,carrierStorage,characterStorage,comfyStorage,notesStorage,galleryCatalogStorage,recipeStorage,collectionStorage,assistantStorage])if(storage.namespace){const identity=await featureRuntime.load('imageAdmission');if(storage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
+  const [originEstimate, idb, orphanReaderBlobs, imageAttempts, imageChannels, serviceReceipts, comfyReceipts, comfyStorage, vibeStorage, restoreStorage, characterStorage, mappingStorage,carrierStorage, focusLibrary, notesStorage, galleryCatalogStorage,recipeStorage,assistantStorage]=values;
+  for(const storage of [vibeStorage,restoreStorage,mappingStorage,carrierStorage,characterStorage,comfyStorage,notesStorage,galleryCatalogStorage,recipeStorage,assistantStorage])if(storage.namespace){const identity=await featureRuntime.load('imageAdmission');if(storage.namespace!==await identity.resolveImageAccountNamespace())throw new Error('储存账户已变化，请重新盘点');}
   if(storageEpoch!==storyboardAdmissionEpoch)throw new Error('储存页面已变化，请重新盘点');
   const pressure = blobStore.classifyStoragePressure(originEstimate || {});
   const settingsBytes = storageJsonBytes(storageSettingsSnapshotWithoutDiagnostics(settings));
@@ -7907,9 +7905,8 @@ async function collectStorageInventory(onProgress) {
   const focusBytes=focusLibrary.status==='ready'?focusLibrary.bytes:0;if(focusBytes)addCategory('audio',focusBytes,focusLibrary.count);
   const notesBytes=notesStorage.status==='ready'?notesStorage.bytes:0;if(notesStorage.status==='ready')addCategory('notes',notesBytes,notesStorage.count);
   const galleryCatalogBytes=galleryCatalogStorage.status==='ready'?galleryCatalogStorage.bytes:0;if(galleryCatalogStorage.status==='ready')addCategory('logs',galleryCatalogBytes,galleryCatalogStorage.count);
-  const pending=collectionStorage.pending,pendingBytes=pending?.status==='ready'?pending.bytes:0;if(pendingBytes)addCategory('collections',pendingBytes,pending.count);
   const assistantBytes=assistantStorage.status==='ready'?assistantStorage.bytes:0;if(assistantBytes)addCategory('assistant',assistantBytes,assistantStorage.count);
-  const trackedBytes = assistantBytes + pendingBytes + galleryCatalogBytes + notesBytes + focusBytes + Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize+carrierSize;
+  const trackedBytes = assistantBytes + galleryCatalogBytes + notesBytes + focusBytes + Number(idb.totalBytes || 0) + settingsBytes + currentChatBytes + diagnosticsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes + mappingSize+carrierSize;
   const recoverableBytes = Number(idb.recoverableBytes || 0) + diagnosticsBytes;
   const inboxBytes = Number(idb.stores?.find(item => item.name === 'storyboard_inbox')?.bytes) || 0;
   const manageableBytes = focusBytes + Math.max(0, Number(idb.totalBytes || 0) - inboxBytes) + diagnosticsBytes + portableTtsBytes + imageAttempts.bytes + imageChannels.bytes + serviceReceipts.bytes + comfyReceipts.bytes + comfyStorage.bytes + vibeBytes + restoreBytes + characterBytes;
@@ -7940,7 +7937,7 @@ async function collectStorageInventory(onProgress) {
     restoreStorage,
     mappingStorage,
     carrierStorage,
-    characterStorage, focusLibrary, notesStorage, galleryCatalogStorage,recipeStorage,collectionStorage,assistantStorage,
+    characterStorage, focusLibrary, notesStorage, galleryCatalogStorage,recipeStorage,assistantStorage,
   };
 }
 
@@ -7998,7 +7995,7 @@ function renderStorageManagementCard() {
     : pressure.level === 'warning'
       ? `<p class="sd-storage-pressure is-warning" role="status">浏览器来源空间已使用 ${pressurePercent}% · 剩余约 ${htmlEscape(formatStorageBytes(pressure.freeBytes))}。可按需整理，千幕不会自动清理。</p>`
       : '';
-  const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary,data.notesStorage,data.galleryCatalogStorage,data.collectionStorage?.pending,data.assistantStorage].some(row=>['unavailable','partial'].includes(row?.status))
+  const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary,data.notesStorage,data.galleryCatalogStorage,data.assistantStorage].some(row=>['unavailable','partial'].includes(row?.status))
     || [data.imageAttempts,data.imageChannels,data.serviceReceipts,data.comfyReceipts].some(row=>row?.error);
   return `<section class="sd-card sd-storage-card">
     <div class="sd-card-title-row"><div><h3>数据管理</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="重新扫描" aria-label="重新扫描" ${status==='loading'?'disabled':''}><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
@@ -8064,7 +8061,7 @@ function openStorageCleanupDialog(data) {
     { id: '__image_service_receipts__', label: '本机原图领取记录（服务器原图不删）', bytes: Number(data?.serviceReceipts?.bytes) || 0, count: Number(data?.serviceReceipts?.count) || 0 },
     ...(data?.comfyStorage?.scenes?.status==='ready'?[{ id: '__comfy_scenes__', label: 'Comfy 续场记录（当前账户所有聊天）', bytes: data.comfyStorage.scenes.bytes, count: data.comfyStorage.scenes.count }]:[]),
     { id: '__storyboard_restores__', label: '分镜恢复记录（当前账户）', bytes: data?.restoreStorage?.status==='ready'?data.restoreStorage.bytes:0, count: data?.restoreStorage?.count||0 },
-    ...collectionCleanupOptions(data),
+    ...storageCleanupOptions(data),
   ];
   return new Promise((resolve) => {
     const layer = document.createElement('div');
@@ -8483,10 +8480,8 @@ function bindStorageManagementEvents(root) {
     undoButton?.addEventListener('click', () => void undoConfigRestore());
     backup.querySelector('.sd-import-config')?.addEventListener('click', () => backup.querySelector('.sd-import-config-file')?.click());
     backup.querySelector('.sd-import-config-file')?.addEventListener('change', event => void importConfig(event));
-    bindStoragePackageActions(backup,{exports:{storyboard:()=>storyboardExportPackage({bundle:true}),reader:coreadExportData,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,notes:exportPinnedNotesBackup,
-      collections:button=>collectionFloorTools.exportBackup(button,confirmDialog,ttsDownloadBlob,()=>createStorageBackupCheck(button,null))},
-      imports:{storyboard:storyboardImportAnyPackage,reader:coreadImportDataFile,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e),
-        collections:(file,input)=>collectionFloorTools.restoreBackup(file,input,confirmDialog,()=>createStorageBackupCheck(input,collectionFloorTools.restoreBackup,'导入'))}});
+    bindStoragePackageActions(backup,{exports:{storyboard:()=>storyboardExportPackage({bundle:true}),reader:coreadExportData,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,notes:exportPinnedNotesBackup},
+      imports:{storyboard:storyboardImportAnyPackage,reader:coreadImportDataFile,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e)}});
   }
   const bound = bindStorageManagementEvents.controls ||= new WeakSet();
   const onClick = (button, handler) => { if (button && !bound.has(button)) { bound.add(button); button.addEventListener('click', handler); } };
@@ -8522,7 +8517,7 @@ function bindStorageManagementEvents(root) {
     const modal = document.getElementById(MODAL_ID); if (modal) void storyboardOpenComfyInbox(modal);
   });
   onClick(root.querySelector('.sd-storage-refresh'), () => void refreshStorageInventory(true));
-  onClick(root.querySelector('.sd-storage-assistant-library'),async()=>{const task=storageCleanupSession.begin(root);if(!task)return;try{await collectionFloorTools.cleanupAssistant(root,confirmDialog,()=>task.check(),undefined,0,true);task.check();await refreshStorageInventory(true);}catch{toast('助手管理未完成，请核对账户后重新打开。','warning');}finally{task.release();}});
+  onClick(root.querySelector('.sd-storage-assistant-library'),async()=>{const task=storageCleanupSession.begin(root);if(!task)return;try{await proseFloorTools.cleanupAssistant(root,confirmDialog,()=>task.check(),undefined,0,true);task.check();await refreshStorageInventory(true);}catch{toast('助手管理未完成，请核对账户后重新打开。','warning');}finally{task.release();}});
   onClick(root.querySelector('.sd-storage-clean'), async () => {
     const cleanup = storageCleanupSession.begin(root); if (!cleanup) return;
     const inventory=storageInventoryState.data;
@@ -8531,9 +8526,8 @@ function bindStorageManagementEvents(root) {
       const selected = await openStorageCleanupDialog(inventory); cleanup.check();
       if (!selected?.length) return;
       await ensureStorageScanCurrent();cleanup.check();
-      if(selected.includes('__assistant_native__')){await collectionFloorTools.cleanupAssistant(root,confirmDialog,()=>cleanup.check(),inventory?.assistantStorage?.namespace,selected.length-1,true);cleanup.check();await refreshStorageInventory(true);return;}
-      if(selected.includes('__assistant__')){await collectionFloorTools.cleanupAssistant(root,confirmDialog,()=>cleanup.check(),inventory?.assistantStorage?.namespace,selected.length-1);cleanup.check();await refreshStorageInventory(true);return;}
-      if(selected.some(id=>['__collections__','__collection_pending__'].includes(id))){await collectionFloorTools.cleanupOriginals(root,confirmDialog,()=>cleanup.check(),inventory?.collectionStorage?.namespace,selected.length-1,!selected.includes('__collections__'));cleanup.check();await refreshStorageInventory(true);return;}
+      if(selected.includes('__assistant_native__')){await proseFloorTools.cleanupAssistant(root,confirmDialog,()=>cleanup.check(),inventory?.assistantStorage?.namespace,selected.length-1,true);cleanup.check();await refreshStorageInventory(true);return;}
+      if(selected.includes('__assistant__')){await proseFloorTools.cleanupAssistant(root,confirmDialog,()=>cleanup.check(),inventory?.assistantStorage?.namespace,selected.length-1);cleanup.check();await refreshStorageInventory(true);return;}
       if(selected.includes('__storyboard_restores__')){
         if(selected.length>1){
           const proceed=await confirmDialog('先管理恢复记录',`恢复记录需逐条确认。本次不会清理同时勾选的其他 ${selected.length-1} 项；完成后请重新选择。是否进入？`);
@@ -12921,7 +12915,7 @@ async function storyboardReviewLegacyRecipe(record,parent) {
   const epoch=storyboardSnapshotEpoch,metadata=ctx().chatMetadata;
   const isCurrent=()=>parent.isConnected&&epoch===storyboardSnapshotEpoch&&metadata===ctx().chatMetadata;
   try {
-    const runtime=await loadLocalChunk('./qianmu-gallery-recipe-review-view.js?v=1.59.394');
+    const runtime=await loadLocalChunk('./qianmu-gallery-recipe-review-view.js?v=1.59.403');
     if(!isCurrent())return;
     const result=await runtime.openGalleryRecipeReview({parent,recordId:record.id,isCurrent,getContext:ctx,epoch:()=>storyboardSnapshotEpoch,
       account:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace(),headers:storyboardRequestHeaders}).finished;
@@ -12945,7 +12939,7 @@ async function storyboardReadSnapshotForRecord(record) {
   }
   if (!record?.snapshot && record?.snapshotRef) {
     const epoch=storyboardSnapshotEpoch,metadata=ctx().chatMetadata;
-    const runtime = await loadLocalChunk('./qianmu-gallery-local-recipe-current.js?v=1.59.394');
+    const runtime = await loadLocalChunk('./qianmu-gallery-local-recipe-current.js?v=1.59.403');
     if(epoch!==storyboardSnapshotEpoch||metadata!==ctx().chatMetadata)throw new Error('原画面来源已变化，请重新打开');
     return runtime.readCurrentGalleryLocalRecipe({record,getContext:ctx,epoch:()=>storyboardSnapshotEpoch,
       account:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace()});
@@ -21137,7 +21131,7 @@ function storyboardDisposeInlineWrapper(wrapper) {
 function storyboardRenderInlineImages(targetFloor = null) {
   const chatRoot = document.getElementById('chat');
   if (!chatRoot) return;
-  collectionFloorTools.refresh(chatRoot);
+  proseFloorTools.refresh(chatRoot);
   if (!storyboardState().enabled) {
     storyboardReleaseInlineVideoPlaybacks();
     chatRoot.querySelectorAll('.sd-storyboard-inline, .sd-storyboard-message-action').forEach((node) => node.remove());
@@ -22590,8 +22584,8 @@ function bindStoryboardTabEvents(root) {
     const current=()=>button.isConnected&&root.classList.contains('open')&&epoch===storyboardAdmissionEpoch&&state===storyboardState()&&state.view==='gallery'&&storyboardGalleryKind==='stills';
     if(button.disabled)return;button.disabled=true;
     try{
-      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.394'),featureRuntime.load('imageAdmission')]);
-      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.394');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
+      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.403'),featureRuntime.load('imageAdmission')]);
+      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.403');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
       if(current()){const result=await module.openGalleryArchive({parent:root,account:()=>identity.resolveImageAccountNamespace(),headers:storyboardRequestHeaders,isCurrent:current,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,canPrepare:()=>!storyboardImportPackage.busy&&!storyboardExportPackage.busy&&!storyboardActiveJobs.size&&!storyboardQueue.length&&!storyboardQueuePendingCount()&&!storyboardQueueSettling,locate}).finished;
         if(current()&&result?.restored){storyboardScheduleInlineRender(0);renderModal();}}
     }catch(error){if(current())toast(error?.message||'已保存图库暂不可用','warning');}
@@ -22603,7 +22597,7 @@ function bindStoryboardTabEvents(root) {
       && epoch === storyboardAdmissionEpoch && state === storyboardState() && state.view === 'gallery' && storyboardGalleryKind === 'stills';
     if (button.disabled) return; button.disabled = true;
     try {
-      const module = await loadLocalChunk('./qianmu-gallery-directory-view.js?v=1.59.394');
+      const module = await loadLocalChunk('./qianmu-gallery-directory-view.js?v=1.59.403');
       if (current()) await module.openGalleryDirectory({ parent: root, getContext: ctx, epoch: () => storyboardAdmissionEpoch,
         isCurrent: current, locate: record => storyboardOpenLightbox(record), save: ttsDownloadBlob }).finished;
     } catch (error) { if (current()) toast(error?.message || '图库目录暂不可用', 'warning'); }
@@ -23072,7 +23066,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-artist-preview-url-mode')?.addEventListener('click', () => root.querySelector('.sd-storyboard-artist-edit-preview')?.focus());
   const historySource = root.querySelector('.sd-storyboard-artist-preview-sources');
   if (historySource && !historySource.dataset.qianmuHistoryConsumerBound) { historySource.dataset.qianmuHistoryConsumerBound = '1';
-    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.394').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
+    loadLocalChunk('./qianmu-historical-gallery-consumer.js?v=1.59.403').then(({ bindHistoricalGalleryPreviewSelection: bind }) => bind({
       root, ctx, epoch: () => storyboardAdmissionEpoch, load: loadLocalChunk, encode: storyboardArtistPreviewFromFile,
       apply: value => storyboardSetArtistPreview(root, value), notify: toast,
     })).catch(() => { if (historySource.isConnected) toast('角色与聊天目录暂不可用。', 'warning'); });
@@ -25141,14 +25135,14 @@ async function exportConfig() {
 
 function configRestoreActivity(includeCleanup = true, ownTransfer = null) {
   return {
-    proseAssistant: collectionFloorTools.assistantBusy===true,
+    proseAssistant: proseFloorTools.assistantBusy===true,
     audioCache: (ownTransfer !== ttsExportAudioCache && ttsExportAudioCache.busy) || (ownTransfer !== ttsImportAudioCache && ttsImportAudioCache.busy),
     voice: ttsRestoreTasks > 0,
     reader: (ownTransfer !== coreadExportData && readerView) || coreadMemoryWrites || coreadIdentitySwitchBusy || coreadWorldSyncBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy,
     focus: ['running','paused'].includes(settings.focusClock?.status) || focusClockEntryBusy || focusClockVoicePreparation?.busy || (ownTransfer!==focusLibraryRuntime&&focusLibraryRuntime?.busy),
     director: busy || theaterBusy,
     image: storyboardBusy || storyboardCompilerBusy || storyboardActiveJobs.size || storyboardGenerationPreparing.size || storyboardQueuePendingCount() || storyboardQueueSettling || storyboardPreparationRetries.size || storyboardComfyRecovery?.busy || storyboardReceiveComfyImage.pending || (includeCleanup ? storyboardImageService?.busy : storyboardImageService?.busyExcept('manage')) || storyboardReceiveServiceImage.pending || storyboardQueue.length || storyboardAutomaticCurrent || storyboardAutomaticPending.size,
-    transfer: (ownTransfer!==collectionFloorTools.restoreBackup&&collectionFloorTools.restoreBusy) || (ownTransfer!==storyboardImportPackage&&(storyboardImportPackage.busy||storyboardBundleReview?.isOpen)) || (ownTransfer!==storyboardExportPackage&&storyboardExportPackage.busy) || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
+    transfer: (ownTransfer!==storyboardImportPackage&&(storyboardImportPackage.busy||storyboardBundleReview?.isOpen)) || (ownTransfer!==storyboardExportPackage&&storyboardExportPackage.busy) || (ownTransfer !== importPinnedNotesBackup && importPinnedNotesBackup.busy) || (ownTransfer !== importTtsFavoritesBackup && importTtsFavoritesBackup.busy) || (ownTransfer !== storyboardOpenRestoreStorage && storyboardOpenRestoreStorage.busy) || (ownTransfer !== exportPinnedNotesBackup && exportPinnedNotesBackup.busy) || (ownTransfer !== exportTtsFavoritesBackup && exportTtsFavoritesBackup.busy) || (ownTransfer !== coreadImportDataFile && coreadImportDataFile.busy) || (ownTransfer !== coreadExportData && coreadExportData.busy) || (includeCleanup && storageCleanupSession.busy),
   };
 }
 
@@ -35691,9 +35685,9 @@ function init() {
       .catch((error) => console.warn(`[${MODULE_NAME}] persona initialization failed`, error));
     applyProseLayout();
     renderSettingsPanel();
-    collectionFloorTools.configureHive({geometry:detachedNotesGeometry,clamp:clampDetachedNotesEntry,palette:currentHivePalette,theme:currentHiveThemeKey,outline:QUICK_HEX_BORDER_SVG,mount:root=>appearanceSession.mountHive(root),canDock:entry=>!collectionFloorTools.assistantBusy&&detachedNoteCanReturnHome(entry),closeWheel:closeQuickWheel});
+    proseFloorTools.configureHive({geometry:detachedNotesGeometry,clamp:clampDetachedNotesEntry,palette:currentHivePalette,theme:currentHiveThemeKey,outline:QUICK_HEX_BORDER_SVG,mount:root=>appearanceSession.mountHive(root),canDock:entry=>!proseFloorTools.assistantBusy&&detachedNoteCanReturnHome(entry),closeWheel:closeQuickWheel});
     renderFloatButton();
-    collectionFloorTools.renderHive();
+    proseFloorTools.renderHive();
     bindQuickDockCapture();
     restoreQuickDockedPlugins();
     storyboardBindChat();
@@ -35762,7 +35756,7 @@ function cleanupRuntime(resetSettings = false) {
   cancelStartupFallback();
   if (!isRuntimeOwner()) return;
   initialized = false;
-  collectionFloorTools.dispose();
+  proseFloorTools.dispose();
   directorRun?.controller.abort(); directorLiveLog = null;
   const clean = (label, callback) => {
     try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }

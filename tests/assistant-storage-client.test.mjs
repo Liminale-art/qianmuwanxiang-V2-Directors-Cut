@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { collectAssistantNativeStorage as collect, collectAssistantHistoryPage } from '../qianmu-assistant-storage-client.js';
 import { collectProseAssistantStorage } from '../qianmu-prose-assistant-storage.js';
-import { renderStorageBackupSection, collectionCleanupOptions } from '../qianmu-storage-backup-view.js';
+import { renderStorageBackupSection, storageCleanupOptions } from '../qianmu-storage-backup-view.js';
 const namespace = 'st-user:alice', account = 'st-user:' + createHash('sha256').update('alice').digest('hex');
 const value = () => ({ ok: true, version: 1, expectedAccount: account, scope: 'st-account-assistant-files', observation: 'file-sizes-not-disk-allocation', contentVerified: false,
     heads: { count: 2, bytes: 400 }, current: { count: 2, bytes: 1200 }, retained: { count: 3, bytes: 2000 }, total: { count: 7, bytes: 3600 } });
@@ -22,7 +22,7 @@ test('native observation uses only the fixed same-origin route, hashed account a
 test('native server files stay separate from browser quota and legacy cleanup authorization', async () => {
     const result = await collectProseAssistantStorage(options({ store: { usage: async () => local() } }));
     assert.equal(result.bytes, 100); assert.equal(result.native.total.bytes, 3600); assert.equal(result.count, 2); assert.equal(result.native.heads.count, 2);
-    const choices = collectionCleanupOptions({ assistantStorage: result }); assert.equal(choices.length, 2);const legacy=choices.find(row=>row.id==='__assistant__'),native=choices.find(row=>row.id==='__assistant_native__');assert.equal(legacy.bytes,100);assert.match(legacy.label,/旧副本.*本机/);assert.match(legacy.risk[0],/不删除ST记录/);assert.equal(native.bytes,1600);assert.match(native.risk[0],/不回收磁盘空间/);
+    const choices = storageCleanupOptions({ assistantStorage: result }); assert.equal(choices.length, 2);const legacy=choices.find(row=>row.id==='__assistant__'),native=choices.find(row=>row.id==='__assistant_native__');assert.equal(legacy.bytes,100);assert.match(legacy.label,/旧副本.*本机/);assert.match(legacy.risk[0],/不删除ST记录/);assert.equal(native.bytes,1600);assert.match(native.risk[0],/不回收磁盘空间/);
     const html = renderStorageBackupSection(null, number => number + ' B', { data: { assistantStorage: result } });
     assert.match(html, /<span>场外特助<\/span><span>3600 B<\/span>/);assert.doesNotMatch(html,/当前账户旧本机副本|逻辑估算|不读取问答或核验历史正文|<span>场外特助<\/span><span>3700 B/);
 });
@@ -30,12 +30,12 @@ test('unavailable native service never hides a known legacy estimate or turns ST
     const result = await collectProseAssistantStorage(options({ store: { usage: async () => local() }, fetchImpl: async () => new Response('Not found', { status: 404 }) }));
     assert.equal(result.status, 'ready'); assert.equal(result.bytes, 100); assert.equal(result.native.status, 'unavailable'); assert.equal(result.native.bytes, null);
     const html = renderStorageBackupSection(null, String, { data: { assistantStorage: result } }); assert.match(html, /<span>场外特助<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(html,/<span>场外特助<\/span><span>0/);
-    const choices=collectionCleanupOptions({assistantStorage:result});assert.deepEqual(choices.map(row=>row.id),['__assistant__']);assert.equal(choices[0].bytes,100);
+    const choices=storageCleanupOptions({assistantStorage:result});assert.deepEqual(choices.map(row=>row.id),['__assistant__']);assert.equal(choices[0].bytes,100);
 });
 test('unavailable local database does not hide known ST observations', async () => {
     const result = await collectProseAssistantStorage(options({ store: { usage: async () => { throw Error('PRIVATE'); } } }));
     assert.equal(result.status, 'unavailable'); assert.equal(result.bytes, null); assert.equal(result.native.total.bytes, 3600);
-    assert.deepEqual(collectionCleanupOptions({ assistantStorage: result }).map(row=>row.id),['__assistant_native__']);
+    assert.deepEqual(storageCleanupOptions({ assistantStorage: result }).map(row=>row.id),['__assistant_native__']);
 });
 test('account and page changes invalidate rather than attach totals to a new owner', async () => {
     for (const mode of ['account', 'page']) {

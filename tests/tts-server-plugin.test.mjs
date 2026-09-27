@@ -35,6 +35,12 @@ assert.ok(routes.has('POST /video/minimax/cancel'));
 assert.ok(routes.has('POST /video/minimax/result'));
 
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const serverPluginSource = await readFile(new URL('../server-plugin.js', import.meta.url), 'utf8');
+// Text collection was retired as a backend feature. Keep this boundary explicit:
+// the server must not register its old routes or retain a background collection
+// service that can write stale data after the frontend has been removed.
+assert.equal([...routes.keys()].some((route) => route.includes('/text-collections')), false);
+assert.doesNotMatch(serverPluginSource, /qianmu-text-collection|installTextCollection|textCollection(?:Options|Native)/);
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 const installGuide = await readFile(new URL('../INSTALL-DOUBAO-APIKEY.md', import.meta.url), 'utf8');
 const shellInstaller = await readFile(new URL('../install-server-plugin.sh', import.meta.url), 'utf8');

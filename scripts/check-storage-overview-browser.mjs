@@ -5,7 +5,7 @@ import {mkdir, readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import vm from 'node:vm';
-import {renderStorageBackupSection, replaceStorageManagementCard, collectionCleanupOptions, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection, replaceStorageManagementCard, storageCleanupOptions, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
 import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-form-fixture.mjs';
 
 const require = createRequire(import.meta.url);
@@ -19,7 +19,7 @@ const snapshot = {sampledAt: 1, origin: {available: true, usage: 500 * MB, quota
   characterStorage: {status: 'ready', documents: {count: 0, bytes: 0}, bindings: {count: 0, bytes: 0}, indexes: {bytes: 0}},
   comfyStorage: {status: 'ready'}, focusLibrary: {status: 'ready', bytes: 0, count: 0}, notesStorage: {status:'ready',bytes:200,count:3,pinned:1}};
 function render(data = snapshot, status = 'ready') {
-  const state = vm.createContext({renderStorageBackupSection, collectionCleanupOptions, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
+  const state = vm.createContext({renderStorageBackupSection, storageCleanupOptions, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageInventoryState: {data, status, error: 'fixture inventory unavailable'},
     optionalServiceState: {status: 'ready', services: [], version: 'fixture'}, VERSION: '1.59.392',
     htmlEscape: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: bytes => `${((Number(bytes) || 0) / MB).toFixed(1)} MB`, blobStore: {classifyStoragePressure: () => ({level: 'normal'})}});

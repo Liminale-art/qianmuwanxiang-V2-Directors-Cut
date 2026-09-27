@@ -213,7 +213,7 @@ try {
     Object.assign(window,await import('./qianmu-notes-theme.js'),await import('./qianmu-appearance-settings.js'),await import('./qianmu-hive-theme-logo.js'),{
       MODULE_NAME:'isolated-qianmu',QUICK_HIVE_THEME_PALETTES:palettes,NOTES_PANEL_LAYER_ID:'qianmu-notes-panel-layer',NOTES_FLOAT_LAYER_ID:'qianmu-notes-float-layer',FLOAT_ID:'story-director-float',
       NOTES_THEME_VARIABLES:['--sd-text','--sd-muted','--sd-accent','--sd-card','--sd-primary'],QUICK_HEX_BORDER_SVG:'',FLOAT_LOGO_URLS:{},FLOAT_LOGO_URL:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>',
-      notesPanelOpen:false,notesFeatureSettings:()=>settings.notes,notesFeatureEnabled:()=>true,collectionFloorTools:{renderHive:noop},notesSyncControls:()=>({mount:noop}),stopNotesPanelResizeTracking:noop,bindNotesPanelResize:noop,
+      notesPanelOpen:false,notesFeatureSettings:()=>settings.notes,notesFeatureEnabled:()=>true,proseFloorTools:{renderHive:noop},notesSyncControls:()=>({mount:noop}),stopNotesPanelResizeTracking:noop,bindNotesPanelResize:noop,
       renderNotesPanel:()=>'<div class="sd-notes-stage"><section class="sd-notes-panel"><textarea class="sd-note-body">真实挂载测试草稿</textarea></section></div>',
       clampDetachedNotesEntry:value=>value,detachedNotesGeometry:()=>({width:60,height:68}),detachedNoteCanReturnHome:()=>false,toast:noop,openNotesPanel:noop,
       bindFloatDrag:noop,closeQuickWheel:noop,closeFloorNavigator:noop,applyFloatPosition:btn=>{btn.style.left='15px';btn.style.top='140px';},

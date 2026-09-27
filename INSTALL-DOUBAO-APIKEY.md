@@ -4,7 +4,6 @@
 
 - 配音中的豆包 API Key 接入；
 - 分镜中的 NovelAI、Banana / Gemini、GPT Image 2 / OpenAI 兼容中转、Doubao Seedream 与 ComfyUI。
-- 正文收藏的可选保存加速（配套 v1.59.392 起）。不安装此服务也可以使用原生 ST 文件保存。
 - 影片/H3 属于后续阶段；健康接口中的兼容声明不代表当前已开放影片功能。
 
 先等待正在生成的任务结束，再停止 SillyTavern 后端。安装时需要输入 `STOPPED` 确认；关闭网页不等于停止后端。脚本不会替你停止或重启进程。
@@ -55,13 +54,27 @@ curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Dire
 
 脚本会在当前分支上执行快进更新，并再次备份 ST 配置；它不会自动切换分支、停止或重启 ST。更新完成后按原部署方式启动后端或容器，刷新 ST 网页，再到千幕「数据管理 → 后端服务」点右侧刷新图标核对「当前」与「配套 / 最新」版本。健康接口返回 `"ok":true` 才表明服务已加载，不代表各上游渠道都已测试通过。仅更新 `main` 仍会留在 `main`，不能用来验证本开发分支的新功能。
 
-## 正文收藏保存加速的版本要求
+### PM2 部署
 
-前端与后端都更新到 **v1.59.392 或配套后续版本**后，按原部署方式重启 ST 后端，再刷新网页。千幕会自动核对支持情况，无需填写新地址、Key 或开启新设置。
+如果 SillyTavern 由 PM2 托管，更新前先确认进程名和工作目录，不要把 `m2` 当作命令：
 
-加速服务操作的仍是当前 ST 账户 `files` 目录内原有的收藏文件，不另建库、不迁移正文。它将原先在浏览器和 VPS 之间反复往返的检查与写入放到服务器本地完成。旧后端或没有安装后端时，继续使用原生 ST 路径。**重开列表的缓存修复位于前端；这一项写入加速需要配套后端**。实际耗时仍取决于部署环境，请更新后复测。
+```bash
+pm2 status
+pm2 describe sillytavern
+cd /usr/local/games/SillyTavern
+git -C plugins/Omniscene status --short
+git -C plugins/Omniscene fetch origin refactor/storyboard-modularization
+git -C plugins/Omniscene switch refactor/storyboard-modularization
+git -C plugins/Omniscene pull --ff-only origin refactor/storyboard-modularization
+pm2 restart sillytavern --update-env
+pm2 status
+```
 
-如保存提示“未确认”，请保留当前内容，使用原操作重试；不要清理浏览器数据或重复新建同一收藏。已有回执会用于确认同一操作，网络失联不会触发另一条写入路径。回退代码前先结束在途保存；本节点未改变收藏文件格式，不需要还原或删除收藏数据。
+`sillytavern` 只是常见的 PM2 进程名；若 `pm2 status` 显示的是其他名称，用实际名称替换。若工作树有本地改动，先停止并备份，不要用 `reset --hard` 覆盖它们。重启后可用 `curl -fsS https://你的-ST-地址/api/plugins/qianmu-tts/health` 检查健康接口；返回 502 时先看 `pm2 logs <实际进程名> --lines 100`，再检查反代是否把 `/api/plugins/qianmu-tts/health` 转给同一个 ST 进程。
+
+## 已退役功能说明
+
+正文收藏及其专用服务端路由已从当前版本退役。更新时不会删除 ST 账户中的聊天、素材或旧文件；旧数据仅保留为惰性文件，不再由千幕加载、写入或清理。不要把历史版本的收藏加速说明当作当前可用功能。
 
 ## 本地部署
 

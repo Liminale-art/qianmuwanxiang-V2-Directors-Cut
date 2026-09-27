@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createImageAccountIdentityResolver} from '../qianmu-account-identity.js';
-import {readySource,singleUser,identityNativeFixture,measureIdentityNativeCosts} from './helpers/account-identity-fixture.mjs';
+import {readySource,singleUser} from './helpers/account-identity-fixture.mjs';
 
 function fixture(t,{ready=true}={}){
   let source=readySource(ready),user=singleUser(),server='default-user',calls=0,hook=null;
@@ -65,18 +65,4 @@ test('failed identity response and timeout never become reusable success',async 
   let release;f.server('default-user');f.hook(()=>new Promise(done=>release=done));
   await assert.rejects(f.resolve({timeoutMs:100}),{code:'image_attempt_account'});release();f.hook(null);
   await f.resolve();await f.resolve();assert.equal(f.calls,4);
-});
-
-for(const status of [401,403])test(`real native file ${status} revokes the default resolver page memo`,async t=>{
-  const f=await identityNativeFixture();t.after(()=>f.close());assert.equal(await f.resolveNamespace(),'st-user:default-user');
-  const before=f.counts.identityHTTP;f.setStatus(status);await assert.rejects(f.storage.read('collections'),{code:'st_account_storage_account'});
-  await f.resolveNamespace();assert.equal(f.counts.identityHTTP,before+1,'storage response actively invalidates page identity');
-});
-
-test('real resolver→session→native request counts reduce only in the verified single-account page',async()=>{
-  const before=await measureIdentityNativeCosts({ready:false}),after=await measureIdentityNativeCosts({ready:true});
-  assert.deepEqual(before.map(row=>row.identityHTTP),[26,14,8,51]);
-  assert.deepEqual(after.map(row=>row.identityHTTP),[1,0,0,0]);
-  assert.deepEqual(after.map(row=>[row.fileGET,row.filePOST]),before.map(row=>[row.fileGET,row.filePOST]),'authenticated files and write/readback protocol unchanged');
-  assert.deepEqual(after.map(row=>[row.fileGET,row.filePOST]),[[2,0],[1,0],[0,0],[6,2]]);
 });

@@ -247,11 +247,8 @@ test('actual activity adapter blocks each independent lane without normalizing o
     storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0,
     storyboardImportPackage:{},storyboardExportPackage:{},storyboardBundleReview:null,storyboardOpenRestoreStorage:{busy:false},exportPinnedNotesBackup:{busy:false},exportTtsFavoritesBackup:{busy:false},storageCleanupSession:{busy:false},importPinnedNotesBackup:{busy:false},importTtsFavoritesBackup:{busy:false},coreadImportDataFile:{busy:false},coreadExportData:{busy:false}});
   vm.runInContext(section('configRestoreActivity'),c);
-  c.collectionFloorTools={restoreBusy:false,restoreBackup:()=>{}};
-  c.collectionFloorTools.assistantBusy=true;assert.equal(c.configRestoreActivity().proseAssistant,true);
-  const assistantNotices=[];assert.equal(policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),message=>assistantNotices.push(message))(c.settings),false);assert.match(assistantNotices[0],/关闭正文助手/);c.collectionFloorTools.assistantBusy=false;
-  c.collectionFloorTools.restoreBusy=true;assert.equal(c.configRestoreActivity().transfer,true);assert.equal(!!c.configRestoreActivity(true,c.collectionFloorTools.restoreBackup).transfer,false);
-  assert.equal(policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),()=>{})(c.settings),false,'configuration restore must respect collection restore ownership');c.collectionFloorTools.restoreBusy=false;
+  c.proseFloorTools={assistantBusy:true};assert.equal(c.configRestoreActivity().proseAssistant,true);
+  const assistantNotices=[];assert.equal(policy.configRestoreGate(c.settings,()=>c.configRestoreActivity(),message=>assistantNotices.push(message))(c.settings),false);assert.match(assistantNotices[0],/关闭正文助手/);c.proseFloorTools.assistantBusy=false;
   const idle=()=>assert.equal(Object.values(c.configRestoreActivity()).some(Boolean),false);
   idle();const before=JSON.stringify(c.settings);let cases=0;
   for(const [lane,keys] of Object.entries(lanes))for(const key of keys){c[key]=true;assert.ok(c.configRestoreActivity()[lane],key);c[key]=false;idle();cases++;}

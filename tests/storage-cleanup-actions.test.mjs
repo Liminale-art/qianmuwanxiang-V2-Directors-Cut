@@ -28,15 +28,6 @@ function fixture(result, kind = 'chat') {
 }
 const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
 
-test('selected collection module enters its own explicit dialog and never falls through to other selected deletion',async()=>{
-  const f=fixture({cleared:[],failed:[]},'module');let entered=0,scoped;
-  f.c.storageInventoryState.data.collectionStorage={namespace:'st-user:fixture'};f.c.confirmDialog=()=>{};
-  f.c.openStorageCleanupDialog=async()=>['__collections__','notes','__diagnostics__'];
-  f.c.collectionFloorTools={cleanupOriginals:async(root,confirm,check,namespace,others)=>{check();entered++;assert.equal(root,f.root);assert.equal(confirm,f.c.confirmDialog);scoped=[namespace,others];}};
-  await f.run();assert.equal(entered,1);assert.deepEqual(scoped,['st-user:fixture',2]);assert.equal(f.calls.clear,0);assert.equal(f.calls.save,0);assert.equal(f.c.storageCleanupSession.busy,false);
-  assert.deepEqual(Array.from(f.c.settings.logHistory),['original']);
-});
-
 test('a stale scan scope after selection blocks both cleanup entry points before any deletion',async()=>{
   for(const kind of ['chat','module']){
     const e=fixture({cleared:[],failed:[],count:0,bytes:0},kind);let opened=0;

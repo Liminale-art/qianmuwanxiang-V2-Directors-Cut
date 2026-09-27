@@ -99,7 +99,7 @@ test('library and assistant prewarming shares the exact explicit-click code entr
   assert.equal(urls.length,QIANMU_IDLE_CHUNKS.length);assert.equal(new Set(urls).size,urls.length);
   assert.match(QIANMU_IDLE_CHUNKS[0],/prose-assistant-panel/);assert.match(QIANMU_IDLE_CHUNKS[1],/prose-assistant-native/);
   const entry=await readFile(new URL('../index.js',import.meta.url),'utf8'),runtimeUrl=entry.match(/from '(\.\/qianmu-feature-runtime\.js\?v=[^']+)'/)[1];
-  for(const file of ['qianmu-prose-assistant-floor.js','qianmu-prose-floor-tools.js','qianmu-text-collection-floor.js','qianmu-idle-preload.js','qianmu-focus-library-runtime.js']){
+  for(const file of ['qianmu-prose-assistant-floor.js','qianmu-prose-floor-tools.js','qianmu-idle-preload.js','qianmu-focus-library-runtime.js']){
     const source=await readFile(new URL('../'+file,import.meta.url),'utf8');assert.ok(source.includes(`from '${runtimeUrl}'`),file+' must share the entry loader instance');
   }
   for(const url of QIANMU_IDLE_CHUNKS.filter(url=>/character-archive|vibe-library|ensemble-ui|comfy-(?:library|pool|route)/.test(url)))assert.ok(entry.includes(`loadLocalChunk('${url}')`),url+' must match the click URL');

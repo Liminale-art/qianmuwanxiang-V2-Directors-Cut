@@ -160,7 +160,7 @@ try{
       return {rows,noOverflow:root.scrollWidth<=root.clientWidth+1&&body.scrollWidth<=body.clientWidth+1,
         filesHidden:[...root.querySelectorAll('input[type=file]')].every(el=>el.getClientRects().length===0)};
     });
-    assert.equal(layout.rows.length,8);assert.equal(layout.rows.filter(row=>row.name==='正文收藏').length,1,'collection backup remains present alongside existing modules');assert.equal(layout.noOverflow,true,`overflow at ${width}/${theme}/${recoverable}`);
+    assert.equal(layout.rows.length,7);assert.equal(layout.rows.some(row=>row.name==='正文收藏'),false,'正文收藏 backup UI has been retired');assert.equal(layout.noOverflow,true,`overflow at ${width}/${theme}/${recoverable}`);
     assert.ok(layout.rows.every(row=>row.contained&&row.aligned&&row.label>0),`controls at ${width}/${theme}/${recoverable}: ${JSON.stringify(layout.rows)}`);
     assert.equal(layout.filesHidden,true);assert.equal(await page.locator('.sd-undo-config').isVisible(),recoverable);
     await page.locator('.sd-storage-backup-section > summary').press('Enter');

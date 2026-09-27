@@ -1,5 +1,5 @@
-export const STORAGE_CATEGORY_LABELS=Object.freeze({images:'图片',vibes:'参考素材',characters:'角色资料',audio:'音频',video:'影片',reader:'伴读资料',notes:'便笺',collections:'收藏待存',assistant:'场外特助',logs:'日志与记录',cache:'临时缓存',settings:'设置与预设',chat:'当前聊天数据',other:'其他'});
-export const STORAGE_CATEGORY_COLORS=Object.freeze({images:'#5aa9ff',vibes:'#b29bc9',characters:'#c985b1',audio:'#ff9f43',video:'#6f8fff',reader:'#9b7cff',notes:'#f2c94c',collections:'#75b6ab',assistant:'#ce9f72',logs:'#ff647c',cache:'#3dc7c9',settings:'#65c466',chat:'#8d94a6',other:'#747b88'});
+export const STORAGE_CATEGORY_LABELS=Object.freeze({images:'图片',vibes:'参考素材',characters:'角色资料',audio:'音频',video:'影片',reader:'伴读资料',notes:'便笺',assistant:'场外特助',logs:'日志与记录',cache:'临时缓存',settings:'设置与预设',chat:'当前聊天数据',other:'其他'});
+export const STORAGE_CATEGORY_COLORS=Object.freeze({images:'#5aa9ff',vibes:'#b29bc9',characters:'#c985b1',audio:'#ff9f43',video:'#6f8fff',reader:'#9b7cff',notes:'#f2c94c',assistant:'#ce9f72',logs:'#ff647c',cache:'#3dc7c9',settings:'#65c466',chat:'#8d94a6',other:'#747b88'});
 
 export async function runStorageInventoryJobs(jobs,onProgress,isCurrent){
   const values=Array(jobs.length);let next=0,done=0,failure;
@@ -38,10 +38,9 @@ export function storageSettingsSnapshotWithoutDiagnostics(settings){
   return {...settings,logHistory:[],logOpenState:{},imagegen:{...storyboard,logs:[],pipelineLogs:[]}};
 }
 
-export function collectionCleanupOptions(data){
-  const collection=data?.collectionStorage,pending=collection?.pending,assistant=data?.assistantStorage;
-  return [...(collection?.status==='ready'?[{id:'__collections__',label:'正文收藏原件（当前账户 · 服务器）',bytes:collection.count>0?collection.bytes:0,count:collection.count,
-    risk:['不可恢复 · 先确认范围；不删聊天，同步回执保留',true]}]:[]),...(pending?.status==='ready'?[{id:'__collection_pending__',label:'收藏待存（当前账户 · 本机）',bytes:pending.bytes,count:pending.count,risk:['不可恢复 · 先备份；不删除或取消服务器保存',true]}]:[]),...(assistant?.native?.status==='ready'&&assistant.native.heads?.count>0?[{id:'__assistant_native__',label:'场外特助会话（当前账户 · ST）',bytes:assistant.native.heads.bytes+assistant.native.current.bytes,count:assistant.native.heads.count,risk:['逐项查阅/备份/清空会话；保留旧版本，不回收磁盘空间',true]}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'场外特助旧副本（当前账户 · 本机）',bytes:assistant.bytes,count:assistant.count,risk:['不可恢复 · 请先复制留存；不删除ST记录，版本标记保留',true]}]:[])];
+export function storageCleanupOptions(data){
+  const assistant=data?.assistantStorage;
+  return [...(assistant?.native?.status==='ready'&&assistant.native.heads?.count>0?[{id:'__assistant_native__',label:'场外特助会话（当前账户 · ST）',bytes:assistant.native.heads.bytes+assistant.native.current.bytes,count:assistant.native.heads.count,risk:['逐项查阅/备份/清空会话；保留旧版本，不回收磁盘空间',true]}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'场外特助旧副本（当前账户 · 本机）',bytes:assistant.bytes,count:assistant.count,risk:['不可恢复 · 请先复制留存；不删除ST记录，版本标记保留',true]}]:[])];
 }
 
 export function renderAssistantStorageSummary(assistant,formatStorageBytes,htmlEscape){
@@ -129,11 +128,11 @@ export function renderStorageBackupSection(notesStorage, formatBytes = value => 
     <div class="sd-storage-disclosure-body">
       <div class="sd-storage-backup-row"><span>配置</span><button type="button" class="sd-btn sd-export-config">导出</button><button type="button" class="sd-btn sd-import-config">导入</button><input type="file" class="sd-import-config-file" accept="application/json,.json" hidden></div>
       <button type="button" class="sd-btn sd-undo-config" hidden>撤回本次恢复</button>
-      ${[['notes','便笺','application/json,.json'],['favorites','语音收藏','application/json,.json'],['audio','音频缓存','application/json,.json'],['collections','正文收藏','application/json,.json'],['storyboard','分镜资源','.qmb,application/json,.json'],['reader','伴读资料','application/json,.json']].map(([key,label,accept])=>storagePackageRow(key,label,accept)).join('')}
+      ${[['notes','便笺','application/json,.json'],['favorites','语音收藏','application/json,.json'],['audio','音频缓存','application/json,.json'],['storyboard','分镜资源','.qmb,application/json,.json'],['reader','伴读资料','application/json,.json']].map(([key,label,accept])=>storagePackageRow(key,label,accept)).join('')}
       <div class="sd-storage-backup-row"><span>场外特助会话</span><button type="button" class="sd-btn sd-storage-assistant-library">备份 / 恢复</button></div>
       <p class="sd-storage-scope sd-storage-gallery-check-status" role="status" hidden></p>
       <div class="sd-storage-resource-list">${data ? renderStorageResourceRows(data,formatBytes) : ''}</div>
-      <div class="sd-storage-actions sd-storage-manage-actions">${data||scanning ? `<button type="button" class="sd-btn sd-primary sd-storage-clean" ${ready && (data.manageableBytes > 0 || collectionCleanupOptions(data).some(row=>row.bytes>0)) ? '' : 'disabled'}>选择清理项目</button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天清理缓存</button>` : ''}</div>
+      <div class="sd-storage-actions sd-storage-manage-actions">${data||scanning ? `<button type="button" class="sd-btn sd-primary sd-storage-clean" ${ready && (data.manageableBytes > 0 || storageCleanupOptions(data).some(row=>row.bytes>0)) ? '' : 'disabled'}>选择清理项目</button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天清理缓存</button>` : ''}</div>
     </div>
   </details>`;
 }
@@ -146,7 +145,6 @@ function renderStorageResourceRows(data,formatBytes) {
   const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
   const known=(record,value)=>record?.status==='ready'&&Number.isFinite(value)?escape(formatBytes(value)):'暂未读取';
   const rows=[
-    ['正文收藏',known(data.collectionStorage,data.collectionStorage?.bytes)],
     ['角色资料',known(data.characterStorage,data.characterStorage?.documents?.bytes)],
     ['Vibe 素材',known(data.vibeStorage,(data.vibeStorage?.assets?.bytes??NaN)+(data.vibeStorage?.previews?.bytes??NaN))],
     ['工作流',known(data.comfyStorage?.workflows,data.comfyStorage?.workflows?.bytes)],

@@ -95,7 +95,7 @@ export function createFeatureRuntime(definitions = {}) {
 // Explicit local allowlist only. No rewriting dependency graphs or executing URLs from errors.
 const localChunkNames=new Set(['qianmu-reader.js','builtin-theaters.js','qianmu-theaters.js','qianmu-focus-dialogue.js','qianmu-focus-dialogue-ui.js','qianmu-focus-library-ui.js',
   'qianmu-character-archive-view.js','qianmu-vibe-library-view.js','qianmu-ensemble-ui.js','qianmu-comfy-workbench.js','qianmu-comfy-library-view.js','qianmu-comfy-pool-view.js','qianmu-comfy-route.js','qianmu-image-admission.js',
-  'qianmu-prose-assistant-panel.js','qianmu-prose-assistant-native.js','qianmu-text-collection-library.js','qianmu-text-collection-capture.js','qianmu-gallery-catalog-management-view.js',
+  'qianmu-prose-assistant-panel.js','qianmu-prose-assistant-native.js','qianmu-gallery-catalog-management-view.js',
   'qianmu-storage-gallery-check.js','qianmu-gallery-recipe-review-view.js','qianmu-gallery-local-recipe-current.js','qianmu-storyboard-export-scope-view.js',
   'qianmu-gallery-archive-view.js','qianmu-gallery-location-view.js','qianmu-gallery-directory-view.js','qianmu-historical-gallery-consumer.js']);
 export function createLocalChunkLoader({importer=url=>import(url),pause=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){

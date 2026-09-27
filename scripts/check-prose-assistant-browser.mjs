@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
 const checks=[],errors=[];let external=0;
-const allowed=new Set(['qianmu-feature-runtime.js','qianmu-text-collection-floor.js','qianmu-icon-renderer.js','qianmu-plain-text-range.js','qianmu-current-chat-source.js','qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js','qianmu-account-local-store.js',...['floor','panel','window','source','context','session','request','messages','preferences','history-contract','history','history-runtime'].map(name=>'qianmu-prose-assistant-'+name+'.js')]);
+const allowed=new Set(['qianmu-feature-runtime.js','qianmu-prose-floor-entries.js','qianmu-icon-renderer.js','qianmu-plain-text-range.js','qianmu-current-chat-source.js','qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js','qianmu-account-local-store.js',...['floor','panel','window','source','context','session','request','messages','preferences','history-contract','history','history-runtime'].map(name=>'qianmu-prose-assistant-'+name+'.js')]);
 const timer=setTimeout(()=>{console.error('Assistant panel checks exceeded 90 seconds');void browser.close();},90000);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{const url=new URL(route.request().url()),file=url.pathname.slice(1);
