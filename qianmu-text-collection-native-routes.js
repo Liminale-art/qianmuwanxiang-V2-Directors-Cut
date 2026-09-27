@@ -5,7 +5,18 @@ import {NATIVE_COLLECTION_PROTOCOL} from './qianmu-text-collection-native-contra
 import {textCollectionSyncError,textCollectionSyncErrorPayload} from './qianmu-text-collection-sync-contract.js';
 
 export function installTextCollectionNativeRoutes(router,{dataRoot,register,serviceOptions={}}){
-  let service;
+  let service,lastDiagnosticKey='',lastDiagnosticAt=0;
+  const diagnoseFailure=result=>{
+    if(!result||result.status<500)return;
+    const code=typeof result.body?.code==='string'?result.body.code:'text_collection_sync_storage';
+    const writeState=result.body?.writeState==='unconfirmed'?'unconfirmed':'not_started';
+    const key=`${code}|${result.status}|${writeState}`,now=Date.now();
+    if(key===lastDiagnosticKey&&now-lastDiagnosticAt<5000)return;
+    lastDiagnosticKey=key;lastDiagnosticAt=now;
+    // Diagnostic metadata only: never include account, paths, request bodies,
+    // collection text, credentials or filesystem errors in the server log.
+    console.warn(`[千幕] native collection rejected: ${code} status=${result.status} writeState=${writeState}`);
+  };
   // SillyTavern initializes DATA_ROOT before normal requests, but a plugin can
   // receive the first UI request during that startup boundary. In that narrow
   // window the host callback may still return undefined even though the
@@ -48,7 +59,7 @@ export function installTextCollectionNativeRoutes(router,{dataRoot,register,serv
         result=await service.write(req,req.body,{signal:controller.signal});
       }
       if(!res.destroyed&&!res.writableEnded&&!controller.signal.aborted)return res.json(result);
-    }catch(cause){const result=textCollectionSyncErrorPayload(cause);if(!res.destroyed&&!res.writableEnded&&!controller.signal.aborted)return res.status(result.status).json(result.body);}
+    }catch(cause){const result=textCollectionSyncErrorPayload(cause);diagnoseFailure(result);if(!res.destroyed&&!res.writableEnded&&!controller.signal.aborted)return res.status(result.status).json(result.body);}
     finally{req.off?.('aborted',abort);res.off?.('close',onClose);}
   });
 }
