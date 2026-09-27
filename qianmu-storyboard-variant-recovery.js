@@ -1,4 +1,4 @@
-import {aggregateStoryboardShotTasks,normalizeStoryboardInlineOrder,sanitizeStoryboardDiagnosticData} from './qianmu-storyboard.js?v=1.59.397';
+import {aggregateStoryboardShotTasks,normalizeStoryboardInlineOrder,sanitizeStoryboardDiagnosticData} from './qianmu-storyboard.js?v=1.59.398';
 
 export async function recordPreparedJobFailure(job,message,isCurrent,{state,chat,account,queue,active,uid,startLog,finishLog,setPlanStatus,planForJob,syncTaskState,save},{suppressPlanStatus=false}={}) {
   const owner=job?.imageOwnerState,origin=job?.imageAccountNamespace||job?.imageAdmission?.namespace;

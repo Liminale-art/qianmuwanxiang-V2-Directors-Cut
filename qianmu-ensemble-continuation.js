@@ -1,6 +1,6 @@
 import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 import {normalizeEnsembleStyleOrigin,retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
-import {createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.397';
+import {createStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.398';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 const fail=()=>{throw Object.assign(Error('已有画面的连续场景来源无法核对'),{code:'ensemble_scene_continuation',submissionState:'not_submitted'});};
