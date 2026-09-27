@@ -21,7 +21,7 @@ function readSlot(scope,account){
   // Only the currently authenticated account stays resident; switching back
   // requires reading again. No plaintext is written to browser persistence.
   if(!pool.has(account)){for(const prior of pool.values()){prior.cache=null;prior.memo?.clear();prior.sources?.clear();prior.epoch++;}pool.clear();}
-  if(!pool.has(account)||pool.get(account).revoked)pool.set(account,{cache:null,epoch:0,writes:0});
+  if(!pool.has(account)||pool.get(account).revoked)pool.set(account,{cache:null,epoch:0,writes:0,foreground:0,migrationDirty:false});
   return pool.get(account);
 }
 
@@ -145,7 +145,30 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
     if(format===2&&storageFactory===createConfiguredStAccountStorage&&globalThis.location?.origin){
       const {createNativeCollectionTransport}=await import('./qianmu-text-collection-native-transport.js');await check(options);
       accelerator??=createNativeCollectionTransport({expectedAccount,scope:storageScope,readScope,guard:()=>check(),headers,timeoutMs});
-      const result=await accelerator.tryWrite({version:1,expectedAccount,mutations:inputs},options);await check(options);
+      let result;
+      try{result=await accelerator.tryWrite({version:1,expectedAccount,mutations:inputs},options);}
+      catch(cause){
+        // ST can expose the route a few milliseconds before its account data
+        // root is ready. The server explicitly marks this boundary
+        // writeState=not_started, so one short retry is safe: the request did
+        // not reach durable storage and the mutation id is unchanged. Never retry an
+        // unconfirmed write, conflict, auth failure, or ordinary transport
+        // error here.
+        if(cause?.code!=='text_collection_sync_native_setup'||cause.writeState!=='not_started')throw cause;
+        accelerator.close();accelerator=null;
+        await new Promise(resolve=>setTimeout(resolve,120));await check(options);
+        accelerator=createNativeCollectionTransport({expectedAccount,scope:storageScope,readScope,guard:()=>check(),headers,timeoutMs});
+        try{result=await accelerator.tryWrite({version:1,expectedAccount,mutations:inputs},options);}
+        catch(retryCause){
+          // A cached capability can outlive the ST startup boundary. The
+          // second explicit not_started response still proves no durable
+          // native write occurred, so continue through the verified file
+          // writer instead of surfacing an implementation detail to users.
+          if(retryCause?.code==='text_collection_sync_native_setup'&&retryCause.writeState==='not_started'){accelerator.close();accelerator=null;result=null;}
+          else throw retryCause;
+        }
+      }
+      await check(options);
       if(result){remember(result.verified.value,++slot.epoch,true,result.verified.fingerprint);return result.acknowledgements;}
     }
     const legacyWrite=()=>store.update('collections',value=>{
@@ -258,7 +281,17 @@ export function createNativeTextCollectionClient({expectedAccount,guard,isCurren
       return unknown?null:saved;
     }catch(cause){return rejectAccount(cause);}
   }
-  return Object.freeze({persistence:'st-account-file',concurrency:'optimistic-non-cas',invalidateReadCache,readCacheNeedsRefresh:()=>available()&&!cached(),
+  const acquireForegroundLease=()=>{
+    slot.foreground=(slot.foreground||0)+1;let released=false;
+    return ()=>{
+      if(released)return;released=true;slot.foreground=Math.max(0,(slot.foreground||0)-1);
+      // An idle v1 migration may finish while the library is open. Do not
+      // invalidate an active list/detail read; reconcile once the last
+      // foreground reader leaves instead.
+      if(slot.foreground===0&&slot.migrationDirty){slot.migrationDirty=false;invalidateReadCache();}
+    };
+  };
+  return Object.freeze({persistence:'st-account-file',concurrency:'optimistic-non-cas',invalidateReadCache,readCacheNeedsRefresh:()=>available()&&!cached(),acquireForegroundLease,
     sources,knownFloorState,
     list:(input={cursor:null,limit:50},options)=>query('list',input,options),get:(id,options)=>query('get',{id},options),
     snapshot:options=>query('snapshot',{},options),inventory:options=>query('inventory',{},options),restoreInfo:options=>query('restore-info',{},options),batchInfo:options=>query('batch-info',{},options),cleanupPlan:options=>query('cleanup-plan',{},options),

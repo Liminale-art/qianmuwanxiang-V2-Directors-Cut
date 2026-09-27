@@ -40,5 +40,5 @@ test('explicit refresh remains a foreground read without hidden revalidation',as
 
 test('a genuine active search error is still visible rather than hidden by cancellation handling',async t=>{
   const f=await collectionLibraryFixture(t);await f.input('关键词');await f.tick();f.calls.at(-1).reject(Object.assign(Error('原件缺失，请核对'),{code:'text_collection_sync_original'}));await f.settle();
-  assert.match(f.status,/原件缺失/);
+  assert.match(f.status,/收藏暂时无法读取，请点击刷新重试/);assert.doesNotMatch(f.status,/原件缺失/);
 });

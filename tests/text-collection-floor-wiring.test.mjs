@@ -8,7 +8,7 @@ test('collection toolbar refresh runs independently before storyboard enable gat
   const render=source.slice(source.indexOf('function storyboardRenderInlineImages('),source.indexOf('function storyboardScheduleInlineRender('));
   assert.ok(render.indexOf('collectionFloorTools.refresh(chatRoot)')>=0);
   assert.ok(render.indexOf('collectionFloorTools.refresh(chatRoot)')<render.indexOf('if (!storyboardState().enabled)'));
-  assert.match(source.slice(source.indexOf('function cleanupRuntime(')),/initialized = false;\s+collectionFloorTools.dispose\(\)/);
+  assert.match(source.slice(source.indexOf('function cleanupRuntime(')),/initialized = false;\s+collectionFloorTools\?\.dispose\(\);collectionFloorTools=null/);
   assert.match(source,/isCurrent:\(\)=>initialized&&isRuntimeOwner\(\)/);
 });
 test('collection UI dependencies are shipped locally and are not loaded into the light toolbar before an explicit click',async()=>{

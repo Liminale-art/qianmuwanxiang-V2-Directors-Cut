@@ -131,6 +131,13 @@ test('actual native list schedules but never waits for migration, which outlives
   assert.deepEqual((await other.get(record(1).id)).record,record(1));assert.equal(f.bodyReads,1);
 });
 
+test('a foreground collection lease pauses legacy migration without invalidating list/detail reads',async t=>{
+  const b=browser(t,{expose:true}),f=await collectionIndexFixture(t,[record(1),record(2)],{version:1}),client=await f.open();
+  assert.equal((await client.list()).total,2);const release=client.acquireForegroundLease();f.reset();b.advance(5000);await b.tick();
+  assert.equal(f.calls.length,0,'idle migration must not read while the collection panel owns a foreground lease');
+  assert.equal(b.timers.size,1);release();b.advance(5000);await b.drain();assert.equal((await f.readIndex()).value.version,2);client.close();
+});
+
 test('background host pauses during streaming and resumes one original at a time',async t=>{
   const b=browser(t,{expose:true}),f=await collectionIndexFixture(t,[record(1)],{version:1}),client=await f.open();await client.list();f.reset();
   b.stream({isStopped:false,isFinished:false});await b.tick();assert.equal(f.calls.length,0);

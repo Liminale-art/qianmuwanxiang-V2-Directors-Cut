@@ -121,6 +121,12 @@ test('suspending for the library aborts a floor scan and resumes one reconciliat
   await Promise.all([pending,resumed]);assert.equal(state.reads,3);assert.equal(manager.status(1),true);manager.dispose();
 });
 
+test('opening and closing the library without a pending scan does not rescan or flash floor stars',async()=>{
+  const {state,manager,row}=fixture();state.records=[row(1)];await manager.refresh();assert.equal(manager.status(1),true);
+  const reads=state.reads,changes=state.changes;manager.suspend();const resumed=manager.resume();await resumed;
+  assert.equal(state.reads,reads);assert.equal(manager.status(1),true);assert.ok(state.changes>=changes);manager.dispose();
+});
+
 test('dispose aborts pending reads, drops all floor state and emits no late updates',async()=>{
   const {state,manager,row}=fixture();state.records=[row(1)];state.mode='hold';const task=manager.refresh();
   while(!state.hold)await new Promise(resolve=>setImmediate(resolve));

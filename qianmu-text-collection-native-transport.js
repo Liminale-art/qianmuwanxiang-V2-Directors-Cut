@@ -100,7 +100,11 @@ export function createNativeCollectionTransport({expectedAccount,scope,readScope
         catch(cause){
           // Only the read-only probe can fall back. Authentication/cancellation
           // still rejects; a dispatched mutation is never rerouted below.
-          if(!['text_collection_sync_native_connection','text_collection_sync_native_response'].includes(cause?.code))throw cause;
+          // A capability 503 means only the optional native acceleration is
+          // unavailable. Fall back to the already verified ST-file writer;
+          // a native-write 503 is handled by the caller's single safe retry
+          // and is never silently rerouted after a POST begins.
+          if(!['text_collection_sync_native_setup','text_collection_sync_native_connection','text_collection_sync_native_response'].includes(cause?.code))throw cause;
           await check(options?.signal);available=false;
         }
         await check(options?.signal);capabilities.set(readScope,{account:expectedAccount,origin,at:now(),available});

@@ -18,7 +18,7 @@ export function requestCollectionMigration({readScope,expectedAccount,slot,windo
   const current=()=>job.running&&sameScope();
   const unchanged=()=>current()&&slot.writes===0&&(epoch===null||epoch===slot.epoch);
   const busy=()=>{const stream=window.SillyTavern?.getContext?.()?.streamingProcessor;
-    return slot.writes>0||Boolean(stream&&!stream.isStopped&&!stream.isFinished);};
+    return slot.writes>0||slot.foreground>0||Boolean(stream&&!stream.isStopped&&!stream.isFinished);};
   job.stop=scheduleCollectionMigrationSteps({window,document,now,isCurrent:current,isBusy:busy,
     async step(){
       try{
@@ -28,14 +28,20 @@ export function requestCollectionMigration({readScope,expectedAccount,slot,windo
         if(owner!==expectedAccount||!unchanged())throw Error('collection owner changed');
         migration=createCollectionMigration({store,expectedAccount,check:unchanged});
       }
-      const result=await migration.step();if(result.changed){committed=true;slot.cache=null;slot.memo?.clear();slot.epoch++;}return result;
+      const result=await migration.step();if(result.changed){committed=true;
+        // A foreground library may have an immutable original read in flight.
+        // Keep its read epoch stable and defer cache invalidation until the
+        // last foreground lease is released; v1/v2 conversion is maintenance,
+        // not a user-visible directory change.
+        if(slot.foreground>0)slot.migrationDirty=true;else{slot.cache=null;slot.memo?.clear();slot.epoch++;}
+      }return result;
       }finally{if(!job.running){migration?.close();store?.close();migration=null;store=null;}}
     },
     onFinish(cause){migration?.close();store?.close();migration=null;store=null;job.running=false;job.stop=null;
       // Failures are retried only after a later normal read and a quiet minute;
       // no network retry loop or user-facing interruption for optional upkeep.
       job.retryAt=now()+(cause?60000:30*60*1000);
-      if(cause&&epoch!==null){slot.cache=null;slot.memo?.clear();slot.epoch++;}
+      if(cause&&epoch!==null){if(slot.foreground>0)slot.migrationDirty=true;else{slot.cache=null;slot.memo?.clear();slot.epoch++;}}
       if(committed&&sameScope())try{document.dispatchEvent(new (window.Event||globalThis.Event)('qianmu-text-collections-changed'));}catch{}
     }});
 }

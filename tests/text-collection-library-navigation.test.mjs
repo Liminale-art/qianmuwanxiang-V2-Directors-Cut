@@ -18,14 +18,22 @@ test('detail starts at the top and returning reuses the unchanged rows and list 
   f.scroller.scrollTop=214;f.detail.scrollTop=59;await f.choose('item-0000');assert.equal(f.detail.scrollTop,0);
   f.detail.scrollTop=59;await f.click('back');
   assert.equal(f.rows[0],row);assert.equal(f.list.replacements,1);assert.equal(f.scroller.scrollTop,214);
-  assert.equal(f.calls.length,2,'back still obtains a guarded current browsing page');
+  assert.equal(f.calls.length,1,'back is local navigation and does not reread the directory');
 });
 
-test('a changed page replaces the rows when returning from detail',async t=>{
+test('a changed page remains stable when returning from detail until explicit refresh',async t=>{
   let revision=1;
   const f=await collectionLibraryFixture(t,{sessionOverrides:{get:async()=>({record:record()}),list:async()=>({items:[{id:'item-0000',revision,charName:'CHAR',userName:'USER',createdAt:10,preview:revision===1?'原片段':'远端修改'}],total:1,nextCursor:null})}}),row=f.rows[0];
   await f.choose('item-0000');revision=2;await f.click('back');
+  assert.equal(f.rows[0],row);assert.equal(f.rows[0].dataset.collectionRevision,'1');assert.equal(f.list.replacements,1);
+  await f.click('refresh');
   assert.notEqual(f.rows[0],row);assert.equal(f.rows[0].dataset.collectionRevision,'2');assert.equal(f.rows[0].children[1].textContent,'远端修改');assert.equal(f.list.replacements,2);
+});
+
+test('a stale original retries once against a fresh directory before showing detail',async t=>{
+  let reads=0;
+  const f=await collectionLibraryFixture(t,{initialCount:1,sessionOverrides:{invalidateReadCache(){},get:async()=>{reads++;if(reads===1)throw Object.assign(Error('旧原件'),{code:'text_collection_sync_original'});return {record:record()};}}});
+  await f.choose('item-0000');assert.equal(reads,2);assert.doesNotMatch(f.status,/旧原件|无法查看/);
 });
 
 test('changing search resets list position even when the visible result happens to match',async t=>{

@@ -34,7 +34,7 @@ export async function createTextCollectionSession({resolveNamespace,isCurrent,he
     // a new handle; neither a lost acknowledgement nor a conflict rebases it.
     return Object.freeze({request,submit:options=>client.write(request,options)});
   }
-  return Object.freeze({expectedAccount,namespace,guard,invalidateReadCache:()=>client.invalidateReadCache?.(),readCacheNeedsRefresh:()=>client.readCacheNeedsRefresh?.()===true,list:(input,options)=>client.list(input,options),get:(id,options)=>client.get(id,options),
+  return Object.freeze({expectedAccount,namespace,guard,invalidateReadCache:()=>client.invalidateReadCache?.(),readCacheNeedsRefresh:()=>client.readCacheNeedsRefresh?.()===true,acquireForegroundLease:()=>client.acquireForegroundLease?.()||(()=>{}),list:(input,options)=>client.list(input,options),get:(id,options)=>client.get(id,options),
     snapshot:options=>client.snapshot(options),
     sources:async options=>client.sources?client.sources(options):{expectedAccount,items:(await client.snapshot(options)).backup.records.map(record=>({id:record.id,revision:record.revision,account:record.source.account,chatId:record.source.chatId,messageId:record.source.messageId}))},
     knownFloorState:async(chatId,messageId)=>{

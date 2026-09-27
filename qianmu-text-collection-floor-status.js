@@ -64,8 +64,23 @@ export function createTextCollectionFloorStatus({getScope,resolveNamespace,isCur
     // scan queued ahead of the visible list/detail read. Keep the verified
     // floor state for immediate paint, abort the scan, and reconcile once the
     // library closes.
-    suspend(){if(closed||suspended)return;suspended=true;pendingResume=true;epoch++;again=false;revalidate=false;retainKnown=false;controller?.abort();},
-    resume(){if(closed)return Promise.resolve();suspended=false;if(!pendingResume)return Promise.resolve();pendingResume=false;return refresh({force:true,retain:true});},
+    suspend(){
+      if(closed||suspended)return;
+      // A library open is a browsing pause, not a reason to rescan the whole
+      // account on every close. Only an in-flight scan, an unknown snapshot,
+      // or a mutation event while suspended needs a forced reconciliation.
+      pendingResume=Boolean(flight)||state?.known!==true;
+      suspended=true;epoch++;again=false;revalidate=false;retainKnown=false;controller?.abort();
+    },
+    resume(){
+      if(closed)return Promise.resolve();
+      suspended=false;
+      if(pendingResume){pendingResume=false;return refresh({force:true,retain:true});}
+      // Keep the old star paint stable. This lightweight pass only reads when
+      // the existing snapshot has expired; it does not force a new directory
+      // scan merely because the hive was opened and closed.
+      return refresh({force:false,retain:true});
+    },
     status(floor){
       if(closed||isCurrent()!==true)return null;
       const scope=scopeNow();

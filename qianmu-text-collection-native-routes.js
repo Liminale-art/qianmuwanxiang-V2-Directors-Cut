@@ -50,7 +50,14 @@ export function installTextCollectionNativeRoutes(router,{dataRoot,register,serv
       // still be unset, and caching that first probe would poison every later
       // write even after the host has finished initializing its directories.
       let result;
-      if(method==='get')result={ok:true,version:1,expectedAccount:account.namespace,nativeProtocol:NATIVE_COLLECTION_PROTOCOL,indexVersion:2};
+      if(method==='get'){
+        // A capability response is also the write-readiness handshake. Do
+        // not advertise native acceleration while ST is still resolving its
+        // account data root; the client can then use its verified fallback
+        // path instead of surfacing a first-save "environment not ready".
+        requireDataRoot(req);
+        result={ok:true,version:1,expectedAccount:account.namespace,nativeProtocol:NATIVE_COLLECTION_PROTOCOL,indexVersion:2};
+      }
       else{
         // Do not cache a service while ST is still resolving DATA_ROOT. A
         // first request can legitimately arrive in that boundary; caching an

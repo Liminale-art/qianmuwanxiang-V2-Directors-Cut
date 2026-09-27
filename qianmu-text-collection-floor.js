@@ -9,7 +9,13 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
     if(!current())return;
     for(const button of root.querySelectorAll('[data-qm-collect-floor]')){
       const saved=floorStatus?.status(floorOf(button.closest('.mes')))??null;
-      button.classList.toggle('is-collected',saved===true);button.dataset.qmCollectionState=saved===null?'unknown':saved?'saved':'empty';
+      // Unknown/checking is not the same as empty. Keep an already confirmed
+      // star painted during a background reconcile, chat redraw, or write
+      // acknowledgement; otherwise hive open/close makes saved floors flash
+      // empty for the duration of a second directory read.
+      const retainSaved=saved===null&&button.classList.contains('is-collected');
+      button.classList.toggle('is-collected',saved===true||retainSaved);button.dataset.qmCollectionState=saved===null?'unknown':saved?'saved':'empty';
+      button.setAttribute('aria-busy',saved===null?'true':'false');
       button.title=saved===true?'取消本层全部正文收藏（含其他回复版本）':saved===false?'收藏正文':'收藏正文（收藏状态正在确认或暂不可读取）';
       button.setAttribute('aria-label',button.title);
     }
@@ -29,7 +35,7 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
       if(!current()||epoch!==token)return;
       floorStatus=createTextCollectionFloorStatus({getScope:()=>({chatId:String(getChatKey()||''),chat:getContext().chat}),resolveNamespace,isCurrent:()=>!!current(),headers,onChange:paintStatus,...(statusSessionFactory?{sessionFactory:statusSessionFactory}:{})});
       const resumed=createTextCollectionResumeRefresh(()=>refreshStatus(false,true));
-      const changed=()=>{paintStatus();resumed.schedule();},visible=()=>{if(document.visibilityState==='visible')resumed.schedule();};
+      const changed=()=>{paintStatus();if(library&&floorStatus)void floorStatus.refresh({force:true,retain:true}).catch(()=>{});resumed.schedule();},visible=()=>{if(document.visibilityState==='visible')resumed.schedule();};
       const focused=()=>{if(document.visibilityState==='visible')resumed.schedule();};
       document.addEventListener('qianmu-text-collections-changed',changed);document.addEventListener('visibilitychange',visible);document.defaultView.addEventListener('focus',focused);
       detachStatus=()=>{resumed.dispose();document.removeEventListener('qianmu-text-collections-changed',changed);document.removeEventListener('visibilitychange',visible);document.defaultView.removeEventListener('focus',focused);};

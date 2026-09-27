@@ -9,8 +9,8 @@ import {partitionTextCollectionMutations,TEXT_COLLECTION_BULK_LIMITS} from './qi
 export async function openTextCollectionLibrary({parent,resolveNamespace,isCurrent,headers,copy,download,sourceElement}={}){
   const document=parent?.ownerDocument,view=document?.defaultView;
   if(!parent?.isConnected||typeof isCurrent!=='function')throw TypeError('收藏管理环境不可用');
-  let closed=false,busy=false,record=null,operation=null,pageIndex=0,cursors=[null],nextCursor=null,searchValue='',resolve,session,outbox;
-  let selecting=false,searchTimer=null,pendingSearch=null,exporter=null,viewEpoch=0,listSignature='';
+  let closed=false,busy=false,record=null,operation=null,pageIndex=0,cursors=[null],nextCursor=null,searchValue='',resolve,session,outbox,releaseForeground=()=>{};
+  let selecting=false,searchTimer=null,pendingSearch=null,exporter=null,viewEpoch=0,listSignature='',pageTotal=0;
   let pageRequest=null,deletionPlan=null,renderedIndex=-1,renderedQuery='',listScrollTop=0;
   const selected=new Map(),deletions=new Map();
   const current=()=>!closed&&parent.isConnected&&isCurrent()===true;
@@ -19,7 +19,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     if(session)return;
     const ready=await createTextCollectionSession({resolveNamespace,isCurrent:current,headers,cryptoImpl:view.crypto});
     if(!current()){ready.close();throw Error('收藏页面已关闭');}
-    session=ready;outbox=createTextCollectionOutboxRuntime({session,isCurrent:current});
+    session=ready;releaseForeground=session.acquireForegroundLease?.()||(()=>{});outbox=createTextCollectionOutboxRuntime({session,isCurrent:current});
   }
   const dialog=document.createElement('dialog');dialog.className='qm-text-collection-dialog qm-text-collection-panel qm-text-collection-library';dialog.setAttribute('aria-label','正文收藏');
   dialog.innerHTML='<header><strong data-collection-title>正文收藏</strong><div class="qm-text-collection-header-tools"></div></header><main><div class="qm-text-collection-search"><input type="search" maxlength="160" placeholder="搜索关键词" aria-label="搜索收藏"></div><div data-collection-list></div><section data-collection-detail hidden><div class="qm-text-collection-prose" data-collection-prose></div><textarea data-collection-editor aria-label="收藏正文" readonly hidden></textarea></section></main><footer><p role="status" aria-live="polite" data-collection-status></p><div class="qm-text-collection-actions qm-text-collection-paging" data-collection-pages></div><div class="qm-text-collection-actions qm-text-collection-detail-actions" data-collection-detail-actions hidden></div></footer>';
@@ -52,7 +52,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     }
   }
   function stop(){
-    if(closed)return;closed=true;view.clearTimeout(searchTimer);pageRequest?.abort();exporter?.stop();outbox?.close();session?.close();observer.disconnect();view.removeEventListener('pagehide',stop);
+    if(closed)return;closed=true;view.clearTimeout(searchTimer);pageRequest?.abort();exporter?.stop();outbox?.close();releaseForeground();releaseForeground=()=>{};session?.close();observer.disconnect();view.removeEventListener('pagehide',stop);
     dialog.removeEventListener('click',click);dialog.removeEventListener('keydown',stopEscape);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('close',stop);search.removeEventListener('input',searchChanged);
     if(dialog.open)dialog.close();dialog.remove();
     if(focused?.isConnected&&document.visibilityState!=='hidden')focused.focus({preventScroll:true});resolve(null);
@@ -62,7 +62,10 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     try{await setup();await session.guard();await work();}
     catch(cause){if(!current()||['st_account_storage_account','text_collection_sync_account'].includes(cause?.code)){stop();return;}if(session)try{await session.guard();}catch{stop();return;}
       if(/^(?:text_collection_sync|st_account_storage)_cancelled$/.test(cause?.code||'')&&(searchTimer!==null||pendingSearch!==null))return;
-      status.textContent=/^text_collection_/.test(cause?.code||'')?String(cause.message).slice(0,240):'读取未完成，请点击刷新重试';}
+      // Internal revision/fingerprint guards are for preserving data, not for
+      // teaching users about storage implementation. The refresh icon is the
+      // only recovery action exposed by this panel.
+      status.textContent=/^text_collection_/.test(cause?.code||'')?'收藏暂时无法读取，请点击刷新重试':'读取未完成，请点击刷新重试';}
     finally{busy=false;if(!closed){controls();if(pendingSearch!==null&&!record){const query=pendingSearch;pendingSearch=null;void run(()=>loadPage(0,true,query));}}}
   }
   function displayRecord(){
@@ -91,7 +94,7 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
       }
       list.replaceChildren(fragment);
     }
-    listSignature=signature;renderedIndex=index;renderedQuery=query;showList();list.scrollTop=scrollTop;listScrollTop=scrollTop;
+    listSignature=signature;renderedIndex=index;renderedQuery=query;pageTotal=page.total;showList();list.scrollTop=scrollTop;listScrollTop=scrollTop;
     status.textContent=`共 ${page.total} 条收藏${page.total?` · 第 ${pageIndex+1} 页`:''}`;
   }
   async function loadPage(index=0,reset=false,query=searchValue){
@@ -108,7 +111,17 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
     }finally{if(pageRequest===request)pageRequest=null;}
   }
   async function openRecord(id){
-    const result=await session.get(id,{preferCache:true});if(!current())return;
+    let result;
+    try{result=await session.get(id,{preferCache:true});}
+    catch(first){
+      // A warm directory can legitimately be stale after another tab/device
+      // edits the same account. Reconcile once before exposing an internal
+      // fingerprint/revision failure; never retry account loss or cancellation.
+      if(!current()||['text_collection_sync_account','text_collection_sync_cancelled'].includes(first?.code))throw first;
+      session.invalidateReadCache?.();
+      result=await session.get(id,{forceRefresh:true});
+    }
+    if(!current())return;
     if(!result.record){status.textContent='此收藏已被删除，请刷新列表';return;}
     listScrollTop=list.scrollTop||0;
     record=result.record;operation=null;displayRecord();list.hidden=true;detail.hidden=false;searchRow.hidden=true;
@@ -160,7 +173,15 @@ export async function openTextCollectionLibrary({parent,resolveNamespace,isCurre
       if(action==='next'&&nextCursor){cursors[pageIndex+1]=nextCursor;return loadPage(pageIndex+1);}
       if(!record)return;
       if(action==='edit'){editor.readOnly=false;editor.hidden=false;prose.hidden=true;status.textContent='';editor.focus();return;}
-      if(action==='back'){pendingSearch=null;return loadPage(pageIndex);}
+      if(action==='back'){
+        // Returning from a read-only detail view is local navigation. Do not
+        // turn it into a directory read: another device may update the head
+        // while the user is reading, but that must not trap them behind a
+        // consistency warning or require a second click. The refresh icon is
+        // the explicit reconciliation boundary.
+        pendingSearch=null;record=null;operation=null;editor.value='';showList();list.scrollTop=listScrollTop;
+        status.textContent=`共 ${pageTotal} 条收藏${pageTotal?` · 第 ${pageIndex+1} 页`:''}`;return;
+      }
       if(action==='copy'){await (copy||((text)=>view.navigator.clipboard.writeText(text)))(editorText());await session.guard();status.textContent='已复制';return;}
       if(action==='image'){
         const {openTextCollectionImageExport}=await import('./qianmu-text-collection-image-export.js');if(!current())return;

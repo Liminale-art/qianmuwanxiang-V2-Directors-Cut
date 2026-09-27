@@ -240,8 +240,10 @@ test('a cold capability probe never poisons the later native write with an unava
   };
   const coldUser={profile:{handle:'alice'}};
   const cap=await call('GET','/text-collections/native-capabilities',undefined,coldUser);
-  nativeCollectionCapabilities(cap.value,expectedAccount);assert.equal(cap.statusCode,200);assert.equal(services.length,0);
-  ready=true;const input=batch(mutation()),saved=await call('POST','/text-collections/native-write',input,f.req.user);
+  assert.equal(cap.statusCode,503);assert.equal(cap.value.code,'text_collection_sync_native_setup');assert.equal(services.length,0);
+  ready=true;const readyCap=await call('GET','/text-collections/native-capabilities',undefined,f.req.user);
+  nativeCollectionCapabilities(readyCap.value,expectedAccount);assert.equal(readyCap.statusCode,200);assert.equal(services.length,0);
+  const input=batch(mutation()),saved=await call('POST','/text-collections/native-write',input,f.req.user);
   await verify(saved.value,input);assert.equal(saved.statusCode,200);assert.equal(services.length,1);assert.equal((await f.read()).value.revision,1);
 });
 
