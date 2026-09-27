@@ -40,6 +40,16 @@ git -C plugins/Omniscene status --short
 
 来源应指向官方仓库 `https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git`（或你确认的对应 SSH 地址）。若不是这个仓库、插件不是 Git 安装，或 `status --short` 有任何输出，先查明并备份本地改动，不要切分支或覆盖。更新前请按自己的 VPS / ST 备份方式保存 ST 数据、配置及插件；安装脚本生成的独立备份只覆盖 ST 配置，不是聊天和素材的完整备份。
 
+千幕前端和服务端是两个目录：前端通常在 `public/scripts/extensions/third-party/Omniscene`，服务端在 `plugins/Omniscene`。上面的服务端安装脚本**不会替你更新前端目录**。若前端也是 Git 安装，两个目录必须使用同一分支和同一版本；先分别核对 `remote`、`branch --show-current`、`status --short`，确认没有本地改动后，再对前端目录执行同样的 `fetch`、`switch` 和 `pull --ff-only`。不要只更新其中一侧，也不要用 `reset --hard` 覆盖本地改动。
+
+例如前端目录已经存在且工作树干净时：
+
+```bash
+git -C public/scripts/extensions/third-party/Omniscene fetch origin
+git -C public/scripts/extensions/third-party/Omniscene switch refactor/storyboard-modularization
+git -C public/scripts/extensions/third-party/Omniscene pull --ff-only origin refactor/storyboard-modularization
+```
+
 等正在生成的任务结束，**停止 ST 后端或容器**后，再更新。若前端使用本开发分支、服务端却还在 `main`（例如显示 `v1.55.0`），先取得官方分支并切换：
 
 ```bash
@@ -53,7 +63,7 @@ git -C plugins/Omniscene switch --track -c refactor/storyboard-modularization or
 curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/install-server-plugin.sh | sh
 ```
 
-脚本会在当前分支上执行快进更新，并再次备份 ST 配置；它不会自动切换分支、停止或重启 ST。更新完成后按原部署方式启动后端或容器，刷新 ST 网页，再到千幕「数据管理 → 后端服务」点右侧刷新图标核对「当前」与「配套 / 最新」版本。健康接口返回 `"ok":true` 才表明服务已加载，不代表各上游渠道都已测试通过。仅更新 `main` 仍会留在 `main`，不能用来验证本开发分支的新功能。
+脚本会在当前分支上执行快进更新，并再次备份 ST 配置；它不会自动切换分支、停止或重启 ST。更新完成后按原部署方式启动后端或容器，刷新 ST 网页，再到千幕「数据管理 → 后端服务」点右侧刷新图标核对「当前」与「配套 / 最新」版本。健康接口返回 `"ok":true` 才表明服务已加载，不代表各上游渠道都已测试通过。PM2 或反向代理刚重启后的数秒内可能暂时返回 502，应先等待进程回到 `online` 再重试；未带 ST 会话的裸 `curl` 也可能返回 403，这表示请求已到达 ST 的认证/CSRF 门禁，不等同于插件未加载，优先以千幕「数据管理 → 后端服务」中的已登录状态卡核对。仅更新 `main` 仍会留在 `main`，不能用来验证本开发分支的新功能。
 
 ## 正文收藏保存加速的版本要求
 
@@ -90,7 +100,7 @@ curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Dire
 - 打开千幕 → 配音 → 豆包语音，接入方式选择“API Key”，粘贴 API Key 并测试连接；
 - 打开千幕 → 分镜，在所选模型的连接卡中填写官方接口或自定义中转并测试连接。自定义或第三方中转仍可拉取模型、查看接口全部模型；若中转不提供模型列表，也可以手动填写模型 ID。
 
-安装成功后，健康检查地址会显示 `"ok":true`，并在 `services` 中列出 `doubao-tts`、`storyboard-image` 与 `minimax-h3`：
+安装成功并完成后端重启后，健康检查地址在带有效 ST 会话时会显示 `"ok":true`，并在 `services` 中列出 `doubao-tts`、`storyboard-image` 与 `minimax-h3`。刚重启时短暂 502 属于服务启动窗口；未带会话的命令行请求得到 403 属于认证门禁，应使用已登录的千幕状态卡或带会话的检查方式：
 
 - 本地部署：`http://127.0.0.1:8000/api/plugins/qianmu-tts/health`
 - VPS 部署：在你的 SillyTavern 访问地址后加 `/api/plugins/qianmu-tts/health`，例如 `https://st.example.com/api/plugins/qianmu-tts/health`
