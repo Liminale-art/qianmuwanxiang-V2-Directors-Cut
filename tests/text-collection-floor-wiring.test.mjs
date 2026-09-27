@@ -24,6 +24,12 @@ test('library belongs to the hive independently of chat; floor button only captu
   assert.doesNotMatch(floor,/sd-floor-collections/);
   assert.match(source,/id === 'collections'\) return collectionFloorTools.openLibrary\(document.body,confirmDialog\)/);
 });
+test('closing a retained hive library rebuilds floor status after a chat switch',async()=>{
+  const source=await readFile(new URL('../qianmu-text-collection-floor.js',import.meta.url),'utf8');
+  const close=source.slice(source.indexOf('function closeLibrary('),source.indexOf('async function openLibrary('));
+  assert.match(close,/if\(floorStatus\)void Promise\.resolve\(floorStatus\.resume\?\.\(\)\)/);
+  assert.match(close,/else void Promise\.resolve\(refreshStatus\(\)\)/);
+});
 
 test('central collection export and restore use host page guards and the exclusive restoring owner',async()=>{
   const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),view=await readFile(new URL('../qianmu-storage-backup-view.js',import.meta.url),'utf8');

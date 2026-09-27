@@ -93,7 +93,18 @@ export function createNativeCollectionTransport({expectedAccount,scope,readScope
         await check(options?.signal);capabilities.set(readScope,{account:expectedAccount,origin,at:now(),available});
       }
       if(!available)return null;
-      return call('native-write',input,options);
+      try{return await call('native-write',input,options);}
+      catch(cause){
+        // A dispatched operation stays pinned to this endpoint so its receipt
+        // can still be reconciled, but a transient server setup/transport
+        // failure must not make every new mutation reuse a stale capability
+        // memo for the remainder of its 60s TTL.
+        if(['text_collection_sync_native_setup','text_collection_sync_native_connection','text_collection_sync_native_response'].includes(cause?.code)){
+          const memo=capabilities.get(readScope);
+          if(memo?.account===expectedAccount&&memo.origin===origin)capabilities.delete(readScope);
+        }
+        throw cause;
+      }
     },
     close(){closed=true;for(const abort of pending)abort();pending.clear();},
   });

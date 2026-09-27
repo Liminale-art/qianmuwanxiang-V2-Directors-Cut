@@ -118,6 +118,18 @@ test('a dispatched retry rejected by the native write endpoint remains unconfirm
   assert.equal(await f.client.tryWrite(request),null,'a verified receipt releases the operation pin and ordinary capability probing can resume');
   assert.deepEqual(f.calls.map(row=>row.options.method),['GET','POST','POST','POST','GET']);
 });
+test('a transient native setup failure expires the capability memo for new mutations while keeping the failed one pinned',async t=>{
+  let posts=0;
+  const next={...request,mutations:[{...mutation,mutationId:'mutation-0002',id:'collection-0002'}]};
+  const f=fixture(t,(_url,options)=>{
+    if(options.method==='GET')return json(capability);
+    if(++posts===1)return json({ok:false,version:1,code:'text_collection_sync_native_setup',message:'not ready',writeState:'not_started'},503);
+    return json(response(JSON.parse(options.body)));
+  });
+  await assert.rejects(f.client.tryWrite(request),error=>error.code==='text_collection_sync_native_setup');
+  const result=await f.client.tryWrite(next);assert.ok(result);
+  assert.deepEqual(f.calls.map(row=>row.options.method),['GET','POST','GET','POST']);
+});
 test('contract rejects duplicated targets, oversized batches and added path fields',()=>{
   assert.throws(()=>nativeCollectionWriteRequest({...request,path:'elsewhere'}));assert.throws(()=>nativeCollectionWriteRequest({...request,mutations:[mutation,mutation]}));
   assert.throws(()=>nativeCollectionWriteRequest({...request,mutations:Array(33).fill(mutation)}));assert.throws(()=>nativeCollectionCapabilities({...capability,root:'elsewhere'},account));

@@ -21,6 +21,12 @@ export function installTextCollectionNativeRoutes(router,{dataRoot,register,serv
     const inferred=path.dirname(path.resolve(accountRoot));
     return path.resolve(inferred)===path.parse(inferred).root?configured:inferred;
   };
+  const requireDataRoot=(req)=>{
+    const resolved=resolveDataRoot(req);
+    if(typeof resolved!=='string'||!path.isAbsolute(resolved)||resolved.includes('\0')||path.resolve(resolved)===path.parse(resolved).root)
+      throw textCollectionSyncError('native_setup','收藏保存环境尚未就绪',503);
+    return resolved;
+  };
   for(const [method,route] of [['get','/text-collections/native-capabilities'],['post','/text-collections/native-write']])router[method](route,async(req,res)=>{
     res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');res.set('Cross-Origin-Resource-Policy','same-origin');
     const controller=new AbortController(),abort=()=>controller.abort(),onClose=()=>{if(!res.writableEnded)abort();};
@@ -35,7 +41,10 @@ export function installTextCollectionNativeRoutes(router,{dataRoot,register,serv
       let result;
       if(method==='get')result={ok:true,version:1,expectedAccount:account.namespace,nativeProtocol:NATIVE_COLLECTION_PROTOCOL,indexVersion:2};
       else{
-        if(!service){service=createTextCollectionNativeService({...serviceOptions,dataRoot:resolveDataRoot(req)});register(service);}
+        // Do not cache a service while ST is still resolving DATA_ROOT. A
+        // first request can legitimately arrive in that boundary; caching an
+        // undefined/root-level value poisons every later write after startup.
+        if(!service){const candidate=createTextCollectionNativeService({...serviceOptions,dataRoot:requireDataRoot(req)});register(candidate);service=candidate;}
         result=await service.write(req,req.body,{signal:controller.signal});
       }
       if(!res.destroyed&&!res.writableEnded&&!controller.signal.aborted)return res.json(result);

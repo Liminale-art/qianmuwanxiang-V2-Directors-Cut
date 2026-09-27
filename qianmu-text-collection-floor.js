@@ -113,7 +113,13 @@ export function createTextCollectionFloorTools({getContext,getChatKey,names,reso
   }
   function closeLibrary(entry){
     if(!entry||entry.closed)return;entry.closed=true;entry.view?.dispose();entry.detach?.();entry.portal.remove();if(library===entry)library=null;
-    if(current())void Promise.resolve(floorStatus?.resume?.()).catch(()=>{});
+    if(current()){
+      // The hive library survives a chat switch, while disposeFloor() drops
+      // the old chat's floor-status session. Recreate that session after the
+      // library closes instead of silently leaving every new chat untracked.
+      if(floorStatus)void Promise.resolve(floorStatus.resume?.()).catch(()=>{});
+      else void Promise.resolve(refreshStatus()).catch(()=>{});
+    }
   }
   async function openLibrary(parent,confirm,copy){
     if(library){library.view?.element.focus();return library.view;}
