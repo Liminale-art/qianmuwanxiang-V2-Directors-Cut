@@ -140,7 +140,13 @@ export function createDocumentSession({store, slot, isCurrent} = {}) {
                 confirmed = receipt; draft = null; lastError = null;
                 return structuredClone(confirmed);
             }).catch(error => {
-                if (!closed) { lastError = error; needsRefresh = true; }
+                if (!closed) {
+                    lastError = error;
+                    // A rejected input has not reached storage. Refresh cannot
+                    // fix capacity/format errors; keep the draft directly usable.
+                    // A known version conflict still needs an explicit new read.
+                    needsRefresh = error?.writeState !== 'not_started' || /conflict/.test(error?.code || '');
+                }
                 throw error;
             }).finally(() => {
                 controllers.delete(controller);

@@ -5,6 +5,7 @@ import {parseBoundedJson} from './qianmu-json-input.js';
 // another device can replace a head after our final read. No delete API is used.
 export const ST_ACCOUNT_STORAGE_LIMITS=Object.freeze({bytes:8*1024*1024,maxBytes:64*1024*1024,timeoutMs:15000,slots:96});
 const schema='qianmu.st-account-document.v1',headSchema='qianmu.st-account-head.v1',queues=new Map();
+const snapshotSchema='qianmu.st-account-snapshot.v1';
 const hashPattern=/^[a-f0-9]{64}$/;
 let configured=null,configurationEpoch=0,readScope=null;
 const error=(code,message)=>Object.assign(new Error(message),{code:`st_account_storage_${code}`,writeState:'not_started'});
@@ -87,10 +88,10 @@ export function createConfiguredStAccountStorage(options={}){
 }
 
 export async function createStAccountStorage({resolveNamespace,isCurrent,headers,fetchImpl=globalThis.fetch,origin=globalThis.location?.origin,
-  cryptoImpl=globalThis.crypto,maxBytes=ST_ACCOUNT_STORAGE_LIMITS.bytes,timeoutMs=ST_ACCOUNT_STORAGE_LIMITS.timeoutMs}={}){
+  cryptoImpl=globalThis.crypto,maxBytes=ST_ACCOUNT_STORAGE_LIMITS.bytes,timeoutMs=ST_ACCOUNT_STORAGE_LIMITS.timeoutMs,documentLayout='versioned'}={}){
   configuration({resolveNamespace,isCurrent,headers});
   if(typeof fetchImpl!=='function'||!cryptoImpl?.subtle?.digest||!Number.isSafeInteger(maxBytes)||maxBytes<1024||maxBytes>ST_ACCOUNT_STORAGE_LIMITS.maxBytes
-    ||!Number.isFinite(timeoutMs)||timeoutMs<100||timeoutMs>60000)fail('setup','ST 储存参数或安全连接不可用');
+    ||!Number.isFinite(timeoutMs)||timeoutMs<100||timeoutMs>60000||!['versioned','snapshot'].includes(documentLayout))fail('setup','ST 储存参数或安全连接不可用');
   let site;try{site=new URL(origin);if(!['https:','http:'].includes(site.protocol)||site.origin!==origin||site.username||site.password||globalThis.location?.origin&&site.origin!==globalThis.location.origin)throw Error();}
   catch{fail('setup','储存仅可连接当前 ST 站点');}
   const digest=async text=>Array.from(new Uint8Array(await cryptoImpl.subtle.digest('SHA-256',utf8.encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
@@ -159,6 +160,7 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
     const value=head.value;if(!exact(value,['schema','scope','slot','fingerprint'])||value.schema!==headSchema||value.scope!==scope||value.slot!==slot||!hashPattern.test(value.fingerprint))fail('format','ST 储存目录损坏或不属于当前账户');return value;
   }
   async function readDocument(slot,op){
+    if(documentLayout==='snapshot')return readSnapshot(slot,op);
     const head=await readHead(slot,op);if(!head)return result(null,null);
     const body=await op.call(path(`${prefix(slot)}-${head.fingerprint}.json`),{limit:maxBytes+1024});
     const value=body.value;
@@ -168,6 +170,30 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
   async function upload(name,text,op){
     const receipt=await op.call('/api/files/upload',{body:JSON.stringify({name,data:base64(text)}),limit:4096});
     if(!exact(receipt.value,['path'])||![path(name),path(name).slice(1)].includes(receipt.value.path))fail('path','ST 保存回执路径无效，未确认保存');
+  }
+  // Opt-in for new current-value documents, not immutable-reference consumers.
+  // A distinct filename/schema leaves all existing head/body files untouched.
+  // No permanent history is appended for each edit. Native ST is atomic per
+  // file, but has no conditional-write API: this is still optimistic, not CAS.
+  const snapshotName=slot=>`${prefix(slot)}.snapshot.json`;
+  async function readSnapshot(slot,op){
+    const body=await op.call(path(snapshotName(slot)),{limit:maxBytes+1024,allowMissing:true});
+    if(!body)return result(null,null);
+    const value=body.value;
+    if(!exact(value,['schema','scope','slot','value'])||value.schema!==snapshotSchema||value.scope!==scope||value.slot!==slot)fail('format','ST 储存文件损坏或不属于当前账户');
+    jsonText(value.value,maxBytes);
+    const fingerprint=await digest(body.text);await op.check();
+    return result(value.value,fingerprint);
+  }
+  async function writeSnapshot(slot,value,expectedFingerprint,op){
+    const text=jsonText({schema:snapshotSchema,scope,slot,value},maxBytes+1024),fingerprint=await digest(text);await op.check();
+    const previous=await readSnapshot(slot,op);
+    if(previous.fingerprint!==expectedFingerprint)fail('conflict','内容已在其他页面更新，未覆盖新版本');
+    if(previous.fingerprint===fingerprint)return previous;
+    await upload(snapshotName(slot),text,op);
+    const verified=await readSnapshot(slot,op);
+    if(verified.fingerprint!==fingerprint)fail('conflict','保存结果已有变化，请保留当前修改');
+    return verified;
   }
   async function readImmutable(reference,op,allowMissing=false){
     const body=await op.call(path(`${prefix(reference.slot)}-${reference.fingerprint}.json`),{limit:reference.bytes,allowMissing:true});
@@ -189,6 +215,7 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
     return readImmutable(reference,op);
   }
   async function writeDocument(slot,value,expectedFingerprint,op){
+    if(documentLayout==='snapshot')return writeSnapshot(slot,value,expectedFingerprint,op);
     const text=jsonText({schema,scope,slot,value},maxBytes+1024),fingerprint=await digest(text);await op.check();
     const previous=await readHead(slot,op);
     if((previous?.fingerprint??null)!==expectedFingerprint)fail('conflict','内容已在其他页面更新，未覆盖新版本');
@@ -207,7 +234,7 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
     const task=prior.catch(()=>{}).then(()=>operation(op=>work(op),options));queues.set(key,task);
     void task.finally(()=>{if(queues.get(key)===task)queues.delete(key);}).catch(()=>{});return task;
   }
-  return Object.freeze({namespace,scope,
+  const api={namespace,scope,
     read(slot,options){return queue(slot,op=>readDocument(slot,op),options);},
     // A consistency check for an already fully validated snapshot, not a
     // substitute for reading/verifying its body. Use the same slot queue and
@@ -251,5 +278,7 @@ export async function createStAccountStorage({resolveNamespace,isCurrent,headers
       },options);
     },
     close(){closed=true;for(const abort of operations)abort();},
-  });
+  };
+  // Do not let a snapshot consumer accidentally start a second immutable store.
+  return Object.freeze(documentLayout==='snapshot'?{namespace,scope,read:api.read,write:api.write,close:api.close}:api);
 }

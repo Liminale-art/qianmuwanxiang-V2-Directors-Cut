@@ -112,13 +112,16 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         if (!visible) return;
         let text = notice;
         if (!text && snapshot?.error) {
-            text = !snapshot.loaded ? '收藏暂时无法读取，请刷新重试。'
+            text = /capacity/.test(snapshot.error.code) && !snapshot.needsRefresh
+                ? snapshot.loaded ? '收藏超过存储上限，本次未保存，修改已保留。' : '收藏文件过大，暂时无法读取。原件未改动。'
+                : !snapshot.loaded ? '收藏暂时无法读取，请刷新重试。'
                 : snapshot.needsRefresh ? '保存未完成，修改已保留。请刷新核对后重试。'
                     : /conflict/.test(snapshot.error.code) ? '收藏已有更新，修改已保留。请复制后重新打开。'
                         : '操作未完成，请重试。';
         }
         statusText.textContent = text;
-        reconcileButton.hidden = route === 'list' || !snapshot?.error;
+        reconcileButton.hidden = route === 'list' || !snapshot?.error
+            || !snapshot.needsRefresh && /capacity/.test(snapshot.error.code);
         reconcileButton.disabled = busy();
         status.hidden = !text && reconcileButton.hidden;
     }
@@ -223,7 +226,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             if (!current()) return;
             selectedId = edit.item.id; draft = null; route = 'read'; readScroll = 0;
         } catch (error) {
-            if (current()) notice = snapshot?.needsRefresh ? ''
+            if (current()) notice = snapshot?.needsRefresh || /capacity/.test(snapshot?.error?.code || '') ? ''
                 : /conflict|missing/.test(error?.code || '') ? '收藏已有更新，修改已保留。请复制后重新打开。'
                     : '保存未完成，修改已保留。';
         } finally { pending = false; render(); }

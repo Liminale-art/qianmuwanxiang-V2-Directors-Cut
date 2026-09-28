@@ -306,3 +306,36 @@ test('confirmed removal prunes stale selections so remaining entries can be dele
     click(f, '选择收藏：two'); click(f, '删除选中收藏'); await waitReady(f);
     assert.deepEqual(f.collection.state().items, []); assert.equal(f.writes, 2);
 });
+
+test('capacity rejection keeps full draft and explains that refresh cannot repair capacity', async t => {
+    const f = fixture(t, [entry('one')]); await f.view.open();
+    click(f, '阅读收藏：one'); click(f, '编辑收藏');
+    const fullText = '完整保留\r\n'.repeat(100);
+    type(f, fullText);
+    f.writeHook(() => { throw Object.assign(Error('private byte limit'), {code: 'st_account_storage_capacity', writeState: 'not_started'}); });
+    click(f, '保存收藏'); await waitReady(f);
+    assert.equal(f.collection.state().needsRefresh, false);
+    assert.equal(editor(f).value, fullText.replace(/\r\n/g, '\n'));
+    assert.match(f.dom.status().textContent, /超过存储上限/);
+    assert.doesNotMatch(f.dom.status().textContent, /请刷新|private/);
+    assert.equal(f.dom.visible(f.dom.get('核对保存结果')), false);
+    f.view.close(); await f.view.open();
+    assert.equal(editor(f).value, fullText.replace(/\r\n/g, '\n'));
+    assert.equal(f.reads, 1);
+});
+
+test('oversized verification after upload stays unconfirmed with reconciliation available', async t => {
+    const f = fixture(t, [entry('one')]); await f.view.open();
+    click(f, '阅读收藏：one'); click(f, '编辑收藏'); type(f, '已提交但确认超限');
+    f.writeHook((value, _options, commit) => {
+        commit(value);
+        throw Object.assign(Error('oversized verification'), {code: 'st_account_storage_capacity', writeState: 'unconfirmed'});
+    });
+    click(f, '保存收藏'); await waitReady(f);
+    assert.equal(f.collection.state().needsRefresh, true);
+    assert.equal(f.dom.visible(f.dom.get('核对保存结果')), true);
+    assert.doesNotMatch(f.dom.status().textContent, /本次未保存/);
+    click(f, '核对保存结果'); await waitReady(f);
+    assert.equal(text(f).textContent, '已提交但确认超限');
+    assert.equal(f.writes, 1);
+});

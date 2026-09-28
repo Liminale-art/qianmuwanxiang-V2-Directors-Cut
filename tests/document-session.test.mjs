@@ -166,6 +166,26 @@ test('empty documents remain cached and can be saved with a null initial fingerp
     assert.equal(f.writes, 1);
 });
 
+test('rejected input keeps a directly retryable draft without an unnecessary refresh', async () => {
+    const f = fixture(), first = await f.session.open(), next = {items: [{id: 'one', text: '完整稿'}]};
+    f.writeHook(() => { throw Object.assign(Error('too large'), {code: 'st_account_storage_capacity', writeState: 'not_started'}); });
+    await assert.rejects(f.session.save(next, {expectedFingerprint: first.fingerprint}), {code: 'st_account_storage_capacity'});
+    assert.equal(f.session.state().needsRefresh, false);
+    assert.deepEqual(f.session.state().draft.value, next);
+    assert.deepEqual(f.session.state().document, first);
+    f.writeHook(null);
+    await f.session.save(next, {expectedFingerprint: first.fingerprint});
+    assert.equal(f.reads, 1); assert.equal(f.session.state().draft, null);
+});
+
+test('known external conflict still requires refresh even when no upload began', async () => {
+    const f = fixture(), first = await f.session.open();
+    f.writeHook(() => { throw Object.assign(Error('different version'), {code: 'st_account_storage_conflict', writeState: 'not_started'}); });
+    await assert.rejects(f.session.save({items: []}, {expectedFingerprint: first.fingerprint}), {code: 'st_account_storage_conflict'});
+    assert.equal(f.session.state().needsRefresh, true);
+    assert.deepEqual(f.session.state().draft.value, {items: []});
+});
+
 test('bad receipts do not erase pending input or the previously confirmed value', async () => {
     for (const receipt of [null, {}, {exists: true, value: {}, fingerprint: 'invalid'}, {exists: false, value: null, fingerprint: null},
         {exists: true, value: {items: ['wrong']}, fingerprint: key(2)}]) {
