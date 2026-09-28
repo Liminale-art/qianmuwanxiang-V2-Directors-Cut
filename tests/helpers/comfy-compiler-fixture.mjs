@@ -42,7 +42,7 @@ export async function compilerEnvironment(){
   Object.assign(e.context,{MODULE_NAME:'format-qa',storyboardCompilerBusy:false,STORYBOARD_SHOT_GROUP_TEMPLATES:{smart:{label:'test',instruction:''}},storyboardTargetFloor:()=>0,
     ctx:()=>host,
     storyboardCompilerContext:async(_state,inputGuard)=>{
-      const sources=await contract.captureStoryboardCompilerSources({floor:0,referenceFloors:0,getContext:()=>host,epoch:()=>0,
+      const sources=await contract.captureStoryboardCompilerSources({floor:0,referenceFloors:0,getContext:()=>host,epoch:()=>0,allowPromptExcludedTarget:inputGuard.allowHiddenTarget,
         isCurrent:inputGuard.isCurrent,resolveNamespace:async()=> 'st-user:route-test',readText:message=>message.mes,
         readParagraphs:message=>message.mes.split('\n\n').map((text,index)=>({id:`P${index+1}`,text}))});
       inputGuard.compilerSources=sources;inputGuard.continuityStore=contract.openStoryboardCompilerContinuity(sources);

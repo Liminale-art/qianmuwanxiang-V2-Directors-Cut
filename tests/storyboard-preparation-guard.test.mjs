@@ -75,6 +75,58 @@ test('extracted guard binds only its owned plan and notices subsequent cancellat
   e.plan.status='cancelled';assert.throws(()=>guard.assertCurrent(),{code:'storyboard_input_changed'});guard.dispose();assert.equal(guard.isCurrent(),false);
 });
 
+test('only an existing explicit manual floor plan receives a frozen prompt-excluded target scope',()=>{
+  for(const origin of ['manual','manual_supplement']){
+    const e=environment();e.state.target='floor';e.plan.origin=origin;e.state.shotPlans.push(e.plan);e.chat[0].is_system=true;
+    const guard=e.context.storyboardCreatePreparationGuard(e.state,{plan:e.plan});
+    assert.equal(guard.allowHiddenTarget,true);guard.assertCurrent();guard.dispose();
+  }
+  for(const [setup,stream] of [[()=>{},{floor:0}],[e=>{e.plan.origin='automatic';},null],[e=>{e.state.target='latest';},null],
+    [e=>{e.plan.floor=1;},null],[e=>{e.plan.chatKey='other';},null],[e=>{e.state.shotPlans=[];},null]]){
+    const e=environment();e.state.target='floor';e.plan.origin='manual';e.state.shotPlans.push(e.plan);setup(e);
+    const guard=e.context.storyboardCreatePreparationGuard(e.state,{plan:e.plan,stream});
+    assert.equal(guard.allowHiddenTarget,false);guard.dispose();
+  }
+  const e=environment();e.state.target='floor';e.plan.origin='automatic';e.state.shotPlans.push(e.plan);
+  const guard=e.context.storyboardCreatePreparationGuard(e.state,{plan:e.plan});e.plan.origin='manual';
+  assert.equal(guard.allowHiddenTarget,false);guard.dispose();
+});
+
+test('explicit hidden-floor scope invalidates when its plan origin, identity or target is changed',()=>{
+  for(const mutate of [e=>{e.plan.origin='automatic';},e=>{e.plan.id='other';},e=>{e.plan.floor=1;},e=>{e.plan.chatKey='other';},e=>{e.state.shotPlans=[];}]){
+    const e=environment();e.state.target='floor';e.plan.origin='manual';e.state.shotPlans.push(e.plan);
+    const guard=e.context.storyboardCreatePreparationGuard(e.state,{plan:e.plan});assert.equal(guard.allowHiddenTarget,true);
+    mutate(e);assert.throws(()=>guard.assertCurrent(),{code:'storyboard_input_changed'});guard.dispose();
+  }
+});
+
+test('actual index compiler-context wiring admits only its explicit hidden target and excludes hidden history',async()=>{
+  for(const origin of ['manual','manual_supplement','automatic']){
+    const e=environment(),emitter=new EventEmitter(),host={chat:e.chat,chatId:'chat-a',characterId:0,
+      characters:[{avatar:'A.png',chat:'chat-a'}],chatMetadata:{story_director_liminale:{}},eventSource:emitter,mainApi:'openai'};
+    e.chat.unshift({mes:'excluded earlier floor',is_system:true,swipe_id:0});e.chat[1].is_system=true;
+    Object.assign(e.plan,{floor:1,origin});e.state.target='floor';e.state.shotPlans.push(e.plan);
+    Object.assign(e.context,{ctx:()=>host,storyboardAdmissionEpoch:0,storyboardTargetFloor:()=>1,
+      storyboardCleanWithTagRules:text=>text,storyboardCleanMessageText:text=>text,resolveMacro:async text=>text,
+      storyboardMessageParagraphs:text=>[text],storyboardCompilerWorldText:async()=>({text:'',rows:[]}),
+      storyboardCompilerCharacterCasting:async()=>({prepared:null,assertCurrent:async()=>{},apply:shot=>({shot,warnings:[]})}),
+      featureRuntime:{load:async key=>key==='storyboardContract'?contractRuntime:{resolveImageAccountNamespace:async()=> 'st-user:test'}},
+    });
+    vm.runInContext(section('storyboardCompilerContext'),e.context);
+    const guard=e.context.storyboardCreatePreparationGuard(e.state,{plan:e.plan});
+    try{
+      if(origin==='automatic')await assert.rejects(e.context.storyboardCompilerContext(e.state,guard),{code:'storyboard_context_unavailable'});
+      else {
+        const result=await e.context.storyboardCompilerContext(e.state,guard);
+        assert.deepEqual([...result.compilerSources.messages].map(row=>row.floor),[1]);
+        assert.equal(result.compilerSources.current.messageRef.role,'system');assert.equal(result.paragraphs[0],'original floor');
+      }
+    }finally{guard.dispose();}
+    assert.equal(emitter.eventNames().reduce((sum,type)=>sum+emitter.listenerCount(type),0),0);
+    assert.ok(e.chat.every(message=>message.is_system));
+  }
+});
+
 test('extracted guard releases all operation-owned resources and document listeners',()=>{
   const e=environment(),guard=e.context.storyboardCreatePreparationGuard(e.state),closed=[];
   for(const name of ['ensemble','continuityStore','compilerSources','streamFrame','comfyBatch','comfyAuto','comfyReadiness'])guard[name]={close:()=>closed.push(name)};

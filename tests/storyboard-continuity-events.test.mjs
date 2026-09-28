@@ -18,6 +18,13 @@ test('no coercion of source revision, unknown floor, active chat, duplicate rost
  for(const change of [{chatKey:'other'},{messageRef:{...options().messageRef,lastKnownFloor:null}},{messageRef:{...options().messageRef,revisionId:''}},{messageRef:{...options().messageRef,role:'system'}},{subjectIds:['A','A']},{paragraphs:[...paragraphs,paragraphs[0]]},{branches:[{id:'now',layer:'unknown'}]}])assert.throws(()=>bind([event()],{...options(),...change}));
  assert.throws(()=>bind(Array.from({length:limits.events+1},(_,i)=>event({id:'event-'+i})),options()),{code:'storyboard_continuity_scope'});assert.equal(bind([],options()).events.length,0);
 });
+
+test('system-role source keeps its exact identity only for explicitly admitted target scope',()=>{
+ const scope=options();scope.messageRef=createStoryboardMessageReference({chatKey:scope.chatKey,floor:2,message:{mes:paragraphs.map(p=>p.text).join('\n'),is_system:true,name:'A',swipe_id:0},now:10});
+ for(const value of [undefined,false,1,'true'])assert.throws(()=>bind([event()],{...scope,allowPromptExcludedTarget:value}),{code:'storyboard_continuity_source'});
+ const result=bind([event()],{...scope,allowPromptExcludedTarget:true});assert.deepEqual(result.messageRef,scope.messageRef);
+ assert.equal(result.messageRef.role,'system');assert.equal('allowPromptExcludedTarget' in result,false);
+});
 test('same-instant conflicting slots reject but different subjects or isolated memory branches remain independent',()=>{
  assert.throws(()=>bind([event(),event({id:'other',value:'coat on'})],options()),{code:'storyboard_continuity_conflict'});
  assert.throws(()=>bind([event(),event({id:'other',key:'OUTERWEAR',value:'coat on'})],options()),{code:'storyboard_continuity_conflict'});

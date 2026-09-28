@@ -1,13 +1,15 @@
-import {createStoryboardFloorTake,createStoryboardCaptureReservation} from './qianmu-storyboard-floor-take.js?v=1.59.405';
-import {readStoryboardFloorTakeSourceKeys} from './qianmu-storyboard-floor-take-source.js?v=1.59.405';
-import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.405';
+import {createStoryboardFloorTake,createStoryboardCaptureReservation} from './qianmu-storyboard-floor-take.js?v=1.59.406';
+import {readStoryboardFloorTakeSourceKeys} from './qianmu-storyboard-floor-take-source.js?v=1.59.406';
+import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.406';
 const running=new WeakSet();
 export async function captureStoryboardFloor(floor,message,api) {
-  const state=api.state(),chatKey=api.chatKey(),epoch=api.epoch(),text=message?.mes,swipe=message?.swipe_id;
+  const state=api.state(),chatKey=api.chatKey(),epoch=api.epoch(),text=message?.mes,swipe=message?.swipe_id,excluded=message?.is_system;
   const generation=message?JSON.stringify(storyboardStreamGeneration(message)):'';
-  const current=()=>api.state()===state&&api.chatKey()===chatKey&&api.epoch()===epoch&&api.chat()?.[floor]===message&&message.mes===text&&message.swipe_id===swipe
+  const current=()=>api.state()===state&&api.chatKey()===chatKey&&api.epoch()===epoch&&api.chat()?.[floor]===message&&message.mes===text&&message.swipe_id===swipe&&message.is_system===excluded
     &&JSON.stringify(storyboardStreamGeneration(message))===generation&&state.enabled;
-  if(!message||message.is_system||!current())return false;
+  // This entry is the user's explicit floor click; prompt exclusion still
+  // applies to automatic capture and to every other reference floor.
+  if(!message||!current())return false;
   if(running.has(state)||api.busy()){api.toast('取景正在准备，请稍候','info');return false;}
   running.add(state);
   let reservation,plan;

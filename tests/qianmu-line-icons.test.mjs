@@ -252,21 +252,20 @@ const outside = new FakeElement('section', { ownerDocument: local.document, stat
 outside.appendChild(new FakeElement('i', { className: 'fa-solid fa-camera', ownerDocument: local.document, stats: local.stats }));
 assert.equal(applyQianmuIcons(outside), 0);
 
-// Collection's host-toolbar star deliberately uses ST's bundled Font Awesome.
-// Even if a future host layout nests it in a Qianmu-owned scope, its explicit
-// boundary must retain both hollow and filled native glyphs without conversion.
+// ST bundles only the solid icon font. The collection star is an explicit local
+// SVG and must keep both outline/filled states even in a Qianmu-owned scope.
 const collectionRoot = makeOwnedRoot(), collectionButton = collectionRoot.root.appendChild(
   new FakeElement('button', {className: 'mes_button interactable qm-collection-star', ownerDocument: collectionRoot.document}),
 );
-const collectionStar = collectionButton.appendChild(new FakeElement('i', {
-  className: 'fa-regular fa-star', attributes: {'data-qianmu-icon-skip': ''}, ownerDocument: collectionRoot.document,
+const collectionStar = collectionButton.appendChild(new FakeElement('svg', {
+  className: 'qm-collection-star-glyph', attributes: {'data-qianmu-icon-skip': ''}, ownerDocument: collectionRoot.document,
 }));
-for (const weight of ['fa-regular', 'fa-solid']) {
-  collectionStar.className = `${weight} fa-star`;
+for (const fill of ['none', 'currentColor']) {
+  collectionStar.setAttribute('fill', fill);
   const writes = collectionRoot.stats.writes;
   assert.equal(applyQianmuIcons(collectionButton), 0);
   assert.equal(refreshQianmuIcon(collectionStar), false);
-  assert.equal(collectionStar.className, `${weight} fa-star`);
+  assert.equal(collectionStar.getAttribute('fill'), fill);
   assert.equal(collectionStar.children.length, 0);
   assert.equal(collectionRoot.stats.writes, writes);
 }

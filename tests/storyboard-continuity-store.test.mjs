@@ -8,12 +8,12 @@ import {acquireChatSaveLock,releaseChatSaveLock} from '../qianmu-chat-save-lock.
 const roster={branches:[{id:'now',layer:'present'}],subjectIds:['A']};
 const proposal=(floor=0)=>({floor,roster:structuredClone(roster),events:[{id:'coat',branchId:'now',paragraphId:'P1',subjectId:'A',category:'outfit',key:'coat',value:'off',persistence:'persistent',evidence:'A脱下外套。'}]});
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
-async function fixture({metadata,paragraphs,account='st-user:alice',floor=1,texts=['A脱下外套。','A继续聊天。']}={}){
+async function fixture({metadata,paragraphs,account='st-user:alice',floor=1,texts=['A脱下外套。','A继续聊天。'],excluded=[],allowPromptExcludedTarget=false}={}){
   const emitter=new EventEmitter();emitter.setMaxListeners(300);let active=true,namespace=account,lookup=null,saveHook=null,saved='',saves=0;
   const context={chatId:'chat',characterId:0,characters:[{avatar:'A.png',chat:'chat'}],chatMetadata:metadata||{story_director_liminale:{keep:'untouched',storyboardImages:[{id:'original-image'}]}},
-    eventSource:emitter,chat:texts.map((mes,index)=>({mes,name:'A',swipe_id:0,send_date:String(index)})),
+    eventSource:emitter,chat:texts.map((mes,index)=>({mes,name:'A',swipe_id:0,send_date:String(index),...(excluded.includes(index)?{is_system:true}:{})})),
     async saveMetadata(){saves++;if(saveHook)return saveHook();saved=JSON.stringify(context.chatMetadata);}};
-  const options={floor,referenceFloors:Math.min(20,floor),getContext:()=>context,epoch:()=>0,isCurrent:()=>active,
+  const options={floor,referenceFloors:Math.min(20,floor),getContext:()=>context,epoch:()=>0,isCurrent:()=>active,allowPromptExcludedTarget,
     resolveNamespace:async()=>lookup?lookup():namespace,readText:message=>message.mes,
     readParagraphs:paragraphs||((message)=>[{id:'P1',text:message.mes}])};
   const window=await captureStoryboardCompilerSources(options),session=openStoryboardCompilerContinuity(window,{timeoutMs:100});
@@ -38,6 +38,23 @@ test('validated all-prose event records survive serialized ST save and reopen wi
   const reopened=await fixture({metadata:saved}),read=await reopened.session.read();assert.equal(read.records.length,1);assert.equal(read.records[0].events[0].value,'off');
   assert.ok(Object.isFrozen(read.records[0].events[0]));assert.equal(reopened.saves,0);
   assert.equal((await reopened.session.publish([proposal()])).status,'unchanged');assert.equal(reopened.saves,0);reopened.close();
+});
+
+test('manual hidden target publishes and reloads its actual reference without persisting permission or becoming later history',async()=>{
+  const f=await fixture({floor:0,excluded:[0],allowPromptExcludedTarget:true}),before=JSON.stringify(f.context.chat);
+  const source=f.window.current;assert.equal(source.messageRef.role,'system');assert.equal(source.allowPromptExcludedTarget,true);
+  const draft=proposal();assert.equal((await source.bind(draft.events,draft.roster)).events[0].fact.value,'off');
+  assert.equal((await source.replay(draft.events,draft.roster,{branchId:'now',paragraphId:'P1',evidence:'A脱下外套。'})).activeFacts[0].value,'off');
+  assert.equal((await f.session.publish([draft])).status,'host_returned');
+  const metadata=JSON.parse(f.saved);assert.doesNotMatch(f.saved,/allowPromptExcludedTarget|allowHiddenTarget/);
+  assert.equal(metadata.story_director_liminale.storyboardContinuity.records[0].messageRef.role,'system');
+  assert.equal(JSON.stringify(f.context.chat),before);f.close();
+  const reopened=await fixture({metadata,floor:0,excluded:[0],allowPromptExcludedTarget:true});
+  const read=await reopened.session.read();assert.equal(read.records.length,1);assert.deepEqual(read.invalidFloors,[]);
+  assert.equal(read.records[0].events[0].value,'off');assert.equal(reopened.saves,0);reopened.close();
+  const later=await fixture({metadata,floor:1,excluded:[0],allowPromptExcludedTarget:true});
+  assert.deepEqual(later.window.messages.map(row=>row.floor),[1]);assert.equal((await later.session.read()).records.length,0);
+  assert.equal(later.saves,0);later.close();
 });
 
 test('raw event order/identity remains source-bound and caller mutation during asynchronous saving cannot change it',async()=>{

@@ -17,7 +17,7 @@ export function floorProseText(element){
 export function injectStoryboardMessageButtons(chatRoot,{floorOf,getContext,getState,planForMessage,applyIcons}){
   chatRoot.querySelectorAll('.mes').forEach((message)=>{
     const floor=floorOf(message),chatMessage=Number.isInteger(floor)?getContext().chat?.[floor]:null;
-    if(!chatMessage||chatMessage.is_system||message.querySelector('.sd-storyboard-message-action'))return;
+    if(!chatMessage||message.querySelector('.sd-storyboard-message-action'))return;
     const toolbar=message.querySelector('.mes_buttons .extraMesButtons, .mes_buttons .mes_buttons_inner, .mes_buttons');if(!toolbar)return;
     const button=chatRoot.ownerDocument.createElement('button');button.type='button';button.className='mes_button interactable sd-storyboard-message-action';
     button.dataset.storyboardChatAction = 'capture-floor';

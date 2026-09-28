@@ -98,6 +98,15 @@ test('earlier complete floors remain strict even though the target can append',a
   assert.throws(window.assertCurrent);assert.equal(f.listeners(),0);
 });
 
+test('manual target inclusion cannot admit a prompt-excluded streaming source or revive a frame after hiding',async()=>{
+  const f=fixture();f.context.chat[1].is_system=true;
+  await assert.rejects(frame({...f.options,allowPromptExcludedTarget:true}),{code:'storyboard_stream_source'});
+  assert.equal(f.listeners(),0);assert.deepEqual(f.reads,[]);
+  const g=fixture(),scope=await frame(g.options);g.context.chat[1].is_system=true;
+  await assert.rejects(capture({...g.options,streamFrame:scope,allowPromptExcludedTarget:true}));
+  assert.equal(g.listeners(),0);assert.deepEqual(g.reads,[]);
+});
+
 test('host balancing may change an unfinished tail without rewriting the already completed prefix',async()=>{
   const f=fixture();f.context.chat[1].mes='Alice cooks.\n\n"I think"';const scope=await frame(f.options),window=await capture({...f.options,streamFrame:scope});
   f.context.chat[1].mes='Alice cooks.\n\n"I think of yesterday';assert.equal(window.assertCurrent(),true);assert.deepEqual(window.stream.stableParagraphIds,['P1']);window.close();

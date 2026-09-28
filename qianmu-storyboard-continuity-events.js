@@ -26,10 +26,10 @@ function locate(paragraph,evidence){
 // The host supplies the verified message revision, paragraph order and local
 // branch/subject rosters. They are not model fields or an ownership grant.
 // An exact unique quote locates the event; the model need not count UTF-16 offsets.
-export function bindStoryboardContinuityEvents(events,{messageRef,chatKey,paragraphs,branches,subjectIds}={}){
+export function bindStoryboardContinuityEvents(events,{messageRef,chatKey,paragraphs,branches,subjectIds,allowPromptExcludedTarget=false}={}){
   const ref=normalizeStoryboardMessageReference(messageRef);
   if(!exact(messageRef,Object.keys(ref))||Object.keys(ref).some(k=>messageRef[k]!==ref[k])||!ref.chatKey||ref.chatKey!==chatKey||!ref.messageKey||!ref.revisionId||!ref.revisionHash
-    ||ref.role==='system'||!Number.isSafeInteger(ref.lastKnownFloor)||ref.lastKnownFloor<0)fail('source','变化来源版本未明确，请重新提取');
+    ||ref.role==='system'&&allowPromptExcludedTarget!==true||!Number.isSafeInteger(ref.lastKnownFloor)||ref.lastKnownFloor<0)fail('source','变化来源版本未明确，请重新提取');
   let characters=0;
   const sources=unique(paragraphs,STORYBOARD_CONTINUITY_EVENT_LIMITS.paragraphs,p=>{
     if(!exact(p,['id','text'])||!text(p.text,STORYBOARD_CONTINUITY_EVENT_LIMITS.characters))fail('source','变化正文段落无效');characters+=p.text.length;return p.id;

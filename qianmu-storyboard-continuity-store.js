@@ -96,7 +96,7 @@ export function createStoryboardContinuityStoreSession({window,getContext,host,n
       if(!referenceMatches(record.messageRef,source.messageRef)||record.paragraphDigest!==await fingerprint(source)){invalid.push(floor);continue;}
       check();
       try{
-        bindStoryboardContinuityEvents(record.events,{messageRef:source.messageRef,chatKey:source.messageRef.chatKey,paragraphs:source.paragraphs,...record.roster});
+        bindStoryboardContinuityEvents(record.events,{messageRef:source.messageRef,chatKey:source.messageRef.chatKey,paragraphs:source.paragraphs,...record.roster,allowPromptExcludedTarget:source.allowPromptExcludedTarget});
         records.push(clone(record));
       }catch(_){invalid.push(floor);}
     }
@@ -115,7 +115,7 @@ export function createStoryboardContinuityStoreSession({window,getContext,host,n
       if(!exact(proposal,['floor','roster','events'])||!sources.has(proposal.floor)||seen.has(proposal.floor))fail('变化保存来源重复或超出取景范围');
       if(!exact(proposal.roster,['branches','subjectIds']))fail('变化人物与分支字段无效');
       seen.add(proposal.floor);const source=sources.get(proposal.floor);
-      const bound=bindStoryboardContinuityEvents(proposal.events,{messageRef:source.messageRef,chatKey:source.messageRef.chatKey,paragraphs:source.paragraphs,branches:proposal.roster.branches,subjectIds:proposal.roster.subjectIds});
+      const bound=bindStoryboardContinuityEvents(proposal.events,{messageRef:source.messageRef,chatKey:source.messageRef.chatKey,paragraphs:source.paragraphs,branches:proposal.roster.branches,subjectIds:proposal.roster.subjectIds,allowPromptExcludedTarget:source.allowPromptExcludedTarget});
       return {source,messageRef:clone(bound.messageRef),roster:clone(proposal.roster),events:clone(proposal.events)};
     });
     if(!plain(store)||typeof saveHost!=='function')return {status:'unavailable',reason:'host_save_unavailable'};

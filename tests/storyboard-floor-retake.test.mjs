@@ -178,6 +178,22 @@ async function continuedEntryFixture(ordinary=false){
   return {...e,host,message,original,continued,resolve};
 }
 
+test('explicit prompt-excluded floor click compiles and queues with its real system reference without unhiding ST',async()=>{
+  const e=await entryFixture(),message=e.context.ctx().chat[0];message.is_system=true;
+  const before=copy(message);
+  assert.equal(await e.clickWithBatchReceipts(),true,JSON.stringify(e.notices));
+  assert.ok(e.llmCalls.length>0);assert.equal(e.jobs.length,3);
+  const plan=e.state.shotPlans.find(row=>row.id===e.jobs[0].planId);assert.equal(plan.origin,'manual');assert.equal(plan.messageRef.role,'system');
+  assert.ok(e.jobs.every(job=>job.messageRef.role==='system'&&job.floor===0));
+  assert.deepEqual(copy(message),before);assert.equal(e.oldPlan.status,'completed');
+});
+
+test('changing prompt exclusion during the manual chooser cancels before extraction or queueing',async()=>{
+  const e=await entryFixture(),message=e.context.ctx().chat[0];message.is_system=true;
+  e.context.storyboardChooseCaptureMode=async()=>{message.is_system=false;return {mode:'auto'};};
+  assert.equal(await e.click(),false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);
+});
+
 test('actual continued floor retake captures both key generations, commits together and preserves all old recipes',async()=>{
   const e=await continuedEntryFixture(),old=e.gallery.map(copy);assert.equal(await e.clickWithBatchReceipts(),true,JSON.stringify(e.notices));
   const take=e.jobs[0].floorTake;assert.equal(take.version,2);assert.deepEqual(take.messageKeys,[e.continued.messageKey,e.original.messageKey]);

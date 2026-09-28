@@ -17,10 +17,15 @@ button.qm-collection-star {
     cursor: pointer;
 }
 
-button.qm-collection-star > .fa-star {
+button.qm-collection-star > .qm-collection-star-glyph {
+    display: block;
     width: 1em;
+    height: 1em;
     color: inherit;
     pointer-events: none;
 }
+
+button.qm-collection-star[aria-pressed="false"] > .qm-collection-star-glyph { fill: none; }
+button.qm-collection-star[aria-pressed="true"] > .qm-collection-star-glyph { fill: currentColor; }
 
 button.qm-collection-star:disabled { cursor: progress; }

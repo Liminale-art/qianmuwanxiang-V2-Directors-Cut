@@ -2,7 +2,7 @@ import {qianmuIconElement} from './qianmu-icon-renderer.js';
 import {createTextCollectionEditor} from './qianmu-text-collection-editor.js';
 import {sameTextCollectionItem} from './qianmu-text-collection.js';
 import {createTextCollectionOrganizationView} from './qianmu-text-collection-organization-view.js';
-import {filterTextCollectionItems, textCollectionOrganizationViews, textCollectionItemOrganization} from './qianmu-text-collection-organization.js';
+import {filterTextCollectionItems, textCollectionItemOrganization} from './qianmu-text-collection-organization.js';
 
 // Isolated candidate: the caller owns the account lifetime, themed parent and
 // stylesheet. Closing this view does not dispose the collection's data session.
@@ -22,7 +22,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     };
     let visible = false, disposed = false, unsubscribe = null, pending = false, opening = 0;
     let snapshot = null, route = 'list', selectedId = null, draft = null;
-    let query = '', folderFilter = '', tagFilter = '', multi = false, listKey = null, readKey = null, filtersKey = null;
+    let query = '', multi = false, listKey = null, readKey = null;
     let listScroll = 0, readScroll = 0, notice = '', returnFocus = null;
     const loadedWindows = new Map();
     const selection = new Set();
@@ -53,21 +53,21 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     const search = make('input'); search.type = 'search'; search.placeholder = '搜索关键词'; search.setAttribute('aria-label', '搜索收藏');
     search.addEventListener('input', () => {
         if (!current()) return;
-        query = search.value; listScroll = 0; render();
+        query = search.value; listScroll = 0; endSelection(); render();
     });
     const refreshButton = button('刷新收藏', 'arrows-clockwise', refresh);
-    const multiButton = button('多选收藏', 'list-checks', () => { multi = !multi; selection.clear(); render(); });
+    const multiButton = button('多选收藏', 'list-checks', () => {
+        if (!multi) { multi = true; selection.clear(); }
+        else for (const item of loadedItems()) selection.add(item.id);
+        render();
+    });
     const deleteButton = button('删除选中收藏', 'trash', removeSelected);
-    const organizeView = createTextCollectionOrganizationView({parent, collection, isCurrent});
-    const organizeSelected = button('整理选中收藏', 'folder', () => organizeView.organize([...selection]));
+    const organizeView = createTextCollectionOrganizationView({parent, collection, isCurrent,
+        onComplete: () => { endSelection(); render(); }});
+    const organizeSelected = button('整理选中收藏', 'folder', () => organizeView.organize(selectedLoadedIds()));
     toolbar.append(search, refreshButton, multiButton, organizeSelected, deleteButton);
-    const filters = make('nav', 'qm-collection-filters');
-    const folderSelect = make('select'); folderSelect.setAttribute('aria-label', '筛选文件夹');
-    const tagSelect = make('select'); tagSelect.setAttribute('aria-label', '筛选标签');
-    folderSelect.addEventListener('change', () => { folderFilter = folderSelect.value; listScroll = 0; render(); });
-    tagSelect.addEventListener('change', () => { tagFilter = tagSelect.value; listScroll = 0; render(); });
     const foldersButton = button('管理文件夹', 'folder-plus', () => organizeView.folders());
-    filters.append(folderSelect, tagSelect, foldersButton);
+    headerTools.insertBefore(foldersButton, closeButton);
     const resumeDraft = button('继续未保存的编辑', 'pencil-simple', () => { if (draft) startEditor(); });
     resumeDraft.className = 'qm-collection-resume';
     resumeDraft.append(make('span', '', '继续未保存的编辑'));
@@ -80,7 +80,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     });
     const moreButton = button('显示更多收藏', 'arrow-down', loadMore);
     moreButton.className = 'qm-collection-more'; moreButton.append(make('span', '', '显示更多'));
-    listView.append(toolbar, filters, resumeDraft, list);
+    listView.append(toolbar, resumeDraft, list);
     const reader = make('article', 'qm-collection-text');
     reader.addEventListener('scroll', () => { if (route === 'read') readScroll = reader.scrollTop; });
     const editorControl = createTextCollectionEditor({document: doc, onChange: text => {
@@ -129,6 +129,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     }
 
     function activeItem() { return snapshot?.items.find(item => item.id === selectedId); }
+    function endSelection() { multi = false; selection.clear(); }
     function busy() { return pending || ['loading', 'refreshing', 'saving'].includes(snapshot?.phase); }
     function startEditor() {
         route = 'edit'; notice = ''; editorControl.setText(draft.text); editor.scrollTop = 0;
@@ -155,8 +156,9 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         const waiting = busy(), writable = snapshot?.loaded && !snapshot.needsRefresh;
         dialog.setAttribute('aria-busy', String(waiting));
         refreshButton.disabled = waiting;
-        multiButton.disabled = waiting || !snapshot?.loaded;
+        multiButton.disabled = waiting || !snapshot?.loaded || !filteredItems().length;
         multiButton.setAttribute('aria-pressed', String(multi));
+        multiButton.title = multi ? '全选已加载收藏' : '多选收藏';
         deleteButton.hidden = !multi;
         deleteButton.disabled = waiting || !writable || !selection.size;
         organizeSelected.hidden = !multi;
@@ -169,43 +171,31 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         saveButton.disabled = waiting || !writable || !draft?.text.trim();
         editorControl.setReadOnly(waiting);
         search.disabled = !snapshot?.loaded;
-        folderSelect.disabled = tagSelect.disabled = !snapshot?.loaded;
         resumeDraft.hidden = !draft;
         resumeDraft.disabled = waiting;
     }
-    function windowKey() { return JSON.stringify([query.trim().toLocaleLowerCase(), folderFilter, tagFilter]); }
+    function windowKey() { return query.trim().toLocaleLowerCase(); }
     function filteredItems() {
-        const folderId = folderFilter.startsWith('folder:') ? folderFilter.slice(7) : null;
-        const charName = folderFilter.startsWith('char:') ? folderFilter.slice(5) : null;
-        return filterTextCollectionItems(snapshot || {items: []}, {query, folderId, charName, tag: tagFilter || null});
+        return filterTextCollectionItems(snapshot || {items: []}, {query});
     }
+    function loadedItems() { return filteredItems().slice(0, loadedWindows.get(windowKey()) || PAGE_SIZE); }
+    function selectedLoadedIds() { return loadedItems().filter(item => selection.has(item.id)).map(item => item.id); }
     function loadMore() {
         if (!current() || route !== 'list') return;
         const key = windowKey(), count = loadedWindows.get(key) || PAGE_SIZE;
         if (count >= filteredItems().length) return;
         loadedWindows.set(key, count + PAGE_SIZE); renderList();
     }
-    function renderFilters() {
-        const views = textCollectionOrganizationViews(snapshot || {items: []});
-        const key = JSON.stringify(views);
-        if (key === filtersKey) return;
-        filtersKey = key;
-        const option = (value, label) => { const node = make('option', '', label); node.value = value; return node; };
-        folderSelect.replaceChildren(option('', '全部收藏'),
-            ...views.folders.map(folder => option(`folder:${folder.id}`, `${folder.name} · ${folder.count}`)),
-            ...views.characters.map(character => option(`char:${character.name}`, `${character.name || '未命名角色'} · ${character.count}`)));
-        tagSelect.replaceChildren(option('', '全部标签'), ...views.tags.map(tag => option(tag.name, `${tag.name} · ${tag.count}`)));
-        if (folderFilter && ![...folderSelect.children].some(node => node.value === folderFilter)) folderFilter = '';
-        if (tagFilter && !views.tags.some(tag => tag.name === tagFilter)) tagFilter = '';
-        folderSelect.value = folderFilter; tagSelect.value = tagFilter;
-        tagSelect.hidden = !views.tags.length;
-    }
     function renderList() {
-        renderFilters();
         const items = filteredItems(), count = loadedWindows.get(windowKey()) || PAGE_SIZE;
         const visibleItems = items.slice(0, count);
+        if (selection.size) {
+            const visibleIds = new Set(visibleItems.map(item => item.id));
+            for (const id of selection) if (!visibleIds.has(id)) selection.delete(id);
+            if (!selection.size) endSelection();
+        }
         const key = JSON.stringify([snapshot?.loaded, snapshot?.fingerprint,
-            !snapshot?.loaded && Boolean(snapshot?.error), query, folderFilter, tagFilter, multi]);
+            !snapshot?.loaded && Boolean(snapshot?.error), query, multi]);
         if (key !== listKey) {
             listKey = key;
             list.replaceChildren();
@@ -227,6 +217,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
                     if (multi) {
                         if (busy()) return;
                         if (selection.has(item.id)) selection.delete(item.id); else selection.add(item.id);
+                        if (!selection.size) endSelection();
                         renderList(); updateControls(); return;
                     }
                     selectedId = item.id; route = 'read'; readScroll = 0; notice = ''; render();
@@ -235,7 +226,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             });
         list.append(...rows);
         if (!visibleItems.length && !list.children.length) list.append(make('p', 'qm-collection-empty', snapshot?.loaded
-            ? query || folderFilter || tagFilter ? '没有找到收藏' : '还没有收藏' : snapshot?.error ? '' : '正在读取…'));
+            ? query ? '没有找到收藏' : '还没有收藏' : snapshot?.error ? '' : '正在读取…'));
         for (const entry of list.querySelectorAll('.qm-collection-entry')) {
             if (multi) entry.setAttribute('aria-pressed', String(selection.has(entry.dataset.itemId)));
             else entry.removeAttribute('aria-pressed');
@@ -254,6 +245,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         footer.hidden = route === 'list'; backButton.hidden = route !== 'read'; cancelButton.hidden = route !== 'edit';
         editButton.hidden = route !== 'read'; saveButton.hidden = route !== 'edit';
         copyButton.hidden = organizeButton.hidden = route !== 'read';
+        foldersButton.hidden = route !== 'list';
         imageButton.hidden = route !== 'read' || typeof onExportImage !== 'function';
         if (route === 'list') renderList();
         if (route === 'read') {
@@ -273,6 +265,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         try {
             const refreshed = await collection.refresh();
             if (!current()) return;
+            endSelection();
             // Reconcile only the captured ID and exact desired text, never a
             // similar-looking entry. An unknown write is not replayed.
             if (draft && refreshed.items.some(item => item.id === draft.item.id && item.text === draft.text)) {
@@ -301,11 +294,13 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     }
     async function removeSelected() {
         if (!current() || busy() || !selection.size) return;
-        const ids = [...selection]; pending = true; notice = ''; updateControls();
+        const ids = selectedLoadedIds();
+        if (!ids.length) { endSelection(); render(); return; }
+        pending = true; notice = ''; updateControls();
         try {
             await collection.remove(ids, {expectedFingerprint: snapshot.fingerprint});
             if (!current()) return;
-            selection.clear(); multi = false;
+            endSelection();
         } catch { if (current()) notice = '删除未完成，请刷新后重试。'; }
         finally { pending = false; render(); }
     }
@@ -333,8 +328,10 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
                     if (draft.isNew ? !saved : saved && sameTextCollectionItem(saved, draft.item)) draft.fingerprint = value.fingerprint;
                 }
                 if (value.loaded) {
+                    const hadSelection = selection.size > 0;
                     const existing = new Set(value.items.map(item => item.id));
                     for (const id of selection) if (!existing.has(id)) selection.delete(id);
+                    if (hadSelection && !selection.size) endSelection();
                 }
                 render();
             });
@@ -365,6 +362,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     function close() {
         if (!visible) return;
         visible = false; opening++; unsubscribe?.(); unsubscribe = null;
+        endSelection();
         organizeView.close();
         dialog.close(); dialog.remove();
         if (returnFocus?.isConnected) returnFocus.focus({preventScroll: true});

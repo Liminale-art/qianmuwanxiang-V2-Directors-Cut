@@ -34,8 +34,6 @@
 .qm-collection-panel :is(input, select):focus { outline: none; box-shadow: none; }
 .qm-collection-panel .qm-collection-list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .qm-collection-panel .qm-collection-toolbar input { flex: 1; width: 0; padding: 10px; }
-.qm-collection-panel .qm-collection-filters select { flex: 1; width: 0; padding: 8px; }
-.qm-collection-panel .qm-collection-filters select[hidden] { display: none; }
 .qm-collection-panel .qm-collection-resume { align-self: flex-start; gap: 8px; }
 .qm-collection-panel .qm-collection-list { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .qm-collection-panel .qm-collection-row { display: flex; align-items: center; gap: 8px; }

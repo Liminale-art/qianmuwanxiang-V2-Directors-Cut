@@ -3,7 +3,7 @@ import {textCollectionItemOrganization} from './qianmu-text-collection-organizat
 
 // Classification edits use the same document and explicit save as prose edits.
 // This small owned dialog never opens a second library or refreshes storage.
-export function createTextCollectionOrganizationView({parent, collection, isCurrent} = {}) {
+export function createTextCollectionOrganizationView({parent, collection, isCurrent, onComplete} = {}) {
     const doc = parent.ownerDocument;
     const make = (tag, text) => {
         const node = doc.createElement(tag);
@@ -55,7 +55,7 @@ export function createTextCollectionOrganizationView({parent, collection, isCurr
         const request = generation; status.textContent = ''; status.hidden = true; busy(true);
         try {
             await action();
-            if (active() && request === generation) done();
+            if (active() && request === generation) { onComplete?.(); done(); }
         } catch {
             if (active() && request === generation) {
                 status.textContent = collection.state().needsRefresh
@@ -118,7 +118,7 @@ export function createTextCollectionOrganizationView({parent, collection, isCurr
             const patch = {};
             if (folderTouched && folder.value !== 'mixed') patch.folderId = folder.value || null;
             if (tagsTouched) patch.tags = [...new Set(tags.value.split(/[,，、;；\n]/).map(tag => tag.trim()).filter(Boolean))];
-            if (!Object.keys(patch).length) { close(); return; }
+            if (!Object.keys(patch).length) { onComplete?.(); close(); return; }
             run(() => collection.organize(ids, patch, {expectedFingerprint: fingerprint}), close);
         }));
         body.append(folderLabel, tagLabel, footer);

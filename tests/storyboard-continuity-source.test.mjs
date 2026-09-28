@@ -18,6 +18,19 @@ test('captured source pins the exact floor and snapshots filtered paragraphs, wi
  s.close();assert.equal(f.listeners(),0);assert.doesNotMatch(JSON.stringify(s),/st-user:alice/);assert.equal(JSON.stringify([f.context.chat,f.context.chatMetadata]),before);
 });
 
+test('prompt-excluded continuity source requires explicit target inclusion and keeps ordinary source guards',async()=>{
+ for(const value of [undefined,false,'true']){
+  const f=fixture();f.context.chat[0].is_system=true;
+  await assert.rejects(capture({...f.options,allowPromptExcludedTarget:value}),{code:'storyboard_continuity_source'});
+  assert.deepEqual(f.reads,[]);assert.equal(f.listeners(),0);
+ }
+ for(const mutate of [f=>{f.context.chat[0].is_system=false;},f=>{f.context.chat[0].mes+=' changed';},f=>{f.account='st-user:bob';}]){
+  const f=fixture();f.context.chat[0].is_system=true;
+  const s=await capture({...f.options,allowPromptExcludedTarget:true});assert.equal((await s.replay([event],roster,target)).activeFacts[0].value,'off');
+  assert.equal(f.context.chat[0].is_system,true);mutate(f);await assert.rejects(s.guard());assert.equal(f.listeners(),0);
+ }
+});
+
 test('failure during listener subscription releases all registrations and late post-replay account changes refuse handoff',async()=>{
  const f=fixture(),on=f.emitter.on;f.emitter.on=function(type,handler){on.call(this,type,handler);if(type==='message_edited')handler(0);return this;};
  await assert.rejects(capture(f.options));assert.equal(f.listeners(),0);

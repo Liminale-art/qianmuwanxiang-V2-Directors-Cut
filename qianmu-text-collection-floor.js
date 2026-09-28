@@ -46,8 +46,7 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
             record.button.title = label;
             record.button.setAttribute('aria-label', label);
             record.button.setAttribute('aria-pressed', String(collected));
-            record.glyph.classList.toggle('fa-solid', collected);
-            record.glyph.classList.toggle('fa-regular', !collected);
+            record.glyph.setAttribute('fill', collected ? 'currentColor' : 'none');
         }
         if (record.busy !== busy) {
             record.busy = busy;
@@ -75,12 +74,21 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
                 if (record) { record.button.remove(); buttons.delete(record.button); }
                 const button = root.ownerDocument.createElement('button');
                 button.type = 'button'; button.className = 'mes_button interactable qm-collection-star';
-                // Reuse ST's bundled star so this host toolbar keeps its own icon
-                // language. The collection panel continues to use Qianmu icons.
-                const glyph = root.ownerDocument.createElement('i');
-                glyph.className = 'fa-regular fa-star';
+                // ST ships only the solid Font Awesome font: fa-regular can
+                // resolve to that same solid glyph. One local star outline
+                // makes both states explicit without another font request.
+                const glyph = root.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                glyph.setAttribute('class', 'qm-collection-star-glyph');
+                glyph.setAttribute('viewBox', '0 0 24 24');
+                glyph.setAttribute('stroke', 'currentColor');
+                glyph.setAttribute('stroke-width', '1.75');
+                glyph.setAttribute('stroke-linejoin', 'round');
                 glyph.setAttribute('aria-hidden', 'true');
+                glyph.setAttribute('focusable', 'false');
                 glyph.setAttribute('data-qianmu-icon-skip', '');
+                const star = root.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                star.setAttribute('points', '12,2 15.1,8.3 22,9.3 17,14.2 18.2,21.1 12,17.8 5.8,21.1 7,14.2 2,9.3 8.9,8.3');
+                glyph.appendChild(star);
                 button.appendChild(glyph);
                 toolbar.insertBefore(button, storyboard || null);
                 record = {button, glyph, message, element, collected: null, busy: null};

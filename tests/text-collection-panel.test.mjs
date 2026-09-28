@@ -329,6 +329,8 @@ test('confirmed removal prunes stale selections so remaining entries can be dele
     await f.collection.remove(['one'], {expectedFingerprint: f.collection.state().fingerprint});
     assert.equal(f.dom.get('阅读收藏：one'), undefined);
     assert.equal(f.dom.get('删除选中收藏').disabled, true);
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    click(f, '多选收藏');
     click(f, '选择收藏：two'); click(f, '删除选中收藏'); await waitReady(f);
     assert.deepEqual(f.collection.state().items, []); assert.equal(f.writes, 2);
 });
@@ -391,7 +393,7 @@ test('an unrelated classification or item write does not invalidate an untouched
     assert.equal(f.reads, 1); assert.equal(f.writes, 3);
 });
 
-test('classification filters search folders tags roles and text locally with persistent loaded windows', async t => {
+test('search replaces classification dropdowns and matches folders tags roles and text locally', async t => {
     const f = fixture(t, Array.from({length: 61}, (_, i) => entry(`n${i}`, `第${i}段`))); await f.view.open();
     assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 20);
     click(f, '显示更多收藏'); click(f, '显示更多收藏');
@@ -404,13 +406,100 @@ test('classification filters search folders tags roles and text locally with per
     search.value = '远方'; search.emit('input'); assert.ok(f.dom.get('阅读收藏：n60'));
     search.value = ''; search.emit('input');
     assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 60);
-    const folders = f.dom.get('筛选文件夹'); folders.value = `folder:${folderId}`; folders.emit('change');
-    assert.deepEqual(list(f).querySelectorAll('.qm-collection-entry').map(node => node.dataset.itemId), ['n60']);
-    folders.value = 'char:角色甲'; folders.emit('change');
-    assert.equal(f.dom.get('阅读收藏：n60'), undefined); assert.ok(f.dom.get('阅读收藏：n0'));
-    folders.value = ''; folders.emit('change');
+    assert.equal(f.dom.get('筛选文件夹'), undefined); assert.equal(f.dom.get('筛选标签'), undefined);
+    assert.equal(f.dom.byClass('qm-collection-filters'), undefined);
+    search.value = '角色甲'; search.emit('input'); assert.ok(f.dom.get('阅读收藏：n0'));
+    search.value = '第60段'; search.emit('input'); assert.ok(f.dom.get('阅读收藏：n60'));
+    search.value = ''; search.emit('input');
     f.view.close(); await f.view.open(); assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 60);
     assert.equal(f.reads, 1); assert.equal(f.writes, 2);
+});
+
+test('second multi click selects only loaded rows and never selects a later appended row implicitly', async t => {
+    const f = fixture(t, Array.from({length: 55}, (_, i) => entry(`n${i}`))); await f.view.open();
+    click(f, '多选收藏');
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry[aria-pressed="true"]').length, 0);
+    click(f, '多选收藏');
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry[aria-pressed="true"]').length, 20);
+    click(f, '显示更多收藏');
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 40);
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry[aria-pressed="true"]').length, 20);
+    click(f, '多选收藏');
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry[aria-pressed="true"]').length, 40);
+    click(f, '删除选中收藏'); await waitReady(f);
+    assert.deepEqual(f.collection.state().items.map(item => item.id), Array.from({length: 15}, (_, i) => `n${i + 40}`));
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    assert.equal(f.dom.visible(f.dom.get('整理选中收藏')), false);
+    assert.equal(f.reads, 1); assert.equal(f.writes, 1);
+});
+
+test('unselecting the last row retracts actions, and searching cannot keep hidden selections', async t => {
+    const f = fixture(t, [entry('one', '甲段'), entry('two', '乙段')]); await f.view.open();
+    click(f, '多选收藏'); click(f, '选择收藏：one'); click(f, '选择收藏：one');
+    assert.equal(f.dom.get('多选收藏').getAttribute('aria-pressed'), 'false');
+    assert.equal(f.dom.visible(f.dom.get('整理选中收藏')), false);
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    click(f, '多选收藏'); click(f, '选择收藏：one');
+    const search = f.dom.get('搜索收藏'); search.value = '乙段'; search.emit('input');
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    click(f, '多选收藏'); click(f, '多选收藏'); click(f, '删除选中收藏'); await waitReady(f);
+    assert.deepEqual(f.collection.state().items.map(item => item.id), ['one']);
+    assert.equal(f.writes, 1); assert.equal(f.reads, 1);
+});
+
+test('folder operations and successful batch organization retract parent selection controls', async t => {
+    const f = fixture(t, [entry('one'), entry('two')]); await f.view.open();
+    click(f, '多选收藏'); click(f, '多选收藏'); click(f, '管理文件夹');
+    f.dom.get('新文件夹名称').value = '片段'; click(f, '新建文件夹'); await waitReady(f);
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    assert.equal(f.dom.get('多选收藏').getAttribute('aria-pressed'), 'false');
+    click(f, '返回收藏');
+    click(f, '多选收藏'); click(f, '多选收藏'); click(f, '整理选中收藏');
+    const tags = f.dom.get('收藏标签'); tags.value = '高光'; tags.emit('input'); click(f, '保存分类'); await waitReady(f);
+    assert.equal(f.dom.byClass('qm-collection-organize'), undefined);
+    assert.equal(f.dom.visible(f.dom.get('整理选中收藏')), false);
+    assert.equal(f.collection.state().organization.entries.length, 2);
+    assert.equal(f.writes, 2); assert.equal(f.reads, 1);
+});
+
+test('failed deletion retains its selection for retry instead of silently retracting actions', async t => {
+    const f = fixture(t, [entry('one')]); await f.view.open();
+    click(f, '多选收藏'); click(f, '多选收藏');
+    f.writeHook(() => { throw Object.assign(Error('unavailable'), {writeState: 'not_started'}); });
+    click(f, '删除选中收藏'); await waitReady(f);
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), true);
+    assert.equal(f.dom.get('选择收藏：one').getAttribute('aria-pressed'), 'true');
+    assert.equal(f.collection.state().items.length, 1);
+    f.writeHook(null); click(f, '删除选中收藏'); await waitReady(f);
+    assert.equal(f.collection.state().items.length, 0);
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+});
+
+test('closing multi selection returns to the ordinary warm list without another read', async t => {
+    const f = fixture(t, [entry('one'), entry('two')]); await f.view.open();
+    click(f, '多选收藏'); click(f, '多选收藏');
+    f.view.close(); await f.view.open();
+    assert.equal(f.dom.get('多选收藏').getAttribute('aria-pressed'), 'false');
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    assert.ok(f.dom.get('阅读收藏：one')); assert.ok(f.dom.get('阅读收藏：two'));
+    assert.equal(f.reads, 1); assert.equal(f.writes, 0);
+});
+
+test('a closed in-flight classification cannot leave a delete target outside the current search', async t => {
+    const f = fixture(t, [entry('one')]), held = gate(); await f.view.open();
+    await f.collection.organize(['one'], {tags: ['旧标签']}, {expectedFingerprint: f.collection.state().fingerprint});
+    const search = f.dom.get('搜索收藏'); search.value = '旧标签'; search.emit('input');
+    click(f, '多选收藏'); click(f, '多选收藏'); click(f, '整理选中收藏');
+    const tags = f.dom.get('收藏标签'); tags.value = '新标签'; tags.emit('input');
+    f.writeHook(() => held.promise); click(f, '保存分类');
+    await f.dom.wait(() => f.writes === 2); click(f, '关闭分类编辑');
+    held.resolve(); await waitReady(f);
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 0);
+    assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    assert.equal(f.dom.get('删除选中收藏').disabled, true);
+    f.dom.get('删除选中收藏').click(); await turn();
+    assert.equal(f.writes, 2); assert.equal(f.collection.state().items.length, 1);
+    search.value = ''; search.emit('input'); assert.ok(f.dom.get('阅读收藏：one'));
 });
 
 test('header returns are left of title, copy is reading-only and short reading selects adaptive sizing', async t => {

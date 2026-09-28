@@ -32,7 +32,7 @@ function fixture(t, chat = [{mes: '正文', is_user: false}, {mes: '回复', is_
         get items() { return items; }, set items(value) { items = value; }, setContext(value) { context = value; }, setToggle(fn) { toggle = fn; }};
 }
 
-test('adds one ST-style theme-inheriting star per rendered message, including prompt-excluded floors', t => {
+test('adds one font-independent theme-inheriting outline star per rendered message, including prompt-excluded floors', t => {
     const f = fixture(t, [{mes: 'AI'}, {mes: 'USER', is_user: true}, {mes: 'system', is_system: true}]);
     const unrelated = f.dom.doc.createElement('button'); unrelated.className = 'host-wallpaper-control'; f.root.appendChild(unrelated);
     f.floor.refresh(f.root);
@@ -40,7 +40,11 @@ test('adds one ST-style theme-inheriting star per rendered message, including pr
     assert.equal(f.root.querySelectorAll('.qm-collection-star').length, 3);
     assert.equal(first.getAttribute('aria-pressed'), 'false');
     assert.equal(first.getAttribute('aria-label'), '收藏正文');
-    assert.equal(glyph.className, 'fa-regular fa-star');
+    assert.equal(glyph.tagName, 'SVG');
+    assert.equal(glyph.className, 'qm-collection-star-glyph');
+    assert.equal(glyph.getAttribute('fill'), 'none');
+    assert.equal(glyph.getAttribute('stroke'), 'currentColor');
+    assert.equal(glyph.firstChild.tagName, 'POLYGON');
     assert.equal(glyph.hasAttribute('data-qianmu-icon-skip'), true);
     f.floor.refresh(f.root); f.floor.refresh(f.root);
     assert.equal(f.button(), first); assert.equal(f.button().firstChild, glyph);
@@ -67,8 +71,7 @@ test('confirmed same-source entries fill a star; a click removes all IDs of that
         {id: 'other-floor', source: source('chat-one', 'message-1')}, {id: 'unlinked', source: null}];
     f.floor.refresh(f.root);
     assert.equal(f.button().getAttribute('aria-pressed'), 'true');
-    assert.equal(f.button().firstChild.classList.contains('fa-solid'), true);
-    assert.equal(f.button().firstChild.classList.contains('fa-regular'), false);
+    assert.equal(f.button().firstChild.getAttribute('fill'), 'currentColor');
     assert.equal(f.button().getAttribute('aria-label'), '取消本层收藏');
     f.setToggle(({ids}) => { f.items = f.items.filter(item => !ids.includes(item.id)); });
     const action = f.click(f.button().firstChild);
@@ -76,8 +79,7 @@ test('confirmed same-source entries fill a star; a click removes all IDs of that
     assert.deepEqual(f.calls[0].ids, ['a', 'b']);
     await turn();
     assert.equal(f.button().getAttribute('aria-pressed'), 'false');
-    assert.equal(f.button().firstChild.classList.contains('fa-regular'), true);
-    assert.equal(f.button().firstChild.classList.contains('fa-solid'), false);
+    assert.equal(f.button().firstChild.getAttribute('fill'), 'none');
     assert.equal(f.button(1).getAttribute('aria-pressed'), 'true');
 });
 

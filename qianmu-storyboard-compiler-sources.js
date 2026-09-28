@@ -1,18 +1,18 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.405';
-import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.405';
-import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.405';
-import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.405';
-import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.405';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.406';
+import {hasStoryboardStreamReference,storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,bindStoryboardStreamBudgetFamily} from './qianmu-storyboard-stream-reference.js?v=1.59.406';
+import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.406';
+import {readStoryboardStreamCoverage,bindStoryboardStreamShotReferences,storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.406';
+import {createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.406';
 import {captureStoryboardContinuitySource} from './qianmu-storyboard-continuity-source.js';
 import {STORYBOARD_CONTINUITY_EVENT_LIMITS} from './qianmu-storyboard-continuity-events.js';
 import {createStoryboardContinuityStoreSession} from './qianmu-storyboard-continuity-store.js';
-import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.405';
+import {borrowStoryboardStreamFrame} from './qianmu-storyboard-stream-source.js?v=1.59.406';
 import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
-import {beginStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.405';
-import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.405';
-import {captureEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.405';
-export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.405';
+import {beginStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.406';
+import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-stream-checkpoint-storage.js?v=1.59.406';
+import {captureEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.406';
+export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.406';
 
 const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
 const windows = new WeakMap();
@@ -120,11 +120,14 @@ export async function captureStoryboardCompilerSources(options={}){
 
 // One borrowed window for the actual compiler, not another history cache. Never
 // scan outside the user's selected raw ST floor range or retain prose globally.
-async function captureSources({floor,referenceFloors,getContext,epoch,resolveNamespace,isCurrent,readParagraphs,readText,signal}={},stream=null) {
+async function captureSources({floor,referenceFloors,getContext,epoch,resolveNamespace,isCurrent,readParagraphs,readText,signal,allowPromptExcludedTarget=false}={},stream=null) {
   if (!Number.isSafeInteger(floor) || floor < 0 || !Number.isSafeInteger(referenceFloors) || referenceFloors < 0 || referenceFloors > 20
     || typeof readText !== 'function' || typeof readParagraphs !== 'function' || typeof isCurrent !== 'function') {
     throw Object.assign(new Error('取景来源范围无效，未读取或发送正文'), {code:'storyboard_context_unavailable'});
   }
+  // A manual floor action may include that one target, never hidden history or
+  // streaming input. This is ephemeral input scope, not a saved setting.
+  const includeTarget = allowPromptExcludedTarget === true && !stream;
   const host = captureCurrentChatSource({getContext,epoch});
   const start = Math.max(0,floor-referenceFloors), slots = [], sources = [], messages = [], listeners = [];
   let emitter,remove;
@@ -150,7 +153,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
     signal?.addEventListener('abort',close,{once:true});
     assertCurrent();
     const chat = getContext().chat;
-    if (!chat[floor] || chat[floor].is_system) throw Object.assign(new Error('当前楼层没有可取景的正文'), {code:'storyboard_context_unavailable'});
+    if (!chat[floor] || chat[floor].is_system && !includeTarget) throw Object.assign(new Error('当前楼层没有可取景的正文'), {code:'storyboard_context_unavailable'});
     for (let index=start; index<=floor; index++) {
       const message = chat[index];
       slots.push({floor:index,message,raw:message?.mes,system:message?.is_system,user:message?.is_user,swipe:message?.swipe_id,name:message?.name,generation:JSON.stringify(storyboardStreamGeneration(message||{}))});
@@ -184,11 +187,11 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
     };
     // Start every capture before awaiting any account lookup. This observes an
     // edit-and-restore in an earlier dependency even while another lookup waits.
-    const pending = slots.filter(slot=>slot.message && !slot.system).map(async slot => {
+    const pending = slots.filter(slot=>slot.message && (!slot.system || includeTarget && slot.floor===floor)).map(async slot => {
       const text = readText(slot.message,slot.floor);
       if (typeof text !== 'string') throw Object.assign(new Error('正文读取失败，未发送不完整上下文'), {code:'storyboard_context_unavailable'});
       if (!text.trim()) return null; // Deliberately excluded tags / blank floors.
-      const source = await captureStoryboardContinuitySource({floor:slot.floor,getContext,epoch,resolveNamespace:resolve,isCurrent:()=>!closed && isCurrent(),readParagraphs:paragraphsFor,signal});
+      const source = await captureStoryboardContinuitySource({floor:slot.floor,getContext,epoch,resolveNamespace:resolve,isCurrent:()=>!closed && isCurrent(),readParagraphs:paragraphsFor,signal,allowPromptExcludedTarget:includeTarget && slot.floor===floor});
       if (closed) { source.close(); throw changed(); }
       sources.push(source);
       return {source,message:Object.freeze({floor:slot.floor,role:slot.user?'user':'character',text})};

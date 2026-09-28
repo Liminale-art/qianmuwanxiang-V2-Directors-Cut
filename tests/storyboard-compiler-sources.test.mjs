@@ -55,6 +55,33 @@ test('blank/system floors retain their places but are excluded from outbound con
   f.context.chat[0].is_system=false;assert.throws(window.assertCurrent,{code:'storyboard_input_changed'});assert.equal(f.listenerCount(),0);
 });
 
+test('manual inclusion reads only the selected prompt-excluded target, never earlier excluded references or ST writes',async()=>{
+  const f=fixture(['excluded earlier','visible earlier','excluded target']);f.options.referenceFloors=2;
+  f.context.chat[0].is_system=true;f.context.chat[2].is_system=true;
+  const before=JSON.stringify([f.context.chat,f.context.chatMetadata]);
+  const window=await capture({...f.options,allowPromptExcludedTarget:true});
+  assert.deepEqual(f.reads,[1,2]);assert.deepEqual(window.messages.map(row=>row.floor),[1,2]);
+  assert.deepEqual(window.paragraphs,['excluded target']);assert.equal(await window.guard(),true);
+  assert.equal(JSON.stringify([f.context.chat,f.context.chatMetadata]),before);
+  f.context.chat[2].is_system=false;assert.throws(window.assertCurrent,{code:'storyboard_input_changed'});assert.equal(f.listenerCount(),0);
+});
+
+test('default, automatic and non-boolean inclusion still reject an excluded target without reading prose',async()=>{
+  for(const value of [undefined,false,1,'true']){
+    const f=fixture();f.context.chat[2].is_system=true;
+    await assert.rejects(capture({...f.options,allowPromptExcludedTarget:value}),{code:'storyboard_context_unavailable'});
+    assert.deepEqual(f.reads,[]);assert.equal(f.listenerCount(),0);
+  }
+});
+
+test('manual excluded target cannot survive a changed chat or exclusion flag during account lookup',async()=>{
+  for(const mutate of [f=>{f.context.chat[2].is_system=false;},f=>{f.context.chatMetadata={};}]){
+    const f=fixture(),wait=deferred();f.context.chat[2].is_system=true;f.lookup=()=>wait.promise;
+    const pending=capture({...f.options,allowPromptExcludedTarget:true});mutate(f);wait.resolve('st-user:alice');
+    await assert.rejects(pending,{code:'storyboard_input_changed'});assert.equal(f.listenerCount(),0);
+  }
+});
+
 test('edit-and-restore invalidates any selected floor, including a blank one, but unrelated edits do not',async()=>{
   const f=fixture(['outside','','visible']),window=await capture(f.options);
   f.emitter.emit('message_edited',0);assert.equal(window.assertCurrent(),true);

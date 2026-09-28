@@ -42,6 +42,11 @@ export function createStoryboardPreparationGuard(state, { plan = null, includeDr
     };
   };
   const floor = stream?.floor ?? storyboardTargetFloor(state), message = ctx().chat?.[floor];
+  // Reuse the explicit floor action's existing origin; automatic/stream plans
+  // cannot acquire this scope from a saved setting or a later plan mutation.
+  const manualTarget = !stream && state.target === 'floor' && plan?.floor === floor && plan.chatKey === chatKey
+    && state.shotPlans.includes(plan) && ['manual', 'manual_supplement'].includes(plan.origin)
+    ? {plan, id:plan.id, origin:plan.origin} : null;
   let baseline = copy(read()), invalidated = false;
   // Input events also invalidate edit-and-restore (A → B → A), without cancelling on scrolling or library searches.
   const onInput = (event) => {
@@ -54,9 +59,11 @@ export function createStoryboardPreparationGuard(state, { plan = null, includeDr
     document.addEventListener('change', onInput, true);
   }
   const isCurrent = () => !invalidated && !stream?.signal?.aborted && baseline !== null && (!upstreamGuard || upstreamGuard.isCurrent()) && state === storyboardState()
+    && (!manualTarget || plan === manualTarget.plan && plan.id === manualTarget.id && plan.origin === manualTarget.origin && plan.floor === floor && plan.chatKey === chatKey && state.shotPlans.includes(plan))
     && chatKey === String(getChatKey() || '') && plan?.status !== 'cancelled' && ctx().chat?.[floor] === message && equal(baseline, read());
   return {
     stream,
+    get allowHiddenTarget() { return manualTarget !== null; },
     bindPlan(value){this.assertCurrent();if(plan&&plan!==value||!state.shotPlans.includes(value)||value.chatKey!==chatKey)throw Object.assign(new Error('准备计划归属已变化'),{code:'storyboard_input_changed'});plan=value;this.assertCurrent();},
     get freshComfy() { return freshComfy === true; },
     isCurrent,
