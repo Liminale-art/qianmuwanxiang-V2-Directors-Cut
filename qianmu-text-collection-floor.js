@@ -1,5 +1,3 @@
-import {qianmuIconElement} from './qianmu-icon-renderer.js';
-
 export const TEXT_COLLECTION_FLOOR_STYLESHEET = new URL('./qianmu-text-collection-floor.css', import.meta.url);
 
 const sourceKey = source => source && typeof source.chatId === 'string' && source.chatId
@@ -48,7 +46,8 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
             record.button.title = label;
             record.button.setAttribute('aria-label', label);
             record.button.setAttribute('aria-pressed', String(collected));
-            record.glyph?.setAttribute('fill', collected ? 'currentColor' : 'none');
+            record.glyph.classList.toggle('fa-solid', collected);
+            record.glyph.classList.toggle('fa-regular', !collected);
         }
         if (record.busy !== busy) {
             record.busy = busy;
@@ -64,22 +63,33 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
         const state = snapshot(), seen = new Set();
         for (const element of root.querySelectorAll('.mes')) {
             const message = messageAt(element, state.context);
-            if (!message || message.is_system) continue;
+            // ST uses is_system for "exclude from prompts", not hidden prose.
+            // Collection is a local user action and must not inherit API filters.
+            if (!message) continue;
             const outer = element.querySelector('.mes_buttons');
-            const toolbar = outer?.querySelector('.extraMesButtons') || outer?.querySelector('.mes_buttons_inner') || outer;
+            const storyboard = outer?.querySelector('.sd-storyboard-message-action');
+            const toolbar = storyboard?.parentElement || outer;
             if (!toolbar) continue;
             let record = records.get(element);
             if (!record || record.message !== message || !toolbar.contains(record.button)) {
                 if (record) { record.button.remove(); buttons.delete(record.button); }
                 const button = root.ownerDocument.createElement('button');
                 button.type = 'button'; button.className = 'mes_button interactable qm-collection-star';
-                const glyph = qianmuIconElement('qm-regular-star', {document: root.ownerDocument});
-                if (glyph) button.appendChild(glyph);
-                toolbar.appendChild(button);
+                // Reuse ST's bundled star so this host toolbar keeps its own icon
+                // language. The collection panel continues to use Qianmu icons.
+                const glyph = root.ownerDocument.createElement('i');
+                glyph.className = 'fa-regular fa-star';
+                glyph.setAttribute('aria-hidden', 'true');
+                glyph.setAttribute('data-qianmu-icon-skip', '');
+                button.appendChild(glyph);
+                toolbar.insertBefore(button, storyboard || null);
                 record = {button, glyph, message, element, collected: null, busy: null};
                 records.set(element, record); buttons.set(button, record);
                 applyIcons?.(button);
             }
+            // A later storyboard injection or host toolbar replacement may move
+            // the anchor. Move only our own control, and only when necessary.
+            if (storyboard && record.button.nextSibling !== storyboard) toolbar.insertBefore(record.button, storyboard);
             seen.add(element);
             const key = sourceKey(state.sources?.get(message));
             paint(record, key !== null && state.ids.has(key));
@@ -100,7 +110,7 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
         event.preventDefault(); event.stopPropagation();
         if (pending.has(record.message)) return true;
         const state = snapshot();
-        if (messageAt(record.element, state.context) !== record.message || record.message.is_system) {
+        if (messageAt(record.element, state.context) !== record.message) {
             refresh(); return true;
         }
         const linkedSource = state.sources?.get(record.message), key = sourceKey(linkedSource);

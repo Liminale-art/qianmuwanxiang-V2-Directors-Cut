@@ -53,10 +53,29 @@ test('duplicate timestamps within one role are all unlinked, not disambiguated b
     assert.equal(textCollectionFloorSources(context([a, a])).size, 0);
 });
 
-test('different roles distinguish user and assistant timestamps; system messages are never linked', () => {
-    const a = message(), b = message({is_user: true}), sys = message({is_system: true});
-    const actual = textCollectionFloorSources(context([a, b, sys]));
-    assert.equal(actual.size, 2); assert.notEqual(collectionSourceKey(actual.get(a)), collectionSourceKey(actual.get(b))); assert.equal(actual.has(sys), false);
+test('different roles distinguish timestamps, including prompt-excluded user and assistant floors', () => {
+    const a = message({is_system: true}), b = message({is_user: true, is_system: true});
+    const actual = textCollectionFloorSources(context([a, b]));
+    assert.equal(actual.size, 2); assert.notEqual(collectionSourceKey(actual.get(a)), collectionSourceKey(actual.get(b)));
+});
+
+test('hiding the first floor or all floors preserves optional source links and makes no host writes', () => {
+    const a = message(), b = message({send_date: later}), host = context([a, b]);
+    const before = textCollectionFloorSources(host);
+    a.is_system = true;
+    assert.deepEqual(textCollectionFloorSources(host), before);
+    b.is_system = true;
+    const hidden = structuredClone({...host, eventSource: null});
+    assert.deepEqual(textCollectionFloorSources(host), before);
+    assert.deepEqual({...host, eventSource: null}, hidden);
+    a.is_system = false; b.is_system = false;
+    assert.deepEqual(textCollectionFloorSources(host), before);
+    assert.equal(listenerCount(host), 0);
+});
+
+test('prompt-excluded duplicate timestamps still make both links ambiguous rather than choosing the visible floor', () => {
+    const a = message(), b = message({is_system: true});
+    assert.equal(textCollectionFloorSources(context([a, b])).size, 0);
 });
 
 test('legacy ST dates stay verbatim and do not depend on browser date parsing', () => {

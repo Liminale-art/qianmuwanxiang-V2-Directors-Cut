@@ -17,14 +17,10 @@ button.qm-collection-star {
     cursor: pointer;
 }
 
-button.qm-collection-star > .qm-glyph-svg {
+button.qm-collection-star > .fa-star {
     width: 1em;
-    height: 1em;
-    stroke: currentColor;
-}
-
-button.qm-collection-star[aria-pressed="true"] > .qm-glyph-svg {
-    fill: currentColor;
+    color: inherit;
+    pointer-events: none;
 }
 
 button.qm-collection-star:disabled { cursor: progress; }

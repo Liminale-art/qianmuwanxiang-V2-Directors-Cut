@@ -1,4 +1,8 @@
 import {qianmuIconElement} from './qianmu-icon-renderer.js';
+import {createTextCollectionEditor} from './qianmu-text-collection-editor.js';
+import {sameTextCollectionItem} from './qianmu-text-collection.js';
+import {createTextCollectionOrganizationView} from './qianmu-text-collection-organization-view.js';
+import {filterTextCollectionItems, textCollectionOrganizationViews, textCollectionItemOrganization} from './qianmu-text-collection-organization.js';
 
 // Isolated candidate: the caller owns the account lifetime, themed parent and
 // stylesheet. Closing this view does not dispose the collection's data session.
@@ -18,8 +22,9 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     };
     let visible = false, disposed = false, unsubscribe = null, pending = false, opening = 0;
     let snapshot = null, route = 'list', selectedId = null, draft = null;
-    let query = '', page = 0, multi = false, listKey = null, readKey = null;
+    let query = '', folderFilter = '', tagFilter = '', multi = false, listKey = null, readKey = null, filtersKey = null;
     let listScroll = 0, readScroll = 0, notice = '', returnFocus = null;
+    const loadedWindows = new Map();
     const selection = new Set();
     const dialog = make('dialog', 'qm-collection-panel');
     dialog.setAttribute('aria-label', '正文收藏');
@@ -42,36 +47,49 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         if (busy()) return;
         draft = null; notice = ''; route = selectedId ? 'read' : 'list'; render();
     });
-    headerTools.append(cancelButton, closeButton); header.append(heading, headerTools);
+    const backButton = button('返回收藏列表', 'arrow-left', () => { route = 'list'; notice = ''; render(); });
+    headerTools.append(closeButton); header.append(backButton, cancelButton, heading, headerTools);
     const listView = make('section', 'qm-collection-list-view'), toolbar = make('nav', 'qm-collection-toolbar');
     const search = make('input'); search.type = 'search'; search.placeholder = '搜索关键词'; search.setAttribute('aria-label', '搜索收藏');
     search.addEventListener('input', () => {
         if (!current()) return;
-        query = search.value; page = 0; listScroll = 0; render();
+        query = search.value; listScroll = 0; render();
     });
     const refreshButton = button('刷新收藏', 'arrows-clockwise', refresh);
     const multiButton = button('多选收藏', 'list-checks', () => { multi = !multi; selection.clear(); render(); });
     const deleteButton = button('删除选中收藏', 'trash', removeSelected);
-    toolbar.append(search, refreshButton, multiButton, deleteButton);
+    const organizeView = createTextCollectionOrganizationView({parent, collection, isCurrent});
+    const organizeSelected = button('整理选中收藏', 'folder', () => organizeView.organize([...selection]));
+    toolbar.append(search, refreshButton, multiButton, organizeSelected, deleteButton);
+    const filters = make('nav', 'qm-collection-filters');
+    const folderSelect = make('select'); folderSelect.setAttribute('aria-label', '筛选文件夹');
+    const tagSelect = make('select'); tagSelect.setAttribute('aria-label', '筛选标签');
+    folderSelect.addEventListener('change', () => { folderFilter = folderSelect.value; listScroll = 0; render(); });
+    tagSelect.addEventListener('change', () => { tagFilter = tagSelect.value; listScroll = 0; render(); });
+    const foldersButton = button('管理文件夹', 'folder-plus', () => organizeView.folders());
+    filters.append(folderSelect, tagSelect, foldersButton);
+    const resumeDraft = button('继续未保存的编辑', 'pencil-simple', () => { if (draft) startEditor(); });
+    resumeDraft.className = 'qm-collection-resume';
+    resumeDraft.append(make('span', '', '继续未保存的编辑'));
     const list = make('div', 'qm-collection-list');
-    list.addEventListener('scroll', () => { if (route === 'list') listScroll = list.scrollTop; });
-    const paging = make('nav', 'qm-collection-paging');
-    const previousButton = button('上一页收藏', 'arrow-left', () => { page--; listScroll = 0; render(); });
-    const nextButton = button('下一页收藏', 'arrow-right', () => { page++; listScroll = 0; render(); });
-    const pageLabel = make('span'); paging.append(previousButton, pageLabel, nextButton);
-    listView.append(toolbar, list, paging);
+    list.setAttribute('tabindex', '0'); list.setAttribute('aria-label', '收藏列表');
+    list.addEventListener('scroll', () => {
+        if (route !== 'list' || !visible || !current()) return;
+        listScroll = list.scrollTop;
+        if (list.clientHeight > 0 && list.scrollHeight - list.scrollTop - list.clientHeight < 96) loadMore();
+    });
+    const moreButton = button('显示更多收藏', 'arrow-down', loadMore);
+    moreButton.className = 'qm-collection-more'; moreButton.append(make('span', '', '显示更多'));
+    listView.append(toolbar, filters, resumeDraft, list);
     const reader = make('article', 'qm-collection-text');
     reader.addEventListener('scroll', () => { if (route === 'read') readScroll = reader.scrollTop; });
-    const editor = make('textarea', 'qm-collection-editor'); editor.setAttribute('aria-label', '收藏正文');
-    editor.addEventListener('input', () => {
+    const editorControl = createTextCollectionEditor({document: doc, onChange: text => {
         if (!current() || !draft || busy()) return;
-        // Keep the untouched source separately: textarea normalizes CRLF even
-        // when a user has not typed. Opening an editor must not rewrite text.
-        draft.text = editor.value === draft.displayOriginal ? draft.item.text : editor.value;
+        draft.text = text;
         updateControls();
-    });
+    }});
+    const editor = editorControl.element;
     const footer = make('footer');
-    const backButton = button('返回收藏列表', 'arrow-left', () => { route = 'list'; notice = ''; render(); });
     const readActions = make('nav');
     const imageButton = button('收藏存图', 'image', () => {
         const item = activeItem();
@@ -87,11 +105,15 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     });
     const editButton = button('编辑收藏', 'pencil-simple', () => {
         const item = activeItem(); if (!item || busy()) return;
-        draft = {item: structuredClone(item), text: item.text, displayOriginal: displayText(item.text), fingerprint: snapshot.fingerprint, isNew: false};
+        if (draft && draft.item.id !== item.id) {
+            notice = '还有未保存的编辑，请返回列表继续或取消。'; renderStatus(); return;
+        }
+        if (!draft) draft = {item: structuredClone(item), text: item.text, fingerprint: snapshot.fingerprint, isNew: false};
         startEditor();
     });
+    const organizeButton = button('整理收藏', 'tag', () => { if (activeItem() && !busy()) organizeView.organize([selectedId]); });
     const saveButton = button('保存收藏', 'star', save);
-    readActions.append(imageButton, copyButton, editButton, saveButton); footer.append(backButton, readActions);
+    readActions.append(organizeButton, imageButton, copyButton, editButton, saveButton); footer.append(readActions);
     const status = make('div', 'qm-collection-status'); status.setAttribute('role', 'status');
     const statusText = make('span'), reconcileButton = button('核对保存结果', 'arrows-clockwise', refresh);
     status.append(statusText, reconcileButton);
@@ -109,7 +131,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     function activeItem() { return snapshot?.items.find(item => item.id === selectedId); }
     function busy() { return pending || ['loading', 'refreshing', 'saving'].includes(snapshot?.phase); }
     function startEditor() {
-        route = 'edit'; notice = ''; editor.value = displayText(draft.text); editor.scrollTop = 0;
+        route = 'edit'; notice = ''; editorControl.setText(draft.text); editor.scrollTop = 0;
         render(); editor.focus();
     }
     function renderStatus() {
@@ -120,7 +142,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
                 ? snapshot.loaded ? '收藏超过存储上限，本次未保存，修改已保留。' : '收藏文件过大，暂时无法读取。原件未改动。'
                 : !snapshot.loaded ? '收藏暂时无法读取，请刷新重试。'
                 : snapshot.needsRefresh ? '保存未完成，修改已保留。请刷新核对后重试。'
-                    : /conflict/.test(snapshot.error.code) ? '收藏已有更新，修改已保留。请复制后重新打开。'
+                    : /conflict/.test(snapshot.error.code) ? '收藏已有更新，修改已保留。'
                         : '操作未完成，请重试。';
         }
         statusText.textContent = text;
@@ -137,53 +159,89 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         multiButton.setAttribute('aria-pressed', String(multi));
         deleteButton.hidden = !multi;
         deleteButton.disabled = waiting || !writable || !selection.size;
+        organizeSelected.hidden = !multi;
+        organizeSelected.disabled = waiting || !writable || !selection.size;
+        foldersButton.disabled = waiting || !writable;
+        organizeButton.disabled = waiting || !writable;
         editButton.disabled = waiting || !writable || !activeItem();
         imageButton.disabled = waiting || !activeItem();
         cancelButton.disabled = waiting;
         saveButton.disabled = waiting || !writable || !draft?.text.trim();
-        editor.readOnly = waiting;
+        editorControl.setReadOnly(waiting);
         search.disabled = !snapshot?.loaded;
+        folderSelect.disabled = tagSelect.disabled = !snapshot?.loaded;
+        resumeDraft.hidden = !draft;
+        resumeDraft.disabled = waiting;
+    }
+    function windowKey() { return JSON.stringify([query.trim().toLocaleLowerCase(), folderFilter, tagFilter]); }
+    function filteredItems() {
+        const folderId = folderFilter.startsWith('folder:') ? folderFilter.slice(7) : null;
+        const charName = folderFilter.startsWith('char:') ? folderFilter.slice(5) : null;
+        return filterTextCollectionItems(snapshot || {items: []}, {query, folderId, charName, tag: tagFilter || null});
+    }
+    function loadMore() {
+        if (!current() || route !== 'list') return;
+        const key = windowKey(), count = loadedWindows.get(key) || PAGE_SIZE;
+        if (count >= filteredItems().length) return;
+        loadedWindows.set(key, count + PAGE_SIZE); renderList();
+    }
+    function renderFilters() {
+        const views = textCollectionOrganizationViews(snapshot || {items: []});
+        const key = JSON.stringify(views);
+        if (key === filtersKey) return;
+        filtersKey = key;
+        const option = (value, label) => { const node = make('option', '', label); node.value = value; return node; };
+        folderSelect.replaceChildren(option('', '全部收藏'),
+            ...views.folders.map(folder => option(`folder:${folder.id}`, `${folder.name} · ${folder.count}`)),
+            ...views.characters.map(character => option(`char:${character.name}`, `${character.name || '未命名角色'} · ${character.count}`)));
+        tagSelect.replaceChildren(option('', '全部标签'), ...views.tags.map(tag => option(tag.name, `${tag.name} · ${tag.count}`)));
+        if (folderFilter && ![...folderSelect.children].some(node => node.value === folderFilter)) folderFilter = '';
+        if (tagFilter && !views.tags.some(tag => tag.name === tagFilter)) tagFilter = '';
+        folderSelect.value = folderFilter; tagSelect.value = tagFilter;
+        tagSelect.hidden = !views.tags.length;
     }
     function renderList() {
-        const normalizedQuery = query.trim().toLocaleLowerCase();
-        const items = (snapshot?.items || []).filter(item => !normalizedQuery ||
-            `${titleFor(item)}\n${item.text}`.toLocaleLowerCase().includes(normalizedQuery));
-        const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-        page = Math.min(Math.max(page, 0), pages - 1);
-        const visibleItems = items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+        renderFilters();
+        const items = filteredItems(), count = loadedWindows.get(windowKey()) || PAGE_SIZE;
+        const visibleItems = items.slice(0, count);
         const key = JSON.stringify([snapshot?.loaded, snapshot?.fingerprint,
-            !snapshot?.loaded && Boolean(snapshot?.error), query, page, multi, [...selection]]);
+            !snapshot?.loaded && Boolean(snapshot?.error), query, folderFilter, tagFilter, multi]);
         if (key !== listKey) {
             listKey = key;
-            const rows = visibleItems.map(item => {
+            list.replaceChildren();
+        }
+        moreButton.remove();
+        const existingCount = list.querySelectorAll('.qm-collection-row').length;
+        const rows = visibleItems.slice(existingCount).map(item => {
                 const row = make('div', 'qm-collection-row');
-                if (multi) {
-                    const checkbox = make('input'); checkbox.type = 'checkbox'; checkbox.checked = selection.has(item.id);
-                    checkbox.setAttribute('aria-label', `选择收藏：${item.id}`);
-                    checkbox.addEventListener('change', () => {
-                        if (!current() || busy()) return;
-                        if (checkbox.checked) selection.add(item.id); else selection.delete(item.id);
-                        updateControls();
-                    });
-                    row.append(checkbox);
-                }
-                const link = make('button', 'qm-collection-entry'); link.type = 'button'; link.setAttribute('aria-label', `阅读收藏：${item.id}`);
+                const link = make('button', 'qm-collection-entry'); link.type = 'button';
+                link.setAttribute('aria-label', `${multi ? '选择' : '阅读'}收藏：${item.id}`);
+                link.dataset.itemId = item.id;
                 const name = make('span', 'qm-collection-name', titleFor(item));
                 const preview = make('span', 'qm-collection-preview', item.text.replace(/\s+/g, ' '));
                 link.append(name, preview);
+                const organization = textCollectionItemOrganization(snapshot, item.id);
+                if (organization.tags.length) link.append(make('span', 'qm-collection-tags', organization.tags.join(' · ')));
                 link.addEventListener('click', () => {
                     if (!current()) return;
+                    if (multi) {
+                        if (busy()) return;
+                        if (selection.has(item.id)) selection.delete(item.id); else selection.add(item.id);
+                        renderList(); updateControls(); return;
+                    }
                     selectedId = item.id; route = 'read'; readScroll = 0; notice = ''; render();
                 });
                 row.append(link); return row;
             });
-            list.replaceChildren(...rows);
-            if (!rows.length) list.append(make('p', 'qm-collection-empty', snapshot?.loaded
-                ? query ? '没有找到收藏' : '还没有收藏' : snapshot?.error ? '' : '正在读取…'));
+        list.append(...rows);
+        if (!visibleItems.length && !list.children.length) list.append(make('p', 'qm-collection-empty', snapshot?.loaded
+            ? query || folderFilter || tagFilter ? '没有找到收藏' : '还没有收藏' : snapshot?.error ? '' : '正在读取…'));
+        for (const entry of list.querySelectorAll('.qm-collection-entry')) {
+            if (multi) entry.setAttribute('aria-pressed', String(selection.has(entry.dataset.itemId)));
+            else entry.removeAttribute('aria-pressed');
+            entry.disabled = multi && busy();
         }
-        for (const checkbox of list.querySelectorAll('input[type="checkbox"]')) checkbox.disabled = busy();
-        previousButton.disabled = page === 0; nextButton.disabled = page + 1 === pages;
-        pageLabel.textContent = `${page + 1} / ${pages}`; paging.hidden = pages <= 1;
+        if (visibleItems.length < items.length) list.append(moreButton);
         list.scrollTop = listScroll;
     }
     function render() {
@@ -191,9 +249,11 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         const item = activeItem();
         if (route === 'read' && !item) { route = 'list'; selectedId = null; }
         heading.textContent = route === 'list' ? '正文收藏' : titleFor(route === 'edit' ? draft.item : item);
+        dialog.setAttribute('data-view', route);
         listView.hidden = route !== 'list'; reader.hidden = route !== 'read'; editor.hidden = route !== 'edit';
-        footer.hidden = route === 'list'; backButton.hidden = route === 'edit'; cancelButton.hidden = route !== 'edit';
+        footer.hidden = route === 'list'; backButton.hidden = route !== 'read'; cancelButton.hidden = route !== 'edit';
         editButton.hidden = route !== 'read'; saveButton.hidden = route !== 'edit';
+        copyButton.hidden = organizeButton.hidden = route !== 'read';
         imageButton.hidden = route !== 'read' || typeof onExportImage !== 'function';
         if (route === 'list') renderList();
         if (route === 'read') {
@@ -223,6 +283,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     }
     async function save() {
         if (!current() || busy() || !draft) return;
+        draft.text = editorControl.getText();
         const edit = draft; pending = true; notice = ''; updateControls();
         try {
             const options = {expectedFingerprint: edit.fingerprint};
@@ -234,7 +295,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         } catch (error) {
             if (draft === edit) draft.receiptUnknown = collection.state().needsRefresh === true;
             if (current()) notice = snapshot?.needsRefresh || /capacity/.test(snapshot?.error?.code || '') ? ''
-                : /conflict|missing/.test(error?.code || '') ? '收藏已有更新，修改已保留。请复制后重新打开。'
+                : /conflict|missing/.test(error?.code || '') ? '收藏已有更新，修改已保留。'
                     : '保存未完成，修改已保留。';
         } finally { pending = false; render(); }
     }
@@ -251,6 +312,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     async function open() {
         if (!current()) return false;
         const requestedOpening = ++opening;
+        route = 'list'; notice = '';
         if (!visible) {
             returnFocus = doc.activeElement; visible = true; parent.append(dialog);
             dialog.showModal();
@@ -260,7 +322,15 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
                 // view is closed. Adopt only this draft's exact receipt.
                 if (draft?.receiptUnknown && !value.needsRefresh && value.loaded
                     && value.items.some(item => item.id === draft.item.id && item.text === draft.text)) {
-                    selectedId = draft.item.id; draft = null; route = 'read';
+                    selectedId = draft.item.id; draft = null;
+                    if (route === 'edit') route = 'read';
+                }
+                // Classification or another item can change while a draft is
+                // kept. Accept that document only if this exact base item is
+                // untouched; never rebase over a changed/deleted original.
+                if (draft && value.loaded && !value.needsRefresh && !['loading', 'refreshing', 'saving'].includes(value.phase)) {
+                    const saved = value.items.find(item => item.id === draft.item.id);
+                    if (draft.isNew ? !saved : saved && sameTextCollectionItem(saved, draft.item)) draft.fingerprint = value.fingerprint;
                 }
                 if (value.loaded) {
                     const existing = new Set(value.items.map(item => item.id));
@@ -280,7 +350,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         const opened = open(), requestedOpening = opening;
         if (!await opened || requestedOpening !== opening || busy() || !snapshot?.loaded) return false;
         if (!captureCurrent()) { close(); return false; }
-        if (draft) { route = 'edit'; render(); return false; }
+        if (draft) { notice = '还有未保存的编辑，请先继续或取消。'; render(); return false; }
         if (typeof input?.text !== 'string' || !input.text.trim()
             || typeof input.charName !== 'string' || typeof input.userName !== 'string') return false;
         // The capture keeps its ID through retries, including a lost receipt.
@@ -289,18 +359,19 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         const item = {text: input.text, charName: input.charName, userName: input.userName, source,
             id: crypto.randomUUID(), createdAt: new Date().toISOString()};
         selectedId = null;
-        draft = {item, text: input.text, displayOriginal: displayText(input.text), fingerprint: snapshot.fingerprint, isNew: true};
+        draft = {item, text: input.text, fingerprint: snapshot.fingerprint, isNew: true};
         startEditor(); return true;
     }
     function close() {
         if (!visible) return;
         visible = false; opening++; unsubscribe?.(); unsubscribe = null;
+        organizeView.close();
         dialog.close(); dialog.remove();
         if (returnFocus?.isConnected) returnFocus.focus({preventScroll: true});
     }
     function dispose() {
         close(); disposed = true; draft = null; snapshot = null; selection.clear();
-        list.replaceChildren(); reader.replaceChildren(); editor.value = '';
+        organizeView.dispose(); loadedWindows.clear(); list.replaceChildren(); reader.replaceChildren(); editorControl.clear();
     }
     return Object.freeze({open, collect, close, dispose});
 }

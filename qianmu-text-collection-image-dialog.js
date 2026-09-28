@@ -101,8 +101,12 @@ export function createTextCollectionImageDialog({parent, isCurrent, verifyAccoun
         try {
             await account();
             const style = doc.defaultView.getComputedStyle(dialog);
+            const proseFont = style.getPropertyValue?.('--qm-prose-font')?.trim();
+            const proseSize = style.getPropertyValue?.('--qm-prose-size')?.trim() || '';
+            const fontSize = /^(?:\d+(?:\.\d+)?|\.\d+)px$/i.test(proseSize) ? Number.parseFloat(proseSize) * 2 : undefined;
             await exportImages({
-                ...payload, foreground: style.color, background: style.backgroundColor, fontFamily: style.fontFamily,
+                ...payload, foreground: style.color, background: style.backgroundColor,
+                fontFamily: proseFont || style.fontFamily, fontSize,
                 document: doc, signal: job.controller.signal, isCurrent: active,
                 download: async (blob, name) => {
                     await account();

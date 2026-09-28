@@ -75,6 +75,75 @@ test('normal labels occupy the top-left and bottom-right, without titles or orna
     assert.deepEqual(page.commands.map(line => line.kind), ['header', 'body', 'footer']);
 });
 
+test('body typography uses 1.55 line height, .75em paragraph gap and 2em indentation', async () => {
+    const pages = await layout({text: `${'段落内容'.repeat(30)}\n\n第二段`});
+    const rows = pages.flatMap(page => page.commands).filter(line => line.kind === 'body');
+    for (const row of rows) {
+        assert.equal(row.lineHeight, row.fontSize * 1.55);
+        assert.equal(row.indent, row.paragraphStart ? row.fontSize * 2 : 0);
+        assert.equal(row.height, row.lineHeight + (row.breakAfter ? row.fontSize * .75 : 0));
+        assert.equal(row.justify, !row.paragraphEnd);
+    }
+    assert.equal(rows.at(-1).justify, false);
+});
+
+test('36 to 44 pixel prose sizes scale all body spacing and preserve full long text', async () => {
+    const text = `${'字号随正文调整🧭。'.repeat(400)}\n\n完整结尾`;
+    const small = await layout({text, fontSize: 36});
+    const large = await layout({text, fontSize: 44});
+    assert.equal(textOf(small), normalize(text)); assert.equal(textOf(large), normalize(text));
+    assert.ok(large.length > small.length && large.length > 3);
+    for (const page of large) for (const row of page.commands.filter(line => line.kind === 'body')) {
+        assert.equal(row.fontSize, 44); assert.equal(row.lineHeight, 44 * 1.55);
+        assert.equal(row.height, row.lineHeight + (row.breakAfter ? 44 * .75 : 0));
+        assert.equal(row.indent, row.paragraphStart ? 88 : 0);
+        assert.ok(row.y + row.lineHeight <= page.height - 96 + 1e-8);
+    }
+    const f = fixture();
+    await exportTextCollectionImages({...f, text: '短句', fontSize: 44, fontFamily: '"正文宋体", serif', yieldControl: async () => {}});
+    assert.equal(f.images[0].draws[0].font, '44px "正文宋体", serif');
+    assert.equal(f.images[0].height, 1080); assert.equal(f.images[0].draws[0].align, 'center');
+});
+
+test('unknown or unsafe font sizes fall back without clipping source text', async () => {
+    for (const fontSize of [undefined, null, NaN, Infinity, -1, 0, 1, 193, 100000, '44px', {}]) {
+        const text = '保留完整正文'.repeat(20), pages = await layout({text, fontSize});
+        assert.equal(textOf(pages), text);
+        assert.ok(pages.flatMap(page => page.commands).every(line => line.fontSize === 36));
+    }
+    for (const fontSize of [12, 192]) {
+        const text = '边界字号也保留全部正文'.repeat(100), pages = await layout({text, fontSize, header: '页眉'.repeat(100), footer: '页尾'.repeat(100)});
+        assert.equal(textOf(pages), text);
+        assert.ok(pages.flatMap(page => page.commands).filter(line => line.kind === 'body').every(line => line.fontSize === fontSize));
+    }
+});
+
+test('CJK soft wraps reach both page edges while final and single lines are not spread', async () => {
+    const f = fixture(), text = '山'.repeat(31);
+    const [page] = await layout({text});
+    await exportTextCollectionImages({...f, text, yieldControl: async () => {}});
+    const rows = page.commands.filter(line => line.kind === 'body');
+    const first = f.images[0].draws.filter(draw => draw.y === rows[0].y);
+    assert.ok(first.length > 1);
+    assert.equal(first.map(draw => draw.value).join(''), rows[0].text);
+    assert.equal(first[0].x, rows[0].x);
+    const lastEdge = first.at(-1).x + measure(first.at(-1).value, first.at(-1).font).width;
+    assert.ok(Math.abs(lastEdge - (rows[0].x + rows[0].width)) < .000001);
+    const final = f.images[0].draws.filter(draw => draw.y === rows.at(-1).y);
+    assert.equal(final.length, 1);
+    assert.equal(final[0].value, rows.at(-1).text);
+    assert.equal(f.images[0].draws.map(draw => draw.value).join(''), text);
+});
+
+test('Latin justification keeps words together and preserves all spaces', async () => {
+    const text = 'Alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo.';
+    const f = fixture();
+    await exportTextCollectionImages({...f, text, yieldControl: async () => {}});
+    assert.equal(f.images[0].draws.map(draw => draw.value).join(''), text);
+    assert.ok(f.images[0].draws.some(draw => draw.value === 'Alpha '));
+    assert.equal(f.images[0].draws.some(draw => draw.value === 'A'), false);
+});
+
 test('long body has no three-image or thirty-thousand-character limit', async () => {
     const text = '风起时，我们继续走。'.repeat(3400) + '完整结尾🧭';
     assert.ok(text.length > 30000);

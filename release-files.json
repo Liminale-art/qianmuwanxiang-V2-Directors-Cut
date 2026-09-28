@@ -5,6 +5,10 @@
   "files": [
     "qianmu-document-session.js",
     "qianmu-text-collection.js",
+    "qianmu-text-collection-organization.js",
+    "qianmu-text-collection-organization-view.js",
+    "qianmu-text-collection-organization-view.css",
+    "qianmu-text-collection-editor.js",
     "qianmu-text-collection-backup.js",
     "qianmu-text-collection-images.js",
     "qianmu-text-collection-image-dialog.js",

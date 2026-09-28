@@ -1,5 +1,5 @@
 /** Plain-text image export. No storage, HTML rendering, object URLs or network. */
-const PAGE = Object.freeze({ width: 1080, height: 1440, square: 1080, margin: 96, font: 36, line: 62, gap: 22, annotationGap: 32 });
+const PAGE = Object.freeze({ width: 1080, height: 1440, square: 1080, margin: 96, font: 36, annotationGap: 32 });
 const FALLBACK_FONT = 'serif';
 
 function failure(code, message) {
@@ -118,7 +118,7 @@ async function annotation(lines, maxLines) {
  * `breakAfter` describes paragraph boundaries; soft wraps add no characters.
  */
 export async function* layoutTextCollectionImages({
-    text, header = '', footer = '', foreground, background, fontFamily,
+    text, header = '', footer = '', foreground, background, fontFamily, fontSize,
     measureText, signal, isCurrent = () => true, yieldControl,
 } = {}) {
     if (typeof text !== 'string' || !text.trim()) throw failure('collection_image_empty', '没有可导出的正文');
@@ -138,6 +138,10 @@ export async function* layoutTextCollectionImages({
         }
     };
     const family = safeFont(fontFamily);
+    // Output pixels (2x the host's CSS prose size). Reject unusable metrics, not
+    // text: unknown/tiny/oversized values use the established readable default.
+    const bodyFont = Number.isFinite(fontSize) && fontSize >= 12 && fontSize <= 192 ? fontSize : PAGE.font;
+    const lineHeight = bodyFont * 1.55, paragraphGap = bodyFont * .75;
     const color = safeColor(foreground, '#242b34');
     const paper = safeColor(background, '#fffdf8');
     const width = PAGE.width - 2 * PAGE.margin;
@@ -145,7 +149,7 @@ export async function* layoutTextCollectionImages({
     async function* wrap(value, size, lineHeight, indent, gap) {
         let line = '';
         let first = true;
-        const emit = breakAfter => ({ text: line, breakAfter, paragraphStart: first, indent: first ? indent : 0, fontSize: size, height: lineHeight + (breakAfter ? gap : 0), lineHeight });
+        const emit = (breakAfter, paragraphEnd = false) => ({ text: line, breakAfter, paragraphEnd, paragraphStart: first, indent: first ? indent : 0, fontSize: size, height: lineHeight + (breakAfter ? gap : 0), lineHeight });
         const measure = value => {
             const result = measureText(value, `${size}px ${family}`);
             const measured = typeof result === 'number' ? result : result?.width;
@@ -155,7 +159,7 @@ export async function* layoutTextCollectionImages({
         for (const char of graphemes(imageText(value))) {
             await check(char.length);
             if (char === '\n') {
-                yield emit('\n');
+                yield emit('\n', true);
                 line = '';
                 first = true;
                 continue;
@@ -169,14 +173,14 @@ export async function* layoutTextCollectionImages({
             // Measure even the first cluster: invalid font metrics must fail closed.
             measure(line);
         }
-        if (line) yield emit('');
+        if (line) yield emit('', true);
     }
 
     try {
         assertActive(signal, isCurrent);
         const headers = await annotation(wrap(header, 26, 40, 0, 0), 5);
         const footers = await annotation(wrap(footer, 24, 38, 0, 0), 5);
-        const body = cursor(wrap(text, PAGE.font, PAGE.line, 2 * PAGE.font, PAGE.gap));
+        const body = cursor(wrap(text, bodyFont, lineHeight, 2 * bodyFont, paragraphGap));
         const prefix = [];
         for (let i = 0; i < 8; i++) {
             const next = await body.take();
@@ -214,12 +218,13 @@ export async function* layoutTextCollectionImages({
             if (!rows.length && moreBody) throw failure('collection_image_layout', '正文排版空间不足');
             const commands = [];
             currentHeader.lines.forEach((line, index) => commands.push({ ...line, kind: 'header', x: PAGE.margin, y: PAGE.margin + index * 40, width, align: 'left' }));
-            const contentHeight = used - (rows.at(-1)?.breakAfter ? PAGE.gap : 0);
+            const contentHeight = used - (rows.at(-1)?.breakAfter ? paragraphGap : 0);
             let y = square ? top + (bottom - top - contentHeight) / 2 : top;
             for (const row of rows) {
                 const centered = square && rows.length === 1;
                 commands.push({ ...row, kind: 'body', x: centered ? PAGE.width / 2 : PAGE.margin + row.indent,
-                    y, width: width - (centered ? 0 : row.indent), align: centered ? 'center' : 'left' });
+                    y, width: width - (centered ? 0 : row.indent), align: centered ? 'center' : 'left',
+                    justify: !centered && !row.paragraphEnd });
                 y += row.height;
             }
             currentFooter.lines.forEach((line, index) => commands.push({ ...line, kind: 'footer', x: PAGE.width - PAGE.margin,
@@ -231,6 +236,45 @@ export async function* layoutTextCollectionImages({
     } finally {
         yielder?.close();
     }
+}
+
+// Keep Latin words and emoji clusters intact. Justification uses word spaces for
+// Latin text and character gaps for CJK, never stretching a final/single line.
+function justifiedRuns(value) {
+    const runs = [];
+    let pending = '';
+    for (const char of graphemes(value)) {
+        if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(char)) {
+            if (pending) { runs.push(pending); pending = ''; }
+            runs.push(char);
+        } else {
+            if (pending && /\s$/u.test(pending) && !/^\s/u.test(char)) { runs.push(pending); pending = ''; }
+            pending += char;
+        }
+    }
+    if (pending) runs.push(pending);
+    return runs;
+}
+
+function drawLine(context, line) {
+    if (line.justify) {
+        const runs = justifiedRuns(line.text);
+        if (runs.length > 1) {
+            const widths = runs.map(run => context.measureText(run).width);
+            const used = widths.reduce((sum, width) => sum + width, 0);
+            if (Number.isFinite(used) && used > 0 && used < line.width) {
+                const gap = (line.width - used) / (runs.length - 1);
+                let x = line.x;
+                for (let index = 0; index < runs.length; index++) {
+                    context.fillText(runs[index], x, line.y);
+                    x += widths[index] + gap;
+                }
+                return;
+            }
+        }
+    }
+    // maxWidth also fits an unusually wide, indivisible grapheme.
+    context.fillText(line.text, line.x, line.y, line.width);
 }
 
 function png(canvas, signal, isCurrent) {
@@ -289,8 +333,7 @@ export async function exportTextCollectionImages({
                     assertActive(signal, isCurrent);
                     context.font = `${line.fontSize}px ${page.fontFamily}`;
                     context.textAlign = line.align;
-                    // maxWidth also fits an unusually wide, indivisible grapheme.
-                    context.fillText(line.text, line.x, line.y, line.width);
+                    drawLine(context, line);
                 }
                 await yieldTask();
                 assertActive(signal, isCurrent);

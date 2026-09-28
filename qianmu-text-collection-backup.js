@@ -1,6 +1,6 @@
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {ST_ACCOUNT_STORAGE_LIMITS} from './qianmu-st-account-storage.js';
-import {validateTextCollectionDocument, sameTextCollectionItem} from './qianmu-text-collection.js';
+import {validateTextCollectionDocument, sameTextCollectionItem, mergeTextCollectionDocuments} from './qianmu-text-collection.js';
 
 export const TEXT_COLLECTION_BACKUP_BYTES = ST_ACCOUNT_STORAGE_LIMITS.bytes + 4096;
 const fail = message => { throw Object.assign(new Error(message), {code: 'text_collection_backup'}); };
@@ -49,8 +49,13 @@ function canonical(item) {
 // admission only, never another index, history, migration or persistence layer.
 export async function prepareTextCollectionRestore(payload, current, {origin, scope, crypto = globalThis.crypto} = {}) {
     validateTextCollectionBackup(payload); validateTextCollectionDocument(current); validatePlace({origin, scope});
-    const existing = new Map(current.items.map(item => [item.id, item])), additions = [];
+    const existing = new Map(current.items.map(item => [item.id, item])), additions = [], itemIds = new Map();
     const samePlace = payload.origin === origin && payload.scope === scope;
+    const identity = async value => {
+        if (!crypto?.subtle) fail('当前环境无法安全导入收藏，未写入内容。');
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([payload.origin, payload.scope, value])));
+        return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    };
     let skipped = 0;
     for (const original of payload.document.items) {
         const item = canonical(original);
@@ -58,16 +63,35 @@ export async function prepareTextCollectionRestore(payload, current, {origin, sc
         let previous = existing.get(item.id);
         if (previous && sameTextCollectionItem(previous, item)) { skipped++; continue; }
         if (previous) {
-            if (!crypto?.subtle) fail('当前环境无法安全导入收藏，未写入内容。');
-            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([payload.origin, payload.scope, canonical(original)])));
-            item.id = `import-${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')}`;
+            item.id = `import-${await identity(canonical(original))}`;
             previous = existing.get(item.id);
             if (previous && !sameTextCollectionItem(previous, item)) fail('备份副本已被修改，未覆盖当前内容；请保留原文件。');
             if (previous) { skipped++; continue; }
         }
-        additions.push(item); existing.set(item.id, item);
+        additions.push(item); existing.set(item.id, item); itemIds.set(original.id, item.id);
     }
-    const combined = validateTextCollectionDocument({version: 1, items: [...current.items, ...additions]});
+    let document = {version: 1, items: additions};
+    if (payload.document.version === 2) {
+        const known = new Map((current.organization?.folders || []).map(folder => [folder.id, {...folder}]));
+        const names = new Map([...known.values()].map(folder => [folder.name.trim().toLocaleLowerCase(), folder]));
+        const folderIds = new Map(), folders = [];
+        for (const original of payload.document.organization.folders) {
+            let folder = names.get(original.name.trim().toLocaleLowerCase());
+            if (!folder) {
+                folder = {...original};
+                if (known.has(folder.id)) folder.id = `import-folder-${await identity(['folder', original.id, original.name])}`;
+                const previous = known.get(folder.id);
+                if (previous && previous.name !== folder.name) fail('备份文件夹已有变化，未覆盖当前分类；请保留原文件。');
+                known.set(folder.id, folder); names.set(folder.name.trim().toLocaleLowerCase(), folder);
+            }
+            folderIds.set(original.id, folder.id); folders.push({...folder});
+        }
+        const entries = payload.document.organization.entries.filter(entry => itemIds.has(entry.itemId)).map(entry => ({
+            itemId: itemIds.get(entry.itemId), folderId: entry.folderId === null ? null : folderIds.get(entry.folderId), tags: [...entry.tags],
+        }));
+        document = {version: 2, items: additions, organization: {folders, entries}};
+    }
+    const combined = mergeTextCollectionDocuments(current, document);
     if (encodedBytes(combined) > ST_ACCOUNT_STORAGE_LIMITS.bytes) fail('导入后超过存储上限，未写入内容；请保留原文件。');
-    return {document: {version: 1, items: additions}, count: additions.length, skipped};
+    return {document, combined, changed: JSON.stringify(combined) !== JSON.stringify(current), count: additions.length, skipped};
 }

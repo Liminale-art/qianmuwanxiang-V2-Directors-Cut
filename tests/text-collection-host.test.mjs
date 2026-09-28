@@ -39,10 +39,11 @@ function fixture(t) {
                 }, close() {},
             };
         },
-        async viewFactory({collection, isCurrent}) {
+        async viewFactory({collection, isCurrent, typography}) {
             const parent = dom.doc.createElement('section'); dom.doc.body.append(parent);
             parent.style.setProperty = (key, value) => { parent.style[key] = value; };
             parent.style.removeProperty = key => { delete parent.style[key]; };
+            typography(parent);
             const panel = createTextCollectionPanel({parent, collection, isCurrent});
             const capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, scope) => panel.collect(input, scope)});
             view = {parent, collection, panel, capture, dispose() { capture.dispose(); panel.dispose(); parent.remove(); }};
@@ -89,6 +90,23 @@ test('chat switch closes only capture; an existing saved passage remains availab
     await f.host.open(); assert.equal(f.view.collection.state().items.length, 1); assert.equal(f.reads, 1);
 });
 
+test('prompt-excluded first floor can be saved, linked through hide changes, then cancelled without changing the chat', async t => {
+    const f = fixture(t), message = f.context.chat[0]; message.is_system = true;
+    f.host.refresh(f.root); await turn(); const star = f.star();
+    assert.equal(f.click(), true); await f.dom.wait(() => f.dom.get('全文收藏')); f.action('全文收藏');
+    await f.dom.wait(() => f.dom.visible(f.dom.byClass('qm-collection-editor')));
+    // Excluding/inserting the message in prompts does not mutate the captured prose.
+    message.is_system = false;
+    f.action('保存收藏'); await f.dom.wait(() => star.getAttribute('aria-pressed') === 'true');
+    assert.equal(f.view.collection.state().items[0].text, message.mes);
+    assert.ok(f.view.collection.state().items[0].source); assert.equal(f.writes, 1);
+    f.action('关闭收藏'); message.is_system = true; f.host.refresh(f.root);
+    assert.equal(f.star(), star); assert.equal(star.getAttribute('aria-pressed'), 'true');
+    f.click(); await f.dom.wait(() => star.getAttribute('aria-pressed') === 'false');
+    assert.equal(f.writes, 2); assert.equal(f.reads, 1);
+    assert.equal(message.is_system, true); assert.equal(message.mes, '第一段\n\n第二段');
+});
+
 test('refresh and unrelated clicks do not reread or touch host controls; disabled host adds nothing', async t => {
     const f = fixture(t); const hostControl = f.dom.doc.createElement('button'); f.dom.doc.body.append(hostControl);
     f.host.refresh(f.root); await turn(); const star = f.star(), glyph = star.firstChild;
@@ -97,6 +115,30 @@ test('refresh and unrelated clicks do not reread or touch host controls; disable
     assert.equal(f.host.handleClick({target: hostControl}), false); assert.equal(hostControl.isConnected, true);
     f.host.dispose(); assert.equal(f.star(), null); assert.equal(hostControl.isConnected, true);
     f.host.refresh(f.root); assert.equal(f.star(), null);
+});
+
+test('first open and warm reopen sample current prose font without reading collection files again', async t => {
+    const f = fixture(t); let size = '18px';
+    f.dom.doc.defaultView.getComputedStyle = node => ({fontFamily: 'ST serif', fontSize: node.className === 'mes_text' ? size : '12px',
+        lineHeight: '29px', getPropertyValue: () => ''});
+    f.host.refresh(f.root); await f.host.open();
+    assert.equal(f.view.parent.style['--qm-prose-size'], '18px');
+    assert.equal(f.view.parent.style['--qm-prose-font'], 'ST serif');
+    f.action('关闭收藏'); size = '22px'; await f.host.open();
+    assert.equal(f.view.parent.style['--qm-prose-size'], '22px'); assert.equal(f.reads, 1);
+});
+
+test('mixed prose picks the plain-text run and configured pixel size rather than a decorated card', async t => {
+    const f = fixture(t), prose = f.root.querySelector('.mes_text');
+    const card = f.dom.doc.createElement('div'); card.className = 'card';
+    const run = f.dom.doc.createElement('div'); run.className = 'sd-prose-run';
+    prose.append(card, run); f.dom.doc.body.classList.add('sd-prose-layout');
+    f.dom.doc.defaultView.getComputedStyle = node => ({fontFamily: node === run ? 'Prose serif' : 'Decorative card',
+        fontSize: node === run ? '21px' : '44px', lineHeight: '31px',
+        getPropertyValue: name => name === '--sd-prose-font-size' ? '21px' : ''});
+    f.host.refresh(f.root); await f.host.open();
+    assert.equal(f.view.parent.style['--qm-prose-size'], '21px');
+    assert.equal(f.view.parent.style['--qm-prose-font'], 'Prose serif');
 });
 
 test('pagehide retires the document; an explicit later action can create a fresh owner', async t => {

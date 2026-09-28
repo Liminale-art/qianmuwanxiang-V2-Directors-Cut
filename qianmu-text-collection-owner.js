@@ -1,7 +1,7 @@
 import {createStAccountStorage} from './qianmu-st-account-storage.js';
 import {createDocumentSession} from './qianmu-document-session.js';
-import {createTextCollection} from './qianmu-text-collection.js';
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.404';
+import {createTextCollection, documentFromTextCollectionState} from './qianmu-text-collection.js';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.405';
 import {createTextCollectionBackup, readTextCollectionBackup, prepareTextCollectionRestore} from './qianmu-text-collection-backup.js';
 
 const expired = () => Object.assign(new Error('收藏操作已结束，请重新打开。'), {code: 'text_collection_owner'});
@@ -161,7 +161,7 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
         return transfer(async (record, verify) => {
             if (typeof download !== 'function') throw new TypeError('Collection download is unavailable');
             const current = await record.collection.refresh(); await verify();
-            const payload = createTextCollectionBackup({version: 1, items: current.items}, {origin, scope: record.store.scope});
+            const payload = createTextCollectionBackup(documentFromTextCollectionState(current), {origin, scope: record.store.scope});
             const blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
             await verify();
             await download(blob, `qianmu-text-collection-${payload.exportedAt.replaceAll(':', '-')}.json`);
@@ -173,16 +173,16 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
         return transfer(async (record, verify) => {
             const payload = await readTextCollectionBackup(file); await verify();
             const current = await record.collection.refresh(); await verify();
-            const restored = await prepareTextCollectionRestore(payload, {version: 1, items: current.items}, {origin, scope: record.store.scope});
+            const restored = await prepareTextCollectionRestore(payload, documentFromTextCollectionState(current), {origin, scope: record.store.scope});
             await verify();
-            if (!restored.count) { notify('这些收藏已存在，无需重复导入。', 'info'); return {status: 'imported', count: 0, skipped: restored.skipped}; }
-            preserveDraft(record, {version: 1, items: [...current.items, ...restored.document.items]});
+            if (!restored.changed) { notify('这些收藏已存在，无需重复导入。', 'info'); return {status: 'imported', count: 0, skipped: restored.skipped}; }
+            preserveDraft(record, restored.combined);
             if (typeof confirm !== 'function') throw new TypeError('Collection confirmation is unavailable');
-            const accepted = await confirm('导入正文收藏', `将添加 ${restored.count} 条收藏，不覆盖已有内容。是否继续？`);
+            const accepted = await confirm('导入正文收藏', `将导入 ${restored.count} 条收藏及文件夹，不覆盖已有内容。是否继续？`);
             await verify(); if (accepted !== true) return {status: 'cancelled'};
             // A different edit can fail while confirmation/account checks wait.
             // Recheck immediately before mutation, without replacing its draft.
-            preserveDraft(record, {version: 1, items: [...current.items, ...restored.document.items]});
+            preserveDraft(record, restored.combined);
             await record.collection.restore(restored.document, {expectedFingerprint: current.fingerprint});
             await verify();
             notify(`已导入 ${restored.count} 条正文收藏。`, 'success');
@@ -195,16 +195,17 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
             if (expectedFingerprint !== undefined && expectedFingerprint !== current.fingerprint) {
                 throw Object.assign(new Error('收藏已有更新，请重新选择。'), {code: 'text_collection_conflict'});
             }
-            if (!current.items.length) return {status: 'cleared', count: 0};
-            preserveDraft(record, {version: 1, items: []});
+            if (!current.items.length && !current.organization.folders.length) return {status: 'cleared', count: 0};
+            const cleared = current.version === 1 ? {version: 1, items: []} : {version: 2, items: [], organization: {folders: [], entries: []}};
+            preserveDraft(record, cleared);
             if (confirmed !== true) {
                 if (typeof confirm !== 'function') throw new TypeError('Collection confirmation is unavailable');
-                const accepted = await confirm('清空正文收藏', `将删除当前账户的 ${current.items.length} 条收藏，无法撤回。是否继续？`);
+                const accepted = await confirm('清空正文收藏', `将删除当前账户的 ${current.items.length} 条收藏及全部文件夹，无法撤回。是否继续？`);
                 await verify(); if (accepted !== true) return {status: 'cancelled'};
             }
             await verify();
-            preserveDraft(record, {version: 1, items: []});
-            await record.collection.remove(current.items.map(item => item.id), {expectedFingerprint: current.fingerprint});
+            preserveDraft(record, cleared);
+            await record.collection.clear({expectedFingerprint: current.fingerprint});
             await verify();
             notify('正文收藏已清空。', 'success');
             return {status: 'cleared', count: current.items.length};
@@ -214,7 +215,7 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
         return transfer(async (record, verify) => {
             const current = await record.collection.refresh(); await verify();
             return {status: 'ready', namespace: record.namespace, count: current.items.length,
-                bytes: new TextEncoder().encode(JSON.stringify({version: 1, items: current.items})).length,
+                bytes: new TextEncoder().encode(JSON.stringify(documentFromTextCollectionState(current))).length,
                 fingerprint: current.fingerprint};
         }, () => { if (valid() !== true) throw expired(); });
     }

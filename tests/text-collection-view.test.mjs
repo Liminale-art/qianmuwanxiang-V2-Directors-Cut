@@ -184,7 +184,7 @@ test('a cancelled capture cannot close a newer capture sharing the same pending 
     view.capture.open(input('新一层正文')); click(f, '全文收藏');
     pending.resolve(); await turn();
     assert.equal(f.dom.visible(f.dom.get('收藏正文')), true);
-    assert.equal(f.dom.get('收藏正文').value, '新一层正文');
+    assert.equal(f.dom.get('收藏正文').textContent, '新一层正文');
     assert.equal(f.writes, 0); assert.equal(f.reads, 1);
 });
 

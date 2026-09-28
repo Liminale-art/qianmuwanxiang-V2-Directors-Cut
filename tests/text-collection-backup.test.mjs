@@ -220,10 +220,14 @@ test('clear confirmation cannot erase a failed edit draft created while it was w
 
 async function nativeFixture(t) {
     const files = new Map(), requests = [], downloads = [];
-    let hook;
+    let hook, collection;
     const owner = createTextCollectionOwner({origin, resolveNamespace: async () => 'st-user:synthetic', isCurrent: () => true,
         headers: () => ({'X-CSRF-Token': 'synthetic'}), window: new EventTarget(), confirm: async () => true,
         download: (...args) => downloads.push(args),
+        viewFactory: async options => {
+            collection = options.collection;
+            return {parent: {}, panel: {open: async () => { await collection.open(); return true; }}, capture: {close() {}}, dispose() {}};
+        },
         storeFactory: options => createStAccountStorage({...options, origin,
             fetchImpl: async (url, request) => {
                 const path = new URL(url).pathname; requests.push({path, method: request.method}); await hook?.(path, request);
@@ -238,7 +242,7 @@ async function nativeFixture(t) {
         }),
     });
     t.after(() => owner.dispose());
-    return {owner, files, requests, downloads, reset() { requests.length = 0; }, hook(fn) { hook = fn; }};
+    return {owner, files, requests, downloads, get collection() { return collection; }, reset() { requests.length = 0; }, hook(fn) { hook = fn; }};
 }
 
 test('actual owner to native snapshot import/export/clear stays one file and never edits chat files', async t => {
@@ -266,4 +270,86 @@ test('native write boundary rechecks cleanup guard after the pre-upload remote r
     await assert.rejects(f.owner.clear({confirmed: true, check() { if (!valid) throw Error('cleanup expired'); }}));
     assert.deepEqual(f.requests.map(call => call.method), ['GET', 'GET']);
     assert.equal(JSON.parse([...f.files.values()][0]).value.items.length, 1);
+});
+
+const organized = (items, folders = [{id: 'folder', name: '纪念'}], entries = [{itemId: items[0].id, folderId: 'folder', tags: ['时光']}]) =>
+    ({version: 2, items, organization: {folders, entries}});
+
+test('v2 backup roundtrip remaps colliding folder and item IDs together and remains repeat-import idempotent', async () => {
+    const incoming = organized([row('one', '备份正文')]);
+    const current = organized([row('one', '当前正文')], [{id: 'folder', name: '当前文件夹'}], [{itemId: 'one', folderId: 'folder', tags: ['当前标签']}]);
+    const payload = backup(incoming), read = await readTextCollectionBackup(file(payload));
+    assert.deepEqual(read.document, incoming);
+    const prepared = await prepareTextCollectionRestore(read, current, {origin, scope});
+    assert.equal(prepared.count, 1); assert.equal(prepared.changed, true);
+    const imported = prepared.document.items[0], importedFolder = prepared.document.organization.folders[0];
+    assert.match(imported.id, /^import-[a-f0-9]{64}$/); assert.match(importedFolder.id, /^import-folder-[a-f0-9]{64}$/);
+    assert.deepEqual(prepared.document.organization.entries, [{itemId: imported.id, folderId: importedFolder.id, tags: ['时光']}]);
+    assert.deepEqual(prepared.combined.items[0], current.items[0]);
+    assert.deepEqual(prepared.combined.organization.entries[0], current.organization.entries[0]);
+    const repeated = await prepareTextCollectionRestore(payload, prepared.combined, {origin, scope});
+    assert.equal(repeated.count, 0); assert.equal(repeated.changed, false); assert.deepEqual(repeated.combined, prepared.combined);
+});
+
+test('same-name folders merge while existing item classification is never overwritten', async () => {
+    const current = organized([row()], [{id: 'current', name: '纪念'}], [{itemId: 'one', folderId: 'current', tags: ['当前标签']}]);
+    const incoming = organized([row(), row('two')], [{id: 'foreign', name: '纪念'}], [
+        {itemId: 'one', folderId: 'foreign', tags: ['旧标签']}, {itemId: 'two', folderId: 'foreign', tags: ['新标签']},
+    ]);
+    const prepared = await prepareTextCollectionRestore(backup(incoming), current, {origin, scope});
+    assert.equal(prepared.count, 1); assert.equal(prepared.skipped, 1);
+    assert.deepEqual(prepared.combined.organization.folders, current.organization.folders);
+    assert.deepEqual(prepared.combined.organization.entries, [current.organization.entries[0], {itemId: 'two', folderId: 'current', tags: ['新标签']}]);
+});
+
+test('cross-place v2 restore preserves categories while removing only weak source links', async () => {
+    const incoming = organized([row()]), prepared = await prepareTextCollectionRestore(backup(incoming), document(), {origin: 'https://other.invalid', scope});
+    assert.deepEqual(prepared.document.organization, incoming.organization);
+    assert.deepEqual(prepared.document.items, [{...row(), source: null}]);
+});
+
+test('owner export and scan include classification bytes; clear removes empty folders too', async t => {
+    const incoming = organized([row()]), f = fixture(t, incoming);
+    await f.owner.exportBackup(); assert.deepEqual((await readTextCollectionBackup(f.downloads[0][0])).document, incoming);
+    const stats = await f.owner.summary(); assert.equal(stats.bytes, new TextEncoder().encode(JSON.stringify(incoming)).length);
+    await f.owner.clear({confirmed: true}); assert.deepEqual(f.remote.value, organized([], [], []));
+    const g = fixture(t, organized([], [{id: 'empty', name: '空文件夹'}], []));
+    await g.owner.clear({confirmed: true}); assert.equal(g.writes, 1); assert.deepEqual(g.remote.value, organized([], [], []));
+});
+
+test('folder-only backup imports exactly once without requiring a text item', async t => {
+    const f = fixture(t, document()), incoming = organized([], [{id: 'empty', name: '空文件夹'}], []);
+    await f.owner.importBackup(file(backup(incoming))); assert.equal(f.writes, 1); assert.deepEqual(f.remote.value, incoming);
+    await f.owner.importBackup(file(backup(incoming))); assert.equal(f.writes, 1); assert.equal(f.confirmations, 1);
+});
+
+test('owner rejects destructive clear or different import after a failed classification draft', async t => {
+    const f = fixture(t, organized([row()])); await f.owner.open();
+    f.writeHook(() => { throw Object.assign(Error('offline'), {writeState: 'not_started'}); });
+    await assert.rejects(f.collection.organize(['one'], {tags: ['未保存新分类']}, {expectedFingerprint: f.collection.state().fingerprint}), /offline/);
+    f.writeHook(null);
+    await assert.rejects(f.owner.clear({confirmed: true}), {code: 'text_collection_pending'});
+    await assert.rejects(f.owner.importBackup(file(backup(document(row('new'))))), {code: 'text_collection_pending'});
+    assert.equal(f.writes, 0); assert.deepEqual(f.remote.value, organized([row()]));
+});
+
+test('invalid classification fails complete backup admission before touching any original', async t => {
+    const f = fixture(t), incoming = organized([row()]); incoming.organization.entries[0].itemId = 'dangling';
+    const payload = {...backup(), document: incoming};
+    await assert.rejects(f.owner.importBackup(file(payload)), {code: 'text_collection_document'});
+    assert.equal(f.writes, 0); assert.equal(f.confirmations, 0); assert.deepEqual(f.remote.value, document(row()));
+});
+
+test('native classification stays on the same snapshot with one write and warm reopening has no file request', async t => {
+    const f = await nativeFixture(t); await f.owner.importBackup(file(backup(document(row())))); await f.owner.open(); f.reset();
+    await f.collection.createFolder('旅行', {expectedFingerprint: f.collection.state().fingerprint});
+    assert.deepEqual(f.requests.map(call => call.method), ['GET', 'POST', 'GET']); assert.equal(f.files.size, 1);
+    const folderId = f.collection.state().organization.folders[0].id;
+    f.reset(); await f.collection.organize(['one'], {folderId, tags: ['路途']}, {expectedFingerprint: f.collection.state().fingerprint});
+    assert.deepEqual(f.requests.map(call => call.method), ['GET', 'POST', 'GET']); assert.equal(f.files.size, 1);
+    const value = JSON.parse([...f.files.values()][0]).value;
+    assert.equal(value.version, 2); assert.deepEqual(value.organization.entries, [{itemId: 'one', folderId, tags: ['路途']}]);
+    assert.equal(value.items[0].text, row().text); assert.equal(value.items[0].updatedAt, stamp);
+    f.reset(); await f.owner.open(); await f.owner.open(); assert.deepEqual(f.requests, []);
+    assert.deepEqual(f.collection.state().organization, value.organization);
 });

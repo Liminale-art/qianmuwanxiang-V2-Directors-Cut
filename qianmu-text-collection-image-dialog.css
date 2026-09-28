@@ -4,7 +4,8 @@
     inset: 0;
     margin: auto;
     width: min(380px, calc(100vw - 28px));
-    height: auto;
+    height: fit-content;
+    min-height: 0;
     max-width: none;
     max-height: calc(100dvh - 40px);
     padding: 14px;
@@ -30,7 +31,7 @@
 .qm-collection-image-dialog button svg { width: 20px; height: 20px; }
 .qm-collection-image-dialog .qm-collection-image-mark { display: flex; align-items: center; gap: 8px; margin: 0; }
 .qm-collection-image-dialog input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--sd-accent, currentColor); }
-.qm-collection-image-dialog .qm-collection-image-fields { display: flex; flex-direction: column; gap: 12px; }
+.qm-collection-image-dialog .qm-collection-image-fields { display: flex; flex: none; flex-direction: column; gap: 12px; }
 .qm-collection-image-dialog .qm-collection-image-fields label { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .qm-collection-image-dialog textarea { width: 100%; min-height: 68px; max-height: 160px; margin: 0; padding: 8px 10px; border: 1px solid var(--sd-hairline, #8886); border-radius: 8px; background: var(--sd-input-bg, #8881); color: inherit; font: inherit; line-height: 1.5; resize: vertical; }
 .qm-collection-image-dialog textarea:focus, .qm-collection-image-dialog textarea:focus-visible { outline: none !important; box-shadow: none !important; }

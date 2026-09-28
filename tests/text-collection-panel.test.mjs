@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {createDocumentSession} from '../qianmu-document-session.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 import {createTextCollectionPanel} from '../qianmu-text-collection-panel.js';
 import {LUCIDE_ICON_MARKUP} from '../qianmu-icon-renderer.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
+import {setCollectionEditorText, collectionEditorDisplayText} from './helpers/text-collection-editor.mjs';
 
 const stamp = '2026-09-28T00:00:00.000Z';
 const key = revision => revision.toString(16).padStart(64, '0');
@@ -51,7 +53,8 @@ const text = f => f.dom.byClass('qm-collection-text');
 const editor = f => f.dom.get('收藏正文');
 const list = f => f.dom.byClass('qm-collection-list');
 async function waitReady(f) { await f.dom.wait(() => !['loading', 'refreshing', 'saving'].includes(f.collection.state().phase)); await turn(); }
-function type(f, value) { const area = editor(f); assert.ok(area); area.value = value; area.emit('input'); }
+function type(f, value) { const area = editor(f); assert.ok(area); setCollectionEditorText(area, value); }
+const displayed = f => collectionEditorDisplayText(editor(f));
 
 test('capture, read, back, edit, save, select-delete and reopen use the same confirmed document', async t => {
     const f = fixture(t, null);
@@ -92,7 +95,7 @@ test('CRLF and extra blank lines remain exact after opening edit, unchanged save
     const raw = '  第一段\r\n\r\n\r\n第二段\r\n末行\r\n';
     const f = fixture(t, [entry('one', raw)]); await f.view.open();
     click(f, '阅读收藏：one'); assert.match(text(f).textContent, /第一段/); assert.match(text(f).textContent, /第二段/);
-    click(f, '编辑收藏'); assert.equal(editor(f).value, '  第一段\n\n第二段\n末行\n');
+    click(f, '编辑收藏'); assert.equal(displayed(f), '  第一段\n\n第二段\n末行\n');
     click(f, '保存收藏'); await waitReady(f);
     assert.equal(f.writes, 0); assert.equal(f.collection.state().items[0].text, raw);
     click(f, '复制收藏正文'); await turn(); assert.deepEqual(f.copied, [raw]);
@@ -101,12 +104,14 @@ test('CRLF and extra blank lines remain exact after opening edit, unchanged save
 test('typed draft and caret are not replaced by collection refresh notifications', async t => {
     const f = fixture(t, [entry('one')]); await f.view.open();
     click(f, '阅读收藏：one'); click(f, '编辑收藏');
-    const area = editor(f); type(f, '正在编辑的内容'); area.focus(); area.setSelectionRange(3, 3);
+    const area = editor(f); type(f, '正在编辑的内容'); area.focus(); const paragraph = area.firstChild;
     await f.collection.refresh();
-    assert.equal(editor(f), area); assert.equal(area.value, '正在编辑的内容');
-    assert.equal(area.selectionStart, 3); assert.equal(f.dom.doc.activeElement, area);
+    assert.equal(editor(f), area); assert.equal(displayed(f), '正在编辑的内容');
+    assert.equal(area.firstChild, paragraph); assert.equal(f.dom.doc.activeElement, area);
     f.view.close(); await f.view.open();
-    assert.equal(editor(f), area); assert.equal(area.value, '正在编辑的内容');
+    assert.equal(editor(f), area); assert.equal(displayed(f), '正在编辑的内容');
+    assert.equal(f.dom.visible(list(f)), true); assert.equal(f.dom.visible(area), false);
+    click(f, '继续未保存的编辑'); assert.equal(f.dom.visible(area), true);
 });
 
 test('failed save retains editor and its draft across close/reopen and never reports success', async t => {
@@ -116,11 +121,12 @@ test('failed save retains editor and its draft across close/reopen and never rep
     click(f, '保存收藏'); await waitReady(f);
     assert.equal(f.collection.state().needsRefresh, true);
     assert.equal(f.remote.value.items[0].text, '正文 one');
-    assert.equal(editor(f).value, '尚未保存的编辑稿');
+    assert.equal(displayed(f), '尚未保存的编辑稿');
     assert.doesNotMatch(f.dom.status()?.textContent || '', /PRIVATE|已保存|保存成功/);
     assert.ok(f.dom.status()?.textContent);
     f.view.close(); await f.view.open();
-    assert.equal(editor(f).value, '尚未保存的编辑稿'); assert.equal(f.writes, 1); assert.equal(f.reads, 1);
+    assert.equal(displayed(f), '尚未保存的编辑稿'); assert.equal(f.writes, 1); assert.equal(f.reads, 1);
+    assert.equal(f.dom.visible(list(f)), true); click(f, '继续未保存的编辑');
     assert.equal(f.dom.get('保存收藏').disabled, true);
 });
 
@@ -141,7 +147,7 @@ test('save and mutation controls disable synchronously, so double click writes o
     click(f, '阅读收藏：one'); click(f, '编辑收藏'); type(f, '保存中的文本');
     f.writeHook(() => held.promise);
     const save = click(f, '保存收藏'); save.click();
-    assert.equal(save.disabled, true); assert.equal(editor(f).readOnly, true);
+    assert.equal(save.disabled, true); assert.equal(editor(f).getAttribute('contenteditable'), 'false');
     await f.dom.wait(() => f.writes === 1);
     assert.equal(f.dom.get('关闭收藏').disabled, false);
     held.resolve(); await waitReady(f); assert.equal(f.writes, 1);
@@ -154,6 +160,8 @@ test('a floor-owned refresh reconciles a closed editor lost receipt without a du
     f.writeHook((value, _options, commit) => { commit(value); throw Error('lost receipt'); });
     click(f, '保存收藏'); await waitReady(f); f.view.close();
     await f.collection.refresh(); await f.view.open();
+    assert.equal(f.dom.visible(list(f)), true);
+    click(f, `阅读收藏：${f.collection.state().items[0].id}`);
     assert.equal(text(f).textContent, '楼层核对保留原文');
     assert.equal(f.dom.visible(editor(f)), false); assert.equal(f.writes, 1);
 });
@@ -165,7 +173,8 @@ test('closing during save neither cancels page-owned storage nor mutates detache
     f.view.close(); assert.equal(f.subscriptions, 0); assert.equal(f.dom.all().some(node => node.tagName === 'DIALOG'), false);
     held.resolve(); await waitReady(f);
     assert.equal(f.collection.state().items[0].text, '关闭后完成');
-    await f.view.open(); assert.equal(text(f).textContent, '关闭后完成'); assert.equal(f.reads, 1);
+    await f.view.open(); assert.equal(f.dom.visible(list(f)), true);
+    click(f, '阅读收藏：one'); assert.equal(text(f).textContent, '关闭后完成'); assert.equal(f.reads, 1);
 });
 
 test('owner change blocks writes and stale cold-read completion cannot mount content', async t => {
@@ -210,7 +219,7 @@ test('local control icons carry their intended glyph instead of an unresolved fa
     const f = fixture(t, [entry('one')]); await f.view.open();
     const expected = {
         '关闭收藏': 'x', '刷新收藏': 'refresh-cw', '多选收藏': 'list-checks', '删除选中收藏': 'trash-2',
-        '上一页收藏': 'arrow-left', '下一页收藏': 'arrow-right', '返回收藏列表': 'arrow-left',
+        '返回收藏列表': 'arrow-left', '管理文件夹': 'folder-plus', '整理收藏': 'tag',
         '复制收藏正文': 'copy', '编辑收藏': 'pencil', '取消编辑': 'arrow-left', '保存收藏': 'star',
     };
     for (const [label, glyph] of Object.entries(expected)) {
@@ -240,15 +249,16 @@ test('conflicting remote refresh preserves local draft; stale save cannot overwr
     });
     click(f, '保存收藏'); await waitReady(f);
     click(f, '核对保存结果'); await waitReady(f);
-    assert.equal(editor(f).value, '本地未确认编辑稿');
+    assert.equal(displayed(f), '本地未确认编辑稿');
     assert.match(f.dom.status().textContent, /已有更新|未完成/);
     assert.doesNotMatch(f.dom.status().textContent, /已保存|保存成功/);
     assert.equal(f.collection.state().items[0].text, '其他设备已保存的新正文');
     f.writeHook(null); click(f, '保存收藏'); await waitReady(f);
     assert.equal(f.writes, 1); assert.equal(f.remote.value.items[0].text, '其他设备已保存的新正文');
-    click(f, '复制收藏正文'); await turn(); assert.deepEqual(f.copied, ['本地未确认编辑稿']);
+    assert.equal(f.dom.visible(f.dom.get('复制收藏正文')), false);
+    assert.equal(displayed(f), '本地未确认编辑稿');
     click(f, '取消编辑'); assert.equal(text(f).textContent, '其他设备已保存的新正文');
-    click(f, '编辑收藏'); assert.equal(editor(f).value, '其他设备已保存的新正文');
+    click(f, '编辑收藏'); assert.equal(displayed(f), '其他设备已保存的新正文');
 });
 
 test('queued native close from the previous opening cannot close an immediately reopened panel', async t => {
@@ -271,21 +281,27 @@ test('lost-ack reconciliation finishing while closed is retained on reopen witho
     held.resolve(); await waitReady(f);
     assert.equal(f.collection.state().needsRefresh, false);
     await f.view.open();
+    assert.equal(f.dom.visible(list(f)), true);
+    click(f, `阅读收藏：${f.collection.state().items[0].id}`);
     assert.equal(f.dom.visible(text(f)), true); assert.equal(text(f).textContent, '回执丢失但已完整保存');
     assert.equal(f.dom.visible(editor(f)), false); assert.equal(f.writes, 1); assert.equal(f.reads, 2);
     assert.doesNotMatch(f.dom.status().textContent, /保存未完成|已有更新/);
 });
 
-test('local filtering, pagination and deleting two selected entries require no extra reads', async t => {
+test('local filtering, incremental rendering and whole-row selection require no extra reads', async t => {
     const initial = Array.from({length: 25}, (_, index) => entry(`item-${index}`, `正文片段 ${index} 独立词${index}`));
     const f = fixture(t, initial); await f.view.open();
     assert.ok(f.dom.get('阅读收藏：item-0')); assert.equal(f.dom.get('阅读收藏：item-24'), undefined);
-    click(f, '下一页收藏'); assert.ok(f.dom.get('阅读收藏：item-24'));
-    click(f, '上一页收藏');
+    const first = f.dom.get('阅读收藏：item-0');
+    list(f).clientHeight = 400; list(f).scrollHeight = 1300; list(f).scrollTop = 890; list(f).emit('scroll');
+    assert.ok(f.dom.get('阅读收藏：item-24')); assert.equal(first, f.dom.get('阅读收藏：item-0'));
+    f.view.close(); await f.view.open(); assert.ok(f.dom.get('阅读收藏：item-24'));
     const search = f.dom.get('搜索收藏'); search.value = '独立词24'; search.emit('input');
     assert.ok(f.dom.get('阅读收藏：item-24')); assert.equal(f.dom.get('阅读收藏：item-0'), undefined);
     search.value = ''; search.emit('input');
     click(f, '多选收藏'); click(f, '选择收藏：item-0'); click(f, '选择收藏：item-1');
+    assert.equal(f.dom.get('选择收藏：item-0').getAttribute('aria-pressed'), 'true');
+    assert.equal(list(f).querySelectorAll('input').length, 0);
     click(f, '删除选中收藏'); await waitReady(f);
     assert.equal(f.collection.state().items.length, 23);
     assert.equal(f.collection.state().items.some(item => ['item-0', 'item-1'].includes(item.id)), false);
@@ -301,7 +317,7 @@ test('closing a pending capture prevents its late opening from replacing the nex
     const second = f.view.collect({text: '重新选择的楼层', charName: '丙', userName: '丁'});
     held.resolve();
     assert.deepEqual(await Promise.all([first, second]), [false, true]);
-    assert.equal(editor(f).value, '重新选择的楼层');
+    assert.equal(displayed(f), '重新选择的楼层');
     assert.equal(f.writes, 0); assert.equal(f.reads, 1);
 });
 
@@ -325,12 +341,12 @@ test('capacity rejection keeps full draft and explains that refresh cannot repai
     f.writeHook(() => { throw Object.assign(Error('private byte limit'), {code: 'st_account_storage_capacity', writeState: 'not_started'}); });
     click(f, '保存收藏'); await waitReady(f);
     assert.equal(f.collection.state().needsRefresh, false);
-    assert.equal(editor(f).value, fullText.replace(/\r\n/g, '\n'));
+    assert.equal(displayed(f), fullText.replace(/\r\n/g, '\n'));
     assert.match(f.dom.status().textContent, /超过存储上限/);
     assert.doesNotMatch(f.dom.status().textContent, /请刷新|private/);
     assert.equal(f.dom.visible(f.dom.get('核对保存结果')), false);
     f.view.close(); await f.view.open();
-    assert.equal(editor(f).value, fullText.replace(/\r\n/g, '\n'));
+    assert.equal(displayed(f), fullText.replace(/\r\n/g, '\n'));
     assert.equal(f.reads, 1);
 });
 
@@ -348,4 +364,70 @@ test('oversized verification after upload stays unconfirmed with reconciliation 
     click(f, '核对保存结果'); await waitReady(f);
     assert.equal(text(f).textContent, '已提交但确认超限');
     assert.equal(f.writes, 1);
+});
+
+test('opening a second item cannot silently edit or save the retained first item draft', async t => {
+    const f = fixture(t, [entry('one'), entry('two')]); await f.view.open();
+    click(f, '阅读收藏：one'); click(f, '编辑收藏'); type(f, '仅属于第一条的稿');
+    f.view.close(); await f.view.open(); click(f, '阅读收藏：two'); click(f, '编辑收藏');
+    assert.equal(f.dom.visible(editor(f)), false); assert.equal(text(f).textContent, '正文 two');
+    assert.match(f.dom.status().textContent, /未保存/); assert.equal(f.writes, 0);
+    click(f, '返回收藏列表'); click(f, '继续未保存的编辑'); assert.equal(displayed(f), '仅属于第一条的稿');
+    click(f, '保存收藏'); await waitReady(f);
+    assert.equal(f.collection.state().items.find(item => item.id === 'one').text, '仅属于第一条的稿');
+    assert.equal(f.collection.state().items.find(item => item.id === 'two').text, '正文 two');
+});
+
+test('an unrelated classification or item write does not invalidate an untouched prose draft', async t => {
+    const f = fixture(t, [entry('one'), entry('two')]); await f.view.open();
+    click(f, '阅读收藏：one'); click(f, '编辑收藏'); type(f, '继续可保存的正文');
+    f.view.close();
+    await f.collection.createFolder('旅途', {expectedFingerprint: f.collection.state().fingerprint});
+    await f.collection.edit('two', '另一条的新文', {expectedFingerprint: f.collection.state().fingerprint});
+    await f.view.open(); click(f, '继续未保存的编辑'); click(f, '保存收藏'); await waitReady(f);
+    assert.equal(f.collection.state().items.find(item => item.id === 'one').text, '继续可保存的正文');
+    assert.equal(f.collection.state().items.find(item => item.id === 'two').text, '另一条的新文');
+    assert.equal(f.collection.state().organization.folders[0].name, '旅途');
+    assert.equal(f.reads, 1); assert.equal(f.writes, 3);
+});
+
+test('classification filters search folders tags roles and text locally with persistent loaded windows', async t => {
+    const f = fixture(t, Array.from({length: 61}, (_, i) => entry(`n${i}`, `第${i}段`))); await f.view.open();
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 20);
+    click(f, '显示更多收藏'); click(f, '显示更多收藏');
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 60);
+    await f.collection.createFolder('旅行', {expectedFingerprint: f.collection.state().fingerprint});
+    const folderId = f.collection.state().organization.folders[0].id;
+    await f.collection.organize(['n60'], {folderId, tags: ['远方']}, {expectedFingerprint: f.collection.state().fingerprint});
+    const search = f.dom.get('搜索收藏'); search.value = '旅行'; search.emit('input');
+    assert.deepEqual(list(f).querySelectorAll('.qm-collection-entry').map(node => node.dataset.itemId), ['n60']);
+    search.value = '远方'; search.emit('input'); assert.ok(f.dom.get('阅读收藏：n60'));
+    search.value = ''; search.emit('input');
+    assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 60);
+    const folders = f.dom.get('筛选文件夹'); folders.value = `folder:${folderId}`; folders.emit('change');
+    assert.deepEqual(list(f).querySelectorAll('.qm-collection-entry').map(node => node.dataset.itemId), ['n60']);
+    folders.value = 'char:角色甲'; folders.emit('change');
+    assert.equal(f.dom.get('阅读收藏：n60'), undefined); assert.ok(f.dom.get('阅读收藏：n0'));
+    folders.value = ''; folders.emit('change');
+    f.view.close(); await f.view.open(); assert.equal(list(f).querySelectorAll('.qm-collection-entry').length, 60);
+    assert.equal(f.reads, 1); assert.equal(f.writes, 2);
+});
+
+test('header returns are left of title, copy is reading-only and short reading selects adaptive sizing', async t => {
+    const f = fixture(t, [entry('one', '一句话')]); await f.view.open();
+    click(f, '阅读收藏：one'); const panel = f.dom.get('正文收藏');
+    assert.equal(panel.getAttribute('data-view'), 'read');
+    assert.equal(panel.children[0].children[0], f.dom.get('返回收藏列表'));
+    assert.equal(f.dom.visible(f.dom.get('复制收藏正文')), true);
+    click(f, '编辑收藏');
+    assert.equal(panel.getAttribute('data-view'), 'edit');
+    assert.equal(panel.children[0].children[1], f.dom.get('取消编辑'));
+    assert.equal(f.dom.visible(f.dom.get('复制收藏正文')), false);
+    f.view.close(); await f.view.open();
+    assert.equal(panel.getAttribute('data-view'), 'list'); assert.equal(f.dom.visible(list(f)), true);
+    const css = await readFile(new URL('../qianmu-text-collection-panel.css', import.meta.url), 'utf8');
+    assert.match(css, /\[data-view="read"\][^{]*\{[^}]*height: fit-content/);
+    assert.match(css, /font-size: var\(--qm-prose-size, 1em\); line-height: 1\.55; text-align: justify/);
+    assert.match(css, /margin: 0 0 \.75em;[^}]*text-indent: 2em/);
+    assert.doesNotMatch(css, /textarea\)[^}]*font-size: 16px/);
 });

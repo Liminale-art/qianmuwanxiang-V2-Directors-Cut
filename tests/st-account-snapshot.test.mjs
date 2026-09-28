@@ -6,6 +6,7 @@ import {createDocumentSession} from '../qianmu-document-session.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 import {createTextCollectionPanel} from '../qianmu-text-collection-panel.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
+import {setCollectionEditorText} from './helpers/text-collection-editor.mjs';
 
 // Native files protocol exercised against synthetic HTTP only. Request counts
 // are not browser layout, actual VPS timing or cross-device CAS guarantees.
@@ -341,7 +342,7 @@ test('snapshot native protocol and real collection panel complete capture/read/b
         assert.equal(control.disabled, false, `disabled collection control: ${label}`);
         control.click();
     };
-    const type = text => { const editor = dom.get('收藏正文'); editor.value = text; editor.emit('input'); };
+    const type = text => setCollectionEditorText(dom.get('收藏正文'), text);
     const settled = async () => {
         await dom.wait(() => !['loading', 'refreshing', 'saving'].includes(collection.state().phase));
         await new Promise(resolve => setImmediate(resolve));

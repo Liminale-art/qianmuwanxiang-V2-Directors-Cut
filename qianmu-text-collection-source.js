@@ -34,7 +34,9 @@ export function textCollectionFloorSources(context) {
 
     const candidates = new Map();
     for (const message of host.chat) {
-        if (!object(message) || message.is_system || typeof message.is_user !== 'boolean') continue;
+        // is_system is ST's prompt-exclusion flag. It is not a collection role
+        // or source identity, so toggling it must never unlink a saved floor.
+        if (!object(message) || typeof message.is_user !== 'boolean') continue;
         const first = Array.isArray(message.swipe_info) ? message.swipe_info[0] : null;
         const sent = timestamp(first?.send_date) || timestamp(message.send_date);
         if (!sent) continue;

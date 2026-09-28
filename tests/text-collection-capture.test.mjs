@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {createTextCollectionCapture, TEXT_COLLECTION_CAPTURE_STYLESHEET} from '../qianmu-text-collection-capture.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 
@@ -81,6 +82,30 @@ test('return to choice keeps local selection but full mode never displays select
     assert.equal(f.dom.get('选择第 2 段').getAttribute('aria-pressed'), 'true');
     click(f, '返回收藏范围'); click(f, '全文收藏'); await turn();
     assert.equal(f.calls[0][0].text, input().text);
+});
+
+test('paragraph return is the first header control before its title', t => {
+    const f = fixture(t); f.view.open(input()); click(f, '选段收藏');
+    const header = dialog(f).querySelector('header');
+    assert.equal(header.children[0], f.dom.get('返回收藏范围'));
+    assert.equal(header.children[1].tagName, 'H2');
+    assert.equal(header.children.at(-1), f.dom.get('关闭收藏范围'));
+});
+
+test('capture CSS uses content height and bounded inner scrolling rather than fixed-inset auto stretch', async () => {
+    const css = await readFile(TEXT_COLLECTION_CAPTURE_STYLESHEET, 'utf8');
+    const root = css.match(/\.qm-collection-capture\s*\{([^}]+)\}/)?.[1];
+    assert.match(root, /height:\s*fit-content;/);
+    assert.match(root, /min-height:\s*0;/);
+    assert.match(root, /max-height:\s*min\(680px, calc\(100dvh - 40px\)\);/);
+    assert.doesNotMatch(root, /height:\s*auto;/);
+    assert.match(css, /\.qm-collection-capture-paragraphs\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*auto;/);
+    const paragraph = css.match(/\.qm-collection-capture-paragraph\s*\{([^}]+)\}/)?.[1];
+    for (const expected of ['margin: 0 0 .75em;', 'text-align: justify;', 'text-indent: 2em;', 'line-height: 1.55;', 'font-size: var(--qm-prose-size, 1em);']) assert.ok(paragraph.includes(expected));
+    const selected = css.match(/\.qm-collection-capture-paragraph\[aria-pressed="true"\]\s*\{([^}]+)\}/)?.[1];
+    assert.match(selected, /background:\s*color-mix/);
+    assert.match(selected, /box-shadow:\s*none;/);
+    assert.doesNotMatch(selected, /inset|border/);
 });
 
 test('close and native escape discard selection without handing off or saving', async t => {

@@ -32,7 +32,7 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
     const selected = new Set();
     const dialog = make('dialog', 'qm-collection-capture');
     dialog.setAttribute('aria-label', '收藏正文范围');
-    const header = make('header'), heading = make('h2', '', '收藏正文'), headerActions = make('nav');
+    const header = make('header'), heading = make('h2', '', '收藏正文');
     const iconButton = (label, icon, action) => {
         const node = make('button'); node.type = 'button';
         node.title = label; node.setAttribute('aria-label', label);
@@ -46,7 +46,7 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
         mode = 'choice'; status.textContent = ''; render(); partialButton.focus();
     });
     const closeButton = iconButton('关闭收藏范围', 'x', close);
-    headerActions.append(backButton, closeButton); header.append(heading, headerActions);
+    header.append(backButton, heading, closeButton);
     const choices = make('div', 'qm-collection-capture-choices');
     const partialButton = make('button', '', '选段'), fullButton = make('button', '', '全文');
     partialButton.type = fullButton.type = 'button';

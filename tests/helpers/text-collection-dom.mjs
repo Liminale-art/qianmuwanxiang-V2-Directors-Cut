@@ -28,6 +28,7 @@ export function textCollectionDom() {
         get type() { return this.attrs.type || ''; }
         get childNodes() { return this.children; }
         get firstChild() { return this.children[0] ?? null; }
+        get nextSibling() { return this.parentNode?.children[this.parentNode.children.indexOf(this) + 1] ?? null; }
         set textContent(value) {
             this._text = String(value); for (const child of this.children) child.parentNode = null; this.children = [];
         }
@@ -46,6 +47,12 @@ export function textCollectionDom() {
             }
         }
         appendChild(node) { this.append(node); return node; }
+        insertBefore(node, reference) {
+            if (reference === null) return this.appendChild(node);
+            if (reference.parentNode !== this) throw Error('Reference is not a child');
+            if (node === reference) return node;
+            node.remove(); node.parentNode = this; this.children.splice(this.children.indexOf(reference), 0, node); return node;
+        }
         replaceChildren(...nodes) { this.textContent = ''; this.append(...nodes); }
         remove() {
             if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this);

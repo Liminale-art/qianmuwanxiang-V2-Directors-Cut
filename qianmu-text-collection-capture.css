@@ -6,7 +6,9 @@
     inset: 0;
     margin: auto;
     width: min(360px, calc(100vw - 28px));
-    height: auto;
+    /* With fixed inset:0, auto height stretches to the viewport. */
+    height: fit-content;
+    min-height: 0;
     max-width: none;
     max-height: min(680px, calc(100dvh - 40px));
     padding: 14px;
@@ -24,7 +26,7 @@
 .qm-collection-capture [hidden] { display: none !important; }
 .qm-collection-capture :is(header, footer, nav) { display: flex; align-items: center; gap: 6px; flex: none; }
 .qm-collection-capture :is(header, footer) { justify-content: space-between; }
-.qm-collection-capture h2 { margin: 0; font: inherit; font-weight: 600; }
+.qm-collection-capture h2 { flex: 1; margin: 0; font: inherit; font-weight: 600; }
 .qm-collection-capture button { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; margin: 0; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .qm-collection-capture button:hover { background: var(--sd-input-bg, #8882); }
 .qm-collection-capture button:disabled { opacity: .4; cursor: default; }
@@ -33,8 +35,8 @@
 .qm-collection-capture .qm-collection-capture-choices { display: flex; gap: 10px; }
 .qm-collection-capture .qm-collection-capture-choices button { flex: 1; min-height: 44px; background: var(--sd-input-bg, #8881); }
 .qm-collection-capture .qm-collection-capture-paragraphs { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.qm-collection-capture .qm-collection-capture-paragraph { display: block; width: 100%; padding: 10px; margin: 0 0 var(--qm-prose-paragraph-gap, 1em); text-align: start; overflow-wrap: anywhere; white-space: pre-wrap; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); line-height: var(--qm-prose-line-height, 1.7); }
+.qm-collection-capture .qm-collection-capture-paragraph { display: block; width: 100%; padding: 6px 10px; margin: 0 0 .75em; text-align: justify; text-align-last: start; text-indent: 2em; overflow-wrap: anywhere; white-space: pre-line; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); line-height: 1.55; }
 .qm-collection-capture .qm-collection-capture-paragraph:last-child { margin-bottom: 0; }
-.qm-collection-capture .qm-collection-capture-paragraph[aria-pressed="true"] { background: color-mix(in srgb, var(--sd-accent, #8aafcf) 18%, transparent); box-shadow: inset 3px 0 var(--sd-accent, #8aafcf); }
+.qm-collection-capture .qm-collection-capture-paragraph[aria-pressed="true"] { background: color-mix(in srgb, var(--sd-accent, #8aafcf) 18%, transparent); box-shadow: none; }
 .qm-collection-capture footer span { color: var(--sd-muted, #999); }
 .qm-collection-capture .qm-collection-capture-status { margin: 0; overflow-wrap: anywhere; }

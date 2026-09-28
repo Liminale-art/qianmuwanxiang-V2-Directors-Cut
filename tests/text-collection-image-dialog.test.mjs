@@ -57,6 +57,28 @@ test('downloads fixed original text and edited marks using actual theme colors a
     assert.equal(f.dom.status().textContent, '已发起 1 张图片下载。'); assert.equal(dialog(f).open, true);
 });
 
+test('image export prefers current prose font and doubles its CSS pixel size rather than the UI font', async t => {
+    const f = fixture(t); let cssSize = '18px';
+    f.dom.doc.defaultView.getComputedStyle = () => ({color: '#234567', backgroundColor: '#fffdf8', fontFamily: 'UI sans-serif',
+        getPropertyValue: name => name === '--qm-prose-font' ? '"正文宋体", serif' : name === '--qm-prose-size' ? cssSize : ''});
+    f.view.open(item()); click(f, '下载图片'); await turn();
+    assert.equal(f.exports[0].fontFamily, '"正文宋体", serif'); assert.equal(f.exports[0].fontSize, 36);
+    cssSize = '22px'; click(f, '下载图片'); await turn();
+    assert.equal(f.exports[1].fontSize, 44);
+    assert.equal(f.exports[1].text, item().text);
+});
+
+test('missing or unresolved prose pixels use the engine default without interpreting CSS expressions', async t => {
+    const f = fixture(t); let cssSize = 'calc(18px + 4px)';
+    f.dom.doc.defaultView.getComputedStyle = () => ({color: '#234567', backgroundColor: '#fffdf8', fontFamily: 'serif',
+        getPropertyValue: name => name === '--qm-prose-size' ? cssSize : ''});
+    f.view.open(item());
+    for (const value of ['calc(18px + 4px)', '22px; color:red', '22rem', '', 'NaNpx']) {
+        cssSize = value; click(f, '下载图片'); await turn();
+        assert.equal(f.exports.at(-1).fontSize, undefined); assert.equal(f.exports.at(-1).fontFamily, 'serif');
+    }
+});
+
 test('disabled annotations pass empty strings while keeping edits for toggling back on', async t => {
     const f = fixture(t); f.view.open(item()); f.dom.get('页眉').value = '保留编辑';
     click(f, '添加标注'); assert.equal(f.dom.visible(f.dom.get('页眉')), false);
@@ -196,6 +218,11 @@ test('missing download or account capabilities fail only on export and never byp
 test('image settings CSS stays scoped, compact, and removes focused text outlines', async () => {
     const css = await readFile(TEXT_COLLECTION_IMAGE_DIALOG_STYLESHEET, 'utf8');
     assert.match(css, /width:\s*min\(380px, calc\(100vw - 28px\)\)/);
+    const root = css.match(/\.qm-collection-image-dialog\s*\{([^}]+)\}/)?.[1];
+    assert.match(root, /height:\s*fit-content;/);
+    assert.match(root, /min-height:\s*0;/);
+    assert.doesNotMatch(root, /height:\s*auto;/);
+    assert.match(root, /max-height:\s*calc\(100dvh - 40px\);/);
     assert.match(css, /\.qm-collection-image-dialog textarea:focus-visible\s*\{\s*outline: none !important; box-shadow: none !important;/);
     for (const rule of css.split('}').map(value => value.trim()).filter(Boolean)) assert.match(rule, /^\.qm-collection-image-dialog/);
 });

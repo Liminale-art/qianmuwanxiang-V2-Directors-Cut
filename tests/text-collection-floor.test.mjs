@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createTextCollectionFloor} from '../qianmu-text-collection-floor.js';
-import {LUCIDE_ICON_MARKUP} from '../qianmu-icon-renderer.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 
 const turn = () => new Promise(resolve => setImmediate(resolve));
@@ -33,19 +32,19 @@ function fixture(t, chat = [{mes: '正文', is_user: false}, {mes: '回复', is_
         get items() { return items; }, set items(value) { items = value; }, setContext(value) { context = value; }, setToggle(fn) { toggle = fn; }};
 }
 
-test('adds one scoped theme-inheriting star per non-system message without rebuilding on refresh', t => {
+test('adds one ST-style theme-inheriting star per rendered message, including prompt-excluded floors', t => {
     const f = fixture(t, [{mes: 'AI'}, {mes: 'USER', is_user: true}, {mes: 'system', is_system: true}]);
     const unrelated = f.dom.doc.createElement('button'); unrelated.className = 'host-wallpaper-control'; f.root.appendChild(unrelated);
     f.floor.refresh(f.root);
     const first = f.button(), glyph = first.firstChild;
-    assert.equal(f.root.querySelectorAll('.qm-collection-star').length, 2);
+    assert.equal(f.root.querySelectorAll('.qm-collection-star').length, 3);
     assert.equal(first.getAttribute('aria-pressed'), 'false');
     assert.equal(first.getAttribute('aria-label'), '收藏正文');
-    assert.equal(glyph.innerHTML, LUCIDE_ICON_MARKUP.star);
-    assert.equal(glyph.getAttribute('fill'), 'none');
+    assert.equal(glyph.className, 'fa-regular fa-star');
+    assert.equal(glyph.hasAttribute('data-qianmu-icon-skip'), true);
     f.floor.refresh(f.root); f.floor.refresh(f.root);
     assert.equal(f.button(), first); assert.equal(f.button().firstChild, glyph);
-    assert.equal(f.iconCalls.length, 2);
+    assert.equal(f.iconCalls.length, 3);
     assert.equal(unrelated.parentNode, f.root);
     assert.equal(f.calls.length, 0);
 });
@@ -57,7 +56,7 @@ test('toolbar fallback and malformed floor IDs never point at another message', 
     f.appendMessage(''); f.appendMessage('0junk'); f.appendMessage('-1'); f.appendMessage('9007199254740992'); f.appendMessage('9');
     f.floor.refresh(f.root);
     assert.equal(f.root.querySelectorAll('.qm-collection-star').length, 2);
-    assert.equal(f.button(0).parentNode.className, 'mes_buttons_inner');
+    assert.equal(f.button(0).parentNode.className, 'mes_buttons');
     assert.equal(f.button(1).parentNode.className, 'mes_buttons');
 });
 
@@ -68,7 +67,8 @@ test('confirmed same-source entries fill a star; a click removes all IDs of that
         {id: 'other-floor', source: source('chat-one', 'message-1')}, {id: 'unlinked', source: null}];
     f.floor.refresh(f.root);
     assert.equal(f.button().getAttribute('aria-pressed'), 'true');
-    assert.equal(f.button().firstChild.getAttribute('fill'), 'currentColor');
+    assert.equal(f.button().firstChild.classList.contains('fa-solid'), true);
+    assert.equal(f.button().firstChild.classList.contains('fa-regular'), false);
     assert.equal(f.button().getAttribute('aria-label'), '取消本层收藏');
     f.setToggle(({ids}) => { f.items = f.items.filter(item => !ids.includes(item.id)); });
     const action = f.click(f.button().firstChild);
@@ -76,6 +76,8 @@ test('confirmed same-source entries fill a star; a click removes all IDs of that
     assert.deepEqual(f.calls[0].ids, ['a', 'b']);
     await turn();
     assert.equal(f.button().getAttribute('aria-pressed'), 'false');
+    assert.equal(f.button().firstChild.classList.contains('fa-regular'), true);
+    assert.equal(f.button().firstChild.classList.contains('fa-solid'), false);
     assert.equal(f.button(1).getAttribute('aria-pressed'), 'true');
 });
 
@@ -128,14 +130,50 @@ test('unrelated and forged buttons are not claimed', t => {
     assert.equal(f.calls.length, 0);
 });
 
-test('replaced or missing toolbar and removed messages release only owned controls', t => {
+test('extra tools changing do not rebuild the star; replacement toolbar and removed messages release owned controls', t => {
     const f = fixture(t); f.floor.refresh(f.root); const old = f.button();
     f.elements[0].querySelector('.extraMesButtons').remove(); f.floor.refresh(f.root);
+    assert.equal(old.isConnected, true); assert.equal(f.button(), old);
+    f.elements[0].querySelector('.mes_buttons').remove();
+    const toolbar = f.dom.doc.createElement('div'); toolbar.className = 'mes_buttons'; f.elements[0].appendChild(toolbar);
+    f.floor.refresh(f.root);
     assert.equal(old.isConnected, false); assert.notEqual(f.button(), old);
     f.elements[1].remove(); f.floor.refresh(f.root);
     assert.equal(f.elements[1].querySelector('.qm-collection-star'), null);
     f.elements[0].querySelector('.mes_buttons').remove(); f.floor.refresh(f.root);
     assert.equal(f.root.querySelectorAll('.qm-collection-star').length, 0);
+});
+
+test('star sits immediately before storyboard, after host edit, regardless of injection order', t => {
+    const f = fixture(t), toolbar = f.elements[0].querySelector('.mes_buttons');
+    const edit = f.dom.doc.createElement('div'); edit.className = 'mes_edit'; toolbar.append(edit);
+    const storyboard = f.dom.doc.createElement('button'); storyboard.className = 'sd-storyboard-message-action';
+    f.floor.refresh(f.root); const star = f.button();
+    assert.equal(edit.nextSibling, star);
+    // The real entry injects collection before storyboard on first render.
+    toolbar.append(storyboard); f.floor.refresh(f.root);
+    assert.equal(edit.nextSibling, star); assert.equal(star.nextSibling, storyboard);
+    const extra = f.dom.doc.createElement('button'); extra.className = 'third-party';
+    toolbar.insertBefore(extra, storyboard); f.floor.refresh(f.root);
+    assert.equal(extra.nextSibling, star); assert.equal(star.nextSibling, storyboard); assert.equal(f.button(), star);
+    // Existing storyboard toolbar is also respected on a cold collection mount.
+    const secondToolbar = f.elements[1].querySelector('.mes_buttons');
+    const secondStoryboard = f.dom.doc.createElement('button'); secondStoryboard.className = 'sd-storyboard-message-action';
+    secondToolbar.insertBefore(secondStoryboard, f.button(1)); f.floor.refresh(f.root);
+    assert.equal(f.button(1).nextSibling, secondStoryboard);
+    assert.equal(f.iconCalls.length, 2);
+});
+
+test('changing prompt exclusion does not remove the star or block add/cancel actions', async t => {
+    const message = {mes: '已隐藏的正文', is_user: false, is_system: true}, f = fixture(t, [message]);
+    f.floor.refresh(f.root); const star = f.button();
+    f.click(); await turn(); assert.equal(f.calls.length, 1); assert.deepEqual(f.calls[0].ids, []);
+    f.items = [{id: 'saved', source: source('chat-one', 'message-0')}];
+    f.floor.refresh(f.root); assert.equal(star.getAttribute('aria-pressed'), 'true');
+    message.is_system = false; f.floor.refresh(f.root); assert.equal(f.button(), star);
+    message.is_system = true; f.click(); await turn();
+    assert.deepEqual(f.calls[1].ids, ['saved']); assert.equal(f.button(), star);
+    assert.equal(message.is_system, true); assert.equal(message.mes, '已隐藏的正文');
 });
 
 test('root replacement and disposal ignore late operations without mutating the new page', async t => {

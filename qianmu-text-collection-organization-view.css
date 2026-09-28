@@ -1,0 +1,26 @@
+.qm-collection-organize {
+    box-sizing: border-box; position: fixed; inset: 0; margin: auto;
+    width: min(500px, calc(100vw - 28px)); height: fit-content; min-height: 0;
+    max-width: none; max-height: calc(100dvh - 28px); padding: 14px;
+    border: 1px solid var(--sd-hairline, #8886); border-radius: var(--qm-card-radius, 16px);
+    background: var(--sd-sticky-bg, var(--SmartThemeBlurTintColor, #22262b));
+    color: var(--sd-text, var(--SmartThemeBodyColor, #eee)); font: 14px var(--sd-font, sans-serif); overflow: hidden;
+}
+.qm-collection-organize[open] { display: flex; flex-direction: column; gap: 12px; }
+.qm-collection-organize * { box-sizing: border-box; min-width: 0; }
+.qm-collection-organize [hidden] { display: none !important; }
+.qm-collection-organize :is(header, footer, .qm-collection-folder-row) { display: flex; align-items: center; gap: 6px; }
+.qm-collection-organize header { flex: none; }
+.qm-collection-organize h2 { flex: 1; margin: 0; font: inherit; font-weight: 600; }
+.qm-collection-organize section { min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; }
+.qm-collection-organize label { display: flex; flex-direction: column; gap: 8px; }
+.qm-collection-organize :is(input, select) { flex: 1; width: 100%; padding: 10px; margin: 0; border: 0; border-radius: 8px; font: inherit; color: inherit; background: var(--sd-input-bg, #8881); box-shadow: none; outline: none; }
+.qm-collection-organize :is(input, select):focus { outline: none; box-shadow: none; }
+.qm-collection-organize button { display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 36px; min-height: 36px; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
+.qm-collection-organize button:hover { background: var(--sd-input-bg, #8882); }
+.qm-collection-organize button:focus-visible { outline: 2px solid var(--sd-accent, #8aafcf); outline-offset: -2px; }
+.qm-collection-organize button svg { width: 20px; height: 20px; }
+.qm-collection-organize :disabled { opacity: .4; cursor: default; }
+.qm-collection-organize footer { justify-content: flex-end; }
+.qm-collection-organize-status { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .qm-collection-organize :is(input, select) { font-size: 16px; } }
