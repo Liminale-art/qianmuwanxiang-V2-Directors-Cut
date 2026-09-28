@@ -4,6 +4,7 @@ export const QIANMU_HIVE_COMMANDS = Object.freeze([
   { id: 'focus', label: '专注', icon: 'fa-hourglass-half', glyph: 'focus' },
   { id: 'notes', label: '便笺', icon: 'fa-note-sticky', glyph: 'qm-regular-note-pencil' },
   { id: 'assistant', label: '场外特助', icon: 'fa-comments', glyph:'qm-duotone-chats' },
+  { id: 'text-collection', label: '正文收藏', icon: 'fa-star', glyph:'qm-regular-star' },
   { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', glyph: 'tasks' },
   { id: 'castworld', label: '世界', icon: 'fa-earth-asia', glyph: 'world' },
   { id: 'context', label: '取材', icon: 'fa-box-archive', glyph: 'context' },
@@ -22,5 +23,10 @@ export function upgradeProseHiveCommands(settings) {
   for (const key of ['quickWheelCustomOrder', 'quickWheelCustomEnabled']) {
     if (Array.isArray(settings[key])) settings[key] = [...new Set(settings[key].filter(id => !retired.has(id)))];
   }
-  settings.proseHiveVersion = 2;
+  if (!(settings.proseHiveVersion >= 3)) {
+    for (const key of ['quickWheelCustomOrder', 'quickWheelCustomEnabled']) {
+      if (Array.isArray(settings[key]) && !settings[key].includes('text-collection')) settings[key].push('text-collection');
+    }
+    settings.proseHiveVersion = 3;
+  }
 }

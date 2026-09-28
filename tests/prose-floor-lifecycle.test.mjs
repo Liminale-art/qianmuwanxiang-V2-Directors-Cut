@@ -1,30 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {setTimeout as delay} from 'node:timers/promises';
 import {createProseFloorTools} from '../qianmu-prose-floor-tools.js';
 
-function fixture(){
- const window=new EventTarget(),document=new EventTarget();let opens=0,closes=0;
- window.localStorage={getItem:()=>null};window.setTimeout=setTimeout;window.clearTimeout=clearTimeout;window.navigator={onLine:true};document.hidden=false;
- const tools=createProseFloorTools({window,document,resolveNamespace:async()=> 'fixture-account',isCurrent:()=>true,headers:()=>({}),
-  sessionFactory:async()=>{opens++;return {close(){closes++;}};},outboxFactory:()=>({list:async()=>[],close(){}})});
- const enable=()=>tools.configureHive({window,document});
- const settled=async()=>{for(let i=0;i<15;i++)await delay(5);};
- return {tools,window,enable,settled,get opens(){return opens;},get closes(){return closes;}};
+const gate = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };
+const turn = () => new Promise(resolve => setImmediate(resolve));
+function fixture(t) {
+    const window = new EventTarget(); let stores = 0, closes = 0, views = 0, wait;
+    const tools = createProseFloorTools({window, getContext: () => ({chat: []}), names: () => ({charName: '', userName: ''}),
+        resolveNamespace: async () => 'st-user:floor-test', isCurrent: () => true, headers: () => ({}),
+        storeFactory: async () => {
+            stores++; await wait?.(); return {
+                read: async () => ({exists: false, fingerprint: null, value: null}),
+                write: async () => { throw Error('Lifecycle must not write'); }, close() { closes++; },
+            };
+        },
+        viewFactory: async ({collection}) => {
+            views++; return {panel: {open: async () => { await collection.open(); return true; }}, capture: {close() {}}, dispose() {}};
+        },
+    });
+    t.after(() => tools.dispose());
+    return {tools, window, hold(fn) { wait = fn; }, get stores() { return stores; }, get closes() { return closes; }, get views() { return views; }};
 }
 
-test('disable then enable restarts automatic recovery exactly once and releases the old listeners',async()=>{
- const f=fixture();try{
-  f.enable();f.tools.refresh(null);await f.settled();assert.equal(f.opens,1);
-  f.tools.dispose();f.window.dispatchEvent(new Event('online'));await f.settled();assert.equal(f.opens,1);
-  f.enable();f.tools.refresh(null);await f.settled();assert.equal(f.opens,2);
-  f.window.dispatchEvent(new Event('online'));await f.settled();assert.equal(f.opens,3);assert.equal(f.closes,3);
- }finally{f.tools.dispose();}
+test('host disable and re-enable create one new account document without online recovery or hive reads', async t => {
+    const f = fixture(t); f.tools.refreshCollection(null); await f.tools.openCollection();
+    assert.equal(f.stores, 1); f.tools.renderHive(); f.window.dispatchEvent(new Event('online'));
+    await turn(); assert.equal(f.stores, 1);
+    f.tools.dispose(); assert.equal(f.closes, 1);
+    f.tools.refreshCollection(null); await f.tools.openCollection();
+    assert.equal(f.stores, 2); assert.equal(f.views, 2); assert.equal(f.closes, 1);
 });
 
-test('a late lazy import from a disabled lifetime cannot start a second recovery controller',async()=>{
- const f=fixture();try{
-  f.enable();f.tools.refresh(null);f.tools.dispose();f.enable();f.tools.refresh(null);f.tools.refresh(null);
-  await f.settled();assert.equal(f.opens,1);f.window.dispatchEvent(new Event('online'));await f.settled();assert.equal(f.opens,2);
- }finally{f.tools.dispose();}
+test('late account setup from a disabled host cannot mount a view in its replacement', async t => {
+    const f = fixture(t), held = gate(); f.hold(() => held.promise);
+    const old = f.tools.openCollection(); await turn(); f.tools.dispose();
+    f.hold(null); assert.equal(await f.tools.openCollection(), true); held.resolve();
+    assert.equal(await old, false); assert.equal(f.stores, 2); assert.equal(f.views, 1); assert.equal(f.closes, 1);
 });

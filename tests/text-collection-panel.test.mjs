@@ -148,6 +148,16 @@ test('save and mutation controls disable synchronously, so double click writes o
     assert.equal(text(f).textContent, '保存中的文本');
 });
 
+test('a floor-owned refresh reconciles a closed editor lost receipt without a duplicate capture', async t => {
+    const f = fixture(t, null);
+    await f.view.collect({text: '楼层核对保留原文', charName: '角色', userName: '用户', source: null});
+    f.writeHook((value, _options, commit) => { commit(value); throw Error('lost receipt'); });
+    click(f, '保存收藏'); await waitReady(f); f.view.close();
+    await f.collection.refresh(); await f.view.open();
+    assert.equal(text(f).textContent, '楼层核对保留原文');
+    assert.equal(f.dom.visible(editor(f)), false); assert.equal(f.writes, 1);
+});
+
 test('closing during save neither cancels page-owned storage nor mutates detached UI', async t => {
     const f = fixture(t, [entry('one')]), held = gate(); await f.view.open();
     click(f, '阅读收藏：one'); click(f, '编辑收藏'); type(f, '关闭后完成');

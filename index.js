@@ -303,7 +303,7 @@ let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
 let feedbackOpenScope = null;
-const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
+const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 const featureRuntime = createFeatureRuntime({
   feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.403') },
   galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.403') },
@@ -5828,6 +5828,7 @@ async function runQuickWheelCommand(id) {
   if (id === 'floor') return openFloorNavigator();
   if (id === 'notes') return openNotesPanel();
   if (id === 'assistant') return proseFloorTools.openAssistant();
+  if (id === 'text-collection') return proseFloorTools.openCollection();
   if (id === 'geopolitics') return openModal('geopolitics');
   if (QUICK_COMMAND_IDS.includes(id)) return openModal(id);
 }
@@ -22398,6 +22399,7 @@ async function storyboardOnInlineTaskAction(button) {
 }
 
 async function storyboardOnChatClick(event) {
+  if (proseFloorTools.collectionClick(event)) return;
   const button = event.target.closest?.('[data-storyboard-chat-action]');
   if (!button || !button.closest('#chat')) {
     document.querySelectorAll('#chat .sd-storyboard-inline figure.actions-open').forEach((figure) => {
@@ -35653,7 +35655,12 @@ function bindEvents() {
     storyboardScheduleInlineRender(180);
   };
   const storyboardMoreMessagesLoadedHandler = () => storyboardScheduleInlineRender(180);
+  // Rendered user messages need their star immediately, without triggering any
+  // model extraction, generation, or unrelated host refresh work.
+  const collectionRenderedHandler = () => proseFloorTools.refreshCollection(document.getElementById('chat'));
   const pairs = [
+    [types.USER_MESSAGE_RENDERED || 'user_message_rendered', collectionRenderedHandler],
+    [types.CHARACTER_MESSAGE_RENDERED || 'character_message_rendered', collectionRenderedHandler],
     [types.APP_READY || 'app_ready', appReadyHandler],   // 注水后把悬浮球挪回上次拖动的位置（修偶发回默认位）
     [types.PERSONA_CHANGED || 'persona_changed', personaChangedHandler],   // 冷启动即读 ST 当前头像；切换人设后同步伴读设定
     [types.MESSAGE_RECEIVED || 'message_received', refreshHandler],   // 仅角色回复触发；重 roll/删楼由 refreshHandler 照实重算

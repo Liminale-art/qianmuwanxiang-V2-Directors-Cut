@@ -226,6 +226,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             if (!current()) return;
             selectedId = edit.item.id; draft = null; route = 'read'; readScroll = 0;
         } catch (error) {
+            if (draft === edit) draft.receiptUnknown = collection.state().needsRefresh === true;
             if (current()) notice = snapshot?.needsRefresh || /capacity/.test(snapshot?.error?.code || '') ? ''
                 : /conflict|missing/.test(error?.code || '') ? '收藏已有更新，修改已保留。请复制后重新打开。'
                     : '保存未完成，修改已保留。';
@@ -243,11 +244,18 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     }
     async function open() {
         if (!current()) return false;
+        const requestedOpening = ++opening;
         if (!visible) {
-            returnFocus = doc.activeElement; visible = true; opening++; parent.append(dialog);
+            returnFocus = doc.activeElement; visible = true; parent.append(dialog);
             dialog.showModal();
             unsubscribe = collection.subscribe(value => {
                 snapshot = value;
+                // A floor action can reconcile the shared document while this
+                // view is closed. Adopt only this draft's exact receipt.
+                if (draft?.receiptUnknown && !value.needsRefresh && value.loaded
+                    && value.items.some(item => item.id === draft.item.id && item.text === draft.text)) {
+                    selectedId = draft.item.id; draft = null; route = 'read';
+                }
                 if (value.loaded) {
                     const existing = new Set(value.items.map(item => item.id));
                     for (const id of selection) if (!existing.has(id)) selection.delete(id);
@@ -255,15 +263,17 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
                 render();
             });
         }
-        const requestedOpening = opening;
         try { await collection.open(); }
         catch { /* Keep the view retryable; never show a read failure as empty. */ }
         if (!current() || !visible || requestedOpening !== opening) return false;
         render(); return visible;
     }
-    async function collect(input) {
+    async function collect(input, selection = {}) {
+        const captureCurrent = () => !selection.signal?.aborted && (!selection.isCurrent || selection.isCurrent());
+        if (!captureCurrent()) return false;
         const opened = open(), requestedOpening = opening;
         if (!await opened || requestedOpening !== opening || busy() || !snapshot?.loaded) return false;
+        if (!captureCurrent()) { close(); return false; }
         if (draft) { route = 'edit'; render(); return false; }
         if (typeof input?.text !== 'string' || !input.text.trim()
             || typeof input.charName !== 'string' || typeof input.userName !== 'string') return false;

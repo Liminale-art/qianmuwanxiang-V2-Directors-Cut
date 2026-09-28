@@ -1,0 +1,30 @@
+/* Only the collection's own message control. Inherit the ST toolbar theme. */
+button.qm-collection-star {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-width: 1em;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+}
+
+button.qm-collection-star > .qm-glyph-svg {
+    width: 1em;
+    height: 1em;
+    stroke: currentColor;
+}
+
+button.qm-collection-star[aria-pressed="true"] > .qm-glyph-svg {
+    fill: currentColor;
+}
+
+button.qm-collection-star:disabled { cursor: progress; }
