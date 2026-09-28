@@ -1,0 +1,52 @@
+/* Local candidate only: loaded by the themed portal owner, never globally. */
+.qm-collection-panel {
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(940px, calc(100vw - 28px));
+    height: min(760px, calc(100dvh - 28px));
+    max-width: none;
+    max-height: none;
+    padding: 14px;
+    border: 1px solid var(--sd-hairline, #8886);
+    border-radius: var(--qm-card-radius, 16px);
+    background: var(--sd-sticky-bg, var(--SmartThemeBlurTintColor, #22262b));
+    color: var(--sd-text, var(--SmartThemeBodyColor, #eee));
+    font: 14px var(--sd-font, sans-serif);
+    text-align: start;
+    overflow: hidden;
+}
+.qm-collection-panel[open] { display: flex; flex-direction: column; gap: 10px; }
+.qm-collection-panel * { box-sizing: border-box; min-width: 0; }
+.qm-collection-panel [hidden] { display: none !important; }
+.qm-collection-panel :is(header, footer, nav) { display: flex; align-items: center; gap: 6px; flex: none; }
+.qm-collection-panel :is(header, footer) { justify-content: space-between; }
+.qm-collection-panel h2 { margin: 0; font: inherit; font-weight: 600; overflow-wrap: anywhere; }
+.qm-collection-panel button { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; margin: 0; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.qm-collection-panel button:hover { background: var(--sd-input-bg, #8882); }
+.qm-collection-panel button:disabled { opacity: .4; cursor: default; }
+.qm-collection-panel button:focus-visible { outline: 2px solid var(--sd-accent, #8aafcf); outline-offset: -2px; }
+.qm-collection-panel button svg { width: 20px; height: 20px; }
+.qm-collection-panel :is(input, textarea) { margin: 0; color: inherit; background: var(--sd-input-bg, #8881); font: inherit; border: 0; border-radius: 8px; box-shadow: none; outline: none; }
+.qm-collection-panel :is(input, textarea):focus { outline: none; box-shadow: none; }
+.qm-collection-panel .qm-collection-list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.qm-collection-panel .qm-collection-toolbar input { flex: 1; width: 0; padding: 10px; }
+.qm-collection-panel .qm-collection-list { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.qm-collection-panel .qm-collection-row { display: flex; align-items: center; gap: 8px; }
+.qm-collection-panel .qm-collection-row input { flex: none; width: 20px; height: 20px; accent-color: var(--sd-accent, #8aafcf); }
+.qm-collection-panel .qm-collection-entry { display: flex; flex: 1; flex-direction: column; align-items: stretch; gap: 5px; padding: 12px; text-align: start; }
+.qm-collection-panel :is(.qm-collection-name, .qm-collection-preview) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qm-collection-panel .qm-collection-preview { font-size: .88em; color: var(--sd-muted, #999); }
+.qm-collection-panel .qm-collection-paging { justify-content: center; }
+.qm-collection-panel .qm-collection-empty { margin: 20px 12px; }
+.qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) { flex: 1; width: 100%; min-height: 0; margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; white-space: pre-wrap; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); line-height: var(--qm-prose-line-height, 1.7); }
+.qm-collection-panel .qm-collection-text p { margin: 0 0 var(--qm-prose-paragraph-gap, 1em); font: inherit; white-space: pre-wrap; }
+.qm-collection-panel .qm-collection-text p:last-child { margin-bottom: 0; }
+.qm-collection-panel .qm-collection-editor { display: block; resize: none; }
+.qm-collection-panel footer nav { margin-inline-start: auto; }
+.qm-collection-panel .qm-collection-status { display: flex; flex: none; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+    .qm-collection-panel { padding: 10px; gap: 8px; }
+    .qm-collection-panel :is(input, textarea) { font-size: 16px; }
+}
