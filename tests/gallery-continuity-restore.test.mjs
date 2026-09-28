@@ -4,8 +4,9 @@ import {galleryChatSaveFixture,pagedConsent} from './helpers/gallery-chat-save-f
 import {attachGalleryContinuity} from './helpers/gallery-continuity-fixture.mjs';
 import {GALLERY_CONTINUITY_FIELDS} from '../qianmu-gallery-continuity.js';
 import {createGalleryLocation} from '../qianmu-gallery-location.js';
-import {storyboardFloorTakeReceiptSupersedes} from '../qianmu-storyboard-floor-take-receipt.js?v=1.59.392';
-import {stageStoryboardContinuationLinks} from '../qianmu-storyboard-continuation-proof.js?v=1.59.392';
+import {importCurrentRuntime} from './helpers/current-runtime.mjs';
+const {storyboardFloorTakeReceiptSupersedes} = await importCurrentRuntime('qianmu-storyboard-floor-take-receipt.js');
+const {stageStoryboardContinuationLinks} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
 
 async function fixture(t){let original;const f=await galleryChatSaveFixture(t,{count:1,clearArchivedFields:GALLERY_CONTINUITY_FIELDS,prepareStore:async input=>{

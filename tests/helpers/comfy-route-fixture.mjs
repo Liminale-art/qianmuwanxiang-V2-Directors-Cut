@@ -5,7 +5,7 @@ import * as preflight from '../../qianmu-comfy-preflight.js';
 import {hashText} from '../../qianmu-storyboard-utils.js';
 import {projectNewComfyExecution} from '../../qianmu-comfy-new-execution.js';
 import {prepareEnsembleStyleBindings} from '../../qianmu-ensemble-bindings.js';
-import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from '../../qianmu-ensemble-handoff.js';
+import {attachEnsembleCompilerResult,sealEnsembleCompilerResult,resolveEnsembleCompiledRoutes} from './ensemble-handoff-runtime.mjs';
 import {createStoryboardQueueWindow} from '../../qianmu-storyboard-queue-window.js';
 import {startStoryboardQueueWindowBatch} from '../../qianmu-storyboard-queue-batch.js';
 import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from '../../qianmu-storyboard-variant-recovery.js';

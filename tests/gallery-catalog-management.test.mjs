@@ -91,7 +91,7 @@ test('actual inventory counts catalog once, preserves unavailable status and rec
             featureRuntime: { load: async () => module }, blobStore: { estimateBlobStoreUsage: async () => ({ totalBytes: 0, categories: [] }), auditOrphanedReaderBlobs: async () => ({}), classifyStoragePressure: () => ({}) },
             storyboardManageImageChannels: async () => empty(), storyboardImageServiceRuntime: async () => ({ manage: async () => empty() }), storyboardComfyRecoveryRuntime: async () => ({ usage: async () => empty() }),
             focusClockLibrary: () => ({ summary: async () => empty() }), notesSyncControls: () => {}, getQianmuNotesStorage: () => empty(), storageJsonBytes: () => 0,
-    settings:{},proseFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
+    settings:{},proseFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),collectionStorageSummary:async()=>({status:'ready',namespace:ns,bytes:0,count:0,fingerprint:null})},
             storageSettingsSnapshotWithoutDiagnostics: () => ({}), storageDiagnosticSnapshot: () => ({}), getChatStore: () => ({}) });
         vm.runInContext(code, context); const inventory = await context.collectStorageInventory();
         assert.equal(calls, 1); assert.equal(inventory.trackedBytes, unavailable ? 0 : 90); assert.equal(inventory.manageableBytes, 0, 'catalog is not silently added to generic deletion');

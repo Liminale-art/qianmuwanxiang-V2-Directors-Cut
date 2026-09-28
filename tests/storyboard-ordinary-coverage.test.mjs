@@ -5,8 +5,9 @@ import * as core from '../qianmu-storyboard.js';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardStreamMoment} from '../qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.392';
-import {readStoryboardStreamCoverage,configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,storyboardStreamCoverageScope,storyboardStreamStyleHistory} from '../qianmu-storyboard-stream-coverage.js?v=1.59.392';
+import {importCurrentRuntime} from './helpers/current-runtime.mjs';
+const {verifyStoryboardStreamReference} = await importCurrentRuntime('qianmu-storyboard-stream-reference.js');
+const {readStoryboardStreamCoverage,configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,storyboardStreamCoverageScope,storyboardStreamStyleHistory} = await importCurrentRuntime('qianmu-storyboard-stream-coverage.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
 const namespace='st-user:test';
 async function fixture({legacy=false}={}){

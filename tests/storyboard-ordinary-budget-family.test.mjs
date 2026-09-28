@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import * as core from '../qianmu-storyboard.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.392';
-import {bindStoryboardStreamBudgetFamily as bind,storyboardStreamBudgetReference as budget,normalizeStoryboardStreamReference as normalize,
-  verifyStoryboardStreamReference as verify,storyboardStreamDigest as digest,storyboardStreamFingerprint as fingerprint} from '../qianmu-storyboard-stream-reference.js?v=1.59.392';
-import {storyboardContinuationIdentityInput} from '../qianmu-storyboard-continuation-proof.js?v=1.59.392';
+import {importCurrentRuntime} from './helpers/current-runtime.mjs';
+const {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} = await importCurrentRuntime('qianmu-storyboard-stream-source.js');
+const {bindStoryboardStreamBudgetFamily:bind,storyboardStreamBudgetReference:budget,normalizeStoryboardStreamReference:normalize,
+  verifyStoryboardStreamReference:verify,storyboardStreamDigest:digest,storyboardStreamFingerprint:fingerprint} = await importCurrentRuntime('qianmu-storyboard-stream-reference.js');
+const {storyboardContinuationIdentityInput} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
 const copy=value=>JSON.parse(JSON.stringify(value));

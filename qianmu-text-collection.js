@@ -17,7 +17,7 @@ function timestamp(value) {
 function validSource(value) {
     return value === null || fields(value, ['chatId', 'messageId']) && nonempty(value.chatId) && nonempty(value.messageId);
 }
-function validate(value) {
+export function validateTextCollectionDocument(value) {
     if (!fields(value, ['version', 'items']) || value.version !== 1 || !Array.isArray(value.items)) {
         throw failure('document', '收藏内容无法读取，请刷新重试');
     }
@@ -33,6 +33,13 @@ function validate(value) {
     }
     return value;
 }
+const validate = validateTextCollectionDocument;
+const sameItem = (left, right) => left.id === right.id && left.text === right.text
+    && left.charName === right.charName && left.userName === right.userName
+    && left.createdAt === right.createdAt && left.updatedAt === right.updatedAt
+    && (left.source === null && right.source === null || left.source !== null && right.source !== null
+        && left.source.chatId === right.source.chatId && left.source.messageId === right.source.messageId);
+export {sameItem as sameTextCollectionItem};
 
 export function createTextCollection({session, now = () => new Date().toISOString(), createId = () => crypto.randomUUID()} = {}) {
     if (!session || !['open', 'refresh', 'save', 'state', 'subscribe'].every(key => typeof session[key] === 'function')
@@ -121,6 +128,17 @@ export function createTextCollection({session, now = () => new Date().toISOStrin
                 const selected = new Set(ids);
                 if ([...selected].some(id => !items.some(item => item.id === id))) throw failure('missing', '所选收藏已变化，请重新选择');
                 return items.filter(item => !selected.has(item.id));
+            });
+        },
+        restore(document, options) {
+            return mutate(options, items => {
+                const additions = structuredClone(validate(document).items), existing = new Map(items.map(item => [item.id, item]));
+                for (const item of additions) {
+                    const previous = existing.get(item.id);
+                    if (previous && !sameItem(previous, item)) throw failure('conflict', '已有同编号收藏，未覆盖当前内容');
+                    if (!previous) { items.push(item); existing.set(item.id, item); }
+                }
+                return items;
             });
         },
     });

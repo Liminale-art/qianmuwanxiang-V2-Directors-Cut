@@ -1,0 +1,37 @@
+.qm-collection-image-dialog {
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(380px, calc(100vw - 28px));
+    height: auto;
+    max-width: none;
+    max-height: calc(100dvh - 40px);
+    padding: 14px;
+    border: 1px solid var(--sd-hairline, #8886);
+    border-radius: var(--qm-card-radius, 16px);
+    background: var(--sd-sticky-bg, var(--SmartThemeBlurTintColor, #22262b));
+    color: var(--sd-text, var(--SmartThemeBodyColor, #eee));
+    font: 14px var(--qm-prose-font, var(--sd-font, sans-serif));
+    text-align: start;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+.qm-collection-image-dialog[open] { display: flex; flex-direction: column; gap: 14px; }
+.qm-collection-image-dialog * { box-sizing: border-box; min-width: 0; }
+.qm-collection-image-dialog [hidden] { display: none !important; }
+.qm-collection-image-dialog :is(header, footer) { display: flex; align-items: center; gap: 8px; flex: none; }
+.qm-collection-image-dialog header { justify-content: space-between; }
+.qm-collection-image-dialog footer { justify-content: flex-end; }
+.qm-collection-image-dialog h2 { margin: 0; font: inherit; font-weight: 600; }
+.qm-collection-image-dialog button { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; margin: 0; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.qm-collection-image-dialog button:hover { background: var(--sd-input-bg, #8882); }
+.qm-collection-image-dialog button:focus-visible { outline: 2px solid var(--sd-accent, #8aafcf); outline-offset: -2px; }
+.qm-collection-image-dialog button svg { width: 20px; height: 20px; }
+.qm-collection-image-dialog .qm-collection-image-mark { display: flex; align-items: center; gap: 8px; margin: 0; }
+.qm-collection-image-dialog input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--sd-accent, currentColor); }
+.qm-collection-image-dialog .qm-collection-image-fields { display: flex; flex-direction: column; gap: 12px; }
+.qm-collection-image-dialog .qm-collection-image-fields label { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.qm-collection-image-dialog textarea { width: 100%; min-height: 68px; max-height: 160px; margin: 0; padding: 8px 10px; border: 1px solid var(--sd-hairline, #8886); border-radius: 8px; background: var(--sd-input-bg, #8881); color: inherit; font: inherit; line-height: 1.5; resize: vertical; }
+.qm-collection-image-dialog textarea:focus, .qm-collection-image-dialog textarea:focus-visible { outline: none !important; box-shadow: none !important; }
+.qm-collection-image-dialog .qm-collection-image-status { margin: 0; overflow-wrap: anywhere; }

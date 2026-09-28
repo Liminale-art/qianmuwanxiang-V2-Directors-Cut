@@ -7,7 +7,7 @@ const PAGE_SIZE = 20;
 const displayText = text => text.replace(/\r\n?/g, '\n').replace(/\n(?:[\t ]*\n){2,}/g, '\n\n');
 const titleFor = item => `${item.charName || '未命名角色'} & ${item.userName || '未命名用户'} · ${new Date(item.createdAt).toLocaleDateString('zh-CN')}`;
 
-export function createTextCollectionPanel({parent, collection, isCurrent, copyText} = {}) {
+export function createTextCollectionPanel({parent, collection, isCurrent, copyText, onExportImage} = {}) {
     const doc = parent?.ownerDocument;
     if (!doc || !collection || typeof isCurrent !== 'function') throw new TypeError('Collection panel requires its owner');
     const make = (tag, className, text) => {
@@ -73,6 +73,10 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     const footer = make('footer');
     const backButton = button('返回收藏列表', 'arrow-left', () => { route = 'list'; notice = ''; render(); });
     const readActions = make('nav');
+    const imageButton = button('收藏存图', 'image', () => {
+        const item = activeItem();
+        if (item && !busy()) onExportImage?.(structuredClone(item));
+    });
     const copyButton = button('复制收藏正文', 'copy', async () => {
         const item = activeItem();
         if (!item && !draft) return;
@@ -87,7 +91,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         startEditor();
     });
     const saveButton = button('保存收藏', 'star', save);
-    readActions.append(copyButton, editButton, saveButton); footer.append(backButton, readActions);
+    readActions.append(imageButton, copyButton, editButton, saveButton); footer.append(backButton, readActions);
     const status = make('div', 'qm-collection-status'); status.setAttribute('role', 'status');
     const statusText = make('span'), reconcileButton = button('核对保存结果', 'arrows-clockwise', refresh);
     status.append(statusText, reconcileButton);
@@ -134,6 +138,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         deleteButton.hidden = !multi;
         deleteButton.disabled = waiting || !writable || !selection.size;
         editButton.disabled = waiting || !writable || !activeItem();
+        imageButton.disabled = waiting || !activeItem();
         cancelButton.disabled = waiting;
         saveButton.disabled = waiting || !writable || !draft?.text.trim();
         editor.readOnly = waiting;
@@ -189,6 +194,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         listView.hidden = route !== 'list'; reader.hidden = route !== 'read'; editor.hidden = route !== 'edit';
         footer.hidden = route === 'list'; backButton.hidden = route === 'edit'; cancelButton.hidden = route !== 'edit';
         editButton.hidden = route !== 'read'; saveButton.hidden = route !== 'edit';
+        imageButton.hidden = route !== 'read' || typeof onExportImage !== 'function';
         if (route === 'list') renderList();
         if (route === 'read') {
             const key = `${item.id}\0${item.text}`;

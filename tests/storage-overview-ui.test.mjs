@@ -6,8 +6,9 @@ import { readFile } from 'node:fs/promises';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 function fixture(data = null, status = 'ready') {
-  const context = vm.createContext({renderStorageBackupSection,storageOverviewSegments,VERSION:'1.59.392',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS, storageInventoryState: { data, status, error: '<unavailable>' },
+  const context = vm.createContext({renderStorageBackupSection,storageOverviewSegments,VERSION:manifest.version,STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS, storageInventoryState: { data, status, error: '<unavailable>' },
     optionalServiceState: {status: 'idle'},
     htmlEscape: x => String(x ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
     formatStorageBytes: x => `${Number(x) || 0} B`, blobStore: { classifyStoragePressure: () => ({ level: 'normal' }) } });
@@ -158,13 +159,15 @@ test('central backup entry binds once and reuses the existing export and restore
   const calls = [], node = dataset => ({ dataset, value: 'picked', listeners: {}, files: [{ name: 'fixture' }],
     addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }, click() { this.clicks = (this.clicks || 0) + 1; } });
   const configExport = node({}), configImport = node({}), configFile = node({});
-  const names = ['storyboard', 'reader', 'favorites', 'audio', 'notes'];
+  const names = ['storyboard', 'reader', 'favorites', 'audio', 'notes', 'collection'];
   const exports = names.map(storageExport => node({ storageExport })), picks = names.map(storagePick => node({ storagePick })), imports = names.map(storageImport => node({ storageImport }));
   const backup = { dataset: {}, querySelector: selector => ({ '.sd-export-config': configExport, '.sd-import-config': configImport, '.sd-import-config-file': configFile }[selector]
     || imports.find(input => selector === `input[data-storage-import="${input.dataset.storageImport}"]`)),
     querySelectorAll: selector => ({ '[data-storage-export]': exports, '[data-storage-pick]': picks, 'input[data-storage-import]': imports }[selector] || []) };
   const root = { querySelector: selector => selector === '.sd-storage-backup-section' ? backup : null, querySelectorAll: () => [] };
   const context = vm.createContext({renderStorageBackupSection, bindStoragePackageActions, exportConfig: () => calls.push('config-export'), importConfig: () => calls.push('config-import'),
+    proseFloorTools: {exportCollection: button => { assert.equal(button, exports[5]); calls.push('collection-export'); },
+      importCollection: (file, input) => { assert.equal(file.name, 'fixture'); assert.equal(input, imports[5]); calls.push('collection-import'); }},
     storyboardExportPackage: options => { assert.equal(options.bundle, true); calls.push('storyboard-export'); },
     storyboardImportAnyPackage: file => { assert.equal(file.name, 'fixture'); calls.push('storyboard-import'); },
     coreadExportData: () => calls.push('reader-export'), coreadImportDataFile: () => calls.push('reader-import'),
@@ -180,5 +183,5 @@ test('central backup entry binds once and reuses the existing export and restore
   for (const button of exports) button.listeners.click[0]();
   for (const button of picks) button.listeners.click[0]();
   for (const input of imports) { assert.equal(input.clicks, 1); await input.listeners.change[0]({ target: input, currentTarget: input }); assert.equal(input.value, ''); }
-  assert.deepEqual(calls, ['config-export', 'config-import', 'storyboard-export', 'reader-export', 'favorites-export', 'audio-export', 'notes-export', 'storyboard-import', 'reader-import', 'favorites-import', 'audio-import', 'notes-import']);
+  assert.deepEqual(calls, ['config-export', 'config-import', 'storyboard-export', 'reader-export', 'favorites-export', 'audio-export', 'notes-export', 'collection-export', 'storyboard-import', 'reader-import', 'favorites-import', 'audio-import', 'notes-import', 'collection-import']);
 });

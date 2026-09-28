@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStoryboardStreamLineage as index} from '../qianmu-storyboard-stream-lineage.js?v=1.59.392';
+import {importCurrentRuntime} from './helpers/current-runtime.mjs';
+const {createStoryboardStreamLineage:index} = await importCurrentRuntime('qianmu-storyboard-stream-lineage.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
 const generation=n=>({sentAt:`date-${n}`,startedAt:`generation-${n}`,id:'',activeSentAt:'',activeId:''});
 const endpoint=n=>({messageKey:`message-${n}`,swipeId:0,generation:generation(n)});

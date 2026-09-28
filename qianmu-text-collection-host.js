@@ -59,6 +59,17 @@ export function createTextCollectionHost(options) {
     }
     function shown() { if (root && live()) refresh(root); }
     window?.addEventListener?.('pageshow', shown);
+    async function transfer(method, argument, button) {
+        if (button?.disabled) return {status: 'cancelled'};
+        if (button) button.disabled = true;
+        try { return await ensure()?.[method](argument); }
+        catch (error) { if (live()) options.notify?.(error?.message || '收藏操作未完成，请重试。', 'warning'); return {status: 'failed'}; }
+        finally { if (button?.isConnected) button.disabled = false; }
+    }
     return Object.freeze({refresh, handleClick: event => live() && !!floor?.handleClick(event),
-        open: () => ensure()?.open() ?? Promise.resolve(false), dispose});
+        open: () => ensure()?.open() ?? Promise.resolve(false), dispose,
+        exportBackup: button => transfer('exportBackup', undefined, button),
+        importBackup: (file, button) => transfer('importBackup', file, button),
+        clear: config => ensure()?.clear(config), summary: valid => ensure()?.summary(valid),
+        get busy() { return owner?.busy === true; }});
 }

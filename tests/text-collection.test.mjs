@@ -233,3 +233,16 @@ test('an invalid account owner makes collection reads and writes reject without 
     assert.equal(f.writes, 0);
     assert.equal(f.reads, 1);
 });
+
+test('restore is one append-only operation and refuses any conflicting or invalid row atomically', async t => {
+    const f = fixture(t), first = await f.collection.open();
+    assert.deepEqual(await f.collection.restore({version: 1, items: [entry()]}, {expectedFingerprint: first.fingerprint}), first);
+    assert.equal(f.writes, 0);
+    await assert.rejects(f.collection.restore({version: 1, items: [entry('new'), entry('one', 'different')]}, {expectedFingerprint: first.fingerprint}), {code: 'text_collection_conflict'});
+    await assert.rejects(f.collection.restore({version: 1, items: [entry('new'), {...entry('bad'), extra: true}]}, {expectedFingerprint: first.fingerprint}), {code: 'text_collection_document'});
+    assert.equal(f.writes, 0); assert.deepEqual(f.remote.value.items, [entry()]);
+    const restored = await f.collection.restore({version: 1, items: [entry('new'), entry()]}, {expectedFingerprint: first.fingerprint});
+    assert.equal(f.writes, 1); assert.deepEqual(restored.items, [entry(), entry('new')]);
+    await assert.rejects(f.collection.restore({version: 1, items: [entry('third')]}, {expectedFingerprint: first.fingerprint}), {code: 'text_collection_conflict'});
+    assert.equal(f.writes, 1);
+});

@@ -33,13 +33,13 @@ test('actual global inventory counts assistant once and never as recoverable or 
  const entry=await readFile(new URL('../index.js',import.meta.url),'utf8'),code=section('collectStorageInventory');
  let assistant={...measured(),namespace,native:{status:'ready',total:{bytes:9000000,count:50}}};const zero=()=>({status:'ready',bytes:0,count:0}),unknown=()=>({status:'unavailable',bytes:0,count:0});
  const context=vm.createContext({runStorageInventoryJobs,settings:{},storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:100000,quota:200000})}},
-  proseFloorTools:{assistantStorageSummary:async valid=>{assert.equal(valid(),true);return assistant;}},
+  proseFloorTools:{assistantStorageSummary:async valid=>{assert.equal(valid(),true);return assistant;},collectionStorageSummary:async valid=>{assert.equal(valid(),true);return {status:'ready',namespace,bytes:0,count:0,fingerprint:null};}},
   notesSyncControls(){},getQianmuNotesStorage:async()=>zero(),focusClockLibrary:()=>({summary:async()=>zero()}),
   blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:100,recoverableBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
   featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>namespace,manageImageAdmissionStorage:async()=>zero(),collectComfyStorage:async()=>unknown(),collectVibeStorage:async()=>unknown(),collectCharacterStorage:async()=>unknown(),collectStoryboardRestoreStorage:async()=>unknown(),collectStoryboardMappingStorage:async()=>unknown(),collectStoryboardCarrierStorage:async()=>unknown()})},
   storyboardManageImageChannels:async()=>zero(),storyboardImageServiceRuntime:async()=>({manage:async()=>zero()}),storyboardComfyRecoveryRuntime:async()=>({usage:async()=>zero()}),storageJsonBytes:()=>0,storageSettingsSnapshotWithoutDiagnostics,storageDiagnosticSnapshot,getChatStore:()=>({})});
  const progress=[];vm.runInContext(code,context);const result=await context.collectStorageInventory((done,total)=>progress.push([done,total]));assert.equal(result.trackedBytes,1100);assert.equal(result.recoverableBytes,10);assert.equal(result.manageableBytes,100);assert.equal(result.categories.find(row=>row.category==='assistant').bytes,1000);
- assert.deepEqual(progress[0],[0,19]);assert.deepEqual(progress.at(-1),[19,19]);assert.equal(progress.length,20);
+ assert.deepEqual(progress[0],[0,20]);assert.deepEqual(progress.at(-1),[20,20]);assert.equal(progress.length,21);
  assistant={namespace,status:'unavailable',bytes:null,count:null};assert.equal((await context.collectStorageInventory()).trackedBytes,100);
  assistant={...measured(),namespace:'st-user:bob'};await assert.rejects(context.collectStorageInventory(),/账户已变化/);
  assert.match(entry,/data\.assistantStorage/,'assistant state is included in inventory accounting');

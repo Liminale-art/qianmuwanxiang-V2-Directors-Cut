@@ -5,6 +5,10 @@
   "files": [
     "qianmu-document-session.js",
     "qianmu-text-collection.js",
+    "qianmu-text-collection-backup.js",
+    "qianmu-text-collection-images.js",
+    "qianmu-text-collection-image-dialog.js",
+    "qianmu-text-collection-image-dialog.css",
     "qianmu-text-collection-owner.js",
     "qianmu-text-collection-host.js",
     "qianmu-text-collection-source.js",
@@ -513,6 +517,7 @@
     "INSTALL-DOUBAO-APIKEY.md",
     "LICENSE",
     "README.md",
+    "INSTALL-CANDIDATE.md",
     "THIRD_PARTY_NOTICES.md",
     "builtin-theaters.js",
     "index.js",

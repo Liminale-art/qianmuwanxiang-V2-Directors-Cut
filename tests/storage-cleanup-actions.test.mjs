@@ -28,6 +28,28 @@ function fixture(result, kind = 'chat') {
 }
 const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
 
+test('collection-only cleanup uses its scanned fingerprint and never opens generic cache cleanup or saves ST settings',async()=>{
+  const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');let called=0;
+  e.c.storageInventoryState.data.collectionStorage={fingerprint:'scanned-collection'};
+  e.c.openStorageCleanupDialog=async()=>['__text_collection__'];
+  e.c.proseFloorTools={clearCollection:async options=>{
+    called++;assert.equal(options.confirmed,true);assert.equal(options.expectedFingerprint,'scanned-collection');options.check();
+    return {status:'cleared',count:2};
+  }};
+  await e.run();assert.equal(called,1);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);
+  assert.equal(e.c.storageCleanupSession.busy,false);
+});
+
+test('a collection conflict stops mixed cleanup before unrelated deletion or settings writes',async()=>{
+  const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');
+  e.c.storageInventoryState.data.collectionStorage={fingerprint:'scanned-collection'};
+  e.c.openStorageCleanupDialog=async()=>['__text_collection__','__diagnostics__'];
+  e.c.proseFloorTools={clearCollection:async options=>{options.check();throw Error('收藏已有更新');}};
+  await e.run();assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);
+  assert.deepEqual(Array.from(e.c.settings.logHistory),['original']);assert.equal(e.notices.at(-1)[1],'error');
+  assert.equal(e.c.storageCleanupSession.busy,false);
+});
+
 test('a stale scan scope after selection blocks both cleanup entry points before any deletion',async()=>{
   for(const kind of ['chat','module']){
     const e=fixture({cleared:[],failed:[],count:0,bytes:0},kind);let opened=0;

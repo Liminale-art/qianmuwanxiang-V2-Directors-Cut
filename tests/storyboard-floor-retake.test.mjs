@@ -10,8 +10,9 @@ import {migrateQianmuChatStoreV2} from '../qianmu-data-migrations.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
-import {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} from '../qianmu-storyboard-stream-source.js?v=1.59.392';
-import {bindStoryboardStreamBudgetFamily} from '../qianmu-storyboard-stream-reference.js?v=1.59.392';
+import {importCurrentRuntime} from './helpers/current-runtime.mjs';
+const {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} = await importCurrentRuntime('qianmu-storyboard-stream-source.js');
+const {bindStoryboardStreamBudgetFamily} = await importCurrentRuntime('qianmu-storyboard-stream-reference.js');
 import {drainStoryboardDeliveries} from '../qianmu-storyboard-delivery-drain.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};
@@ -134,6 +135,7 @@ async function entryFixture(){
   fixtureWindows.add(e.context.storyboardQueueWindow);
   const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='storyboardFloorCapture'?capture:key==='imageAdmission'?{resolveImageAccountNamespace:async()=> 'st-user:route-test'}:load(key);
   Object.assign(e.context,{storyboardMessageFloor:()=>0,storyboardChooseCaptureMode:async()=>choice,storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:()=>history,
+    proseFloorTools:{collectionClick:()=>false},
     resolveImageAccountNamespace:async()=> 'st-user:route-test',drainStoryboardDeliveries,
     storyboardUtilsModule:async()=>({}),storyboardBlobToBase64:async()=>'',storyboardSafeUrl:value=>value,storyboardImageExtension:()=> 'png',getCharacterName:()=> 'Qianmu',
     storyboardProductionDeliveryPolicy:core.storyboardProductionDeliveryPolicy,

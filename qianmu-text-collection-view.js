@@ -1,16 +1,17 @@
 import {createTextCollectionPanel, TEXT_COLLECTION_STYLESHEET} from './qianmu-text-collection-panel.js';
 import {createTextCollectionCapture, TEXT_COLLECTION_CAPTURE_STYLESHEET} from './qianmu-text-collection-capture.js';
+import {createTextCollectionImageDialog} from './qianmu-text-collection-image-dialog.js';
 
 // Created once by the account owner, not on every panel open. Only these two
 // local stylesheets and this portal belong to the view.
-export async function createTextCollectionView({document, collection, isCurrent, signal, mountPortal, typography}) {
+export async function createTextCollectionView({document, collection, isCurrent, signal, mountPortal, typography, verifyAccount, download}) {
     const parent = document.createElement('section'), links = [], loading = new AbortController();
     parent.className = 'qm-collection-portal';
-    let panel, capture, detach, disposed = false;
+    let panel, capture, images, detach, disposed = false;
     function dispose() {
         if (disposed) return;
         disposed = true; loading.abort(); signal?.removeEventListener('abort', dispose);
-        capture?.dispose(); panel?.dispose(); detach?.(); parent.remove();
+        images?.dispose(); capture?.dispose(); panel?.dispose(); detach?.(); parent.remove();
         for (const link of links) link.remove();
     }
     signal?.addEventListener('abort', dispose, {once: true});
@@ -33,7 +34,8 @@ export async function createTextCollectionView({document, collection, isCurrent,
         })));
         if (disposed || !isCurrent()) throw Error('Collection view is no longer current');
         document.body.append(parent); detach = mountPortal?.(parent); typography?.(parent);
-        panel = createTextCollectionPanel({parent, collection, isCurrent});
+        images = createTextCollectionImageDialog({parent, isCurrent, verifyAccount, download});
+        panel = createTextCollectionPanel({parent, collection, isCurrent, onExportImage: item => images.open(item)});
         capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, selection) => panel.collect(input, selection)});
         return Object.freeze({parent, panel, capture, dispose});
     } catch (error) { dispose(); throw error; }

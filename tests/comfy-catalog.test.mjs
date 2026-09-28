@@ -179,12 +179,12 @@ test('client cleanup is explicit, bounded and preserves partial error reporting'
 });
 
 test('global storage meter counts Comfy journal by constant-size usage read, without remote listing or recipe scans', async () => {
-  let reads = 0;
+  let reads = 0; const namespace = 'st-user:catalog-meter';
   const context = vm.createContext({ runStorageInventoryJobs, focusClockLibrary:()=>({summary:async()=>({status:'ready',bytes:0,count:0})}), storyboardAdmissionEpoch:1, navigator: { storage: { estimate: async () => ({ usage: 1000, quota: 100000 }) } },
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
-    settings:{},proseFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),storageSummary:async()=>({status:'unavailable',bytes:null,count:null})},
+    settings:{},proseFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),collectionStorageSummary:async()=>({status:'ready',namespace,bytes:0,count:0,fingerprint:null})},
     blobStore: { estimateBlobStoreUsage: async () => ({ totalBytes: 0, categories: [], recoverableBytes: 0 }), auditOrphanedReaderBlobs: async () => ({ count: 0, bytes: 0 }), classifyStoragePressure: () => ({}) },
-    featureRuntime: { load: async key => key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,count:0,errors:[]})}:({ manageImageAdmissionStorage: async () => ({ count: 1, bytes: 10 }) }) },
+    featureRuntime: { load: async key => key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,count:0,errors:[]})}:({resolveImageAccountNamespace:async()=>namespace, manageImageAdmissionStorage: async () => ({ count: 1, bytes: 10 }) }) },
     storyboardManageImageChannels: async () => ({ count: 1, bytes: 20 }), storyboardImageServiceRuntime: async () => ({ manage: async () => ({ count: 1, bytes: 30 }) }),
     storyboardComfyRecoveryRuntime: async () => ({ usage: async () => { reads++; return { count: 2, bytes: 40 }; }, list: () => assert.fail('no row scan'), catalog: () => assert.fail('no network') }),
     storageJsonBytes: () => 0, storageSettingsSnapshotWithoutDiagnostics: () => ({}), getChatStore: () => ({}), storageDiagnosticSnapshot: () => ({}),

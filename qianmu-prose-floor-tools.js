@@ -1,9 +1,9 @@
-import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.403';
+import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.404';
 import {createProseHive} from './qianmu-prose-hive.js';
 import {configureStAccountStorage} from './qianmu-st-account-storage.js';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js';
 import {createProseAssistantRenameCoordinator} from './qianmu-prose-assistant-rename.js';
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.403';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.404';
 import {createTextCollectionHost} from './qianmu-text-collection-host.js';
 export {injectStoryboardMessageButtons} from './qianmu-prose-floor-entries.js';
 
@@ -11,11 +11,15 @@ export {injectStoryboardMessageButtons} from './qianmu-prose-floor-entries.js';
 export function createProseFloorTools(options){
   configureStAccountStorage({resolveNamespace:options.resolveNamespace,isCurrent:options.isCurrent,headers:options.headers||(()=>({}))});
   let renames=null;const bindRenames=()=>{renames??=createProseAssistantRenameCoordinator(options);renames.refresh();};
-  const assistant=createProseAssistantFloorTools({...options,assistantHistoryFactory:async input=>{await renames?.settled(input.source);return options.assistantHistoryFactory?options.assistantHistoryFactory(input):(await loadLocalChunk('./qianmu-prose-assistant-native.js?v=1.59.403')).openNativeProseAssistantHistory(input);}});
+  const assistant=createProseAssistantFloorTools({...options,assistantHistoryFactory:async input=>{await renames?.settled(input.source);return options.assistantHistoryFactory?options.assistantHistoryFactory(input):(await loadLocalChunk('./qianmu-prose-assistant-native.js?v=1.59.404')).openNativeProseAssistantHistory(input);}});
   let hive=null,disposed=false,stopPreload=null,collection=null;
   const collectionHost=()=>collection??=createTextCollectionHost(options);
   return Object.freeze({openAssistant:()=>assistant.openAssistant(),
     openCollection:()=>collectionHost().open(),
+    exportCollection:button=>collectionHost().exportBackup(button),
+    importCollection:(file,input)=>collectionHost().importBackup(file,input),
+    clearCollection:config=>collectionHost().clear(config),
+    collectionStorageSummary:async valid=>{try{return await collectionHost().summary(valid)??{status:'unavailable'};}catch{return {status:'unavailable'};}},
     collectionClick:event=>collection?.handleClick(event)===true,
     refreshCollection:root=>collectionHost().refresh(root),
     refresh(root){bindRenames();assistant.bindRoot(root);collectionHost().refresh(root);},

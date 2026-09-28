@@ -1,6 +1,6 @@
-import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.403';
-import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.403';
-import {mountEnsembleLibrary} from './qianmu-ensemble-view.js?v=1.59.403';
+import {createEnsembleStorage} from './qianmu-ensemble-storage.js?v=1.59.404';
+import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.404';
+import {mountEnsembleLibrary} from './qianmu-ensemble-view.js?v=1.59.404';
 export {openEnsembleTargetPicker} from './qianmu-ensemble-target-picker.js';
 
 // One account/chat controller survives modal re-renders. Detach removes only
