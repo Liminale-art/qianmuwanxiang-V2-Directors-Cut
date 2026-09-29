@@ -1,19 +1,22 @@
-.qm-prose-assistant-dialog { position:fixed;z-index:2147483646;box-sizing:border-box;display:flex;flex-direction:column;min-width:0;min-height:0;margin:0;padding:0;border:1px solid var(--sd-hairline,#8886);border-radius:var(--qm-card-radius,14px);background:var(--sd-sticky-bg,#292b2f);color:var(--sd-text,#f0f0f0);font:inherit;font-size:16px;line-height:1.6;overflow:hidden;box-shadow:0 12px 40px #0003;pointer-events:auto; }
+.qm-prose-assistant-dialog { position:fixed;z-index:2147483646;box-sizing:border-box;display:flex;flex-direction:column;min-width:0;min-height:0;margin:0;padding:0;border:1px solid var(--sd-hairline,#8886);border-radius:var(--qm-card-radius,14px);background:var(--sd-sticky-bg,#292b2f);color:var(--sd-text,#f0f0f0);font:inherit;font-size:var(--mainFontSize,16px);line-height:1.6;overflow:hidden;box-shadow:0 12px 40px #0003;pointer-events:auto; }
 .qm-prose-assistant-dialog * { box-sizing:border-box;min-width:0; }
 .qm-prose-assistant-dialog [hidden] { display:none!important; }
 .qm-prose-assistant-dialog > header { flex:none;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;cursor:move;touch-action:none;user-select:none; }
 .qm-prose-assistant-dialog > header > div { display:flex;align-items:center;gap:4px; }
 .qm-prose-assistant-dialog > header strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .qm-prose-assistant-dialog > main,.qm-prose-assistant-dialog > [data-pa-settings] { flex:1;min-height:0;overflow:auto;padding:8px 14px;overscroll-behavior:contain;scrollbar-width:thin; }
-.qm-prose-assistant-dialog > footer { flex:none;padding:10px 16px 30px; }
+.qm-prose-assistant-dialog > footer { flex:none;padding:10px 14px; }
 .qm-prose-assistant-dialog button { display:inline-flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;margin:0;padding:7px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;cursor:pointer;transition:background .15s ease,color .15s ease; }
 .qm-prose-assistant-dialog button:hover:not(:disabled) { background:var(--sd-input-bg,#8882); }
 .qm-prose-assistant-dialog button i,.qm-prose-assistant-dialog button svg { width:18px;height:18px;font-size:18px; }
-.qm-prose-assistant-dialog input:not([type="checkbox"]),.qm-prose-assistant-dialog select,.qm-prose-assistant-dialog textarea { width:100%;margin:0;border:1px solid var(--sd-hairline,#8886);border-radius:10px;background:var(--sd-input-bg,#8882);color:inherit;font:inherit;line-height:1.6;padding:8px 11px;box-shadow:none;text-shadow:none; }
+.qm-prose-assistant-dialog input:not([type="checkbox"]),.qm-prose-assistant-dialog select,.qm-prose-assistant-dialog textarea { width:100%;margin:0;border:1px solid var(--sd-border,#8886);border-radius:10px;background:var(--sd-input-bg,#8882);color:inherit;font:inherit;line-height:1.45;padding:7px 10px;box-shadow:none;text-shadow:none; }
 .qm-prose-assistant-dialog input:not([type="checkbox"]),.qm-prose-assistant-dialog select { min-height:42px; }
 .qm-prose-assistant-dialog select option { background:var(--sd-sticky-bg,#292b2f);color:var(--sd-text,#f0f0f0); }
 .qm-prose-assistant-dialog textarea { display:block;resize:none;white-space:pre-wrap;overflow-wrap:anywhere; }
-.qm-prose-assistant-dialog :is(input,select,textarea):is(:focus,:focus-visible) { outline:0!important;box-shadow:none!important;border-color:var(--sd-hairline,#8886); }
+.qm-prose-assistant-dialog :is(input:not([type="checkbox"]),select,textarea):is(:focus,:focus-visible),
+html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-assistant-dialog :is(input:not([type="checkbox"]),select,textarea):is(:focus,:focus-visible) { outline:0!important;box-shadow:none!important; }
+.qm-prose-assistant-dialog :is(input:not([type="checkbox"]),select,textarea):focus-visible,
+html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-assistant-dialog :is(input:not([type="checkbox"]),select,textarea):focus-visible { border-color:var(--sd-accent,#a7c4b5)!important; }
 .qm-prose-assistant-dialog :is(input,select,textarea):disabled { opacity:.55;cursor:default; }
 .qm-prose-assistant-dialog button:disabled { opacity:.4;cursor:default; }
 .qm-prose-assistant-dialog button:focus-visible,.qm-prose-assistant-dialog [data-pa-resize]:focus-visible { outline:1px solid var(--sd-accent,#a7c4b5);outline-offset:-2px; }
@@ -21,7 +24,7 @@
 .qm-prose-assistant-dialog .qm-pa-config { padding:2px 0 14px; }
 .qm-prose-assistant-dialog .qm-pa-config [data-pa-action="clear"] { width:100%;height:auto;min-height:40px;padding:8px 11px;background:var(--sd-input-bg,#8882);font-size:14px; }
 .qm-prose-assistant-dialog .qm-pa-config label { display:block;margin:0;text-align:start; }
-.qm-prose-assistant-dialog .qm-pa-config label > span { display:block;font-size:13px;line-height:1.4;color:var(--sd-muted,#aaa);margin-bottom:5px; }
+.qm-prose-assistant-dialog .qm-pa-config label > span { display:block;font:inherit;line-height:1.45;color:var(--sd-text,#f0f0f0);margin-bottom:5px; }
 .qm-prose-assistant-dialog .qm-pa-key { display:flex;gap:6px;align-items:center; }
 .qm-prose-assistant-dialog .qm-pa-key input { flex:1;width:0; }
 .qm-prose-assistant-dialog .qm-pa-key button { width:36px;height:42px; }
@@ -30,8 +33,11 @@
 .qm-prose-assistant-dialog .qm-pa-config .qm-pa-stream > span { margin:0;color:inherit;font-size:14px; }
 .qm-prose-assistant-dialog [data-pa-reference-hint] { display:block;margin:5px 0 0; }
 .qm-prose-assistant-dialog textarea[data-pa-prompt] { min-height:120px;max-height:55vh;resize:vertical;overflow:auto; }
-.qm-prose-assistant-dialog .qm-pa-composer { display:flex;gap:8px;align-items:stretch; }
-.qm-prose-assistant-dialog .qm-pa-composer [data-pa-question] { flex:1;width:0;height:44px;min-height:44px;max-height:140px;margin:0;font:inherit;line-height:1.6;padding:8px 11px; }
+.qm-prose-assistant-dialog .qm-pa-composer { display:flex;gap:6px;align-items:stretch;padding:4px;border:1px solid var(--sd-border,#8886);border-radius:16px;background:var(--sd-input-bg,#8882);box-shadow:0 3px 12px #0000000a; }
+.qm-prose-assistant-dialog .qm-pa-composer:focus-within { border-color:var(--sd-accent,#a7c4b5); }
+.qm-prose-assistant-dialog .qm-pa-composer [data-pa-question] { flex:1;width:0;height:calc(1.6em + 16px);min-height:44px;max-height:140px;margin:0;font:inherit;line-height:1.6;padding:8px 9px; }
+.qm-prose-assistant-dialog .qm-pa-composer textarea,
+html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-assistant-dialog .qm-pa-composer textarea { border:0!important;background:transparent!important;box-shadow:none!important; }
 .qm-prose-assistant-dialog .qm-pa-composer :is([data-pa-action="send"],[data-pa-action="stop"]) { width:44px;height:auto;min-height:44px;margin:0;padding:10px;align-self:stretch;border-radius:12px;background:var(--sd-accent,#a7c4b5);color:var(--sd-primary-text,#17251e); }
 .qm-prose-assistant-dialog .qm-pa-composer :is([data-pa-action="send"],[data-pa-action="stop"]):hover:not(:disabled) { background:color-mix(in srgb,var(--sd-accent,#a7c4b5) 86%,var(--sd-text,#fff)); }
 .qm-prose-assistant-dialog .qm-pa-composer [data-pa-action="stop"] svg { width:14px;height:14px;fill:currentColor; }
@@ -61,14 +67,16 @@
 .qm-prose-assistant-dialog .qm-pa-typing > span { display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--sd-muted,#aaa);animation:qm-pa-typing-dot 1.1s infinite ease-in-out; }
 .qm-prose-assistant-dialog .qm-pa-typing > span:nth-child(2) { animation-delay:.18s; }
 .qm-prose-assistant-dialog .qm-pa-typing > span:nth-child(3) { animation-delay:.36s; }
-.qm-prose-assistant-dialog [data-pa-turn-menu] { display:flex;flex-wrap:wrap;gap:4px;max-width:100%;margin:0;padding:5px;list-style:none;border:1px solid var(--sd-hairline,#8886);border-radius:10px;background:var(--sd-input-bg,#8882); }
-.qm-prose-assistant-dialog [data-pa-turn-menu] button { width:auto;height:auto;min-height:34px;gap:6px;padding:6px 9px;font-size:13px; }
+.qm-prose-assistant-dialog .qm-pa-message-actions { display:flex;align-items:center;gap:3px; }
+.qm-prose-assistant-dialog .qm-pa-user-actions { align-self:flex-end;margin-top:-7px; }
+.qm-prose-assistant-dialog .qm-pa-reply-actions { align-self:flex-start; }
 .qm-prose-assistant-dialog .qm-pa-edit { display:flex;flex-wrap:wrap;gap:6px;width:100%; }
 .qm-prose-assistant-dialog .qm-pa-edit textarea { flex-basis:100%;min-height:120px;max-height:50vh;resize:vertical; }
-.qm-prose-assistant-dialog .qm-pa-edit button { width:auto;padding-inline:12px;background:var(--sd-input-bg,#8882);font-size:14px; }
-.qm-prose-assistant-dialog [data-pa-resize] { position:absolute;bottom:0;right:0;width:28px;height:28px;border-radius:0 0 var(--qm-card-radius,14px) 0;cursor:nwse-resize;touch-action:none; }
+.qm-prose-assistant-dialog .qm-pa-edit button { width:34px;height:34px;padding:7px;background:var(--sd-input-bg,#8882); }
+.qm-prose-assistant-dialog :is(.qm-pa-user,.qm-pa-reply,.qm-pa-composer,.qm-pa-edit) { font-family:var(--qm-pa-prose-font,inherit);font-size:var(--sd-prose-font-size,var(--qm-pa-prose-size,var(--mainFontSize,16px))); }
+.qm-prose-assistant-dialog [data-pa-resize] { position:absolute;bottom:0;right:0;width:28px;height:28px;clip-path:polygon(100% 0,100% 100%,0 100%);border-radius:0 0 var(--qm-card-radius,14px) 0;cursor:nwse-resize;touch-action:none; }
 .qm-prose-assistant-dialog [data-pa-resize]::after { content:"";position:absolute;right:3px;bottom:3px;width:21px;height:21px;border:0 solid var(--sd-accent,#a7c4b5);border-right-width:2.5px;border-bottom-width:2.5px;border-bottom-right-radius:max(12px,var(--qm-card-radius,14px));pointer-events:none;opacity:.8; }
 .qm-prose-assistant-dialog [data-pa-resize]:hover::after,.qm-prose-assistant-dialog [data-pa-resize]:focus-visible::after { opacity:1; }
 @keyframes qm-pa-typing-dot { 0%,60%,100% { opacity:.28;transform:translateY(0); } 30% { opacity:1;transform:translateY(-3px); } }
 @media (prefers-reduced-motion:reduce) { .qm-prose-assistant-dialog .qm-pa-typing > span { animation:none;opacity:.65; }.qm-prose-assistant-dialog button { transition:none; } }
-@media (max-width:620px) { .qm-prose-assistant-dialog > header { padding:8px 10px; }.qm-prose-assistant-dialog > main,.qm-prose-assistant-dialog > [data-pa-settings] { padding:8px 12px; }.qm-prose-assistant-dialog > footer { padding:8px 14px 30px; } }
+@media (max-width:620px) { .qm-prose-assistant-dialog > header { padding:8px 10px; }.qm-prose-assistant-dialog > main,.qm-prose-assistant-dialog > [data-pa-settings] { padding:8px 12px; } }

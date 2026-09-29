@@ -18,7 +18,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   let closed=false,busy=false,saving=false,closing=false,sequence=0,resolve,session,observer,observerCheckTimer=0,history,historyTask=null,historyWorking=true,pendingSnapshot=null,pendingClear=false,disposeWindow,autosave;
   const listeners=[],rows=new Map(),finished=new Promise(done=>{resolve=done;});let activeQuestion=null,inputRevision=0,editing=null;
   const node=(tag,value)=>{const element=document.createElement(tag);if(value!==undefined)element.textContent=value;return element;};
-  const icons={close:'xmark',settings:'gear',back:'arrow-left',send:'arrow-up',stop:'stop',clear:'trash-can',copy:'copy',eye:'eye',save:'check',retry:'rotate-right',more:'dots-three',edit:'pen',resize:'up-right-and-down-left-from-center'};
+  const icons={close:'xmark',settings:'gear',back:'arrow-left',send:'arrow-up',stop:'stop',clear:'trash-can',copy:'copy',eye:'eye',save:'check',retry:'rotate-right',edit:'pen',resize:'up-right-and-down-left-from-center'};
   const icon=(element,label,name)=>{element.replaceChildren();const glyph=qianmuIconElement('fa-'+(icons[name]||name),{document});if(glyph)element.append(glyph);element.title=label;element.setAttribute('aria-label',label);};
   const button=(label,action,name=action)=>{const element=node('button');element.type='button';element.dataset.paAction=action;icon(element,label,name);return element;};
   const field=(label,element)=>{const wrapper=node('label');wrapper.append(node('span',label),element);return wrapper;};
@@ -34,6 +34,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   url.type='url';url.placeholder='https://…/v1';url.setAttribute('aria-label','助手API地址');model.setAttribute('aria-label','助手模型');key.type='password';key.autocomplete='off';key.setAttribute('aria-label','助手API Key');keyRow.className='qm-pa-key';keyRow.append(key,eye);custom.append(field('API 地址',url),field('模型',model),field('API Key',keyRow));
   const stream=node('input'),streamRow=node('label');stream.type='checkbox';stream.checked=selection?.connection?.stream!==false;stream.setAttribute('aria-label','流式传输');streamRow.className='qm-pa-stream';streamRow.append(stream,node('span','流式传输'));custom.append(streamRow);
   const persona=node('textarea');persona.value=systemPrompt;persona.rows=5;persona.maxLength=20000;persona.setAttribute('aria-label','助手提示词');persona.dataset.paPrompt='';
+  for(const control of [profile,range,url,model,key,persona])control.classList.add('text_pole');
   const referenceField=field('参考楼层（含USER，0为不发送）',range),referenceHint=node('small','当前无可用参考');referenceHint.dataset.paReferenceHint='';referenceHint.hidden=true;referenceField.append(referenceHint);
   grid.append(field('API 预设',profile),custom,referenceField);config.append(grid);
   if(selection?.mode==='profile')profile.value='profile:'+selection.profileId;
@@ -53,7 +54,12 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     const action=busy?'stop':'send';if(send.dataset.paAction!==action){send.dataset.paAction=action;icon(send,busy?'停止':'发送',action);}
     clear.disabled=busy||saving||closing||blocked||!!editing;retry.disabled=historyWorking||closing;closeButton.disabled=closing;
     for(const element of [profile,range,url,model,key,eye,persona,stream])element.disabled=!seed||busy||closing||(element===range&&seed.scope.offstage===true);
-    for(const entry of rows.values()){entry.more.disabled=busy||saving||closing||blocked||!!editing;entry.editButton.disabled=entry.more.disabled||entry.status!=='complete';entry.editQuestion.disabled=entry.regenerate.disabled=entry.more.disabled;if(entry.more.disabled){entry.menu.hidden=true;entry.more.setAttribute('aria-expanded','false');}}
+    for(const entry of rows.values()){
+      const locked=busy||saving||closing||blocked||!!editing;
+      entry.editButton.disabled=locked||entry.status!=='complete';entry.editQuestion.disabled=entry.regenerate.disabled=locked;
+      entry.userActions.hidden=entry.status==='running'||(editing?.entry===entry&&editing.kind==='question');
+      entry.replyActions.hidden=entry.status==='running'||(editing?.entry===entry&&editing.kind==='reply');
+    }
     if(editing)for(const button of editing.box.querySelectorAll('button'))button.disabled=busy||closing;
     dialog.setAttribute('aria-busy',String(busy||saving||historyWorking));
   }
@@ -75,17 +81,23 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   }
   async function requestClose(){
     if(!alive()||closing)return;closing=true;controls();
-    try{if(editing&&editing.input.value!==editing.original&&!await confirm('放弃尚未保存的回复修改？'))return;
+    try{if(editing&&editing.input.value!==editing.original&&!await confirm('放弃尚未保存的修改？'))return;
       if(busy){sequence++;const stopped=session?.stop();restoreQuestion();busy=false;if(stopped)await persistHistory(session.view());}else if(historyTask)await historyTask;
       if(!alive())return;if(autosave&&!await autosave.flush()){status.textContent='设置尚未保存，当前输入已保留，请稍后再试。';return;}if(pendingSnapshot&&!await confirm('还有未确认保存的对话。关闭前可先复制留存，仍要关闭？'))return;if(alive())dispose();
     }catch(_){}finally{closing=false;if(alive())controls();}
   }
   function render(snapshot){
     if(!alive())return;busy=snapshot.busy;const stick=main.scrollHeight-main.scrollTop-main.clientHeight<64;
-    for(const row of snapshot.rows){let entry=rows.get(row.id);if(!entry){const article=node('article'),user=node('p'),reply=node('div'),label=node('small'),more=button('更多','more'),menu=node('menu'),copyButton=button('复制回复','copy'),editButton=button('编辑回复','edit'),editQuestion=button('编辑问题','edit-question','edit'),regenerate=button('重新生成','regenerate','retry');article.dataset.paTurn=String(row.id);user.className='qm-pa-user';reply.className='qm-pa-reply';menu.dataset.paTurnMenu='';menu.hidden=true;copyButton.textContent='复制';editButton.textContent='编辑回复';editQuestion.textContent='编辑问题';regenerate.textContent='重新生成';more.setAttribute('aria-expanded','false');menu.append(copyButton,editQuestion,editButton,regenerate);article.append(user,reply,label,more,menu);transcript.append(article);entry={article,user,reply,label,more,menu,copyButton,editButton,editQuestion,regenerate,text:null,status:null};rows.set(row.id,entry);}
+    for(const row of snapshot.rows){let entry=rows.get(row.id);if(!entry){
+      const article=node('article'),user=node('p'),reply=node('div'),label=node('small'),userActions=node('div'),replyActions=node('div'),copyQuestion=button('复制问题','copy-question','copy'),copyButton=button('复制回复','copy'),editButton=button('编辑回复','edit'),editQuestion=button('编辑问题','edit-question','edit'),regenerate=button('重新生成','regenerate','retry');
+      article.dataset.paTurn=String(row.id);user.className='qm-pa-user';reply.className='qm-pa-reply';
+      userActions.className='qm-pa-message-actions qm-pa-user-actions';userActions.dataset.paUserActions='';userActions.setAttribute('role','group');userActions.setAttribute('aria-label','问题操作');
+      replyActions.className='qm-pa-message-actions qm-pa-reply-actions';replyActions.dataset.paReplyActions='';replyActions.setAttribute('role','group');replyActions.setAttribute('aria-label','回复操作');
+      userActions.append(copyQuestion,editQuestion);replyActions.append(copyButton,editButton,regenerate);article.append(user,userActions,reply,label,replyActions);transcript.append(article);entry={article,user,reply,label,userActions,replyActions,copyButton,editButton,editQuestion,regenerate,text:null,status:null};rows.set(row.id,entry);
+    }
       if(entry.user.textContent!==row.user)entry.user.textContent=row.user;if(entry.text!==row.assistant){entry.text=row.assistant;entry.reply.classList.toggle('qm-pa-plain',!renderProseAssistantMarkdown(entry.reply,row.assistant));}
       if(entry.status!==row.status){entry.status=row.status;entry.label.replaceChildren();if(row.status==='running'){const dots=node('span');dots.className='qm-pa-typing';dots.setAttribute('role','status');dots.setAttribute('aria-label','回复中');dots.append(node('span'),node('span'),node('span'));entry.label.append(dots);}else entry.label.textContent={complete:'',failed:'回复未完成',cancelled:'已停止'}[row.status];}
-      entry.more.hidden=row.status==='running';entry.copyButton.disabled=!row.assistant;
+      entry.copyButton.disabled=!row.assistant;
     }
     const ids=new Set(snapshot.rows.map(row=>row.id));for(const [id,entry] of rows)if(!ids.has(id)){entry.article.remove();rows.delete(id);}controls();if(stick)main.scrollTop=main.scrollHeight;
   }
@@ -110,7 +122,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   function restoreQuestion(){if(activeQuestion&&inputRevision===activeQuestion.revision&&!question.value)question.value=activeQuestion.value;activeQuestion=null;}
   function closeEditor(){if(!editing)return;editing.box.remove();editing.entry.reply.hidden=false;editing.entry.user.hidden=false;editing=null;controls();}
   function editReply(entry,id,kind='reply'){
-    if(editing||(kind==='reply'?entry.editButton:entry.editQuestion).disabled)return;const box=node('div'),input=node('textarea'),save=button('保存修改','save-reply','save'),cancel=button('取消修改','cancel-reply','close'),original=kind==='reply'?entry.text:entry.user.textContent;box.className='qm-pa-edit';input.value=original;input.rows=6;input.maxLength=kind==='reply'?sessionLimits.reply:sessionLimits.question;input.setAttribute('aria-label',kind==='reply'?'编辑助手回复':'编辑提问');save.textContent=kind==='reply'?'保存':'发送';cancel.textContent='取消';box.append(input,save,cancel);entry[kind==='reply'?'reply':'user'].hidden=true;entry.menu.hidden=true;entry.more.setAttribute('aria-expanded','false');entry.article.append(box);editing={id,entry,box,input,original,kind};controls();input.focus();
+    if(editing||(kind==='reply'?entry.editButton:entry.editQuestion).disabled)return;const box=node('div'),input=node('textarea'),save=button(kind==='reply'?'保存修改':'发送修改后的问题','save-reply',kind==='reply'?'save':'send'),cancel=button('取消修改','cancel-reply','close'),original=kind==='reply'?entry.text:entry.user.textContent;box.className='qm-pa-edit';box.dataset.paEditKind=kind;input.classList.add('text_pole');input.value=original;input.rows=6;input.maxLength=kind==='reply'?sessionLimits.reply:sessionLimits.question;input.setAttribute('aria-label',kind==='reply'?'编辑助手回复':'编辑提问');box.append(input,save,cancel);entry[kind==='reply'?'reply':'user'].hidden=true;entry.article.insertBefore(box,kind==='reply'?entry.label:entry.userActions);editing={id,entry,box,input,original,kind};controls();input.focus();
   }
   async function regenerate(id,value){
     if(!alive()||busy||saving||closing||historyWorking||pendingSnapshot)return;const snapshot=session?.view(),index=snapshot?.rows.findIndex(row=>row.id===id);if(index===undefined||index<0)return;
@@ -128,13 +140,12 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     else if(action==='send')void submit();else if(action==='stop'){sequence++;const stopped=session?.stop();restoreQuestion();busy=false;controls();status.textContent='';if(stopped)void persistHistory(session.view());}
     else if(action==='eye'){key.type=key.type==='password'?'text':'password';icon(eye,key.type==='password'?'显示 Key':'隐藏 Key','eye');}
     else if(action==='clear'){if(!clear.disabled){sequence++;void persistHistory({...session.view(),rows:[]},true);}}
-    else if(action==='more'){const entry=rows.get(Number(event.target.closest('[data-pa-turn]')?.dataset.paTurn));if(entry&&!entry.more.disabled){const open=entry.menu.hidden;for(const item of rows.values()){item.menu.hidden=true;item.more.setAttribute('aria-expanded','false');}entry.menu.hidden=!open;entry.more.setAttribute('aria-expanded',String(open));}}
     else if(action==='edit'){const id=Number(event.target.closest('[data-pa-turn]')?.dataset.paTurn),entry=rows.get(id);if(entry)editReply(entry,id);}
     else if(action==='edit-question'){const id=Number(event.target.closest('[data-pa-turn]')?.dataset.paTurn),entry=rows.get(id);if(entry)editReply(entry,id,'question');}
     else if(action==='regenerate'){const id=Number(event.target.closest('[data-pa-turn]')?.dataset.paTurn),entry=rows.get(id);if(entry&&!entry.regenerate.disabled)void regenerate(id);}
     else if(action==='cancel-reply'){if(!busy&&!closing)closeEditor();}
     else if(action==='save-reply'){if(editing&&!busy&&!historyWorking&&!pendingSnapshot){if(editing.kind==='question'){void regenerate(editing.id,editing.input.value);return;}try{session.editReply(editing.id,editing.input.value);closeEditor();status.textContent='';void persistHistory(session.view());}catch(cause){status.textContent=String(cause.message).slice(0,240);}}}
-    else if(action==='copy'){const id=Number(event.target.closest('[data-pa-turn]')?.dataset.paTurn),entry=rows.get(id),value=entry?.text;if(value){entry.menu.hidden=true;entry.more.setAttribute('aria-expanded','false');void Promise.resolve().then(()=>{if(alive())return copy(value);}).then(result=>{if(result===false)throw Error();}).catch(()=>{if(alive())status.textContent='复制失败，请手动选择文本';});}}
+    else if(action==='copy'||action==='copy-question'){const id=Number(event.target.closest('[data-pa-turn]')?.dataset.paTurn),entry=rows.get(id),value=action==='copy-question'?entry?.user.textContent:entry?.text;if(value){void Promise.resolve().then(()=>{if(alive())return copy(value);}).then(result=>{if(result===false)throw Error();}).catch(()=>{if(alive())status.textContent='复制失败，请手动选择文本';});}}
   });
   const settingsChanged=()=>{autosave?.change();controls();};
   listen(profile,'change',()=>{custom.hidden=profile.value!=='custom';settingsChanged();});for(const element of [range,url,model,key,persona])listen(element,'input',settingsChanged);listen(stream,'change',settingsChanged);listen(question,'input',()=>{inputRevision++;controls();});

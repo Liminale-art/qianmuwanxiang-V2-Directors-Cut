@@ -11,6 +11,12 @@ import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs
 import {proseAssistantPanelDom} from './helpers/prose-assistant-panel-dom.mjs';
 
 const digest=value=>createHash('sha256').update(value).digest('hex');
+function assertActionIcon(button,label,glyph){
+ assert.ok(button,`${label} has a direct action button`);assert.equal(button.getAttribute('aria-label'),label);
+ const svg=button.querySelector('svg.qm-glyph-svg');assert.ok(svg,`${label} renders a real SVG, not an empty button`);
+ assert.equal(svg.getAttribute('data-qm-glyph'),glyph);assert.ok(svg.innerHTML.trim(),`${label} has nonempty local glyph markup`);
+ for(let ancestor=button;ancestor;ancestor=ancestor.parentNode)assert.equal(ancestor.hidden,false,`${label} is not inside a hidden action group`);
+}
 function fixture(t){
  const raw='st-user:assistant-integration',account='st-user:'+digest(raw.slice(8));
  const key=JSON.stringify(['qianmu-prose-assistant-offstage-v1',account]);
@@ -128,12 +134,14 @@ test('actual panel keeps a newly typed draft through reply completion and ignore
  const f=await panelFixture(t);f.mode='hold';await f.send('正在回答的问题');
  await f.dom.wait(()=>f.rows()[0]?.querySelector('.qm-pa-reply').textContent==='半截回答');
  assert.equal(f.question().value,'','the sent question leaves the composer immediately');
- assert.equal(f.action('stop').getAttribute('aria-label'),'停止');assert.equal(f.action('more').hidden,true);
+ assert.equal(f.action('stop').getAttribute('aria-label'),'停止');
+ assert.equal(f.rows()[0].querySelector('[data-pa-user-actions]').hidden,true);assert.equal(f.rows()[0].querySelector('[data-pa-reply-actions]').hidden,true);
  assert.equal(f.rows()[0].querySelector('.qm-pa-typing').children.length,3);
  f.question().value='提前写好的下一问';f.question().emit('input');
  f.question().emit('keydown',{ctrlKey:true,key:'Enter',isComposing:false});
  assert.equal(f.models.length,1,'a shortcut while busy must not queue another paid request');
  f.completeStream();await f.idle();
+ assert.equal(f.rows()[0].querySelector('[data-pa-user-actions]').hidden,false);assert.equal(f.rows()[0].querySelector('[data-pa-reply-actions]').hidden,false);
  assert.equal(f.question().value,'提前写好的下一问');assert.equal(f.remote().rows[0].assistant,'半截回答，已完成');
  assert.equal(f.remote().rows[0].status,'complete');assert.equal(f.models.length,1,'finishing a reply must not auto-send the draft');
  f.question().emit('keydown',{ctrlKey:true,key:'Enter',isComposing:true});
@@ -160,20 +168,58 @@ test('actual panel failed native save retains the reply and retries only storage
  assert.equal(f.remote().rows[0].assistant,'完整回答 1');await f.close();await f.open();assert.equal(f.models.length,1);assert.equal(f.rows()[0].querySelector('.qm-pa-reply').textContent,'完整回答 1');
 });
 
-test('reply more menu copies raw Markdown and edits only that reply through native history without a model call',async t=>{
+test('direct message actions have actual local SVGs and copy the question separately from the raw Markdown reply',async t=>{
+ const f=await panelFixture(t);await f.send('**第一问**');await f.idle();
+ for(const label of ['助手API预设','参考楼层数','助手API地址','助手模型','助手API Key','助手提示词'])assert.equal(f.dom.get(label).classList.contains('text_pole'),true,`${label} uses the model configuration control styling`);
+ const row=f.rows()[0],user=row.querySelector('.qm-pa-user'),userActions=row.querySelector('[data-pa-user-actions]'),replyActions=row.querySelector('[data-pa-reply-actions]');
+ assert.equal(user.nextSibling,userActions);assert.equal(userActions.classList.contains('qm-pa-user-actions'),true);assert.equal(replyActions.classList.contains('qm-pa-reply-actions'),true);
+ assert.equal(userActions.classList.contains('qm-pa-message-actions'),true);assert.equal(replyActions.classList.contains('qm-pa-message-actions'),true);
+ assert.equal(userActions.children.length,2);assert.equal(replyActions.children.length,3);assert.equal(f.action('more'),undefined);assert.equal(row.querySelector('menu'),null);
+ for(const [group,action,label,glyph] of [[userActions,'copy-question','复制问题','qm-regular-copy'],[userActions,'edit-question','编辑问题','qm-regular-pen'],[replyActions,'copy','复制回复','qm-regular-copy'],[replyActions,'edit','编辑回复','qm-regular-pen'],[replyActions,'regenerate','重新生成','qm-regular-arrow-clockwise']]){
+  assertActionIcon(group.querySelector(`[data-pa-action="${action}"]`),label,glyph);
+ }
+ f.action('copy-question').click();await f.dom.wait(()=>f.copies.length===1);f.action('copy').click();await f.dom.wait(()=>f.copies.length===2);
+ assert.deepEqual(f.copies,['**第一问**','完整回答 1']);assert.equal(f.models.length,1);
+});
+
+test('direct reply editing stays beside its message and saves only that reply through native history without a model call',async t=>{
  const f=await panelFixture(t);await f.send('第一问');await f.idle();await f.send('第二问');await f.idle();
- assert.equal(f.action('copy').parentNode.hidden,true);f.action('more').click();assert.equal(f.action('copy').parentNode.hidden,false);
+ assert.equal(f.action('copy').parentNode.hidden,false);
  f.action('edit').click();const editor=f.dom.get('编辑助手回复');editor.value='**人工编辑**\n\n- 一项';
+ const reply=f.rows()[0].querySelector('.qm-pa-reply');assert.equal(reply.nextSibling,editor.parentNode);assert.equal(reply.hidden,true);assert.equal(f.action('copy').parentNode.hidden,true);
+ assertActionIcon(f.action('save-reply'),'保存修改','qm-regular-check');assertActionIcon(f.action('cancel-reply'),'取消修改','qm-regular-x');
  f.action('save-reply').click();await f.idle();assert.equal(f.models.length,2);assert.equal(f.remote().rows.length,2);
+ assert.equal(reply.hidden,false);assert.equal(f.action('copy').parentNode.hidden,false);
  assert.equal(f.remote().rows[0].assistant,'**人工编辑**\n\n- 一项');assert.equal(f.remote().rows[1].assistant,'完整回答 2');
- f.action('more').click();f.action('copy').click();await f.dom.wait(()=>f.copies.length===1);
+ f.action('copy').click();await f.dom.wait(()=>f.copies.length===1);
  assert.deepEqual(f.copies,['**人工编辑**\n\n- 一项']);
  await f.close();await f.open();assert.equal(f.rows()[0].querySelector('.qm-pa-reply').textContent,'**人工编辑**\n\n- 一项');assert.equal(f.models.length,2);
 });
 
+test('cancelling either inline editor restores that message and its action group without a model or history write',async t=>{
+ const f=await panelFixture(t);await f.send('不修改的原问题');await f.idle();const prior=f.remote(),posts=f.transport.calls.filter(call=>call.options.method==='POST').length;
+ for(const [action,label,selector,group] of [['edit-question','编辑提问','.qm-pa-user','[data-pa-user-actions]'],['edit','编辑助手回复','.qm-pa-reply','[data-pa-reply-actions]']]){
+  const row=f.rows()[0],message=row.querySelector(selector),actions=row.querySelector(group),before=message.textContent;f.action(action).click();
+  const editor=f.dom.get(label),box=editor.parentNode;assert.equal(message.nextSibling,box);assert.equal(box.parentNode,row);assert.equal(message.hidden,true);assert.equal(actions.hidden,true);
+  assertActionIcon(f.action('save-reply'),action==='edit-question'?'发送修改后的问题':'保存修改',action==='edit-question'?'qm-regular-arrow-up':'qm-regular-check');assertActionIcon(f.action('cancel-reply'),'取消修改','qm-regular-x');
+  editor.value='不应保存的编辑';f.action('cancel-reply').click();assert.equal(box.isConnected,false);assert.equal(message.hidden,false);assert.equal(message.textContent,before);assert.equal(actions.hidden,false);
+ }
+ assert.equal(f.models.length,1);assert.deepEqual(f.remote(),prior);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,posts);
+});
+
+test('completed messages remain copyable while a later reply is running but edit and regeneration stay disabled',async t=>{
+ const f=await panelFixture(t);await f.send('已完成的问题');await f.idle();f.mode='hold';await f.send('后续生成中');await f.dom.wait(()=>f.rows()[1]?.querySelector('.qm-pa-reply').textContent==='半截回答');
+ for(const action of ['copy-question','copy']){assert.equal(f.action(action).parentNode.hidden,false);assert.equal(f.action(action).disabled,false);f.action(action).click();}
+ await f.dom.wait(()=>f.copies.length===2);assert.deepEqual(f.copies,['已完成的问题','完整回答 1']);
+ for(const action of ['edit-question','edit','regenerate'])assert.equal(f.action(action).disabled,true);
+ assert.equal(f.rows()[1].querySelector('[data-pa-user-actions]').hidden,true);assert.equal(f.rows()[1].querySelector('[data-pa-reply-actions]').hidden,true);
+ f.completeStream();await f.idle();assert.equal(f.rows()[1].querySelector('[data-pa-user-actions]').hidden,false);assert.equal(f.rows()[1].querySelector('[data-pa-reply-actions]').hidden,false);
+ for(const action of ['edit-question','edit','regenerate'])assert.equal(f.action(action).disabled,false);assert.equal(f.models.length,2);
+});
+
 test('regenerating an earlier panel turn replaces it and removes successors only after native confirmation',async t=>{
  const f=await panelFixture(t);await f.send('原第一问');await f.idle();await f.send('原追问');await f.idle();const prior=f.remote();
- f.question().value='保留未发草稿';f.question().emit('input');f.mode='hold';f.action('more').click();f.action('regenerate').click();
+ f.question().value='保留未发草稿';f.question().emit('input');f.mode='hold';f.action('regenerate').click();
  await f.dom.wait(()=>f.models.length===3&&f.rows()[0].querySelector('.qm-pa-reply').textContent==='半截回答');
  assert.deepEqual(f.remote(),prior);assert.equal(f.question().value,'保留未发草稿');
  assert.equal(f.models[2].body.messages.length,1);assert.equal(JSON.parse(f.models[2].body.messages[0].content).question,'原第一问');
@@ -183,10 +229,10 @@ test('regenerating an earlier panel turn replaces it and removes successors only
 
 test('failed edited question and stopped regeneration keep original subsequent answers and preserve the edited draft',async t=>{
  const f=await panelFixture(t);await f.send('第一问');await f.idle();await f.send('后续问');await f.idle();const prior=f.remote();
- f.mode='error';f.action('more').click();f.action('edit-question').click();f.dom.get('编辑提问').value='修改过的问题';f.action('save-reply').click();
+ f.mode='error';f.action('edit-question').click();f.dom.get('编辑提问').value='修改过的问题';f.action('save-reply').click();
  await f.dom.wait(()=>f.models.length===3);await f.idle();await f.dom.wait(()=>f.dom.get('编辑提问')?.value==='修改过的问题');
  assert.deepEqual(f.remote(),prior);assert.equal(f.rows().length,2);assert.match(f.status(),/HTTP 401/);f.action('cancel-reply').click();
- f.mode='hold';f.action('more').click();f.action('regenerate').click();await f.dom.wait(()=>f.models.length===4&&f.rows()[0].querySelector('.qm-pa-reply').textContent==='半截回答');
+ f.mode='hold';f.action('regenerate').click();await f.dom.wait(()=>f.models.length===4&&f.rows()[0].querySelector('.qm-pa-reply').textContent==='半截回答');
  f.action('stop').click();await f.idle();assert.equal(f.rows().length,2);assert.equal(f.remote().rows[1].assistant,prior.rows[1].assistant);
  assert.deepEqual(f.remote().rows,prior.rows);assert.equal(f.models.length,4);
 });

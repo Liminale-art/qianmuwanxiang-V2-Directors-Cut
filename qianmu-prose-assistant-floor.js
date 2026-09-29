@@ -1,6 +1,6 @@
 import {floorProseText} from './qianmu-prose-floor-entries.js';
 import {captureProseAssistantChatSource} from './qianmu-prose-assistant-source.js';
-import {loadLocalChunk,localChunkFailure} from './qianmu-feature-runtime.js?v=1.59.408';
+import {loadLocalChunk,localChunkFailure} from './qianmu-feature-runtime.js?v=1.59.409';
 
 // No model/UI imports or document observers until an explicit hive action.
 export function createProseAssistantFloorTools({getContext,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,assistantConfig,confirm,download,assistantSettings,saveAssistantSettings,assistantHistoryFactory}={}){
@@ -12,6 +12,11 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
   function disposeFloor(){epoch++;cleaning=null;management?.dispose();management=null;close(entry);root?.querySelectorAll('[data-qm-prose-assistant]').forEach(button=>button.remove());root=null;}
   function bindRoot(value){root=value;if(entry&&!entry.valid())close(entry);}
   function refreshNode(node){node.querySelector('[data-qm-prose-assistant]')?.remove();}
+  function inheritProseTypography(portal){
+    const document=portal.ownerDocument,prose=root?.querySelector('.sd-prose-run')||root?.querySelector('.mes_text');
+    const style=document.defaultView.getComputedStyle?.(prose||document.body);if(!style)return;
+    for(const [name,value] of [['--qm-pa-prose-font',style.fontFamily],['--qm-pa-prose-size',style.fontSize]])if(value)portal.style.setProperty(name,value);
+  }
   async function openAssistant(){
     if(!current())return null;if(cleaning){notify?.('请先结束助手记录清理。','warning');return null;}if(entry){entry.panel?.element.focus({preventScroll:true});return entry.panel;}
     const document=root?.ownerDocument||globalThis.document,context=getContext(),chat=context.chat,metadata=context.chatMetadata,owner=JSON.stringify([context.chatId,context.characterId,context.groupId]),revision=epoch;
@@ -21,8 +26,9 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
       const live=getContext();return live.chat===chat&&live.chatMetadata===metadata&&JSON.stringify([live.chatId,live.characterId,live.groupId])===owner;
     };
     try{
-      if(!document.querySelector('link[data-qm-prose-assistant-style]')){const link=document.createElement('link');link.rel='stylesheet';link.dataset.qmProseAssistantStyle='';link.href=new URL('./qianmu-prose-assistant.css',import.meta.url).href;document.head.append(link);link.addEventListener('error',()=>link.remove(),{once:true});}
-      const portal=document.createElement('section');portal.dataset.qmProseAssistantPortal='';document.body.append(portal);record.portal=portal;record.detach=mountPortal?.(portal);
+      const styleUrl=new URL('./qianmu-prose-assistant.css?v=1.59.409',import.meta.url).href,existingStyle=document.querySelector('link[data-qm-prose-assistant-style]');
+      if(!existingStyle){const link=document.createElement('link');link.rel='stylesheet';link.dataset.qmProseAssistantStyle='';link.href=styleUrl;document.head.append(link);link.addEventListener('error',()=>link.remove(),{once:true});}else if(existingStyle.href!==styleUrl)existingStyle.href=styleUrl;
+      const portal=document.createElement('section');portal.dataset.qmProseAssistantPortal='';document.body.append(portal);record.portal=portal;record.detach=mountPortal?.(portal);inheritProseTypography(portal);
       const runtime=await loadLocalChunk('./qianmu-prose-assistant-panel.js');if(!record.valid()){close(record);return null;}
       const config=typeof assistantConfig==='function'?assistantConfig():{};
       const readText=(selected,index)=>{
@@ -47,7 +53,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
   }
   async function storageSummary(valid){
     const live=()=>isCurrent()===true&&valid();let module;
-    try{module=await import('./qianmu-prose-assistant-storage.js?v=1.59.408');}catch{if(!live())throw Error('助手储存页面已变化');return {status:'unavailable',bytes:null,count:null,error:'助手统计组件未加载，请刷新重试。'};}
+    try{module=await import('./qianmu-prose-assistant-storage.js?v=1.59.409');}catch{if(!live())throw Error('助手储存页面已变化');return {status:'unavailable',bytes:null,count:null,error:'助手统计组件未加载，请刷新重试。'};}
     return module.collectProseAssistantStorage({resolveNamespace,isCurrent:live,headers});
   }
   async function cleanupStorage(parent,confirm,check,expectedNamespace,otherModules=0,native=false){
@@ -55,13 +61,13 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     const valid=()=>{try{check();return cleaning===token&&parent?.isConnected===true&&isCurrent()===true&&!entry;}catch{return false;}};
     try{
       if(native){
-        const runtime=await import('./qianmu-assistant-history-view.js?v=1.59.408');check();
+        const runtime=await import('./qianmu-assistant-history-view.js?v=1.59.409');check();
         const actual=await resolveNamespace();if(expectedNamespace===undefined)expectedNamespace=actual;if(!valid()||actual!==expectedNamespace)throw Error('助手管理账户已变化');check();
         const document=parent.ownerDocument,portal=document.createElement('section');portal.dataset.qmProseAssistantPortal='';document.body.append(portal);const detach=mountPortal?.(portal);let opened;
         try{opened=runtime.openAssistantHistoryManager({parent:portal,resolveNamespace:async()=>{const actual=await resolveNamespace();if(actual!==expectedNamespace)throw Error('助手管理账户已变化');return actual;},isCurrent:valid,headers,check,confirm,download,otherModules,applyIcons,captureDestination:({signal})=>captureProseAssistantChatSource({getContext,epoch:()=>epoch,resolveNamespace,isCurrent:valid,signal})});management=opened;await opened.finished;}
         finally{opened?.dispose();if(management===opened)management=null;detach?.();portal.remove();}return;
       }
-      const runtime=await import('./qianmu-prose-assistant-storage.js?v=1.59.408');check();
+      const runtime=await import('./qianmu-prose-assistant-storage.js?v=1.59.409');check();
       const result=await runtime.cleanupProseAssistantStorage({resolveNamespace,isCurrent:valid,expectedNamespace,check,confirm,otherModules});
       check();if(valid()&&result.status!=='cancelled')notify?.(result.status==='empty'?'本机没有可清理的助手问答。':`已清空本机 ${result.clearedConversations} 个助手会话、${result.clearedTurns} 轮问答；ST记录未删除，版本标记保留。`,'success');return result;
     }finally{if(cleaning===token)cleaning=null;}
