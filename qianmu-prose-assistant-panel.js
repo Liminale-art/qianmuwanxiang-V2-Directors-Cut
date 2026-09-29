@@ -9,6 +9,7 @@ import {qianmuIconElement} from './qianmu-icon-renderer.js';
 import {renderProseAssistantMarkdown} from './qianmu-prose-assistant-markdown.js';
 import {createProseAssistantThreadKey} from './qianmu-prose-assistant-history-contract.js';
 import {createProseAssistantConversationList} from './qianmu-prose-assistant-conversation-list.js';
+import {createProseAssistantTitleProtocol} from './qianmu-prose-assistant-title.js';
 
 // Non-modal conversation window; opening it never reads or displays prose.
 export async function openProseAssistantPanel({parent,source,sourceFactory,profiles=[],selection,getProfileStream=()=>false,referenceFloors=3,systemPrompt='',getRequestHeaders,fetchImpl,copy,confirm,isCurrent,preferences,applyIcons,historyFactory=openProseAssistantHistory,conversationFactory,retainOnClose=false}={}){
@@ -18,7 +19,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   if(!parent.isConnected||isCurrent()!==true)throw Error('场外特助页面已变化');
   let previousFocus=document.activeElement;const dialog=document.createElement('section');dialog.className='qm-prose-assistant-dialog';dialog.tabIndex=-1;dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','false');dialog.setAttribute('aria-label','场外特助');
   let closed=false,busy=false,saving=false,closing=false,sequence=0,resolve,session,observer,observerCheckTimer=0,history,historyTask=null,historyWorking=true,pendingSnapshot=null,disposeWindow,autosave;
-  let catalogue=null,currentConversation=null,catalogueWorking=false,catalogueRecovery=null,page='chat',closeTask=null,reopenTask=null;
+  let catalogue=null,currentConversation=null,catalogueWorking=false,catalogueRecovery=null,page='chat',closeTask=null,reopenTask=null,pendingTitle=null;
   const listeners=[],rows=new Map(),finished=new Promise(done=>{resolve=done;});let activeQuestion=null,inputRevision=0,editing=null;
   const node=(tag,value)=>{const element=document.createElement(tag);if(value!==undefined)element.textContent=value;return element;};
   const icons={close:'xmark',settings:'gear',back:'arrow-left',send:'arrow-up',stop:'stop',conversations:'list-ul',copy:'copy',eye:'eye',save:'check',retry:'rotate-right',edit:'pen',resize:'up-right-and-down-left-from-center'};
@@ -43,11 +44,11 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   if(selection?.mode==='profile')profile.value='profile:'+selection.profileId;
   if(selection?.mode==='custom'){profile.value='custom';url.value=selection.connection?.apiUrl||'';model.value=selection.connection?.model||'';key.value=selection.connection?.apiKey||'';}custom.hidden=profile.value!=='custom';
   const footer=node('footer'),question=node('textarea'),status=node('p'),historyNotice=node('p'),retry=button('重试保存','retry-history','retry'),retryCatalogue=button('重试对话操作','retry-conversations','retry'),send=button('发送','send'),composer=node('div');
-  grid.append(field('助手提示词',persona));retryCatalogue.hidden=true;
+  const promptField=field('助手提示词',persona);promptField.className='qm-pa-prompt-field';grid.append(promptField);retryCatalogue.hidden=true;
   question.rows=1;question.maxLength=20000;question.setAttribute('aria-label','向场外特助提问');question.dataset.paQuestion='';
   status.dataset.paStatus='';status.setAttribute('role','status');status.setAttribute('aria-live','polite');historyNotice.dataset.paHistory='';historyNotice.setAttribute('role','status');retry.hidden=true;
   composer.className='qm-pa-composer';composer.append(question,send);footer.append(historyNotice,retry,status,retryCatalogue,composer);
-  const conversationList=createProseAssistantConversationList({document,onOpen:key=>{void chooseConversation(key);},onNew:()=>{void newConversation();},onDelete:keys=>{void deleteConversations(keys);},onRefresh:()=>{void refreshConversations();}});conversationList.element.hidden=true;
+  const conversationList=createProseAssistantConversationList({document,onOpen:key=>{void chooseConversation(key);},onNew:()=>{void newConversation();},onDelete:keys=>{void deleteConversations(keys);},onRefresh:()=>{void refreshConversations();},onRename:renameConversation});conversationList.element.hidden=true;
   const resize=node('span');resize.dataset.paResize='';resize.tabIndex=0;resize.setAttribute('role','separator');resize.setAttribute('aria-label','调整窗口大小');dialog.append(header,main,config,conversationList.element,footer,resize);
   function dispose(){if(closed)return;const restoreFocus=dialog.contains(document.activeElement);closed=true;sequence++;if(observerCheckTimer)view.clearTimeout(observerCheckTimer);observerCheckTimer=0;autosave?.close();session?.close();history?.close();catalogue?.close();conversationList.dispose();seed?.close();disposeWindow?.();observer?.disconnect();listeners.splice(0).forEach(remove=>remove());key.value='';question.value='';rows.clear();dialog.remove();if(restoreFocus&&previousFocus?.isConnected)previousFocus.focus({preventScroll:true});resolve(null);}
   function alive(){if(closed)return false;try{seed?.assertCurrent();if(source?.signal?.aborted||isCurrent()!==true||!parent.isConnected||!dialog.isConnected)throw Error();return true;}catch(_){dispose();return false;}}
@@ -119,6 +120,13 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     if(keys.includes(currentConversation?.key)&&!await permitSwitch())return;
     await catalogueAction(()=>catalogue.delete(keys,{remember:rememberConversation()}),async()=>{if(keys.includes(currentConversation?.key))await openConversation(defaultConversation());conversationList.resetSelection();});
   }
+  async function renameConversation(key,title){
+    if(!canManage())return false;
+    return catalogueAction(()=>catalogue.rename(key,title,{remember:rememberConversation()}),async()=>{
+      const renamed=catalogue.view().entries.find(entry=>entry.key===key&&!entry.deleted);if(!renamed)throw Error();
+      if(currentConversation?.key===key)currentConversation=renamed;conversationList.finishRename(key);
+    },'名称保存未确认，输入已保留，请重试。');
+  }
   async function refreshConversations(){
     if(!catalogue||busy||saving||closing||historyWorking||catalogueWorking||pendingSnapshot||editing)return;
     await catalogueAction(()=>catalogue.refresh(),async()=>{const entry=catalogue.view().entries.find(item=>item.key===currentConversation?.key);if(entry?.deleted)await openConversation(defaultConversation());else if(entry){currentConversation=entry;updateReference();}conversationList.resetSelection();});
@@ -133,12 +141,12 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     catch(cause){if(alive()){historyFailure(cause);icon(retry,'重新读取','retry');retry.hidden=false;}}
     finally{historyWorking=false;if(alive())controls();}
   }
-  function persistHistory(snapshot){
-    if(historyTask)return historyTask;if(!alive()||!history)return Promise.resolve(false);if(!pendingSnapshot)pendingSnapshot=snapshot;
+  function persistHistory(snapshot,title=null){
+    if(historyTask)return historyTask;if(!alive()||!history)return Promise.resolve(false);if(!pendingSnapshot){pendingSnapshot=snapshot;pendingTitle=title;}
     historyWorking=true;retry.hidden=true;controls();
     historyTask=Promise.resolve().then(async()=>{if(catalogue){currentConversation=await catalogue.assertEntryLive(currentConversation.key);updateReference();}return history.status().dirty?history.retry():history.save(pendingSnapshot);}).then(async()=>{
-      if(!alive())return false;pendingSnapshot=null;historyNotice.textContent='';
-      if(catalogue)await catalogueAction(()=>catalogue.saved(currentConversation.key,history.initialHistory().updatedAt),undefined,'对话已保存，列表更新未确认，请重试。');return true;
+      if(!alive())return false;const title=pendingTitle;pendingSnapshot=null;pendingTitle=null;historyNotice.textContent='';
+      if(catalogue)await catalogueAction(async()=>{currentConversation=await catalogue.saved(currentConversation.key,history.initialHistory().updatedAt,{title});},undefined,'对话已保存，列表更新未确认，请重试。');return true;
     }).catch(cause=>{if(alive()){
       if(cause?.code==='prose_assistant_conversations_deleted'){historyNotice.textContent='此对话已从列表删除，本次回复未保存。请先复制回复，再关闭并重新打开。';retry.hidden=true;}
       else{historyFailure(cause);icon(retry,'重试保存','retry');retry.hidden=history.status().code==='prose_assistant_history_conflict';}
@@ -177,20 +185,28 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     onStatus:state=>{saving=state.saving;if(!alive())return;if(state.failed)status.textContent='设置尚未保存，当前输入已保留，请稍后再试。';else if(!state.dirty)status.textContent='';controls();}});
   async function submit(replacement){
     if(!alive()||busy)return;controls();if(replacement?(saving||closing||historyWorking||catalogueWorking||catalogueRecovery||pendingSnapshot||!session||!profile.value||!validRange()):send.disabled)return;
-    const token=++sequence,value=replacement?.question??question.value,before=JSON.stringify(session.view().rows),revision=inputRevision;busy=true;controls();status.textContent='';
+    const token=++sequence,value=replacement?.question??question.value,before=JSON.stringify(session.view().rows),revision=inputRevision;let generatedTitle=null;busy=true;controls();status.textContent='';
     try{await seed.guard();if(!alive()||token!==sequence)return;
       if(autosave&&!await autosave.flush())throw Object.assign(Error('设置尚未保存，请稍后重试。'),{code:'prose_assistant_preferences'});
       if(catalogue){const registered=await catalogueAction(async()=>{await ensureConversation();currentConversation=await catalogue.assertEntryLive(currentConversation.key);updateReference();});if(!registered)return;}
       const count=canReference()?Number(range.value):0,requestedSource=count===0?{...source,referenceFloors:0,previousFloors:0}:sourceFactory?await sourceFactory(count):{...source,floor:source.getContext().chat.findLastIndex(message=>message&&!message.is_system),range:undefined,referenceFloors:count,previousFloors:count-1};
       if(catalogue){requestedSource.conversationKey=currentConversation.key;requestedSource.conversationOwnerKey=currentConversation.ownerKey;}
       if(!alive()||token!==sequence)return;
-      const prompt=persona.value,request=createProseAssistantRequest({selection:selectedConnection(),profiles,profileStream:getProfileStream(),getRequestHeaders,fetchImpl,compileMessages:args=>compileProseAssistantMessages({...args,systemPrompt:prompt})});
+      const titleProtocol=catalogue?.canAutoName(currentConversation.key)?createProseAssistantTitleProtocol():null;
+      const prompt=persona.value,request=createProseAssistantRequest({selection:selectedConnection(),profiles,profileStream:getProfileStream(),getRequestHeaders,fetchImpl,compileMessages:args=>{
+        const messages=compileProseAssistantMessages({...args,systemPrompt:prompt});
+        return titleProtocol?[{role:'system',content:titleProtocol.instruction},...messages]:messages;
+      }});
+      const sendRequest=titleProtocol?async args=>{
+        const raw=await request.send({...args,onText:text=>args.onText(titleProtocol.push(text))});
+        const result=titleProtocol.finish(raw);generatedTitle=result.title;return result.text;
+      }:request.send;
       if(replacement&&editing)closeEditor();
       activeQuestion=replacement?null:{value,revision};if(!replacement&&question.value===value)question.value='';
-      await session.run({question:value,source:requestedSource,request:request.send,...(replacement?{replaceId:replacement.id}:{})});
+      await session.run({question:value,source:requestedSource,request:sendRequest,...(replacement?{replaceId:replacement.id}:{})});
       if(alive()&&token===sequence){activeQuestion=null;controls();return true;}
-    }catch(cause){if(alive()&&token===sequence){restoreQuestion();busy=false;controls();status.textContent=/^prose_assistant_/.test(cause?.code||'')?String(cause.message).slice(0,240):'场外特助暂不可用，请重试';return false;}}
-    finally{if(alive()&&token===sequence){busy=false;controls();const snapshot=session.view();if(!snapshot.busy&&JSON.stringify(snapshot.rows)!==before)await persistHistory(snapshot);}}
+    }catch(cause){generatedTitle=null;if(alive()&&token===sequence){restoreQuestion();busy=false;controls();status.textContent=/^prose_assistant_/.test(cause?.code||'')?String(cause.message).slice(0,240):'场外特助暂不可用，请重试';return false;}}
+    finally{if(alive()&&token===sequence){busy=false;controls();const snapshot=session.view();if(!snapshot.busy&&JSON.stringify(snapshot.rows)!==before)await persistHistory(snapshot,generatedTitle);}}
   }
   function restoreQuestion(){if(activeQuestion&&inputRevision===activeQuestion.revision&&!question.value)question.value=activeQuestion.value;activeQuestion=null;}
   function closeEditor(){if(!editing)return;editing.box.remove();editing.entry.reply.hidden=false;editing.entry.user.hidden=false;editing=null;controls();}

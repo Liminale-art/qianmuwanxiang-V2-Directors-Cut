@@ -6,6 +6,7 @@
 .qm-prose-assistant-dialog > header > div { display:flex;align-items:center;gap:4px; }
 .qm-prose-assistant-dialog > header strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .qm-prose-assistant-dialog > main,.qm-prose-assistant-dialog > [data-pa-settings] { flex:1;min-height:0;overflow:auto;padding:8px 14px;overscroll-behavior:contain;scrollbar-width:thin; }
+.qm-prose-assistant-dialog > [data-pa-settings] { display:flex;flex-direction:column; }
 .qm-prose-assistant-dialog > footer { flex:none;padding:10px 14px; }
 .qm-prose-assistant-dialog button { display:inline-flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;margin:0;padding:7px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;cursor:pointer;transition:background .15s ease,color .15s ease; }
 .qm-prose-assistant-dialog button:hover:not(:disabled) { background:var(--sd-input-bg,#8882); }
@@ -22,8 +23,9 @@ html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-
 .qm-prose-assistant-dialog button:disabled { opacity:.4;cursor:default; }
 .qm-prose-assistant-dialog button:focus-visible,.qm-prose-assistant-dialog [data-pa-resize]:focus-visible { outline:1px solid var(--sd-accent,#a7c4b5);outline-offset:-2px; }
 .qm-prose-assistant-dialog .qm-pa-config,.qm-prose-assistant-dialog .qm-pa-custom { display:grid;gap:14px; }
-.qm-prose-assistant-dialog .qm-pa-config { padding:2px 0 14px; }
+.qm-prose-assistant-dialog .qm-pa-config { display:flex;flex-direction:column;flex:1 0 auto;padding:2px 0 0; }
 .qm-prose-assistant-dialog .qm-pa-config label { display:block;margin:0;text-align:start; }
+.qm-prose-assistant-dialog .qm-pa-config .qm-pa-prompt-field { display:flex;flex-direction:column;flex:1 0 auto; }
 .qm-prose-assistant-dialog .qm-pa-config label > span { display:block;font:inherit;font-size:calc(1em - 2px);line-height:1.45;color:var(--sd-text,#f0f0f0);margin-bottom:5px; }
 .qm-prose-assistant-dialog .qm-pa-key { display:flex;gap:6px;align-items:center; }
 .qm-prose-assistant-dialog .qm-pa-key input { flex:1;width:0; }
@@ -32,7 +34,7 @@ html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-
 .qm-prose-assistant-dialog .qm-pa-stream input[type="checkbox"] { flex:none;width:17px;height:17px;min-height:0;margin:0;padding:0;accent-color:var(--sd-accent,#a7c4b5); }
 .qm-prose-assistant-dialog .qm-pa-config .qm-pa-stream > span { margin:0;color:inherit;font-size:14px; }
 .qm-prose-assistant-dialog [data-pa-reference-hint] { display:block;margin:5px 0 0; }
-.qm-prose-assistant-dialog textarea[data-pa-prompt] { min-height:120px;max-height:55vh;resize:vertical;overflow:auto; }
+.qm-prose-assistant-dialog textarea[data-pa-prompt] { flex:1 0 auto;height:120px;min-height:120px;max-height:none;resize:vertical;overflow:auto; }
 .qm-prose-assistant-dialog .qm-pa-composer { display:flex;gap:6px;align-items:stretch;padding:4px;border:1px solid var(--sd-border,#8886);border-radius:16px;background:var(--sd-input-bg,#8882);box-shadow:0 3px 12px #0000000a; }
 .qm-prose-assistant-dialog .qm-pa-composer:focus-within { border-color:var(--sd-accent,#a7c4b5); }
 .qm-prose-assistant-dialog .qm-pa-composer [data-pa-question] { flex:1;width:0;height:calc(1.6em + 16px);min-height:44px;max-height:140px;margin:0;font:inherit;line-height:1.6;padding:8px 9px; }
@@ -84,13 +86,18 @@ html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-
 @media (max-width:620px) { .qm-prose-assistant-dialog > header { padding:8px 10px; }.qm-prose-assistant-dialog > main,.qm-prose-assistant-dialog > [data-pa-settings] { padding:8px 12px; } }
 .qm-prose-assistant-dialog > .qm-pa-conversation-list { display:flex;flex-direction:column;flex:1;min-height:0;gap:10px;padding:8px 14px 12px; }
 .qm-prose-assistant-dialog .qm-pa-conversation-toolbar { display:flex;align-items:center;gap:3px; }
-.qm-prose-assistant-dialog .qm-pa-conversation-toolbar input { flex:1;width:0;min-width:50px; }
+.qm-prose-assistant-dialog .qm-pa-conversation-toolbar input { flex:1;width:0;min-width:50px;height:34px;min-height:34px;padding:4px 8px; }
 .qm-prose-assistant-dialog .qm-pa-conversation-toolbar button[aria-pressed="true"] { color:var(--sd-accent,#a7c4b5);background:var(--sd-input-bg,#8882); }
 .qm-prose-assistant-dialog .qm-pa-conversation-rows { flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin; }
-.qm-prose-assistant-dialog button.qm-pa-conversation-row { display:flex;flex-direction:column;align-items:stretch;gap:4px;width:100%;height:auto;min-height:62px;margin:0 0 6px;padding:10px 12px;border:1px solid var(--sd-hairline,#8886);border-radius:var(--qm-card-radius,10px);text-align:start; }
-.qm-prose-assistant-dialog button.qm-pa-conversation-row.is-current { background:var(--sd-input-bg,#8882); }
-.qm-prose-assistant-dialog button.qm-pa-conversation-row.is-selected { border-color:var(--sd-accent,#a7c4b5);background:color-mix(in srgb,var(--sd-accent,#a7c4b5) 12%,var(--sd-input-bg,#8882)); }
-.qm-prose-assistant-dialog .qm-pa-conversation-title { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.qm-prose-assistant-dialog .qm-pa-conversation-meta { display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:calc(1em - 2px);color:var(--sd-muted,#aaa); }
+.qm-prose-assistant-dialog .qm-pa-conversation-item { display:flex;align-items:center;gap:2px;min-height:42px;margin:0 0 4px;padding:0 3px;border:1px solid var(--sd-hairline,#8886);border-radius:var(--qm-card-radius,10px); }
+.qm-prose-assistant-dialog button.qm-pa-conversation-row { display:flex;flex:1;align-items:center;justify-content:space-between;gap:8px;width:0;height:auto;min-height:40px;margin:0;padding:6px 5px;line-height:1.5;text-align:start; }
+.qm-prose-assistant-dialog .qm-pa-conversation-item.is-selected { border-color:var(--sd-accent,#a7c4b5);background:color-mix(in srgb,var(--sd-accent,#a7c4b5) 12%,var(--sd-input-bg,#8882)); }
+.qm-prose-assistant-dialog .qm-pa-conversation-title { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.qm-prose-assistant-dialog .qm-pa-conversation-meta { display:flex;flex:none;align-items:center;gap:8px;white-space:nowrap;font-size:calc(1em - 2px);color:var(--sd-muted,#aaa); }
 .qm-prose-assistant-dialog .qm-pa-conversation-current { color:var(--sd-accent,#a7c4b5); }
+.qm-prose-assistant-dialog .qm-pa-conversation-item > button[data-pa-list-action="rename"] svg,.qm-prose-assistant-dialog .qm-pa-conversation-edit button svg { width:14.4px;height:14.4px; }
+.qm-prose-assistant-dialog .qm-pa-conversation-edit { display:flex;flex:1;flex-wrap:wrap;align-items:center;gap:3px;padding:3px 0; }
+.qm-prose-assistant-dialog .qm-pa-conversation-edit input { flex:1;width:0;height:34px;min-height:34px;padding:4px 8px; }
+.qm-prose-assistant-dialog .qm-pa-conversation-error { flex-basis:100%;margin:0;padding:0 5px;font-size:calc(1em - 2px);color:var(--sd-muted,#aaa); }
+.qm-prose-assistant-dialog .qm-pa-conversation-error:empty { display:none; }
 .qm-prose-assistant-dialog .qm-pa-conversation-empty { margin:0;padding:18px 6px;color:var(--sd-muted,#aaa);text-align:center; }

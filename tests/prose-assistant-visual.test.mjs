@@ -103,3 +103,22 @@ test('message action glyphs shrink without shrinking hit areas and only question
  assert.match(rule(`${scope} .qm-pa-edit[data-pa-edit-kind="question"] [data-pa-action="save-reply"]`),/background:var\(--sd-accent,.*color:var\(--sd-primary-text,/);
  assert.doesNotMatch(rule(`${scope} .qm-pa-edit button`),/--sd-accent/);
 });
+
+test('recent conversation rows stay compact with fixed metadata, no current fill and matched-height search',()=>{
+ assert.doesNotMatch(css,/\.qm-pa-conversation[^{}]*\.is-current/);
+ const item=rule(`${scope} .qm-pa-conversation-item`),row=rule(`${scope} button.qm-pa-conversation-row`);
+ assert.match(item,/display:flex;align-items:center/);assert.match(item,/min-height:42px/);assert.match(row,/display:flex;flex:1;align-items:center/);assert.doesNotMatch(row,/flex-direction:column/);
+ assert.match(rule(`${scope} .qm-pa-conversation-title`),/flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap/);
+ assert.match(rule(`${scope} .qm-pa-conversation-meta`),/display:flex;flex:none/);assert.match(rule(`${scope} .qm-pa-conversation-meta`),/white-space:nowrap/);
+ assert.match(rule(`${scope} .qm-pa-conversation-toolbar input`),/height:34px;min-height:34px;padding:4px 8px/);
+ assert.match(rule(`${scope} button`),/width:34px;height:34px/);
+ assert.match(rule(`${scope} .qm-pa-conversation-item > button[data-pa-list-action="rename"] svg,${scope} .qm-pa-conversation-edit button svg`),/width:14\.4px;height:14\.4px/);
+});
+
+test('settings prompt fills remaining panel height while long settings and manual resize can scroll',()=>{
+ assert.match(rule(`${scope} > [data-pa-settings]`),/display:flex;flex-direction:column/);
+ assert.match(rule(`${scope} > main,${scope} > [data-pa-settings]`),/flex:1;min-height:0;overflow:auto/);
+ assert.match(rule(`${scope} .qm-pa-config`),/display:flex;flex-direction:column;flex:1 0 auto/);
+ assert.match(rule(`${scope} .qm-pa-config .qm-pa-prompt-field`),/display:flex;flex-direction:column;flex:1 0 auto/);
+ assert.match(rule(`${scope} textarea[data-pa-prompt]`),/flex:1 0 auto;height:120px;min-height:120px;max-height:none;resize:vertical;overflow:auto/);
+});

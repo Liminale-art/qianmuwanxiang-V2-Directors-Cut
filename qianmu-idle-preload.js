@@ -1,11 +1,11 @@
 // Code-only warming: no text reads, DOM construction, database access or model calls.
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.410';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.411';
 export const QIANMU_IDLE_CHUNKS=Object.freeze([
- './qianmu-prose-assistant-panel.js','./qianmu-prose-assistant-native.js?v=1.59.410',
- './qianmu-character-archive-view.js?v=1.59.410',
- './qianmu-vibe-library-view.js?v=1.59.410','./qianmu-ensemble-ui.js?v=1.59.410',
- './qianmu-comfy-library-view.js?v=1.59.410','./qianmu-comfy-pool-view.js?v=1.59.410',
- './qianmu-comfy-route.js?v=1.59.410',
+ './qianmu-prose-assistant-panel.js','./qianmu-prose-assistant-native.js?v=1.59.411',
+ './qianmu-character-archive-view.js?v=1.59.411',
+ './qianmu-vibe-library-view.js?v=1.59.411','./qianmu-ensemble-ui.js?v=1.59.411',
+ './qianmu-comfy-library-view.js?v=1.59.411','./qianmu-comfy-pool-view.js?v=1.59.411',
+ './qianmu-comfy-route.js?v=1.59.411',
 ]);
 const LOADERS=QIANMU_IDLE_CHUNKS.map(url=>()=>loadLocalChunk(url));
 export function scheduleQianmuIdlePreload({window=globalThis.window,document=globalThis.document,isCurrent=()=>true,isBusy=()=>false,loaders=LOADERS,now=Date.now,quietMs=5000}={}){

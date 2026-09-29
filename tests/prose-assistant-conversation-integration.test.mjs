@@ -14,10 +14,13 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const hostFor=(name='A')=>({chatId:`Chat ${name}`,characterId:0,characters:[{avatar:`${name}.png`,name:`角色 ${name}`,chat:`Chat ${name}`}],chatMetadata:{},eventSource:new EventEmitter(),chat:[{mes:`${name} earlier prose`},{mes:`${name} latest prose`}]});
 const row=(user='旧问题',assistant='旧回答')=>({id:1,user,assistant,status:'complete',reference:null});
 const uploaded=call=>call.path==='/api/files/upload'?JSON.parse(Buffer.from(JSON.parse(call.options.body).data,'base64').toString('utf8')):null;
+const titleInstruction=body=>body.messages.find(message=>message.role==='system'&&/\[\[qianmu-title:/.test(message.content))?.content;
+const titleSuffix=(body,title)=>{const id=titleInstruction(body)?.match(/\[\[qianmu-title:([0-9a-f-]{36})\]\]/)?.[1];assert.ok(id,'the first unnamed offstage request includes its single-response naming instruction');return `\n[[qianmu-title:${id}]]${title}[[/qianmu-title:${id}]]`;};
 
-async function fixture(t,{initialRows=[]}={}){
+async function fixture(t,{initialRows=[],offstage=false}={}){
  const namespace='st-user:conversation-panel-fixture',transport=streamCheckpointTransport(namespace),dom=proseAssistantPanelDom();
  const f={namespace,transport,dom,host:hostFor(),epoch:0,live:true,panel:null,models:[],proseReads:[],confirmations:[],copies:[],mode:'json',confirmApproval:true};
+ if(offstage){delete f.host.chatId;f.host.chat=[];}
  const source=host=>({getContext:()=>host||f.host,epoch:()=>f.epoch,resolveNamespace:async()=>f.namespace,isCurrent:()=>f.live,
   readText:(message,floor)=>{f.proseReads.push(floor);return message.mes;}});
  f.capture=async host=>captureProseAssistantChatSource(source(host));
@@ -36,7 +39,7 @@ async function fixture(t,{initialRows=[]}={}){
    f.appendReply=(text,finished=false)=>{controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({choices:[{delta:{content:text},...(finished?{finish_reason:'stop'}:{})}]})}\n\n`));if(finished)controller.close();};
    f.finishReply=()=>f.appendReply('，已完成',true);f.appendReply('部分回答');
   }}),{headers:{'content-type':'text/event-stream'}});
-  return Response.json({choices:[{message:{content:'回答 '+f.models.length},finish_reason:'stop'}]});
+  return Response.json({choices:[{message:{content:f.replyText?f.replyText(body):'回答 '+f.models.length},finish_reason:'stop'}]});
  };
  f.action=name=>dom.all().find(node=>node.dataset.paAction===name);
  f.listAction=name=>dom.all().find(node=>node.dataset.paListAction===name);
@@ -58,6 +61,7 @@ async function fixture(t,{initialRows=[]}={}){
  f.showList=()=>{f.action('conversations').click();assert.equal(dom.get('最近特助对话').hidden,false);};
  f.choose=async key=>{f.showList();const entry=f.listRows().find(node=>node.dataset.paConversationKey===key);assert.ok(entry);entry.click();await dom.wait(()=>dom.get('最近特助对话').hidden);await f.idle();};
  f.create=async()=>{f.showList();const before=f.catalogue()?.defaults.find(item=>item.ownerKey===f.base)?.key;f.listAction('new').click();await dom.wait(()=>{const key=f.catalogue()?.defaults.find(item=>item.ownerKey===f.base)?.key;return key&&key!==before;});await f.idle();return f.catalogue().defaults.find(item=>item.ownerKey===f.base).key;};
+ f.rename=async(key,title)=>{f.showList();const button=dom.all().find(node=>node.dataset.paRenameKey===key);assert.ok(button);button.click();dom.get('对话名称').value=title;f.listAction('save-name').click();await dom.wait(()=>f.catalogue()?.entries.find(entry=>entry.key===key)?.title===title);await f.idle();await dom.wait(()=>!dom.all().some(node=>Object.hasOwn(node.dataset,'paConversationEditor')));};
  f.close=async()=>{f.action('close').click();await dom.wait(()=>!f.panel.visible);};
  f.cold=async()=>{f.panel.dispose();await f.panel.finished;return f.open();};
  t.after(()=>{f.panel?.dispose();f.live=false;});await f.open();return f;
@@ -222,4 +226,59 @@ test('streaming replies do not repaint a hidden conversation list on every chunk
  let expected='部分回答';for(const chunk of ['一','二','三','四']){expected+=chunk;f.appendReply(chunk);await f.dom.wait(()=>f.rows()[1].querySelector('.qm-pa-reply').textContent===expected);}
  f.finishReply();await f.idle();assert.equal(list.hidden,true);assert.equal(paints,0,'the hidden list is not rendered during input, streaming or final save');
  f.showList();assert.ok(paints>0,'the observation still sees the actual visible list render');assert.equal(f.listRows().length,1);assert.equal(f.models.length,2);
+});
+
+test('the first independent reply names its catalog in the existing write without leaking its marker to rendering, copy or follow-up history',async t=>{
+ const f=await fixture(t,{offstage:true});f.replyText=body=>'这是正文。'+titleSuffix(body,'岩彩材料');await f.send('介绍岩彩');
+ assert.equal(f.models.length,1);assert.equal(f.rows()[0].querySelector('.qm-pa-reply').textContent,'这是正文。');assert.equal(f.remote(f.base).rows[0].assistant,'这是正文。');
+ const entry=f.catalogue().entries[0];assert.equal(entry.title,'岩彩材料');assert.equal(entry.titleSource,'auto');assert.equal(f.catalogue().version,2);
+ const uploads=f.transport.calls.map(uploaded).filter(Boolean);assert.equal(uploads.length,4);assert.equal(uploads.filter(value=>value.slot==='assistant-conversations').length,2);assert.equal(uploads.filter(value=>value.schema==='qianmu.st-account-document.v1').length,1);assert.equal(uploads.filter(value=>value.schema==='qianmu.st-account-head.v1').length,1);
+ f.rows()[0].querySelector('[data-pa-action="copy"]').click();await f.dom.wait(()=>f.copies.length===1);assert.deepEqual(f.copies,['这是正文。']);
+ f.replyText=body=>{assert.equal(titleInstruction(body),undefined);assert.doesNotMatch(JSON.stringify(body.messages),/qianmu-title:/);return '第二次正文。';};await f.send('再介绍颜料');
+ assert.equal(f.models.length,2);assert.equal(f.catalogue().entries[0].title,'岩彩材料');assert.doesNotMatch(JSON.stringify(f.remote(f.base)),/qianmu-title:/);assert.equal(f.remote(f.base).rows.length,2);
+});
+
+test('manual rename registers a legacy ghost atomically, survives cold open, changes no messages and permanently takes naming priority',async t=>{
+ const f=await fixture(t,{offstage:true,initialRows:[row()]}),original=structuredClone(f.remote(f.base)),files=new Map(f.transport.files);
+ assert.equal(f.catalogue(),undefined);await f.rename(f.base,'我的手工笔记');assert.equal(f.catalogue().entries[0].titleSource,'manual');assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,1);assert.deepEqual(f.remote(f.base),original);
+ assert.deepEqual(new Map([...f.transport.files].filter(([name])=>!name.endsWith('-assistant-conversations.snapshot.json'))),files);await f.cold();f.showList();assert.match(f.listRows()[0].textContent,/我的手工笔记/);
+ await f.choose(f.base);f.replyText=body=>{assert.equal(titleInstruction(body),undefined);return '不会改变手动名称';};await f.send('继续笔记');assert.equal(f.catalogue().entries[0].title,'我的手工笔记');
+ const before=structuredClone(f.remote(f.base)),posts=f.transport.calls.filter(call=>call.options.method==='POST').length;await f.rename(f.base,'独立对话');assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,posts+1);assert.deepEqual(f.remote(f.base),before);
+ await f.cold();await f.send('再次继续');assert.equal(f.catalogue().entries[0].title,'独立对话');assert.equal(f.catalogue().entries[0].titleSource,'manual');assert.equal(f.models.length,2);
+});
+
+test('missing or invalid automatic title never fails the normal reply or sends an extra model request',async t=>{
+ for(const invalid of [false,true])await t.test(invalid?'invalid title':'no title',async t=>{
+  const f=await fixture(t,{offstage:true});let returned;f.replyText=body=>returned='正常回复'+(invalid?titleSuffix(body,'<b>不接受的标题</b>'):'');await f.send('照常回答');
+  assert.equal(f.models.length,1);assert.equal(f.remote(f.base).rows[0].assistant,returned);assert.equal(f.remote(f.base).rows[0].status,'complete');assert.equal(f.catalogue().entries[0].title,'独立对话');assert.equal(f.catalogue().entries[0].titleSource,undefined);assert.equal(f.catalogue().version,1);assert.equal(f.status(),'');assert.equal(f.notice(),'');assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,4);
+ });
+});
+
+test('a streaming title split across delimiters stays out of visible text and is named only after successful completion',async t=>{
+ const f=await fixture(t,{offstage:true});f.mode='hold';f.question().value='流式介绍';f.question().emit('input');f.action('send').click();await f.dom.wait(()=>f.models.length===1&&f.rows()[0]?.querySelector('.qm-pa-reply').textContent==='部分回答');
+ const suffix=titleSuffix(f.models[0],'流式笔记'),chunks=[suffix.slice(0,2),suffix.slice(2,19),suffix.slice(19,55),suffix.slice(55,-5),suffix.slice(-5)];
+ for(const chunk of chunks){f.appendReply(chunk);await new Promise(done=>setImmediate(done));assert.equal(f.rows()[0].querySelector('.qm-pa-reply').textContent,'部分回答');assert.equal(f.catalogue().entries[0].titleSource,undefined);}
+ f.appendReply('',true);await f.idle();assert.equal(f.remote(f.base).rows[0].assistant,'部分回答');assert.equal(f.catalogue().entries[0].title,'流式笔记');assert.equal(f.catalogue().entries[0].titleSource,'auto');assert.equal(f.models.length,1);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,4);
+});
+
+test('stopping after a streamed title arrives does not confirm that title or save its marker',async t=>{
+ const f=await fixture(t,{offstage:true});f.mode='hold';f.question().value='稍后停止';f.question().emit('input');f.action('send').click();await f.dom.wait(()=>f.models.length===1&&f.rows()[0]?.querySelector('.qm-pa-reply').textContent==='部分回答');
+ f.appendReply(titleSuffix(f.models[0],'不能提前确认'));await new Promise(done=>setImmediate(done));f.action('stop').click();await f.idle();
+ assert.equal(f.remote(f.base).rows[0].assistant,'部分回答');assert.equal(f.remote(f.base).rows[0].status,'cancelled');assert.equal(f.catalogue().entries[0].title,'独立对话');assert.equal(f.catalogue().entries[0].titleSource,undefined);assert.equal(f.catalogue().version,1);assert.equal(f.models.length,1);assert.doesNotMatch(JSON.stringify(f.remote(f.base)),/qianmu-title:/);
+});
+
+test('failed history save retains the same automatic title candidate for storage retry without another model request',async t=>{
+ const f=await fixture(t,{offstage:true});f.replyText=body=>'可保存正文'+titleSuffix(body,'保存后才命名');let failed=false;
+ f.transport.hook=({path,options,json})=>{if(!failed&&uploaded({path,options})?.schema==='qianmu.st-account-document.v1'){failed=true;return json({},503);}};
+ await f.send('保存失败一次');assert.equal(f.models.length,1);assert.equal(f.remote(f.base).rows.length,0);assert.equal(f.catalogue().entries[0].titleSource,undefined);assert.equal(f.action('retry-history').hidden,false);
+ f.transport.hook=null;f.action('retry-history').click();await f.idle();assert.equal(f.remote(f.base).rows[0].assistant,'可保存正文');assert.equal(f.catalogue().entries[0].title,'保存后才命名');assert.equal(f.catalogue().entries[0].titleSource,'auto');assert.equal(f.models.length,1);assert.equal(f.notice(),'');assert.equal(f.status(),'');
+});
+
+test('lost automatic-title directory receipt retries only its exact snapshot, never the model, message body or title generation',async t=>{
+ const f=await fixture(t,{offstage:true});f.replyText=body=>'正文已保存'+titleSuffix(body,'回执丢失的标题');let lost=false;
+ f.transport.hook=({path,options,files,json})=>{const value=uploaded({path,options});if(!lost&&value?.slot==='assistant-conversations'&&value.value.version===2){lost=true;const {name,data}=JSON.parse(options.body);files.set(name,Buffer.from(data,'base64').toString('utf8'));return json({},503);}};
+ await f.send('回执丢失');assert.equal(lost,true);assert.equal(f.remote(f.base).rows[0].assistant,'正文已保存');assert.equal(f.action('retry-conversations').hidden,false);
+ const files=new Map(f.transport.files),writes=f.transport.calls.filter(call=>call.options.method==='POST').length;f.transport.hook=null;f.action('retry-conversations').click();await f.idle();
+ assert.deepEqual(f.transport.files,files);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,writes);assert.equal(f.models.length,1);assert.equal(f.catalogue().entries[0].title,'回执丢失的标题');assert.equal(f.action('retry-conversations').hidden,true);
+ f.replyText=body=>{assert.equal(titleInstruction(body),undefined);return '后续正文';};await f.send('再问一次');assert.equal(f.models.length,2);assert.equal(f.catalogue().entries[0].title,'回执丢失的标题');assert.doesNotMatch(JSON.stringify(f.remote(f.base)),/qianmu-title:/);
 });

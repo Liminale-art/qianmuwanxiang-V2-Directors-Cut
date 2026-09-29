@@ -2,7 +2,7 @@ import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
 import {proseAssistantAccountForNamespace} from './qianmu-prose-assistant-source.js';
 import {proseAssistantHistoryKey,proseAssistantHistoryAccount,proseAssistantOwnerKey,createProseAssistantThreadKey} from './qianmu-prose-assistant-history-contract.js';
 
-export const PROSE_ASSISTANT_CONVERSATIONS_LIMITS=Object.freeze({entries:2048,bytes:2*1024*1024,title:240});
+export const PROSE_ASSISTANT_CONVERSATIONS_LIMITS=Object.freeze({entries:2048,bytes:2*1024*1024,title:240,namedTitle:40});
 const SLOT='assistant-conversations',LIMIT=PROSE_ASSISTANT_CONVERSATIONS_LIMITS;
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const copy=value=>structuredClone(value);
@@ -11,18 +11,25 @@ const fail=(code,message)=>{throw error(code,message);};
 const exact=(value,keys)=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const time=value=>Number.isSafeInteger(value)&&value>=0&&value<=253402214400000;
 const validText=value=>typeof value==='string'&&value.trim().length>0&&value.length<=LIMIT.title&&!/[\u0000-\u001f\u007f]/.test(value)&&new TextDecoder().decode(new TextEncoder().encode(value))===value;
+const namedTitle=value=>validText(value)&&Array.from(value.trim()).length<=LIMIT.namedTitle&&!/[\p{Cc}\p{Cf}\u2028\u2029<>]/u.test(value)?value.trim():null;
 const invalid=()=>fail('invalid','最近对话记录格式异常，未覆盖原内容');
 const safe=cause=>String(cause?.code||'').startsWith('prose_assistant_conversations_')?cause:
  error(cause?.code==='st_account_storage_conflict'?'conflict':'storage',cause?.code==='st_account_storage_conflict'?'最近对话已变化，请刷新后再试':'最近对话保存未确认，请重试');
 
 function historyKey(key,account){try{return proseAssistantHistoryKey(key,account);}catch{invalid();}}
 function ownerKey(key,account){historyKey(key,account);if(proseAssistantOwnerKey(key)!==key)invalid();return key;}
+export function canAutoNameProseAssistantConversation(entry){
+ if(!entry||entry.deleted||entry.titleSource!==undefined||!['独立对话','特助对话'].includes(entry.title))return false;
+ try{return JSON.parse(proseAssistantOwnerKey(entry.ownerKey))[0]==='qianmu-prose-assistant-offstage-v1';}catch{return false;}
+}
 function validate(value,account){
- if(!exact(value,['version','account','revision','entries','defaults'])||value.version!==1||value.account!==account||!Number.isSafeInteger(value.revision)||value.revision<0
+ if(!exact(value,['version','account','revision','entries','defaults'])||![1,2].includes(value.version)||value.account!==account||!Number.isSafeInteger(value.revision)||value.revision<0
   ||!Array.isArray(value.entries)||value.entries.length>LIMIT.entries||!Array.isArray(value.defaults)||value.defaults.length>LIMIT.entries)invalid();
  const entries=new Map();
  for(const entry of value.entries){
-  if(!exact(entry,['key','ownerKey','title','createdAt','updatedAt','lastUsedAt','deleted'])||!validText(entry.title)
+  const fields=['key','ownerKey','title','createdAt','updatedAt','lastUsedAt','deleted'],named=Object.hasOwn(entry||{},'titleSource');
+  if(named){if(value.version!==2||!['manual','auto'].includes(entry.titleSource)||namedTitle(entry.title)!==entry.title)invalid();fields.push('titleSource');}
+  if(!exact(entry,fields)||!validText(entry.title)
    ||![entry.createdAt,entry.updatedAt,entry.lastUsedAt].every(time)||typeof entry.deleted!=='boolean')invalid();
   historyKey(entry.key,account);ownerKey(entry.ownerKey,account);if(entries.has(entry.key))invalid();entries.set(entry.key,entry);
  }
@@ -99,6 +106,7 @@ export async function openProseAssistantConversations({source,isCurrent,storageF
  }
  return Object.freeze({
   view(){check();return snapshot();},
+  canAutoName(key){check();historyKey(key,account);return canAutoNameProseAssistantConversation(find(committed,key));},
   status(){return {busy:!!active,dirty:!!pending,closed,code:lastError?.code||'',canRetry:!closed&&!active&&!!pending};},
   ensure(metadata){return mutate(state=>register(state,metadata));},
   create({ownerKey:owner,title,id,remember}={}){return mutate(state=>{
@@ -111,7 +119,14 @@ export async function openProseAssistantConversations({source,isCurrent,storageF
    const entry=live(state,key);if(defaultForCurrent!==undefined){ownerKey(defaultForCurrent,account);if(entry.ownerKey!==defaultForCurrent)fail('scope','此对话不属于当前聊天');setDefault(state,defaultForCurrent,key);}
    entry.lastUsedAt=currentTime();return entry;
   });},
-  saved(key,updatedAt){return mutate(state=>{const entry=live(state,key);if(!time(updatedAt))invalid();entry.updatedAt=updatedAt;entry.lastUsedAt=currentTime();return entry;});},
+  saved(key,updatedAt,{title}={}){return mutate(state=>{
+   const entry=live(state,key);if(!time(updatedAt))invalid();entry.updatedAt=updatedAt;entry.lastUsedAt=currentTime();
+   const name=namedTitle(title);if(name&&canAutoNameProseAssistantConversation(entry)){state.version=2;entry.title=name;entry.titleSource='auto';}return entry;
+  });},
+  rename(key,title,{remember}={}){return mutate(state=>{
+   const name=namedTitle(title);if(!name)fail('title','名称请使用 1–40 个字，不含换行或标签');
+   if(remember)register(state,remember);const entry=live(state,key);state.version=2;entry.title=name;entry.titleSource='manual';return entry;
+  });},
   delete(keys,{remember}={}){return mutate(state=>{
    if(remember)register(state,remember);
    if(!Array.isArray(keys)||!keys.length||keys.length>LIMIT.entries||new Set(keys).size!==keys.length)invalid();

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {createProseAssistantConversationList} from '../qianmu-prose-assistant-conversation-list.js';
 import {proseAssistantPanelDom} from './helpers/prose-assistant-panel-dom.mjs';
 
-function fixture(){
+function fixture({onRename}={}){
  const dom=proseAssistantPanelDom(),calls=[];
- const view=createProseAssistantConversationList({document:dom.doc,onOpen:key=>calls.push(['open',key]),onNew:()=>calls.push(['new']),onDelete:keys=>calls.push(['delete',keys]),onRefresh:()=>calls.push(['refresh'])});
+ const view=createProseAssistantConversationList({document:dom.doc,onOpen:key=>calls.push(['open',key]),onNew:()=>calls.push(['new']),onDelete:keys=>calls.push(['delete',keys]),onRefresh:()=>calls.push(['refresh']),onRename});
  dom.parent.append(view.element);
  return {dom,view,calls,search:dom.get('搜索特助对话'),rows:()=>view.element.querySelectorAll('[data-pa-conversation-key]'),action:name=>view.element.querySelector(`[data-pa-list-action="${name}"]`),list:view.element.querySelector('.qm-pa-conversation-rows')};
 }
@@ -64,4 +64,68 @@ test('recoverable busy state enables only refresh among list actions and keeps l
  f.action('refresh').click();assert.deepEqual(f.calls,[['refresh']]);assert.equal(f.rows()[0].getAttribute('aria-pressed'),'true');
  f.view.render({entries:data,busy:true});assert.equal(f.action('refresh').disabled,true);f.action('refresh').click();assert.deepEqual(f.calls,[['refresh']]);
  f.view.render({entries:data});assert.equal(f.action('new').disabled,false);assert.equal(f.action('delete').disabled,false);assert.equal(f.rows()[0].disabled,false);f.view.dispose();
+});
+
+test('rename is a sibling action, saves once on Enter and never opens or selects the conversation',async()=>{
+ const data=entries(1),renames=[];let release;
+ const f=fixture({onRename:(key,title)=>{renames.push([key,title]);return new Promise(resolve=>{release=()=>{data[0]={...data[0],title};f.view.render({entries:data,currentKey:key});resolve(true);};});}});
+ f.view.render({entries:data,currentKey:'key-0'});const row=f.rows()[0],rename=f.action('rename');
+ assert.equal(rename.parentElement,row.parentElement);assert.equal(row.querySelectorAll('button').length,0);assert.ok(rename.querySelector('svg')?.innerHTML.length>0);
+ let escaped=0;f.dom.parent.addEventListener('keydown',()=>escaped++);rename.click();const input=f.dom.get('对话名称');
+ assert.equal(row.hidden,true);assert.equal(rename.hidden,true);assert.equal(f.search.disabled,true);assert.equal(input.value,'角色 0');assert.deepEqual(f.calls,[]);
+ input.value='  新名字  ';const enter=input.emit('keydown',{key:'Enter'});input.emit('keydown',{key:'Enter'});f.action('save-name').click();
+ assert.equal(enter.defaultPrevented,true);assert.equal(escaped,0);assert.deepEqual(renames,[['key-0','新名字']]);assert.equal(input.disabled,true);assert.equal(f.action('cancel-name').disabled,true);
+ release();await f.dom.wait(()=>!f.view.element.querySelector('[data-pa-conversation-editor]'));
+ assert.equal(f.rows()[0],row);assert.equal(row.hidden,false);assert.equal(row.querySelector('.qm-pa-conversation-title').textContent,'新名字');assert.deepEqual(f.calls,[]);f.view.dispose();
+});
+
+test('rename cancellation and validation keep stored titles intact and respect composition, busy and selection states',()=>{
+ const renames=[],data=entries(1),f=fixture({onRename:(...args)=>{renames.push(args);return true;}});f.view.render({entries:data});
+ f.action('rename').click();let input=f.dom.get('对话名称');input.value='';input.emit('keydown',{key:'Enter'});assert.deepEqual(renames,[]);assert.match(f.view.element.querySelector('.qm-pa-conversation-error').textContent,/1–40/);
+ input.value='尚未提交';input.emit('keydown',{key:'Enter',isComposing:true});assert.deepEqual(renames,[]);f.rows()[0].click();f.action('select').click();assert.deepEqual(f.calls,[]);assert.equal(f.action('select').getAttribute('aria-pressed'),'false');
+ const escape=input.emit('keydown',{key:'Escape'});assert.equal(escape.defaultPrevented,true);assert.equal(f.view.element.querySelector('[data-pa-conversation-editor]'),null);assert.equal(f.rows()[0].querySelector('.qm-pa-conversation-title').textContent,'角色 0');
+ f.view.render({entries:data,busy:true});assert.equal(f.action('rename').disabled,true);f.action('rename').click();assert.equal(f.view.element.querySelector('[data-pa-conversation-editor]'),null);
+ f.view.render({entries:data});f.action('select').click();assert.equal(f.action('rename').hidden,true);f.action('rename').click();assert.equal(f.view.element.querySelector('[data-pa-conversation-editor]'),null);
+ f.view.resetSelection();f.action('rename').click();input=f.dom.get('对话名称');input.value='取消按钮草稿';f.action('cancel-name').click();assert.deepEqual(renames,[]);assert.equal(data[0].title,'角色 0');f.view.dispose();
+});
+
+test('failed rename retains its draft until retry confirms, including owner-driven recovery completion',async()=>{
+ const data=entries(1);let attempts=0;
+ const f=fixture({onRename:async()=>{attempts++;if(attempts===1)throw Error('private server detail');return false;}});f.view.render({entries:data});f.action('rename').click();const input=f.dom.get('对话名称');input.value='保留草稿';f.action('save-name').click();
+ await f.dom.wait(()=>!input.disabled);assert.match(f.view.element.querySelector('.qm-pa-conversation-error').textContent,/重试/);assert.doesNotMatch(f.view.element.textContent,/private server detail/);assert.equal(input.value,'保留草稿');
+ f.view.render({entries:data,busy:true,refreshable:true});assert.equal(input.disabled,true);assert.equal(f.action('refresh').disabled,false);f.action('refresh').click();assert.deepEqual(f.calls,[['refresh']]);
+ f.view.render({entries:data});assert.equal(f.dom.get('对话名称'),input);assert.equal(input.value,'保留草稿');f.action('save-name').click();await f.dom.wait(()=>!input.disabled);assert.equal(attempts,2);assert.equal(f.dom.get('对话名称'),input);
+ f.view.finishRename('another-key');assert.equal(f.dom.get('对话名称'),input);data[0]={...data[0],title:'保留草稿'};f.view.render({entries:data});f.view.finishRename('key-0');f.view.finishRename('key-0');
+ assert.equal(f.view.element.querySelector('[data-pa-conversation-editor]'),null);assert.equal(f.rows()[0].querySelector('.qm-pa-conversation-title').textContent,'保留草稿');f.view.dispose();
+});
+
+test('optional rename stays hidden and late rename completion cannot revive a disposed list',async()=>{
+ const plain=fixture();plain.view.render({entries:entries(1)});assert.equal(plain.action('rename').hidden,true);plain.action('rename').click();assert.equal(plain.view.element.querySelector('[data-pa-conversation-editor]'),null);plain.view.dispose();
+ let finish;const f=fixture({onRename:()=>new Promise(resolve=>{finish=resolve;})});f.view.render({entries:entries(1)});f.action('rename').click();f.dom.get('对话名称').value='新名字';f.action('save-name').click();f.view.dispose();finish(true);await Promise.resolve();
+ assert.equal(f.view.element.isConnected,false);assert.deepEqual(f.calls,[]);
+});
+
+test('metadata reordering does not discard an active rename outside the loaded slice',()=>{
+ const data=entries(35),f=fixture({onRename:()=>false});f.view.render({entries:data});const first=f.rows()[0];f.action('rename').click();const input=f.dom.get('对话名称');input.value='尚未保存的名字';
+ const changed=data.map(entry=>entry.key===first.dataset.paConversationKey?{...entry,lastUsedAt:.5,updatedAt:.5}:entry);f.view.render({entries:changed});
+ assert.equal(f.dom.get('对话名称'),input);assert.equal(input.value,'尚未保存的名字');assert.equal(input.isConnected,true);assert.ok(f.rows().includes(first));
+ f.action('cancel-name').click();assert.equal(f.rows().length,30);assert.equal(data.at(-1).title,'角色 34');f.view.dispose();
+});
+
+test('manual titles allow forty Unicode code points and reject invalid names before the callback',async()=>{
+ const renames=[],f=fixture({onRename:(...args)=>{renames.push(args);return true;}});f.view.render({entries:entries(1)});f.action('rename').click();let input=f.dom.get('对话名称');
+ for(const value of ['', ' '.repeat(3), '字'.repeat(41),'😀'.repeat(41)]){
+  input.value=value;f.action('save-name').click();assert.match(f.view.element.querySelector('.qm-pa-conversation-error').textContent,/1–40/);assert.equal(input.value,value);assert.equal(renames.length,0);
+ }
+ for(const value of ['甲\u0000乙','甲\u001f乙','甲\u007f乙','甲\u0085乙','甲\u009f乙','甲\u200b乙','甲\n乙','甲\r乙','甲\u2028乙','甲\u2029乙','<甲>','甲\ud800乙']){
+  input.value=value;f.action('save-name').click();assert.match(f.view.element.querySelector('.qm-pa-conversation-error').textContent,/不能包含/);assert.equal(input.value,value);assert.equal(renames.length,0);
+ }
+ const fortyEmoji='😀'.repeat(40);assert.equal(fortyEmoji.length,80);input.value=fortyEmoji;f.action('save-name').click();await f.dom.wait(()=>!f.view.element.querySelector('[data-pa-conversation-editor]'));assert.deepEqual(renames,[['key-0',fortyEmoji]]);
+ f.action('rename').click();input=f.dom.get('对话名称');input.value='字'.repeat(40);f.action('save-name').click();await f.dom.wait(()=>!f.view.element.querySelector('[data-pa-conversation-editor]'));assert.equal(renames.at(-1)[1],'字'.repeat(40));f.view.dispose();
+});
+
+test('opening an old long default name never truncates it or rewrites it when unchanged',()=>{
+ const data=entries(1),renames=[];data[0].title='原有角色名😀'.repeat(25);const f=fixture({onRename:(...args)=>{renames.push(args);return true;}});f.view.render({entries:data});f.action('rename').click();const input=f.dom.get('对话名称');
+ assert.equal(input.value,data[0].title);assert.equal(Object.hasOwn(input,'maxLength'),false);assert.equal(input.getAttribute('maxlength'),null);
+ f.action('save-name').click();assert.equal(f.view.element.querySelector('[data-pa-conversation-editor]'),null);assert.deepEqual(renames,[]);assert.equal(f.rows()[0].querySelector('.qm-pa-conversation-title').textContent,data[0].title);f.view.dispose();
 });

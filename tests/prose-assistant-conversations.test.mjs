@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {openProseAssistantConversations as open,PROSE_ASSISTANT_CONVERSATIONS_LIMITS as LIMIT} from '../qianmu-prose-assistant-conversations.js';
+import {openProseAssistantConversations as open,PROSE_ASSISTANT_CONVERSATIONS_LIMITS as LIMIT,canAutoNameProseAssistantConversation as canAutoName} from '../qianmu-prose-assistant-conversations.js';
 import {createProseAssistantThreadKey,proseAssistantOwnerKey} from '../qianmu-prose-assistant-history-contract.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 
@@ -71,6 +71,59 @@ test('explicit catalog actions remember unreadmitted history in one atomic snaps
  await other.activate(target.key,{remember});assert.equal(g.writes.length,before+1);assert.equal(other.view().entries.length,2);
  const ghost={key:base('C'),title:'C',updatedAt:40};await other.delete([ghost.key],{remember:ghost});assert.equal(g.writes.length,before+2);assert.equal(other.view().entries.find(entry=>entry.key===ghost.key).deleted,true);
  await other.activate(target.key,{remember:ghost});assert.equal(other.view().entries.find(entry=>entry.key===ghost.key).deleted,true,'remember must never resurrect a tombstone');other.close();
+});
+
+test('ordinary v1 and v2 reads write nothing, while explicit rename registers a ghost and upgrades in one snapshot',async()=>{
+ const f=fixture(),catalog=await open(f.options);await catalog.ensure({key:base(),title:'旧角色名'.repeat(30)});const legacy=catalog.view();catalog.close();
+ const reopened=await open(f.options),before=f.writes.length;assert.deepEqual(reopened.view(),legacy);assert.equal(reopened.view().version,1);assert.equal(f.writes.length,before);
+ const ghost={key:offstage,ownerKey:offstage,title:'独立对话',createdAt:20,updatedAt:40};
+ const named=await reopened.rename(offstage,'  岩彩创作笔记  ',{remember:ghost});assert.equal(f.writes.length,before+1);assert.equal(reopened.view().version,2);
+ assert.equal(named.title,'岩彩创作笔记');assert.equal(named.titleSource,'manual');assert.equal(named.updatedAt,40);assert.equal(named.createdAt,20);assert.deepEqual(reopened.view().entries[0],legacy.entries[0]);
+ await reopened.rename(offstage,named.title);assert.equal(f.writes.length,before+1,'an unchanged manual name requires no second write');const persisted=reopened.view();reopened.close();
+ const newest=await open(f.options);assert.deepEqual(newest.view(),persisted);assert.equal(f.writes.length,before+1);assert.equal(canAutoName(newest.view().entries[1]),false);newest.close();
+});
+
+test('first automatic title shares the saved metadata write, is applied only once and never replaces a manual name',async()=>{
+ const f=fixture(),catalog=await open(f.options),entry=await catalog.create({ownerKey:offstage,title:'独立对话',id:id(1)});assert.equal(canAutoName(entry),true);assert.equal(catalog.canAutoName(entry.key),true);assert.equal(catalog.canAutoName(offstage),false);
+ f.now=200;const before=f.writes.length,automatic=await catalog.saved(entry.key,190,{title:'  水墨与岩彩  '});
+ assert.equal(f.writes.length,before+1);assert.equal(catalog.view().version,2);assert.equal(automatic.updatedAt,190);assert.equal(automatic.lastUsedAt,200);assert.equal(automatic.title,'水墨与岩彩');assert.equal(automatic.titleSource,'auto');assert.equal(canAutoName(automatic),false);assert.equal(catalog.canAutoName(entry.key),false);
+ f.now=300;const again=await catalog.saved(entry.key,290,{title:'后来模型的新标题'});assert.equal(again.title,'水墨与岩彩');assert.equal(again.titleSource,'auto');
+ const manual=await catalog.rename(entry.key,'独立对话');assert.equal(manual.titleSource,'manual');assert.equal(canAutoName(manual),false);
+ f.now=400;assert.equal((await catalog.saved(entry.key,390,{title:'不能替换手动名称'})).title,'独立对话');catalog.close();
+});
+
+test('automatic names leave character and group titles untouched and ignore invalid model suggestions without failing saved metadata',async()=>{
+ const group=JSON.stringify(['qianmu-prose-assistant-v2',account,'group:12',{kind:'group',chatId:'group-chat'},null]);
+ const f=fixture(),catalog=await open(f.options);
+ for(const owner of [base(),group]){const entry=await catalog.ensure({key:owner,title:'特助对话'});assert.equal(canAutoName(entry),false);assert.equal((await catalog.saved(owner,101,{title:'模型标题'})).title,'特助对话');}
+ const entry=await catalog.ensure({key:offstage,title:'独立对话'});assert.equal(canAutoName({...entry,deleted:true}),false);assert.equal(canAutoName({...entry,title:'已有旧名称'}),false);assert.equal(canAutoName({...entry,ownerKey:'not-a-key'}),false);
+ for(const title of ['',null,123,'x'.repeat(41),'a\nb','a\u0085b','<b>名字</b>','\ud800']){f.now++;const writes=f.writes.length,saved=await catalog.saved(offstage,f.now,{title});assert.equal(saved.title,'独立对话');assert.equal(saved.titleSource,undefined);assert.equal(saved.updatedAt,f.now);assert.equal(f.writes.length,writes+1);}
+ assert.equal(catalog.view().version,1,'unsuccessful automatic suggestions never upgrade legacy files');catalog.close();
+});
+
+test('manual names reject malformed text before registering a ghost and cannot rename tombstones',async()=>{
+ const f=fixture(),catalog=await open(f.options),remember={key:offstage,title:'独立对话'};
+ for(const title of ['', '   ',null,123,'x'.repeat(41),'a\nb','a\rb','a\tb','a\u0085b','a\u2028b','a\u202Eb','<img src=x>','\ud800']){
+  await assert.rejects(catalog.rename(offstage,title,{remember}),code('title'));assert.equal(catalog.status().dirty,false);assert.equal(f.writes.length,0);assert.deepEqual(catalog.view(),state());
+ }
+ const emoji='🌙'.repeat(40),named=await catalog.rename(offstage,emoji,{remember});assert.equal(named.title,emoji,'the limit counts Unicode characters, not UTF-16 code units');
+ await catalog.delete([offstage]);const before=f.writes.length;await assert.rejects(catalog.rename(offstage,'不能复活',{remember}),code('deleted'));await assert.rejects(catalog.saved(offstage,200,{title:'不能复活'}),code('deleted'));assert.equal(f.writes.length,before);assert.equal(catalog.view().entries[0].deleted,true);catalog.close();
+});
+
+test('named snapshots require explicit v2 with a valid title source and canonical safe title',async()=>{
+ const entry={key:offstage,ownerKey:offstage,title:'目录名称',createdAt:1,updatedAt:1,lastUsedAt:1,deleted:false,titleSource:'manual'};
+ for(const patch of [{version:1},{version:3},{entry:{titleSource:'unknown'}},{entry:{title:'<i>名称</i>'}},{entry:{title:' 名称 '}},{entry:{title:'x'.repeat(41)}},{entry:{extra:true}}]){
+  const value={...state(),version:patch.version??2,revision:1,entries:[{...entry,...patch.entry}]},f=fixture(value);await assert.rejects(open(f.options),code('invalid'));assert.equal(f.writes.length,0);
+ }
+});
+
+test('rename receipt loss and auto-title conflicts preserve exact targets and never overwrite a later manual name',async()=>{
+ const f=fixture(),catalog=await open(f.options);f.mode='lost';await assert.rejects(catalog.rename(offstage,'手动标题',{remember:{key:offstage,title:'独立对话'}}),code('storage'));
+ assert.equal(catalog.view().version,1);assert.equal(catalog.view().entries.length,0);assert.equal(f.current.value.version,2);f.mode='ok';await catalog.retry();assert.equal(f.writes.length,1);assert.equal(catalog.view().entries[0].titleSource,'manual');catalog.close();
+ const g=fixture(),automatic=await open(g.options);await automatic.ensure({key:offstage,title:'独立对话'});const manual=await open(g.options);
+ g.mode='fail';await assert.rejects(automatic.saved(offstage,200,{title:'自动标题'}),code('storage'));const target=structuredClone(g.writes.at(-1).value);g.mode='ok';await manual.rename(offstage,'用户已修改');const writes=g.writes.length;
+ await assert.rejects(automatic.retry(),code('conflict'));assert.equal(g.writes.length,writes);assert.deepEqual(g.writes.at(-2).value,target);assert.equal(g.current.value.entries[0].title,'用户已修改');assert.equal(g.current.value.entries[0].titleSource,'manual');
+ await automatic.refresh();assert.equal(canAutoName(automatic.view().entries[0]),false);automatic.close();manual.close();
 });
 
 test('batch removal makes one tombstone write and prevents legacy rediscovery or late metadata saves',async()=>{
@@ -180,4 +233,12 @@ test('real native snapshot lost receipt is reconciled read-only and account chan
  await assert.rejects(catalog.create({ownerKey:base(),title:'A',id:id(1)}),code('storage'));assert.equal(transport.files.size,1);
  const before=transport.calls.filter(call=>call.options.method==='POST').length;await catalog.retry();assert.equal(catalog.view().entries.length,1);assert.equal(transport.calls.filter(call=>call.options.method==='POST').length,before);
  transport.namespace='st-user:other-account';await assert.rejects(catalog.saved(catalog.view().entries[0].key,500),code('storage'));assert.equal(transport.calls.filter(call=>call.options.method==='POST').length,before);catalog.close();
+});
+
+test('real native snapshot saves an automatic name in the existing metadata upload and reads named directories without rewriting',async()=>{
+ const transport=streamCheckpointTransport(raw),f=fixture(),options={...f.options,storageFactory:transport.createStorage},catalog=await open(options);
+ await catalog.ensure({key:offstage,title:'独立对话'});const before=transport.calls.filter(call=>call.options.method==='POST').length;f.now=200;
+ const entry=await catalog.saved(offstage,190,{title:'配色研究'});assert.equal(entry.titleSource,'auto');assert.equal(transport.calls.filter(call=>call.options.method==='POST').length,before+1);
+ assert.equal(transport.files.size,1);const stored=JSON.parse([...transport.files.values()][0]).value;assert.equal(stored.version,2);assert.equal(stored.entries[0].title,'配色研究');assert.equal(stored.entries[0].updatedAt,190);catalog.close();
+ const calls=transport.calls.length,reopened=await open(options);assert.equal(transport.calls.length,calls+1);assert.equal(transport.calls.at(-1).options.method,'GET');assert.deepEqual(reopened.view(),stored);assert.equal(reopened.canAutoName(offstage),false);reopened.close();
 });
