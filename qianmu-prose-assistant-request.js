@@ -5,16 +5,16 @@ import {assertPortableConnectionUrl} from './qianmu-portable-connection.js';
 const failure=(code,message)=>Object.assign(new Error(message),{code});
 const fail=message=>{throw failure('prose_assistant_connection',message);};
 const field=(value,max)=>typeof value==='string'&&value.trim()&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);
-function connection(selection,profiles){
+function connection(selection,profiles,profileStream=false){
   if(!selection||!['st-proxy','direct'].includes(selection.transport??'st-proxy'))fail('场外特助连接配置无效');
   let row;
   if(selection.mode==='profile'){
     if(!field(selection.profileId,512)||!Array.isArray(profiles))fail('请选择场外特助API预设');
     const matches=profiles.filter(item=>item?.id===selection.profileId);if(matches.length!==1)fail('场外特助预设已失效或编号重复，请重新选择');row=matches[0];
-  }else if(selection.mode==='custom')row=selection.connection;else fail('场外特助尚未选择专用连接，不会借用其他API');
+  }else if(selection.mode==='custom')row=selection.connection;else fail('请为场外特助选择API预设或自定义连接');
   if(!row||!field(row.apiUrl,4096)||!field(row.apiKey,8192)||!field(row.model,512))fail('请补全场外特助的地址、Key与模型');
   try{assertPortableConnectionUrl(row.apiUrl);if(new URL(row.apiUrl).search)fail('场外特助地址不支持查询参数，请使用独立Key输入框');}catch(_){fail('场外特助地址须为不含内嵌凭据、查询参数或片段的HTTP(S)地址');}
-  const temperature=row.temperature??0.75,maxTokens=row.maxTokens??0,stream=row.stream??true;
+  const temperature=row.temperature??0.75,maxTokens=row.maxTokens??0,stream=selection.mode==='profile'?profileStream:row.stream??true;
   if(!Number.isFinite(temperature)||temperature<0||temperature>2||!Number.isSafeInteger(maxTokens)||maxTokens<0||maxTokens>1000000||typeof stream!=='boolean')fail('场外特助生成参数无效');
   let apiUrl=normalizeQianmuChatApiRoot(row.apiUrl);if(new URL(apiUrl).pathname==='/')apiUrl+='/v1';
   return Object.freeze({apiUrl,apiKey:row.apiKey.trim(),model:row.model.trim(),temperature,maxTokens,stream});
@@ -36,8 +36,8 @@ function messagesFrom(value){
 
 // Create on explicit send: credentials stay in this short-lived closure, never in
 // a conversation, review object or error. The formal prompt compiler is injected.
-export function createProseAssistantRequest({selection,profiles,compileMessages,getRequestHeaders,fetchImpl=globalThis.fetch,timeoutMs=120000}={}){
-  const cfg=connection(selection,profiles),transport=selection.transport??'st-proxy';
+export function createProseAssistantRequest({selection,profiles,profileStream=false,compileMessages,getRequestHeaders,fetchImpl=globalThis.fetch,timeoutMs=120000}={}){
+  const cfg=connection(selection,profiles,profileStream),transport=selection.transport??'st-proxy';
   if(typeof compileMessages!=='function'||typeof fetchImpl!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>600000||transport==='st-proxy'&&typeof getRequestHeaders!=='function')fail('场外特助请求环境尚未就绪');
   const review=Object.freeze({mode:selection.mode,profileId:selection.mode==='profile'?selection.profileId:null,transport,model:cfg.model,stream:cfg.stream});
   async function send({context,question,signal,guard,onText}={}){

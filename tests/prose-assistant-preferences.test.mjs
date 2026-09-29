@@ -16,6 +16,13 @@ test('autosaved partial connection and optional persona survive reopen without b
  await assert.rejects(save({...f.options,allowIncomplete:false}),{code:'prose_assistant_connection'});
 });
 
+test('autosaved custom streaming persists either state without copying the host streaming preference',async()=>{
+ for(const stream of [false,true]){
+  const f=fixture();f.owner.streamEnabled=!stream;f.options.selection={mode:'custom',connection:{apiUrl:'https:',apiKey:'',model:'',stream}};
+  await save({...f.options,allowIncomplete:true});assert.equal(f.owner.proseAssistant.selection.connection.stream,stream);assert.equal(f.owner.streamEnabled,!stream);
+ }
+});
+
 test('autosave coalesces bursts and close flush waits for the latest edit made during an active save',async()=>{
  let value='A',release;const writes=[];const autosave=createProseAssistantAutosave({read:()=>value,isCurrent:()=>true,delayMs:10000,save:async draft=>{writes.push(draft);if(writes.length===1)await new Promise(resolve=>{release=resolve;});return {status:'applied'};}});
  autosave.change();value='B';autosave.change();const flushing=autosave.flush();await Promise.resolve();await Promise.resolve();value='C';autosave.change();release();assert.equal(await flushing,true);assert.deepEqual(writes,['B','C']);assert.equal(autosave.state().dirty,false);autosave.close();

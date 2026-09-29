@@ -1,9 +1,9 @@
-import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.407';
+import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.408';
 import {createProseHive} from './qianmu-prose-hive.js';
 import {configureStAccountStorage} from './qianmu-st-account-storage.js';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js';
 import {createProseAssistantRenameCoordinator} from './qianmu-prose-assistant-rename.js';
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.407';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.408';
 import {createTextCollectionHost} from './qianmu-text-collection-host.js';
 export {injectStoryboardMessageButtons} from './qianmu-prose-floor-entries.js';
 
@@ -11,7 +11,7 @@ export {injectStoryboardMessageButtons} from './qianmu-prose-floor-entries.js';
 export function createProseFloorTools(options){
   configureStAccountStorage({resolveNamespace:options.resolveNamespace,isCurrent:options.isCurrent,headers:options.headers||(()=>({}))});
   let renames=null;const bindRenames=()=>{renames??=createProseAssistantRenameCoordinator(options);renames.refresh();};
-  const assistant=createProseAssistantFloorTools({...options,assistantHistoryFactory:async input=>{await renames?.settled(input.source);return options.assistantHistoryFactory?options.assistantHistoryFactory(input):(await loadLocalChunk('./qianmu-prose-assistant-native.js?v=1.59.407')).openNativeProseAssistantHistory(input);}});
+  const assistant=createProseAssistantFloorTools({...options,assistantHistoryFactory:async input=>{await renames?.settled(input.source);return options.assistantHistoryFactory?options.assistantHistoryFactory(input):(await loadLocalChunk('./qianmu-prose-assistant-native.js?v=1.59.408')).openNativeProseAssistantHistory(input);}});
   let hive=null,disposed=false,stopPreload=null,collection=null;
   const collectionHost=()=>collection??=createTextCollectionHost(options);
   return Object.freeze({openAssistant:()=>assistant.openAssistant(),

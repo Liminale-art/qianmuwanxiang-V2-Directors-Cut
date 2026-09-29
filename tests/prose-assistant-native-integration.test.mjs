@@ -73,7 +73,8 @@ async function panelFixture(t) {
   if(f.mode==='stream')return new Response(`data: ${JSON.stringify({choices:[{delta:{content:answer},finish_reason:'stop'}]})}\n\n`,{headers:{'content-type':'text/event-stream'}});
   return new Response(JSON.stringify({choices:[{message:{content:answer},finish_reason:'stop'}]}),{headers:{'content-type':'application/json'}});
  };
- f.open=async()=>{f.panel=await openProseAssistantPanel({parent:dom.parent,source,profiles:[{id:'fixture',name:'Fixture',apiUrl:'https://assistant-model.fixture.invalid/v1',apiKey:'fixture-assistant-key',model:'fixture-model'}],selection:{mode:'profile',profileId:'fixture'},referenceFloors:3,systemPrompt:'',getRequestHeaders:()=>({'X-CSRF-Token':'fixture-csrf'}),fetchImpl:request,copy:async()=>{},confirm:async()=>true,isCurrent:()=>f.live,historyFactory:openNativeProseAssistantHistory});await f.panel.ready;return f.panel;};
+ f.copies=[];
+ f.open=async()=>{f.panel=await openProseAssistantPanel({parent:dom.parent,source,profiles:[{id:'fixture',name:'Fixture',apiUrl:'https://assistant-model.fixture.invalid/v1',apiKey:'fixture-assistant-key',model:'fixture-model'}],selection:{mode:'profile',profileId:'fixture'},getProfileStream:()=>true,referenceFloors:3,systemPrompt:'',getRequestHeaders:()=>({'X-CSRF-Token':'fixture-csrf'}),fetchImpl:request,copy:async text=>{f.copies.push(text);},confirm:async()=>true,isCurrent:()=>f.live,historyFactory:openNativeProseAssistantHistory});await f.panel.ready;return f.panel;};
  f.action=name=>dom.all().find(node=>node.dataset.paAction===name);
  f.question=()=>dom.get('向场外特助提问');
  f.rows=()=>dom.all().filter(node=>Object.hasOwn(node.dataset,'paTurn'));
@@ -96,11 +97,11 @@ test('actual panel sends first and follow-up questions, persists native history 
  const saved=f.remote();assert.equal(saved.rows.length,2);assert.equal(saved.rows[1].assistant,'完整回答 2');assert.equal(f.notice(),'');assert.deepEqual(f.host.chat,before);
  const posts=f.transport.calls.filter(call=>call.options.method==='POST').length;await f.close();await f.open();
  assert.equal(f.models.length,2);assert.equal(f.rows().length,2);assert.deepEqual(f.remote(),saved);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,posts);
- assert.equal(f.rows()[1].querySelector('pre').textContent,'完整回答 2');assert.doesNotMatch([...f.transport.files.values()].join(''),/fixture-assistant-key/);
+ assert.equal(f.rows()[1].querySelector('.qm-pa-reply').textContent,'完整回答 2');assert.doesNotMatch([...f.transport.files.values()].join(''),/fixture-assistant-key/);
 });
 
 test('actual panel stop preserves input and partial native history, which is not sent as a completed follow-up',async t=>{
- const f=await panelFixture(t);f.mode='hold';await f.send('准备停止的问题');await f.dom.wait(()=>f.rows()[0]?.querySelector('pre').textContent==='半截回答');
+ const f=await panelFixture(t);f.mode='hold';await f.send('准备停止的问题');await f.dom.wait(()=>f.rows()[0]?.querySelector('.qm-pa-reply').textContent==='半截回答');
  f.action('stop').click();await f.idle();assert.equal(f.models.length,1);assert.equal(f.models[0].signal.aborted,true);assert.equal(f.streamCancelled,true);assert.equal(f.question().value,'准备停止的问题');
  assert.equal(f.remote().rows[0].status,'cancelled');assert.equal(f.remote().rows[0].assistant,'半截回答');
  await f.close();await f.open();assert.equal(f.models.length,1);assert.match(f.rows()[0].querySelector('small').textContent,/停止/);
@@ -125,7 +126,10 @@ test('actual panel reference setting changes the next payload without reading pr
 
 test('actual panel keeps a newly typed draft through reply completion and ignores composing send shortcuts',async t=>{
  const f=await panelFixture(t);f.mode='hold';await f.send('正在回答的问题');
- await f.dom.wait(()=>f.rows()[0]?.querySelector('pre').textContent==='半截回答');
+ await f.dom.wait(()=>f.rows()[0]?.querySelector('.qm-pa-reply').textContent==='半截回答');
+ assert.equal(f.question().value,'','the sent question leaves the composer immediately');
+ assert.equal(f.action('stop').getAttribute('aria-label'),'停止');assert.equal(f.action('more').hidden,true);
+ assert.equal(f.rows()[0].querySelector('.qm-pa-typing').children.length,3);
  f.question().value='提前写好的下一问';f.question().emit('input');
  f.question().emit('keydown',{ctrlKey:true,key:'Enter',isComposing:false});
  assert.equal(f.models.length,1,'a shortcut while busy must not queue another paid request');
@@ -150,8 +154,39 @@ test('actual panel failed native save retains the reply and retries only storage
  const f=await panelFixture(t),before=f.remote();let rejected=0;
  f.transport.hook=({options,json})=>{if(options.method==='POST'){rejected++;return json({error:'PRIVATE storage detail'},503);}};
  await f.send('保存失败测试');await f.idle();assert.equal(f.models.length,1);assert.equal(rejected,1);assert.deepEqual(f.remote(),before);
- assert.equal(f.rows()[0].querySelector('pre').textContent,'完整回答 1');assert.match(f.notice(),/保存未确认/);assert.doesNotMatch(f.notice(),/PRIVATE|保存成功|已保存/);
+ assert.equal(f.rows()[0].querySelector('.qm-pa-reply').textContent,'完整回答 1');assert.match(f.notice(),/保存未确认/);assert.doesNotMatch(f.notice(),/PRIVATE|保存成功|已保存/);
  assert.equal(f.action('retry-history').hidden,false);assert.equal(f.action('send').disabled,true);
  f.transport.hook=null;f.action('retry-history').click();await f.idle();assert.equal(f.models.length,1);assert.equal(f.notice(),'');
- assert.equal(f.remote().rows[0].assistant,'完整回答 1');await f.close();await f.open();assert.equal(f.models.length,1);assert.equal(f.rows()[0].querySelector('pre').textContent,'完整回答 1');
+ assert.equal(f.remote().rows[0].assistant,'完整回答 1');await f.close();await f.open();assert.equal(f.models.length,1);assert.equal(f.rows()[0].querySelector('.qm-pa-reply').textContent,'完整回答 1');
+});
+
+test('reply more menu copies raw Markdown and edits only that reply through native history without a model call',async t=>{
+ const f=await panelFixture(t);await f.send('第一问');await f.idle();await f.send('第二问');await f.idle();
+ assert.equal(f.action('copy').parentNode.hidden,true);f.action('more').click();assert.equal(f.action('copy').parentNode.hidden,false);
+ f.action('edit').click();const editor=f.dom.get('编辑助手回复');editor.value='**人工编辑**\n\n- 一项';
+ f.action('save-reply').click();await f.idle();assert.equal(f.models.length,2);assert.equal(f.remote().rows.length,2);
+ assert.equal(f.remote().rows[0].assistant,'**人工编辑**\n\n- 一项');assert.equal(f.remote().rows[1].assistant,'完整回答 2');
+ f.action('more').click();f.action('copy').click();await f.dom.wait(()=>f.copies.length===1);
+ assert.deepEqual(f.copies,['**人工编辑**\n\n- 一项']);
+ await f.close();await f.open();assert.equal(f.rows()[0].querySelector('.qm-pa-reply').textContent,'**人工编辑**\n\n- 一项');assert.equal(f.models.length,2);
+});
+
+test('regenerating an earlier panel turn replaces it and removes successors only after native confirmation',async t=>{
+ const f=await panelFixture(t);await f.send('原第一问');await f.idle();await f.send('原追问');await f.idle();const prior=f.remote();
+ f.question().value='保留未发草稿';f.question().emit('input');f.mode='hold';f.action('more').click();f.action('regenerate').click();
+ await f.dom.wait(()=>f.models.length===3&&f.rows()[0].querySelector('.qm-pa-reply').textContent==='半截回答');
+ assert.deepEqual(f.remote(),prior);assert.equal(f.question().value,'保留未发草稿');
+ assert.equal(f.models[2].body.messages.length,1);assert.equal(JSON.parse(f.models[2].body.messages[0].content).question,'原第一问');
+ f.completeStream();await f.idle();assert.equal(f.models.length,3);assert.equal(f.remote().rows.length,1);assert.equal(f.remote().rows[0].assistant,'半截回答，已完成');
+ await f.close();await f.open();assert.equal(f.rows().length,1);assert.equal(f.models.length,3);
+});
+
+test('failed edited question and stopped regeneration keep original subsequent answers and preserve the edited draft',async t=>{
+ const f=await panelFixture(t);await f.send('第一问');await f.idle();await f.send('后续问');await f.idle();const prior=f.remote();
+ f.mode='error';f.action('more').click();f.action('edit-question').click();f.dom.get('编辑提问').value='修改过的问题';f.action('save-reply').click();
+ await f.dom.wait(()=>f.models.length===3);await f.idle();await f.dom.wait(()=>f.dom.get('编辑提问')?.value==='修改过的问题');
+ assert.deepEqual(f.remote(),prior);assert.equal(f.rows().length,2);assert.match(f.status(),/HTTP 401/);f.action('cancel-reply').click();
+ f.mode='hold';f.action('more').click();f.action('regenerate').click();await f.dom.wait(()=>f.models.length===4&&f.rows()[0].querySelector('.qm-pa-reply').textContent==='半截回答');
+ f.action('stop').click();await f.idle();assert.equal(f.rows().length,2);assert.equal(f.remote().rows[1].assistant,prior.rows[1].assistant);
+ assert.deepEqual(f.remote().rows,prior.rows);assert.equal(f.models.length,4);
 });

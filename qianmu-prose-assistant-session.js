@@ -16,18 +16,27 @@ export function createProseAssistantSession({key,isCurrent,onChange=()=>{},initi
   let active=null,closed=false,characters=rows.reduce((n,row)=>n+row.user.length+row.assistant.length,0),nextId=rows.at(-1)?.id||0;
   const snapshot=()=>Object.freeze({key,rows:Object.freeze(rows.map(row=>Object.freeze({...row}))),busy:Boolean(active),characters});
   const publish=()=>{try{if(!closed&&isCurrent()===true)onChange(snapshot());}catch(_){/* View failures cannot change a model result or trigger another request. */}};
+  function restoreReplacement(token){
+    if(!token.replacement)return;
+    const previous=token.replacement;rows.splice(previous.index,rows.length-previous.index,...previous.rows);characters=previous.characters;token.replacement=null;
+  }
   function stop(){
-    if(!active)return false;const run=active;active=null;run.row.status='cancelled';run.controller.abort();run.context?.close();publish();return true;
+    if(!active)return false;const run=active;active=null;run.row.status='cancelled';restoreReplacement(run);run.controller.abort();run.context?.close();publish();return true;
   }
   const close=()=>{closed=true;stop();rows.length=0;characters=0;};
   function checkLive(){if(closed)fail('prose_assistant_closed','场外特助会话已关闭');try{if(isCurrent()!==true)fail('prose_assistant_scope','场外特助账户或页面已变化');}catch(cause){close();throw cause;}}
   const history=()=>{checkLive();return Object.freeze({key,turns:Object.freeze(rows.filter(row=>row.status==='complete').map(row=>Object.freeze({user:row.user,assistant:row.assistant})))});};
-  async function run({question,source,request}={}){
+  async function run({question,source,request,replaceId}={}){
     checkLive();if(active)fail('prose_assistant_busy','请等待当前回复完成或先停止');
     if(typeof request!=='function'||typeof question!=='string'||!question.trim()||question.length>limits.question||question.includes('\0')||!unicode(question))fail('prose_assistant_input','请填写有效问题并选择明确的助手连接');
-    if(rows.length>=limits.turns||characters+question.length>=limits.characters||nextId>=Number.MAX_SAFE_INTEGER)fail('prose_assistant_capacity','助手会话已达容量上限，请先复制需要的内容，再清空会话');
-    const prior=history(),row={id:++nextId,user:question,assistant:'',status:'running',reference:null},token={row,controller:new AbortController(),context:null};
-    rows.push(row);characters+=question.length;active=token;publish();
+    const replacing=replaceId!==undefined,index=replacing?rows.findIndex(row=>row.id===replaceId):rows.length;
+    if(replacing&&(!Number.isSafeInteger(replaceId)||replaceId<1||index<0))fail('prose_assistant_input','需要修改的对话已不存在');
+    const prefix=rows.slice(0,index),prefixCharacters=prefix.reduce((total,row)=>total+row.user.length+row.assistant.length,0);
+    if(prefix.length>=limits.turns||prefixCharacters+question.length>=limits.characters||!replacing&&nextId>=Number.MAX_SAFE_INTEGER)fail('prose_assistant_capacity','助手会话已达容量上限，请先复制需要的内容，再清空会话');
+    const prior=Object.freeze({key,turns:Object.freeze(prefix.filter(row=>row.status==='complete').map(row=>Object.freeze({user:row.user,assistant:row.assistant})))});
+    const row={id:replacing?replaceId:++nextId,user:question,assistant:'',status:'running',reference:null};
+    const token={row,controller:new AbortController(),context:null,replacement:replacing?{index,rows:rows.slice(index),characters}:null};
+    rows.splice(index,rows.length-index,row);characters=prefixCharacters+question.length;active=token;publish();
     function check(){checkLive();if(active!==token||token.controller.signal.aborted)fail('prose_assistant_cancelled','此轮助手回复已停止');token.context?.assertCurrent();}
     const update=text=>{
       check();if(typeof text!=='string'||text.includes('\0')||text.length>limits.reply||!text.startsWith(row.assistant)||characters+text.length-row.assistant.length>limits.characters)fail('prose_assistant_output','助手返回内容无效、不连续或超过会话容量');
@@ -40,11 +49,18 @@ export function createProseAssistantSession({key,isCurrent,onChange=()=>{},initi
       const guard=async()=>{check();await token.context.guard();check();return true;};await guard();
       const result=await request(Object.freeze({context:token.context,question,signal:token.controller.signal,guard,onText:update}));
       await guard();if(typeof result!=='string'||!result.trim()||!unicode(result))fail('prose_assistant_output','助手未返回完整有效的回复');update(result);check();
-      row.status='complete';active=null;publish();return Object.freeze({...row});
+      row.status='complete';token.replacement=null;active=null;publish();return Object.freeze({...row});
     }catch(cause){
-      if(row.status==='running'){row.status='failed';if(active===token)active=null;token.controller.abort();publish();}
+      if(row.status==='running'){row.status='failed';if(active===token){active=null;restoreReplacement(token);}token.controller.abort();publish();}
       throw cause;
     }finally{token.context?.close();token.context=null;}
   }
-  return Object.freeze({key,run,history,view(){checkLive();return snapshot();},stop,clear(){checkLive();stop();rows.length=0;characters=0;nextId=0;publish();},close});
+  function editReply(id,value){
+    checkLive();if(active)fail('prose_assistant_busy','请先等待回复结束');
+    const row=rows.find(item=>item.id===id);
+    if(!row||row.status!=='complete'||typeof value!=='string'||!value.trim()||value.length>limits.reply||value.includes('\0')||!unicode(value))fail('prose_assistant_input','请填写有效的助手回复');
+    const size=characters-row.assistant.length+value.length;if(size>limits.characters)fail('prose_assistant_capacity','修改后的回复超出会话容量');
+    characters=size;row.assistant=value;publish();return snapshot();
+  }
+  return Object.freeze({key,run,history,editReply,view(){checkLive();return snapshot();},stop,clear(){checkLive();stop();rows.length=0;characters=0;nextId=0;publish();},close});
 }

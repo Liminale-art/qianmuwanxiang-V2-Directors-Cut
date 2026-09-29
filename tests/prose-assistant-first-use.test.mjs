@@ -69,18 +69,23 @@ test('formal lazy entry starts with no history, flushes first connection before 
     const uploads = () => transport.calls.filter(call => call.options.method === 'POST').length;
     assert.equal(rows().length, 0); assert.equal(uploads(), 0); assert.equal(transport.files.size, 0);
     assert.equal(models.length, 0); assert.equal(settingsSubmissions, 0); assert.equal(legacy.reads, 1);
+    assert.equal(dom.get('参考楼层数').value, '0'); assert.equal(dom.get('参考楼层数').disabled, true);
+    assert.equal(dom.all().find(node => Object.hasOwn(node.dataset, 'paReferenceHint')).hidden, false);
 
     action('settings').click();
     const selector = dom.get('助手API预设'); selector.value = 'custom'; selector.emit('change');
     for (const [label, value] of [['助手API地址', 'https://model.fixture.invalid/v1'], ['助手模型', 'first-model'], ['助手API Key', 'fixture-first-key']]) {
         const field = dom.get(label); field.value = value; field.emit('input');
     }
+    dom.get('流式传输').checked = false; dom.get('流式传输').emit('change');
     action('back').click(); question().value = '首次问题'; question().emit('input');
     assert.equal(settingsSubmissions, 0, 'send is clicked before the settings debounce is flushed');
     assert.equal(action('send').disabled, false); action('send').click();
     await dom.wait(() => models.length === 1 && panel.element.getAttribute('aria-busy') === 'false');
     assert.equal(settingsSubmissions, 1); assert.equal(models.length, 1); assert.equal(question().value, '');
     assert.equal(settings.proseAssistant.selection.mode, 'custom'); assert.equal(models[0].custom_url, 'https://model.fixture.invalid/v1');
+    assert.equal(settings.proseAssistant.referenceFloors, 3, 'offstage display zero must not overwrite the preferred in-chat range');
+    assert.equal(models[0].stream, false); assert.equal(settings.proseAssistant.selection.connection.stream, false);
     assert.equal(models[0].custom_include_headers, 'Authorization: Bearer fixture-first-key'); assert.equal(models[0].model, 'first-model');
     assert.equal(uploads(), 2); assert.equal(transport.files.size, 2);
     const saved = new Map(transport.files), writes = uploads(), priorLegacyReads = legacy.reads;
@@ -89,9 +94,10 @@ test('formal lazy entry starts with no history, flushes first connection before 
     action('close').click(); await panel.finished; await new Promise(resolve => setImmediate(resolve));
     assert.equal(tools.assistantBusy, false); assert.equal(dom.observers.size, 0);
     panel = await tools.openAssistant(); assert.ok(panel); await panel.ready;
-    assert.equal(rows().length, 1); assert.equal(rows()[0].querySelector('pre').textContent, '首次完整回答');
+    assert.equal(rows().length, 1); assert.equal(rows()[0].querySelector('.qm-pa-reply').textContent, '首次完整回答');
     assert.equal(models.length, 1); assert.equal(uploads(), writes); assert.deepEqual(transport.files, saved);
     assert.equal(legacy.reads, priorLegacyReads); assert.equal(settingsSubmissions, 1);
     action('settings').click(); assert.equal(dom.get('助手API预设').value, 'custom'); assert.equal(dom.get('助手模型').value, 'first-model');
+    assert.equal(dom.get('流式传输').checked, false);
     assert.deepEqual(notifications, []);
 });

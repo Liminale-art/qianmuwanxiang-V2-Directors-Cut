@@ -102,3 +102,65 @@ test('stop also releases source listeners while account resolution is still pend
   const pending=f.session.run({question:'Q',source:{...f.source,resolveNamespace:()=>{entered.resolve();return identity.promise;}},request:async()=>{called=true;return 'A';}}),rejected=assert.rejects(pending);
   await entered.promise;assert.ok(f.listeners()>0);f.session.stop();assert.equal(f.listeners(),0);identity.resolve('st-user:alice');await rejected;assert.equal(called,false);f.session.close();
 });
+
+test('replacing a question sends only preceding completed turns and commits one replacement with no following turns',async()=>{
+  const f=await fixture(),initial=saved(f.key,[archived(1),archived(2,'failed'),{...archived(3),user:'待修改',assistant:'旧第三答'},{...archived(4),user:'后续问题',assistant:'后续答'}]);
+  const session=create({key:f.key,isCurrent:()=>true,initialHistory:initial});let requests=0;
+  const result=await session.run({replaceId:3,question:'修改后的问题',source:f.source,request:async({context,question,onText})=>{
+    requests++;assert.equal(question,'修改后的问题');assert.deepEqual(context.history,[{user:'旧问题',assistant:'旧回答'}]);
+    onText('新');assert.deepEqual(session.view().rows.map(row=>row.id),[1,2,3]);assert.equal(session.view().rows.at(-1).status,'running');
+    assert.throws(()=>validateProseAssistantHistory(saved(f.key,session.view().rows),f.key));return '新回答';
+  }});
+  assert.equal(requests,1);assert.equal(result.id,3);assert.equal(result.status,'complete');
+  assert.deepEqual(session.history().turns,[{user:'旧问题',assistant:'旧回答'},{user:'修改后的问题',assistant:'新回答'}]);
+  assert.equal(session.view().characters,session.view().rows.reduce((size,row)=>size+row.user.length+row.assistant.length,0));
+  validateProseAssistantHistory(saved(f.key,session.view().rows),f.key);
+  await session.run({question:'新的追问',source:f.source,request:async()=> '新追问答案'});assert.equal(session.view().rows.at(-1).id,5);
+  assert.deepEqual(initial.rows.map(row=>row.id),[1,2,3,4]);session.close();f.session.close();
+});
+
+test('failed replacement restores the entire original conversation instead of saving a partial replacement',async()=>{
+  const requests=[async({onText})=>{onText('部分');throw Error('private upstream failure');},async()=>'',async()=> '\ud800',async({onText})=>{onText('前缀');return '不连续';}];
+  for(const request of requests){
+    const f=await fixture(),session=create({key:f.key,isCurrent:()=>true,initialHistory:saved(f.key,[archived(1),archived(2),archived(3)])}),before=session.view();let calls=0;
+    await assert.rejects(session.run({replaceId:2,question:'改问',source:f.source,request:options=>{calls++;return request(options);}}));
+    assert.equal(calls,1);assert.deepEqual(session.view(),before);validateProseAssistantHistory(saved(f.key,session.view().rows),f.key);assert.equal(f.listeners(),0);session.close();f.session.close();
+  }
+});
+
+test('stopping replacement restores original rows immediately and its late callback cannot overwrite a newer question',async()=>{
+  const f=await fixture(),session=create({key:f.key,isCurrent:()=>true,initialHistory:saved(f.key,[archived(1),archived(2),archived(3)])}),before=session.view(),entered=deferred(),late=deferred();let oldText,oldSignal;
+  const pending=session.run({replaceId:2,question:'重试此轮',source:f.source,request:async({onText,signal})=>{oldText=onText;oldSignal=signal;onText('部分重写');entered.resolve();return late.promise;}}),rejected=assert.rejects(pending);
+  await entered.promise;assert.equal(session.stop(),true);assert.equal(oldSignal.aborted,true);assert.deepEqual(session.view(),before);
+  validateProseAssistantHistory(saved(f.key,session.view().rows),f.key);assert.equal(f.listeners(),0);
+  await session.run({question:'继续原会话',source:f.source,request:async({context})=>{assert.equal(context.history.length,3);return '继续的回答';}});
+  const current=session.view();assert.throws(()=>oldText('部分重写迟到'));late.resolve('部分重写迟到');await rejected;assert.deepEqual(session.view(),current);assert.equal(current.rows.at(-1).id,4);session.close();f.session.close();
+});
+
+test('replacement validates its target before sending and counts capacity after the chosen truncation point',async()=>{
+  const f=await fixture(),rows=Array.from({length:limits.turns},(_,index)=>archived(index+1)),session=create({key:f.key,isCurrent:()=>true,initialHistory:saved(f.key,rows)}),before=session.view();let calls=0;
+  for(const replaceId of [0,-1,1.5,'1',null,limits.turns+1])await assert.rejects(session.run({replaceId,question:'改问',source:f.source,request:async()=>{calls++;return '不应发送';}}),{code:'prose_assistant_input'});
+  assert.equal(calls,0);assert.deepEqual(session.view(),before);
+  await session.run({replaceId:limits.turns,question:'最后一轮重新生成',source:f.source,request:async()=>{calls++;return '新答';}});assert.equal(calls,1);assert.equal(session.view().rows.length,limits.turns);
+  await session.run({replaceId:1,question:'重写首问',source:f.source,request:async({context})=>{assert.deepEqual(context.history,[]);return '只留新首答';}});assert.equal(session.view().rows.length,1);session.close();f.session.close();
+});
+
+test('stopped replacement before source capture restores original history without sending or leaking listeners',async()=>{
+  const f=await fixture(),session=create({key:f.key,isCurrent:()=>true,initialHistory:saved(f.key,[archived(1),archived(2)])}),before=session.view(),entered=deferred(),identity=deferred();let calls=0;
+  const pending=session.run({replaceId:1,question:'改问',source:{...f.source,resolveNamespace:()=>{entered.resolve();return identity.promise;}},request:async()=>{calls++;return '不应发出';}}),rejected=assert.rejects(pending);
+  await entered.promise;session.stop();assert.deepEqual(session.view(),before);assert.equal(f.listeners(),0);identity.resolve('st-user:alice');await rejected;assert.equal(calls,0);assert.deepEqual(session.view(),before);session.close();f.session.close();
+});
+
+test('source invalidation during replacement publishes no rollback or late private snapshots',async()=>{
+  const f=await fixture(),seen=[],entered=deferred(),late=deferred();let live=true;
+  const session=create({key:f.key,isCurrent:()=>live,initialHistory:saved(f.key,[archived(1),archived(2)]),onChange:value=>seen.push(value)});
+  const pending=session.run({replaceId:1,question:'改问',source:f.source,request:async()=>{entered.resolve();return late.promise;}}),rejected=assert.rejects(pending);
+  await entered.promise;const before=seen.length;live=false;late.resolve('迟到');await rejected;assert.equal(seen.length,before);assert.throws(session.view);assert.equal(f.listeners(),0);f.session.close();
+});
+
+test('editing an assistant reply changes only that text and preserves later turns without a model request',async()=>{
+  const f=await fixture(),session=create({key:f.key,isCurrent:()=>true,initialHistory:saved(f.key,[archived(1),archived(2),archived(3)])}),before=session.view();
+  const result=session.editReply(2,'手动修改的回答');assert.equal(result.rows.length,3);assert.deepEqual(result.rows[0],before.rows[0]);assert.deepEqual(result.rows[2],before.rows[2]);
+  assert.equal(result.rows[1].user,before.rows[1].user);assert.equal(result.rows[1].assistant,'手动修改的回答');assert.equal(result.characters,before.characters-'旧回答'.length+'手动修改的回答'.length);
+  assert.throws(()=>session.editReply(2,''));assert.throws(()=>session.editReply(99,'未知'));validateProseAssistantHistory(saved(f.key,session.view().rows),f.key);session.close();f.session.close();
+});

@@ -6,7 +6,7 @@ const profile=()=>({id:'chosen',name:'Only explicit',apiUrl:'https://example.inv
 const json=()=>new Response(JSON.stringify({choices:[{message:{content:'answer'},finish_reason:'stop'}]}),{headers:{'content-type':'application/json'}});
 function fixture(transport='direct',extra={}){
   const calls=[],profiles=[profile()],selection={mode:'profile',profileId:'chosen',transport};
-  const options={selection,profiles,compileMessages:({question})=>[{role:'user',content:question,ignore:'unrelated'}],getRequestHeaders:()=>({'X-CSRF-Token':'fixture-csrf'}),
+  const options={selection,profiles,profileStream:true,compileMessages:({question})=>[{role:'user',content:question,ignore:'unrelated'}],getRequestHeaders:()=>({'X-CSRF-Token':'fixture-csrf'}),
     fetchImpl:async(url,init)=>{calls.push({url,init});return json();},...extra};
   return {options,profiles,selection,calls,input:{context:{key:'private-scope'},question:'question',guard:async()=>true,onText:()=>{}}};
 }
@@ -54,6 +54,30 @@ test('compiler and response boundaries reject malformed or incomplete messages w
 test('dedicated custom connection is explicit and disabled streaming remains disabled',async()=>{
   const f=fixture();f.options.selection={mode:'custom',transport:'direct',connection:{...profile(),stream:false,maxTokens:321}};
   const adapter=create(f.options);assert.equal(adapter.review.profileId,null);await adapter.send(f.input);const body=JSON.parse(f.calls[0].init.body);assert.equal(body.stream,false);assert.equal(body.max_tokens,321);
+});
+
+test('profile streaming follows the supplied Qianmu switch, not a stale preset value or an independent default',async()=>{
+  for(const profileStream of [false,true]){
+    const f=fixture('st-proxy',{profileStream});f.profiles[0].stream=!profileStream;
+    const adapter=create(f.options);await adapter.send(f.input);
+    assert.equal(adapter.review.stream,profileStream);assert.equal(JSON.parse(f.calls[0].init.body).stream,profileStream);
+  }
+  const f=fixture('st-proxy');delete f.options.profileStream;f.profiles[0].stream=true;
+  await create(f.options).send(f.input);assert.equal(JSON.parse(f.calls[0].init.body).stream,false);
+});
+
+test('custom streaming is independent of the Qianmu switch and respects both explicit states',async()=>{
+  for(const stream of [false,true]){
+    const f=fixture('st-proxy',{profileStream:!stream});f.options.selection={mode:'custom',connection:{...profile(),stream}};
+    const adapter=create(f.options);await adapter.send(f.input);
+    assert.equal(adapter.review.stream,stream);assert.equal(JSON.parse(f.calls[0].init.body).stream,stream);
+  }
+});
+
+test('each explicit request captures the current host switch without changing an already prepared request',async()=>{
+  const f=fixture('st-proxy',{profileStream:false}),first=create(f.options);f.options.profileStream=true;
+  await first.send(f.input);await create(f.options).send(f.input);
+  assert.deepEqual(f.calls.map(call=>JSON.parse(call.init.body).stream),[false,true]);assert.equal(first.review.stream,false);
 });
 
 test('both routes preserve explicit third-party API prefixes and normalize only a bare host to v1',async()=>{
