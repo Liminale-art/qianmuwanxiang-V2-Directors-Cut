@@ -65,7 +65,10 @@ async function panelFixture(t) {
   const body=JSON.parse(options.body);f.models.push({body,signal:options.signal});
   assert.equal(body.custom_url,'https://assistant-model.fixture.invalid/v1');assert.equal(body.custom_include_headers,'Authorization: Bearer fixture-assistant-key');
   if(f.mode==='error')return new Response('PRIVATE upstream detail',{status:401});
-  if(f.mode==='hold')return new Response(new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"半截回答"}}]}\n\n'));},cancel(){f.streamCancelled=true;}}),{headers:{'content-type':'text/event-stream'}});
+  if(f.mode==='hold')return new Response(new ReadableStream({start(controller){
+   controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"半截回答"}}]}\n\n'));
+   f.completeStream=()=>{controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"，已完成"},"finish_reason":"stop"}]}\n\n'));controller.close();};
+  },cancel(){f.streamCancelled=true;}}),{headers:{'content-type':'text/event-stream'}});
   const answer='完整回答 '+f.models.length;
   if(f.mode==='stream')return new Response(`data: ${JSON.stringify({choices:[{delta:{content:answer},finish_reason:'stop'}]})}\n\n`,{headers:{'content-type':'text/event-stream'}});
   return new Response(JSON.stringify({choices:[{message:{content:answer},finish_reason:'stop'}]}),{headers:{'content-type':'application/json'}});
@@ -103,6 +106,37 @@ test('actual panel stop preserves input and partial native history, which is not
  await f.close();await f.open();assert.equal(f.models.length,1);assert.match(f.rows()[0].querySelector('small').textContent,/停止/);
  f.mode='json';await f.send('新问题');await f.idle();assert.equal(f.models.length,2);
  assert.doesNotMatch(JSON.stringify(f.models[1].body.messages),/准备停止的问题|半截回答/);assert.equal(f.remote().rows[1].status,'complete');
+});
+
+test('actual panel reference setting changes the next payload without reading prose at zero',async t=>{
+ const f=await panelFixture(t),range=f.dom.get('参考楼层数');
+ f.action('settings').click();range.value='0';range.emit('input');f.action('back').click();
+ await f.send('不参考正文的问题');await f.idle();
+ assert.deepEqual(f.reads,[]);assert.equal(f.models.length,1);
+ const first=JSON.parse(f.models[0].body.messages.at(-1).content);
+ assert.equal(first.reference,null);assert.deepEqual(first.previous,[]);assert.equal(f.remote().rows[0].reference,null);
+ assert.doesNotMatch(JSON.stringify(f.models[0].body.messages),/旧正文|用户楼层|最近正文/);
+ f.action('settings').click();range.value='2';range.emit('input');f.action('back').click();
+ await f.send('再参考两层');await f.idle();assert.deepEqual(f.reads,[2,1]);assert.equal(f.models.length,2);
+ const next=JSON.parse(f.models[1].body.messages.at(-1).content);
+ assert.equal(next.reference.text,'最近正文');assert.deepEqual(next.previous,[{floor:1,speaker:'user',text:'用户楼层'}]);
+ assert.deepEqual(f.models[1].body.messages.slice(0,2),[{role:'user',content:'不参考正文的问题'},{role:'assistant',content:'完整回答 1'}]);
+});
+
+test('actual panel keeps a newly typed draft through reply completion and ignores composing send shortcuts',async t=>{
+ const f=await panelFixture(t);f.mode='hold';await f.send('正在回答的问题');
+ await f.dom.wait(()=>f.rows()[0]?.querySelector('pre').textContent==='半截回答');
+ f.question().value='提前写好的下一问';f.question().emit('input');
+ f.question().emit('keydown',{ctrlKey:true,key:'Enter',isComposing:false});
+ assert.equal(f.models.length,1,'a shortcut while busy must not queue another paid request');
+ f.completeStream();await f.idle();
+ assert.equal(f.question().value,'提前写好的下一问');assert.equal(f.remote().rows[0].assistant,'半截回答，已完成');
+ assert.equal(f.remote().rows[0].status,'complete');assert.equal(f.models.length,1,'finishing a reply must not auto-send the draft');
+ f.question().emit('keydown',{ctrlKey:true,key:'Enter',isComposing:true});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(f.models.length,1);assert.equal(f.question().value,'提前写好的下一问');
+ f.mode='json';f.action('send').click();await f.dom.wait(()=>f.models.length===2);await f.idle();
+ assert.equal(f.question().value,'');assert.equal(JSON.parse(f.models[1].body.messages.at(-1).content).question,'提前写好的下一问');
+ assert.deepEqual(f.remote().rows.map(row=>row.user),['正在回答的问题','提前写好的下一问']);
 });
 
 test('actual panel HTTP failure sends once, retains question and records no false completed answer',async t=>{
