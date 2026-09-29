@@ -1,8 +1,8 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {collectAssistantHistoryPage} from './qianmu-assistant-storage-client.js?v=1.59.409';
+import {collectAssistantHistoryPage} from './qianmu-assistant-storage-client.js?v=1.59.410';
 import {assistantCatalogueResponse} from './qianmu-assistant-storage-contract.js';
 import {proseAssistantAccountForNamespace} from './qianmu-prose-assistant-source.js';
-import {proseAssistantHistoryKey,validateProseAssistantHistory,PROSE_ASSISTANT_HISTORY_LIMITS as LIMIT} from './qianmu-prose-assistant-history-contract.js';
+import {proseAssistantHistoryKey,proseAssistantOwnerKey,validateProseAssistantHistory,PROSE_ASSISTANT_HISTORY_LIMITS as LIMIT} from './qianmu-prose-assistant-history-contract.js';
 import {createAssistantHistoryTransfer} from './qianmu-assistant-history-transfer.js';
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -33,7 +33,7 @@ export async function createAssistantHistoryManager({resolveNamespace,isCurrent,
  }
  function describe(row){
   if(row.status!=='ready')return {id:row.reference.slot,status:'unavailable',title:'记录暂未读取',count:null,bytes:row.reference.bytes};
-  const tuple=JSON.parse(row.state.namespace),offstage=tuple.length===2;
+  const tuple=JSON.parse(proseAssistantOwnerKey(row.state.namespace)),offstage=tuple.length===2;
   return {id:row.reference.slot,status:'ready',title:offstage?'场外会话':tuple[3].chatId,
    owner:offstage?'独立对话':tuple[3].kind==='character'?tuple[3].avatar.replace(/\.png$/,''):'群组 '+tuple[2].slice(6),
    updatedAt:row.state.updatedAt,count:row.state.rows.length,bytes:row.reference.bytes};

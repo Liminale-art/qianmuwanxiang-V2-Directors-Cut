@@ -9,7 +9,7 @@ const account=value=>{if(typeof value!=='string'||!/^st-user:[a-f0-9]{64}$/.test
 
 // File/owner/integrity tuple, not a minted permanent identity or a rename map.
 // Each tuple is a separate local document: opening one chat never reads all chats.
-export function proseAssistantHistoryKey(value,namespace){
+function baseHistoryKey(value,namespace){
   if(typeof value!=='string'||value.length>4096)fail();let tuple;
   try{tuple=JSON.parse(value);}catch(_){fail();}
   if(Array.isArray(tuple)&&tuple.length===2&&tuple[0]==='qianmu-prose-assistant-offstage-v1'){
@@ -21,6 +21,21 @@ export function proseAssistantHistoryKey(value,namespace){
   if(target.kind==='character'?owner!=='char:'+target.avatar:!text(owner,518)||!/^group:.+/.test(owner)||/[\u0000-\u001f\u007f]/.test(owner))fail();
   if(integrity!==null&&(!text(integrity,512)||/[\u0000-\u001f\u007f]/.test(integrity)))fail();
   const key=JSON.stringify([tuple[0],ownerAccount,owner,target,integrity]);if(key!==value)fail();return key;
+}
+export function proseAssistantHistoryKey(value,namespace){
+  if(typeof value!=='string'||value.length>4096)fail();let tuple;
+  try{tuple=JSON.parse(value);}catch(_){fail();}
+  if(Array.isArray(tuple)&&tuple[0]==='qianmu-prose-assistant-thread-v1'){
+    if(tuple.length!==3||typeof tuple[2]!=='string'||!/^([a-f0-9]{8}-)([a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(tuple[2]))fail();
+    baseHistoryKey(tuple[1],namespace);if(JSON.stringify(tuple)!==value)fail();return value;
+  }
+  return baseHistoryKey(value,namespace);
+}
+export function createProseAssistantThreadKey(base,id){
+  baseHistoryKey(base);return proseAssistantHistoryKey(JSON.stringify(['qianmu-prose-assistant-thread-v1',base,id]));
+}
+export function proseAssistantOwnerKey(key){
+  proseAssistantHistoryKey(key);const tuple=JSON.parse(key);return tuple[0]==='qianmu-prose-assistant-thread-v1'?tuple[1]:key;
 }
 function rowsValid(rows){
   const limit=PROSE_ASSISTANT_HISTORY_LIMITS;if(!Array.isArray(rows)||rows.length>limit.turns)fail();let characters=0,last=0;

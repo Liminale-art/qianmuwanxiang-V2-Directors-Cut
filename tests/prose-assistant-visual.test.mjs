@@ -30,7 +30,7 @@ test('settings controls share one quiet input style without a focus outer frame'
  assert.match(fields,/border:1px solid var\(--sd-border,/);
  assert.match(fields,/border-radius:10px/);
  assert.match(fields,/background:var\(--sd-input-bg,/);
- assert.match(rule(`${scope} .qm-pa-config label > span`),/font:inherit;line-height:1\.45;color:var\(--sd-text,/);
+ assert.match(rule(`${scope} .qm-pa-config label > span`),/font:inherit;font-size:calc\(1em - 2px\);line-height:1\.45;color:var\(--sd-text,/);
  const focus=rule(`${scope} ${textFields}:is(:focus,:focus-visible),\n${portal} ${textFields}:is(:focus,:focus-visible)`);
  assert.match(focus,/outline:0!important/);assert.match(focus,/box-shadow:none!important/);
  // The real skin selector carries ID specificity through :is(). The portal
@@ -50,7 +50,8 @@ test('composer and conversation share typography with right-aligned user bubbles
  assert.match(rule(`${scope} .qm-pa-user`),/max-width:88%/);
  assert.match(rule(`${scope} .qm-pa-composer [data-pa-question]`),/height:calc\(1\.6em \+ 16px\);min-height:44px/);
  assert.match(rule(`${scope} :is(.qm-pa-user,.qm-pa-reply,.qm-pa-composer,.qm-pa-edit)`),/font-size:var\(--sd-prose-font-size,var\(--qm-pa-prose-size,var\(--mainFontSize,16px\)\)\)/);
- assert.doesNotMatch(css,/@media\s*\(max-width:620px\)[\s\S]*font-size:/);
+ const mobile=css.split('\n').filter(line=>line.startsWith('@media (max-width:620px)'));
+ assert.equal(mobile.length,1);assert.doesNotMatch(mobile[0],/font-size:/);
 });
 
 test('send and stop remain a single rounded-square control with a filled stop glyph',()=>{
@@ -88,7 +89,17 @@ test('resize cue uses the theme accent and stays clear of the bottom send contro
  assert.match(rule(`${scope} .qm-pa-composer textarea,\n${portal} .qm-pa-composer textarea`),/border:0!important;background:transparent!important/);
 });
 
-test('plain-text fallback preserves line breaks and the current clear action remains full width until the conversation list replaces it',()=>{
+test('plain-text fallback preserves line breaks and the recent-conversation list replaces the former clear action',()=>{
  assert.match(rule(`${scope} .qm-pa-reply.qm-pa-plain`),/white-space:pre-wrap/);
- assert.match(rule(`${scope} .qm-pa-config [data-pa-action="clear"]`),/width:100%;height:auto/);
+ assert.doesNotMatch(css,/data-pa-action="clear"/);
+ assert.match(rule(`${scope}[hidden]`),/display:none!important/);
+});
+
+test('message action glyphs shrink without shrinking hit areas and only question resubmit uses the accent fill',()=>{
+ assert.match(rule(`${scope} :is(.qm-pa-message-actions,.qm-pa-edit) button :is(i,svg)`),/width:14\.4px;height:14\.4px;font-size:14\.4px/);
+ assert.match(rule(`${scope} button`),/width:34px;height:34px/);
+ assert.match(rule(`${scope} .qm-pa-edit button`),/width:34px;height:34px/);
+ assert.match(rule(`${scope} .qm-pa-edit`),/justify-content:flex-end/);
+ assert.match(rule(`${scope} .qm-pa-edit[data-pa-edit-kind="question"] [data-pa-action="save-reply"]`),/background:var\(--sd-accent,.*color:var\(--sd-primary-text,/);
+ assert.doesNotMatch(rule(`${scope} .qm-pa-edit button`),/--sd-accent/);
 });

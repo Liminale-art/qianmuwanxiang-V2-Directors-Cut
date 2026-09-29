@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {createNativeProseAssistantHistoryStore as create,openNativeProseAssistantHistory as open} from '../qianmu-prose-assistant-native.js';
-import {emptyProseAssistantHistory} from '../qianmu-prose-assistant-history-contract.js';
+import {createNativeProseAssistantHistoryStore as create,openNativeProseAssistantHistory as open,copyRenamedProseAssistantHistory} from '../qianmu-prose-assistant-native.js';
+import {emptyProseAssistantHistory,createProseAssistantThreadKey} from '../qianmu-prose-assistant-history-contract.js';
+import {openProseAssistantConversations} from '../qianmu-prose-assistant-conversations.js';
 
 const raw='st-user:alice',account='st-user:'+createHash('sha256').update('alice').digest('hex');
 const key=JSON.stringify(['qianmu-prose-assistant-v2',account,'char:A.png',{kind:'character',chatId:'A',avatar:'A.png'},null]);
@@ -72,4 +73,38 @@ test('account offstage history persists reference-free replies in a different na
  assert.equal(f.files.size,2);assert.equal(f.files.get(offstageSlot).value.rows[0].assistant,'场外回答');
  const reopened=await open(f.options);assert.equal(reopened.initialHistory().rows[0].assistant,'场外回答');reopened.close();
  const guarded=await create(f.options);await assert.rejects(guarded.read(account,key),{code:'prose_assistant_history_scope'});guarded.close();
+});
+
+test('a new thread with no native history never opens the retired IndexedDB store, including its first save',async()=>{
+ const thread=createProseAssistantThreadKey(key,'b5d8f920-ecbd-42cc-a5e0-4870e8b629e1'),f=fixture(history(2),thread),priorLocal=structuredClone(f.local);
+ const options={...f.options,legacyFactory:()=>assert.fail('independent threads never existed in the retired browser store')};
+ const store=await create(options);assert.deepEqual(await store.read(account,thread),emptyProseAssistantHistory(thread));assert.equal(f.writes,0);
+ await store.write(account,thread,0,[{...row('独立新对话'),reference:null}]);assert.equal(f.writes,1);assert.equal(f.files.size,1);assert.equal(f.localReads,0);assert.deepEqual(f.local,priorLocal);store.close();
+ const reopened=await open(options);assert.equal(reopened.initialHistory().namespace,thread);assert.equal(reopened.initialHistory().version,1);assert.equal(reopened.initialHistory().rows[0].assistant,'独立新对话');assert.equal(f.writes,1);reopened.close();
+});
+
+test('registered chat rename rebinds live entries and tombstones without copying or modifying any message document',async()=>{
+ const f=fixture(history(2)),oldStore=await create(f.options);await oldStore.read(account,key);oldStore.close();
+ const thread=createProseAssistantThreadKey(key,'df0e9045-aab8-446d-bb93-d774b97801df');
+ const threadOptions={...f.options,source:{...f.options.source,key:thread},legacyFactory:()=>assert.fail('thread history cannot use legacy fallback')};
+ const threadStore=await create(threadOptions);await threadStore.write(account,thread,0,[{...row('独立对话原回答'),reference:null}]);threadStore.close();
+ const catalog=await openProseAssistantConversations(f.options);await catalog.ensure({key,title:'角色 A',createdAt:10,updatedAt:20});await catalog.ensure({key:thread,title:'角色 A',createdAt:20,updatedAt:30});await catalog.activate(thread,{defaultForCurrent:key});await catalog.delete([key]);catalog.close();
+ const messages=new Map([...f.files].filter(([slot])=>slot!=='assistant-conversations').map(([slot,record])=>[slot,structuredClone(record)]));
+ const writes=f.writes,localReads=f.localReads,originalLocal=structuredClone(f.local),renamed=JSON.parse(key);renamed[3].chatId='Renamed';const newKey=JSON.stringify(renamed),source={...f.options.source,key:newKey};
+ const result=await copyRenamedProseAssistantHistory({...f.options,source,oldChatId:'A',legacyFactory:()=>assert.fail('registered rename must not copy from the browser store')});
+ assert.deepEqual(result,{status:'rebound'});assert.equal(f.writes,writes+1,'only the account directory is written');assert.equal(f.localReads,localReads);assert.deepEqual(f.local,originalLocal);
+ assert.deepEqual(new Map([...f.files].filter(([slot])=>slot!=='assistant-conversations')),messages);
+ const renamedCatalog=await openProseAssistantConversations({...f.options,source}),state=renamedCatalog.view();
+ assert.deepEqual(state.entries.map(entry=>entry.key),[key,thread]);assert.ok(state.entries.every(entry=>entry.ownerKey===newKey));assert.equal(state.entries.find(entry=>entry.key===key).deleted,true);assert.equal(state.entries.find(entry=>entry.key===thread).deleted,false);assert.deepEqual(state.defaults,[{ownerKey:newKey,key:thread}]);
+ assert.equal(await renamedCatalog.ensure({key,ownerKey:newKey,title:'不能复活'}),null);renamedCatalog.close();assert.equal(f.writes,writes+1);
+ const continued=await open({...threadOptions,source:{...source,key:thread}});assert.equal(continued.initialHistory().rows[0].assistant,'独立对话原回答');continued.close();assert.equal(f.writes,writes+1);assert.equal(f.files.size,messages.size+1);
+});
+
+test('a registered chat containing only deleted conversations remains deleted after a host rename',async()=>{
+ const f=fixture(history(2)),native=await create(f.options);await native.read(account,key);native.close();
+ const catalog=await openProseAssistantConversations(f.options);await catalog.ensure({key,title:'角色 A'});await catalog.delete([key]);catalog.close();
+ const before=new Map([...f.files].filter(([slot])=>slot!=='assistant-conversations').map(([slot,record])=>[slot,structuredClone(record)])),writes=f.writes,renamed=JSON.parse(key);renamed[3].chatId='Deleted renamed';const newKey=JSON.stringify(renamed),source={...f.options.source,key:newKey};
+ assert.deepEqual(await copyRenamedProseAssistantHistory({...f.options,source,oldChatId:'A',legacyFactory:()=>assert.fail('deleted catalog entries must not be rediscovered as live history')}),{status:'rebound'});
+ assert.equal(f.writes,writes+1);assert.deepEqual(new Map([...f.files].filter(([slot])=>slot!=='assistant-conversations')),before);
+ const after=await openProseAssistantConversations({...f.options,source});assert.equal(after.view().entries.length,1);assert.equal(after.view().entries[0].ownerKey,newKey);assert.equal(after.view().entries[0].deleted,true);assert.deepEqual(after.view().defaults,[]);after.close();
 });

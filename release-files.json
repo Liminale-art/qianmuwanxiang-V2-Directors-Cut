@@ -147,6 +147,8 @@
     "qianmu-prose-rich-compat.js",
     "qianmu-prose-assistant-floor.js",
     "qianmu-prose-assistant-panel.js",
+    "qianmu-prose-assistant-conversations.js",
+    "qianmu-prose-assistant-conversation-list.js",
     "qianmu-prose-assistant-markdown.js",
     "qianmu-prose-assistant.css",
     "qianmu-plain-text-range.js",

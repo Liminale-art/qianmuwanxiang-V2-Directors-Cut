@@ -2,7 +2,7 @@ import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
 import {createProseAssistantHistoryStore} from './qianmu-prose-assistant-history.js';
 import {openProseAssistantHistory} from './qianmu-prose-assistant-history-runtime.js';
 import {proseAssistantAccountForNamespace} from './qianmu-prose-assistant-source.js';
-import {PROSE_ASSISTANT_HISTORY_LIMITS,proseAssistantHistoryKey,validateProseAssistantHistory,emptyProseAssistantHistory,proseAssistantHistoryError as error} from './qianmu-prose-assistant-history-contract.js';
+import {PROSE_ASSISTANT_HISTORY_LIMITS,proseAssistantHistoryKey,proseAssistantOwnerKey,validateProseAssistantHistory,emptyProseAssistantHistory,proseAssistantHistoryError as error} from './qianmu-prose-assistant-history-contract.js';
 
 // One chat per native ST document. Immutable ST file bodies are retained by the
 // shared store; its cross-device conflict detection is optimistic, not CAS.
@@ -28,6 +28,8 @@ export async function createNativeProseAssistantHistoryStore({source,isCurrent,s
  async function readRecord(options){
   await guard(options);const result=await store.read(slot,{guard:transportGuard(options)});await guard(options);
   if(result.exists)return {state:structuredClone(validateProseAssistantHistory(result.value,key)),fingerprint:result.fingerprint};
+  // New conversations never existed in the retired browser-only history store.
+  if(proseAssistantOwnerKey(key)!==key)return {state:emptyProseAssistantHistory(key),fingerprint:null};
   const legacy=legacyFactory();let prior;
   try{prior=validateProseAssistantHistory(await legacy.read(namespace,key,{guard:()=>!closed&&isCurrent()===true&&source.assertCurrent()===true}),key);await guard(options);}
   finally{legacy.close();}
@@ -68,7 +70,15 @@ export async function copyRenamedProseAssistantHistory({source,oldChatId,isCurre
  const prior=structuredClone(tuple);prior[3].chatId=oldChatId;
  const oldKey=proseAssistantHistoryKey(JSON.stringify(prior),account);
  const check=async()=>{if(isCurrent()!==true||source.assertCurrent()!==true||await source.guard()!==true||isCurrent()!==true)throw error('scope','助手改名来源已变化');return true;};
- await check();const store=await storageFactory({maxBytes:PROSE_ASSISTANT_HISTORY_LIMITS.bytes+2048,isCurrent});
+ await check();
+ const {openProseAssistantConversations}=await import('./qianmu-prose-assistant-conversations.js');
+ const catalogue=await openProseAssistantConversations({source,isCurrent,storageFactory,cryptoImpl});
+ try{
+  if(catalogue.view().entries.some(entry=>entry.ownerKey===oldKey)){
+   await catalogue.renameOwner(oldKey,newKey);await check();return {status:'rebound'};
+  }
+ }finally{catalogue.close();}
+ const store=await storageFactory({maxBytes:PROSE_ASSISTANT_HISTORY_LIMITS.bytes+2048,isCurrent});
  try{
   if(await proseAssistantAccountForNamespace(store.namespace,{cryptoImpl})!==account)throw error('scope','助手改名账户不一致');
   const slot=async key=>'assistant-'+Array.from(new Uint8Array(await cryptoImpl.subtle.digest('SHA-256',new TextEncoder().encode(key))),v=>v.toString(16).padStart(2,'0')).join('');

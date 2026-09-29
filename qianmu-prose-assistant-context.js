@@ -1,4 +1,5 @@
 import {captureProseAssistantSource,captureProseAssistantChatSource,isProseAssistantOffstage,PROSE_ASSISTANT_SOURCE_LIMIT} from './qianmu-prose-assistant-source.js';
+import {proseAssistantHistoryKey,proseAssistantOwnerKey} from './qianmu-prose-assistant-history-contract.js';
 
 // UTF-16 character budgets, not token estimates or promises about any model's window.
 export const PROSE_ASSISTANT_CONTEXT_LIMITS=Object.freeze({defaultPreviousFloors:2,maxPreviousFloors:8,previousCharacters:16000,historyPairs:6,historyCharacters:12000});
@@ -12,7 +13,16 @@ export async function captureProseAssistantContext(options={}){
   if(options.referenceFloors!==undefined&&(!Number.isSafeInteger(options.referenceFloors)||options.referenceFloors<0||options.referenceFloors>limits.maxPreviousFloors+1))fail('场外特助参考范围无效');
   const noReference=options.referenceFloors===0||isProseAssistantOffstage(getContext());
   if(!Number.isSafeInteger(previousFloors)||previousFloors<0||previousFloors>limits.maxPreviousFloors)fail('场外特助前文范围无效');
-  const source=await (noReference?captureProseAssistantChatSource(options):captureProseAssistantSource(options)),tracked=[];let closed=false;
+  const explicit=options.conversationKey!==undefined;let conversationKey,conversationOwnerKey;
+  if(explicit){
+    try{
+      conversationKey=proseAssistantHistoryKey(options.conversationKey);conversationOwnerKey=options.conversationOwnerKey===undefined?proseAssistantOwnerKey(conversationKey):options.conversationOwnerKey;
+      proseAssistantHistoryKey(conversationOwnerKey);if(proseAssistantOwnerKey(conversationOwnerKey)!==conversationOwnerKey)fail('助手对话归属无效');
+      proseAssistantHistoryKey(conversationKey,JSON.parse(conversationOwnerKey)[1]);
+    }catch(_){fail('助手对话格式或归属无效');}
+    if(history!==undefined&&history?.key!==conversationKey)fail('场外特助历史不属于当前会话');
+  }else if(options.conversationOwnerKey!==undefined)fail('助手对话缺少明确的会话编号');
+  const source=await (noReference?captureProseAssistantChatSource(options):captureProseAssistantSource(explicit?{...options,expectedChatKey:conversationOwnerKey}:options)),tracked=[];let closed=false;
   const close=()=>{closed=true;tracked.length=0;source.close();};
   function assertCurrent(){
     try{
@@ -24,6 +34,11 @@ export async function captureProseAssistantContext(options={}){
   }
   async function guard(){try{assertCurrent();await source.guard();assertCurrent();return true;}catch(cause){close();throw cause;}}
   try{
+    if(explicit){
+      try{proseAssistantHistoryKey(conversationKey,source.scope.namespace);proseAssistantHistoryKey(conversationOwnerKey,source.scope.namespace);}catch(_){fail('助手对话不属于当前账户');}
+      if(conversationOwnerKey!==source.key&&options.referenceFloors!==0)fail('当前聊天没有可用于此助手对话的参考，请将参考楼层设为0');
+    }
+    const key=explicit?conversationKey:source.key;
     const previous=[],omitted=[];let previousCharacters=0,historyCharacters=0;const first=noReference?0:Math.max(0,source.reference.floor-previousFloors);
     // Inspect at most the explicit preceding window, never search older floors to fill gaps.
     for(let floor=noReference?-1:source.reference.floor-1;floor>=first;floor--){
@@ -38,7 +53,7 @@ export async function captureProseAssistantContext(options={}){
     }
     previous.reverse();omitted.reverse();const pairs=[];let historyCount=0;
     if(history!==undefined){
-      if(!history||history.key!==source.key||!Array.isArray(history.turns)||history.turns.length>10000)fail('场外特助历史不属于当前会话或超出容量');
+      if(!history||history.key!==key||!Array.isArray(history.turns)||history.turns.length>10000)fail('场外特助历史不属于当前会话或超出容量');
       historyCount=history.turns.length;
       for(let index=historyCount-1;index>=Math.max(0,historyCount-limits.historyPairs);index--){
         const pair=history.turns[index];if(!pair||!validText(pair.user)||!pair.user.trim()||!validText(pair.assistant)||!pair.assistant.trim())fail('场外特助历史须为完整的问答');
@@ -50,6 +65,6 @@ export async function captureProseAssistantContext(options={}){
     const summary=Object.freeze({referenceFloor:source.reference?.floor??null,referenceMode:source.reference?.mode??'none',referenceCharacters:source.reference?.text.length??0,
       previousWindow:Object.freeze({start:first,end:source.reference?.floor??0}),previousIncluded:Object.freeze(previous.map(row=>row.floor)),previousOmitted:Object.freeze(omitted),previousCharacters,
       historyPairs:pairs.length,historyOmitted:historyCount-pairs.length,historyCharacters});
-    return Object.freeze({key:source.key,scope:source.scope,reference:source.reference??null,previous:Object.freeze(previous),history:Object.freeze(pairs),summary,guard,assertCurrent,close});
+    return Object.freeze({key,scope:source.scope,reference:source.reference??null,previous:Object.freeze(previous),history:Object.freeze(pairs),summary,guard,assertCurrent,close});
   }catch(cause){close();throw cause;}
 }

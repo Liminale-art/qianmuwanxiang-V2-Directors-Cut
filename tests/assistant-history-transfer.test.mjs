@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assistantManagerFixture,account,namespace,sha} from './helpers/assistant-history-manager-fixture.mjs';
 import {validateAssistantHistoryBackup} from '../qianmu-assistant-history-transfer.js';
-import {emptyProseAssistantHistory} from '../qianmu-prose-assistant-history-contract.js';
+import {emptyProseAssistantHistory,createProseAssistantThreadKey} from '../qianmu-prose-assistant-history-contract.js';
 import {captureProseAssistantChatSource} from '../qianmu-prose-assistant-source.js';
 
 const key=(id,owner='A.png',integrity=null)=>JSON.stringify(['qianmu-prose-assistant-v2',account,'char:'+owner,{kind:'character',chatId:id,avatar:owner},integrity]);
@@ -17,6 +17,14 @@ test('backup round trip previews before writing and restores exact complete orig
  const viewed=await fresh.manager.viewBackup(ids[0]);viewed.rows.length=0;assert.equal((await fresh.manager.viewBackup(ids[0])).rows.length,1);
  let confirms=0;const result=await fresh.manager.restoreBackup(ids,()=>{confirms++;assert.equal(fresh.writes,0);return true;});assert.equal(confirms,1);assert.deepEqual(result,{status:'complete',operation:'restore',copied:2,already:0,skipped:0,total:2,retainedOriginals:true});
  for(const row of old.records)assert.deepEqual((await fresh.store.read(row.slot)).value,row.state);assert.equal(await backup(old),text);assert.equal(fresh.writes,2);
+});
+
+test('new conversation thread stays readable and round-trips through the existing history manager and backup',async t=>{
+ const old=await assistantManagerFixture(t,0),thread=createProseAssistantThreadKey(key('Thread-origin'),'00000000-0000-4000-8000-000000000001');
+ const state={version:1,namespace:thread,revision:1,updatedAt:100,rows:[{id:1,user:'新会话问题',assistant:'新会话完整回答',status:'complete',reference:null}]},slot='assistant-'+sha(thread);
+ await old.store.write(slot,state,{expectedFingerprint:null});const page=await old.manager.page();assert.equal(page.rows.length,1);assert.equal(page.rows[0].title,'Thread-origin');
+ const text=await old.manager.backup([slot]),fresh=await assistantManagerFixture(t,0),preview=await fresh.manager.reviewBackup(text);assert.equal(preview.rows.length,1);assert.equal(preview.rows[0].title,'Thread-origin');
+ assert.equal((await fresh.manager.restoreBackup([slot],()=>true)).copied,1);assert.deepEqual((await fresh.store.read(slot)).value,state);assert.deepEqual((await old.store.read(slot)).value,state);
 });
 
 const mutations={

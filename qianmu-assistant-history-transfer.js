@@ -1,7 +1,7 @@
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {createProseAssistantHistoryStore} from './qianmu-prose-assistant-history.js';
-import {proseAssistantHistoryKey,validateProseAssistantHistory,PROSE_ASSISTANT_HISTORY_LIMITS as LIMIT} from './qianmu-prose-assistant-history-contract.js';
+import {proseAssistantHistoryKey,proseAssistantOwnerKey,validateProseAssistantHistory,PROSE_ASSISTANT_HISTORY_LIMITS as LIMIT} from './qianmu-prose-assistant-history-contract.js';
 
 export const ASSISTANT_BACKUP_LIMIT=48*1024*1024;
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -9,7 +9,7 @@ const fail=(code,message)=>{throw Object.assign(Error(message),{code:'assistant_
 const sha=async text=>Array.from(new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),v=>v.toString(16).padStart(2,'0')).join('');
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Reflect.ownKeys(value).length===keys.length&&keys.every(key=>Object.getOwnPropertyDescriptor(value,key)?.enumerable&&Object.hasOwn(Object.getOwnPropertyDescriptor(value,key)||{},'value'));
 const escaped=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const title=key=>{const tuple=JSON.parse(key);return tuple.length===2?'场外独立会话':tuple[3].chatId;};
+const title=key=>{const tuple=JSON.parse(proseAssistantOwnerKey(key));return tuple.length===2?'场外独立会话':tuple[3].chatId;};
 
 // Checks integrity, not authorship. An explicitly chosen local file is never a
 // trusted source of paths, credentials, HTML, account authority or chat identity.
@@ -103,7 +103,7 @@ export function createAssistantHistoryTransfer({store,account,guard,assertCurren
    const original=fromBackup?selected([id])[0]:row;if(!original||original.status!=='ready'||original.reference.slot!==id)fail('selection','请先选择一份完整会话');
    const source=await captureDestination({signal});let delegated=false;
    try{
-    await check(source);const key=proseAssistantHistoryKey(source?.key,account),old=JSON.parse(original.state.namespace),target=JSON.parse(key);
+    await check(source);const key=proseAssistantHistoryKey(source?.key,account),old=JSON.parse(proseAssistantOwnerKey(original.state.namespace)),target=JSON.parse(key);
     if(old.length!==5||target.length!==5||old[2]!==target[2]||old[3].kind!==target[3].kind||old[4]!==target[4])fail('target','来源与当前聊天的角色/群组或身份标记不一致，未猜测接续；仍可查阅和保留备份');
     if(key===original.state.namespace)fail('target','所选记录已经属于当前聊天，无需重新接续');
     const next=validateProseAssistantHistory({...structuredClone(original.state),namespace:key},key),item={slot:'assistant-'+await sha(key),next,originKey:original.state.namespace,original:fromBackup?null:structuredClone(original)};

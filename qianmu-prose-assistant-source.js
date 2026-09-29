@@ -41,7 +41,7 @@ export async function captureProseAssistantChatSource({getContext,epoch,resolveN
 
 // A borrowed source lifetime, not a permanent chat ID, an API choice, or authority
 // to read other floors. The host supplies rendered plain text only on explicit use.
-export async function captureProseAssistantSource({getContext,epoch,resolveNamespace,isCurrent,readText,floor,range,signal,cryptoImpl=globalThis.crypto}={}){
+export async function captureProseAssistantSource({getContext,epoch,resolveNamespace,isCurrent,readText,floor,range,signal,expectedChatKey,cryptoImpl=globalThis.crypto}={}){
   if(typeof resolveNamespace!=='function'||typeof isCurrent!=='function'||typeof readText!=='function'||!Number.isSafeInteger(floor)||floor<0)fail('场外特助缺少明确的账户、楼层或页面来源');
   const source=captureCurrentChatSource({getContext,epoch});let closed=false,message,raw,swipe,namespace;
   const close=()=>{closed=true;source.close();signal?.removeEventListener('abort',close);message=null;raw=null;};
@@ -64,19 +64,20 @@ export async function captureProseAssistantSource({getContext,epoch,resolveNames
     namespace=await resolveNamespace();assertCurrent();
     if(typeof namespace!=='string'||!/^st-user:.+/.test(namespace)||namespace.length>512||/[\u0000-\u001f\u007f]/.test(namespace)||!text(namespace))fail('尚未确认场外特助账户');
     const account=await proseAssistantAccountForNamespace(namespace,{cryptoImpl});await guard();
+    const scope=Object.freeze({namespace:account,ownerKey:source.source.ownerKey,target:source.target,integrity:source.integrity});
+    const key=JSON.stringify(['qianmu-prose-assistant-v2',account,scope.ownerKey,scope.target,scope.integrity]);
+    if(expectedChatKey!==undefined&&expectedChatKey!==key)fail('当前聊天没有可用于此助手对话的参考，请将参考楼层设为0');
     const body=readText(message,floor);assertCurrent();if(!text(body)||!body.trim())fail('引用正文为空、过长或编码无效，未截断原文');
     const selected=range!==undefined;
     if(selected&&(!range||typeof range!=='object'||Array.isArray(range)||Object.keys(range).length!==2||!Object.hasOwn(range,'start')||!Object.hasOwn(range,'end')))fail('请选择明确的正文区间');
     const start=selected?range.start:0,end=selected?range.end:body.length;
     if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>body.length||split(body,start)||split(body,end))fail('引用区间无效或截断完整字符');
     const quote=body.slice(start,end);if(!quote.trim())fail('引用区间没有正文');await guard();
-    const scope=Object.freeze({namespace:account,ownerKey:source.source.ownerKey,target:source.target,integrity:source.integrity});
     const reference=Object.freeze({floor,replyId:`swipe:${swipe}`,mode:selected?'selection':'floor',range:Object.freeze({start,end}),text:quote});
     // Tuple encoding avoids delimiter collisions. Display names and floor numbers
     // do not merge/split the independent, account-and-chat-scoped conversation.
     // v1 could confuse a literal hex account handle with a digest. Leave those
     // records untouched; never automatically adopt their ambiguous ownership.
-    const key=JSON.stringify(['qianmu-prose-assistant-v2',account,scope.ownerKey,scope.target,scope.integrity]);
     return Object.freeze({scope,key,reference,guard,assertCurrent,close});
   }catch(cause){close();throw cause;}
 }

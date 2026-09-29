@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {proseAssistantHistoryKey as key,emptyProseAssistantHistory as empty,validateProseAssistantHistory as validate,createProseAssistantHistoryStore as create} from '../qianmu-prose-assistant-history.js';
-import {measureProseAssistantHistory as measure} from '../qianmu-prose-assistant-history-contract.js';
+import {measureProseAssistantHistory as measure,createProseAssistantThreadKey,proseAssistantOwnerKey} from '../qianmu-prose-assistant-history-contract.js';
 const account='st-user:'+'a'.repeat(64),other='st-user:'+'b'.repeat(64);
 const id=(accountId=account,owner='char:A.png',target={kind:'character',chatId:'Chat A',avatar:'A.png'},integrity=null)=>JSON.stringify(['qianmu-prose-assistant-v2',accountId,owner,target,integrity]);
 const row=()=>({id:1,user:'问题\r\n😀',assistant:'<b>纯文本回复</b>',status:'complete',reference:{floor:0,replyId:'swipe:1',mode:'selection',range:{start:3,end:5}}});
@@ -12,6 +12,18 @@ test('exact account/owner/file/integrity partition is stable while same-name rol
  assert.throws(()=>key(id(other),account));assert.throws(()=>key(id(account,'char:wrong.png')));assert.throws(()=>key(id(account,'group:',{kind:'group',chatId:'Chat A'})));
  assert.throws(()=>key(id().replace('null]','null,1]')));assert.throws(()=>key(id().replace('"kind":"character"','"kind":"character","kind":"character"')));
  assert.throws(()=>key(id().replace('qianmu-prose-assistant-v2','qianmu-prose-assistant-v1')),'legacy raw-handle keys cannot be adopted as hashed ownership');
+});
+
+test('independent assistant thread keys preserve a canonical same-account base without changing the history body schema',()=>{
+ const uuid='3d0582fd-4ee5-4ac0-a5ae-49fe8bfc4d31',bases=[id(),JSON.stringify(['qianmu-prose-assistant-offstage-v1',account])];
+ for(const base of bases){
+  const thread=createProseAssistantThreadKey(base,uuid);assert.equal(key(thread,account),thread);assert.equal(proseAssistantOwnerKey(thread),base);assert.equal(proseAssistantOwnerKey(base),base);
+  const value={...empty(thread),revision:1,updatedAt:1,rows:[row()]};assert.equal(validate(value,thread),value);assert.equal(value.version,1);assert.equal(measure(value,thread,account).count,1);
+  assert.throws(()=>key(thread,other));assert.throws(()=>createProseAssistantThreadKey(thread,uuid));
+  assert.throws(()=>key(JSON.stringify(['qianmu-prose-assistant-thread-v1',thread,uuid])));assert.throws(()=>key(thread+' '));
+  for(const invalid of [uuid.toUpperCase(),uuid.replaceAll('-',''),'x',null,1,{},uuid+'x'])assert.throws(()=>createProseAssistantThreadKey(base,invalid));
+ }
+ assert.throws(()=>key('x'.repeat(4097)));assert.throws(()=>proseAssistantOwnerKey(JSON.stringify(['qianmu-prose-assistant-thread-v1',id(),uuid,'extra'])));
 });
 test('completed and stopped records preserve literal Unicode and references without automatically resuming a running request',()=>{
  const value=state();value.rows.push({...row(),id:3,assistant:'半截',status:'cancelled'}, {...row(),id:4,assistant:'',status:'failed',reference:null});assert.equal(validate(value,id()),value);
