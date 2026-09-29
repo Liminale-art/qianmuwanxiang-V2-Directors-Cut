@@ -277,14 +277,15 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     async function save() {
         if (!current() || busy() || !draft) return;
         draft.text = editorControl.getText();
-        const edit = draft; pending = true; notice = ''; updateControls();
+        const edit = draft, saveOpening = opening; pending = true; notice = ''; updateControls();
         try {
             const options = {expectedFingerprint: edit.fingerprint};
             if (edit.isNew) await collection.add({id: edit.item.id, text: edit.text,
                 charName: edit.item.charName, userName: edit.item.userName, source: edit.item.source ?? null}, options);
             else await collection.edit(edit.item.id, edit.text, options);
             if (!current()) return;
-            selectedId = edit.item.id; draft = null; route = 'read'; readScroll = 0;
+            draft = null;
+            if (opening === saveOpening) { selectedId = edit.item.id; route = 'read'; readScroll = 0; }
         } catch (error) {
             if (draft === edit) draft.receiptUnknown = collection.state().needsRefresh === true;
             if (current()) notice = snapshot?.needsRefresh || /capacity/.test(snapshot?.error?.code || '') ? ''
@@ -344,10 +345,19 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     async function collect(input, selection = {}) {
         const captureCurrent = () => !selection.signal?.aborted && (!selection.isCurrent || selection.isCurrent());
         if (!captureCurrent()) return false;
-        const opened = open(), requestedOpening = opening;
+        const immediate = selection.saveImmediately === true;
+        // Selected paragraphs already had their review step in the picker.
+        // Prepare the same draft/save path without mounting the library dialog.
+        const opened = immediate ? collection.open().then(value => {
+            if (!current()) return false;
+            snapshot = value; return value.loaded;
+        }) : open(), requestedOpening = opening;
         if (!await opened || requestedOpening !== opening || busy() || !snapshot?.loaded) return false;
-        if (!captureCurrent()) { close(); return false; }
-        if (draft) { notice = '还有未保存的编辑，请先继续或取消。'; render(); return false; }
+        if (!captureCurrent()) { if (!immediate) close(); return false; }
+        if (draft) {
+            if (immediate) await open();
+            notice = '还有未保存的编辑，请先继续或取消。'; render(); return immediate;
+        }
         if (typeof input?.text !== 'string' || !input.text.trim()
             || typeof input.charName !== 'string' || typeof input.userName !== 'string') return false;
         // The capture keeps its ID through retries, including a lost receipt.
@@ -357,7 +367,15 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             id: crypto.randomUUID(), createdAt: new Date().toISOString()};
         selectedId = null;
         draft = {item, text: input.text, fingerprint: snapshot.fingerprint, isNew: true};
-        startEditor(); return true;
+        startEditor();
+        if (immediate) {
+            await save();
+            if (!captureCurrent() || requestedOpening !== opening) return false;
+            // Only a failed save exposes the retained draft for retry. Reuse
+            // the existing receipt reconciliation, never resubmit on navigation.
+            if (draft) { await open(); if (captureCurrent() && draft) startEditor(); }
+        }
+        return true;
     }
     function close() {
         if (!visible) return;

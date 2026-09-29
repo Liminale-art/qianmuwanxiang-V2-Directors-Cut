@@ -330,6 +330,25 @@ test('snapshot timeout after upload starts remains unconfirmed and does not blin
     assert.deepEqual(counts(f), {get: 1, post: 1});
 });
 
+test('direct paragraph save uses one native snapshot upload and opens no preview', async t => {
+    const f = await fixture(t), current = session(t, f.store), dom = textCollectionDom();
+    const collection = createTextCollection({session: current});
+    const view = createTextCollectionPanel({parent: dom.parent, collection, isCurrent: () => true});
+    t.after(() => view.dispose());
+    await collection.open(); f.reset();
+    const selected = {text: '  第一段\r\n\r\n第二段', charName: '角色甲', userName: '用户乙', source: {chatId: 'chat', messageId: 'floor'}};
+    assert.equal(await view.collect(selected, {saveImmediately: true}), true);
+    assert.equal(dom.byClass('qm-collection-panel'), undefined);
+    assert.deepEqual(counts(f), {get: 2, post: 1});
+    assert.equal(f.files.size, 1);
+    assert.equal(collection.state().items[0].text, selected.text);
+    assert.deepEqual(collection.state().items[0].source, selected.source);
+    assert.equal(JSON.parse([...f.files.values()][0]).value.items.length, 1);
+    f.reset(); await view.open(); view.close(); await view.open();
+    assert.deepEqual(counts(f), {get: 0, post: 0});
+    assert.equal(dom.get('正文收藏').getAttribute('data-view'), 'list');
+});
+
 test('snapshot native protocol and real collection panel complete capture/read/back/edit/batch-delete/reopen without navigation reads', async t => {
     const f = await fixture(t), current = session(t, f.store), dom = textCollectionDom();
     const collection = createTextCollection({session: current, now: () => '2026-09-28T00:00:00.000Z'});

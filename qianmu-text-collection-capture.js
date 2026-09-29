@@ -126,12 +126,13 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
         const active = () => !attemptController.signal.aborted && capturedGeneration === generation && visible && current();
         const payload = structuredClone({...input, text});
         try {
-            const accepted = await onSelect(payload, {signal: attemptController.signal, isCurrent: active});
+            const accepted = await onSelect(payload, {signal: attemptController.signal, isCurrent: active,
+                saveImmediately: mode === 'paragraphs'});
             if (!active()) return;
-            if (accepted === true) { close(false); return; }
-            status.textContent = '未打开收藏编辑，请重试。';
+            if (accepted === true) { close(mode === 'paragraphs'); return; }
+            status.textContent = mode === 'paragraphs' ? '收藏未完成，所选段落已保留，请重试。' : '未打开收藏编辑，请重试。';
         } catch {
-            if (active()) status.textContent = '未打开收藏编辑，请重试。';
+            if (active()) status.textContent = mode === 'paragraphs' ? '收藏未完成，所选段落已保留，请重试。' : '未打开收藏编辑，请重试。';
         } finally {
             if (capturedGeneration === generation && visible && current()) {
                 pending = false; controller = null; render();

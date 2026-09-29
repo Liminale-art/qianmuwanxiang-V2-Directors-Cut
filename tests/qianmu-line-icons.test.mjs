@@ -258,7 +258,7 @@ const collectionRoot = makeOwnedRoot(), collectionButton = collectionRoot.root.a
   new FakeElement('button', {className: 'mes_button interactable qm-collection-star', ownerDocument: collectionRoot.document}),
 );
 const collectionStar = collectionButton.appendChild(new FakeElement('svg', {
-  className: 'qm-collection-star-glyph', attributes: {'data-qianmu-icon-skip': ''}, ownerDocument: collectionRoot.document,
+  className: 'qm-collection-star-glyph', attributes: {'data-qianmu-icon-skip': '', 'stroke-width': '2.5'}, ownerDocument: collectionRoot.document,
 }));
 for (const fill of ['none', 'currentColor']) {
   collectionStar.setAttribute('fill', fill);
@@ -266,6 +266,7 @@ for (const fill of ['none', 'currentColor']) {
   assert.equal(applyQianmuIcons(collectionButton), 0);
   assert.equal(refreshQianmuIcon(collectionStar), false);
   assert.equal(collectionStar.getAttribute('fill'), fill);
+  assert.equal(collectionStar.getAttribute('stroke-width'), '2.5');
   assert.equal(collectionStar.children.length, 0);
   assert.equal(collectionRoot.stats.writes, writes);
 }

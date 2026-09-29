@@ -19,8 +19,8 @@ button.qm-collection-star {
 
 button.qm-collection-star > .qm-collection-star-glyph {
     display: block;
-    width: 1em;
-    height: 1em;
+    width: 1.1em;
+    height: 1.1em;
     color: inherit;
     pointer-events: none;
 }

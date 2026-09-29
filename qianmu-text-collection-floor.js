@@ -81,7 +81,7 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
                 glyph.setAttribute('class', 'qm-collection-star-glyph');
                 glyph.setAttribute('viewBox', '0 0 24 24');
                 glyph.setAttribute('stroke', 'currentColor');
-                glyph.setAttribute('stroke-width', '1.75');
+                glyph.setAttribute('stroke-width', '2.5');
                 glyph.setAttribute('stroke-linejoin', 'round');
                 glyph.setAttribute('aria-hidden', 'true');
                 glyph.setAttribute('focusable', 'false');

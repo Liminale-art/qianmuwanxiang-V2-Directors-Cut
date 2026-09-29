@@ -34,6 +34,7 @@ test('opens only the compact choice and full-text selection preserves every char
     assert.equal(f.dom.visible(f.dom.get('确认选段')), false);
     click(f, '全文收藏'); await turn();
     assert.deepEqual(f.calls[0][0], source);
+    assert.equal(f.calls[0][1].saveImmediately, false);
     assert.equal(dialog(f), undefined);
     assert.equal(TEXT_COLLECTION_CAPTURE_STYLESHEET.pathname.endsWith('/qianmu-text-collection-capture.css'), true);
 });
@@ -46,6 +47,7 @@ test('paragraph clicks toggle selection and submit in original order rather than
     assert.equal(f.dom.get('选择第 2 段').getAttribute('aria-pressed'), 'false');
     click(f, '确认选段'); await turn();
     assert.equal(f.calls.length, 1); assert.equal(f.calls[0][0].text, '第一段\n\n第三段');
+    assert.equal(f.calls[0][1].saveImmediately, true);
 });
 
 test('consecutive selected paragraphs preserve separators and indentation without executing markup', async t => {
@@ -138,7 +140,7 @@ test('false and rejected callbacks preserve the exact selection for an explicit 
         click(f, '确认选段'); await turn();
         assert.equal(f.dom.get('选择第 2 段').getAttribute('aria-pressed'), 'true');
         assert.equal(f.dom.get('确认选段').disabled, false);
-        assert.equal(f.dom.status().textContent, '未打开收藏编辑，请重试。');
+        assert.equal(f.dom.status().textContent, '收藏未完成，所选段落已保留，请重试。');
         assert.equal(f.dom.status().textContent.includes('private'), false);
     }
     click(f, '确认选段'); await turn();

@@ -44,7 +44,9 @@ test('adds one font-independent theme-inheriting outline star per rendered messa
     assert.equal(glyph.className, 'qm-collection-star-glyph');
     assert.equal(glyph.getAttribute('fill'), 'none');
     assert.equal(glyph.getAttribute('stroke'), 'currentColor');
+    assert.equal(glyph.getAttribute('stroke-width'), '2.5');
     assert.equal(glyph.firstChild.tagName, 'POLYGON');
+    assert.equal(glyph.firstChild.hasAttribute('vector-effect'), false);
     assert.equal(glyph.hasAttribute('data-qianmu-icon-skip'), true);
     f.floor.refresh(f.root); f.floor.refresh(f.root);
     assert.equal(f.button(), first); assert.equal(f.button().firstChild, glyph);
@@ -203,5 +205,8 @@ test('all style selectors stay on the owned star without fixing host colors or t
     const selectors = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{/g)].map(match => match[1].trim());
     assert.ok(selectors.every(selector => selector.startsWith('button.qm-collection-star')));
     assert.match(css, /color: inherit/); assert.match(css, /background: transparent/); assert.match(css, /border: 0/);
+    const glyphStyle = css.match(/button\.qm-collection-star > \.qm-collection-star-glyph\s*\{([^}]+)\}/)?.[1] || '';
+    assert.match(glyphStyle, /width: 1\.1em/); assert.match(glyphStyle, /height: 1\.1em/);
+    assert.doesNotMatch(glyphStyle, /vector-effect|overflow/);
     assert.doesNotMatch(css, /#[\da-f]{3,8}\b|\.mes_buttons\s*\{|\.mes\s*\{/i);
 });
