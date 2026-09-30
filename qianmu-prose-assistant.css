@@ -6,6 +6,7 @@
 .qm-prose-assistant-dialog > header > div { display:flex;align-items:center;gap:4px; }
 .qm-prose-assistant-dialog > header strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .qm-prose-assistant-dialog > main,.qm-prose-assistant-dialog > [data-pa-settings] { flex:1;min-height:0;overflow:auto;padding:8px 14px;overscroll-behavior:contain;scrollbar-width:thin; }
+.qm-prose-assistant-dialog > main { overflow-anchor:none; }
 .qm-prose-assistant-dialog > [data-pa-settings] { display:flex;flex-direction:column; }
 .qm-prose-assistant-dialog > footer { flex:none;padding:10px 14px; }
 .qm-prose-assistant-dialog button { display:inline-flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;margin:0;padding:7px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;cursor:pointer;transition:background .15s ease,color .15s ease; }
@@ -22,6 +23,11 @@ html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-
 .qm-prose-assistant-dialog :is(input,select,textarea):disabled { opacity:.55;cursor:default; }
 .qm-prose-assistant-dialog button:disabled { opacity:.4;cursor:default; }
 .qm-prose-assistant-dialog button:focus-visible,.qm-prose-assistant-dialog [data-pa-resize]:focus-visible { outline:1px solid var(--sd-accent,#a7c4b5);outline-offset:-2px; }
+.qm-prose-assistant-dialog :is([data-pa-action="older-messages"],[data-pa-action="latest-messages"],[data-pa-action="capacity-new"]) { width:auto;height:auto;min-height:28px;max-width:100%;padding:3px 8px;font-size:calc(1em - 2px);line-height:1.4;color:var(--sd-muted,#aaa); }
+.qm-prose-assistant-dialog :is([data-pa-action="older-messages"],[data-pa-action="latest-messages"]) { display:flex;max-width:max-content;margin:0 auto 6px; }
+.qm-prose-assistant-dialog [data-pa-capacity] { display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin:0 0 6px; }
+.qm-prose-assistant-dialog [data-pa-capacity] > small { flex:1 1 160px;margin:0;overflow-wrap:anywhere; }
+.qm-prose-assistant-dialog [data-pa-action="capacity-new"] { color:var(--sd-accent,#a7c4b5); }
 .qm-prose-assistant-dialog .qm-pa-config,.qm-prose-assistant-dialog .qm-pa-custom { display:grid;gap:14px; }
 .qm-prose-assistant-dialog .qm-pa-config { display:flex;flex-direction:column;flex:1 0 auto;padding:2px 0 0; }
 .qm-prose-assistant-dialog .qm-pa-config label { display:block;margin:0;text-align:start; }

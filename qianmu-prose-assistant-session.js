@@ -32,7 +32,7 @@ export function createProseAssistantSession({key,isCurrent,onChange=()=>{},initi
     const replacing=replaceId!==undefined,index=replacing?rows.findIndex(row=>row.id===replaceId):rows.length;
     if(replacing&&(!Number.isSafeInteger(replaceId)||replaceId<1||index<0))fail('prose_assistant_input','需要修改的对话已不存在');
     const prefix=rows.slice(0,index),prefixCharacters=prefix.reduce((total,row)=>total+row.user.length+row.assistant.length,0);
-    if(prefix.length>=limits.turns||prefixCharacters+question.length>=limits.characters||!replacing&&nextId>=Number.MAX_SAFE_INTEGER)fail('prose_assistant_capacity','助手会话已达容量上限，请先复制需要的内容，再清空会话');
+    if(prefix.length>=limits.turns||prefixCharacters+question.length>=limits.characters||!replacing&&nextId>=Number.MAX_SAFE_INTEGER)fail('prose_assistant_capacity','本对话已达容量上限，原记录保留，请新建对话继续');
     const prior=Object.freeze({key,turns:Object.freeze(prefix.filter(row=>row.status==='complete').map(row=>Object.freeze({user:row.user,assistant:row.assistant})))});
     const row={id:replacing?replaceId:++nextId,user:question,assistant:'',status:'running',reference:null};
     const token={row,controller:new AbortController(),context:null,replacement:replacing?{index,rows:rows.slice(index),characters}:null};

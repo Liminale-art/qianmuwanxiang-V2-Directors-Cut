@@ -1,7 +1,7 @@
 import {createStAccountStorage} from './qianmu-st-account-storage.js';
 import {createDocumentSession} from './qianmu-document-session.js';
 import {createTextCollection, documentFromTextCollectionState} from './qianmu-text-collection.js';
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.411';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.412';
 import {createTextCollectionBackup, readTextCollectionBackup, prepareTextCollectionRestore} from './qianmu-text-collection-backup.js';
 
 const expired = () => Object.assign(new Error('收藏操作已结束，请重新打开。'), {code: 'text_collection_owner'});

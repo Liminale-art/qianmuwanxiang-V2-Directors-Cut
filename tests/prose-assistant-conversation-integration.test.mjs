@@ -17,8 +17,35 @@ const uploaded=call=>call.path==='/api/files/upload'?JSON.parse(Buffer.from(JSON
 const titleInstruction=body=>body.messages.find(message=>message.role==='system'&&/\[\[qianmu-title:/.test(message.content))?.content;
 const titleSuffix=(body,title)=>{const id=titleInstruction(body)?.match(/\[\[qianmu-title:([0-9a-f-]{36})\]\]/)?.[1];assert.ok(id,'the first unnamed offstage request includes its single-response naming instruction');return `\n[[qianmu-title:${id}]]${title}[[/qianmu-title:${id}]]`;};
 
-async function fixture(t,{initialRows=[],offstage=false}={}){
+const historyRows=count=>Array.from({length:count},(_,index)=>({...row('问题 '+(index+1),'回答 '+(index+1)),id:index+1}));
+const turnIds=f=>f.rows().map(entry=>Number(entry.dataset.paTurn));
+
+// Deliberately synthetic geometry: exercises the scroll arithmetic, not browser layout.
+function messageLayout(dom){
+ const create=dom.doc.createElement.bind(dom.doc),visible=element=>{for(let current=element;current;current=current.parentNode)if(current.hidden)return false;return true;};
+ const articleHeight=article=>200+article.querySelector('.qm-pa-reply').textContent.length,olderHeight=main=>main.querySelector('[data-pa-action="older-messages"]')?.hidden===false?36:0;
+ const rect=(top,height)=>({top,bottom:top+height,left:0,right:400,width:400,height,x:0,y:top});
+ dom.doc.createElement=tag=>{
+  const element=create(tag);
+  if(tag==='article')element.getBoundingClientRect=()=>{
+   const main=element.closest('main');if(!main||!visible(element))return rect(0,0);
+   const preceding=main.querySelectorAll('[data-pa-turn]'),index=preceding.indexOf(element),offset=preceding.slice(0,index).reduce((total,article)=>total+articleHeight(article),0);
+   return rect(100+olderHeight(main)+offset-main.scrollTop,articleHeight(element));
+  };
+  if(tag!=='main')return element;let top=0;
+  const height=()=>element.querySelectorAll('[data-pa-turn]').reduce((total,article)=>total+articleHeight(article),0)+olderHeight(element);
+  element.getBoundingClientRect=()=>visible(element)?rect(100,400):rect(0,0);
+  Object.defineProperties(element,{
+   clientHeight:{configurable:true,get:()=>visible(element)?400:0},
+   scrollHeight:{configurable:true,get:()=>visible(element)?height():0},
+   scrollTop:{configurable:true,get:()=>visible(element)?Math.min(top,Math.max(0,height()-400)):top,set:value=>{top=Math.max(0,Math.min(Number(value)||0,Math.max(0,element.scrollHeight-element.clientHeight)));}},
+  });return element;
+ };
+}
+
+async function fixture(t,{initialRows=[],offstage=false,messageViewport=false}={}){
  const namespace='st-user:conversation-panel-fixture',transport=streamCheckpointTransport(namespace),dom=proseAssistantPanelDom();
+ if(messageViewport)messageLayout(dom);
  const f={namespace,transport,dom,host:hostFor(),epoch:0,live:true,panel:null,models:[],proseReads:[],confirmations:[],copies:[],mode:'json',confirmApproval:true};
  if(offstage){delete f.host.chatId;f.host.chat=[];}
  const source=host=>({getContext:()=>host||f.host,epoch:()=>f.epoch,resolveNamespace:async()=>f.namespace,isCurrent:()=>f.live,
@@ -37,6 +64,7 @@ async function fixture(t,{initialRows=[],offstage=false}={}){
   assert.equal(body.custom_url,'https://assistant.fixture.invalid/v1');assert.equal(body.custom_include_headers,'Authorization: Bearer synthetic-key');
   if(f.mode==='hold')return new Response(new ReadableStream({start(controller){
    f.appendReply=(text,finished=false)=>{controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({choices:[{delta:{content:text},...(finished?{finish_reason:'stop'}:{})}]})}\n\n`));if(finished)controller.close();};
+   f.failReply=()=>controller.error(new Error('synthetic assistant stream failure'));
    f.finishReply=()=>f.appendReply('，已完成',true);f.appendReply('部分回答');
   }}),{headers:{'content-type':'text/event-stream'}});
   return Response.json({choices:[{message:{content:f.replyText?f.replyText(body):'回答 '+f.models.length},finish_reason:'stop'}]});
@@ -281,4 +309,122 @@ test('lost automatic-title directory receipt retries only its exact snapshot, ne
  const files=new Map(f.transport.files),writes=f.transport.calls.filter(call=>call.options.method==='POST').length;f.transport.hook=null;f.action('retry-conversations').click();await f.idle();
  assert.deepEqual(f.transport.files,files);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,writes);assert.equal(f.models.length,1);assert.equal(f.catalogue().entries[0].title,'回执丢失的标题');assert.equal(f.action('retry-conversations').hidden,true);
  f.replyText=body=>{assert.equal(titleInstruction(body),undefined);return '后续正文';};await f.send('再问一次');assert.equal(f.models.length,2);assert.equal(f.catalogue().entries[0].title,'回执丢失的标题');assert.doesNotMatch(JSON.stringify(f.remote(f.base)),/qianmu-title:/);
+});
+
+test('long history opens the newest ten turns, expands older batches without reads or writes, and retains the full original',async t=>{
+ const initial=historyRows(35),f=await fixture(t,{initialRows:initial,messageViewport:true}),main=f.dom.get('助手对话').parentNode;
+ assert.deepEqual(turnIds(f),initial.slice(-10).map(item=>item.id));assert.equal(main.scrollTop,main.scrollHeight-main.clientHeight);
+ const original=structuredClone(f.remote(f.base)),calls=f.transport.calls.length,newest=f.rows().at(-1);
+ for(const size of [20,30,35]){f.action('older-messages').click();assert.equal(f.rows().length,size);assert.deepEqual(turnIds(f),initial.slice(-size).map(item=>item.id));assert.equal(f.rows().at(-1),newest);}
+ assert.equal(f.action('older-messages').hidden,true);assert.equal(f.transport.calls.length,calls,'display paging performs no remote history or metadata work');
+ assert.deepEqual(f.remote(f.base),original);assert.equal(f.models.length,0);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,0);
+});
+
+test('upward paging compensates inserted height and warm reopen or current-list return keeps the expanded rows and position',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true}),main=f.dom.get('助手对话').parentNode,calls=f.transport.calls.length;
+ const oldHeight=main.scrollHeight,oldest=f.rows()[0];main.scrollTop=20;main.emit('scroll');
+ assert.equal(f.rows().length,20);assert.equal(f.rows()[10],oldest);assert.equal(main.scrollTop,20+main.scrollHeight-oldHeight,'the old first visible content keeps its offset');
+ const expanded=[...f.rows()],position=main.scrollTop,panel=f.panel;
+ f.showList();f.listRows().find(entry=>entry.dataset.paConversationKey===f.base).click();assert.deepEqual(f.rows(),expanded);assert.equal(main.scrollTop,position);
+ for(let cycle=0;cycle<3;cycle++){await f.close();assert.equal(await panel.reopen(),true);assert.deepEqual(f.rows(),expanded);assert.equal(main.scrollTop,position);}
+ assert.equal(f.transport.calls.length,calls);assert.equal(f.models.length,0);
+});
+
+test('new streamed replies preserve an expanded older reading position until back-to-latest is chosen',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(25),messageViewport:true}),main=f.dom.get('助手对话').parentNode;
+ f.action('older-messages').click();const oldest=f.rows()[0];main.scrollTop=240;main.emit('scroll');assert.equal(f.action('latest-messages').hidden,false);
+ f.mode='hold';f.question().value='追加问题';f.question().emit('input');f.action('send').click();await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');
+ assert.equal(f.rows().length,21);assert.equal(f.rows()[0],oldest);assert.equal(main.scrollTop,240,'a new reply does not pull an older reader down');
+ f.appendReply('继续输出'.repeat(30));await f.dom.wait(()=>f.rows().at(-1).querySelector('.qm-pa-reply').textContent.length>100);assert.equal(main.scrollTop,240);
+ f.action('latest-messages').click();assert.equal(main.scrollTop,main.scrollHeight-main.clientHeight);assert.equal(f.action('latest-messages').hidden,true);assert.equal(f.rows()[0],oldest,'jumping to the newest reply does not collapse expanded history');
+ f.appendReply('更多输出'.repeat(30));await f.dom.wait(()=>f.rows().at(-1).querySelector('.qm-pa-reply').textContent.length>200);assert.equal(main.scrollTop,main.scrollHeight-main.clientHeight,'once at the latest reply, later chunks remain in view');
+ f.finishReply();await f.idle();assert.equal(f.remote(f.base).rows.length,26);assert.deepEqual(f.remote(f.base).rows.slice(0,25),historyRows(25));assert.equal(f.models.length,1);
+});
+
+test('settings round trips preserve old reading positions but resume latest-following after a reply completes while hidden',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(25),messageViewport:true}),main=f.dom.get('助手对话').parentNode;
+ f.action('older-messages').click();main.scrollTop=240;main.emit('scroll');const expanded=[...f.rows()],calls=f.transport.calls.length;
+ f.action('settings').click();assert.equal(main.hidden,true);assert.equal(f.action('latest-messages').hidden,true);f.action('back').click();
+ assert.deepEqual(f.rows(),expanded);assert.equal(main.scrollTop,240);assert.equal(f.transport.calls.length,calls,'opening settings alone performs no history work');
+ f.mode='hold';
+ for(const follow of [false,true]){
+  if(follow)f.action('latest-messages').click();
+  const before=f.models.length;f.question().value=follow?'跟随最新时离开':'阅读旧段时离开';f.question().emit('input');f.action('send').click();
+  await f.dom.wait(()=>f.models.length===before+1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');
+  f.action('settings').click();assert.equal(main.hidden,true);f.appendReply('在设置页继续生成'.repeat(50));f.finishReply();await f.idle();
+  assert.equal(f.action('latest-messages').hidden,true);f.action('back').click();assert.equal(main.hidden,false);assert.equal(f.rows()[0],expanded[0]);
+  assert.equal(main.scrollTop,follow?main.scrollHeight-main.clientHeight:240);assert.equal(f.action('latest-messages').hidden,follow);assert.equal(f.models.length,before+1);
+ }
+ assert.equal(f.remote(f.base).rows.length,27);assert.deepEqual(f.remote(f.base).rows.slice(0,25),historyRows(25));assert.equal(f.models.length,2);
+});
+
+test('switching from the hidden directory resets only the new message window and positions its newest turns after it becomes visible',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true}),main=f.dom.get('助手对话').parentNode;
+ f.action('older-messages').click();main.scrollTop=180;main.emit('scroll');const original=structuredClone(f.remote(f.base));
+ const thread=await f.create();assert.equal(f.rows().length,0);await f.send('另一个会话');assert.deepEqual(turnIds(f),[1]);assert.equal(f.rows()[0].querySelector('.qm-pa-user').textContent,'另一个会话');
+ await f.choose(f.base);assert.deepEqual(turnIds(f),historyRows(35).slice(-10).map(item=>item.id));assert.equal(main.scrollTop,main.scrollHeight-main.clientHeight,'hidden-list loading must defer the latest scroll until main is visible');
+ assert.deepEqual(f.remote(f.base),original);assert.equal(f.remote(thread).rows.length,1);assert.equal(f.models.length,1);
+});
+
+test('editing a previously paged-in reply changes only that original turn and never the displayed slice or hidden history',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true}),main=f.dom.get('助手对话').parentNode;f.action('older-messages').click();main.scrollTop=220;main.emit('scroll');
+ const old=structuredClone(f.remote(f.base).rows),target=f.rows()[0],ids=turnIds(f);target.querySelector('[data-pa-action="edit"]').click();f.dom.get('编辑助手回复').value='旧轮修订内容';f.action('save-reply').click();
+ await f.dom.wait(()=>f.remote(f.base).rows[15].assistant==='旧轮修订内容');await f.idle();old[15].assistant='旧轮修订内容';
+ assert.deepEqual(f.remote(f.base).rows,old);assert.deepEqual(turnIds(f),ids);assert.equal(f.rows()[0],target);assert.equal(main.scrollTop,220);assert.equal(f.models.length,0);
+});
+
+test('regenerating an older displayed question sends its actual preceding context, then removes only the approved tail on success',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true});f.action('older-messages').click();const target=f.rows()[0];
+ target.querySelector('[data-pa-action="edit-question"]').click();f.dom.get('编辑提问').value='第十六轮修订';f.action('save-reply').click();await f.dom.wait(()=>f.models.length===1);await f.idle();
+ assert.match(f.confirmations.at(-1),/替换这一轮并删除之后/);const context=f.models[0].messages.slice(0,-1).filter(message=>message.role==='user');
+ assert.equal(context.at(-1).content,'问题 15');assert.equal(context.length,6,'the model context window is independent of the rendered window');
+ const persisted=f.remote(f.base).rows;assert.equal(persisted.length,16);assert.deepEqual(persisted.slice(0,15),historyRows(35).slice(0,15));assert.equal(persisted.at(-1).user,'第十六轮修订');assert.equal(persisted.at(-1).assistant,'回答 1');
+ assert.equal(f.rows().at(-1).querySelector('.qm-pa-user').textContent,'第十六轮修订');assert.ok(!f.rows().some(entry=>entry.querySelector('.qm-pa-user').textContent==='问题 35'));assert.equal(f.models.length,1);
+});
+
+test('stopping an older regeneration restores every original turn including the temporarily hidden later tail',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true}),main=f.dom.get('助手对话').parentNode;f.action('older-messages').click();main.scrollTop=240;main.emit('scroll');const before=structuredClone(f.remote(f.base)),ids=turnIds(f);
+ f.mode='hold';f.rows()[0].querySelector('[data-pa-action="regenerate"]').click();await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');
+ assert.equal(main.scrollTop,0,'the temporarily shortened viewport is clamped while regeneration is running');
+ f.action('stop').click();await f.idle();assert.deepEqual(f.remote(f.base),before);assert.deepEqual(turnIds(f),ids);assert.equal(f.rows().at(-1).querySelector('.qm-pa-user').textContent,'问题 35');assert.equal(f.models.length,1);
+ assert.equal(main.scrollTop,240,'restoring a cancelled older regeneration restores its pre-request reading position, not the tail');
+});
+
+test('an older regeneration failing while settings are open restores its original reading position on return',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true}),main=f.dom.get('助手对话').parentNode;f.action('older-messages').click();main.scrollTop=240;main.emit('scroll');
+ const before=structuredClone(f.remote(f.base)),ids=turnIds(f);f.mode='hold';f.rows()[0].querySelector('[data-pa-action="regenerate"]').click();
+ await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');assert.equal(main.scrollTop,0);
+ f.action('settings').click();assert.equal(main.hidden,true);f.failReply();await f.idle();assert.deepEqual(f.remote(f.base),before);assert.deepEqual(turnIds(f),ids);
+ f.action('back').click();assert.equal(main.hidden,false);assert.equal(main.scrollTop,240,'failed hidden regeneration must restore the old viewport when it becomes visible');assert.equal(f.models.length,1);
+});
+
+test('successful regeneration of the last turn preserves a reader who scrolls upward during its stream',async t=>{
+ const initial=historyRows(35),f=await fixture(t,{initialRows:initial,messageViewport:true}),main=f.dom.get('助手对话').parentNode;
+ assert.equal(main.scrollTop,main.scrollHeight-main.clientHeight);f.mode='hold';f.rows().at(-1).querySelector('[data-pa-action="regenerate"]').click();
+ await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');main.scrollTop=240;main.emit('scroll');
+ f.finishReply();await f.idle();assert.equal(main.scrollTop,240,'a successful final-turn regeneration is not an old-tail restoration');assert.equal(f.action('latest-messages').hidden,false);
+ assert.deepEqual(f.remote(f.base).rows.slice(0,-1),initial.slice(0,-1));assert.equal(f.remote(f.base).rows.length,35);assert.equal(f.remote(f.base).rows.at(-1).assistant,'部分回答，已完成');assert.equal(f.models.length,1);
+});
+
+test('stopping an older regeneration after paging farther back preserves the original row anchor with the newly inserted height',async t=>{
+ const initial=historyRows(35),f=await fixture(t,{initialRows:initial,messageViewport:true}),main=f.dom.get('助手对话').parentNode;f.action('older-messages').click();main.scrollTop=240;main.emit('scroll');
+ const anchor=f.rows()[0],anchorId=anchor.dataset.paTurn,offset=anchor.getBoundingClientRect().top-main.getBoundingClientRect().top,before=structuredClone(f.remote(f.base));
+ f.mode='hold';anchor.querySelector('[data-pa-action="regenerate"]').click();await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');assert.equal(main.scrollTop,0);
+ const calls=f.transport.calls.length;f.action('older-messages').click();assert.deepEqual(turnIds(f),initial.slice(5,16).map(item=>item.id));assert.equal(f.transport.calls.length,calls);
+ const addedHeight=initial.slice(5,15).reduce((total,item)=>total+200+item.assistant.length,0);f.action('stop').click();await f.idle();
+ assert.deepEqual(f.remote(f.base),before);assert.deepEqual(turnIds(f),initial.slice(5).map(item=>item.id));assert.equal(main.scrollTop,240+addedHeight,'restored position includes the older rows loaded during the request');
+ const restored=f.rows().find(entry=>entry.dataset.paTurn===anchorId);assert.equal(restored.getBoundingClientRect().top-main.getBoundingClientRect().top,offset);assert.equal(f.models.length,1);
+});
+
+test('capacity guidance warns near the limit and a full conversation can create a new one without losing its original',async t=>{
+ for(const count of [89,90,100])await t.test(String(count)+' turns',async t=>{
+  const f=await fixture(t,{initialRows:historyRows(count),messageViewport:true}),notice=f.dom.all().find(element=>Object.hasOwn(element.dataset,'paCapacity'));
+  assert.ok(notice);assert.equal(notice.hidden,count<90);assert.equal(f.models.length,0);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,0);
+  if(count<100)return;
+  const original=structuredClone(f.remote(f.base));assert.doesNotMatch(notice.textContent,/清空/);f.question().value='容量已满时未发出的草稿';f.question().emit('input');assert.equal(f.action('send').disabled,true);
+  assert.equal(f.rows().at(-1).querySelector('[data-pa-action="edit"]').disabled,false);assert.equal(f.rows().at(-1).querySelector('[data-pa-action="regenerate"]').disabled,false);
+  f.confirmApproval=false;f.action('capacity-new').click();await f.dom.wait(()=>f.confirmations.length===1);await f.idle();assert.equal(f.rows().length,10);assert.equal(f.question().value,'容量已满时未发出的草稿');assert.deepEqual(f.remote(f.base),original);
+  f.confirmApproval=true;f.action('capacity-new').click();await f.dom.wait(()=>f.rows().length===0);await f.idle();assert.equal(f.models.length,0);assert.deepEqual(f.remote(f.base),original);assert.equal(f.catalogue().entries.length,2);
+  assert.equal(notice.hidden,true);await f.send('新对话第一问');assert.equal(f.models.length,1);assert.deepEqual(f.remote(f.base),original);
+ });
 });

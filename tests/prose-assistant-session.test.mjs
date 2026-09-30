@@ -30,11 +30,16 @@ test('mismatched, running or malformed saved state is rejected rather than parti
   for(const patch of [{namespace:f.key+'wrong'},{rows:[archived(1,'running')]},{rows:[{...archived(1),apiKey:'forbidden'}]},{rows:[archived(1),archived(1)]}])assert.throws(()=>create({key:f.key,isCurrent:()=>true,initialHistory:{...initial,...patch}}));
   f.session.close();
 });
-test('restored capacity is counted before sending; explicit clear releases rows and exhausted row identifiers',async()=>{
+test('restored capacity is counted before capture or sending and preserves all history with new-conversation guidance',async()=>{
   const f=await fixture('st-user:'+'a'.repeat(64));assert.deepEqual(limits,{turns:PROSE_ASSISTANT_HISTORY_LIMITS.turns,characters:PROSE_ASSISTANT_HISTORY_LIMITS.characters,question:PROSE_ASSISTANT_HISTORY_LIMITS.question,reply:PROSE_ASSISTANT_HISTORY_LIMITS.reply});
-  for(const rows of [Array.from({length:limits.turns},(_,i)=>archived(i+1)),[archived(Number.MAX_SAFE_INTEGER)]]){
-    const session=create({key:f.key,isCurrent:()=>true,initialHistory:saved(f.key,rows)});let calls=0;
-    await assert.rejects(session.run({question:'不会发出',source:f.source,request:async()=>{calls++;return 'bad';}}),{code:'prose_assistant_capacity'});assert.equal(calls,0);
+  const charactersFull=Array.from({length:5},(_,i)=>({...archived(i+1),assistant:'x'.repeat(limits.characters/5-'旧问题'.length)}));
+  for(const rows of [Array.from({length:limits.turns},(_,i)=>archived(i+1)),charactersFull,[archived(Number.MAX_SAFE_INTEGER)]]){
+    const notices=[],session=create({key:f.key,isCurrent:()=>true,initialHistory:saved(f.key,rows),onChange:value=>notices.push(value)}),before=session.view();let calls=0,captures=0;
+    await assert.rejects(session.run({question:'不会发出',source:{...f.source,resolveNamespace:async()=>{captures++;return 'st-user:'+'a'.repeat(64);}},request:async()=>{calls++;return 'bad';}}),error=>{
+      assert.equal(error.code,'prose_assistant_capacity');assert.match(error.message,/原记录保留.*新建对话/);assert.doesNotMatch(error.message,/清空|删除/);return true;
+    });
+    assert.equal(calls,0);assert.equal(captures,0);assert.equal(notices.length,0);assert.deepEqual(session.view(),before);validateProseAssistantHistory(saved(f.key,session.view().rows),f.key);assert.equal(f.listeners(),0);
+    // The internal explicit clear operation remains supported, but the user-facing remedy never requires it.
     session.clear();assert.equal(session.view().characters,0);await session.run({question:'新的开始',source:f.source,request:async()=> '新答'});assert.equal(session.view().rows[0].id,1);session.close();
   }f.session.close();
 });
@@ -142,7 +147,17 @@ test('replacement validates its target before sending and counts capacity after 
   for(const replaceId of [0,-1,1.5,'1',null,limits.turns+1])await assert.rejects(session.run({replaceId,question:'改问',source:f.source,request:async()=>{calls++;return '不应发送';}}),{code:'prose_assistant_input'});
   assert.equal(calls,0);assert.deepEqual(session.view(),before);
   await session.run({replaceId:limits.turns,question:'最后一轮重新生成',source:f.source,request:async()=>{calls++;return '新答';}});assert.equal(calls,1);assert.equal(session.view().rows.length,limits.turns);
+  assert.deepEqual(session.view().rows.slice(0,-1),before.rows.slice(0,-1));validateProseAssistantHistory(saved(f.key,session.view().rows),f.key);
+  const regenerated=session.view();await assert.rejects(session.run({question:'仍不能新增',source:f.source,request:async()=>{calls++;return '不应发送';}}),{code:'prose_assistant_capacity'});assert.equal(calls,1);assert.deepEqual(session.view(),regenerated);
   await session.run({replaceId:1,question:'重写首问',source:f.source,request:async({context})=>{assert.deepEqual(context.history,[]);return '只留新首答';}});assert.equal(session.view().rows.length,1);session.close();f.session.close();
+});
+
+test('character-full history can regenerate the final turn and edit a reply without deleting preceding records',async()=>{
+  const f=await fixture(),rows=Array.from({length:5},(_,i)=>({...archived(i+1),assistant:'x'.repeat(limits.characters/5-'旧问题'.length)})),session=create({key:f.key,isCurrent:()=>true,initialHistory:saved(f.key,rows)}),before=session.view();let calls=0;
+  const edited=session.editReply(5,'y'.repeat(rows[4].assistant.length));assert.equal(edited.characters,limits.characters);assert.deepEqual(edited.rows.slice(0,-1),before.rows.slice(0,-1));
+  await session.run({replaceId:5,question:'重新生成末轮',source:f.source,request:async()=>{calls++;return '新答';}});
+  assert.equal(calls,1);assert.equal(session.view().rows.length,5);assert.deepEqual(session.view().rows.slice(0,-1),before.rows.slice(0,-1));assert.ok(session.view().characters<limits.characters);
+  validateProseAssistantHistory(saved(f.key,session.view().rows),f.key);session.close();f.session.close();
 });
 
 test('stopped replacement before source capture restores original history without sending or leaking listeners',async()=>{

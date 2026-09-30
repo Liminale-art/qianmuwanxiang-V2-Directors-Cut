@@ -20,16 +20,19 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   let previousFocus=document.activeElement;const dialog=document.createElement('section');dialog.className='qm-prose-assistant-dialog';dialog.tabIndex=-1;dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','false');dialog.setAttribute('aria-label','场外特助');
   let closed=false,busy=false,saving=false,closing=false,sequence=0,resolve,session,observer,observerCheckTimer=0,history,historyTask=null,historyWorking=true,pendingSnapshot=null,disposeWindow,autosave;
   let catalogue=null,currentConversation=null,catalogueWorking=false,catalogueRecovery=null,page='chat',closeTask=null,reopenTask=null,pendingTitle=null;
+  // Only the rendered window is paged; the session and saved original stay intact.
+  const messageBatch=10;let messageStart=0,messageCount=0,messageCharacters=0,latestPending=true,followLatest=true,lastScrollTop=0,replacementPosition=null,restoredPosition=null;
   const listeners=[],rows=new Map(),finished=new Promise(done=>{resolve=done;});let activeQuestion=null,inputRevision=0,editing=null;
   const node=(tag,value)=>{const element=document.createElement(tag);if(value!==undefined)element.textContent=value;return element;};
   const icons={close:'xmark',settings:'gear',back:'arrow-left',send:'arrow-up',stop:'stop',conversations:'list-ul',copy:'copy',eye:'eye',save:'check',retry:'rotate-right',edit:'pen',resize:'up-right-and-down-left-from-center'};
   const icon=(element,label,name)=>{element.replaceChildren();const glyph=qianmuIconElement('fa-'+(icons[name]||name),{document});if(glyph)element.append(glyph);element.title=label;element.setAttribute('aria-label',label);};
   const button=(label,action,name=action)=>{const element=node('button');element.type='button';element.dataset.paAction=action;icon(element,label,name);return element;};
+  const textButton=(label,action)=>{const element=node('button',label);element.type='button';element.dataset.paAction=action;return element;};
   const field=(label,element)=>{const wrapper=node('label');wrapper.append(node('span',label),element);return wrapper;};
   const option=(select,value,label)=>{const item=node('option',label);item.value=value;select.append(item);};
   const listen=(element,type,handler)=>{element.addEventListener(type,handler);listeners.push(()=>element.removeEventListener(type,handler));};
   const header=node('header'),title=node('strong','场外特助'),headerLeading=node('div'),headerActions=node('div'),listButton=button('最近对话','conversations'),settingsButton=button('特助设置','settings'),back=button('返回对话','back'),closeButton=button('关闭','close');back.hidden=true;listButton.hidden=!conversationFactory;headerLeading.append(back,listButton,title);headerActions.append(settingsButton,closeButton);header.append(headerLeading,headerActions);
-  const main=node('main'),transcript=node('section');transcript.dataset.paTranscript='';transcript.setAttribute('aria-label','助手对话');main.append(transcript);
+  const main=node('main'),transcript=node('section'),older=textButton('显示更早消息','older-messages');older.hidden=true;transcript.dataset.paTranscript='';transcript.setAttribute('aria-label','助手对话');main.append(older,transcript);
   const config=node('section'),grid=node('div'),profile=node('select'),range=node('input');config.dataset.paSettings='';config.hidden=true;grid.className='qm-pa-config';
   profile.setAttribute('aria-label','助手API预设');option(profile,'','请选择预设');for(const entry of profiles)if(entry&&typeof entry.id==='string')option(profile,'profile:'+entry.id,String(entry.name||entry.id));option(profile,'custom','自定义');
   range.type='number';range.min='0';range.max='9';range.step='1';range.value=String(Number.isSafeInteger(referenceFloors)&&referenceFloors>=0&&referenceFloors<=9?referenceFloors:3);range.setAttribute('aria-label','参考楼层数');
@@ -47,7 +50,8 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   const promptField=field('助手提示词',persona);promptField.className='qm-pa-prompt-field';grid.append(promptField);retryCatalogue.hidden=true;
   question.rows=1;question.maxLength=20000;question.setAttribute('aria-label','向场外特助提问');question.dataset.paQuestion='';
   status.dataset.paStatus='';status.setAttribute('role','status');status.setAttribute('aria-live','polite');historyNotice.dataset.paHistory='';historyNotice.setAttribute('role','status');retry.hidden=true;
-  composer.className='qm-pa-composer';composer.append(question,send);footer.append(historyNotice,retry,status,retryCatalogue,composer);
+  const latest=textButton('回到最新','latest-messages'),capacity=node('div'),capacityText=node('small'),capacityNew=textButton('新建对话','capacity-new');latest.hidden=true;capacity.dataset.paCapacity='';capacity.hidden=true;capacity.append(capacityText,capacityNew);
+  composer.className='qm-pa-composer';composer.append(question,send);footer.append(historyNotice,retry,status,retryCatalogue,latest,capacity,composer);
   const conversationList=createProseAssistantConversationList({document,onOpen:key=>{void chooseConversation(key);},onNew:()=>{void newConversation();},onDelete:keys=>{void deleteConversations(keys);},onRefresh:()=>{void refreshConversations();},onRename:renameConversation});conversationList.element.hidden=true;
   const resize=node('span');resize.dataset.paResize='';resize.tabIndex=0;resize.setAttribute('role','separator');resize.setAttribute('aria-label','调整窗口大小');dialog.append(header,main,config,conversationList.element,footer,resize);
   function dispose(){if(closed)return;const restoreFocus=dialog.contains(document.activeElement);closed=true;sequence++;if(observerCheckTimer)view.clearTimeout(observerCheckTimer);observerCheckTimer=0;autosave?.close();session?.close();history?.close();catalogue?.close();conversationList.dispose();seed?.close();disposeWindow?.();observer?.disconnect();listeners.splice(0).forEach(remove=>remove());key.value='';question.value='';rows.clear();dialog.remove();if(restoreFocus&&previousFocus?.isConnected)previousFocus.focus({preventScroll:true});resolve(null);}
@@ -55,7 +59,11 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   const validRange=()=>range.value!==''&&Number.isSafeInteger(Number(range.value))&&Number(range.value)>=0&&Number(range.value)<=9;
   function controls(){
     const blocked=!session||historyWorking||catalogueWorking||!!catalogueRecovery||!!pendingSnapshot;
-    send.disabled=busy?closing:saving||closing||blocked||!!editing||!profile.value||!question.value.trim()||!validRange();
+    const full=messageCount>=sessionLimits.turns||messageCharacters>=sessionLimits.characters;
+    send.disabled=busy?closing:saving||closing||blocked||!!editing||full||!profile.value||!question.value.trim()||!validRange();
+    capacity.hidden=page!=='chat'||(messageCount<sessionLimits.turns*.9&&messageCharacters<sessionLimits.characters*.9);
+    capacityText.textContent=full?'此对话已达容量上限。原记录会保留，可新建对话继续。':'此对话接近容量上限。原记录会保留，可随时新建对话继续。';
+    capacityNew.hidden=!catalogue;capacityNew.disabled=busy||saving||closing||blocked||!!editing||!catalogue;
     const action=busy?'stop':'send';if(send.dataset.paAction!==action){send.dataset.paAction=action;icon(send,busy?'停止':'发送',action);}
     listButton.disabled=busy||saving||closing||historyWorking||catalogueWorking||!!pendingSnapshot||!!editing||!catalogue;retry.disabled=historyWorking||closing;retryCatalogue.disabled=catalogueWorking||closing;closeButton.disabled=closing||catalogueWorking;question.disabled=catalogueWorking;
     for(const element of [profile,range,url,model,key,eye,persona,stream])element.disabled=!seed||busy||closing||(element===range&&!canReference());
@@ -89,7 +97,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     const initial=loaded.initialHistory(),next=createProseAssistantSession({key:entry.key,isCurrent:alive,onChange:render,initialHistory:initial});
     const changed=currentConversation&&currentConversation.key!==entry.key;session?.close();history?.close();history=loaded;session=next;currentConversation={...entry};
     if(initial.updatedAt&&!entry.updatedAt){currentConversation.createdAt=initial.updatedAt;currentConversation.updatedAt=initial.updatedAt;}
-    rows.clear();transcript.replaceChildren();if(changed){question.value='';inputRevision++;main.scrollTop=0;}updateReference();render(session.view());historyNotice.textContent='';
+    rows.clear();transcript.replaceChildren();messageStart=Math.max(0,initial.rows.length-messageBatch);latestPending=true;followLatest=true;lastScrollTop=0;replacementPosition=null;restoredPosition=null;if(changed){question.value='';inputRevision++;main.scrollTop=0;}updateReference();render(session.view());historyNotice.textContent='';
   }
   async function ensureConversation(){
     if(!catalogue)return;const known=catalogue.view().entries.find(item=>item.key===currentConversation.key);
@@ -164,20 +172,47 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
       }
     }catch(_){}finally{closing=false;if(alive())controls();}
   }
-  function render(snapshot){
-    if(!alive())return;busy=snapshot.busy;const stick=main.scrollHeight-main.scrollTop-main.clientHeight<64;
-    for(const row of snapshot.rows){let entry=rows.get(row.id);if(!entry){
+  const messagesVisible=()=>page==='chat'&&!dialog.hidden;
+  const nearLatest=()=>main.scrollHeight-main.scrollTop-main.clientHeight<64;
+  function messageNavigation(){latest.hidden=!messagesVisible()||followLatest||messageCount===0;older.hidden=messageStart===0;}
+  function readingPosition(){
+    const viewport=messagesVisible()?main.getBoundingClientRect?.():null,anchor=viewport&&Array.from(transcript.children).find(article=>article.getBoundingClientRect().bottom>viewport.top);
+    return {top:messagesVisible()?main.scrollTop:lastScrollTop,follow:followLatest,anchorId:anchor?Number(anchor.dataset.paTurn):null,offset:anchor?anchor.getBoundingClientRect().top-viewport.top:0};
+  }
+  function applyReadingPosition(position){
+    const anchor=rows.get(position.anchorId)?.article,viewport=main.getBoundingClientRect?.();
+    main.scrollTop=anchor&&viewport?main.scrollTop+anchor.getBoundingClientRect().top-viewport.top-position.offset:position.top;
+  }
+  function toLatest(){if(!messagesVisible())return;restoredPosition=null;latestPending=false;followLatest=true;messageNavigation();main.scrollTop=main.scrollHeight;lastScrollTop=main.scrollTop;}
+  function restoreMessagePosition(){if(!messagesVisible())return;if(latestPending)toLatest();else{if(restoredPosition){applyReadingPosition(restoredPosition);restoredPosition=null;}lastScrollTop=main.scrollTop;messageNavigation();}}
+  function loadOlder(){
+    if(!alive()||!session||!messagesVisible()||messageStart===0)return;
+    const top=main.scrollTop,height=main.scrollHeight;messageStart=Math.max(0,messageStart-messageBatch);render(session.view(),true);
+    main.scrollTop=top+main.scrollHeight-height;lastScrollTop=main.scrollTop;followLatest=nearLatest();messageNavigation();
+  }
+  function render(snapshot,keepPosition=false){
+    if(!alive())return;busy=snapshot.busy;const stick=!keepPosition&&messagesVisible()&&(latestPending||nearLatest());
+    // Failed/stopped regeneration restores its old tail; the temporary shorter
+    // viewport must not turn that restoration into a jump to the last old reply.
+    const restored=!snapshot.busy&&replacementPosition?.lastId===snapshot.rows.at(-1)?.id?replacementPosition:null;
+    if(!snapshot.busy)replacementPosition=null;
+    if(!messagesVisible()&&followLatest)latestPending=true;
+    messageCount=snapshot.rows.length;messageCharacters=snapshot.characters;const displayed=snapshot.rows.slice(messageStart);
+    let cursor=transcript.firstChild;
+    for(const row of displayed){let entry=rows.get(row.id);if(!entry){
       const article=node('article'),user=node('p'),reply=node('div'),label=node('small'),userActions=node('div'),replyActions=node('div'),copyQuestion=button('复制问题','copy-question','copy'),copyButton=button('复制回复','copy'),editButton=button('编辑回复','edit'),editQuestion=button('编辑问题','edit-question','edit'),regenerate=button('重新生成','regenerate','retry');
       article.dataset.paTurn=String(row.id);user.className='qm-pa-user';reply.className='qm-pa-reply';
       userActions.className='qm-pa-message-actions qm-pa-user-actions';userActions.dataset.paUserActions='';userActions.setAttribute('role','group');userActions.setAttribute('aria-label','问题操作');
       replyActions.className='qm-pa-message-actions qm-pa-reply-actions';replyActions.dataset.paReplyActions='';replyActions.setAttribute('role','group');replyActions.setAttribute('aria-label','回复操作');
-      userActions.append(copyQuestion,editQuestion);replyActions.append(copyButton,editButton,regenerate);article.append(user,userActions,reply,label,replyActions);transcript.append(article);entry={article,user,reply,label,userActions,replyActions,copyButton,editButton,editQuestion,regenerate,text:null,status:null};rows.set(row.id,entry);
+      userActions.append(copyQuestion,editQuestion);replyActions.append(copyButton,editButton,regenerate);article.append(user,userActions,reply,label,replyActions);entry={article,user,reply,label,userActions,replyActions,copyButton,editButton,editQuestion,regenerate,text:null,status:null};rows.set(row.id,entry);
     }
+      if(entry.article!==cursor)transcript.insertBefore(entry.article,cursor);cursor=entry.article.nextSibling;
       if(entry.user.textContent!==row.user)entry.user.textContent=row.user;if(entry.text!==row.assistant){entry.text=row.assistant;entry.reply.classList.toggle('qm-pa-plain',!renderProseAssistantMarkdown(entry.reply,row.assistant));}
       if(entry.status!==row.status){entry.status=row.status;entry.label.replaceChildren();if(row.status==='running'){const dots=node('span');dots.className='qm-pa-typing';dots.setAttribute('role','status');dots.setAttribute('aria-label','回复中');dots.append(node('span'),node('span'),node('span'));entry.label.append(dots);}else entry.label.textContent={complete:'',failed:'回复未完成',cancelled:'已停止'}[row.status];}
       entry.copyButton.disabled=!row.assistant;
     }
-    const ids=new Set(snapshot.rows.map(row=>row.id));for(const [id,entry] of rows)if(!ids.has(id)){entry.article.remove();rows.delete(id);}controls();if(stick)main.scrollTop=main.scrollHeight;
+    const ids=new Set(displayed.map(row=>row.id));for(const [id,entry] of rows)if(!ids.has(id)){entry.article.remove();rows.delete(id);}controls();messageNavigation();
+    if(restored){followLatest=restored.follow;latestPending=restored.follow;restoredPosition=restored;restoreMessagePosition();}else if(stick)toLatest();
   }
   const selectedConnection=()=>!profile.value?null:profile.value==='custom'?{mode:'custom',transport:'st-proxy',connection:{...selection?.connection,apiUrl:url.value,model:model.value,apiKey:key.value,stream:stream.checked}}:{mode:'profile',profileId:profile.value.slice(8),transport:'st-proxy'};
   if(preferences)autosave=createProseAssistantAutosave({read:()=>{if(!validRange())throw Error('range');return {selection:selectedConnection(),referenceFloors:preferredReferenceFloors,systemPrompt:persona.value};},
@@ -185,7 +220,8 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     onStatus:state=>{saving=state.saving;if(!alive())return;if(state.failed)status.textContent='设置尚未保存，当前输入已保留，请稍后再试。';else if(!state.dirty)status.textContent='';controls();}});
   async function submit(replacement){
     if(!alive()||busy)return;controls();if(replacement?(saving||closing||historyWorking||catalogueWorking||catalogueRecovery||pendingSnapshot||!session||!profile.value||!validRange()):send.disabled)return;
-    const token=++sequence,value=replacement?.question??question.value,before=JSON.stringify(session.view().rows),revision=inputRevision;let generatedTitle=null;busy=true;controls();status.textContent='';
+    const prior=session.view(),lastId=prior.rows.at(-1)?.id,position=replacement&&replacement.id!==lastId?{...readingPosition(),lastId}:null;
+    const token=++sequence,value=replacement?.question??question.value,before=JSON.stringify(prior.rows),revision=inputRevision;let generatedTitle=null;busy=true;controls();status.textContent='';
     try{await seed.guard();if(!alive()||token!==sequence)return;
       if(autosave&&!await autosave.flush())throw Object.assign(Error('设置尚未保存，请稍后重试。'),{code:'prose_assistant_preferences'});
       if(catalogue){const registered=await catalogueAction(async()=>{await ensureConversation();currentConversation=await catalogue.assertEntryLive(currentConversation.key);updateReference();});if(!registered)return;}
@@ -203,10 +239,11 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
       }:request.send;
       if(replacement&&editing)closeEditor();
       activeQuestion=replacement?null:{value,revision};if(!replacement&&question.value===value)question.value='';
+      replacementPosition=position;
       await session.run({question:value,source:requestedSource,request:sendRequest,...(replacement?{replaceId:replacement.id}:{})});
       if(alive()&&token===sequence){activeQuestion=null;controls();return true;}
     }catch(cause){generatedTitle=null;if(alive()&&token===sequence){restoreQuestion();busy=false;controls();status.textContent=/^prose_assistant_/.test(cause?.code||'')?String(cause.message).slice(0,240):'场外特助暂不可用，请重试';return false;}}
-    finally{if(alive()&&token===sequence){busy=false;controls();const snapshot=session.view();if(!snapshot.busy&&JSON.stringify(snapshot.rows)!==before)await persistHistory(snapshot,generatedTitle);}}
+    finally{if(alive()&&token===sequence){replacementPosition=null;busy=false;controls();const snapshot=session.view();if(!snapshot.busy&&JSON.stringify(snapshot.rows)!==before)await persistHistory(snapshot,generatedTitle);}}
   }
   function restoreQuestion(){if(activeQuestion&&inputRevision===activeQuestion.revision&&!question.value)question.value=activeQuestion.value;activeQuestion=null;}
   function closeEditor(){if(!editing)return;editing.box.remove();editing.entry.reply.hidden=false;editing.entry.user.hidden=false;editing=null;controls();}
@@ -226,11 +263,12 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     const result=await submit({id,question:questionText});
     if(result===false&&value!==undefined&&alive()&&rows.has(id)&&!editing){editReply(rows.get(id),id,'question');if(editing)editing.input.value=questionText;}
   }
-  function showPage(next){page=next;config.hidden=page!=='settings';main.hidden=page!=='chat';conversationList.element.hidden=page!=='list';composer.hidden=page!=='chat';settingsButton.hidden=page!=='chat';listButton.hidden=!conversationFactory||page!=='chat';back.hidden=page==='chat';title.textContent=page==='settings'?'特助设置':page==='list'?'最近对话':'场外特助';paintConversations();}
+  function showPage(next){page=next;config.hidden=page!=='settings';main.hidden=page!=='chat';conversationList.element.hidden=page!=='list';composer.hidden=page!=='chat';settingsButton.hidden=page!=='chat';listButton.hidden=!conversationFactory||page!=='chat';back.hidden=page==='chat';title.textContent=page==='settings'?'特助设置':page==='list'?'最近对话':'场外特助';controls();messageNavigation();restoreMessagePosition();}
   listen(dialog,'click',event=>{
     event.stopPropagation(); // Closing may remove the later isolation listeners synchronously.
     const action=event.target.closest?.('[data-pa-action]')?.dataset.paAction;if(action==='close'){void requestClose();return;}if(!alive())return;
     if(action==='settings')showPage('settings');else if(action==='back')showPage('chat');else if(action==='conversations'&&!listButton.disabled)showPage('list');
+    else if(action==='older-messages')loadOlder();else if(action==='latest-messages')toLatest();else if(action==='capacity-new'&&!capacityNew.disabled)void newConversation();
     else if(action==='retry-conversations'&&catalogueRecovery&&!retryCatalogue.hidden){const recovery=catalogueRecovery;void catalogueAction(()=>catalogue.retry(),recovery.after,recovery.failure);}
     else if(action==='retry-history'){if(!historyWorking&&!closing)void(history?persistHistory(pendingSnapshot):loadHistory());}
     else if(action==='send')void submit();else if(action==='stop'){sequence++;const stopped=session?.stop();restoreQuestion();busy=false;controls();status.textContent='';if(stopped)void persistHistory(session.view());}
@@ -243,6 +281,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     else if(action==='copy'||action==='copy-question'){const id=Number(event.target.closest('[data-pa-turn]')?.dataset.paTurn),entry=rows.get(id),value=action==='copy-question'?entry?.user.textContent:entry?.text;if(value){void Promise.resolve().then(()=>{if(alive())return copy(value);}).then(result=>{if(result===false)throw Error();}).catch(()=>{if(alive())status.textContent='复制失败，请手动选择文本';});}}
   });
   const settingsChanged=()=>{autosave?.change();controls();};
+  listen(main,'scroll',()=>{if(!messagesVisible())return;const upward=main.scrollTop<lastScrollTop;followLatest=nearLatest();if(upward&&main.scrollTop<64&&messageStart>0)loadOlder();else{lastScrollTop=main.scrollTop;messageNavigation();}});
   listen(profile,'change',()=>{custom.hidden=profile.value!=='custom';settingsChanged();});listen(range,'input',()=>{if(canReference()&&validRange())preferredReferenceFloors=Number(range.value);settingsChanged();});for(const element of [url,model,key,persona])listen(element,'input',settingsChanged);listen(stream,'change',settingsChanged);listen(question,'input',()=>{inputRevision++;controls();});
   listen(question,'keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='Enter'&&!event.isComposing){event.preventDefault();void submit();}});
   listen(dialog,'keydown',event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();if(editing&&!busy)closeEditor();else if(page!=='chat')showPage('chat');else void requestClose();}});
@@ -259,6 +298,6 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   });observer.observe(document.documentElement,{childList:true,subtree:true});controls();dialog.focus({preventScroll:true});const ready=loadHistory();
   return Object.freeze({element:dialog,finished,ready,dispose,get visible(){return !closed&&!dialog.hidden;},reopen(){
     if(reopenTask)return reopenTask;
-    reopenTask=(async()=>{if(closeTask)await closeTask;if(closed)return false;try{if(dialog.hidden){previousFocus=document.activeElement;await seed?.guard();}if(!alive())return false;dialog.hidden=false;observer.observe(document.documentElement,{childList:true,subtree:true});dialog.focus({preventScroll:true});return true;}catch{dispose();return false;}})().finally(()=>{reopenTask=null;});return reopenTask;
+    reopenTask=(async()=>{if(closeTask)await closeTask;if(closed)return false;try{if(dialog.hidden){previousFocus=document.activeElement;await seed?.guard();}if(!alive())return false;dialog.hidden=false;observer.observe(document.documentElement,{childList:true,subtree:true});restoreMessagePosition();dialog.focus({preventScroll:true});return true;}catch{dispose();return false;}})().finally(()=>{reopenTask=null;});return reopenTask;
   }});
 }

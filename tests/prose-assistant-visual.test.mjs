@@ -122,3 +122,24 @@ test('settings prompt fills remaining panel height while long settings and manua
  assert.match(rule(`${scope} .qm-pa-config .qm-pa-prompt-field`),/display:flex;flex-direction:column;flex:1 0 auto/);
  assert.match(rule(`${scope} textarea[data-pa-prompt]`),/flex:1 0 auto;height:120px;min-height:120px;max-height:none;resize:vertical;overflow:auto/);
 });
+
+test('history navigation stays quiet and compact while manual prepend controls scroll anchoring',()=>{
+ assert.match(rule(`${scope} > main`),/overflow-anchor:none/);
+ const actions=rule(`${scope} :is([data-pa-action="older-messages"],[data-pa-action="latest-messages"],[data-pa-action="capacity-new"])`);
+ assert.match(actions,/width:auto;height:auto;min-height:28px;max-width:100%/);
+ assert.match(actions,/padding:3px 8px;font-size:calc\(1em - 2px\);line-height:1\.4/);
+ assert.match(actions,/color:var\(--sd-muted,/);
+ const centered=rule(`${scope} :is([data-pa-action="older-messages"],[data-pa-action="latest-messages"])`);
+ assert.match(centered,/display:flex;max-width:max-content;margin:0 auto 6px/);
+ assert.match(rule(`${scope} [hidden]`),/display:none!important/);
+});
+
+test('capacity hint wraps above the composer without changing the input or send control dimensions',()=>{
+ const capacity=rule(`${scope} [data-pa-capacity]`);
+ assert.match(capacity,/display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin:0 0 6px/);
+ assert.match(rule(`${scope} [data-pa-capacity] > small`),/flex:1 1 160px;margin:0;overflow-wrap:anywhere/);
+ assert.match(rule(`${scope} [data-pa-action="capacity-new"]`),/color:var\(--sd-accent,/);
+ assert.match(rule(`${scope} > footer`),/flex:none;padding:10px 14px/);
+ assert.match(rule(`${scope} .qm-pa-composer [data-pa-question]`),/min-height:44px/);
+ assert.match(rule(`${scope} .qm-pa-composer :is([data-pa-action="send"],[data-pa-action="stop"])`),/min-height:44px/);
+});
