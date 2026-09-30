@@ -69,7 +69,8 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     for(const element of [profile,range,url,model,key,eye,persona,stream])element.disabled=!seed||busy||closing||(element===range&&!canReference());
     for(const entry of rows.values()){
       const locked=busy||saving||closing||blocked||!!editing;
-      entry.editButton.disabled=locked||entry.status!=='complete';entry.editQuestion.disabled=entry.regenerate.disabled=locked;
+      entry.editButton.disabled=locked||entry.status!=='complete';entry.editQuestion.disabled=locked;
+      entry.regenerate.hidden=!entry.isLatest;entry.regenerate.disabled=locked||!entry.isLatest;
       entry.userActions.hidden=entry.status==='running'||(editing?.entry===entry&&editing.kind==='question');
       entry.replyActions.hidden=entry.status==='running'||(editing?.entry===entry&&editing.kind==='reply');
     }
@@ -209,7 +210,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
       if(entry.article!==cursor)transcript.insertBefore(entry.article,cursor);cursor=entry.article.nextSibling;
       if(entry.user.textContent!==row.user)entry.user.textContent=row.user;if(entry.text!==row.assistant){entry.text=row.assistant;entry.reply.classList.toggle('qm-pa-plain',!renderProseAssistantMarkdown(entry.reply,row.assistant));}
       if(entry.status!==row.status){entry.status=row.status;entry.label.replaceChildren();if(row.status==='running'){const dots=node('span');dots.className='qm-pa-typing';dots.setAttribute('role','status');dots.setAttribute('aria-label','回复中');dots.append(node('span'),node('span'),node('span'));entry.label.append(dots);}else entry.label.textContent={complete:'',failed:'回复未完成',cancelled:'已停止'}[row.status];}
-      entry.copyButton.disabled=!row.assistant;
+      entry.copyButton.disabled=!row.assistant;entry.isLatest=row.id===snapshot.rows.at(-1)?.id;
     }
     const ids=new Set(displayed.map(row=>row.id));for(const [id,entry] of rows)if(!ids.has(id)){entry.article.remove();rows.delete(id);}controls();messageNavigation();
     if(restored){followLatest=restored.follow;latestPending=restored.follow;restoredPosition=restored;restoreMessagePosition();}else if(stick)toLatest();
@@ -258,6 +259,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   }
   async function regenerate(id,value){
     if(!alive()||busy||saving||closing||historyWorking||pendingSnapshot)return;const snapshot=session?.view(),index=snapshot?.rows.findIndex(row=>row.id===id);if(index===undefined||index<0)return;
+    if(value===undefined&&index!==snapshot.rows.length-1)return;
     const questionText=value??snapshot.rows[index].user;if(!questionText.trim()){status.textContent='请填写问题';return;}
     if(index<snapshot.rows.length-1){const token=++sequence;busy=true;controls();let approved=false;try{approved=await confirm('重新生成成功后，将替换这一轮并删除之后的问答。继续？');}catch{if(alive())status.textContent='操作未完成，请重试';}finally{if(alive()&&token===sequence){busy=false;controls();}}if(!alive()||token!==sequence||!approved)return;}
     const result=await submit({id,question:questionText});

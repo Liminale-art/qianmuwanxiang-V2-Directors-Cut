@@ -330,6 +330,20 @@ test('upward paging compensates inserted height and warm reopen or current-list 
  assert.equal(f.transport.calls.length,calls);assert.equal(f.models.length,0);
 });
 
+test('only the actual latest input can regenerate after paging, current-list return, warm reopen and a new question',async t=>{
+ const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true}),original=structuredClone(f.remote(f.base)),calls=f.transport.calls.length;
+ const assertLatest=id=>{for(const entry of f.rows()){const action=entry.querySelector('[data-pa-action="regenerate"]'),latest=Number(entry.dataset.paTurn)===id;assert.equal(action.hidden,!latest);assert.equal(action.disabled,!latest);}};
+ assertLatest(35);f.action('older-messages').click();assert.equal(f.rows().length,20);assertLatest(35);
+ const old=f.rows()[0].querySelector('[data-pa-action="regenerate"]');old.emit('click');
+ // Also exercise the action guard if an external script tampers with disabled.
+ old.disabled=false;old.emit('click');await new Promise(done=>setImmediate(done));old.disabled=true;
+ assert.equal(f.models.length,0);assert.deepEqual(f.confirmations,[]);assert.equal(f.transport.calls.length,calls);assert.deepEqual(f.remote(f.base),original);
+ f.showList();f.listRows().find(entry=>entry.dataset.paConversationKey===f.base).click();assertLatest(35);
+ await f.close();assert.equal(await f.panel.reopen(),true);assertLatest(35);assert.equal(f.rows().length,20);assert.equal(f.transport.calls.length,calls);
+ const formerLatest=f.rows().at(-1);await f.send('最新追加问题');assertLatest(36);assert.equal(formerLatest.querySelector('[data-pa-action="regenerate"]').hidden,true);assert.equal(f.models.length,1);assert.deepEqual(f.confirmations,[]);
+ assert.equal(f.remote(f.base).rows.length,36);assert.deepEqual(f.remote(f.base).rows.slice(0,35),original.rows);
+});
+
 test('new streamed replies preserve an expanded older reading position until back-to-latest is chosen',async t=>{
  const f=await fixture(t,{initialRows:historyRows(25),messageViewport:true}),main=f.dom.get('助手对话').parentNode;
  f.action('older-messages').click();const oldest=f.rows()[0];main.scrollTop=240;main.emit('scroll');assert.equal(f.action('latest-messages').hidden,false);
@@ -373,7 +387,7 @@ test('editing a previously paged-in reply changes only that original turn and ne
  assert.deepEqual(f.remote(f.base).rows,old);assert.deepEqual(turnIds(f),ids);assert.equal(f.rows()[0],target);assert.equal(main.scrollTop,220);assert.equal(f.models.length,0);
 });
 
-test('regenerating an older displayed question sends its actual preceding context, then removes only the approved tail on success',async t=>{
+test('editing an older displayed question sends its actual preceding context, then removes only the approved tail on success',async t=>{
  const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true});f.action('older-messages').click();const target=f.rows()[0];
  target.querySelector('[data-pa-action="edit-question"]').click();f.dom.get('编辑提问').value='第十六轮修订';f.action('save-reply').click();await f.dom.wait(()=>f.models.length===1);await f.idle();
  assert.match(f.confirmations.at(-1),/替换这一轮并删除之后/);const context=f.models[0].messages.slice(0,-1).filter(message=>message.role==='user');
@@ -382,20 +396,20 @@ test('regenerating an older displayed question sends its actual preceding contex
  assert.equal(f.rows().at(-1).querySelector('.qm-pa-user').textContent,'第十六轮修订');assert.ok(!f.rows().some(entry=>entry.querySelector('.qm-pa-user').textContent==='问题 35'));assert.equal(f.models.length,1);
 });
 
-test('stopping an older regeneration restores every original turn including the temporarily hidden later tail',async t=>{
+test('stopping an older edited question restores every original turn including the temporarily hidden later tail',async t=>{
  const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true}),main=f.dom.get('助手对话').parentNode;f.action('older-messages').click();main.scrollTop=240;main.emit('scroll');const before=structuredClone(f.remote(f.base)),ids=turnIds(f);
- f.mode='hold';f.rows()[0].querySelector('[data-pa-action="regenerate"]').click();await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');
- assert.equal(main.scrollTop,0,'the temporarily shortened viewport is clamped while regeneration is running');
+ f.mode='hold';f.rows()[0].querySelector('[data-pa-action="edit-question"]').click();f.dom.get('编辑提问').value='第十六轮修订';f.action('save-reply').click();await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');
+ assert.equal(main.scrollTop,0,'the temporarily shortened viewport is clamped while the edited question is running');
  f.action('stop').click();await f.idle();assert.deepEqual(f.remote(f.base),before);assert.deepEqual(turnIds(f),ids);assert.equal(f.rows().at(-1).querySelector('.qm-pa-user').textContent,'问题 35');assert.equal(f.models.length,1);
- assert.equal(main.scrollTop,240,'restoring a cancelled older regeneration restores its pre-request reading position, not the tail');
+ assert.equal(main.scrollTop,240,'restoring a cancelled older edit restores its pre-request reading position, not the tail');
 });
 
-test('an older regeneration failing while settings are open restores its original reading position on return',async t=>{
+test('an older edited question failing while settings are open restores its original reading position on return',async t=>{
  const f=await fixture(t,{initialRows:historyRows(35),messageViewport:true}),main=f.dom.get('助手对话').parentNode;f.action('older-messages').click();main.scrollTop=240;main.emit('scroll');
- const before=structuredClone(f.remote(f.base)),ids=turnIds(f);f.mode='hold';f.rows()[0].querySelector('[data-pa-action="regenerate"]').click();
+ const before=structuredClone(f.remote(f.base)),ids=turnIds(f);f.mode='hold';f.rows()[0].querySelector('[data-pa-action="edit-question"]').click();f.dom.get('编辑提问').value='第十六轮修订';f.action('save-reply').click();
  await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');assert.equal(main.scrollTop,0);
  f.action('settings').click();assert.equal(main.hidden,true);f.failReply();await f.idle();assert.deepEqual(f.remote(f.base),before);assert.deepEqual(turnIds(f),ids);
- f.action('back').click();assert.equal(main.hidden,false);assert.equal(main.scrollTop,240,'failed hidden regeneration must restore the old viewport when it becomes visible');assert.equal(f.models.length,1);
+ f.action('back').click();assert.equal(main.hidden,false);assert.equal(main.scrollTop,240,'failed hidden edit must restore the old viewport when it becomes visible');assert.equal(f.models.length,1);
 });
 
 test('successful regeneration of the last turn preserves a reader who scrolls upward during its stream',async t=>{
@@ -406,10 +420,10 @@ test('successful regeneration of the last turn preserves a reader who scrolls up
  assert.deepEqual(f.remote(f.base).rows.slice(0,-1),initial.slice(0,-1));assert.equal(f.remote(f.base).rows.length,35);assert.equal(f.remote(f.base).rows.at(-1).assistant,'部分回答，已完成');assert.equal(f.models.length,1);
 });
 
-test('stopping an older regeneration after paging farther back preserves the original row anchor with the newly inserted height',async t=>{
+test('stopping an older edited question after paging farther back preserves the original row anchor with the newly inserted height',async t=>{
  const initial=historyRows(35),f=await fixture(t,{initialRows:initial,messageViewport:true}),main=f.dom.get('助手对话').parentNode;f.action('older-messages').click();main.scrollTop=240;main.emit('scroll');
  const anchor=f.rows()[0],anchorId=anchor.dataset.paTurn,offset=anchor.getBoundingClientRect().top-main.getBoundingClientRect().top,before=structuredClone(f.remote(f.base));
- f.mode='hold';anchor.querySelector('[data-pa-action="regenerate"]').click();await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');assert.equal(main.scrollTop,0);
+ f.mode='hold';anchor.querySelector('[data-pa-action="edit-question"]').click();f.dom.get('编辑提问').value='第十六轮修订';f.action('save-reply').click();await f.dom.wait(()=>f.models.length===1&&f.rows().at(-1)?.querySelector('.qm-pa-reply').textContent==='部分回答');assert.equal(main.scrollTop,0);
  const calls=f.transport.calls.length;f.action('older-messages').click();assert.deepEqual(turnIds(f),initial.slice(5,16).map(item=>item.id));assert.equal(f.transport.calls.length,calls);
  const addedHeight=initial.slice(5,15).reduce((total,item)=>total+200+item.assistant.length,0);f.action('stop').click();await f.idle();
  assert.deepEqual(f.remote(f.base),before);assert.deepEqual(turnIds(f),initial.slice(5).map(item=>item.id));assert.equal(main.scrollTop,240+addedHeight,'restored position includes the older rows loaded during the request');

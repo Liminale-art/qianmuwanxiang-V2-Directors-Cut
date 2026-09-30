@@ -214,25 +214,47 @@ test('completed messages remain copyable while a later reply is running but edit
  for(const action of ['edit-question','edit','regenerate'])assert.equal(f.action(action).disabled,true);
  assert.equal(f.rows()[1].querySelector('[data-pa-user-actions]').hidden,true);assert.equal(f.rows()[1].querySelector('[data-pa-reply-actions]').hidden,true);
  f.completeStream();await f.idle();assert.equal(f.rows()[1].querySelector('[data-pa-user-actions]').hidden,false);assert.equal(f.rows()[1].querySelector('[data-pa-reply-actions]').hidden,false);
- for(const action of ['edit-question','edit','regenerate'])assert.equal(f.action(action).disabled,false);assert.equal(f.models.length,2);
+ for(const action of ['edit-question','edit'])assert.equal(f.action(action).disabled,false);
+ assert.equal(f.rows()[0].querySelector('[data-pa-action="regenerate"]').disabled,true);assert.equal(f.rows()[0].querySelector('[data-pa-action="regenerate"]').hidden,true);
+ assert.equal(f.rows()[1].querySelector('[data-pa-action="regenerate"]').disabled,false);assert.equal(f.rows()[1].querySelector('[data-pa-action="regenerate"]').hidden,false);assert.equal(f.models.length,2);
 });
 
-test('regenerating an earlier panel turn replaces it and removes successors only after native confirmation',async t=>{
+test('editing an earlier panel question replaces it and removes successors only after native confirmation',async t=>{
  const f=await panelFixture(t);await f.send('原第一问');await f.idle();await f.send('原追问');await f.idle();const prior=f.remote();
- f.question().value='保留未发草稿';f.question().emit('input');f.mode='hold';f.action('regenerate').click();
+ f.question().value='保留未发草稿';f.question().emit('input');f.mode='hold';f.action('edit-question').click();f.dom.get('编辑提问').value='修改第一问';f.action('save-reply').click();
  await f.dom.wait(()=>f.models.length===3&&f.rows()[0].querySelector('.qm-pa-reply').textContent==='半截回答');
  assert.deepEqual(f.remote(),prior);assert.equal(f.question().value,'保留未发草稿');
- assert.equal(f.models[2].body.messages.length,1);assert.equal(JSON.parse(f.models[2].body.messages[0].content).question,'原第一问');
+ assert.equal(f.models[2].body.messages.length,1);assert.equal(JSON.parse(f.models[2].body.messages[0].content).question,'修改第一问');
  f.completeStream();await f.idle();assert.equal(f.models.length,3);assert.equal(f.remote().rows.length,1);assert.equal(f.remote().rows[0].assistant,'半截回答，已完成');
  await f.close();await f.open();assert.equal(f.rows().length,1);assert.equal(f.models.length,3);
 });
 
-test('failed edited question and stopped regeneration keep original subsequent answers and preserve the edited draft',async t=>{
+test('failed and stopped older question edits keep original subsequent answers and preserve the edited draft',async t=>{
  const f=await panelFixture(t);await f.send('第一问');await f.idle();await f.send('后续问');await f.idle();const prior=f.remote();
  f.mode='error';f.action('edit-question').click();f.dom.get('编辑提问').value='修改过的问题';f.action('save-reply').click();
  await f.dom.wait(()=>f.models.length===3);await f.idle();await f.dom.wait(()=>f.dom.get('编辑提问')?.value==='修改过的问题');
  assert.deepEqual(f.remote(),prior);assert.equal(f.rows().length,2);assert.match(f.status(),/HTTP 401/);f.action('cancel-reply').click();
- f.mode='hold';f.action('regenerate').click();await f.dom.wait(()=>f.models.length===4&&f.rows()[0].querySelector('.qm-pa-reply').textContent==='半截回答');
+ f.mode='hold';f.action('edit-question').click();f.dom.get('编辑提问').value='再修订问题';f.action('save-reply').click();await f.dom.wait(()=>f.models.length===4&&f.rows()[0].querySelector('.qm-pa-reply').textContent==='半截回答');
  f.action('stop').click();await f.idle();assert.equal(f.rows().length,2);assert.equal(f.remote().rows[1].assistant,prior.rows[1].assistant);
  assert.deepEqual(f.remote().rows,prior.rows);assert.equal(f.models.length,4);
+});
+
+test('latest-input regeneration preserves earlier turns, remains retryable after failure or stop and never adds a turn',async t=>{
+ const f=await panelFixture(t);await f.send('保留第一问');await f.idle();await f.send('最后输入');await f.idle();const prior=structuredClone(f.remote()),latest=()=>f.rows().at(-1).querySelector('[data-pa-action="regenerate"]');
+ f.mode='error';latest().click();await f.dom.wait(()=>f.models.length===3);await f.idle();assert.deepEqual(f.remote(),prior);assert.equal(latest().hidden,false);assert.equal(latest().disabled,false);
+ f.mode='hold';latest().click();await f.dom.wait(()=>f.models.length===4&&f.rows().at(-1).querySelector('.qm-pa-reply').textContent==='半截回答');f.action('stop').click();await f.idle();
+ assert.deepEqual(f.remote(),prior);assert.equal(latest().hidden,false);assert.equal(latest().disabled,false);assert.equal(f.rows().length,2);
+ f.mode='json';latest().click();await f.dom.wait(()=>f.models.length===5);await f.idle();assert.equal(f.remote().rows.length,2);assert.deepEqual(f.remote().rows[0],prior.rows[0]);assert.equal(f.remote().rows[1].user,'最后输入');assert.equal(f.remote().rows[1].assistant,'完整回答 5');
+ for(const request of f.models.slice(2)){assert.equal(JSON.parse(request.body.messages.at(-1).content).question,'最后输入');assert.deepEqual(request.body.messages.slice(0,-1),[{role:'user',content:'保留第一问'},{role:'assistant',content:'完整回答 1'}]);}
+ assert.equal(f.rows()[0].querySelector('[data-pa-action="regenerate"]').hidden,true);assert.equal(latest().hidden,false);assert.equal(latest().disabled,false);
+});
+
+test('a failed or cancelled latest input alone stays regenerable without exposing the previous completed turn or adding another turn',async t=>{
+ for(const mode of ['error','hold'])await t.test(mode,async t=>{
+  const f=await panelFixture(t);await f.send('之前完成的问题');await f.idle();const first=structuredClone(f.remote().rows[0]);f.mode=mode;await f.send('未完成的最后输入');
+  if(mode==='hold'){await f.dom.wait(()=>f.rows()[1]?.querySelector('.qm-pa-reply').textContent==='半截回答');f.action('stop').click();}
+  await f.idle();const latest=f.rows()[1].querySelector('[data-pa-action="regenerate"]');assert.equal(f.remote().rows[1].status,mode==='hold'?'cancelled':'failed');assert.equal(latest.hidden,false);assert.equal(latest.disabled,false);
+  assert.equal(f.rows()[0].querySelector('[data-pa-action="regenerate"]').hidden,true);assert.equal(f.rows()[0].querySelector('[data-pa-action="regenerate"]').disabled,true);
+  f.mode='json';latest.click();await f.dom.wait(()=>f.models.length===3);await f.idle();assert.equal(f.remote().rows.length,2);assert.deepEqual(f.remote().rows[0],first);assert.equal(f.remote().rows[1].status,'complete');assert.equal(f.remote().rows[1].user,'未完成的最后输入');assert.equal(f.remote().rows[1].assistant,'完整回答 3');
+ });
 });
