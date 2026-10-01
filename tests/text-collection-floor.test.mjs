@@ -32,7 +32,7 @@ function fixture(t, chat = [{mes: '正文', is_user: false}, {mes: '回复', is_
         get items() { return items; }, set items(value) { items = value; }, setContext(value) { context = value; }, setToggle(fn) { toggle = fn; }};
 }
 
-test('adds one font-independent theme-inheriting outline star per rendered message, including prompt-excluded floors', t => {
+test('adds one font-independent theme-inheriting outline heart per rendered message, including prompt-excluded floors', t => {
     const f = fixture(t, [{mes: 'AI'}, {mes: 'USER', is_user: true}, {mes: 'system', is_system: true}]);
     const unrelated = f.dom.doc.createElement('button'); unrelated.className = 'host-wallpaper-control'; f.root.appendChild(unrelated);
     f.floor.refresh(f.root);
@@ -45,7 +45,9 @@ test('adds one font-independent theme-inheriting outline star per rendered messa
     assert.equal(glyph.getAttribute('fill'), 'none');
     assert.equal(glyph.getAttribute('stroke'), 'currentColor');
     assert.equal(glyph.getAttribute('stroke-width'), '2.5');
-    assert.equal(glyph.firstChild.tagName, 'POLYGON');
+    assert.equal(glyph.firstChild.tagName, 'PATH');
+    assert.equal(glyph.firstChild.getAttribute('d'), 'M12 21C10.2 19.4 2 13.7 2 8.4C2 5.3 4.3 3 7.3 3C9.2 3 10.9 4 12 5.6C13.1 4 14.8 3 16.7 3C19.7 3 22 5.3 22 8.4C22 13.7 13.8 19.4 12 21Z');
+    assert.equal(glyph.firstChild.hasAttribute('fill'), false, 'the same heart inherits the confirmed SVG fill instead of fixing a filled theme shape');
     assert.equal(glyph.firstChild.hasAttribute('vector-effect'), false);
     assert.equal(glyph.hasAttribute('data-qianmu-icon-skip'), true);
     f.floor.refresh(f.root); f.floor.refresh(f.root);
@@ -66,7 +68,7 @@ test('toolbar fallback and malformed floor IDs never point at another message', 
     assert.equal(f.button(1).parentNode.className, 'mes_buttons');
 });
 
-test('confirmed same-source entries fill a star; a click removes all IDs of that floor only', async t => {
+test('confirmed same-source entries fill a heart; a click removes all IDs of that floor only', async t => {
     const f = fixture(t);
     f.items = [{id: 'a', source: source('chat-one', 'message-0')},
         {id: 'b', source: source('chat-one', 'message-0')}, {id: 'other-chat', source: source('chat-two', 'message-0')},
@@ -83,6 +85,29 @@ test('confirmed same-source entries fill a star; a click removes all IDs of that
     assert.equal(f.button().getAttribute('aria-pressed'), 'false');
     assert.equal(f.button().firstChild.getAttribute('fill'), 'none');
     assert.equal(f.button(1).getAttribute('aria-pressed'), 'true');
+});
+
+test('classic, Bold and Twotone appearance roots retain the same hollow/filled heart and skip marker', t => {
+    const f = fixture(t); f.floor.refresh(f.root);
+    const button = f.button(), glyph = button.firstChild, heart = glyph.firstChild;
+    const contour = heart.getAttribute('d');
+    for (const theme of ['classic', 'editorial', 'glass']) {
+        if (theme === 'classic') f.root.removeAttribute('data-qm-theme');
+        else f.root.setAttribute('data-qm-theme', theme);
+        for (const collected of [true, false]) {
+            f.items = collected ? [{id: 'saved', source: source('chat-one', 'message-0')}] : [];
+            f.floor.refresh(f.root);
+            assert.equal(f.button(), button); assert.equal(button.firstChild, glyph); assert.equal(glyph.firstChild, heart);
+            assert.equal(glyph.getAttribute('fill'), collected ? 'currentColor' : 'none');
+            assert.equal(button.getAttribute('aria-pressed'), String(collected));
+            assert.equal(glyph.getAttribute('stroke-width'), '2.5');
+            assert.equal(glyph.hasAttribute('data-qianmu-icon-skip'), true);
+            assert.equal(heart.getAttribute('d'), contour);
+            assert.equal(glyph.children.length, 1, 'no appearance variant can be inserted into the owned state glyph');
+        }
+    }
+    assert.equal(f.iconCalls.length, 2, 'theme/status changes do not recreate or repass controls to the icon renderer');
+    assert.equal(f.calls.length, 0, 'appearance changes never dispatch a collection operation');
 });
 
 test('pending action disables only that message, suppresses repeats and never optimistically fills', async t => {

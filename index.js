@@ -2,9 +2,9 @@
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
-import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.415';
+import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.416';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
-import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js';
+import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.416';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -191,7 +191,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.414';
 import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from './qianmu-storyboard-variant-recovery.js?v=1.59.414';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.415';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.416';
 import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.414';
 import {
   createQianmuChatCompletionResponseFormat,
@@ -296,7 +296,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.415';
+const VERSION = '1.59.416';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -309,7 +309,7 @@ const featureRuntime = createFeatureRuntime({
   galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.414') },
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.414') },
   vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.414') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.415') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.416') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -6537,7 +6537,7 @@ function renderFloatingNotes() {
   const layer = document.createElement('div');
   layer.id = NOTES_FLOAT_LAYER_ID;
   layer.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'} sd-hive-theme-${themeKey}`;
-  layer.innerHTML = `<button type="button" class="sd-detached-notes-entry is-glass-${tone}" style="left:${position.x}px;top:${position.y}px;--sd-notes-entry-width:${geometry.width}px;--sd-notes-entry-height:${geometry.height}px;--sd-wheel-glass-fill:${htmlEscape(fill)};--sd-wheel-edge:${htmlEscape(edge)};--sd-wheel-icon:${htmlEscape(icon)}" title="便笺（拖回千幕归巢）" aria-label="打开便笺"><i class="fa-solid fa-note-sticky" data-qm-icon="qm-regular-note-pencil"></i>${QUICK_HEX_BORDER_SVG}</button>`;
+  layer.innerHTML = `<button type="button" class="sd-detached-notes-entry is-glass-${tone}" style="left:${position.x}px;top:${position.y}px;--sd-notes-entry-width:${geometry.width}px;--sd-notes-entry-height:${geometry.height}px;--sd-wheel-glass-fill:${htmlEscape(fill)};--sd-wheel-edge:${htmlEscape(edge)};--sd-wheel-icon:${htmlEscape(icon)}" title="便笺（拖回千幕归巢）" aria-label="打开便笺"><i class="fa-solid fa-note-sticky" data-qm-icon="notes"></i>${QUICK_HEX_BORDER_SVG}</button>`;
   document.body.appendChild(layer);
   applyQianmuIcons(layer);
   bindFloatingNoteEvents(layer);
@@ -12147,7 +12147,7 @@ function renderPlugTab() {
       <h3>小组件</h3>
       <div class="sd-widget-toggle-row" role="group" aria-label="小组件开关">
         <button type="button" class="sd-widget-toggle ${settings.floatingButton ? 'active' : ''}" data-widget-toggle="floating" aria-pressed="${settings.floatingButton ? 'true' : 'false'}"><i class="fa-solid fa-film"></i><span>悬浮球</span></button>
-        <button type="button" class="sd-widget-toggle ${notesFeatureEnabled() ? 'active' : ''}" data-widget-toggle="notes" aria-pressed="${notesFeatureEnabled() ? 'true' : 'false'}"><i class="fa-solid fa-note-sticky" data-qm-icon="qm-regular-note-pencil"></i><span>便笺</span></button>
+        <button type="button" class="sd-widget-toggle ${notesFeatureEnabled() ? 'active' : ''}" data-widget-toggle="notes" aria-pressed="${notesFeatureEnabled() ? 'true' : 'false'}"><i class="fa-solid fa-note-sticky" data-qm-icon="notes"></i><span>便笺</span></button>
         <button type="button" class="sd-widget-toggle ${settings.quickWheelEnabled !== false ? 'active' : ''}" data-widget-toggle="wheel" aria-pressed="${settings.quickWheelEnabled !== false ? 'true' : 'false'}"><i class="fa-solid fa-table-cells-large"></i><span>快捷盘</span></button>
         <button type="button" class="sd-widget-toggle ${settings.quickDockEnabled !== false ? 'active' : ''}" data-widget-toggle="dock" aria-pressed="${settings.quickDockEnabled !== false ? 'true' : 'false'}"><i class="fa-solid fa-box-archive"></i><span>蜂巢收纳</span></button>
       </div>

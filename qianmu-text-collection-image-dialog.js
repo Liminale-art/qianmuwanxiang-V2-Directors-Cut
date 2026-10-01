@@ -1,4 +1,4 @@
-import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.415';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.416';
 import {exportTextCollectionImages} from './qianmu-text-collection-images.js';
 
 export const TEXT_COLLECTION_IMAGE_DIALOG_STYLESHEET = new URL('./qianmu-text-collection-image-dialog.css', import.meta.url);

@@ -75,8 +75,9 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
                 const button = root.ownerDocument.createElement('button');
                 button.type = 'button'; button.className = 'mes_button interactable qm-collection-star';
                 // ST ships only the solid Font Awesome font: fa-regular can
-                // resolve to that same solid glyph. One local star outline
-                // makes both states explicit without another font request.
+                // resolve to that same solid glyph. One local heart outline
+                // keeps both states explicit regardless of the appearance family.
+                // The existing DOM/CSS markers remain stable for owned controls.
                 const glyph = root.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 glyph.setAttribute('class', 'qm-collection-star-glyph');
                 glyph.setAttribute('viewBox', '0 0 24 24');
@@ -86,9 +87,10 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
                 glyph.setAttribute('aria-hidden', 'true');
                 glyph.setAttribute('focusable', 'false');
                 glyph.setAttribute('data-qianmu-icon-skip', '');
-                const star = root.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-                star.setAttribute('points', '12,2 15.1,8.3 22,9.3 17,14.2 18.2,21.1 12,17.8 5.8,21.1 7,14.2 2,9.3 8.9,8.3');
-                glyph.appendChild(star);
+                const heart = root.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
+                // A small original cubic contour, not an external icon asset.
+                heart.setAttribute('d', 'M12 21C10.2 19.4 2 13.7 2 8.4C2 5.3 4.3 3 7.3 3C9.2 3 10.9 4 12 5.6C13.1 4 14.8 3 16.7 3C19.7 3 22 5.3 22 8.4C22 13.7 13.8 19.4 12 21Z');
+                glyph.appendChild(heart);
                 button.appendChild(glyph);
                 toolbar.insertBefore(button, storyboard || null);
                 record = {button, glyph, message, element, collected: null, busy: null};

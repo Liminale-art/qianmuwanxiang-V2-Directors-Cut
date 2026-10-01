@@ -1,4 +1,4 @@
-import {qianmuIconMarkup} from './qianmu-icon-renderer.js?v=1.59.415';
+import {qianmuIconMarkup} from './qianmu-icon-renderer.js?v=1.59.416';
 import {createEnsembleLibraryEditor} from './qianmu-ensemble-editor.js?v=1.59.414';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const glyph=name=>qianmuIconMarkup(`qm-regular-${name}`);

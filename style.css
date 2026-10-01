@@ -9098,6 +9098,9 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-header-actions .sd-theme-btn :is(i, .qm-glyph-icon) { transform: scale(.98348); }
 /* 仅正文配音工具，不影响正文分镜入口、播放中旋转动画或按钮命中范围。 */
 .sd-tts-toolbar > :is(.sd-tts-trigger, .sd-tts-reextract, .sd-tts-regenall, .sd-tts-playall) > .qm-glyph-icon { font-size: 1.02em; }
+/* Enlarge only the artwork by 5%; button hitboxes and the outer spin stay intact. */
+.sd-tts-toolbar > :is(.sd-tts-trigger, .sd-tts-reextract, .sd-tts-regenall, .sd-tts-playall) > .qm-glyph-icon > svg.qm-glyph-svg,
+.sd-tts-inline > .qm-glyph-icon > svg.qm-glyph-svg { transform: scale(1.05); }
 
 /* 审片：当前幕回归信息行；任务/世界仅保留同排跳转标签。 */
 #story-director-modal .sd-hero .sd-scene-current { margin-top: 3px; }

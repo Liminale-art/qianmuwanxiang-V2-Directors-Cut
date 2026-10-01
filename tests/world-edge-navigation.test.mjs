@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { qianmuIconMarkup, ICONSAX_STROKE_WIDTH, ICONSAX_ICON_MARKUP } from '../qianmu-icon-renderer.js';
+import {QIANMU_HIVE_COMMANDS} from '../qianmu-hive-commands.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -42,7 +43,7 @@ shell.isConnected = false; buttons[0]();
 assert.equal(renders, 3);
 
 assert.equal(ICONSAX_STROKE_WIDTH, 2.5);
-for (const [semantic, glyph] of Object.entries({ backstage: 'message-favorite', 'floor-tools': 'textalign-left', 'world-map': 'map', focus: 'moon' })) {
+for (const [semantic, glyph] of Object.entries({backstage: 'signpost', assistant: 'ai-commentary', 'floor-tools': 'textalign-left', world: 'map', 'world-map': 'radar', focus: 'coffee', notes: 'note-text', theater: 'candy', bookmarks: 'heart-circle', context: 'shapes', tasks: 'task-square', 'qm-regular-aperture': 'ai-record-video'})) {
   const markup = qianmuIconMarkup(semantic);
   // Compare geometry instead of unstable signature names.
   const body = markup.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)[1];
@@ -54,7 +55,9 @@ for (const [semantic, glyph] of Object.entries({ backstage: 'message-favorite', 
   }
 }
 const commands=await readFile(new URL('../qianmu-hive-commands.js',import.meta.url),'utf8');
-assert.match(commands, /id: 'theater'[^\n]*qm-regular-tv/);
+for (const [id, glyph] of Object.entries({theater: 'theater', assistant: 'assistant', notes: 'notes', 'text-collection': 'bookmarks', settings: 'backstage'})) {
+  assert.equal(QIANMU_HIVE_COMMANDS.find(command => command.id === id)?.glyph, glyph, `${id}: hive uses its dedicated entry, not a reused generic action`);
+}
 assert.match(commands, /id: 'imagegen'[^\n]*qm-regular-aperture/);
 assert.match(await readFile(new URL('../qianmu-prose-floor-entries.js',import.meta.url),'utf8'), /button\.innerHTML\s*=\s*'<i class="fa-solid fa-video" data-qm-icon="qm-regular-aperture"/);
 assert.match(css, /\.sd-world-viewport \{[^}]*min-height: 0/);
