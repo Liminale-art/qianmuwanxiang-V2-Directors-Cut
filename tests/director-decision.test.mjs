@@ -172,9 +172,10 @@ test('approved decision identity survives storyboard shot normalization', () => 
 test('director decision stays lazy and ships in the release boundary', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  const {version}=JSON.parse(await readFile(new URL('../manifest.json',import.meta.url),'utf8'));
-  assert.match(source, /directorDecision:\s*\{[\s\S]*import\('\.\/qianmu-director-decision\.js\?v=\d+\.\d+\.\d+'\)/);
-  assert.ok(source.includes(`import('./qianmu-director-decision.js?v=${version}')`));
+  const entry = source.match(/directorDecision:\s*\{([\s\S]*?)\n\s*\}/)?.[1] || '';
+  const productionUrl = entry.match(/load:\s*\(\)\s*=>\s*import\((['"])([^'"]+)\1\)/)?.[2] || '';
+  assert.match(productionUrl, /^\.\/qianmu-director-decision\.js\?v=\d+\.\d+\.\d+$/, 'the actual lazy loader keeps an explicit fixed module version independently of unrelated releases');
+  assert.doesNotMatch(source, /^\s*import\s+[^;\n]*\bfrom\s+['"]\.\/qianmu-director-decision\.js[?'"\s]/m, 'decision code must not become an eager import');
   const init = source.slice(source.indexOf('function init()'), source.indexOf('function cleanupRuntime'));
   assert.doesNotMatch(init, /featureRuntime\.load\('directorDecision'\)/);
   assert.ok(release.files.includes('qianmu-director-decision.js'));

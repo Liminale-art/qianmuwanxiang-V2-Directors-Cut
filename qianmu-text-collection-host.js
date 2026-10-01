@@ -1,4 +1,4 @@
-import {createTextCollectionOwner} from './qianmu-text-collection-owner.js';
+import {createTextCollectionOwner} from './qianmu-text-collection-owner.js?v=1.59.415';
 import {createTextCollectionFloor} from './qianmu-text-collection-floor.js';
 import {textCollectionFloorSources, collectionSourceKey} from './qianmu-text-collection-source.js';
 import {floorProseText} from './qianmu-prose-floor-entries.js';

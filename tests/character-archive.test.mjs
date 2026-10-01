@@ -6,7 +6,7 @@ import * as archive from '../qianmu-character-archive.js';
 import {createCharacterArchiveStore} from '../qianmu-character-archive-store.js';
 import {renderCharacterArchive,saveCharacterReference,createCharacterArchiveController} from '../qianmu-character-archive-view.js';
 import {implementation} from './helpers/comfy-character-fixture.mjs';
-import {LUCIDE_GLYPH_NAMES} from '../qianmu-icon-renderer.js';
+import {ICONSAX_GLYPH_NAMES,ICONSAX_ICON_MARKUP} from '../qianmu-icon-renderer.js';
 import {normalizeStoryboardState} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 const document=()=>({...archive.newCharacterArchive('char'),name:'Alice',aliases:['Al','阿莉'],imagegen:{appearance:'black hair',negative:'',sensitiveAppearance:'private field',reference:null}});
@@ -78,7 +78,7 @@ test('library has three categories, escaped content and no sensitive field in br
   const html=renderCharacterArchive(view);assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));assert.ok(!html.includes('sensitiveAppearance'));
   for(const category of archive.CHARACTER_CATEGORIES)assert.ok(html.includes(`data-category="${category}"`));
   const editor=renderCharacterArchive({...view,draft:{document:document(),id:'a',version:1}});assert.match(editor,/data-archive-image/);assert.match(editor,/data-archive-field="sensitiveAppearance"/);assert.match(editor,/data-archive-field="ageStatus"/);
-  for(const [_,name]of (html+editor).matchAll(/data-qm-icon="qm-regular-([^"]+)"/g))assert.ok(LUCIDE_GLYPH_NAMES[name],name);
+  for(const [_,name]of (html+editor).matchAll(/data-qm-icon="qm-regular-([^"]+)"/g))assert.ok(ICONSAX_GLYPH_NAMES[name]&&ICONSAX_ICON_MARKUP[ICONSAX_GLYPH_NAMES[name]],name);
 });
 test('thumbnail receipts are tied to the original and never substitute full-size files into list indexes',()=>{
   const raw=document(),reference={url:'/user/images/ref.png',name:'ref',sha256:'a'.repeat(64),bytes:70,mime:'image/png'};

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { qianmuIconMarkup, LUCIDE_STROKE_WIDTH, LUCIDE_ICON_MARKUP } from '../qianmu-icon-renderer.js';
+import { qianmuIconMarkup, ICONSAX_STROKE_WIDTH, ICONSAX_ICON_MARKUP } from '../qianmu-icon-renderer.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -41,12 +41,17 @@ assert.equal(renders, 3);
 shell.isConnected = false; buttons[0]();
 assert.equal(renders, 3);
 
-assert.equal(LUCIDE_STROKE_WIDTH, 2.25);
-for (const [semantic, glyph] of Object.entries({ backstage: 'feather', 'floor-tools': 'text-align-start', 'world-map': 'orbit', focus: 'leaf' })) {
+assert.equal(ICONSAX_STROKE_WIDTH, 2.5);
+for (const [semantic, glyph] of Object.entries({ backstage: 'message-favorite', 'floor-tools': 'textalign-left', 'world-map': 'map', focus: 'moon' })) {
   const markup = qianmuIconMarkup(semantic);
   // Compare geometry instead of unstable signature names.
   const body = markup.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)[1];
-  assert.equal(body, LUCIDE_ICON_MARKUP[glyph], `${semantic} uses ${glyph}`);
+  const variants = [...body.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)];
+  assert.deepEqual(variants.map(match => match[1]), ['outline', 'bold', 'twotone'], semantic);
+  for (const [, variant, attrs, geometry] of variants) {
+    assert.doesNotMatch(attrs, /data-qm-icon-fixed/, `${semantic}: creative entrances follow the current appearance`);
+    assert.equal(geometry, ICONSAX_ICON_MARKUP[glyph][variant], `${semantic} uses ${glyph}/${variant}`);
+  }
 }
 const commands=await readFile(new URL('../qianmu-hive-commands.js',import.meta.url),'utf8');
 assert.match(commands, /id: 'theater'[^\n]*qm-regular-tv/);

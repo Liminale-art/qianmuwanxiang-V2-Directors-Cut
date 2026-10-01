@@ -76,7 +76,7 @@ try{
       const box=el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,height:r.height};},root=document.querySelector('.sd-ensemble-library');
       return {overflow:root.scrollWidth-root.clientWidth,bounds:box(root),fields:[...root.querySelectorAll('.text_pole:not(textarea),button')].map(el=>({tag:el.tagName,...box(el)})),
         bindings:[...root.querySelectorAll('.sd-ensemble-binding-fields>label')].map(label=>{const control=label.querySelector('button,select'),rect=control.getBoundingClientRect();return {label:box(label),control:box(control),top:rect.top};}),
-        headings:[...root.querySelectorAll('.sd-ensemble-fields label>span')].map(el=>getComputedStyle(el).textAlign),icons:root.querySelectorAll('button svg[stroke-width="2.25"]').length,shadow:getComputedStyle(document.querySelector('[data-ensemble-field=description]')).boxShadow};
+        headings:[...root.querySelectorAll('.sd-ensemble-fields label>span')].map(el=>getComputedStyle(el).textAlign),icons:root.querySelectorAll('button svg[stroke-width="2.5"]').length,shadow:getComputedStyle(document.querySelector('[data-ensemble-field=description]')).boxShadow};
     });
     assert.ok(geometry.overflow<=1,key+JSON.stringify(geometry));assert.ok(geometry.icons>=3,key);assert.equal(geometry.shadow,'none',key);
     assert.equal(await page.locator('[data-ensemble-field=description]').evaluate(el=>getComputedStyle(el).outlineStyle),'none',key);

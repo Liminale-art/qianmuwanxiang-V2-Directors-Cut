@@ -7285,6 +7285,14 @@ dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) :is(.popup-button-o
   color: inherit;
   vector-effect: non-scaling-stroke;
 }
+/* Local glyph groups also cover bare SVG controls in collection/assistant panels.
+   Each new group declares its own paint, so the outer stroke stays compatible
+   with already-mounted older glyphs while Bold paths never gain an outline.
+   Theme switching changes only inherited display tokens, never live control DOM. */
+svg.qm-glyph-svg > g[data-qm-icon-variant="outline"] { display: var(--qm-icon-outline-display, inline); }
+svg.qm-glyph-svg > g[data-qm-icon-variant="bold"] { display: var(--qm-icon-bold-display, none); }
+svg.qm-glyph-svg > g[data-qm-icon-variant="twotone"] { display: var(--qm-icon-twotone-display, none); }
+svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 .qm-glyph-icon.fa-spin {
   animation: qm-glyph-spin 0.9s linear infinite !important;
 }

@@ -12,9 +12,22 @@
 - 固定版本、上游归档完整性及各文件摘要见 `vendor/noble-hashes-2.4.0/VENDOR.json`。
 - 这些文件不需要运行时下载或额外安装；上游声明的 Node 环境要求为 `>=20.19.0`。BLAKE3 不在其 2022 年独立审计范围内，不宣称该算法实现已通过独立审计。
 
+## Iconsax
+
+Icons by [Iconsax](https://iconsax.io/). Copyright Iconsax. Free License (proprietary), not MIT.
+
+千幕将选用的免费图形作为功能性界面资源嵌入 `qianmu-icon-renderer.js`，不分发独立 SVG 图标包，不提供再许可或独立图标提取用途。图标著作权属于 Iconsax，不受千幕原创代码的 PolyForm Noncommercial 许可覆盖。
+
+- 官方来源：https://app.iconsax.io/api/mcp （2026-10-01 取得的免费接口子集）
+- 接口文档：https://docs.iconsax.io/mcp/ai-integration
+- 使用规则：https://docs.iconsax.io/license-and-terms/license
+- 完整条款：https://docs.iconsax.io/license-and-terms/usage-manifesto
+- 调整：颜色改为随界面继承；Outline 风格使用其对应 Linear 图形，以设置 2.5px 描边；Twotone 同样设置 2.5px，Bold 保持原生填充。移除冗余的 24×24 裁剪定义，避免同页 SVG ID 冲突。
+- 开发侧只读取已选的功能子集；运行时无需连接 Iconsax、图标字体或 CDN。若需在其他产品单独复用图形，请直接向 Iconsax 获取相应许可与资源。
+
 ## Lucide
 
-Lucide Static `1.39.0` 的按需图标子集。
+Lucide Static `1.39.0` 的少量通用操作图标，保留锚点、收起、单/双勾、图钉、关闭、星标/半星、播放/停止的既有易识别轮廓，并统一至 2.5px；其余中央界面图标现使用上述 Iconsax 子集。
 
 ISC License
 

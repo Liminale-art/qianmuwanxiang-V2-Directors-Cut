@@ -33,11 +33,17 @@
   transform: translateY(4%);
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] {
+  --qm-icon-outline-display: none;
+  --qm-icon-bold-display: inline;
+  --qm-icon-twotone-display: none;
   --qm-card-radius: 0px;
   --qm-button-radius: 0px;
   --sd-radius-control: 0px;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] {
+  --qm-icon-outline-display: none;
+  --qm-icon-bold-display: none;
+  --qm-icon-twotone-display: inline;
   --qm-card-radius: 22px;
   --qm-skin-material: color-mix(in srgb, var(--qm-surface) 65%, transparent);
   --qm-skin-filter: blur(22px) saturate(1.12);

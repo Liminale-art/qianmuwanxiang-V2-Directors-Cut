@@ -24,7 +24,9 @@ assert.match(license, /^# PolyForm Noncommercial License 1\.0\.0/m);
 assert.match(license, /^Required Notice: Copyright © 2026 Liminale-art\./m);
 assert.doesNotMatch(license, /AGPL-3\.0-or-later/);
 assert.ok(source.includes(`const VERSION = '${manifest.version}';`), 'runtime version must match the manifest');
-assert.ok(source.includes(`'./qianmu-historical-import-runtime.js?v=${manifest.version}'`), '历史导入入口须跟随当前发布版本');
+// Module cache versions identify changed code, not the latest unrelated release.
+// Keep an explicit fixed URL so an intentional module update can invalidate it.
+assert.match(source, /\bfrom\s+['"]\.\/qianmu-historical-import-runtime\.js\?v=\d+\.\d+\.\d+['"]/, '历史导入入口须使用明确固定版本的生产导入地址');
 assert.match(source, /historical-restore-view\.js\?v=\d+\.\d+\.\d+/);
 
 assert.match(source, /Symbol\.for\('qianmu\.omniscene\.runtime'\)/, '不同 URL 和安装目录必须共用一把运行锁');
@@ -92,7 +94,7 @@ for (const removedPath of ['qianmu-icons.js', 'assets/qianmu-phosphor-icons.svg'
   await assert.rejects(access(new URL(removedPath, root)), undefined, `${removedPath} 不得出现在稳定版`);
 }
 assert.match(source, /qianmu-icon-renderer\.js\?v=\d+\.\d+\.\d+/, '稳定版必须按版本加载局部图标渲染器');
-assert.ok(source.includes(`'./qianmu-storyboard.js?v=${manifest.version}'`), '分镜数据契约必须随发布版本破除子模块缓存');
+assert.match(source, /\bfrom\s+['"]\.\/qianmu-storyboard\.js\?v=\d+\.\d+\.\d+['"]/, '分镜数据契约必须使用明确固定版本的生产导入地址');
 assert.doesNotMatch(source, /qianmu-icons\.js|installQianmuIconSystem/, '稳定版不得恢复旧图标系统');
 assert.doesNotMatch(iconRendererSource, /\bMutationObserver\b/, '局部图标渲染器不得观察全页 DOM');
 

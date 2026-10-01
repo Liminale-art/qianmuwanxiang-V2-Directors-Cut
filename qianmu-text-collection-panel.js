@@ -1,7 +1,7 @@
-import {qianmuIconElement} from './qianmu-icon-renderer.js';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.415';
 import {createTextCollectionEditor} from './qianmu-text-collection-editor.js';
 import {sameTextCollectionItem} from './qianmu-text-collection.js';
-import {createTextCollectionOrganizationView} from './qianmu-text-collection-organization-view.js';
+import {createTextCollectionOrganizationView} from './qianmu-text-collection-organization-view.js?v=1.59.415';
 import {filterTextCollectionItems, textCollectionItemOrganization} from './qianmu-text-collection-organization.js';
 
 // Isolated candidate: the caller owns the account lifetime, themed parent and

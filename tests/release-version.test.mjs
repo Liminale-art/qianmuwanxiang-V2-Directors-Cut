@@ -86,13 +86,16 @@ test('redirected responses and network failures remain unknown and a stalled fet
 
 function updateFixture(){
   const pending=[],calls={version:0,paint:0,badge:0};
-  const context=vm.createContext({AbortController,setTimeout,clearTimeout,Date,
+  let currentTime=1700000000000;
+  const clock={now:()=>currentTime,advance:milliseconds=>(currentTime+=milliseconds),set:milliseconds=>(currentTime=milliseconds)};
+  class FixtureDate extends Date {static now(){return clock.now();}}
+  const context=vm.createContext({AbortController,setTimeout,clearTimeout,Date:FixtureDate,
     qianmuUpdateState:{status:'idle',checkedAt:0},qianmuUpdatePromise:null,optionalServiceState:{status:'ready',version:'1.59.392',services:[]},
     ctx:()=>({getRequestHeaders:()=>({'X-CSRF-Token':'synthetic-st-only'})}),qianmuInstalledExtensionName:()=> 'third-party/qianmu',qianmuInstalledExtensionScope:async()=>false,
     fetch:async()=>{calls.version++;return new Response(JSON.stringify({...official,isUpToDate:false}));},
     readQianmuLatestRelease:(info,options)=>new Promise(resolve=>pending.push({info,options,resolve})),
     paintOptionalServiceState:()=>{calls.paint++;},paintQianmuVersionBadge:()=>{calls.badge++;}});
-  vm.runInContext(section('refreshQianmuUpdateStatus'),context);return {context,pending,calls};
+  vm.runInContext(section('refreshQianmuUpdateStatus'),context);return {context,pending,calls,clock};
 }
 
 test('the existing update check starts release metadata asynchronously and does not hold health or repeat on cached opens',async()=>{
@@ -117,10 +120,11 @@ test('a failed ST metadata check is retried after one minute without changing th
   const f=updateFixture();f.context.fetch=async()=>{f.calls.version++;throw Error('synthetic offline');};
   await f.context.refreshQianmuUpdateStatus(true);
   assert.equal(f.context.qianmuUpdateState.status,'unknown');assert.equal(f.calls.version,1);
-  f.context.qianmuUpdateState.checkedAt=Date.now()-59999;
+  f.clock.advance(59999);
   await f.context.refreshQianmuUpdateStatus();assert.equal(f.calls.version,1);
-  f.context.qianmuUpdateState.checkedAt=Date.now()-60001;
+  f.clock.advance(1);
   await f.context.refreshQianmuUpdateStatus();assert.equal(f.calls.version,2);
+  assert.equal(f.context.qianmuUpdateState.checkedAt,f.clock.now(),'the failure cache expires exactly at sixty seconds');
 });
 
 test('a failed remote package read does not keep the outer update check cached for thirty minutes',async()=>{
@@ -129,13 +133,18 @@ test('a failed remote package read does not keep the outer update check cached f
   f.pending[0].resolve('');await flush();
   assert.equal(f.context.qianmuUpdateState.status,'ready');
   assert.equal(f.context.optionalServiceState.latestVersion,'');
-  f.context.qianmuUpdateState.checkedAt=Date.now()-59999;
+  f.clock.advance(59999);
   await f.context.refreshQianmuUpdateStatus();assert.equal(f.calls.version,1);
-  f.context.qianmuUpdateState.checkedAt=Date.now()-60001;
+  f.clock.advance(1);
   await f.context.refreshQianmuUpdateStatus();assert.equal(f.calls.version,2);
   assert.equal(f.pending.length,2);
   f.pending[1].resolve('1.59.392');await flush();
   assert.equal(f.context.optionalServiceState.latestVersion,'1.59.392');
-  f.context.qianmuUpdateState.checkedAt=Date.now()-60001;
+  f.clock.advance(60001);
   await f.context.refreshQianmuUpdateStatus();assert.equal(f.calls.version,2,'a successful remote read keeps the normal cache lifetime');
+  f.clock.set(f.context.qianmuUpdateState.checkedAt+30*60*1000-1);
+  await f.context.refreshQianmuUpdateStatus();assert.equal(f.calls.version,2,'successful metadata is cached until one millisecond before thirty minutes');
+  f.clock.advance(1);
+  await f.context.refreshQianmuUpdateStatus();assert.equal(f.calls.version,3,'the successful cache expires exactly at thirty minutes');
+  assert.equal(f.pending.length,3);f.pending[2].resolve('1.59.392');await flush();
 });

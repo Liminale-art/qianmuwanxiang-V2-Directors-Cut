@@ -1,4 +1,4 @@
-import {qianmuIconElement} from './qianmu-icon-renderer.js';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.415';
 import {textCollectionItemOrganization} from './qianmu-text-collection-organization.js';
 
 // Classification edits use the same document and explicit save as prose edits.

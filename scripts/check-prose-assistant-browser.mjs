@@ -42,7 +42,7 @@ try{
  for(const width of [320,393,1280]){
   await page.setViewportSize({width,height:800});await page.evaluate(()=>fixture.open());await question().fill('问题');assert.equal(await action('send').isDisabled(),false);assert.equal(await question().getAttribute('placeholder'),null);
   assert.equal(await page.locator('[data-pa-preview],[aria-label="请求路径"]').count(),0);assert.equal(await page.locator('[data-pa-settings]').isVisible(),false);assert.equal(await page.locator('dialog').count(),0);assert.equal(await page.getByRole('dialog').getAttribute('aria-modal'),'false');
-  assert.equal(await action('settings').locator('svg').getAttribute('stroke-width'),'2.25');assert.ok(await action('send').locator('svg path').count()>0);
+  assert.equal(await action('settings').locator('svg').getAttribute('stroke-width'),'2.5');assert.ok(await action('send').locator('svg path').count()>0);
   const bounds=await page.getByRole('dialog').evaluate(node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight,overflow:node.scrollWidth>node.clientWidth+1};});assert.ok(bounds.left>=0&&bounds.right<=bounds.width+1&&bounds.bottom<=bounds.height+1&&!bounds.overflow,JSON.stringify(bounds));
   const aligned=await page.locator('.qm-pa-composer').evaluate(node=>{const rows=[...node.children].map(e=>e.getBoundingClientRect());return rows.length===2&&rows.every(r=>Math.abs(r.bottom-rows[0].bottom)<2&&Math.abs(r.height-rows[0].height)<1)&&rows[0].right<=rows[1].left;});assert.ok(aligned);assert.equal(await action('clear').count(),0);
   const old=await page.getByRole('dialog').boundingBox();

@@ -57,7 +57,7 @@ try{
     await input.fill('点击角色库后没有加载完成。\n预期看到档案，实际页面一直转圈。');
     const geometry=await page.locator('.sd-feedback-form').evaluate(form=>{
       const box=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,height:r.height,width:r.width};};
-      const field=form.querySelector('textarea');return {overflow:form.scrollWidth-form.clientWidth,form:box(form),field:box(field),buttons:[...form.querySelectorAll('button')].map(box),icons:form.querySelectorAll('button svg[stroke-width="2.25"]').length,outline:getComputedStyle(field).outlineStyle};
+      const field=form.querySelector('textarea');return {overflow:form.scrollWidth-form.clientWidth,form:box(form),field:box(field),buttons:[...form.querySelectorAll('button')].map(box),icons:form.querySelectorAll('button svg[stroke-width="2.5"]').length,outline:getComputedStyle(field).outlineStyle};
     });
     assert.ok(geometry.overflow<=1,key+JSON.stringify(geometry));assert.equal(geometry.icons,2,key);assert.equal(geometry.outline,'none',key);
     assert.ok(Math.abs(geometry.field.left-geometry.form.left)<=1&&Math.abs(geometry.field.right-geometry.form.right)<=1,key);

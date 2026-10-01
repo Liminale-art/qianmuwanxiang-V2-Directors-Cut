@@ -11,7 +11,7 @@ const sameSource = (a, b) => !!a && !!b && a.chatId === b.chatId && a.messageId 
 // hive do not retire it. No outbox, directory cache, retry loop or host writes.
 export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
     storeFactory = createStAccountStorage,
-    viewFactory = async options => (await loadLocalChunk('./qianmu-text-collection-view.js')).createTextCollectionView(options),
+    viewFactory = async options => (await loadLocalChunk('./qianmu-text-collection-view.js?v=1.59.415')).createTextCollectionView(options),
     document = globalThis.document, window = document?.defaultView,
     mountPortal, onChange = () => {}, notify = () => {}, typography = () => {},
     origin = globalThis.location?.origin, confirm, download,

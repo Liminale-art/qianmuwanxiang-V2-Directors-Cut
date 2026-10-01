@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createDocumentSession} from '../qianmu-document-session.js';
 import {createTextCollection} from '../qianmu-text-collection.js';
 import {createTextCollectionPanel} from '../qianmu-text-collection-panel.js';
-import {LUCIDE_ICON_MARKUP} from '../qianmu-icon-renderer.js';
+import {ICONSAX_GLYPH_NAMES, ICONSAX_ICON_MARKUP} from '../qianmu-icon-renderer.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 import {setCollectionEditorText, collectionEditorDisplayText} from './helpers/text-collection-editor.mjs';
 
@@ -218,14 +218,24 @@ test('view disposal detaches one subscription but leaves the page document usabl
 test('local control icons carry their intended glyph instead of an unresolved fallback', async t => {
     const f = fixture(t, [entry('one')]); await f.view.open();
     const expected = {
-        '关闭收藏': 'x', '刷新收藏': 'refresh-cw', '多选收藏': 'list-checks', '删除选中收藏': 'trash-2',
+        '关闭收藏': 'x', '刷新收藏': 'arrows-clockwise', '多选收藏': 'list-checks', '删除选中收藏': 'trash',
         '返回收藏列表': 'arrow-left', '管理文件夹': 'folder-plus', '整理收藏': 'tag',
-        '复制收藏正文': 'copy', '编辑收藏': 'pencil', '取消编辑': 'arrow-left', '保存收藏': 'star',
+        '复制收藏正文': 'copy', '编辑收藏': 'pencil-simple', '取消编辑': 'arrow-left', '保存收藏': 'star',
     };
     for (const [label, glyph] of Object.entries(expected)) {
         const icon = f.dom.get(label).children.find(node => node.tagName === 'SVG');
-        assert.ok(icon, label); assert.equal(icon.innerHTML, LUCIDE_ICON_MARKUP[glyph], label);
-        assert.equal(icon.getAttribute('stroke'), 'currentColor', label);
+        assert.ok(icon, label);
+        assert.equal(icon.getAttribute('data-qm-glyph'), `qm-regular-${glyph}`, label);
+        const official = ICONSAX_GLYPH_NAMES[glyph];
+        assert.ok(official && ICONSAX_ICON_MARKUP[official], `${label}: registered semantic, not fallback`);
+        const variants = [...icon.innerHTML.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)];
+        assert.deepEqual(variants.map(match => match[1]), glyph === 'star' ? ['outline'] : ['outline', 'bold', 'twotone'], label);
+        for (const [, variant, attrs, body] of variants) {
+            assert.equal(body, ICONSAX_ICON_MARKUP[official][variant], `${label}/${variant}`);
+            assert.equal(/\sdata-qm-icon-fixed(?:\s|$)/.test(attrs), glyph === 'star', `${label}: uncollected state stays outlined in every theme`);
+        }
+        assert.equal(icon.getAttribute('stroke'), 'none', label);
+        assert.equal(icon.getAttribute('stroke-width'), '2.5', label);
     }
 });
 

@@ -96,9 +96,9 @@ test('closing during a read prevents late repaint and does not close the borrowe
 test('display observer failures cannot turn a confirmed ST save into failure or trigger a retry',async()=>{
   const f=await fixture({onChange:async()=>{throw Error('observer');}});try{await f.editor.load();fill(f.editor);await f.editor.save();assert.equal((await f.store.readLibrary()).value.schemes.length,1);assert.equal(posts(f),2);}finally{f.close();}
 });
-test('the renderer escapes names, tags, descriptions and bindings while using local 2.25px SVG controls',async()=>{
+test('the renderer escapes names, tags, descriptions and bindings while using local 2.5px SVG controls',async()=>{
   const f=await fixture();try{await f.editor.load();fill(f.editor);f.editor.setField('name','<img src=x onerror=alert(1)>');f.editor.setField('description','</textarea><script>alert(1)</script>');await f.editor.save();
-    const html=renderEnsembleLibrary(f.editor.snapshot());assert.doesNotMatch(html,/<img|<script|onerror="|https?:\/\//);assert.match(html,/&lt;img/);assert.match(html,/stroke-width="2.25"/);assert.doesNotMatch(html,/API Key|password|requestPath/);
+    const html=renderEnsembleLibrary(f.editor.snapshot());assert.doesNotMatch(html,/<img|<script|onerror="|https?:\/\//);assert.match(html,/&lt;img/);assert.match(html,/stroke-width="2\.5"/);assert.doesNotMatch(html,/API Key|password|requestPath/);
   }finally{f.close();}
 });
 

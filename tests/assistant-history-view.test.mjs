@@ -9,9 +9,9 @@ async function fixture(t,count=2){const f=await assistantManagerFixture(t,count)
  const manager=()=>f.manager,options={parent:dom.parent,isCurrent:()=>f.live,check:()=>{if(!f.live)throw Error('scope');},confirm:async()=>accepted,download:(blob,name)=>downloads.push({blob,name}),createManager:manager};
  const view=open(options);t.after(()=>view.dispose());await dom.idle();return {...f,dom,downloads,view,options,setAccept(value){accepted=value;}};
 }
-test('detached management controls render the installed local Lucide SVGs without relying on an ancestor icon observer',async t=>{
+test('detached management controls render the installed local Iconsax SVGs without relying on an ancestor icon observer',async t=>{
  const f=await fixture(t);const buttons=f.dom.all().filter(node=>node.tagName==='BUTTON');assert.ok(buttons.length>=10);
- for(const button of buttons){const glyph=button.children.find(node=>node.tagName==='SVG');assert.ok(glyph,button.attrs['aria-label']);assert.equal(glyph.attrs.stroke,'currentColor');assert.equal(glyph.attrs['stroke-width'],'2.25');assert.equal(glyph.attrs.viewBox,'0 0 24 24');assert.ok(glyph.innerHTML.includes('<path'),button.attrs['aria-label']);}
+ for(const button of buttons){const glyph=button.children.find(node=>node.tagName==='SVG');assert.ok(glyph,button.attrs['aria-label']);assert.equal(glyph.attrs.stroke,'none');assert.equal(glyph.attrs['stroke-width'],'2.5');assert.equal(glyph.attrs.viewBox,'0 0 24 24');assert.ok(glyph.innerHTML.includes('<path'),button.attrs['aria-label']);for(const variant of ['outline','bold','twotone'])assert.ok(glyph.innerHTML.includes(`data-qm-icon-variant="${variant}"`),`${button.attrs['aria-label']}/${variant}`);}
 });
 test('list/view uses plain full text; detail cannot clear a different selected row and backup needs explicit selection',async t=>{
  const f=await fixture(t),{dom}=f;assert.equal(dom.get('备份选中助手记录').disabled,true);assert.equal(dom.all().filter(node=>node.tagName==='ARTICLE').length,2);

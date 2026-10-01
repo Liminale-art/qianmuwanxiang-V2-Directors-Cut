@@ -1,6 +1,6 @@
-import {createTextCollectionPanel, TEXT_COLLECTION_STYLESHEET} from './qianmu-text-collection-panel.js';
-import {createTextCollectionCapture, TEXT_COLLECTION_CAPTURE_STYLESHEET} from './qianmu-text-collection-capture.js';
-import {createTextCollectionImageDialog} from './qianmu-text-collection-image-dialog.js';
+import {createTextCollectionPanel, TEXT_COLLECTION_STYLESHEET} from './qianmu-text-collection-panel.js?v=1.59.415';
+import {createTextCollectionCapture, TEXT_COLLECTION_CAPTURE_STYLESHEET} from './qianmu-text-collection-capture.js?v=1.59.415';
+import {createTextCollectionImageDialog} from './qianmu-text-collection-image-dialog.js?v=1.59.415';
 
 // Created once by the account owner, not on every panel open. Only these two
 // local stylesheets and this portal belong to the view.
