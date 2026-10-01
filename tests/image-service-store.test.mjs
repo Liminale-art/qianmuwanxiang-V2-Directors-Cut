@@ -22,6 +22,24 @@ const metadata = (id = 'first') => ({ schema: 'qianmu.image-service-channel.v1',
   namespace: 'account-a', attemptId: id, requestDigest: args(id).requestDigest, ownerId: 'server-a', fence: `fence-${id}`,
   status: 'submitting', automatic: true, createdAt: 1, updatedAt: 1,
 }] });
+
+test('channel-exclusive reads validate inputs and share the existing write lock without mutating records', async t => {
+  const { root, store } = await fixture(t);
+  await store.transaction(key, () => ({ state: metadata() }));
+  await assert.rejects(store.readChannelExclusive('../outside', () => assert.fail('invalid key must not call back')));
+  await assert.rejects(store.readChannelExclusive(key, null));
+  const second = createImageServiceStore({ dataRoot: root }); t.after(() => second.close());
+  const locked = deferred(), release = deferred();
+  const read = store.readChannelExclusive(key, async state => { locked.resolve(); await release.promise; state.entries = []; return 'read-only'; });
+  await locked.promise;
+  try { await assert.rejects(second.transaction(key, state => ({ state })), { code: 'image_service_storage_busy' }); }
+  finally { release.resolve(); }
+  assert.equal(await read, 'read-only'); assert.equal((await store.inspectChannel(key)).entries.length, 1);
+  await assert.rejects(store.readChannelExclusive(key, () => { throw Error('synthetic callback failure'); }), { code: 'image_service_storage_unavailable' });
+  await second.transaction(key, state => ({ state }));
+  await store.close(); await assert.rejects(store.readChannelExclusive(key, () => assert.fail('closed store must not call back')), { code: 'image_service_storage_closed' });
+});
+
 async function fixture(t) {
   const parent = await fs.realpath(os.tmpdir()), root = await fs.mkdtemp(path.join(parent, 'qianmu-service-test-'));
   t.after(async () => {

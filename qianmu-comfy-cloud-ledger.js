@@ -52,6 +52,7 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       if (!row?.cloudIntent || !row.cloudReceipt || row.upstreamId !== task.taskId
         || JSON.stringify(row.cloudReceipt.task) !== JSON.stringify(task)) throw fail('query_identity', '原云任务凭据不完整或不匹配，请先核查');
       return { signature: signature(row), receipt: row.cloudReceipt, delivery: row.cloudDelivery || null,
+        terminal: row.cloudTerminal || null, usage: row.cloudObservation?.usage,
         identity: Object.freeze({ namespace: row.namespace, channelKey, attemptId: row.attemptId, requestDigest: row.requestDigest, fence: row.fence }) };
     };
     const { signature: original, receipt, identity } = await read();
@@ -61,6 +62,22 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       return snapshot;
     };
     const verify = async () => { await verifiedRead(); return receipt; };
+    async function releaseTerminalReservation(cache, { signal } = {}) {
+      const check = () => { current(); if (signal?.aborted) throw fail('delivery_cancelled', '已停止核查，原任务预留仍保留'); };
+      check(); const snapshot = await verifiedRead(); check();
+      if (!snapshot.terminal) return null;
+      if (typeof cache?.releaseEmptyReservation !== 'function') throw fail('delivery_storage', '空预留核查尚未就绪');
+      await cache.releaseEmptyReservation(identity, { authorize: raw => {
+        check();
+        const state = normalizeComfyCloudChannel(raw, channelKey);
+        const row = state.entries.find(item => item.namespace === identity.namespace && item.attemptId === identity.attemptId);
+        if (!row || signature(row) !== original || row.status !== 'failed' || row.cloudDelivery
+          || JSON.stringify(row.cloudTerminal) !== JSON.stringify(snapshot.terminal)) throw fail('query_changed', '原任务或终态已变化，未释放预留');
+        return true;
+      } });
+      check(); await verifiedRead(); check();
+      return Object.freeze({ status: snapshot.terminal.status, ...(snapshot.usage ? { usage: snapshot.usage } : {}) });
+    }
     async function recordTerminal(result) {
       // Request acknowledgements and even successful execution cannot release
       // occupancy: successful images must first pass the existing full readback.
@@ -159,7 +176,7 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     // Server-internal evidence only. The identity and verifier originate in the
     // same read; do not acquire a fresh fence after downloading or expose this
     // object as an HTTP response. It does not grant target IO or submission.
-    return Object.freeze({ identity, receipt, verify, ...(archiveOnly ? {} : { recordStored, recordUsage, recordTerminal }), recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
+    return Object.freeze({ identity, receipt, verify, ...(archiveOnly ? {} : { recordStored, recordUsage, recordTerminal, releaseTerminalReservation }), recordArchived, readDelivery: async () => (await verifiedRead()).delivery });
   }
   return Object.freeze({
     submission(reservation) {

@@ -276,6 +276,26 @@ export function createImageServiceResults({ dataRoot, store, maxSlots = 128, max
         return { ...current.value.result, ok: true, text: '', images, receipt: current.receipt, ready: current.value.status === 'ready', ...(cloud ? { cloud: current.value.cloud } : {}) };
       });
     },
+    releaseEmptyReservation(rawIdentity, { authorize } = {}) {
+      const captured = identity(rawIdentity);
+      if (!cloud || typeof store.readChannelExclusive !== 'function' || typeof authorize !== 'function') return Promise.reject(fail('authorization', '空预留缺少原云任务终态授权'));
+      return store.readChannelExclusive(captured.channelKey, async state => {
+        // The ledger guard and exact empty-slot check run under the same lock
+        // as all ledger/cache writes; no stale fence can authorize a deletion.
+        const check = () => { if (authorize(state) !== true) throw fail('authorization', '原云任务终态尚未确认，未释放预留'); };
+        check();
+        const root = await locate(); if (!root) return { released: false };
+        const folder = path.join(root, slotId(captured));
+        try { await fs.lstat(folder); } catch (cause) { if (missing(cause)) return { released: false }; throw cause; }
+        const current = await manifest(folder, captured);
+        if (current.value.status !== 'reserved' || current.value.bytes !== 0 || current.value.images.length) throw fail('not_empty', '原任务暂存不是空预留，原图仍保留');
+        const entries = await fs.readdir(folder, { withFileTypes: true });
+        if (entries.length !== 1 || entries[0].name !== 'manifest.json' || !entries[0].isFile()) throw fail('not_empty', '原任务暂存含原图或待核查文件，未释放预留');
+        check();
+        await fs.unlink(path.join(folder, 'manifest.json')); await fs.rmdir(folder); await sync(root);
+        return { released: true };
+      }).catch(cause => { throw safeError(cause); });
+    },
     discard(rawIdentity, receipt, { valid = () => true } = {}) {
       const captured = identity(rawIdentity);
       return exclusive(async () => {

@@ -1,6 +1,6 @@
-import {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamParagraphBoundary} from './qianmu-storyboard-stream-reference.js?v=1.59.413';
-import {createStoryboardStreamScheduler} from './qianmu-storyboard-stream-scheduler.js?v=1.59.413';
-import {createStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.413';
+import {storyboardStreamGeneration,storyboardStreamFingerprint,storyboardStreamParagraphBoundary} from './qianmu-storyboard-stream-reference.js?v=1.59.414';
+import {createStoryboardStreamScheduler} from './qianmu-storyboard-stream-scheduler.js?v=1.59.414';
+import {createStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.414';
 
 const kind=value=>value==null||value===''?'normal':value;
 const identity=message=>JSON.stringify([message.name,message.is_user===true,message.is_system===true,message.swipe_id||0,

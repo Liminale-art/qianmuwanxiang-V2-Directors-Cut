@@ -81,6 +81,14 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadClo
         key = JSON.stringify([grant.identity.namespace, grant.identity.channelKey, grant.identity.attemptId]);
         if (active.has(key)) return Object.freeze({ status: 'collecting', task, result: null });
         active.add(key); owned = true;
+        const settleTerminal = async () => {
+          if (typeof grant.releaseTerminalReservation !== 'function') return null;
+          const terminal = await grant.releaseTerminalReservation(cache, { signal }); await verify();
+          return terminal ? Object.freeze({ ...terminal, task, result: null }) : null;
+        };
+        // Explicitly revisiting a known terminal task can recover its old empty
+        // slot even when capacity is full, without a new reservation/network IO.
+        const terminal = await settleTerminal(); if (terminal) return terminal;
         const read = async () => {
           await verify();
           const delivery = await grant.readDelivery(); await verify();
@@ -120,6 +128,9 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadClo
             await networkGrant.verify();
             if (downloaded.status !== 'integrity_checked') {
               if (!['queued', 'running', 'canceling', 'canceled', 'failed', 'expired'].includes(downloaded.status) || downloaded.result !== null) throw fail('download', '原任务收图状态不完整，未交付');
+              // A returned status string is not cleanup authority. Only the
+              // original ledger's durable terminal evidence may free an empty slot.
+              const terminal = await settleTerminal(); if (terminal) return terminal;
               const usage=task.provider==='runninghub'&&downloaded.status==='failed'?readRunningHubUsage(downloaded.usage):null;
               return Object.freeze({ status: downloaded.status, task, result: null, ...(usage?{usage}:{}) });
             }

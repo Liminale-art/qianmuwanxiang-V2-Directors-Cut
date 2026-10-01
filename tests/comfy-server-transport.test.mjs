@@ -1438,7 +1438,7 @@ test('corrupt cache or another account cannot fall through into fresh cloud coll
   assert.equal(reads, 1);
 });
 
-test('waiting tasks keep execution occupancy; expiry releases it without deleting temporary reservations or claiming archived images', async t => {
+test('waiting tasks keep their reservation; verified expiry frees only the empty slot and preserves task evidence', async t => {
   for (const status of ['running', 'expired']) {
     const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
     const cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
@@ -1447,7 +1447,8 @@ test('waiting tasks keep execution occupancy; expiry releases it without deletin
       requestImpl: mockNodeRequest(calls, () => ({ body: { ...readyCloudJob(f), status } })) });
     assert.deepEqual(result, { status, task: f.task, result: null }); assert.equal(calls.length, 1);
     const inventory = await cache.inventory(imageServiceAccount(f.req).namespace);
-    assert.equal(inventory.totals.reservedBytes, 48 * 1024 * 1024); assert.equal(inventory.entries[0].ready, false);
+    assert.equal(inventory.totals.reservedBytes, status === 'running' ? 48 * 1024 * 1024 : 0);
+    assert.equal(inventory.entries.length, status === 'running' ? 1 : 0);
     const after=await f.store.inspectChannel(f.locator.channelKey);
     if(status==='running')assert.deepEqual(after,before);
     else {
@@ -1455,6 +1456,128 @@ test('waiting tasks keep execution occupancy; expiry releases it without deletin
       assert.equal(after.entries[0].cloudDelivery,undefined);assert.deepEqual(after.entries[0].cloudReceipt,before.entries[0].cloudReceipt);
     }
   }
+});
+
+async function appendAuditCloudTask(f, index) {
+  const previous = (await f.store.inspectChannel(f.locator.channelKey)).entries[0];
+  const task = bindComfyCloudTask(rhBinding, String(1904152026220003400n + BigInt(index)));
+  const reservation = await f.ledger.reserve(f.req, { expectedAccount: imageServiceAccount(f.req).namespace,
+    attemptId: `terminal-audit-${index}`, apiKey: f.locator.apiKey, intent: previous.cloudIntent });
+  const ticket = f.ledger.submission(reservation); await ticket.beforeSubmit();
+  await ticket.recordAccepted(task.taskId, { ...previous.cloudReceipt, task });
+  return { ...f, task, locator: { ...f.locator, attemptId: reservation.attemptId } };
+}
+
+test('more than ten failed RH collections free empty reservations and the next original still downloads once', async t => {
+  const f = await persistedCloudTask(t, rhBinding), cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache }), calls = [];
+  for (let index = 0; index < 12; index++) {
+    const current = index ? await appendAuditCloudTask(f, index) : f;
+    const input = { task: current.task, ...current.locator };
+    const result = await receiver.receive(f.req, input, { ...assetReadOptions(f), requestImpl: mockNodeRequest(calls,
+      () => ({ body: { taskId: current.task.taskId, status: 'FAILED', errorCode: '1501' } })) });
+    assert.equal(result.status, 'failed');
+    assert.equal((await cache.inventory(imageServiceAccount(f.req).namespace)).totals.reservedBytes, 0);
+    assert.equal((await receiver.receive(f.req, input)).status, 'failed', 'known terminal revisit needs neither network nor another slot');
+  }
+  assert.equal(calls.length, 12);
+  const last = await appendAuditCloudTask(f, 12);
+  const delivered = await receiver.receive(f.req, { task: last.task, ...last.locator }, { ...assetReadOptions(f),
+    requestImpl: mockNodeRequest(calls, call => rhDownloadReply(last, call, 1)) });
+  assert.equal(delivered.status, 'staged'); assert.deepEqual(Buffer.from(delivered.result.images[0].bytes), png);
+  assert.equal(calls.length, 15); assert.ok(calls.every(call => call.url.pathname !== '/task/openapi/create'));
+  const rows = (await f.store.inspectChannel(f.locator.channelKey)).entries;
+  assert.equal(rows.length, 13); assert.equal(rows.filter(row => row.cloudTerminal?.status === 'failed').length, 12);
+  assert.equal(rows.at(-1).cloudDelivery.state, 'stored');
+});
+
+test('an explicit result revisit releases legacy full-capacity terminal slots after restart without changing history or usage', async t => {
+  const f = await persistedCloudTask(t, rhBinding), cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const usage = { consumeCoins: '0.7500', consumeMoney: null, thirdPartyConsumeMoney: null, taskCostTime: '12.25' };
+  for (let index = 0; index < 10; index++) {
+    const current = index ? await appendAuditCloudTask(f, index) : f;
+    const grant = await f.ledger.authorizeStaging(f.req, current.locator, current.task);
+    await cache.reserve(grant.identity);
+    await grant.recordUsage({ task: current.task, status: 'failed', usage });
+    await grant.recordTerminal({ task: current.task, status: 'failed', terminal: true });
+  }
+  assert.equal((await cache.inventory(imageServiceAccount(f.req).namespace)).totals.reservedBytes, 480 * 1024 * 1024);
+  const before = await f.store.inspectChannel(f.locator.channelKey); await f.store.close();
+  const reopened = createImageServiceStore({ dataRoot: f.root, scope: 'comfy-cloud' }); t.after(() => reopened.close());
+  const service = createComfyCloudService({ dataRoot: f.root, store: reopened, transportOptions: {
+    authorizeTarget: cloudGrant, resolveHost: () => assert.fail('terminal revisit cannot access DNS') } }); t.after(() => service.close());
+  const input = { version: 1, expectedAccount: imageServiceAccount(f.req).namespace, task: f.task, ...f.locator };
+  const first = await service.result(f.req, input); assert.equal(first.status, 'failed'); assert.deepEqual(first.usage, usage);
+  assert.deepEqual(await service.result(f.req, input), first);
+  assert.deepEqual(await reopened.inspectChannel(f.locator.channelKey), before, 'no ledger, cost, receipt or duplicate guard is deleted');
+  assert.equal((await service.catalog(f.req, { version: 1, expectedAccount: input.expectedAccount })).totals.reservedBytes, 432 * 1024 * 1024);
+});
+
+test('a downloaded terminal string without persistent proof cannot release an empty reservation', async t => {
+  const f = await persistedCloudTask(t), cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const receiver = createComfyCloudReceiver({ ledger: f.ledger, cache, download: async () => ({ status: 'failed', task: f.task, result: null }) });
+  assert.equal((await receiver.receive(f.req, { task: f.task, ...f.locator })).status, 'failed');
+  assert.equal((await cache.inventory(imageServiceAccount(f.req).namespace)).totals.reservedBytes, 48 * 1024 * 1024);
+  assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].cloudTerminal, undefined);
+});
+
+test('terminal cleanup rejects partial image, temporary, unknown and unreadable files without removing any evidence', async t => {
+  for (const name of ['image-0.bin', '.image-00000000-0000-4000-8000-000000000000.tmp', 'keep.txt', 'corrupt-manifest', 'missing-manifest', 'directory-link']) {
+    const f = await persistedCloudTask(t), cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+    const grant = await f.ledger.authorizeStaging(f.req, f.locator, f.task); await cache.reserve(grant.identity);
+    await grant.recordTerminal({ task: f.task, status: 'expired', terminal: true });
+    const base = path.join(f.root, '.qianmu-service', 'comfy-cloud-results-v1'), [slot] = await fs.readdir(base), folder = path.join(base, slot);
+    const file = path.join(folder, name === 'corrupt-manifest' ? 'manifest.json' : name);
+    if (name === 'missing-manifest') await fs.unlink(path.join(folder, 'manifest.json'));
+    else if (name === 'directory-link') { const outside = path.join(f.root, 'outside'); await fs.mkdir(outside); await fs.symlink(outside, file, 'junction'); }
+    else await fs.writeFile(file, 'preserve-audit-bytes');
+    await assert.rejects(grant.releaseTerminalReservation(cache));
+    if (name === 'missing-manifest') assert.deepEqual(await fs.readdir(folder), [], 'unknown missing metadata must not be treated as a completed cleanup');
+    else {
+      if (name === 'directory-link') assert.ok((await fs.lstat(file)).isSymbolicLink());
+      else assert.equal(await fs.readFile(file, 'utf8'), 'preserve-audit-bytes');
+      assert.ok((await fs.readdir(folder)).includes('manifest.json'));
+    }
+  }
+});
+
+test('terminal cleanup rejects departed accounts, cancellation and a fence changed while waiting for the storage lock', async t => {
+  for (const mode of ['account', 'cancel', 'fence', 'missing-ledger']) {
+    const f = await persistedCloudTask(t), cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+    const grant = await f.ledger.authorizeStaging(f.req, f.locator, f.task); await cache.reserve(grant.identity);
+    await grant.recordTerminal({ task: f.task, status: 'canceled', terminal: true });
+    const controller = new AbortController();
+    const guarded = { releaseEmptyReservation: async (...args) => {
+      if (mode === 'account') f.req.user.profile.handle = 'bob';
+      if (mode === 'cancel') controller.abort();
+      if (mode === 'fence') await f.store.transaction(f.locator.channelKey, state => { state.entries[0].fence = 'changed-fence'; return { state }; });
+      if (mode === 'missing-ledger') await f.store.transaction(f.locator.channelKey, state => { state.entries = []; return { state }; });
+      return cache.releaseEmptyReservation(...args);
+    } };
+    await assert.rejects(grant.releaseTerminalReservation(guarded, { signal: controller.signal }));
+    assert.equal((await cache.load(grant.identity, { metadataOnly: true })).ready, false);
+  }
+});
+
+test('a concurrent complete original save wins the same lock and terminal cleanup never removes its bytes', async t => {
+  const f = await persistedCloudTask(t), cache = createImageServiceResults({ dataRoot: f.root, store: f.store, scope: 'comfy-cloud' });
+  const downloaded = await downloadComfyCloudJob(f.req, { task: f.task, ...f.locator }, { ...assetReadOptions(f),
+    requestImpl: mockNodeRequest([], call => assetDownloadReply(f, call)) });
+  const grant = downloaded.grant; await cache.reserve(grant.identity);
+  await grant.recordTerminal({ task: f.task, status: 'failed', terminal: true });
+  let saving;
+  const guarded = { releaseEmptyReservation: (...args) => { saving = cache.save(grant.identity, downloaded.result); return cache.releaseEmptyReservation(...args); } };
+  await assert.rejects(grant.releaseTerminalReservation(guarded), { code: 'image_service_result_not_empty' });
+  await saving; assert.deepEqual(Buffer.from((await cache.load(grant.identity)).images[0].bytes), png);
+});
+
+test('terminal cleanup has no authority over nonterminal, stored or archived originals', async t => {
+  const { f, cache, received } = await stagedBeforeSettlement(t), grant = received.grant;
+  assert.equal(await grant.releaseTerminalReservation(cache), null);
+  const stored = await grant.recordStored(cache); assert.equal(await grant.releaseTerminalReservation(cache), null);
+  await grant.recordArchived(cache, { receipt: stored.result.receipt, archived: true });
+  assert.equal(await grant.releaseTerminalReservation(cache), null);
+  assert.deepEqual(Buffer.from((await cache.load(grant.identity)).images[0].bytes), png);
 });
 
 test('a failed or cancelled second cloud image never returns a partial whole-job packet or re-submits the job', async t => {

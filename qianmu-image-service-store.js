@@ -215,6 +215,15 @@ export function createImageServiceStore({ dataRoot, fileSystem = fs, maxChannels
       if (typeof operation !== 'function') return Promise.reject(error('transaction', '缺少服务存储操作'));
       return enqueue(() => exclusive(operation));
     },
+    readChannelExclusive(key, operation) {
+      try {
+        checkKey(key);
+        if (typeof operation !== 'function') throw error('transaction', '缺少服务读取操作');
+        // Share the existing process/file lock with result writes. The callback
+        // must not enqueue another store operation while holding this lock.
+        return enqueue(() => exclusive(async () => operation((await readRecord(key))?.state)));
+      } catch (cause) { return Promise.reject(safeError(cause)); }
+    },
     transaction(key, reduce) {
       try {
         checkKey(key);

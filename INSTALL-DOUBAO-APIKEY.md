@@ -10,6 +10,8 @@
 
 安装程序会保留独立版本的配置备份，下载/更新成功后才开启 `enableServerPlugins`。本地改动、重复配置项或链接目录会暂停安装，不覆盖用户改动。不需要执行 `npm install`。请使用与前端相匹配的服务版本；不同安装分支不会因为刷新浏览器自动同步。
 
+安装前还应核对两项宿主条件：`enableServerPlugins` 是 ST 的全局插件开关，开启前检查实际 `plugins` 扫描目录，不要将旧千幕或其他插件的备份副本留在其中重复加载；备份应放在扫描目录以外。另核对当前 ST 的 `enableServerPluginsAutoUpdate` 配置及启动行为：若启动时会拉取插件，安装时核对的提交可能发生变化，启动后须再次核对实际提交与健康接口版本。不要为了固定千幕而未经确认改动影响所有插件的全局自动更新开关。
+
 ## 云端 / VPS 部署（Linux）
 
 通过 SSH 进入服务器，按原部署方式停止 ST 后端，再进入安装目录，整行复制并回车：
@@ -23,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Dire
 - **VPS 原生部署**：当前目录能看到 `config.yaml`；安装完成后按原方式重启 SillyTavern 后端服务。
 - **VPS Docker Compose 部署**：当前目录能看到 compose 配置文件和 `config` 文件夹；安装程序会检查插件目录挂载，但不会自动重启容器。完成后按原方式启动（常见服务名可使用 `docker compose start sillytavern`）。
 
-首次安装会从仓库默认分支取得服务端代码。若千幕前端使用 `refactor/storyboard-modularization` 开发分支，安装后还要按下节核对并切换服务端分支；只刷新网页或重跑默认分支安装命令，不会取得开发分支的配套版本。
+首次安装会从仓库默认分支取得服务端代码。若千幕前端使用 `refactor/storyboard-modularization` 开发分支，保持 ST 停止，按下节核对并切换服务端分支后再启动；只刷新网页或重跑默认分支安装命令，不会取得开发分支的配套版本。
 
 如果出现过 `New-Item: command not found` 或 `Out-Null: command not found`，说明你使用的是 Linux/Git Bash 终端，应使用上面这一行，不要使用 PowerShell 命令。
 
@@ -56,21 +58,57 @@ curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Dire
 
 ### PM2 部署
 
-如果 SillyTavern 由 PM2 托管，更新前先确认进程名和工作目录，不要把 `m2` 当作命令：
+如果 SillyTavern 由 PM2 托管，先做只读核对，不要把 `m2` 当作命令：
 
 ```bash
 pm2 status
 pm2 describe sillytavern
-cd /usr/local/games/SillyTavern
-git -C plugins/Omniscene status --short
-git -C plugins/Omniscene fetch origin refactor/storyboard-modularization
-git -C plugins/Omniscene switch refactor/storyboard-modularization
-git -C plugins/Omniscene pull --ff-only origin refactor/storyboard-modularization
-pm2 restart sillytavern --update-env
-pm2 status
 ```
 
-`sillytavern` 只是常见的 PM2 进程名；若 `pm2 status` 显示的是其他名称，用实际名称替换。若工作树有本地改动，先停止并备份，不要用 `reset --hard` 覆盖它们。重启后可用 `curl -fsS https://你的-ST-地址/api/plugins/qianmu-tts/health` 检查健康接口；返回 502 时先看 `pm2 logs <实际进程名> --lines 100`，再检查反代是否把 `/api/plugins/qianmu-tts/health` 转给同一个 ST 进程。
+`sillytavern` 和 `/usr/local/games/SillyTavern` 都只是示例，后续命令必须替换为核对后的进程名及真实安装目录。确认 `pm2 describe` 中的工作目录、入口和实际 Node 解释器；终端中的 `node -v` 不一定是 PM2 使用的版本。用该解释器核对运行时和插件加载兼容性，不因网页能打开就跳过检查；本指南不据本地测试声明任意 Node 版本均受支持。
+
+再在该安装目录核对插件来源、分支、节点及本地改动，按上节确认官方来源；任何命令失败、目录含链接、来源不符或有未处理改动，都先停在核对阶段，不继续覆盖：
+
+```bash
+(
+  set -eu
+  cd /usr/local/games/SillyTavern
+  pwd -P
+  git -C plugins/Omniscene remote get-url origin
+  git -C plugins/Omniscene branch --show-current
+  git -C plugins/Omniscene rev-parse HEAD
+  git -C plugins/Omniscene status --short
+)
+```
+
+**等待当前生成结束，备份并验证 ST 配置、数据和插件副本可读，再进入维护。** 下面仅适用于已有 Git 安装且本地已存在目标开发分支；首次切分支按上节处理，不要反复强行切换。核对插件扫描目录及自动更新行为后，再执行停止和更新；子 Shell 中任一步失败会立即停止，不会自动启动服务：
+
+```bash
+(
+  set -eu
+  cd /usr/local/games/SillyTavern
+  pm2 stop sillytavern
+  git -C plugins/Omniscene fetch origin refactor/storyboard-modularization
+  git -C plugins/Omniscene switch refactor/storyboard-modularization
+  git -C plugins/Omniscene pull --ff-only origin refactor/storyboard-modularization
+  git -C plugins/Omniscene rev-parse HEAD
+)
+```
+
+确认上述过程成功、最终提交是本次核验的配套节点、工作树干净，并用 PM2 实际 Node 解释器检查插件入口可加载后，才执行下一步。**更新或检查失败时保持 ST 停止，不执行启动命令**；先保留现场并按已验证备份处理，不用 `reset --hard` 覆盖本地修改。
+
+```bash
+pm2 start sillytavern && pm2 status
+```
+
+启动完成后再次核对实际节点（防止启动时自动更新）与健康接口中的 `version`，二者都应对应已检查的配套版本：
+
+```bash
+git -C /usr/local/games/SillyTavern/plugins/Omniscene rev-parse HEAD
+curl -fsS https://你的-ST-地址/api/plugins/qianmu-tts/health
+```
+
+健康接口版本不符或返回 502 时，先查看 `pm2 logs <实际进程名> --lines 100`，再检查反代是否把该健康地址转给同一个 ST 进程；不要靠连续更新、重启或重装 ST 试错。日志可能含私密信息，分享前仅保留相关错误并脱敏。
 
 ## 已退役功能说明
 
