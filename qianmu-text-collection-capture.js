@@ -1,4 +1,4 @@
-import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.417';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.418';
 
 export const TEXT_COLLECTION_CAPTURE_STYLESHEET = new URL('./qianmu-text-collection-capture.css', import.meta.url);
 

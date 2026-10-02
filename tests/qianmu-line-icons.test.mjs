@@ -51,9 +51,9 @@ for(const name of currentFaNames)assert.ok(QIANMU_FA_ICON_MAP[name], `实际使�
 const glyphBody = (markup) => String(markup).match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] || '';
 const semanticName = symbol => symbol.replace(/^qm-(?:duotone|regular|fill|user|signature)-/, '');
 const variantNames = ['outline', 'bold', 'twotone'];
-const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'broken','floor-tools':'outline','bookmarks':'outline'};
+const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'broken','floor-tools':'outline'};
 assert.deepEqual(ICONSAX_FIXED_VARIANTS, fixedVariants, 'only explicitly requested actions override appearance families');
-const artwork = (name, variant) => ICONSAX_ICON_MARKUP[name][name === 'refresh-arrow-02' && variant === 'bold' ? 'outline' : variant];
+const artwork = (name, variant) => ICONSAX_ICON_MARKUP[name][['refresh-arrow-02','unlimited','share'].includes(name) && variant === 'bold' ? 'outline' : variant];
 const groups = body => [...body.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone|broken)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)]
   .map(([full, variant, attrs, geometry]) => [full, variant, /\sdata-qm-icon-fixed(?:\s|$)/.test(attrs) ? ' data-qm-icon-fixed' : undefined, geometry]);
 const fallbackGlyph = glyphBody(qianmuIconMarkup('qm-unknown-glyph'));
@@ -150,8 +150,8 @@ for (const [semantic, official] of Object.entries({star: 'qianmu-star', 'star-ha
   assert.equal(ICONSAX_GLYPH_NAMES[semantic], official, `${semantic}: recognized action silhouette must not be replaced by a misleading source-name match`);
 }
 for (const [semantic, official] of Object.entries({
-  assistant:'ai-commentary', backstage:'fire-9', notes:'note-text', theater:'smileys', bookmarks:'qianmu-heart',
-  context:'shapes', world:'global', 'world-map':'share', tasks:'task-square', focus:'bell-2', aperture:'video-play', dashboard:'unlimited',
+  assistant:'ai-commentary', backstage:'fire-9', notes:'note-text', theater:'gift-9', bookmarks:'qianmu-heart',
+  context:'shapes', world:'global', 'world-map':'share', tasks:'task-square', focus:'notification', aperture:'video-play', dashboard:'unlimited',
   'voice-lines':'message-search', 'voice-reextract':'message-notif', 'voice-regenerate':'record-circle', 'voice-playall':'play-circle', 'voice-stopall':'pause-circle',
   'floor-tools':'align-bottom', 'underline-wave':'wind', pen:'edit', 'pencil-simple':'edit', 'arrow-clockwise':'refresh-arrow-02',
 })) assert.equal(ICONSAX_GLYPH_NAMES[semantic], official, `${semantic}: user-selected entry remains distinct from unrelated generic actions`);

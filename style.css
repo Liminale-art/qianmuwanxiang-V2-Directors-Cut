@@ -595,6 +595,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-quick-wheel .sd-wheel-command.is-edge-graphite { --sd-wheel-edge: #77736d; }
 #story-director-quick-wheel .sd-wheel-command.is-external { animation: none !important; opacity: 1 !important; touch-action: none; }
 #story-director-quick-wheel .sd-wheel-command[data-command="notes"] { touch-action: none; }
+#story-director-quick-wheel .sd-wheel-command[data-command="settings"] > .qm-glyph-icon { translate: 1px 0; }
 #story-director-quick-wheel .sd-wheel-command.is-external::before { animation: none !important; background: var(--sd-wheel-glass-sheen) !important; opacity: .72; }
 #story-director-quick-wheel .sd-wheel-command > i,
 #story-director-quick-wheel .sd-wheel-command > span,

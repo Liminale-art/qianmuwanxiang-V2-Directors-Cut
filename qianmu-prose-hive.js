@@ -1,4 +1,4 @@
-import {qianmuIconMarkup} from './qianmu-icon-renderer.js?v=1.59.417';
+import {qianmuIconMarkup} from './qianmu-icon-renderer.js?v=1.59.418';
 import {QIANMU_HIVE_COMMANDS} from './qianmu-hive-commands.js?v=1.59.417';
 // A detachable entry, not another assistant session. Geometry stays on this device.
 export function createProseHive({open,geometry,clamp,palette,theme,outline,applyIcons,mount,canDock,closeWheel,document=globalThis.document,window=globalThis.window}={}) {

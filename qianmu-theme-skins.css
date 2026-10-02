@@ -70,7 +70,12 @@
    this window. New skins remove that filter, so retain its containing block
    only while the shelf is mounted; do not introduce a second import control. */
 #story-director-modal:is([data-qm-theme="editorial"], [data-qm-theme="glass"]) .sd-window:has(.sd-reader-lib) { contain: layout; }
-#story-director-modal[data-qm-theme="editorial"] .sd-reader-import-fab { border-radius: 0 !important; }
+#story-director-modal[data-qm-theme="editorial"] .sd-reader-import-fab {
+  border-radius: 0 !important;
+  --qm-icon-outline-display: inline;
+  --qm-icon-bold-display: none;
+  --qm-icon-twotone-display: none;
+}
 #story-director-modal[data-qm-theme="glass"] .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close),
 #story-director-modal[data-qm-theme="glass"] .sd-storyboard-titlebar > .sd-storyboard-close { border-radius: 50% !important; }
 #story-director-modal[data-qm-theme] .sd-window::before { display: none; animation: none; }

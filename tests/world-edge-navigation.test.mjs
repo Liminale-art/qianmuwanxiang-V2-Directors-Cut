@@ -43,16 +43,17 @@ shell.isConnected = false; buttons[0]();
 assert.equal(renders, 3);
 
 assert.equal(ICONSAX_STROKE_WIDTH, 2.5);
-for (const [semantic, glyph] of Object.entries({backstage:'fire-9', assistant:'ai-commentary', 'floor-tools':'align-bottom', world:'global', 'world-map':'share', focus:'bell-2', notes:'note-text', theater:'smileys', bookmarks:'qianmu-heart', context:'shapes', tasks:'task-square', 'qm-regular-aperture':'video-play', dashboard:'unlimited'})) {
+for (const [semantic, glyph] of Object.entries({backstage:'fire-9', assistant:'ai-commentary', 'floor-tools':'align-bottom', world:'global', 'world-map':'share', focus:'notification', notes:'note-text', theater:'gift-9', bookmarks:'qianmu-heart', context:'shapes', tasks:'task-square', 'qm-regular-aperture':'video-play', dashboard:'unlimited'})) {
   const markup = qianmuIconMarkup(semantic);
   // Compare geometry instead of unstable signature names.
   const body = markup.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)[1];
   const variants = [...body.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)];
-  const fixed = ['floor-tools', 'bookmarks'].includes(semantic);
+  const fixed = semantic === 'floor-tools';
   assert.deepEqual(variants.map(match => match[1]), fixed ? ['outline'] : ['outline', 'bold', 'twotone'], semantic);
   for (const [, variant, attrs, geometry] of variants) {
     assert.equal(/data-qm-icon-fixed/.test(attrs), fixed, `${semantic}: only the explicit line silhouettes override the current appearance`);
-    assert.equal(geometry, ICONSAX_ICON_MARKUP[glyph][variant], `${semantic} uses ${glyph}/${variant}`);
+    const sourceVariant = variant === 'bold' && ['dashboard','world-map'].includes(semantic) ? 'outline' : variant;
+    assert.equal(geometry, ICONSAX_ICON_MARKUP[glyph][sourceVariant], `${semantic} uses ${glyph}/${sourceVariant}`);
   }
 }
 const commands=await readFile(new URL('../qianmu-hive-commands.js',import.meta.url),'utf8');

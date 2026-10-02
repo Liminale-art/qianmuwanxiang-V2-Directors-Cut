@@ -36,6 +36,13 @@ test('editorial shelf import is square while classic/glass keep their round 58px
   const importRules=rules.filter(rule=>rule.selector.includes('.sd-reader-import-fab'));
   assert.equal(importRules.length,1,'only editorial overrides the existing import silhouette');
   assert.equal(importRules[0].selector,'#story-director-modal[data-qm-theme="editorial"] .sd-reader-import-fab');
-  assert.equal(importRules[0].body,'border-radius: 0 !important;','theme shape must not alter the hit area, position or native input');
+  assert.equal(importRules[0].body,'border-radius: 0 !important;\n  --qm-icon-outline-display: inline;\n  --qm-icon-bold-display: none;\n  --qm-icon-twotone-display: none;','keep the square target and use classic plus geometry only inside this import control');
   assert.match(css,/#story-director-modal \.sd-reader-import-fab\s*\{[^}]*position:\s*fixed;[^}]*right:\s*26px;[^}]*bottom:\s*26px;[^}]*width:\s*58px;[^}]*height:\s*58px;[^}]*border-radius:\s*50%;/);
+});
+
+test('backstage optical nudge moves only the hive glyph, not its cell, hex frame or generic backstage icons',()=>{
+  const nudgeRules=[...css.matchAll(/([^{}]+)\{\s*translate:\s*1px 0;\s*\}/g)];
+  assert.equal(nudgeRules.length,1);
+  assert.equal(nudgeRules[0][1].trim(),'#story-director-quick-wheel .sd-wheel-command[data-command="settings"] > .qm-glyph-icon');
+  assert.match(entry,/const iconMarkup = item\.external \? quickDockIconMarkup\(item\) : `<i class="fa-solid \$\{item\.icon\}"/);
 });

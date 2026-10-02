@@ -5,7 +5,7 @@ import {collectReleaseFiles} from '../scripts/build-release.mjs';
 import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
-const ICONSAX_RELEASE = '1.59.417';
+const ICONSAX_RELEASE = '1.59.418';
 // Only the renderer's affected client import closure changes in this release.
 // Unrelated backend, storage and provider modules retain their existing URLs.
 const changedNodes = new Set([
@@ -16,7 +16,7 @@ const changedNodes = new Set([
   'qianmu-text-collection-capture.js', 'qianmu-text-collection-host.js',
   'qianmu-text-collection-image-dialog.js', 'qianmu-text-collection-organization-view.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-panel.js',
-  'qianmu-text-collection-view.js', 'qianmu-hive-commands.js',
+  'qianmu-text-collection-view.js',
 ]);
 const files = await collectReleaseFiles();
 const sources = new Map(await Promise.all(files.filter(file => file.endsWith('.js'))
@@ -47,6 +47,18 @@ test('the complete affected icon import closure uses its own release URL, includ
     assert.ok(sources.has(file), `${file}: affected code must ship locally`);
     if (file !== 'index.js') assert.ok(inbound.has(file), `${file}: do not leave a detached or untested node in the closure`);
   }
+  const expectedClosure = new Set(['index.js', 'qianmu-icon-renderer.js']);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [file, refs] of graph) {
+      if (!expectedClosure.has(file) && refs.some(({target}) => expectedClosure.has(target))) {
+        expectedClosure.add(file);
+        grew = true;
+      }
+    }
+  }
+  assert.deepEqual([...changedNodes].sort(), [...expectedClosure].sort(), 'only the actual changed renderer and entry parent closure needs new URLs');
   const visited = new Set();
   function visit(file) {
     if (visited.has(file)) return;
@@ -57,6 +69,7 @@ test('the complete affected icon import closure uses its own release URL, includ
   for (const file of changedNodes) assert.ok(visited.has(file), `${file}: reachable from the installed entry`);
   // This is deliberately not a whole-repository version bump.
   assert.ok([...graph.get('index.js')].some(({target, url}) => !changedNodes.has(target) && url.search === '?v=1.59.414'));
+  assert.ok([...graph.get('index.js')].some(({target, url}) => target === 'qianmu-hive-commands.js' && url.search === '?v=1.59.417'), 'unchanged hive commands retain their existing URL');
 });
 
 test('installed entry and both bundled styles use the icon release version', async () => {
@@ -69,7 +82,7 @@ test('installed entry and both bundled styles use the icon release version', asy
   assert.ok(sources.get('index.js').includes(`const VERSION = '${ICONSAX_RELEASE}';`));
   assert.ok(sources.get('index.js').includes('qianmu-theme-skins.css?v=${VERSION}'));
   for (const file of ['qianmu-theme-skins.css', 'qianmu-icon-renderer.js', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file));
-  assert.ok(!files.some(file => /^scripts\/(?:vendor|preview)-iconsax\.mjs$/.test(file)), 'development fetch/preview code is not a runtime dependency');
+  assert.ok(!files.some(file => /^scripts\/(?:(?:vendor|preview)-iconsax|iconsax-selected-sources)\.mjs$/.test(file)), 'development fetch/preview and attachment source code are not runtime dependencies');
 });
 
 test('new filled geometry isolates paint while outer CSS keeps older cached line icons visible', async () => {

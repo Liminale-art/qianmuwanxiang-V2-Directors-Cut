@@ -24,6 +24,8 @@ Icons by [Iconsax](https://iconsax.io/). Copyright Iconsax. Free License (propri
 - 完整条款：https://docs.iconsax.io/license-and-terms/usage-manifesto
 - 调整：颜色改为随界面继承；Outline 风格使用其对应 Linear 轮廓，以设置 2.5px 描边；Twotone 和指定的 message-notif、record-circle、wind Broken 同样设置 2.5px，Bold 保持原生填充。刷新在 Bold 主题复用线性轮廓；楼层跳转将接口的 align-bottom 垂直翻转，以匹配参考图中左短右长及底部横线（接口的 align-top 不含该横线）。移除冗余的 24×24 裁剪定义，避免同页 SVG ID 冲突。楼层及蜂巢收藏心形为千幕原创轮廓，不属于 Iconsax 或 Lucide 素材。
 - 幕后采用 fire-9 烛台系列（不是同名 fire）：线性主题用用户指定的 Broken 四段轮廓并统一 2.5px，Bold/Twotone 使用官方同系列样式。
+- 用户指定的 Iconsax SVG 附件按实际轮廓保留：幕外采用 gift13（线性）、gift6（实心）、gift8（双色）的蝴蝶结爱心礼盒，内部同归 gift-9；附件编号不当作官方接口编号。配音采用三份 microphone，专注采用 notification 的 Bold/Twotone，经典复用同一双色轮廓并移除透明度；纸间两个展开别名采用所给 maximize 四角图形。附件只在开发侧保留来源，运行包仍为内联图形，颜色改 currentColor、线性／双色描边统一 2.5px，实心根填充保留。
+- 纸间的推演、世界格局与书架导入加号复用线性轮廓，纸间蜂巢原创心形使用填充；这些局部风格例外不改变图形许可或楼层收藏状态含义。
 - 开发侧只读取已选的功能子集；运行时无需连接 Iconsax、图标字体或 CDN。若需在其他产品单独复用图形，请直接向 Iconsax 获取相应许可与资源。
 
 ## Lucide

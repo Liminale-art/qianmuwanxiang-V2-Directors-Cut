@@ -5,6 +5,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { suppliedIcons } from './iconsax-selected-sources.mjs';
 
 export const glyphs = {
   anchor:'qianmu-anchor', archive:'archive', 'arrow-clockwise':'refresh-arrow-02', 'arrow-counter-clockwise':'refresh-left',
@@ -20,26 +21,26 @@ export const glyphs = {
   crosshair:'gps', database:'driver', 'dots-three':'more', 'download-simple':'document-download', eraser:'eraser',
   eye:'eye', 'eye-slash':'eye-slash', feather:'pen-tool', 'file-arrow-down':'document-download',
   'file-arrow-up':'document-upload', 'film-slate':'video-play', 'film-strip':'video-horizontal', flask:'lamp-charge',
-  'floor-tools':'align-bottom', 'floppy-disk':'save-2', focus:'bell-2', folder:'folder', 'folder-minus':'folder-minus',
+  'floor-tools':'align-bottom', 'floppy-disk':'save-2', focus:'notification', folder:'folder', 'folder-minus':'folder-minus',
   'folder-plus':'folder-add', funnel:'filter', gauge:'speedometer', gear:'setting-2', 'globe-hemisphere-east':'global',
   graph:'hierarchy-2', headphones:'headphone', highlighter:'brush', image:'gallery', 'image-regenerate':'refresh-arrow-02',
   images:'gallery', info:'info-circle', lightbulb:'lamp-on', link:'link', list:'menu', 'list-bullets':'task',
   'list-checks':'task-square', 'list-numbers':'task', 'lock-keyhole':'lock', 'magic-wand':'magicpen',
-  'magnifying-glass':'search-normal', 'mask-happy':'happyemoji', 'microphone-stage':'microphone-2', minus:'minus',
+  'magnifying-glass':'search-normal', 'mask-happy':'happyemoji', 'microphone-stage':'microphone', minus:'minus',
   'minus-circle':'minus-circle', 'note-pencil':'note-2', notes:'note-text', package:'box', palette:'color-swatch', pause:'pause',
   pen:'edit', 'pen-nib':'pen-tool-2', 'pencil-simple':'edit', plant:'tree', play:'qianmu-play', 'play-circle':'play-circle',
   'plugs-connected':'electricity', plus:'add', 'push-pin':'qianmu-pin', 'puzzle-piece':'component', question:'message-question',
   quotes:'quote-down', robot:'cpu-charge', rows:'row-vertical', screening:'video-octagon', selection:'scan', shield:'shield-tick',
   'skip-back':'previous', 'skip-forward':'next', sliders:'setting-4', 'sort-descending':'sort', 'speaker-high':'volume-high',
   'spinner-gap':'refresh-arrow-02', 'squares-four':'category', stack:'layer', star:'qianmu-star', 'star-half':'qianmu-star-half', stop:'qianmu-stop',
-  'stop-circle':'stop-circle', syringe:'health', tag:'tag', target:'discover', tasks:'task-square', theater:'smileys', 'text-aa':'text',
+  'stop-circle':'stop-circle', syringe:'health', tag:'tag', target:'discover', tasks:'task-square', theater:'gift-9', 'text-aa':'text',
   'text-align-start':'textalign-left', tv:'monitor', 'text-underline':'text-underline', trash:'trash', 'trend-up':'trend-up',
   'upload-simple':'document-upload', user:'user', 'user-circle':'profile-circle', 'user-plus':'user-add',
   'video-camera':'video', 'voice-lines':'message-search', 'voice-reextract':'message-notif', 'voice-regenerate':'record-circle', 'voice-playall':'play-circle', 'voice-stopall':'pause-circle',
   warning:'warning-2', 'wave-sine':'sound', 'underline-wave':'wind', world:'global', 'world-map':'share', x:'qianmu-close',
 };
 
-export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'broken','floor-tools':'outline','bookmarks':'outline'};
+export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'broken','floor-tools':'outline'};
 
 const endpoint = 'https://app.iconsax.io/api/mcp';
 const cache = path.join(tmpdir(), 'qianmu-iconsax-free-2026-10-01-exact');
@@ -52,7 +53,7 @@ export function normalizeIcon(svg) {
   // Official exports wrap artwork in a redundant full-viewport clip. Remove it,
   // including its repeated IDs, after verifying it is exactly the 24x24 rect.
   for (const match of svg.matchAll(/<defs>([\s\S]*?)<\/defs>/g)) {
-    if (!/^\s*<clipPath id="[\w-]+">\s*<rect width="24" height="24" fill="(?:white|#[a-f\d]+)"\s*\/>\s*<\/clipPath>\s*$/i.test(match[1])) throw Error('Unexpected SVG defs');
+    if (!/^\s*<clipPath id="[\w-]+">\s*<rect width="24" height="24" fill="(?:none|white|#[a-f\d]+)"\s*\/>\s*<\/clipPath>\s*$/i.test(match[1])) throw Error('Unexpected SVG defs');
   }
   let body = svg.replace(/^<svg\b[^>]*>/,'').replace(/<\/svg>\s*$/,'')
     .replace(/<defs>[\s\S]*?<\/defs>/g,'').replace(/ clip-path="url\(#[\w-]+\)"/g,'')
@@ -62,7 +63,22 @@ export function normalizeIcon(svg) {
       || /(?:href|\bid\s*=|url\(|\bon\w+\s*=|<script|<style)/i.test(body)) throw Error('Unsafe SVG element or reference');
   const attributes = new Set(['d','fill','stroke','stroke-width','stroke-linecap','stroke-linejoin','fill-rule','clip-rule','opacity','stroke-opacity','fill-opacity','x','y','x1','x2','y1','y2','cx','cy','r','rx','ry','width','height','points','transform','stroke-miterlimit','stroke-dasharray','stroke-dashoffset']);
   for (const match of body.matchAll(/([a-z][a-z-]*)\s*=/gi)) if (!attributes.has(match[1])) throw Error('Unexpected SVG attribute '+match[1]);
+  // Some user-selected exports inherit their filled artwork from the SVG root.
+  // Preserve that paint explicitly before our renderer supplies fill="none".
+  if (/^<svg\b[^>]*\sfill="(?:white|black|#[a-f\d]+)"/i.test(svg)) body = `<g fill="currentColor">${body}</g>`;
   return body;
+}
+
+export function suppliedArtwork(name, variant) {
+  const key = (name === 'maximize-3' || name === 'maximize-4') && variant === 'bold' ? 'maximize/bold' : `${name}/${variant}`;
+  const svg = suppliedIcons[key];
+  if (svg) return {markup:normalizeIcon(svg),sha256:sha(svg)};
+  // The user supplied notification Bold and Twotone. Classic uses the exact
+  // same line geometry as Twotone, at full opacity instead of guessing a name.
+  if (name === 'notification' && variant === 'outline') {
+    return {markup:normalizeIcon(suppliedIcons['notification/twotone']).replace(/ opacity="0\.4"/g,''),sha256:sha(suppliedIcons['notification/twotone'])};
+  }
+  return null;
 }
 
 async function get(name,style) {
@@ -103,11 +119,11 @@ if(process.argv.includes('--write')) {
   };
   // The supplied backstage SVG is fire-9 Broken, not the unrelated icon named fire.
   const names=[...new Set([...Object.values(glyphs),'magic-star'])].sort(), result={}, hashes={}, pending=names.filter(name=>!familiar[name]).flatMap(name=>variantsFor(name).map(variant=>({name,variant,style:name==='fire-9'&&variant==='outline'?'broken':styles[variant]||variant}))), errors=[];
-  for(const [name,body] of Object.entries(familiar)) for(const variant of Object.keys(styles)) (result[name]||={})[variant]=`<g fill="${['qianmu-pin','qianmu-star','qianmu-star-half','qianmu-play','qianmu-stop'].includes(name)&&variant==='bold'?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${body}</g>`;
+  for(const [name,body] of Object.entries(familiar)) for(const variant of Object.keys(styles)) (result[name]||={})[variant]=`<g fill="${['qianmu-pin','qianmu-star','qianmu-star-half','qianmu-play','qianmu-stop','qianmu-heart'].includes(name)&&variant==='bold'?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${body}</g>`;
   await Promise.all(Array.from({length:4},async()=>{
     for(;;) { const item=pending.shift(); if(!item) break;
       try {
-        const value=await get(item.name,item.style);
+        const value=suppliedArtwork(item.name,item.variant) || await get(item.name,item.style);
         // The MCP's align-top has no baseline. Its align-bottom has a top rail:
         // mirror vertically to match the user's explicit bottom-rail reference.
         (result[item.name]||={})[item.variant]=item.name==='align-bottom' ? `<g transform="translate(0 24) scale(1 -1)">${value.markup}</g>` : value.markup;
