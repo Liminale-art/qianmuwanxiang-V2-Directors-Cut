@@ -31,7 +31,7 @@ try {
     const notes = { enabled: true, detached: false, position: { x: 15, y: 40 }, panelSize: { width: 430, height: 420 }, editorFontSize: 13, appearance: { tone: 'dark', edgeIndex: 0 } };
     Object.assign(window, { notesSyncPanel: null, notesDevice: null, notesViewEpoch: 0, notesReadEpoch: 0, notesSaveTimers: new Map(), notesPanelOpen: false, notesLoaded: false,
       notesLoading: null, notesRuntime: [], notesActiveId: '', notesSearch: '', notesZCounter: 1, notesPanelResizeObserver: null,
-      settings: { enabled: true, notes: structuredClone(notes) }, DEFAULT_SETTINGS: { notes }, NOTES_EDITOR_FONT_SIZES: [13, 14, 16, 18, 20, 24],
+      settings: { enabled: true, quickWheelCustomEnabled: ['notes'], notes: structuredClone(notes) }, DEFAULT_SETTINGS: { notes }, NOTES_EDITOR_FONT_SIZES: [13, 14, 16, 18, 20, 24],
       MODULE_NAME: 'fixture', NOTES_PANEL_LAYER_ID: 'qianmu-notes-panel-layer', fixture: { notices: [], downloads: [], settingsSaves: 0, confirm: true, confirms: 0 },
       clone: structuredClone, isPlainObject: value => value && typeof value === 'object',
       mergeDefaults: (target, defaults) => { for (const [key, value] of Object.entries(defaults)) if (target[key] === undefined) target[key] = structuredClone(value); },

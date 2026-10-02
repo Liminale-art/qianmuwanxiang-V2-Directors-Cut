@@ -3544,12 +3544,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-wheel-custom-details[open] > summary::before { transform: rotate(180deg); }
 #story-director-modal .sd-wheel-custom-details > summary > span { flex: 1; }
 #story-director-modal .sd-wheel-custom-details > summary > b { color: var(--sd-accent); font-size: 12px; font-weight: 600; }
-#story-director-modal .sd-wheel-custom-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-#story-director-modal .sd-wheel-custom-row { min-height: 40px; padding: 5px 7px 5px 10px; border: 1px solid var(--sd-hairline); border-radius: 9px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-#story-director-modal .sd-wheel-custom-row > label { display: flex; align-items: center; gap: 8px; margin: 0; }
-#story-director-modal .sd-wheel-custom-row > label i { width: 17px; color: var(--sd-accent); text-align: center; }
-#story-director-modal .sd-wheel-custom-row > div { display: flex; gap: 4px; }
-#story-director-modal .sd-wheel-custom-row .sd-icon-btn { width: 29px; height: 29px; min-width: 29px; padding: 0 !important; }
 @media (max-width: 520px) {
   #story-director-modal .sd-float-size-control { grid-template-columns: 1fr; gap: 8px; }
 }
@@ -8782,7 +8776,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 /* 小组件用同排标签态，不再混用原生勾选框。 */
 #story-director-modal .sd-widget-card { display: grid; gap: 9px; }
 #story-director-modal .sd-widget-card > h3 { margin: 0; }
-#story-director-modal .sd-widget-toggle-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+#story-director-modal .sd-widget-toggle-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
 #story-director-modal .sd-widget-toggle {
   min-width: 0; min-height: 31px; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   padding: 4px 7px !important; border: 1px solid var(--sd-hairline) !important; border-radius: 8px !important;
@@ -8791,9 +8785,10 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-widget-toggle.active { border-color: color-mix(in srgb, var(--sd-accent) 40%, var(--sd-hairline)) !important; background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-card)) !important; color: var(--sd-accent) !important; }
 #story-director-modal .sd-widget-toggle :is(i, .qm-glyph-icon) { width: 14px; height: 14px; font-size: 14px; }
 #story-director-modal .sd-wheel-settings { margin-top: 0; }
-#story-director-modal .sd-wheel-custom-details > summary { min-height: 31px; padding-block: 4px; }
-#story-director-modal .sd-wheel-custom-list { gap: 4px; padding-top: 5px; }
-#story-director-modal .sd-wheel-custom-row { min-height: 35px; padding-block: 3px; }
+#story-director-modal .sd-wheel-custom-details > summary { min-height: 31px; padding-block: 4px; font-size: calc(1em - 2px); }
+#story-director-modal .sd-wheel-custom-list { margin-top: 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; padding-top: 5px; }
+#story-director-modal .sd-wheel-command-toggle > :is(i, .qm-glyph-icon) { flex: 0 0 14px; }
+#story-director-modal .sd-wheel-command-toggle > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 
 /* 专注页沿用圆弧矩形，不再出现与系统规范割裂的大胶囊或圆形播放底框。 */
 #story-director-modal :is(.sd-focus-phase-tabs, .sd-focus-activity-tabs, .sd-focus-sound-sources, .sd-focus-segments) { border-radius: 10px !important; }
@@ -8895,7 +8890,6 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 
 @media (max-width: 620px) {
   #story-director-modal { --qm-control-height: 32px; }
-  #story-director-modal .sd-widget-toggle-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #qianmu-notes-panel-layer .sd-notes-stage { place-items: end center; padding: 10px; }
   #qianmu-notes-panel-layer .sd-notes-panel { width: min(88vw, 360px) !important; height: min(60dvh, 480px) !important; min-width: 0; resize: none; }
 }

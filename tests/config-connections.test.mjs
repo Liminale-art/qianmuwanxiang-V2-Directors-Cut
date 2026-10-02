@@ -71,7 +71,7 @@ test('supported envelopes retain explicit included APIs; malformed or unsafe dat
 });
 
 function fixture() {
-  const downloads=[],notices=[],writes=[],context={extensionSettings:{}};
+  const downloads=[],notices=[],writes=[],viewCalls=[],context={extensionSettings:{}};
   const c=vm.createContext({...policy,exportConfiguration,finishConfigRestore,configUndo:createConfigUndoSlot(),configUndoAction:null,createConfigUndoAction,PROSE_LAYOUT_STORAGE_KEY:'fixture-layout',settings:settings(),clone:structuredClone,isPlainObject:v=>v&&typeof v==='object'&&!Array.isArray(v),Blob,
     confirmDialog:async()=>false,configRestoreActivity:()=>({}),normalizeStoryboardState:structuredClone,storyboardPlansForPortableExport:async value=>value,
     ttsDownloadBlob:(blob,name)=>downloads.push({blob,name}),toast:(...args)=>notices.push(args),fileStamp:()=> 'fixture',ctx:()=>context,MODULE_NAME:'module',DEFAULT_SETTINGS:{},
@@ -80,16 +80,16 @@ function fixture() {
     storyboardSnapshotEpoch:0,
     storyboardAdmissionEpoch:0,storyboardDraftApiKeys:new Map(),storyboardConnectionStatus:new Map(),storyboardCredentialRevision:0,
     blobStore:{clearStoryboardPlanArchives(){throw Error('must never erase historical originals');}},
-    getSettings:()=>context.extensionSettings.module,seedBuiltinTheaters(){},saveSettings:()=>writes.push('save'),storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},renderFloatButton(){},renderModal(){},cacheProseLayout(){}});
+    getSettings:()=>context.extensionSettings.module,seedBuiltinTheaters(){},saveSettings:()=>writes.push('save'),storyboardSchedulePlanArchive(){},applyDirectorInjection:async()=>{},refreshWidgetRuntime:()=>viewCalls.push('widgets'),renderModal:()=>viewCalls.push('modal'),cacheProseLayout(){}});
   vm.runInContext(['exportConfig','importConfig','configApplyOptions','undoConfigRestore'].map(section).join('\n'),c);
-  return {c,downloads,notices,writes};
+  return {c,downloads,notices,writes,viewCalls};
 }
 
 function realMigrationFixture() {
   const e=fixture();Object.assign(e.c,utilities,ttsProviders,{normalizeQianmuStructuredOutputMode,
-    DEFAULT_SETTINGS:{tts:{}},DEFAULT_SYSTEM_PROMPT:'fixture system',JSON_SCHEMA_TEXT:'{}',PROMPT_REVISION:1,LOG_LIMIT:10});
+    DEFAULT_SETTINGS:{tts:{},quickWheelCustomEnabled:['dashboard','notes']},DEFAULT_SYSTEM_PROMPT:'fixture system',JSON_SCHEMA_TEXT:'{}',PROMPT_REVISION:1,LOG_LIMIT:10});
   // Production functions live in an ES module: match its strict assignment semantics.
-  vm.runInContext('"use strict";\n'+section('migrateTtsProviderSettings')+'\n'+section('migrateSettings'),e.c);
+  vm.runInContext('"use strict";\n'+['migrateWidgetSettings','migrateTtsProviderSettings','migrateSettings'].map(section).join('\n'),e.c);
   return e;
 }
 
@@ -124,6 +124,13 @@ test('configuration handoff invalidates pipeline memory sessions without deletin
   assert.equal(e.c.storyboardSnapshotEpoch,1);
   assert.equal(e.c.storyboardAdmissionEpoch,1);
   assert.deepEqual(e.writes,[]);
+});
+
+test('configuration view refresh runs widget reconciliation before rendering the restored settings',()=>{
+  const e=fixture();
+  e.c.configApplyOptions().render();
+  assert.deepEqual(e.viewCalls,['widgets','modal']);
+  assert.deepEqual(e.notices,[],'view synchronization must not be swallowed as a restoration warning');
 });
 
 test('real settings migration rejects malformed nested input before touching live configuration or originals',async()=>{

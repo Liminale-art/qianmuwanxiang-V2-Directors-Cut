@@ -296,7 +296,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.419';
+const VERSION = '1.59.420';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1139,7 +1139,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   contextBudget: 1000000,
   streamEnabled: false,
   floatingButton: true,
-  quickDockEnabled: true,
   floatSize: null,   // null=沿用原响应式默认（桌面48 / 移动44）；用户拖动滑块后保存明确像素值
   floatPosition: { x: null, y: null },
   proseLayout: { ...PROSE_LAYOUT_DEFAULTS },
@@ -1148,7 +1147,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   quickWheelCustomOrder: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelCustomEnabled: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelDockedPlugins: [],
-  quickWheelCustomExpanded: false,
+  quickWheelCustomExpanded: true,
   theme: 'light',
   lastTab: 'dashboard',   // 面板上次停留的标签，二次打开恢复到此（校验回退 dashboard）
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -1181,7 +1180,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       highResolution: { requireExplicitConfirmation: true },
     },
   },  // 动态渠道只保存非敏感区域/费用偏好；凭据独立进入 ST 密钥库/浏览器凭据仓
-  notes: { enabled: true, detached: false, position: { x: null, y: null }, panelSize: { width: null, height: null }, editorFontSize: 13, appearance: { tone: 'dark', edgeIndex: 0 } }, // 便笺蜂巢格可整格拖出到 ST 顶层；关闭只隐藏，不删除固定便笺
+  notes: { detached: false, position: { x: null, y: null }, panelSize: { width: null, height: null }, editorFontSize: 13, appearance: { tone: 'dark', edgeIndex: 0 } }, // 便笺入口由蜂巢选择统一控制；取消只隐藏，不删除内容和位置
   // 专注时钟：全局轻量状态，与聊天、推演和伴读存储完全隔离。运行态保存绝对截止时间，后台挂起/刷新后按真实时间续算。
   focusClock: {
     phase: 'focus',               // focus | shortBreak | longBreak
@@ -1820,7 +1819,21 @@ function acceptMigrationResult(scope, result) {
   return result?.value;
 }
 
+function migrateWidgetSettings(s) {
+  // Merge retired switches once; absent fields never override a later choice.
+  if (s.quickDockEnabled === false) s.quickWheelEnabled = false;
+  delete s.quickDockEnabled;
+  if (isPlainObject(s.notes)) {
+    if (s.notes.enabled === false) {
+      const enabled = Array.isArray(s.quickWheelCustomEnabled) ? s.quickWheelCustomEnabled : DEFAULT_SETTINGS.quickWheelCustomEnabled;
+      s.quickWheelCustomEnabled = enabled.filter(id => id !== 'notes');
+    }
+    delete s.notes.enabled;
+  }
+}
+
 function migrateSettings(s) {
+  migrateWidgetSettings(s);
   migrateTtsProviderSettings(s);
   // v1.58.15：退役伏笔显影的全局开关与注入位，避免旧设置继续影响提示词构建。
   delete s.liveStageEnabled;
@@ -4570,9 +4583,9 @@ function quickWheelPrimaryItems() {
 }
 
 function quickWheelItems() {
-  if (settings.quickDockEnabled !== false && settings.quickWheelDockedPlugins?.length) quickDockScanStored();
+  if (settings.quickWheelEnabled !== false && settings.quickWheelDockedPlugins?.length) quickDockScanStored();
   const primary = quickWheelPrimaryItems();
-  if (settings.quickDockEnabled === false) return primary;
+  if (settings.quickWheelEnabled === false) return primary;
   const room = Math.max(0, QUICK_HIVE_SAFETY_LIMIT - primary.length);
   const docked = [...quickDockRuntime.values()].filter((record) => record.host?.isConnected).slice(0, room).map((record) => ({
     id: `dock:${record.key}`,
@@ -4834,7 +4847,7 @@ function quickDockReservedCount() {
 }
 
 function syncQuickDockOriginVisibility() {
-  const hidden = settings.quickDockEnabled !== false && settings.quickWheelEnabled !== false && settings.floatingButton !== false;
+  const hidden = settings.enabled !== false && settings.quickWheelEnabled !== false && settings.floatingButton !== false;
   for (const record of quickDockRuntime.values()) quickDockSetOriginState(record, hidden ? 'hidden' : 'normal');
 }
 
@@ -4884,6 +4897,7 @@ function quickDockSetOriginState(record, state) {
 }
 
 function quickDockAttach(host, activator, descriptor = null, fromRestore = false) {
+  if (settings.enabled === false || settings.quickWheelEnabled === false || settings.floatingButton === false) return false;
   if (!host?.isConnected || host.closest?.(QIANMU_DETACHED_OWNED_SELECTOR) || isQianmuOwnedDockDescriptor(descriptor)) return false;
   if (!(host instanceof Element) || quickDockComposedAncestors(host).some((node) => node.matches?.(`#${FLOAT_ID}, #${MODAL_ID}, #${QUICK_WHEEL_ID}, #${FLOOR_NAV_ID}, #${NOTES_FLOAT_LAYER_ID}, #${NOTES_PANEL_LAYER_ID}, #sd-reader-portal`))) return false;
   normalizeQuickWheelSettings();
@@ -5013,6 +5027,7 @@ function quickDockRun(key) {
 }
 
 function quickDockScanStored() {
+  if (settings.enabled === false || settings.quickWheelEnabled === false || settings.floatingButton === false) return;
   normalizeQuickWheelSettings();
   for (const [key,record] of quickDockRuntime) if (record.host?.closest?.(QIANMU_DETACHED_OWNED_SELECTOR) || isQianmuOwnedDockDescriptor(record)) { quickDockSetOriginState(record,'normal');quickDockRuntime.delete(key); }
   for (const item of settings.quickWheelDockedPlugins) {
@@ -5035,6 +5050,8 @@ function quickDockScanStored() {
 }
 
 function quickDockStopRestoreWatchers() {
+  if (quickDockRestoreTimer) clearTimeout(quickDockRestoreTimer);
+  quickDockRestoreTimer = null;
   quickDockObserver?.disconnect();
   quickDockObserver = null;
   for (const observer of quickDockShadowObservers.values()) observer.disconnect();
@@ -5074,7 +5091,7 @@ function quickDockObserveShadowRoots() {
 
 function restoreQuickDockedPlugins() {
   normalizeQuickWheelSettings();
-  if (settings.quickDockEnabled === false) {
+  if (settings.enabled === false || settings.quickWheelEnabled === false || settings.floatingButton === false) {
     quickDockStopRestoreWatchers();
     for (const record of quickDockRuntime.values()) quickDockSetOriginState(record, 'normal');
     return;
@@ -5130,7 +5147,7 @@ function quickDockClearDrag() {
 }
 
 function quickDockOnPointerDown(event) {
-  if (settings.quickDockEnabled === false || !settings.quickWheelEnabled || settings.floatingButton === false
+  if (settings.quickWheelEnabled === false || settings.floatingButton === false
     || qianmuDockingSurfaceBusy() || (event.button != null && event.button !== 0)) return;
   const candidate = quickDockCandidate(event);
   if (!candidate || candidate.host.classList.contains('sd-quick-docked-origin')) return;
@@ -6259,7 +6276,6 @@ function notesFeatureSettings() {
   if (!isPlainObject(settings.notes.position)) settings.notes.position = { x: null, y: null };
   if (!isPlainObject(settings.notes.panelSize)) settings.notes.panelSize = { width: null, height: null };
   if (!isPlainObject(settings.notes.appearance)) settings.notes.appearance = { tone: 'dark', edgeIndex: 0 };
-  settings.notes.enabled = settings.notes.enabled !== false;
   settings.notes.detached = Boolean(settings.notes.detached);
   for (const key of ['width', 'height']) {
     const value = Number(settings.notes.panelSize[key]);
@@ -6289,7 +6305,7 @@ function notesSyncControls() {
 }
 
 function notesFeatureEnabled() {
-  return notesFeatureSettings().enabled;
+  return Array.isArray(settings.quickWheelCustomEnabled) && settings.quickWheelCustomEnabled.includes('notes');
 }
 
 function notesSortRuntime() {
@@ -6365,7 +6381,7 @@ function scheduleNoteSave(note) {
 
 function openNotesPanel() {
   if (!settings.enabled) return toast('千幕已关闭。', 'warning');
-  if (!notesFeatureEnabled()) return toast('便笺功能已在 API 与日志中关闭。', 'info');
+  if (!notesFeatureEnabled()) return toast('请先在蜂巢入口中选择便笺。', 'info');
   closeQuickWheel();
   notesActiveId = '';
   notesPanelOpen = true;
@@ -6539,7 +6555,7 @@ function renderFloatingNotes() {
   proseFloorTools.renderHive();
   document.getElementById(NOTES_FLOAT_LAYER_ID)?.remove();
   const noteSettings = notesFeatureSettings();
-  if (!noteSettings.enabled || !noteSettings.detached || notesPanelOpen) return;
+  if (settings.enabled === false || !notesFeatureEnabled() || !noteSettings.detached || notesPanelOpen) return;
   const position = clampDetachedNotesEntry(noteSettings.position);
   const geometry = detachedNotesGeometry();
   const palette = currentHivePalette();
@@ -12000,16 +12016,68 @@ function ttsStopChat() {
   document.querySelectorAll('.mes[data-sd-tts-hooked]').forEach((el) => { delete el.dataset.sdTtsHooked; });
 }
 
+function refreshWidgetRuntime() {
+  normalizeQuickWheelSettings();
+  closeQuickWheel();
+  quickDockClearDrag();
+  if (settings.enabled === false || !notesFeatureEnabled()) closeNotesPanel();
+  renderFloatButton();
+  renderFloatingNotes();
+  restoreQuickDockedPlugins();
+  syncQuickDockOriginVisibility();
+}
+
+function bindWidgetSettings(root) {
+  root.querySelectorAll('[data-widget-toggle]').forEach(button => button.addEventListener('click', () => {
+    if (button.dataset.widgetToggle === 'floating') settings.floatingButton = !settings.floatingButton;
+    else if (button.dataset.widgetToggle === 'wheel') {
+      settings.quickWheelEnabled = settings.quickWheelEnabled === false;
+      if (settings.quickWheelEnabled) settings.quickWheelCustomExpanded = true;
+    } else return;
+    refreshWidgetRuntime();
+    saveSettings();
+    renderModal();
+  }));
+  root.querySelector('.sd-float-size')?.addEventListener('input', e => {
+    settings.floatSize = Math.max(FLOAT_SIZE_MIN, Math.min(FLOAT_SIZE_MAX, Number(e.target.value) || 48));
+    const out = root.querySelector('.sd-float-size-value');
+    if (out) out.textContent = `${settings.floatSize} px`;
+    renderFloatButton();
+    renderFloatingNotes();
+  });
+  root.querySelector('.sd-float-size')?.addEventListener('change', () => saveSettings());
+  root.querySelector('.sd-wheel-custom-details')?.addEventListener('toggle', e => {
+    settings.quickWheelCustomExpanded = !!e.currentTarget.open;
+    saveSettings();
+  });
+  root.querySelectorAll('.sd-wheel-command-toggle').forEach(button => button.addEventListener('click', () => {
+    const id = button.dataset.command;
+    if (!QUICK_COMMAND_IDS.includes(id)) return;
+    const selected = !settings.quickWheelCustomEnabled.includes(id);
+    const next = settings.quickWheelCustomEnabled.filter(item => item !== id);
+    if (selected) next.push(id);
+    if (!next.length) return toast('蜂巢格至少保留一个入口。', 'warning');
+    settings.quickWheelCustomEnabled = settings.quickWheelCustomOrder.filter(item => next.includes(item));
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    root.querySelector('.sd-wheel-custom-details > summary > b').textContent = `${next.length} 项`;
+    if (id === 'notes') {
+      if (!selected) closeNotesPanel();
+      renderFloatingNotes();
+    }
+    closeQuickWheel();
+    saveSettings();
+  }));
+}
+
 function renderQuickWheelSettings() {
+  if (settings.quickWheelEnabled === false) return '';
   normalizeQuickWheelSettings();
   const ordered = settings.quickWheelCustomOrder.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
   const occupied = settings.quickWheelCustomEnabled.length;
   return `<div class="sd-wheel-settings">
-    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list">${ordered.map((item, index) => `
-      <div class="sd-wheel-custom-row" data-command="${item.id}">
-        <label><input type="checkbox" class="sd-wheel-command-toggle" ${settings.quickWheelCustomEnabled.includes(item.id) ? 'checked' : ''}><i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i><span>${htmlEscape(item.label)}</span></label>
-        <div><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="up" ${index === 0 ? 'disabled' : ''} title="上移"><i class="fa-solid fa-chevron-up"></i></button><button type="button" class="sd-icon-btn sd-wheel-move" data-direction="down" ${index === ordered.length - 1 ? 'disabled' : ''} title="下移"><i class="fa-solid fa-chevron-down"></i></button></div>
-      </div>`).join('')}</div>
+    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list" role="group" aria-label="蜂巢入口">${ordered.map(item => `
+      <button type="button" class="sd-widget-toggle sd-wheel-command-toggle ${settings.quickWheelCustomEnabled.includes(item.id) ? 'active' : ''}" data-command="${item.id}" aria-pressed="${settings.quickWheelCustomEnabled.includes(item.id)}"><i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i><span>${htmlEscape(item.label)}</span></button>`).join('')}</div>
     </details>
   </div>`;
 }
@@ -12130,10 +12198,8 @@ function renderPlugTab() {
     <section class="sd-card sd-widget-card">
       <h3>小组件</h3>
       <div class="sd-widget-toggle-row" role="group" aria-label="小组件开关">
-        <button type="button" class="sd-widget-toggle ${settings.floatingButton ? 'active' : ''}" data-widget-toggle="floating" aria-pressed="${settings.floatingButton ? 'true' : 'false'}"><i class="fa-solid fa-film"></i><span>悬浮球</span></button>
-        <button type="button" class="sd-widget-toggle ${notesFeatureEnabled() ? 'active' : ''}" data-widget-toggle="notes" aria-pressed="${notesFeatureEnabled() ? 'true' : 'false'}"><i class="fa-solid fa-note-sticky" data-qm-icon="notes"></i><span>便笺</span></button>
-        <button type="button" class="sd-widget-toggle ${settings.quickWheelEnabled !== false ? 'active' : ''}" data-widget-toggle="wheel" aria-pressed="${settings.quickWheelEnabled !== false ? 'true' : 'false'}"><i class="fa-solid fa-table-cells-large"></i><span>快捷盘</span></button>
-        <button type="button" class="sd-widget-toggle ${settings.quickDockEnabled !== false ? 'active' : ''}" data-widget-toggle="dock" aria-pressed="${settings.quickDockEnabled !== false ? 'true' : 'false'}"><i class="fa-solid fa-box-archive"></i><span>蜂巢收纳</span></button>
+        <button type="button" class="sd-widget-toggle ${settings.floatingButton ? 'active' : ''}" data-widget-toggle="floating" aria-pressed="${settings.floatingButton ? 'true' : 'false'}"><span>悬浮球</span></button>
+        <button type="button" class="sd-widget-toggle ${settings.quickWheelEnabled !== false ? 'active' : ''}" data-widget-toggle="wheel" aria-pressed="${settings.quickWheelEnabled !== false ? 'true' : 'false'}"><span>蜂巢格</span></button>
       </div>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
@@ -24877,68 +24943,7 @@ function bindActiveTabEvents(root) {
     saveSettings();
     renderModal();
   });
-  root.querySelectorAll('.sd-widget-toggle').forEach((button) => button.addEventListener('click', () => {
-    const kind = button.dataset.widgetToggle;
-    if (kind === 'floating') {
-      settings.floatingButton = !settings.floatingButton;
-      renderFloatButton();
-      renderFloatingNotes();
-      syncQuickDockOriginVisibility();
-      toast(settings.floatingButton ? '悬浮球已显示。' : '悬浮球已隐藏。', 'info');
-    } else if (kind === 'notes') {
-      settings.notes = isPlainObject(settings.notes) ? settings.notes : { enabled: true };
-      settings.notes.enabled = !notesFeatureEnabled();
-      if (!settings.notes.enabled) closeNotesPanel();
-      renderFloatingNotes();
-      toast(settings.notes.enabled ? '便笺已启用。' : '便笺已隐藏，固定内容仍安全保留。', 'info');
-    } else if (kind === 'wheel') {
-      settings.quickWheelEnabled = settings.quickWheelEnabled === false;
-      if (!settings.quickWheelEnabled) closeQuickWheel();
-      syncQuickDockOriginVisibility();
-    } else if (kind === 'dock') {
-      settings.quickDockEnabled = settings.quickDockEnabled === false;
-      closeQuickWheel();
-      syncQuickDockOriginVisibility();
-      if (settings.quickDockEnabled) restoreQuickDockedPlugins();
-      else quickDockStopRestoreWatchers();
-    }
-    saveSettings();
-    renderModal();
-  }));
-  root.querySelector('.sd-float-size')?.addEventListener('input', (e) => {
-    settings.floatSize = Math.max(FLOAT_SIZE_MIN, Math.min(FLOAT_SIZE_MAX, Number(e.target.value) || 48));
-    const out = root.querySelector('.sd-float-size-value');
-    if (out) out.textContent = `${settings.floatSize} px`;
-    renderFloatButton();
-    renderFloatingNotes();
-  });
-  root.querySelector('.sd-float-size')?.addEventListener('change', () => saveSettings());
-  root.querySelector('.sd-wheel-custom-details')?.addEventListener('toggle', (e) => {
-    settings.quickWheelCustomExpanded = !!e.currentTarget.open;
-    saveSettings();
-  });
-  root.querySelectorAll('.sd-wheel-command-toggle').forEach((toggle) => toggle.addEventListener('change', (e) => {
-    const id = e.target.closest('.sd-wheel-custom-row')?.dataset.command;
-    if (!id) return;
-    const next = settings.quickWheelCustomEnabled.filter((item) => item !== id);
-    if (e.target.checked) next.push(id);
-    if (!next.length) {
-      e.target.checked = true;
-      toast('快捷轮盘至少保留一个入口。', 'warning');
-      return;
-    }
-    settings.quickWheelCustomEnabled = settings.quickWheelCustomOrder.filter((item) => next.includes(item));
-    saveSettings();
-  }));
-  root.querySelectorAll('.sd-wheel-move').forEach((button) => button.addEventListener('click', () => {
-    const id = button.closest('.sd-wheel-custom-row')?.dataset.command;
-    const index = settings.quickWheelCustomOrder.indexOf(id);
-    const target = button.dataset.direction === 'up' ? index - 1 : index + 1;
-    if (index < 0 || target < 0 || target >= settings.quickWheelCustomOrder.length) return;
-    [settings.quickWheelCustomOrder[index], settings.quickWheelCustomOrder[target]] = [settings.quickWheelCustomOrder[target], settings.quickWheelCustomOrder[index]];
-    saveSettings();
-    renderModal();
-  }));
+  bindWidgetSettings(root);
   root.querySelector('.sd-stream-toggle')?.addEventListener('click', (e) => {
     settings.streamEnabled = !settings.streamEnabled;
     e.currentTarget.classList.toggle('sd-primary', settings.streamEnabled);
@@ -25183,7 +25188,7 @@ function configApplyOptions() {
       storyboardPlanArchiveTimer = null;
       storyboardPlanArchiveCache.clear();
       storyboardSchedulePlanArchive(600);
-    }, inject:applyDirectorInjection, render:()=>{renderFloatButton();renderModal();}, notify:toast};
+    }, inject:applyDirectorInjection, render:()=>{refreshWidgetRuntime();renderModal();}, notify:toast};
 }
 
 function exportTemplates(ids = null) {

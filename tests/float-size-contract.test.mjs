@@ -32,7 +32,8 @@ assert.match(apiCard, /sd-api-action-row[\s\S]*sd-save-api[\s\S]*sd-save-api-pro
 assert.doesNotMatch(apiCard, /仅支持自定义|sd-source-pick|<h3>API<\/h3>/);
 assert.match(apiCard, /sd-provider-select/);
 assert.doesNotMatch(apiCard, /兼容选项|不会提高模型能力|启用 JSON Schema 约束/, '连接兼容处理不应由用户承担或显示工程说明');
-assert.match(source, /<section class="sd-card sd-widget-card">\s*<h3>小组件<\/h3>[\s\S]*data-widget-toggle="floating"[\s\S]*data-widget-toggle="notes"[\s\S]*data-widget-toggle="wheel"[\s\S]*data-widget-toggle="dock"[\s\S]*sd-float-size-control[\s\S]*renderQuickWheelSettings/, '小组件卡必须以标签态统一管理悬浮球、便笺、快捷盘和蜂巢收纳');
+assert.match(source, /<section class="sd-card sd-widget-card">\s*<h3>小组件<\/h3>[\s\S]*data-widget-toggle="floating"[\s\S]*data-widget-toggle="wheel"[\s\S]*sd-float-size-control[\s\S]*renderQuickWheelSettings/, '小组件卡只保留悬浮球与蜂巢格两个标签开关');
+assert.doesNotMatch(source, /data-widget-toggle="(?:notes|dock)"/, '便笺仅由蜂巢入口选择控制，收纳不再另设开关');
 assert.match(css, /\.sd-api-generation-row\s*\{[^}]*grid-template-columns:\s*repeat\(3/, '三个生成参数必须三列同排');
 assert.match(css, /\.sd-api-action-row\s*\{[^}]*grid-template-columns:\s*repeat\(2/, 'API四项操作必须两列等宽、固定两排');
 assert.match(css, /\.sd-api-stream-action\s*\{[^}]*display:\s*grid[^}]*gap:\s*4px/, '流式说明必须稳定显示在按钮下方');

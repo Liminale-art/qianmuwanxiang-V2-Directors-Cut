@@ -6,6 +6,7 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
+const ENTRY_RELEASE = '1.59.420';
 // Refresh the real reverse import closure of changed client modules, including
 // both consumers of the shared notes facade. Comment-only store edits do not
 // change its runtime identity; unrelated backend/provider URLs also stay put.
@@ -91,14 +92,14 @@ test('the complete affected UI import closure uses one release URL, including sh
   }
 });
 
-test('installed entry and both bundled styles use the icon release version', async () => {
+test('installed entry and styles use the current UI release while unchanged icon modules retain their URL', async () => {
   const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
   const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
-  assert.equal(manifest.version, ICONSAX_RELEASE);
+  assert.equal(manifest.version, ENTRY_RELEASE);
   assert.equal(packageJson.version, manifest.version);
-  assert.equal(manifest.js, `index.js?v=${ICONSAX_RELEASE}`);
-  assert.equal(manifest.css, `style.css?v=${ICONSAX_RELEASE}`);
-  assert.ok(sources.get('index.js').includes(`const VERSION = '${ICONSAX_RELEASE}';`));
+  assert.equal(manifest.js, `index.js?v=${ENTRY_RELEASE}`);
+  assert.equal(manifest.css, `style.css?v=${ENTRY_RELEASE}`);
+  assert.ok(sources.get('index.js').includes(`const VERSION = '${ENTRY_RELEASE}';`));
   assert.ok(sources.get('index.js').includes('qianmu-theme-skins.css?v=${VERSION}'));
   for (const file of ['qianmu-theme-skins.css', 'qianmu-icon-renderer.js', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file));
   assert.ok(!files.some(file => /^scripts\/(?:(?:vendor|preview)-iconsax|iconsax-selected-sources)\.mjs$/.test(file)), 'development fetch/preview and attachment source code are not runtime dependencies');

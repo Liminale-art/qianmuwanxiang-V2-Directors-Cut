@@ -8,7 +8,7 @@ test('only proven Qianmu floating aliases are removed; external plugins keep the
 });
 test('document capture rejects own floating entry before looking for an external dock target',()=>{
  class Element{closest(selector){assert.equal(selector,QIANMU_DETACHED_OWNED_SELECTOR);return this;}}
- const node=new Element(),context=vm.createContext({Element,QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor});
+ const node=new Element(),context=vm.createContext({Element,QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor,settings:{quickWheelEnabled:true,floatingButton:true}});
  vm.runInContext(storyboardFunctionSource('quickDockCandidate')+'\n'+storyboardFunctionSource('quickDockAttach'),context);
  assert.equal(context.quickDockCandidate({composedPath:()=>[node]}),null);
  node.isConnected=true;assert.equal(context.quickDockAttach(node,node),false);
