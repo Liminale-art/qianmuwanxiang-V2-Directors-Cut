@@ -6,14 +6,14 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 function fixture(extra={}){
-  const c=vm.createContext({ttsRestoreTasks:0,setQianmuIconClass(){},toast(){},...extra});
+  const c=vm.createContext({ttsRestoreTasks:0,ttsIsCharacter:node=>!!node,setQianmuIconClass(){},toast(){},...extra});
   vm.runInContext(['ttsPlayResolvedLine','ttsDownloadLine','ttsFavoriteLine'].map(section).join('\n'),c);return c;
 }
 test('single-line playback and downloads retain the guard beyond synthesis',async()=>{
   const play=deferred();let c,downloaded=false;
   c=fixture({ttsSynthCached:async()=>({blob:{},params:{}}),ttsPlayBlob:()=>play.promise,ttsHighlightEls:()=>[],ttsLineSourceMeta(){assert.equal(c.ttsRestoreTasks,1);return {};},
     ttsLineFilenameBase:()=> 'fixture',ttsDownloadBlob(){assert.equal(c.ttsRestoreTasks,1);downloaded=true;}});
-  const task=c.ttsPlayResolvedLine({},null,0,null);await Promise.resolve();assert.equal(c.ttsRestoreTasks,1);play.resolve();await task;assert.equal(c.ttsRestoreTasks,0);
+  const task=c.ttsPlayResolvedLine({},{},0,null);await Promise.resolve();assert.equal(c.ttsRestoreTasks,1);play.resolve();await task;assert.equal(c.ttsRestoreTasks,0);
   await c.ttsDownloadLine({},null);assert.equal(downloaded,true);assert.equal(c.ttsRestoreTasks,0);
 });
 test('favorite writes and asynchronous final button refresh are protected until both finish',async()=>{

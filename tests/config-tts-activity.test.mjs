@@ -5,7 +5,7 @@ import {configRestoreGate} from '../qianmu-config-connections.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 function fixture(extra={}) {
-  const c=vm.createContext({ttsRestoreTasks:0,settings:{},setQianmuIconClass(){},toast(){},...extra});
+  const c=vm.createContext({ttsRestoreTasks:0,settings:{},ttsIsCharacter:node=>!!node,setQianmuIconClass(){},toast(){},...extra});
   vm.runInContext(['ttsHandleTrigger','ttsHandlePlayAll','ttsSynthCached'].map(section).join('\n'),c);
   return c;
 }

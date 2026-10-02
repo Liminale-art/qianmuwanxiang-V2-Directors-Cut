@@ -15,7 +15,7 @@ const storeSource = await readFile(new URL('../qianmu-blobstore.js', import.meta
 const notesSource = await readFile(new URL('../qianmu-notes.js', import.meta.url), 'utf8');
 
 const clipped = normalizeQianmuNote({ id: 'n', title: 'a'.repeat(150), body: 'b'.repeat(21000), width: 10, height: 900 });
-assert.equal(clipped.title.length, 120, 'legacy note titles remain bounded during migration');
+assert.equal(clipped.title.length, 120, 'imported note titles remain bounded');
 assert.equal(clipped.body.length, 20000, 'note bodies must remain bounded');
 
 await clearTemporaryQianmuNotes();

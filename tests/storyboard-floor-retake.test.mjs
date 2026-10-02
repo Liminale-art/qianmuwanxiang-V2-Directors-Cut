@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {isCharacterFloor} from '../qianmu-prose-floor-entries.js';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
@@ -135,7 +136,7 @@ async function entryFixture(){
   fixtureWindows.add(e.context.storyboardQueueWindow);
   const load=e.context.featureRuntime.load;e.context.featureRuntime.load=async key=>key==='storyboardFloorCapture'?capture:key==='imageAdmission'?{resolveImageAccountNamespace:async()=> 'st-user:route-test'}:load(key);
   Object.assign(e.context,{storyboardMessageFloor:()=>0,storyboardChooseCaptureMode:async()=>choice,storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:()=>history,
-    proseFloorTools:{collectionClick:()=>false},
+    proseFloorTools:{collectionClick:()=>false},isCharacterFloor,
     resolveImageAccountNamespace:async()=> 'st-user:route-test',drainStoryboardDeliveries,
     storyboardUtilsModule:async()=>({}),storyboardBlobToBase64:async()=>'',storyboardSafeUrl:value=>value,storyboardImageExtension:()=> 'png',getCharacterName:()=> 'Qianmu',
     storyboardProductionDeliveryPolicy:core.storyboardProductionDeliveryPolicy,

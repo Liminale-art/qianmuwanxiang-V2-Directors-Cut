@@ -1,6 +1,26 @@
 // User-selected Iconsax exports, 2026-10-02. Development source only;
 // normalized and integrated into the renderer, never fetched at runtime.
 export const suppliedIcons = {
+  "tts-play/outline": `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_4418_9259)">
+<path d="M4 12.0004V8.44038C4 4.02038 7.13 2.21038 10.96 4.42038L14.05 6.20038L17.14 7.98038C20.97 10.1904 20.97 13.8104 17.14 16.0204L14.05 17.8004L10.96 19.5804C7.13 21.7904 4 19.9804 4 15.5604V12.0004Z" stroke="#ffffff" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<defs>
+<clipPath id="clip0_4418_9259">
+<rect width="24" height="24" fill="none"/>
+</clipPath>
+</defs>
+</svg>`,
+  "tts-stop/outline": `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_4418_5569)">
+<path d="M9.3 21H14.7C19.2 21 21 19.2 21 14.7V9.3C21 4.8 19.2 3 14.7 3H9.3C4.8 3 3 4.8 3 9.3V14.7C3 19.2 4.8 21 9.3 21Z" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<defs>
+<clipPath id="clip0_4418_5569">
+<rect width="24" height="24" fill="none"/>
+</clipPath>
+</defs>
+</svg>`,
   "gift-9/outline": "<svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n<g clip-path=\"url(#clip0_655_7213)\">\n<path d=\"M18 22H6C3.8 22 2 20.2 2 18V11.56C2 9.36 3.8 7.56 6 7.56H18C20.2 7.56 22 9.36 22 11.56V18C22 20.2 20.2 22 18 22Z\" stroke=\"#ffffff\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M12.0095 6.26C12.0095 3.91 13.6395 2 15.6595 2C16.5195 2 17.2295 2.7 17.2295 3.57C17.2295 5.46 14.8895 7 11.9995 7C9.10953 7 6.76953 5.46 6.76953 3.57C6.76953 2.71 7.46953 2 8.34953 2C10.3695 2 11.9995 3.91 11.9995 6.26\" stroke=\"#ffffff\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M12.0002 17.97C11.0302 17.64 8.66016 16.21 8.66016 13.89C8.66016 12.87 9.49016 12.03 10.5202 12.03C11.1302 12.03 11.6702 12.32 12.0102 12.77C12.3502 12.32 12.8902 12.03 13.5002 12.03C14.5202 12.03 15.3602 12.86 15.3602 13.89C15.3602 16.21 12.9902 17.65 12.0202 17.97H12.0002Z\" stroke=\"#ffffff\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n</g>\n<defs>\n<clipPath id=\"clip0_655_7213\">\n<rect width=\"24\" height=\"24\" fill=\"none\"/>\n</clipPath>\n</defs>\n</svg>",
   "gift-9/bold": "<svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"#ffffff\" xmlns=\"http://www.w3.org/2000/svg\">\n<g clip-path=\"url(#clip0_655_9392)\">\n<path d=\"M15.6595 1.25C14.1395 1.25 12.7895 2.13 11.9995 3.47C11.2095 2.13 9.86953 1.25 8.34953 1.25C7.06953 1.25 6.01953 2.29 6.01953 3.57C6.01953 5 6.99953 6.24 8.52953 7H15.4695C16.9995 6.24 17.9795 5 17.9795 3.57C17.9795 2.29 16.9395 1.25 15.6595 1.25ZM7.51953 3.57C7.51953 3.12 7.89953 2.75 8.34953 2.75C9.93953 2.75 11.2295 4.3 11.2495 6.21C9.16953 5.99 7.51953 4.87 7.51953 3.57ZM12.7595 6.21C12.7795 4.3 14.0695 2.75 15.6595 2.75C16.1095 2.75 16.4795 3.12 16.4795 3.57C16.4795 4.87 14.8395 5.99 12.7595 6.21Z\"/>\n<path d=\"M18.2301 7H5.77012C3.48012 7 1.62012 8.87 1.62012 11.15V17.85C1.62012 20.13 3.48012 22 5.77012 22H18.2301C20.5201 22 22.3801 20.13 22.3801 17.85V11.15C22.3801 8.87 20.5201 7 18.2301 7ZM12.3131 17.6969C12.1134 17.7852 11.8869 17.7852 11.6871 17.6969C10.5577 17.1977 8.53012 15.768 8.53012 13.58C8.53012 12.52 9.39012 11.65 10.4601 11.65C11.0901 11.65 11.6501 11.95 12.0001 12.42C12.3501 11.95 12.9101 11.65 13.5401 11.65C14.6001 11.65 15.4701 12.51 15.4701 13.58C15.4701 15.768 13.4425 17.1977 12.3131 17.6969Z\"/>\n</g>\n<defs>\n<clipPath id=\"clip0_655_9392\">\n<rect width=\"24\" height=\"24\" fill=\"white\"/>\n</clipPath>\n</defs>\n</svg>",
   "gift-9/twotone": "<svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n<g clip-path=\"url(#clip0_655_9568)\">\n<path d=\"M18 22H6C3.8 22 2 20.2 2 18V11.56C2 9.36 3.8 7.56 6 7.56H18C20.2 7.56 22 9.36 22 11.56V18C22 20.2 20.2 22 18 22Z\" stroke=\"#ffffff\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path d=\"M12.0095 6.26C12.0095 3.91 13.6395 2 15.6595 2C16.5195 2 17.2295 2.7 17.2295 3.57C17.2295 5.46 14.8895 7 11.9995 7C9.10953 7 6.76953 5.46 6.76953 3.57C6.76953 2.71 7.46953 2 8.34953 2C10.3695 2 11.9995 3.91 11.9995 6.26\" stroke=\"#ffffff\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n<path opacity=\"0.4\" d=\"M12.0002 17.97C11.0302 17.64 8.66016 16.21 8.66016 13.89C8.66016 12.87 9.49016 12.03 10.5202 12.03C11.1302 12.03 11.6702 12.32 12.0102 12.77C12.3502 12.32 12.8902 12.03 13.5002 12.03C14.5202 12.03 15.3602 12.86 15.3602 13.89C15.3602 16.21 12.9902 17.65 12.0202 17.97H12.0002Z\" stroke=\"#ffffff\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n</g>\n<defs>\n<clipPath id=\"clip0_655_9568\">\n<rect width=\"24\" height=\"24\" fill=\"none\"/>\n</clipPath>\n</defs>\n</svg>",

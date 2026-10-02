@@ -36,16 +36,18 @@ export const glyphs = {
   'stop-circle':'stop-circle', syringe:'health', tag:'tag', target:'discover', tasks:'task-square', theater:'gift-9', 'text-aa':'text',
   'text-align-start':'textalign-left', tv:'monitor', 'text-underline':'text-underline', trash:'trash', 'trend-up':'trend-up',
   'upload-simple':'document-upload', user:'user', 'user-circle':'profile-circle', 'user-plus':'user-add',
-  'video-camera':'video', 'voice-lines':'message-search', 'voice-reextract':'message-notif', 'voice-regenerate':'record-circle', 'voice-playall':'play-circle', 'voice-stopall':'pause-circle',
-  warning:'warning-2', 'wave-sine':'sound', 'underline-wave':'wind', world:'global', 'world-map':'share', x:'qianmu-close',
+  'video-camera':'video', 'voice-lines':'message-search', 'voice-reextract':'message-notif', 'voice-regenerate':'record-circle', 'voice-playall':'tts-play', 'voice-stopall':'tts-stop',
+  warning:'warning-2', 'wave-sine':'sound', 'underline-wave':'qianmu-underline-wave', world:'global', 'world-map':'share', x:'qianmu-close',
 };
 
-export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'broken','floor-tools':'outline'};
+export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','floor-tools':'outline'};
 
 const endpoint = 'https://app.iconsax.io/api/mcp';
 const cache = path.join(tmpdir(), 'qianmu-iconsax-free-2026-10-01-exact');
 const styles = {outline:'linear',bold:'bold',twotone:'twotone'};
-const variantsFor = name => [...new Set([...Object.keys(styles), ...Object.entries(fixedVariants).filter(([semantic])=>glyphs[semantic]===name).map(([,variant])=>variant)])];
+// The supplied continuous-play controls are deliberately linear in every theme,
+// not replacements for any generic play, stop, headphones or focus artwork.
+const variantsFor = name => ['tts-play','tts-stop'].includes(name) ? ['outline'] : [...new Set([...Object.keys(styles), ...Object.entries(fixedVariants).filter(([semantic])=>glyphs[semantic]===name).map(([,variant])=>variant)])];
 const sha = text => createHash('sha256').update(text).digest('hex');
 
 export function normalizeIcon(svg) {
@@ -104,6 +106,9 @@ if(process.argv.includes('--write')) {
   // The universal actions lacking a matching Iconsax silhouette retain the
   // existing Lucide geometry. Functional pin states must not become a map marker.
   const familiar={
+    // Original single, continuous wave for the reader underline-style control.
+    // All themes keep the same line; this is neither a wind nor a sound icon.
+    'qianmu-underline-wave':'<path d="M3 12C4.5 8 6 8 7.5 12S10.5 16 12 12S15 8 16.5 12S19.5 16 21 12"/>',
     // Qianmu's original floor heart; keep this contour identical to the floor control.
     'qianmu-heart':'<path d="M12 21C10.2 19.4 2 13.7 2 8.4C2 5.3 4.3 3 7.3 3C9.2 3 10.9 4 12 5.6C13.1 4 14.8 3 16.7 3C19.7 3 22 5.3 22 8.4C22 13.7 13.8 19.4 12 21Z"/>',
     'qianmu-anchor':'<path d="M12 6v16"/><path d="m19 13 2-1a9 9 0 0 1-18 0l2 1"/><path d="M9 11h6"/><circle cx="12" cy="4" r="2"/>',

@@ -1254,8 +1254,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* ---------- 6. 标签页 ---------- */
 #story-director-modal .sd-tabs-shell {
-  --qm-tab-page: var(--sd-sticky-bg);
-  --qm-tab-rail: color-mix(in srgb, var(--sd-text) 7%, var(--sd-sticky-bg));
   flex: 0 0 auto;
   min-width: 0;
   box-sizing: border-box !important;
@@ -1264,7 +1262,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   padding: 6px 8px 0;
   border: 0 !important;
   box-shadow: none !important;
-  background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--qm-tab-rail) 36%, transparent) 44%, var(--qm-tab-rail) 100%);
+  background: transparent;
 }
 #story-director-modal .sd-tabs {
   flex: 0 0 auto;
@@ -1296,12 +1294,13 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-tab {
   position: relative;
   isolation: isolate;
+  overflow: visible;
   flex: 0 0 auto;
   box-sizing: border-box !important;
   margin: 0 !important;
   min-height: 42px;
   border: none !important;
-  border-radius: 11px 11px 0 0 !important;
+  border-radius: 999px !important;
   padding: 9px 12px !important;
   background: transparent !important;
   color: var(--sd-muted) !important;
@@ -1311,7 +1310,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   white-space: nowrap;
   writing-mode: horizontal-tb !important;
   box-shadow: none !important;
-  transition: color .26s ease, background .26s ease;
+  transition: color .22s ease;
 }
 
 #story-director-modal .sd-tab:hover { color: var(--sd-text) !important; }
@@ -1321,17 +1320,19 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   background: transparent !important;
   box-shadow: none !important;
 }
-#story-director-modal .sd-tab::before,
-#story-director-modal .sd-tab::after { content: ''; position: absolute; pointer-events: none; opacity: 0; }
-#story-director-modal .sd-tab.active::before,
-#story-director-modal .sd-tab.active::after { opacity: 1; }
-/* Classic: a raised, softly shouldered folder tab and a short ink marker. */
-#story-director-modal .sd-tab::before {
-  inset: 0; z-index: -1; background: var(--qm-tab-page);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 42' preserveAspectRatio='none'%3E%3Cpath d='M0 42C9 42 2 2 18 2H82C98 2 91 42 100 42Z'/%3E%3C/svg%3E") center/100% 100% no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 42' preserveAspectRatio='none'%3E%3Cpath d='M0 42C9 42 2 2 18 2H82C98 2 91 42 100 42Z'/%3E%3C/svg%3E") center/100% 100% no-repeat;
+#story-director-modal .sd-tab-label { display: inline-block; pointer-events: none; }
+/* Selection belongs to these decorations, never the button's background or hitbox. */
+#story-director-modal .sd-tab-mark {
+  position: absolute; pointer-events: none; opacity: 0;
+  bottom: 7px; left: 50%; width: min(48px, calc(100% - 12px)); height: 2.5px;
+  border-radius: 999px; background: currentColor; transform: translate(-50%, 50%);
 }
-#story-director-modal .sd-tab::after { bottom: 6px; left: calc(50% - 10px); width: 20px; height: 2px; border-radius: 2px; background: currentColor; }
+#story-director-modal .sd-tab.active .sd-tab-mark { opacity: 1; }
+#story-director-modal .sd-tab-capsule {
+  display: none; position: absolute; pointer-events: none; overflow: visible;
+  inset: 5px 4px; width: calc(100% - 8px); height: calc(100% - 10px); opacity: 0;
+}
+#story-director-modal .sd-tab-capsule rect { fill: none; stroke: currentColor; stroke-width: 1.5px; stroke-linecap: round; }
 #story-director-modal .sd-tab:focus-visible { outline: 2px solid var(--sd-accent) !important; outline-offset: -3px !important; }
 @media (prefers-reduced-motion: reduce) { #story-director-modal .sd-tab { transition: none; } }
 
@@ -2127,6 +2128,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #qianmu-notes-float-layer.sd-hive-theme-dream .sd-detached-notes-entry > .sd-hive-hex-outline polygon, .qm-prose-hive-layer.sd-hive-theme-dream .sd-hive-hex-outline polygon { animation: sd-hive-dream-edge 12s ease-in-out infinite; }
 .sd-detached-notes-entry:active,
 .sd-detached-notes-entry.is-dragging { cursor: grabbing; transform: scale(.96); }
+.sd-detached-notes-entry.is-dragging { transform: none; }
 .sd-detached-notes-entry.is-return-ready { filter: brightness(1.18) drop-shadow(0 0 8px var(--sd-wheel-edge)); transform: scale(.9); }
 
 @media (max-width: 520px) {
@@ -10889,13 +10891,6 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   #story-director-modal .sd-storyboard-gallery-page:has(.sd-gallery-narrative) .sd-storyboard-gallery-new-folder { grid-column:3;grid-row:1; }
   #story-director-modal .sd-storyboard-gallery-page:has(.sd-gallery-narrative) .sd-storyboard-gallery-search { grid-column:1/-1;grid-row:2; }
 }
-#qianmu-notes-panel-layer .sd-note-legacy { border: 0; background: transparent; color: var(--sd-accent); font: inherit; font-size: 10px; cursor: pointer; padding: 4px; white-space: nowrap; margin-left: auto; }
-#qianmu-notes-panel-layer .sd-note-legacy[hidden] { display: none; }
-#qianmu-notes-panel-layer .sd-note-legacy:disabled { opacity: .5; cursor: default; }
-#qianmu-notes-panel-layer .sd-note-legacy-review { position: absolute; inset: 12px; z-index: 2; display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--sd-notes-surface, var(--sd-card)); border: 1px solid var(--sd-border); color: var(--sd-text); border-radius: inherit; min-height: 0; }
-#qianmu-notes-panel-layer .sd-note-legacy-review p { font-size: 12px; margin: 0; }
-#qianmu-notes-panel-layer .sd-note-legacy-review textarea { flex: 1; min-height: 50px; width: 100%; resize: none; }
-#qianmu-notes-panel-layer .sd-note-legacy-review > div { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Scoped mirror-library component. Shared themes retain their palette; input
    editing does not rebuild the form or draw a focus halo. */

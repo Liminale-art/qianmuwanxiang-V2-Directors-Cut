@@ -5,18 +5,27 @@ import {collectReleaseFiles} from '../scripts/build-release.mjs';
 import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
-const ICONSAX_RELEASE = '1.59.418';
-// Only the renderer's affected client import closure changes in this release.
-// Unrelated backend, storage and provider modules retain their existing URLs.
+const ICONSAX_RELEASE = '1.59.419';
+// Refresh the real reverse import closure of changed client modules, including
+// both consumers of the shared notes facade. Comment-only store edits do not
+// change its runtime identity; unrelated backend/provider URLs also stay put.
+const functionalNodes = new Set([
+  'index.js', 'qianmu-icon-renderer.js', 'qianmu-main-tabs.js',
+  'qianmu-notes.js', 'qianmu-notes-panel-sync.js', 'qianmu-notes-sync-runtime.js',
+  'qianmu-prose-floor-entries.js', 'qianmu-text-collection-floor.js', 'qianmu-tts-floor-ui.js',
+]);
 const changedNodes = new Set([
   'index.js', 'qianmu-icon-renderer.js', 'qianmu-assistant-history-view.js',
   'qianmu-ensemble-ui.js', 'qianmu-ensemble-view.js', 'qianmu-idle-preload.js',
+  'qianmu-main-tabs.js', 'qianmu-notes.js', 'qianmu-notes-panel-sync.js',
+  'qianmu-notes-sync-runtime.js',
   'qianmu-prose-assistant-conversation-list.js', 'qianmu-prose-assistant-floor.js',
   'qianmu-prose-assistant-panel.js', 'qianmu-prose-floor-tools.js', 'qianmu-prose-hive.js',
   'qianmu-text-collection-capture.js', 'qianmu-text-collection-host.js',
   'qianmu-text-collection-image-dialog.js', 'qianmu-text-collection-organization-view.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-panel.js',
-  'qianmu-text-collection-view.js',
+  'qianmu-text-collection-view.js', 'qianmu-prose-floor-entries.js',
+  'qianmu-text-collection-floor.js', 'qianmu-tts-floor-ui.js',
 ]);
 const files = await collectReleaseFiles();
 const sources = new Map(await Promise.all(files.filter(file => file.endsWith('.js'))
@@ -32,7 +41,7 @@ function localReferences(file, source) {
     });
 }
 
-test('the complete affected icon import closure uses its own release URL, including idle preloads', () => {
+test('the complete affected UI import closure uses one release URL, including shared notes and idle preloads', () => {
   const inbound = new Set(), graph = new Map();
   for (const [file, source] of sources) {
     graph.set(file, localReferences(file, source));
@@ -47,7 +56,7 @@ test('the complete affected icon import closure uses its own release URL, includ
     assert.ok(sources.has(file), `${file}: affected code must ship locally`);
     if (file !== 'index.js') assert.ok(inbound.has(file), `${file}: do not leave a detached or untested node in the closure`);
   }
-  const expectedClosure = new Set(['index.js', 'qianmu-icon-renderer.js']);
+  const expectedClosure = new Set(functionalNodes);
   let grew = true;
   while (grew) {
     grew = false;
@@ -58,7 +67,7 @@ test('the complete affected icon import closure uses its own release URL, includ
       }
     }
   }
-  assert.deepEqual([...changedNodes].sort(), [...expectedClosure].sort(), 'only the actual changed renderer and entry parent closure needs new URLs');
+  assert.deepEqual([...changedNodes].sort(), [...expectedClosure].sort(), 'only the actual changed client modules and their parent closure need new URLs');
   const visited = new Set();
   function visit(file) {
     if (visited.has(file)) return;
@@ -70,6 +79,16 @@ test('the complete affected icon import closure uses its own release URL, includ
   // This is deliberately not a whole-repository version bump.
   assert.ok([...graph.get('index.js')].some(({target, url}) => !changedNodes.has(target) && url.search === '?v=1.59.414'));
   assert.ok([...graph.get('index.js')].some(({target, url}) => target === 'qianmu-hive-commands.js' && url.search === '?v=1.59.417'), 'unchanged hive commands retain their existing URL');
+  for (const file of ['index.js', 'qianmu-notes-panel-sync.js']) {
+    const notes = graph.get(file).find(({target}) => target === 'qianmu-notes.js');
+    assert.equal(notes?.url.search, `?v=${ICONSAX_RELEASE}`, `${file}: notes facade must not become a second singleton`);
+  }
+  assert.ok(!changedNodes.has('qianmu-notes-sync-store.js'));
+  for (const refs of graph.values()) {
+    for (const {target, url} of refs) {
+      if (target === 'qianmu-notes-sync-store.js') assert.equal(url.search, '', 'comment-only notes store retains its existing shared module URL');
+    }
+  }
 });
 
 test('installed entry and both bundled styles use the icon release version', async () => {

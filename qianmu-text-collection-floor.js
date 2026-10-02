@@ -1,3 +1,5 @@
+import {isCharacterFloor} from './qianmu-prose-floor-entries.js?v=1.59.419';
+
 export const TEXT_COLLECTION_FLOOR_STYLESHEET = new URL('./qianmu-text-collection-floor.css', import.meta.url);
 
 const sourceKey = source => source && typeof source.chatId === 'string' && source.chatId
@@ -23,7 +25,8 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
         const value = element.getAttribute('mesid');
         if (!/^(0|[1-9]\d*)$/.test(value ?? '')) return null;
         const floor = Number(value);
-        return Number.isSafeInteger(floor) ? context.chat?.[floor] ?? null : null;
+        const message = Number.isSafeInteger(floor) ? context.chat?.[floor] ?? null : null;
+        return isCharacterFloor(element, message) ? message : null;
     }
 
     function snapshot() {
@@ -64,7 +67,10 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
             const message = messageAt(element, state.context);
             // ST uses is_system for "exclude from prompts", not hidden prose.
             // Collection is a local user action and must not inherit API filters.
-            if (!message) continue;
+            if (!message) {
+                element.querySelectorAll('.qm-collection-star').forEach(button => button.remove());
+                continue;
+            }
             const outer = element.querySelector('.mes_buttons');
             const storyboard = outer?.querySelector('.sd-storyboard-message-action');
             const toolbar = storyboard?.parentElement || outer;

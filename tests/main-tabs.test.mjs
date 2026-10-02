@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,updateTabsFade,bindTabsScrollControls} from '../qianmu-main-tabs.js';
 
 test('main tabs have a separate fixed shell; labels and ids are escaped; only the active page is marked',()=>{
@@ -46,9 +47,70 @@ test('overflow tabs fit complete equal slots, then clear sizing on a wide viewpo
  }finally{if(old)globalThis.getComputedStyle=old;else delete globalThis.getComputedStyle;}
 });
 
-test('tab contour animation never transforms buttons on engines without pseudo support',()=>{
- const old=globalThis.matchMedia;globalThis.matchMedia=()=>({matches:false});let cancelled=0,calls=0;
- const before={dataset:{tab:'a'},getBoundingClientRect:()=>({left:0})},next={dataset:{tab:'b'},getBoundingClientRect:()=>({left:60}),animate(){calls++;return {effect:{pseudoElement:null},cancel(){cancelled++;}};}},bar={children:[before,next],querySelector:()=>next};
- try{animateQianmuTabSelection(bar,'a');assert.equal(cancelled,2);assert.equal(calls,2);next.animate=()=>{throw Error('Not supported');};assert.doesNotThrow(()=>animateQianmuTabSelection(bar,'a'));globalThis.matchMedia=()=>({matches:true});next.animate=()=>assert.fail('reduced motion');animateQianmuTabSelection(bar,'a');}
- finally{if(old)globalThis.matchMedia=old;else delete globalThis.matchMedia;}
+function animationFixture(theme='classic'){
+ const calls=[],animations=[];
+ const node=(kind,width=40)=>({getBoundingClientRect:()=>({width}),animate(frames,options){calls.push({kind,frames,options});const animation={cancelled:false,cancel(){this.cancelled=true;}};animations.push(animation);return animation;}});
+ const before={dataset:{tab:'a'},style:{},getBoundingClientRect:()=>({left:0,width:60}),querySelector:()=>node('old-mark',40)};
+ const parts={'.sd-tab-mark':node('mark'),'.sd-tab-label':node('label'),'.sd-tab-capsule rect':node('capsule')};
+ const next={dataset:{tab:'b'},style:{},getBoundingClientRect:()=>({left:64,width:60}),querySelector:selector=>parts[selector],animate:()=>assert.fail('never animate a button')};
+ const bar={children:[before,next],dataset:{},querySelector:()=>next,closest:()=>({dataset:{qmTheme:theme}})};
+ return {bar,calls,animations,parts};
+}
+
+test('classic marker travels as a longer line, contracts into a dot, then becomes a line',()=>{
+ const {bar,calls}=animationFixture();animateQianmuTabSelection(bar,'a');
+ assert.equal(calls.length,1);assert.equal(calls[0].kind,'mark');
+ const {frames,options}=calls[0];assert.equal(options.duration,360);
+ assert.equal(frames[0].width,'40px');assert.match(frames[0].transform,/-64px/);
+ assert.equal(frames[1].width,'5px');assert.equal(frames[1].height,'5px');assert.equal(frames[2].width,'5px');
+ assert.equal(frames.at(-1).width,'40px');assert.equal(frames.at(-1).height,'2.5px');assert.equal(frames.at(-1).transform,'translate(-50%, 50%)');
+});
+
+test('glass traces a normalized capsule outline; paper only raises its label and grows the dot',()=>{
+ const glass=animationFixture('glass');animateQianmuTabSelection(glass.bar,'a');
+ assert.deepEqual(glass.calls.map(call=>call.kind),['capsule']);
+ assert.equal(glass.calls[0].frames[0].strokeDashoffset,'.92');assert.equal(glass.calls[0].frames.at(-1).strokeDashoffset,'0');
+ const paper=animationFixture('editorial');animateQianmuTabSelection(paper.bar,'a');
+ assert.deepEqual(paper.calls.map(call=>call.kind),['mark','label']);
+ assert.match(paper.calls[0].frames[0].transform,/scale\(\.25\)/);
+ assert.equal(paper.calls[1].frames.at(-1).transform,'translateY(-2px)');
+});
+
+test('rapid selections replace decoration animations, and reduced motion cancels them immediately',()=>{
+ const fixture=animationFixture(),old=globalThis.matchMedia;
+ try{
+  globalThis.matchMedia=()=>({matches:false});animateQianmuTabSelection(fixture.bar,'a');
+  animateQianmuTabSelection(fixture.bar,'a');assert.equal(fixture.calls.length,2);assert.equal(fixture.animations[0].cancelled,true);assert.equal(fixture.animations[1].cancelled,false);
+  globalThis.matchMedia=()=>({matches:true});animateQianmuTabSelection(fixture.bar,'a');
+  assert.equal(fixture.calls.length,2);assert.equal(fixture.animations[1].cancelled,true);
+ }finally{if(old)globalThis.matchMedia=old;else delete globalThis.matchMedia;}
+});
+
+test('resizing cancels stale travel geometry; all unsupported-animation paths keep the static selection usable',()=>{
+ const fixture=animationFixture(),old=globalThis.getComputedStyle;
+ try{
+  animateQianmuTabSelection(fixture.bar,'a');globalThis.getComputedStyle=()=>({font:'13.5px serif',gap:'4px',columnGap:'4px'});
+  fixture.bar.clientWidth=140;fixture.bar.scrollLeft=0;sizeQianmuTabs(fixture.bar);assert.equal(fixture.animations[0].cancelled,true);
+  fixture.parts['.sd-tab-mark'].animate=()=>{throw new Error('unsupported');};assert.doesNotThrow(()=>animateQianmuTabSelection(fixture.bar,'a'));
+  delete fixture.parts['.sd-tab-mark'].animate;assert.doesNotThrow(()=>animateQianmuTabSelection(fixture.bar,'a'));
+  assert.doesNotThrow(()=>animateQianmuTabSelection(fixture.bar,'missing'));assert.doesNotThrow(()=>animateQianmuTabSelection(null,'a'));
+ }finally{if(old)globalThis.getComputedStyle=old;else delete globalThis.getComputedStyle;}
+});
+
+test('selection decorations are aria hidden; CSS has no gradient rail, folder silhouette, or moving hitbox',()=>{
+ const markup=renderQianmuMainTabs([['one','世界']], 'one');
+ assert.match(markup,/<span class="sd-tab-mark" aria-hidden="true"><\/span>/);
+ assert.match(markup,/<svg class="sd-tab-capsule" aria-hidden="true" focusable="false">/);
+ assert.match(markup,/pathLength="1"/);
+ assert.match(markup,/ry="50%"/,'one vertical radius defines circular ends instead of an elliptical outline');
+ assert.doesNotMatch(markup,/rx="999"/);
+ const style=readFileSync(new URL('../style.css',import.meta.url),'utf8'),skins=readFileSync(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8');
+ const tabCss=style.slice(style.indexOf('/* ---------- 6. 标签页'),style.indexOf('/* ---------- 7. 内容区'));
+ assert.match(tabCss,/\.sd-tabs-shell\s*\{[^}]*background: transparent;/);
+ assert.match(tabCss,/width: min\(48px, calc\(100% - 12px\)\)/);
+ assert.match(tabCss,/\.sd-tab\s*\{[^}]*overflow: visible;/);
+ assert.doesNotMatch(tabCss,/\.sd-tab::(?:before|after)|qm-tab-rail|qm-tab-page/);
+ assert.doesNotMatch(skins,/\.sd-tab::(?:before|after)|qm-tab-rail|qm-tab-page/);
+ assert.match(skins,/"editorial"\] \.sd-tab\.active \.sd-tab-label \{ transform: translateY\(-2px\)/);
+ assert.match(skins,/"glass"\] \.sd-tab\.active \.sd-tab-capsule \{ opacity: 1/);
 });

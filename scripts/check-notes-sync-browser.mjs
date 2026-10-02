@@ -201,19 +201,8 @@ try {
     assert.deepEqual(await b.evaluate(() => readNotesDeviceState()), bGeometry);
     checks.push('device geometry persists locally and is unaffected by shared-account content sync or another device fallback');
 
-    const migration = await a.evaluate(async () => {
-        const legacy = [note('legacy-original', '旧库原文', true)];
-        let denied = false; try { await runtime.importLegacy(legacy, { receipt: 'synthetic-legacy-receipt' }); } catch { denied = true; }
-        const absent = !(await runtime.list()).some(row => row.id === 'legacy-original');
-        const first = await runtime.importLegacy(legacy, { confirmed: true, receipt: 'synthetic-legacy-receipt' });
-        const repeat = await runtime.importLegacy(legacy, { confirmed: true, receipt: 'synthetic-legacy-receipt' });
-        return { denied, absent, first, repeat };
-    });
-    assert.equal(migration.denied && migration.absent, true); assert.equal(migration.first.imported, 1); assert.equal(migration.repeat.imported, 0); assert.equal(migration.repeat.repeated, true);
-    await a.reload(); await boot(a);
-    const repeated = await a.evaluate(() => runtime.importLegacy([note('legacy-original', '旧库原文', true)], { confirmed: true, receipt: 'synthetic-legacy-receipt' }));
-    assert.equal(repeated.repeated, true); assert.equal(repeated.imported, 0);
-    checks.push('legacy adoption requires explicit consent and its committed receipt prevents duplicates after reload');
+    assert.equal(await a.evaluate(() => typeof runtime.importLegacy), 'undefined');
+    checks.push('retired legacy migration is absent from the active runtime');
 
     const atomic = await a.evaluate(async () => {
         const before = await store.read(fixture.namespace), put = IDBObjectStore.prototype.put;
@@ -253,27 +242,20 @@ try {
         });
         const legacy = api.normalizeQianmuNote({ id: 'unowned-legacy', body: '旧账户未知的完整原文', pinned: true });
         await db.putNote(legacy.id, legacy);
-        const old = await api.listLegacyQianmuNotes(), before = await api.listQianmuNotes();
-        let refused = false; try { await api.adoptLegacyQianmuNotes({ namespace }); } catch { refused = true; }
-        const afterCancelled = await api.listQianmuNotes();
-        const adopted = await api.adoptLegacyQianmuNotes({ confirmed: true, namespace });
-        const again = await api.adoptLegacyQianmuNotes({ confirmed: true, namespace });
-        const originalsRetained = (await api.listLegacyQianmuNotes()).some(row => row.id === legacy.id && row.body === legacy.body);
+        const before = await api.listQianmuNotes();
+        const retired = !api.listLegacyQianmuNotes && !api.adoptLegacyQianmuNotes;
+        await api.saveQianmuNote(api.createQianmuNote({ body: 'current account original' }));
         await api.syncQianmuNotes();
         const saved = await api.listQianmuNotes();
-        await db.clearStorageItems(['notes']);
-        const afterLegacyCleanup = await api.listQianmuNotes();
-        await api.syncQianmuNotes();
+        const originalsRetained = (await db.listNotes({ requireCommit: true })).some(row => row.id === legacy.id && row.body === legacy.body);
         await api.clearTemporaryQianmuNotes();
-        return { old: old.length, before: before.length, refused, afterCancelled: afterCancelled.length, adopted, again, originalsRetained,
-            saved: saved.map(row => row.body), afterLegacyCleanup: afterLegacyCleanup.map(row => row.body) };
+        return { before: before.length, retired, originalsRetained, saved: saved.map(row => row.body) };
     });
-    assert.equal(facade.old, 1); assert.equal(facade.before, 0); assert.equal(facade.refused, true); assert.equal(facade.afterCancelled, 0);
-    assert.equal(facade.adopted.imported, 1); assert.equal(facade.again.repeated, true); assert.equal(facade.originalsRetained, true);
-    assert.deepEqual(facade.afterLegacyCleanup, facade.saved);
+    assert.equal(facade.before, 0); assert.equal(facade.retired, true); assert.equal(facade.originalsRetained, true);
+    assert.deepEqual(facade.saved, ['current account original']);
     assert.equal([...account('st-user:synthetic-facade').rows.values()].filter(row => !row.deleted).length, 1);
-    checks.push('public facade reads unowned legacy notes without adoption, requires account consent, and leaves legacy originals after idempotent adoption');
-    checks.push('explicit legacy-local cleanup does not remove account-local prose or send a cloud deletion');
+    checks.push('public facade never reads or adopts the retired unowned library; existing originals remain intact');
+    checks.push('current account notes still save and sync without the retired legacy controls');
     assert.equal(external, 0); assert.deepEqual(errors, []);
     console.log(JSON.stringify({ passed: checks.length, checks, errors, external, syntheticServiceCalls: calls, productionDataRead: false,
         scope: 'actual runtime/store/device modules in independent browser contexts with a injected synthetic client; not real service deployment or HTTP-client verification' }));

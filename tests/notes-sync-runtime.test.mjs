@@ -101,16 +101,22 @@ test('wrong-account, duplicated or stale remote snapshots never replace locally 
     const b=runtime(store,{...service.client,async list(){const response=await service.client.list();mutate(response);return response;}});await assert.rejects(b.sync());assert.deepEqual(await store.read(ns),state);
   }
 });
-test('legacy migration requires explicit ownership and a durable receipt, preserves collisions and original inputs',async()=>{
-  const store=memoryStore(),a=runtime(store),legacy=[note('one','legacy'),note('two','not pinned')],before=structuredClone(legacy);await a.save(note('one','existing'));
-  await assert.rejects(a.importLegacy(legacy,{receipt:'fixture'}),{code:'notes_sync_consent'});
-  const result=await a.importLegacy(legacy,{confirmed:true,receipt:'fixture'});assert.equal(result.imported,2);assert.deepEqual(legacy,before);assert.equal((await a.list()).length,3);
-  a.close();const b=runtime(store);assert.equal((await b.importLegacy(legacy,{confirmed:true,receipt:'fixture'})).repeated,true);assert.equal((await b.list()).length,3);
+test('retired migration leaves existing account notes and historical receipts readable across restart and devices',async()=>{
+  const store=memoryStore(),service=server(),a=runtime(store,service.client);
+  await a.save(note('already-adopted','complete existing original'));
+  await store.update(ns,state=>state.receipts.push('historical-receipt'));
+  assert.equal(a.importLegacy,undefined);await a.sync();a.close();
+  const reopened=runtime(store,service.client),other=runtime(memoryStore(),service.client);
+  await other.sync();assert.equal((await other.list())[0].body,'complete existing original');
+  await other.save({...((await other.list())[0]),body:'second device edit'});await other.sync();await reopened.sync();
+  assert.equal((await reopened.list())[0].body,'second device edit');
+  assert.deepEqual((await store.read(ns)).receipts,['historical-receipt']);
+  assert.equal((await reopened.list()).length,1);reopened.close();other.close();
 });
-test('invalid or failed migration and failed save do not become an empty-success or in-memory-only result',async()=>{
+test('invalid or failed save does not become an empty-success or in-memory-only result',async()=>{
   const store=memoryStore(),a=runtime(store);await a.save(note());const before=await store.read(ns);
-  await assert.rejects(a.importLegacy([note('a'),note('b','bad\0text')],{confirmed:true,receipt:'invalid'}));assert.deepEqual(await store.read(ns),before);
-  store.fail=true;await assert.rejects(a.save(note('new')));await assert.rejects(a.importLegacy([note('a')],{confirmed:true,receipt:'quota'}));store.fail=false;assert.deepEqual(await store.read(ns),before);
+  await assert.rejects(a.save(note('b','bad\0text')));assert.deepEqual(await store.read(ns),before);
+  store.fail=true;await assert.rejects(a.save(note('new')));store.fail=false;assert.deepEqual(await store.read(ns),before);a.close();
 });
 test('oversized and malformed note text rejects without silently clipping user content',async()=>{
   const a=runtime(memoryStore());for(const invalid of [note('a','x'.repeat(20001)),note('a','\ud800'),note('a','x',{title:'x'.repeat(121)}),note('bad\nid')])await assert.rejects(a.save(invalid));assert.deepEqual(await a.list(),[]);

@@ -6,8 +6,8 @@ import {normalizeIcon, suppliedArtwork} from '../scripts/vendor-iconsax.mjs';
 import {ICONSAX_ICON_MARKUP, ICONSAX_GLYPH_NAMES, qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const parts = markup => [...markup.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone)"[^>]*>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|<\/svg>)/g)];
-test('all nine attached exports preserve their actual geometry and root paint in the bundled renderer', () => {
-  assert.equal(Object.keys(suppliedIcons).length,9);
+test('all eleven attached exports preserve their actual geometry and root paint in the bundled renderer', () => {
+  assert.equal(Object.keys(suppliedIcons).length,11);
   assert.equal(ICONSAX_GLYPH_NAMES.theater,'gift-9');
   for (const [key, svg] of Object.entries(suppliedIcons)) {
     const [name, variant] = key.split('/');

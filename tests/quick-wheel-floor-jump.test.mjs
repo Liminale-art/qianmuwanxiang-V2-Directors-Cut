@@ -76,8 +76,8 @@ assert.doesNotMatch(wheelSettings, /可自由组合千幕全部入口|拖动其�
 // 短按仍开主面板，长按才开轮盘；半隐藏触屏长按必须先冻结滑出动画再读取最终锚点。
 assert.match(source, /function openQuickWheelFromLongPress[\s\S]*sd-float-wheel-opening[\s\S]*revealFloatButton[\s\S]*getBoundingClientRect[\s\S]*openQuickWheel\(btn\)/);
 assert.match(source, /setTimeout\(\(\) =>[\s\S]*?openQuickWheelFromLongPress\(btn\)[\s\S]*?300\)/);
-assert.match(source, /if \(wheelOpened\) return;[\s\S]*event\.pointerType === 'touch' \? 12 : 4/, '长按确认后须锁住主格，触屏抖动阈值应宽于鼠标');
-assert.doesNotMatch(source, /if \(wheelOpened\) closeQuickWheel\(\)/, '长按后的自然手指抖动不得关闭轮盘');
+assert.match(source, /event\.pointerType === 'touch' \? 7 : 4[\s\S]*if \(!moved && Math\.hypot\(dx, dy\) > dragSlop\)[\s\S]*if \(wheelOpened\)[\s\S]*closeQuickWheel\(\)/, '明确位移须优先拖动，即使同次长按已展开也能接续；阈值内微颤不得关闭蜂巢');
+assert.doesNotMatch(source, /if \(wheelOpened\) return;/, '长按后不得把本次拖动锁死到抬手');
 assert.match(source, /openModal\(\);\s*\/\/ 无参=恢复上次停留的 tab/);
 
 // 楼层窗保持纯数字导航，不创建正文预览列表。

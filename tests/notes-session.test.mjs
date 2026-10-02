@@ -109,12 +109,15 @@ test('close admission never authorizes an old-account save after the real accoun
   } finally { await e.api.clearTemporaryQianmuNotes(); }
 });
 
-test('migration needs an explicitly confirmed account and never opens the old store otherwise', async () => {
+test('retired legacy facade is absent while normal account note operations remain available', async () => {
   const e = await fixture();
   try {
-    await assert.rejects(e.api.adoptLegacyQianmuNotes(), /确认旧便笺所属/);
-    await assert.rejects(e.api.adoptLegacyQianmuNotes({ confirmed: true, namespace: 'st-user:another' }), /账户或会话已变化/);
-    assert.equal(e.writes, 0);
+    assert.equal(e.api.adoptLegacyQianmuNotes, undefined);
+    assert.equal(e.api.listLegacyQianmuNotes, undefined);
+    await e.api.saveQianmuNote(e.api.createQianmuNote({body:'account original'}));
+    await e.api.syncQianmuNotes();
+    assert.equal((await e.api.listQianmuNotes())[0].body,'account original');
+    assert.equal(e.writes, 1);
   } finally { await e.api.clearTemporaryQianmuNotes(); }
 });
 

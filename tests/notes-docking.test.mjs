@@ -24,8 +24,12 @@ function fixture(size = 48) {
     }
     closest() { return null; }
     addEventListener(name, handler) { this.listeners.set(name, handler); }
-    setPointerCapture() {}
-    releasePointerCapture() {}
+    setPointerCapture(id) { this.pointerId = id; }
+    releasePointerCapture(id) {
+      if (this.pointerId !== id) return;
+      this.pointerId = null;
+      this.emit('lostpointercapture', { pointerId: id });
+    }
     emit(name, coordinates = {}) {
       this.listeners.get(name)?.({ pointerId: 1, button: 0, clientX: 100, clientY: 100, stopPropagation() {}, preventDefault() {}, ...coordinates });
     }
@@ -70,15 +74,32 @@ test('the enlarged return margin never bypasses an open Qianmu, notes or ST pane
 });
 
 test('return commits only on a moved, non-cancelled release and rechecks the active panel', () => {
-  for (const mode of ['tap', 'cancel', 'panel-opened', 'drop']) {
+  for (const mode of ['tap', 'cancel', 'lostcapture', 'panel-opened', 'drop']) {
     const f = fixture();
     f.entry.emit('pointerdown');
     if (mode !== 'tap') f.entry.emit('pointermove', { clientX: 107, clientY: 107 });
     assert.equal(f.state.noteSettings.detached, true, 'hovering the acceptance zone never commits return');
     if (mode === 'panel-opened') f.modal.classList.add('open');
-    f.entry.emit(mode === 'cancel' ? 'pointercancel' : 'pointerup', { clientX: 107, clientY: 107 });
+    f.entry.emit(mode === 'cancel' ? 'pointercancel' : mode === 'lostcapture' ? 'lostpointercapture' : 'pointerup', { clientX: 107, clientY: 107 });
     assert.equal(f.state.noteSettings.detached, mode !== 'drop', mode);
     assert.equal(f.state.rendered, mode === 'drop' ? 1 : 0, mode);
     assert.equal(f.entry.classList.contains('is-return-ready'), false, 'every release clears the hover affordance');
+    assert.equal(f.state.saved, 1, 'releasing capture cannot reenter completion and persist twice');
   }
+});
+
+test('detached note touch drag keeps ownership when another finger arrives', () => {
+  const f = fixture();
+  f.entry.emit('pointerdown', { pointerId: 2, isPrimary: false });
+  f.entry.emit('pointermove', { pointerId: 2, clientX: 160 });
+  assert.equal(f.entry.style.left, '100px'); assert.equal(f.state.saved, 0);
+  f.entry.emit('pointerdown');
+  f.entry.emit('pointerdown', { pointerId: 2, isPrimary: false, clientX: 300 });
+  f.entry.emit('pointermove', { pointerId: 2, clientX: 400 });
+  f.entry.emit('pointerup', { pointerId: 2 });
+  assert.equal(f.entry.style.left, '100px'); assert.equal(f.state.saved, 0);
+  f.entry.emit('pointermove', { clientX: 120 });
+  assert.equal(f.entry.style.left, '120px');
+  f.entry.emit('pointerup'); assert.equal(f.state.saved, 1); assert.equal(f.entry.pointerId, null);
+  assert.equal(f.state.noteSettings.detached, true, 'dropping beside the logo remains detached');
 });

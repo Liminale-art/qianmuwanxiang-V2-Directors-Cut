@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { storyboardFunctionSource as section } from '../tests/helpers/storyboard-form-fixture.mjs';
 const require = createRequire(import.meta.url), { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
+const notesRef = (await readFile(new URL('../qianmu-notes-panel-sync.js', import.meta.url), 'utf8')).match(/from '(\.\/qianmu-notes\.js[^']*)'/)[1];
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage(), checks = [], errors = [];
 let external = 0;
@@ -23,8 +24,8 @@ const names = ['notesFeatureSettings', 'persistNotesDevice', 'notesSyncControls'
 try {
   await page.goto('https://qianmu.test/');
   await page.addStyleTag({ content: await readFile(new URL('../style.css', import.meta.url), 'utf8') });
-  await page.evaluate(async source => {
-    for (const file of ['qianmu-notes', 'qianmu-notes-panel-sync', 'qianmu-notes-device', 'qianmu-input-boundary', 'qianmu-icon-renderer']) Object.assign(window, await import(`./${file}.js`));
+  await page.evaluate(async ({source, notesRef}) => {
+    for (const file of ['qianmu-notes', 'qianmu-notes-panel-sync', 'qianmu-notes-device', 'qianmu-input-boundary', 'qianmu-icon-renderer']) Object.assign(window, await import(file === 'qianmu-notes' ? notesRef : `./${file}.js`));
     const configure = configureQianmuNotes, { createNotesSyncRuntime } = await import('./qianmu-notes-sync-runtime.js');
     window.configureQianmuNotes = options => configure({ ...options, createRuntime: input => createNotesSyncRuntime({ ...input, client: null }) });
     const notes = { enabled: true, detached: false, position: { x: 15, y: 40 }, panelSize: { width: 430, height: 420 }, editorFontSize: 13, appearance: { tone: 'dark', edgeIndex: 0 } };
@@ -45,7 +46,7 @@ try {
     fixture.hostKeys = 0;
     document.addEventListener('keydown', () => fixture.hostKeys++);
     openNotesPanel();
-  }, names.map(section).join('\n'));
+  }, {source: names.map(section).join('\n'), notesRef});
   await page.waitForFunction(() => notesLoaded);
   await page.locator('.sd-note-new').click();
   await page.locator('.sd-note-body').fill('第一条未固定便笺');

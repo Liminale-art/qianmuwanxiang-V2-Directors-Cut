@@ -1,7 +1,7 @@
-import {createTextCollectionOwner} from './qianmu-text-collection-owner.js?v=1.59.418';
-import {createTextCollectionFloor} from './qianmu-text-collection-floor.js?v=1.59.416';
+import {createTextCollectionOwner} from './qianmu-text-collection-owner.js?v=1.59.419';
+import {createTextCollectionFloor} from './qianmu-text-collection-floor.js?v=1.59.419';
 import {textCollectionFloorSources, collectionSourceKey} from './qianmu-text-collection-source.js';
-import {floorProseText} from './qianmu-prose-floor-entries.js';
+import {floorProseText} from './qianmu-prose-floor-entries.js?v=1.59.419';
 
 // This is the entire ST seam: existing host events call refresh/handleClick.
 // No mutation observer, settings save, message mutation or render replacement.

@@ -1,6 +1,14 @@
 // Shared prose-floor helpers used by storyboard floor actions.
 // The storyboard shortcut and assistant source reader both need these small,
 // read-only DOM operations without importing their heavier panels.
+export function isCharacterFloor(element, message) {
+  if (!message || [true, 'true', 1, '1'].includes(message.is_user)) return false;
+  // Prompt exclusion (is_system) is unrelated to who wrote a rendered floor.
+  // Also reject an explicitly user-marked host node during role/DOM updates.
+  return !['true', '1'].includes(element?.getAttribute?.('is_user'))
+    && !element?.classList?.contains('is_user');
+}
+
 export function floorProseText(element){
   if(!element)return '';
   const copy=element.cloneNode(true);
@@ -17,7 +25,9 @@ export function floorProseText(element){
 export function injectStoryboardMessageButtons(chatRoot,{floorOf,getContext,getState,planForMessage,applyIcons}){
   chatRoot.querySelectorAll('.mes').forEach((message)=>{
     const floor=floorOf(message),chatMessage=Number.isInteger(floor)?getContext().chat?.[floor]:null;
-    if(!chatMessage||message.querySelector('.sd-storyboard-message-action'))return;
+    const existing=message.querySelector('.sd-storyboard-message-action');
+    if(!isCharacterFloor(message,chatMessage)){existing?.remove();return;}
+    if(existing)return;
     const toolbar=message.querySelector('.mes_buttons .extraMesButtons, .mes_buttons .mes_buttons_inner, .mes_buttons');if(!toolbar)return;
     const button=chatRoot.ownerDocument.createElement('button');button.type='button';button.className='mes_button interactable sd-storyboard-message-action';
     button.dataset.storyboardChatAction = 'capture-floor';

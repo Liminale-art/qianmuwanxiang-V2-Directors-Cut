@@ -1,6 +1,8 @@
 // Account-scoped durable notes and outbox. Never opens or migrates the legacy notes database.
 import {NOTES_SYNC_LIMITS,notesSyncNoteInput} from './qianmu-notes-sync-contract.js';
 import {createAccountLocalStore} from './qianmu-account-local-store.js';
+// Historical receipts remain inert schema data so existing stores and rollback
+// stay readable. No active workflow scans, adopts or writes legacy notes.
 export const NOTES_LOCAL_LIMITS = Object.freeze({rows:NOTES_SYNC_LIMITS.notes*2,bytes:NOTES_SYNC_LIMITS.bytes*3,receipts:1000});
 export const notesLocalError = (code,message) => Object.assign(new Error(message),{code:`notes_sync_${code}`});
 export function notesLocalNamespace(value) {

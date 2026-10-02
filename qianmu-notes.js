@@ -1,8 +1,7 @@
 // 千幕 · 轻量便笺数据层
 // All notes are durable. Pinning controls prominence, never whether prose survives.
-// The account-scoped sync store is separate from the legacy, unowned notes store.
+// Only the account-scoped store participates in the active notes workflow.
 
-import * as blobStore from './qianmu-blobstore.js';
 import {readLibraryBackupFile,confirmLibraryRestore,NOTE_TEXT_LIMITS} from './qianmu-library-backup.js';
 import {notesSyncOperationId} from './qianmu-notes-sync-contract.js';
 
@@ -30,7 +29,7 @@ async function notesSession(expectedNamespace, admittedEpoch) {
   if (opening) { await opening; return notesSession(expectedNamespace, admittedEpoch); }
   opening = (async () => {
     if (session) { await session.runtime.close(); session = null; configuration.onChange?.({ reason: 'account' }); }
-    const { createNotesSyncRuntime } = configuration.createRuntime ? { createNotesSyncRuntime: configuration.createRuntime } : await import('./qianmu-notes-sync-runtime.js');
+    const { createNotesSyncRuntime } = configuration.createRuntime ? { createNotesSyncRuntime: configuration.createRuntime } : await import('./qianmu-notes-sync-runtime.js?v=1.59.419');
     const guard = async () => {
       if (token !== epoch || namespace !== await configuration.resolveNamespace() || token !== epoch) throw changed();
     };
@@ -66,23 +65,6 @@ export async function syncQianmuNotes() {
   const current = await notesSession();
   await current.runtime.sync(); await current.guard();
   return qianmuNotesState();
-}
-
-// Legacy data has no account evidence. Inspection/export is local; adoption is explicit.
-export async function listLegacyQianmuNotes() {
-  if (!blobStore.blobStoreAvailable()) return [];
-  return blobStore.listNotes({ requireCommit: true });
-}
-export async function adoptLegacyQianmuNotes({ confirmed = false, namespace } = {}) {
-  if (confirmed !== true || !namespace) throw new Error('请先确认旧便笺所属的 ST 账户。');
-  if (!globalThis.crypto?.subtle?.digest) throw new Error('旧便笺归属核验需要 HTTPS 或本机 localhost；原件仍可查看和导出，未迁移。');
-  const current = await notesSession(namespace), notes = await listLegacyQianmuNotes();
-  const content = notes.map(({ id, title, body, pinned, createdAt, updatedAt }) => ({ id, title, body, pinned, createdAt, updatedAt })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(content)));
-  const receipt = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
-  await current.guard();
-  const result = await localWrite(() => current.runtime.importLegacy(notes, { confirmed: true, receipt }));
-  queueSync(); return result;
 }
 
 const text = (value, limit) => Array.from(String(value ?? '')).slice(0, limit).join('');

@@ -8,7 +8,7 @@ const turn = () => new Promise(resolve => setImmediate(resolve));
 const gate = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return {promise, resolve, reject}; };
 const source = (chatId = 'chat-one', messageId = 'message-one') => ({chatId, messageId});
 
-function fixture(t, chat = [{mes: '正文', is_user: false}, {mes: '回复', is_user: true}]) {
+function fixture(t, chat = [{mes: '正文', is_user: false}, {mes: '回复', is_user: false}]) {
     const dom = textCollectionDom(), root = dom.parent;
     let items = [], context = {chat}, toggle = async () => {};
     const sources = new Map(chat.map((message, i) => [message, source('chat-one', `message-${i}`)]));
@@ -32,12 +32,14 @@ function fixture(t, chat = [{mes: '正文', is_user: false}, {mes: '回复', is_
         get items() { return items; }, set items(value) { items = value; }, setContext(value) { context = value; }, setToggle(fn) { toggle = fn; }};
 }
 
-test('adds one font-independent theme-inheriting outline heart per rendered message, including prompt-excluded floors', t => {
-    const f = fixture(t, [{mes: 'AI'}, {mes: 'USER', is_user: true}, {mes: 'system', is_system: true}]);
+test('adds one font-independent heart per character floor including prompt-excluded floors, never user floors', t => {
+    const f = fixture(t, [{mes: 'AI'}, {mes: 'USER', is_user: true}, {mes: 'hidden character', is_system: true}]);
     const unrelated = f.dom.doc.createElement('button'); unrelated.className = 'host-wallpaper-control'; f.root.appendChild(unrelated);
     f.floor.refresh(f.root);
     const first = f.button(), glyph = first.firstChild;
-    assert.equal(f.root.querySelectorAll('.qm-collection-star').length, 3);
+    assert.equal(f.root.querySelectorAll('.qm-collection-star').length, 2);
+    assert.equal(f.button(1), null);
+    assert.ok(f.button(2));
     assert.equal(first.getAttribute('aria-pressed'), 'false');
     assert.equal(first.getAttribute('aria-label'), '收藏正文');
     assert.equal(glyph.tagName, 'SVG');
@@ -52,9 +54,22 @@ test('adds one font-independent theme-inheriting outline heart per rendered mess
     assert.equal(glyph.hasAttribute('data-qianmu-icon-skip'), true);
     f.floor.refresh(f.root); f.floor.refresh(f.root);
     assert.equal(f.button(), first); assert.equal(f.button().firstChild, glyph);
-    assert.equal(f.iconCalls.length, 3);
+    assert.equal(f.iconCalls.length, 2);
     assert.equal(unrelated.parentNode, f.root);
     assert.equal(f.calls.length, 0);
+});
+
+test('role changes remove only collection controls and a stale click cannot add or delete user content', t => {
+    const chat = [{mes: 'char', is_user: false}], f = fixture(t, chat);
+    const native = f.dom.doc.createElement('button'); native.className = 'mes_edit'; f.elements[0].append(native);
+    f.floor.refresh(f.root); const old = f.button();
+    chat[0].is_user = true;
+    assert.equal(f.click(old).handled, true); assert.equal(f.calls.length, 0);
+    assert.equal(f.button(), null); assert.equal(native.isConnected, true);
+    chat[0].is_user = 'false'; f.floor.refresh(); assert.ok(f.button());
+    f.elements[0].setAttribute('is_user', 'true'); f.floor.refresh();
+    assert.equal(f.button(), null); assert.equal(f.calls.length, 0);
+    f.elements[0].setAttribute('is_user', 'false'); f.floor.refresh(); assert.ok(f.button());
 });
 
 test('toolbar fallback and malformed floor IDs never point at another message', t => {

@@ -34,7 +34,8 @@ test('HTTP-like browser capabilities preserve local notes, imports and exports a
     await api.saveImportedQianmuNote({ id: 'local', body: 'independent imported original' }, { check() {} });
     assert.equal((await api.listQianmuNotes()).length, 2);
     assert.deepEqual((await api.listQianmuNotes()).map(note => note.body).sort(), ['independent imported original', 'unpinned HTTP original']);
-    await assert.rejects(api.adoptLegacyQianmuNotes({ confirmed: true, namespace }), /HTTPS/);
+    assert.equal(api.adoptLegacyQianmuNotes, undefined);
+    assert.equal(api.listLegacyQianmuNotes, undefined);
     assert.equal((await api.getQianmuNotesStorage()).count, 2);
   } finally {
     await api?.clearTemporaryQianmuNotes(); Object.defineProperty(globalThis, 'crypto', original);

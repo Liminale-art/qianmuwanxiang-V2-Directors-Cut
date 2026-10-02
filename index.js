@@ -2,7 +2,8 @@
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
-import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.418';
+import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.419';
+import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.417';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
@@ -20,7 +21,7 @@ import {renderGalleryKeywordEntry,bindGalleryKeywordEntry,renderGalleryKeywordFi
 import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor} from './qianmu-composition-schemes-view.js';
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
-import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js';
+import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.419';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.414';
@@ -173,12 +174,11 @@ import {
   importQianmuNotesBackup,
   listQianmuNotes,
   getQianmuNotesStorage,
-  normalizeQianmuNote,
   saveImportedQianmuNote,
   saveQianmuNote,
   qianmuNotesState,
-} from './qianmu-notes.js';
-import { createNotesPanelSync, captureNotesRefresh, mergeNotesRefresh } from './qianmu-notes-panel-sync.js';
+} from './qianmu-notes.js?v=1.59.419';
+import { createNotesPanelSync, captureNotesRefresh, mergeNotesRefresh } from './qianmu-notes-panel-sync.js?v=1.59.419';
 import { readNotesDeviceState, saveNotesDeviceState } from './qianmu-notes-device.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
 import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js';
@@ -191,7 +191,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.414';
 import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from './qianmu-storyboard-variant-recovery.js?v=1.59.414';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.418';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.419';
 import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.414';
 import {
   createQianmuChatCompletionResponseFormat,
@@ -296,7 +296,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.418';
+const VERSION = '1.59.419';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -309,7 +309,7 @@ const featureRuntime = createFeatureRuntime({
   galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.414') },
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.414') },
   vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.414') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.418') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.419') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -5956,6 +5956,13 @@ function bindFloatDrag(btn) {
   let moved = false;
   let holdTimer = null;
   let wheelOpened = false;
+  let pointerId = null;
+  let lastX = 0;
+  let lastY = 0;
+  const suppressClick = (key, delay) => {
+    btn.dataset[key] = '1';
+    setTimeout(() => { delete btn.dataset[key]; }, delay);
+  };
 
   btn.addEventListener('pointerenter', (event) => {
     if (event.pointerType && event.pointerType !== 'mouse') return;
@@ -5967,11 +5974,10 @@ function bindFloatDrag(btn) {
   });
 
   btn.addEventListener('pointerdown', (event) => {
-    if (event.button !== undefined && event.button !== 0) return;
+    if (pointerId != null || event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
     if (document.getElementById(QUICK_WHEEL_ID)) {
       closeQuickWheel();
-      btn.dataset.justClosedWheel = '1';
-      setTimeout(() => { delete btn.dataset.justClosedWheel; }, 180);
+      suppressClick('justClosedWheel', 180);
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -5980,32 +5986,45 @@ function bindFloatDrag(btn) {
     const visualRect = btn.getBoundingClientRect();
     startX = event.clientX;
     startY = event.clientY;
+    lastX = startX;
+    lastY = startY;
     originX = btn.classList.contains('sd-float-revealed') ? visualRect.left : pos.x;
     originY = btn.classList.contains('sd-float-revealed') ? visualRect.top : pos.y;
     moved = false;
     wheelOpened = false;
+    pointerId = event.pointerId;
     btn.dataset.activePointer = String(event.pointerId);
-    btn.setPointerCapture?.(event.pointerId);
+    try { btn.setPointerCapture?.(event.pointerId); } catch (_) {}
     clearTimeout(holdTimer);
     holdTimer = setTimeout(() => {
-      if (moved || settings.quickWheelEnabled === false) return;
+      if (pointerId == null || moved || !btn.isConnected || settings.quickWheelEnabled === false) return;
       wheelOpened = true;
       openQuickWheelFromLongPress(btn);
     }, 300);
   });
 
   btn.addEventListener('pointermove', (event) => {
-    if (!btn.hasPointerCapture?.(event.pointerId)) return;
-    // 长按已经确认后锁住主格直到抬手；触屏的自然抖动不应把刚展开的蜂巢关闭或拖走。
-    if (wheelOpened) return;
+    if (pointerId == null || event.pointerId !== pointerId) return;
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
-    const dragSlop = event.pointerType === 'touch' ? 12 : 4;
-    if (Math.hypot(dx, dy) > dragSlop) {
+    const scale = Math.max(1, Number(window.visualViewport?.scale) || 1);
+    const dragSlop = (event.pointerType === 'touch' ? 7 : 4) / scale;
+    if (!moved && Math.hypot(dx, dy) > dragSlop) {
+      // 手势由位移决定，不因长按已展开而锁死。刚露出的半隐藏格从当前视觉位置接续，避免跳位。
+      if (wheelOpened) {
+        const rect = btn.getBoundingClientRect();
+        originX = rect.left - (lastX - startX);
+        originY = rect.top - (lastY - startY);
+        closeQuickWheel();
+        wheelOpened = false;
+      }
       moved = true;
       clearTimeout(holdTimer);
     }
+    lastX = event.clientX;
+    lastY = event.clientY;
     if (!moved) return;
+    event.preventDefault();
     clearFloatRevealTimer(btn);
     btn.classList.remove('sd-float-revealed');
     btn.classList.add('sd-float-dragging');
@@ -6015,28 +6034,23 @@ function bindFloatDrag(btn) {
     applyFloatPosition(btn);
   });
 
-  const finish = (event) => {
-    if (!btn.hasPointerCapture?.(event.pointerId)) return;
+  const finish = (event, cancelled = false) => {
+    if (pointerId == null || event.pointerId !== pointerId) return;
     clearTimeout(holdTimer);
-    btn.releasePointerCapture?.(event.pointerId);
+    pointerId = null;
+    try { btn.releasePointerCapture?.(event.pointerId); } catch (_) {}
     delete btn.dataset.activePointer;
     btn.classList.remove('sd-float-dragging');
-    const pos = clampFloatPosition();
-    settings.floatPosition.x = pos.x;
-    settings.floatPosition.y = pos.y;
+    Object.assign(settings.floatPosition, clampFloatPosition());
     applyFloatPosition(btn);
-    saveSettings();
-    if (moved) {
-      btn.dataset.justDragged = '1';
-      setTimeout(() => { delete btn.dataset.justDragged; }, 120);
-    }
-    if (wheelOpened) {
-      btn.dataset.justOpenedWheel = '1';
-      setTimeout(() => { delete btn.dataset.justOpenedWheel; }, 160);
-    }
+    if (moved) saveSettings();
+    if (cancelled && wheelOpened) closeQuickWheel();
+    if (moved || cancelled) suppressClick('justDragged', 120);
+    if (wheelOpened) suppressClick('justOpenedWheel', 160);
   };
-  btn.addEventListener('pointerup', finish);
-  btn.addEventListener('pointercancel', finish);
+  btn.addEventListener('pointerup', (event) => finish(event));
+  btn.addEventListener('pointercancel', (event) => finish(event, true));
+  btn.addEventListener('lostpointercapture', (event) => finish(event, true));
 
   btn.addEventListener('click', (event) => {
     if (btn.dataset.justDragged === '1' || btn.dataset.justOpenedWheel === '1' || btn.dataset.justClosedWheel === '1') {
@@ -6271,7 +6285,7 @@ function notesSyncControls() {
   return notesSyncPanel = createNotesPanelSync({ getRoot: () => document.getElementById(NOTES_PANEL_LAYER_ID),
     hasUnsaved: () => notesSaveTimers.size > 0,
     refresh: () => hydrateNotesRuntime(true), retryLocal: async () => { for (const note of notesRuntime.filter(note => notesSaveTimers.has(note.id))) await persistNoteRuntime(note); },
-    confirm: confirmDialog, download: ttsDownloadBlob, notify: toast });
+    notify: toast });
 }
 
 function notesFeatureEnabled() {
@@ -6516,8 +6530,8 @@ function clampDetachedNotesEntry(position = {}) {
   const height = Math.max(1, Number(viewport?.height || window.innerHeight));
   const entry = detachedNotesGeometry();
   return {
-    x: Math.max(left + 8, Math.min(left + width - entry.width - 8, position.x != null && Number.isFinite(Number(position.x)) ? Number(position.x) : left + width - entry.width - 18)),
-    y: Math.max(top + 8, Math.min(top + height - entry.height - 8, position.y != null && Number.isFinite(Number(position.y)) ? Number(position.y) : top + Math.max(76, height * .45))),
+    x: Math.max(left, Math.min(left + width - entry.width, position.x != null && Number.isFinite(Number(position.x)) ? Number(position.x) : left + width - entry.width - 18)),
+    y: Math.max(top, Math.min(top + height - entry.height, position.y != null && Number.isFinite(Number(position.y)) ? Number(position.y) : top + Math.max(76, height * .45))),
   };
 }
 
@@ -6554,7 +6568,7 @@ function bindFloatingNoteEvents(layer) {
   let suppressClick = false;
   entry.addEventListener('pointerdown', (event) => {
     event.stopPropagation();
-    if (event.button != null && event.button !== 0) return;
+    if (drag || event.isPrimary === false || (event.button != null && event.button !== 0)) return;
     const rect = entry.getBoundingClientRect();
     drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: rect.left, originY: rect.top, moved: false };
     entry.setPointerCapture?.(event.pointerId);
@@ -6577,10 +6591,11 @@ function bindFloatingNoteEvents(layer) {
   const finish = (event, cancelled = false) => {
     if (!drag || (event?.pointerId != null && event.pointerId !== drag.pointerId)) return;
     const moved = drag.moved;
-    try { entry.releasePointerCapture?.(drag.pointerId); } catch (_) {}
+    const pointerId = drag.pointerId;
     const inside = !cancelled && moved && detachedNoteCanReturnHome(entry);
     const position = clampDetachedNotesEntry({ x: Number.parseFloat(entry.style.left), y: Number.parseFloat(entry.style.top) });
     drag = null;
+    try { entry.releasePointerCapture?.(pointerId); } catch (_) {}
     entry.classList.remove('is-dragging', 'is-return-ready');
     if (moved) {
       suppressClick = true;
@@ -6597,6 +6612,7 @@ function bindFloatingNoteEvents(layer) {
   };
   entry.addEventListener('pointerup', (event) => { event.stopPropagation(); finish(event); });
   entry.addEventListener('pointercancel', (event) => { event.stopPropagation(); finish(event, true); });
+  entry.addEventListener('lostpointercapture', (event) => finish(event, true));
   entry.addEventListener('click', (event) => {
     event.stopPropagation();
     if (suppressClick) return;
@@ -10625,6 +10641,9 @@ function ttsRawText(mesEl) {
 function ttsMesId(mesEl) {
   return mesEl?.getAttribute('mesid') || mesEl?.getAttribute('mesId') || '';
 }
+function ttsIsCharacter(mesEl) {
+  return mesEl?.isConnected === true && isCharacterFloor(mesEl, ctx().chat?.[ttsMesId(mesEl)]);
+}
 // 裁剪持久化 ttsLines：超上限按插入序（Object 保序）丢最旧的孤儿条目，防聊天存档膨胀。
 // 上限取 100：列表存在聊天 JSON 里、每回合随 saveMetadata 序列化写盘，故收紧（不同于音频缓存——那在 IndexedDB 懒加载、不进存档）；100 条覆盖任何正常回看，丢了也只是一次廉价重提。
 function ttsPruneLineStore(store, limit = 100) {
@@ -10957,34 +10976,7 @@ function ttsEnsureBar(mesEl) {
 // 工具栏只挂一次（sdTtsHooked 标记）；自动恢复 ttsAutoRestore 解耦出来每次扫描都跑——首扫可能早于元数据注水，
 // 那时查不到持久化台词，需后续扫描重试。恢复纯读缓存/持久化、幂等，重复跑无副作用。
 function ttsScanMessageElement(mesEl, options = {}) {
-  if (!(mesEl instanceof Element) || !mesEl.matches('.mes')) return;
-  if (mesEl.getAttribute('is_system') === 'true') { mesEl.dataset.sdTtsHooked = '1'; return; }
-  const textEl = mesEl.querySelector('.mes_text');
-  if (!textEl) return;
-  if (mesEl.dataset.sdTtsHooked !== '1') {
-    mesEl.dataset.sdTtsHooked = '1';
-    const bar = document.createElement('div');
-    bar.className = 'sd-tts-toolbar';
-    bar.innerHTML = `
-      <button type="button" class="sd-tts-trigger" title="提取/展开台词列表" aria-label="提取台词"><i class="fa-solid fa-clapperboard" data-qm-icon="voice-lines"></i></button>
-      <button type="button" class="sd-tts-reextract" title="重新提取台词列表（仅刷新文本）" aria-label="重新提取台词"><i class="fa-solid fa-film" data-qm-icon="voice-reextract"></i></button>
-      <button type="button" class="sd-tts-regenall" title="重新生成本条全部语音" aria-label="重生本条全部语音" hidden><i class="fa-solid fa-rotate" data-qm-icon="voice-regenerate-all"></i></button>
-      <button type="button" class="sd-tts-playall" title="连续播放本条全部台词" aria-label="连续播放" hidden><i class="fa-regular fa-circle-play"></i></button>`;
-    textEl.insertAdjacentElement('afterend', bar);
-    applyQianmuIcons(bar);
-  }
-  ttsBindControlBoundary(mesEl.querySelector('.sd-tts-toolbar'));
-  const bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
-  if (bar) ttsBindControlBoundary(bar);
-  if (options.forceProvider && bar?.dataset.loaded === '1') delete bar.dataset.provider;
-  ttsAutoRestore(mesEl);
-  if (options.expand) {
-    const restored = mesEl.querySelector(`.${TTS_BAR_CLASS}[data-loaded="1"]`);
-    if (restored) {
-      restored.hidden = false;
-      mesEl.querySelectorAll('.sd-tts-inline').forEach((el) => { el.hidden = false; });
-    }
-  }
+  scanTtsFloor(mesEl, {isCharacter:ttsIsCharacter, barClass:TTS_BAR_CLASS, bindBoundary:ttsBindControlBoundary, applyIcons:applyQianmuIcons, autoRestore:ttsAutoRestore}, options);
 }
 
 function ttsMessageElementsWithin(root) {
@@ -11070,7 +11062,7 @@ function ttsBindControlBoundary(boundary) {
 // 委托点击兜底：🎧 触发 / 🔁 重提取 / 🔊 单句（双击=快捷窗）/ ▶ 连播（播放中再点=停止）/ 🌀 重生语音
 function ttsOnChatClick(e) {
   const target = e.target instanceof Element ? e.target : null;
-  if (!target) return;
+  if (!target || !ttsIsCharacter(target.closest('.mes'))) return;
   const reext = target.closest('.sd-tts-reextract');
   if (reext) { e.preventDefault(); ttsHandleTrigger(reext, true); return; }
   const trig = target.closest('.sd-tts-trigger');
@@ -11167,6 +11159,7 @@ function ttsHighlightEls(mesEl, idx) {
 
 // 播放一句已解析台词：spinner → 合成（force=重生成跳缓存）→ 仅真合成弹提示 → 列表+内联同步高亮
 async function ttsPlayResolvedLine(line, mesEl, idx, spinBtn, force = false) {
+  if (!ttsIsCharacter(mesEl)) return;
   ttsRestoreTasks++;
   try {
   const icon = spinBtn?.querySelector('i');
@@ -11174,6 +11167,7 @@ async function ttsPlayResolvedLine(line, mesEl, idx, spinBtn, force = false) {
   setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
     const { blob, cached } = await ttsSynthCached(line, force);
+    if (!ttsIsCharacter(mesEl)) return;
     if (prev) setQianmuIconClass(icon, prev);
     if (!cached) toast('配音已完成', 'success');   // 仅真合成才通知，缓存重播不刷屏
     await ttsPlayBlob(blob, ttsHighlightEls(mesEl, idx));
@@ -11195,7 +11189,7 @@ async function ttsHandleTrigger(trig, force = false) {
   ttsRestoreTasks++;
   try {
   const mesEl = trig.closest('.mes');
-  if (!mesEl) return;
+  if (!mesEl || !ttsIsCharacter(mesEl)) return;
   const bar = ttsEnsureBar(mesEl);
   if (!bar) return;
   // 旧列表在重提期间仍可展开/折叠，不发起另一次提取。
@@ -11208,7 +11202,7 @@ async function ttsHandleTrigger(trig, force = false) {
   const raw = ttsRawText(mesEl);
   if (!raw) { toast('正文尚未就绪，请稍候重试', 'info'); return; }
   const key = ttsContentKey(raw), chatKey = getChatKey(), loaded = bar.dataset.loaded === '1';
-  const current = () => getChatKey() === chatKey && mesEl.isConnected && mesEl.contains(bar) && ttsRawText(mesEl) === raw;
+  const current = () => getChatKey() === chatKey && mesEl.isConnected && mesEl.contains(bar) && ttsIsCharacter(mesEl) && ttsRawText(mesEl) === raw;
   bar.dataset.loading = '1';
   if (!loaded) {
     bar.hidden = false;
@@ -11272,6 +11266,7 @@ function ttsApplyLines(mesEl, bar, lines, key, collapsed = false) {
 // 进入聊天扫描时：若本条正文此前已提取过（持久化命中），直接渲染台词条与播放键，无需用户再点 🎧。
 // 仅读缓存/持久化、绝不调模型；未提取过的消息原样留一个 🎧 钮等用户点。
 function ttsAutoRestore(mesEl) {
+  if (!ttsIsCharacter(mesEl)) return;
   const bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
   if (bar?.dataset.loading === '1') return;
   if (bar && bar.dataset.loaded === '1') {
@@ -11378,6 +11373,7 @@ function ttsClearInlineIcons(mesEl) {
 // 文本匹配：把 .mes_text 全部文本节点拼成全文做定位，再把匹配末尾映射回具体节点/偏移插入——
 // 故台词即便被加粗/链接拆到多个节点（末条最常见）也能命中。
 function ttsInjectInlineIcons(mesEl, lines) {
+  if (!ttsIsCharacter(mesEl)) return;
   ttsClearInlineIcons(mesEl);
   const textEl = mesEl.querySelector('.mes_text');
   if (!textEl) return;
@@ -11657,6 +11653,7 @@ async function ttsHandlePlayAll(btn, force = false) {
   ttsRestoreTasks++;
   try {
   const mesEl = btn.closest('.mes');
+  if (!mesEl || !ttsIsCharacter(mesEl)) return;
   const bar = mesEl?.querySelector(`.${TTS_BAR_CLASS}`) || btn.closest(`.${TTS_BAR_CLASS}`);
   if (!bar) { toast('未找到台词条，请先点 🎧 提取。', 'info'); return; }
   const lineEls = Array.from(bar.querySelectorAll('.sd-tts-line:not(.sd-tts-novoice)'));
@@ -11690,17 +11687,17 @@ async function ttsHandlePlayAll(btn, force = false) {
         if (!hit) { needSynth = true; break; }
       }
     }
-    if (myToken !== ttsSeqToken) return;
+    if (myToken !== ttsSeqToken || !ttsIsCharacter(mesEl)) return;
 
     // 阶段一：合成全部（force 跳缓存重合成并写回同 key；否则命中缓存秒回。逐条失败不中断）
     if (needSynth) toast(force ? '全部语音重新生成中…' : '全部台词配音中…', 'info');
     let failed = 0, lastErr = '';
     for (const job of jobs) {
-      if (myToken !== ttsSeqToken) return;
+      if (myToken !== ttsSeqToken || !ttsIsCharacter(mesEl)) return;
       try { const { blob } = await ttsSynthCached(job.line, force); job.blob = blob; }
       catch (err) { failed++; lastErr = err?.message || String(err); }
     }
-    if (myToken !== ttsSeqToken) return;
+    if (myToken !== ttsSeqToken || !ttsIsCharacter(mesEl)) return;
     const ready = jobs.filter((j) => j.blob);
     if (!ready.length) { toast(`配音失败（${lastErr || '无可用台词'}）`, 'error'); return; }
     if (needSynth) {
@@ -11710,7 +11707,7 @@ async function ttsHandlePlayAll(btn, force = false) {
 
     // 阶段二：顺序播放，列表项 + 对应正文内联图标同步高亮
     for (let bi = 0; bi < ready.length; bi++) {
-      if (myToken !== ttsSeqToken) break;
+      if (myToken !== ttsSeqToken || !ttsIsCharacter(mesEl)) break;
       const job = ready[bi];
       await ttsPlayBlob(job.blob, ttsHighlightEls(mesEl, job.idx));
       // 句间留一个舒适的小停顿（不粘连、也不拖沓）；末句后不停；被抢占则不停
@@ -11735,6 +11732,7 @@ async function ttsHandlePlayAll(btn, force = false) {
 function ttsOpenQuickPopup(btn) {
   const { mesEl, idx, line } = ttsResolveLineFromBtn(btn);
   ttsCloseQuickPopup();
+  if (!ttsIsCharacter(mesEl)) return;
   const rawSpeed = Number.isFinite(line.speed) ? line.speed : Number(ttsProviderConfig().defaultSpeed ?? 1);
   const curEmotion = (line.emotion && line.emotion !== 'auto') ? line.emotion : 'auto';
   const providerId = ttsProviderId();
@@ -11774,6 +11772,7 @@ function ttsOpenQuickPopup(btn) {
   syncDraftFavorite();
   // 读快捷窗当前控件 → 写入 line 对象并落盘（持久化，单击播放/连播/刷新后都沿用同一份）
   const applyOverride = () => {
+    if (!ttsIsCharacter(mesEl)) { ttsCloseQuickPopup(); return false; }
     const patch = { emotion: pop.querySelector('.sd-tts-pop-emotion').value };
     if (speedEl) patch.speed = Number(speedEl.value);
     Object.assign(line, patch);                       // 即时生效（缓存同引用）
@@ -11782,16 +11781,16 @@ function ttsOpenQuickPopup(btn) {
     return patch;
   };
   pop.querySelector('.sd-tts-pop-regen')?.addEventListener('click', async () => {
-    applyOverride();
+    if (!applyOverride()) return;
     ttsCloseQuickPopup();
     await ttsPlayResolvedLine(line, mesEl, idx, btn, true);   // force 跳缓存按新参数重生成并自动播放
   });
   pop.querySelector('.sd-tts-pop-download')?.addEventListener('click', async (ev) => {
-    applyOverride();
+    if (!applyOverride()) return;
     await ttsDownloadLine(line, ev.currentTarget, { mesEl, idx });
   });
   pop.querySelector('.sd-tts-pop-fav')?.addEventListener('click', async (ev) => {
-    applyOverride();
+    if (!applyOverride()) return;
     await ttsFavoriteLine(line, ev.currentTarget, { mesEl, idx });
   });
   // 点外部关闭
@@ -22400,8 +22399,9 @@ async function storyboardOnChatClick(event) {
   event.preventDefault(); event.stopPropagation();
   if (button.dataset.storyboardChatAction === 'capture-floor') {
     const floor=storyboardMessageFloor(button.closest('.mes')),message=ctx().chat?.[floor],epoch=storyboardAdmissionEpoch,chatKey=getChatKey();
+    if(!isCharacterFloor(button.closest('.mes'),message))return;
     const runtime=await featureRuntime.load('storyboardFloorCapture');
-    if(epoch!==storyboardAdmissionEpoch||chatKey!==getChatKey())return;
+    if(epoch!==storyboardAdmissionEpoch||chatKey!==getChatKey()||ctx().chat?.[floor]!==message||!isCharacterFloor(button.closest('.mes'),message))return;
     return runtime.captureStoryboardFloor(floor,message,{
       state:storyboardState,chat:()=>ctx().chat,chatKey:()=>String(getChatKey()||''),epoch:()=>storyboardAdmissionEpoch,
       busy:()=>storyboardCompilerBusy||[...storyboardQueueBatches].some(entry=>!entry.complete&&entry.chatKey===String(getChatKey()||'')&&entry.plan?.floor===floor),

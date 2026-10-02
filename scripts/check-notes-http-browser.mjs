@@ -8,6 +8,7 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import { init, exit } from '../server-plugin.js';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
+const notesRef=(await fs.readFile(new URL('../qianmu-notes-panel-sync.js',import.meta.url),'utf8')).match(/from '(\.\/qianmu-notes\.js[^']*)'/)[1];
 const parent=await fs.realpath(os.tmpdir()),root=await fs.mkdtemp(path.join(parent,'qianmu-notes-http-test-'));
 const dataRoot=path.join(root,'data');await fs.mkdir(dataRoot);
 for(const account of ['alice','bob'])await fs.mkdir(path.join(dataRoot,account));
@@ -43,14 +44,14 @@ async function device(handle){
   await context.addCookies([{name:'fixture-account',value:handle,url:origin,httpOnly:true}]);
   await context.route('**/*',route=>{if(new URL(route.request().url()).origin===origin)return route.continue();external++;return route.abort();});
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto(origin);
-  await page.evaluate(async handle=>{
-    window.api=await import(new URL('/qianmu-notes.js',location.href).href);
+  await page.evaluate(async({handle,notesRef})=>{
+    window.api=await import(new URL(notesRef,location.href).href);
     const {createNotesPanelSync}=await import(new URL('/qianmu-notes-panel-sync.js',location.href).href);
     window.fixture={handle,views:[],notices:[]};
     api.configureQianmuNotes({resolveNamespace:async()=>`st-user:${fixture.handle}`,headers:()=>({'X-CSRF-Token':'synthetic-csrf',Authorization:'must-not-forward','x-api-key':'must-not-forward'})});
     window.panel=createNotesPanelSync({getRoot:()=>null,refresh:async()=>{fixture.views=await api.listQianmuNotes();},confirm:async()=>false,notify:(...args)=>fixture.notices.push(args)});
     await api.listQianmuNotes();panel.mount();
-  },handle);
+  },{handle,notesRef});
   return {context,page};
 }
 const sync=page=>page.evaluate(()=>panel.sync());

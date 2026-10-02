@@ -51,5 +51,6 @@ test('all literal next-scene idle entry points carry the dedicated hint, without
   const idle=[...source.matchAll(/<i class="fa-solid fa-clapperboard"([^>]*)><\/i>推演下一幕/g)];
   assert.equal(idle.length,2);
   for(const match of idle)assert.equal(match[1],` data-qm-icon="${dashboard.glyph}"`);
-  assert.match(source,/class="sd-tts-trigger"[^>]*><i class="fa-solid fa-clapperboard" data-qm-icon="voice-lines"/,'the dialogue extraction icon is an unrelated consumer');
+  const floorUi=await readFile(new URL('../qianmu-tts-floor-ui.js',import.meta.url),'utf8');
+  assert.match(floorUi,/class="sd-tts-trigger"[^>]*><i class="fa-solid fa-clapperboard" data-qm-icon="voice-lines"/,'the dialogue extraction icon is an unrelated consumer');
 });

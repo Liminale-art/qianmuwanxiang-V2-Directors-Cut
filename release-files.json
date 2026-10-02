@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-tts-floor-ui.js",
     "qianmu-document-session.js",
     "qianmu-text-collection.js",
     "qianmu-text-collection-organization.js",

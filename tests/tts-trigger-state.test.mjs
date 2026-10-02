@@ -59,7 +59,7 @@ function fixture({loaded = true, collapsed = false} = {}) {
   const cache = new Map(loaded ? [['key', oldLines]] : []), stored = new Map(cache);
   const calls = {prepare: 0, extract: 0, store: 0, render: 0, inject: 0, toggle: 0, stop: 0, play: 0, persisted: 0, notices: []};
   let prep = async () => {}, extract = deferred(), raw = '原始正文', chatKey = 'chat-one';
-  const c = vm.createContext({Element, TTS_BAR_CLASS: 'sd-tts-bar', ttsRestoreTasks: 0,
+  const c = vm.createContext({Element, TTS_BAR_CLASS: 'sd-tts-bar', ttsRestoreTasks: 0, ttsIsCharacter: node => node === mes,
     getChatKey: () => chatKey, ttsEnsureBar: () => bar, ttsPrepareLineStore: () => { calls.prepare++; return prep(); },
     ttsRawText: () => raw, ttsContentKey: () => 'key', ttsLineCache: cache,
     ttsPersistedLines: key => { calls.persisted++; return stored.get(key); }, ttsMigrateLinesOnEdit: () => null,
@@ -175,6 +175,18 @@ test('leaving the original chat during preparation does not start extraction', a
   const task = f.run(); f.setChat('chat-two'); prep.resolve(); await task;
   assert.equal(f.calls.extract, 0); assert.equal(f.calls.store, 0); assert.equal(f.calls.notices.length, 0);
   assert.equal(f.bar.children[0], f.row); assert.equal(f.reextract.disabled, false); assert.equal(f.c.ttsRestoreTasks, 0);
+});
+
+test('changing a character floor to user during preparation never starts extraction',async()=>{
+  const f=fixture(),prep=deferred();f.prepare(()=>prep.promise);
+  const task=f.run();f.c.ttsIsCharacter=()=>false;prep.resolve();await task;
+  assert.equal(f.calls.extract,0);assert.equal(f.calls.store,0);assert.equal(f.c.ttsRestoreTasks,0);
+});
+
+test('late extraction cannot store or remount controls after a role change to user',async()=>{
+  const f=fixture(),task=f.run();await tick();f.c.ttsIsCharacter=()=>false;f.resolve();await task;
+  assert.equal(f.calls.store,0);assert.equal(f.calls.render,0);assert.equal(f.calls.inject,0);
+  assert.equal(f.cache.get('key'),f.oldLines);assert.equal(f.c.ttsRestoreTasks,0);
 });
 
 for (const change of ['chat', 'text', 'message-detach', 'bar-replace']) test(`late extraction after ${change} cannot overwrite the confirmed cache or UI`, async () => {

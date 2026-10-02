@@ -69,17 +69,6 @@ export function createNotesSyncRuntime({namespace,store=null,client=null,onChang
     });
   }
   async function list(){return serial(async()=>{const state=await read();return state.rows.filter(row=>!row.deleted).map(remember).sort((a,b)=>b.updatedAt-a.updatedAt||a.id.localeCompare(b.id));});}
-  async function importLegacy(notes,{confirmed=false,receipt}={}){
-    if(!confirmed||typeof receipt!=='string'||!receipt||receipt.length>180)throw notesLocalError('consent','请先确认旧便笺归属并提供迁移回执');
-    if(!Array.isArray(notes))throw notesLocalError('content','旧便笺目录无效');
-    const incoming=Array.from(notes,note=>({note:notesLocalContent(note),geometry:notesLocalGeometry(note)}));
-    return serial(async()=>{let imported=0,repeated=false;const ids=[];
-      await update(state=>{if(state.receipts.includes(receipt)){repeated=true;return;}
-        for(const {note:original,geometry} of incoming){const note={...original};if(state.rows.some(row=>row.id===note.id))note.id=newId(state);const row=create(note,geometry);state.rows.push(row);ids.push(row.id);markOwn(row,row.generation);imported++;}
-        state.receipts.push(receipt);
-      });notify('import',ids);return {imported,repeated,ids};
-    });
-  }
   async function verifyAccount(response){
     const hash=await cryptoImpl.subtle.digest('SHA-256',new TextEncoder().encode(namespace.slice(8)));
     const expected='st-user:'+Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -126,5 +115,5 @@ export function createNotesSyncRuntime({namespace,store=null,client=null,onChang
     }catch(error){if(!closed){lastState=error?.code==='notes_sync_unavailable'?'local-only':'error';lastError=error?.message||'便笺同步失败，本机内容已保留';notify('error');}throw error;}
   }
   function sync(){if(syncing)return syncing;const work=synchronize();syncing=work.then(()=>{syncing=null;notify('status');return status();},error=>{syncing=null;notify('status');throw error;});return syncing;}
-  return Object.freeze({namespace,list,save,remove,importLegacy,sync,summary:()=>serial(async()=>summarizeNotesLocalState(await read())),get status(){return status();},close(){closed=true;client?.close?.();if(ownsStore)store.close();observed.clear();accepted.clear();forks.clear();}});
+  return Object.freeze({namespace,list,save,remove,sync,summary:()=>serial(async()=>summarizeNotesLocalState(await read())),get status(){return status();},close(){closed=true;client?.close?.();if(ownsStore)store.close();observed.clear();accepted.clear();forks.clear();}});
 }
