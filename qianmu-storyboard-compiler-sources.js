@@ -14,7 +14,10 @@ import {createStoryboardStreamCheckpointStorage} from './qianmu-storyboard-strea
 import {captureEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.414';
 export {captureStoryboardStreamFrame,storyboardStableStreamBoundary,createStoryboardStreamMessageReference} from './qianmu-storyboard-stream-source.js?v=1.59.414';
 
-const changed = () => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {code:'storyboard_input_changed'});
+const sourceChangeReasons = new Set(['compiler_sources_changed','compiler_source_message_changed','compiler_source_context_changed','compiler_source_account_changed']);
+const changed = reason => Object.assign(new Error('取景来源已变化，旧结果未写回；请重新提取'), {
+  code:'storyboard_input_changed',inputChangeReason:sourceChangeReasons.has(reason)?reason:'compiler_sources_changed',
+});
 const windows = new WeakMap();
 export async function captureStoryboardEnsembleHistory(window,rows){
   const scope=windows.get(window);if(!scope)throw changed();window.assertCurrent();
@@ -137,16 +140,16 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
   const assertCurrent = () => {
     try {
       if (closed || signal?.aborted || isCurrent() !== true) throw changed();
-      host.assertCurrent();
+      try { host.assertCurrent(); } catch (_) { throw changed('compiler_source_context_changed'); }
       const chat = getContext().chat;
       for (const slot of slots) {
         const item = chat[slot.floor];
         if (item !== slot.message || item?.mes !== slot.raw || item?.is_system !== slot.system || item?.is_user !== slot.user
-          || item?.swipe_id !== slot.swipe || item?.name !== slot.name || JSON.stringify(storyboardStreamGeneration(item||{}))!==slot.generation) throw changed();
+          || item?.swipe_id !== slot.swipe || item?.name !== slot.name || JSON.stringify(storyboardStreamGeneration(item||{}))!==slot.generation) throw changed('compiler_source_message_changed');
       }
       for (const source of sources) source.assertCurrent();
       return true;
-    } catch (_) { close(); throw changed(); }
+    } catch (error) { close(); throw changed(error?.inputChangeReason); }
   };
   try {
     emitter=getContext().eventSource;remove=typeof emitter?.removeListener==='function'?emitter.removeListener:emitter?.off;
@@ -172,7 +175,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
       // floors must not cause twenty simultaneous /api/users/me fallbacks.
       lookup ||= Promise.resolve().then(resolveNamespace).then(value=>{
         if (namespace === undefined) namespace = value;
-        if (closed || namespace !== value) { close(); throw changed(); }
+        if (closed || namespace !== value) { close(); throw changed(namespace !== value?'compiler_source_account_changed':'compiler_sources_changed'); }
         return value;
       }).finally(()=>{lookup=null;});
       return lookup;
@@ -208,7 +211,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
     if (!current) throw Object.assign(new Error('当前正文经提取规则处理后为空，未调用模型'), {code:'storyboard_context_unavailable'});
     const guard = async () => {
       try { assertCurrent(); await current.guard(); assertCurrent(); return true; }
-      catch (_) { close(); throw changed(); }
+      catch (error) { close(); throw changed(error?.inputChangeReason); }
     };
     await guard();
     let streamScope;
@@ -225,7 +228,7 @@ async function captureSources({floor,referenceFloors,getContext,epoch,resolveNam
   } catch (error) {
     close();
     if (error?.code === 'storyboard_continuity_scope') throw Object.assign(new Error('所选正文超过变化追踪单次容量，未截断或发送，请减少参考范围或正文长度'), {code:'storyboard_input_capacity'});
-    if (['storyboard_continuity_source','current_chat_source'].includes(error?.code)) throw changed();
+    if (['storyboard_continuity_source','current_chat_source'].includes(error?.code)) throw changed(error.code==='current_chat_source'?'compiler_source_context_changed':error.inputChangeReason);
     throw error;
   }
 }

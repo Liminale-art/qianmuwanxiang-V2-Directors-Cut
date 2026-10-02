@@ -19,6 +19,25 @@ function fixture(texts=['earlier','A脱下外套。','A继续聊天。']) {
 }
 function deferred(){let resolve;const promise=new Promise(yes=>resolve=yes);return {resolve,promise};}
 
+test('source interruption diagnostics separate message, context and account without including identifiers', async () => {
+  for (const [change, reason] of [
+    [f => { f.context.chat.at(-1).mes = 'sensitive changed prose'; }, 'compiler_source_message_changed'],
+    [f => { f.context.chatMetadata = {...f.context.chatMetadata}; }, 'compiler_source_context_changed'],
+    [f => { f.account = 'st-user:sensitive-other-account'; }, 'compiler_source_account_changed'],
+  ]) {
+    const f = fixture(), window = await capture(f.options);
+    change(f);
+    await assert.rejects(window.guard(), error => {
+      assert.equal(error.code, 'storyboard_input_changed');
+      assert.equal(error.inputChangeReason, reason);
+      assert.doesNotMatch(JSON.stringify(error), /sensitive|other-account/);
+      return true;
+    });
+    window.close();
+    assert.equal(f.listenerCount(), 0);
+  }
+});
+
 test('runtime window keeps complete selected raw floors including USER and exposes authentic replay sources without writing ST',async()=>{
   const f=fixture(),before=JSON.stringify([f.context.chat,f.context.chatMetadata]),window=await capture(f.options);
   assert.deepEqual(f.reads,[1,2]);assert.deepEqual(window.messages.map(row=>[row.floor,row.role]),[[1,'user'],[2,'character']]);

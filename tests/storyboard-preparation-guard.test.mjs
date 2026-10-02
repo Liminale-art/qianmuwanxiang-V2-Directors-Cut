@@ -159,7 +159,14 @@ test('actual context and preparation lifecycle invalidate restored dependency ed
       return 'synthetic response';
     };
     assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.plan}),!invalidate,JSON.stringify(e.notices));
-    assert.equal(e.calls.includes('save'),!invalidate);assert.equal(e.plan.status,invalidate?'stale':'prompt_ready');
+    assert.equal(e.plan.status,invalidate?'stale':'prompt_ready');
+    if(invalidate){
+      assert.equal(e.state.prompt,'original prompt');
+      assert.equal(e.state.promptDraft.compiled,'');
+      assert.equal(e.state.logs.length,1,'only the metadata interruption is saved');
+      assert.equal(e.state.logs[0].snapshot,null);
+      assert.doesNotMatch(JSON.stringify(e.state.pipelineLogs),/original floor|original prompt|private-key/);
+    }else assert.equal(e.calls.includes('save'),true);
     assert.equal(emitter.eventNames().reduce((sum,type)=>sum+emitter.listenerCount(type),0),0);
     assert.throws(captured.compilerSources.assertCurrent,{code:'storyboard_input_changed'});
   }
@@ -169,10 +176,56 @@ test('missing or duplicate compiler profiles stop extraction before preparation,
   for(const change of [e=>e.context.settings.apiProfiles=[],e=>e.context.settings.apiProfiles.push({...e.context.settings.apiProfiles[0],apiUrl:'https://other.example'})]){
     const e=environment();change(e);
     e.context.storyboardPrepareComfyRoutes=async()=>assert.fail('no paid preparation before a valid compiler choice');
-    assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.plan}),false);assert.deepEqual(e.calls,[]);assert.equal(e.context.storyboardCompilerBusy,false);
+    assert.equal(await e.context.storyboardCompilePrompt(null,{plan:e.plan}),false);assert.deepEqual(e.calls,['save']);assert.equal(e.context.storyboardCompilerBusy,false);
+    assert.equal(e.state.logs.length,1);assert.equal(e.state.logs[0].snapshot,null);
+    assert.equal(e.state.prompt,'original prompt');assert.equal(e.state.promptDraft.compiled,'');
+    assert.doesNotMatch(JSON.stringify(e.state.pipelineLogs),/private-key|original floor|original prompt/);
     assert.match(e.notices.at(-1),/档案已失效或编号重复/);assert.equal(e.plan.status,'screening');
     const guard=e.context.storyboardCreatePreparationGuard(e.state);guard.assertCurrent();guard.dispose();
   }
+});
+
+test('runtime compiler selection loss stays boolean and records one metadata interruption without accepting the response', {timeout:2000}, async () => {
+  for (const change of [
+    e => { e.state.promptCompiler.apiProfileId = 'missing'; },
+    e => { e.context.settings.apiProfiles = []; },
+    e => { e.context.settings.apiProfiles.push({...e.context.settings.apiProfiles[0],apiKey:'other-private-key'}); },
+  ]) {
+    const e = environment(), reached = deferred(), response = deferred();
+    let captured;
+    const create = e.context.storyboardCreatePreparationGuard;
+    e.context.storyboardCreatePreparationGuard = (...args) => captured = create(...args);
+    e.context.storyboardCallCompiler = async () => { e.calls.push('llm'); reached.resolve(); return response.promise; };
+    e.context.storyboardCompilerResult = () => assert.fail('an invalid compiler selection must not parse, repair or accept a late response');
+    const before = JSON.stringify([e.state.prompt,e.state.negative,e.state.promptDraft]);
+    const work = e.context.storyboardCompilePrompt(null,{plan:e.plan});
+    await reached.promise;
+    change(e);
+    assert.equal(captured.isCurrent(),false,'runtime validity checks must not throw for this known selection change');
+    assert.equal(captured.inputChangeReason,'preparation_compiler_changed');
+    assert.throws(() => captured.assertCurrent(),{code:'storyboard_input_changed',inputChangeReason:'preparation_compiler_changed'});
+    response.resolve('sensitive stale response');
+    assert.equal(await work,false,'compile resolves cancelled rather than rejecting past its diagnostic handler');
+    assert.equal(e.calls.filter(value => value === 'llm').length,1);
+    assert.equal(JSON.stringify([e.state.prompt,e.state.negative,e.state.promptDraft]),before);
+    assert.equal(e.plan.status,'stale');
+    assert.equal(e.state.logs.length,1);
+    assert.equal(e.state.logs[0].status,'cancelled');
+    assert.equal(e.state.logs[0].snapshot,null);
+    assert.equal(e.state.pipelineLogs[0].stages[0].output.reason,'preparation_compiler_changed');
+    assert.doesNotMatch(JSON.stringify([e.state.logs,e.state.pipelineLogs]),/private-key|original floor|original prompt|sensitive stale/);
+    assert.equal(e.context.storyboardCompilerBusy,false);
+    assert.equal([...e.events.values()].reduce((sum,set) => sum + set.size,0),0);
+  }
+});
+
+test('guard does not disguise an unrelated snapshot implementation error as a compiler selection change', () => {
+  const e = environment(), guard = e.context.storyboardCreatePreparationGuard(e.state,{requireCompiler:true});
+  const failure = new Error('synthetic unrelated implementation failure');
+  e.context.storyboardProviderProfile = () => { throw failure; };
+  assert.throws(() => guard.isCurrent(),error => error === failure);
+  assert.equal(guard.inputChangeReason,'');
+  guard.dispose();
 });
 
 test('actual compiler never falls back for missing or duplicate explicit IDs but still honors explicit main-API selection',async()=>{
@@ -214,12 +267,12 @@ for (const [name, mutate] of [
   ['state replacement', (e) => { e.context.storyboardState = () => ({ ...e.state }); }],
   ['cancelled plan', (e) => { e.plan.status = 'cancelled'; }],
 ]) {
-  test(`late extraction cannot write or start repair after changing ${name}`, async () => {
-    const e = environment(), gate = deferred();
-    e.context.storyboardCallCompiler = async () => { e.calls.push('llm'); return gate.promise; };
+  test(`late extraction cannot write or start repair after changing ${name}`, {timeout:2000}, async () => {
+    const e = environment(), gate = deferred(), reached = deferred();
+    e.context.storyboardCallCompiler = async () => { e.calls.push('llm'); reached.resolve(); return gate.promise; };
     e.context.storyboardCompilerResult = async () => assert.fail('must not parse or repair a stale result');
     const work = e.context.storyboardCompilePrompt(null, { plan: e.plan });
-    await tick(); assert.equal(e.calls.includes('llm'), true);
+    await reached.promise; assert.equal(e.calls.includes('llm'), true);
     mutate(e);
     const prompt = e.state.prompt, negative = e.state.negative;
     gate.resolve('stale response');
@@ -267,11 +320,76 @@ test('successful current extraction still writes its result and clears operation
   assert.equal(e.events.get('input').size, 0);
 });
 
-test('a no-picture response cannot clear a manually edited draft while it was in flight', async () => {
-  const e = environment(), gate = deferred();
-  e.context.storyboardCompilerResult = async () => gate.promise;
+test('real worldbook directory normalization is browsing-only and does not cancel extraction', async () => {
+  const e = environment();
+  e.state.promptCompiler.worldBookView = 'removed-directory';
+  Object.assign(e.context, {
+    storyboardWorldEntryCache: { key: '', loading: null }, contextScanCache: { boundWorldBookNames: [], worldBooks: {} },
+    uniqueClean: values => [...new Set(values.filter(Boolean))], detectBoundWorldBookNames: () => [], listWorldBooks: async () => [],
+  });
+  vm.runInContext(section('storyboardWarmCompilerWorldEntries'), e.context);
+  const context = e.context.storyboardCompilerContext;
+  e.context.storyboardCompilerContext = async (...args) => {
+    await e.context.storyboardWarmCompilerWorldEntries();
+    return context(...args);
+  };
+  assert.equal(await e.context.storyboardCompilePrompt(null, { plan: e.plan }), true);
+  assert.equal(e.state.promptCompiler.worldBookView, '');
+  assert.equal(e.calls.filter(call => call === 'llm').length, 1);
+});
+
+test('browsing-only projection still guards selected books, entries and every other compiler setting', () => {
+  for (const [change, reason] of [
+    [e => { e.state.promptCompiler.worldBookNames = ['changed']; }, 'preparation_world_selection_changed'],
+    [e => { e.state.promptCompiler.worldEntryIds = ['changed-entry']; }, 'preparation_world_selection_changed'],
+    [e => { e.state.promptCompiler.includeRecentFloors++; }, 'preparation_compiler_changed'],
+    [e => { e.state.promptCompiler.tagRules = []; }, 'preparation_compiler_changed'],
+    [e => { e.state.promptCompiler.apiProfileId = 'changed'; }, 'preparation_compiler_changed'],
+    [e => { e.state.promptCompiler.futureInput = 'sensitive-future-value'; }, 'preparation_compiler_changed'],
+  ]) {
+    const e = environment(), guard = e.context.storyboardCreatePreparationGuard(e.state);
+    e.state.promptCompiler.worldBookView = 'browsing-only';
+    guard.assertCurrent();
+    change(e);
+    assert.throws(() => guard.assertCurrent(), {code:'storyboard_input_changed', inputChangeReason:reason});
+    assert.equal(guard.inputChangeReason, reason);
+    guard.dispose();
+  }
+});
+
+test('guard reason codes distinguish input ownership and nested sources without exposing values', () => {
+  const cases = [
+    [e => { e.state.profiles.comfy.comfyWorkflow = 'sensitive-workflow'; }, 'preparation_profile_changed'],
+    [e => { e.state.connections.comfy.draft.baseUrl = 'https://sensitive.example'; }, 'preparation_connection_changed'],
+    [e => { e.context.storyboardCredentialRevision++; }, 'preparation_credentials_changed'],
+    [e => { e.chat[0].mes = 'sensitive-prose'; }, 'preparation_messages_changed'],
+    [e => { e.chat[0] = {...e.chat[0]}; }, 'preparation_message_replaced'],
+    [e => { e.context.getChatKey = () => 'sensitive-chat'; }, 'preparation_chat_changed'],
+    [e => { e.context.storyboardState = () => ({...e.state}); }, 'preparation_state_changed'],
+  ];
+  for (const [change, reason] of cases) {
+    const e = environment(), guard = e.context.storyboardCreatePreparationGuard(e.state);
+    change(e);
+    assert.throws(() => guard.assertCurrent(), {code:'storyboard_input_changed', inputChangeReason:reason});
+    assert.equal(guard.inputChangeReason, reason);
+    assert.doesNotMatch(JSON.stringify({reason:guard.inputChangeReason}), /sensitive|private-key|original floor/);
+    guard.dispose();
+  }
+  for (const supplied of ['compiler_source_message_changed', 'private-key']) {
+    const e = environment(), guard = e.context.storyboardCreatePreparationGuard(e.state);
+    guard.compilerSources = {assertCurrent() { throw Object.assign(Error('source changed'), {inputChangeReason:supplied}); }, close() {}};
+    const reason = supplied === 'private-key' ? 'compiler_sources_changed' : supplied;
+    assert.throws(() => guard.assertCurrent(), {code:'storyboard_input_changed', inputChangeReason:reason});
+    assert.equal(guard.inputChangeReason, reason);
+    guard.dispose();
+  }
+});
+
+test('a no-picture response cannot clear a manually edited draft while it was in flight', {timeout:2000}, async () => {
+  const e = environment(), gate = deferred(), reached = deferred();
+  e.context.storyboardCompilerResult = async () => { reached.resolve(); return gate.promise; };
   const work = e.context.storyboardCompilePrompt(null, { plan: e.plan });
-  await tick(); e.state.prompt = 'manual new drawing';
+  await reached.promise; e.state.prompt = 'manual new drawing';
   gate.resolve({ shouldGenerate: false, skipReason: 'old no picture' });
   assert.equal(await work, false);
   assert.equal(e.state.prompt, 'manual new drawing');

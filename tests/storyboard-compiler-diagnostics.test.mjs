@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {createStoryboardCompilerAttempt} from '../qianmu-storyboard-compiler-diagnostics.js';
+import {createStoryboardCompilerAttempt,createStoryboardCompilerInterruptionRecorder} from '../qianmu-storyboard-compiler-diagnostics.js';
 import {callStoryboardCompiler} from '../qianmu-storyboard-compiler-transport.js';
 import * as core from '../qianmu-storyboard.js';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
@@ -67,9 +67,79 @@ test('actual expression transport failure retains narrative success and actual p
   assert.match(e.state.logs[0].error,/提示表达.*输出长度/);assert.equal(e.jobs.length,0);
 });
 
-test('actual stale failure never appends diagnostics or writes into the newly edited context',async()=>{
+test('actual same-account stale failure records only a safe interruption and never replaces the edited draft',async()=>{
   const e=await compilerEnvironment();e.context.storyboardCallCompiler=async()=>{e.state.prompt='new manual edit';throw Error('late remote failure');};
-  assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(e.state.prompt,'new manual edit');assert.equal(e.state.logs.length,0);assert.equal(e.state.pipelineLogs.length,0);
+  assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(e.state.prompt,'new manual edit');assert.equal(e.state.logs.length,1);assert.equal(e.state.pipelineLogs.length,1);
+  assert.equal(e.state.logs[0].status,'cancelled');assert.equal(e.state.logs[0].snapshot,null);
+  assert.equal(e.state.pipelineLogs[0].stages.length,1);assert.deepEqual(copy(e.state.pipelineLogs[0].stages[0].input),{});
+  assert.doesNotMatch(JSON.stringify(e.state.logs)+JSON.stringify(e.state.pipelineLogs),/new manual edit|late remote failure|Alice|silver hair|messages|repairMessages/);
+  assert.equal(e.state.pendingCompilerStages,undefined);assert.equal(e.jobs.length,0);
+});
+
+test('a preparation failure before any model request becomes one metadata-only record in the existing log store',async()=>{
+  const e=await compilerEnvironment();e.context.storyboardCompilerContext=async()=>{throw Object.assign(Error('private selected book contents'),{code:'storyboard_context_unavailable'});};
+  assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);
+  assert.equal(e.state.logs.length,1);assert.match(e.state.logs[0].error,/上下文读取.*参考内容/);
+  assert.doesNotMatch(JSON.stringify(e.state.logs)+JSON.stringify(e.state.pipelineLogs),/private selected|apiKey|Alice/);
+  const restored=core.normalizeStoryboardState(copy(e.state));assert.equal(restored.logs[0].kind,'prompt_compiler');assert.equal(restored.pipelineLogs[0].stages[0].output.reason,'context_unavailable');
+});
+
+for(const [name,change,reason,word] of [
+  ['profile',e=>{e.state.profiles.novel.artDirection='cg';},'preparation_profile_changed','生图配置'],
+  ['compiler',e=>{e.state.promptCompiler.includeRecentFloors=9;},'preparation_compiler_changed','取景设置'],
+  ['world selection',e=>{e.state.promptCompiler.worldBookNames=['private new selection'];},'preparation_world_selection_changed','世界书'],
+  ['source',e=>{e.state.source='comfy';},'preparation_config_changed','准备设置'],
+])test(`the real guard snapshots ${name} before diagnostic identity awaits and records its actual reason enum`,async()=>{
+  const e=await compilerEnvironment();let release,reached;
+  const gate=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{reached=resolve;});
+  e.context.resolveImageAccountNamespace=async()=>{reached();await gate;return 'st-user:route-test';};
+  const work=e.context.storyboardCompilePrompt(null);await started;change(e);release();
+  assert.equal(await work,false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);
+  assert.equal(e.state.logs.length,1);assert.equal(e.state.pipelineLogs[0].stages[0].output.reason,reason);assert.match(e.state.logs[0].error,new RegExp(word));
+  assert.doesNotMatch(JSON.stringify(e.state.logs)+JSON.stringify(e.state.pipelineLogs),/private new selection/);
+});
+
+test('a Comfy preflight failure records its stage without submitting, retrying or storing the error payload',async()=>{
+  const e=await compilerEnvironment();e.state.source='comfy';e.context.storyboardPreflightComfyForCompiler=async()=>{throw Object.assign(Error('private workflow and Bearer secret'),{comfyPreflight:true});};
+  assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(e.llmCalls.length,0);assert.equal(e.jobs.length,0);
+  assert.equal(e.state.logs.length,1);assert.match(e.state.logs[0].error,/工作流检查.*输出节点/);
+  assert.doesNotMatch(JSON.stringify(e.state.logs)+JSON.stringify(e.state.pipelineLogs),/private workflow|secret/);
+});
+
+for(const boundary of ['chat','state','epoch','account'])test(`an extraction interruption after changing ${boundary} never appends a diagnostic to the new owner`,async()=>{
+  const e=await compilerEnvironment();e.context.storyboardCallCompiler=async()=>{
+    if(boundary==='chat')e.context.getChatKey=()=> 'different-chat';
+    if(boundary==='state')e.context.storyboardState=()=>core.createStoryboardDefaults();
+    if(boundary==='epoch')e.context.storyboardAdmissionEpoch++;
+    if(boundary==='account')e.setAccount('st-user:different-account');
+    throw Object.assign(Error('private late response'),{code:'storyboard_input_changed'});
+  };
+  assert.equal(await e.context.storyboardCompilePrompt(null),false);assert.equal(e.state.logs.length,0);assert.equal(e.state.pipelineLogs.length,0);assert.equal(e.jobs.length,0);
+});
+
+test('an unavailable diagnostic identity proof cannot stop an otherwise valid extraction',async()=>{
+  const e=await compilerEnvironment();e.context.resolveImageAccountNamespace=async()=>{throw Error('identity unavailable for diagnostic');};
+  assert.equal(await e.context.storyboardCompilePrompt(null),true);assert.equal(e.state.logs.length,0);assert.equal(e.llmCalls.length,2);
+});
+
+test('metadata recorder permits a single verified write, rejects unknown payloads, and never serializes private values',async()=>{
+  let id=0,reads=0;const stored=[];
+  const record=await createStoryboardCompilerInterruptionRecorder({ownsContext:()=>true,resolveNamespace:async()=>{reads++;return 'st-user:a';},store:(log,pipeline)=>stored.push({log,pipeline}),uid:p=>`${p}-${++id}`,startedAt:1,floor:3,now:()=>10});
+  const error=Object.assign(Error('private prompt'),{diagnostic:{apiKey:'key',messages:['secret']},code:'unknown-secret'});
+  const writes=await Promise.all([record({stage:'private-stage',reason:'private-reason',error}),record({stage:'workflow',error})]);
+  assert.deepEqual(writes,[true,true]);assert.equal(stored.length,1);assert.equal(reads,2);
+  assert.equal(stored[0].pipeline.stages[0].output.reason,'preparation_failed');assert.doesNotMatch(JSON.stringify(stored),/private|secret|apiKey|messages/);
+});
+
+test('metadata identity checks fail closed both while establishing ownership and immediately before committing',async()=>{
+  for(const phase of ['initial','final']){
+    let owned=true,reads=0,writes=0,release;
+    const gate=new Promise(resolve=>{release=resolve;});
+    const started=createStoryboardCompilerInterruptionRecorder({ownsContext:()=>owned,resolveNamespace:async()=>{reads++;if(reads===(phase==='initial'?1:2))await gate;return 'st-user:a';},store:()=>writes++,uid:()=> 'id',startedAt:1,floor:0});
+    const pending=phase==='initial'?started:Promise.resolve((await started)({cancelled:true}));
+    owned=false;release();const result=await pending;if(typeof result==='function')assert.equal(await result({cancelled:true}),false);else assert.equal(result,false);
+    assert.equal(writes,0);
+  }
 });
 
 test('actual compiler failure passes the expected log object to the archive instead of an unresolvable id string',async()=>{

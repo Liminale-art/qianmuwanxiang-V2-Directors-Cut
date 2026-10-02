@@ -9,6 +9,7 @@ import { renderComfyRoutePicker } from '../qianmu-comfy-route-view.js';
 import { renderEnsembleTargetPicker } from '../qianmu-ensemble-target-picker.js';
 import { recipesFixture, routeEnvironment, namespace, graph } from './helpers/comfy-route-fixture.mjs';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
+import {installCompilerDiagnosticsFixture} from './helpers/compiler-diagnostics-fixture.mjs';
 
 test('fixed recipes isolate parameters, prompt additions, role activation and references from the workbench',async()=>{
   const f=await recipesFixture(),base={comfyCharacterEnabled:true,comfyCharacterActivation:{invalid:true},comfyReferences:{invalid:true},width:'512'};
@@ -163,6 +164,7 @@ test('actual compiler prepares fixed routes before LLM and rejects an account ch
     });
     e.context.featureRuntime.load=async key=>key==='storyboardContract'?{createStoryboardCompilerAttempt,buildStoryboardPlanContractRequest:()=>({messages:[],schema:{},schemaId:'test'})}:load(key);
     vm.runInContext(section('storyboardCompilePrompt'),e.context);
+    installCompilerDiagnosticsFixture(e.context);
     await e.context.storyboardCompilePrompt(null,{plan});
     assert.equal(llm,scenario==='missing'?0:1);assert.equal(e.context.storyboardCompilerBusy,false);
     if(scenario==='valid'){assert.equal(plan.status,'skipped');assert.equal(e.state.prompt,'');}

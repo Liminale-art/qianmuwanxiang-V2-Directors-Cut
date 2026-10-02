@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
 import {captureStoryboardStreamFrame as frame,captureStoryboardCompilerSources as capture,openStoryboardCompilerContinuity as open,storyboardStableStreamBoundary as boundary} from '../qianmu-storyboard-compiler-sources.js';
-import {importCurrentRuntime} from './helpers/current-runtime.mjs';
-const {borrowStoryboardStreamFrame} = await importCurrentRuntime('qianmu-storyboard-stream-source.js');
+// Compiler sources deliberately retain this unchanged dependency URL. Share
+// its actual frame owner rather than instantiating it at the manifest version.
+import {borrowStoryboardStreamFrame} from '../qianmu-storyboard-stream-source.js?v=1.59.414';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;return {promise:new Promise(yes=>{resolve=yes;}),resolve:value=>resolve(value)};};

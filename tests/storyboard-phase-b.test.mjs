@@ -119,7 +119,7 @@ assert.equal(state.shotPlans[0].origin, 'manual_supplement');
 assert.deepEqual(state.shotPlans[0].paragraphSelection.indexes, [1, 2, 4]);
 assert.equal(state.shotPlans[0].shots[0].shotSpec.characters.length, 2);
 
-assert.match(source, /手动选段补图[\s\S]*sd-storyboard-capture-paragraph-list/);
+assert.match(await readFile(new URL('../qianmu-storyboard-capture-view.js', import.meta.url), 'utf8'), /qm-storyboard-capture-paragraphs[\s\S]*手动选段补图/);
 assert.match(source, /manualSupplement[\s\S]*shotProfile\.count = '1'/);
 assert.match(source, /storyboardInsertInlineWrapper\(text, anchor, wrapper, anchorTails\)/);
 assert.match(source, /plan\.origin !== 'manual_supplement'/);

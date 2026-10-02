@@ -2,11 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as core from '../qianmu-storyboard.js';
 import {logFixture} from './helpers/storyboard-log-fixture.mjs';
-test('all records render despite persisted old filter, initially folded with four statuses and no empty cards',()=>{
+test('all records render despite persisted old filter, initially folded with four statuses and no empty log cards',()=>{
   const {state,context:c}=logFixture();assert.doesNotMatch(c.renderStoryboardLogs(state),/sd-card sd-storyboard-log|sd-storyboard-empty|sd-storyboard-log-head|log-filters/);
   state.logs=['success','failed','queued','generating','cancelled'].map((status,i)=>({id:'log'+i,status,source:'novel',model:'<unsafe model>',params:{}}));
   const html=c.renderStoryboardLogs(state);assert.equal((html.match(/data-storyboard-log=/g)||[]).length,5);assert.doesNotMatch(html,/<details[^>]*\sopen|<unsafe model>|data-storyboard-log-filter/);
   for(const tone of ['grey','yellow','red','green'])assert.match(html,new RegExp(`data-tone="${tone}"`));
+});
+test('empty logs show a direct status while receipts and bundles remain available without opening a fold',()=>{
+  const {state,context:c}=logFixture(),before=structuredClone(state),html=c.renderStoryboardLogs(state);
+  assert.match(html,/<section class="sd-storyboard-log-maintenance" aria-label="收片与日志工具">/);
+  assert.doesNotMatch(html,/<details|日志管理|sd-storyboard-export-logs|sd-storyboard-clear-logs/);
+  for(const token of ['sd-storyboard-open-service-inbox','sd-storyboard-open-comfy-inbox','sd-storyboard-service-inbox','sd-storyboard-comfy-inbox','sd-storyboard-pack-export','sd-storyboard-pack-recover','sd-storyboard-pack-file'])assert.ok(html.includes(token),token);
+  assert.match(html,/class="sd-storyboard-logs-empty" role="status">暂无取景或生图记录。<\/p>/);
+  assert.deepEqual(state,before,'rendering does not fetch, migrate or rewrite history');
+});
+test('non-empty logs keep export and clear visible with original in-flight clear protection',()=>{
+  const {state,context:c}=logFixture();state.logs=[{id:'one',status:'failed',source:'comfy',params:{}}];
+  const render=()=>c.renderStoryboardLogs(state),tools=()=>render().split('</section>')[0];
+  assert.doesNotMatch(render(),/sd-storyboard-logs-empty/);
+  assert.match(tools(),/sd-storyboard-export-logs">导出日志/);
+  assert.match(tools(),/sd-storyboard-clear-logs" >清空日志/);
+  c.storyboardActiveJobs.set('active',{});assert.match(tools(),/sd-storyboard-clear-logs" disabled/);c.storyboardActiveJobs.clear();
+  c.storyboardQueue.push({});assert.match(tools(),/sd-storyboard-clear-logs" disabled/);c.storyboardQueue.length=0;
+  c.storyboardQueuePendingCount=()=>1;assert.match(tools(),/sd-storyboard-clear-logs" disabled/);c.storyboardQueuePendingCount=()=>0;
+  c.storyboardQueueSettling=1;assert.match(tools(),/sd-storyboard-clear-logs" disabled/);
 });
 test('log status distinguishes an unsent request from an accepted result needing review',()=>{
   const {state,context:c}=logFixture();

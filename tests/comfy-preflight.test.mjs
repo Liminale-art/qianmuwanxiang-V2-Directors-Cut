@@ -8,6 +8,7 @@ import * as references from '../qianmu-comfy-references.js';
 import * as roles from '../qianmu-comfy-character-plan.js';
 import {job as roleJob,namespace as roleNamespace} from './helpers/comfy-character-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {installCompilerDiagnosticsFixture} from './helpers/compiler-diagnostics-fixture.mjs';
 const graph=()=>({p:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}},image:{class_type:'EmptyImage',inputs:{width:'%qianmu_width%',height:'%qianmu_height%',batch_size:1}},save:{class_type:'SaveImage',inputs:{images:['image',0]}}});
 const config=()=>({workflow:graph(),parameters:{width:'832',height:'1216',count:'1'},model:'comfy-workflow',outputNodeId:'save'});
 test('local preflight is pure and never claims a real node/model execution was verified',()=>{
@@ -64,7 +65,7 @@ function environment({automatic=false}={}) {
   const guard={assertCurrent:()=>{if(!current)throw Object.assign(Error('changed'),{code:'storyboard_input_changed'});},isCurrent:()=>current,ownsCurrentContext:()=>current,dispose:()=>{}};
   const context=vm.createContext({...storyboard,settings:{apiProfiles:[]},STORYBOARD_SHOT_TYPE_LABELS:{portrait:'',group:'',environment:'',object:'',action:'',closeup:'',custom:''},
     storyboardState:()=>state,storyboardCompilerBusy:false,storyboardCaptureWorkbench:()=>({state,profile:state.profiles[state.source]}),
-    storyboardTargetFloor:()=>0,ctx:()=>({chat:[{mes:'story'}]}),storyboardCreatePreparationGuard:()=>guard,
+    storyboardTargetFloor:()=>0,getChatKey:()=> 'preflight-chat',ctx:()=>({chat:[{mes:'story'}]}),storyboardCreatePreparationGuard:()=>guard,
     storyboardSetPlanStatus:(p,status,extra={})=>Object.assign(p||{}, {status,...extra}),renderModal:()=>{},saveSettings:()=>{},
     storyboardScheduleAutomaticCapture:()=>{},storyboardScheduleInlineRender:()=>{},storyboardSchedulePlanArchive:()=>{},
     storyboardResolveRoutingProfile:(s,route)=>({...s.profiles[route.providerId],...(s.parameterPresets.find(p=>p.id===route.parameterPresetId)?.profile||{})}),
@@ -81,6 +82,7 @@ function environment({automatic=false}={}) {
     uid:()=> 'test-id',toast:message=>notices.push(message),MODULE_NAME:'test',console:{error:()=>{}},
   });
   vm.runInContext(['storyboardPrepareComfyRoutes','storyboardCompilerRoutes','storyboardUsesComfyCharacters','storyboardComfyReferenceMetadata','storyboardWorkflowIssue','storyboardCertainCompilerRoute','storyboardPreflightComfyForCompiler','storyboardCompilePrompt'].map(section).join('\n'),context);
+  installCompilerDiagnosticsFixture(context);
   return {state,plan,calls,notices,context,guard,invalidate:()=>current=false};
 }
 const target=(providerId='comfy',parameterPresetId='')=>({providerId,modelId:providerId==='comfy'?'comfy-workflow':'nai-diffusion-5-full',parameterPresetId});

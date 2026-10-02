@@ -7824,63 +7824,60 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-storyboard-artist-card:focus-within > div { opacity: 1; }
 #story-director-modal .sd-storyboard-artist-card > div .sd-icon-btn { width: 30px; min-width: 30px; height: 30px; margin: 0; background: color-mix(in srgb, var(--sd-card) 82%, transparent); backdrop-filter: blur(10px); }
 
-/* Only the owned capture popup opts out of ST's skin; its native focus/close owner stays ST. */
-dialog.sd-storyboard-capture-popup {
-  color: var(--sd-text, #3c352e) !important;
-  background: var(--qm-skin-window, var(--sd-window-bg, none)) !important;
-  background-color: var(--sd-sticky-bg, #f7f3eb) !important;
-  border: 1px solid var(--sd-border, rgba(70,60,50,.16));
-  border-radius: var(--qm-card-radius, 16px);
-  box-shadow: var(--qm-skin-shadow, 0 12px 42px #00000024);
-  width: min(600px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 32px); padding: 20px; box-sizing: border-box;
-  text-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+/* Owned native panel, same portal/child-dialog boundary as the collection chooser. */
+.qm-storyboard-capture-portal .qm-storyboard-capture {
+  box-sizing: border-box; position: fixed; inset: 0; margin: auto;
+  width: min(560px, calc(100vw - 28px)); height: fit-content; min-height: 0;
+  max-width: none; max-height: min(760px, calc(100dvh - 32px)); padding: 16px;
+  border: 1px solid var(--sd-border, #8886); border-radius: var(--qm-card-radius, 16px);
+  background: var(--sd-sticky-bg, #f7f3eb); color: var(--sd-text, #3c352e);
+  font: 14px var(--qm-prose-font, var(--sd-font, sans-serif)); text-align: start;
+  text-shadow: none; box-shadow: var(--qm-skin-shadow, 0 12px 40px #0003); overflow: hidden;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
 }
-dialog.sd-storyboard-capture-popup .popup-content { min-width: 0; text-shadow: none; }
-dialog.sd-storyboard-capture-popup .sd-storyboard-capture-dialog { width: 100%; color: inherit; }
-dialog.sd-storyboard-capture-popup .sd-storyboard-capture-dialog-head small { color: var(--sd-muted, inherit); opacity: 1; line-height: 1.55; }
-dialog.sd-storyboard-capture-popup .popup-controls { gap: 10px; margin-top: 16px; }
-dialog.sd-storyboard-capture-popup .popup-controls .menu_button {
-  min-height: 36px; padding: 7px 18px; margin: 0; font: inherit; line-height: 1.4;
-  color: var(--sd-text, #3c352e) !important; background: var(--sd-card, transparent) !important;
-  border: 1px solid var(--sd-border, rgba(70,60,50,.16)); border-radius: var(--qm-button-radius, 999px);
-  box-shadow: none; text-shadow: none; cursor: pointer;
+.qm-storyboard-capture-portal .qm-storyboard-capture[open] { display: flex; flex-direction: column; gap: 12px; }
+.qm-storyboard-capture-portal .qm-storyboard-capture[data-page="paragraphs"] { height: min(760px, calc(100dvh - 32px)); }
+.qm-storyboard-capture-portal .qm-storyboard-capture::backdrop { background: #0005; }
+.qm-storyboard-capture * { box-sizing: border-box; min-width: 0; text-shadow: none; }
+.qm-storyboard-capture [hidden] { display: none !important; }
+.qm-storyboard-capture :is(header, footer) { display: flex; align-items: center; gap: 8px; flex: none; }
+.qm-storyboard-capture h2 { flex: 1; margin: 0; color: inherit; font: inherit; font-weight: 600; }
+.qm-storyboard-capture button {
+  appearance: none; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 40px; min-height: 40px; margin: 0; padding: 8px; border: 1px solid transparent;
+  border-radius: var(--qm-button-radius, 10px); background: transparent; color: var(--sd-text, #3c352e);
+  font: inherit; line-height: 1.5; box-shadow: none; text-shadow: none; cursor: pointer;
 }
-dialog.sd-storyboard-capture-popup .popup-controls .popup-button-ok {
-  color: var(--sd-primary-text, #f7f3ea) !important; background: var(--sd-primary, #2e2a26) !important; border-color: transparent;
+.qm-storyboard-capture button svg { width: 20px; height: 20px; pointer-events: none; }
+.qm-storyboard-capture button:disabled { opacity: .45; cursor: default; }
+.qm-storyboard-capture button:focus-visible { outline: 2px solid var(--sd-accent, #5f7a68); outline-offset: -3px; }
+.qm-storyboard-capture .qm-storyboard-capture-choices { display: grid; gap: 10px; }
+.qm-storyboard-capture .qm-storyboard-capture-choice {
+  display: flex; flex-direction: column; align-items: stretch; gap: 5px; min-height: 76px;
+  padding: 14px; text-align: start; background: var(--sd-input-bg, #fff8); border-color: var(--sd-border, #8886);
 }
-dialog.sd-storyboard-capture-popup .menu_button:focus-visible,
-.sd-storyboard-capture-choices .sd-option-chip:has(input:focus-visible),
-.sd-storyboard-capture-paragraph-row:has(input:focus-visible) > span { outline: 2px solid var(--sd-accent, #5f7a68); outline-offset: 2px; }
-.sd-storyboard-capture-dialog,
+.qm-storyboard-capture-choice b { color: inherit; font: inherit; font-weight: 600; }
+.qm-storyboard-capture-choice small { color: var(--sd-muted, #706a64); font-size: 12px; line-height: 1.55; font-family: inherit; opacity: 1; }
+.qm-storyboard-capture-confirm p { margin: 0; color: var(--sd-text, #3c352e); line-height: 1.65; }
+.qm-storyboard-capture-paragraphs { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.qm-storyboard-capture .qm-storyboard-capture-paragraph {
+  display: block; width: 100%; padding: 10px 12px; margin: 0 0 10px; text-align: justify;
+  text-align-last: start; text-indent: 2em; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-family: var(--qm-prose-font, inherit); font-size: var(--qm-prose-size, 14px); line-height: 1.65;
+  color: var(--sd-text, #3c352e); background: transparent;
+}
+.qm-storyboard-capture .qm-storyboard-capture-paragraph[aria-pressed="true"] {
+  color: var(--sd-primary-text, #f7f3ea); background: var(--sd-primary, #2e2a26); border-color: var(--sd-primary, #2e2a26);
+}
+.qm-storyboard-capture .qm-storyboard-capture-paragraph:last-child { margin-bottom: 0; }
+.qm-storyboard-capture footer { justify-content: space-between; }
+.qm-storyboard-capture-count { color: var(--sd-muted, #706a64); font-size: 12px; }
+.qm-storyboard-capture .qm-storyboard-capture-submit { margin-inline-start: auto; padding-inline: 18px; color: var(--sd-primary-text, #f7f3ea); background: var(--sd-primary, #2e2a26); }
+@media (max-width: 620px) { .qm-storyboard-capture-portal .qm-storyboard-capture { padding: 12px; } }
+
 .sd-storyboard-prompt-editor-dialog { box-sizing: border-box; width: 560px; max-width: 100%; min-width: 0; display: grid; gap: 13px; text-align: left; }
-.sd-storyboard-capture-dialog > *, .sd-storyboard-prompt-editor-dialog > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
-.sd-storyboard-capture-dialog-head { display: grid; gap: 3px; }
-.sd-storyboard-capture-dialog-head small,
+.sd-storyboard-prompt-editor-dialog > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .sd-storyboard-prompt-editor-dialog > small { opacity: .62; font-size: 11px; }
-.sd-storyboard-capture-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.sd-storyboard-capture-choices .sd-option-chip {
-  position: relative;
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  padding: 8px 12px;
-  color: var(--sd-text, #3c352e);
-  border: 1px solid var(--sd-border, rgba(70, 60, 50, .16));
-  border-radius: var(--qm-button-radius, 999px);
-  background: var(--sd-card, transparent);
-  cursor: pointer;
-  min-width: 0; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere;
-}
-.sd-storyboard-capture-choices .sd-option-chip > input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.sd-storyboard-capture-choices .sd-option-chip:has(input:checked) {
-  border-color: var(--sd-accent, #5f7a68);
-  background: color-mix(in srgb, var(--sd-accent, #5f7a68) 13%, transparent);
-}
-.sd-storyboard-capture-choices .sd-option-chip:has(input:disabled) { opacity: .42; cursor: not-allowed; }
-.sd-storyboard-capture-paragraph,
 .sd-storyboard-prompt-editor-dialog > label { display: grid; gap: 6px; }
 .sd-storyboard-prompt-editor-dialog textarea { width: 100%; resize: vertical; }
 .sd-storyboard-prompt-editor-dialog .sd-character-reference-picker { box-sizing: border-box; width: 100%; min-width: 0; height: 40px; min-height: 40px; font-size: 12px; }
@@ -7902,7 +7899,6 @@ dialog.sd-storyboard-capture-popup .menu_button:focus-visible,
 @media (max-width: 640px) {
   #story-director-modal .sd-storyboard-artist-waterfall { columns: 2 140px; }
   #story-director-modal .sd-storyboard-artist-card > div { opacity: 1; }
-  .sd-storyboard-capture-choices { grid-template-columns: minmax(0, 1fr); }
   #chat .mes .sd-storyboard-inline-actions { right: 8px; bottom: 44px; max-width: none; }
 }
 
@@ -7913,7 +7909,6 @@ dialog.sd-storyboard-capture-popup .menu_button:focus-visible,
   #story-director-modal .sd-storyboard-artist-waterfall { columns: 2 120px; column-gap: 7px; }
   #story-director-modal .sd-storyboard-prompt-actions { align-items: stretch; flex-direction: column; }
   #story-director-modal .sd-storyboard-prompt-actions > .sd-btn { width: 100%; }
-  .sd-storyboard-capture-choices { grid-template-columns: 1fr; }
 }
 
 /* v1.56.2 cascade guard: these refinements intentionally follow the v1.56 base layer. */
@@ -8465,18 +8460,6 @@ dialog.sd-storyboard-capture-popup .menu_button:focus-visible,
 #story-director-modal .sd-storyboard-system-rule { border-color: color-mix(in srgb, var(--sd-accent) 38%, var(--sd-hairline)); }
 #story-director-modal .sd-storyboard-system-rule-lock { width: 34px; display: grid; place-items: center; color: var(--sd-accent) !important; }
 
-.sd-storyboard-capture-paragraphs { min-height: 0; display: grid; gap: 7px; }
-.sd-storyboard-capture-paragraphs[hidden] { display: none; }
-.sd-storyboard-capture-paragraphs > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11px; }
-.sd-storyboard-capture-paragraphs > header b { color: var(--sd-accent, #5f7a68); font-weight: 600; }
-.sd-storyboard-capture-paragraphs > header em { font-style: normal; }
-.sd-storyboard-capture-paragraph-list { max-height: min(48vh, 420px); display: grid; gap: 5px; padding: 2px; overflow: auto; }
-.sd-storyboard-capture-paragraph-row { display: block; margin: 0; cursor: pointer; }
-.sd-storyboard-capture-paragraph-row > input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.sd-storyboard-capture-paragraph-row > span { min-height: 44px; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 9px; align-items: start; padding: 9px 10px; color: var(--sd-text, #3c352e); border: 1px solid var(--sd-border, rgba(70,60,50,.16)); border-radius: var(--qm-button-radius, 12px); background: var(--sd-card, transparent); line-height: 1.55; }
-.sd-storyboard-capture-paragraph-row > span > b { color: var(--sd-accent, #5f7a68); font-size: 10px; }
-.sd-storyboard-capture-paragraph-row > span > span { font-size: 12px; }
-.sd-storyboard-capture-paragraph-row.selected > span { border-color: var(--sd-accent, #5f7a68); background: color-mix(in srgb, var(--sd-accent, #5f7a68) 12%, transparent); }
 
 #chat .mes .sd-storyboard-inline[data-qianmu-transient="storyboard"] { clear: both; }
 #chat .mes .sd-storyboard-inline-placeholder { min-height: 52px; display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px dashed color-mix(in srgb, var(--SmartThemeQuoteColor, #9f8870) 50%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1b1b1b) 32%, transparent); }
@@ -8485,7 +8468,6 @@ dialog.sd-storyboard-capture-popup .menu_button:focus-visible,
 #chat .mes .sd-storyboard-inline-placeholder button { width: auto; height: 30px; padding: 0 11px; border-radius: 999px; font-size: 10px; }
 
 @media (max-width: 430px) {
-  .sd-storyboard-capture-paragraph-list { max-height: 52vh; }
   #story-director-modal .sd-storyboard-composition-ratios .sd-option-chip { flex: 1 0 calc(33.333% - 6px); }
 }
 
@@ -8661,7 +8643,6 @@ dialog.sd-storyboard-capture-popup .menu_button:focus-visible,
 .sd-reader-portal .sd-btn,
 .sd-tts-popup button,
 .sd-storyboard-lightbox button,
-.sd-storyboard-capture-dialog button,
 .sd-storyboard-prompt-editor-dialog button {
   border-radius: 9px !important;
 }
@@ -10761,10 +10742,8 @@ dialog.sd-storyboard-capture-popup .menu_button:focus-visible,
 #story-director-modal .sd-storyboard-log-exchange header { color: var(--sd-muted); font-size: 12px; text-align: left; }
 #story-director-modal .sd-storyboard-log-exchange pre { min-width: 0; max-height: min(36vh,320px); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; background: var(--sd-folder-head); }
 #story-director-modal .sd-storyboard-log-body .sd-storyboard-log-reason { margin: 0; font-size: 12px; color: var(--sd-log-status-color); overflow-wrap: anywhere; }
-#story-director-modal .sd-storyboard-log-maintenance { min-width: 0; margin-bottom: 8px; }
-#story-director-modal .sd-storyboard-log-maintenance > summary { padding: 4px 0; text-align: right; cursor: pointer; color: var(--sd-muted); font-size: 11px; list-style: none; }
-#story-director-modal .sd-storyboard-log-maintenance > summary::-webkit-details-marker { display: none; }
-#story-director-modal .sd-storyboard-log-maintenance > :not(summary) { margin-top: 8px; }
+#story-director-modal .sd-storyboard-log-maintenance { display: grid; gap: 8px; min-width: 0; margin-bottom: 8px; }
+#story-director-modal .sd-storyboard-logs-empty { margin: 8px 0; padding: 16px 8px; color: var(--sd-muted); text-align: center; font-size: 12px; }
 
 /* Shared prompt writing aids; polarity is a visual category, never an insertion target. */
 #story-director-modal .sd-tag-library-tools { display:grid;grid-template-columns:minmax(0,1fr) minmax(88px,.65fr) auto;gap:6px;margin:8px 0;align-items:center; }

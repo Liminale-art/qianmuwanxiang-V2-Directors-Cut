@@ -94,7 +94,8 @@ assert.doesNotMatch(source, /千幕组织镜头，SillyTavern 负责连接与生
 assert.match(css, /#chat \.mes \.sd-storyboard-inline/, '正文分镜样式必须严格限定在聊天消息内');
 assert.match(source, /function storyboardInjectMessageButtons[\s\S]*injectStoryboardMessageButtons\(chatRoot/, '正文半自动取景入口仍须接入共享工具条');
 assert.match(await readFile(new URL('../qianmu-prose-floor-entries.js',import.meta.url),'utf8'), /dataset\.storyboardChatAction = 'capture-floor'/, '正文每层必须提供半自动取景快捷入口');
-assert.match(source, /function storyboardChooseCaptureMode[\s\S]*本层重新提取[\s\S]*手动选段补图/, '正文取景入口必须支持整层重拍与多段手动补图');
+assert.match(source, /function storyboardChooseCaptureMode[\s\S]*openStoryboardCaptureChooser/, '正文取景入口使用自有面板');
+assert.match(await readFile(new URL('../qianmu-storyboard-capture-view.js', import.meta.url), 'utf8'), /本层重新提取[\s\S]*手动选段补图/, '正文取景入口必须支持整层重拍与多段手动补图');
 assert.match(source, /storyboardParameterPresets[\s\S]*保存分镜样式[\s\S]*parameterPresetSelection/, '分镜参数样式必须可按模型保存和切换');
 assert.match(source, /rememberStoryboardModelProfile\(state\.modelProfiles, providerId, \{ \.\.\.captured, model: previousModel \}\)[\s\S]*getStoryboardRememberedProfile\(state\.modelProfiles, providerId, binding\.remoteModelId, binding\.capabilityModelId\)/, '每个具体模型必须通过隔离读写入口记住最后一次参数修改');
 assert.doesNotMatch(source, /sd-storyboard-reuse-record|sd-storyboard-lightbox-reuse/, '阅片室不得保留复用或重新生成入口');

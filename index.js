@@ -31,7 +31,8 @@ import {createStoryboardQueueWindow} from './qianmu-storyboard-queue-window.js?v
 import {startStoryboardQueueWindowBatch} from './qianmu-storyboard-queue-batch.js?v=1.59.414';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.414';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.424';
+import {createStoryboardCompilerInterruptionRecorder} from './qianmu-storyboard-compiler-diagnostics.js?v=1.59.424';
 import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.414';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
@@ -296,7 +297,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.423';
+const VERSION = '1.59.424';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -583,7 +584,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.414'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.424'),
   },
   storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.414')},
   theaterCatalog: {
@@ -1532,6 +1533,7 @@ let storyboardSecrets = {};          // 只缓存“是否已配置”，绝不�
 let storyboardSecretModulePromise = null;
 let storyboardStModulePromise = null;
 let storyboardUtilsModulePromise = null;
+let storyboardCaptureView = null;
 let storyboardChatClickBound = false;
 let storageInventoryState = { status: 'idle', data: null, error: '', sampledAt: 0 };
 let storageInventoryResolveSerial = 0;
@@ -17709,12 +17711,12 @@ function renderStoryboardLogs(state) {
   const rows = logs.map((log) => {
     const compiler=log.kind==='prompt_compiler';
     const source = compiler?'取景 API':STORYBOARD_SOURCES[log.source]?.label || log.source;
-    const statusLabel = log.kind==='comfy_preparation' ? (log.status==='success'?'准备完成':log.status==='cancelled'?'已替换':'准备失败') : log.status === 'success' ? '完成' : log.status === 'failed' ? (log.submissionState==='not_submitted'?'未提交':['unknown','accepted'].includes(log.submissionState)?'待核查':'失败') : log.status === 'cancelled' ? '已放弃' : log.status === 'queued' ? '等待' : '生成中';
+    const statusLabel = log.kind==='comfy_preparation' ? (log.status==='success'?'准备完成':log.status==='cancelled'?'已替换':'准备失败') : log.status === 'success' ? '完成' : log.status === 'failed' ? (log.submissionState==='not_submitted'?'未提交':['unknown','accepted'].includes(log.submissionState)?'待核查':'失败') : log.status === 'cancelled' ? (compiler?'已中断':'已放弃') : log.status === 'queued' ? '等待' : '生成中';
     const pipeline = storyboardPipelineForLog(log, state);
     const presentation=storyboardLogPresentation(log,pipeline);
     const stageRows = (pipeline?.stages || []).map((stage) => {
       const label = STORYBOARD_PIPELINE_STAGE_LABELS[stage.type] || stage.type;
-      return `<li class="${stage.status}"><button type="button" class="sd-storyboard-stage-toggle" data-storyboard-stage="${htmlEscape(stage.id)}" aria-expanded="false" aria-label="查看${htmlEscape(label)}详情"><span>${htmlEscape(label)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : '进行中')}</b><i class="fa-solid fa-eye" aria-hidden="true"></i></button>${stage.error ? `<small>${htmlEscape(storyboardLogPresentation({error:stage.error},null).reason)}</small>` : ''}</li>`;
+      return `<li class="${stage.status}"><button type="button" class="sd-storyboard-stage-toggle" data-storyboard-stage="${htmlEscape(stage.id)}" aria-expanded="false" aria-label="查看${htmlEscape(label)}详情"><span>${htmlEscape(label)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : stage.status === 'cancelled' ? '已中断' : '进行中')}</b><i class="fa-solid fa-eye" aria-hidden="true"></i></button>${stage.error ? `<small>${htmlEscape(storyboardLogPresentation({error:stage.error},null).reason)}</small>` : ''}</li>`;
     }).join('');
     const runAction = compiler?'':log.kind==='comfy_preparation'
       ? `<button type="button" class="sd-btn sd-storyboard-retry-log" ${log.status==='failed'&&log.preparation?.version===1?'':'disabled'}>重新准备本镜</button>`
@@ -17736,12 +17738,12 @@ function renderStoryboardLogs(state) {
     </details>`;
   }).join('');
   return `<div class="sd-storyboard-logs-page">
-    <details class="sd-storyboard-log-maintenance"><summary>日志管理</summary>
+    <section class="sd-storyboard-log-maintenance" aria-label="收片与日志工具">
     <div><div class="sd-storyboard-receipt-tools"><button type="button" class="sd-btn sd-storyboard-open-service-inbox">NAI 收片</button><button type="button" class="sd-btn sd-storyboard-open-comfy-inbox">Comfy 收片</button></div><div class="sd-storyboard-service-inbox" role="status"></div><div class="sd-storyboard-comfy-inbox"></div></div>
-    ${state.logs.length ? `<div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-export-logs">导出</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length || storyboardQueuePendingCount() || storyboardQueueSettling ? 'disabled' : ''}>清空</button></div>` : ''}
+    ${state.logs.length ? `<div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-export-logs">导出日志</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length || storyboardQueuePendingCount() || storyboardQueueSettling ? 'disabled' : ''}>清空日志</button></div>` : ''}
     <section class="sd-card sd-storyboard-pack-card"><div><b>分镜资源联包</b><small>当前聊天与资源库，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜资源联包" aria-label="导出分镜资源联包"><i class="fa-solid fa-file-export"></i></button><button type="button" class="sd-icon-btn sd-storyboard-pack-recover" title="核对导入" aria-label="核对导入"><i class="fa-solid fa-rotate-left"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入联包或旧分镜包" aria-label="导入联包或旧分镜包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept=".qmb,application/json,.json"></label></div></section>
-    </details>
-    ${rows}
+    </section>
+    ${rows || '<p class="sd-storyboard-logs-empty" role="status">暂无取景或生图记录。</p>'}
   </div>`;
 }
 
@@ -18755,24 +18757,31 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
   if(plan&&Object.hasOwn(plan,'ensembleRecovery')&&storyboardPlanHasGeneration(plan)){toast('本轮已有画面任务，请用本层重新提取开启新一轮；旧任务保留','info');return report('cancelled');}
   const { state, profile } = storyboardCaptureWorkbench(root);
   if (!state.enabled) { toast('请先启用分镜。', 'warning'); return report('cancelled'); }
-  try { resolveStoryboardProfileBinding(state.source, profile); }
-  catch (error) { toast(error.message, 'warning'); return report('failed'); }
   const floor = stream?.floor ?? storyboardTargetFloor(state);
   if (floor < 0 || !ctx().chat?.[floor]) { toast('当前没有可用于自动取景的正文。', 'warning'); return report('cancelled'); }
   let inputGuard;
-  try { inputGuard = storyboardCreatePreparationGuard(state, { plan, requireCompiler: true, freshComfy: true, stream }); }
-  catch (error) { toast(error.message, 'warning'); return report('failed'); }
   storyboardCompilerBusy = true;
-  storyboardSetPlanStatus(plan, 'compiling');
-  if(!stream)renderModal();
   const startedAt = Date.now();
   let resultAccepted = false;
+  let interruption, interruptionPromise, failureStage='preparation';
   try {
+    if(!stream){
+      const ownerChat=String(getChatKey()||''),ownerEpoch=storyboardAdmissionEpoch;
+      interruptionPromise=createStoryboardCompilerInterruptionRecorder({ownsContext:()=>state===storyboardState()&&ownerChat===String(getChatKey()||'')&&ownerEpoch===storyboardAdmissionEpoch,resolveNamespace:resolveImageAccountNamespace,store:storyboardStoreLog,uid,startedAt,floor});
+    }
+    resolveStoryboardProfileBinding(state.source, profile);
+    inputGuard=storyboardCreatePreparationGuard(state, { plan, requireCompiler: true, freshComfy: true, stream });
+    interruption=await interruptionPromise;
+    inputGuard.assertCurrent();
+    storyboardSetPlanStatus(plan, 'compiling');
+    if(!stream)renderModal();
     const styles=state.routing.styleLibrary===true?await (await featureRuntime.load('storyboardContract')).prepareStoryboardEnsembleSession(state,inputGuard,storyboardEnsembleHost(),{plan,automatic}):null;
     if(!styles)await storyboardPrepareComfyRoutes(state, inputGuard);
     const comfyRoles=storyboardUsesComfyCharacters(state, inputGuard.comfyRoutes, inputGuard.freshComfy);
+    failureStage='context';
     let context=comfyRoles?await storyboardCompilerContext(state,inputGuard):null;
     if (!styles&&state.source === 'comfy') {
+      failureStage='workflow';
       await storyboardPreflightComfyForCompiler(state, profile, plan, inputGuard, automatic, context);
       inputGuard.assertCurrent();
     }
@@ -18781,6 +18790,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
       if (!capabilities.preciseReference) throw new Error('当前模型不支持角色精确参考，请关闭角色参考或切换至 NAI V4.5');
       if (state.selectedVibeIds?.length) throw new Error('角色精确参考与 Vibe 不能同时启用，请选择一种后提取');
     }
+    failureStage='context';
     context ||= await storyboardCompilerContext(state, inputGuard);
     inputGuard.assertCurrent();
     const contract = await featureRuntime.load('storyboardContract');
@@ -18789,6 +18799,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     if(stream?.trackAttempt&&!stream.complete)streamAttempt=await contract.beginStoryboardCompilerStreamAttempt(context,inputGuard.streamFrame,{state:storyboardState,message:()=>ctx().chat?.[context.floor],guard:()=>inputGuard.assertCurrent(),save:saveSettings,uid,createPlan:createStoryboardWorkflowTicket});
     inputGuard.compilerAttempt=contract.createStoryboardCompilerAttempt({call:storyboardCallCompiler,guard:()=>inputGuard.assertCurrent(),uid,sanitize:sanitizeStoryboardDiagnosticData,startedAt,floor,
       model:(settings.apiProfiles||[]).find(item=>item.id===state.promptCompiler.apiProfileId)?.model||(settings.providerMode==='external'?settings.model:'')||''});
+    failureStage='compiler';
     // In a mixed batch, request only reachable closed-model expressions alongside pinned Comfy formats.
     // Otherwise a natural-language-only workflow could leave the same batch's NAI mirrors without tags.
     const expressionRoutes = inputGuard.comfyRoutes?.promptFormats?.length ? {
@@ -18943,24 +18954,26 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     return !manualRequired;
   } catch (error) {
     if(stream&&error?.code==='storyboard_stream_wait')return report('waiting');
-    if (error?.code === 'storyboard_input_changed' || !resultAccepted && !inputGuard.isCurrent()) {
+    interruption ||= await interruptionPromise;
+    if (error?.code === 'storyboard_input_changed' || !resultAccepted && inputGuard && !inputGuard.isCurrent()) {
+      if(!resultAccepted)await interruption?.({stage:failureStage,reason:inputGuard?.inputChangeReason||error?.inputChangeReason,cancelled:true});
       if (plan?.status === 'compiling') {
         const error = '取景输入已变化，请重新提取';
-        if (inputGuard.ownsCurrentContext() && plan.chatKey === String(getChatKey() || '')) storyboardSetPlanStatus(plan, 'stale', { error });
+        if (inputGuard?.ownsCurrentContext() && plan.chatKey === String(getChatKey() || '')) storyboardSetPlanStatus(plan, 'stale', { error });
         // Finish only the original plan reference; never save/render the new chat through a global state setter.
         else Object.assign(plan, { status: 'stale', error, updatedAt: Date.now() });
       }
-      if (!quiet && inputGuard.ownsCurrentContext()) toast('取景输入已变化，旧结果未写回；请重新提取', 'info');
+      if (!quiet && inputGuard?.ownsCurrentContext()) toast('取景输入已变化，旧结果未写回；请重新提取', 'info');
       return report('cancelled');
     }
     console.error(`[${MODULE_NAME}] storyboard prompt compiler failed`, error);
-    if(!resultAccepted)inputGuard.compilerAttempt?.fail(error,{store:storyboardStoreLog,archive:id=>storyboardArchivePipelineLog({pipelineId:id})});
-    storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
-    if (!quiet||inputGuard.compilerAttempt||/^(ensemble_|st_account_storage_|storyboard_stream_(attempt|checkpoint)$)/.test(error?.code||'')||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
+    if(!resultAccepted){if(inputGuard?.compilerAttempt)inputGuard.compilerAttempt.fail(error,{store:storyboardStoreLog,archive:id=>storyboardArchivePipelineLog({pipelineId:id})});else await interruption?.({stage:failureStage,error});}
+    if(inputGuard)storyboardSetPlanStatus(plan, 'failed', { error: error?.message || error });
+    if (!quiet||!inputGuard||inputGuard.compilerAttempt||/^(ensemble_|st_account_storage_|storyboard_stream_(attempt|checkpoint)$)/.test(error?.code||'')||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return report('failed');
   } finally {
     await streamAttempt?.finish('cancelled');
-    inputGuard.dispose();
+    inputGuard?.dispose();
     storyboardCompilerBusy = false;
     storyboardScheduleAutomaticCapture();
     if(!stream)renderModal();
@@ -22163,51 +22176,16 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined, artist
 
 async function storyboardChooseCaptureMode(floor, message, { reextract = false } = {}) {
   const paragraphs = storyboardMessageParagraphs(message?.mes || '');
-  const context = ctx();
-  if (context.Popup && context.POPUP_TYPE) {
-    const wrap = document.createElement('div');
-    wrap.className = 'sd-storyboard-capture-dialog';
-    wrap.innerHTML = `<div class="sd-storyboard-capture-dialog-head"><b>本层插画</b><small>重新提取会重拍整层并生成新版，可能产生费用；新版完整保存后替换正文，旧作保留阅片室。补图只追加一幅。</small></div><div class="sd-storyboard-capture-choices"><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="auto" checked><span>本层重新提取</span></label><label class="sd-option-chip"><input type="radio" name="storyboard-capture-mode" value="manual_supplement" ${paragraphs.length ? '' : 'disabled'}><span>手动选段补图</span></label></div><section class="sd-storyboard-capture-paragraphs" hidden><header><span>点选一个或多个段落</span><b>已选 <em>0</em> 段</b></header><div class="sd-storyboard-capture-paragraph-list sd-scroll">${paragraphs.map((item, index) => `<label class="sd-storyboard-capture-paragraph-row"><input type="checkbox" value="${index}"><span><b>${index + 1}</b><span>${htmlEscape(item)}</span></span></label>`).join('')}</div></section>`;
-    const paragraphPanel = wrap.querySelector('.sd-storyboard-capture-paragraphs');
-    const count = paragraphPanel.querySelector('header em');
-    const rows = [...wrap.querySelectorAll('.sd-storyboard-capture-paragraph-row input')];
-    let lastIndex = -1;
-    const refresh = () => {
-      const selected = rows.filter((input) => input.checked);
-      count.textContent = String(selected.length);
-      rows.forEach((input) => input.closest('label')?.classList.toggle('selected', input.checked));
-    };
-    rows.forEach((input, index) => input.addEventListener('click', (event) => {
-      if (event.shiftKey && lastIndex >= 0) {
-        const checked = input.checked;
-        for (let cursor = Math.min(lastIndex, index); cursor <= Math.max(lastIndex, index); cursor++) rows[cursor].checked = checked;
-      }
-      lastIndex = index; refresh();
-    }));
-    wrap.querySelectorAll('input[name="storyboard-capture-mode"]').forEach((input) => input.addEventListener('change', () => {
-      paragraphPanel.hidden = wrap.querySelector('input[name="storyboard-capture-mode"]:checked')?.value !== 'manual_supplement';
-    }));
-    let releaseAppearance;
-    try {
-      const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '继续', cancelButton: '取消' });
-      popup.dlg?.classList.add('sd-storyboard-capture-popup');
-      const shown = popup.show();
-      try { releaseAppearance = appearanceSession.mountPortal(popup.dlg, { inheritTheme: true }); } catch (_) { console.warn('[千幕] 本层插画外观未接入'); }
-      const ok = await shown;
-      if (!ok) return null;
-      const mode = wrap.querySelector('input[name="storyboard-capture-mode"]:checked')?.value === 'manual_supplement' ? 'manual_supplement' : 'auto';
-      const indexes = rows.filter((input) => input.checked).map((input) => Number(input.value)).sort((a, b) => a - b);
-      if (mode === 'manual_supplement' && !indexes.length) { toast('请至少选择一个正文段落。', 'warning'); return null; }
-      return { mode, paragraphIndex: mode === 'manual_supplement' ? indexes.at(-1) : null, selection: mode === 'manual_supplement' ? normalizeStoryboardParagraphSelection({ mode, indexes, createdAt: Date.now() }) : null };
-    } catch (_) { return null; }
-    finally { try { releaseAppearance?.(); } catch (_) { /* Detached host popup. */ } }
-  }
-  const mode = String(await promptInput('本层插画', '输入 auto 重新拍摄整层并生成新版（可能产生费用，旧作保留），或输入要补图的段落序号。', 'auto') ?? '').trim();
-  if (!mode) return null;
-  if (mode.toLowerCase() === 'auto') return { mode: 'auto', paragraphIndex: null, selection: null };
-  const indexes = [...new Set(mode.split(/[,，\s]+/).map((item) => Number(item) - 1).filter((item) => Number.isInteger(item) && item >= 0 && item < paragraphs.length))].sort((a, b) => a - b);
-  if (!indexes.length) return toast('没有识别到有效段落序号。', 'warning');
-  return { mode: 'manual_supplement', paragraphIndex: indexes.at(-1), selection: normalizeStoryboardParagraphSelection({ mode: 'manual_supplement', indexes, createdAt: Date.now() }) };
+  const chatKey=String(getChatKey()||''),text=message?.mes,swipe=message?.swipe_id;
+  const isCurrent=()=>initialized&&isRuntimeOwner()&&chatKey===String(getChatKey()||'')&&ctx().chat?.[floor]===message&&message?.mes===text&&message?.swipe_id===swipe;
+  storyboardCaptureView = await loadLocalChunk('./qianmu-storyboard-capture-view.js?v=1.59.424');
+  const choice = await storyboardCaptureView.openStoryboardCaptureChooser({document, paragraphs,
+    mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),isCurrent,
+    proseElement:document.querySelector(`#chat .mes[mesid="${floor}"] .mes_text`)});
+  if (!choice) return null;
+  const {mode,indexes}=choice;
+  return {mode,paragraphIndex:mode==='manual_supplement'?indexes.at(-1):null,
+    selection:mode==='manual_supplement'?normalizeStoryboardParagraphSelection({mode,indexes,createdAt:Date.now()}):null};
 }
 
 async function storyboardEditPrompt({ plan = null, record = null } = {}) {
@@ -35585,6 +35563,7 @@ function bindEvents() {
     queueMicrotask(() => void runBackgroundDirectorRefresh());
   };
   const rerenderHandler = async () => {
+    storyboardCaptureView?.closeStoryboardCaptureChooser(document);
     storyboardEnsembleController?.dispose();storyboardEnsembleController=null;storyboardEnsembleContext=null;storyboardEnsembleRevision++;
     directorRun?.controller.abort(); directorLiveLog = null;
     if(storyboardVibeControllerContext&&storyboardVibeControllerContext.chat!==String(getChatKey()||'')){
@@ -35769,6 +35748,7 @@ function cleanupRuntime(resetSettings = false) {
   };
   try {
     clean('float host guard', () => stopFloatHostGuard());
+    clean('capture chooser', () => storyboardCaptureView?.closeStoryboardCaptureChooser(document));
     clean('appearance', () => appearanceSession.reset());
     clean('quick dock', () => unbindQuickDockCapture());
     clean('float reveal', () => {
