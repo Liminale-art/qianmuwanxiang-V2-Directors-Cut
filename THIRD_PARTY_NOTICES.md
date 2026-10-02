@@ -22,7 +22,8 @@ Icons by [Iconsax](https://iconsax.io/). Copyright Iconsax. Free License (propri
 - 接口文档：https://docs.iconsax.io/mcp/ai-integration
 - 使用规则：https://docs.iconsax.io/license-and-terms/license
 - 完整条款：https://docs.iconsax.io/license-and-terms/usage-manifesto
-- 调整：颜色改为随界面继承；Outline 风格使用其对应 Linear 图形，以设置 2.5px 描边；Twotone 和指定的 message-notif Broken 同样设置 2.5px，Bold 保持原生填充。移除冗余的 24×24 裁剪定义，避免同页 SVG ID 冲突。
+- 调整：颜色改为随界面继承；Outline 风格使用其对应 Linear 轮廓，以设置 2.5px 描边；Twotone 和指定的 message-notif、record-circle、wind Broken 同样设置 2.5px，Bold 保持原生填充。刷新在 Bold 主题复用线性轮廓；楼层跳转将接口的 align-bottom 垂直翻转，以匹配参考图中左短右长及底部横线（接口的 align-top 不含该横线）。移除冗余的 24×24 裁剪定义，避免同页 SVG ID 冲突。楼层及蜂巢收藏心形为千幕原创轮廓，不属于 Iconsax 或 Lucide 素材。
+- 幕后采用 fire-9 烛台系列（不是同名 fire）：线性主题用用户指定的 Broken 四段轮廓并统一 2.5px，Bold/Twotone 使用官方同系列样式。
 - 开发侧只读取已选的功能子集；运行时无需连接 Iconsax、图标字体或 CDN。若需在其他产品单独复用图形，请直接向 Iconsax 获取相应许可与资源。
 
 ## Lucide

@@ -7,12 +7,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 export const glyphs = {
-  anchor:'qianmu-anchor', archive:'archive', 'arrow-clockwise':'refresh-right', 'arrow-counter-clockwise':'refresh-left',
+  anchor:'qianmu-anchor', archive:'archive', 'arrow-clockwise':'refresh-arrow-02', 'arrow-counter-clockwise':'refresh-left',
   'arrow-down':'arrow-down-01', 'arrow-left':'arrow-left-01', 'arrow-right':'arrow-right-01', 'arrow-up':'arrow-up-01',
   'arrows-clockwise':'refresh-arrow-02', 'arrows-in':'qianmu-minimize', 'arrows-left-right':'swap-horizontal-01',
-  'arrows-out':'maximize-3', 'arrows-out-simple':'maximize-4', backstage:'signpost', assistant:'ai-commentary', aperture:'ai-record-video',
+  'arrows-out':'maximize-3', 'arrows-out-simple':'maximize-4', backstage:'fire-9', assistant:'ai-commentary', aperture:'video-play', dashboard:'unlimited',
   book:'book', 'book-bookmark':'book-saved', 'book-open':'book-open', 'book-open-text':'book-open', bookmark:'archive',
-  bookmarks:'heart-circle', camera:'camera', 'caret-down':'arrow-down-02', 'caret-left':'arrow-left-02',
+  bookmarks:'qianmu-heart', camera:'camera', 'caret-down':'arrow-down-02', 'caret-left':'arrow-left-02',
   'caret-right':'arrow-right-02', 'caret-up':'arrow-up-02', character:'user-tag', chat:'message-text',
   'chat-dots':'message-text', chats:'messages', check:'qianmu-check', 'check-circle':'tick-circle',
   'check-square':'tick-square', checks:'qianmu-checks', circle:'record', clear:'broom', clock:'clock',
@@ -20,26 +20,26 @@ export const glyphs = {
   crosshair:'gps', database:'driver', 'dots-three':'more', 'download-simple':'document-download', eraser:'eraser',
   eye:'eye', 'eye-slash':'eye-slash', feather:'pen-tool', 'file-arrow-down':'document-download',
   'file-arrow-up':'document-upload', 'film-slate':'video-play', 'film-strip':'video-horizontal', flask:'lamp-charge',
-  'floor-tools':'textalign-left', 'floppy-disk':'save-2', focus:'coffee', folder:'folder', 'folder-minus':'folder-minus',
+  'floor-tools':'align-bottom', 'floppy-disk':'save-2', focus:'bell-2', folder:'folder', 'folder-minus':'folder-minus',
   'folder-plus':'folder-add', funnel:'filter', gauge:'speedometer', gear:'setting-2', 'globe-hemisphere-east':'global',
   graph:'hierarchy-2', headphones:'headphone', highlighter:'brush', image:'gallery', 'image-regenerate':'refresh-arrow-02',
   images:'gallery', info:'info-circle', lightbulb:'lamp-on', link:'link', list:'menu', 'list-bullets':'task',
   'list-checks':'task-square', 'list-numbers':'task', 'lock-keyhole':'lock', 'magic-wand':'magicpen',
   'magnifying-glass':'search-normal', 'mask-happy':'happyemoji', 'microphone-stage':'microphone-2', minus:'minus',
   'minus-circle':'minus-circle', 'note-pencil':'note-2', notes:'note-text', package:'box', palette:'color-swatch', pause:'pause',
-  pen:'pen-tool', 'pen-nib':'pen-tool-2', 'pencil-simple':'edit-2', plant:'tree', play:'qianmu-play', 'play-circle':'play-circle',
+  pen:'edit', 'pen-nib':'pen-tool-2', 'pencil-simple':'edit', plant:'tree', play:'qianmu-play', 'play-circle':'play-circle',
   'plugs-connected':'electricity', plus:'add', 'push-pin':'qianmu-pin', 'puzzle-piece':'component', question:'message-question',
   quotes:'quote-down', robot:'cpu-charge', rows:'row-vertical', screening:'video-octagon', selection:'scan', shield:'shield-tick',
   'skip-back':'previous', 'skip-forward':'next', sliders:'setting-4', 'sort-descending':'sort', 'speaker-high':'volume-high',
   'spinner-gap':'refresh-arrow-02', 'squares-four':'category', stack:'layer', star:'qianmu-star', 'star-half':'qianmu-star-half', stop:'qianmu-stop',
-  'stop-circle':'stop-circle', syringe:'health', tag:'tag', target:'discover', tasks:'task-square', theater:'candy', 'text-aa':'text',
+  'stop-circle':'stop-circle', syringe:'health', tag:'tag', target:'discover', tasks:'task-square', theater:'smileys', 'text-aa':'text',
   'text-align-start':'textalign-left', tv:'monitor', 'text-underline':'text-underline', trash:'trash', 'trend-up':'trend-up',
   'upload-simple':'document-upload', user:'user', 'user-circle':'profile-circle', 'user-plus':'user-add',
-  'video-camera':'video', 'voice-lines':'message-search', 'voice-reextract':'message-notif', 'voice-regenerate':'refresh-arrow-01', 'voice-playall':'sound',
-  warning:'warning-2', 'wave-sine':'sound', world:'map', 'world-map':'radar', x:'qianmu-close',
+  'video-camera':'video', 'voice-lines':'message-search', 'voice-reextract':'message-notif', 'voice-regenerate':'record-circle', 'voice-playall':'play-circle', 'voice-stopall':'pause-circle',
+  warning:'warning-2', 'wave-sine':'sound', 'underline-wave':'wind', world:'global', 'world-map':'share', x:'qianmu-close',
 };
 
-export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'bold','voice-playall':'bold'};
+export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'broken','floor-tools':'outline','bookmarks':'outline'};
 
 const endpoint = 'https://app.iconsax.io/api/mcp';
 const cache = path.join(tmpdir(), 'qianmu-iconsax-free-2026-10-01-exact');
@@ -88,6 +88,8 @@ if(process.argv.includes('--write')) {
   // The universal actions lacking a matching Iconsax silhouette retain the
   // existing Lucide geometry. Functional pin states must not become a map marker.
   const familiar={
+    // Qianmu's original floor heart; keep this contour identical to the floor control.
+    'qianmu-heart':'<path d="M12 21C10.2 19.4 2 13.7 2 8.4C2 5.3 4.3 3 7.3 3C9.2 3 10.9 4 12 5.6C13.1 4 14.8 3 16.7 3C19.7 3 22 5.3 22 8.4C22 13.7 13.8 19.4 12 21Z"/>',
     'qianmu-anchor':'<path d="M12 6v16"/><path d="m19 13 2-1a9 9 0 0 1-18 0l2 1"/><path d="M9 11h6"/><circle cx="12" cy="4" r="2"/>',
     'qianmu-minimize':'<path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/>',
     'qianmu-checks':'<path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/>',
@@ -99,11 +101,18 @@ if(process.argv.includes('--write')) {
     'qianmu-star':'<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
     'qianmu-star-half':'<path d="M12 18.338a2.1 2.1 0 0 0-.987.244L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.12 2.12 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.12 2.12 0 0 0 1.597-1.16l2.309-4.679A.53.53 0 0 1 12 2"/>',
   };
-  const names=[...new Set([...Object.values(glyphs),'magic-star'])].sort(), result={}, hashes={}, pending=names.filter(name=>!familiar[name]).flatMap(name=>variantsFor(name).map(variant=>({name,variant,style:styles[variant]||variant}))), errors=[];
+  // The supplied backstage SVG is fire-9 Broken, not the unrelated icon named fire.
+  const names=[...new Set([...Object.values(glyphs),'magic-star'])].sort(), result={}, hashes={}, pending=names.filter(name=>!familiar[name]).flatMap(name=>variantsFor(name).map(variant=>({name,variant,style:name==='fire-9'&&variant==='outline'?'broken':styles[variant]||variant}))), errors=[];
   for(const [name,body] of Object.entries(familiar)) for(const variant of Object.keys(styles)) (result[name]||={})[variant]=`<g fill="${['qianmu-pin','qianmu-star','qianmu-star-half','qianmu-play','qianmu-stop'].includes(name)&&variant==='bold'?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${body}</g>`;
   await Promise.all(Array.from({length:4},async()=>{
     for(;;) { const item=pending.shift(); if(!item) break;
-      try {const value=await get(item.name,item.style); (result[item.name]||={})[item.variant]=value.markup; hashes[`${item.name}/${item.style}`]=value.sha256;}
+      try {
+        const value=await get(item.name,item.style);
+        // The MCP's align-top has no baseline. Its align-bottom has a top rail:
+        // mirror vertically to match the user's explicit bottom-rail reference.
+        (result[item.name]||={})[item.variant]=item.name==='align-bottom' ? `<g transform="translate(0 24) scale(1 -1)">${value.markup}</g>` : value.markup;
+        hashes[`${item.name}/${item.style}`]=value.sha256;
+      }
       catch(error) {errors.push(error.message);}
     }
   }));

@@ -231,7 +231,9 @@ test('local control icons carry their intended glyph instead of an unresolved fa
         const variants = [...icon.innerHTML.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)];
         assert.deepEqual(variants.map(match => match[1]), glyph === 'star' ? ['outline'] : ['outline', 'bold', 'twotone'], label);
         for (const [, variant, attrs, body] of variants) {
-            assert.equal(body, ICONSAX_ICON_MARKUP[official][variant], `${label}/${variant}`);
+            const artworkVariant = official === 'refresh-arrow-02' && variant === 'bold' ? 'outline' : variant;
+            assert.equal(body, ICONSAX_ICON_MARKUP[official][artworkVariant], `${label}/${variant}`);
+            if (official === 'refresh-arrow-02') assert.notEqual(body, ICONSAX_ICON_MARKUP[official].bold, 'refresh excludes Bold artwork in every theme');
             assert.equal(/\sdata-qm-icon-fixed(?:\s|$)/.test(attrs), glyph === 'star', `${label}: uncollected state stays outlined in every theme`);
         }
         assert.equal(icon.getAttribute('stroke'), 'none', label);

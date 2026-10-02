@@ -29,7 +29,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
       const styleUrl=new URL('./qianmu-prose-assistant.css?v=1.59.414',import.meta.url).href,existingStyle=document.querySelector('link[data-qm-prose-assistant-style]');
       if(!existingStyle){const link=document.createElement('link');link.rel='stylesheet';link.dataset.qmProseAssistantStyle='';link.href=styleUrl;document.head.append(link);link.addEventListener('error',()=>link.remove(),{once:true});}else if(existingStyle.href!==styleUrl)existingStyle.href=styleUrl;
       const portal=document.createElement('section');portal.dataset.qmProseAssistantPortal='';document.body.append(portal);record.portal=portal;record.detach=mountPortal?.(portal);inheritProseTypography(portal);
-      const runtime=await loadLocalChunk('./qianmu-prose-assistant-panel.js?v=1.59.416');if(!record.valid()){close(record);return null;}
+      const runtime=await loadLocalChunk('./qianmu-prose-assistant-panel.js?v=1.59.417');if(!record.valid()){close(record);return null;}
       const config=typeof assistantConfig==='function'?assistantConfig():{};
       const readText=(selected,index)=>{
         if(!record.valid()||getContext().chat[index]!==selected)throw Error('场外特助来源已变化');
@@ -61,7 +61,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     const valid=()=>{try{check();return cleaning===token&&parent?.isConnected===true&&isCurrent()===true&&!entry;}catch{return false;}};
     try{
       if(native){
-        const runtime=await import('./qianmu-assistant-history-view.js?v=1.59.416');check();
+        const runtime=await import('./qianmu-assistant-history-view.js?v=1.59.417');check();
         const actual=await resolveNamespace();if(expectedNamespace===undefined)expectedNamespace=actual;if(!valid()||actual!==expectedNamespace)throw Error('助手管理账户已变化');check();
         const document=parent.ownerDocument,portal=document.createElement('section');portal.dataset.qmProseAssistantPortal='';document.body.append(portal);const detach=mountPortal?.(portal);let opened;
         try{opened=runtime.openAssistantHistoryManager({parent:portal,resolveNamespace:async()=>{const actual=await resolveNamespace();if(actual!==expectedNamespace)throw Error('助手管理账户已变化');return actual;},isCurrent:valid,headers,check,confirm,download,otherModules,applyIcons,captureDestination:({signal})=>captureProseAssistantChatSource({getContext,epoch:()=>epoch,resolveNamespace,isCurrent:valid,signal})});management=opened;await opened.finished;}

@@ -1,5 +1,5 @@
 import {createAssistantHistoryManager} from './qianmu-assistant-history-manager.js';
-import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.416';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.417';
 import {ASSISTANT_BACKUP_LIMIT} from './qianmu-assistant-history-transfer.js';
 
 export function openAssistantHistoryManager({parent,isCurrent,check,confirm,download,otherModules=0,createManager=createAssistantHistoryManager,...options}){

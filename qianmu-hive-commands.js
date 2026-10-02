@@ -1,6 +1,6 @@
 // Shared built-in commands; no runtime state or network dependencies.
 export const QIANMU_HIVE_COMMANDS = Object.freeze([
-  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', glyph: 'qm-duotone-film-slate' },
+  { id: 'dashboard', label: '推演', icon: 'fa-clapperboard', glyph: 'dashboard' },
   { id: 'focus', label: '专注', icon: 'fa-hourglass-half', glyph: 'focus' },
   { id: 'notes', label: '便笺', icon: 'fa-note-sticky', glyph: 'notes' },
   { id: 'assistant', label: '场外特助', icon: 'fa-comments', glyph:'assistant' },

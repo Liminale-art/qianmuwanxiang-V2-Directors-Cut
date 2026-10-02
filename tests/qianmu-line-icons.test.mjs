@@ -43,16 +43,17 @@ assert.match(QIANMU_ICON_SYSTEM_VERSION, /^iconsax-[a-z0-9.-]+$/);
 assert.equal(ICONSAX_STROKE_WIDTH, 2.5);
 assert.equal(QIANMU_INLINE_GLYPH_COUNT, Object.keys(ICONSAX_ICON_MARKUP).length);
 assert.ok(QIANMU_INLINE_GLYPH_COUNT >= 120, 'Iconsax 本地子集应覆盖语义入口与高频工具');
-assert.equal(QIANMU_INLINE_GLYPH_COUNT, 132, 'audited subset contains 122 Iconsax and ten familiar-action glyphs');
-assert.equal(Object.values(ICONSAX_ICON_MARKUP).reduce((count, glyph) => count + Object.keys(glyph).length, 0), 397, 'three default styles and one explicitly selected Broken voice glyph');
+assert.equal(QIANMU_INLINE_GLYPH_COUNT, 134, 'audited subset contains 123 Iconsax, ten familiar actions and the original floor heart');
+assert.equal(Object.values(ICONSAX_ICON_MARKUP).reduce((count, glyph) => count + Object.keys(glyph).length, 0), 405, 'three default styles and three specifically requested Broken glyphs');
 assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, Object.keys(QIANMU_FA_ICON_MAP).length);
 for(const name of currentFaNames)assert.ok(QIANMU_FA_ICON_MAP[name], `实际使用的 FA 类名 ${name} 必须有确定语义；保留旧映射不要求旧控件仍存在`);
 
 const glyphBody = (markup) => String(markup).match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] || '';
 const semanticName = symbol => symbol.replace(/^qm-(?:duotone|regular|fill|user|signature)-/, '');
 const variantNames = ['outline', 'bold', 'twotone'];
-const fixedVariants = {'voice-lines': 'outline', 'voice-reextract': 'broken', 'voice-regenerate': 'bold', 'voice-playall': 'bold'};
-assert.deepEqual(ICONSAX_FIXED_VARIANTS, fixedVariants, 'only the four requested voice actions override appearance families');
+const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'broken','floor-tools':'outline','bookmarks':'outline'};
+assert.deepEqual(ICONSAX_FIXED_VARIANTS, fixedVariants, 'only explicitly requested actions override appearance families');
+const artwork = (name, variant) => ICONSAX_ICON_MARKUP[name][name === 'refresh-arrow-02' && variant === 'bold' ? 'outline' : variant];
 const groups = body => [...body.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone|broken)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)]
   .map(([full, variant, attrs, geometry]) => [full, variant, /\sdata-qm-icon-fixed(?:\s|$)/.test(attrs) ? ' data-qm-icon-fixed' : undefined, geometry]);
 const fallbackGlyph = glyphBody(qianmuIconMarkup('qm-unknown-glyph'));
@@ -76,14 +77,14 @@ for (const name of currentFaNames) {
   const variants = groups(glyphBody(markup));
   assert.deepEqual(variants.map(match => match[1]), fixed ? [fixed] : variantNames, `${name}: complete theme/state geometry`);
   for (const [, variant, isFixed, body] of variants) {
-    assert.equal(body, ICONSAX_ICON_MARKUP[officialName][variant], name);
+    assert.equal(body, artwork(officialName, variant), name);
     assert.equal(Boolean(isFixed), Boolean(fixed), name);
   }
 }
 
 const semanticSymbols = Object.values(QIANMU_SEMANTIC_ICONS);
-assert.equal(Object.keys(QIANMU_SEMANTIC_ICONS).length, 20);
-assert.equal(new Set(semanticSymbols).size, 20, '顶层语义图标不得复用同一签名');
+assert.equal(Object.keys(QIANMU_SEMANTIC_ICONS).length, 23);
+assert.equal(new Set(semanticSymbols).size, 23, '顶层语义图标不得复用同一签名');
 for (const [semantic, symbol] of Object.entries(QIANMU_SEMANTIC_ICONS)) {
   assert.equal(resolveQianmuIcon(semantic), symbol);
   assert.match(symbol, /^qm-signature-/);
@@ -94,11 +95,31 @@ for (const [semantic, symbol] of Object.entries(QIANMU_SEMANTIC_ICONS)) {
   const variants = groups(glyphBody(qianmuIconMarkup(semantic)));
   assert.deepEqual(variants.map(match => match[1]), fixed ? [fixed] : variantNames);
   for (const [, variant, isFixed, body] of variants) {
-    assert.equal(body, ICONSAX_ICON_MARKUP[official][variant], semantic);
+    assert.equal(body, artwork(official, variant), semantic);
     assert.equal(Boolean(isFixed), Boolean(fixed), semantic);
   }
 }
 for (const [semantic, official] of Object.entries(ICONSAX_GLYPH_NAMES)) assert.ok(ICONSAX_ICON_MARKUP[official], `${semantic}: ${official} must be bundled`);
+
+// Entrance heart and floor state share the exact silhouette without coupling
+// the hive entrance to any particular floor's collected state.
+const floorSource = await readFile(new URL('qianmu-text-collection-floor.js', rootUrl), 'utf8');
+const floorContour = floorSource.match(/heart\.setAttribute\('d', '([^']+)'\)/)?.[1];
+assert.ok(floorContour);
+assert.ok(ICONSAX_ICON_MARKUP['qianmu-heart'].outline.includes(`d="${floorContour}"`));
+for (const action of ['fa-pencil','fa-pen','fa-pen-to-square']) {
+  assert.equal(ICONSAX_GLYPH_NAMES[semanticName(resolveQianmuIcon(action))], 'edit', action);
+}
+for (const action of ['fa-rotate', 'fa-rotate-right', 'image-regenerate']) {
+  for (const [, variant, , body] of groups(glyphBody(qianmuIconMarkup(action)))) {
+    assert.equal(body, artwork('refresh-arrow-02', variant));
+    assert.notEqual(body, ICONSAX_ICON_MARKUP['refresh-arrow-02'].bold, 'refresh never adopts Bold artwork');
+  }
+}
+assert.match(indexSource, /data-style="wavy"[^\n]*data-qm-icon="underline-wave"/);
+assert.equal(ICONSAX_GLYPH_NAMES[semanticName(resolveQianmuIcon('fa-wave-square'))], 'sound', 'unrelated injection status retains its own waveform');
+assert.match(ICONSAX_ICON_MARKUP['align-bottom'].outline, /transform="translate\(0 24\) scale\(1 -1\)"/);
+assert.match(ICONSAX_ICON_MARKUP['align-bottom'].outline, /d="M2 5H22"/, 'the reference baseline becomes y=19 after mirroring, not an unrailed align-top');
 
 assert.doesNotMatch(rendererSource, /new URL\(|fetch\(|XMLHttpRequest|<use\b|xlink:href/i, '图标渲染器不得依赖任何二次资源请求');
 assert.match(rendererSource, /ICONSAX_STROKE_WIDTH = 2\.5/);
@@ -123,16 +144,23 @@ assert.match(thirdPartyNotices, /ISC License[\s\S]*Lucide Icons and Contributors
 // copies of a glyph must remain safe and collision-free in one document.
 const allowedTags = new Set(['path', 'circle', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'g']);
 const allowedAttributes = new Set(['d', 'cx', 'cy', 'r', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'width', 'height', 'rx', 'ry', 'points', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-dasharray', 'stroke-dashoffset', 'fill-rule', 'clip-rule', 'opacity', 'fill-opacity', 'stroke-opacity', 'transform']);
-const familiarActions = new Set(['qianmu-anchor', 'qianmu-minimize', 'qianmu-check', 'qianmu-checks', 'qianmu-pin', 'qianmu-close', 'qianmu-star', 'qianmu-star-half', 'qianmu-play', 'qianmu-stop']);
+const familiarActions = new Set(['qianmu-anchor', 'qianmu-minimize', 'qianmu-check', 'qianmu-checks', 'qianmu-pin', 'qianmu-close', 'qianmu-star', 'qianmu-star-half', 'qianmu-play', 'qianmu-stop', 'qianmu-heart']);
 assert.deepEqual(Object.keys(ICONSAX_ICON_MARKUP).filter(name => name.startsWith('qianmu-')).sort(), [...familiarActions].sort(), 'only the explicitly retained familiar actions use legacy geometry');
 for (const [semantic, official] of Object.entries({star: 'qianmu-star', 'star-half': 'qianmu-star-half', bookmark: 'archive', 'image-regenerate': 'refresh-arrow-02'})) {
   assert.equal(ICONSAX_GLYPH_NAMES[semantic], official, `${semantic}: recognized action silhouette must not be replaced by a misleading source-name match`);
 }
 for (const [semantic, official] of Object.entries({
-  assistant: 'ai-commentary', backstage: 'signpost', notes: 'note-text', theater: 'candy', bookmarks: 'heart-circle',
-  context: 'shapes', world: 'map', 'world-map': 'radar', tasks: 'task-square', focus: 'coffee', aperture: 'ai-record-video',
-  'voice-lines': 'message-search', 'voice-reextract': 'message-notif', 'voice-regenerate': 'refresh-arrow-01', 'voice-playall': 'sound',
+  assistant:'ai-commentary', backstage:'fire-9', notes:'note-text', theater:'smileys', bookmarks:'qianmu-heart',
+  context:'shapes', world:'global', 'world-map':'share', tasks:'task-square', focus:'bell-2', aperture:'video-play', dashboard:'unlimited',
+  'voice-lines':'message-search', 'voice-reextract':'message-notif', 'voice-regenerate':'record-circle', 'voice-playall':'play-circle', 'voice-stopall':'pause-circle',
+  'floor-tools':'align-bottom', 'underline-wave':'wind', pen:'edit', 'pencil-simple':'edit', 'arrow-clockwise':'refresh-arrow-02',
 })) assert.equal(ICONSAX_GLYPH_NAMES[semantic], official, `${semantic}: user-selected entry remains distinct from unrelated generic actions`);
+assert.deepEqual([...ICONSAX_ICON_MARKUP['fire-9'].outline.matchAll(/<path d="([^"]+)"/g)].map(match => match[1]), [
+  'M21.9992 17.56H3.61921C2.87921 17.56 2.38921 18.34 2.72921 19.01L3.94921 21.45C4.11921 21.79 4.46921 22 4.83921 22H19.1592C19.5392 22 19.8892 21.79 20.0492 21.45L21.9992 17.56Z',
+  'M18.5591 17.56C16.6691 17.56 15.1191 16 15.1191 14.12C15.1191 12.24 16.6791 10.68 18.5591 10.68C20.4391 10.68 21.9991 12.24 21.9991 14.12V17.56',
+  'M9.77984 10.67H5.33984V17.56H9.77984V14.38',
+  'M7.5593 2L9.1193 3.56C10.0093 4.45 10.0093 5.78 9.1193 6.67C8.2293 7.56 6.8993 7.56 6.0093 6.67C5.1193 5.78 5.1193 4.45 6.0093 3.56L7.5693 2H7.5593Z',
+], 'backstage: exact user-provided candle/tray paths, not the unrelated fire family');
 function assertSafeGlyph(body, label) {
   assert.equal(typeof body, 'string', label);
   assert.match(body, /<(?:path|circle|rect|ellipse|polygon|polyline|line)\b/, `${label}: nonempty geometry`);
@@ -165,7 +193,7 @@ function assertSafeGlyph(body, label) {
   assert.equal(consumed.replace(/\s/g, ''), body.replace(/\s/g, ''), `${label}: no text or malformed markup`);
 }
 for (const [name, variants] of Object.entries(ICONSAX_ICON_MARKUP)) {
-  assert.deepEqual(Object.keys(variants).sort(), [...variantNames, ...(name === 'message-notif' ? ['broken'] : [])].sort(), `${name}: three appearance families, only message-notif additionally carries Broken`);
+  assert.deepEqual(Object.keys(variants).sort(), [...variantNames, ...(['message-notif','record-circle','wind'].includes(name) ? ['broken'] : [])].sort(), `${name}: only the three requested actions additionally carry Broken`);
   for (const [variant, body] of Object.entries(variants)) {
     assertSafeGlyph(body, `${name}/${variant}`);
     assert.doesNotMatch(body, /\bid\s*=/i, `${name}/${variant}: no duplicated IDs when rendered repeatedly`);
@@ -454,7 +482,7 @@ function assertVoiceSymbol(button, symbol, variants) {
   assert.equal(icon.children.length, 1);
   assert.deepEqual(groups(svg.innerHTML).map(match => match[1]), variants);
   for (const [, variant, , geometry] of groups(svg.innerHTML)) {
-    assert.equal(geometry, ICONSAX_ICON_MARKUP[ICONSAX_GLYPH_NAMES[semanticName(symbol)]][variant]);
+    assert.equal(geometry, artwork(ICONSAX_GLYPH_NAMES[semanticName(symbol)], variant));
   }
   const writes = voice.stats.writes;
   assert.equal(applyQianmuIcons(button), 1);
@@ -465,13 +493,13 @@ function assertVoiceSymbol(button, symbol, variants) {
 }
 for (const theme of ['classic', 'editorial', 'glass']) {
   voice.root.setAttribute('data-qm-theme', theme);
-  const idle = voiceButtons.map(button => assertVoiceSymbol(button, 'qm-signature-voice-playall', ['bold']));
+  const idle = voiceButtons.map(button => assertVoiceSymbol(button, 'qm-signature-voice-playall', ['outline']));
   voiceContext.ttsSetPlayingState(voice.root, true);
   for (const [index, button] of voiceButtons.entries()) {
     assert.equal(button.classList.contains('sd-tts-playing'), true);
     assert.notEqual(button.children[0], idle[index], 'real playback replaced its child');
     assert.equal(idle[index].parentElement, null);
-    const icon = assertVoiceSymbol(button, 'qm-fill-stop-circle', variantNames);
+    const icon = assertVoiceSymbol(button, 'qm-signature-voice-stopall', ['outline']);
     voiceContext.setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
     assertVoiceSymbol(button, 'qm-regular-spinner-gap', ['outline']);
     assert.equal(icon.classList.contains('fa-spin'), true, 'the outer spinner animation is retained');
@@ -479,11 +507,11 @@ for (const theme of ['classic', 'editorial', 'glass']) {
   voiceContext.ttsStopPlayback(true);
   for (const button of voiceButtons) {
     assert.equal(button.classList.contains('sd-tts-playing'), false);
-    assertVoiceSymbol(button, 'qm-signature-voice-playall', ['bold']);
+    assertVoiceSymbol(button, 'qm-signature-voice-playall', ['outline']);
   }
   voiceContext.ttsSetPlayingState(voice.root, true);
   voiceContext.ttsSetPlayingState(voice.root, false);
-  for (const button of voiceButtons) assertVoiceSymbol(button, 'qm-signature-voice-playall', ['bold']);
+  for (const button of voiceButtons) assertVoiceSymbol(button, 'qm-signature-voice-playall', ['outline']);
 }
 
 // Broken is a deliberate per-action style, never a fourth selectable theme or a
@@ -492,7 +520,7 @@ for (const theme of ['classic', 'editorial', 'glass']) {
 for (const [semantic, className, initialClass, fixed] of [
   ['voice-lines', 'sd-tts-trigger', 'fa-solid fa-clapperboard', 'outline'],
   ['voice-reextract', 'sd-tts-reextract', 'fa-solid fa-film', 'broken'],
-  ['voice-regenerate-all', 'sd-tts-regenall', 'fa-solid fa-rotate', 'bold'],
+  ['voice-regenerate-all', 'sd-tts-regenall', 'fa-solid fa-rotate', 'broken'],
 ]) {
   const button = voice.root.appendChild(new FakeElement('button', {className, ownerDocument: voice.document, stats: voice.stats}));
   button.innerHTML = `<i class="${initialClass}" data-qm-icon="${semantic}"></i>`;

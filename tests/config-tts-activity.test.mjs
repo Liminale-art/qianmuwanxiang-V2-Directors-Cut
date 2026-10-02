@@ -10,14 +10,14 @@ function fixture(extra={}) {
   return c;
 }
 test('preparation and post-extraction NPC persistence remain inside one protected operation',async()=>{
-  const prep=deferred(),extract=deferred(),bar={dataset:{},innerHTML:''},mes={querySelectorAll:()=>[]};let c,applied=0;
+  const prep=deferred(),extract=deferred(),bar={dataset:{},innerHTML:''},mes={isConnected:true,contains:value=>value===bar,querySelectorAll:()=>[]};let c,applied=0;
   const notices=[];
-  c=fixture({ttsEnsureBar:()=>bar,ttsPrepareLineStore:()=>prep.promise,ttsRawText:()=> 'text',ttsContentKey:()=> 'key',
+  c=fixture({getChatKey:()=> 'chat',ttsEnsureBar:()=>bar,ttsPrepareLineStore:()=>prep.promise,ttsRawText:()=> 'text',ttsContentKey:()=> 'key',
     ttsLineCache:new Map(),ttsPersistedLines:()=>null,ttsMigrateLinesOnEdit:()=>null,ttsCleanText:x=>x,extractDialogue:()=>extract.promise,
     ttsStoreLines(){assert.equal(c.ttsRestoreTasks,1);},ttsMesId:()=> 'mes',ttsAssignNpc:()=>true,saveSettings(){assert.equal(c.ttsRestoreTasks,1);},
     ttsApplyLines(){applied++;assert.equal(c.ttsRestoreTasks,1);},applyQianmuIcons(){},htmlEscape:x=>x});
   const gate=configRestoreGate(c.settings,()=>({voice:c.ttsRestoreTasks>0}),(...args)=>notices.push(args));
-  const task=c.ttsHandleTrigger({closest:()=>mes,querySelector:()=>null});assert.equal(gate(c.settings),false);
+  const task=c.ttsHandleTrigger({closest:()=>mes,querySelector:()=>null,setAttribute(){}});assert.equal(gate(c.settings),false);
   prep.resolve();await Promise.resolve();assert.equal(gate(c.settings),false);extract.resolve([{text:'line'}]);await task;
   assert.equal(applied,1);assert.equal(c.ttsRestoreTasks,0);assert.equal(gate(c.settings),true);assert.match(notices[0][0],/配音/);
 });

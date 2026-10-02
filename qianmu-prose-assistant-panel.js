@@ -5,10 +5,10 @@ import {compileProseAssistantMessages} from './qianmu-prose-assistant-messages.j
 import {saveProseAssistantConnection,createProseAssistantAutosave} from './qianmu-prose-assistant-preferences.js';
 import {openProseAssistantHistory} from './qianmu-prose-assistant-history-runtime.js';
 import {bindProseAssistantWindow} from './qianmu-prose-assistant-window.js';
-import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.416';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.417';
 import {renderProseAssistantMarkdown} from './qianmu-prose-assistant-markdown.js';
 import {createProseAssistantThreadKey} from './qianmu-prose-assistant-history-contract.js';
-import {createProseAssistantConversationList} from './qianmu-prose-assistant-conversation-list.js?v=1.59.416';
+import {createProseAssistantConversationList} from './qianmu-prose-assistant-conversation-list.js?v=1.59.417';
 import {createProseAssistantTitleProtocol} from './qianmu-prose-assistant-title.js';
 
 // Non-modal conversation window; opening it never reads or displays prose.

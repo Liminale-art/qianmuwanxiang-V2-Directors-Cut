@@ -67,3 +67,18 @@ test('full library preserves list batch controls, native import and distinct emp
   data.libTags=['unmatched'];html=c.renderLibraryView();assert.match(html,/没有符合当前标签的书籍/);assert.doesNotMatch(html,/支持 EPUB/);
   data.libTags=[];data.collections=[{id:'empty',name:'Empty',bookIds:[]}];data.libCollectionId='empty';html=c.renderLibraryView();assert.match(html,/这个合集还是空的/);assert.doesNotMatch(html,/支持 EPUB/);
 });
+
+test('empty shelf is text-only and every shelf state keeps exactly one original native import target',()=>{
+  for(const mode of ['grid','list'])for(const state of ['empty','filtered','collection','populated']){
+    const {c,data}=createLibraryFixture();data.libViewMode=mode;
+    if(state==='filtered')data.libTags=['unmatched'];
+    if(state==='collection'){data.collections=[{id:'empty',name:'Empty',bookIds:[]}];data.libCollectionId='empty';}
+    if(state==='populated')data.books=[book('one')];
+    const html=c.renderLibraryView(),empty=html.match(/<div class="sd-reader-empty">([\s\S]*?)<\/div>/)?.[1];
+    assert.equal(!!empty,state!=='populated');
+    if(empty){assert.match(empty,/<p>/);assert.doesNotMatch(empty,/<i\b|<svg\b|fa-book/);}
+    assert.equal((html.match(/class="sd-reader-import sd-reader-import-fab"/g)||[]).length,1);
+    assert.equal((html.match(/type="file"/g)||[]).length,1);
+    assert.match(html,/<label class="sd-reader-import sd-reader-import-fab"[^>]*aria-label="导入书籍或漫画">\s*<i class="fa-solid fa-plus" aria-hidden="true"><\/i>\s*<input type="file" class="sd-reader-import-input sd-reader-native-file" accept="fixture-books-only">\s*<\/label>/);
+  }
+});

@@ -43,14 +43,15 @@ shell.isConnected = false; buttons[0]();
 assert.equal(renders, 3);
 
 assert.equal(ICONSAX_STROKE_WIDTH, 2.5);
-for (const [semantic, glyph] of Object.entries({backstage: 'signpost', assistant: 'ai-commentary', 'floor-tools': 'textalign-left', world: 'map', 'world-map': 'radar', focus: 'coffee', notes: 'note-text', theater: 'candy', bookmarks: 'heart-circle', context: 'shapes', tasks: 'task-square', 'qm-regular-aperture': 'ai-record-video'})) {
+for (const [semantic, glyph] of Object.entries({backstage:'fire-9', assistant:'ai-commentary', 'floor-tools':'align-bottom', world:'global', 'world-map':'share', focus:'bell-2', notes:'note-text', theater:'smileys', bookmarks:'qianmu-heart', context:'shapes', tasks:'task-square', 'qm-regular-aperture':'video-play', dashboard:'unlimited'})) {
   const markup = qianmuIconMarkup(semantic);
   // Compare geometry instead of unstable signature names.
   const body = markup.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)[1];
   const variants = [...body.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)];
-  assert.deepEqual(variants.map(match => match[1]), ['outline', 'bold', 'twotone'], semantic);
+  const fixed = ['floor-tools', 'bookmarks'].includes(semantic);
+  assert.deepEqual(variants.map(match => match[1]), fixed ? ['outline'] : ['outline', 'bold', 'twotone'], semantic);
   for (const [, variant, attrs, geometry] of variants) {
-    assert.doesNotMatch(attrs, /data-qm-icon-fixed/, `${semantic}: creative entrances follow the current appearance`);
+    assert.equal(/data-qm-icon-fixed/.test(attrs), fixed, `${semantic}: only the explicit line silhouettes override the current appearance`);
     assert.equal(geometry, ICONSAX_ICON_MARKUP[glyph][variant], `${semantic} uses ${glyph}/${variant}`);
   }
 }

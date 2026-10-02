@@ -1,4 +1,4 @@
-import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.416';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.417';
 
 // A metadata-only view. The owner performs all history reads and mutations.
 export function createProseAssistantConversationList({document,onOpen,onNew,onDelete,onRefresh,onRename}={}){

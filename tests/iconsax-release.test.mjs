@@ -5,7 +5,7 @@ import {collectReleaseFiles} from '../scripts/build-release.mjs';
 import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
-const ICONSAX_RELEASE = '1.59.416';
+const ICONSAX_RELEASE = '1.59.417';
 // Only the renderer's affected client import closure changes in this release.
 // Unrelated backend, storage and provider modules retain their existing URLs.
 const changedNodes = new Set([
@@ -16,7 +16,7 @@ const changedNodes = new Set([
   'qianmu-text-collection-capture.js', 'qianmu-text-collection-host.js',
   'qianmu-text-collection-image-dialog.js', 'qianmu-text-collection-organization-view.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-panel.js',
-  'qianmu-text-collection-view.js', 'qianmu-hive-commands.js', 'qianmu-text-collection-floor.js',
+  'qianmu-text-collection-view.js', 'qianmu-hive-commands.js',
 ]);
 const files = await collectReleaseFiles();
 const sources = new Map(await Promise.all(files.filter(file => file.endsWith('.js'))

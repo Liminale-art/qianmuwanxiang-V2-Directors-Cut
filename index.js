@@ -2,9 +2,9 @@
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
-import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.416';
+import {createProseFloorTools,injectStoryboardMessageButtons} from './qianmu-prose-floor-tools.js?v=1.59.417';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
-import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.416';
+import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.417';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -191,7 +191,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.414';
 import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from './qianmu-storyboard-variant-recovery.js?v=1.59.414';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.416';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.417';
 import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.414';
 import {
   createQianmuChatCompletionResponseFormat,
@@ -296,7 +296,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.416';
+const VERSION = '1.59.417';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -309,7 +309,7 @@ const featureRuntime = createFeatureRuntime({
   galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.414') },
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.414') },
   vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.414') },
-  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.416') },
+  ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.417') },
   vibeReview: { label: 'Vibe 编码记录', load: () => import('./qianmu-vibe-review.js?v=1.59.202') },
   vibeAssets: { label: 'Vibe 文件', load: () => import('./qianmu-vibe-assets.js?v=1.59.202') },
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
@@ -10575,19 +10575,6 @@ function ttsStoreLineAnchor(key, mesid) {
   ttsScheduleLocalLineSave();
 }
 
-function ttsDeleteStoredLines(key) {
-  if (!key) return;
-  delete ttsLineStoreState.lines?.[key];
-  ttsPruneLineAnchors(ttsLineStoreState.keyByMes, ttsLineStoreState.lines);
-  ttsScheduleLocalLineSave();
-  try {
-    const store = getChatStore();
-    delete store.ttsLines?.[key];
-    ttsPruneLineAnchors(store.ttsLineKeyByMes, store.ttsLines, TTS_PORTABLE_LINE_LIMIT * 2);
-    saveMetadata();
-  } catch (_) {}
-}
-
 // 台词列表的「内容指纹」：按消息正文本身算 key，而非楼层 mesid——
 // 楼层会因重 roll/swipe/插楼漂移，正文不变指纹就不变，故跨刷新/重排都能稳定命中；正文一变（重 roll/编辑）指纹即变，自动重提。
 function ttsContentKey(raw) {
@@ -11085,7 +11072,7 @@ function ttsOnChatClick(e) {
   const target = e.target instanceof Element ? e.target : null;
   if (!target) return;
   const reext = target.closest('.sd-tts-reextract');
-  if (reext) { e.preventDefault(); ttsHandleTrigger(reext.closest('.mes')?.querySelector('.sd-tts-trigger') || reext, true); return; }
+  if (reext) { e.preventDefault(); ttsHandleTrigger(reext, true); return; }
   const trig = target.closest('.sd-tts-trigger');
   if (trig) { e.preventDefault(); ttsHandleTrigger(trig); return; }
   const regenAll = target.closest('.sd-tts-regenall');
@@ -11203,7 +11190,7 @@ async function ttsPlayLineFromBtn(btn, force = false) {
   await ttsPlayResolvedLine(line, mesEl, idx, btn, force);
 }
 
-// 🎧 触发：提取台词 → 渲染台词条 + 正文内联 🔊。force=true 为重新提取（清缓存重 roll）
+// 重提只绕过缓存；成功前保留已确认的台词、内联与展开按钮。
 async function ttsHandleTrigger(trig, force = false) {
   ttsRestoreTasks++;
   try {
@@ -11211,54 +11198,51 @@ async function ttsHandleTrigger(trig, force = false) {
   if (!mesEl) return;
   const bar = ttsEnsureBar(mesEl);
   if (!bar) return;
-  // 非强制 + 已渲染：纯折叠/展开已生成的台词条（内联图标随之显隐），不需正文。连播/停止钮一经提取即常驻，折叠不隐藏、不停播——交用户用按钮自控。
+  // 旧列表在重提期间仍可展开/折叠，不发起另一次提取。
   if (!force && bar.dataset.loaded === '1') {
     bar.hidden = !bar.hidden;
     mesEl.querySelectorAll('.sd-tts-inline').forEach((el) => { el.hidden = bar.hidden; });
     return;
   }
-  await ttsPrepareLineStore();
-  // 据原始正文算「内容指纹」做缓存 key
-  const raw = ttsRawText(mesEl);
-  if (!raw) { toast('正文尚未就绪，请稍候重试', 'info'); return; }   // 竞态窗口取不到原始正文：拦下，免按空文本算漂移 key 生成孤儿
-  const key = ttsContentKey(raw);
-  if (force) {
-    // 重新提取：清掉本条缓存（内存 + 持久化）与已注入内联，强制重跑
-    ttsLineCache.delete(key);
-    ttsDeleteStoredLines(key);
-    bar.dataset.loaded = '';
-    ttsClearInlineIcons(mesEl);
-  }
   if (bar.dataset.loading === '1') return;
+  const raw = ttsRawText(mesEl);
+  if (!raw) { toast('正文尚未就绪，请稍候重试', 'info'); return; }
+  const key = ttsContentKey(raw), chatKey = getChatKey(), loaded = bar.dataset.loaded === '1';
+  const current = () => getChatKey() === chatKey && mesEl.isConnected && mesEl.contains(bar) && ttsRawText(mesEl) === raw;
   bar.dataset.loading = '1';
-  bar.hidden = false;
-  bar.innerHTML = '<span class="sd-tts-status"><i class="fa-solid fa-spinner fa-spin"></i> 正在提取台词…</span>';
-  applyQianmuIcons(bar);
-  const icon = trig.querySelector('i');
-  const prevIcon = icon?.className;
+  if (!loaded) {
+    bar.hidden = false;
+    bar.innerHTML = '<span class="sd-tts-status">正在提取台词…</span>';
+  }
+  const icon = trig.querySelector('i'), prevIcon = icon?.className, disabled = trig.disabled;
+  trig.disabled = true; trig.setAttribute('aria-busy', 'true');
   setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
   try {
-    // 三级取：内存缓存 → 本聊天持久化（跨刷新/重排存活，按内容指纹寻址）→ 调模型提取
-    let lines = ttsLineCache.has(key) ? ttsLineCache.get(key) : null;
-    if (!lines) {
+    await ttsPrepareLineStore();
+    if (!current()) return;
+    let lines = force ? null : ttsLineCache.get(key);
+    if (!lines && !force) {
       const saved = ttsPersistedLines(key);
       if (Array.isArray(saved) && saved.length) { lines = saved; ttsLineCache.set(key, lines); }
     }
-    if (!lines && !force) lines = ttsMigrateLinesOnEdit(mesEl, key);   // 编了正文但台词没变：迁移旧缓存，免白白调模型（force=用户主动要全量重提则跳过）
+    if (!lines && !force) lines = ttsMigrateLinesOnEdit(mesEl, key);
     if (!lines) {
       const passage = ttsCleanText(raw);
       lines = await extractDialogue(passage);
+      if (!current()) return;
       ttsLineCache.set(key, lines);
-      ttsStoreLines(key, lines, ttsMesId(mesEl));   // 完整缓存进本机 IDB，聊天内只留少量跨设备快照
+      ttsStoreLines(key, lines, ttsMesId(mesEl));
     }
     if (ttsAssignNpc(lines)) saveSettings();   // NPC 原型分配（熟脸记忆），落库
-    ttsApplyLines(mesEl, bar, lines, key);
+    ttsApplyLines(mesEl, bar, lines, key, loaded && bar.hidden);
     toast(lines.length ? `台词指导已完成（${lines.length} 句）` : '台词指导已完成（未发现台词）', 'success');
   } catch (err) {
-    bar.dataset.loading = '';
-    bar.innerHTML = `<span class="sd-tts-status sd-tts-err">提取失败：${htmlEscape(err?.message || String(err))}</span>`;
+    if (!current()) return;
+    if (!loaded) bar.innerHTML = `<span class="sd-tts-status sd-tts-err">提取失败：${htmlEscape(err?.message || String(err))}</span>`;
     toast(`台词指导失败：${err?.message || err}`, 'error');
   } finally {
+    bar.dataset.loading = '';
+    trig.disabled = disabled; trig.setAttribute('aria-busy', 'false');
     if (prevIcon) setQianmuIconClass(icon, prevIcon);
   }
   } finally { ttsRestoreTasks--; }
@@ -11289,6 +11273,7 @@ function ttsApplyLines(mesEl, bar, lines, key, collapsed = false) {
 // 仅读缓存/持久化、绝不调模型；未提取过的消息原样留一个 🎧 钮等用户点。
 function ttsAutoRestore(mesEl) {
   const bar = mesEl.querySelector(`.${TTS_BAR_CLASS}`);
+  if (bar?.dataset.loading === '1') return;
   if (bar && bar.dataset.loaded === '1') {
     // 已渲染过。自愈：若有可播台词、但正文里的内联 🔊 被外部重渲（如 ST 保存原地编辑重写 .mes_text）抹掉了，按缓存幂等补回。
     // 这条路径替代了「跟 ST 重渲抢时序补一次」的脆弱做法——交给扫描兜底，幂等、跑几次都无害。不动列表/音频/key、不调模型。
@@ -30919,7 +30904,7 @@ function renderLibraryView() {
         ${batchControls}
       </div>
       ${tags.length ? `<div class="sd-reader-tags">${tags.map((t) => `<button class="sd-reader-tag ${(c.libTags || []).includes(t) ? 'active' : ''}" data-tag="${htmlEscape(t)}">${htmlEscape(t)}</button>`).join('')}</div>` : ''}
-      ${items ? `<div class="sd-reader-grid">${items}</div>` : `<div class="sd-reader-empty"><i class="fa-solid fa-book-open"></i><p>${htmlEscape(emptyText)}${!activeCollection && !(c.libTags || []).length ? '<small>支持 EPUB、MOBI、TXT 与 CBZ</small>' : ''}</p></div>`}
+      ${items ? `<div class="sd-reader-grid">${items}</div>` : `<div class="sd-reader-empty"><p>${htmlEscape(emptyText)}${!activeCollection && !(c.libTags || []).length ? '<small>支持 EPUB、MOBI、TXT 与 CBZ</small>' : ''}</p></div>`}
       <label class="sd-reader-import sd-reader-import-fab" title="导入书籍或漫画" aria-label="导入书籍或漫画">
         <i class="fa-solid fa-plus" aria-hidden="true"></i>
         <input type="file" class="sd-reader-import-input sd-reader-native-file" accept="${COREAD_BOOK_ACCEPT}">
@@ -31071,7 +31056,7 @@ function buildReaderStage() {
         </div>
         <div class="sd-reader-hltools-lv sd-reader-hltools-styles" hidden>
           <button data-back title="返回"><i class="fa-solid fa-chevron-left"></i></button>
-          <button data-style="wavy" title="波浪线"><i class="fa-solid fa-wave-square"></i></button>
+          <button data-style="wavy" title="波浪线"><i class="fa-solid fa-wave-square" data-qm-icon="underline-wave"></i></button>
           <button data-style="underline" title="下划线"><i class="fa-solid fa-underline"></i></button>
           <button data-style="mark" title="荧光（自动半透明）"><i class="fa-solid fa-highlighter"></i></button>
           <label class="sd-reader-hlcolor" title="划线颜色"><input type="color" class="sd-reader-hlcolor-input" value="${hlColor}"><span style="background:${hlColor}"></span></label>
