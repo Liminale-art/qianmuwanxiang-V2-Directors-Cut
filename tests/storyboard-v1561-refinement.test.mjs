@@ -6,6 +6,8 @@ import { STORYBOARD_SCHEMA_VERSION, normalizeStoryboardState } from '../qianmu-s
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const style = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const utilities = await readFile(new URL('../qianmu-storyboard-utils.js', import.meta.url), 'utf8');
+const worldbookView = await readFile(new URL('../qianmu-storyboard-worldbook-view.js', import.meta.url), 'utf8');
+const worldbooks = await readFile(new URL('../qianmu-storyboard-worldbooks.js', import.meta.url), 'utf8');
 
 assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 
@@ -34,7 +36,7 @@ assert.match(source, /log\.response = String\(raw \|\| ''\)/);
 assert.match(source, /log\.response = content/);
 assert.match(style, /\.sd-term \{ max-height: min\(52vh, 720px\); \}/);
 
-// Context is predictable: character/persona are always included and worldbook entries are manual-only.
+// Context is predictable: character/persona are included; worldbook entries still require explicit confirmation.
 const normalized = normalizeStoryboardState({
   schemaVersion: 8,
   promptCompiler: {
@@ -62,8 +64,8 @@ assert.equal(normalized.artistPresets[0].collectionId, 'folder-1');
 assert.match(source, /<b>上下文处理<\/b>/);
 assert.match(source, /<span>参考层数<\/span>/);
 assert.match(source, /<b>提取规则<\/b>/);
-assert.match(source, /sd-storyboard-worldbook-card/);
-assert.match(source, /sd-storyboard-worldbook-picker/);
+assert.match(worldbookView, /sd-storyboard-worldbook-card/);
+assert.match(worldbookView, /sd-storyboard-worldbook-picker/);
 assert.doesNotMatch(source, /自动筛选/);
 
 // The fixed title system reserves a real top region; closing is not overloaded as navigation.
@@ -75,9 +77,11 @@ assert.match(style, /\.sd-storyboard-scroll[\s\S]*overflow: auto/);
 assert.doesNotMatch(source, /为 \$\{getStoryboardModel[\s\S]*连接起一个便于识别的名称/);
 
 // Storyboard worldbooks use the same all-books → multi-book → per-entry hierarchy as Context.
-assert.match(source, /listWorldBooks\(\)[\s\S]*sd-storyboard-toggle-worldbook/);
-assert.match(source, /sd-storyboard-world-name[\s\S]*data-storyboard-world-entry/);
-assert.match(source, /sd-storyboard-refresh-worldbooks/);
+assert.match(source, /names:listWorldBooks/);
+assert.match(worldbooks, /await host\.names\(\)/);
+assert.match(worldbookView, /sd-storyboard-toggle-worldbook/);
+assert.match(worldbookView, /sd-storyboard-world-name[\s\S]*data-storyboard-world-entry/);
+assert.match(worldbookView, /sd-storyboard-refresh-worldbooks/);
 
 // Presets and artist strings use dedicated, full-panel editors.
 assert.match(source, /function renderStoryboardPresetLibrary/);

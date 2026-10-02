@@ -86,6 +86,31 @@ test('official world loading uses the host cache and returns an independent copy
   rows[0].extensions.keep = false; assert.equal(f.state.world.entries[0].extensions.keep, true); assert.equal(f.calls.some(row => row[0] === 'fetch'), false);
 });
 
+test('strict world reads distinguish empty books from failed or incomplete official data and never resurrect helpers', async () => {
+  const f=fixture();let helperReads=0;
+  const globals={TavernHelper:{getWorldbook:async()=>{helperReads++;return [{uid:1,content:'stale'}];}}};
+  for(const invalid of [null,undefined,{}, {entries:null},{entries:'invalid'}]) {
+    f.state.world=invalid;
+    await assert.rejects(sources.stWorldBookEntries(f.context,'Book',globals,{strict:true}),{code:'storyboard_context_unavailable'});
+  }
+  f.context.loadWorldInfo=async()=>{throw Error('private upstream detail');};
+  await assert.rejects(sources.stWorldBookEntries(f.context,'Book',globals,{strict:true}),error=>error.code==='storyboard_context_unavailable'&&!error.message.includes('private'));
+  f.context.loadWorldInfo=async()=>({entries:{}});
+  assert.deepEqual(await sources.stWorldBookEntries(f.context,'Book',globals,{strict:true}),[]);
+  assert.equal(helperReads,0);
+});
+
+test('strict older-host world reads preserve helper and POST compatibility but fail closed on missing content', async () => {
+  const context={getRequestHeaders:()=>({'Content-Type':'application/json'})};
+  const globals={TavernHelper:{getWorldbook:async()=>[{uid:1,content:'legacy'}]}};
+  assert.equal((await sources.stWorldBookEntries(context,'Book',globals,{strict:true}))[0].content,'legacy');
+  delete globals.TavernHelper;
+  globals.fetch=async(url,options)=>{assert.equal(url,'/api/worldinfo/get');assert.equal(options.method,'POST');return {ok:true,json:async()=>({entries:{}})};};
+  assert.deepEqual(await sources.stWorldBookEntries(context,'Book',globals,{strict:true}),[]);
+  globals.fetch=async()=>({ok:false});
+  await assert.rejects(sources.stWorldBookEntries(context,'Book',globals,{strict:true}),{code:'storyboard_context_unavailable'});
+});
+
 test('reading preset material cannot modify live host prompts or stored presets', () => {
   const f = fixture(); const current = f.sandbox.getPresetEntries('Current'), other = f.sandbox.getPresetEntries('Other');
   assert.equal(other[0]?.content, 'other preset'); current[0].content = 'modified local copy'; other[0].content = 'modified local copy';

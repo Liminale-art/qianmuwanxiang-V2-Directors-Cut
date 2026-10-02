@@ -3,6 +3,7 @@ import {buildStoryboardPlanContractRequest,captureStoryboardCompilerSources,open
 import {assertStoryboardInputBudget,STORYBOARD_INPUT_MAX_BYTES} from '../qianmu-storyboard-complete-context.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 import {normalizeStoryboardParagraphSelection} from '../qianmu-storyboard.js';
+import {installWorldbookFixture} from './helpers/storyboard-worldbooks-fixture.mjs';
 test('manual paragraph selection keeps every selected paragraph and the real last insertion point',()=>{const selection=normalizeStoryboardParagraphSelection({mode:'manual_supplement',indexes:Array.from({length:281},(_,i)=>i)});assert.equal(selection.indexes.length,281);assert.equal(selection.indexes.at(-1),280);});
 test('selected narrative and settings retain their tails, including paragraphs beyond 240',()=>{
  const long='叙事'.repeat(6500)+'最后脱下外套。',paragraphs=Array.from({length:280},(_,i)=>'片段'+i);paragraphs[279]=long;
@@ -20,9 +21,11 @@ test('internal world/casting copies do not count twice against the actual outbou
 });
 test('missing selected world entries stop compilation without interpreting a failed directory as deselection',async()=>{
  const state={promptCompiler:{worldBookNames:['book'],worldEntryIds:['book::1','book::2']}};
- const context=vm.createContext({Set,storyboardWorldEntryCache:{rows:[{id:'book::1',book:'book',title:'one',item:{content:'one'}}]},
-  storyboardWarmCompilerWorldEntries:async()=>{state.promptCompiler.worldBookNames=[];return [];},storyboardLoadCompilerWorldBook:async()=>[],resolveMacro:async v=>v,storyboardCleanMessageText:v=>v});
- vm.runInContext(storyboardFunctionSource('storyboardCompilerWorldText'),context);await assert.rejects(()=>context.storyboardCompilerWorldText(state),{code:'storyboard_context_unavailable'});
+ const context=vm.createContext({storyboardState:()=>state,listWorldBooks:async()=>[],getWorldBookEntries:async()=>[{uid:1,content:'one'}],resolveMacro:async v=>v,storyboardCleanMessageText:v=>v});
+ const runtime=installWorldbookFixture(context),guard={assertCurrent(){this.worldbooks?.assertCurrent();}};
+ await runtime.prepare(state,guard);
+ vm.runInContext(storyboardFunctionSource('storyboardCompilerWorldText'),context);
+ try{await assert.rejects(()=>context.storyboardCompilerWorldText(state,guard),{code:'storyboard_context_unavailable'});}finally{guard.worldbooks.close();}
 });
 test('runtime compiler keeps selected floor range and complete tail without enlarging the selection',async()=>{
  const tail='甲'.repeat(7000)+'拿起杯子',chat=[{mes:'outside'},{mes:tail},{mes:tail,is_user:true},{mes:tail}];

@@ -11,6 +11,7 @@ const root = path.resolve(here, '..');
 const source = fs.readFileSync(path.join(root, 'index.js'), 'utf8');
 const style = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
 const contractSource = fs.readFileSync(path.join(root, 'qianmu-storyboard-contract.js'), 'utf8');
+const worldbookView = fs.readFileSync(path.join(root, 'qianmu-storyboard-worldbook-view.js'), 'utf8');
 
 const defaults = createStoryboardDefaults();
 assert.equal(defaults.contentRating, 'sfw');
@@ -82,8 +83,9 @@ assert.doesNotMatch(source, /sd-storyboard-manual-generate/,
 assert.doesNotMatch(source, /class="[^\"]*sd-storyboard-generate/,
   'the removed floating storyboard generation button must not return');
 
-// Character/persona context is unconditional; worldbook context is manual-only and always visible.
-for (const selector of ['sd-storyboard-context-recent', 'sd-storyboard-context-rule-action', 'sd-storyboard-worldbook-picker']) assert.match(source, new RegExp(selector));
+// Character/persona context is unconditional; worldbooks require explicit selection or persona confirmation.
+for (const selector of ['sd-storyboard-context-recent', 'sd-storyboard-context-rule-action']) assert.match(source, new RegExp(selector));
+assert.match(worldbookView, /sd-storyboard-worldbook-picker/);
 for (const removed of ['sd-storyboard-context-character', 'sd-storyboard-context-user', 'sd-storyboard-context-world', 'sd-storyboard-world-mode']) assert.doesNotMatch(source, new RegExp(removed));
 assert.equal(normalized.promptCompiler.includeCharacterCards, true);
 assert.equal(normalized.promptCompiler.includeUserPersona, true);

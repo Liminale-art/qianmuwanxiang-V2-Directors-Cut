@@ -75,6 +75,7 @@ export function createStoryboardPreparationGuard(state, { plan = null, includeDr
     if (invalidated) return reject('preparation_input_event');
     if (stream?.signal?.aborted) return reject('preparation_stream_aborted');
     if (baseline === null) return reject('preparation_disposed');
+    if (guard.worldbooks && !guard.worldbooks.isCurrent()) return reject('preparation_context_changed');
     if (upstreamGuard && !upstreamGuard.isCurrent()) return reject('preparation_upstream_changed');
     if (state !== storyboardState()) return reject('preparation_state_changed');
     if (manualTarget && !(plan === manualTarget.plan && plan.id === manualTarget.id && plan.origin === manualTarget.origin && plan.floor === floor && plan.chatKey === chatKey && state.shotPlans.includes(plan))) return reject('preparation_plan_changed');
@@ -98,7 +99,7 @@ export function createStoryboardPreparationGuard(state, { plan = null, includeDr
   };
   const sourceReasons = new Set(['compiler_sources_changed', 'compiler_source_message_changed', 'compiler_source_context_changed', 'compiler_source_account_changed']);
   const annotate = (error, reason) => { inputChangeReason = reason; return Object.assign(error, { code:'storyboard_input_changed', inputChangeReason:reason }); };
-  return {
+  const guard = {
     stream,
     get inputChangeReason() { return inputChangeReason; },
     get allowHiddenTarget() { return manualTarget !== null; },
@@ -121,6 +122,7 @@ export function createStoryboardPreparationGuard(state, { plan = null, includeDr
       this.continuityStore?.close();
       this.compilerSources?.close();
       this.streamFrame?.close();
+      this.worldbooks?.close();
       this.comfyBatch?.close();this.comfyAuto?.close();this.comfyReadiness?.close();
       baseline = null;
       if (document) {
@@ -129,4 +131,5 @@ export function createStoryboardPreparationGuard(state, { plan = null, includeDr
       }
     },
   };
+  return guard;
 }

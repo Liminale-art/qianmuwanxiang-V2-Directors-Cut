@@ -51,19 +51,28 @@ export function stPresetEntries(context, name, globals = globalThis) {
     return [];
 }
 
-export async function stWorldBookEntries(context, name, globals = globalThis) {
+export async function stWorldBookEntries(context, name, globals = globalThis, {strict = false} = {}) {
+    const failure = () => Object.assign(new Error('世界书未能完整读取，请刷新后重试；未发送不完整上下文。'), {code:'storyboard_context_unavailable'});
+    const checked = value => {
+        if (strict && !Array.isArray(value) && !(value?.entries && typeof value.entries === 'object') && !(value?.[name]?.entries && typeof value[name].entries === 'object')) throw failure();
+        const rows = copyWorld(value, name);
+        if (strict && rows.some(row => !row || typeof row !== 'object' || Array.isArray(row)
+            || ['content','text'].some(key => Object.hasOwn(row,key) && typeof row[key] !== 'string'))) throw failure();
+        return rows;
+    };
     if (!name) return [];
     if (typeof context.loadWorldInfo === 'function') {
-        try { return copyWorld(await context.loadWorldInfo(name), name); }
-        catch (_) { globals.console?.warn('[千幕] ST 世界书读取未完成，请重新刷新取材。'); return []; }
+        try { return checked(await context.loadWorldInfo(name)); }
+        catch (_) { if (strict) throw failure(); globals.console?.warn('[千幕] ST 世界书读取未完成，请重新刷新取材。'); return []; }
     }
     for (const read of [() => globals.TavernHelper?.getWorldbook?.(name), () => globals.getWorldbook?.(name)]) {
-        try { const value = await read(); if (value) return copyWorld(value, name); } catch (_) { /* Older optional helpers may be unavailable. */ }
+        try { const value = await read(); if (value) return checked(value); } catch (_) { /* Older optional helpers may be unavailable. */ }
     }
     try {
         const response = await globals.fetch('/api/worldinfo/get', { method: 'POST', headers: headers(context, globals), body: JSON.stringify({ name }) });
-        if (response.ok) return copyWorld(await response.json(), name);
+        if (response.ok) return checked(await response.json());
     } catch (_) { globals.console?.warn('[千幕] 世界书读取未完成，请重新刷新取材。'); }
+    if (strict) throw failure();
     return [];
 }
 

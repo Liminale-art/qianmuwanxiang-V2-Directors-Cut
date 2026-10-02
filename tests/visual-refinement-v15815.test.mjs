@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const worldbookView = await readFile(new URL('../qianmu-storyboard-worldbook-view.js', import.meta.url), 'utf8');
 
 const dashboard = source.slice(source.indexOf('function renderDashboardTab'), source.indexOf('function renderChainReactionsCard'));
 assert.doesNotMatch(dashboard, /metricBar|本幕进度|sd-progress-metric/, '审片不应继续显示百分比进度');
@@ -20,7 +21,7 @@ assert.match(styles, /sd-voices-list > p[\s\S]*font-size:\s*11\.5px/);
 assert.match(styles, /sd-status-card \.sd-count-tags\s*\{[^}]*grid-template-columns:\s*repeat\(2/);
 
 assert.match(source, /sd-unified-source-entry/);
-assert.match(source, /sd-icon-btn sd-icon-sm sd-storyboard-refresh-worldbooks[\s\S]*fa-rotate/);
+assert.match(worldbookView, /sd-icon-btn sd-icon-sm sd-storyboard-refresh-worldbooks[\s\S]*fa-rotate/);
 assert.match(styles, /sd-storyboard-worldbook-card[\s\S]*box-sizing:\s*border-box[\s\S]*max-width:\s*100%/);
 assert.match(styles, /sd-unified-source-entry[\s\S]*display:\s*block !important/);
 

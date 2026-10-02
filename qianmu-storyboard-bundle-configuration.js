@@ -1,6 +1,6 @@
 import { STORYBOARD_SOURCES, sanitizeStoryboardSnapshot, createStoryboardMessageReference, resolveStoryboardMessageReference } from './qianmu-storyboard.js';
 import { hashText } from './qianmu-storyboard-utils.js';
-import { prepareStoryboardPackageDraft } from './qianmu-storyboard-package-draft.js';
+import { prepareStoryboardPackageDraft } from './qianmu-storyboard-package-draft.js?v=1.59.427';
 import { createStoryboardMutation, inspectStoryboardMutation, applyStoryboardMutation } from './qianmu-storyboard-package-mutation.js';
 import { comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
 import { captureStoryboardChatEvidence, inspectStoryboardChatEvidence, createStoryboardEvidenceLinkResolver, projectStoryboardChatMessages, storyboardChatProjectionMatches } from './qianmu-storyboard-chat-evidence.js';

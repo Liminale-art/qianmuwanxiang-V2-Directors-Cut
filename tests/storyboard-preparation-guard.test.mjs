@@ -7,6 +7,7 @@ import * as storyboard from '../qianmu-storyboard.js';
 import * as contractRuntime from '../qianmu-storyboard-contract.js';
 import {installCompilerDiagnosticsFixture} from './helpers/compiler-diagnostics-fixture.mjs';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
+import {installWorldbookFixture} from './helpers/storyboard-worldbooks-fixture.mjs';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {
@@ -373,6 +374,7 @@ test('real worldbook directory normalization is browsing-only and does not cance
     storyboardWorldEntryCache: { key: '', loading: null }, contextScanCache: { boundWorldBookNames: [], worldBooks: {} },
     uniqueClean: values => [...new Set(values.filter(Boolean))], detectBoundWorldBookNames: () => [], listWorldBooks: async () => [],
   });
+  installWorldbookFixture(e.context);
   vm.runInContext(section('storyboardWarmCompilerWorldEntries'), e.context);
   const context = e.context.storyboardCompilerContext;
   e.context.storyboardCompilerContext = async (...args) => {

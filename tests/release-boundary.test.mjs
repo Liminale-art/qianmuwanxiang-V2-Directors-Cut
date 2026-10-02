@@ -9,14 +9,14 @@ const files = new Set(result.files);
 assert.equal(config.schemaVersion, 1);
 assert.equal(result.manifest.version, result.packageJson.version, 'manifest and service package versions must match');
 assert.ok(result.files.length >= 40, 'the release closure must contain the complete client, service, assets, and notices');
-for (const required of ['manifest.json', 'index.js', 'style.css', 'server-plugin.js', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'qianmu-storyboard-capture-view.js']) {
+for (const required of ['manifest.json', 'index.js', 'style.css', 'server-plugin.js', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'qianmu-storyboard-capture-view.js', 'qianmu-storyboard-persona-world.js', 'qianmu-storyboard-worldbooks.js', 'qianmu-storyboard-worldbook-view.js']) {
   assert.ok(files.has(required), `release is missing ${required}`);
 }
 for (const forbidden of ['tests', 'node_modules', '.git', '.claude', '关于千幕.md', '千幕V2实测流程.md', '千幕V2视觉规范.md', 'qianmu-comfy-character-view.js']) {
   assert.ok(!result.files.some((file) => file === forbidden || file.startsWith(`${forbidden}/`)), `${forbidden} must stay outside public snapshots`);
 }
 assert.ok(result.files.some((file) => file.startsWith('assets/focus-sounds/')), 'bundled focus sounds must remain installable offline');
-for (const preview of ['scripts/preview-storyboard-capture.mjs', 'scripts/storyboard-capture-preview-client.mjs']) {
+for (const preview of ['scripts/preview-storyboard-capture.mjs', 'scripts/storyboard-capture-preview-client.mjs', 'scripts/preview-persona-worldbooks.mjs']) {
   assert.ok(!files.has(preview), 'isolated developer previews must stay outside the installed extension');
 }
 

@@ -5,6 +5,7 @@ import { STORYBOARD_SCHEMA_VERSION, normalizeStoryboardState } from '../qianmu-s
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const style = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const worldbookView = await readFile(new URL('../qianmu-storyboard-worldbook-view.js', import.meta.url), 'utf8');
 
 assert.equal(STORYBOARD_SCHEMA_VERSION, 24);
 
@@ -30,8 +31,8 @@ assert.match(style, /\.sd-coread-shortcut\.active,[\s\S]*\.sd-storyboard-shortcu
 assert.match(style, /\.sd-theme-pick\.open \.sd-theme-btn/);
 
 // Worldbook and prompt cards share the compact form baseline.
-assert.match(source, /<details class="sd-card sd-storyboard-worldbook-card" data-storyboard-card="worldbook"/);
-assert.match(source, /sd-storyboard-worldbook-card[\s\S]*sd-storyboard-refresh-worldbooks[\s\S]*sd-storyboard-card-body/);
+assert.match(worldbookView, /<details class="sd-card sd-storyboard-worldbook-card" data-storyboard-card="worldbook"/);
+assert.match(worldbookView, /sd-storyboard-worldbook-card[\s\S]*sd-storyboard-refresh-worldbooks[\s\S]*sd-storyboard-card-body/);
 assert.match(source, /sd-storyboard-prompt sd-storyboard-prompt-textarea/);
 assert.match(source, /sd-storyboard-negative sd-storyboard-prompt-textarea/);
 assert.match(style, /\.sd-storyboard-root \{ --qm-control-height: 40px; --qm-control-radius: 9px; text-align: left; \}/);

@@ -23,7 +23,7 @@ import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composit
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
-import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
+import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js?v=1.59.427';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.414';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
 import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.414';
@@ -31,7 +31,8 @@ import {createStoryboardQueueWindow} from './qianmu-storyboard-queue-window.js?v
 import {startStoryboardQueueWindowBatch} from './qianmu-storyboard-queue-batch.js?v=1.59.414';
 import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
-import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.424';
+import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.427';
+import {createStoryboardWorldbookController} from './qianmu-storyboard-worldbooks.js?v=1.59.427';
 import {createStoryboardCompilerInterruptionRecorder} from './qianmu-storyboard-compiler-diagnostics.js?v=1.59.424';
 import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-route-view.js?v=1.59.414';
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
@@ -292,12 +293,12 @@ import {
   storyboardRecipeRecordMetadata,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.414';
+} from './qianmu-storyboard.js?v=1.59.427';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.426';
+const VERSION = '1.59.427';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -319,7 +320,7 @@ const featureRuntime = createFeatureRuntime({
   galleryCatalogManagement: { label: '图库目录管理', load: () => import('./qianmu-gallery-catalog-management.js?v=1.59.202') },
   storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.202') },
   storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.202') },
-  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.202') },
+  storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.427') },
   storyboardPackageMutation: { label: '分镜导入核对', load: () => import('./qianmu-storyboard-package-mutation.js?v=1.59.202') },
   storyboardPackageJournal: { label: '分镜导入恢复', load: () => import('./qianmu-storyboard-package-journal.js?v=1.59.414') },
   storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.414') },
@@ -335,7 +336,7 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleCapture: { label: '分镜资源联包', load: () => import('./qianmu-storyboard-bundle-runtime.js?v=1.59.202') },
   storyboardBundleSource: { label: '备份来源核对', load: () => import('./qianmu-storyboard-bundle-source.js?v=1.59.202') },
   storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.202') },
-  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.202') },
+  storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.427') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.202') },
   historicalRestore: { label: '历史聊天分镜恢复', load: () => import('./qianmu-historical-restore.js?v=1.59.204') },
   historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.212') },
@@ -1485,7 +1486,7 @@ let storyboardAutomaticEpoch = 0;
 let storyboardContinuationRuntime = null;
 let storyboardStreamRuntime = null;
 let storyboardCredentialRevision = 0;
-let storyboardWorldEntryCache = { key: '', names: [], boundNames: [], books: {}, rows: [], loading: null, error: '' }; // 分镜独立选择，读取链路与「取材」共用
+let storyboardWorldbookController = null;
 const storyboardActiveJobs = new Map(); // 正在生成的任务；放弃时不取消可能已计费的上游请求，只丢弃回传
 let storyboardAdmission = null;
 let storyboardComfySceneCoordinator = null;
@@ -4074,6 +4075,7 @@ function closeModal() {
   document.getElementById(MODAL_ID)?._sdFeedbackCleanup?.(); feedbackOpenScope = null;
   focusClockCancelEntry();
   coreadOpenRequestId++;
+  storyboardWorldbookController?.cancel();
   focusClockPauseForReadingExit();
   if (activeTab === 'imagegen') {
     const storyboardRoot = document.getElementById(MODAL_ID)?.querySelector('.sd-storyboard-root');
@@ -13729,81 +13731,22 @@ function renderStoryboardQueue() {
   </section>`;
 }
 
-function storyboardWorldEntryId(book, item, index) {
-  const raw = item?.uid ?? item?.id ?? item?.key ?? item?.keys ?? index;
-  const token = Array.isArray(raw) ? raw.join('|') : String(raw ?? index);
-  return `${book}::${token}`.slice(0, 512);
+function storyboardWorldbookRuntime() {
+  return storyboardWorldbookController ||= createStoryboardWorldbookController({
+    state:()=>storyboardState(),context:ctx,chatKey:getChatKey,epoch:()=>storyboardAdmissionEpoch,
+    loadModules:async()=>({main:await import(stMainScriptUrl()),world:await import(new URL('./scripts/world-info.js',stMainScriptUrl()).href)}),
+    names:listWorldBooks,entries:book=>stWorldBookEntries(ctx(),book,globalThis,{strict:true}),
+    clean:storyboardCleanMessageText,resolve:resolveMacro,save:saveSettings,render:()=>{if(activeTab==='imagegen'&&document.getElementById(MODAL_ID))renderModal();},
+    toast:message=>toast(message,'warning'),format:{htmlEscape,badge,hashText,cleanContextText},
+  });
 }
 
-function storyboardWorldEntryTitle(item, index) {
-  return String(item?.name || item?.comment || (Array.isArray(item?.key) ? item.key.join(', ') : item?.key) || `世界书条目 ${index + 1}`).trim().slice(0, 160);
+async function storyboardWarmCompilerWorldEntries(options = {}) {
+  try{return await storyboardWorldbookRuntime().warm(options);}catch(_){return [];}
 }
 
-async function storyboardWarmCompilerWorldEntries({ rerender = false, force = false } = {}) {
-  const state = storyboardState();
-  const key = `${String(getChatKey() || '')}\u0001${String(ctx().characterId ?? '')}`;
-  if (!force && storyboardWorldEntryCache.key === key && !storyboardWorldEntryCache.loading) return storyboardWorldEntryCache.rows;
-  if (!force && storyboardWorldEntryCache.loading && storyboardWorldEntryCache.key === key) return storyboardWorldEntryCache.loading;
-  storyboardWorldEntryCache = { key, names: [], boundNames: [], books: {}, rows: [], loading: null, error: '' };
-  const loading = (async () => {
-    try {
-      const boundNames = uniqueClean([...detectBoundWorldBookNames(), ...(contextScanCache.boundWorldBookNames || [])]);
-      const names = uniqueClean([...boundNames, ...(await listWorldBooks())]);
-      const requestedBooks = uniqueClean([...(state.promptCompiler.worldBookNames || []), state.promptCompiler.worldBookView]).filter((name) => names.includes(name));
-      const books = {};
-      const rows = [];
-      for (const book of requestedBooks) {
-        let entries = contextScanCache.worldBooks?.[book];
-        if (!Array.isArray(entries)) entries = await getWorldBookEntries(book).catch(() => []);
-        contextScanCache.worldBooks[book] = entries || [];
-        books[book] = entries || [];
-        (entries || []).forEach((item, index) => {
-          if (item?.enabled === false || item?.disable === true) return;
-          rows.push({ id: storyboardWorldEntryId(book, item, index), book, title: storyboardWorldEntryTitle(item, index), item, index });
-        });
-      }
-      storyboardWorldEntryCache.names = names;
-      storyboardWorldEntryCache.boundNames = boundNames;
-      storyboardWorldEntryCache.books = books;
-      storyboardWorldEntryCache.rows = rows.slice(0, 1000);
-      storyboardWorldEntryCache.error = '';
-      // Keep explicit choices on a failed/stale directory response; compile checks missing entries.
-      if (state.promptCompiler.worldBookView && !names.includes(state.promptCompiler.worldBookView)) state.promptCompiler.worldBookView = '';
-      saveSettings();
-      return storyboardWorldEntryCache.rows;
-    } catch (error) {
-      storyboardWorldEntryCache.error = String(error?.message || error || '世界书读取失败');
-      return [];
-    } finally {
-      storyboardWorldEntryCache.loading = null;
-      if (rerender && activeTab === 'imagegen' && document.getElementById(MODAL_ID)) renderModal();
-    }
-  })();
-  storyboardWorldEntryCache.loading = loading;
-  return loading;
-}
-
-async function storyboardLoadCompilerWorldBook(book, { initialize = false } = {}) {
-  const state = storyboardState();
-  const name = String(book || '').trim();
-  if (!name) return [];
-  let entries = storyboardWorldEntryCache.books[name];
-  if (!Array.isArray(entries)) {
-    entries = await getWorldBookEntries(name).catch(() => []);
-    storyboardWorldEntryCache.books[name] = entries;
-    contextScanCache.worldBooks[name] = entries;
-  }
-  const otherRows = storyboardWorldEntryCache.rows.filter((row) => row.book !== name);
-  const rows = (entries || []).map((item, index) => ({ id: storyboardWorldEntryId(name, item, index), book: name, title: storyboardWorldEntryTitle(item, index), item, index }))
-    .filter((row) => row.item?.enabled !== false && row.item?.disable !== true);
-  storyboardWorldEntryCache.rows = [...otherRows, ...rows].slice(0, 1000);
-  if (initialize && !state.promptCompiler.worldBookInitializedNames.includes(name)) {
-    const selected = new Set(state.promptCompiler.worldEntryIds || []);
-    rows.forEach((row) => selected.add(row.id));
-    state.promptCompiler.worldEntryIds = [...selected].slice(0, 1000);
-    state.promptCompiler.worldBookInitializedNames = uniqueClean([...(state.promptCompiler.worldBookInitializedNames || []), name]).slice(0, 100);
-  }
-  return rows;
+async function storyboardPrepareWorldContext(state,inputGuard) {
+  return storyboardWorldbookRuntime().prepare(state,inputGuard);
 }
 
 function renderStoryboardAutomationCard(state) {
@@ -13832,28 +13775,7 @@ function renderStoryboardContextCard(state) {
   </details>`;
 }
 
-function renderStoryboardWorldbookCard(state) {
-  const names = storyboardWorldEntryCache.names || [];
-  const selectedBooks = new Set(state.promptCompiler.worldBookNames || []);
-  const selectedEntries = new Set(state.promptCompiler.worldEntryIds || []);
-  const viewName = names.includes(state.promptCompiler.worldBookView)
-    ? state.promptCompiler.worldBookView
-    : [...selectedBooks].find((name) => names.includes(name)) || '';
-  const bookRows = names.map((name) => `<div class="sd-source-row sd-world-row ${viewName === name ? 'sd-world-viewing' : ''}">
-    <input type="checkbox" class="sd-storyboard-toggle-worldbook" data-name="${htmlEscape(name)}" ${selectedBooks.has(name) ? 'checked' : ''} title="选中作为分镜参考">
-    <button type="button" class="sd-storyboard-world-name" data-name="${htmlEscape(name)}"><span>${htmlEscape(name)}</span>${storyboardWorldEntryCache.boundNames.includes(name) ? badge('当前绑定') : ''}</button>
-  </div>`).join('');
-  const entryRows = viewName ? (storyboardWorldEntryCache.rows || []).filter((row) => row.book === viewName).map((row) => `<details class="sd-source-row sd-context-item sd-unified-source-entry" data-storyboard-card="worldbook-entry-${hashText(row.id)}" ${state.collapsedCards[`worldbook-entry-${hashText(row.id)}`] === false ? 'open' : ''}><summary><label class="sd-context-entry-label"><input type="checkbox" data-storyboard-world-entry="${htmlEscape(row.id)}" ${selectedEntries.has(row.id) ? 'checked' : ''} ${selectedBooks.has(viewName) ? '' : 'disabled'}><span>${htmlEscape(row.title)}</span></label></summary><pre>${htmlEscape(cleanContextText(row.item?.content || row.item?.text || '').slice(0, 2000))}</pre></details>`).join('') : '';
-  const body = storyboardWorldEntryCache.loading
-    ? '<div class="sd-storyboard-empty-inline">正在读取世界书…</div>'
-    : storyboardWorldEntryCache.error
-      ? `<div class="sd-storyboard-empty-inline">${htmlEscape(storyboardWorldEntryCache.error)}</div>`
-      : names.length ? `<div class="sd-storyboard-worldbook-picker"><details class="sd-dropdown" data-storyboard-card="worldbook-directory" ${state.collapsedCards['worldbook-directory'] ? '' : 'open'}><summary class="sd-dropdown-head"><span>世界书目录</span><b>${selectedBooks.size} 项</b></summary><div class="sd-dropdown-body sd-scroll">${bookRows}</div></details></div>${viewName ? `<details class="sd-dropdown sd-storyboard-worldbook-entries" data-storyboard-card="worldbook-entries" ${state.collapsedCards['worldbook-entries'] ? '' : 'open'}><summary class="sd-dropdown-head"><span>世界书条目</span><b>${htmlEscape(viewName)}</b></summary><div class="sd-dropdown-body sd-scroll sd-storyboard-worldbook-entry-list">${entryRows || '<p class="sd-muted">暂无条目</p>'}</div></details>` : '<div class="sd-storyboard-empty-inline">选择一本世界书后查看条目。</div>'}` : '<div class="sd-storyboard-empty-inline">未读取到世界书。</div>';
-  return `<details class="sd-card sd-storyboard-worldbook-card" data-storyboard-card="worldbook" ${state.collapsedCards.worldbook ? '' : 'open'}>
-    <summary><span><b>世界书</b></span><button type="button" class="sd-icon-btn sd-icon-sm sd-storyboard-refresh-worldbooks" title="重新读取世界书" aria-label="重新读取世界书"><i class="fa-solid fa-rotate"></i></button></summary>
-    <div class="sd-storyboard-card-body">${body}</div>
-  </details>`;
-}
+function renderStoryboardWorldbookCard(state) { return storyboardWorldbookRuntime().render(state); }
 
 function renderStoryboardCompositionCard(state) {
   return `<section class="sd-card sd-storyboard-composition-card" data-storyboard-card="composition"><div class="sd-storyboard-card-body">${renderCompositionSelector(state)}</div></section>`;
@@ -18499,21 +18421,7 @@ function storyboardTargetFloor(state) {
   return storyboardCurrentAssistantFloor();
 }
 
-async function storyboardCompilerWorldText(state) {
-  const requestedBooks = new Set(state.promptCompiler.worldBookNames || []);
-  const requested = new Set(state.promptCompiler.worldEntryIds || []);
-  const rows = await storyboardWarmCompilerWorldEntries();
-  for (const book of requestedBooks) await storyboardLoadCompilerWorldBook(book);
-  const availableRows = storyboardWorldEntryCache.rows.length ? storyboardWorldEntryCache.rows : rows;
-  const selected = availableRows.filter((row) => requestedBooks.has(row.book) && requested.has(row.id));
-  if([...requested].some(id=>[...requestedBooks].some(book=>id.startsWith(book+'::'))&&!selected.some(row=>row.id===id)))throw Object.assign(new Error('部分已选世界书条目未能读取，请刷新后重试；未发送不完整上下文。'),{code:'storyboard_context_unavailable'});
-  const resolved = [];
-  for (const row of selected) {
-    const content = storyboardCleanMessageText(await resolveMacro(String(row.item?.content || '')));
-    if (content) resolved.push(`【${row.book} · ${row.title}】\n${content}`);
-  }
-  return { text: resolved.join('\n\n'), rows: selected, fallback: false };
-}
+async function storyboardCompilerWorldText(state,inputGuard) { return storyboardWorldbookRuntime().read(state,inputGuard); }
 
 function storyboardCreatePreparationGuard(state, options = {}) {
   return createStoryboardPreparationGuard(state,options,{
@@ -18581,7 +18489,7 @@ async function storyboardCompilerContext(state, inputGuard) {
   const forcedParagraphIndex = forcedParagraphIndexes.length ? forcedParagraphIndexes.at(-1) : !inputGuard.stream && state.paragraphMode === 'manual' && Number.isInteger(state.manualParagraphIndex)
     ? Math.max(0, Math.min(Math.max(0, paragraphs.length - 1), state.manualParagraphIndex))
     : null;
-  const worldResult = await storyboardCompilerWorldText(state);
+  const worldResult = await storyboardCompilerWorldText(state,inputGuard);
   inputGuard?.assertCurrent();
   const includeReferences = inputGuard?.ensemble?.useReference === true
     || (state.source === 'novel' && state.profiles?.novel?.characterReferenceEnabled === true);
@@ -18773,6 +18681,7 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     }
     resolveStoryboardProfileBinding(state.source, profile);
     inputGuard=storyboardCreatePreparationGuard(state, { plan, requireCompiler: true, freshComfy: true, stream });
+    await storyboardPrepareWorldContext(state,inputGuard);
     interruption=await interruptionPromise;
     inputGuard.assertCurrent();
     storyboardSetPlanStatus(plan, 'compiling');
@@ -23032,36 +22941,7 @@ function bindStoryboardTabEvents(root) {
     state.promptCompiler.excludedTags = state.promptCompiler.tagRules.filter((rule) => rule.action === 'remove').map((rule) => rule.name).join(', ');
     saveSettings(); renderModal();
   });
-  root.querySelector('.sd-storyboard-refresh-worldbooks')?.addEventListener('click', async (event) => {
-    event.preventDefault(); event.stopPropagation();
-    await storyboardWarmCompilerWorldEntries({ rerender: true, force: true });
-  });
-  root.querySelectorAll('.sd-storyboard-toggle-worldbook').forEach((input) => input.addEventListener('change', async () => {
-    const name = String(input.dataset.name || '');
-    const selected = new Set(state.promptCompiler.worldBookNames || []);
-    if (input.checked) {
-      selected.add(name);
-      state.promptCompiler.worldBookView = name;
-      await storyboardLoadCompilerWorldBook(name, { initialize: true });
-    } else {
-      selected.delete(name);
-      if (state.promptCompiler.worldBookView === name) state.promptCompiler.worldBookView = [...selected][0] || '';
-    }
-    state.promptCompiler.worldBookNames = [...selected].slice(0, 100);
-    saveSettings(); renderModal();
-  }));
-  root.querySelectorAll('.sd-storyboard-world-name').forEach((button) => button.addEventListener('click', async () => {
-    const name = String(button.dataset.name || '');
-    await storyboardLoadCompilerWorldBook(name);
-    state.promptCompiler.worldBookView = name;
-    saveSettings(); renderModal();
-  }));
-  root.querySelectorAll('[data-storyboard-world-entry]').forEach((input) => input.addEventListener('change', () => {
-    const selected = new Set(state.promptCompiler.worldEntryIds || []);
-    if (input.checked) selected.add(input.dataset.storyboardWorldEntry); else selected.delete(input.dataset.storyboardWorldEntry);
-    state.promptCompiler.worldEntryIds = [...selected].slice(0, 1000);
-    saveSettings();
-  }));
+  storyboardWorldbookRuntime().bind(root);
   root.querySelector('.sd-storyboard-prompt-preset')?.addEventListener('change', (event) => storyboardLoadPromptPreset(String(event.target.value || '')));
   root.querySelector('.sd-storyboard-open-prompt-library')?.addEventListener('click', () => {
     storyboardCaptureWorkbench(root);

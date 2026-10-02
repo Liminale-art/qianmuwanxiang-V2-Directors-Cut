@@ -1,4 +1,4 @@
-import {createStoryboardDefaults,migrateStoryboardState,normalizeStoryboardState,normalizeStoryboardGenerationPolicy,normalizeStoryboardConnectionProfile,STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_PIPELINE_LOG_LIMIT,STORYBOARD_SCHEMA_VERSION} from './qianmu-storyboard.js';
+import {createStoryboardDefaults,migrateStoryboardState,normalizeStoryboardState,normalizeStoryboardGenerationPolicy,normalizeStoryboardConnectionProfile,STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_PIPELINE_LOG_LIMIT,STORYBOARD_SCHEMA_VERSION} from './qianmu-storyboard.js?v=1.59.427';
 import {mergeStoryboardParameterMemory,assertStoryboardMemoryIdentitiesRetained,mergeStoryboardPromptDefaults,captureStoryboardPresetData,assertStoryboardPresetDataRetained} from './qianmu-storyboard-package-presets.js';
 import {STORYBOARD_RELATION_FIELDS,captureStoryboardRelationData,assertStoryboardRelationsRetained,mergeStoryboardParameterSelection} from './qianmu-storyboard-package-relations.js';
 import {captureStoryboardHistoryData,assertStoryboardHistoryRetained} from './qianmu-storyboard-package-history.js';
