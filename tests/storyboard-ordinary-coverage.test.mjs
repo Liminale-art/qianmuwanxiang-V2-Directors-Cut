@@ -5,9 +5,10 @@ import * as core from '../qianmu-storyboard.js';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardStreamMoment} from '../qianmu-storyboard-stream-moment.js?v=1.59.224';
-import {importCurrentRuntime} from './helpers/current-runtime.mjs';
-const {verifyStoryboardStreamReference} = await importCurrentRuntime('qianmu-storyboard-stream-reference.js');
-const {readStoryboardStreamCoverage,configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,storyboardStreamCoverageScope,storyboardStreamStyleHistory} = await importCurrentRuntime('qianmu-storyboard-stream-coverage.js');
+// Match compiler-sources' pinned imports: coverage receipts belong to its ESM
+// instance, not a second WeakMap selected from the current release manifest.
+import {verifyStoryboardStreamReference} from '../qianmu-storyboard-stream-reference.js?v=1.59.414';
+import {readStoryboardStreamCoverage,configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative,storyboardStreamCoverageScope,storyboardStreamStyleHistory} from '../qianmu-storyboard-stream-coverage.js?v=1.59.414';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const namespace='st-user:test';
 async function fixture({legacy=false}={}){

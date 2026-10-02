@@ -489,7 +489,7 @@ test('grounding repair receives only the affected original floor, not unrelated 
   const result=await f.run({call:async(messages,definition)=>{
     if(definition.schemaId===EXPRESSION)return JSON.stringify(f.expression());
     repairCalls++;const payload=JSON.parse(messages[1].content);
-    assert.equal(payload.errors[0].code,'source_evidence');assert.equal(payload.errors[0].path,'$.source_states[0]');
+    assert.equal(payload.errors[0].code,'source_evidence');assert.equal(payload.errors[0].path,'$.source_states[0].events[0].evidence');assert.equal(payload.errors[0].detail,'evidence_not_found');
     assert.deepEqual(payload.context.evidence_sources.map(row=>row.floor),[0]);
     assert.equal(payload.context.evidence_sources[0].passages[0].text,'A removes the coat.');
     assert.doesNotMatch(JSON.stringify(payload.context),/UNRELATED|user description|selected world|st-user:synthetic/);

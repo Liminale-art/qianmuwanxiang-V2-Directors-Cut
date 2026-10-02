@@ -2,24 +2,39 @@ import {STORYBOARD_NARRATIVE_LAYERS,STORYBOARD_CONTINUITY_FACT_CATEGORIES,STORYB
 
 export const STORYBOARD_CONTINUITY_EVENTS_SCHEMA='qianmu.storyboard.continuity-events.v1';
 export const STORYBOARD_CONTINUITY_EVENT_LIMITS=Object.freeze({events:80,paragraphs:1000,characters:200000,branches:40,subjects:80});
-const fail=(code,message)=>{throw Object.assign(Error(message),{code:'storyboard_continuity_'+code});};
+const fail=(code,message,continuityDiagnostic)=>{throw Object.assign(Error(message),{code:'storyboard_continuity_'+code,...(continuityDiagnostic?{continuityDiagnostic:freeze(continuityDiagnostic)}:{})});};
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&Object.keys(v).every(k=>keys.includes(k));
 function text(v,max){
   if(typeof v!=='string'||!v.trim()||v.length>max||v.includes('\0'))return false;
   for(const char of v)if(char.length===1&&char.charCodeAt(0)>=0xd800&&char.charCodeAt(0)<=0xdfff)return false;return true;
 }
 const id=v=>text(v,160)&&v===v.trim()&&!/[\u0000-\u001f\u007f]/.test(v);
-function unique(values,limit,key){
+function unique(values,limit,key,diagnostic){
   if(!Array.isArray(values)||values.length>limit)fail('scope','变化输入超出范围，未截断');
-  const map=new Map();for(const value of values){const name=key(value);if(!id(name)||map.has(name))fail('scope','变化来源编号缺失或重复');map.set(name,value);}return map;
+  const map=new Map();for(let index=0;index<values.length;index++){const value=values[index],name=key(value,index);if(!id(name)||map.has(name))fail('scope','变化来源编号缺失或重复',diagnostic?.(index));map.set(name,value);}return map;
 }
 function freeze(value){if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;}
 const comparePoints=(a,b)=>a.index-b.index||a.offset-b.offset;
 // Unlike the legacy human-name ledger, subject IDs are exact roster keys.
 const factSlot=fact=>JSON.stringify([fact.category,fact.subject,fact.key.toLowerCase()]);
-function locate(paragraph,evidence){
+const eventDiagnostic=(index,field,reason)=>({path:`$.events[${index}]${field?'.'+field:''}`,reason});
+function locate(paragraph,evidence,index,sources){
   const start=paragraph.indexOf(evidence);
-  if(start<0||paragraph.indexOf(evidence,start+1)!==-1)fail('grounding','变化证据未唯一匹配正文，请提供可定位的原句');
+  if(start<0||paragraph.indexOf(evidence,start+1)!==-1){
+    const diagnostic=Number.isSafeInteger(index)?eventDiagnostic(index,'evidence',start<0?'evidence_not_found':'evidence_not_unique'):undefined;
+    if(diagnostic&&start<0){
+      // A hint is not a correction. Every paragraph containing the exact quote
+      // counts, including ones with repeated matches; none may be skipped to
+      // manufacture a unique candidate. Only canonical local paragraph IDs
+      // may leave this validator, never prose or other user-supplied keys.
+      const candidates=[...sources.values()].filter(row=>row.text.includes(evidence));
+      if(candidates.length===1){
+        const row=candidates[0],offset=row.text.indexOf(evidence);
+        if(/^P[1-9]\d*$/.test(row.id)&&row.text.indexOf(evidence,offset+1)===-1)diagnostic.candidateParagraphIds=[row.id];
+      }
+    }
+    fail('grounding','变化证据未唯一匹配正文，请提供可定位的原句',diagnostic);
+  }
   return start+evidence.length;
 }
 
@@ -40,14 +55,21 @@ export function bindStoryboardContinuityEvents(events,{messageRef,chatKey,paragr
     if(!exact(b,['id','layer'])||!STORYBOARD_NARRATIVE_LAYERS.includes(b.layer))fail('branch','变化叙事分支无效');return b.id;
   });
   const subjects=unique(subjectIds,STORYBOARD_CONTINUITY_EVENT_LIMITS.subjects,value=>value);
-  const eventMap=unique(events,STORYBOARD_CONTINUITY_EVENT_LIMITS.events,event=>{
-    if(!exact(event,['id','branchId','paragraphId','subjectId','category','key','value','persistence','evidence'])||!branchMap.has(event.branchId)||!sources.has(event.paragraphId)||!subjects.has(event.subjectId)
-      ||!STORYBOARD_CONTINUITY_FACT_CATEGORIES.includes(event.category)||!STORYBOARD_CONTINUITY_FACT_PERSISTENCE.includes(event.persistence)||!text(event.key,120)||event.key!==event.key.trim()
-      ||!text(event.value,1000)||event.value!==event.value.trim()||!text(event.evidence,1000)||event.evidence!==event.evidence.trim())fail('event','变化字段或来源引用无效');return event.id;
-  });
+  const eventIndexes=new Map(),fields=['id','branchId','paragraphId','subjectId','category','key','value','persistence','evidence'];
+  const eventMap=unique(events,STORYBOARD_CONTINUITY_EVENT_LIMITS.events,(event,index)=>{
+    const invalid=(field,reason)=>fail('event','变化字段或来源引用无效',eventDiagnostic(index,field,reason));
+    if(!exact(event,fields))invalid(event&&typeof event==='object'&&!Array.isArray(event)?fields.find(field=>!Object.hasOwn(event,field))||'':'','event_shape');
+    if(!branchMap.has(event.branchId))invalid('branchId','unknown_branch');
+    if(!sources.has(event.paragraphId))invalid('paragraphId','unknown_paragraph');
+    if(!subjects.has(event.subjectId))invalid('subjectId','unknown_subject');
+    if(!STORYBOARD_CONTINUITY_FACT_CATEGORIES.includes(event.category))invalid('category','invalid_field');
+    if(!STORYBOARD_CONTINUITY_FACT_PERSISTENCE.includes(event.persistence))invalid('persistence','invalid_field');
+    for(const [field,max] of [['key',120],['value',1000],['evidence',1000]])if(!text(event[field],max)||event[field]!==event[field].trim())invalid(field,'invalid_field');
+    eventIndexes.set(event.id,index);return event.id;
+  },index=>eventDiagnostic(index,'id','invalid_field'));
   const bound=[...eventMap.values()].map(event=>{
     return {id:event.id,branchId:event.branchId,narrativeLayer:branchMap.get(event.branchId).layer,
-      point:{paragraphId:event.paragraphId,index:positions.get(event.paragraphId),offset:locate(sources.get(event.paragraphId).text,event.evidence)},
+      point:{paragraphId:event.paragraphId,index:positions.get(event.paragraphId),offset:locate(sources.get(event.paragraphId).text,event.evidence,eventIndexes.get(event.id),sources)},
       fact:normalizeStoryboardContinuityFact({id:event.id,subject:event.subjectId,category:event.category,key:event.key,value:event.value,persistence:event.persistence,evidence:event.evidence,
         sourceParagraphIds:[event.paragraphId],sourceFloor:ref.lastKnownFloor,status:'active'})};
   }).sort((a,b)=>comparePoints(a.point,b.point));
@@ -55,7 +77,7 @@ export function bindStoryboardContinuityEvents(events,{messageRef,chatKey,paragr
     // Two contrary assignments at the same textual instant must be repaired,
     // not arbitrarily resolved by JSON array order or object sorting.
     const slot=JSON.stringify([event.branchId,event.point.index,event.point.offset,factSlot(event.fact)]);
-    if(slots.has(slot))fail('conflict','同一时点的状态槽重复，请重新核对变化');slots.add(slot);event.fact.order=index;
+    if(slots.has(slot))fail('conflict','同一时点的状态槽重复，请重新核对变化',eventDiagnostic(eventIndexes.get(event.id),'','event_conflict'));slots.add(slot);event.fact.order=index;
   });
   return freeze({schema:STORYBOARD_CONTINUITY_EVENTS_SCHEMA,messageRef:ref,branches:[...branchMap.values()].map(b=>({...b})),events:bound});
 }
