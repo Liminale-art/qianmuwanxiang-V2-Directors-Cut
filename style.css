@@ -1328,6 +1328,11 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   border-radius: 999px; background: currentColor; transform: translate(-50%, 50%);
 }
 #story-director-modal .sd-tab.active .sd-tab-mark { opacity: 1; }
+#story-director-modal .sd-tab-dot {
+  position: absolute; pointer-events: none; opacity: 0;
+  bottom: 7px; left: 50%; width: 5px; height: 5px;
+  border-radius: 50%; background: currentColor; transform: translate(-50%, 50%);
+}
 #story-director-modal .sd-tab-capsule {
   display: none; position: absolute; pointer-events: none; overflow: visible;
   inset: 5px 4px; width: calc(100% - 8px); height: calc(100% - 10px); opacity: 0;

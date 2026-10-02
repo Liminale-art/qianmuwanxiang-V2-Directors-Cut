@@ -51,7 +51,7 @@ function animationFixture(theme='classic'){
  const calls=[],animations=[];
  const node=(kind,width=40)=>({getBoundingClientRect:()=>({width}),animate(frames,options){calls.push({kind,frames,options});const animation={cancelled:false,cancel(){this.cancelled=true;}};animations.push(animation);return animation;}});
  const before={dataset:{tab:'a'},style:{},getBoundingClientRect:()=>({left:0,width:60}),querySelector:()=>node('old-mark',40)};
- const parts={'.sd-tab-mark':node('mark'),'.sd-tab-label':node('label'),'.sd-tab-capsule rect':node('capsule')};
+ const parts={'.sd-tab-mark':node('mark'),'.sd-tab-dot':node('dot',5),'.sd-tab-label':node('label'),'.sd-tab-capsule rect':node('capsule')};
  const next={dataset:{tab:'b'},style:{},getBoundingClientRect:()=>({left:64,width:60}),querySelector:selector=>parts[selector],animate:()=>assert.fail('never animate a button')};
  const bar={children:[before,next],dataset:{},querySelector:()=>next,closest:()=>({dataset:{qmTheme:theme}})};
  return {bar,calls,animations,parts};
@@ -59,11 +59,14 @@ function animationFixture(theme='classic'){
 
 test('classic marker travels as a longer line, contracts into a dot, then becomes a line',()=>{
  const {bar,calls}=animationFixture();animateQianmuTabSelection(bar,'a');
- assert.equal(calls.length,1);assert.equal(calls[0].kind,'mark');
+ assert.deepEqual(calls.map(call=>call.kind),['mark','dot']);
  const {frames,options}=calls[0];assert.equal(options.duration,360);
- assert.equal(frames[0].width,'40px');assert.match(frames[0].transform,/-64px/);
- assert.equal(frames[1].width,'5px');assert.equal(frames[1].height,'5px');assert.equal(frames[2].width,'5px');
- assert.equal(frames.at(-1).width,'40px');assert.equal(frames.at(-1).height,'2.5px');assert.equal(frames.at(-1).transform,'translate(-50%, 50%)');
+ assert.match(frames[0].transform,/-64px/);assert.match(frames[0].transform,/scaleX\(1\)/);
+ assert.equal(frames[1].opacity,0);assert.equal(frames[2].opacity,0);assert.match(frames[1].transform,/scaleX\(0\.125\)/);
+ assert.equal(frames.at(-1).opacity,1);assert.equal(frames.at(-1).transform,'translate(-50%, 50%) scaleX(1)');
+ const dot=calls[1];assert.equal(dot.options.duration,360);assert.deepEqual(dot.frames.map(frame=>frame.opacity),[0,1,1,0]);
+ assert.ok(dot.frames.every(frame=>!frame.transform.includes('scale')),'the circle never squashes into an ellipse');
+ assert.ok(calls.every(call=>call.frames.every(frame=>Object.keys(frame).every(key=>['transform','opacity','offset'].includes(key)))),'classic animates only composite-friendly transform/opacity, never dimensions');
 });
 
 test('glass traces a normalized capsule outline; paper only raises its label and grows the dot',()=>{
@@ -80,10 +83,50 @@ test('rapid selections replace decoration animations, and reduced motion cancels
  const fixture=animationFixture(),old=globalThis.matchMedia;
  try{
   globalThis.matchMedia=()=>({matches:false});animateQianmuTabSelection(fixture.bar,'a');
-  animateQianmuTabSelection(fixture.bar,'a');assert.equal(fixture.calls.length,2);assert.equal(fixture.animations[0].cancelled,true);assert.equal(fixture.animations[1].cancelled,false);
+  animateQianmuTabSelection(fixture.bar,'a');assert.equal(fixture.calls.length,4);assert.ok(fixture.animations.slice(0,2).every(animation=>animation.cancelled));assert.ok(fixture.animations.slice(2).every(animation=>!animation.cancelled));
   globalThis.matchMedia=()=>({matches:true});animateQianmuTabSelection(fixture.bar,'a');
-  assert.equal(fixture.calls.length,2);assert.equal(fixture.animations[1].cancelled,true);
+  assert.equal(fixture.calls.length,4);assert.ok(fixture.animations.every(animation=>animation.cancelled));
  }finally{if(old)globalThis.matchMedia=old;else delete globalThis.matchMedia;}
+});
+
+test('quiet same-tab repaints retain ongoing motion, but a theme change cancels it',()=>{
+ const fixture=animationFixture();animateQianmuTabSelection(fixture.bar,'a');
+ animateQianmuTabSelection(fixture.bar,'b');assert.equal(fixture.calls.length,2);assert.ok(fixture.animations.every(animation=>!animation.cancelled));
+ fixture.bar.closest=()=>({dataset:{qmTheme:'glass'}});animateQianmuTabSelection(fixture.bar,'b');
+ assert.ok(fixture.animations.every(animation=>animation.cancelled));assert.equal(fixture.calls.length,2);
+});
+
+test('reduced motion cancels even a quiet same-tab repaint',()=>{
+ const fixture=animationFixture(),old=globalThis.matchMedia;
+ try{
+  globalThis.matchMedia=()=>({matches:false});animateQianmuTabSelection(fixture.bar,'a');
+  globalThis.matchMedia=()=>({matches:true});animateQianmuTabSelection(fixture.bar,'b');
+  assert.equal(fixture.calls.length,2);assert.ok(fixture.animations.every(animation=>animation.cancelled));
+ }finally{if(old)globalThis.matchMedia=old;else delete globalThis.matchMedia;}
+});
+
+test('retained sizing cache does not remeasure every button on a quiet repaint',()=>{
+ const old=globalThis.getComputedStyle;let measures=0,reads=0;
+ globalThis.getComputedStyle=()=>{reads++;return{font:'13.5px serif',gap:'4px',columnGap:'4px'};};
+ try{
+  const tabs=Array.from({length:8},()=>({style:{},getBoundingClientRect:()=>{measures++;return{width:54};}})),bar={children:tabs,clientWidth:344,scrollLeft:13,dataset:{}};
+  sizeQianmuTabs(bar);for(let i=0;i<10;i++)sizeQianmuTabs(bar);
+  assert.equal(measures,8);assert.equal(reads,11,'one inherited font read detects genuine font changes');assert.equal(bar.scrollLeft,13);
+ }finally{if(old)globalThis.getComputedStyle=old;else delete globalThis.getComputedStyle;}
+});
+
+test('rapid reversal takes the current painted marker center and opacity before replacing motion',()=>{
+ const fixture=animationFixture(),old=globalThis.getComputedStyle;
+ try{
+  animateQianmuTabSelection(fixture.bar,'a');fixture.animations.forEach(animation=>animation.playState='running');
+  const oldLine={getBoundingClientRect:()=>({left:52.5,width:5}),opacity:'0'},oldDot={opacity:'1'};
+  fixture.bar.children[0].querySelector=selector=>selector==='.sd-tab-dot'?oldDot:oldLine;
+  globalThis.getComputedStyle=node=>({opacity:node.opacity});
+  animateQianmuTabSelection(fixture.bar,'a');
+  assert.match(fixture.calls[2].frames[0].transform,/-39px/,'painted center55 to next center94, not old button center');
+  assert.equal(fixture.calls[2].frames[0].opacity,0);assert.equal(fixture.calls[3].frames[0].opacity,1);
+  assert.match(fixture.calls[2].frames[0].transform,/scaleX\(0\.125\)/);
+ }finally{if(old)globalThis.getComputedStyle=old;else delete globalThis.getComputedStyle;}
 });
 
 test('resizing cancels stale travel geometry; all unsupported-animation paths keep the static selection usable',()=>{
@@ -100,6 +143,7 @@ test('resizing cancels stale travel geometry; all unsupported-animation paths ke
 test('selection decorations are aria hidden; CSS has no gradient rail, folder silhouette, or moving hitbox',()=>{
  const markup=renderQianmuMainTabs([['one','世界']], 'one');
  assert.match(markup,/<span class="sd-tab-mark" aria-hidden="true"><\/span>/);
+ assert.match(markup,/<span class="sd-tab-dot" aria-hidden="true"><\/span>/);
  assert.match(markup,/<svg class="sd-tab-capsule" aria-hidden="true" focusable="false">/);
  assert.match(markup,/pathLength="1"/);
  assert.match(markup,/ry="50%"/,'one vertical radius defines circular ends instead of an elliptical outline');

@@ -21,7 +21,7 @@ import {renderGalleryKeywordEntry,bindGalleryKeywordEntry,renderGalleryKeywordFi
 import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor} from './qianmu-composition-schemes-view.js';
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
-import {renderQianmuMainTabs,sizeQianmuTabs,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.419';
+import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.414';
@@ -296,7 +296,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.420';
+const VERSION = '1.59.421';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -6916,6 +6916,7 @@ function renderModal() {
   const editorLayout = !!editorView || (activeTab === 'theater' && !!theaterView);
   const storyboardLayout = activeTab === 'imagegen';
   const restoreStoryboardNav = preserveQianmuStoryboardNav(modal, storyboardLayout);
+  const restoreMainTabs = preserveQianmuMainTabs(modal, !storyboardLayout);
   modal.className = `sd-theme-${themeKey}${wasOpen ? ' open' : ''}${animIn ? ' sd-anim-in' : ''}${storyboardLayout ? ' sd-storyboard-mode' : ''}`;
   modal.innerHTML = `
     <div class="sd-backdrop"></div>
@@ -6942,6 +6943,7 @@ function renderModal() {
       `}
     </section>`;
   restoreStoryboardNav();
+  restoreMainTabs();
   appearanceSession.mount(modal);
   applyQianmuIcons(modal); featureRuntime.bindIntent(modal);
   // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
@@ -6973,13 +6975,13 @@ function renderModal() {
     renderModal();   // 不支持弱引用的旧浏览器维持原经典行为
     syncNotesTheme();
   }, appearanceSession.supported ? {read:()=>({...readAppearancePreferences(settings),classic:currentHiveThemeKey()}),status:()=>appearanceSession.status,sync:()=>appearanceSession.sync(),retry:()=>appearanceSession.retry(),change:patch=>changeQianmuAppearance({settings,patch,session:appearanceSession,save:saveSettings})} : null);
-  modal.querySelectorAll('.sd-tab').forEach((el) => el.addEventListener('click', () => {
+  bindQianmuMainTabNavigation(modal, (el) => {
     focusClockCloseVoiceDrawer();
     if (el.dataset.tab !== 'theater') theaterView = null;
     editorView = null;   // 切标签即退出行内编辑视图
     activeTab = el.dataset.tab;
     renderModal();
-  }));
+  });
   bindActiveTabEvents(modal);
   refreshDirectorLiveUI();
   focusClockLockGuard?.sync();
@@ -7001,7 +7003,6 @@ function renderModal() {
   // 保留标签栏横向滚动位置，并确保激活标签可见；两端按可滚动方向显隐渐隐遮罩
   const tabsBar = modal.querySelector('.sd-tabs');
   if (tabsBar) {
-    sizeQianmuTabs(tabsBar);
     tabsBar.scrollLeft = prevTabScroll;
     keepQianmuTabVisible(tabsBar);
     updateTabsFade(tabsBar);

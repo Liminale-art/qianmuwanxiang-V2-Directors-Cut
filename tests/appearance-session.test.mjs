@@ -139,7 +139,7 @@ test('stylesheet ownership removes handlers on success, failure and cancellation
 
 test('production mounts use explicit lifecycle boundaries and keep the classic notes sync order', async () => {
     const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-    assert.match(entry, /restoreStoryboardNav\(\);\s*appearanceSession\.mount\(modal\);/);
+    assert.match(entry, /restoreStoryboardNav\(\);\s*restoreMainTabs\(\);\s*appearanceSession\.mount\(modal\);/);
     assert.match(entry, /function syncNotesTheme\(\) \{\s*void appearanceSession\.sync\(\);\s*syncQianmuNotesTheme\([\s\S]*?appearanceSession\.mountNotes\(document\);/);
     assert.match(entry, /bindFloatingNoteEvents\(layer\);\s*appearanceSession\.mountNotes\(document\);/);
     assert.match(entry, /applyFloatPosition\(btn\);\s*appearanceSession\.mount\(btn,\{role:'hive-main'\}\);/);

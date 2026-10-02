@@ -87,6 +87,7 @@
 #story-director-modal[data-qm-theme] .sd-tab.active { color: var(--qm-ink) !important; }
 #story-director-modal[data-qm-theme="editorial"] .sd-tab-mark { width: 5px; height: 5px; bottom: 6px; }
 #story-director-modal[data-qm-theme="editorial"] .sd-tab.active .sd-tab-label { transform: translateY(-2px); }
+#story-director-modal:is([data-qm-theme="editorial"], [data-qm-theme="glass"]) .sd-tab-dot { display: none; }
 #story-director-modal[data-qm-theme="glass"] .sd-tab-mark { display: none; }
 #story-director-modal[data-qm-theme="glass"] .sd-tab-capsule { display: block; }
 #story-director-modal[data-qm-theme="glass"] .sd-tab.active .sd-tab-capsule { opacity: 1; }
@@ -556,8 +557,8 @@ dialog.sd-comfy-route-dialog[data-qm-theme] {
 }
 #story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav button.active {
   width: var(--qm-nav-open);
-  background: var(--qm-ink);
-  color: var(--qm-bg);
+  background: var(--qm-accent);
+  color: var(--qm-on-accent);
 }
 #story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav button :is(i, .qm-glyph-icon) { flex: 0 0 18px; }
 #story-director-modal[data-qm-theme="glass"] .sd-storyboard-nav button span {

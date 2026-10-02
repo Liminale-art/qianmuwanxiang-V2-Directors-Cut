@@ -6,7 +6,8 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
-const ENTRY_RELEASE = '1.59.420';
+const ENTRY_RELEASE = '1.59.421';
+const moduleRelease = file => file === 'qianmu-main-tabs.js' ? ENTRY_RELEASE : ICONSAX_RELEASE;
 // Refresh the real reverse import closure of changed client modules, including
 // both consumers of the shared notes facade. Comment-only store edits do not
 // change its runtime identity; unrelated backend/provider URLs also stay put.
@@ -42,13 +43,13 @@ function localReferences(file, source) {
     });
 }
 
-test('the complete affected UI import closure uses one release URL, including shared notes and idle preloads', () => {
+test('affected modules use their intended release URL without duplicating shared notes or refreshing unchanged icons', () => {
   const inbound = new Set(), graph = new Map();
   for (const [file, source] of sources) {
     graph.set(file, localReferences(file, source));
     for (const {target, url} of graph.get(file)) {
       if (!changedNodes.has(target)) continue;
-      assert.equal(url.search, `?v=${ICONSAX_RELEASE}`, `${file} -> ${target}: refresh the literal child URL, not only its parent`);
+      assert.equal(url.search, `?v=${moduleRelease(target)}`, `${file} -> ${target}: refresh the literal child URL, not only its parent`);
       assert.equal(url.hash, '', `${file} -> ${target}: no fragment-based cache aliases`);
       inbound.add(target);
     }
