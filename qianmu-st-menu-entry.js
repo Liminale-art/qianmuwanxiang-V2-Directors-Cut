@@ -12,6 +12,8 @@ export function renderQianmuStMenuEntry({document=globalThis.document,enabled,id
  entry.dataset.qmStMenu='true';entry.dataset.qmIconPreserve='';entry.tabIndex=0;entry.setAttribute('role','button');entry.setAttribute('aria-label','千幕');
  const glyph=document.createElement('span');glyph.className='qm-st-menu-logo';glyph.innerHTML=QIANMU_HIVE_THEME_LOGO;
  const svg=glyph.querySelector('svg');svg?.setAttribute('aria-hidden','true');
+ // The shared hive vector starts hidden; the host menu has no hive theme gate.
+ svg?.style.setProperty('display','block');
  for(const shape of svg?.querySelectorAll('[fill],path')||[])shape.setAttribute('fill','currentColor');
  const label=document.createElement('span');label.textContent='千幕';entry.append(glyph,label);
  entry.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();
