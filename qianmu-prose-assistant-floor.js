@@ -1,6 +1,6 @@
 import {floorProseText} from './qianmu-prose-floor-entries.js?v=1.59.419';
 import {captureProseAssistantChatSource} from './qianmu-prose-assistant-source.js';
-import {loadLocalChunk,localChunkFailure} from './qianmu-feature-runtime.js?v=1.59.414';
+import {loadLocalChunk,localChunkFailure} from './qianmu-feature-runtime.js?v=1.59.425';
 
 // No model/UI imports or document observers until an explicit hive action.
 export function createProseAssistantFloorTools({getContext,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,assistantConfig,confirm,download,assistantSettings,saveAssistantSettings,assistantHistoryFactory,assistantConversationFactory}={}){

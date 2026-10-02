@@ -1,10 +1,10 @@
-import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.419';
+import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.425';
 import {createProseHive} from './qianmu-prose-hive.js?v=1.59.419';
 import {configureStAccountStorage} from './qianmu-st-account-storage.js';
-import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.419';
+import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.425';
 import {createProseAssistantRenameCoordinator} from './qianmu-prose-assistant-rename.js';
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.414';
-import {createTextCollectionHost} from './qianmu-text-collection-host.js?v=1.59.419';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.425';
+import {createTextCollectionHost} from './qianmu-text-collection-host.js?v=1.59.425';
 export {injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-entries.js?v=1.59.419';
 
 // One host refresh/cleanup path for the assistant and detached hive.

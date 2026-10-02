@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {openStoryboardCaptureChooser, closeStoryboardCaptureChooser} from '../qianmu-storyboard-capture-view.js';
+import {loadLocalChunk} from '../qianmu-feature-runtime.js';
+import {normalizeStoryboardParagraphSelection} from '../qianmu-storyboard.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 
 const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -117,6 +119,47 @@ test('actual entry forwards the same normalized selection contract without Popup
             assert.equal(value.selection?.normalized ?? null, choice.mode === 'auto' ? null : true); }
     }
     assert.doesNotMatch(chooser, /Popup|promptInput|catch\s*\(/);
+});
+
+test('real entry opens through the production local loader and renderer, then cancels or returns actual paragraph selection', {timeout: 5000}, async t => {
+    const start = entry.indexOf('async function storyboardChooseCaptureMode(');
+    const chooser = entry.slice(start, entry.indexOf('\nasync function storyboardEditPrompt(', start));
+    for (const action of ['cancel', 'manual']) {
+        const dom = textCollectionDom(), trigger = dom.doc.createElement('button'); dom.doc.body.append(trigger); trigger.focus();
+        const querySelector = dom.doc.querySelector;
+        dom.doc.querySelector = selector => selector === '#chat .mes[mesid="0"] .mes_text' ? null : querySelector(selector);
+        const message = {mes: paragraphs.join('\n\n'), swipe_id: 0};
+        let mounted, mounts = 0, releases = 0;
+        const ready = new Promise(resolve => { mounted = resolve; });
+        const context = vm.createContext({storyboardCaptureView: null, initialized: true, isRuntimeOwner: () => true,
+            getChatKey: () => 'chat-a', ctx: () => ({chat: [message]}), storyboardMessageParagraphs: () => paragraphs,
+            normalizeStoryboardParagraphSelection, document: dom.doc,
+            // This is the real exported loader, including URL validation and its default dynamic import.
+            // Substituting a renderer object here previously hid a missing production allowlist entry.
+            loadLocalChunk, appearanceSession: {mountPortal(parent, options) {
+                mounts++; assert.equal(parent.isConnected, true); assert.equal(options.inheritTheme, true);
+                assert.ok(parent.querySelector('dialog')); mounted(); return () => releases++;
+            }}});
+        vm.runInContext(chooser, context);
+        t.after(() => context.storyboardCaptureView?.closeStoryboardCaptureChooser(dom.doc));
+        const result = context.storyboardChooseCaptureMode(0, message);
+        await Promise.race([ready, result.then(() => assert.fail('The entry settled before opening its actual panel'))]);
+        assert.equal(dom.byClass('qm-storyboard-capture').open, true);
+        assert.equal(mounts, 1);
+        if (action === 'cancel') {
+            dom.get('关闭本层插画').click(); assert.equal(await result, null);
+        } else {
+            dom.get('手动选段补图').click();
+            assert.equal(dom.visible(dom.get('本层重新提取')), false);
+            dom.get('选择第 1 段').click(); dom.get('选择第 3 段').click(); dom.get('继续补图').click();
+            const choice = await result;
+            assert.equal(choice.mode, 'manual_supplement'); assert.equal(choice.paragraphIndex, 2);
+            assert.deepEqual(choice.selection.indexes, [0, 2]); assert.deepEqual(choice.selection.paragraphIds, ['p1', 'p3']);
+            assert.equal(choice.selection.insertAfterIndex, 2); assert.equal(choice.selection.version, 1);
+        }
+        assert.equal(releases, 1); assert.equal(dom.byClass('qm-storyboard-capture-portal'), undefined);
+        assert.equal(dom.doc.activeElement, trigger);
+    }
 });
 
 test('only owned native classes are styled, selected paragraphs have opaque paired colors, legacy Popup styling is removed', () => {

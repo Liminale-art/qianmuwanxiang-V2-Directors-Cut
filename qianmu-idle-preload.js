@@ -1,5 +1,5 @@
 // Code-only warming: no text reads, DOM construction, database access or model calls.
-import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.414';
+import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.425';
 export const QIANMU_IDLE_CHUNKS=Object.freeze([
  './qianmu-prose-assistant-panel.js?v=1.59.419','./qianmu-prose-assistant-native.js?v=1.59.414',
  './qianmu-character-archive-view.js?v=1.59.414',
