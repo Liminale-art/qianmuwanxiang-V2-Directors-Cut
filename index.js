@@ -296,7 +296,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.422';
+const VERSION = '1.59.423';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -22187,15 +22187,20 @@ async function storyboardChooseCaptureMode(floor, message, { reextract = false }
     wrap.querySelectorAll('input[name="storyboard-capture-mode"]').forEach((input) => input.addEventListener('change', () => {
       paragraphPanel.hidden = wrap.querySelector('input[name="storyboard-capture-mode"]:checked')?.value !== 'manual_supplement';
     }));
+    let releaseAppearance;
     try {
       const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '继续', cancelButton: '取消' });
-      const ok = await popup.show();
+      popup.dlg?.classList.add('sd-storyboard-capture-popup');
+      const shown = popup.show();
+      try { releaseAppearance = appearanceSession.mountPortal(popup.dlg, { inheritTheme: true }); } catch (_) { console.warn('[千幕] 本层插画外观未接入'); }
+      const ok = await shown;
       if (!ok) return null;
       const mode = wrap.querySelector('input[name="storyboard-capture-mode"]:checked')?.value === 'manual_supplement' ? 'manual_supplement' : 'auto';
       const indexes = rows.filter((input) => input.checked).map((input) => Number(input.value)).sort((a, b) => a - b);
       if (mode === 'manual_supplement' && !indexes.length) { toast('请至少选择一个正文段落。', 'warning'); return null; }
       return { mode, paragraphIndex: mode === 'manual_supplement' ? indexes.at(-1) : null, selection: mode === 'manual_supplement' ? normalizeStoryboardParagraphSelection({ mode, indexes, createdAt: Date.now() }) : null };
     } catch (_) { return null; }
+    finally { try { releaseAppearance?.(); } catch (_) { /* Detached host popup. */ } }
   }
   const mode = String(await promptInput('本层插画', '输入 auto 重新拍摄整层并生成新版（可能产生费用，旧作保留），或输入要补图的段落序号。', 'auto') ?? '').trim();
   if (!mode) return null;
