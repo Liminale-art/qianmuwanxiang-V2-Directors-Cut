@@ -51,6 +51,30 @@ test('official persona settings take precedence over a previous global snapshot'
   assert.equal(f.sandbox.getPersonaDescription(), 'official USER'); assert.equal(f.sandbox.getPersonaName(), 'USER');
 });
 
+test('an explicitly empty persona is authoritative and never resurrects legacy text or a named DOM global', () => {
+  const f = fixture(); f.context.powerUserSettings.persona_description = '';
+  f.context.persona_description = 'stale context';
+  Object.defineProperty(f.sandbox, 'persona_description', {get() { assert.fail('must not consult a named global for an official empty string'); }});
+  assert.equal(f.sandbox.getPersonaDescription(), '');
+});
+
+test('persona fallbacks accept only strings, preserve known empty values and keep the macro for unavailable text', () => {
+  for (const invalid of [undefined, null, false, 12, {}, [], () => 'not text']) {
+    const f = fixture(); f.context.powerUserSettings.persona_description = invalid;
+    f.context.persona_description = invalid; f.sandbox.persona_description = invalid;
+    assert.equal(f.sandbox.getPersonaDescription(), '{{persona}}');
+  }
+  const f = fixture(); delete f.context.powerUserSettings.persona_description;
+  f.context.persona_description = ''; f.sandbox.persona_description = 'stale named global';
+  assert.equal(f.sandbox.getPersonaDescription(), '');
+  f.context.persona_description = 'legacy {{user}}';
+  assert.equal(f.sandbox.getPersonaDescription(), 'legacy {{user}}');
+  delete f.context.persona_description;
+  assert.equal(f.sandbox.getPersonaDescription(), 'stale named global');
+  f.sandbox.persona_description = '';
+  assert.equal(f.sandbox.getPersonaDescription(), '');
+});
+
 test('official world names include real filenames and avoid the incorrect legacy GET request', async () => {
   const f = fixture(); assert.deepEqual(f.json(await f.sandbox.listWorldBooks()), ['Book file', 'settings']);
   assert.equal(f.calls.some(row => row[0] === 'fetch'), false);

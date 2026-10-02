@@ -67,6 +67,52 @@ test('extracted guard observes replaced settings and draft-key containers throug
   }
 });
 
+function installRealContextReaders(e, persona = '') {
+  const host = {chat:e.chat, mainApi:'openai', characterId:0, characters:[{description:'character'}], powerUserSettings:{persona_description:persona}};
+  // ST binds input on #persona_description. jQuery's enumerable event array has
+  // delegateCount, which Array.map in the guard's plain-data copy does not copy.
+  const handlers = [() => {}]; handlers.delegateCount = 0;
+  e.context.persona_description = {nodeType:1, jQueryFixture:{events:{input:handlers}, handle:() => {}}};
+  e.context.ctx = () => ({...host});
+  vm.runInContext(['getCharacterDescription','getPersonaDescription'].map(section).join('\n'), e.context);
+  return host;
+}
+
+test('real persona reader and guard remain current with an empty persona and a stable jQuery-backed named input', () => {
+  for (const persona of ['', undefined, 'available persona']) {
+    const e = environment(), host = installRealContextReaders(e, persona);
+    if (persona === undefined) delete host.powerUserSettings.persona_description;
+    const guard = e.context.storyboardCreatePreparationGuard(e.state);
+    try {
+      assert.equal(guard.isCurrent(), true);
+      guard.assertCurrent();
+      assert.equal(typeof e.context.getPersonaDescription(), 'string');
+    } finally { guard.dispose(); }
+  }
+});
+
+test('actual compiler preparation with real context readers reaches its mocked model once for an empty persona', async () => {
+  const e = environment(); installRealContextReaders(e);
+  assert.equal(await e.context.storyboardCompilePrompt(null, {plan:e.plan}), true);
+  assert.equal(e.calls.filter(call => call === 'llm').length, 1);
+  assert.equal(e.state.prompt, 'extracted prompt');
+});
+
+test('real context readers still reject persona, character and API changes without replacing the previous draft', {timeout:2000}, async () => {
+  for (const [persona, change] of [['', host => {host.powerUserSettings.persona_description = 'changed persona';}],
+    ['filled persona', host => {host.powerUserSettings.persona_description = '';}],
+    ['', host => {host.characters[0].description = 'changed character';}], ['', host => {host.mainApi = 'novel';}]]) {
+    const e = environment(), host = installRealContextReaders(e, persona), entered = deferred(), release = deferred();
+    e.context.storyboardCompilerContext = async () => { entered.resolve(); await release.promise; return {floor:0, paragraphs:['original floor'], messages:[], worldRows:[]}; };
+    const work = e.context.storyboardCompilePrompt(null, {plan:e.plan});
+    await entered.promise; change(host); release.resolve();
+    assert.equal(await work, false);
+    assert.equal(e.calls.filter(call => call === 'llm').length, 0);
+    assert.equal(e.state.prompt, 'original prompt');
+    assert.equal(e.state.pipelineLogs[0].stages[0].output.reason, 'preparation_context_changed');
+  }
+});
+
 test('extracted guard binds only its owned plan and notices subsequent cancellation without a document',()=>{
   const e=environment();delete e.context.document;const guard=e.context.storyboardCreatePreparationGuard(e.state);
   assert.throws(()=>guard.bindPlan(e.plan),{code:'storyboard_input_changed'});

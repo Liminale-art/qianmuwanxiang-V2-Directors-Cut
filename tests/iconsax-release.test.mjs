@@ -6,11 +6,11 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
-const ENTRY_RELEASE = '1.59.425';
+const ENTRY_RELEASE = '1.59.426';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);
-const moduleRelease = file => localLoaderClosure.has(file) ? '1.59.425' : file === 'qianmu-storyboard-capture-view.js' ? '1.59.424' : file === 'qianmu-main-tabs.js' ? '1.59.421' : ICONSAX_RELEASE;
+const moduleRelease = file => file === 'index.js' ? ENTRY_RELEASE : localLoaderClosure.has(file) ? '1.59.425' : file === 'qianmu-storyboard-capture-view.js' ? '1.59.424' : file === 'qianmu-main-tabs.js' ? '1.59.421' : ICONSAX_RELEASE;
 // Refresh the real reverse import closure of changed client modules, including
 // both consumers of the shared notes facade. Comment-only store edits do not
 // change its runtime identity; unrelated backend/provider URLs also stay put.

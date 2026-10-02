@@ -297,7 +297,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.425';
+const VERSION = '1.59.426';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -2097,9 +2097,11 @@ function getCharacterDescription() {
 function getPersonaDescription() {
   const context = ctx();
   const power = context.powerUserSettings || context.power_user || globalThis.power_user || {};
-  // ST 当前激活人设的描述存于 power_user.persona_description；多版本字段不一，取不到则回落 {{persona}} 宏，
-  // 交由 resolveMacro（优先 ctx().substituteParams）跨版本稳定解析（描述内可能再嵌 {{char}}/{{user}}）
-  return power.persona_description || context.persona_description || globalThis.persona_description || '{{persona}}';
+  // An explicit empty description is authoritative. The same-named ST textarea
+  // can appear on window; never treat that element (or its events) as persona text.
+  if (typeof power.persona_description === 'string') return power.persona_description;
+  if (typeof context.persona_description === 'string') return context.persona_description;
+  return typeof globalThis.persona_description === 'string' ? globalThis.persona_description : '{{persona}}';
 }
 
 function getPersonaName() {
