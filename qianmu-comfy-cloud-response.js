@@ -12,20 +12,28 @@ const fail = (code, message, taskId = '', providerCode) => {
 
 // Closed, metadata-only error projection. Never retain a message, stack, URL,
 // response body, workflow or credential; diagnostics grant no retry authority.
-const diagnosticStages = {authorization:'连接授权',preflight:'任务预查',readiness:'节点检查',references:'参考图准备',reservation:'任务预留',submission:'提交请求',response:'响应校验',record:'受理记录',delivery:'状态交付'};
+const diagnosticStages = {authorization:'连接授权',preflight:'任务预查',readiness:'节点检查',references:'参考图准备',reservation:'任务预留',submission:'提交请求',response:'响应校验',record:'受理记录',delivery:'状态交付',query:'任务查询',outputs:'输出核对',file:'原图读取',save:'原图暂存',readback:'暂存回读'};
 const diagnosticReasons = {
   http: ['平台 HTTP 响应异常，请核查原任务', ['comfy_cloud_response_http']],
   response_format: ['平台响应格式无法确认，请核查原任务', ['comfy_cloud_response_type','comfy_cloud_response_json','comfy_cloud_response_shape','comfy_cloud_response_size','comfy_cloud_response_limits']],
   response_read: ['平台响应未完整读取，请核查原任务', ['comfy_cloud_response_stream']],
   acceptance: ['平台受理响应未获确认，请核对平台记录及错误码', ['comfy_cloud_response_acceptance','comfy_cloud_response_identity','comfy_cloud_response_links']],
-  timeout: ['等待超时，请核查原任务', ['comfy_cloud_response_timeout','comfy_cloud_submit_timeout','comfy_transport_dns_timeout','ETIMEDOUT']],
-  cancelled: ['等待已停止，请核查原任务', ['comfy_cloud_response_cancelled','comfy_cloud_submit_cancelled']],
-  account: ['账户校验变化，请回原账户核查', ['comfy_cloud_submit_account','comfy_cloud_submit_identity','comfy_transport_account_changed','comfy_transport_authentication_required','image_service_cloud_account_changed']],
-  authorization: ['连接授权未完成，请核对原连接', ['comfy_cloud_submit_authorization','comfy_transport_cloud_authorization','comfy_cloud_access_account','comfy_cloud_access_target','comfy_cloud_access_policy']],
+  timeout: ['等待超时，请核查原任务', ['comfy_cloud_response_timeout','comfy_cloud_submit_timeout','comfy_cloud_query_timeout','runninghub_download_timeout','comfy_cloud_digest_timeout','comfy_transport_dns_timeout','ETIMEDOUT']],
+  cancelled: ['等待已停止，请核查原任务', ['comfy_cloud_response_cancelled','comfy_cloud_submit_cancelled','comfy_cloud_query_cancelled','runninghub_download_cancelled','comfy_cloud_receive_cancelled','comfy_cloud_digest_cancelled']],
+  account: ['账户校验变化，请回原账户核查', ['comfy_cloud_submit_account','comfy_cloud_submit_identity','comfy_cloud_query_account','runninghub_download_account','comfy_transport_account_changed','comfy_transport_authentication_required','image_service_cloud_account_changed']],
+  authorization: ['连接授权未完成，请核对原连接', ['comfy_cloud_submit_authorization','comfy_cloud_query_authorization','comfy_cloud_query_key','runninghub_download_authorization','comfy_cloud_receive_authorization','comfy_transport_cloud_authorization','comfy_cloud_access_account','comfy_cloud_access_target','comfy_cloud_access_policy']],
   connection: ['连接或地址校验未完成，请核对原连接', ['comfy_transport_cloud_unavailable','comfy_transport_dns','comfy_transport_address','comfy_transport_unsafe_target','comfy_transport_target_changed','comfy_transport_redirect','ENOTFOUND','EAI_AGAIN','ECONNRESET','ECONNREFUSED']],
   ledger: ['原任务记录校验未完成，请核查原记录', ['image_service_cloud_storage','image_service_cloud_occupied','image_service_cloud_full','image_service_cloud_conflict','image_service_cloud_duplicate','image_service_cloud_ticket','image_service_cloud_ticket_changed','image_service_cloud_acceptance_unconfirmed']],
   references: ['参考图准备未完成，请核对原素材', ['comfy_cloud_submit_references']],
   readiness: ['节点或模型检查未通过，请手动核对', ['comfy_cloud_submit_readiness']],
+  task_status: ['平台任务状态格式不一致，请核查原任务', ['comfy_cloud_response_status','runninghub_results_state']],
+  task_identity: ['平台结果与原任务不匹配，请核查原记录', ['runninghub_results_identity','image_service_cloud_query_identity','image_service_cloud_query_changed']],
+  output_evidence: ['平台输出节点信息不完整，请核查原图', ['runninghub_results_evidence']],
+  output_match: ['平台两份输出信息不一致，请核查原图', ['runninghub_results_match','runninghub_results_duplicate']],
+  output_type: ['平台输出地址或图片类型不符合约定，请核查原图', ['runninghub_results_url','runninghub_results_type']],
+  output_count: ['平台图片数量与约定不一致，请核查原图', ['runninghub_results_count']],
+  image_integrity: ['原图格式或完整性未通过校验，请保留原任务', ['comfy_cloud_response_image_size','comfy_cloud_response_image_invalid','comfy_cloud_response_image_type','comfy_cloud_digest_bytes','comfy_cloud_digest_expected','comfy_cloud_digest_limits','comfy_cloud_digest_mismatch','comfy_cloud_digest_unavailable']],
+  storage: ['原图暂存或回读未完成，请保留原任务', ['image_service_result_storage','image_service_result_path','image_service_result_corrupt','image_service_result_changed','image_service_result_full','image_service_result_missing','image_service_result_image','image_service_storage_unavailable','image_service_storage_busy','image_service_cloud_delivery_storage','image_service_cloud_delivery_missing','image_service_cloud_delivery_mismatch','image_service_cloud_delivery_conflict','comfy_cloud_receive_readback']],
   unclassified: ['未能确认具体原因，请核查原任务', []],
 };
 const diagnosticCodes = new Map(Object.entries(diagnosticReasons).flatMap(([reason,[,codes]])=>codes.map(code=>[code,reason])));
@@ -43,6 +51,16 @@ export function normalizeComfyCloudFailureDiagnostic(value) {
     const flag=ownData(value,key);if(typeof flag==='boolean')result[key]=flag;
   }
   return Object.freeze(result);
+}
+// Read failures keep the earliest closed diagnosis through wrapper errors.
+// Accessors, inherited fields and arbitrary exception text are never inspected.
+export function comfyCloudReadFailureDiagnostic(cause, {stage,httpStatus,providerCode} = {}) {
+  const child=normalizeComfyCloudFailureDiagnostic(ownData(cause,'cloudDiagnostic'));
+  if(child)return child;
+  const causeCode=ownData(cause,'code');
+  return normalizeComfyCloudFailureDiagnostic({stage,causeCode,
+    ...(stage==='query'&&causeCode==='comfy_cloud_response_identity'?{reason:'task_identity'}:{}),
+    httpStatus:httpStatus??ownData(cause,'httpStatus'),providerCode:providerCode??ownData(cause,'providerCode'),hasKnownTaskId:true});
 }
 export function describeComfyCloudFailureDiagnostic(value) {
   const detail=normalizeComfyCloudFailureDiagnostic(value);if(!detail)return '';

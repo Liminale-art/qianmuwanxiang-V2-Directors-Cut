@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PassThrough,Writable} from 'node:stream';
-import {normalizeComfyCloudFailureDiagnostic as normalize,describeComfyCloudFailureDiagnostic as describe,readComfyCloudAcceptance} from '../qianmu-comfy-cloud-response.js';
+import {normalizeComfyCloudFailureDiagnostic as normalize,describeComfyCloudFailureDiagnostic as describe,comfyCloudReadFailureDiagnostic as readDiagnostic,readComfyCloudAcceptance} from '../qianmu-comfy-cloud-response.js';
 import {createComfyCloudService} from '../qianmu-comfy-cloud-service.js';
 import {imageGatewayErrorPayload} from '../qianmu-image-gateway.js';
 import {imageServiceAccount} from '../qianmu-image-service-access.js';
@@ -72,6 +72,23 @@ test('RH rejection retains only a bounded numeric code and never turns rejection
       assert.doesNotMatch(error.message+JSON.stringify(error),new RegExp(secret));return true;
     });
   }
+});
+
+test('read diagnostics keep the earliest closed stage and ignore private fields, accessors and invented codes',()=>{
+  for(const stage of ['query','outputs','file','save','readback'])assert.equal(normalize({stage}).stage,stage);
+  assert.equal(normalize({stage:'digest'}),null);
+  const child={stage:'outputs',causeCode:'runninghub_results_match',httpStatus:200,providerCode:0,message:secret,body:secret};
+  Object.defineProperty(child,'dispatched',{get(){assert.fail('No child accessor reads');}});
+  const cause=Object.assign(Error(secret),{cloudDiagnostic:child,code:'image_service_result_storage',url:secret});
+  for(const key of ['httpStatus','providerCode','response'])Object.defineProperty(cause,key,{get(){assert.fail('No cause accessor reads');}});
+  assert.deepEqual(readDiagnostic(cause,{stage:'save',httpStatus:503}),{stage:'outputs',reason:'output_match',httpStatus:200,providerCode:0});
+  const hidden=Object.create({code:'runninghub_results_match',cloudDiagnostic:child});
+  for(const key of ['cloudDiagnostic','httpStatus','providerCode'])Object.defineProperty(hidden,key,{get(){assert.fail('No inherited/accessor reads');}});
+  assert.deepEqual(readDiagnostic(hidden,{stage:'readback'}),{stage:'readback',reason:'unclassified',hasKnownTaskId:true});
+  assert.deepEqual(readDiagnostic({code:'comfy_cloud_digest_mismatch',message:secret},{stage:'file'}),{stage:'file',reason:'image_integrity',hasKnownTaskId:true});
+  assert.equal(readDiagnostic({code:`runninghub_results_match_${secret}`},{stage:'outputs'}).reason,'unclassified');
+  assert.equal(readDiagnostic({code:'comfy_cloud_response_identity'},{stage:'query'}).reason,'task_identity');
+  assert.doesNotMatch(JSON.stringify(readDiagnostic(cause,{stage:'save'}))+describe(child),new RegExp(secret));
 });
 
 test('actual service carries numeric RH rejection through the safe message while preserving unknown and one submission',async()=>{

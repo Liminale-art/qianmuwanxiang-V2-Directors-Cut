@@ -3,7 +3,7 @@
 import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
 import { queryComfyCloudTask } from './qianmu-comfy-cloud-query.js';
 import { createRunningHubFileTransport } from './qianmu-comfy-server-transport.js';
-import { readRunningHubImageResponse } from './qianmu-comfy-cloud-response.js';
+import { readRunningHubImageResponse, comfyCloudReadFailureDiagnostic } from './qianmu-comfy-cloud-response.js';
 import { verifyComfyCloudImageDigest } from './qianmu-comfy-cloud-digest.js';
 import { RUNNINGHUB_STAGE_SCHEMA, normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
@@ -75,11 +75,10 @@ export async function downloadRunningHubJob(req, { task: rawTask, channelKey, at
   };
   try { return await Promise.race([work(), stopped]); }
   catch (cause) {
-    if (interruption) throw interruption;
-    if (ownErrors.has(cause)) throw cause;
     const readable = stage === 'bytes' && String(cause?.code).startsWith('comfy_cloud_response_') || stage === 'digest' && String(cause?.code).startsWith('comfy_cloud_digest_');
-    const error = fail(stage, readable ? cause.message : '原图暂无法读取，请刷新原任务核查；未重新生图');
+    const error = interruption || (ownErrors.has(cause) ? cause : fail(stage, readable ? cause.message : '原图暂无法读取，请刷新原任务核查；未重新生图'));
     if (response && !response.ok && Number.isInteger(response.status)) error.httpStatus = response.status;
+    error.cloudDiagnostic=comfyCloudReadFailureDiagnostic(interruption||cause,{stage:stage==='authorization'?'authorization':stage==='query'?'query':'file',httpStatus:response?.status});
     throw error;
   } finally {
     clearTimeout(timer); signal?.removeEventListener('abort', onAbort); controller.abort();

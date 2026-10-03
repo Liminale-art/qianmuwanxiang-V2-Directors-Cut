@@ -1,6 +1,6 @@
 // One authenticated status read, not a scheduler, submitter, downloader or public route.
 import { bindComfyCloudTask } from './qianmu-comfy-cloud-protocol.js';
-import { readComfyCloudJsonResponse, readComfyCloudTaskStatus } from './qianmu-comfy-cloud-response.js';
+import { readComfyCloudJsonResponse, readComfyCloudTaskStatus, comfyCloudReadFailureDiagnostic } from './qianmu-comfy-cloud-response.js';
 import { createComfyCloudServerTransport } from './qianmu-comfy-server-transport.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 import { normalizeComfyCloudReceipt } from './qianmu-comfy-cloud-receipt.js';
@@ -21,7 +21,7 @@ export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, au
   if (typeof includeStillOutputs !== 'boolean') throw fail('output_mode', '云端输出读取方式无效');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw fail('timeout_config', '云端查询等待时间无效');
   const controller = new AbortController(), deadline = performance.now() + timeoutMs;
-  let timer, onAbort, interruption, response, stage = 'authorization';
+  let timer, onAbort, interruption, response, diagnosticHttpStatus, providerCode, stage = 'authorization';
   const check = () => {
     if (interruption) throw interruption;
     if (!imageServiceAccountStillMatches(req, account)) throw fail('account', 'ST账户已变化，未交付云端原任务状态');
@@ -62,21 +62,21 @@ export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, au
       headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', ...(transport.plan.body ? { 'Content-Type': 'application/json' } : {}) },
       ...(transport.plan.body ? { body: JSON.stringify(transport.plan.body) } : {}), signal: controller.signal,
     });
-    check(); stage = 'response';
+    diagnosticHttpStatus=response.status;check(); stage = 'response';
     const body = await readComfyCloudJsonResponse(response, { task: original, maxBytes, signal: controller.signal,
       timeoutMs: Math.max(1, Math.ceil(deadline - performance.now())) });
-    check(); const result = readComfyCloudTaskStatus(original, body);
+    providerCode=body?.code;check(); const result = readComfyCloudTaskStatus(original, body);
     let stillOutputs = null;
     if (includeStillOutputs && result.status === 'succeeded') {
-      stage = 'outputs';
+      stage = 'outputs';diagnosticHttpStatus=undefined;providerCode=undefined;
       if(original.provider==='runninghub') {
         // Explicit supplemental evidence, not a fallback when v2 fails. Same
         // original grant and overall deadline cover both authenticated reads.
         const nodes=await createComfyCloudServerTransport(req,{binding:original,operation:'outputs',task:original},transportOptions);check();
         response=await nodes.fetchImpl(nodes.plan.url,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
-          body:JSON.stringify({...nodes.plan.body,apiKey}),signal:controller.signal});check();
+          body:JSON.stringify({...nodes.plan.body,apiKey}),signal:controller.signal});diagnosticHttpStatus=response.status;check();
         const evidence=await readComfyCloudJsonResponse(response,{task:original,maxBytes,signal:controller.signal,timeoutMs:Math.max(1,Math.ceil(deadline-performance.now()))});
-        await nodes.verify();check();stillOutputs=collectRunningHubStillResults(receipt,body,evidence);
+        providerCode=evidence?.code;await nodes.verify();check();stillOutputs=collectRunningHubStillResults(receipt,body,evidence);
       }else stillOutputs = collectComfyCloudStillResults(receipt, body);
       check();
     }
@@ -85,11 +85,11 @@ export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, au
   };
   try { return await Promise.race([work(), stopped]); }
   catch (cause) {
-    if (interruption) throw interruption;
-    if (ownErrors.has(cause)) throw cause;
-    if (stage === 'response' && cause?.code === 'comfy_cloud_response_timeout') throw fail('timeout', '云端任务查询超时，原任务仍保留，未重新提交');
-    const error = fail(stage, '云端原任务状态暂无法确认，请核查原连接与任务记录');
+    const error = interruption || (ownErrors.has(cause) ? cause
+      : stage === 'response' && cause?.code === 'comfy_cloud_response_timeout' ? fail('timeout', '云端任务查询超时，原任务仍保留，未重新提交')
+      : fail(stage, '云端原任务状态暂无法确认，请核查原连接与任务记录'));
     if (Number.isInteger(response?.status) && !response.ok) error.httpStatus = response.status;
+    error.cloudDiagnostic=comfyCloudReadFailureDiagnostic(interruption||cause,{stage:stage==='outputs'?'outputs':'query',httpStatus:diagnosticHttpStatus,providerCode});
     throw error;
   } finally {
     clearTimeout(timer); signal?.removeEventListener('abort', onAbort);

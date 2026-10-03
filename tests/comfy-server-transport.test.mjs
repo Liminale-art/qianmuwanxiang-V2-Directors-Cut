@@ -26,6 +26,7 @@ import { readComfyCloudAsset, downloadComfyCloudAsset, downloadComfyCloudJob } f
 import { downloadRunningHubJob } from '../qianmu-runninghub-download.js';
 import { createComfyCloudReceiver } from '../qianmu-comfy-cloud-receive.js';
 import { createComfyCloudService } from '../qianmu-comfy-cloud-service.js';
+import { imageGatewayErrorPayload } from '../qianmu-image-gateway.js';
 import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
 import { normalizeComfyDelivery, assertComfyDeliveryUpdate } from '../qianmu-comfy-delivery-store.js';
 import { comfyCloudResourceKey } from '../qianmu-comfy-cloud-ledger.js';
@@ -804,6 +805,74 @@ function rhDownloadReply(f, call, count = 2) {
   assert.equal(call.url.pathname, '/task/openapi/outputs');
   return { body: { code: 0, data: Array.from({ length: count }, (_, index) => ({ fileUrl: rhFileUrl(index), fileType: 'png', nodeId: 'save' })).reverse() } };
 }
+
+for(const [mode,stage,reason,httpStatus,providerCode,reads] of [
+  ['status','query','task_status',200,undefined,1],
+  ['identity','query','task_identity',200,undefined,1],
+  ['http','query','http',403,undefined,1],
+  ['evidence-code','outputs','output_evidence',200,901,2],
+  ['evidence-code-text','outputs','output_evidence',200,undefined,2],
+  ['evidence-shape','outputs','output_evidence',200,0,2],
+  ['match','outputs','output_match',200,0,2],
+  ['type','outputs','output_type',200,0,2],
+  ['count','outputs','output_count',200,0,2],
+  ['image','file','image_integrity',200,undefined,3],
+])test(`RH retrieval diagnostics: ${mode} reaches the actual service HTTP boundary without resubmission`,async t=>{
+  const f=await persistedCloudTask(t,rhBinding),calls=[],before=await f.store.inspectChannel(f.locator.channelKey),secret='PRIVATE_RETRIEVAL_BODY_KEY_PROMPT_URL';
+  const service=createComfyCloudService({dataRoot:f.root,store:f.store,transportOptions:{authorizeTarget:cloudGrant,resolveHost:publicDns,
+    requestImpl:mockNodeRequest(calls,call=>{
+      assert.ok(['/openapi/v2/query','/task/openapi/outputs','/0.png'].includes(call.url.pathname),'retrieval may not call create/submit');
+      const reply=rhDownloadReply(f,call,1),query=call.url.pathname==='/openapi/v2/query',outputs=call.url.pathname==='/task/openapi/outputs';
+      if(query&&mode==='status')reply.body.status=secret;
+      if(query&&mode==='identity')reply.body.taskId='999';
+      if(query&&mode==='http'){reply.status=403;reply.body={code:901,msg:secret};}
+      if(outputs&&mode==='evidence-code')reply.body={code:901,msg:secret,data:null};
+      if(outputs&&mode==='evidence-code-text')reply.body={code:secret,msg:secret,data:null};
+      if(outputs&&mode==='evidence-shape')delete reply.body.data[0].nodeId;
+      if(outputs&&mode==='match')reply.body.data[0].fileUrl=rhFileUrl(1);
+      if(mode==='type'){if(query)reply.body.results[0].outputType='mp4';if(outputs)reply.body.data[0].fileType='mp4';}
+      if(outputs&&mode==='count')reply.body.data[0].nodeId='not-selected';
+      if(call.url.pathname==='/0.png'&&mode==='image')reply.body=Buffer.from(secret);
+      return reply;
+    })}});t.after(()=>service.close());
+  await assert.rejects(service.result(f.req,{version:1,expectedAccount:imageServiceAccount(f.req).namespace,...f.locator,task:f.task}),error=>{
+    const packet=imageGatewayErrorPayload(error),diagnostic=error.cloudDiagnostic;
+    assert.equal(error.code,'comfy_cloud_service_unconfirmed');assert.equal(error.retryable,false);
+    assert.equal(error.submissionState,'accepted');assert.equal(packet.body.submissionState,'accepted');
+    assert.equal(diagnostic.stage,stage);assert.equal(diagnostic.reason,reason);assert.equal(diagnostic.httpStatus,httpStatus);assert.equal(diagnostic.providerCode,providerCode);
+    assert.equal(diagnostic.hasKnownTaskId,true);assert.ok(packet.body.message.length<300);assert.match(packet.body.message,/未重新生成/);
+    assert.doesNotMatch(JSON.stringify(packet)+JSON.stringify(diagnostic),new RegExp(`${secret}|test-only-secret|1904152026220003329|files\\.test|cloudDiagnostic`));
+    return true;
+  });
+  assert.equal(calls.length,reads);assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),before,'failure retains the original receipt, task id, fence and intent without diagnostic storage');
+});
+
+for(const mode of ['readback','save','changed-account'])test(`RH retrieval diagnostics: ${mode} preserves accepted state and the existing account boundary`,async t=>{
+  const f=await persistedCloudTask(t,rhBinding),calls=[],before=await f.store.inspectChannel(f.locator.channelKey),secret='PRIVATE_CACHE_PATH_KEY_PROMPT';
+  const cache=createImageServiceResults({dataRoot:f.root,store:f.store,scope:'comfy-cloud'});
+  const broken=()=>{
+    const error=Object.assign(Error(secret),{code:'image_service_result_storage',body:secret,url:secret});
+    for(const key of ['httpStatus','providerCode','response'])Object.defineProperty(error,key,{get(){assert.fail('No private error getter reads');}});
+    if(mode==='changed-account'){
+      error.cloudDiagnostic={stage:'outputs',reason:'output_evidence',httpStatus:200,providerCode:901,message:secret};
+      f.req.user.profile.handle='other-account';
+    }
+    throw error;
+  };
+  const service=createComfyCloudService({store:f.store,cache:{...cache,...(mode==='readback'?{load:broken}:{save:broken})},
+    transportOptions:{authorizeTarget:cloudGrant,resolveHost:publicDns,requestImpl:mockNodeRequest(calls,call=>rhDownloadReply(f,call,1))}});t.after(()=>service.close());
+  await assert.rejects(service.result(f.req,{version:1,expectedAccount:imageServiceAccount(f.req).namespace,...f.locator,task:f.task}),error=>{
+    const packet=imageGatewayErrorPayload(error);assert.equal(error.submissionState,'accepted');assert.equal(error.retryable,false);
+    assert.equal(packet.body.submissionState,'accepted');assert.doesNotMatch(JSON.stringify(packet)+JSON.stringify(error.cloudDiagnostic),new RegExp(`${secret}|test-only-secret|1904152026220003329|files\\.test`));
+    if(mode==='changed-account'){
+      assert.equal(error.cloudDiagnostic,undefined);assert.equal(packet.body.message,'云任务处理未完成，请核查原记录；未重新生成');
+      assert.doesNotMatch(JSON.stringify(packet),/901|HTTP|平台码|cloudDiagnostic/);
+    }else assert.deepEqual(error.cloudDiagnostic,{stage:mode,reason:'storage',hasKnownTaskId:true});
+    return true;
+  });
+  assert.deepEqual(calls.map(call=>call.url.pathname),mode==='readback'?[]:['/openapi/v2/query','/task/openapi/outputs','/0.png']);
+  assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),before);
+});
 
 test('RH sequential download preserves original ordering and stages local proofs without URLs or invented upstream hashes', async t => {
   const f = await persistedCloudTask(t, rhBinding, 2), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);

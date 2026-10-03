@@ -62,3 +62,14 @@ test('workflow-id release leaves compatible preload and feature-loader addresses
   assert.ok(entry.includes("'./qianmu-prose-floor-tools.js?v=1.59.425'"));
   assert.ok(preload.includes('qianmu-comfy-library-view.js?v=1.59.414') || floorTools.includes('qianmu-comfy-library-view.js?v=1.59.414'));
 });
+
+test('retrieval diagnostics ship in the host without requiring new browser module addresses',async()=>{
+  const files=await collectReleaseFiles();
+  for(const file of ['qianmu-comfy-cloud-response.js','qianmu-comfy-cloud-query.js','qianmu-runninghub-download.js','qianmu-comfy-cloud-receive.js'])assert.ok(files.includes(file));
+  const entry=await readFile(new URL('index.js',root),'utf8');
+  assert.ok(entry.includes("const VERSION = '1.59.436';"));
+  assert.ok(!entry.includes('.js?v=1.59.436'),'only the manifest entry and reported package version change in the frontend');
+  const {comfyCloudReadFailureDiagnostic}=await import('../qianmu-comfy-cloud-response.js');
+  assert.deepEqual(comfyCloudReadFailureDiagnostic({code:'runninghub_results_match'},{stage:'outputs'}),
+    {stage:'outputs',reason:'output_match',hasKnownTaskId:true});
+});

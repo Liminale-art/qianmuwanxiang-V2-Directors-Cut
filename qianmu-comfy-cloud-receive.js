@@ -8,6 +8,7 @@ import { downloadRunningHubJob } from './qianmu-runninghub-download.js';
 import { normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
 import { readRunningHubUsage } from './qianmu-runninghub-usage.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
+import { comfyCloudReadFailureDiagnostic } from './qianmu-comfy-cloud-response.js';
 
 const downloadCloudJob = (req, input, options) => input.task.provider === 'runninghub'
   ? downloadRunningHubJob(req, input, options) : downloadComfyCloudJob(req, input, options);
@@ -153,10 +154,13 @@ export function createComfyCloudReceiver({ ledger, cache, download = downloadClo
         if (result.status === 'staged' && latest?.cacheReceipt !== result.result.receipt) throw fail('readback', '原图保存凭证已变化，未交付');
         return result;
       } catch (cause) {
-        if (signal?.aborted) throw fail('cancelled', '已停止领取，原任务和暂存仍保留');
-        if (String(cause?.code).startsWith('comfy_cloud_receive_')) throw cause;
-        throw fail(stage, stage === 'download' && ['comfy_cloud_asset_read_', 'runninghub_download_'].some(prefix => String(cause?.code).startsWith(prefix)) ? cause.message
-          : '原图领取尚未确认，请核查原任务；未重新生成或清理暂存');
+        const error = signal?.aborted ? fail('cancelled', '已停止领取，原任务和暂存仍保留')
+          : String(cause?.code).startsWith('comfy_cloud_receive_') ? cause
+          : fail(stage, stage === 'download' && ['comfy_cloud_asset_read_', 'runninghub_download_'].some(prefix => String(cause?.code).startsWith(prefix)) ? cause.message
+            : '原图领取尚未确认，请核查原任务；未重新生成或清理暂存');
+        error.cloudDiagnostic=comfyCloudReadFailureDiagnostic(signal?.aborted?error:cause,
+          {stage:({authorization:'authorization',readback:'readback',reserve:'save',download:'file',save:'save'})[stage]});
+        throw error;
       } finally {
         if (owned) active.delete(key);
         admitted--;
