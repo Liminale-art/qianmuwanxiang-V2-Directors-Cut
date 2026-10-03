@@ -11,13 +11,15 @@ async function hash(value) {
   const digest = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)));
   return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
 }
-export function compileComfyPromptRendering(rendering, shot, {positive='',negative='',supportsNegative=false}={}) {
+export function compileComfyPromptRendering(rendering, shot, {positive='',negative='',supportsNegative=false,projectionVersion=2}={}) {
+  if (projectionVersion !== 1 && projectionVersion !== 2) fail('提示表达版本无效，请核对原记录');
   normalizeStoryboardPromptFormats([rendering.format]);
   const names = new Map(shot.characters.map(character=>[character.id,character.name || character.id]));
   const separator = rendering.format === 'tags' ? ', ' : '\n\n';
   const characterBlocks = rendering.characters.map(character => {
     if (!names.has(character.character_id)) fail('提示表达人物不在本镜');
-    return `${JSON.stringify(names.get(character.character_id))}: ${character.positive}`;
+    return rendering.format === 'tags' && projectionVersion === 2
+      ? character.positive : `${JSON.stringify(names.get(character.character_id))}: ${character.positive}`;
   });
   const prompt = [positive,rendering.global,...characterBlocks].filter(Boolean).join(separator);
   const exclusions = supportsNegative ? [negative,rendering.negative].filter(Boolean).join(separator) : '';
@@ -37,6 +39,12 @@ export async function prepareComfyPromptJob(job,{prepare=false,guard=async()=>{}
   if (!workbench && (!job.profile.comfyRouteBinding || job.profile.comfyRouteBinding.invalid)) fail('提示格式缺少对应的固定工作流版本');
   const manual = job.promptLocked === true || job.payload?.compiledPrompt?.degradation?.mode === 'manual_flat';
   const mode = manual ? 'manual' : 'extracted';
+  const previous = job.payload.promptRendering;
+  if (previous !== undefined && (!previous || ![1,2].includes(previous.version)
+    || previous.version === 2 && (previous.format !== 'tags' || previous.mode !== 'extracted'))) fail('提示表达版本无效，请核对原记录');
+  // Frozen v1 receipts keep their original named projection; only fresh tag expressions use v2.
+  const projectionVersion = manual ? 1 : previous?.version ?? (format === 'tags' ? 2 : 1);
+  if (projectionVersion === 2 && format !== 'tags') fail('提示表达版本与格式不符，请核对原记录');
   const shot = normalizeStoryboardShotSpec(job.payload?.shotSpec || job.shotSpec);
   await current();
   let text,sourceHash='';
@@ -50,11 +58,10 @@ export async function prepareComfyPromptJob(job,{prepare=false,guard=async()=>{}
     const layer = retainComfyRoutePromptLayer(workbench ? job.payload.comfyWorkbenchPromptLayer : job.profile.comfyRoutePromptLayer);
     if (layer.invalid) fail('工作流提示补充无效');
     const capabilities = getStoryboardCapabilities('comfy',job.profile.capabilityModelId,job.profile.comfyWorkflow,job.connection);
-    text = compileComfyPromptRendering(rendering,shot,{...layer,supportsNegative:capabilities.supportsNativeNegative === true});
+    text = compileComfyPromptRendering(rendering,shot,{...layer,supportsNegative:capabilities.supportsNativeNegative === true,projectionVersion});
   }
-  const receipt = {version:1,format,mode,sourceHash,outputHash:await hash(text)};
+  const receipt = {version:projectionVersion,format,mode,sourceHash,outputHash:await hash(text)};
   await current();
-  const previous = job.payload.promptRendering;
   // Explicit manual edits may create a new receipt at enqueue; submission never rewrites a receipt.
   if (!prepare || previous && !manual) {
     if (!previous || Object.keys(previous).length !== Object.keys(receipt).length || Object.keys(receipt).some(key=>previous[key]!==receipt[key])

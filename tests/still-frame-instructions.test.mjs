@@ -31,6 +31,12 @@ test('still guidance preserves narrative-led framing and ownership without intro
   assert.ok(Object.isFrozen(narrative)&&Object.isFrozen(expression));
   const first=narrative.join('\n'),second=expression.join('\n');assert.match(first,/镜头少时/);assert.match(first,/镜头多时/);
   assert.match(first,/min_shots_target是期望下限/);assert.match(first,/allowed_ratio_ids/);assert.match(first,/摄影选择不是正文事件/);
+  assert.match(first,/给定人设、已选世界书或原文明示的人物性别与当前可见稳定形象写入各自fixed_identity/);
+  assert.match(first,/不靠姓名推断/);assert.match(first,/衣着和当前状态仍写各自字段，未知留空，不新增来源或人物/);
   assert.match(second,/不使用“同上”/);assert.match(second,/接触部位|身体部位/);assert.match(second,/帧率、声音不是静帧提示/);
+  assert.match(second,/最终生图提示默认使用英文/);assert.match(second,/客观描述可见人数、已知性别与外貌、服装、动作、环境和空间关系/);
+  assert.match(second,/人物姓名与character_id只供内部关联/);assert.match(second,/谁的哪一部位接触谁的哪里/);
+  assert.match(second,/未知性别、外貌、身体部位或左右关系不猜测/);assert.match(second,/且合同要求natural_language时使用自然语言/);
+  assert.match(formats(['tags']),/不以孤立动作标签丢失归属/);assert.match(formats(['tags']),/不用姓名或character_id充当视觉标签/);
   assert.doesNotMatch(first+second,/https?:\/\/|apiKey|POST|\/prompt/);
 });

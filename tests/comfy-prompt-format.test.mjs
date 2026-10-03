@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import * as core from '../qianmu-storyboard.js';
 import * as formats from '../qianmu-prompt-formats.js';
 import * as contract from '../qianmu-storyboard-contract.js';
@@ -57,7 +58,8 @@ test('actual extraction -> settings reload -> mixed route jobs -> final workflow
   assert.equal(await generateSettled(e,null,{plan:e.state.shotPlans.find(row=>row.id===plan.id),automatic:true}),true,JSON.stringify({notices:e.notices,errors:e.errors}));
   assert.equal(e.jobs.length,3);assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);assert.equal(e.llmCalls.length,2);
   const [tags,natural,nai]=e.jobs;
-  assert.match(tags.payload.prompt,/^tag-scene-0/);assert.match(tags.payload.prompt,/'Alice'|"Alice"/);assert.match(tags.payload.prompt,/coat removed/);
+  assert.match(tags.payload.prompt,/^tag-scene-0/);assert.doesNotMatch(tags.payload.prompt,/'Alice'|"Alice"|archive:alice/);assert.match(tags.payload.prompt,/silver hair, coat removed, reading a letter/);
+  assert.equal(tags.payload.promptRendering.version,2);assert.equal(natural.payload.promptRendering.version,1);
   assert.match(natural.payload.prompt,/^Natural scene 1/);assert.doesNotMatch(natural.payload.prompt,/tag-scene|portrait quality|landscape quality/);
   assert.equal(tags.payload.negative,'extra people');assert.equal(natural.payload.negative,'No extra people.');
   assert.equal(nai.payload.promptRendering,undefined);assert.doesNotMatch(nai.payload.prompt,/landscape quality|Natural scene/);
@@ -88,7 +90,7 @@ test('bad/missing formats, visual edits and safety adaptation stop before a prov
 test('explicit manual prompt editing bypasses extraction, but submission verifies the exact new text',async()=>{
   const e=await environment();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});const job=plain(e.jobs[0]);
   job.promptLocked=true;job.safetyAdapted=true;delete job.payload.shotSpec.promptRenderingPack;job.payload.prompt='my explicit manual wording';job.payload.negative='manual exclusions';
-  await prompts.prepareComfyPromptJob(job,{prepare:true});assert.equal(job.payload.promptRendering.mode,'manual');assert.equal(job.payload.compiledPrompt.prompt,job.payload.prompt);
+  await prompts.prepareComfyPromptJob(job,{prepare:true});assert.equal(job.payload.promptRendering.mode,'manual');assert.equal(job.payload.promptRendering.version,1);assert.equal(job.payload.compiledPrompt.prompt,job.payload.prompt);
   await prompts.prepareComfyPromptJob(job);job.payload.prompt+=' changed';await assert.rejects(prompts.prepareComfyPromptJob(job),/已准备的提示表达/);assert.equal(e.llmCalls.length,2);
 });
 test('late async mutations, scope changes and malformed persisted packs cannot be blessed as newly prepared',async()=>{
@@ -110,6 +112,50 @@ test('format projection does not modify graphs, claim spatial isolation or dupli
   const shot=core.normalizeStoryboardShotSpec({characters:[{id:'A',name:'Alice'},{id:'B',name:'Bob'}]});
   const output=prompts.compileComfyPromptRendering({format:'character_blocks',global:'shared scene',negative:'no extras',characters:[{character_id:'A',positive:'reads a letter'},{character_id:'B',positive:'watches'}]},shot,{positive:'style',supportsNegative:false});
   assert.equal((output.prompt.match(/reads a letter/g)||[]).length,1);assert.equal(output.characterBlocks.length,2);assert.equal(output.negative,'');assert.match(output.prompt,/"Alice": reads a letter\n\n"Bob": watches/);
+});
+test('v2 tags remove only compiler-added labels, preserving literal content, identity, contact and other formats',()=>{
+  const shot=core.normalizeStoryboardShotSpec({characters:[{id:'A',name:'Alice'},{id:'B',name:'Bob'}]});
+  const rendering={format:'tags',global:'2 people, kitchen, black-haired man right hand holding red-haired woman left wrist',negative:'extra people',characters:[
+    {character_id:'A',positive:'man, short black hair, blue shirt, right hand holding the red-haired woman left wrist'},
+    {character_id:'B',positive:'woman, long red hair, white blouse, visible name badge Alice'}]};
+  const before=JSON.stringify([shot,rendering]),output=prompts.compileComfyPromptRendering(rendering,shot,{supportsNegative:true});
+  assert.equal(output.prompt,[rendering.global,...rendering.characters.map(row=>row.positive)].join(', '));
+  assert.deepEqual(output.characterBlocks,rendering.characters.map(row=>row.positive));assert.equal(output.negative,'extra people');
+  assert.match(output.prompt,/visible name badge Alice/);assert.doesNotMatch(output.prompt,/"Alice":|"Bob":|"A":|"B":/);
+  assert.equal(JSON.stringify([shot,rendering]),before);
+  for(const format of ['natural_language','character_blocks'])assert.match(prompts.compileComfyPromptRendering({...rendering,format},shot).prompt,/"Alice": man/);
+  assert.match(prompts.compileComfyPromptRendering(rendering,shot,{projectionVersion:1}).prompt,/"Alice": man/);
+  assert.throws(()=>prompts.compileComfyPromptRendering(rendering,shot,{projectionVersion:99}),{code:'storyboard_prompt_format'});
+});
+
+for(const [name,factory] of [['fixed-route',environment],['workbench',workbenchEnvironment]])test(`${name} genuinely v1-signed tag text survives normalization and enqueue without upgrade`,async()=>{
+  const e=await factory();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});
+  const old=plain(e.jobs[0]),shot=core.normalizeStoryboardShotSpec(old.payload.shotSpec);
+  const rendering=await formats.resolveStoryboardPromptRendering(shot,shot.promptRenderingPack,'tags');
+  const layer=name==='workbench'?old.payload.comfyWorkbenchPromptLayer:old.profile.comfyRoutePromptLayer;
+  // Recreate the released v1 projection independently, including its exact output hash.
+  const names=new Map(shot.characters.map(row=>[row.id,row.name||row.id]));
+  const characterBlocks=rendering.characters.map(row=>`${JSON.stringify(names.get(row.character_id))}: ${row.positive}`);
+  const text={prompt:[layer.positive,rendering.global,...characterBlocks].filter(Boolean).join(', '),negative:[layer.negative,rendering.negative].filter(Boolean).join(', '),characterBlocks};
+  old.payload.promptRendering={version:1,format:'tags',mode:'extracted',sourceHash:rendering.sourceHash,outputHash:createHash('sha256').update(JSON.stringify(text)).digest('hex')};
+  Object.assign(old.payload,{prompt:text.prompt,negative:text.negative});Object.assign(old.payload.compiledPrompt,text);Object.assign(old.compiledPrompt,text);
+  const saved=core.sanitizeStoryboardSnapshot(old),original=JSON.stringify(saved),calls=e.llmCalls.length,loads=e.calls.length;
+  for(const prepare of [false,true])await prompts.prepareComfyPromptJob(saved,{prepare,namespace});
+  assert.equal(JSON.stringify(saved),original);assert.equal(saved.payload.promptRendering.version,1);assert.match(saved.payload.prompt,/"Alice": silver hair/);
+  assert.equal(e.llmCalls.length,calls);assert.equal(e.calls.length,loads);
+  const altered=plain(saved);altered.payload.promptRendering.version=2;
+  for(const prepare of [false,true])await assert.rejects(()=>prompts.prepareComfyPromptJob(altered,{prepare,namespace}),/已准备的提示表达/);
+});
+
+test('unknown receipt versions and invalid v2 combinations cannot be re-signed or passed to submission',async()=>{
+  const e=await environment();await e.context.storyboardCompilePrompt(null);await generateSettled(e,null,{automatic:true});
+  for(const change of [receipt=>{receipt.version=0;},receipt=>{receipt.version=3;},receipt=>{receipt.version='2';},receipt=>{delete receipt.version;},receipt=>{receipt.version=2;receipt.format='natural_language';},receipt=>{receipt.version=2;receipt.mode='manual';}]){
+    for(const prepare of [false,true])for(const manual of [false,true]){
+      const job=plain(e.jobs[0]);change(job.payload.promptRendering);job.promptLocked=manual;const before=JSON.stringify(job);
+      await assert.rejects(()=>prompts.prepareComfyPromptJob(job,{prepare}),{code:'storyboard_prompt_format'});assert.equal(JSON.stringify(job),before);
+    }
+  }
+  assert.equal(e.llmCalls.length,2);
 });
 test('enqueue and pre-submission verify expressions; workflow selection stays outside the pure prompt compiler',async()=>{
   assert.match(section('storyboardConfirmComfyExecution'),/storyboardPrepareComfyPromptJob\(job,\{prepare:true,valid\}\)/);

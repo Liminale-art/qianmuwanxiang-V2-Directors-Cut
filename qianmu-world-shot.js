@@ -3,7 +3,7 @@ export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1
 import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js';
 import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.414';
 import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js';
-import {STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,STORYBOARD_WORLD_STILL_INSTRUCTION,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js';
+import {STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,STORYBOARD_WORLD_STILL_INSTRUCTION,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js?v=1.59.439';
 import {galleryKeywordSchema,GALLERY_KEYWORD_INSTRUCTION} from './qianmu-gallery-keywords.js';
 import {rememberWorldGalleryKeywords,worldGalleryKeywords,carryWorldGalleryKeywords} from './qianmu-world-gallery-keywords.js';
 import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyboardPromptRenderingSource,

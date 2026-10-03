@@ -299,7 +299,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.438';
+const VERSION = '1.59.439';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -394,7 +394,7 @@ const featureRuntime = createFeatureRuntime({
   },
   worldShot: {
     label: '造物之眼确认',
-    load: () => import('./qianmu-world-shot.js?v=1.59.414'),
+    load: () => import('./qianmu-world-shot.js?v=1.59.439'),
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
@@ -442,7 +442,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyPrompt: {
     label: 'Comfy 提示表达',
-    load: () => import('./qianmu-comfy-prompt.js?v=1.59.202'),
+    load: () => import('./qianmu-comfy-prompt.js?v=1.59.439'),
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
@@ -586,7 +586,7 @@ const featureRuntime = createFeatureRuntime({
   },
   storyboardContract: {
     label: '分镜返回协议',
-    load: () => import('./qianmu-storyboard-contract.js?v=1.59.428'),
+    load: () => import('./qianmu-storyboard-contract.js?v=1.59.439'),
   },
   storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.414')},
   theaterCatalog: {
@@ -17584,7 +17584,7 @@ function storyboardLogPresentation(log, pipeline) {
   const tone=log.status==='success'?'green':log.status==='failed'?'red':['generating','running','queued'].includes(log.status)?'yellow':'grey';
   const kind=log.kind==='prompt_compiler'?(log.promptOrigin==='world'?'造物之眼':'取景'):log.kind==='comfy_preparation'?'准备':log.kind==='video'?'视频':'生图';
   const stages=pipeline?.stages||[];
-  const raw=String(sanitizeStoryboardDiagnosticData(log.error||[...stages].reverse().find(stage=>stage.error)?.error||'')).trim();
+  const raw=log.status==='success'?'':String(sanitizeStoryboardDiagnosticData(log.error||[...stages].reverse().find(stage=>stage.error)?.error||'')).trim();
   let reason=raw.split(/\r?\n/)[0].replace(/\s+/g,' ');
   const reasons=[[/\b429\b|rate.?limit|too many requests/i,'请求受限，请稍后重试'],[/\b401\b|unauthorized/i,'鉴权失败，请核对 Key'],[/\b403\b|forbidden/i,'访问被拒绝，请核对渠道权限'],[/\b404\b|not found/i,'接口或资源未找到，请核对地址'],[/timeout|timed out|超时/i,'请求超时，请查看返回详情'],[/failed to fetch|network.?error|网络|CORS/i,'网络请求失败，请检查连接'],[/解析失败|invalid json|unexpected token/i,'返回格式无法解析，请查看原始返回']];
   const known=reasons.find(([pattern])=>pattern.test(raw));if(known)reason=known[1];

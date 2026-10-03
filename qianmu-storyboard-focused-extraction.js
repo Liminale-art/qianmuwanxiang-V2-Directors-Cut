@@ -9,7 +9,7 @@ import {configureStoryboardStreamCoverage,filterStoryboardStreamCoveredNarrative
 import {createEnsembleSceneLock} from './qianmu-ensemble-scene-lock.js';
 import {configureEnsembleSceneContinuation,mergeEnsembleSceneHistories,ENSEMBLE_SCENE_CONTINUATION_INSTRUCTION} from './qianmu-ensemble-continuation.js';
 import {readEnsembleWindowHistory} from './qianmu-ensemble-history.js?v=1.59.414';
-import {STORYBOARD_STILL_NARRATIVE_INSTRUCTIONS,STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js';
+import {STORYBOARD_STILL_NARRATIVE_INSTRUCTIONS,STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js?v=1.59.439';
 import {configureGalleryKeywords,GALLERY_KEYWORD_INSTRUCTION} from './qianmu-gallery-keywords.js';
 
 export const STORYBOARD_NARRATIVE_SCHEMA='qianmu.storyboard.narrative.v1';

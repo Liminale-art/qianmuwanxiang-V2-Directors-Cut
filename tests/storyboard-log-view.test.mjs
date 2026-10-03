@@ -63,6 +63,30 @@ test('short failure explanation never replaces full redacted errors',()=>{
   assert.equal(c.storyboardLogPresentation({status:'failed',error},null).reason,'请求受限，请稍后重试');assert.ok(c.storyboardLogExchangeText({error},null,'output').includes('long error'.repeat(1000)));
   assert.match(c.storyboardLogExchangeText({prompt:'legacy'},null,'input'),/仅为现有摘要/);
 });
+test('successful log summaries never promote retained historical errors while stage details and exchanges stay intact',()=>{
+  const oldError='云任务处理未完成，请核查原记录；未重新生成';
+  for(const error of ['',oldError]){
+    const {state,context:c}=logFixture(),log={id:'recovered',status:'success',source:'comfy',submissionState:'accepted',pipelineId:'p',error};
+    const pipeline={id:'p',status:'success',stages:[{id:'request',type:'provider_request',status:'failed',error:oldError},
+      {id:'saved',type:'asset_persistence',status:'success',output:{saved:true}}]};
+    state.logs=[log];state.pipelineLogs=[pipeline];const before=structuredClone(state);
+    assert.equal(c.storyboardLogPresentation(log,pipeline).reason,'');
+    const html=c.renderStoryboardLogs(state),summary=html.split('data-storyboard-log="recovered"')[1].split('</summary>')[0];
+    assert.match(summary,/sd-storyboard-log-status">完成/);assert.doesNotMatch(summary,/summary-reason|云任务处理未完成/);
+    assert.ok(html.includes(`sd-storyboard-stage-error">${oldError}</small>`),'historical failure stays under its original stage');
+    const output=JSON.parse(c.storyboardLogExchangeText(log,pipeline,'output'));
+    assert.equal(output[0].status,'failed');assert.equal(output[0].error,oldError);assert.equal(output[1].output.saved,true);
+    assert.deepEqual(state,before,'rendering never cleans or rewrites stored logs and pipeline history');
+  }
+});
+test('unresolved original requests retain their failure summary and visible duplicate-charge warning',()=>{
+  const {state,context:c}=logFixture(),error='原请求结果和费用仍未知';
+  state.logs=['unknown','accepted'].map((submissionState,index)=>({id:`pending-${index}`,status:'failed',submissionState,source:'comfy',error}));
+  const before=structuredClone(state),html=c.renderStoryboardLogs(state);
+  assert.equal((html.match(/sd-storyboard-log-summary-reason">原请求结果和费用仍未知/g)||[]).length,2);
+  assert.equal((html.match(/原请求结果待核查，请勿直接重新生成，以免重复付费/g)||[]).length,2);
+  assert.deepEqual(state,before);
+});
 test('exchange wrapping does not add another depth cutoff to already-retained stage payloads',()=>{
   const {context:c}=logFixture();let input={value:'deep original'};for(let n=0;n<15;n++)input={nested:input};
   const retained=core.sanitizeStoryboardDiagnosticData(input),result=JSON.parse(c.storyboardLogExchangeText({}, {stages:[{type:'provider_request',input:retained}]},'input'));
