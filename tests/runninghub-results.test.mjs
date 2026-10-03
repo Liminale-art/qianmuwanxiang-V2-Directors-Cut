@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectRunningHubStillResults as collect} from '../qianmu-runninghub-results.js';
+import {collectRunningHubStillResults as collect,runningHubNeedsNodeEvidence as needsEvidence} from '../qianmu-runninghub-results.js';
 import {readComfyCloudTaskStatus as status} from '../qianmu-comfy-cloud-response.js';
 import {bindComfyCloudProtocol,bindComfyCloudTask,planComfyCloudOperation} from '../qianmu-comfy-cloud-protocol.js';
 import {COMFY_CLOUD_RECEIPT_SCHEMA as schema} from '../qianmu-comfy-cloud-receipt.js';
@@ -10,6 +10,46 @@ const receipt=()=>({schema,task,requestDigest:'a'.repeat(64),workflow:{templateH
 const result=(id,nodeId=id)=>({fileUrl:`https://images.example/${id}.png?signature=temporary`,fileType:'png',nodeId});
 function fixture(){const evidence={code:0,data:[result('2'),result('10'),result('preview')]};return{evidence,body:{taskId:task.taskId,status:'SUCCESS',errorCode:'',
   results:[evidence.data[1],evidence.data[0],evidence.data[2]].map(row=>({url:row.fileUrl,outputType:row.fileType}))}};}
+function directFixture(){const f=fixture();for(const row of f.body.results)row.nodeId=f.evidence.data.find(item=>item.fileUrl===row.url).nodeId;return f;}
+
+test('RH v2 complete node evidence directly selects original nodes and order without legacy URLs or untrusted extra fields',()=>{
+  const f=directFixture();f.body.results[0].text='PRIVATE_TEXT';f.body.results[0].zindex=99;
+  assert.equal(needsEvidence(f.body),false);
+  const found=collect(receipt(),f.body);
+  assert.deepEqual(found.outputs.map(row=>[row.nodeId,row.outputIndex]),[['10',0],['2',1]]);
+  assert.deepEqual(found,collect(receipt(),f.body,f.evidence));assert.ok(Object.isFrozen(found.outputs[0]));
+  assert.doesNotMatch(JSON.stringify(found),/PRIVATE_TEXT|zindex|assetId/);
+  f.evidence.data[0].nodeId='conflicting';assert.throws(()=>collect(receipt(),f.body,f.evidence),{code:'runninghub_results_match'});
+});
+
+test('RH v2 only wholly missing node IDs may request old evidence; mixed, invalid and malformed results cannot',()=>{
+  assert.equal(needsEvidence(fixture().body),true);
+  for(const value of [null,undefined,9,'','white space','a'.repeat(121),{},[]]){
+    const f=directFixture();f.body.results[0].nodeId=value;
+    assert.equal(needsEvidence(f.body),false);assert.throws(()=>collect(receipt(),f.body,f.evidence),{code:'runninghub_results_evidence'});
+  }
+  for(const index of [0,2]){
+    const f=directFixture();delete f.body.results[index].nodeId;
+    assert.equal(needsEvidence(f.body),false);assert.throws(()=>collect(receipt(),f.body,f.evidence),{code:'runninghub_results_evidence'},'preview rows also need explicit node evidence');
+  }
+  for(const results of [null,[],[null],Array.from({length:65},()=>({url:'https://files.test/file.png'}))]){
+    const body={...fixture().body,results};assert.equal(needsEvidence(body),false);assert.throws(()=>collect(receipt(),body));
+  }
+});
+
+test('RH v2 node evidence never overrides task, URL, duplicate, type, preview or count guards',()=>{
+  const mutations=[f=>{f.body.taskId='other';},f=>{f.body.results[0].taskId='other';},
+    f=>{f.body.results[0].url='http://files.test/a.png';},f=>{f.body.results[0].url='https://secret@files.test/a.png';},
+    f=>{f.body.results[0].url+='\\fragment';},f=>{f.body.results[0].url+='\u0000';},
+    f=>{f.body.results[1].url=f.body.results[0].url;},f=>{f.body.results[0].outputType='mp4';},
+    f=>{delete f.body.results[0].outputType;},f=>{f.body.results[0].nodeId='unselected';},
+    f=>{f.body.results[0].nodeId='preview';},f=>{f.body.results.pop();f.body.results.pop();}];
+  for(const mutate of mutations){const f=directFixture();mutate(f);assert.throws(()=>collect(receipt(),f.body),e=>e.submissionState==='accepted'&&e.upstreamId===task.taskId&&e.retryable===false);}
+  const f=directFixture(),r=receipt();r.stillOutput.execution.maxImages=1;delete r.stillOutput.execution.expectedImages;
+  assert.throws(()=>collect(r,f.body),{code:'runninghub_results_count'});
+  r.stillOutput.execution.maxImages=8;f.body.results=Array.from({length:9},(_,i)=>({url:`https://files.test/${i}.png`,nodeId:'10',outputType:'png'}));
+  assert.throws(()=>collect(r,f.body),{code:'runninghub_results_count'});
+});
 test('RH current results own order and legacy node evidence cannot reorder, invent or choose the largest image',()=>{
   const f=fixture(),r=receipt(),found=collect(r,f.body,f.evidence);
   assert.deepEqual(found.outputs.map(row=>[row.nodeId,row.outputIndex]),[['10',0],['2',1]]);

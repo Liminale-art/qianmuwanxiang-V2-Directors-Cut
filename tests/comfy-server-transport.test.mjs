@@ -982,6 +982,46 @@ test('RH node evidence is fetched only after matching v2 success, under the same
   assert.equal(unavailable.length,2,'missing supplemental evidence never triggers a new generation or another fallback');
 });
 
+test('RH v2 complete node evidence retrieves, stores and acknowledges the original without legacy outputs or submit',async t=>{
+  const f=await persistedCloudTask(t,rhBinding),calls=[],before=(await f.store.inspectChannel(f.locator.channelKey)).entries[0];
+  const service=createComfyCloudService({dataRoot:f.root,store:f.store,transportOptions:{authorizeTarget:cloudGrant,resolveHost:publicDns,
+    requestImpl:mockNodeRequest(calls,call=>{
+      assert.ok(['/openapi/v2/query','/0.png'].includes(call.url.pathname),'complete v2 evidence must not read outputs or create a job');
+      const reply=rhDownloadReply(f,call,1);
+      if(call.url.pathname==='/openapi/v2/query')Object.assign(reply.body.results[0],{nodeId:'save',text:null,zindex:0});
+      return reply;
+    })}});t.after(()=>service.close());
+  const input={version:1,expectedAccount:imageServiceAccount(f.req).namespace,task:f.task,...f.locator};
+  const received=await service.result(f.req,input);assert.equal(received.status,'ready');assert.equal(received.upstreamId,f.task.taskId);
+  assert.deepEqual(Buffer.from(received.images[0].data,'base64'),png);assert.equal(received.images[0].id,`rh:${f.task.taskId}:0:save`);
+  const stored=(await f.store.inspectChannel(f.locator.channelKey)).entries[0];assert.equal(stored.cloudDelivery.state,'stored');
+  for(const field of ['cloudReceipt','cloudIntent','upstreamId','fence','requestDigest'])assert.deepEqual(stored[field],before[field]);
+  assert.equal((await service.result(f.req,input)).receipt,received.receipt,'repeat receipt reads the saved original');
+  assert.equal((await service.acknowledge(f.req,{...input,apiKey:undefined,archived:true,receipt:received.receipt})).cleanup,'complete');
+  assert.equal((await f.store.inspectChannel(f.locator.channelKey)).entries[0].cloudDelivery.state,'archived');
+  assert.deepEqual(calls.map(call=>call.url.pathname),['/openapi/v2/query','/0.png']);
+  assert.deepEqual(calls[1].options.headers,{Accept:'image/*'});assert.equal(calls[1].options.method,'GET');
+  assert.doesNotMatch(JSON.stringify(await f.store.inspectChannel(f.locator.channelKey)),/signature|test-only-secret|files\.test/);
+});
+
+for(const mode of ['mixed','null','numeric','empty','duplicate','other-task','unselected','type','count','private-dns','account'])test(`RH v2 direct node evidence rejects ${mode} without legacy repair or new submission`,async t=>{
+  const f=await persistedCloudTask(t,rhBinding),calls=[],before=await f.store.inspectChannel(f.locator.channelKey);
+  await assert.rejects(downloadRunningHubJob(f.req,{task:f.task,...f.locator},{...assetReadOptions(f),
+    resolveHost:async host=>host==='files.test'&&mode==='private-dns'?[{address:'127.0.0.1',family:4}]:publicDns(),
+    requestImpl:mockNodeRequest(calls,call=>{
+      assert.equal(call.url.pathname,'/openapi/v2/query','invalid direct evidence may not fetch legacy outputs or files');
+      const reply=rhDownloadReply(f,call,1),row=reply.body.results[0];row.nodeId='save';
+      if(mode==='mixed')reply.body.results.push({url:rhFileUrl(1),outputType:'png'});
+      if(mode==='null')row.nodeId=null;if(mode==='numeric')row.nodeId=9;if(mode==='empty')row.nodeId='';
+      if(mode==='duplicate')reply.body.results.push({...row,nodeId:'other'});
+      if(mode==='other-task')row.taskId='999';if(mode==='unselected')row.nodeId='other';if(mode==='type')row.outputType='mp4';
+      if(mode==='count')reply.body.results.push({...row,url:rhFileUrl(1)});
+      if(mode==='account')f.req.user.profile.handle='bob';
+      return reply;
+    })}),error=>error.submissionState==='accepted'&&error.upstreamId===f.task.taskId&&error.retryable===false);
+  assert.deepEqual(calls.map(call=>call.url.pathname),['/openapi/v2/query']);assert.deepEqual(await f.store.inspectChannel(f.locator.channelKey),before);
+});
+
 test('bounded query collects still descriptors only from the original durable receipt and never archives remote success', async t => {
   const f = await persistedCloudTask(t), calls = [], before = await f.store.inspectChannel(f.locator.channelKey);
   const result = await queryComfyCloudTask(f.req, f.task, { ...f.options, includeStillOutputs: true,

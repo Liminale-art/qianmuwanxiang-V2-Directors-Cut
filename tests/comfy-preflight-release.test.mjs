@@ -63,11 +63,12 @@ test('workflow-id release leaves compatible preload and feature-loader addresses
   assert.ok(preload.includes('qianmu-comfy-library-view.js?v=1.59.414') || floorTools.includes('qianmu-comfy-library-view.js?v=1.59.414'));
 });
 
-test('retrieval diagnostics refresh only the manual action browser module',async()=>{
+test('host node-evidence update preserves the manual-action browser address',async()=>{
   const files=await collectReleaseFiles();
-  for(const file of ['qianmu-comfy-cloud-response.js','qianmu-comfy-cloud-query.js','qianmu-runninghub-download.js','qianmu-comfy-cloud-receive.js'])assert.ok(files.includes(file));
+  for(const file of ['qianmu-comfy-cloud-response.js','qianmu-comfy-cloud-query.js','qianmu-runninghub-results.js','qianmu-runninghub-download.js','qianmu-comfy-cloud-receive.js'])assert.ok(files.includes(file));
   const entry=await readFile(new URL('index.js',root),'utf8');
-  assert.ok(entry.includes("const VERSION = '1.59.437';"));
+  assert.ok(entry.includes("const VERSION = '1.59.438';"));
+  assert.ok(!entry.includes('.js?v=1.59.438'),'the host-only update does not refresh browser dependencies');
   assert.deepEqual([...entry.matchAll(/'\.\/([^']+\.js)\?v=1\.59\.437'/g)].map(match=>match[1]),['qianmu-comfy-recovery-action.js']);
   assert.ok(!entry.includes("from './qianmu-comfy-recovery-action.js'"),'manual receipt must not load the stale action');
   const action=await import('../qianmu-comfy-recovery-action.js?v=1.59.437');
@@ -75,4 +76,7 @@ test('retrieval diagnostics refresh only the manual action browser module',async
   const {comfyCloudReadFailureDiagnostic}=await import('../qianmu-comfy-cloud-response.js');
   assert.deepEqual(comfyCloudReadFailureDiagnostic({code:'runninghub_results_match'},{stage:'outputs'}),
     {stage:'outputs',reason:'output_match',hasKnownTaskId:true});
+  const {runningHubNeedsNodeEvidence}=await import('../qianmu-runninghub-results.js');
+  assert.equal(runningHubNeedsNodeEvidence({results:[{nodeId:'9'}]}),false);
+  assert.equal(runningHubNeedsNodeEvidence({results:[{}]}),true);
 });

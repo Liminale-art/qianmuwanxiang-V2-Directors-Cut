@@ -5,7 +5,7 @@ import { createComfyCloudServerTransport } from './qianmu-comfy-server-transport
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 import { normalizeComfyCloudReceipt } from './qianmu-comfy-cloud-receipt.js';
 import { collectComfyCloudStillResults } from './qianmu-comfy-cloud-results.js';
-import { collectRunningHubStillResults } from './qianmu-runninghub-results.js';
+import { collectRunningHubStillResults, runningHubNeedsNodeEvidence } from './qianmu-runninghub-results.js';
 
 export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, authorizeTarget, timeoutMs = 15000,
   signal, resolveHost, requestImpl, maxBytes, includeStillOutputs = false } = {}) {
@@ -68,15 +68,20 @@ export async function queryComfyCloudTask(req, task, { apiKey, authorizeTask, au
     providerCode=body?.code;check(); const result = readComfyCloudTaskStatus(original, body);
     let stillOutputs = null;
     if (includeStillOutputs && result.status === 'succeeded') {
-      stage = 'outputs';diagnosticHttpStatus=undefined;providerCode=undefined;
+      stage = 'outputs';
       if(original.provider==='runninghub') {
-        // Explicit supplemental evidence, not a fallback when v2 fails. Same
-        // original grant and overall deadline cover both authenticated reads.
-        const nodes=await createComfyCloudServerTransport(req,{binding:original,operation:'outputs',task:original},transportOptions);check();
-        response=await nodes.fetchImpl(nodes.plan.url,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
-          body:JSON.stringify({...nodes.plan.body,apiKey}),signal:controller.signal});diagnosticHttpStatus=response.status;check();
-        const evidence=await readComfyCloudJsonResponse(response,{task:original,maxBytes,signal:controller.signal,timeoutMs:Math.max(1,Math.ceil(deadline-performance.now()))});
-        providerCode=evidence?.code;await nodes.verify();check();stillOutputs=collectRunningHubStillResults(receipt,body,evidence);
+        let evidence;
+        if(runningHubNeedsNodeEvidence(body)) {
+          // Only wholly absent node IDs need legacy evidence. Mixed, invalid or
+          // conflicting v2 evidence is rejected, never repaired by another API.
+          diagnosticHttpStatus=undefined;providerCode=undefined;
+          const nodes=await createComfyCloudServerTransport(req,{binding:original,operation:'outputs',task:original},transportOptions);check();
+          response=await nodes.fetchImpl(nodes.plan.url,{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
+            body:JSON.stringify({...nodes.plan.body,apiKey}),signal:controller.signal});diagnosticHttpStatus=response.status;check();
+          evidence=await readComfyCloudJsonResponse(response,{task:original,maxBytes,signal:controller.signal,timeoutMs:Math.max(1,Math.ceil(deadline-performance.now()))});
+          providerCode=evidence?.code;await nodes.verify();check();
+        }
+        stillOutputs=collectRunningHubStillResults(receipt,body,evidence);
       }else stillOutputs = collectComfyCloudStillResults(receipt, body);
       check();
     }
