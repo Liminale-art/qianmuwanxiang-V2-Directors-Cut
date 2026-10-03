@@ -15,6 +15,27 @@ export function renderRunningHubInstanceOptions(value = '') {
   return `${value && !RUNNINGHUB_INSTANCE_TYPES.includes(value) ? '<option value="[invalid]" selected>运行配置待核对</option>' : ''}<option value="" ${!value ? 'selected' : ''}>平台默认</option>`
     + RUNNINGHUB_INSTANCE_TYPES.map(tier => `<option value="${tier}" ${value === tier ? 'selected' : ''}>${{default:'标准',plus:'增强',ultra:'高显存'}[tier]}</option>`).join('');
 }
+export async function confirmRunningHubRetryExecution({context,instanceType,text,isCurrent=()=>true,mountAppearance,document=globalThis.document}) {
+  if(!isCurrent())return null;
+  if(!context?.Popup||!context.POPUP_TYPE)throw Error('当前 ST 不支持运行配置确认，请重新打开页面');
+  const supported=value=>value===''||RUNNINGHUB_INSTANCE_TYPES.includes(value);
+  const initial=instanceType===undefined?'':supported(instanceType)?instanceType:'[invalid]';
+  const wrap=document.createElement('div');wrap.className='sd-comfy-route-picker';
+  wrap.innerHTML=`<h3>确认本次 Comfy 工作流</h3><p>${escape(text).replaceAll('\n','<br>')}</p><label><span>本次运行配置</span><select class="text_pole" aria-label="本次运行配置">${renderRunningHubInstanceOptions(initial)}</select></label><small>平台默认不等于标准；仅影响本次重试。</small><p role="status" aria-live="polite"></p>`;
+  const select=wrap.querySelector('select'),status=wrap.querySelector('[role=status]');
+  const affirmative=result=>result===true||(['string','number'].includes(typeof result)&&['true','ok','yes','confirm','confirmed','affirmative','1'].includes(String(result).trim().toLowerCase()));
+  let release;
+  try {
+    const popup=new context.Popup(wrap,context.POPUP_TYPE.CONFIRM,'',{okButton:'确认生成',cancelButton:'取消',onClosing:popup=>{
+      if(!affirmative(popup.result)||!isCurrent()||supported(select.value))return true;
+      status.textContent='请选择有效的本次运行配置';return false;
+    }});
+    popup.dlg?.classList.add('sd-comfy-route-dialog');
+    let result;try {const shown=popup.show();if(popup.dlg?.isConnected)release=mountAppearance?.(popup.dlg);result=await shown;}catch(_){return null;}
+    if(!affirmative(result)||!isCurrent()||!supported(select.value))return null;
+    return {instanceType:select.value};
+  } finally {release?.();}
+}
 export function renderComfyReferenceControls(profile, capabilities, collapsed = {}) {
   if (!capabilities.reference && !profile.comfyReferences) return '';
   let selection, error = '';

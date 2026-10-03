@@ -11,14 +11,15 @@ async function allowModule(name){
   const source=await readFile(new URL(name,root),'utf8');
   for(const match of source.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)['"]\.\/([^'"?]+)(?:\?[^'"]*)?['"]/g))await allowModule(match[1]);
 }
-for(const name of ['qianmu-storyboard.js','qianmu-comfy-inbox-view.js','qianmu-runninghub-usage.js','qianmu-appearance-session.js','qianmu-icon-renderer.js'])await allowModule(name);
+for(const name of ['qianmu-storyboard.js','qianmu-comfy-inbox-view.js','qianmu-comfy-workbench.js','qianmu-runninghub-usage.js','qianmu-appearance-session.js','qianmu-icon-renderer.js'])await allowModule(name);
 const outer=`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>千幕日志 · 隔离预览</title><link rel="icon" href="data:,">
 <style>body{margin:0;padding:16px;background:#e7eeea;color:#293b32;font:14px/1.5 system-ui}main{max-width:1080px;margin:auto}h1{font-size:20px;margin:0}p{margin:7px 0}nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}button{border:1px solid #82988b;border-radius:6px;padding:7px 12px;background:white;color:#293b32;font:inherit}button[aria-pressed=true]{background:#3e6850;color:white}iframe{display:block;width:100%;height:1000px;margin:auto;border:1px solid #92a49b;box-sizing:border-box;background:white}iframe.narrow{width:min(390px,100%)}output{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;min-height:24px}</style>
-<main><h1>日志与收片 · 实际组件预览</h1><p>全部为合成记录。没有真实聊天、模型、图片获取或持久写入；复制动作只计数。</p><nav aria-label="预览控制"><button data-family="classic">经典</button><button data-family="glass">流光</button><button data-family="editorial">纸间</button><button id="mode">切换明暗</button><button id="width">切换390宽</button><button id="tests">运行界面回归</button></nav><output id="report">正在加载实际 renderer…</output><iframe title="日志收片隔离预览" src="/frame"></iframe></main><script type="module" src="/outer.js"></script></html>`;
+<main><h1>日志与收片 · 实际组件预览</h1><p>全部为合成记录。没有真实聊天、模型、图片获取或持久写入；复制动作只计数。</p><nav aria-label="预览控制"><button data-family="classic">经典</button><button data-family="glass">流光</button><button data-family="editorial">纸间</button><button id="mode">切换明暗</button><button id="width">切换390宽</button><button id="tests">运行界面回归</button><button id="retry">重试运行配置</button></nav><output id="report">正在加载实际 renderer…</output><iframe title="日志收片隔离预览" src="/frame"></iframe></main><script type="module" src="/outer.js"></script></html>`;
 const outerJs=`const frame=document.querySelector('iframe'),report=document.getElementById('report');let family='classic',dark=false;
 const send=action=>frame.contentWindow.postMessage({action,family,dark},location.origin);
 document.querySelectorAll('[data-family]').forEach(button=>button.onclick=()=>{family=button.dataset.family;send('theme');document.querySelectorAll('[data-family]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));});
 document.getElementById('mode').onclick=()=>{dark=!dark;send('theme');};document.getElementById('width').onclick=()=>frame.classList.toggle('narrow');document.getElementById('tests').onclick=()=>send('tests');
+document.getElementById('retry').onclick=()=>send('retry');
 window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===frame.contentWindow)report.textContent=event.data.report;});`;
 const frame=`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><title>实际日志与收片组件</title><style>body{margin:0;background:#eef2ef;color:#293b32;font:14px/1.5 system-ui}#story-director-modal{position:relative!important;inset:auto!important;display:block!important;width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important;box-sizing:border-box;padding:12px!important;background:var(--sd-sticky-bg);border-radius:0!important}#panel.sd-storyboard-root{display:block!important;height:auto!important;max-height:none!important;min-height:0!important;overflow:visible!important}#notice{padding:4px 12px;font-size:12px}</style><p id="notice" role="status">仅本机合成记录</p><section id="story-director-modal" class="sd-theme-light"><div id="panel" class="sd-storyboard-root"></div></section><script type="module" src="/client.js"></script></html>`;
 async function entry(){
@@ -36,7 +37,7 @@ ${labels}\n${['storyboardStageText','storyboardLogPresentation','storyboardLogEx
 return {render:()=>renderStoryboardLogs(state),bind:root=>root.querySelectorAll('[data-storyboard-log]').forEach(row=>{const log=state.logs.find(item=>item.id===row.dataset.storyboardLog);bindStoryboardLogExchange(row,log,state);bindStoryboardLogStages(row,log,state);}),nai:root=>storyboardPaintServiceInbox(root)};
 }`;
 }
-const client=`import {createPreview} from '/entry.js';import {mountComfyInbox} from '/qianmu-comfy-inbox-view.js';import {createQianmuAppearanceSession} from '/qianmu-appearance-session.js';import {applyQianmuIcons} from '/qianmu-icon-renderer.js';
+const client=`import {createPreview} from '/entry.js';import {mountComfyInbox} from '/qianmu-comfy-inbox-view.js';import {confirmRunningHubRetryExecution} from '/qianmu-comfy-workbench.js';import {createQianmuAppearanceSession} from '/qianmu-appearance-session.js';import {applyQianmuIcons} from '/qianmu-icon-renderer.js';
 const panel=document.getElementById('panel'),modal=document.getElementById('story-director-modal'),notice=document.getElementById('notice');let family='classic',dark=false,disposeInbox,copyCount=0;
 let settings={theme:'light',appearance:{version:1,family:'classic',mode:'light',source:'manual',accent:'#719688'}};
 const appearance=createQianmuAppearanceSession({document,readSettings:()=>settings,styleUrl:new URL('/qianmu-theme-skins.css',location.href)});
@@ -61,6 +62,17 @@ panel.querySelector('.sd-storyboard-open-service-inbox').onclick=()=>{inbox.hidd
 for(const button of panel.querySelectorAll('.sd-storyboard-retry-log,.sd-storyboard-load-log,.sd-storyboard-export-logs,.sd-storyboard-clear-logs,.sd-storyboard-pack-export,.sd-storyboard-pack-recover,.sd-storyboard-copy-log'))button.onclick=()=>notice.textContent='此预览不执行生成、导出或数据修改';
 const release=appearance.mount(modal);openInbox();
 const report=value=>parent.postMessage({report:value},location.origin);
+class SyntheticPopup {
+ constructor(content,_type,_value,options){this.options=options;this.dlg=document.createElement('dialog');this.dlg.className='popup';
+  const body=document.createElement('div');body.className='popup-body';const area=document.createElement('div');area.className='popup-content';area.append(content);body.append(area);
+  const controls=document.createElement('div');controls.className='popup-controls';controls.style.cssText='display:flex;justify-content:center;gap:12px;margin-top:16px';
+  for(const [label,result,className] of [[options.okButton,1,'popup-button-ok'],[options.cancelButton,0,'popup-button-cancel']]){const button=document.createElement('button');button.type='button';button.className='menu_button '+className;button.textContent=label;button.onclick=()=>this.finish(result);controls.append(button);}
+  body.append(controls);this.dlg.append(body);this.dlg.addEventListener('cancel',event=>{event.preventDefault();void this.finish(0);});
+ }
+ show(){const result=new Promise(resolve=>this.resolve=resolve);document.body.append(this.dlg);this.dlg.showModal();this.dlg.querySelector('select').focus();return result;}
+ async finish(result){this.result=result;if(await this.options.onClosing?.(this)===false)return;this.dlg.close();this.dlg.remove();this.resolve(result);}
+}
+async function retry(){if(document.querySelector('dialog[open]'))return;const value=await confirmRunningHubRetryExecution({context:{Popup:SyntheticPopup,POPUP_TYPE:{CONFIRM:1}},instanceType:'',text:'保存 1 张，接收 1 张\\n继续前请确认数量、输出节点与可能费用。',isCurrent:()=>true,mountAppearance:dialog=>appearance.mountPortal(dialog,{inheritTheme:true})});report('运行配置结果：'+JSON.stringify(value)+'；0 模型请求 / 0 提交 / 0 持久写入');}
 async function theme(){settings={theme:dark?'dark':'light',appearance:{version:1,family,mode:dark?'dark':'light',source:'manual',accent:'#719688'}};appearance.repaintClassic();await appearance.sync();report('主题 '+family+' / '+(dark?'dark':'light')+'；0 模型请求 / 0 持久写入');}
 const tick=()=>new Promise(resolve=>setTimeout(resolve,20));
 async function tests(){let checks=0;const check=(value,label)=>{if(!value)throw Error(label);checks++;};const log=panel.querySelector('[data-storyboard-log="failed"]');
@@ -72,7 +84,7 @@ async function tests(){let checks=0;const check=(value,label)=>{if(!value)throw 
  log.open=false;await tick();check([...log.querySelectorAll('pre')].every(pre=>pre.textContent===''),'closing clears all long text');
  check(!inbox.querySelector('.sd-comfy-inbox-storage').open,'storage folded');check([...inbox.querySelectorAll('.sd-comfy-inbox-row-detail')].every(detail=>!detail.open),'row technical details folded');check([...inbox.querySelectorAll('.sd-comfy-inbox-notice')].some(node=>node.textContent.includes('重复付费')),'uncertain risk visible');check(document.documentElement.scrollWidth<=innerWidth+1,'no horizontal page overflow');
  report('PASS '+checks+' actual DOM checks; '+family+' / '+(dark?'dark':'light')+'; 0 model / 0 persistent writes');}
-window.addEventListener('message',async event=>{if(event.origin!==location.origin||event.source!==parent)return;try{if(event.data.action==='theme'){family=event.data.family;dark=event.data.dark;await theme();}else if(event.data.action==='tests')await tests();}catch(error){report('FAIL '+error.message);}});
+window.addEventListener('message',async event=>{if(event.origin!==location.origin||event.source!==parent)return;try{if(event.data.action==='theme'){family=event.data.family;dark=event.data.dark;await theme();}else if(event.data.action==='tests')await tests();else if(event.data.action==='retry')await retry();}catch(error){report('FAIL '+error.message);}});
 window.addEventListener('pagehide',()=>{disposeInbox?.();release();appearance.reset();});await theme();`;
 const server=createServer(async(req,res)=>{
   try{if(req.method!=='GET'){res.writeHead(405).end();return;}

@@ -6,7 +6,8 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
-const ENTRY_RELEASE = '1.59.429';
+const ENTRY_RELEASE = '1.59.430';
+const STYLE_RELEASE = '1.59.429';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);
@@ -99,13 +100,13 @@ test('affected modules use their intended release URL without duplicating shared
   }
 });
 
-test('installed entry and styles use the current UI release while unchanged icon modules retain their URL', async () => {
+test('installed entry and styles use their actual release addresses while unchanged icon modules retain their URL', async () => {
   const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
   const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
   assert.equal(manifest.version, ENTRY_RELEASE);
   assert.equal(packageJson.version, manifest.version);
   assert.equal(manifest.js, `index.js?v=${ENTRY_RELEASE}`);
-  assert.equal(manifest.css, `style.css?v=${ENTRY_RELEASE}`);
+  assert.equal(manifest.css, `style.css?v=${STYLE_RELEASE}`);
   assert.ok(sources.get('index.js').includes(`const VERSION = '${ENTRY_RELEASE}';`));
   assert.ok(sources.get('index.js').includes('qianmu-theme-skins.css?v=${VERSION}'));
   for (const file of ['qianmu-theme-skins.css', 'qianmu-icon-renderer.js', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file));

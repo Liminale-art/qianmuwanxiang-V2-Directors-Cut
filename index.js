@@ -298,7 +298,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.429';
+const VERSION = '1.59.430';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -429,7 +429,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => loadLocalChunk('./qianmu-comfy-workbench.js?v=1.59.202'),
+    load: () => loadLocalChunk('./qianmu-comfy-workbench.js?v=1.59.430'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
@@ -19311,14 +19311,16 @@ async function storyboardProbeComfyCandidate(state, prepared, inputGuard, {candi
 async function storyboardConfirmComfyExecution(job, valid) {
   const strictAutomatic=Boolean(job.automatic || job.comfyAutoSelected);
   const cloud=resolveStoryboardComfyCloud(job.connection);
+  const retryRuntime=!strictAutomatic&&job.comfyRetryReview===true&&cloud?.provider==='runninghub';
   if(cloud&&(job.profile?.comfyCharacterEnabled||job.payload?.comfyCharacterPlan))throw new Error('角色工作流实现已停用，请在当前工作流选择参考图');
   if (job.profile?.comfyRouteBinding != null || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding')) await storyboardVerifyComfyRouteJob(job, valid);
   if (Object.hasOwn(job.profile || {},'comfyRoutePromptFormat') || Object.hasOwn(job.profile || {},'comfyWorkbenchBinding')) await storyboardPrepareComfyPromptJob(job,{prepare:true,valid});
   const rolePlan = job.profile?.comfyCharacterEnabled===true||job.payload?.comfyCharacterPlan ? await storyboardPrepareComfyCharacterJob(job,{prepare:true,readiness:true,valid}) : null;
   if(!valid())return false;
-  const fingerprint = () => JSON.stringify([job.payload, job.profile, job.connection, Boolean(job.automatic),Boolean(job.comfyAutoSelected)]);
+  let approvedTier=job.profile?.comfyInstanceType,approvedHasTier=Object.hasOwn(job.profile||{},'comfyInstanceType');
+  const fingerprint = () => JSON.stringify([job.payload, retryRuntime?Object.fromEntries(Object.entries(job.profile||{}).filter(([key])=>key!=='comfyInstanceType')):job.profile, job.connection, Boolean(job.automatic),Boolean(job.comfyAutoSelected)]);
   const before = fingerprint();
-  const current = () => valid() && before === fingerprint();
+  const current = () => valid() && before === fingerprint()&&(!retryRuntime||(Object.hasOwn(job.profile||{},'comfyInstanceType')===approvedHasTier&&Object.is(job.profile?.comfyInstanceType,approvedTier)));
   const runtime = await directImageRuntime();
   if (!current()) return false;
   const references = rolePlan ? (rolePlan.references?.items||[]) : await storyboardComfyReferenceMetadata(job.payload?.parameters?.workflow, job.profile?.comfyReferences, () => {
@@ -19331,18 +19333,26 @@ async function storyboardConfirmComfyExecution(job, valid) {
   try { runtime.requireComfyExecution(report, execution); }
   catch (error) { if (error.code !== 'comfy_manual_confirmation_required') throw error; }
   const roleReview = Boolean(rolePlan?.participants?.length && (job.payload?.shotSpec?.characters||[]).filter(row=>row.visible!==false).length>1);
-  const needsConfirmation = !strictAutomatic && (roleReview || rolePlan?.definitionWarnings>0 || !report.verified || report.selectedImages !== Math.max(1, Number(job.payload?.parameters?.count) || 1)
+  const needsConfirmation = !strictAutomatic && (retryRuntime || roleReview || rolePlan?.definitionWarnings>0 || !report.verified || report.selectedImages !== Math.max(1, Number(job.payload?.parameters?.count) || 1)
     || report.savedImages !== report.selectedImages || report.maxIntermediateBatch > 1 || !report.singleSamplingChain);
   if (needsConfirmation) {
     const number = value => value === null ? '未确定' : String(value);
-    const accepted = await confirmDialog('确认本次 Comfy 工作流',
-      `保存 ${number(report.savedImages)} 张，接收 ${number(report.selectedImages)} 张；内部最大批量 ${number(report.maxIntermediateBatch)}。\n`
+    const text=`保存 ${number(report.savedImages)} 张，接收 ${number(report.selectedImages)} 张；内部最大批量 ${number(report.maxIntermediateBatch)}。\n`
       + (roleReview ? '此多人工作流尚未验证人物分区；多个 LoRA 或参考槽不保证互不影响。\n' : '')
       + (rolePlan?.definitionWarnings ? '部分自定义节点仅能在实际运行时确认。\n' : '')
       + (report.singleSamplingChain ? '' : '包含多条采样分支。\n')
       + (!report.verified ? '自定义节点或动态输入尚不能核定数量。\n' : '')
-      + '选择最终输出不会减少工作流内部计算，实际费用以渠道为准。仅确认这一次手动生成？');
+      + '选择最终输出不会减少工作流内部计算，实际费用以渠道为准。仅确认这一次手动生成？';
+    let accepted;
+    if(retryRuntime){
+      const view=await featureRuntime.load('comfyWorkbench');if(!current())return false;
+      accepted=await view.confirmRunningHubRetryExecution({context:ctx(),instanceType:approvedTier,text,isCurrent:current,mountAppearance:dialog=>appearanceSession.mountPortal(dialog,{inheritTheme:true})});
+    }else accepted=await confirmDialog('确认本次 Comfy 工作流',text);
     if (!accepted || !current()) return false;
+    if(retryRuntime){
+      const tier=accepted.instanceType;if(!['','default','plus','ultra'].includes(tier))throw Error('本次运行配置无效，未提交生成');
+      if(tier!==approvedTier&&!(approvedTier===undefined&&!approvedHasTier&&tier==='')){job.profile.comfyInstanceType=tier;approvedTier=tier;approvedHasTier=true;}
+    }
     execution.allowUnverified = !report.verified;
   }
   if (!current()) return false;
@@ -20240,6 +20250,7 @@ async function storyboardRetryLog(log, { isCurrent = () => true } = {}) {
     toast('原任务属于其他聊天，已安全载入镜头台并改为仅存成片。', 'info');
     return false;
   }
+  Object.defineProperty(job,'comfyRetryReview',{value:true,enumerable:false});
   return storyboardQueueJob(job, () => storyboardState() === state && getChatKey() === chatKey
     && JSON.stringify(log.snapshot) === snapshot && state.logs.some(item => item.id === log.id) && isCurrent()
     && (!previous || storyboardGalleryRecords().includes(previous) && JSON.stringify(galleryMembershipSnapshot(previous))===membership));

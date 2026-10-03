@@ -4,6 +4,13 @@ import {readFile} from 'node:fs/promises';
 import {collectReleaseFiles} from '../scripts/build-release.mjs';
 
 const root=new URL('../',import.meta.url);
+test('manual RunningHub retry loads the updated local workbench without refreshing cloud submission code',async()=>{
+  const entry=await readFile(new URL('index.js',root),'utf8');
+  assert.ok(entry.includes("loadLocalChunk('./qianmu-comfy-workbench.js?v=1.59.430')"));
+  const files=await collectReleaseFiles();assert.ok(files.includes('qianmu-comfy-workbench.js'));
+  const runtime=await import('../qianmu-comfy-workbench.js?v=1.59.430');
+  assert.equal(typeof runtime.confirmRunningHubRetryExecution,'function');
+});
 test('installed cloud execution and inbox use fresh reachable release addresses',async()=>{
   for(const [parent,child] of [['index.js','qianmu-comfy-recovery-client.js'],
     ['qianmu-comfy-recovery-client.js','qianmu-comfy-cloud-execution.js'],
