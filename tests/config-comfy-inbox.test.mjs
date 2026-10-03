@@ -25,6 +25,20 @@ function fixture() {
 }
 const row={attemptId:'original',originalOnly:true,baseUrl:'https://comfy.test',credentialId:'original-credential'};
 
+test('receipt-less cloud review is keyless and dispatched before log, credential or delivery work',async()=>{
+  const e=fixture();let reviews=0;
+  e.c.storyboardState=()=>assert.fail('review must not read recipe logs or credentials');
+  e.c.resolveComfyCloudRecoveryKey=()=>assert.fail('review must not resolve an API Key');
+  e.c.storyboardResolveComfyRecoveryKey=()=>assert.fail('review must not resolve a native Key');
+  e.service.reviewCloudOriginal=async(selected,options)=>{
+    assert.equal(selected.attemptId,'original');assert.equal(options.valid(),true);
+    e.change('chat');assert.equal(options.valid(),false);reviews++;return {reviewed:true};
+  };
+  await e.c.storyboardOpenComfyInbox(e.root);
+  assert.equal((await e.mounted.receive({...row,engine:'cloud'},'server','review')).reviewed,true);
+  assert.equal(reviews,1);assert.deepEqual(e.calls,[]);
+});
+
 test('cancel from the inbox uses the original cloud credential and cannot fall through to receipt or archive',async()=>{
   const e=fixture();let cancellation=0;
   e.c.resolveComfyCloudRecoveryKey=async(_selected,ports)=>{await ports.guard();return 'original-key';};

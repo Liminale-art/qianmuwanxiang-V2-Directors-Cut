@@ -37,6 +37,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
   const controllers = new Set();
   const submissionTickets = new WeakMap();
   const cancelling = new Set();
+  const reviewing = new Set();
   async function guard(job) {
     if (closed) throw fail('closed', 'Comfy 领取会话已结束，请在原账户重新领取');
     await assertComfyAccount(job, { account });
@@ -363,11 +364,12 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       const providers = value => Array.isArray(value) && value.length <= 2 && new Set(value).size === value.length && value.every(item => ['comfy-cloud','runninghub'].includes(item));
       if (data.version !== 1 || data.accountBindingVersion !== 1 || data.catalogVersion !== 1 || flags.some(key => typeof data[key] !== 'boolean')
         || (Object.hasOwn(data,'deploymentSubmission') && typeof data.deploymentSubmission!=='boolean')
+        || (Object.hasOwn(data,'manualReview') && typeof data.manualReview!=='boolean')
         || !providers(data.queryProviders) || !providers(data.resultProviders)
         || (Object.hasOwn(data,'readinessProviders') && !providers(data.readinessProviders))
         || (Object.hasOwn(data,'automaticProviders') && !providers(data.automaticProviders))
         || (Object.hasOwn(data,'submissionProviders') && !providers(data.submissionProviders))) throw fail('capabilities', '后端版本与当前千幕不匹配，请同步更新并重启 ST');
-      return { version: 1, namespace: current.namespace, deploymentSubmission:data.deploymentSubmission===true, ...Object.fromEntries(flags.map(key => [key,data[key]])),
+      return { version: 1, namespace: current.namespace, deploymentSubmission:data.deploymentSubmission===true, manualReview:data.manualReview===true, ...Object.fromEntries(flags.map(key => [key,data[key]])),
         queryProviders: [...data.queryProviders], resultProviders: [...data.resultProviders], automaticProviders:[...(data.automaticProviders ?? [])],
         readinessProviders:[...(data.readinessProviders ?? [])],submissionProviders: [...(data.submissionProviders ?? (data.submission ? ['comfy-cloud'] : []))] };
     },
@@ -379,11 +381,15 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       const clean = row => {
         if (!/^[a-zA-Z0-9_-]{1,240}$/.test(row?.attemptId || '')) throw fail('catalog', '云任务目录编号无效');
         const task = row.task ? bindComfyCloudTask(row.task, row.task.taskId, row.task.links) : null;
+        const cloudConnection = task ? bindComfyCloudProtocol(task.origin, task.protocol)
+          : row.cloudConnection ? bindComfyCloudProtocol(row.cloudConnection.origin, row.cloudConnection.protocol) : null;
+        if (['canReview','reviewed'].some(key => Object.hasOwn(row,key) && typeof row[key] !== 'boolean')) throw fail('catalog', '云任务核查状态无效，请刷新目录');
         const cloudRecord = task ? normalizeComfyDelivery({ version: 3, namespace: current.namespace, attemptId: row.attemptId, originalOnly: true,
           cloudConnection: bindComfyCloudProtocol(task.origin, task.protocol), cloudTask: task, taskLocator: locator(row.taskLocator),
           createdAt: row.createdAt, status: 'prepared', imageCount: 0, files: [] }, origin) : null;
         return { ...row, namespace: current.namespace, engine: 'cloud', taskLocator: locator(row.taskLocator), task,
-          cloudRecord,
+          cloudRecord, cloudConnection, reviewed: row.status === 'acknowledged',
+          canReview: row.canReview === true && row.status === 'uncertain' && !row.live && !task && !row.upstreamId && !row.resultAvailable && !row.archiveState,
           resultAvailable: row.resultAvailable === true && supportedCloudOriginal(task),
           canReceiveOriginal: supportedCloudOriginal(task) && !row.live && row.archiveState !== 'archived',
           canRetryCleanup: row.canRetryCleanup === true && row.archiveState === 'archived' && supportedCloudOriginal(task), canDiscard: false };
@@ -397,7 +403,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         const data = await this.cloudCatalog({ cursor: cloudCursor, namespace: current.namespace });
         const available = row => capabilities.resultRetrieval && capabilities.resultProviders.includes(row.task?.provider);
         const adapt = row => ({ ...row, resultAvailable: row.resultAvailable && available(row), canReceiveOriginal: row.canReceiveOriginal && available(row),
-          canRetryCleanup: row.canRetryCleanup && capabilities.archiveConfirmation });
+          canRetryCleanup: row.canRetryCleanup && capabilities.archiveConfirmation, canReview: row.canReview && capabilities.manualReview });
         return { ...data, originals: data.originals.map(adapt), tasks: data.tasks.map(adapt), capabilities };
       };
       const results = await Promise.allSettled([this.catalog({ namespace: current.namespace }), readCloud()]);
@@ -413,7 +419,7 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
       const cloudKeys = new Set((cloud?.originals || []).map(row => JSON.stringify([row.taskLocator.channelKey,row.attemptId])));
       for (const row of cloud?.tasks || []) {
         const key = JSON.stringify([row.taskLocator.channelKey,row.attemptId]);
-        if (!cloudKeys.has(key) && (row.canReceiveOriginal || row.usage || cloud.storageReadable === false && row.canRetryCleanup)) { originals.push(row); cloudKeys.add(key); }
+        if (!cloudKeys.has(key) && (row.canReceiveOriginal || row.usage || ['uncertain','acknowledged'].includes(row.status) || cloud.storageReadable === false && row.canRetryCleanup)) { originals.push(row); cloudKeys.add(key); }
       }
       const storageReadable = Boolean(native && cloud && cloud.storageReadable);
       const total = name => storageReadable && [native,cloud].every(item => Number.isSafeInteger(item.totals?.[name]) && item.totals[name] >= 0)
@@ -422,6 +428,45 @@ export function createComfyRecoveryClient({ account = resolveImageAccountNamespa
         cloudNextCursor: cloud ? cloud.nextCursor || null : cloudCursor,
         cloudCapabilities: cloud?.capabilities || null,
         totals: Object.fromEntries(['count','imageBytes','metadataBytes','temporaryBytes','reservedBytes','tasks'].map(name => [name,total(name)])), warning: warnings.join('；') };
+    },
+    async reviewCloudOriginal(item, { valid = () => true } = {}) {
+      if (item?.engine !== 'cloud' || !/^st-user:.+/.test(item.namespace || '') || !/^[a-zA-Z0-9_-]{1,240}$/.test(item.attemptId || '')) throw fail('identity', '请选择原云请求后核查');
+      const selected = { namespace: item.namespace, attemptId: item.attemptId, channelKey: locator(item.taskLocator).channelKey };
+      const key = JSON.stringify([selected.namespace,selected.channelKey,selected.attemptId]);
+      if (reviewing.has(key)) throw fail('busy', '原请求正在核查，请等待当前操作');
+      reviewing.add(key);
+      try {
+        const current = await scope(selected.namespace);
+        const check = async () => { await guard(current.job); if (!valid()) throw fail('page', '收片页面已变化，请重新打开'); };
+        const packet = data => {
+          if (data.version !== 1 || data.channelKey !== selected.channelKey || data.attemptId !== selected.attemptId
+            || !['reserved','submitting','uncertain','acknowledged','succeeded','rejected','released','failed','canceled','expired'].includes(data.status)
+            || ['canReview','reviewed','resultAvailable'].some(field => typeof data[field] !== 'boolean')
+            || data.reviewed !== (data.status === 'acknowledged')
+            || (data.canReview ? data.status !== 'uncertain' || data.resultAvailable || !/^[a-f0-9]{64}$/.test(data.confirmation || '') : data.confirmation !== ''))
+            throw fail('identity', '核查回执不属于原请求或状态已变化，请刷新原记录');
+          return data;
+        };
+        await check();
+        const capabilities = await this.cloudCapabilities({ namespace: selected.namespace }); await check();
+        if (!capabilities.manualReview) throw fail('capabilities', '后端尚未支持原请求核查，请同步更新并重启 ST');
+        const body = { ...current.body, channelKey: selected.channelKey, attemptId: selected.attemptId };
+        const review = packet(await request(current.job, 'review', body, 16384, CLOUD_BASE, valid)); await check();
+        if (review.reviewed) return { reviewed: true, warning: '当前已人工核查，原结果及费用仍未知；未重新生成' };
+        if (!review.canReview) return { reviewed: false, warning: review.resultAvailable ? '原请求已有结果，请刷新后领取原图' : '原请求已变化或仍在处理，请刷新后核查；未重新生成' };
+        const confirmed = await confirm('请先核对平台任务与账单。确认已核对原请求？原结果及费用仍未知；本次仅解除本地待核查限制，不会取消平台任务、退款或生成新图。之后再次生成可能重复计费。');
+        await check();
+        if (!confirmed) return { cancelled: true };
+        try {
+          const result = packet(await request(current.job, 'confirmReview', { ...body, confirmation: review.confirmation, confirmed: true, possibleCharge: true }, 16384, CLOUD_BASE, valid));
+          await check();
+          if (!result.reviewed || result.canReview) throw fail('confirmation', '核查状态尚未确认');
+          return { reviewed: true, warning: '已核查，原结果及费用仍未知；原记录保留，未重新生成' };
+        } catch (error) {
+          await check();
+          throw fail('review_confirmation', '核查结果尚未确认，请刷新原记录核对；未重发确认或生成');
+        }
+      } finally { reviewing.delete(key); }
     },
     async retryCloudCleanup(item) {
       if (item?.engine !== 'cloud' || item.canRetryCleanup !== true || item.archiveState !== 'archived'

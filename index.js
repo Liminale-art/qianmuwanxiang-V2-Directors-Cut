@@ -298,7 +298,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.432';
+const VERSION = '1.59.433';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -372,11 +372,11 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.429'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.433'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.429'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.433'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
@@ -19097,6 +19097,7 @@ async function storyboardOpenComfyInbox(root) {
     if (!valid()) return;
     const dispose = view.mountComfyInbox(host, { service, isCurrent: valid, receive: async (row, mode, action) => {
       if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
+      if (action === 'review') return service.reviewCloudOriginal(row, { valid });
       const log = storyboardState().logs.find(item => (!row.logId || item.id === row.logId) && item.snapshot?.source === 'comfy' && item.snapshot?.imageAdmission?.attemptId === row.attemptId && item.snapshot?.imageAdmission?.namespace === row.namespace);
       if (!action && log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator,
         ...((row.engine==='cloud'||row.version===3)&&row.cloudRecord?{cloudRecord:row.cloudRecord}:{}) });

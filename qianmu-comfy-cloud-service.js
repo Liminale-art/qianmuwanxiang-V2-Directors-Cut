@@ -3,7 +3,7 @@
 import { Buffer } from 'node:buffer';
 import { createImageServiceStore } from './qianmu-image-service-store.js';
 import { createImageServiceResults } from './qianmu-image-service-results.js';
-import { createComfyCloudLedger, comfyCloudResourceKey } from './qianmu-comfy-cloud-ledger.js';
+import { createComfyCloudLedger, comfyCloudResourceKey, comfyCloudManualReviewState } from './qianmu-comfy-cloud-ledger.js';
 import { submitComfyCloudTask } from './qianmu-comfy-cloud-submit.js';
 import { createComfyCloudReceiver } from './qianmu-comfy-cloud-receive.js';
 import { queryComfyCloudTask } from './qianmu-comfy-cloud-query.js';
@@ -19,6 +19,12 @@ import { normalizeComfyCloudFailureDiagnostic, describeComfyCloudFailureDiagnost
 
 const fail = (code, message, status = 409) => Object.assign(new ImageGatewayError(status, `comfy_cloud_service_${code}`, message), { retryable: false });
 const keyOf = row => JSON.stringify([row.channelKey, row.attemptId]);
+const reviewErrors = Object.freeze({
+  image_service_cloud_review_identity: '请在原 ST 账户核查原请求',
+  image_service_cloud_review_consent: '请明确确认原结果和费用仍可能未知',
+  image_service_cloud_review_missing: '未找到当前账户可核查的完整原请求',
+  image_service_cloud_review_changed: '原请求已变化或仍在处理，请刷新后重新核查',
+});
 
 export function createComfyCloudService({ dataRoot, store, cache, transportOptions = {} } = {}) {
   store ||= createImageServiceStore({ dataRoot, scope: 'comfy-cloud' });
@@ -28,6 +34,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
   let referenceSource;
   const authorizeSource = (...args) => (referenceSource ||= createComfyReferenceSource({ dataRoot })).authorize(...args);
   const live = row => [...active].some(item => item.key === keyOf(row) && item.namespace === row.namespace);
+  const resourceBusy = channelKey => [...active].some(item => item.resourceKey === channelKey);
   function run(req, raw, options, operation, tracksTask = false) {
     const submission = typeof tracksTask === 'function';
     try {
@@ -57,6 +64,7 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         .catch(cause => {
           if (submission && !started) cause.submissionState = 'not_submitted';
           if (cause instanceof ImageGatewayError && String(cause.code).startsWith('comfy_cloud_service_')) throw cause;
+          if (Object.hasOwn(reviewErrors, cause?.code)) throw fail('review', reviewErrors[cause.code]);
           // Never echo arbitrary transport, filesystem or stored-record errors.
           const error = fail('unconfirmed', cause?.code === 'comfy_cloud_submit_references'
             ? '参考图准备未完成，未提交生图；部分素材可能已上传，请核查后再试'
@@ -75,6 +83,12 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
     }
   }
   return Object.freeze({
+    review(req, input, options) {
+      return run(req, input, options, (value, _account, _signal, check) => ledger.review(req, value, { check, resourceBusy }));
+    },
+    confirmReview(req, input, options) {
+      return run(req, input, options, (value, _account, _signal, check) => ledger.confirmReview(req, value, { check, resourceBusy }));
+    },
     readiness(req,input,options) {
       return run(req,input,options,async(value,_account,signal,check)=>{
         try {
@@ -147,6 +161,8 @@ export function createComfyCloudService({ dataRoot, store, cache, transportOptio
         const cachedKeys = inventory ? new Set(inventory.entries.map(keyOf)) : null;
         const view = row => ({ ...imageServiceTaskView(row), taskLocator: { version: 1, channelKey: row.channelKey },
           task: row.cloudReceipt?.task || null, archiveState: row.cloudDelivery?.state || null, live: live(row),
+          canReview: comfyCloudManualReviewState(row, resourceBusy(row.channelKey)).canReview, reviewed: row.status === 'acknowledged',
+          ...(row.cloudIntent ? { cloudConnection: row.cloudIntent.connection } : {}),
           ...(row.cloudDelivery ? { cacheReceipt: row.cloudDelivery.cacheReceipt } : {}),
           ...(row.cloudDelivery?.usage||row.cloudObservation?.usage ? {usage:row.cloudDelivery?.usage||row.cloudObservation.usage} : {}),
           ...(row.cloudObservation ? {reportedStatus:row.cloudObservation.status,usageCheckedAt:row.cloudObservation.observedAt} : {}),

@@ -3,10 +3,11 @@ import { describeRunningHubUsage } from './qianmu-runninghub-usage.js';
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const size = value => { if (!Number.isFinite(value) || value < 0) return '暂不可读取'; return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${(value / 1024).toFixed(1)} KB`; };
 const platform = row => ({'comfy-cloud':'Comfy Cloud',runninghub:'RunningHub'})[row.task?.provider || row.cloudConnection?.provider] || (row.engine === 'cloud' ? '云任务' : 'Comfy');
-const stateName = value => ({ prepared:'待核查', available:'待归档', archived:'已归档', confirmed:'已领取', succeeded:'已完成', failed:'失败', canceled:'已取消', expired:'已过期', released:'未提交', rejected:'已拒绝', reserved:'等待', submitting:'执行中', uncertain:'待核查', acknowledged:'待核查', unverified:'待核查' })[value] || '待核查';
+const stateName = value => ({ prepared:'待核查', available:'待归档', archived:'已归档', confirmed:'已领取', succeeded:'已完成', failed:'失败', canceled:'已取消', expired:'已过期', released:'未提交', rejected:'已拒绝', reserved:'等待', submitting:'执行中', uncertain:'待核查', acknowledged:'已核查 · 费用未知', unverified:'待核查' })[value] || '待核查';
 const receiptWarning = row => {
   if (row.live) return '任务进行中，请勿重复生成。';
   if (row.resultAvailable || row.archiveState || ['archived','confirmed','succeeded','available','failed','canceled','expired','released','rejected'].includes(row.reportedStatus || row.status)) return '';
+  if (row.status === 'acknowledged') return '原请求已人工核查，结果及费用仍未知；再次生成可能重复计费。';
   return '原任务结果待核查，请勿重复生成，以免重复付费。';
 };
 export function mountComfyInbox(host, { service, receive, isCurrent = () => host.isConnected } = {}) {
@@ -15,6 +16,8 @@ export function mountComfyInbox(host, { service, receive, isCurrent = () => host
   const current = () => !disposed && isCurrent();
   const rows = () => mode === 'server' ? (server?.originals || []) : (local?.rows || []);
   const enabled = row => mode === 'local' || row.canDiscard === true;
+  const missingCloudTask = row => row.engine === 'cloud' && !row.task && !row.cloudTask;
+  const canReview = row => mode === 'server' && row.canReview === true && server?.cloudCapabilities?.manualReview === true;
   const canReceive = row => {
     if (row.engine !== 'cloud' && row.version !== 3) return mode === 'local' || row.resultAvailable === true;
     const capabilities = server?.cloudCapabilities;
@@ -42,12 +45,13 @@ export function mountComfyInbox(host, { service, receive, isCurrent = () => host
       <div class="sd-comfy-inbox-tools"><label><input type="checkbox" data-action="select-page" ${busy ? 'disabled' : ''} ${shown.length && shown.filter(enabled).length && shown.filter(enabled).slice(0,20).every(row => selected.has(key(row))) ? 'checked' : ''}>本页前 20 项</label><button type="button" class="sd-btn" data-action="clear" ${!selected.size || busy ? 'disabled' : ''}>清理已选 ${selected.size || ''}</button></div>
       <div class="sd-comfy-inbox-rows">${shown.map((row, index) => `<article>
         <input type="checkbox" aria-label="选择任务 ${escape(row.attemptId)}" data-row="${index}" ${selected.has(key(row)) ? 'checked' : ''} ${busy || !enabled(row) ? 'disabled' : ''}>
-        <div><b>${escape(row.model || (mode === 'local' ? '领取记录' : 'Comfy 原图'))}</b><small class="sd-comfy-inbox-row-meta">${escape(platform(row))} · ${escape(stateName(row.archiveState || row.reportedStatus || row.status))}${Number.isInteger(row.imageCount) ? ` · ${row.imageCount} 张` : ''}</small><small>${escape(new Date(row.createdAt || 0).toLocaleString())}</small>
+        <div><b>${escape(row.model || (mode === 'local' ? '领取记录' : missingCloudTask(row) ? 'Comfy 原请求' : 'Comfy 原图'))}</b><small class="sd-comfy-inbox-row-meta">${escape(platform(row))} · ${escape(stateName(row.archiveState || row.reportedStatus || row.status))}${Number.isInteger(row.imageCount) && !missingCloudTask(row) ? ` · ${row.imageCount} 张` : ''}</small><small>${escape(new Date(row.createdAt || 0).toLocaleString())}</small>
         ${receiptWarning(row) ? `<p class="sd-comfy-inbox-notice">${escape(receiptWarning(row))}</p>` : ''}
         <details class="sd-comfy-inbox-row-detail"><summary>详情</summary><small>${mode === 'server' ? `${row.imageCount ?? '—'} 张 · ${size(row.cacheBytes)}${row.reservedBytes ? ` · 预留 ${size(row.reservedBytes)}` : ''}` : `已存 ${row.files?.length || 0} / ${row.imageCount || '—'} 张`}</small><small class="sd-comfy-inbox-id">${escape(row.attemptId)}</small>
         ${(row.task?.provider || row.cloudConnection?.provider) === 'runninghub' ? `<small class="sd-comfy-inbox-usage" title="平台报告的原始用量；金额币种与耗时单位以平台账单为准，不作估价或按图片累加">${escape(describeRunningHubUsage(row.usage))}</small>` : ''}
-        ${mode === 'server' && !enabled(row) ? `<small>${row.canRetryCleanup ? '图片已归档，可继续清理临时文件' : row.archiveState === 'archived' ? '已归档，临时文件已清理' : '原图保留，领取归档后再清理'}</small>` : ''}</details></div>
-        <div class="sd-comfy-inbox-actions"><button type="button" class="sd-btn" data-receive="${index}" ${busy || !canReceive(row) ? 'disabled' : ''}>${row.canRetryCleanup ? '继续清理' : row.archiveState === 'archived' ? '已领取' : row.canReceiveOriginal && !row.resultAvailable ? '查看结果' : '领取'}</button>
+        ${mode === 'server' && !enabled(row) ? `<small>${missingCloudTask(row) ? '原请求记录保留' : row.canRetryCleanup ? '图片已归档，可继续清理临时文件' : row.archiveState === 'archived' ? '已归档，临时文件已清理' : '原图保留，领取归档后再清理'}</small>` : ''}</details></div>
+        <div class="sd-comfy-inbox-actions">${!missingCloudTask(row) ? `<button type="button" class="sd-btn" data-receive="${index}" ${busy || !canReceive(row) ? 'disabled' : ''}>${row.canRetryCleanup ? '继续清理' : row.archiveState === 'archived' ? '已领取' : row.canReceiveOriginal && !row.resultAvailable ? '查看结果' : '领取'}</button>` : ''}
+        ${canReview(row) ? `<button type="button" class="sd-btn" data-review="${index}" ${busy ? 'disabled' : ''}>核查原请求</button>` : ''}
         ${canCancel(row) ? `<button type="button" class="sd-btn" data-cancel="${index}" ${busy ? 'disabled' : ''}>取消任务</button>` : ''}</div>
       </article>`).join('') || (!busy && !error ? '<p class="sd-comfy-inbox-empty" role="status">暂无待领取记录。</p>' : '')}</div>
       ${pages > 1 ? `<footer><button type="button" class="sd-btn" data-action="previous" ${!page || busy ? 'disabled' : ''}>上一页</button><span>${page + 1} / ${pages}</span><button type="button" class="sd-btn" data-action="next" ${page + 1 >= pages || busy ? 'disabled' : ''}>下一页</button></footer>` : ''}
@@ -85,12 +89,15 @@ export function mountComfyInbox(host, { service, receive, isCurrent = () => host
       finally { if (current() && ticket === revision) { busy = false; paint(); } }
       return;
     }
-    const chosen = rows().filter(row => selected.has(key(row))), row = rows()[page * 40 + Number(button.dataset.cancel ?? button.dataset.receive)];
+    const chosen = rows().filter(row => selected.has(key(row))), row = rows()[page * 40 + Number(button.dataset.review ?? button.dataset.cancel ?? button.dataset.receive)];
     busy = true; paint();
     try {
       if (action === 'clear') {
         const result = await (mode === 'server' ? service.discard(chosen) : service.removeLocal(chosen));
         notice = result.cancelled ? '' : `已清理 ${result.removed} 项${result.errors?.length ? `；${result.errors.length} 项未清理：${result.errors[0]}` : ''}`;
+      } else if (button.dataset.review !== undefined && row && canReview(row)) {
+        const result = await receive(row, mode, 'review');
+        notice = result?.cancelled ? '' : result?.warning || '请刷新原请求核对；未重新生成';
       } else if (button.dataset.cancel !== undefined && row && canCancel(row)) {
         const result = await receive(row, mode, 'cancel');
         notice = result?.cancelled ? '' : result?.warning || '取消状态尚未确认，请核查原任务';

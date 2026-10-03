@@ -10,6 +10,22 @@ import { normalizeRunningHubObservation } from './qianmu-runninghub-usage.js';
 
 const fail = (reason, message) => Object.assign(new Error(message), { code: `image_service_cloud_${reason}`, status: 409, retryable: false });
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,240}$/.test(value);
+const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+
+// A human review acknowledges uncertainty, not provider completion or a refund.
+// The caller must supply current resource activity; a different process/owner or
+// elapsed time is never evidence that a reserved/submitting request has stopped.
+export function comfyCloudManualReviewState(row, busy = false) {
+  const reviewed = row?.status === 'acknowledged';
+  const resultAvailable = row?.cloudDelivery?.state === 'stored';
+  const canReview = Boolean(row?.cloudIntent && row.status === 'uncertain' && !busy
+    && !row.upstreamId && !row.cloudReceipt && !row.cloudDelivery);
+  const message = reviewed ? '已核查，原结果及费用仍可能未知；未生成新图'
+    : busy || ['reserved','submitting'].includes(row?.status) ? '原请求仍在处理，暂不可核查'
+    : row?.upstreamId || row?.cloudReceipt || row?.cloudDelivery ? '原任务已有受理记录，请先核查或领取原图'
+    : canReview ? '原结果及费用仍可能未知；核查确认不会生成新图' : '原请求暂不可人工核查';
+  return { canReview, reviewed, resultAvailable, message };
+}
 
 export function comfyCloudResourceKey(connection, apiKey) {
   const { provider, origin } = planComfyCloudOperation(connection, 'submit');
@@ -37,6 +53,34 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
     change(row); row.updatedAt = Math.max(now(), row.updatedAt);
     return { state: normalizeComfyCloudChannel(state, reservation.channelKey) };
   });
+  function reviewContext(req, input, options, confirming = false) {
+    const account = imageServiceAccount(req);
+    const allowed = ['version','expectedAccount','channelKey','attemptId', ...(confirming ? ['confirmation','confirmed','possibleCharge'] : [])];
+    if (!input || input.version !== 1 || input.expectedAccount !== account.namespace
+      || typeof input.channelKey !== 'string' || !/^[a-f0-9]{64}$/.test(input.channelKey) || !id(input.attemptId)
+      || Object.keys(input).some(key => !allowed.includes(key))) throw fail('review_identity', '请在原 ST 账户核查原请求');
+    if (confirming && (input.confirmed !== true || input.possibleCharge !== true
+      || typeof input.confirmation !== 'string' || !/^[a-f0-9]{64}$/.test(input.confirmation))) {
+      throw fail('review_consent', '请明确确认原结果和费用仍可能未知');
+    }
+    const { channelKey, attemptId } = input;
+    const check = () => {
+      if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未继续核查');
+      options?.check?.();
+    };
+    const read = raw => {
+      check();
+      const state = normalizeComfyCloudChannel(raw, channelKey);
+      const row = state.entries.find(item => item.namespace === account.namespace && item.attemptId === attemptId);
+      // Missing and another account's records are deliberately indistinguishable.
+      if (!row?.cloudIntent) throw fail('review_missing', '未找到当前账户可核查的完整原请求');
+      const busy = options?.resourceBusy?.(channelKey) === true || state.entries.some(item => ['reserved','submitting'].includes(item.status));
+      const review = comfyCloudManualReviewState(row, busy);
+      const confirmation = review.canReview ? hash({ version: 1, namespace: account.namespace, channelKey, row }) : '';
+      return { state, row, view: { ok: true, version: 1, channelKey, attemptId, status: row.status, ...review, confirmation } };
+    };
+    return { channelKey, check, read };
+  }
   async function authorizeOriginal(req, { channelKey, attemptId, apiKey } = {}, rawTask, archiveOnly = false) {
     const account = imageServiceAccount(req), task = bindComfyCloudTask(rawTask, rawTask?.taskId, rawTask?.links);
     if (typeof store.inspectChannel !== 'function' || !id(attemptId)
@@ -197,6 +241,7 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
           if (!attempted) throw fail('ticket_changed', '尚未进入提交阶段，请核对原预留');
           halted = true;
           await transactOwned(reservation, row => {
+            if (row.status === 'acknowledged') return;
             if (!['submitting', 'uncertain'].includes(row.status)) throw fail('ticket_changed', '原任务已不在提交阶段');
             row.status = 'uncertain';
           });
@@ -223,7 +268,7 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
             // No current-login check here: this stores evidence for the original
             // owner after disconnection; it grants no new network or delivery IO.
             const accepted = row => {
-              if (!['submitting', 'uncertain'].includes(row.status) || row.upstreamId && row.upstreamId !== upstreamId) throw fail('ticket_changed', '原云任务受理编号已变化');
+              if (!['submitting', 'uncertain', 'acknowledged'].includes(row.status) || row.upstreamId && row.upstreamId !== upstreamId) throw fail('ticket_changed', '原云任务受理编号已变化');
               row.upstreamId = upstreamId;
             };
             await transactOwned(reservation, accepted);
@@ -241,6 +286,28 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
         },
       });
       return context.ticket;
+    },
+    async review(req, input, options) {
+      const context = reviewContext(req, input, options);
+      context.check();
+      const raw = await store.inspectChannel(context.channelKey);
+      return context.read(raw).view;
+    },
+    async confirmReview(req, input, options) {
+      const context = reviewContext(req, input, options, true);
+      context.check();
+      const result = await store.transaction(context.channelKey, raw => {
+        const { state, row, view } = context.read(raw);
+        // A lost acknowledgement may be checked again, but never authorizes a
+        // generation or modifies a newer row. Refresh exposes the saved state.
+        if (view.reviewed) return { state, result: view };
+        if (!view.canReview || view.confirmation !== input.confirmation) throw fail('review_changed', '原请求已变化或仍在处理，请刷新后重新核查');
+        row.status = 'acknowledged'; row.updatedAt = Math.max(now(), row.updatedAt);
+        const normalized = normalizeComfyCloudChannel(state, context.channelKey);
+        context.check();
+        return { state: normalized, result: context.read(normalized).view };
+      });
+      context.check(); return result;
     },
     async authorizeQuery(req, locator, rawTask) {
       // New sessions may inspect old tasks, but never recreate their submission
