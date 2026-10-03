@@ -298,7 +298,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.428';
+const VERSION = '1.59.429';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -372,11 +372,11 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.202'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.429'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.202'),
+    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.429'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
@@ -17430,6 +17430,7 @@ const STORYBOARD_PIPELINE_STAGE_LABELS = Object.freeze({
   safety_adaptation: '安全适配',
   prompt_compilation: '生图编译',
   queue_preparation: '入队检查',
+  comfy_workflow_audit: '工作流检查',
   provider_request: '模型请求',
   asset_persistence: '图片落盘',
   paragraph_anchor: '段落定位',
@@ -17618,29 +17619,54 @@ function storyboardLogExchangeText(log, pipeline, side) {
 }
 
 function bindStoryboardLogExchange(row,log,state) {
-  const bodies=[...row.querySelectorAll('[data-log-exchange] pre')];
+  const fold=row.querySelector('.sd-storyboard-log-exchanges'),bodies=[...row.querySelectorAll('[data-log-exchange] pre')];
   const update=()=>{
     bodies.forEach(body=>{body.textContent='';});
-    if(!row.open||!row.isConnected||state!==storyboardState()||!state.logs.includes(log))return;
+    if(!row.open||!fold?.open||!row.isConnected||state!==storyboardState()||!state.logs.includes(log))return;
     const pipeline=storyboardPipelineForLog(log,state);
     bodies.forEach(body=>{body.textContent=storyboardLogExchangeText(log,pipeline,body.parentElement.dataset.logExchange);});
   };
   row.addEventListener('toggle',event=>{if(event.target===row)update();});
+  fold?.addEventListener('toggle',update);
   if(row.open)update();
+}
+function bindStoryboardLogStages(row,log,state) {
+  const buttons=[...row.querySelectorAll('.sd-storyboard-stage-toggle')];
+  const current=()=>row.open&&row.isConnected&&state===storyboardState()&&state.logs.includes(log);
+  const reset=()=>buttons.forEach(button=>{
+    button.setAttribute('aria-expanded','false');
+    const detail=button.parentElement.querySelector('.sd-storyboard-stage-detail');
+    if(detail){detail.hidden=true;detail.querySelector('pre').textContent='';}
+  });
+  buttons.forEach(button=>{
+    const detail=button.parentElement.querySelector('.sd-storyboard-stage-detail');
+    const stage=()=>storyboardPipelineForLog(log,state)?.stages?.find(item=>item.id===button.dataset.storyboardStage);
+    button.addEventListener('click',()=>{
+      const close=!detail.hidden;reset();if(close||!current())return;
+      const item=stage();if(!item)return;
+      detail.querySelector('pre').textContent=storyboardStageText(item);detail.hidden=false;button.setAttribute('aria-expanded','true');
+    });
+    detail?.querySelector('.sd-storyboard-copy-stage')?.addEventListener('click',()=>{
+      const item=current()&&!detail.hidden&&stage();
+      if(item)void coreadCopyText(storyboardStageText(item)).then(()=>toast('当前阶段已复制。','success'));
+    });
+  });
+  row.addEventListener('toggle',event=>{if(event.target===row&&!row.open)reset();});
 }
 
 function renderStoryboardLogs(state) {
   // Old persisted filters no longer hide records; this is presentation-only, not a history migration.
   const logs = state.logs;
-  const rows = logs.map((log) => {
+  const rows = logs.map((log, logIndex) => {
     const compiler=log.kind==='prompt_compiler';
     const source = compiler?'取景 API':STORYBOARD_SOURCES[log.source]?.label || log.source;
     const statusLabel = log.kind==='comfy_preparation' ? (log.status==='success'?'准备完成':log.status==='cancelled'?'已替换':'准备失败') : log.status === 'success' ? '完成' : log.status === 'failed' ? (log.submissionState==='not_submitted'?'未提交':['unknown','accepted'].includes(log.submissionState)?'待核查':'失败') : log.status === 'cancelled' ? (compiler?'已中断':'已放弃') : log.status === 'queued' ? '等待' : '生成中';
     const pipeline = storyboardPipelineForLog(log, state);
     const presentation=storyboardLogPresentation(log,pipeline);
-    const stageRows = (pipeline?.stages || []).map((stage) => {
+    const stageRows = (pipeline?.stages || []).map((stage, stageIndex) => {
       const label = STORYBOARD_PIPELINE_STAGE_LABELS[stage.type] || stage.type;
-      return `<li class="${stage.status}"><button type="button" class="sd-storyboard-stage-toggle" data-storyboard-stage="${htmlEscape(stage.id)}" aria-expanded="false" aria-label="查看${htmlEscape(label)}详情"><span>${htmlEscape(label)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : stage.status === 'cancelled' ? '已中断' : '进行中')}</b><i class="fa-solid fa-eye" aria-hidden="true"></i></button>${stage.error ? `<small>${htmlEscape(storyboardLogPresentation({error:stage.error},null).reason)}</small>` : ''}</li>`;
+      const detailId=`sd-log-stage-${logIndex}-${stageIndex}`;
+      return `<li class="${htmlEscape(stage.status)}"><button type="button" class="sd-storyboard-stage-toggle" data-storyboard-stage="${htmlEscape(stage.id)}" aria-controls="${detailId}" aria-expanded="false" aria-label="查看${htmlEscape(label)}详情"><span>${htmlEscape(label)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : stage.status === 'cancelled' ? '已中断' : stage.status === 'queued' ? '等待' : '进行中')}</b><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>${stage.error ? `<small class="sd-storyboard-stage-error">${htmlEscape(storyboardLogPresentation({error:stage.error},null).reason)}</small>` : ''}<section id="${detailId}" class="sd-storyboard-stage-detail" hidden aria-label="${htmlEscape(label)}详情"><header><b>阶段详情</b><button type="button" class="sd-icon-btn sd-storyboard-copy-stage" title="复制${htmlEscape(label)}详情" aria-label="复制${htmlEscape(label)}详情"><i class="fa-solid fa-copy" aria-hidden="true"></i></button></header><pre></pre></section></li>`;
     }).join('');
     const runAction = compiler?'':log.kind==='comfy_preparation'
       ? `<button type="button" class="sd-btn sd-storyboard-retry-log" ${log.status==='failed'&&log.preparation?.version===1?'':'disabled'}>重新准备本镜</button>`
@@ -17648,15 +17674,13 @@ function renderStoryboardLogs(state) {
       ? '<button type="button" class="sd-btn sd-storyboard-cancel-queued-log">移出等待</button>'
       : `<button type="button" class="sd-btn sd-storyboard-retry-log" ${log.status === 'generating' ? 'disabled' : ''}>${log.status === 'failed' ? (['unknown','accepted'].includes(log.submissionState)?'核查并重试':'重试') : '再生成'}</button>`;
     return `<details class="sd-card sd-storyboard-log ${htmlEscape(log.status)}" data-tone="${presentation.tone}" data-storyboard-log="${htmlEscape(log.id)}">
-      <summary><span class="sd-storyboard-log-status">${statusLabel}</span><span class="sd-storyboard-log-kind">${presentation.kind}</span><time>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</time></summary>
+      <summary><span class="sd-storyboard-log-status">${statusLabel}</span><span class="sd-storyboard-log-kind">${presentation.kind}</span><time>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</time>${presentation.reason?`<span class="sd-storyboard-log-summary-reason">${htmlEscape(presentation.reason)}</span>`:''}</summary>
       <div class="sd-storyboard-log-body">
-        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span><span>${presentation.tokens}</span><span>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</span><span>${compiler&&log.promptOrigin==='world'?'世界画面':Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span>${compiler?'':`<span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>`}${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
-        ${renderRunningHubTaskUsage(log)}${presentation.reason?`<p class="sd-storyboard-log-reason">${htmlEscape(presentation.reason)}</p>`:''}
-        <section class="sd-storyboard-log-exchange" data-log-exchange="input"><header>↑ 发送</header><pre></pre></section>
-        <section class="sd-storyboard-log-exchange" data-log-exchange="output"><header>↓ 返回</header><pre></pre></section>
+        <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span>${presentation.tokens==='token 未提供'?'':`<span>${presentation.tokens}</span>`}<span>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</span><span>${compiler&&log.promptOrigin==='world'?'世界画面':Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span>${compiler?'':`<span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>`}${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
+        ${['unknown','accepted'].includes(log.submissionState)&&log.status==='failed'?'<p class="sd-storyboard-log-reason">原请求结果待核查，请勿直接重新生成，以免重复付费。</p>':''}
         ${log.params?.sceneStyle ? `<div class="sd-storyboard-log-meta"><span>风格来源 · ${htmlEscape(log.params.sceneStyle)}</span><span>${htmlEscape(log.params.comfyRouteBinding?.name || '')}</span></div>` : ''}
         ${stageRows ? `<ol class="sd-storyboard-pipeline-stages">${stageRows}</ol>` : ''}
-        ${stageRows ? '<section class="sd-storyboard-stage-detail" hidden><header><b></b><button type="button" class="sd-icon-btn sd-storyboard-copy-stage" title="复制当前阶段" aria-label="复制当前阶段"><i class="fa-solid fa-copy"></i></button></header><pre></pre></section>' : ''}
+        <details class="sd-storyboard-log-exchanges"><summary>完整发送与返回</summary><section class="sd-storyboard-log-exchange" data-log-exchange="input"><header>↑ 发送</header><pre></pre></section><section class="sd-storyboard-log-exchange" data-log-exchange="output"><header>↓ 返回</header><pre></pre></section>${renderRunningHubTaskUsage(log)}</details>
         <div class="sd-storyboard-log-actions${storyboardCanReceiveComfyLog(log) ? ' sd-storyboard-comfy-log-actions' : ''}">${compiler?'':'<button type="button" class="sd-btn sd-storyboard-load-log">载入镜头台</button>'}${log.snapshot?.serviceTask?.attemptId ? '<button type="button" class="sd-btn sd-storyboard-receive-log">领取原图</button><button type="button" class="sd-btn sd-storyboard-review-log">核查原请求</button>' : ''}${storyboardCanReceiveComfyLog(log) ? '<button type="button" class="sd-btn sd-storyboard-receive-comfy" title="领取原任务图片，不重新生成">领取原图</button>' : ''}${runAction}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
       </div>
     </details>`;
@@ -19138,12 +19162,13 @@ async function storyboardPaintServiceInbox(root, { server = false, cursor = null
       const index = reviewRows.push({ ...row, namespace: server ? data.namespace : row.namespace }) - 1;
       return `<button type="button" class="sd-btn" data-service-review-index="${index}">${row.status === 'reviewed' ? '同步核查' : '核查原请求'}</button>`;
     };
-    const toolbar = `<div class="sd-service-inbox-toolbar"><button type="button" class="sd-btn ${server ? '' : 'active'}" data-service-scope="local">本机</button><button type="button" class="sd-btn ${server ? 'active' : ''}" data-service-scope="server">服务器</button></div>`;
+    const toolbar = `<div class="sd-service-inbox-toolbar"><button type="button" class="sd-btn ${server ? '' : 'active'}" data-service-scope="local" aria-pressed="${!server}">本机</button><button type="button" class="sd-btn ${server ? 'active' : ''}" data-service-scope="server" aria-pressed="${server}">服务器</button></div>`;
     const totals = data?.totals;
-    const usage = server ? `<p class="sd-service-inbox-usage">当前账户 · ${Number(totals.count) || 0} 项原图暂存 · ${formatStorageBytes((Number(totals.imageBytes)||0)+(Number(totals.metadataBytes)||0)+(Number(totals.temporaryBytes)||0))}<br>等待预留 ${formatStorageBytes(totals.reservedBytes)}（非实际磁盘占用）</p>` : '';
+    const usage = server ? `<details class="sd-service-inbox-details"><summary>存储详情</summary><p class="sd-service-inbox-usage">当前账户 · ${Number(totals.count) || 0} 项原图暂存 · ${formatStorageBytes((Number(totals.imageBytes)||0)+(Number(totals.metadataBytes)||0)+(Number(totals.temporaryBytes)||0))}<br>等待预留 ${formatStorageBytes(totals.reservedBytes)}（非实际占用）</p></details>` : '';
     const content = rows.map((row, index) => `<div class="sd-storyboard-log-actions"><span>${htmlEscape(formatDateTime(row.createdAt))} · ${htmlEscape(server ? row.model || 'NAI' : row.originalOnly ? '原图找回' : row.snapshot.profile?.model || 'NAI')}<small>${htmlEscape(status(row))}${server ? ` · ${formatStorageBytes(row.cacheBytes)}` : ''}</small></span><button type="button" class="sd-btn" data-service-receive-index="${index}" ${server && (!row.resultAvailable || row.live) ? 'disabled' : ''}>${!server && row.status === 'archived' ? '确认归档' : '领取原图'}</button>${reviewButton(row)}<button type="button" class="sd-icon-btn" data-service-remove-index="${index}" ${server && !row.canDiscard ? 'disabled' : ''} aria-label="${server ? '删除服务器暂存' : '移除此设备的领取记录'}" title="${server ? '删除服务器暂存' : '移除此设备的领取记录'}"><i class="fa-solid fa-trash-can"></i></button></div>`).join('');
     const history = server && data.tasks.length ? `<details class="sd-service-inbox-history"><summary>任务记录 ${Number(totals.tasks)||0}</summary>${data.tasks.map(row => `<div><span>${htmlEscape(formatDateTime(row.createdAt))}</span><span>${htmlEscape(status(row))}</span>${reviewButton(row)}</div>`).join('')}${data.nextCursor ? '<button type="button" class="sd-btn" data-service-next>下一页</button>' : ''}</details>` : '';
-    host.innerHTML = toolbar + usage + content + history;
+    const caution=[...rows,...(data?.tasks||[])].some(row=>!row.resultAvailable&&['submitted','uncertain','acknowledged','reviewed','unverified'].includes(row.status))?'<p class="sd-service-inbox-caution">原请求结果待核查，请勿直接重新生成，以免重复付费。</p>':'';
+    host.innerHTML = toolbar + caution + usage + content + history;
     host.querySelectorAll('[data-service-review-index]').forEach(button => button.addEventListener('click', async () => {
       const row = reviewRows[Number(button.dataset.serviceReviewIndex)]; button.disabled = true;
       try {
@@ -23437,35 +23462,7 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelectorAll('[data-storyboard-log]').forEach((row) => {
     const log = state.logs.find((item) => item.id === row.dataset.storyboardLog);
-    if(log)bindStoryboardLogExchange(row,log,state);
-    const pipeline = log ? storyboardPipelineForLog(log, state) : null;
-    const detail = row.querySelector('.sd-storyboard-stage-detail');
-    const detailTitle = detail?.querySelector('header b');
-    const detailBody = detail?.querySelector('pre');
-    const stageButtons = [...row.querySelectorAll('.sd-storyboard-stage-toggle')];
-    stageButtons.forEach((button) => button.addEventListener('click', () => {
-      const stageId = String(button.dataset.storyboardStage || '');
-      const stage = (pipeline?.stages || []).find((item) => item.id === stageId);
-      if (!stage || !detail || !detailTitle || !detailBody) return;
-      const closeCurrent = detail.dataset.storyboardStage === stageId && !detail.hidden;
-      stageButtons.forEach((item) => item.setAttribute('aria-expanded', 'false'));
-      if (closeCurrent) {
-        detail.hidden = true;
-        detail.dataset.storyboardStage = '';
-        detailBody.textContent = '';
-        return;
-      }
-      detail.dataset.storyboardStage = stageId;
-      detailTitle.textContent = STORYBOARD_PIPELINE_STAGE_LABELS[stage.type] || stage.type;
-      detailBody.textContent = storyboardStageText(stage);
-      detail.hidden = false;
-      button.setAttribute('aria-expanded', 'true');
-    }));
-    detail?.querySelector('.sd-storyboard-copy-stage')?.addEventListener('click', () => {
-      const stageId = String(detail.dataset.storyboardStage || '');
-      const stage = (pipeline?.stages || []).find((item) => item.id === stageId);
-      if (stage) void coreadCopyText(storyboardStageText(stage)).then(() => toast('当前阶段已复制。', 'success'));
-    });
+    if(log){bindStoryboardLogExchange(row,log,state);bindStoryboardLogStages(row,log,state);}
     row.querySelector('.sd-storyboard-copy-log')?.addEventListener('click', () => {
       if (log) void coreadCopyText(storyboardLogText(log)).then(() => toast('诊断信息已复制。', 'success'));
     });

@@ -34,7 +34,7 @@ test('log status distinguishes an unsent request from an accepted result needing
     {id:'accepted',status:'failed',submissionState:'accepted',source:'novel',params:{}},
     {id:'rejected',status:'failed',submissionState:'rejected',source:'novel',params:{}}];
   const html=c.renderStoryboardLogs(state);
-  const row=id=>html.split(`data-storyboard-log="${id}"`)[1]?.split('</details>')[0]||'';
+  const row=id=>html.split(`data-storyboard-log="${id}"`)[1]?.split('<details class="sd-card sd-storyboard-log')[0]||'';
   assert.match(row('unsent'),/sd-storyboard-log-status">未提交</);
   assert.match(row('uncertain'),/sd-storyboard-log-status">待核查</);
   assert.match(row('accepted'),/sd-storyboard-log-status">待核查</);
@@ -68,11 +68,77 @@ test('exchange wrapping does not add another depth cutoff to already-retained st
   const retained=core.sanitizeStoryboardDiagnosticData(input),result=JSON.parse(c.storyboardLogExchangeText({}, {stages:[{type:'provider_request',input:retained}]},'input'));
   assert.deepEqual(result[0].input,retained);
 });
-test('actual row binding inserts plain text only while open, clears on close and refuses detached or replaced state',()=>{
+test('actual exchange binding reads no full payload until explicitly expanded, clears on either close and refuses stale state',()=>{
   const {state,context:c}=logFixture(),log={id:'one',prompt:'<script>not html</script>',status:'success'};state.logs=[log];
-  const bodies=['input','output'].map(side=>({textContent:'',parentElement:{dataset:{logExchange:side}}}));let toggle;
-  const row={open:false,isConnected:true,querySelectorAll:()=>bodies,addEventListener:(name,cb)=>toggle=cb};c.bindStoryboardLogExchange(row,log,state);
-  assert.ok(bodies.every(b=>b.textContent===''));row.open=true;toggle({target:row});assert.match(bodies[0].textContent,/<script>not html<\/script>/);
+  const bodies=['input','output'].map(side=>({textContent:'',parentElement:{dataset:{logExchange:side}}}));let toggle,foldToggle;
+  const fold={open:false,addEventListener:(name,cb)=>foldToggle=cb};
+  const row={open:false,isConnected:true,querySelector:()=>fold,querySelectorAll:()=>bodies,addEventListener:(name,cb)=>toggle=cb};c.bindStoryboardLogExchange(row,log,state);
+  assert.ok(bodies.every(b=>b.textContent===''));row.open=true;toggle({target:row});assert.ok(bodies.every(b=>b.textContent===''));
+  fold.open=true;foldToggle();assert.match(bodies[0].textContent,/<script>not html<\/script>/);
+  fold.open=false;foldToggle();assert.ok(bodies.every(b=>b.textContent===''));fold.open=true;foldToggle();
   row.open=false;toggle({target:row});assert.ok(bodies.every(b=>b.textContent===''));row.open=true;row.isConnected=false;toggle({target:row});assert.ok(bodies.every(b=>b.textContent===''));
   row.isConnected=true;state.logs=[];toggle({target:row});assert.ok(bodies.every(b=>b.textContent===''));
+});
+
+test('each stage owns its inline disclosure; human labels, errors and full exchange are not appended as one detached detail',()=>{
+  const {state,context:c}=logFixture();state.logs=[{id:'one',status:'failed',source:'comfy',pipelineId:'p',submissionState:'unknown'}];
+  state.pipelineLogs=[{id:'p',stages:[{id:'audit',type:'comfy_workflow_audit',status:'success'},
+    {id:'request',type:'provider_request',status:'failed',error:'HTTP 429: too many requests\nprivate detail'}]}];
+  const html=c.renderStoryboardLogs(state),items=[...html.matchAll(/<li class="[^"]*">([\s\S]*?)<\/li>/g)].map(match=>match[1]);
+  assert.equal(items.length,2);assert.doesNotMatch(html,/comfy_workflow_audit/);
+  assert.match(items[0],/工作流检查/);assert.match(items[1],/sd-storyboard-stage-error">请求受限，请稍后重试/);
+  for(const [index,item] of items.entries()){
+    assert.match(item,new RegExp(`aria-controls="sd-log-stage-0-${index}" aria-expanded="false"`));
+    assert.match(item,new RegExp(`id="sd-log-stage-0-${index}" class="sd-storyboard-stage-detail" hidden`));
+    assert.match(item,/<button type="button" class="sd-storyboard-copy-stage|class="sd-icon-btn sd-storyboard-copy-stage/);
+    assert.match(item,/<pre><\/pre><\/section>$/);
+  }
+  assert.doesNotMatch(html,/<\/ol>\s*<section class="sd-storyboard-stage-detail"/);
+  assert.match(html,/<details class="sd-storyboard-log-exchanges"><summary>完整发送与返回<\/summary>/);
+  assert.match(html,/<summary>[\s\S]*sd-storyboard-log-summary-reason">请求受限，请稍后重试<\/span><\/summary>/);
+  assert.match(html,/原请求结果待核查，请勿直接重新生成，以免重复付费/);
+  assert.doesNotMatch(html,/token 未提供|private detail/);
+});
+
+test('numeric disclosure IDs tolerate normalized legacy surrogate IDs and do not collide across logs or stages',()=>{
+  const {state,context:c}=logFixture(),logId='legacy\ud800',stageId='stage\udfff';
+  const normalized=core.normalizeStoryboardState({logs:[{id:logId,status:'failed',source:'comfy',pipelineId:'p'},
+    {id:'a-b',status:'success',source:'comfy',pipelineId:'q'},{id:'a',status:'success',source:'comfy',pipelineId:'r'}],pipelineLogs:[
+    {id:'p',stages:[{id:stageId,type:'provider_request',status:'failed'},{id:'other',type:'asset_persistence',status:'success'}]},
+    {id:'q',stages:[{id:'c',type:'provider_request',status:'success'}]},
+    {id:'r',stages:[{id:'b-c',type:'provider_request',status:'success'}]}]});
+  Object.assign(state,normalized);const before=JSON.stringify(state),html=c.renderStoryboardLogs(state);
+  assert.ok(html.includes(`data-storyboard-log="${logId}"`));assert.ok(html.includes(`data-storyboard-stage="${stageId}"`));
+  const ids=[...html.matchAll(/id="(sd-log-stage-\d+-\d+)"/g)].map(match=>match[1]);
+  assert.deepEqual(ids,['sd-log-stage-0-0','sd-log-stage-0-1','sd-log-stage-1-0','sd-log-stage-2-0']);
+  for(const id of ids)assert.ok(html.includes(`aria-controls="${id}"`));
+  assert.equal(new Set(ids).size,4);assert.equal(JSON.stringify(state),before);
+});
+
+function stageBindingFixture(){
+  const {state,context:c}=logFixture(),log={id:'one',status:'failed',pipelineId:'p'},copied=[];state.logs=[log];
+  state.pipelineLogs=[{id:'p',stages:[{id:'first',type:'provider_request',status:'failed',input:{prompt:'<not-html>',apiKey:'secret'}},
+    {id:'second',type:'asset_persistence',status:'success',output:{saved:true}}]}];
+  const node=()=>({events:{},attrs:{},addEventListener(name,cb){this.events[name]=cb;},setAttribute(name,value){this.attrs[name]=value;}});
+  const buttons=state.pipelineLogs[0].stages.map(stage=>{
+    const button=node(),copy=node(),pre={textContent:''},detail={hidden:true,querySelector:selector=>selector==='pre'?pre:copy};
+    button.dataset={storyboardStage:stage.id};button.parentElement={querySelector:()=>detail};button.detail=detail;button.copy=copy;button.pre=pre;return button;
+  });
+  const row=Object.assign(node(),{open:true,isConnected:true,querySelectorAll:()=>buttons});
+  c.coreadCopyText=async value=>copied.push(value);c.toast=()=>{};c.bindStoryboardLogStages(row,log,state);
+  return {state,c,row,buttons,copied};
+}
+test('actual stage binding expands only its own node, serializes lazily, and clears other stages instead of duplicating long payloads',async()=>{
+  const f=stageBindingFixture(),[a,b]=f.buttons;assert.equal(a.pre.textContent,'');assert.equal(b.pre.textContent,'');
+  a.events.click();assert.equal(a.detail.hidden,false);assert.equal(a.attrs['aria-expanded'],'true');assert.match(a.pre.textContent,/<not-html>/);assert.doesNotMatch(a.pre.textContent,/secret/);assert.equal(b.pre.textContent,'');
+  a.copy.events.click();await Promise.resolve();assert.equal(f.copied.length,1);assert.equal(f.copied[0],a.pre.textContent);
+  b.events.click();assert.equal(a.detail.hidden,true);assert.equal(a.pre.textContent,'');assert.equal(a.attrs['aria-expanded'],'false');assert.match(b.pre.textContent,/saved/);
+  b.events.click();assert.equal(b.detail.hidden,true);assert.equal(b.pre.textContent,'');
+  a.events.click();f.row.open=false;f.row.events.toggle({target:f.row});assert.equal(a.detail.hidden,true);assert.equal(a.pre.textContent,'');
+});
+test('stage binding refuses disconnected, closed and replaced logs, and removed pipeline stages',()=>{
+  for(const change of [f=>f.row.isConnected=false,f=>f.row.open=false,f=>f.state.logs=[],f=>f.state.pipelineLogs=[]]){
+    const f=stageBindingFixture(),a=f.buttons[0];change(f);a.events.click();a.copy.events.click();
+    assert.equal(a.detail.hidden,true);assert.equal(a.pre.textContent,'');assert.equal(f.copied.length,0);
+  }
 });

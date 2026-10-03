@@ -390,7 +390,7 @@ try{
     await usagePage.setViewportSize({width,height:900});
     ok(`reported RH decimals and missing values fit the original inbox grid at ${width}`,await usagePage.locator('.sd-comfy-inbox-rows').evaluate(node=>{
       const [first,second,failed]=node.querySelectorAll('article'),usage=first.querySelector('.sd-comfy-inbox-usage');
-      return first.children.length===3&&usage.parentElement.tagName==='DIV'&&usage.textContent.includes('RH币 1.2500')
+      return first.children.length===3&&usage.parentElement.matches('details.sd-comfy-inbox-row-detail')&&!usage.parentElement.open&&usage.textContent.includes('RH币 1.2500')
         &&usage.textContent.includes('第三方金额 未提供')&&second.textContent.includes('平台用量未提供')
         &&first.scrollWidth<=first.clientWidth+1&&!/[￥$]/.test(usage.textContent)
         &&failed.textContent.includes('失败')&&failed.querySelector('.sd-comfy-inbox-usage').textContent.includes('RH币 1.2500');

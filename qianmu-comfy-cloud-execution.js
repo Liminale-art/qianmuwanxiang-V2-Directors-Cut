@@ -21,7 +21,21 @@ export async function executeComfyCloudJob(client, source, gateway, connection, 
   try {
     requireComfyCloudImageSubmission(binding,{automatic});
     check();
-    const capabilities=await client.cloudCapabilities({namespace:job.imageAdmission?.namespace});check();
+    let capabilities;
+    try { capabilities=await client.cloudCapabilities({namespace:job.imageAdmission?.namespace}); }
+    catch(cause) {
+      // This GET cannot submit. A previous attempt may still exist, however:
+      // prove its absence under the original account before saying it is unsent.
+      const error=/^(?:comfy_|image_|storyboard_)/.test(cause?.code||'')?cause:fail('capabilities','云能力检查未完成，请核对增强服务','unknown');
+      let outcome=['accepted','unknown'].includes(job.submissionState)?job.submissionState:'unknown';
+      try {
+        const previous=await client.cloudRecordFor(job);
+        if(previous?.cloudTask)outcome='accepted';
+        else if(!previous&&!['accepted','unknown'].includes(job.submissionState))outcome='not_submitted';
+      } catch(_) { /* Unreadable records or changed identity are not proof of absence. */ }
+      error.submissionState=outcome;throw error;
+    }
+    check();
     if(!canSubmitComfyCloudImages(capabilities,binding.provider,binding,{automatic})||!capabilities.resultRetrieval||!capabilities.resultProviders.includes(binding.provider))
       throw fail('capabilities','当前后端尚未开放此平台完整生图，请同步更新后再使用');
     if(job.profile?.comfyReferences?.enabled&&capabilities.referenceUpload!==true)

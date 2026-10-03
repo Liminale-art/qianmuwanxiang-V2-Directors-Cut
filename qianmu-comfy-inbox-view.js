@@ -4,6 +4,11 @@ const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('
 const size = value => { if (!Number.isFinite(value) || value < 0) return '暂不可读取'; return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${(value / 1024).toFixed(1)} KB`; };
 const platform = row => ({'comfy-cloud':'Comfy Cloud',runninghub:'RunningHub'})[row.task?.provider || row.cloudConnection?.provider] || (row.engine === 'cloud' ? '云任务' : 'Comfy');
 const stateName = value => ({ prepared:'待核查', available:'待归档', archived:'已归档', confirmed:'已领取', succeeded:'已完成', failed:'失败', canceled:'已取消', expired:'已过期', released:'未提交', rejected:'已拒绝', reserved:'等待', submitting:'执行中', uncertain:'待核查', acknowledged:'待核查', unverified:'待核查' })[value] || '待核查';
+const receiptWarning = row => {
+  if (row.live) return '任务进行中，请勿重复生成。';
+  if (row.resultAvailable || row.archiveState || ['archived','confirmed','succeeded','available','failed','canceled','expired','released','rejected'].includes(row.reportedStatus || row.status)) return '';
+  return '原任务结果待核查，请勿重复生成，以免重复付费。';
+};
 export function mountComfyInbox(host, { service, receive, isCurrent = () => host.isConnected } = {}) {
   let disposed = false, revision = 0, mode = 'server', page = 0, busy = false, local, server, localError = '', serverError = '', notice = '';
   const selected = new Set();
@@ -30,19 +35,21 @@ export function mountComfyInbox(host, { service, receive, isCurrent = () => host
     host.innerHTML = `<section class="sd-comfy-inbox" aria-label="Comfy 收片管理" aria-busy="${busy}">
       <header><b>Comfy 收片</b><button type="button" class="sd-btn" data-action="refresh" ${busy ? 'disabled' : ''}>刷新</button></header>
       <div class="sd-comfy-inbox-modes"><button type="button" class="sd-btn ${mode === 'server' ? 'active' : ''}" aria-pressed="${mode === 'server'}" data-action="server">服务器暂存</button><button type="button" class="sd-btn ${mode === 'local' ? 'active' : ''}" aria-pressed="${mode === 'local'}" data-action="local">本机记录</button></div>
-      <p class="sd-comfy-inbox-meter">${mode === 'server' ? `当前账户 · 暂存 ${size(storedBytes)} · 预留 ${size(total.reservedBytes)}` : `当前账户 · ${local?.rows?.length ?? '暂不可读取'} / 2048 条 · ${size(local?.bytes)} / 16 MB`}</p>
-      ${mode === 'server' ? '<small>仅千幕 Comfy 暂存，不是 VPS 总磁盘；清理不删除阅片室图片或任务防重复记录。</small>' : '<small>仅本浏览器的领取位置与进度；清理不删除图片，不取消正在执行的任务。</small>'}
-      ${error ? `<p role="alert">${escape(error)}</p>` : ''}${notice ? `<p role="status">${escape(notice)}</p>` : ''}
+      <details class="sd-comfy-inbox-storage"><summary>存储与服务详情</summary><p class="sd-comfy-inbox-meter">${mode === 'server' ? `当前账户 · 暂存 ${size(storedBytes)} · 预留 ${size(total.reservedBytes)}` : `当前账户 · ${local?.rows?.length ?? '暂不可读取'} / 2048 条 · ${size(local?.bytes)} / 16 MB`}</p>
+      ${mode === 'server' ? '<small>仅千幕暂存；清理保留已归档图片和防重复记录。</small>' : '<small>仅本浏览器记录；清理不删除图片或取消任务。</small>'}
       ${server?.cloudCapabilities ? `<p class="sd-comfy-inbox-capabilities">${[['comfy-cloud','Comfy Cloud'],['runninghub','RunningHub']].map(([id,label]) => `${label} · ${server.cloudCapabilities.resultRetrieval && server.cloudCapabilities.resultProviders.includes(id) ? '可领取原图' : '暂未开放收图'}`).join('；')}${server.cloudCapabilities.submission ? `。新任务支持 ${(server.cloudCapabilities.submissionProviders ?? ['comfy-cloud']).map(id=>id==='runninghub'?'RunningHub':server.cloudCapabilities.deploymentSubmission?'Comfy Cloud（含部署）':'Comfy Cloud 主站').join(' / ')}手动文本工作流` : '。云端新任务暂未开放'}</p>` : ''}
+      </details>${error ? `<p class="sd-comfy-inbox-notice" role="alert">${escape(error)}</p>` : ''}${notice ? `<p class="sd-comfy-inbox-notice" role="status">${escape(notice)}</p>` : ''}
       <div class="sd-comfy-inbox-tools"><label><input type="checkbox" data-action="select-page" ${busy ? 'disabled' : ''} ${shown.length && shown.filter(enabled).length && shown.filter(enabled).slice(0,20).every(row => selected.has(key(row))) ? 'checked' : ''}>本页前 20 项</label><button type="button" class="sd-btn" data-action="clear" ${!selected.size || busy ? 'disabled' : ''}>清理已选 ${selected.size || ''}</button></div>
       <div class="sd-comfy-inbox-rows">${shown.map((row, index) => `<article>
         <input type="checkbox" aria-label="选择任务 ${escape(row.attemptId)}" data-row="${index}" ${selected.has(key(row)) ? 'checked' : ''} ${busy || !enabled(row) ? 'disabled' : ''}>
-        <div><b>${escape(row.model || (mode === 'local' ? '领取记录' : 'Comfy 原图'))}</b><small>${escape(platform(row))} · ${escape(stateName(row.archiveState || row.reportedStatus || row.status))} · ${escape(new Date(row.createdAt || 0).toLocaleString())}</small><small>${mode === 'server' ? `${row.imageCount ?? '—'} 张 · ${size(row.cacheBytes)}${row.reservedBytes ? ` · 预留 ${size(row.reservedBytes)}` : ''}` : `已存 ${row.files?.length || 0} / ${row.imageCount || '—'} 张`}</small><small class="sd-comfy-inbox-id">${escape(row.attemptId)}</small>
+        <div><b>${escape(row.model || (mode === 'local' ? '领取记录' : 'Comfy 原图'))}</b><small class="sd-comfy-inbox-row-meta">${escape(platform(row))} · ${escape(stateName(row.archiveState || row.reportedStatus || row.status))}${Number.isInteger(row.imageCount) ? ` · ${row.imageCount} 张` : ''}</small><small>${escape(new Date(row.createdAt || 0).toLocaleString())}</small>
+        ${receiptWarning(row) ? `<p class="sd-comfy-inbox-notice">${escape(receiptWarning(row))}</p>` : ''}
+        <details class="sd-comfy-inbox-row-detail"><summary>详情</summary><small>${mode === 'server' ? `${row.imageCount ?? '—'} 张 · ${size(row.cacheBytes)}${row.reservedBytes ? ` · 预留 ${size(row.reservedBytes)}` : ''}` : `已存 ${row.files?.length || 0} / ${row.imageCount || '—'} 张`}</small><small class="sd-comfy-inbox-id">${escape(row.attemptId)}</small>
         ${(row.task?.provider || row.cloudConnection?.provider) === 'runninghub' ? `<small class="sd-comfy-inbox-usage" title="平台报告的原始用量；金额币种与耗时单位以平台账单为准，不作估价或按图片累加">${escape(describeRunningHubUsage(row.usage))}</small>` : ''}
-        ${mode === 'server' && !enabled(row) ? `<small>${row.canRetryCleanup ? '图片已归档，可继续清理临时文件' : row.archiveState === 'archived' ? '已归档，临时文件已清理' : '原图保留，领取归档后再清理'}</small>` : ''}</div>
+        ${mode === 'server' && !enabled(row) ? `<small>${row.canRetryCleanup ? '图片已归档，可继续清理临时文件' : row.archiveState === 'archived' ? '已归档，临时文件已清理' : '原图保留，领取归档后再清理'}</small>` : ''}</details></div>
         <div class="sd-comfy-inbox-actions"><button type="button" class="sd-btn" data-receive="${index}" ${busy || !canReceive(row) ? 'disabled' : ''}>${row.canRetryCleanup ? '继续清理' : row.archiveState === 'archived' ? '已领取' : row.canReceiveOriginal && !row.resultAvailable ? '查看结果' : '领取'}</button>
         ${canCancel(row) ? `<button type="button" class="sd-btn" data-cancel="${index}" ${busy ? 'disabled' : ''}>取消任务</button>` : ''}</div>
-      </article>`).join('')}</div>
+      </article>`).join('') || (!busy && !error ? '<p class="sd-comfy-inbox-empty" role="status">暂无待领取记录。</p>' : '')}</div>
       ${pages > 1 ? `<footer><button type="button" class="sd-btn" data-action="previous" ${!page || busy ? 'disabled' : ''}>上一页</button><span>${page + 1} / ${pages}</span><button type="button" class="sd-btn" data-action="next" ${page + 1 >= pages || busy ? 'disabled' : ''}>下一页</button></footer>` : ''}
       ${mode === 'server' && server?.cloudNextCursor ? `<button type="button" class="sd-btn" data-action="earlier-cloud" ${busy ? 'disabled' : ''}>加载较早云任务</button>` : ''}
     </section>`;

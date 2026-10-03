@@ -13,6 +13,8 @@ import {auditComfyWorkflow,requireComfyExecution} from '../qianmu-comfy-audit.js
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
 import {resolveStoryboardJobModelIdentity,resolveStoryboardConnectionBinding} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
+import {createComfyCloudService} from '../qianmu-comfy-cloud-service.js';
+import {imageGatewayErrorPayload} from '../qianmu-image-gateway.js';
 const connection=bindComfyCloudProtocol('https://cloud.comfy.org','comfy-cloud-v2');
 const workflow=()=>({model:{class_type:'CheckpointLoaderSimple',inputs:{ckpt_name:'fixed.safetensors'}},
   pos:{class_type:'CLIPTextEncode',inputs:{text:'fixed style, %qianmu_prompt%',clip:['model',1]}},
@@ -82,16 +84,16 @@ test('request freezes before asynchronous preparation and never persists its wor
   client.close();
 });
 
-async function submissionFixture({capabilities={},reply,resultReply,readinessReply,prepare=true}={}){
-  const f=fixture(),rows=new Map(),calls=[];let namespace='st-user:alice',writeFails=false;
+async function submissionFixture({capabilities={},capabilityReply,reply,resultReply,readinessReply,prepare=true}={}){
+  const f=fixture(),rows=new Map(),calls=[];let namespace='st-user:alice',writeFails=false,readFails=false,reads=0,writes=0;
   const expectedAccount=`st-user:${await imageChannelKey('alice')}`;
   const packet={ok:true,version:1,status:'accepted',task:bindComfyCloudTask(connection,'accepted',{self:'/api/v2/jobs/accepted',cancel:'/api/v2/jobs/accepted/cancel'}),
     locator:{version:1,attemptId:f.job.id,channelKey:'a'.repeat(64)}};
   const client=createComfyRecoveryClient({origin:'https://st.test',account:async()=>namespace,
-    store:{get:async()=>structuredClone(rows.get('row')||null),put:async row=>{if(writeFails)throw Error('synthetic storage failure');rows.set('row',structuredClone(row));},close(){}},
+    store:{get:async()=>{reads++;if(readFails)throw Error('synthetic read failure');return structuredClone(rows.get('row')||null);},put:async row=>{writes++;if(writeFails)throw Error('synthetic storage failure');rows.set('row',structuredClone(row));},close(){}},
     locks:{request:async(_name,_options,work)=>work({})},fetchImpl:async(url,init)=>{
       calls.push({url,...init,body:init.body?JSON.parse(init.body):undefined});
-      if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,expectedAccount,accountBindingVersion:1,catalogVersion:1,
+      if(url.endsWith('/capabilities'))return capabilityReply?capabilityReply():Response.json({ok:true,version:1,expectedAccount,accountBindingVersion:1,catalogVersion:1,
         submission:true,resultRetrieval:true,archiveConfirmation:true,cancellation:false,referenceUpload:false,automaticReplay:false,
         queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud'],...capabilities});
       if(resultReply&&(/\/(?:result|acknowledge)$/.test(url)))return resultReply(url,JSON.parse(init.body),packet);
@@ -99,8 +101,85 @@ async function submissionFixture({capabilities={},reply,resultReply,readinessRep
       assert.ok(url.endsWith('/cloud/tasks/submit'));
       return reply?reply(packet,()=>{writeFails=true;}):Response.json(packet);
     }});
-  return {...f,client,rows,calls,prepared:prepare?await client.prepareCloudSubmission(f.job,f.gateway,connection):null,setAccount:value=>{namespace=value;}};
+  return {...f,client,rows,calls,packet,prepared:prepare?await client.prepareCloudSubmission(f.job,f.gateway,connection):null,setAccount:value=>{namespace=value;},
+    setReadFailure:value=>{readFails=value;},setCapabilityReply:value=>{capabilityReply=value;},storageCounts:()=>({reads,writes})};
 }
+
+function missingHostRootReply(){
+  let payload;
+  try{createComfyCloudService({dataRoot:'./data'});}catch(error){payload=imageGatewayErrorPayload(error);}
+  assert.equal(payload.body.submissionState,'not_submitted');
+  return Response.json(payload.body,{status:payload.status});
+}
+const noDelivery=async()=>assert.fail('preflight failure cannot deliver an image');
+
+for(const [label,capabilityReply] of [
+  ['host relative-root rejection',missingHostRootReply],
+  ['missing endpoint',()=>new Response('',{status:404})],
+  ['lost capability reply',()=>{throw Error('synthetic capability network loss');}],
+  ['invalid capability JSON',()=>new Response('not JSON')],
+])test(`actual cloud execution classifies ${label} as unsent only after an identity-bound empty journal read`,async()=>{
+  const f=await submissionFixture({prepare:false,capabilityReply}),before=structuredClone(f.job);let submissions=0;
+  try{
+    await assert.rejects(f.client.runCloudJob(f.job,f.gateway,connection,{apiKey:'synthetic-key',beforeSubmit:async()=>{submissions++;},deliver:noDelivery}),{submissionState:'not_submitted'});
+    assert.equal(submissions,0);assert.equal(f.calls.length,1);assert.equal(f.calls[0].method,'GET');
+    assert.match(f.calls[0].url,/\/cloud\/capabilities$/);assert.deepEqual(f.storageCounts(),{reads:1,writes:0});
+    assert.equal(f.rows.size,0);assert.deepEqual(f.job,before);
+  }finally{f.client.close();}
+});
+
+for(const accepted of [false,true])test(`failed initial capability read preserves an existing ${accepted?'accepted':'uncertain prepared'} record even without a source submission state`,async()=>{
+  const f=await submissionFixture({capabilityReply:missingHostRootReply});
+  if(accepted)await f.client.bindCloudAcceptance(f.prepared.record,f.packet);
+  const before=structuredClone(f.rows.get('row')),counts=f.storageCounts();
+  try{
+    assert.equal(f.job.submissionState,undefined);
+    await assert.rejects(f.client.runCloudJob(f.job,f.gateway,connection,{apiKey:'synthetic-key',deliver:noDelivery}),{submissionState:accepted?'accepted':'unknown'});
+    assert.deepEqual(f.rows.get('row'),before);assert.equal(f.storageCounts().writes,counts.writes);
+    assert.equal(f.storageCounts().reads,counts.reads+1);assert.equal(f.calls.length,1);assert.equal(f.calls[0].method,'GET');
+  }finally{f.client.close();}
+});
+
+for(const state of ['accepted','unknown'])test(`a saved ${state} source never becomes unsent when the local journal is absent`,async()=>{
+  const f=await submissionFixture({prepare:false,capabilityReply:missingHostRootReply});f.job.submissionState=state;
+  try{await assert.rejects(f.client.runCloudJob(f.job,f.gateway,connection,{deliver:noDelivery}),{submissionState:state});
+    assert.equal(f.calls.length,1);assert.equal(f.storageCounts().writes,0);
+  }finally{f.client.close();}
+});
+
+for(const mode of ['unreadable','invalid-record','wrong-attempt','account-during-response','account-during-read'])test(`unproven ${mode} preflight ownership remains uncertain with no submission or journal rewrite`,async()=>{
+  const f=await submissionFixture({prepare:false,capabilityReply:missingHostRootReply});
+  if(mode==='unreadable')f.setReadFailure(true);
+  if(mode==='invalid-record')f.rows.set('row',{version:99});
+  if(mode==='wrong-attempt')f.job.imageAdmission.attemptId='foreign';
+  if(mode==='account-during-response')f.setCapabilityReply(()=>{f.setAccount('st-user:bob');return missingHostRootReply();});
+  if(mode==='account-during-read'){
+    const get=f.rows.get.bind(f.rows);f.rows.get=key=>{f.setAccount('st-user:bob');return get(key);};
+  }
+  try{await assert.rejects(f.client.runCloudJob(f.job,f.gateway,connection,{deliver:noDelivery}),{submissionState:'unknown'});
+    assert.equal(f.calls.filter(row=>row.method==='POST').length,0);assert.equal(f.storageCounts().writes,0);
+  }finally{f.client.close();}
+});
+
+test('ordinary capability/collection errors retain the original conservative delivery classification',async()=>{
+  const f=await submissionFixture({prepare:false,capabilityReply:missingHostRootReply});
+  try{await assert.rejects(f.client.cloudCapabilities(),{submissionState:'accepted'});assert.deepEqual(f.storageCounts(),{reads:0,writes:0});}
+  finally{f.client.close();}
+});
+
+for(const accepted of [false,true])test(`a ${accepted?'received acceptance followed by result failure':'lost submit response'} stays ${accepted?'accepted':'unknown'} across a later capability failure and cannot submit twice`,async()=>{
+  const f=await submissionFixture({prepare:false,reply:accepted?undefined:()=>{throw Error('synthetic submit network loss');},
+    resultReply:()=>Response.json({ok:false,message:'synthetic result storage failure',submissionState:'not_submitted'},{status:500})});
+  const options={apiKey:'synthetic-key',deliver:noDelivery},state=accepted?'accepted':'unknown';
+  try{
+    await assert.rejects(f.client.runCloudJob(f.job,f.gateway,connection,options),{submissionState:state});
+    assert.equal(f.calls.filter(row=>row.url.endsWith('/submit')).length,1);
+    const original=structuredClone(f.rows.get('row')),counts=f.storageCounts();f.setCapabilityReply(missingHostRootReply);
+    await assert.rejects(f.client.runCloudJob(f.job,f.gateway,connection,options),{submissionState:state});
+    assert.equal(f.calls.filter(row=>row.url.endsWith('/submit')).length,1);
+    assert.deepEqual(f.rows.get('row'),original);assert.equal(f.storageCounts().writes,counts.writes);
+  }finally{f.client.close();}
+});
 
 const readinessReport=()=>({ok:true,version:1,schemaVersion:1,definitionsChecked:true,executionAuthorized:false,actualGenerationVerified:false,
   errors:0,warnings:0,ready:true,nodeCount:7,issues:[],message:'节点与模型清单相符'});

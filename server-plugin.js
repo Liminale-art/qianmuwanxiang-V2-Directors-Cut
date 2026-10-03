@@ -2,6 +2,7 @@
 // 为豆包 TTS 与分镜生图提供同源请求边界，密钥只在单次上游请求中使用。
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { createImageService, imageServiceTaskErrorPayload, IMAGE_SERVICE_TASK_VERSION } from './qianmu-image-service.js';
 import { imageServiceAccount } from './qianmu-image-service-access.js';
 import { installStoryboardServerBatchV2Routes } from './qianmu-storyboard-server-batch-v2-routes.js';
@@ -193,7 +194,18 @@ export async function init(router, options = {}) {
   };
 
   let imageTasks;
-  const hostDataRoot = () => options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
+  // ST accepts relative dataRoot configuration (including its ./data default)
+  // and initializes plugins after selecting its working directory. Resolve only
+  // that trusted host value, against the init cwd rather than a later request's.
+  const hostWorkingDirectory = process.cwd();
+  const hostDataRoot = () => {
+    const value = options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
+    if (typeof value !== 'string' || !value.trim() || value.includes('\0') || path.isAbsolute(value)) return value;
+    // Drive-relative Windows paths depend on mutable per-drive cwd; let the
+    // stores reject them as non-absolute, without changing POSIX colon names.
+    if (process.platform === 'win32' && path.parse(value).root) return value;
+    return path.resolve(hostWorkingDirectory, value);
+  };
   installStoryboardServerBatchV2Routes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service)});
   let notesSync;
   for (const [method, route] of [['get','/notes'],['post','/notes/write']]) router[method](route, async (req,res) => {

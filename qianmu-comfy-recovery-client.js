@@ -8,7 +8,7 @@ import { imageChannelKey } from './qianmu-image-channel.js';
 import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUpdate } from './qianmu-comfy-delivery-store.js';
 import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
 import { buildComfyCloudRequest } from './qianmu-comfy-cloud-request.js';
-import { executeComfyCloudJob } from './qianmu-comfy-cloud-execution.js';
+import { executeComfyCloudJob } from './qianmu-comfy-cloud-execution.js?v=1.59.429';
 import { runningHubUsageFields } from './qianmu-runninghub-usage.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { checkComfyReferenceSelection } from './qianmu-comfy-references.js';
