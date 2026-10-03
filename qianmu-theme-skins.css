@@ -221,7 +221,7 @@
 dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-color: var(--qm-line); }
 /* Owned popup surfaces keep their selected skin over host .popup !important
    rules. Ordinary ST popups never match; classic uses the base stylesheet. */
-dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog)[data-qm-theme] {
+:root dialog.popup:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog)[data-qm-theme] {
   background: var(--qm-skin-window) !important;
   color: var(--qm-ink) !important;
   border-color: var(--qm-line) !important;
@@ -231,19 +231,19 @@ dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog)[data-qm-theme] {
 }
 .sd-comfy-route-dialog[data-qm-theme] :is(.sd-comfy-route-picker, .popup-content) { scrollbar-width: none; }
 .sd-comfy-route-dialog[data-qm-theme] :is(.sd-comfy-route-picker, .popup-content)::-webkit-scrollbar { display: none; }
-.sd-comfy-route-dialog[data-qm-theme] .popup-controls .menu_button {
-  background: var(--qm-raised);
-  color: var(--qm-action-ink);
-  border: 1px solid var(--qm-line);
-  border-radius: 999px;
-  box-shadow: none;
+:root dialog.popup:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog)[data-qm-theme] .popup-controls .menu_button {
+  background: var(--qm-raised) !important;
+  color: var(--qm-action-ink) !important;
+  border: 1px solid var(--qm-line) !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
   text-shadow: none;
   transition: transform .15s ease, filter .15s ease;
 }
-.sd-comfy-route-dialog[data-qm-theme] .popup-controls .popup-button-ok {
-  background: var(--qm-accent);
-  color: var(--qm-on-accent);
-  border-color: transparent;
+:root dialog.popup:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog)[data-qm-theme] .popup-controls .popup-button-ok {
+  background: var(--qm-accent) !important;
+  color: var(--qm-on-accent) !important;
+  border-color: transparent !important;
 }
 /* Native top-layer dialogs remain children of the modal: inherit its live palette.
    Keep their existing header/main/footer geometry, state and cancellation owners. */

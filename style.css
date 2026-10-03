@@ -7247,15 +7247,17 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-comfy-route-picker .sd-comfy-route-check { display: flex; align-items: center; gap: 8px; min-height: 32px; }
 .sd-comfy-route-check input { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; }
 .sd-comfy-route-picker :is(small,p) { font-size: 11px; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
-/* Only owned popup shells override host skins that force .popup surfaces. */
-dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) { color:var(--sd-text)!important;background:var(--sd-bg,var(--sd-glass))!important;border:1px solid var(--sd-border,var(--sd-hairline))!important;border-radius:var(--sd-radius-lg,16px)!important;width:min(500px,calc(100vw - 24px));max-width:calc(100vw - 24px);padding:16px;box-sizing:border-box; }
-dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) :is(h3,label,p,span,small) { color:inherit!important;text-align:left; }
+/* Owned shells outrank root-scoped host popup skins, even when injected later. */
+:root dialog.popup:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) { color:var(--sd-text)!important;background:var(--sd-bg,var(--sd-glass))!important;border:1px solid var(--sd-border,var(--sd-hairline))!important;border-radius:var(--sd-radius-lg,16px)!important;width:min(500px,calc(100vw - 24px));max-width:calc(100vw - 24px);padding:16px;box-sizing:border-box; }
+:root dialog.popup:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) :is(h3,label,p,span,small) { color:inherit!important;text-align:left; }
 dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) :is(input:not([type=checkbox]),select,textarea,.sd-btn,.menu_button) { color:var(--sd-text);background:var(--sd-card);border:1px solid var(--sd-border,var(--sd-hairline));border-radius:var(--sd-radius-md,8px);min-height:38px;font:inherit;box-sizing:border-box;box-shadow:none; }
 dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) select option { color:var(--sd-text);background:var(--sd-bg,var(--sd-glass)); }
 dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) :is(input:not([type=checkbox]),select,textarea) { background:var(--sd-input-bg,var(--sd-card)); }
 dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) input[type=checkbox] { accent-color:var(--sd-accent); }
 dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) :is(input,select,textarea):focus { outline:none;box-shadow:none; }
 dialog:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) :is(.popup-button-ok,.sd-primary) { color:var(--sd-accent);border-color:var(--sd-accent); }
+:root dialog.popup:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) .popup-controls .menu_button { color:var(--sd-text)!important;background:var(--sd-card)!important;border:1px solid var(--sd-border,var(--sd-hairline))!important;border-radius:var(--sd-radius-md,8px)!important;box-shadow:none!important; }
+:root dialog.popup:is(.sd-comfy-route-dialog,.sd-ensemble-target-dialog) .popup-controls .popup-button-ok { color:var(--sd-accent)!important;border-color:var(--sd-accent)!important; }
 .sd-ensemble-target-picker { display:grid;gap:12px;min-width:0;max-height:70dvh;overflow:auto;text-align:left; }
 .sd-ensemble-target-picker h3 { margin:0;font-size:16px; }
 .sd-ensemble-target-fields { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }

@@ -1,5 +1,5 @@
-/* Observed live host surface rule, with synthetic values matching the observed dark canvas. */
-:root { --bg-white: rgba(16,20,25,.94); --border-light: #405060; }
+/* Observed live host surface rule, with synthetic palette defaults. */
+:root { --bg-white: rgb(255,255,255); --border-light: #405060; --text-secondary: #555; }
 .popup, .dialogue_popup, .dialogue_popup_large {
   background-color: var(--bg-white) !important;
   border: 1px solid var(--border-light) !important;
@@ -10,3 +10,17 @@
    boundary too; these are test inputs, not a claim about its exact live selector. */
 .popup { color: rgb(238,246,255) !important; }
 .popup small { color: rgb(34,34,34) !important; }
+/* Exact later-injected universal-popup rule captured from the live CSSOM. */
+:root.zmer-universal-toast-theme-popup-on .popup,
+:root.zmer-universal-toast-theme-popup-on #dialogue_popup,
+:root.zmer-universal-toast-theme-popup-on .dialogue_popup,
+:root.zmer-universal-toast-theme-popup-on .modal,
+:root.zmer-universal-toast-theme-popup-on .swal2-popup,
+:root.zmer-universal-toast-theme-popup-on .ui-dialog,
+:root.zmer-universal-toast-theme-popup-on .completion_prompt_manager_popup {
+  background: linear-gradient(115deg, rgba(255,255,255,0.10), transparent 38%), rgb(var(--zut-bg-rgb, 16 20 25) / 0.94) !important;
+  color: var(--zut-text-color, #eef6ff) !important;
+  border-radius: 12px !important;
+}
+/* Exact live footer paint applies to DIV.menu_button as well as buttons. */
+.menu_button { background-color:var(--bg-white)!important;color:var(--text-secondary)!important;border-radius:6px!important; }
