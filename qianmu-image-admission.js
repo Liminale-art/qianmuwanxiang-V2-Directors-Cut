@@ -3,6 +3,7 @@ import { imageAttemptScopeKey } from './qianmu-image-attempts.js';
 import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.414';
 import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.414';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
+import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
 export {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 
 const error = (code, message) => Object.assign(new Error(message), { code: `image_attempt_${code}` });
@@ -181,7 +182,11 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         }
         if (!decision.ok && decision.code === 'confirmation_required' && !job.automatic) {
           current(valid);
-          if (await confirm('确认重新生图', '原请求可能已受理或扣费。请先核对渠道任务和账单并确认已结束；无法判断时请取消。原结果及费用仍可能未知，继续会发起一次新的生图请求。') === true) {
+          let cloud = false;
+          try { cloud = job.source === 'comfy' && Boolean(resolveStoryboardComfyCloud(job.connection)); } catch (_) { /* Invalid roots keep the conservative existing warning. */ }
+          const message = cloud ? '请先核对平台任务和账单；已知原任务仍在运行时请取消。若原结果或费用仍无法确认，继续即表示明确接受可能重复计费，并发起一次新的生图请求。'
+            : '原请求可能已受理或扣费。请先核对渠道任务和账单并确认已结束；无法判断时请取消。原结果及费用仍可能未知，继续会发起一次新的生图请求。';
+          if (await confirm('确认重新生图', message) === true) {
             current(valid);
             confirmedAttempts = JSON.parse(decision.confirmation).map(row => row[0]);
             decision = await store.claim(identity.scope, { ...input, confirmation: decision.confirmation }, seeds);

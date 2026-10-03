@@ -161,6 +161,38 @@ test('ambiguous manual retry consent cannot reserve a new image or alter the ori
   }
 });
 
+test('manual cloud retry consent accepts explicit unknown-fee risk without claiming the platform ended',async()=>{
+  for(const baseUrl of ['https://www.runninghub.cn','https://www.runninghub.ai/task/openapi','https://cloud.comfy.org','https://example.run.comfy.app']){
+    let prompts=0;const {runtime,store}=setup({confirm:async(_title,message)=>{
+      prompts++;assert.match(message,/先核对平台任务和账单/);assert.match(message,/仍在运行时请取消/);
+      assert.match(message,/无法确认.*明确接受可能重复计费/);assert.match(message,/一次新的生图请求/);assert.doesNotMatch(message,/确认已结束|无法判断时请取消/);return true;
+    }}),original=job();
+    await admit(runtime,original);await runtime.beforeSubmit(original);await runtime.settle(original,'unknown');
+    const next=job({id:'cloud-retry',automatic:false,source:'comfy',connection:{baseUrl},imageAdmission:original.imageAdmission});
+    assert.equal(await admit(runtime,next),true);assert.equal(prompts,1);assert.equal(store.inspect(scopeOf(original)).attempts,2);
+    assert.equal(Object.hasOwn(next,'ended'),false);assert.deepEqual(next.confirmedImageAttempts,['job-a']);
+  }
+});
+
+test('non-cloud, NAI and invalid cloud roots retain the exact existing uncertain-result warning',async()=>{
+  const previous='原请求可能已受理或扣费。请先核对渠道任务和账单并确认已结束；无法判断时请取消。原结果及费用仍可能未知，继续会发起一次新的生图请求。';
+  for(const patch of [{source:'comfy',connection:{baseUrl:'https://my-comfy.test'}},{source:'novel',connection:{baseUrl:'https://www.runninghub.cn'}},
+    {source:'comfy',connection:{baseUrl:'https://www.runninghub.cn/not-an-api-root'}}]){
+    const {runtime}=setup({confirm:async(_title,message)=>{assert.equal(message,previous);return false;}}),original=job();
+    await admit(runtime,original);await runtime.beforeSubmit(original);await runtime.settle(original,'unknown');
+    await assert.rejects(admit(runtime,job({id:'retry',automatic:false,imageAdmission:original.imageAdmission,...patch})),{code:'image_attempt_confirmation_required'});
+  }
+});
+
+test('declining cloud fee-risk confirmation leaves reservations and provider dispatch unchanged',async()=>{
+  const {runtime,store}=setup({confirm:async()=>false}),original=job();let dispatched=0;
+  await admit(runtime,original);await runtime.beforeSubmit(original);await runtime.settle(original,'unknown');const before=JSON.stringify([...store.rows]);
+  const next=job({id:'declined-cloud',automatic:false,source:'comfy',connection:{baseUrl:'https://www.runninghub.cn'},imageAdmission:original.imageAdmission});
+  await assert.rejects(async()=>{await admit(runtime,next);await runtime.beforeSubmit(next);dispatched++;},{code:'image_attempt_confirmation_required'});
+  assert.equal(dispatched,0);assert.equal(JSON.stringify([...store.rows]),before);
+  await assert.rejects(runtime.beforeSubmit(next),{code:'image_attempt_missing_reservation'});
+});
+
 test('a confirmation becomes invalid if a previously unseen uncertain attempt appears', async () => {
   const store = storage(), original = job(); let confirmations = 0;
   const { runtime } = setup({ store, confirm: async () => {

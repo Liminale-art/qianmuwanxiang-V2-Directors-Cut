@@ -298,7 +298,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.433';
+const VERSION = '1.59.434';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -356,7 +356,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.414'),
+    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.434'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',

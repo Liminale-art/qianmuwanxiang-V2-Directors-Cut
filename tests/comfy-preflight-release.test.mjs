@@ -4,6 +4,13 @@ import {readFile} from 'node:fs/promises';
 import {collectReleaseFiles} from '../scripts/build-release.mjs';
 
 const root=new URL('../',import.meta.url);
+test('cloud retry confirmation loads the updated admission text without refreshing unchanged cloud modules',async()=>{
+  const entry=await readFile(new URL('index.js',root),'utf8');
+  assert.ok(entry.includes("loadLocalChunk('./qianmu-image-admission.js?v=1.59.434')"));
+  const files=await collectReleaseFiles();assert.ok(files.includes('qianmu-image-admission.js'));
+  const runtime=await import('../qianmu-image-admission.js?v=1.59.434');
+  assert.equal(typeof runtime.createImageAdmission,'function');
+});
 test('manual RunningHub retry loads the updated local workbench without refreshing cloud submission code',async()=>{
   const entry=await readFile(new URL('index.js',root),'utf8');
   assert.ok(entry.includes("loadLocalChunk('./qianmu-comfy-workbench.js?v=1.59.430')"));
