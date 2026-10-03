@@ -4,7 +4,7 @@ import { uploadComfyCloudReference } from './qianmu-comfy-cloud-upload.js';
 import { checkComfyCloudReadiness } from './qianmu-comfy-cloud-readiness.js';
 import { comfyCloudResourceKey } from './qianmu-comfy-cloud-ledger.js';
 import { createComfyCloudServerTransport } from './qianmu-comfy-server-transport.js';
-import { readComfyCloudJsonResponse, readComfyCloudAcceptance } from './qianmu-comfy-cloud-response.js';
+import { readComfyCloudJsonResponse, readComfyCloudAcceptance, normalizeComfyCloudFailureDiagnostic } from './qianmu-comfy-cloud-response.js';
 import { COMFY_CLOUD_RECEIPT_SCHEMA } from './qianmu-comfy-cloud-receipt.js';
 import { hasComfyCloudReadinessBasis } from './qianmu-comfy-cloud-protocol.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
@@ -17,10 +17,13 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
   comfyCloudResourceKey(input.connection, apiKey);
   let knownId = '', attempted = false, dispatched = false, cancelled = signal?.aborted === true, interruption, response, ticket, stage = 'authorization';
   const ownErrors = new WeakSet();
+  const diagnostic = (cause, extra = {}) => normalizeComfyCloudFailureDiagnostic({stage,causeCode:cause?.code,
+    httpStatus:response?.status,providerCode:cause?.providerCode,attempted,dispatched,hasKnownTaskId:Boolean(knownId),...extra});
   const fail = (reason, message) => {
     const error = Object.assign(new Error(message), { code: `comfy_cloud_submit_${reason}`, retryable: false,
       submissionState: knownId ? 'accepted' : attempted ? 'unknown' : 'not_submitted',
       ...(knownId && reason !== 'account' ? { upstreamId: knownId } : {}), needsReview: attempted });
+    error.cloudDiagnostic=diagnostic(error);
     ownErrors.add(error); return error;
   };
   if (expectedAccount !== account.namespace || typeof attemptId !== 'string' || !/^[a-zA-Z0-9_-]{1,240}$/.test(attemptId)) throw fail('identity', '云任务账户或请求编号未确认');
@@ -127,6 +130,7 @@ export async function submitComfyCloudTask(req, { request, apiKey, expectedAccou
         : '云任务提交状态暂无法确认，请核查原连接与任务记录');
       if (cleanupFailed) { error.recordCleanupFailed = true; error.needsReview = true; }
       if (response && !response.ok && Number.isInteger(response.status)) error.httpStatus = response.status;
+      error.cloudDiagnostic=diagnostic(cause,{recordCleanupFailed:cleanupFailed});
       throw error;
     }
   };

@@ -20,6 +20,7 @@ const send=action=>frame.contentWindow.postMessage({action,family,dark},location
 document.querySelectorAll('[data-family]').forEach(button=>button.onclick=()=>{family=button.dataset.family;send('theme');document.querySelectorAll('[data-family]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));});
 document.getElementById('mode').onclick=()=>{dark=!dark;send('theme');};document.getElementById('width').onclick=()=>frame.classList.toggle('narrow');document.getElementById('tests').onclick=()=>send('tests');
 document.getElementById('retry').onclick=()=>send('retry');
+document.getElementById('popup-tests').onclick=()=>send('popup-tests');document.getElementById('host-popup').onclick=()=>send('host-popup');
 window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===frame.contentWindow)report.textContent=event.data.report;});`;
 const frame=`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><title>实际日志与收片组件</title><style>body{margin:0;background:#eef2ef;color:#293b32;font:14px/1.5 system-ui}#story-director-modal{position:relative!important;inset:auto!important;display:block!important;width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important;box-sizing:border-box;padding:12px!important;background:var(--sd-sticky-bg);border-radius:0!important}#panel.sd-storyboard-root{display:block!important;height:auto!important;max-height:none!important;min-height:0!important;overflow:visible!important}#notice{padding:4px 12px;font-size:12px}</style><p id="notice" role="status">仅本机合成记录</p><section id="story-director-modal" class="sd-theme-light"><div id="panel" class="sd-storyboard-root"></div></section><script type="module" src="/client.js"></script></html>`;
 async function entry(){
@@ -69,10 +70,27 @@ class SyntheticPopup {
   for(const [label,result,className] of [[options.okButton,1,'popup-button-ok'],[options.cancelButton,0,'popup-button-cancel']]){const button=document.createElement('button');button.type='button';button.className='menu_button '+className;button.textContent=label;button.onclick=()=>this.finish(result);controls.append(button);}
   body.append(controls);this.dlg.append(body);this.dlg.addEventListener('cancel',event=>{event.preventDefault();void this.finish(0);});
  }
- show(){const result=new Promise(resolve=>this.resolve=resolve);document.body.append(this.dlg);this.dlg.showModal();this.dlg.querySelector('select').focus();return result;}
+ show(){const result=new Promise(resolve=>this.resolve=resolve);document.body.append(this.dlg);this.dlg.showModal();this.dlg.querySelector('select')?.focus();return result;}
  async finish(result){this.result=result;if(await this.options.onClosing?.(this)===false)return;this.dlg.close();this.dlg.remove();this.resolve(result);}
 }
 async function retry(){if(document.querySelector('dialog[open]'))return;const value=await confirmRunningHubRetryExecution({context:{Popup:SyntheticPopup,POPUP_TYPE:{CONFIRM:1}},instanceType:'',text:'保存 1 张，接收 1 张\\n继续前请确认数量、输出节点与可能费用。',isCurrent:()=>true,mountAppearance:dialog=>appearance.mountPortal(dialog,{inheritTheme:true})});report('运行配置结果：'+JSON.stringify(value)+'；0 模型请求 / 0 提交 / 0 持久写入');}
+function hostPopup(){const content=document.createElement('div');content.innerHTML='<h3>普通 ST 弹窗对照</h3><small>故意保留宿主深色底与强制小字色，不应跟随千幕改变。</small>';return new SyntheticPopup(content,1,'',{okButton:'关闭',cancelButton:'取消',onClosing:()=>true});}
+async function popupTests(){if(document.querySelector('dialog[open]'))return;let checks=0;const reports=[],saved={family,dark};
+ const check=(condition,label)=>{if(!condition)throw Error(label);checks++;};
+ const color=value=>{const probe=document.createElement('div');probe.style.color=value;probe.style.backgroundColor=value;document.body.append(probe);const result={ink:getComputedStyle(probe).color,bg:getComputedStyle(probe).backgroundColor};probe.remove();return result;};
+ try{for(const next of ['classic','glass','editorial'])for(const mode of [false,true]){family=next;dark=mode;await theme();
+  const work=confirmRunningHubRetryExecution({context:{Popup:SyntheticPopup,POPUP_TYPE:{CONFIRM:1}},instanceType:'',text:'保存 1 张，接收 1 张',mountAppearance:dialog=>appearance.mountPortal(dialog,{inheritTheme:true})});await appearance.sync();await tick();
+  const dialog=document.querySelector('dialog.sd-comfy-route-dialog'),computed=getComputedStyle(dialog),expectedInk=getComputedStyle(modal).getPropertyValue('--sd-text').trim();
+  check(computed.color===color(expectedInk).ink,next+' dialog ink');check(getComputedStyle(dialog.querySelector('small')).color===computed.color,next+' readable small');
+  check(computed.backgroundColor===color(computed.getPropertyValue(next==='classic'?'--sd-glass':'--qm-bg').trim()).bg,next+' canvas');
+  if(next!=='classic'){check(dialog.style.getPropertyValue('--qm-ink')===computed.getPropertyValue('--qm-ink'),next+' literal inline ink');check(computed.getPropertyValue('--qm-ink')===getComputedStyle(modal).getPropertyValue('--qm-ink'),next+' same panel ink');}
+  check(dialog.scrollWidth<=dialog.clientWidth+1,next+' no horizontal overflow');reports.push(next+'/'+(mode?'dark':'light')+': '+computed.color+' on '+computed.backgroundColor);
+  dialog.querySelector('.popup-button-cancel').click();check(await work===null,next+' cancel');
+  const ensemble=hostPopup();ensemble.dlg.classList.add('sd-ensemble-target-dialog');const shown=ensemble.show(),off=appearance.mountPortal(ensemble.dlg,{inheritTheme:true});await appearance.sync();
+  check(getComputedStyle(ensemble.dlg).color===color(expectedInk).ink,next+' ensemble ink');check(getComputedStyle(ensemble.dlg.querySelector('small')).color===getComputedStyle(ensemble.dlg).color,next+' ensemble note');await ensemble.finish(0);await shown;off();
+  const ordinary=hostPopup(),done=ordinary.show();check(getComputedStyle(ordinary.dlg).backgroundColor==='rgba(16, 20, 25, 0.94)',next+' host canvas unchanged');check(getComputedStyle(ordinary.dlg).color==='rgb(238, 246, 255)',next+' host ink unchanged');check(getComputedStyle(ordinary.dlg.querySelector('small')).color==='rgb(34, 34, 34)',next+' host note unchanged');check(!ordinary.dlg.hasAttribute('data-qm-theme'),next+' host not registered');await ordinary.finish(0);await done;
+ }}finally{family=saved.family;dark=saved.dark;await theme();}
+ report('PASS '+checks+' popup DOM checks; observed host !important surface + hostile text; 0 calls\\n'+reports.join('\\n'));}
 async function theme(){settings={theme:dark?'dark':'light',appearance:{version:1,family,mode:dark?'dark':'light',source:'manual',accent:'#719688'}};appearance.repaintClassic();await appearance.sync();report('主题 '+family+' / '+(dark?'dark':'light')+'；0 模型请求 / 0 持久写入');}
 const tick=()=>new Promise(resolve=>setTimeout(resolve,20));
 async function tests(){let checks=0;const check=(value,label)=>{if(!value)throw Error(label);checks++;};const log=panel.querySelector('[data-storyboard-log="failed"]');
@@ -84,12 +102,13 @@ async function tests(){let checks=0;const check=(value,label)=>{if(!value)throw 
  log.open=false;await tick();check([...log.querySelectorAll('pre')].every(pre=>pre.textContent===''),'closing clears all long text');
  check(!inbox.querySelector('.sd-comfy-inbox-storage').open,'storage folded');check([...inbox.querySelectorAll('.sd-comfy-inbox-row-detail')].every(detail=>!detail.open),'row technical details folded');check([...inbox.querySelectorAll('.sd-comfy-inbox-notice')].some(node=>node.textContent.includes('重复付费')),'uncertain risk visible');check(document.documentElement.scrollWidth<=innerWidth+1,'no horizontal page overflow');
  report('PASS '+checks+' actual DOM checks; '+family+' / '+(dark?'dark':'light')+'; 0 model / 0 persistent writes');}
-window.addEventListener('message',async event=>{if(event.origin!==location.origin||event.source!==parent)return;try{if(event.data.action==='theme'){family=event.data.family;dark=event.data.dark;await theme();}else if(event.data.action==='tests')await tests();else if(event.data.action==='retry')await retry();}catch(error){report('FAIL '+error.message);}});
+window.addEventListener('message',async event=>{if(event.origin!==location.origin||event.source!==parent)return;try{if(event.data.action==='theme'){family=event.data.family;dark=event.data.dark;await theme();}else if(event.data.action==='tests')await tests();else if(event.data.action==='retry')await retry();else if(event.data.action==='popup-tests')await popupTests();else if(event.data.action==='host-popup')await hostPopup().show();}catch(error){report('FAIL '+error.message);}});
 window.addEventListener('pagehide',()=>{disposeInbox?.();release();appearance.reset();});await theme();`;
 const server=createServer(async(req,res)=>{
   try{if(req.method!=='GET'){res.writeHead(405).end();return;}
     const path=new URL(req.url,'http://127.0.0.1').pathname.slice(1);let body,type='text/javascript; charset=utf-8';
-    if(!path){body=outer;type='text/html; charset=utf-8';}else if(path==='frame'){body=frame;type='text/html; charset=utf-8';}
+    if(!path){body=outer.replace('</nav>','<button id="popup-tests">弹窗主题回归</button><button id="host-popup">普通ST弹窗对照</button></nav>');type='text/html; charset=utf-8';}else if(path==='frame'){body=frame.replace('<title>','<link rel="stylesheet" href="/host-popup.css"><title>');type='text/html; charset=utf-8';}
+    else if(path==='host-popup.css'){body=await readFile(new URL('../tests/fixtures/host-popup-theme.css',import.meta.url));type='text/css; charset=utf-8';}
     else if(path==='outer.js')body=outerJs;else if(path==='client.js')body=client;else if(path==='entry.js')body=await entry();
     else if(files.has(path)){body=await readFile(new URL(path,root));if(path.endsWith('.css'))type='text/css; charset=utf-8';}
     else{res.writeHead(404).end();return;}

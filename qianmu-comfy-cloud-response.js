@@ -4,10 +4,55 @@ import { parseBoundedJson } from './qianmu-json-input.js';
 import { readRunningHubUsage } from './qianmu-runninghub-usage.js';
 import { comfyStillMime } from './qianmu-comfy-results.js';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
-const fail = (code, message, taskId = '') => {
+const fail = (code, message, taskId = '', providerCode) => {
   throw Object.assign(new Error(message), { code: `comfy_cloud_response_${code}`, retryable: false,
-    submissionState: taskId ? 'accepted' : 'unknown', ...(taskId ? { upstreamId: taskId } : {}) });
+    submissionState: taskId ? 'accepted' : 'unknown', ...(taskId ? { upstreamId: taskId } : {}),
+    ...(Number.isSafeInteger(providerCode) && Math.abs(providerCode) <= 2147483647 ? {providerCode} : {}) });
 };
+
+// Closed, metadata-only error projection. Never retain a message, stack, URL,
+// response body, workflow or credential; diagnostics grant no retry authority.
+const diagnosticStages = {authorization:'连接授权',preflight:'任务预查',readiness:'节点检查',references:'参考图准备',reservation:'任务预留',submission:'提交请求',response:'响应校验',record:'受理记录',delivery:'状态交付'};
+const diagnosticReasons = {
+  http: ['平台 HTTP 响应异常，请核查原任务', ['comfy_cloud_response_http']],
+  response_format: ['平台响应格式无法确认，请核查原任务', ['comfy_cloud_response_type','comfy_cloud_response_json','comfy_cloud_response_shape','comfy_cloud_response_size','comfy_cloud_response_limits']],
+  response_read: ['平台响应未完整读取，请核查原任务', ['comfy_cloud_response_stream']],
+  acceptance: ['平台受理响应未获确认，请核对平台记录及错误码', ['comfy_cloud_response_acceptance','comfy_cloud_response_identity','comfy_cloud_response_links']],
+  timeout: ['等待超时，请核查原任务', ['comfy_cloud_response_timeout','comfy_cloud_submit_timeout','comfy_transport_dns_timeout','ETIMEDOUT']],
+  cancelled: ['等待已停止，请核查原任务', ['comfy_cloud_response_cancelled','comfy_cloud_submit_cancelled']],
+  account: ['账户校验变化，请回原账户核查', ['comfy_cloud_submit_account','comfy_cloud_submit_identity','comfy_transport_account_changed','comfy_transport_authentication_required','image_service_cloud_account_changed']],
+  authorization: ['连接授权未完成，请核对原连接', ['comfy_cloud_submit_authorization','comfy_transport_cloud_authorization','comfy_cloud_access_account','comfy_cloud_access_target','comfy_cloud_access_policy']],
+  connection: ['连接或地址校验未完成，请核对原连接', ['comfy_transport_cloud_unavailable','comfy_transport_dns','comfy_transport_address','comfy_transport_unsafe_target','comfy_transport_target_changed','comfy_transport_redirect','ENOTFOUND','EAI_AGAIN','ECONNRESET','ECONNREFUSED']],
+  ledger: ['原任务记录校验未完成，请核查原记录', ['image_service_cloud_storage','image_service_cloud_occupied','image_service_cloud_full','image_service_cloud_conflict','image_service_cloud_duplicate','image_service_cloud_ticket','image_service_cloud_ticket_changed','image_service_cloud_acceptance_unconfirmed']],
+  references: ['参考图准备未完成，请核对原素材', ['comfy_cloud_submit_references']],
+  readiness: ['节点或模型检查未通过，请手动核对', ['comfy_cloud_submit_readiness']],
+  unclassified: ['未能确认具体原因，请核查原任务', []],
+};
+const diagnosticCodes = new Map(Object.entries(diagnosticReasons).flatMap(([reason,[,codes]])=>codes.map(code=>[code,reason])));
+const ownData = (value,key) => {
+  try { return value && Object.getOwnPropertyDescriptor(value,key)?.value; } catch (_) { return undefined; }
+};
+export function normalizeComfyCloudFailureDiagnostic(value) {
+  const stage=ownData(value,'stage');if(typeof stage!=='string'||!Object.hasOwn(diagnosticStages,stage))return null;
+  const selected=ownData(value,'reason');
+  const reason=typeof selected==='string'&&Object.hasOwn(diagnosticReasons,selected)?selected:diagnosticCodes.get(ownData(value,'causeCode'))||'unclassified';
+  const result={stage,reason},httpStatus=ownData(value,'httpStatus'),providerCode=ownData(value,'providerCode');
+  if(Number.isInteger(httpStatus)&&httpStatus>=100&&httpStatus<=599)result.httpStatus=httpStatus;
+  if(Number.isSafeInteger(providerCode)&&Math.abs(providerCode)<=2147483647)result.providerCode=providerCode;
+  for(const key of ['attempted','dispatched','hasKnownTaskId','recordCleanupFailed']){
+    const flag=ownData(value,key);if(typeof flag==='boolean')result[key]=flag;
+  }
+  return Object.freeze(result);
+}
+export function describeComfyCloudFailureDiagnostic(value) {
+  const detail=normalizeComfyCloudFailureDiagnostic(value);if(!detail)return '';
+  const parts=[`${diagnosticStages[detail.stage]}：${diagnosticReasons[detail.reason][0]}`];
+  if(detail.httpStatus!==undefined)parts.push(`HTTP ${detail.httpStatus}`);
+  if(detail.providerCode!==undefined)parts.push(`平台码 ${detail.providerCode}`);
+  // Internal flags are not a second user-facing status. "dispatched" means
+  // entering the pinned transport, not proof the provider received any bytes.
+  return `〔${parts.join('；')}〕`;
+}
 
 // Called only after response headers arrive. Header/connect deadlines belong to the
 // operation runner; this deadline covers a body that never finishes or stops mid-stream.
@@ -145,7 +190,7 @@ export function readComfyCloudAcceptance(binding, body) {
   planComfyCloudOperation(binding, 'submit'); // Reject unrecognized local bindings before interpreting a remote body.
   if (!object(body)) fail('shape', '云端提交结果无法确认，请勿重复生成');
   const cloud = binding.provider === 'comfy-cloud';
-  if (!cloud && (body.code !== 0 || !object(body.data))) fail('acceptance', '云端未确认提交结果，请核查原任务');
+  if (!cloud && (body.code !== 0 || !object(body.data))) fail('acceptance', '云端未确认提交结果，请核查原任务', '', body.code);
   const id = cloud ? body.id : body.data.taskId;
   try { requireComfyCloudTaskId(binding, id); }
   catch (_) { fail('identity', '云端未返回有效任务编号，请勿重复生成'); }

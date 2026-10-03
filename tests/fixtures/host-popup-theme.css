@@ -1,0 +1,12 @@
+/* Observed live host surface rule, with synthetic values matching the observed dark canvas. */
+:root { --bg-white: rgba(16,20,25,.94); --border-light: #405060; }
+.popup, .dialogue_popup, .dialogue_popup_large {
+  background-color: var(--bg-white) !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+/* Deliberately hostile text declarations cover the reported low-contrast note
+   boundary too; these are test inputs, not a claim about its exact live selector. */
+.popup { color: rgb(238,246,255) !important; }
+.popup small { color: rgb(34,34,34) !important; }
