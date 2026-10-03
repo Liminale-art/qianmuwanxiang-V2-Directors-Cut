@@ -7,6 +7,7 @@ import { STILL_CANDIDATE_IDS, readStillCandidate, validateStillCandidate, prepar
 import { importComfyLibraryDocument } from '../qianmu-comfy-library.js';
 import { buildComfyCloudRequest } from '../qianmu-comfy-cloud-request.js';
 import { prepareComfyCloudSubmission } from '../qianmu-comfy-cloud-prepare.js';
+import { pinComfyRouteWorkflow, applyComfyRouteRecipe } from '../qianmu-comfy-route.js';
 import { collectReleaseFiles, validateReleasePlan } from '../scripts/build-release.mjs';
 
 const graphOf = prepared => typeof prepared.body.workflow === 'string' ? JSON.parse(prepared.body.workflow) : prepared.body.workflow;
@@ -32,25 +33,39 @@ test('four platform-owned actual candidate graphs compile all twenty declared si
   } finally { globalThis.fetch = oldFetch; }
 });
 
-test('maintainer documents survive the real library import and browser-to-host request preparation', () => {
+test('maintainer documents survive the real library import, pinned recipe and browser-to-host request preparation', async () => {
   for (const raw of rows) {
     const exported = exportStillCandidate(raw), imported = importComfyLibraryDocument(JSON.stringify(exported));
     assert.match(imported.name, /^待验证/);
     const checked = validateStillCandidate(raw); assert.deepEqual(imported.document, checked.document);
     const { input, prepared } = prepareStillCandidateCase(raw, { seed: 1234, sizeId: 'portrait' });
     const id = 'synthetic-maintainer-case', namespace = 'st-user:synthetic-test';
-    const job = { id, source: 'comfy', automatic: false, profile: {
-      ...(raw.provider === 'runninghub' ? { comfyInstanceType: 'default' } : {}) },
+    // A synthetic explicitly saved link, never a live candidate qualification.
+    const workflowId='2105524436618268674',document=raw.provider==='runninghub'
+      ? importComfyLibraryDocument(JSON.stringify({...exported,document:{...exported.document,consoleUrl:`https://www.runninghub.cn/workflow/${workflowId}`}})).document
+      : imported.document;
+    const head={namespace,id:raw.id,revision:'synthetic-revision',version:1,name:imported.name,archived:false};
+    const recipe=await pinComfyRouteWorkflow({namespace,selection:head,createStore:()=>({
+      readVersion:async()=>({head,version:head,document}),list:async()=>[head],close(){},
+    })});
+    const profile=applyComfyRouteRecipe({comfyConsoleUrl:'https://www.runninghub.ai/workflow/999'},
+      {comfyWorkflowBinding:recipe.binding,parameterPresetId:''},recipe);
+    const job = { id, source: 'comfy', automatic: false, profile,
       connection: { baseUrl: input.connection.origin }, imageAdmission: { version: 1, attemptId: id, namespace } };
     const gateway = { provider: 'comfy', baseUrl: input.connection.origin, model: 'comfy-workflow',
       prompt: input.prompt, negativePrompt: input.negativePrompt, parameters: { ...input.parameters, workflow: imported.document.workflow },
       comfyExecution: { ...input.execution, expectedImages: 1 } };
     const projected = buildComfyCloudRequest(job, gateway, input.connection);
-    assert.deepEqual(prepareComfyCloudSubmission(projected), prepared);
+    const actual=prepareComfyCloudSubmission(projected),expected=prepareComfyCloudSubmission({...input,binding:recipe.binding,
+      ...(raw.provider==='runninghub'?{runninghub:{...input.runninghub,workflowId}}:{})});
+    assert.deepEqual(actual,expected);assert.deepEqual(graphOf(actual),graphOf(prepared));
     if (raw.provider === 'runninghub') {
+      assert.equal(projected.runninghub.workflowId,workflowId);assert.equal(actual.body.workflowId,workflowId);
       assert.equal(typeof prepared.body.workflow, 'string');
       assert.deepEqual(prepared.body.nodeInfoList, [{ nodeId: 'sampler', fieldName: 'seed', fieldValue: 1234 }]);
       assert.equal(prepared.body.instanceType, 'default'); assert.match(prepared.intent.workflow.validationScope, /^[a-f0-9]{64}$/);
+      delete job.profile.comfyConsoleUrl;
+      assert.throws(()=>buildComfyCloudRequest(job,gateway,input.connection),{code:'comfy_cloud_request',submissionState:'not_submitted'});
     } else {
       assert.equal(typeof prepared.body.workflow, 'object');
       assert.equal(Object.hasOwn(prepared.body, 'nodeInfoList'), false);

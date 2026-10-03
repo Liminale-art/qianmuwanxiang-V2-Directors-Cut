@@ -9,6 +9,7 @@ import {bindStoryboardPromptRenderings} from '../qianmu-prompt-formats.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 import {buildComfyCloudRequest} from '../qianmu-comfy-cloud-request.js';
 import {prepareComfyCloudSubmission} from '../qianmu-comfy-cloud-prepare.js';
+import {normalizeRunningHubConsoleUrl,runningHubWorkflowId} from '../qianmu-comfy-console.js';
 import {createComfySceneCoordinator} from '../qianmu-comfy-lock-runtime.js';
 import {comfyCandidateExecutionKey} from '../qianmu-comfy-selection.js';
 import {recipesFixture,namespace} from './helpers/comfy-route-fixture.mjs';
@@ -21,7 +22,7 @@ for (const kind of ['fixed','workbench','scene']) test(`${kind} retry keeps an a
   const f=await recipesFixture({formats:['tags','tags']});
   const rh=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1');
   let sequence=0,choices=0;
-  const context=vm.createContext({...core,clone:structuredClone,uid:prefix=>`${prefix}-${++sequence}`,storyboardAdmissionEpoch:1,
+  const context=vm.createContext({...core,normalizeRunningHubConsoleUrl,runningHubWorkflowId,clone:structuredClone,uid:prefix=>`${prefix}-${++sequence}`,storyboardAdmissionEpoch:1,
     ctx:()=>({}),appearanceSession:{mountPortal:()=>()=>{}},directImageRuntime:async()=>direct,
     featureRuntime:{load:async key=>{
       if(key==='comfyRoutes')return routes;
@@ -29,7 +30,8 @@ for (const kind of ['fixed','workbench','scene']) test(`${kind} retry keeps an a
       if(key==='imageAdmission')return {resolveImageAccountNamespace:async()=>namespace};
       if(key==='comfyWorkbench')return {confirmRunningHubRetryExecution:async options=>{
         assert.equal(options.isCurrent(),true);assert.equal(options.instanceType,undefined);
-        choices++;return {instanceType:'default'};
+        assert.equal(options.consoleUrl,undefined);assert.equal(options.connection.baseUrl,rh.origin);
+        choices++;return {instanceType:'default',consoleUrl:'https://www.runninghub.cn/post/2105524436618268674?source=workspace'};
       }};
       assert.fail(`Unexpected feature: ${key}`);
     }},
@@ -76,10 +78,12 @@ for (const kind of ['fixed','workbench','scene']) test(`${kind} retry keeps an a
   const gateway=context.storyboardGatewayRequest(job,'synthetic-key',{references:[],vibes:[]});
   const request=buildComfyCloudRequest(job,gateway,rh),prepared=prepareComfyCloudSubmission(request);
   assert.equal(request.runninghub.instanceType,'default');assert.equal(prepared.body.instanceType,'default');
+  assert.equal(request.runninghub.workflowId,'2105524436618268674');assert.equal(prepared.body.workflowId,'2105524436618268674');
   assert.equal(prepared.intent.stillOutput.execution.expectedImages,1);
   assert.doesNotMatch(JSON.stringify(request),/synthetic-key|synthetic-reference/);
   const recorded=context.storyboardStartLog(job);
   assert.equal(recorded.snapshot.profile.comfyInstanceType,'default');
+  assert.equal(recorded.snapshot.profile.comfyConsoleUrl,'https://www.runninghub.cn/workflow/2105524436618268674');
   assert.equal(Object.hasOwn(recorded.snapshot,'comfyRetryReview'),false);
   assert.equal(Object.hasOwn(JSON.parse(JSON.stringify(job)),'comfyRetryReview'),false);
   assert.equal(JSON.stringify(log),before);

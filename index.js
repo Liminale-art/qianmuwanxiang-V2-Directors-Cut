@@ -44,6 +44,7 @@ import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVO
 import { receiveComfyImage, resolveComfyRecoveryKey, resolveComfyCloudRecoveryKey } from './qianmu-comfy-recovery-action.js';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { runningHubUsageFields, renderRunningHubTaskUsage } from './qianmu-runninghub-usage.js';
+import { normalizeRunningHubConsoleUrl, runningHubWorkflowId } from './qianmu-comfy-console.js?v=1.59.435';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
@@ -298,7 +299,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.434';
+const VERSION = '1.59.435';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -372,7 +373,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.433'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.435'),
   },
   comfyInbox: {
     label: 'Comfy 收片管理',
@@ -429,7 +430,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
-    load: () => loadLocalChunk('./qianmu-comfy-workbench.js?v=1.59.430'),
+    load: () => loadLocalChunk('./qianmu-comfy-workbench.js?v=1.59.435'),
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
@@ -449,7 +450,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
-    load: () => loadLocalChunk('./qianmu-comfy-library-view.js?v=1.59.414'),
+    load: () => loadLocalChunk('./qianmu-comfy-library-view.js?v=1.59.435'),
   },
   comfyPools: {
     label: 'Comfy 候选方案',
@@ -18098,7 +18099,7 @@ async function storyboardCheckComfyReadiness(root) {
   // Daily controls have no workflow textarea. Compare immutable recipe strings directly;
   // do not serialize a multi-MB API graph for every node definition response.
   const savedProfile = Object.fromEntries(['comfyWorkflow','comfyWorkflowNotice','comfyOutputNodeId','comfyReferences','comfyCharacterEnabled','comfyCharacterActivation','model','capabilityModelId',
-    'width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, state.profiles.comfy[key]]));
+    'width','height','count','steps','cfg','seed','sampler','scheduler','comfyConsoleUrl','comfyInstanceType'].map(key => [key, state.profiles.comfy[key]]));
   const connectionFields = () => {
     const draft = storyboardConnectionState(state).draft;
     return [draft.baseUrl, draft.credentialId, getStoryboardComfyTransport(draft), Boolean(draft.options?.allowPrivateNetwork)];
@@ -18126,7 +18127,7 @@ async function storyboardCheckComfyReadiness(root) {
       model: profile.model, outputNodeId: profile.comfyOutputNodeId || '', referenceCount,
       parameters: Object.fromEntries(['width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, profile[key]])),
       allowPrivateNetwork: Boolean(connection.options?.allowPrivateNetwork),
-      ...(resolveStoryboardComfyCloud(connection)?.provider==='runninghub'&&profile.comfyInstanceType?{runninghub:{instanceType:profile.comfyInstanceType}}:{}),
+      ...(resolveStoryboardComfyCloud(connection)?.provider==='runninghub'?{runninghub:{workflowId:runningHubWorkflowId(profile,connection),...(profile.comfyInstanceType?{instanceType:profile.comfyInstanceType}:{})}}:{}),
     };
     runtime.prepareComfyReadiness(request);
     request.apiKey = String(root.querySelector('.sd-storyboard-api-key-memory')?.value || '').trim() || await storyboardResolveApiKey('comfy');
@@ -19274,7 +19275,7 @@ async function storyboardCheckComfyJobReadiness(job, references, valid) {
   const request={baseUrl:job.connection.baseUrl,apiKey,workflow:job.payload.parameters.workflow,model:job.profile.model,
     parameters:Object.fromEntries(['width','height','count','steps','scale','cfg','seed','sampler','scheduler'].map(key=>[key,job.payload.parameters[key]])),
     outputNodeId:job.profile.comfyOutputNodeId,referenceCount:references.length,allowPrivateNetwork:job.connection.allowPrivateNetwork===true,
-    ...(cloud?.provider==='runninghub'&&job.profile.comfyInstanceType?{runninghub:{instanceType:job.profile.comfyInstanceType}}:{})};
+    ...(cloud?.provider==='runninghub'?{runninghub:{workflowId:runningHubWorkflowId(job.profile,job.connection),...(job.profile.comfyInstanceType?{instanceType:job.profile.comfyInstanceType}:{})}}:{})};
   let checked;
   try { checked=await (job.comfyProbeReadiness || inspector).checkComfyCharacterReadiness(request,{transport,headers:storyboardRequestHeaders(),guard,automatic:true}); }
   finally { await guard(); } // Transport errors must not conceal a departed account/input scope.
@@ -19319,9 +19320,10 @@ async function storyboardConfirmComfyExecution(job, valid) {
   const rolePlan = job.profile?.comfyCharacterEnabled===true||job.payload?.comfyCharacterPlan ? await storyboardPrepareComfyCharacterJob(job,{prepare:true,readiness:true,valid}) : null;
   if(!valid())return false;
   let approvedTier=job.profile?.comfyInstanceType,approvedHasTier=Object.hasOwn(job.profile||{},'comfyInstanceType');
-  const fingerprint = () => JSON.stringify([job.payload, retryRuntime?Object.fromEntries(Object.entries(job.profile||{}).filter(([key])=>key!=='comfyInstanceType')):job.profile, job.connection, Boolean(job.automatic),Boolean(job.comfyAutoSelected)]);
+  let approvedUrl=job.profile?.comfyConsoleUrl,approvedHasUrl=Object.hasOwn(job.profile||{},'comfyConsoleUrl');
+  const fingerprint = () => JSON.stringify([job.payload, retryRuntime?Object.fromEntries(Object.entries(job.profile||{}).filter(([key])=>!['comfyInstanceType','comfyConsoleUrl'].includes(key))):job.profile, job.connection,job.source,job.chatKey,job.imageAccountNamespace,job.imageAdmission?.namespace,Boolean(job.automatic),Boolean(job.comfyAutoSelected)]);
   const before = fingerprint();
-  const current = () => valid() && before === fingerprint()&&(!retryRuntime||(Object.hasOwn(job.profile||{},'comfyInstanceType')===approvedHasTier&&Object.is(job.profile?.comfyInstanceType,approvedTier)));
+  const current = () => valid() && before === fingerprint()&&(!retryRuntime||(Object.hasOwn(job.profile||{},'comfyInstanceType')===approvedHasTier&&Object.is(job.profile?.comfyInstanceType,approvedTier)&&Object.hasOwn(job.profile||{},'comfyConsoleUrl')===approvedHasUrl&&Object.is(job.profile?.comfyConsoleUrl,approvedUrl)));
   const runtime = await directImageRuntime();
   if (!current()) return false;
   const references = rolePlan ? (rolePlan.references?.items||[]) : await storyboardComfyReferenceMetadata(job.payload?.parameters?.workflow, job.profile?.comfyReferences, () => {
@@ -19347,12 +19349,14 @@ async function storyboardConfirmComfyExecution(job, valid) {
     let accepted;
     if(retryRuntime){
       const view=await featureRuntime.load('comfyWorkbench');if(!current())return false;
-      accepted=await view.confirmRunningHubRetryExecution({context:ctx(),instanceType:approvedTier,text,isCurrent:current,mountAppearance:dialog=>appearanceSession.mountPortal(dialog,{inheritTheme:true})});
+      accepted=await view.confirmRunningHubRetryExecution({context:ctx(),instanceType:approvedTier,consoleUrl:approvedUrl,connection:clone(job.connection),text,isCurrent:current,mountAppearance:dialog=>appearanceSession.mountPortal(dialog,{inheritTheme:true})});
     }else accepted=await confirmDialog('确认本次 Comfy 工作流',text);
     if (!accepted || !current()) return false;
     if(retryRuntime){
       const tier=accepted.instanceType;if(!['','default','plus','ultra'].includes(tier))throw Error('本次运行配置无效，未提交生成');
+      const consoleUrl=normalizeRunningHubConsoleUrl(accepted.consoleUrl);runningHubWorkflowId({comfyConsoleUrl:consoleUrl},job.connection);
       if(tier!==approvedTier&&!(approvedTier===undefined&&!approvedHasTier&&tier==='')){job.profile.comfyInstanceType=tier;approvedTier=tier;approvedHasTier=true;}
+      if(consoleUrl!==approvedUrl){job.profile.comfyConsoleUrl=consoleUrl;approvedUrl=consoleUrl;approvedHasUrl=true;}
     }
     execution.allowUnverified = !report.verified;
   }

@@ -1,10 +1,19 @@
-// Navigation metadata only. Never an API target, authentication source or workflow import.
+// Explicit workflow metadata only. Never an API target, authentication source or workflow import.
 import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
 export function normalizeRunningHubConsoleUrl(value) {
   if(typeof value!=='string')throw Error('请填写 RunningHub 工作流链接');
   const match=value.trim().match(/^https:\/\/(www\.runninghub\.(?:cn|ai))\/(?:workflow|post)\/([0-9]{1,64})(?:\?source=workspace)?$/);
   if(!match)throw Error('请填写 RunningHub 工作流链接，不包含 Key 或其他参数');
   return `https://${match[1]}/workflow/${match[2]}`;
+}
+// Only the original workflow's saved/confirmed link may supply its platform ID.
+// Keep large IDs as strings; the frozen local graph remains the submitted graph.
+export function runningHubWorkflowId(profile,connection) {
+  const binding=resolveStoryboardComfyCloud(connection);
+  if(binding?.provider!=='runninghub')return undefined;
+  const url=normalizeRunningHubConsoleUrl(profile?.comfyConsoleUrl);
+  if(new URL(url).origin!==binding.origin)throw Error('工作流链接与 RunningHub 连接区域不一致，请重新确认');
+  return new URL(url).pathname.slice('/workflow/'.length);
 }
 export function comfyWorkbenchConsoleLink(profile,connection) {
   try {

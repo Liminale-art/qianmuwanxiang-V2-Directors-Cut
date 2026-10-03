@@ -103,7 +103,7 @@ export function prepareComfyCloudSubmissionInput(raw) {
         if (!RUNNINGHUB_INSTANCE_TYPES.includes(instanceType)) fail();
         body.instanceType = instanceType;
       }
-      // Full frozen workflow takes precedence over workflowId per RH's API.
+      // Keep the full frozen workflow alongside the explicit platform workflow ID.
       // Only the derived seed mirror is allowed, never caller node overrides,
       // silent tier escalation or paid retainSeconds.
     }

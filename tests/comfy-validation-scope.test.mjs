@@ -8,6 +8,16 @@ import { stillInput } from './helpers/runninghub-validation-fixture.mjs';
 
 const node=(class_type,inputs)=>({class_type,inputs});
 
+test('saved platform ID scopes new evidence while absent IDs preserve the exact legacy hash',()=>{
+  const input=stillInput(),legacy=scope(input,['save']);
+  assert.equal(legacy,'aba3dfae0f67530f986019804e4de3f8e333f0369e54b5656871231bf8824f1e');
+  input.runninghub={workflowId:'2105524436618268674'};
+  const first=scope(input,['save']);assert.notEqual(first,legacy);
+  assert.equal(prepareComfyCloudSubmission(input).intent.workflow.validationScope,first);
+  input.runninghub.workflowId='2105524436618268675';assert.notEqual(scope(input,['save']),first);
+  delete input.runninghub.workflowId;assert.equal(scope(input,['save']),legacy);
+});
+
 test('validation scope is stable across prompts, slot seed and manual/automatic intent, without mutating the source',()=>{
   const input=stillInput(),before=structuredClone(input),first=scope(input,['save']);
   assert.deepEqual(input,before);

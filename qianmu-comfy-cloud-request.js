@@ -8,6 +8,7 @@ import {normalizeComfyWorkbenchBinding} from './qianmu-comfy-workbench-binding.j
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {normalizeComfyReferenceSelection} from './qianmu-comfy-reference-contract.js';
 import {prepareComfyCloudWorkflow} from './qianmu-comfy-cloud-workflow.js';
+import {runningHubWorkflowId} from './qianmu-comfy-console.js?v=1.59.435';
 const fail=message=>{throw Object.assign(new Error(message),{code:'comfy_cloud_request',submissionState:'not_submitted',retryable:false});};
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 export function buildComfyCloudRequest(job,gateway,connection){
@@ -32,8 +33,15 @@ export function buildComfyCloudRequest(job,gateway,connection){
   const parameters=Object.fromEntries(['width','height','steps','count','seed','scale','cfg','sampler','scheduler']
     .filter(key=>gateway.parameters?.[key]!==undefined).map(key=>[key,gateway.parameters[key]]));
   const tier=job.profile?.comfyInstanceType;
-  const runninghub=binding.provider==='runninghub'&&tier!==undefined&&tier!==''?{instanceType:tier}:undefined;
-  if(runninghub&&!RUNNINGHUB_INSTANCE_TYPES.includes(tier))fail('RunningHub运行配置无效，请重新选择；未自动换档');
+  let runninghub;
+  if(binding.provider==='runninghub'){
+    let workflowId;try{workflowId=runningHubWorkflowId(job.profile,job.connection);}catch(error){fail(error.message);}
+    runninghub={workflowId};
+    if(tier!==undefined&&tier!==''){
+      if(!RUNNINGHUB_INSTANCE_TYPES.includes(tier))fail('RunningHub运行配置无效，请重新选择；未自动换档');
+      runninghub.instanceType=tier;
+    }
+  }
   const request=parseBoundedJson(JSON.stringify({connection:binding,workflow:gateway.parameters?.workflow,prompt:gateway.prompt,
     negativePrompt:gateway.negativePrompt||'',model:gateway.model||'',parameters,execution,...(references.length?{references}:{}),...(runninghub?{runninghub}:{}),...(workflowBinding?{binding:workflowBinding}:{})}),
   {maxBytes:2*1024*1024,maxDepth:40,maxNodes:50000,label:'云工作流'});

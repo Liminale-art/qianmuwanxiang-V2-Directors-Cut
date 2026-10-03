@@ -37,13 +37,52 @@ test('the actual gateway and frozen RH profile reach the prepared provider body 
   const rh=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1');
   for(const tier of ['default','plus','ultra']){
     const {job,gateway}=fixture();job.connection.baseUrl=gateway.baseUrl=rh.origin;job.profile.comfyInstanceType=tier;
+    job.profile.comfyConsoleUrl='https://www.runninghub.cn/workflow/2105524436618268674';
     const request=buildComfyCloudRequest(job,gateway,rh);job.profile.comfyInstanceType='changed';
-    assert.equal(prepareComfyCloudSubmission(request).body.instanceType,tier);
+    job.profile.comfyConsoleUrl='https://www.runninghub.cn/workflow/999';
+    const prepared=prepareComfyCloudSubmission(request);
+    assert.equal(prepared.body.instanceType,tier);assert.equal(prepared.body.workflowId,'2105524436618268674');
+    assert.equal(typeof prepared.body.workflow,'string');
+    assert.deepEqual(JSON.parse(prepared.body.workflow),prepareComfyWorkflow(gateway.parameters.workflow,{...request,referenceCount:0}).bind([]));
+    assert.equal(request.connection.origin,rh.origin);assert.doesNotMatch(JSON.stringify(request),/consoleUrl|synthetic-key/);
     assert.ok(Object.isFrozen(request.runninghub));
   }
   const {job,gateway}=fixture();job.profile.comfyInstanceType='ultra';assert.equal(buildComfyCloudRequest(job,gateway,connection).runninghub,undefined);
-  job.connection.baseUrl=gateway.baseUrl=rh.origin;job.profile.comfyInstanceType='[invalid]';
+  job.connection.baseUrl=gateway.baseUrl=rh.origin;job.profile.comfyConsoleUrl='https://www.runninghub.cn/workflow/2105524436618268674';job.profile.comfyInstanceType='[invalid]';
   assert.throws(()=>buildComfyCloudRequest(job,gateway,rh),{code:'comfy_cloud_request',submissionState:'not_submitted'});
+});
+
+test('RH missing, invalid or cross-region original links stop before preparation and never inherit another profile',()=>{
+  const rh=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1');
+  for(const url of [undefined,'',null,'[invalid]','https://www.runninghub.ai/workflow/2105524436618268674',
+    'https://www.runninghub.cn/workflow/2105524436618268674?apiKey=synthetic-private']){
+    const {job,gateway}=fixture();job.connection.baseUrl=gateway.baseUrl=rh.origin;job.profile.comfyConsoleUrl=url;
+    const before=structuredClone({job,gateway});
+    assert.throws(()=>buildComfyCloudRequest(job,gateway,rh),error=>{
+      assert.equal(error.code,'comfy_cloud_request');assert.equal(error.submissionState,'not_submitted');
+      assert.equal(error.retryable,false);assert.doesNotMatch(error.message,/synthetic-private/);return true;
+    });
+    assert.deepEqual(structuredClone({job,gateway}),before);
+  }
+  const {job,gateway}=fixture();job.connection.baseUrl=gateway.baseUrl=rh.origin;
+  job.profile.comfyConsoleUrl='https://www.runninghub.cn/post/2105524436618268674?source=workspace';
+  const request=buildComfyCloudRequest(job,gateway,rh),prepared=prepareComfyCloudSubmission(request);
+  assert.deepEqual(request.runninghub,{workflowId:'2105524436618268674'});
+  assert.equal(Object.hasOwn(prepared.body,'instanceType'),false,'supplying an ID never invents a paid tier');
+});
+
+test('an RH preparation without its own platform link stops before any account, journal or network IO',async()=>{
+  const rh=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1');
+  const {job,gateway}=fixture();job.connection.baseUrl=gateway.baseUrl=rh.origin;
+  const calls=[],client=createComfyRecoveryClient({origin:'https://st.test',
+    account:async()=>{calls.push('account');return 'st-user:alice';},
+    store:{get:async()=>{calls.push('read');return null;},put:async()=>calls.push('write'),close(){}},
+    locks:{request:async(_name,_options,work)=>{calls.push('lock');return work({});}},
+    fetchImpl:async()=>{calls.push('network');assert.fail('No cloud request is permitted');}});
+  try{
+    await assert.rejects(client.prepareCloudSubmission(job,gateway,rh),{code:'comfy_cloud_request',submissionState:'not_submitted'});
+    assert.deepEqual(calls,[]);
+  }finally{client.close();}
 });
 test('actual storyboard gateway projection is accepted by the server without rewriting fixed workflow content',()=>{
   const {job,gateway}=fixture(),original=structuredClone(gateway.parameters.workflow);

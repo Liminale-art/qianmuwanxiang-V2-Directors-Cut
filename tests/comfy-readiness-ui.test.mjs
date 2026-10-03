@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
 import {projectNewComfyExecution} from '../qianmu-comfy-new-execution.js';
 import {resolveStoryboardComfyCloud} from '../qianmu-comfy-cloud-protocol.js';
+import {runningHubWorkflowId} from '../qianmu-comfy-console.js';
 import {job as roleJob} from './helpers/comfy-character-fixture.mjs';
 import { storyboardFunctionSource, createStoryboardFormFixture } from './helpers/storyboard-form-fixture.mjs';
 
@@ -19,7 +20,7 @@ function fixture(options = {}) {
     querySelectorAll: () => [key, field], addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   const calls = [];
   const runtime = { prepareComfyReadiness() {}, async checkComfyReadiness(request) { calls.push(request); return structuredClone(report); }, ...options.runtime };
-  const context = vm.createContext({ ...storyboard, projectNewComfyExecution, resolveStoryboardComfyCloud, AbortController, setTimeout, clearTimeout, document: { createElement: element },
+  const context = vm.createContext({ ...storyboard, projectNewComfyExecution, resolveStoryboardComfyCloud, runningHubWorkflowId, AbortController, setTimeout, clearTimeout, document: { createElement: element },
     storyboardState: () => state, clone: structuredClone, storyboardCaptureWorkbench() {}, storyboardProviderProfile: () => state.profiles.comfy,
     storyboardConnectionState: () => ({ draft: { baseUrl: 'https://comfy.example', options: options.mode ? { comfyTransport: options.mode } : {} } }), getChatKey: () => 'chat-a',
     storyboardKeyInputRevision: 0, storyboardConnectionLoadRevision: 0, featureRuntime: { load: async () => runtime },
@@ -49,8 +50,9 @@ test('actual RH inspection passes the selected tier and labels prior evidence wi
   const requests=[];
   const fx=fixture({globals:{storyboardConnectionState:()=>({draft:{baseUrl:'https://www.runninghub.cn',options:{comfyTransport:'gateway'}}})},
     runtime:{checkCloudComfyReadiness:async request=>{requests.push(structuredClone(request));return {...report,definitionsChecked:false,verificationBasis:'prior_still_delivery',priorGenerationVerified:true,message:'此配置已完成一次生成与保存'};}}});
-  fx.state.profiles.comfy.comfyInstanceType='plus';await fx.run();
+  fx.state.profiles.comfy.comfyInstanceType='plus';fx.state.profiles.comfy.comfyConsoleUrl='https://www.runninghub.cn/post/2105524436618268674?source=workspace';await fx.run();
   assert.equal(requests.length,1);assert.equal(requests[0].runninghub.instanceType,'plus');
+  assert.equal(requests[0].runninghub.workflowId,'2105524436618268674');
   assert.match(fx.output.children[0].textContent,/RunningHub/);
   assert.match(fx.output.children[1].textContent,/未读取远端节点清单/);
   assert.equal(fx.key.value,'typed-key');
@@ -58,15 +60,43 @@ test('actual RH inspection passes the selected tier and labels prior evidence wi
 
 test('actual per-shot RH gate forwards the runtime tier and explains missing successful delivery without submitting',async()=>{
   let requestSeen;
-  const namespace='st-user:fixture',context=vm.createContext({resolveStoryboardComfyCloud,
+  const namespace='st-user:fixture',context=vm.createContext({resolveStoryboardComfyCloud,runningHubWorkflowId,
     storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardRequestHeaders:()=>({}),storyboardResolveApiKey:async()=>'synthetic',
     featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:{
       checkComfyCharacterReadiness:async request=>{requestSeen=request;return {verificationBasis:'prior_still_delivery',warnings:1,unverifiedWarnings:1,priorGenerationVerified:false};}}}});
   vm.runInContext(storyboardFunctionSource('storyboardCheckComfyJobReadiness'),context);
-  const job={payload:{parameters:{workflow:graph}},profile:{model:'comfy-workflow',comfyInstanceType:'plus'},
+  const job={payload:{parameters:{workflow:graph}},profile:{model:'comfy-workflow',comfyInstanceType:'plus',comfyConsoleUrl:'https://www.runninghub.cn/workflow/2105524436618268674'},
     connection:{baseUrl:'https://www.runninghub.cn'},imageAdmission:{namespace},automatic:true};
   await assert.rejects(context.storyboardCheckComfyJobReadiness(job,[],()=>true),/请先手动生成并收片一次/);
   assert.equal(requestSeen.runninghub.instanceType,'plus');
+  assert.equal(requestSeen.runninghub.workflowId,'2105524436618268674');
+});
+
+test('both RH readiness entry points reject missing or foreign-region links without calling the inspector',async()=>{
+  for(const comfyConsoleUrl of ['', 'https://www.runninghub.ai/workflow/2105524436618268674']){
+    let checks=0;
+    const fx=fixture({globals:{storyboardConnectionState:()=>({draft:{baseUrl:'https://www.runninghub.cn',options:{comfyTransport:'gateway'}}})},
+      runtime:{checkCloudComfyReadiness:()=>{checks++;assert.fail('invalid link must stop before host inspection');}}});
+    fx.state.profiles.comfy.comfyConsoleUrl=comfyConsoleUrl;await fx.run();assert.equal(checks,0);assert.match(fx.output.textContent,/链接|区域/);
+    const namespace='st-user:fixture',context=vm.createContext({resolveStoryboardComfyCloud,runningHubWorkflowId,
+      storyboardAdmissionEpoch:0,storyboardCredentialRevision:0,storyboardRequestHeaders:()=>({}),storyboardResolveApiKey:async()=>'synthetic',
+      featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:{
+        checkComfyCharacterReadiness:()=>{checks++;assert.fail('invalid link must not create a provider check');}}}});
+    vm.runInContext(storyboardFunctionSource('storyboardCheckComfyJobReadiness'),context);
+    const job={payload:{parameters:{workflow:graph}},profile:{model:'comfy-workflow',comfyConsoleUrl},connection:{baseUrl:'https://www.runninghub.cn'},imageAdmission:{namespace},automatic:true};
+    await assert.rejects(context.storyboardCheckComfyJobReadiness(job,[],()=>true),/链接|区域/);assert.equal(checks,0);
+  }
+});
+
+test('programmatic RH link or tier changes discard late readiness evidence even without input events',async()=>{
+  for(const field of ['comfyConsoleUrl','comfyInstanceType']){
+    let finish,enter;const started=new Promise(resolve=>{enter=resolve;});
+    const fx=fixture({globals:{storyboardConnectionState:()=>({draft:{baseUrl:'https://www.runninghub.cn',options:{comfyTransport:'gateway'}}})},
+      runtime:{checkCloudComfyReadiness:()=>{enter();return new Promise(resolve=>{finish=resolve;});}}});
+    fx.state.profiles.comfy.comfyConsoleUrl='https://www.runninghub.cn/workflow/2105524436618268674';fx.state.profiles.comfy.comfyInstanceType='default';
+    const pending=fx.run();await started;fx.state.profiles.comfy[field]=field==='comfyConsoleUrl'?'https://www.runninghub.cn/workflow/999':'plus';finish(report);await pending;
+    assert.equal(fx.output.children.length,0);assert.equal(fx.listeners.size,0);
+  }
 });
 
 test('the actual Cloud workbench button uses the guarded same-origin checker rather than native per-class requests',async()=>{

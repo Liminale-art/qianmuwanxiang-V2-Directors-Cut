@@ -2,7 +2,7 @@
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 import { resolveStoryboardComfyCloud, RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
-import { comfyWorkbenchConsoleLink } from './qianmu-comfy-console.js';
+import { comfyWorkbenchConsoleLink, normalizeRunningHubConsoleUrl, runningHubWorkflowId } from './qianmu-comfy-console.js?v=1.59.435';
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const fields = [
   ['width','Width','number','min="64" max="8192" step="64"'],
@@ -15,25 +15,31 @@ export function renderRunningHubInstanceOptions(value = '') {
   return `${value && !RUNNINGHUB_INSTANCE_TYPES.includes(value) ? '<option value="[invalid]" selected>运行配置待核对</option>' : ''}<option value="" ${!value ? 'selected' : ''}>平台默认</option>`
     + RUNNINGHUB_INSTANCE_TYPES.map(tier => `<option value="${tier}" ${value === tier ? 'selected' : ''}>${{default:'标准',plus:'增强',ultra:'高显存'}[tier]}</option>`).join('');
 }
-export async function confirmRunningHubRetryExecution({context,instanceType,text,isCurrent=()=>true,mountAppearance,document=globalThis.document}) {
+export async function confirmRunningHubRetryExecution({context,instanceType,consoleUrl,connection,text,isCurrent=()=>true,mountAppearance,document=globalThis.document}) {
   if(!isCurrent())return null;
   if(!context?.Popup||!context.POPUP_TYPE)throw Error('当前 ST 不支持运行配置确认，请重新打开页面');
   const supported=value=>value===''||RUNNINGHUB_INSTANCE_TYPES.includes(value);
   const initial=instanceType===undefined?'':supported(instanceType)?instanceType:'[invalid]';
   const wrap=document.createElement('div');wrap.className='sd-comfy-route-picker';
-  wrap.innerHTML=`<h3>确认本次 Comfy 工作流</h3><p>${escape(text).replaceAll('\n','<br>')}</p><label><span>本次运行配置</span><select class="text_pole" aria-label="本次运行配置">${renderRunningHubInstanceOptions(initial)}</select></label><small>平台默认不等于标准；仅影响本次重试。</small><p role="status" aria-live="polite"></p>`;
-  const select=wrap.querySelector('select'),status=wrap.querySelector('[role=status]');
+  wrap.innerHTML=`<h3>确认本次 Comfy 工作流</h3><p>${escape(text).replaceAll('\n','<br>')}</p><label><span>本次运行配置</span><select class="text_pole" aria-label="本次运行配置">${renderRunningHubInstanceOptions(initial)}</select></label><label><span>本次工作流链接</span><input class="text_pole" type="url" maxlength="2048" aria-label="本次工作流链接" value="${escape(consoleUrl||'')}"></label><small>链接提供平台工作流编号。平台默认不等于标准；仅影响本次重试，不改原记录或工作流库。</small><p role="status" aria-live="polite"></p>`;
+  const select=wrap.querySelector('select'),link=wrap.querySelector('input'),status=wrap.querySelector('[role=status]');
+  const selection=()=>{
+    if(!supported(select.value))throw Error('请选择有效的本次运行配置');
+    const url=normalizeRunningHubConsoleUrl(link.value);
+    if(!runningHubWorkflowId({comfyConsoleUrl:url},connection))throw Error('请使用本次 RunningHub 连接所属区域的工作流链接');
+    return {instanceType:select.value,consoleUrl:url};
+  };
   const affirmative=result=>result===true||(['string','number'].includes(typeof result)&&['true','ok','yes','confirm','confirmed','affirmative','1'].includes(String(result).trim().toLowerCase()));
   let release;
   try {
     const popup=new context.Popup(wrap,context.POPUP_TYPE.CONFIRM,'',{okButton:'确认生成',cancelButton:'取消',onClosing:popup=>{
-      if(!affirmative(popup.result)||!isCurrent()||supported(select.value))return true;
-      status.textContent='请选择有效的本次运行配置';return false;
+      if(!affirmative(popup.result)||!isCurrent())return true;
+      try {selection();status.textContent='';return true;} catch(error){status.textContent=error.message;return false;}
     }});
     popup.dlg?.classList.add('sd-comfy-route-dialog');
     let result;try {const shown=popup.show();if(popup.dlg?.isConnected)release=mountAppearance?.(popup.dlg);result=await shown;}catch(_){return null;}
-    if(!affirmative(result)||!isCurrent()||!supported(select.value))return null;
-    return {instanceType:select.value};
+    if(!affirmative(result)||!isCurrent())return null;
+    try {return selection();} catch(_){return null;}
   } finally {release?.();}
 }
 export function renderComfyReferenceControls(profile, capabilities, collapsed = {}) {

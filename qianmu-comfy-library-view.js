@@ -59,7 +59,7 @@ export function renderComfyLibrary(view) {
       </div></section>
       ${classificationEditor(draft.document)}
       ${runninghub?`<label><span>运行配置</span><select class="text_pole" data-comfy-runtime aria-label="RunningHub 运行配置">${renderRunningHubInstanceOptions(draft.document.runninghubInstanceType)}</select></label>
-      <label><span>工作流链接</span><input class="text_pole" data-comfy-console type="url" maxlength="2048" aria-label="RunningHub 工作流链接" value="${escape(draft.document.consoleUrl||'')}"></label>`:''}
+      <label><span>RunningHub 工作流链接（必填）</span><input class="text_pole" data-comfy-console type="url" maxlength="2048" aria-label="RunningHub 工作流链接" value="${escape(draft.document.consoleUrl||'')}"></label>`:''}
       <details class="sd-card"><summary><b>参数默认值</b></summary><div class="sd-storyboard-card-body sd-storyboard-grid sd-storyboard-grid-two">${COMFY_LIBRARY_PARAMETERS.map(key=>`<label><span>${titles[key]}</span><input class="text_pole" data-comfy-parameter="${key}" maxlength="120" value="${escape(draft.document.parameters[key]||'')}" ${['sampler','scheduler'].includes(key)?'':'inputmode="decimal"'}></label>`).join('')}</div></details>
     </fieldset><input type="file" data-comfy-file accept=".json,application/json" hidden></div>`;
   }

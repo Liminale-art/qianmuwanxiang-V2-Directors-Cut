@@ -1,12 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeRunningHubConsoleUrl as normalize,comfyWorkbenchConsoleLink as link} from '../qianmu-comfy-console.js';
+import {normalizeRunningHubConsoleUrl as normalize,comfyWorkbenchConsoleLink as link,runningHubWorkflowId} from '../qianmu-comfy-console.js';
 import {normalizeStoryboardParameterProfile} from '../qianmu-storyboard.js';
 import {normalizeComfyLibraryDocument,importComfyLibraryDocument,exportComfyLibraryDocument} from '../qianmu-comfy-library.js';
 import {renderComfyWorkbench} from '../qianmu-comfy-workbench.js';
 import {recipesFixture} from './helpers/comfy-route-fixture.mjs';
 import {applyComfyRouteRecipe} from '../qianmu-comfy-route.js';
 const url='https://www.runninghub.cn/workflow/1980237776367083521';
+
+test('submission ID comes only from the original same-region official link and remains an exact string',()=>{
+  const profile={comfyConsoleUrl:url},connection={baseUrl:'https://www.runninghub.cn'};
+  const before=structuredClone({profile,connection});
+  assert.equal(runningHubWorkflowId(profile,connection),'1980237776367083521');
+  assert.equal(runningHubWorkflowId({comfyConsoleUrl:url.replace('/workflow/','/post/')+'?source=workspace'},connection),'1980237776367083521');
+  assert.equal(runningHubWorkflowId({comfyConsoleUrl:url.replace('.cn/','.ai/')},{baseUrl:'https://www.runninghub.ai'}),'1980237776367083521');
+  assert.deepEqual({profile,connection},before);
+  for(const value of [undefined,'',null,'[invalid]',url.replace('.cn/','.ai/'),url+'?apiKey=synthetic-private',url.replace('www.','synthetic:private@www.'),url.replace('/workflow/','/a/../workflow/')]){
+    assert.throws(()=>runningHubWorkflowId({comfyConsoleUrl:value},connection),error=>{
+      assert.doesNotMatch(error.message,/synthetic-private|synthetic:private/);return true;
+    });
+  }
+  for(const baseUrl of ['https://cloud.comfy.org','http://127.0.0.1:8188'])assert.equal(runningHubWorkflowId({comfyConsoleUrl:'invalid'},{baseUrl}),undefined);
+});
 test('explicit RH links preserve exact large IDs and never retain credentials, query parameters or arbitrary destinations',()=>{
   assert.equal(normalize(url+'?source=workspace'),url);assert.equal(normalize(url.replace('/workflow/','/post/')),url);
   for(const value of [null,123,url+'?apiKey=secret',url+'#secret',url.replace('https:','javascript:'),url.replace('.cn/','.cn.evil.test/'),url.replace('www.','user:pass@www.'),url.replace('/workflow/','/a/../workflow/'),url+'/'])assert.throws(()=>normalize(value));

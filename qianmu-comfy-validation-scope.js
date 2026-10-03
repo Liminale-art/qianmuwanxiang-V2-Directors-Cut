@@ -37,5 +37,6 @@ export function comfyWorkflowValidationScope(input, outputNodeIds) {
   return createHash('sha256').update(JSON.stringify({
     version: 1, original, graph, referenceCount, outputNodeIds,
     instanceType: input.runninghub?.instanceType || '',
+    ...(input.runninghub?.workflowId!==undefined?{workflowId:input.runninghub.workflowId}:{}),
   })).digest('hex');
 }
