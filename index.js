@@ -41,7 +41,7 @@ import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot 
 import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard, finishCoreadPackageImport } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
-import { receiveComfyImage, resolveComfyRecoveryKey, resolveComfyCloudRecoveryKey } from './qianmu-comfy-recovery-action.js';
+import { receiveComfyImage, resolveComfyRecoveryKey, resolveComfyCloudRecoveryKey } from './qianmu-comfy-recovery-action.js?v=1.59.437';
 import { receiveServiceImage } from './qianmu-service-recovery-action.js';
 import { runningHubUsageFields, renderRunningHubTaskUsage } from './qianmu-runninghub-usage.js';
 import { normalizeRunningHubConsoleUrl, runningHubWorkflowId } from './qianmu-comfy-console.js?v=1.59.435';
@@ -299,7 +299,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.436';
+const VERSION = '1.59.437';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;

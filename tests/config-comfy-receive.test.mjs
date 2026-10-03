@@ -55,3 +55,20 @@ test('concurrent manual receipts retain independent activity and invalid input a
   e.c.storyboardCanReceiveComfyLog=()=>false;await e.c.storyboardReceiveComfyImage(e.log);
   assert.equal(e.c.storyboardReceiveComfyImage.pending,0);assert.match(e.notices.at(-1)[0],/原 Comfy 服务日志/);
 });
+
+test('manual receipt returns its safe failure but replaces stale chat, owner or epoch details before notifying',async()=>{
+  for(const change of ['none','chat','owner','epoch']){
+    const e=fixture(),entered=deferred(),release=deferred(),before=structuredClone(e.log);
+    const warning='云任务处理未完成；〔输出核对：平台两份输出信息不一致；HTTP 200；平台码 901〕';
+    e.c.storyboardComfyRecoveryRuntime=async()=>({retrieve:async()=>{e.calls.push('retrieve');entered.resolve();await release.promise;throw Error(warning);}});
+    const running=e.c.storyboardReceiveComfyImage(e.log);await entered.promise;
+    if(change==='chat')e.c.getChatKey=()=> 'other-chat';
+    if(change==='owner')e.c.settings={};
+    if(change==='epoch')e.c.storyboardAdmissionEpoch++;
+    release.resolve();const result=await running;
+    assert.equal(result.archived,false);assert.equal(result.warning,e.notices.at(-1)[0]);assert.equal(e.notices.at(-1)[1],'warning');
+    if(change==='none')assert.equal(result.warning,warning);
+    else {assert.doesNotMatch(result.warning,/输出核对|HTTP|901/);assert.match(result.warning,change==='chat'?/聊天已切换/:/配置已变化/);}
+    assert.deepEqual(e.calls,['retrieve']);assert.deepEqual(e.log,before);assert.equal(e.c.storyboardReceiveComfyImage.pending,0);
+  }
+});

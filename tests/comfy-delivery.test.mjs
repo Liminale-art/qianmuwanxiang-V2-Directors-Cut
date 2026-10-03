@@ -10,6 +10,7 @@ import { comfyArchiveFilename } from '../qianmu-comfy-submission.js';
 import { sanitizeStoryboardSnapshot, getStoryboardComfyTransport } from '../qianmu-storyboard.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 import {readComfySceneArchiveProof} from '../qianmu-comfy-scene-result.js';
+import {mountComfyInbox} from '../qianmu-comfy-inbox-view.js';
 
 const origin = 'https://st.test', receipt = 'a'.repeat(64);
 const sceneOrigin=job=>({version:1,mode:'scene',scope:{namespace:job.imageAdmission.namespace,chatKey:job.chatKey,continuityId:'scene',narrativeLayer:'present'},
@@ -311,8 +312,42 @@ test('manual cloud log receipt uses original local recipe, not native retrieval 
       assert.ok(result,notifications.join(';'));
       assert.equal(result.archived,true);assert.equal(delivered.payload.prompt,'original narrative');assert.equal(delivered.originalOnly,undefined);assert.equal(confirmed,1);assert.equal(s.read().status,'confirmed');
       assert.equal(sceneConfirmed,1);assert.ok(result.sceneArchiveProof);assert.doesNotMatch(JSON.stringify(result),/sceneArchiveProof/);
-    }else{assert.equal(result,undefined);assert.equal(s.calls.length,0);assert.equal(confirmed,0);assert.match(notifications[0],mode==='wrong-task'?/不匹配/:/聊天已切换/);}
+    }else{assert.equal(result.archived,false);assert.equal(result.warning,notifications[0]);assert.equal(s.calls.length,0);assert.equal(confirmed,0);assert.match(notifications[0],mode==='wrong-task'?/不匹配/:/聊天已切换/);}
   }
+});
+
+test('safe cloud retrieval failure travels through the real client and manual action into the existing inbox notice',async t=>{
+  const warning='云任务处理未完成，请核查原记录；未重新生成；〔输出核对：平台两份输出信息不一致，请核查原图；HTTP 200；平台码 0〕';
+  const s=cloudSetup({respond:()=>new Response(JSON.stringify({ok:false,submissionState:'accepted',message:warning}),{status:409})});t.after(()=>s.client.close());
+  const row={...s.row,originalOnly:false,logId:'cloud-log'};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
+  const log={id:row.logId,snapshot:recipeForCloud(row),error:'previous'},before=structuredClone({log,row}),owner={},notifications=[];
+  const events={},host={isConnected:true,innerHTML:'',contains:()=>true,addEventListener:(name,cb)=>events[name]=cb,removeEventListener:name=>delete events[name]};
+  let returned;
+  t.after(mountComfyInbox(host,{service:{list:async()=>({namespace:row.namespace,rows:[row],bytes:0}),catalog:async()=>({namespace:row.namespace,
+    originals:[{...row,engine:'cloud',task:row.cloudTask,canReceiveOriginal:true}],cloudCapabilities:{resultRetrieval:true,resultProviders:['comfy-cloud']}})},
+    receive:async()=>returned=await receiveComfyImage(log,{refresh:false},{scope:()=>({owner,epoch:0,chat:row.chatKey}),canReceive:()=>true,sanitize:sanitizeStoryboardSnapshot,
+      recovery:async()=>s.client,resolveCloudKey:async()=> 'synthetic-key',notify:(...args)=>notifications.push(args),
+      deliver:()=>assert.fail('failed reads cannot save images'),finish:()=>assert.fail('failed reads cannot finish logs'),
+      admission:()=>assert.fail('failed reads cannot confirm admission'),render:()=>assert.fail('refresh disabled')})}));
+  await new Promise(resolve=>setImmediate(resolve));
+  await events.click({target:{closest:()=>({dataset:{receive:'0'},disabled:false})}});
+  assert.deepEqual(returned,{archived:false,warning});assert.deepEqual(notifications,[[warning,'warning']]);
+  assert.ok(host.innerHTML.includes(`role="status">${warning}</p>`),'the persistent inbox status keeps the safe diagnostic instead of the generic fallback');
+  assert.deepEqual(s.calls.map(call=>call.action),['result'],'only one original result read; no generation, ACK or repeated request');
+  assert.deepEqual({log,row:s.read()},before);assert.doesNotMatch(host.innerHTML,/synthetic-key|original narrative/);
+});
+
+test('manual cloud receipt cannot return the old account diagnostic after the client account guard changes',async t=>{
+  const s=cloudSetup({respond:()=>{s.switchAccount('st-user:bob');return new Response(JSON.stringify({ok:false,
+    message:'旧账户诊断〔输出核对；HTTP 200；平台码 901〕'}),{status:409});}});t.after(()=>s.client.close());
+  const row={...s.row,originalOnly:false,logId:'cloud-log'};s.rows.set(`${row.namespace}/${row.attemptId}`,row);
+  const log={id:row.logId,snapshot:recipeForCloud(row),error:'previous'},before=structuredClone({log,row}),owner={},notifications=[];
+  const result=await receiveComfyImage(log,{refresh:false},{scope:()=>({owner,epoch:0,chat:row.chatKey}),canReceive:()=>true,sanitize:sanitizeStoryboardSnapshot,
+    recovery:async()=>s.client,resolveCloudKey:async()=> 'synthetic-key',notify:(...args)=>notifications.push(args),
+    deliver:()=>assert.fail('different account cannot save'),finish:()=>assert.fail('different account cannot finish'),render:()=>assert.fail('different account cannot render')});
+  assert.equal(result.archived,false);assert.equal(result.warning,notifications[0][0]);assert.match(result.warning,/账户/);
+  assert.doesNotMatch(JSON.stringify(result)+JSON.stringify(notifications),/旧账户诊断|输出核对|HTTP|901|synthetic-key/);
+  assert.deepEqual(s.calls.map(call=>call.action),['result']);assert.deepEqual({log,row:s.read()},before);
 });
 
 test('partial cloud archives survive failed save and cleanup pending does not count as confirmed', async () => {

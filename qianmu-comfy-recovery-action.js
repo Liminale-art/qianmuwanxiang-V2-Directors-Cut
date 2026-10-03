@@ -90,5 +90,11 @@ export async function receiveComfyImage(log, { refresh = true, taskLocator, clou
     deps.notify(result.warning || '原图已领取并归档', result.warning ? 'warning' : 'success');
     if (refresh) deps.render();
     return result;
-  } catch (error) { deps.notify(error.message || 'Comfy 原图暂不可领取，未重新生成', 'warning'); }
+  } catch (error) {
+    let warning = 'Comfy 原图暂不可领取，未重新生成';
+    try { current(); warning = error.message || warning; }
+    catch (changed) { warning = changed.message || '领取页面已变化，请返回原页面核查原任务'; }
+    deps.notify(warning, 'warning');
+    return { archived: false, warning };
+  }
 }
