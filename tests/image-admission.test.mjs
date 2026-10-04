@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { generateDirectImage, isDirectImageTransportError } from '../qianmu-image-direct.js';
 import { createImageAdmission, createImageAdmissionIdentity, createImageHistorySeeds, resolveImageAccountNamespace } from '../qianmu-image-admission.js';
 import { beginImageAttempt, continueImageAttempt, claimImageAttempt, preflightImageAttempts, importImageAttempts, settleImageAttempt, imageAttemptScopeKey, summarizeImageAttempts, IMAGE_RESERVATION_TTL_MS } from '../qianmu-image-attempts.js';
+import { inspectComfyImageExecution, requireComfyExecution } from '../qianmu-comfy-audit.js';
 
 const NOW = 1_780_000_000_000;
 const job = (extra = {}) => ({ id: 'job-a', chatKey: 'chat-a', messageRef: { messageKey: 'floor-a', revisionId: 'rev-a' },
@@ -36,6 +37,33 @@ const setup = (options = {}) => {
 };
 const admit = (runtime, value, extra = {}) => runtime.admit(value, { maxAutomatic: 3, ...extra });
 const scopeOf = value => ({ namespace: 'account-a', chatKey: value.chatKey, messageKey: value.messageRef.messageKey, revisionId: value.messageRef.revisionId });
+
+function candidateJob(batch=3,count=1) {
+  return job({source:'comfy',profile:{model:'comfy-workflow',count:String(count),comfyOutputNodeId:'save'},payload:{prompt:'scene',parameters:{count,
+    workflow:{prompt:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}},image:{class_type:'EmptyImage',inputs:{width:512,height:512,batch_size:batch}},save:{class_type:'SaveImage',inputs:{images:['image',0]}}}}}});
+}
+function freezeCandidates(value) {
+  const policy={version:2,automatic:true,maxImages:8,outputNodeIds:['save'],allowUnverified:false};
+  value.comfyExecution=requireComfyExecution(inspectComfyImageExecution({prompt:value.payload.prompt,model:value.profile.model,parameters:value.payload.parameters,comfyExecution:policy}),policy);
+}
+test('real admission budgets one narrative shot for a verified three/eight-candidate graph, never payload count',async()=>{
+  for(const [batch,count] of [[3,1],[8,1],[3,8]]){
+    const e=setup(),value=candidateJob(batch,count);
+    assert.equal(await e.runtime.preflight([value],{maxAutomatic:1}),true);assert.equal(e.store.rows.size,0);
+    freezeCandidates(value);assert.equal(await e.runtime.admit(value,{maxAutomatic:1}),true);
+    await e.runtime.beforeSubmit(value);await e.runtime.settle(value,'succeeded');
+    assert.equal(e.store.inspect(scopeOf(value)).automaticUsed,1);
+    await assert.rejects(e.runtime.admit({...candidateJob(batch,count),id:'repeat'},{maxAutomatic:1}),{code:'image_attempt_already_generated'});
+  }
+});
+test('actual admission rejects unknown/over-limit candidate graphs, changed receipts and v1 batch expansion without writing',async()=>{
+  for(const make of [()=>candidateJob(9),()=>candidateJob('3'),()=>{const value=candidateJob();freezeCandidates(value);value.payload.parameters.workflow.image.inputs.batch_size=2;return value;},
+    ()=>{const value=candidateJob();value.comfyExecution={version:1,automatic:true,maxImages:1,outputNodeIds:['save'],expectedImages:1,allowUnverified:false};return value;}]){
+    const e=setup(),value=make();await assert.rejects(e.runtime.preflight([value],{maxAutomatic:1}));
+    await assert.rejects(e.runtime.admit(value,{maxAutomatic:1}));assert.equal(e.store.rows.size,0);
+  }
+  const e=setup();await assert.rejects(e.runtime.preflight([job({source:'novel',profile:{count:'3'}})],{maxAutomatic:1}),{code:'image_attempt_count'});
+});
 
 for(const count of [7,13,21])test(`read-only ${count}-job preflight preserves capacity but is not a dispatch receipt`,async()=>{
   const e=setup(),jobs=Array.from({length:count},(_,index)=>job({id:`job-${index}`,prompt:`scene-${index}`}));
@@ -334,7 +362,7 @@ function liveHarness({ failure = '', confirm = async () => true } = {}) {
     STORYBOARD_QUEUE_LIMIT: 8, storyboardQueue: waiting, storyboardActiveJobs: new Map(), storyboardQueueSettling: 0,
     storyboardQueueWindow: { reservedCount: 0, has: () => false, notify: () => {} },
     storyboardStopQueueBatches: () => {},
-    getStoryboardGenerationPolicy: () => ({ maxImages: 1 }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:()=>[],
+    getStoryboardGenerationPolicy: () => ({ maxImages: 1 }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:(()=>{const receipts=[];return()=>receipts;})(),
     resolveStoryboardJobModelIdentity: () => ({ modelFamily: 'openai' }),
     storyboardStartLog: value => { const log = { id: `log-${state.logs.length}`, status: 'queued', snapshot: structuredClone(value) }; state.logs.push(log); return log; },
     storyboardSetPlanStatus: () => {}, storyboardPlanForJob: () => null, storyboardPumpQueue: () => {},

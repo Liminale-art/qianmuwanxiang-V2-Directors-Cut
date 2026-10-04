@@ -23,7 +23,11 @@ function harness({ automatic = false, uncertain = false, batch = 1, choice = 'ac
     storyboardQueueSettling:0,storyboardQueueWindow:{has:()=>false,reservedCount:0,notify:()=>{}},
     storyboardValidatedAnchor:()=>({valid:true}),getStoryboardGenerationPolicy:()=>({maxImages:1}),storyboardGalleryRecords:()=>[],
     resolveStoryboardJobModelIdentity:()=>({modelFamily:'comfy',remoteModelId:'comfy-workflow',protocol:'comfy'}),
-    resolveStoryboardConnectionBinding:()=>({}),directImageRuntime:async()=>runtime,
+    resolveStoryboardConnectionBinding:()=>({}),directImageRuntime:async()=>{
+      if(choice==='chat')chat='b';if(choice==='disabled')state.enabled=false;
+      if(choice==='mutation')job.payload.parameters.workflow.image.inputs.batch_size=7;
+      return runtime;
+    },
     storyboardAdmissionEpoch:1,storyboardCredentialRevision:0,storyboardResolveApiKey:async()=>'',storyboardRequestHeaders:()=>({}),
     resolveImageAccountNamespace:async()=>accountNamespace,
     featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>accountNamespace}:
@@ -49,32 +53,42 @@ function harness({ automatic = false, uncertain = false, batch = 1, choice = 'ac
 
 test('actual workbench queue rejects unknown automatic graphs before admission or confirmation',async()=>{
   const h=harness({automatic:true,uncertain:true});assert.equal(await h.context.storyboardQueueJob(h.job),false);
-  assert.equal(h.admissions.length,0);assert.equal(h.waiting.length,0);assert.equal(h.confirmations.length,0);assert.match(h.notices[0],/一镜一张/);
+  assert.equal(h.admissions.length,0);assert.equal(h.waiting.length,0);assert.equal(h.confirmations.length,0);assert.match(h.notices[0],/候选数量/);
 });
 
 test('verified automatic workflow freezes selected outputs through queue snapshot and provider request',async()=>{
   const h=harness({automatic:true,output:'save'});assert.equal(await h.context.storyboardQueueJob(h.job),true);
   assert.equal(h.confirmations.length,0);assert.equal(h.admissions.length,1);assert.equal(h.job.comfyExecution.automatic,true);
   assert.deepEqual([...h.job.comfyExecution.outputNodeIds],['save']);assert.equal(h.state.logs[0].snapshot.comfyAudit.selectedImages,1);
-  const request=h.context.storyboardGatewayRequest(h.job,'mock',{references:[],vibes:[]});assert.equal(request.comfyExecution.version,1);
+  const request=h.context.storyboardGatewayRequest(h.job,'mock',{references:[],vibes:[]});assert.equal(request.comfyExecution.version,2);
   h.job.profile.comfyOutputNodeId='other';assert.deepEqual([...request.comfyExecution.outputNodeIds],['save']);
 });
 
-for(const choice of ['accept','cancel','chat','mutation','disabled'])test(`manual unverified workflow confirmation: ${choice}`,async()=>{
+for(const choice of ['accept','chat','mutation','disabled'])test(`manual unverified workflow validates current input without a second popup: ${choice}`,async()=>{
   const h=harness({uncertain:true,choice});assert.equal(await h.context.storyboardQueueJob(h.job),choice==='accept');
-  assert.equal(h.confirmations.length,1);assert.match(h.confirmations[0].message,/未确定/);
+  assert.equal(h.confirmations.length,0);
   assert.equal(h.admissions.length,choice==='accept'?1:0);assert.equal(h.waiting.length,choice==='accept'?1:0);
   if(choice==='accept')assert.equal(h.job.comfyExecution.allowUnverified,true);
 });
 
-test('known batch work requires explicit consent; known overlimit work cannot be confirmed',async()=>{
-  const h=harness({batch:4});assert.equal(await h.context.storyboardQueueJob(h.job),true);assert.equal(h.confirmations.length,1);assert.match(h.confirmations[0].message,/保存 4 张/);
+test('selected batch workflow is one admitted job without second confirmation; overlimit work stays blocked',async()=>{
+  const h=harness({batch:4});assert.equal(await h.context.storyboardQueueJob(h.job),true);assert.equal(h.confirmations.length,0);
+  assert.equal(h.waiting.length,1);assert.equal(h.admissions.length,1);assert.equal(h.job.comfyExecution.expectedImages,4);
   const bad=harness({batch:9});assert.equal(await bad.context.storyboardQueueJob(bad.job),false);assert.equal(bad.confirmations.length,0);assert.equal(bad.admissions.length,0);
 });
 
-test('retry never inherits previous manual uncertainty consent',async()=>{
+test('ordinary redraw rechecks quantity rather than inheriting a previous admission',async()=>{
   const h=harness({uncertain:true});assert.equal(await h.context.storyboardQueueJob(h.job),true);
-  h.waiting.length=0;assert.equal(await h.context.storyboardQueueJob(h.job),true);assert.equal(h.confirmations.length,2);
+  h.waiting.length=0;h.job.payload.parameters.workflow.image.inputs.batch_size=9;
+  assert.equal(await h.context.storyboardQueueJob(h.job),false);assert.equal(h.confirmations.length,0);assert.equal(h.admissions.length,1);
+});
+
+test('automatic fixed batch three keeps one queue job and exact candidate receipt',async()=>{
+  const h=harness({automatic:true,batch:3,output:'save'});
+  assert.equal(await h.context.storyboardQueueJob(h.job),true,JSON.stringify(h.notices));
+  assert.equal(h.confirmations.length,0);assert.equal(h.admissions.length,1);assert.equal(h.waiting.length,1);
+  assert.equal(h.job.comfyExecution.maxImages,3);assert.equal(h.job.comfyExecution.expectedImages,3);
+  assert.equal(h.job.payload.parameters.workflow.image.inputs.batch_size,3);
 });
 
 test('workflow library editor exposes saved output nodes; daily workbench and other families do not duplicate them',()=>{

@@ -51,11 +51,13 @@ for(const [name,change,code] of [
   ['preview selection',c=>c.outputNodeId='p','comfy_output_selection'],
   ['deleted output',c=>c.outputNodeId='deleted','comfy_output_selection'],
 ])test(`configuration error before LLM: ${name}`,()=>{const c=config();change(c);assert.throws(()=>preflight.checkComfyConfiguration(c),{code});});
-test('manual custom graphs retain per-attempt review; automatic unknown/multibatch fails locally',()=>{
+test('manual custom graphs remain bounded; automatic known candidates pass and unknown quantities fail locally',()=>{
   const unknown=config();unknown.workflow.custom={class_type:'UserNode',inputs:{}};
   assert.equal(preflight.checkComfyConfiguration(unknown).requiresManualQuantityReview,true);
   assert.throws(()=>preflight.checkComfyConfiguration({...unknown,automatic:true}),{code:'comfy_automatic_unverified'});
   const batch=config();batch.workflow.image.inputs.batch_size=4;assert.equal(preflight.checkComfyConfiguration(batch).report.savedImages,4);
+  assert.equal(preflight.checkComfyConfiguration({...batch,automatic:true}).report.selectedImages,4);
+  batch.workflow.image.inputs.batch_size=9;
   assert.throws(()=>preflight.checkComfyConfiguration({...batch,automatic:true}),{code:'comfy_audit_output_limit'});
 });
 function environment({automatic=false}={}) {

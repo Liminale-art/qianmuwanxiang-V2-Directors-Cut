@@ -52,8 +52,10 @@ const deliverJob = indexSource.slice(indexSource.indexOf('async function storybo
 assert.match(deliverJob, /currentOwnsResult[\s\S]*storyboardStoreDeferredDelivery/);
 assert.doesNotMatch(runJob, /聊天已切换，任务未执行|生成期间切换了聊天/);
 
-// Foreign plans cannot leak a placeholder into an unrelated chat with the same floor number.
-assert.match(indexSource, /if \(plan\.chatKey && plan\.chatKey !== currentChatKey\) continue/);
+// Prose never shows plan placeholders; the existing record ownership checks remain.
+const inline=indexSource.slice(indexSource.indexOf('function storyboardRenderInlineImages'),indexSource.indexOf('function storyboardScheduleInlineRender'));
+assert.doesNotMatch(inline,/storyboardInlinePlaceholderMarkup|plan\.origin/);
+assert.match(inline,/storyboardInlineRecordValid/);
 assert.match(indexSource, /void storyboardHandleChatChanged\(\)/, 'chat rendering must not wait for IndexedDB delivery');
 const appReady = indexSource.slice(indexSource.indexOf('const appReadyHandler'), indexSource.indexOf('const personaChangedHandler'));
 assert.match(appReady, /void storyboardHandleChatChanged\(\)/, 'startup delivery and snapshot migration must remain non-blocking');

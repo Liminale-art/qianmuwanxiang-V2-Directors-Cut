@@ -179,7 +179,7 @@ test('a workflow with only one size slot does not inherit a hidden automatic rat
 test('both adapters import one binder and the shared runtime is included in release files', async () => {
   for (const name of ['qianmu-image-direct.js', 'qianmu-image-gateway.js']) {
     const source = await readFile(new URL(`../${name}`, import.meta.url), 'utf8');
-    assert.match(source, /from '\.\/qianmu-comfy-workflow\.js'/); assert.doesNotMatch(source, /function replaceWorkflowValues/);
+    assert.match(source, /from '\.\/qianmu-comfy-workflow\.js(?:\?v=1\.59\.440)?'/); assert.doesNotMatch(source, /function replaceWorkflowValues/);
   }
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.ok(release.files.includes('qianmu-comfy-workflow.js'));

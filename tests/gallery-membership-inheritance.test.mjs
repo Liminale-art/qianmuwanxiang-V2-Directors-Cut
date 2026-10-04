@@ -13,7 +13,7 @@ function fixture(){
   const c=vm.createContext({...core,galleryMembershipSnapshot,clone:structuredClone,uid:()=> 'new',uniqueClean:values=>[...new Set(values)],
     storyboardState:()=>state,getChatKey:()=>e.chatKey,resolveImageAccountNamespace:async()=> 'st-user:fixture',storyboardGalleryRecords:()=>e.records,storyboardGalleryGroupId:()=> 'root',
     storyboardQueueJob:(job,guard)=>{e.jobs.push(job);e.guards.push(guard);return guard();},toast:()=>false,
-    storyboardLoadLogToWorkbench:()=>{},storyboardFloorTakeReceipts:()=>[],hashText:()=> 'hash'});
+    storyboardLoadLogToWorkbench:()=>{},storyboardFloorTakeReceipts:(()=>{const receipts=[];return()=>receipts;})(),hashText:()=> 'hash'});
   vm.runInContext(['storyboardJobFromLog','storyboardRetryLog','storyboardCreateRecord'].map(fn).join('\n'),c);e.c=c;return e;
 }
 test('snapshot inheritance preserves full IDs, legacy primary, empty and independent arrays',()=>{

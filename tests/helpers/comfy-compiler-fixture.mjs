@@ -18,8 +18,8 @@ export const response=()=>({schema:contract.STORYBOARD_PLAN_RESPONSE_SCHEMA_ID,s
     prompt_renderings:Object.fromEntries(['tags','natural_language'].map(format=>[format,{global:format==='tags'?`tag-scene-${index}, soft light`:`Natural scene ${index} with gentle light.`,
       characters:character.map(row=>({character_id:row.character_id,positive:format==='tags'?'silver hair, coat removed, reading a letter':'Alice, with silver hair and no coat, reads a letter.'})),negative:format==='tags'?'extra people':'No extra people.'}]))};
 })});
-export async function compilerEnvironment(){
-  const e=await routeEnvironment({formats:['tags','natural_language']}),calls=[],errors=[];
+export async function compilerEnvironment(options={}){
+  const e=await routeEnvironment({formats:['tags','natural_language'],...options}),calls=[],errors=[];
   installCompilerDiagnosticsFixture(e.context);
   const load=e.context.featureRuntime.load;
   let styleBinding=null,syntheticDraft=false;

@@ -51,7 +51,8 @@ test('redraw, edit, attach and export hydrate exact snapshots on demand', () => 
 test('gallery view binding and export cannot prewarm recipes or retain an unused full-gallery memory cache', () => {
   assert.doesNotMatch(source, /storyboardHydrateGallerySnapshots|storyboardSnapshotCache|storyboardSnapshotReads/);
   const binding = source.slice(source.indexOf('function bindStoryboardTabEvents'), source.indexOf('\nfunction ', source.indexOf('function bindStoryboardTabEvents') + 1));
-  assert.ok(binding.includes('storyboardBindGalleryNarrative'));
+  assert.ok(binding.includes('galleryCardBindings'));
+  assert.doesNotMatch(binding, /storyboardBindGalleryNarrative|storyboardBindGalleryInspector/);
   assert.doesNotMatch(binding, /storyboardArchiveGallerySnapshots|getStoryboardSnapshots/);
 });
 

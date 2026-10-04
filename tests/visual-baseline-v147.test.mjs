@@ -22,7 +22,9 @@ assert.match(source, /function storyboardRedrawRecord[\s\S]*snapshot\.payload\.p
 assert.doesNotMatch(source, /shouldRecompile = !promptLocked|explicit-redraw-after-edit/);
 assert.match(source, /function storyboardChooseCaptureMode[\s\S]*openStoryboardCaptureChooser/);
 assert.match(await readFile(new URL('../qianmu-storyboard-capture-view.js', import.meta.url), 'utf8'), /本层重新提取/);
-assert.match(source, /record\.promptLocked = true/);
+const edit=source.slice(source.indexOf('async function storyboardEditPrompt'),source.indexOf('function storyboardCancelPlan'));
+assert.match(edit,/snapshot\.promptLocked=true/);
+assert.doesNotMatch(edit,/record\.promptLocked\s*=/,'editing a new request never rewrites the old image');
 assert.match(source, /promptMode: state\.promptMode[\s\S]*promptLocked: Boolean\(state\.promptDraft\?\.userEditedCompiled\)/);
 
 console.log('v1.48.0 visual rollback and edited-storyboard continuity contract OK');

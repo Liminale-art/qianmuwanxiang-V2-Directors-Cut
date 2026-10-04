@@ -41,11 +41,11 @@ assert.match(source, /storyboardSetPlanStatus\(plan, 'completed'/);
 assert.match(source, /storyboardReconcileShotPlans/);
 
 // Only completed images enter the immersive chat surface; the title appears only while folded.
-assert.match(source, /刻瞬于光/);
+assert.match(source, /展开插画/);
 assert.match(source, /STORYBOARD_INLINE_MARK/);
 assert.match(source, /sd-storyboard-inline-reel/);
-assert.match(source, /taskEntries.has\(entry\) \? storyboardInlineTaskMarkup\(entry, displayIndexes.get\(entry\)\) : storyboardInlineRecordMarkup\(entry\)/);
-assert.match(source, /storyboardCollapsedInlineFloors\.has\(floor\)/);
+assert.doesNotMatch(inlineRender, /storyboardInlineTaskMarkup|storyboardInlinePlaceholderMarkup|role="status"/);
+assert.match(source, /storyboardCollapsedInlineFloors\.has\(shot.key\)/);
 assert.match(source, /data-storyboard-chat-action="collapse"/);
 assert.match(source, /data-storyboard-chat-action="expand"/);
 assert.match(source, /data-storyboard-chat-action="toggle-actions"/);
@@ -76,7 +76,7 @@ assert.doesNotMatch(source, /sd-storyboard-auto-flow/);
 assert.match(source, /function storyboardHandleAutomaticCapture/);
 assert.match(source, /state\.enabled \|\| !state\.promptCompiler\?\.enabled/);
 assert.match(source, /storyboardGenerate\(null, \{ plan, automatic: true \}\)/);
-assert.match(source, /data-storyboard-chat-action="edit"/);
-assert.match(source, /data-storyboard-chat-action="redraw"/);
+assert.match(source, /data-storyboard-chat-action="image-info"/);
+assert.match(source, /data-storyboard-chat-action="image-log"/);
 
 console.log('Storyboard inline lifecycle contract OK');

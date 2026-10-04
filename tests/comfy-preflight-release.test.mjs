@@ -4,11 +4,11 @@ import {readFile} from 'node:fs/promises';
 import {collectReleaseFiles} from '../scripts/build-release.mjs';
 
 const root=new URL('../',import.meta.url);
-test('cloud retry confirmation loads the updated admission text without refreshing unchanged cloud modules',async()=>{
+test('cloud admission loads bounded-candidate validation without refreshing unchanged cloud execution modules',async()=>{
   const entry=await readFile(new URL('index.js',root),'utf8');
-  assert.ok(entry.includes("loadLocalChunk('./qianmu-image-admission.js?v=1.59.434')"));
+  assert.ok(entry.includes("loadLocalChunk('./qianmu-image-admission.js?v=1.59.440')"));
   const files=await collectReleaseFiles();assert.ok(files.includes('qianmu-image-admission.js'));
-  const runtime=await import('../qianmu-image-admission.js?v=1.59.434');
+  const runtime=await import('../qianmu-image-admission.js?v=1.59.440');
   assert.equal(typeof runtime.createImageAdmission,'function');
 });
 test('manual RunningHub retry loads the workbench with workflow-link confirmation',async()=>{
@@ -18,18 +18,18 @@ test('manual RunningHub retry loads the workbench with workflow-link confirmatio
   const runtime=await import('../qianmu-comfy-workbench.js?v=1.59.435');
   assert.equal(typeof runtime.confirmRunningHubRetryExecution,'function');
 });
-test('installed cloud execution and inbox use fresh reachable release addresses',async()=>{
-  // Refresh the request-building client, retaining unchanged execution and inbox identities.
-  for(const [parent,child,version] of [['index.js','qianmu-comfy-recovery-client.js','1.59.435'],
-    ['qianmu-comfy-recovery-client.js','qianmu-comfy-cloud-execution.js','1.59.429'],
-    ['index.js','qianmu-comfy-inbox-view.js','1.59.433']]) {
+test('installed cloud execution remains reachable while the retired inbox has no entry address',async()=>{
+  // Original-task reception remains available without the old inbox frontend.
+  for(const [parent,child,version] of [['index.js','qianmu-comfy-recovery-client.js','1.59.440'],
+    ['qianmu-comfy-recovery-client.js','qianmu-comfy-cloud-execution.js','1.59.429']]) {
     const source=await readFile(new URL(parent,root),'utf8');
     assert.ok(source.includes(`'./${child}?v=${version}'`),`${parent} must use its intended child version`);
   }
   const files=await collectReleaseFiles();
-  for(const file of ['server-plugin.js','qianmu-comfy-recovery-client.js','qianmu-comfy-cloud-execution.js','qianmu-comfy-inbox-view.js'])assert.ok(files.includes(file));
+  for(const file of ['server-plugin.js','qianmu-comfy-recovery-client.js','qianmu-comfy-cloud-execution.js'])assert.ok(files.includes(file));
+  assert.doesNotMatch(await readFile(new URL('index.js',root),'utf8'),/import\(['"]\.\/qianmu-comfy-inbox-view/);
   assert.ok(!files.includes('scripts/preview-storyboard-logs.mjs'),'synthetic preview stays development-only');
-  const runtime=await import('../qianmu-comfy-recovery-client.js?v=1.59.435');
+  const runtime=await import('../qianmu-comfy-recovery-client.js?v=1.59.440');
   assert.equal(typeof runtime.createComfyRecoveryClient,'function');
 });
 
@@ -42,11 +42,12 @@ test('RunningHub workflow-id consumers have an explicit local cache closure',asy
     ['qianmu-comfy-cloud-request.js','qianmu-comfy-console.js'],
   ]) {
     const source=await readFile(new URL(parent,root),'utf8');
-    assert.ok(source.includes(`'./${child}?v=1.59.435'`),`${parent} must load the new ${child} contract`);
+    const version=child==='qianmu-comfy-cloud-request.js'?'1.59.440':'1.59.435';
+    assert.ok(source.includes(`'./${child}?v=${version}'`),`${parent} must load the intended ${child} contract`);
     assert.ok(!source.includes(`from './${child}'`),`${parent} must not also use the stale bare contract`);
   }
   const files=await collectReleaseFiles();
-  assert.equal(files.length,684,'the existing release whitelist is sufficient');
+  assert.equal(files.length,687,'three focused illustration modules extend the existing whitelist');
   for(const file of ['qianmu-comfy-console.js','qianmu-comfy-cloud-request.js','qianmu-comfy-library-view.js','qianmu-comfy-validation-scope.js'])assert.ok(files.includes(file));
   const helper=await import('../qianmu-comfy-console.js?v=1.59.435');
   assert.equal(helper.runningHubWorkflowId({comfyConsoleUrl:'https://www.runninghub.cn/post/1234567890123456789?source=workspace'},{baseUrl:'https://www.runninghub.cn'}),'1234567890123456789');
@@ -59,20 +60,20 @@ test('workflow-id release leaves compatible preload and feature-loader addresses
   const floorTools=await readFile(new URL('qianmu-prose-floor-tools.js',root),'utf8');
   assert.ok(entry.includes("'./qianmu-feature-runtime.js?v=1.59.425'"));
   assert.ok(floorTools.includes("'./qianmu-idle-preload.js?v=1.59.425'"));
-  assert.ok(entry.includes("'./qianmu-prose-floor-tools.js?v=1.59.425'"));
+  assert.ok(entry.includes("'./qianmu-prose-floor-tools.js?v=1.59.440'"));
   assert.ok(preload.includes('qianmu-comfy-library-view.js?v=1.59.414') || floorTools.includes('qianmu-comfy-library-view.js?v=1.59.414'));
 });
 
-test('prompt-only frontend update preserves host node evidence and the manual-action browser address',async()=>{
+test('illustration update preserves host node evidence and refreshes original-task recovery actions',async()=>{
   const files=await collectReleaseFiles();
   for(const file of ['qianmu-comfy-cloud-response.js','qianmu-comfy-cloud-query.js','qianmu-runninghub-results.js','qianmu-runninghub-download.js','qianmu-comfy-cloud-receive.js'])assert.ok(files.includes(file));
   const entry=await readFile(new URL('index.js',root),'utf8');
-  assert.ok(entry.includes("const VERSION = '1.59.439';"));
+  assert.ok(entry.includes("const VERSION = '1.59.440';"));
   assert.deepEqual([...entry.matchAll(/'\.\/([^']+\.js)\?v=1\.59\.439'/g)].map(match=>match[1]),
     ['qianmu-world-shot.js','qianmu-comfy-prompt.js','qianmu-storyboard-contract.js']);
-  assert.deepEqual([...entry.matchAll(/'\.\/([^']+\.js)\?v=1\.59\.437'/g)].map(match=>match[1]),['qianmu-comfy-recovery-action.js']);
+  assert.ok(entry.includes("'./qianmu-comfy-recovery-action.js?v=1.59.440'"));
   assert.ok(!entry.includes("from './qianmu-comfy-recovery-action.js'"),'manual receipt must not load the stale action');
-  const action=await import('../qianmu-comfy-recovery-action.js?v=1.59.437');
+  const action=await import('../qianmu-comfy-recovery-action.js?v=1.59.440');
   assert.equal(typeof action.receiveComfyImage,'function');
   const {comfyCloudReadFailureDiagnostic}=await import('../qianmu-comfy-cloud-response.js');
   assert.deepEqual(comfyCloudReadFailureDiagnostic({code:'runninghub_results_match'},{stage:'outputs'}),
@@ -92,7 +93,7 @@ test('authored still guidance and tag projection use only their complete local c
     for(const match of source.matchAll(/'\.\/([^']+\.js)\?v=1\.59\.439'/g))actual.push([file,match[1]]);
   }
   assert.deepEqual(actual.sort(),edges.sort(),'unrelated browser dependencies keep their existing identities');
-  assert.equal(files.length,684);
+  assert.equal(files.length,687);
   const {compileComfyPromptRendering}=await import('../qianmu-comfy-prompt.js?v=1.59.439');
   const rendered=compileComfyPromptRendering({format:'tags',global:'1 person',characters:[{character_id:'a',positive:'short black hair'}]},
     {characters:[{id:'a',name:'Alice'}]});

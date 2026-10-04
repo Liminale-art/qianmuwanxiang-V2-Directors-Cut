@@ -74,7 +74,8 @@ export function buildGalleryNarrative({ records = [], messages = [], chatKey = '
             if (!node.paragraphs.has(paragraphKey)) node.paragraphs.set(paragraphKey, { key: paragraphKey, index, preview: paragraph.slice(0, 160), ids: new Set() });
             node.paragraphs.get(paragraphKey).ids.add(id);
         }
-        sources.set(id, { floorKey: key, paragraphKey, paragraphIndex: validAnchor ? index : null });
+        sources.set(id, { floorKey: key, paragraphKey, paragraphIndex: validAnchor ? index : null,
+            floor:match.floor,name:text(match.message.name),paragraphText:validAnchor?paragraph:'' });
     }
     return { floors: [...floors.values()].sort((a, b) => b.floor - a.floor), sources, unplaced,
         allIds: new Set(records.filter(row => row?.id).map(row => text(row.id))) };

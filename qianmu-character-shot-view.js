@@ -1,22 +1,21 @@
-import {CHARACTER_SHOT_FIELDS,captureCharacterShotFields,readLatestCharacterForShot,prepareCharacterShotEdit} from './qianmu-character-shot-edit.js';
+import {CHARACTER_SHOT_FIELDS,captureCharacterShotFields,readLatestCharacterForShot,prepareCharacterShotEdit} from './qianmu-character-shot-edit.js?v=1.59.440';
 import {STORYBOARD_SPATIAL_REGIONS,STORYBOARD_CROPS} from './qianmu-storyboard.js';
 const clone=value=>JSON.parse(JSON.stringify(value));
+export {prepareCharacterShotEdit};
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const regions={far_left:'最左',left:'左侧',center_left:'偏左',center:'中央',center_right:'偏右',right:'右侧',far_right:'最右',background:'背景'};
 const crops={full:'全身',knees:'膝部以上',waist:'腰部以上',chest:'胸部以上',shoulders:'肩部以上',face:'面部',detail:'局部特写'};
 const select=(name,label,values,value,labels={})=>`<label><span>${label}</span><select class="text_pole" data-shot-character-field="${name}">${values.map(id=>`<option value="${id}" ${id===value?'selected':''}>${labels[id]||id}</option>`).join('')}</select></label>`;
-export function renderCharacterShotEditor(characters,{source,rebuild=false,message=''}={}){
-  return `<div class="sd-character-shot-dialog"><p>只修改本镜，不改角色库。应用后返回提示词预览；保存不自动生图。</p><fieldset>
+export function renderCharacterShotEditor(characters,{source,embedded=false,rebuild=false,message=''}={}){
+  return `<div class="sd-character-shot-dialog"><fieldset>
     ${characters.map((row,index)=>`<details class="sd-character-shot-person" data-shot-person="${index}" ${characters.length===1?'open':''}><summary><b>${escape(row.name)}</b>${row.archiveSnapshot?`<small>v${row.archiveSnapshot.archiveVersion}</small>`:''}</summary><div class="sd-character-shot-fields">
       <label><span>本镜称呼</span><input class="text_pole" data-shot-character-field="name" value="${escape(row.name)}" maxlength="120"></label>
-      ${row.archiveSnapshot?'<button type="button" class="sd-btn sd-character-shot-latest">使用最新档案</button>':''}
+      ${row.archiveSnapshot&&!embedded?'<button type="button" class="sd-btn sd-character-shot-latest">使用最新档案</button>':''}
       ${Object.entries(CHARACTER_SHOT_FIELDS).map(([key,label])=>`<label><span>${label}</span><textarea class="text_pole" data-shot-character-field="${key}" rows="2">${escape((row[key]||[]).join('\n'))}</textarea></label>`).join('')}
       ${source!=='comfy'?`<label class="sd-character-shot-wide"><span>仅此人物的负面词</span><textarea class="text_pole" data-shot-character-field="negative" rows="2" maxlength="6000">${escape(Object.hasOwn(row,'negative')?row.negative:row.archiveSnapshot?.negative||'')}</textarea></label>`:''}
       ${select('region','画面区域',STORYBOARD_SPATIAL_REGIONS,row.spatial.region,regions)}${select('crop','可见范围',STORYBOARD_CROPS,row.spatial.crop,crops)}
       ${['x','y'].map((key,i)=>`<label><span>${key==='x'?'横向':'纵向'}中心</span><input class="text_pole" type="number" min="0.02" max="0.98" step="0.01" data-shot-character-field="${key}" value="${row.spatial.center[i]}"></label>`).join('')}
     </div></details>`).join('')}
-    <label class="sd-check"><input type="checkbox" class="sd-character-shot-rebuild" ${rebuild?'checked':''}><span>无法拆分时重建正面词</span></label>
-    <small>重建可能替换手写词及额外前缀，请在返回后的预览中核对。使用最新档案会替换本镜形象与专属配置，但保留动作、服装和位置。</small>
     </fieldset><p class="sd-character-shot-status" role="status">${escape(message)}</p></div>`;
 }
 export function captureCharacterShotEditor(host,characters){
@@ -64,7 +63,7 @@ export async function openCharacterShotEditor({snapshot,context,namespace,guard=
     await guard();if(!result)return null;
     rawInputs=[...wrap.querySelectorAll('[data-shot-character-field]')].map(field=>({index:Number(field.closest('[data-shot-person]').dataset.shotPerson),name:field.dataset.shotCharacterField,value:field.value}));
     openRows=[...wrap.querySelectorAll('[data-shot-person]')].map(details=>({index:Number(details.dataset.shotPerson),open:details.open}));
-    scrollTop=wrap.querySelector('.sd-character-shot-dialog').scrollTop;rebuild=wrap.querySelector('.sd-character-shot-rebuild').checked;
+    scrollTop=wrap.querySelector('.sd-character-shot-dialog').scrollTop;rebuild=false;
     if(pending){message='档案仍在读取，未应用修改，请重试。';continue;}
     try{
       characters=captureCharacterShotEditor(wrap,characters);

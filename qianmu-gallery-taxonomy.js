@@ -1,33 +1,32 @@
-import {renderGalleryChoicePicker,bindGalleryChoicePicker} from './qianmu-gallery-choice-picker.js';
+import {renderGalleryChoicePicker,bindGalleryChoicePicker} from './qianmu-gallery-choice-picker.js?v=1.59.440';
 import {galleryCollectionChoices,applyGalleryCollectionTarget} from './qianmu-gallery-membership.js';
 
-const bulkItems=collections=>[{id:'',label:'移出全部合集'},...galleryCollectionChoices(collections)];
 export function renderGalleryBulkCollections(collections){
-  return renderGalleryChoicePicker({id:'bulk-collections',title:'目标合集',items:bulkItems(collections),single:true});
+  return `<details class="sd-gallery-bulk-target"><summary class="sd-icon-btn" title="加入合集" aria-label="加入合集"><i class="fa-solid fa-folder-plus"></i></summary>${renderGalleryChoicePicker({id:'bulk-collections',title:'合集',items:galleryCollectionChoices(collections),single:true,compact:true})}</details><button type="button" class="sd-icon-btn sd-gallery-remove-all-collections" title="移出自建合集" aria-label="移出自建合集"><i class="fa-solid fa-folder-minus"></i></button>`;
 }
-export function bindGalleryBulkCollections(root,{readCollections,readRecords,readSelection,clearSelection,isCurrent,scope,save,changed,onError}){
-  const button=root.querySelector('.sd-storyboard-gallery-move-selected');if(!button)return null;
-  let picker,pending=false,targetRecord=null;
-  const refreshButton=()=>{if(!isCurrent(button))return;const target=picker?.selected()[0];button.disabled=pending||!readSelection().size||target===undefined;button.textContent=target===''?'移出全部合集':'加入合集';};
-  picker=bindGalleryChoicePicker(root,{id:'bulk-collections',readItems:()=>bulkItems(readCollections()),single:true,isCurrent,scope,isBusy:()=>pending,
-    onChange:values=>{targetRecord=values[0]?readCollections().find(item=>item.id===values[0]):null;refreshButton();},onError});
-  if(!picker)return null;
-  if(picker.selected()[0])targetRecord=readCollections().find(item=>item.id===picker.selected()[0]);
-  const initialSelection=new Set(readSelection()),captured=new Map();for(const record of readRecords())if(initialSelection.has(record.id))captured.set(record.id,captured.has(record.id)?null:record);
-  button.addEventListener('click',async()=>{
-    if(!isCurrent(button)||!picker.current()||button.disabled||pending)return;
-    const target=picker.selected()[0],chosen=new Set(readSelection());if(target===undefined||!chosen.size)return;
+export function bindGalleryBulkCollections(root,options){
+  return root.querySelector('.sd-gallery-bulk-target')?bindCompactGalleryBulkCollections(root,options):null;
+}
+function bindCompactGalleryBulkCollections(root,{readCollections,readRecords,readSelection,clearSelection,isCurrent,scope,save,changed,onError}){
+  const frame=root.querySelector('.sd-gallery-bulk-target'),remove=root.querySelector('.sd-gallery-remove-all-collections');
+  const initial=new Set(readSelection()),captured=new Map(),targets=new Map(readCollections().map(row=>[row.id,row]));let pending=false,picker;
+  for(const record of readRecords())if(initial.has(record.id))captured.set(record.id,captured.has(record.id)?null:record);
+  const apply=async target=>{
+    if(pending||!isCurrent(frame)||!picker.current())return;
+    const chosen=new Set(readSelection());if(!chosen.size)return;
+    const records=readRecords().filter(record=>chosen.has(record.id));
+    if(records.length!==chosen.size||records.some(record=>captured.get(record.id)!==record))throw Error('所选图片已变化，请重新选择');
+    if(target&&(!targets.has(target)||!readCollections().includes(targets.get(target))))throw Error('目标合集已变化，请重新选择');
+    const before=records.map(record=>({record,collectionIds:record.collectionIds,collectionId:record.collectionId}));
+    pending=true;remove.disabled=true;
     try{
-      if(target&&(!targetRecord||!readCollections().includes(targetRecord)))throw Error('目标合集已变化，请重新选择');
-      const records=readRecords(),expected=records.filter(record=>chosen.has(record.id));
-      if(expected.length!==chosen.size||expected.some(record=>captured.get(record.id)!==record))throw Error('所选图片已变化，请重新选择');
-      pending=true;refreshButton();picker.refresh();
-      const count=applyGalleryCollectionTarget(records,chosen,target);if(!count)throw Error('所选图片已变化，请重新选择');
-      await save();if(isCurrent(button)&&picker.current()&&readSelection().size===chosen.size&&[...chosen].every(id=>readSelection().has(id))){clearSelection();changed(count,target);}
-    }catch(error){if(isCurrent(button)&&picker.current())onError(error);}
-    finally{pending=false;refreshButton();picker.refresh();}
-  });
-  refreshButton();return picker;
+      const count=applyGalleryCollectionTarget(records,chosen,target);for(const row of before){row.applied=row.record.collectionIds;row.primary=row.record.collectionId;}await save();
+      if(isCurrent(frame)&&picker.current()&&readSelection().size===chosen.size&&[...chosen].every(id=>readSelection().has(id))){clearSelection();changed(count,target);}
+    }catch(error){for(const row of before)if(row.applied&&row.record.collectionIds===row.applied&&row.record.collectionId===row.primary){row.record.collectionIds=row.collectionIds;row.record.collectionId=row.collectionId;}throw error;}
+    finally{pending=false;remove.disabled=!readSelection().size;picker.refresh();}
+  };
+  picker=bindGalleryChoicePicker(root,{id:'bulk-collections',readItems:()=>galleryCollectionChoices(readCollections()),single:true,isCurrent,scope,isBusy:()=>pending,onChange:values=>apply(values[0]),onError});
+  remove.disabled=!readSelection().size;remove.addEventListener('click',()=>{if(!remove.disabled)return apply('').catch(error=>{if(isCurrent(frame)&&picker.current())onError(error);});});return picker;
 }
 export function bindGalleryKeywordChoices(root,state,{readWords,isCurrent,scope,save,changed,onError}){
   if(![...root.querySelectorAll('[data-gallery-picker]')].some(node=>node.dataset.galleryPicker==='keywords'))return null;

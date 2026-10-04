@@ -67,7 +67,7 @@ function imageCapabilityResult(status, body = {}) {
     novelVibe: status==='ready'&&body.novelVibe?.version===1&&body.novelVibe.encoded===true&&body.novelVibe.maxReferences===16?{version:1,encoded:true,maxReferences:16}:null,
     protocolBinding: { version: status === 'ready' && body.protocolBinding?.version === IMAGE_PROTOCOL_BINDING_VERSION ? IMAGE_PROTOCOL_BINDING_VERSION : 0, providers: protocolProviders },
     comfyExecution: status === 'ready' && body.comfyExecution?.version === 1 && body.comfyExecution.outputSelection === true
-      && body.comfyExecution.staticAccounting === true ? { version: 1, outputSelection: true, staticAccounting: true, staticReferencesVersion: body.comfyExecution.staticReferencesVersion === 1 ? 1 : 0 } : null,
+      && body.comfyExecution.staticAccounting === true ? { version: 1, candidateExecutionVersion: body.comfyExecution.candidateExecutionVersion === 2 ? 2 : 1, outputSelection: true, staticAccounting: true, staticReferencesVersion: body.comfyExecution.staticReferencesVersion === 1 ? 1 : 0 } : null,
     comfyQueue: status === 'ready' && body.comfyQueue?.version === 1 && body.comfyQueue.scope === 'st-api-root'
       && body.comfyQueue.durableAcceptance === true ? { version: 1, scope: 'st-api-root', durableAcceptance: true,
         originalTaskLookup: body.comfyQueue.originalTaskLookup === true, resultRetrieval: body.comfyQueue.resultRetrieval === true,
@@ -122,7 +122,8 @@ export function checkQianmuNovelVibeBinding(capabilities){
   return {ok:false,code:'novel_vibe_incompatible',message:'增强服务尚未确认支持 NAI 编码 Vibe，请同步更新前后端并重启 ST；未发送生成'};
 }
 
-export function checkQianmuComfyExecutionBinding(capabilities, { references = false } = {}) {
+export function checkQianmuComfyExecutionBinding(capabilities, { references = false, executionVersion = 1 } = {}) {
+  if (![1, 2].includes(executionVersion) || executionVersion === 2 && capabilities?.comfyExecution?.candidateExecutionVersion !== 2) return { ok: false, code: 'comfy_execution_incompatible', message: '增强服务尚不支持本镜候选图片，请同步更新千幕与增强服务并重启 ST' };
   if (references && capabilities?.comfyExecution?.staticReferencesVersion !== 1) return { ok: false, code: 'comfy_references_incompatible', message: '增强服务尚不支持单帧参考核查，请同步更新前后端并重启 ST' };
   if (capabilities?.status === 'ready' && capabilities.comfyExecution?.version === 1
     && capabilities.comfyExecution.outputSelection === true && capabilities.comfyExecution.staticAccounting === true

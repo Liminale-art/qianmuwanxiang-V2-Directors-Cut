@@ -4,6 +4,7 @@ import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifySt
 import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.414';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
+import {inspectComfyImageExecution,requireComfyExecution} from './qianmu-comfy-audit.js?v=1.59.440';
 export {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 
 const error = (code, message) => Object.assign(new Error(message), { code: `image_attempt_${code}` });
@@ -16,6 +17,21 @@ const MESSAGES = {
 };
 const canonical = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+function admissionImageCount(job) {
+  if (job.source !== 'comfy' || !job.automatic) return Number(job.payload?.parameters?.count ?? job.profile?.count ?? 1);
+  // The durable ledger budgets narrative shots. A verified Comfy batch is one
+  // shot, not N provider submissions; validate the actual graph, never Count alone.
+  const policy = job.comfyExecution || {version:2,automatic:true,maxImages:8,
+    outputNodeIds:job.profile?.comfyOutputNodeId?[job.profile.comfyOutputNodeId]:[],allowUnverified:false};
+  if (policy.automatic !== true) throw error('count','本镜候选约定与自动任务不一致');
+  const selection = job.payload?.comfyCharacterPlan?.references || job.profile?.comfyReferences;
+  const checked = requireComfyExecution(inspectComfyImageExecution({prompt:job.payload?.prompt || job.prompt,
+    negativePrompt:job.payload?.negative || '',model:job.profile?.model,parameters:job.payload?.parameters,
+    references:selection?.enabled ? selection.items || [] : [],comfyExecution:policy}),policy);
+  if (job.comfyExecution && (checked.expectedImages !== policy.expectedImages || checked.maxImages !== policy.maxImages))
+    throw error('count','本镜候选数量已变化，未提交生成');
+  return 1;
+}
 const hasWorldReference=job=>job?.shotSpec?.directorDecision?.approval?.mode==='world_setting'
   ||Object.hasOwn(job?.shotSpec?.directorDecision?.approval||{},'worldAutomation')
   ||String(job?.imageAdmission?.messageKey||'').startsWith('world-item:');
@@ -146,7 +162,7 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         if(!group){group={scope:identity.scope,inputs:[],history:await createImageHistorySeeds(history,identity)};groups.set(key,group);}
         const kind=job.automatic?'automatic':job.imageAdmission||job.variantRootId||Number(job.attempt)>1?'redraw':job.manualSupplement?'supplement':'manual';
         group.inputs.push({attemptId:job.id,logicalShotId:identity.logicalShotId,operationKey:identity.operationKey,ownerId,kind,
-          maxAutomatic:identity.worldReference?1:maxAutomatic,imageCount:Number(job.payload?.parameters?.count??job.profile?.count??1)});
+          maxAutomatic:identity.worldReference?1:maxAutomatic,imageCount:admissionImageCount(job)});
       }
       current(valid);
       const decision=await store.preflight([...groups.values()]);current(valid);
@@ -175,10 +191,10 @@ export function createImageAdmission({ store = createImageAttemptStore(), accoun
         current(valid);
         const kind = job.automatic ? 'automatic' : job.imageAdmission || job.variantRootId || Number(job.attempt) > 1 ? 'redraw' : job.manualSupplement ? 'supplement' : 'manual';
         const input = { attemptId: job.id, logicalShotId: identity.logicalShotId, operationKey: identity.operationKey,
-          ownerId, kind, maxAutomatic:identity.worldReference?1:maxAutomatic, imageCount: Number(job.payload?.parameters?.count ?? job.profile?.count ?? 1) };
+          ownerId, kind, maxAutomatic:identity.worldReference?1:maxAutomatic, imageCount: admissionImageCount(job) };
         let decision = await store.claim(identity.scope, input, seeds), confirmedAttempts = [];
         if (!decision.ok && decision.code === 'confirmation_required' && !job.automatic && job.source === 'novel' && job.connection?.imageTransport === 'service') {
-          throw error('service_review_required', '原请求结果待核查，请到分镜日志 → NAI 收片核查原任务，再手动生成新图');
+          throw error('service_review_required', '原任务尚未确认完成，暂不能再次生成。请查看对应日志。');
         }
         if (!decision.ok && decision.code === 'confirmation_required' && !job.automatic) {
           current(valid);

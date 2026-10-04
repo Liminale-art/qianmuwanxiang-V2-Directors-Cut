@@ -158,10 +158,10 @@ test('resource-manager binding is idempotent without routing or starting work du
 test('central backup entry binds once and reuses the existing export and restore boundaries', async () => {
   const calls = [], node = dataset => ({ dataset, value: 'picked', listeners: {}, files: [{ name: 'fixture' }],
     addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }, click() { this.clicks = (this.clicks || 0) + 1; } });
-  const configExport = node({}), configImport = node({}), configFile = node({});
+  const configExport = node({}), configImport = node({}), configFile = node({}), storyboardRecover = node({});
   const names = ['storyboard', 'reader', 'favorites', 'audio', 'notes', 'collection'];
   const exports = names.map(storageExport => node({ storageExport })), picks = names.map(storagePick => node({ storagePick })), imports = names.map(storageImport => node({ storageImport }));
-  const backup = { dataset: {}, querySelector: selector => ({ '.sd-export-config': configExport, '.sd-import-config': configImport, '.sd-import-config-file': configFile }[selector]
+  const backup = { dataset: {}, querySelector: selector => ({ '.sd-export-config': configExport, '.sd-import-config': configImport, '.sd-import-config-file': configFile, '.sd-storage-storyboard-recover': storyboardRecover }[selector]
     || imports.find(input => selector === `input[data-storage-import="${input.dataset.storageImport}"]`)),
     querySelectorAll: selector => ({ '[data-storage-export]': exports, '[data-storage-pick]': picks, 'input[data-storage-import]': imports }[selector] || []) };
   const root = { querySelector: selector => selector === '.sd-storage-backup-section' ? backup : null, querySelectorAll: () => [] };
@@ -170,6 +170,7 @@ test('central backup entry binds once and reuses the existing export and restore
       importCollection: (file, input) => { assert.equal(file.name, 'fixture'); assert.equal(input, imports[5]); calls.push('collection-import'); }},
     storyboardExportPackage: options => { assert.equal(options.bundle, true); calls.push('storyboard-export'); },
     storyboardImportAnyPackage: file => { assert.equal(file.name, 'fixture'); calls.push('storyboard-import'); },
+    storyboardImportPackage: (file, options) => { assert.equal(file, null); assert.equal(options.recoverOnly, true); calls.push('storyboard-recover'); },
     coreadExportData: () => calls.push('reader-export'), coreadImportDataFile: () => calls.push('reader-import'),
     exportTtsFavoritesBackup: button => { assert.equal(button, exports[2]); calls.push('favorites-export'); },
     importTtsFavoritesBackup: () => calls.push('favorites-import'), ttsExportAudioCache: () => calls.push('audio-export'), ttsImportAudioCache: () => calls.push('audio-import'), exportPinnedNotesBackup: () => calls.push('notes-export'), importPinnedNotesBackup: () => calls.push('notes-import') });
@@ -177,11 +178,20 @@ test('central backup entry binds once and reuses the existing export and restore
   Object.assign(context,{confirmDialog:()=>{},ttsDownloadBlob:()=>{}});
   context.bindStorageManagementEvents(root); context.bindStorageManagementEvents(root);
   assert.deepEqual(calls, [], 'binding controls must never start backup, restore, or generation');
-  for (const button of [configExport, configImport, ...exports, ...picks]) assert.equal(button.listeners.click.length, 1);
+  for (const button of [configExport, configImport, storyboardRecover, ...exports, ...picks]) assert.equal(button.listeners.click.length, 1);
   configExport.listeners.click[0](); configImport.listeners.click[0](); assert.equal(configFile.clicks, 1);
   configFile.listeners.change[0]({ target: configFile, currentTarget: configFile });
   for (const button of exports) button.listeners.click[0]();
   for (const button of picks) button.listeners.click[0]();
   for (const input of imports) { assert.equal(input.clicks, 1); await input.listeners.change[0]({ target: input, currentTarget: input }); assert.equal(input.value, ''); }
-  assert.deepEqual(calls, ['config-export', 'config-import', 'storyboard-export', 'reader-export', 'favorites-export', 'audio-export', 'notes-export', 'collection-export', 'storyboard-import', 'reader-import', 'favorites-import', 'audio-import', 'notes-import', 'collection-import']);
+  storyboardRecover.listeners.click[0]();
+  assert.deepEqual(calls, ['config-export', 'config-import', 'storyboard-export', 'reader-export', 'favorites-export', 'audio-export', 'notes-export', 'collection-export', 'storyboard-import', 'reader-import', 'favorites-import', 'audio-import', 'notes-import', 'collection-import', 'storyboard-recover']);
+});
+
+test('resource backup, restore and import recovery remain a single compact Data Management row before any scan',()=>{
+  const html=renderStorageBackupSection(null),row=html.match(/<div class="sd-storage-backup-row sd-storage-backup-storyboard">[\s\S]*?<\/div>/)?.[0];
+  assert.ok(row);assert.match(row,/data-storage-export="storyboard"/);assert.match(row,/data-storage-pick="storyboard"/);
+  assert.match(row,/data-storage-import="storyboard" accept="\.qmb,application\/json,\.json"/);
+  assert.match(row,/sd-storage-storyboard-recover" title="核对导入" aria-label="核对分镜导入"/);
+  assert.equal((html.match(/sd-storage-storyboard-recover/g)||[]).length,1);
 });

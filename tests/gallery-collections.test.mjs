@@ -87,7 +87,7 @@ test('image card model badge uses recorded model only, escapes text and retains 
   const html=renderGalleryImageCard(group,{url:'/ok',selectionMode:true,selection:new Set(['a','b'])});
   assert.match(html,/data-storyboard-members="a,b"/);assert.match(html,/fa-square-check/);assert.match(html,/sd-gallery-model-label" title="&lt;model&gt;"/);
   assert.match(html,/<em>legacy<\/em>/);assert.equal(JSON.stringify(group),before);assert.match(html,/sd-storyboard-stack-count">2/);
-  assert.match(renderGalleryImageCard({id:'x',variants:[{id:'x'}]},{sourceLabel:'ComfyUI'}),/ComfyUI · 模型未记录/);
+  assert.match(renderGalleryImageCard({id:'x',variants:[{id:'x'}]},{sourceLabel:'ComfyUI'}),/ComfyUI/);
   const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');assert.match(css,/\.sd-gallery-model-label \{[^}]*top: 8px; right: 8px/);
   assert.match(css,/\.sd-gallery-browser-main \.sd-storyboard-gallery \{ columns: 2 118px/);
 });
@@ -142,7 +142,7 @@ function events(){
   const root={querySelector:selector=>nodes[selector]||null,querySelectorAll:selector=>selector==='[data-gallery-collection]'?[card]:selector==='[data-gallery-tag-filter]'?[tag]:[]};
   const state={gallerySearch:'',galleryTagFilters:[]};
   const c=vm.createContext({root,state,bindGalleryBulkCollections,bindGalleryKeywordChoices,galleryMembershipIds,assignGalleryMemberships,storyboardState:()=>state,storyboardGalleryViewGuard:()=>node=>f.current&&node.isConnected,
-    storyboardGalleryCollections:()=>store.storyboardCollections,storyboardGalleryRecords:()=>store.storyboardImages,
+    storyboardGalleryCollections:()=>store.storyboardCollections,storyboardGalleryRecords:()=>store.storyboardImages,storyboardGalleryBrowserData:()=>({collections:store.storyboardCollections}),
     storyboardFilteredGalleryRecords:()=>store.storyboardImages,storyboardItemCollectionIds:row=>row.collectionIds||[],
     storyboardAssignCollectionIds:(row,ids)=>row.collectionIds=[...new Set(ids)],getChatStore:()=>store,
     saveMetadata:async()=>f.saves++,saveSettings:()=>{},renderModal:()=>f.renders++,toast:()=>{},uid:()=> 'new',
@@ -192,4 +192,33 @@ test('live bulk delete removes only selected records and move refuses removed co
 test('actual dissolving one collection preserves unrelated old over-limit memberships',async()=>{
   const f=events();f.record.collectionIds=['a',...Array.from({length:40},(_,i)=>'kept-'+i)];await f.buttons.delete.fire();
   assert.equal(f.record.collectionIds.length,40);assert.equal(f.record.collectionIds.at(-1),'kept-39');assert.equal(f.store.storyboardImages[0],f.record);
+});
+
+test('gallery collection changes reject failed saves without losing prior names, memberships or files',async()=>{
+  for(const action of ['rename','delete','create']){
+    const f=events();f.c.saveMetadata=async()=>{throw Error('offline');};
+    const before=JSON.stringify(f.store);await (action==='create'?f.nodes['.sd-storyboard-gallery-new-folder']:f.buttons[action]).fire();
+    assert.equal(JSON.stringify(f.store),before,action);assert.equal(f.renders,0);
+  }
+});
+test('failed bulk delete keeps prior records and selection while preserving a concurrently received image',async()=>{
+  const f=events(),newRecord={id:'new'};f.store.storyboardImages.push({id:'two'});
+  f.c.saveMetadata=async()=>{f.store.storyboardImages.push(newRecord);throw Error('offline');};
+  await f.nodes['.sd-storyboard-gallery-delete-selected'].fire();
+  assert.deepEqual(f.store.storyboardImages.map(row=>row.id),['one','two','new']);
+  assert.equal(f.store.storyboardImages[0],f.record);assert.equal(f.c.storyboardGallerySelection.has('one'),true);assert.equal(f.c.storyboardGallerySelectMode,true);
+});
+test('search placeholder shows total picture count only while focused and empty',async()=>{
+  const f=events(),input=f.nodes['.sd-storyboard-gallery-search'];input.dataset.galleryCount='45';
+  await input.fire('focus');assert.equal(input.placeholder,'图库 45 张画面');
+  await input.fire('blur');assert.equal(input.placeholder,'搜索画面、角色、标签或合集');
+});
+test('failed dissolve restores its own collection after an intervening reader and preserves new folders',async()=>{
+  const f=events(),created={id:'other',name:'Other'};
+  f.c.saveMetadata=async()=>{f.store.storyboardCollections=[...f.store.storyboardCollections,created];throw Error('offline');};await f.buttons.delete.fire();
+  assert.equal(f.store.storyboardCollections[0],f.collection);assert.equal(f.store.storyboardCollections[1],created);assert.deepEqual(f.record.collectionIds,['a','b']);
+});
+test('failed create keeps a folder adopted by another original gallery record while save was pending',async()=>{
+  const f=events();f.c.saveMetadata=async()=>{f.record.collectionIds=['new'];throw Error('offline');};await f.nodes['.sd-storyboard-gallery-new-folder'].fire();
+  assert.ok(f.store.storyboardCollections.some(row=>row.id==='new'));assert.deepEqual(f.record.collectionIds,['new']);
 });

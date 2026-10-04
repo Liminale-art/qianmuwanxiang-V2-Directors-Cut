@@ -17,12 +17,12 @@ export const graph = label => ({
   image: { class_type: 'EmptyImage', inputs: { width: '%qianmu_width%', height: '%qianmu_height%', batch_size: '%qianmu_count%' } },
   save: { class_type: 'SaveImage', inputs: { images: ['image', 0] } },
 });
-export async function recipesFixture({formats=null,tiers=null}={}) {
+export async function recipesFixture({formats=null,tiers=null,count=4}={}) {
   const rows = ['portrait','landscape'].map((name, index) => ({ namespace, id:name, revision:`revision-${name}`, version:1, name, archived:false,
     document:{ workflow:JSON.stringify(graph(name)), outputNodeId:'save', positivePrompt:`${name} quality`, negativePrompt:`${name} exclusions`,
       ...(tiers?.[index] ? {runninghubInstanceType:tiers[index]} : {}),
       ...(formats?.[index] ? {classification:{version:1,promptFormat:formats[index],contentClasses:['sfw']}} : {}),
-      parameters:{width:index ? 1216 : 832,height:index ? 832 : 1216,count:4,steps:index ? 24 : 16,cfg:5,seed:0,sampler:'euler',scheduler:'normal'} } }));
+      parameters:{width:index ? 1216 : 832,height:index ? 832 : 1216,count,steps:index ? 24 : 16,cfg:5,seed:0,sampler:'euler',scheduler:'normal'} } }));
   const calls=[];
   const createStore=()=>({
     list:async ns=>{calls.push(['list',ns]);return structuredClone(rows.filter(row=>row.namespace===ns).map(({document,...row})=>row));},

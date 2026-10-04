@@ -3,6 +3,10 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-image-info-view.js",
+    "qianmu-image-zoom.js",
+    "qianmu-storyboard-inline-reading.js",
+    "qianmu-storyboard-original-recovery.js",
     "qianmu-tts-floor-ui.js",
     "qianmu-document-session.js",
     "qianmu-text-collection.js",
@@ -257,7 +261,6 @@
     "qianmu-config-connections.js",
     "qianmu-st-context-sources.js",
     "qianmu-gallery-narrative.js",
-    "qianmu-gallery-narrative-view.js",
     "qianmu-gallery-catalog-contract.js",
     "qianmu-gallery-catalog-store.js",
     "qianmu-gallery-directory.js",

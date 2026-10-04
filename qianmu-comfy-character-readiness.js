@@ -1,5 +1,5 @@
 // Read-only per-shot verification, using the same explicitly selected requester as generation.
-import {checkComfyReadiness,checkCloudComfyReadiness,isDeferredComfyReferenceIssue} from './qianmu-comfy-readiness.js';
+import {checkComfyReadiness,checkCloudComfyReadiness,isDeferredComfyReferenceIssue} from './qianmu-comfy-readiness.js?v=1.59.440';
 import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
 export async function checkComfyCharacterReadiness(request,{transport,headers,fetchImpl=globalThis.fetch,guard=async()=>{},timeoutMs=30000,signal,automatic=false}={}) {
   if(!['browser','gateway','legacy-auto'].includes(transport))throw Error('请确认 Comfy 请求方式');

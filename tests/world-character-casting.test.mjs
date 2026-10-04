@@ -346,7 +346,7 @@ for(const comfy of [false,true])test(`automatic world ${comfy?'fixed Comfy':'NAI
     assert.equal(e.calls.includes('confirm'),false);assert.equal(e.calls.filter(value=>value==='llm').length,1);
     assert.equal(e.context.storyboardQueue.length,1);const job=e.context.storyboardQueue[0];
     assert.equal(job.source,comfy?'comfy':'novel');if(comfy)assert.deepEqual(copy(job.profile.comfyRouteBinding),copy(e.recipe.binding));
-    assert.equal(job.automatic,true);assert.equal(job.profile.count,'1');assert.equal(job.target,'gallery');assert.equal(job.floor,null);
+    assert.equal(job.automatic,true);assert.equal(job.profile.count,comfy?'4':'1');assert.equal(job.requestTotal,1);assert.equal(job.target,'gallery');assert.equal(job.floor,null);
     assert.equal(job.shotSpec.directorDecision.approval.mode,'world_setting');assert.match(job.imageAdmission.messageKey,/^world-item:/);
     assert.deepEqual(e.state.promptDraft,before);assert.equal(e.state.prompt,'original');assert.equal(e.checks.length,3,'batch preflight plus both original per-job approval checks');
     const rows=[...e.transport.files.values()].map(JSON.parse);assert.ok(rows.some(row=>row.value?.record?.status==='queued'));

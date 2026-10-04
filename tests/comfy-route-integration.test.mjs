@@ -44,8 +44,8 @@ test('actual mixed pipeline freezes two independent Comfy graphs and one NAI job
   const globalBefore=structuredClone(e.state.profiles.comfy);
   assert.equal(await e.context.storyboardGenerate(null,{automatic:true}),true);await e.awaitScheduled();assert.deepEqual(e.jobs.map(job=>job.source),['comfy','comfy','novel']);
   for(const [index,job] of e.jobs.entries()){
-    assert.equal(job.inlineOrder.shotIndex,index);assert.equal(job.payload.parameters.count,1);
-    assert.equal(job.profile.count,'1');assert.equal(job.automatic,true);
+    assert.equal(job.inlineOrder.shotIndex,index);assert.equal(job.payload.parameters.count,index<2?4:1);
+    assert.equal(job.profile.count,index<2?'4':'1');assert.equal(job.automatic,true);assert.equal(job.requestTotal,1);
     if(index<2){assert.equal(job.profile.comfyRouteBinding.id,e.routes[index].comfyWorkflowBinding.id);
       assert.equal(job.profile.comfyWorkflow,e.recipes[index].document.workflow);assert.equal(job.payload.parameters.workflow,e.recipes[index].document.workflow);
       assert.doesNotMatch(job.payload.prompt,new RegExp(e.recipes[index].document.positivePrompt));

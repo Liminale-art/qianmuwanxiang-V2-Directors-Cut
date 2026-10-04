@@ -35,8 +35,10 @@ for (const [assetView, title] of Object.entries({ tags: 'TAG LIBRARY', vibes: 'V
   assert.equal(sandbox.storyboardPageTitle(state), title);
 }
 state.view='gallery';sandbox.storyboardGalleryInspectorRecordId='chosen';
-assert.match(sandbox.renderStoryboardTab(),/data-storyboard-page="gallery:detail"/);
-sandbox.storyboardApplyRoute({galleryInspectorId:''});
+assert.match(sandbox.renderStoryboardTab(),/data-storyboard-page="gallery"/,'native details keep the gallery route and its scroll position');
+sandbox.storyboardGalleryInspectorRecordId='';
+sandbox.storyboardApplyRoute({galleryInspectorId:'retired-detail'});
+assert.equal(sandbox.storyboardGalleryInspectorRecordId,'','old saved routes cannot re-open the removed detail page');
 assert.match(sandbox.renderStoryboardTab(),/data-storyboard-page="gallery"/);
 assert.equal(sandbox.storyboardPageTitle({ view: 'characters' }), 'CHARACTERS');
 assert.match(sandbox.renderStoryboardNav(state), /data-storyboard-view="characters"/, 'the independent archive is now a working navigation entry');

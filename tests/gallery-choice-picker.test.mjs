@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {galleryChoiceWindow,renderGalleryChoicePicker,bindGalleryChoicePicker,resetGalleryChoiceSessions} from '../qianmu-gallery-choice-picker.js';
+import {galleryChoiceWindow,renderGalleryChoicePicker,bindGalleryChoicePicker,resetGalleryChoiceSessions} from '../qianmu-gallery-choice-picker.js?v=1.59.440';
 import {galleryMembershipIds,galleryMembershipChange,assignGalleryMemberships,applyGalleryCollectionTarget,galleryCollectionChoices} from '../qianmu-gallery-membership.js';
 import {renderGalleryBulkCollections,bindGalleryBulkCollections,bindGalleryKeywordChoices} from '../qianmu-gallery-taxonomy.js';
 import {createChoiceRoot,ChoiceNode} from './helpers/gallery-choice-fixture.mjs';
@@ -85,27 +85,21 @@ test('batch add validates every image before mutation, retains existing membersh
   applyGalleryCollectionTarget(rows,new Set(['a']),'');assert.deepEqual(a.collectionIds,[]);assert.equal(b.collectionIds.length,30);
 });
 function bulkFixture(){
-  const f=createChoiceRoot('bulk-collections'),button=new ChoiceNode(),e={...f,button,collections:[{id:'a',name:'A'}],records:[{id:'one',collectionIds:['old']}],selection:new Set(['one']),active:true,saves:0,changes:0,errors:[]};
-  f.root.querySelector=selector=>selector==='.sd-storyboard-gallery-move-selected'?button:null;
-  e.bind=()=>bindGalleryBulkCollections(f.root,{readCollections:()=>e.collections,readRecords:()=>e.records,readSelection:()=>e.selection,
-    clearSelection:()=>e.selection.clear(),scope:()=>[e.records],isCurrent:node=>e.active&&node.isConnected,
-    save:async()=>e.saves++,changed:()=>e.changes++,onError:error=>e.errors.push(error)});
-  return e;
+  const e=compactBulkFixture();e.saves=0;e.save=async()=>e.saves++;return e;
 }
 test('actual bulk picker requires an explicit target and persists additions only after valid selection',async()=>{
-  const f=bulkFixture();f.bind();assert.equal(f.button.disabled,true);await f.button.fire();assert.equal(f.saves,0);
-  await f.choose('a');assert.equal(f.button.disabled,false);await f.button.fire();assert.equal(f.saves,1);assert.equal(f.changes,1);
+  const f=bulkFixture();f.bind();assert.equal(f.saves,0);
+  await f.choose('a');assert.equal(f.saves,1);assert.equal(f.changes,1);
   assert.deepEqual(f.records[0].collectionIds,['old','a']);assert.equal(f.selection.size,0);
 });
 test('actual bulk picker distinguishes explicit remove-all and checks a removed target before writing',async()=>{
-  const f=bulkFixture();f.bind();await f.choose('a');f.collections=[];await f.button.fire();assert.equal(f.saves,0);assert.equal(f.errors.length,1);
-  await f.choose('');assert.equal(f.button.textContent,'移出全部合集');await f.button.fire();assert.deepEqual(f.records[0].collectionIds,[]);assert.equal(f.saves,1);
+  const f=bulkFixture();f.bind();f.collections=[];await f.choose('a');assert.equal(f.saves,0);
+  await f.remove.fire();assert.deepEqual(f.records[0].collectionIds,[]);assert.equal(f.saves,1);
 });
 test('actual stale bulk actions and post-save completion cannot mutate replacement selection or notify it',async()=>{
-  const f=bulkFixture();f.bind();await f.choose('a');f.active=false;await f.button.fire();assert.equal(f.saves,0);
-  const g=bulkFixture(),wait=deferred();g.bind=()=>bindGalleryBulkCollections(g.root,{readCollections:()=>g.collections,readRecords:()=>g.records,readSelection:()=>g.selection,
-    clearSelection:()=>g.selection.clear(),scope:()=>[g.records],isCurrent:()=>g.active,save:()=>wait.promise,changed:()=>g.changes++,onError:error=>g.errors.push(error)});
-  g.bind();await g.choose('a');const pending=g.button.fire();g.active=false;g.selection=new Set(['foreign']);wait.resolve();await pending;
+  const f=bulkFixture();f.bind();f.active=false;await f.choose('a');assert.equal(f.saves,0);
+  const g=bulkFixture(),wait=deferred();g.save=()=>wait.promise;
+  g.bind();const pending=g.choose('a');g.active=false;g.selection=new Set(['foreign']);wait.resolve();await pending;
   assert.deepEqual([...g.selection],['foreign']);assert.equal(g.changes,0);assert.equal(g.errors.length,0);
 });
 test('actual keywords preserve multi-select intersection state and bound 5001 choices across parent rerenders',async()=>{
@@ -116,15 +110,43 @@ test('actual keywords preserve multi-select intersection state and bound 5001 ch
 });
 
 for(const label of ['record','duplicate','collection'])test(`actual bulk refuses a same-id ${label} replacement instead of applying stale selection`,async()=>{
-  const f=bulkFixture();f.bind();await f.choose('a');
+  const f=bulkFixture();f.bind();
   if(label==='record')f.records[0]={id:'one',collectionIds:['new-owner']};else if(label==='duplicate')f.records.push({id:'one',collectionIds:[]});else f.collections=[{id:'a',name:'Replaced'}];
-  const before=JSON.stringify(f.records);await f.button.fire();assert.equal(f.saves,0);assert.equal(JSON.stringify(f.records),before);assert.equal(f.errors.length,1);
+  const before=JSON.stringify(f.records);await f.choose('a');assert.equal(f.saves,0);assert.equal(JSON.stringify(f.records),before);assert.equal(f.errors.length,1);
 });
 
 test('actual entry connects bounded keyword changes to first-page reset and keeps complete read sources',()=>{
-  const source=section('bindStoryboardTabEvents'),start=source.indexOf('  const choiceScope='),end=source.indexOf('  storyboardBindGalleryInspector(root);',start);
+  const source=section('bindStoryboardTabEvents'),start=source.indexOf('  const choiceScope='),end=source.indexOf("  root.querySelector('.sd-storyboard-gallery-select-mode')",start);
   let options,renders=0;const state={},owner={};
   const c=vm.createContext({state,root:{},ctx:()=>({chatMetadata:owner}),getChatKey:()=> 'chat',storyboardAdmissionEpoch:4,
     galleryFiltersCurrent:()=>true,bindGalleryKeywordChoices:(_root,_state,args)=>options=args,saveSettings:()=>{},toast:()=>{},renderModal:()=>renders++,storyboardGalleryVisibleCount:80});
   vm.runInContext(source.slice(start,end),c);options.changed();assert.equal(c.storyboardGalleryVisibleCount,40);assert.equal(renders,1);assert.deepEqual(Array.from(options.scope()),[state,owner,'chat',4]);
+});
+
+function compactBulkFixture(){
+  const f=createChoiceRoot('bulk-collections'),wrapper=new ChoiceNode(),remove=new ChoiceNode(),e={...f,wrapper,remove,collections:[{id:'a',name:'A'}],records:[{id:'one',collectionIds:['old'],collectionId:'old'}],selection:new Set(['one']),active:true,changes:0,errors:[],save:async()=>{}};
+  f.root.querySelector=selector=>selector==='.sd-gallery-bulk-target'?wrapper:selector==='.sd-gallery-remove-all-collections'?remove:null;
+  e.bind=()=>bindGalleryBulkCollections(f.root,{readCollections:()=>e.collections,readRecords:()=>e.records,readSelection:()=>e.selection,clearSelection:()=>e.selection.clear(),scope:()=>[e.records],isCurrent:node=>e.active&&node.isConnected,save:()=>e.save(),changed:()=>e.changes++,onError:error=>e.errors.push(error)});return e;
+}
+test('compact collection choice directly saves selection without second submit and remove all is a separate icon action',async()=>{
+  const f=compactBulkFixture();f.bind();await f.choose('a');assert.deepEqual(f.records[0].collectionIds,['old','a']);assert.equal(f.selection.size,0);assert.equal(f.changes,1);
+  const g=compactBulkFixture();g.bind();await g.remove.fire();assert.deepEqual(g.records[0].collectionIds,[]);assert.equal(g.changes,1);
+});
+test('compact collection failure after chat switch restores the original object without touching the new chat',async()=>{
+  const f=compactBulkFixture(),original=f.records[0],ids=original.collectionIds,foreign={id:'one',collectionIds:['foreign']};
+  f.save=async()=>{f.records=[foreign];f.selection=new Set(['foreign']);throw Error('offline');};f.bind();await f.choose('a');
+  assert.equal(original.collectionIds,ids);assert.equal(original.collectionId,'old');assert.deepEqual(f.records,[foreign]);assert.deepEqual([...f.selection],['foreign']);assert.equal(f.errors.length,0);assert.equal(f.changes,0);
+});
+test('compact failed save cannot overwrite a later edit to the same record',async()=>{
+  const f=compactBulkFixture(),record=f.records[0],later=['later'];f.save=async()=>{record.collectionIds=later;record.collectionId='later';throw Error('offline');};f.bind();await f.choose('a');
+  assert.equal(record.collectionIds,later);assert.equal(record.collectionId,'later');assert.equal(f.selection.has('one'),true);assert.equal(f.changes,0);
+});
+test('compact bulk fails closed when the selected collection object is replaced',async()=>{
+  const f=compactBulkFixture();f.bind();f.collections=[{id:'a',name:'Replaced'}];await f.choose('a');assert.deepEqual(f.records[0].collectionIds,['old']);assert.equal(f.errors.length,1);
+});
+test('compact keyword list over 24 choices uses pagination without a second search or selected count',async()=>{
+  const f=createChoiceRoot('keywords'),state={galleryTagFilters:[]};f.frame.dataset.choiceCompact='true';
+  bindGalleryKeywordChoices(f.root,state,{readWords:()=>items(60).map(row=>row.id),isCurrent:()=>true,scope:()=>[state],save:()=>{},changed:()=>{},onError:error=>assert.fail(error.message)});
+  assert.equal(f.nodes['[data-choice-search]'].hidden,true);assert.equal(f.nodes['[data-choice-selected]'].hidden,true);assert.equal(f.list.buttons.length,24);
+  await f.nodes['[data-choice-page="next"]'].fire();assert.equal(f.list.buttons[0].dataset.choiceId,'c24');await f.choose('c24');assert.deepEqual(state.galleryTagFilters,['c24']);assert.equal(f.nodes['[data-choice-search]'].hidden,true);
 });

@@ -26,7 +26,7 @@ function delivery(value, row) {
     || row.status !== 'succeeded' || !row.cloudIntent || !['comfy-cloud', 'runninghub'].includes(row.cloudReceipt?.task.provider)) fail();
   const { execution } = row.cloudReceipt.stillOutput;
   if (value.imageCount > execution.maxImages || execution.expectedImages != null && value.imageCount !== execution.expectedImages
-    || execution.automatic && value.imageCount !== 1) fail();
+    || execution.automatic && value.imageCount !== execution.expectedImages) fail();
   if (value.state === 'archived') {
     if (!Object.hasOwn(value, 'archivedAt') || !Number.isSafeInteger(value.archivedAt) || value.archivedAt < value.storedAt || value.archivedAt > row.updatedAt) fail();
   } else if (Object.hasOwn(value, 'archivedAt')) fail();

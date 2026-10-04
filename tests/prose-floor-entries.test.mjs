@@ -13,11 +13,18 @@ test('rendered prompt-excluded floors receive one explicit capture action withou
   const root={querySelectorAll:selector=>{assert.equal(selector,'.mes');return messages;},ownerDocument:{createElement:tag=>{
     assert.equal(tag,'button');return {dataset:{},attrs:{},setAttribute(name,value){this.attrs[name]=value;}};
   }}};
-  const api={floorOf:message=>message.floor,getContext:()=>({chat}),getState:()=>({}),planForMessage:()=>null,applyIcons:button=>icons.push(button)};
+  let busy=false;
+  const api={floorOf:message=>message.floor,getContext:()=>({chat}),getState:()=>({}),planForMessage:()=>null,applyIcons:button=>icons.push(button),isBusy:floor=>busy&&floor===1};
   injectStoryboardMessageButtons(root,api);injectStoryboardMessageButtons(root,api);
   assert.deepEqual(messages.map(message=>message.buttons.length),[1,1,0]);assert.equal(icons.length,2);
   assert.equal(messages[1].buttons[0].dataset.storyboardChatAction,'capture-floor');
   assert.equal(messages[1].buttons[0].attrs['aria-label'],'提取第 1 层生成词');
   chat[1].is_system=false;injectStoryboardMessageButtons(root,api);chat[1].is_system=true;
   assert.equal(messages[1].buttons.length,1);assert.equal(JSON.stringify(chat),before);
+  busy=true;injectStoryboardMessageButtons(root,api);
+  assert.equal(messages[1].buttons[0].attrs['aria-busy'],'true');assert.match(messages[1].buttons[0].className,/is-generating/);
+  assert.equal(messages[0].buttons[0].attrs['aria-busy'],'false');
+  busy=false;injectStoryboardMessageButtons(root,api);
+  assert.equal(messages[1].buttons[0].attrs['aria-busy'],'false');assert.doesNotMatch(messages[1].buttons[0].className,/is-generating/);
+  assert.equal(icons.length,2);
 });

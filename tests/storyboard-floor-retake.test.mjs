@@ -128,7 +128,8 @@ test('an unrelated receipt cannot prune an active retake baseline before its fir
 });
 
 async function entryFixture(){
-  const e=await compilerEnvironment(),message=e.context.ctx().chat[0],reference=core.createStoryboardMessageReference({chatKey:'chat-a',floor:0,message});
+  const e=await compilerEnvironment({count:1}),message=e.context.ctx().chat[0],reference=core.createStoryboardMessageReference({chatKey:'chat-a',floor:0,message});
+  e.state.profiles.comfy.count='1'; // This fixture delivers one candidate per narrative shot.
   const gallery=[{id:'previous-image',chatKey:'chat-a',floor:0,messageRef:reference,swipeId:0,inline:true,url:'/old.png',snapshot:{prompt:'old recipe'}}],history=[];
   const oldPlan={...core.createStoryboardWorkflowTicket({id:'old-plan',chatKey:'chat-a',floor:0,messageRef:reference}),status:'completed',shots:[{id:'old-shot',prompt:'old',status:'completed'}],archiveRef:'untouched-archive'};
   e.state.shotPlans=[oldPlan];e.state.prompt='old valid draft';e.state.promptDraft.compiled='old valid draft';
@@ -389,7 +390,7 @@ test('ordinary result save failure above 400 retains every old recipe and retrie
   e.gallery.push(...Array.from({length:499},(_,i)=>({id:`old-${i}`,inline:false,snapshot:{prompt:`saved-${i}`},future:{keep:i}})));
   const originals=copy(e.gallery),job={...e.jobs[0],id:'independent-large-gallery',planId:'independent-plan'};delete job.floorTake;
   e.context.storyboardDeleteRecordSnapshots=()=>assert.fail('no implicit recipe deletion');e.setSaveFailure(true);
-  await assert.rejects(e.deliver(job),/metadata save failed/);assert.equal(e.gallery.length,501);assert.deepEqual(e.gallery.slice(0,500),originals);
+  await assert.rejects(e.deliver(job),/metadata save failed/);assert.equal(e.gallery.length,500);assert.deepEqual(e.gallery,originals);
   e.setSaveFailure(false);await e.deliver(job);assert.equal(e.gallery.length,501);assert.deepEqual(e.gallery.slice(0,500),originals);
 });
 

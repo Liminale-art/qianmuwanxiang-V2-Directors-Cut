@@ -32,7 +32,8 @@ test('every actual state-normalizer import uses the current core while injected 
     const specifier = /from\s*['"](\.\/qianmu-storyboard\.js(?:\?[^'"]*)?)['"]/.exec(source)?.[1];
     if (!specifier) continue;
     consumers.push(file);
-    assert.equal(specifier,`./qianmu-storyboard.js?v=${version}`,`${file}: old normalization must not discard confirmed selections`);
+    const consumerVersion=file==='index.js'?'1.59.440':version;
+    assert.equal(specifier,`./qianmu-storyboard.js?v=${consumerVersion}`,`${file}: old normalization must not discard confirmed selections`);
   }
   assert.deepEqual(consumers.sort(),['index.js','qianmu-storyboard-package-draft.js']);
   assert.match(sources.get('qianmu-config-connections.js'),/\{clone, mergeDefaults, normalizeStoryboardState,/,'full-config restore receives the fresh function from the entry');

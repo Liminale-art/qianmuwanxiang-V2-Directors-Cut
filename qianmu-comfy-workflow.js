@@ -5,6 +5,12 @@ const SLOTS = new Set(['prompt', 'negative', 'model', 'seed', 'width', 'height',
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 function fail(code, message) { const error = new Error(message); error.code = code; throw error; }
 
+export function comfyCandidateCount(value) {
+  const count = value === '' || value == null ? 1 : Number(value);
+  if (!Number.isInteger(count) || count < 1 || count > 8) fail('comfy_invalid_parameter', '每镜候选数须为 1 至 8 的整数');
+  return count;
+}
+
 function mapValues(value, visit, depth = 0) {
   if (depth > 64) fail('invalid_workflow', 'ComfyUI 工作流嵌套过深');
   if (typeof value === 'string') return visit(value);
@@ -103,7 +109,7 @@ export function prepareComfyWorkflow(value, input = {}) {
   const replacements = { prompt: String(input.prompt ?? ''), negative: String(input.negativePrompt ?? ''), model: String(input.model ?? '') };
   const definitions = {
     width: [p.width, 64, 8192, 1024, true], height: [p.height, 64, 8192, 1024, true],
-    steps: [p.steps, 1, 300, 28, true], count: [p.count, 1, 4, 1, true], seed: [p.seed, -1, Number.MAX_SAFE_INTEGER, -1, true],
+    steps: [p.steps, 1, 300, 28, true], count: [p.count, 1, 8, 1, true], seed: [p.seed, -1, Number.MAX_SAFE_INTEGER, -1, true],
     cfg: [p.scale === '' || p.scale == null ? p.cfg : p.scale, 0, 100, 5],
   };
   for (const [key, args] of Object.entries(definitions)) {

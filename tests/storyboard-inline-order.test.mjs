@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
 import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
+import {insertStoryboardProseImage,storyboardProseParagraphs} from '../qianmu-storyboard-inline-reading.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
 const order = (shotIndex = 0, requestIndex = 1, batchId = 'batch-a', batchStartedAt = 100) => ({ version: 1, batchId, batchStartedAt, shotIndex, requestIndex });
@@ -82,7 +83,7 @@ test('record and log projections retain the order outside the removable heavy sn
   const state = core.createStoryboardDefaults(), context = vm.createContext({ ...core,
     clone: structuredClone, uid: () => 'generated', storyboardState: () => state,
     galleryMembershipSnapshot, uniqueClean: value => value, hashText: () => 'hash',
-    storyboardPipelineArchiveCache: new Map(), storyboardGalleryRecords:()=>[],storyboardFloorTakeReceipts:()=>[],saveSettings() {},
+    storyboardPipelineArchiveCache: new Map(), storyboardGalleryRecords:()=>[],storyboardFloorTakeReceipts:(()=>{const receipts=[];return()=>receipts;})(),saveSettings() {},
   });
   vm.runInContext([section('storyboardCreateRecord'), section('storyboardStoreLog'), section('storyboardStartLog')].join('\n'), context);
   const job = { id: 'job', source: 'novel', profile: { model: 'nai-diffusion-5-full' }, payload: { prompt: 'quiet garden' },
@@ -97,25 +98,24 @@ test('record and log projections retain the order outside the removable heavy sn
   assert.equal(log.snapshot.inlineOrder.shotIndex, 2);
 });
 
-test('multiple fallback or shared-paragraph placements append in order while distinct anchors remain independent', () => {
-  const dom = [], node = id => ({ id, insertAdjacentElement(position, item) {
-    assert.equal(position, 'afterend'); dom.splice(dom.indexOf(this) + 1, 0, item);
-  } });
+test('shared-paragraph placements append in narrative order and unresolved anchors never fall back to the floor tail', () => {
+  const dom = [], node = id => ({ id, isConnected:true, after(item) { dom.splice(dom.indexOf(this) + 1, 0, item); } });
   const p = node('paragraph'), text = node('text'), footer = node('footer'); dom.push(p, text, footer);
-  const context = vm.createContext({}); vm.runInContext(section('storyboardInsertInlineWrapper'), context);
+  text.contains=()=>true;
+  const context = vm.createContext({insertStoryboardProseImage}); vm.runInContext(section('storyboardInsertInlineWrapper'), context);
   const tails = new Map();
-  for (const id of ['p1', 'p2']) context.storyboardInsertInlineWrapper(text, { node: p, fallback: false }, node(id), tails);
+  for (const id of ['p1', 'p2']) context.storyboardInsertInlineWrapper(text, { node: p, after:true, fallback: false }, node(id), tails);
   for (const id of ['end1', 'end2', 'end3']) context.storyboardInsertInlineWrapper(text, { node: p, fallback: true }, node(id), tails);
-  assert.deepEqual(ids(dom), ['paragraph', 'p1', 'p2', 'text', 'end1', 'end2', 'end3', 'footer']);
+  assert.deepEqual(ids(dom), ['paragraph', 'p1', 'p2', 'text', 'footer']);
 });
 
 test('inserted illustration markup never becomes a paragraph when scoring the next anchor', () => {
-  const prose = { matches: () => true, closest: () => null, textContent: 'real paragraph' };
-  const illustration = { matches: () => true, closest: () => ({}), textContent: 'picture and buttons' };
-  const context = vm.createContext({ storyboardCleanMessageText: value => value });
+  const prose = {nodeType:1,tagName:'P',matches:()=>false,childNodes:[{nodeType:3,nodeValue:'real paragraph'}]};
+  const illustration = {nodeType:1,tagName:'DIV',matches:()=>true,childNodes:[{nodeType:3,nodeValue:'picture and buttons'}]};
+  const context = vm.createContext({ storyboardCleanMessageText: value => value, storyboardProseParagraphs });
   vm.runInContext(section('storyboardMessageParagraphNodes'), context);
-  assert.deepEqual(Array.from(context.storyboardMessageParagraphNodes({ children: [prose, illustration] })), [prose]);
-  assert.deepEqual(Array.from(context.storyboardMessageParagraphNodes({ children: [], querySelectorAll: () => [illustration, prose] })), [prose]);
+  assert.deepEqual(Array.from(context.storyboardMessageParagraphNodes({childNodes:[prose,illustration]})).map(item=>item.text),['real paragraph']);
+  assert.deepEqual(Array.from(context.storyboardMessageParagraphNodes({childNodes:[{nodeType:1,tagName:'DIV',matches:()=>false,childNodes:[illustration,prose]}]})).map(item=>item.text),['real paragraph']);
 });
 
 test('generation freezes one batch before asynchronous adaptation and rendering still enforces original link guards', () => {
@@ -123,7 +123,7 @@ test('generation freezes one batch before asynchronous adaptation and rendering 
   assert.ok(generate.indexOf('const inlineBatch =') < generate.indexOf('await storyboardAdaptShotForModel'));
   assert.match(generate, /inlineOrder: \{ \.\.\.inlineBatch, shotIndex: index, requestIndex: request.requestIndex \}/);
   assert.match(section('storyboardCreateJob'), /inlineOrder: normalizeStoryboardInlineOrder\(inlineOrder\)/);
-  const guard=render.indexOf('storyboardInlineRecordValid(record)'),sort=render.indexOf('sortStoryboardInlineRecords(items.records,');
+  const guard=render.indexOf('storyboardInlineRecordValid(record)'),sort=render.indexOf('sortStoryboardInlineRecords(records,');
   assert.ok(guard>=0&&sort>guard);
   assert.doesNotMatch(render, /storyboardHydrateGallerySnapshots|storyboardReadSnapshotForRecord/);
   assert.match(section('storyboardInlineRecordValid'), /inactive|\['active', 'stale'\]/);

@@ -72,3 +72,20 @@ test('manual receipt returns its safe failure but replaces stale chat, owner or 
     assert.deepEqual(e.calls,['retrieve']);assert.deepEqual(e.log,before);assert.equal(e.c.storyboardReceiveComfyImage.pending,0);
   }
 });
+
+test('automatic receipt is silent and refuses a removed log before IO or after receipt lookup',async()=>{
+  for(const boundary of ['before','after']){
+    const e=fixture();let valid=boundary!=='before';
+    if(boundary==='after')e.c.storyboardComfyRecoveryRuntime=async()=>{valid=false;return {retrieve:async()=>{throw Error('must not retrieve');}};};
+    await e.c.storyboardReceiveComfyImage(e.log,{refresh:false,silent:true,valid:()=>valid});
+    assert.deepEqual(e.calls,[]);assert.deepEqual(e.notices,[]);assert.equal(e.c.storyboardReceiveComfyImage.pending,0);
+  }
+});
+
+test('confirmed upstream failure is logged as failure even when provider usage is absent',async()=>{
+  const e=fixture();let finish;
+  e.c.storyboardComfyRecoveryRuntime=async()=>({retrieve:async()=>({status:'failed',warning:'provider failed',archived:false})});
+  e.c.storyboardFinishLog=(row,status,details)=>finish={row,status,details};
+  await e.c.storyboardReceiveComfyImage(e.log,{refresh:false,silent:true});
+  assert.equal(finish.status,'failed');assert.equal(finish.details.submissionState,'accepted');assert.equal(e.log.params.upstreamStatus,'failed');assert.deepEqual(e.notices,[]);
+});

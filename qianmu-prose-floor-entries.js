@@ -22,17 +22,17 @@ export function floorProseText(element){
 
 // Keep the per-message storyboard shortcut separate from the assistant so its
 // floor wiring remains lightweight.
-export function injectStoryboardMessageButtons(chatRoot,{floorOf,getContext,getState,planForMessage,applyIcons}){
+export function injectStoryboardMessageButtons(chatRoot,{floorOf,getContext,getState,planForMessage,applyIcons,isBusy=()=>false}){
   chatRoot.querySelectorAll('.mes').forEach((message)=>{
     const floor=floorOf(message),chatMessage=Number.isInteger(floor)?getContext().chat?.[floor]:null;
     const existing=message.querySelector('.sd-storyboard-message-action');
     if(!isCharacterFloor(message,chatMessage)){existing?.remove();return;}
-    if(existing)return;
     const toolbar=message.querySelector('.mes_buttons .extraMesButtons, .mes_buttons .mes_buttons_inner, .mes_buttons');if(!toolbar)return;
-    const button=chatRoot.ownerDocument.createElement('button');button.type='button';button.className='mes_button interactable sd-storyboard-message-action';
+    const button=existing||chatRoot.ownerDocument.createElement('button');button.type='button';button.className=`mes_button interactable sd-storyboard-message-action${isBusy(floor)?' is-generating':''}`;
     button.dataset.storyboardChatAction = 'capture-floor';
     const plan=planForMessage(getState(),floor,chatMessage);
     button.title=plan?.shots?.some((shot)=>shot.hasPrompt||String(shot.prompt||'').trim())?`重新提取第 ${floor} 层生成词`:`提取第 ${floor} 层生成词`;
-    button.setAttribute('aria-label',button.title);button.innerHTML='<i class="fa-solid fa-video" data-qm-icon="qm-regular-aperture"></i>';toolbar.appendChild(button);applyIcons(button);
+    button.setAttribute('aria-label',button.title);button.setAttribute('aria-busy',String(isBusy(floor)));
+    if(!existing){button.innerHTML='<i class="fa-solid fa-video" data-qm-icon="qm-regular-aperture"></i>';toolbar.appendChild(button);applyIcons(button);}
   });
 }

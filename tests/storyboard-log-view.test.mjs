@@ -8,26 +8,29 @@ test('all records render despite persisted old filter, initially folded with fou
   const html=c.renderStoryboardLogs(state);assert.equal((html.match(/data-storyboard-log=/g)||[]).length,5);assert.doesNotMatch(html,/<details[^>]*\sopen|<unsafe model>|data-storyboard-log-filter/);
   for(const tone of ['grey','yellow','red','green'])assert.match(html,new RegExp(`data-tone="${tone}"`));
 });
-test('empty logs show a direct status while receipts and bundles remain available without opening a fold',()=>{
+test('empty logs have no receipt managers or resource bundle controls',()=>{
   const {state,context:c}=logFixture(),before=structuredClone(state),html=c.renderStoryboardLogs(state);
-  assert.match(html,/<section class="sd-storyboard-log-maintenance" aria-label="收片与日志工具">/);
+  assert.match(html,/<section class="sd-storyboard-log-maintenance" aria-label="日志工具">/);
   assert.doesNotMatch(html,/<details|日志管理|sd-storyboard-export-logs|sd-storyboard-clear-logs/);
-  for(const token of ['sd-storyboard-open-service-inbox','sd-storyboard-open-comfy-inbox','sd-storyboard-service-inbox','sd-storyboard-comfy-inbox','sd-storyboard-pack-export','sd-storyboard-pack-recover','sd-storyboard-pack-file'])assert.ok(html.includes(token),token);
+  for(const token of ['sd-storyboard-open-service-inbox','sd-storyboard-open-comfy-inbox','sd-storyboard-service-inbox','sd-storyboard-comfy-inbox','sd-storyboard-pack-export','sd-storyboard-pack-recover','sd-storyboard-pack-file'])assert.ok(!html.includes(token),token);
   assert.match(html,/class="sd-storyboard-logs-empty" role="status">暂无取景或生图记录。<\/p>/);
   assert.deepEqual(state,before,'rendering does not fetch, migrate or rewrite history');
 });
-test('non-empty logs keep export and clear visible with original in-flight clear protection',()=>{
+test('non-empty logs expose only an accessible clear icon with in-flight protection',()=>{
   const {state,context:c}=logFixture();state.logs=[{id:'one',status:'failed',source:'comfy',params:{}}];
   const render=()=>c.renderStoryboardLogs(state),tools=()=>render().split('</section>')[0];
   assert.doesNotMatch(render(),/sd-storyboard-logs-empty/);
-  assert.match(tools(),/sd-storyboard-export-logs">导出日志/);
-  assert.match(tools(),/sd-storyboard-clear-logs" >清空日志/);
-  c.storyboardActiveJobs.set('active',{});assert.match(tools(),/sd-storyboard-clear-logs" disabled/);c.storyboardActiveJobs.clear();
-  c.storyboardQueue.push({});assert.match(tools(),/sd-storyboard-clear-logs" disabled/);c.storyboardQueue.length=0;
-  c.storyboardQueuePendingCount=()=>1;assert.match(tools(),/sd-storyboard-clear-logs" disabled/);c.storyboardQueuePendingCount=()=>0;
-  c.storyboardQueueSettling=1;assert.match(tools(),/sd-storyboard-clear-logs" disabled/);
+  assert.doesNotMatch(tools(),/sd-storyboard-export-logs|导出日志|>清空日志</);
+  assert.match(tools(),/class="sd-icon-btn sd-storyboard-clear-logs" title="清空日志" aria-label="清空日志" ><i class="fa-solid fa-trash-can" aria-hidden="true"><\/i><\/button>/);
+  const disabled=()=>assert.match(tools(),/sd-storyboard-clear-logs"[^>]* disabled/);
+  c.storyboardActiveJobs.set('active',{});disabled();c.storyboardActiveJobs.clear();
+  c.storyboardQueue.push({});disabled();c.storyboardQueue.length=0;
+  c.storyboardQueuePendingCount=()=>1;disabled();c.storyboardQueuePendingCount=()=>0;
+  c.storyboardQueueSettling=1;disabled();
+  c.storyboardQueueSettling=0;c.storyboardReceiveComfyImage.pending=1;disabled();
+  c.storyboardReceiveComfyImage.pending=0;c.storyboardReceiveServiceImage.pending=1;disabled();
 });
-test('log status distinguishes an unsent request from an accepted result needing review',()=>{
+test('task result is simple but unknown accepted work is never mislabeled failed',()=>{
   const {state,context:c}=logFixture();
   state.logs=[{id:'unsent',status:'failed',submissionState:'not_submitted',source:'novel',params:{}},
     {id:'uncertain',status:'failed',submissionState:'unknown',source:'novel',params:{}},
@@ -35,16 +38,18 @@ test('log status distinguishes an unsent request from an accepted result needing
     {id:'rejected',status:'failed',submissionState:'rejected',source:'novel',params:{}}];
   const html=c.renderStoryboardLogs(state);
   const row=id=>html.split(`data-storyboard-log="${id}"`)[1]?.split('<details class="sd-card sd-storyboard-log')[0]||'';
-  assert.match(row('unsent'),/sd-storyboard-log-status">未提交</);
-  assert.match(row('uncertain'),/sd-storyboard-log-status">待核查</);
-  assert.match(row('accepted'),/sd-storyboard-log-status">待核查</);
-  assert.match(row('uncertain'),/>核查并重试<\/button>/);
+  assert.match(row('unsent'),/sd-storyboard-log-status">失败</);
+  assert.match(row('uncertain'),/sd-storyboard-log-status">未完成</);
+  assert.match(row('accepted'),/sd-storyboard-log-status">未完成</);
+  assert.doesNotMatch(html,/核查并重试|领取原图|再生成|sd-storyboard-retry-log/);
   assert.match(row('rejected'),/sd-storyboard-log-status">失败</);
+  state.logs[2].params.upstreamStatus='failed';assert.match(c.renderStoryboardLogs(state),/#accepted<\/span><\/span><time>[^<]*<\/time><span class="sd-storyboard-log-status">失败/);
 });
-test('collapsed rendering never serializes large inputs or outputs and preserves receive/retry/diagnostic tools',()=>{
+test('collapsed rendering never serializes large inputs or outputs and keeps only diagnostic tools',()=>{
   const {state,context:c}=logFixture();state.logs=[{id:'one',status:'failed',source:'comfy',pipelineId:'p',comfyReceipt:true}];
   state.pipelineLogs=[{id:'p',stages:[{id:'s',type:'provider_request',status:'failed',input:{get request(){throw Error('must not read a closed payload');}},output:{response:{}}}]}];
-  const html=c.renderStoryboardLogs(state);for(const token of ['data-log-exchange="input"','data-log-exchange="output"','sd-storyboard-receive-comfy','sd-storyboard-retry-log','sd-storyboard-copy-log','sd-storyboard-pack-export'])assert.ok(html.includes(token));
+  const html=c.renderStoryboardLogs(state);for(const token of ['data-log-exchange="input"','data-log-exchange="output"','sd-storyboard-copy-log'])assert.ok(html.includes(token));
+  assert.doesNotMatch(html,/sd-storyboard-receive-comfy|sd-storyboard-retry-log|sd-storyboard-pack-export|sd-storyboard-load-log/);
   assert.match(html,/data-log-exchange="input"><header>↑ 发送<\/header><pre><\/pre>/);
 });
 test('full exchange keeps long original/repaired output, relocates repair messages, and redacts credentials without mutating data',()=>{
@@ -72,19 +77,20 @@ test('successful log summaries never promote retained historical errors while st
     state.logs=[log];state.pipelineLogs=[pipeline];const before=structuredClone(state);
     assert.equal(c.storyboardLogPresentation(log,pipeline).reason,'');
     const html=c.renderStoryboardLogs(state),summary=html.split('data-storyboard-log="recovered"')[1].split('</summary>')[0];
-    assert.match(summary,/sd-storyboard-log-status">完成/);assert.doesNotMatch(summary,/summary-reason|云任务处理未完成/);
+    assert.match(summary,/sd-storyboard-log-status">成功/);assert.doesNotMatch(summary,/summary-reason|云任务处理未完成/);
     assert.ok(html.includes(`sd-storyboard-stage-error">${oldError}</small>`),'historical failure stays under its original stage');
     const output=JSON.parse(c.storyboardLogExchangeText(log,pipeline,'output'));
     assert.equal(output[0].status,'failed');assert.equal(output[0].error,oldError);assert.equal(output[1].output.saved,true);
     assert.deepEqual(state,before,'rendering never cleans or rewrites stored logs and pipeline history');
   }
 });
-test('unresolved original requests retain their failure summary and visible duplicate-charge warning',()=>{
+test('unknown originals preserve diagnostics but never expose backend recovery chores in the list',()=>{
   const {state,context:c}=logFixture(),error='原请求结果和费用仍未知';
   state.logs=['unknown','accepted'].map((submissionState,index)=>({id:`pending-${index}`,status:'failed',submissionState,source:'comfy',error}));
   const before=structuredClone(state),html=c.renderStoryboardLogs(state);
-  assert.equal((html.match(/sd-storyboard-log-summary-reason">原请求结果和费用仍未知/g)||[]).length,2);
-  assert.equal((html.match(/原请求结果待核查，请勿直接重新生成，以免重复付费/g)||[]).length,2);
+  assert.doesNotMatch(html,/sd-storyboard-log-summary-reason|待核查|请勿直接重新生成/);
+  assert.equal((html.match(/连接中断，尚未收到最终结果。/g)||[]).length,2);
+  assert.match(c.storyboardLogExchangeText(state.logs[0],null,'output'),/原请求结果和费用仍未知/);
   assert.deepEqual(state,before);
 });
 test('exchange wrapping does not add another depth cutoff to already-retained stage payloads',()=>{
@@ -119,8 +125,9 @@ test('each stage owns its inline disclosure; human labels, errors and full excha
   }
   assert.doesNotMatch(html,/<\/ol>\s*<section class="sd-storyboard-stage-detail"/);
   assert.match(html,/<details class="sd-storyboard-log-exchanges"><summary>完整发送与返回<\/summary>/);
-  assert.match(html,/<summary>[\s\S]*sd-storyboard-log-summary-reason">请求受限，请稍后重试<\/span><\/summary>/);
-  assert.match(html,/原请求结果待核查，请勿直接重新生成，以免重复付费/);
+  assert.doesNotMatch(html,/sd-storyboard-log-summary-reason|请勿直接重新生成/);
+  const summary=html.split('data-storyboard-log="one"')[1].split('</summary>')[0];
+  assert.doesNotMatch(summary,/请求受限|工作流检查|<small/);assert.match(summary,/#one/);
   assert.doesNotMatch(html,/token 未提供|private detail/);
 });
 

@@ -51,3 +51,10 @@ test('actual service receipt remains active through lazy loading and original-re
     await c.storyboardReceiveServiceImage('id',{});assert.equal(c.storyboardReceiveServiceImage.pending,0);
   }
 });
+
+test('a removed original log stops service receive before request and before archive delivery',async()=>{
+  const first=actionFixture();first.deps.valid=()=>false;await receiveServiceImage('original',null,'st-user:fixture',first.deps);assert.deepEqual(first.calls,[]);
+  const second=actionFixture();let valid=true;second.deps.valid=()=>valid;
+  second.service.retrieve=async(_id,deliver)=>{valid=false;return deliver({},second.row,async()=>{},async()=>{});};
+  await receiveServiceImage('original',null,'st-user:fixture',second.deps);assert.deepEqual(second.calls,[]);assert.equal(second.notices.at(-1)[1],'warning');
+});

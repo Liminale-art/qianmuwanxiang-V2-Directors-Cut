@@ -9,10 +9,10 @@ import {
 } from './qianmu-openai-image-compat.js';
 import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo, novelModelCapabilities, novelReferenceIssue, novelPreciseReferenceParameters, isImageModelMetadataField } from './qianmu-image-models.js';
 import {normalizeNovelVibeEntries,novelVibeParameters} from './qianmu-novel-vibe.js';
-import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
-import { collectComfyStillResults, comfyTaskId, comfyStillMime, comfyReferenceStillMime, readComfyImageBytes } from './qianmu-comfy-results.js';
-import { auditComfyWorkflow, requireComfyExecution } from './qianmu-comfy-audit.js';
-export { inspectComfyImageExecution, requireComfyExecution } from './qianmu-comfy-audit.js';
+import { prepareComfyWorkflow, comfyCandidateCount } from './qianmu-comfy-workflow.js?v=1.59.440';
+import { collectComfyStillResults, comfyTaskId, comfyStillMime, comfyReferenceStillMime, readComfyImageBytes } from './qianmu-comfy-results.js?v=1.59.440';
+import { auditComfyWorkflow, requireComfyExecution } from './qianmu-comfy-audit.js?v=1.59.440';
+export { inspectComfyImageExecution, requireComfyExecution } from './qianmu-comfy-audit.js?v=1.59.440';
 import { imageTransportProvider, prepareImageTransportRequest, resolveImageTransportBinding } from './qianmu-image-transport.js';
 
 const MAX_IMAGES = 8;
@@ -88,7 +88,7 @@ function directParameters(input) {
   const source = plainObject(input.parameters);
   return {
     ...source,
-    count: Math.round(number(source.count, 1, 4, 1)),
+    count: text(input.provider,40).toLowerCase() === 'comfy' ? comfyCandidateCount(source.count) : Math.round(number(source.count, 1, 4, 1)),
     providerOptions: Object.fromEntries(Object.entries(plainObject(source.providerOptions)).filter(([key]) => !isImageModelMetadataField(key))),
   };
 }

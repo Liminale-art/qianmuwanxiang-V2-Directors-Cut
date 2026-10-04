@@ -79,6 +79,7 @@ test('every known body portal is explicitly mounted with reader/media roles at i
         const tail = source.slice(start), end = tail.slice(1).search(/^(?:async )?function /m), body = end < 0 ? tail : tail.slice(0, end + 1);
         assert.match(body, /appearanceSession\.mountPortal\(/, name);
         if (['mountReaderPortal','openTheaterFullscreen'].includes(name)) assert.match(body, /role:'reader'/);
-        if (['storyboardOpenVideoDraftEditor','storyboardOpenFilmViewer','storyboardOpenVideoViewer','storyboardOpenLightbox'].includes(name)) assert.match(body, /role:'media'/);
+        if (['storyboardOpenFilmViewer','storyboardOpenVideoViewer','storyboardOpenLightbox'].includes(name)) assert.match(body, /role:'media'/);
+        if (name==='storyboardOpenVideoDraftEditor') assert.match(body, /inheritTheme:true/);
     }
 });

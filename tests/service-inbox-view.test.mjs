@@ -1,29 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import vm from 'node:vm';
-import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
-const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-function fixture(rows){
-  const host={dataset:{},isConnected:true,innerHTML:'',querySelectorAll:()=>[],querySelector:()=>null},calls=[];
-  const root={querySelector:()=>host};let c;
-  const service={list:async()=>{calls.push('list');return rows;},catalog:async()=>{calls.push('catalog');return {namespace:'synthetic',originals:rows,tasks:rows,totals:{count:rows.length,tasks:rows.length,imageBytes:1024,metadataBytes:0,temporaryBytes:0,reservedBytes:4096}};}};
-  c=vm.createContext({settings:{},storyboardAdmissionEpoch:0,getChatKey:()=> 'synthetic',uid:()=> 'id',storyboardImageServiceRuntime:async()=>service,
-    htmlEscape:escape,formatDateTime:()=> 'synthetic-time',formatStorageBytes:value=>String(value)+' B',applyQianmuIcons:()=>calls.push('icons')});
-  vm.runInContext(storyboardFunctionSource('storyboardPaintServiceInbox'),c);
-  return {c,host,root,calls,service,paint:server=>c.storyboardPaintServiceInbox(root,{server})};
-}
-test('NAI keeps result-uncertain caution and review in view while optional capacity is initially folded',async()=>{
-  const f=fixture([{attemptId:'original',status:'uncertain',model:'<unsafe>',snapshot:{profile:{model:'<unsafe>'}},createdAt:1}]);
-  await f.paint(true);const visible=f.host.innerHTML.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g,'');
-  assert.match(f.host.innerHTML,/<details class="sd-service-inbox-details"><summary>存储详情<\/summary>/);
-  assert.doesNotMatch(f.host.innerHTML,/<details[^>]*\sopen|<unsafe>/);
-  assert.doesNotMatch(visible,/等待预留|1024 B|4096 B/);assert.match(visible,/原请求结果待核查，请勿直接重新生成，以免重复付费/);
-  assert.match(visible,/data-service-review-index="0">核查原请求/);assert.match(visible,/data-service-receive-index="0" disabled/);
-  assert.match(visible,/data-service-scope="server" aria-pressed="true"/);assert.deepEqual(f.calls,['catalog','icons']);
+import {readFileSync} from 'node:fs';
+import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {logFixture} from './helpers/storyboard-log-fixture.mjs';
+const entry=readFileSync(new URL('../index.js',import.meta.url),'utf8');
+
+// The NAI inbox is retired. Receipt/account/archive guarantees remain in
+// config-service-receive and image-service-recovery; no old UI is recreated here.
+test('NAI original receipt states never expose a retired inbox or capacity/catalog UI',()=>{
+  const {state,context}=logFixture();
+  for(const [status,submissionState] of [['failed','unknown'],['failed','accepted'],['success','accepted']]){
+    state.logs=[{id:'nai-original',source:'novel',status,submissionState,params:{},
+      snapshot:{serviceTask:{attemptId:'nai-original'}},error:status==='failed'?'Original diagnostic':''}];
+    const html=context.renderStoryboardLogs(state);
+    assert.match(html,/data-storyboard-log="nai-original"/);
+    assert.doesNotMatch(html,/NAI 收片|sd-storyboard-service-inbox|data-service-(?:scope|review|receive)-|存储详情|等待预留|核查原请求/);
+  }
+  assert.doesNotMatch(section('renderStoryboardLogs'),/\.catalog\(|\.list\(|storyboardReceiveServiceImage\(/);
 });
-test('NAI completed receipts do not get a speculative risk warning, and original scope checks still discard late data',async()=>{
-  const f=fixture([{attemptId:'complete',status:'succeeded',resultAvailable:true,model:'synthetic',createdAt:1,snapshot:{profile:{}}}]);
-  await f.paint(false);assert.doesNotMatch(f.host.innerHTML,/sd-service-inbox-caution|sd-service-inbox-details/);assert.deepEqual(f.calls,['list','icons']);
-  const before=f.host.innerHTML,load=f.service.catalog;f.service.catalog=async()=>{const result=await load();f.c.storyboardAdmissionEpoch++;return result;};
-  await f.paint(true);assert.equal(f.host.innerHTML,before);assert.deepEqual(f.calls,['list','icons','catalog']);
+
+test('NAI inbox bindings are gone while guarded original-attempt recovery remains available',()=>{
+  assert.doesNotMatch(entry,/storyboardPaintServiceInbox|storyboardReviewServiceImage|sd-storyboard-open-service-inbox|data-service-receive-index/);
+  const recover=section('storyboardRecoverOriginalTasks');
+  assert.match(recover,/state\.logs\.includes\(log\)/);
+  assert.match(recover,/storyboardReceiveServiceImage\(snapshot\.serviceTask\.attemptId,null,snapshot\.imageAdmission\.namespace,\{silent:true,valid\}\)/);
+  assert.doesNotMatch(recover,/\.catalog\(|\.list\(|\.submit\(|storyboardGenerate|storyboardRetryLog/);
+  const receive=section('storyboardReceiveServiceImage');
+  assert.match(receive,/expectedNamespace/);
+  assert.match(receive,/valid/);
 });

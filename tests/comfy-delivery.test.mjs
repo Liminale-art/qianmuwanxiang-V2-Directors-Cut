@@ -423,9 +423,10 @@ test('production log gate distinguishes gateway, legacy gateway evidence, browse
   assert.equal(context.storyboardCanReceiveComfyLog({snapshot:job({connection:{baseUrl:'https://cloud.comfy.org?secret=invalid',options:{comfyTransport:'browser'}}})}),false);
   assert.equal(sanitizeStoryboardSnapshot({ ...job(), comfyServiceTask: { version: 1, attemptId: job().id } }).comfyServiceTask.attemptId, job().id);
 });
-test('production normal and manual UI are wired to the same client and preserve original credentials', async () => {
+test('production generation and automatic original recovery share the client without receipt UI or paid replay', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  assert.match(source, /sd-storyboard-receive-comfy/); assert.match(source, /storyboardComfyRecovery\?\.close\(\)/);
+  assert.doesNotMatch(source, /sd-storyboard-receive-comfy|sd-storyboard-open-comfy-inbox/); assert.match(source, /storyboardComfyRecovery\?\.close\(\)/);
+  assert.match(storyboardFunctionSource('storyboardRecoverOriginalTasks'), /storyboardReceiveComfyImage\(log,\{refresh:false,silent:true,valid\}\)/);
   const receive = storyboardFunctionSource('storyboardReceiveComfyImage');
   const action = await readFile(new URL('../qianmu-comfy-recovery-action.js', import.meta.url), 'utf8');
   assert.match(storyboardFunctionSource('storyboardResolveComfyRecoveryKey'), /exact:\s*true/);

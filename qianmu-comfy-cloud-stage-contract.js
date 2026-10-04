@@ -49,7 +49,7 @@ export function normalizeComfyCloudStage(value, expectedIdentity) {
     const { execution, previewNodeIds } = receipt.stillOutput;
     array(value.selection); array(value.images);
     if (value.selection.length > execution.maxImages
-      || execution.expectedImages != null && value.selection.length !== execution.expectedImages || execution.automatic && value.selection.length !== 1
+      || execution.expectedImages != null && value.selection.length !== execution.expectedImages
       || value.images.length !== value.selection.length) invalid();
     const seen = new Set(), selection = [], images = []; let total = 0, previousIndex = -1;
     for (let index = 0; index < value.selection.length; index++) {

@@ -105,7 +105,8 @@ test('paragraph text is literal, empty paragraphs disable manual mode, and mount
 
 test('actual entry forwards the same normalized selection contract without Popup or silent native fallback', async () => {
     const start = entry.indexOf('async function storyboardChooseCaptureMode(');
-    const chooser = entry.slice(start, entry.indexOf('\nasync function storyboardEditPrompt(', start));
+    const tail=entry.slice(start),end=tail.slice(1).search(/^(?:async )?function /m);
+    const chooser=tail.slice(0,end+1);
     for (const choice of [null, {mode: 'auto', indexes: []}, {mode: 'manual_supplement', indexes: [0, 2]}]) {
         const message = {mes: 'text'};
         const context = vm.createContext({storyboardCaptureView: null, initialized: true, isRuntimeOwner: () => true,

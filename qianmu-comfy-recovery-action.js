@@ -41,11 +41,13 @@ export async function resolveComfyRecoveryKey(connection, {connections,resolve})
 export async function receiveComfyImage(log, { refresh = true, taskLocator, cloudRecord } = {}, deps) {
   const initial = deps.scope();
   const current = () => {
+    if(deps.valid&&!deps.valid())throw new Error('原任务记录已变化，未继续保存图片');
     const next = deps.scope();
     if (next.chat !== initial.chat) throw new Error('聊天已切换，请回原聊天继续领取');
     if (next.owner !== initial.owner || next.epoch !== initial.epoch) throw new Error('分镜配置已变化，请从当前页面重新领取原图');
   };
   try {
+    current();
     if (!deps.canReceive(log)) throw new Error('请使用原 Comfy 服务日志领取');
     const snapshot = deps.sanitize(log.snapshot, { source: 'comfy' });
     const job = { ...snapshot, id: snapshot.imageAdmission.attemptId, logId: log.id, recoveringOriginal: true,
@@ -58,7 +60,7 @@ export async function receiveComfyImage(log, { refresh = true, taskLocator, clou
     let result;
     if(resolveStoryboardComfyCloud(job.connection)) {
       const selected=await service.cloudRecordFor(job);current();
-      if(selected?.version!==3||!selected.cloudTask)throw new Error('原云任务受理尚未确认，请从收片管理核查原任务，勿重新生成');
+      if(selected?.version!==3||!selected.cloudTask)throw new Error('尚未收到原任务的确认信息');
       if(selected.attemptId!==job.id||selected.namespace!==job.imageAdmission.namespace)throw new Error('原日志与云任务不匹配');
       const supplied=cloudRecord?.cloudRecord||cloudRecord;
       if(supplied&&(supplied.attemptId!==selected.attemptId||supplied.namespace!==selected.namespace
@@ -70,9 +72,12 @@ export async function receiveComfyImage(log, { refresh = true, taskLocator, clou
       result = await service.retrieve(job,{apiKey,deliver:(...args)=>deliver(job,...args)});
     }
     current();
-    if (result.status==='failed' && result.cloudUsage) deps.finish(log,'failed',{
-      error:result.warning,submissionState:'accepted',cloudUsage:result.cloudUsage,durationMs:Number(log.durationMs)||0,
-    });
+    if (['failed','canceled','expired'].includes(result.status)) {
+      log.params={...log.params,upstreamStatus:result.status};
+      deps.finish(log,result.status==='canceled'?'cancelled':'failed',{
+        error:result.warning,submissionState:'accepted',...(result.cloudUsage?{cloudUsage:result.cloudUsage}:{}),durationMs:Number(log.durationMs)||0,
+      });
+    }
     if (result.archived) {
       log.error = ''; log.submissionState = 'accepted';
       deps.finish(log, 'success', { durationMs: Number(log.durationMs) || 0 });

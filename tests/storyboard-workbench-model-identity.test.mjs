@@ -167,14 +167,18 @@ test('natural-language job snapshots do not advertise an artist or pool that was
   assert.doesNotMatch(job.payload.prompt,/nai-only|legacy-naI/);
 });
 
-test('inline artist button follows the image family rather than current workbench selection', () => {
+test('inline menus use the same focused reading actions regardless of image family or workbench selection', () => {
   const { state, context } = environment();
   context.snip = text => text; context.storyboardInlineVideoForRecord = () => null;
   vm.runInContext(section('storyboardInlineRecordMarkup'),context);
-  state.source = 'openai';
-  assert.match(context.storyboardInlineRecordMarkup({id:'nai',source:'novel',url:'https://image.example/a.png'}),/data-storyboard-chat-action="artist"/);
-  state.source = 'novel';
-  assert.doesNotMatch(context.storyboardInlineRecordMarkup({id:'gpt',source:'openai',url:'https://image.example/b.png'}),/data-storyboard-chat-action="artist"/);
+  for(const [workbench,source] of [['openai','novel'],['novel','openai']]){
+    state.source = workbench;
+    const html=context.storyboardInlineRecordMarkup({id:source,source,url:'https://image.example/a.png'});
+    assert.match(html,/data-storyboard-chat-action="image-info"/);
+    assert.match(html,/data-storyboard-chat-action="image-log"/);
+    assert.doesNotMatch(html,/data-storyboard-chat-action="(?:artist|edit|redraw|copy|download)"/);
+    assert.ok(html.indexOf('data-storyboard-chat-action="collapse"')<html.indexOf('data-storyboard-chat-action="image-info"'));
+  }
 });
 
 test('built-in parameter styles keep the real alias and user styles match both name and capability', () => {
@@ -278,6 +282,7 @@ function generationEnvironment() {
     storyboardGenerationPreparing: new Set(),
     storyboardProductionContext: () => ({}), storyboardQueue: [], storyboardActiveJobs: new Map(), STORYBOARD_QUEUE_LIMIT: 100,
     storyboardQueueSettling: 0, storyboardQueueBatches:new Set(), startStoryboardQueueWindowBatch,
+    storyboardScheduleInlineRender:()=>{},
     // Model-routing fixture stops at the queue seam; ledger preflight is covered
     // by the separate user-count-range and stream compiler integration suites.
     storyboardPreflightImageBatch: async (_jobs,valid) => { if(!valid())throw Error('preparation changed'); },

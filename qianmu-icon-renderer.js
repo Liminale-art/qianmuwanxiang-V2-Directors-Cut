@@ -60,7 +60,7 @@ export const ICONSAX_GLYPH_NAMES = Object.freeze({
   "cpu": "cpu",
   "crosshair": "gps",
   "database": "driver",
-  "dots-three": "more",
+  "dots-three": "qianmu-ellipsis",
   "download-simple": "document-download",
   "eraser": "eraser",
   "eye": "eye",
@@ -515,10 +515,10 @@ export const ICONSAX_ICON_MARKUP = Object.freeze({
     "bold": "<g><path d=\"M21.53 15.9304C21.37 15.6604 20.92 15.2404 19.8 15.4404C19.18 15.5504 18.55 15.6004 17.92 15.5704C15.59 15.4704 13.48 14.4004 12.01 12.7504C10.71 11.3004 9.90995 9.41036 9.89995 7.37036C9.89995 6.23036 10.12 5.13036 10.57 4.09036C11.01 3.08036 10.7 2.55036 10.48 2.33036C10.25 2.10036 9.70995 1.78036 8.64995 2.22036C4.55995 3.94036 2.02995 8.04036 2.32995 12.4304C2.62995 16.5604 5.52995 20.0904 9.36995 21.4204C10.29 21.7404 11.26 21.9304 12.26 21.9704C12.42 21.9804 12.58 21.9904 12.74 21.9904C16.09 21.9904 19.23 20.4104 21.21 17.7204C21.88 16.7904 21.7 16.2004 21.53 15.9304Z\" fill=\"currentColor\"/></g>",
     "twotone": "<g><path d=\"M2.03009 12.42C2.39009 17.57 6.76009 21.76 11.9901 21.99C15.6801 22.15 18.9801 20.43 20.9601 17.72C21.7801 16.61 21.3401 15.87 19.9701 16.12C19.3001 16.24 18.6101 16.29 17.8901 16.26C13.0001 16.06 9.00009 11.97 8.98009 7.13996C8.97009 5.83996 9.24009 4.60996 9.73009 3.48996C10.2701 2.24996 9.62009 1.65996 8.37009 2.18996C4.41009 3.85996 1.70009 7.84996 2.03009 12.42Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>"
   },
-  "more": {
-    "outline": "<g><path d=\"M12 9.32C13.19 9.32 14.16 8.35 14.16 7.16C14.16 5.97 13.19 5 12 5C10.81 5 9.83997 5.97 9.83997 7.16C9.83997 8.35 10.81 9.32 12 9.32Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M6.79 18.9997C7.98 18.9997 8.95 18.0297 8.95 16.8397C8.95 15.6497 7.98 14.6797 6.79 14.6797C5.6 14.6797 4.63 15.6497 4.63 16.8397C4.63 18.0297 5.59 18.9997 6.79 18.9997Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M17.21 18.9997C18.4 18.9997 19.37 18.0297 19.37 16.8397C19.37 15.6497 18.4 14.6797 17.21 14.6797C16.02 14.6797 15.05 15.6497 15.05 16.8397C15.05 18.0297 16.02 18.9997 17.21 18.9997Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>",
-    "bold": "<g><path opacity=\"0.97\" d=\"M16.19 2H7.81C4.17 2 2 4.17 2 7.81V16.18C2 19.83 4.17 22 7.81 22H16.18C19.82 22 21.99 19.83 21.99 16.19V7.81C22 4.17 19.83 2 16.19 2ZM8.31 16.31C7.59 16.31 7 15.72 7 15C7 14.28 7.59 13.69 8.31 13.69C9.03 13.69 9.62 14.28 9.62 15C9.62 15.72 9.03 16.31 8.31 16.31ZM12 10.31C11.28 10.31 10.69 9.72 10.69 9C10.69 8.28 11.28 7.69 12 7.69C12.72 7.69 13.31 8.28 13.31 9C13.31 9.72 12.72 10.31 12 10.31ZM15.69 16.31C14.97 16.31 14.38 15.72 14.38 15C14.38 14.28 14.97 13.69 15.69 13.69C16.41 13.69 17 14.28 17 15C17 15.72 16.41 16.31 15.69 16.31Z\" fill=\"currentColor\"/></g>",
-    "twotone": "<g><path d=\"M11.9998 9.32C13.1898 9.32 14.1598 8.35 14.1598 7.16C14.1598 5.97 13.1898 5 11.9998 5C10.8098 5 9.83984 5.97 9.83984 7.16C9.83984 8.35 10.8098 9.32 11.9998 9.32Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path opacity=\"0.4\" d=\"M6.78988 18.9997C7.97988 18.9997 8.94988 18.0297 8.94988 16.8397C8.94988 15.6497 7.97988 14.6797 6.78988 14.6797C5.59988 14.6797 4.62988 15.6497 4.62988 16.8397C4.62988 18.0297 5.58988 18.9997 6.78988 18.9997Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M17.2098 18.9997C18.3998 18.9997 19.3698 18.0297 19.3698 16.8397C19.3698 15.6497 18.3998 14.6797 17.2098 14.6797C16.0198 14.6797 15.0498 15.6497 15.0498 16.8397C15.0498 18.0297 16.0198 18.9997 17.2098 18.9997Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>"
+  "qianmu-ellipsis": {
+    "outline": "<g fill=\"currentColor\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"19\" cy=\"12\" r=\"1.75\"/></g>",
+    "bold": "<g fill=\"currentColor\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"19\" cy=\"12\" r=\"1.75\"/></g>",
+    "twotone": "<g fill=\"currentColor\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"19\" cy=\"12\" r=\"1.75\"/></g>"
   },
   "next": {
     "outline": "<g><path d=\"M3.76001 7.21956V16.7896C3.76001 18.7496 5.89 19.9796 7.59 18.9996L11.74 16.6095L15.89 14.2096C17.59 13.2296 17.59 10.7795 15.89 9.79955L11.74 7.39956L7.59 5.00957C5.89 4.02957 3.76001 5.24956 3.76001 7.21956Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M20.24 18.1793V5.81934\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>",
@@ -1040,6 +1040,7 @@ export const QIANMU_ICON_ROOT_SELECTOR = [
   '.sd-tts-glue',
   '.sd-storyboard-message-action',
   '.sd-storyboard-inline',
+  '.sd-image-info-dialog',
   '.sd-storyboard-lightbox',
   '.sd-storyboard-video-viewer',
   '.sd-storyboard-video-draft-layer',

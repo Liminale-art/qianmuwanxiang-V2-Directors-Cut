@@ -14,6 +14,7 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
 import {createStoryboardQueueWindow} from '../qianmu-storyboard-queue-window.js';
 import {startStoryboardQueueWindowBatch} from '../qianmu-storyboard-queue-batch.js';
+import {inspectComfyImageExecution,requireComfyExecution} from '../qianmu-comfy-audit.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const indexes=count=>Array.from({length:count},(_,index)=>index);
@@ -177,7 +178,22 @@ for(const count of [7,13])test(`${count} ordinary mixed Comfy/NAI shots keep dir
   assert.ok(f.context.storyboardQueue.length<=8);
   assert.deepEqual(queue.map(job=>job.source),['comfy','comfy',...Array(count-2).fill('novel')]);
   assert.deepEqual(queue.map(job=>job.inlineOrder.shotIndex),indexes(count));
-  assert.ok(queue.every(job=>job.profile.count==='1'&&job.imageAdmission.automaticSlot));
+  for(const job of queue){
+    assert.equal(job.profile.count,job.source==='comfy'?'4':'1');
+    assert.equal(job.payload.parameters.count,job.source==='comfy'?4:1);
+    assert.equal(job.requestTotal,1,'candidate count must not multiply narrative jobs');
+    assert.equal(job.imageAdmission.automaticSlot,true);
+    if(job.source==='comfy'){
+      // The pinned fixture graph binds %qianmu_count% from its saved count=4.
+      const policy={version:2,automatic:true,maxImages:8,outputNodeIds:['save'],allowUnverified:false};
+      const execution=requireComfyExecution(inspectComfyImageExecution({prompt:job.payload.prompt,negativePrompt:job.payload.negative,
+        model:job.profile.model,parameters:job.payload.parameters,comfyExecution:policy}),policy);
+      assert.equal(execution.expectedImages,4);assert.equal(execution.maxImages,4);
+    }
+  }
+  const ledger=[...f.rows.values()][0];
+  assert.equal(ledger.entries.length,count,'each narrative shot, not each candidate, owns one allowance');
+  assert.ok(ledger.entries.every(entry=>entry.automaticSlot));
   assert.equal(f.requests,2);assert.equal(f.rows.size,1);f.assertReleased();
 });
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createStoryboardFormFixture } from './helpers/storyboard-form-fixture.mjs';
 import { prepareConfigRestore } from '../qianmu-config-connections.js';
+import { renderStorageBackupSection, bindStoragePackageActions } from '../qianmu-storage-backup-view.js';
 import { clone, mergeDefaults } from '../qianmu-storyboard-utils.js';
 import {
   STORYBOARD_CAPABILITIES,
@@ -69,7 +70,7 @@ assert.match(source, /storyboardImages[\s\S]*messageHash[\s\S]*swipeId/, '正文
 assert.match(source, /createStoryboardMessageReference[\s\S]*resolveStoryboardMessageReference/, '正文挂载必须以稳定消息身份协调删楼、改楼与 swipe');
 assert.match(source, /if \(!storyboardState\(\)\.enabled\)[\s\S]*sd-storyboard-inline, \.sd-storyboard-message-action/, '分镜总开关关闭后必须清理全部正文入口与成片');
 assert.match(source, /paragraphAnchor: clone\(job\.paragraphAnchor \|\| null\)/, '第 0 楼与跨聊天待归档结果都必须保留段落锚点');
-assert.match(source, /storyboardInlineAnchorNode\(text, anchorRecords\)[\s\S]*storyboardInsertInlineWrapper\(text, anchor, wrapper, anchorTails\)/, '命中段落锚点时必须原位插图，共用尾指针防止失配回退倒序');
+assert.match(source, /storyboardInlineAnchorNode\(text, \[record\]\)[\s\S]*if \(anchor.fallback\) continue[\s\S]*storyboardInsertInlineWrapper\(text, anchor, wrapper, anchorTails\)/, '命中段落锚点时原位插图，失配不猜测尾插，共用尾指针保持叙事顺序');
 assert.match(source, /function storyboardInlineRecordValid[\s\S]*record\.messageHash[\s\S]*record\.swipeId/, '编辑或 reroll 后必须阻止旧图误挂');
 assert.doesNotMatch(source, /storyboardProfileBindings|绑定到当前聊天|selectedCharacters/, '形象档案不得再自动绑定或注入镜头任务');
 assert.match(source, /function storyboardGenerationPayload[\s\S]*compileStoryboardPrompt\([\s\S]*artistString/, '生图负载必须经角色隔离编译器合成，且画师串仍只来自用户选择');
@@ -121,7 +122,14 @@ assert.match(source, /storyboardExportPackage[\s\S]*type: 'qianmu-storyboard'[\s
 assert.match(source, /storyboardImportPackage[\s\S]*saveBase64AsFile[\s\S]*messageHash/, '跨端导入须将内嵌图片交给 ST 落盘并重新校验正文锚点');
 assert.doesNotMatch(source, /pruneStoryboardRetakeGallery\(/, '新收片不得按总数删除历史画面与配方');
 assert.doesNotMatch(source, /plan\?\.floorTake&&storyboardGalleryRecords\(\)\.length\+generationDemand\.imageCount>400/, '图库总数不应阻止另一个正常楼层重拍');
-assert.match(source, /sd-reader-native-file sd-storyboard-pack-file/, 'iOS 导入必须保留真实文件控件，不得用 hidden 切断用户手势链');
+assert.doesNotMatch(source, /sd-storyboard-pack-file/, '阅片室和日志不得保留重复的备份导入控件');
+assert.match(renderStorageBackupSection({}), /<input type="file" data-storage-import="storyboard"[^>]*accept="\.qmb,application\/json,\.json"/, '分镜导入在数据管理保留真实文件控件及支持格式');
+let pickClick,withinUserGesture=false,picked=false;
+const storagePick={dataset:{storagePick:'storyboard'},addEventListener:(type,callback)=>{assert.equal(type,'click');pickClick=callback;}};
+const storageFile={click:()=>{assert.equal(withinUserGesture,true,'必须在原始点击调用栈内打开文件选择，不能先等待异步工作');picked=true;}};
+bindStoragePackageActions({querySelectorAll:selector=>selector==='[data-storage-pick]'?[storagePick]:[],querySelector:selector=>{assert.equal(selector,'input[data-storage-import="storyboard"]');return storageFile;}},{exports:{},imports:{}});
+withinUserGesture=true;pickClick();withinUserGesture=false;
+assert.equal(picked,true,'数据管理导入按钮须同步打开原生文件选择');
 assert.match(source, /const saveDraft[\s\S]*setTimeout[\s\S]*storyboardCaptureWorkbench\(root, sourceAtBind\)/, '镜头台长文与参数草稿必须延迟自动保存');
 assert.match(source, /function closeModal\(\)[\s\S]*storyboardCaptureWorkbench\(storyboardRoot\)[\s\S]*storyboardCloseLightbox\(\)/, '关闭面板必须先保存草稿并收掉独立看图层');
 assert.match(source, /role="dialog"[\s\S]*aria-modal[\s\S]*event\.key === 'Escape'/, '成片看图层必须支持屏幕阅读语义和 Escape 关闭');

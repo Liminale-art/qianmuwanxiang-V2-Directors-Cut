@@ -25,7 +25,7 @@ function fixture(){
     resolveImageAccountNamespace:async()=>account,
     storyboardState:()=>accounts.get(account),ctx:()=>({chatMetadata:accounts.get(account).chatMetadata,chat:[]}),getChatKey:()=>chat,
     blobStore,storyboardVolatileDeliveries:new Map(),storyboardGalleryRecords:()=>accounts.get(account).gallery,
-    storyboardFloorTakeReceipts:()=>[],storyboardUtilsModule:async()=>({saveBase64AsFile:async()=>{
+    storyboardFloorTakeReceipts:(()=>{const receipts=[];return()=>receipts;})(),storyboardUtilsModule:async()=>({saveBase64AsFile:async()=>{
       accounts.get(account).files++;if(onFileSave)await onFileSave();return '/user/images/pending.png';
     }}),storyboardBlobToBase64:async blob=>Buffer.from(await blob.arrayBuffer()).toString('base64'),
     storyboardSafeUrl:url=>url,storyboardImageExtension:()=>'.png',getCharacterName:()=> 'Alice',clone:structuredClone,

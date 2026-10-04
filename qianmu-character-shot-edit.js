@@ -94,7 +94,7 @@ export async function prepareCharacterShotEdit(snapshot,characters,{namespace,re
   if(!native){
     mode='named_character_blocks';prompt=replaceBlocks(oldPrompt,previous.characterBlocks,compiled.characterBlocks);
     if(prompt===null){
-      if(!rebuild)throw Object.assign(new Error('原词无法可靠拆分人物。请勾选重建正面词，应用后核对预览；不会自动覆盖。'),{code:'character_shot_rebuild_required'});
+      if(!rebuild)throw Object.assign(new Error('无法定位原人物描述。请在人物详情中撤销人物修改，再直接编辑上方提示词。'),{code:'character_shot_rebuild_required'});
       mode='explicit_rebuild';prompt=[next.payload.artistString||next.artistString||'',compiled.prompt].filter(Boolean).join(', ');
     }
   }
@@ -125,7 +125,7 @@ export async function prepareCharacterShotEdit(snapshot,characters,{namespace,re
     if(reference?.status==='selected'&&reference.namespace!==namespace)fail('参考图属于另一 ST 账户');next.payload.characterReference=reference;
   }
   if(next.source==='comfy'&&next.profile.comfyCharacterEnabled===true){
-    const runtime=await import('./qianmu-comfy-character-plan.js');await guard();
+    const runtime=await import('./qianmu-comfy-character-plan.js?v=1.59.440');await guard();
     next.payload.parameters.workflow=JSON.parse(next.profile.comfyWorkflow);delete next.payload.comfyCharacterPlan;
     // Validate the new frozen cast locally. Actual remote readiness/admission still happens on generation.
     await runtime.prepareComfyCharacterJob({...next,automatic:false},{namespace,guard});await guard();

@@ -18,7 +18,7 @@ import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-
 import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.414';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
 import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
-import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
+import { inspectComfyWorkflow, comfyCandidateCount } from './qianmu-comfy-workflow.js?v=1.59.440';
 export { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
 export { canRunStoryboardComfyJob } from './qianmu-comfy-queue.js';
 import { RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
@@ -2175,7 +2175,7 @@ export function buildStoryboardProviderPlan(input = {}) {
   if (allVibes.length && !capability.vibe) dropped.push('vibes');
   request.vibes = capability.vibe ? allVibes.slice(0, 16) : [];
   request.providerOptions = safeRecord(p.providerOptions, { reserved: true });
-  const count = bounded(p.count, 1, 4, true);
+  const count = provider.id === 'comfy' && p.count !== '' && p.count != null ? comfyCandidateCount(p.count) : bounded(p.count, 1, 4, true);
   if (provider.id === 'comfy' && !capability.count) { request.count = 1; if (Number(count) > 1) dropped.push('count'); }
   else if (count !== '') request.count = count;
   const explicitSize = str(p.size, 40); if (explicitSize) request.size = explicitSize;
@@ -2238,7 +2238,7 @@ export function resolveStoryboardVisualState(facts) {
 
 export function summarizeStoryboardGenerationDemand(jobs) {
   const requests = (Array.isArray(jobs) ? jobs : []).filter(obj);
-  const outputsByRequest = requests.map((job) => int(job.payload?.parameters?.count, 1, 4, 1));
+  const outputsByRequest = requests.map((job) => int(job.payload?.parameters?.count, 1, job.source === 'comfy' ? 8 : 4, 1));
   return {
     requestCount: requests.length,
     imageCount: outputsByRequest.reduce((total, count) => total + count, 0),
@@ -2249,7 +2249,7 @@ export function summarizeStoryboardGenerationDemand(jobs) {
 // NovelAI 对并发与单次多图更敏感。把“生成 N 张”在进入运行队列前拆成
 // N 个可独立落盘、独立失败与独立重试的请求；其他渠道仍保留原生多图请求。
 export function planStoryboardProviderRequests(providerId, requestedCount) {
-  const imageCount = int(requestedCount, 1, 4, 1);
+  const imageCount = providerId === 'comfy' ? comfyCandidateCount(requestedCount) : int(requestedCount, 1, 4, 1);
   const requestCount = providerId === 'novel' ? imageCount : 1;
   return Array.from({ length: requestCount }, (_, index) => ({
     requestIndex: index + 1,

@@ -19,6 +19,7 @@ import {
 } from '../qianmu-storyboard.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
 import { generateImage } from '../qianmu-image-gateway.js';
+import {exerciseImageInfo} from './helpers/image-info-edit-fixture.mjs';
 
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -368,22 +369,13 @@ test('late archive reads cannot redraw into a changed chat, edited message or di
   }
 });
 
-test('the real inline editor synchronizes captions on save without starting generation', async () => {
-  const snap = snapshot(), state = createStoryboardDefaults();
-  let saved = null, redraws = 0;
-  const record = { id: 'image-a', finalPrompt: snap.payload.prompt, floor: 0 };
-  const answers = ['edited positive', ''];
-  const context = runtime(state, {
-    storyboardReadSnapshotForRecord: async () => snap,
-    ctx: () => ({}), promptInput: async () => answers.shift(), confirmDialog: async () => false,
-    storyboardStoreSnapshotForRecord: async (_record, value) => { saved = value; },
-    saveMetadata: async () => {}, storyboardArchiveGallerySnapshots: async () => 0, storyboardRenderInlineImages: () => {},
-    storyboardRedrawRecord: () => { redraws++; }, toast: () => assert.fail('unexpected toast'),
-  }, ['storyboardEditPrompt']);
-  assert.equal(await context.storyboardEditPrompt({ record }), true);
+test('the real unified editor synchronizes new request captions without rewriting the old image', async () => {
+  const snap=snapshot(),result=await exerciseImageInfo({snapshot:snap,edit:({fields})=>{fields.positive.value='edited positive';fields.negative.value='';}});
+  assert.ifError(result.error);assert.equal(result.result,true);assert.equal(result.drafts.length,1);
+  const saved=result.drafts[0];
   assert.equal(saved.payload.parameters.providerOptions.v4_prompt.caption.base_caption, 'edited positive');
   assert.equal(saved.payload.parameters.providerOptions.v4_negative_prompt.caption.base_caption, '');
-  assert.equal(redraws, 0);
+  assert.deepEqual(result.record,result.original);
 });
 
 for (const [name, generate] of Object.entries({ direct: generateDirectImage, gateway: generateImage })) {

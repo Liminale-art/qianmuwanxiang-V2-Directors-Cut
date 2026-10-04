@@ -24,7 +24,7 @@ function fixture(){
     storyboardVideoDraftCandidateRecords:()=>e.rows,storyboardSafeUrl:value=>value||'',htmlEscape:value=>String(value??''),
     STORYBOARD_VIDEO_DRAFT_MODE_LABELS:{auto:'自动'},STORYBOARD_VIDEO_REFERENCE_ROLE_LABELS:{subject_reference:'主体'},
     storyboardVideoOperationIssueLabel:value=>value,toast:message=>e.warnings.push(message),
-    document:{createElement(){return {set innerHTML(value){e.html.push(value);throw Error('fixture_render_boundary');}};}}});
+    document:{createElement(){return {setAttribute(){},set innerHTML(value){e.html.push(value);throw Error('fixture_render_boundary');}};}}});
   vm.runInContext(['storyboardCloseVideoDraftEditor','storyboardVideoDraftSourceRecord','storyboardVideoDraftShotReader','storyboardVideoDraftEditorMarkup','storyboardOpenVideoDraftEditor'].map(fn).join('\n'),c);
   const markup=c.storyboardVideoDraftEditorMarkup;c.storyboardVideoDraftEditorMarkup=(draft,shot)=>{e.shots.push(structuredClone(shot));return markup(draft,shot);};
   e.c=c;e.open=id=>c.storyboardOpenVideoDraftEditor(id||'one');e.listenerCount=()=>events.eventNames().reduce((n,event)=>n+events.listenerCount(event),0);return e;

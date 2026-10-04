@@ -328,7 +328,8 @@ export function createComfyCloudLedger({ store, ownerId = randomUUID(), now = Da
       const state = normalizeComfyCloudChannel(await store.inspectChannel(channelKey), channelKey);
       if (!imageServiceAccountStillMatches(req, account)) throw fail('account_changed', 'ST账户已变化，未交付工作流验证记录');
       return state.entries.some(row => row.namespace === account.namespace && row.status === 'succeeded'
-        && row.cloudDelivery?.state === 'archived' && row.cloudDelivery.imageCount === 1
+        && row.cloudDelivery?.state === 'archived'
+        && row.cloudDelivery.imageCount === row.cloudReceipt?.stillOutput.execution.expectedImages
         && row.cloudIntent?.workflow.validationScope === validationScope
         && row.cloudReceipt?.workflow.validationScope === validationScope
         && row.cloudReceipt.task.protocol === connection.protocol && row.cloudReceipt.task.origin === connection.origin);

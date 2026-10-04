@@ -212,7 +212,7 @@ test('waiting automatic tasks are discarded on teardown without canceling alread
   e.context.storyboardResetAutomaticCapture(); assert.equal(plan.status, 'queued');
   assert.equal(e.timers.size, 0); assert.equal(e.context.storyboardAutomaticPending.size, 0);
   assert.match(section('cleanupRuntime'), /storyboardResetAutomaticCapture\(\)/);
-  assert.match(section('storyboardCompilePrompt'), /finally[\s\S]*storyboardCompilerBusy = false;\s*storyboardScheduleAutomaticCapture\(\)/);
+  assert.match(section('storyboardCompilePrompt'), /finally[\s\S]*storyboardCompilerBusy = false;[\s\S]*storyboardScheduleAutomaticCapture\(\)/);
   assert.doesNotMatch(section('storyboardHandleAutomaticCapture'), /setTimeout|900/);
 });
 

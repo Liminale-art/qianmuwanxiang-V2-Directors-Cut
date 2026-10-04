@@ -1,6 +1,6 @@
 // Read-only legacy /object_info contract inspection. Never execute a workflow or a descriptor's remote route.
-import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
-import { checkComfyConfiguration } from './qianmu-comfy-preflight.js';
+import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js?v=1.59.440';
+import { checkComfyConfiguration } from './qianmu-comfy-preflight.js?v=1.59.440';
 
 export async function checkCloudComfyReadiness(request,options) {
   const runtime=await import('./qianmu-comfy-cloud-readiness-client.js');

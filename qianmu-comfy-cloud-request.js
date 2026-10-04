@@ -1,13 +1,13 @@
 // Browser-safe projection of an already prepared storyboard gateway request.
 // No credentials, routing guesses, network or workflow topology edits.
 import {bindComfyCloudProtocol,RUNNINGHUB_INSTANCE_TYPES} from './qianmu-comfy-cloud-protocol.js';
-import {normalizeComfyExecution,auditComfyWorkflow,requireComfyExecution} from './qianmu-comfy-audit.js';
-import {prepareComfyWorkflow} from './qianmu-comfy-workflow.js';
+import {normalizeComfyExecution,auditComfyWorkflow,requireComfyExecution} from './qianmu-comfy-audit.js?v=1.59.440';
+import {prepareComfyWorkflow} from './qianmu-comfy-workflow.js?v=1.59.440';
 import {normalizeComfyRouteBinding} from './qianmu-comfy-route-contract.js';
 import {normalizeComfyWorkbenchBinding} from './qianmu-comfy-workbench-binding.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {normalizeComfyReferenceSelection} from './qianmu-comfy-reference-contract.js';
-import {prepareComfyCloudWorkflow} from './qianmu-comfy-cloud-workflow.js';
+import {prepareComfyCloudWorkflow} from './qianmu-comfy-cloud-workflow.js?v=1.59.440';
 import {runningHubWorkflowId} from './qianmu-comfy-console.js?v=1.59.435';
 const fail=message=>{throw Object.assign(new Error(message),{code:'comfy_cloud_request',submissionState:'not_submitted',retryable:false});};
 const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};

@@ -11,6 +11,7 @@ import {readStaticReferenceImages} from '../qianmu-comfy-references.js';
 import {generateDirectImage} from '../qianmu-image-direct.js';
 import {generateImage} from '../qianmu-image-gateway.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {exerciseImageInfo} from './helpers/image-info-edit-fixture.mjs';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');
 const namespace='st-user:test',model='nai-diffusion-4-5-full';
 const receipt={url:'/user/images/Qianmu-References/a.png',name:'Alice',bytes:png.length,mime:'image/png',sha256:createHash('sha256').update(png).digest('hex')};
@@ -129,24 +130,21 @@ test('inline picker selects only visible people, can explicitly disable, and doe
   assert.throws(()=>reference.applyCharacterReferenceChoice(spec,'invisible'));
   spec.characters[0].name='<script>';assert.doesNotMatch(reference.renderCharacterReferencePicker(spec),/<script>/);
 });
-test('actual inline edit only saves the selected frozen reference; it neither fetches archives nor auto-generates',async()=>{
+test('unified image info sends frozen reference edits only to a new request and never rewrites the old image',async()=>{
   for(const choice of ['archive:bob','__none__','switch-account','read-failure']){
-    const state=storyboard.createStoryboardDefaults(),original=job(),spec=shot([character(),character('bob')]);
+    const original=job(),spec=shot([character(),character('bob')]);
     original.shotSpec=spec;original.payload.shotSpec=spec;original.payload.characterReference=plan(spec);original.payload.prompt='original exact';
-    let saved,generated=0,account=namespace,accountReads=0;const notices=[],record={id:'old',prompt:'original exact',floor:0};
-    const fields={'.sd-storyboard-edit-positive':{value:''},'.sd-storyboard-edit-negative':{value:''},'.sd-character-reference-picker':{value:''}};
-    const context=vm.createContext({...storyboard,clone:structuredClone,getChatKey:()=> 'chat',storyboardState:()=>state,
-      storyboardReadSnapshotForRecord:async()=>structuredClone(original),storyboardStoreSnapshotForRecord:async(r,snapshot)=>{saved=snapshot;},storyboardArchiveGallerySnapshots:async()=>0,
-      featureRuntime:{load:async key=>{assert.equal(key,'imageAdmission');return {resolveImageAccountNamespace:async()=>{if(++accountReads===2&&choice==='read-failure')throw Error('账户暂不可读取');return account;}};}},
-      document:{createElement:()=>({querySelector:selector=>fields[selector],insertAdjacentHTML(){}})},
-      ctx:()=>({POPUP_TYPE:{CONFIRM:'confirm'},Popup:class{async show(){fields['.sd-character-reference-picker'].value=choice;if(choice==='switch-account')account='st-user:other';return 2;}}}),
-      toast:message=>notices.push(message),synchronizeStoryboardCaptionBase(){},saveMetadata:async()=>{},storyboardRenderInlineImages(){},storyboardRedrawRecord:()=>generated++,
-    });
-    vm.runInContext(section('storyboardEditPrompt'),context);await context.storyboardEditPrompt({record});
-    assert.equal(generated,0);
-    if(choice==='switch-account'||choice==='read-failure'){assert.equal(saved,undefined);assert.equal(record.promptLocked,undefined);assert.match(notices.at(-1),/账户/);}
-    else if(choice==='__none__'){assert.equal(saved.payload.characterReference,null);assert.equal(saved.payload.shotSpec.characterReferenceDisabled,true);}
-    else {assert.equal(saved.payload.characterReference.subjectId,'archive:bob');assert.equal(saved.payload.prompt,'original exact');assert.equal(saved.promptLocked,true);}
+    let account=namespace,reads=0;
+    const result=await exerciseImageInfo({snapshot:original,namespace,
+      readNamespace:async()=>{if(++reads===2&&choice==='read-failure')throw Error('账户暂不可读取');return account;},
+      edit:({fields})=>{fields['.sd-character-reference-picker'].value=choice;if(choice==='switch-account')account='st-user:other';}});
+    assert.deepEqual(result.record,result.original);
+    if(choice==='switch-account'||choice==='read-failure'){assert.equal(result.drafts.length,0);assert.match(result.error.message,/账户|变化/);}
+    else {const saved=result.drafts[0];assert.equal(result.result,true);assert.equal(result.drafts.length,1);
+      if(choice==='__none__'){assert.equal(saved.payload.characterReference,null);assert.equal(saved.payload.shotSpec.characterReferenceDisabled,true);}
+      else assert.equal(saved.payload.characterReference.subjectId,'archive:bob');
+      assert.equal(saved.payload.prompt,'original exact');assert.equal(saved.promptLocked,true);
+    }
   }
 });
 test('actual enqueue and last-moment submit both reject changed reference receipts before admission',async()=>{

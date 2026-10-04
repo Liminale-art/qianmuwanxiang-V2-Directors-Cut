@@ -10,10 +10,12 @@ export function collectComfyStillResults(data, promptId, { workflow = {}, maxIma
   if (!object(data)) fail('invalid_history', 'ComfyUI 任务状态格式无效');
   if (!comfyTaskId(promptId)) fail('invalid_prompt_id', 'ComfyUI 任务编号无效');
   if (!Number.isSafeInteger(maxImages) || maxImages < 1 || maxImages > 8) fail('invalid_output_limit', 'ComfyUI 收片上限无效');
-  if (execution && (execution.version !== 1 || !Array.isArray(execution.outputNodeIds) || !execution.outputNodeIds.length
+  if (execution && (![1, 2].includes(execution.version) || !Array.isArray(execution.outputNodeIds) || !execution.outputNodeIds.length
     || execution.outputNodeIds.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_:-]{1,120}$/.test(id))
     || !Number.isSafeInteger(execution.maxImages) || execution.maxImages < 1 || execution.maxImages > 8
-    || (execution.expectedImages != null && (!Number.isSafeInteger(execution.expectedImages) || execution.expectedImages < 1 || execution.expectedImages > execution.maxImages)))) {
+    || (execution.expectedImages != null && (!Number.isSafeInteger(execution.expectedImages) || execution.expectedImages < 1 || execution.expectedImages > execution.maxImages))
+    || execution.automatic && (execution.version === 1 ? execution.maxImages !== 1 || execution.expectedImages !== 1
+      : execution.outputNodeIds.length !== 1 || execution.expectedImages !== execution.maxImages))) {
     fail('execution_contract', 'ComfyUI 收片约定无效，未读取成图');
   }
   const history = Object.hasOwn(data, promptId) ? data[promptId] : data.prompt_id === promptId ? data : null;
@@ -55,7 +57,7 @@ export function collectComfyStillResults(data, promptId, { workflow = {}, maxIma
     }
   }
   if (!rows.length) fail('missing_final_image', 'ComfyUI 已结束，但只有预览、动画或无最终静帧');
-  if (execution?.automatic && allSeen.size !== 1) fail('output_count_changed', 'ComfyUI 实际保存数超过自动单镜约定，请核查原任务，勿重复生成');
+  if (execution?.automatic && allSeen.size !== execution.expectedImages) fail('output_count_changed', 'ComfyUI 实际保存数与本镜候选约定不一致');
   if (execution?.expectedImages != null && rows.length !== execution.expectedImages) fail('output_count_changed', 'ComfyUI 实际成图数与核查结果不一致，请查看原任务，勿重复生成');
   return rows;
 }

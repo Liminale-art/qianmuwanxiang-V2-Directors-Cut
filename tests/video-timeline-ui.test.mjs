@@ -8,9 +8,9 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 test('the screening room exposes film as a distinct product route', () => {
   assert.match(source, /data-storyboard-gallery-kind="stills"/);
-  assert.match(source, /data-storyboard-gallery-kind="motion"/);
+  assert.doesNotMatch(source, /data-storyboard-gallery-kind="motion"/);
   assert.match(source, /data-storyboard-gallery-kind="film"/);
-  assert.match(source, /if \(storyboardGalleryKind === 'film'\) return renderStoryboardFilmGallery\(\)/);
+  assert.match(source, /if \(storyboardGalleryKind !== 'stills'\) return renderStoryboardFilmGallery\(\)/);
   assert.match(source, /gallery: 'SCREENING ROOM'/, 'gallery heading belongs to the shared page title');
   assert.match(source, /sd-storyboard-gallery-page sd-storyboard-film-page/, 'film keeps its distinct content route');
   assert.match(source, /新建影片/);

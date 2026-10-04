@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {summarizeGalleryRecords} from '../qianmu-gallery-summary.js';
-import {renderGalleryInspector} from '../qianmu-gallery-inspector.js';
+import {renderImageInfo} from '../qianmu-image-info-view.js';
 import {galleryMembershipIds} from '../qianmu-gallery-membership.js';
 import {renderGalleryBulkCollections} from '../qianmu-gallery-taxonomy.js';
-import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard} from '../qianmu-gallery-collections-view.js';
+import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryBrowserProjection,galleryRecordMatchesQuery} from '../qianmu-gallery-collections-view.js';
 import {renderGalleryKeywordFilters} from '../qianmu-gallery-keywords-view.js';
 import {galleryTagsMatch} from '../qianmu-gallery-keywords.js';
 import {createGalleryNarrativeSession} from '../qianmu-gallery-narrative.js';
@@ -64,8 +64,9 @@ function rendererFixture(count=5001,collectionCount=0){
   const rows=Array.from({length:count},(_,i)=>({id:String(i),createdAt:i,tags:['tag-'+i%12],collectionIds:['group-'+i%50],source:'novel',prompt:'original '+i,url:'/image-'+i+'.png'}));
   const collections=Array.from({length:collectionCount},(_,i)=>({id:'group-'+i,name:'Group '+i}));
   const state={gallerySearch:'',galleryTrack:'all',galleryTagFilters:[]};let reads=0,collectionReads=0;
-  const c=vm.createContext({summarizeGalleryRecords,renderGalleryInspector,renderGalleryBulkCollections,galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,uniqueClean,htmlEscape,
-    storyboardGalleryKind:'stills',storyboardGalleryOpenCollectionId:'',storyboardGalleryInspectorRecordId:'',storyboardGallerySelectMode:false,
+  const c=vm.createContext({summarizeGalleryRecords,renderGalleryBulkCollections,galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryDisplayWindow,renderGalleryWindowControls,renderGalleryKeywordFilters,galleryTagsMatch,galleryRecordMatchesQuery,uniqueClean,htmlEscape,
+    galleryBrowserProjection:(...args)=>{const browser=galleryBrowserProjection(...args),memberships=browser.memberships;return {...browser,memberships:row=>{collectionReads++;return memberships(row);}};},
+    storyboardGalleryKind:'stills',storyboardGalleryOpenCollectionId:'',storyboardGalleryInspectorRecordId:'',storyboardGallerySelectMode:false,storyboardGalleryTagFiltersOpen:false,
     storyboardGallerySelection:new Set(),storyboardGalleryVisibleCount:40,storyboardGalleryRecords:()=>{reads++;return rows;},
     storyboardGalleryCollections:()=>collections,
     storyboardItemCollectionIds:row=>{collectionReads++;return ids(row);},storyboardState:()=>state,
@@ -76,7 +77,7 @@ function rendererFixture(count=5001,collectionCount=0){
     storyboardMediaSidebarMarkup:()=>assert.fail('ordinary gallery must not render the old sidebar'),
     renderStoryboardGalleryKindSwitch:()=>'',renderGalleryNarrative:()=>'',storyboardSafeUrl:value=>value,
     storyboardRecordStatus:()=>'',formatDateTime:String,snip:(value,n)=>String(value).slice(0,n),storyboardMediaTagEditorMarkup:()=>''});
-  vm.runInContext(['storyboardUpdateGalleryNarrative','storyboardFilteredGalleryRecords','storyboardGalleryGroups','renderStoryboardGallery'].map(section).join('\n'),c);
+  vm.runInContext(['storyboardUpdateGalleryNarrative','storyboardGalleryBrowserData','storyboardFilteredGalleryRecords','storyboardGalleryGroups','renderStoryboardGallery'].map(section).join('\n'),c);
   return {rows,collections,state,c,get reads(){return reads;},get collectionReads(){return collectionReads;}};
 }
 
@@ -96,10 +97,10 @@ test('actual filter calls outside rendering retain default source, search, colle
   e.state.galleryTagFilters.push('tag-3');assert.equal(e.c.storyboardFilteredGalleryRecords(e.state).length,0);
 });
 
-test('actual next gallery render sees changed tags and removes a missing inspected record',()=>{
+test('actual next gallery render sees changed tags without restoring a retired inspected subpage',()=>{
   const e=rendererFixture(5);e.c.storyboardGalleryInspectorRecordId='4';e.state.galleryTagFilters=['tag-4'];
   e.rows.pop();const html=e.c.renderStoryboardGallery(e.state);
-  assert.equal(e.c.storyboardGalleryInspectorRecordId,'');assert.equal(e.state.galleryTagFilters.length,0);
+  assert.doesNotMatch(html,/data-gallery-detail=|sd-media-inspector/);assert.equal(e.state.galleryTagFilters.length,0);
   assert.equal((html.match(/data-storyboard-record=/g)||[]).length,4);
   e.rows[0].tags=['fresh'];assert.ok(e.c.renderStoryboardGallery(e.state).includes('data-gallery-tag-filter="fresh"'));
 });
@@ -114,30 +115,30 @@ test('actual gallery render pages through every group while retaining off-page s
   e.c.storyboardGalleryVisibleCount=80;assert.ok(e.c.renderStoryboardGallery(e.state).includes('41–80 / 81 组'));
 });
 
-test('actual rendering clamps a deleted last page and retains inspection and saved page across an ordinary rerender',()=>{
+test('actual rendering clamps a deleted last page and retains the saved page across an ordinary rerender',()=>{
   const e=rendererFixture(81);e.c.storyboardGalleryVisibleCount=120;e.c.renderStoryboardGallery(e.state);
   e.rows.splice(0,41);const html=e.c.renderStoryboardGallery(e.state);assert.equal(e.c.storyboardGalleryVisibleCount,40);
   assert.equal((html.match(/data-storyboard-record=/g)||[]).length,40);
   const another=rendererFixture(100);another.c.storyboardGalleryVisibleCount=80;another.c.storyboardGalleryInspectorRecordId='2';
-  const first=another.c.renderStoryboardGallery(another.state);assert.equal(another.c.storyboardGalleryVisibleCount,80);assert.ok(first.includes('画面详情'));
+  const first=another.c.renderStoryboardGallery(another.state);assert.equal(another.c.storyboardGalleryVisibleCount,80);assert.doesNotMatch(first,/data-gallery-detail=|sd-media-inspector/);
   another.c.renderStoryboardGallery(another.state);assert.equal(another.c.storyboardGalleryVisibleCount,80);assert.equal(another.c.storyboardGalleryInspectorRecordId,'2');
 });
 
-test('ordinary browsing has no empty inspector, and selecting one record replaces the browser with a detail view',()=>{
+test('ordinary browsing is never replaced by the retired inspector state; details open in the shared surface',()=>{
   const e=rendererFixture(100);e.c.storyboardGalleryVisibleCount=80;
-  const list=e.c.renderStoryboardGallery(e.state);assert.doesNotMatch(list,/data-gallery-detail=|画面详情|sd-media-inspector/);
+  const list=e.c.renderStoryboardGallery(e.state);assert.doesNotMatch(list,/data-gallery-detail=|sd-media-inspector/);
   e.c.storyboardGalleryInspectorRecordId='42';const before=JSON.stringify(e.rows),detail=e.c.renderStoryboardGallery(e.state);
-  assert.match(detail,/data-gallery-detail="42"/);assert.match(detail,/data-gallery-detail-back/);
-  assert.equal((detail.match(/<img /g)||[]).length,1);assert.doesNotMatch(detail,/data-storyboard-record=|sd-gallery-window-controls/);
+  assert.equal(detail,list);assert.doesNotMatch(detail,/data-gallery-detail=|data-gallery-detail-back/);
+  assert.equal((detail.match(/<img /g)||[]).length,40);assert.match(detail,/data-storyboard-record=|sd-gallery-window-controls/);
   assert.equal(e.c.storyboardGalleryVisibleCount,80);assert.equal(JSON.stringify(e.rows),before);
   e.c.storyboardGalleryInspectorRecordId='';assert.match(e.c.renderStoryboardGallery(e.state),/41–80 \/ 100 组/);
 });
 
-test('selected detail template reads no other record prompt or recipe; production policy is injected separately',()=>{
-  const e=rendererFixture(5);e.c.storyboardGalleryInspectorRecordId='2';e.state.gallerySearch='unchanged';e.state.galleryTagFilters=['tag-1'];
-  for(const row of e.rows){Object.defineProperty(row,'snapshot',{get(){assert.fail('recipe must be explicitly requested');}});
-    if(row.id!=='2')for(const key of ['prompt','finalPrompt','url'])Object.defineProperty(row,key,{get(){assert.fail('unselected payload '+key);}});}
-  assert.match(e.c.renderStoryboardGallery(e.state),/original 2/);assert.equal(e.state.gallerySearch,'unchanged');assert.deepEqual(e.state.galleryTagFilters,['tag-1']);
+test('ordinary gallery does not read saved recipes or prompt payloads and only opens visible image URLs',()=>{
+  const e=rendererFixture(81);e.c.storyboardGalleryVisibleCount=40;
+  for(const row of e.rows){for(const key of ['snapshot','snapshotRef','snapshotServerRef','prompt','finalPrompt'])Object.defineProperty(row,key,{get(){assert.fail('unrequested payload '+key);}});
+    if(Number(row.id)<41)Object.defineProperty(row,'url',{get(){assert.fail('off-page image URL');}});}
+  const html=e.c.renderStoryboardGallery(e.state);assert.equal((html.match(/data-storyboard-record=/g)||[]).length,40);assert.equal(e.state.gallerySearch,'');
 });
 
 test('actual mixed gallery pages all images and folders without old sidebar or split groups',()=>{
@@ -152,10 +153,10 @@ test('actual mixed gallery pages all images and folders without old sidebar or s
   assert.deepEqual(images,[...e.rows].reverse().map(row=>row.id));assert.equal(new Set(folders).size,50);assert.equal(folders.length,50);
 });
 
-test('actual name-only folder search includes whole-count preview, entering a folder removes other folder tiles',()=>{
+test('unified collection-name search includes matching images, entering a folder removes other folder tiles',()=>{
   const e=rendererFixture(5,2);e.state.gallerySearch='Group 1';let html=e.c.renderStoryboardGallery(e.state);
-  assert.match(html,/data-gallery-collection="group-1" data-gallery-collection-clear-search="true"/);assert.match(html,/<small>1 张<\/small>/);
-  assert.doesNotMatch(html,/data-storyboard-record=/);
+  assert.match(html,/data-gallery-collection="group-1" data-gallery-collection-clear-search="false"/);assert.match(html,/<small>1 张匹配<\/small>/);
+  assert.match(html,/data-storyboard-record="1"/);
   e.state.gallerySearch='';e.c.storyboardGalleryOpenCollectionId='group-1';html=e.c.renderStoryboardGallery(e.state);
   assert.match(html,/data-gallery-root/);assert.doesNotMatch(html,/sd-gallery-collection-tile/);assert.match(html,/data-storyboard-record="1"/);
   assert.equal((html.match(/data-storyboard-record=/g)||[]).length,1);
@@ -181,8 +182,10 @@ test('actual selected gallery renders bounded bulk choices instead of thousands 
   assert.equal((html.match(/data-choice-id=/g)||[]).length,29,'24 bulk choices plus 5 keywords');
 });
 
-test('actual gallery filtering and detail retain collection memberships beyond the old 30 read cap',()=>{
+test('actual gallery filtering and unified detail retain collection memberships beyond the old 30 read cap',()=>{
   const e=rendererFixture(1,80);e.rows[0].collectionIds=Array.from({length:41},(_,i)=>'group-'+i);e.c.storyboardGalleryOpenCollectionId='group-40';
   assert.equal(e.c.storyboardFilteredGalleryRecords(e.state).length,1);e.c.storyboardGalleryInspectorRecordId='0';
-  const html=e.c.renderStoryboardGallery(e.state);assert.match(html,/已选 41/);assert.equal((html.match(/data-choice-id=/g)||[]).length,24);
+  const html=e.c.renderStoryboardGallery(e.state);assert.match(html,/data-storyboard-record="0"/);
+  const detail=renderImageInfo({record:e.rows[0],collections:e.collections,collectionIds:galleryMembershipIds(e.rows[0])});
+  assert.equal((detail.match(/data-image-collection-remove=/g)||[]).length,41);assert.equal((detail.match(/data-image-collection-choice=/g)||[]).length,0);
 });

@@ -164,7 +164,7 @@ test('actual job runner falls back only after actual read-only preflight failure
   assert.deepEqual(directMethods, failureAt === 'direct' ? ['GET', 'POST'] : ['GET']);
   assert.equal(finished[0].submissionState, failureAt === 'cancel' ? 'not_submitted' : 'unknown');
   assert.equal(finished[0].status, failureAt === 'cancel' ? 'cancelled' : 'failed');
-  if (failureAt !== 'cancel') assert.match(finished[0].error, /结果未确认/);
+  if (failureAt !== 'cancel') assert.match(finished[0].error,failureAt==='preflight'?/gateway disconnected/:/结果未确认/);
   }
 });
 
@@ -176,7 +176,7 @@ test('queued work from another ST account cannot touch the current account task 
     storyboardState:()=>current,getChatKey:()=> 'chat',resolveImageAccountNamespace:async()=> 'account-b',
     storyboardSettleImageAdmission:async(job,outcome)=>settled.push([job.id,outcome]),
     storyboardRunJob:()=>assert.fail('foreign job must not run'),storyboardActiveJobs:active,
-    storyboardQueueWindow:{notify(){}},storyboardQueue:[],renderModal(){},console:{warn:()=>{}},
+    storyboardQueueWindow:{notify(){}},storyboardQueue:[],renderModal(){},storyboardRecoverOriginalTasks(){},storyboardScheduleInlineRender(){},console:{warn:()=>{}},
   });
   await run(value);
   assert.deepEqual(settled,[['old-job','not_submitted']]);assert.equal(active.size,0);
@@ -193,7 +193,7 @@ test('queued work may continue after a chat switch within the same ST account',a
     storyboardState:()=>owner,getChatKey:()=> 'chat-two',resolveImageAccountNamespace:async()=> 'account-a',
     storyboardSettleImageAdmission:async()=>assert.fail('same-account chat switch must not discard accepted queue work'),
     storyboardRunJob:async(job,log)=>calls.push([job.id,log.id]),storyboardActiveJobs:active,
-    storyboardQueueWindow:{notify(){}},storyboardQueue:[],renderModal(){},console:{warn:()=>{}},
+    storyboardQueueWindow:{notify(){}},storyboardQueue:[],renderModal(){},storyboardRecoverOriginalTasks(){},storyboardScheduleInlineRender(){},console:{warn:()=>{}},
   });
   await run(value);
   assert.deepEqual(calls,[['old-job','old-log']]);assert.equal(active.size,0);

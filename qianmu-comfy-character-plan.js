@@ -1,7 +1,7 @@
 // Optional preparation only. The caller must still run node readiness, output auditing and admission before dispatch.
 import {normalizeComfyCharacterWorkflow,normalizeComfyCharacterSnapshot,comfyCharacterError} from './qianmu-comfy-character-contract.js';
 import {comfyWorkflowReferenceHash,checkComfyReferenceSelection} from './qianmu-comfy-references.js';
-import {inspectComfyWorkflow,prepareComfyWorkflow} from './qianmu-comfy-workflow.js';
+import {inspectComfyWorkflow,prepareComfyWorkflow} from './qianmu-comfy-workflow.js?v=1.59.440';
 import {normalizeComfyReferenceSelection} from './qianmu-comfy-reference-contract.js';
 import {normalizeComfyCharacterActivation} from './qianmu-comfy-character-contract.js';
 export {normalizeComfyCharacterActivation} from './qianmu-comfy-character-contract.js';

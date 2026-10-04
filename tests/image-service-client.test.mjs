@@ -285,7 +285,7 @@ function deliverySetup({ foreign = false, failSave = false } = {}) {
   const context = vm.createContext({ ...floorTakes, runningHubUsageFields, clone: structuredClone, sanitizeStoryboardSnapshot, storyboardPlanForJob: () => null, storyboardValidatedAnchor: () => ({ valid: !foreign, floor: foreign ? null : 2, linkState: foreign ? 'foreign' : 'active' }),
     storyboardSetPlanStatus() { plans++; }, storyboardPipelineStage() { stages++; }, storyboardFinishLog: (_log, status) => { log.status = status; },
     storyboardPersistGatewayImage: async () => { writes++; return '/user/images/a.png'; }, storyboardCreateRecord: (job, _log, url, index) => ({ id: 'new', taskId: job.id, imageIndex: index, url }),
-    getChatKey: () => foreign ? 'other' : 'chat-a', ctx: () => ({ saveMetadata() {} }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:()=>[],storyboardState:()=>state,
+    getChatKey: () => foreign ? 'other' : 'chat-a', ctx: () => ({ saveMetadata() {} }), storyboardGalleryRecords: () => gallery,storyboardFloorTakeReceipts:(()=>{const receipts=[];return()=>receipts;})(),storyboardState:()=>state,
     resolveImageAccountNamespace: async () => account,
     saveMetadata: async () => { saved++; if (failSave && saved === 1) throw Error('metadata failed'); }, storyboardArchiveGallerySnapshots: async () => {},
     storyboardStoreDeferredDelivery: async (_job, records) => { rows.push(...records); return 'pending_chat'; }, toast: message => notices.push(message),
@@ -356,12 +356,13 @@ test('multi-image recovery checkpoints each file and resumes only the unfinished
   await s.context.storyboardDeliverGatewayResult(job(),{},data,options());
   assert.equal(calls,3);assert.equal(s.gallery.length,2);assert.equal(s.gallery[0].snapshot.payload.prompt,'garden');
 });
-test('service UI keeps generation and original retrieval as distinct explicit actions', () => {
+test('generation and silent original retrieval remain separate while the service inbox UI is retired', () => {
   assert.match(section('renderStoryboardModelCard'), /sd-storyboard-service-mode[\s\S]*浏览器优先[\s\S]*增强服务协调/);
   assert.match(section('storyboardRunJob'), /service\.submit/); assert.match(section('storyboardReceiveServiceImage'), /receiveServiceImage\(/);
   assert.match(receiveServiceImage.toString(), /service\.retrieve/);
   assert.doesNotMatch(section('storyboardReceiveServiceImage')+receiveServiceImage.toString(), /storyboardQueueJob|storyboardGenerate|generateDirectImage/);
-  assert.match(section('renderStoryboardLogs'), /sd-storyboard-open-service-inbox/);
+  assert.doesNotMatch(section('renderStoryboardLogs'), /sd-storyboard-open-service-inbox|sd-storyboard-receive-log/);
+  assert.match(section('storyboardRecoverOriginalTasks'), /storyboardReceiveServiceImage\(snapshot.serviceTask.attemptId,null,snapshot.imageAdmission.namespace,\{silent:true,valid\}\)/);
 });
 
 test('actual workbench job uses service transport and the shared archival helper exclusively', async () => {

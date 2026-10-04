@@ -83,7 +83,7 @@ export function prepareComfyCloudSubmissionInput(raw) {
     // Keep the shared output receipt small; admission flags are hashed below,
     // not misrepresented as provider output evidence.
     const stillOutput = { version: 1, model: source.model || 'workflow', previewNodeIds: Object.entries(graph).filter(([, node]) => node.class_type === 'PreviewImage').map(([id]) => id),
-      execution: { version: 1, automatic: execution.automatic, maxImages: execution.maxImages,
+      execution: { version: execution.version, automatic: execution.automatic, maxImages: execution.maxImages,
         outputNodeIds: execution.outputNodeIds, ...(execution.expectedImages != null ? { expectedImages: execution.expectedImages } : {}) } };
     const body = plan.provider === 'comfy-cloud' ? { workflow: graph } : { workflow: JSON.stringify(graph) };
     if (plan.provider === 'runninghub') {

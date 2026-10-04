@@ -1,6 +1,6 @@
 // Static accounting for explicitly supported native Comfy nodes, never graph execution.
 // Custom implementations, remote billing and runtime assets are not inferred from names.
-import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
+import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js?v=1.59.440';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const nodeId = value => typeof value === 'string' && /^[a-zA-Z0-9_:-]{1,120}$/.test(value);
 const fail = (code, message) => { throw Object.assign(new Error(message), { code: `comfy_${code}`, submissionState: 'not_submitted' }); };
@@ -27,16 +27,16 @@ const SLICE = {LatentFromBatch:['samples','LATENT'],ImageFromBatch:['image','IMA
 const SAMPLERS = new Set(['KSampler','KSamplerAdvanced']);
 const known = type => Object.hasOwn(TYPES,type) || Object.hasOwn(SOURCES,type) || Object.hasOwn(PASS,type)
   || Object.hasOwn(REPEAT,type) || Object.hasOwn(SLICE,type) || SAMPLERS.has(type) || type === 'ImageBatch';
-export const COMFY_EXECUTION_VERSION = 1;
+export const COMFY_EXECUTION_VERSION = 2;
 
 export function normalizeComfyExecution(value) {
-  if (!object(value) || value.version !== COMFY_EXECUTION_VERSION || typeof value.automatic !== 'boolean'
+  if (!object(value) || ![1, 2].includes(value.version) || typeof value.automatic !== 'boolean'
     || !Array.isArray(value.outputNodeIds) || value.outputNodeIds.length > 8 || value.outputNodeIds.some(id => !nodeId(id))
     || new Set(value.outputNodeIds).size !== value.outputNodeIds.length || !Number.isInteger(value.maxImages) || value.maxImages < 1 || value.maxImages > 8
-    || typeof value.allowUnverified !== 'boolean' || (value.automatic && (value.allowUnverified || value.maxImages !== 1))) {
+    || typeof value.allowUnverified !== 'boolean' || (value.automatic && (value.allowUnverified || value.version === 1 && value.maxImages !== 1))) {
     fail('execution_contract', 'ComfyUI 数量约定无效或版本不兼容，请重新确认工作流');
   }
-  return Object.freeze({version:1,automatic:value.automatic,outputNodeIds:Object.freeze([...value.outputNodeIds]),maxImages:value.maxImages,allowUnverified:value.allowUnverified});
+  return Object.freeze({version:value.version,automatic:value.automatic,outputNodeIds:Object.freeze([...value.outputNodeIds]),maxImages:value.maxImages,allowUnverified:value.allowUnverified});
 }
 
 export function auditComfyWorkflow(value, execution, { referenceLoadNodeIds = [] } = {}) {
@@ -140,15 +140,20 @@ export function auditComfyWorkflow(value, execution, { referenceLoadNodeIds = []
   return Object.freeze({version:1,verified:!unverified,outputNodeIds:Object.freeze(selectedIds),selectedImages,savedImages,
     knownSavedImages:outputs.reduce((count,row)=>count+(row.count||0),0),maxSamplerBatch,maxIntermediateBatch,samplingStages:samplers.length,singleSamplingChain,
     automaticSafe:!unverified && selectedImages === 1 && savedImages === 1 && maxSamplerBatch <= 1 && maxIntermediateBatch <= 1 && singleSamplingChain,
+    // v2 is one narrative shot, with bounded candidates from one final output.
+    // Independent sampling branches are not guessed to be candidate variants.
+    automaticCandidatesSafe:!unverified && selectedIds.length === 1 && outputs.length === 1 && selectedImages >= 1 && selectedImages <= 8
+      && savedImages === selectedImages && maxSamplerBatch <= 8 && maxIntermediateBatch <= 8 && singleSamplingChain,
     outputs:Object.freeze(outputs),samplers:Object.freeze(samplers),unknownNodes:Object.freeze(unknown),uncertainInputs:Object.freeze([...uncertainInputs])});
 }
 
 export function requireComfyExecution(report, execution) {
   const policy = normalizeComfyExecution(execution);
+  if (policy.version === 2 && report.outputNodeIds.length !== 1) fail('output_selection','请选择一个最终成图节点，预览和中间结果不作为候选图片');
   if (report.knownSavedImages > 8 || (report.selectedImages !== null && report.selectedImages > policy.maxImages)) fail('audit_output_limit','ComfyUI 实际出图超过本次约定，请调整工作流批量或输出节点');
-  if (policy.automatic && !report.automaticSafe) fail('automatic_unverified','ComfyUI 尚不能确认一镜一张；请核对内部批量、输入资源与保存节点，自动任务未提交');
+  if (policy.automatic && !(policy.version === 2 ? report.automaticCandidatesSafe : report.automaticSafe)) fail('automatic_unverified','无法确认本镜候选数量或最终输出，请检查工作流');
   if (!report.verified && !policy.allowUnverified) fail('manual_confirmation_required','工作流包含未核定的节点或动态数量，请核查后仅为本次手动生成确认');
-  return Object.freeze({...policy,outputNodeIds:report.outputNodeIds,expectedImages:report.selectedImages});
+  return Object.freeze({...policy, ...(policy.version === 2 && policy.automatic ? {maxImages:report.selectedImages} : {}), outputNodeIds:report.outputNodeIds,expectedImages:report.selectedImages});
 }
 
 export function inspectComfyImageExecution(input) {

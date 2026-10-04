@@ -247,7 +247,8 @@ test('actual one-shot extraction negotiates candidates, then routes, freezes and
     assert.equal(await generateSettled(e,null,{plan:e.state.shotPlans.find(row=>row.id===p.id),automatic:true}),true,JSON.stringify({notices:e.notices,errors:e.errors}));
     assert.equal(e.llmCalls.length,2);assert.equal(e.jobs.length,3);assert.deepEqual(e.jobs.map(job=>job.inlineOrder.shotIndex),[0,1,2]);
     assert.deepEqual(e.jobs.map(job=>job.profile.comfyRouteBinding.id),['portrait','landscape','portrait']);
-    assert.ok(e.jobs.every(job=>job.comfyAutoSelected&&job.comfySceneClaim&&job.comfyExecution.automatic&&job.profile.count==='1'));
+    assert.ok(e.jobs.every(job=>job.comfyAutoSelected&&job.comfySceneClaim&&job.comfyExecution.automatic&&job.profile.count==='4'));
+    assert.ok(e.jobs.every(job=>job.requestTotal===1&&job.comfyExecution.expectedImages===4),'configured count slot yields four candidates inside each single request');
     assert.match(e.jobs[0].payload.prompt,/^tag-scene-0/);assert.match(e.jobs[1].payload.prompt,/^Natural scene 1/);
     assert.ok(e.jobs.every(job=>!job.profile.comfyCharacterEnabled));
     assert.ok(e.jobs.every(job=>job.profile.comfyRoutePromptLayer.positive===''));
@@ -293,11 +294,11 @@ test('explicit fixed mirrors and closed providers have priority over automatic w
   }finally{await e.close();}
 });
 
-test('manual trigger still subjects automatic workflow selection to strict one-image eligibility',async()=>{
+test('manual trigger still subjects automatic workflow selection to verified candidate eligibility',async()=>{
   const e=await environment({styleLock:false});
   try{
     await e.context.storyboardCompilePrompt(null);assert.equal(await generateSettled(e,null,{automatic:false}),true,JSON.stringify(e.notices));
-    assert.equal(e.jobs.length,3);assert.ok(e.jobs.every(job=>!job.automatic&&job.comfyAutoSelected&&job.comfyExecution.automatic&&job.profile.count==='1'));
+    assert.equal(e.jobs.length,3);assert.ok(e.jobs.every(job=>!job.automatic&&job.comfyAutoSelected&&job.comfyExecution.automatic&&job.profile.count==='4'));
     assert.equal(e.writes.length,0);assert.ok(e.jobs.every(job=>!job.comfySceneClaim));
   }finally{await e.close();}
 });

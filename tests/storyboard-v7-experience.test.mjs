@@ -111,9 +111,9 @@ assert.match(source, /storyboardActiveJobs\.size < concurrency[\s\S]*storyboardR
 assert.match(source, /novelBusy[\s\S]*item\.source !== 'novel' \|\| !novelBusy/, 'NovelAI jobs remain strictly serial even when other providers use concurrency');
 assert.doesNotMatch(source, /const latestFloor = storyboardCurrentAssistantFloor\(\);[\s\S]*byFloor\.set\(latestFloor/, 'an empty storyboard strip must not appear under every reply');
 const inlineRender = source.slice(source.indexOf('function storyboardRenderInlineImages'), source.indexOf('function storyboardScheduleInlineRender'));
-assert.match(inlineRender, /plan\.origin !== 'manual_supplement'/, 'only an explicitly requested manual supplement may expose an intermediate placeholder');
+assert.doesNotMatch(inlineRender, /storyboardInlinePlaceholderMarkup|plan\.origin/, 'manual and automatic intermediate states remain outside prose');
 assert.doesNotMatch(inlineRender, /plan\.origin === 'automatic'[\s\S]*is-pending/, 'automatic intermediate states stay out of the immersive chat surface');
-assert.match(source, /data-storyboard-chat-action="edit"[\s\S]*data-storyboard-chat-action="redraw"/, 'completed images retain edit and redraw escape hatches');
+assert.match(source, /data-storyboard-chat-action="image-info"/, 'completed images open the shared editor and redraw action');
 assert.doesNotMatch(routeSource, /sd-storyboard-safety-notice|受限制模型/);
 assert.doesNotMatch(css, /\.sd-storyboard-safety-notice|\.sd-storyboard-route-rule/, 'retired route UI styles are removed with their abandoned controls');
 

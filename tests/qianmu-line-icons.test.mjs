@@ -44,7 +44,11 @@ assert.match(QIANMU_ICON_SYSTEM_VERSION, /^iconsax-[a-z0-9.-]+$/);
 assert.equal(ICONSAX_STROKE_WIDTH, 2.5);
 assert.equal(QIANMU_INLINE_GLYPH_COUNT, Object.keys(ICONSAX_ICON_MARKUP).length);
 assert.ok(QIANMU_INLINE_GLYPH_COUNT >= 120, 'Iconsax 本地子集应覆盖语义入口与高频工具');
-assert.equal(QIANMU_INLINE_GLYPH_COUNT, 135, 'audited subset contains 123 Iconsax, ten familiar actions and two original glyphs');
+assert.equal(QIANMU_INLINE_GLYPH_COUNT, 135, 'audited subset contains 122 Iconsax, ten familiar actions and three original glyphs');
+for(const body of Object.values(ICONSAX_ICON_MARKUP['qianmu-ellipsis'])) {
+  assert.equal((body.match(/<circle\b/g)||[]).length,3);
+  assert.deepEqual([...body.matchAll(/cy="([\d.]+)"/g)].map(match=>match[1]),['12','12','12'],'more is a horizontal ellipsis in every theme');
+}
 assert.equal(Object.values(ICONSAX_ICON_MARKUP).reduce((count, glyph) => count + Object.keys(glyph).length, 0), 403, 'three default styles, two extra Broken bodies and two dedicated linear-only controls');
 assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, Object.keys(QIANMU_FA_ICON_MAP).length);
 for(const name of currentFaNames)assert.ok(QIANMU_FA_ICON_MAP[name], `实际使用的 FA 类名 ${name} 必须有确定语义；保留旧映射不要求旧控件仍存在`);
@@ -145,7 +149,7 @@ assert.match(thirdPartyNotices, /ISC License[\s\S]*Lucide Icons and Contributors
 // copies of a glyph must remain safe and collision-free in one document.
 const allowedTags = new Set(['path', 'circle', 'rect', 'ellipse', 'polygon', 'polyline', 'line', 'g']);
 const allowedAttributes = new Set(['d', 'cx', 'cy', 'r', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'width', 'height', 'rx', 'ry', 'points', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-dasharray', 'stroke-dashoffset', 'fill-rule', 'clip-rule', 'opacity', 'fill-opacity', 'stroke-opacity', 'transform']);
-const familiarActions = new Set(['qianmu-anchor', 'qianmu-minimize', 'qianmu-check', 'qianmu-checks', 'qianmu-pin', 'qianmu-close', 'qianmu-star', 'qianmu-star-half', 'qianmu-play', 'qianmu-stop', 'qianmu-heart', 'qianmu-underline-wave']);
+const familiarActions = new Set(['qianmu-anchor', 'qianmu-minimize', 'qianmu-check', 'qianmu-checks', 'qianmu-pin', 'qianmu-close', 'qianmu-star', 'qianmu-star-half', 'qianmu-play', 'qianmu-stop', 'qianmu-heart', 'qianmu-underline-wave','qianmu-ellipsis']);
 assert.deepEqual(Object.keys(ICONSAX_ICON_MARKUP).filter(name => name.startsWith('qianmu-')).sort(), [...familiarActions].sort(), 'only explicitly retained familiar actions and original drawings use local geometry');
 for (const [semantic, official] of Object.entries({star: 'qianmu-star', 'star-half': 'qianmu-star-half', bookmark: 'archive', 'image-regenerate': 'refresh-arrow-02'})) {
   assert.equal(ICONSAX_GLYPH_NAMES[semantic], official, `${semantic}: recognized action silhouette must not be replaced by a misleading source-name match`);
@@ -203,7 +207,8 @@ for (const [name, variants] of Object.entries(ICONSAX_ICON_MARKUP)) {
       assert.doesNotMatch(body, /stroke="currentColor"/, `${name}: Iconsax Bold remains filled geometry, not an inflated outline`);
       assert.match(body, /fill="currentColor"/, `${name}: filled artwork must not inherit the outer SVG fill=none`);
     }
-    if (familiarActions.has(name)) assert.match(body, /stroke="currentColor" stroke-width="2\.5"/, `${name}: retained action adopts the requested stroke width`);
+    if (name==='qianmu-ellipsis') assert.match(body,/fill="currentColor" stroke="none"/,'the three small menu dots remain solid, not inflated outlines');
+    else if (familiarActions.has(name)) assert.match(body, /stroke="currentColor" stroke-width="2\.5"/, `${name}: retained action adopts the requested stroke width`);
   }
 }
 for (const unsafe of [

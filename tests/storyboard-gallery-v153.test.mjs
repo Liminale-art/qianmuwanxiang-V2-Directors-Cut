@@ -23,12 +23,12 @@ const taxonomy = await readFile(new URL('qianmu-gallery-taxonomy.js', root), 'ut
 assert.match(taxonomy, /applyGalleryCollectionTarget\(records,chosen,target\)/, 'shared bulk handler must validate all changes before applying memberships');
 assert.match(source, /const collections=clone\(storyboardGalleryCollections\(\)\)[\s\S]*chat: \{ images: records, collections \}/, 'storyboard exports must include the captured media collections rather than reading a later chat');
 assert.match(source, /prepareStoryboardPackageDraft\(\{[\s\S]*collections: incomingCollections/, 'cross-device imports prepare collections in the detached batch');
-assert.match(source, /data-storyboard-chat-action="redraw"/, 'redraw remains an inline chat action');
-assert.match(source, /data-storyboard-chat-action="artist"/, 'artist replacement remains an inline chat action');
-assert.match(source, /sd-storyboard-lightbox-delete[\s\S]*store\.storyboardImages = storyboardGalleryRecords\(\)\.filter/, 'individual variants remain deletable');
+assert.match(source, /data-storyboard-chat-action="image-info"/, 'prose opens the shared image editor');
+assert.doesNotMatch(source, /data-storyboard-chat-action="redraw"|data-storyboard-chat-action="artist"/, 'duplicate prose actions stay retired');
+assert.match(source, /function storyboardRemoveImage[\s\S]*next=before\.filter\(item=>item\.id!==record\.id\)[\s\S]*store\.storyboardImages=next/, 'individual variants remain deletable from image info');
 assert.match(css, /\.sd-gallery-browser-main \.sd-storyboard-gallery \{ columns: 3 180px/, 'ordinary gallery must use its full available width');
 assert.match(css, /\.sd-gallery-browser-main \.sd-storyboard-gallery \{ columns: 2 118px/, 'narrow gallery must retain responsive waterfall columns');
 assert.match(css, /\.sd-storyboard-gallery-card\.is-stack::before[\s\S]*\.sd-storyboard-gallery-card\.is-stack::after/, 'variant groups must retain their stack treatment');
-assert.match(css, /\.sd-storyboard-lightbox-detail[\s\S]*overflow: auto/, 'mobile details must scroll independently');
+assert.match(css, /\.sd-image-info-body[^}]*overflow:auto/, 'mobile details scroll in their own information panel');
 
 console.log('Storyboard gallery and media-library contract OK');

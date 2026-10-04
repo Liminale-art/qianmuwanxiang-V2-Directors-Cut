@@ -2,34 +2,36 @@
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
-import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.425';
+import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.440';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.417';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.422';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
+import {buildStoryboardReadingShots,storyboardProseParagraphs,resolveStoryboardProseAnchor,insertStoryboardProseImage} from './qianmu-storyboard-inline-reading.js?v=1.59.440';
 import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {summarizeGalleryRecords} from './qianmu-gallery-summary.js';
-import {renderGalleryInspector,bindGalleryInspector,captureGalleryViewGuard} from './qianmu-gallery-inspector.js';
-import {renderGalleryBulkCollections,bindGalleryBulkCollections,bindGalleryKeywordChoices} from './qianmu-gallery-taxonomy.js';
-import {galleryMembershipIds,galleryMembershipSnapshot,assignGalleryMemberships} from './qianmu-gallery-membership.js';
-import {resetGalleryChoiceSessions} from './qianmu-gallery-choice-picker.js';
-import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard} from './qianmu-gallery-collections-view.js';
+import {captureGalleryViewGuard} from './qianmu-gallery-inspector.js?v=1.59.440';
+import {openImageInfo} from './qianmu-image-info-view.js?v=1.59.440';
+let storyboardImageInfoView=null,storyboardImageInfoOpening=0;
+import {renderGalleryBulkCollections,bindGalleryBulkCollections,bindGalleryKeywordChoices} from './qianmu-gallery-taxonomy.js?v=1.59.440';
+import {galleryMembershipIds,galleryMembershipSnapshot,assignGalleryMemberships,galleryMembershipChange} from './qianmu-gallery-membership.js';
+import {resetGalleryChoiceSessions} from './qianmu-gallery-choice-picker.js?v=1.59.440';
+import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryRecordSourceCharacter,galleryBrowserProjection,galleryRecordMatchesQuery} from './qianmu-gallery-collections-view.js?v=1.59.440';
 import {renderGalleryWindowControls,bindGalleryWindowControls,galleryCardBindings} from './qianmu-gallery-window.js';
-import {renderGalleryKeywordEntry,bindGalleryKeywordEntry,renderGalleryKeywordFilters} from './qianmu-gallery-keywords-view.js';
+import {renderGalleryKeywordEntry,bindGalleryKeywordEntry,renderGalleryKeywordFilters} from './qianmu-gallery-keywords-view.js?v=1.59.440';
 import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor} from './qianmu-composition-schemes-view.js';
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
 import { renderDirectorLive, paintModelLog, renderModelDiagnostics, parseDirectorFinal } from './qianmu-director-live.js';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js?v=1.59.427';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.414';
+import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
 import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.414';
 import {createStoryboardQueueWindow} from './qianmu-storyboard-queue-window.js?v=1.59.414';
 import {startStoryboardQueueWindowBatch} from './qianmu-storyboard-queue-batch.js?v=1.59.414';
-import { renderGalleryNarrative, bindGalleryNarrative } from './qianmu-gallery-narrative-view.js';
 import { captureCurrentChatSource } from './qianmu-current-chat-source.js';
 import {createStoryboardPreparationGuard} from './qianmu-storyboard-preparation-guard.js?v=1.59.427';
 import {createStoryboardWorldbookController} from './qianmu-storyboard-worldbooks.js?v=1.59.427';
@@ -41,8 +43,9 @@ import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot 
 import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard, finishCoreadPackageImport } from './qianmu-reader-package.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
-import { receiveComfyImage, resolveComfyRecoveryKey, resolveComfyCloudRecoveryKey } from './qianmu-comfy-recovery-action.js?v=1.59.437';
-import { receiveServiceImage } from './qianmu-service-recovery-action.js';
+import { receiveComfyImage, resolveComfyRecoveryKey, resolveComfyCloudRecoveryKey } from './qianmu-comfy-recovery-action.js?v=1.59.440';
+import { receiveServiceImage } from './qianmu-service-recovery-action.js?v=1.59.440';
+import { createOriginalTaskRecovery } from './qianmu-storyboard-original-recovery.js?v=1.59.440';
 import { runningHubUsageFields, renderRunningHubTaskUsage } from './qianmu-runninghub-usage.js';
 import { normalizeRunningHubConsoleUrl, runningHubWorkflowId } from './qianmu-comfy-console.js?v=1.59.435';
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
@@ -50,7 +53,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './qianmu-gallery-shot-reader.js';
-import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.414';
+import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.440';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -194,7 +197,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.425';
 import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from './qianmu-storyboard-variant-recovery.js?v=1.59.414';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.419';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.440';
 import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.414';
 import {
   createQianmuChatCompletionResponseFormat,
@@ -294,12 +297,12 @@ import {
   storyboardRecipeRecordMetadata,
   storyboardProductionDeliveryPolicy,
   transitionStoryboardTaskState,
-} from './qianmu-storyboard.js?v=1.59.427';
+} from './qianmu-storyboard.js?v=1.59.440';
 
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.439';
+const VERSION = '1.59.440';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -308,6 +311,7 @@ let reader = null;
 let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 const featureRuntime = createFeatureRuntime({
+  imageZoom: { label: '全屏看图', load: () => import('./qianmu-image-zoom.js?v=1.59.440') },
   feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.414') },
   galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.414') },
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.414') },
@@ -353,11 +357,11 @@ const featureRuntime = createFeatureRuntime({
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.202'),
+    load: () => import('./qianmu-image-direct.js?v=1.59.440'),
   },
   imageAdmission: {
     label: '生图请求保护',
-    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.434'),
+    load: () => loadLocalChunk('./qianmu-image-admission.js?v=1.59.440'),
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
@@ -373,11 +377,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyRecovery: {
     label: 'Comfy 原图领取',
-    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.435'),
-  },
-  comfyInbox: {
-    label: 'Comfy 收片管理',
-    load: () => import('./qianmu-comfy-inbox-view.js?v=1.59.433'),
+    load: () => import('./qianmu-comfy-recovery-client.js?v=1.59.440'),
   },
   comfyReferences: {
     label: 'Comfy 参考图',
@@ -414,7 +414,7 @@ const featureRuntime = createFeatureRuntime({
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.202'),
+    load: () => import('./qianmu-character-shot-view.js?v=1.59.440'),
   },
   characterReference: {
     label: '角色参考图',
@@ -426,7 +426,7 @@ const featureRuntime = createFeatureRuntime({
   },
   optionalService: {
     label: '增强服务检测',
-    load: () => import('./qianmu-service-capabilities.js?v=1.59.202'),
+    load: () => import('./qianmu-service-capabilities.js?v=1.59.440'),
   },
   comfyWorkbench: {
     label: 'Comfy 镜头台',
@@ -434,7 +434,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyCharacters: {
     label: 'Comfy 角色实现',
-    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.202'),
+    load: () => import('./qianmu-comfy-character-plan.js?v=1.59.440'),
   },
   comfyRoutes: {
     label: 'Comfy 镜头分工',
@@ -446,7 +446,7 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyCharacterReadiness: {
     label: '角色节点检查',
-    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.202'),
+    load: () => import('./qianmu-comfy-character-readiness.js?v=1.59.440'),
   },
   comfyLibrary: {
     label: 'Comfy 工作流库',
@@ -470,11 +470,11 @@ const featureRuntime = createFeatureRuntime({
   },
   comfyPreflight: {
     label: 'Comfy 配置检查',
-    load: () => import('./qianmu-comfy-preflight.js?v=1.59.202'),
+    load: () => import('./qianmu-comfy-preflight.js?v=1.59.440'),
   },
   comfyReadiness: {
     label: 'Comfy 节点检查',
-    load: () => import('./qianmu-comfy-readiness.js?v=1.59.202'),
+    load: () => import('./qianmu-comfy-readiness.js?v=1.59.440'),
   },
   comfyTargets: {
     label: 'Comfy 可信连接',
@@ -1479,6 +1479,7 @@ let focusLibraryRuntime = null;
 const STORYBOARD_QUEUE_LIMIT = 8;     // 仅本页运行态；刷新后不自动续跑，避免意外消耗生图额度
 let storyboardBusy = false;          // 分镜生成独立忙碌态，不占用推演/幕外请求锁
 let storyboardCompilerBusy = false;  // true 为正文取景；世界自动准备持有独立对象凭据，二者串行使用取景 API。
+let storyboardCompilerFloor = null;  // Only the live prose compiler owns this transient reading indicator.
 let storyboardWorldAutomaticRuntime = null, storyboardWorldAutomaticEpoch = 0;
 const storyboardAutomaticPending = new Map(); // Bounded notification tickets; never rediscover a later floor after waiting.
 let storyboardAutomaticCurrent = null;
@@ -1494,6 +1495,7 @@ let storyboardComfySceneCoordinator = null;
 let storyboardImageChannel = null;
 let storyboardImageService = null;
 let storyboardComfyRecovery = null;
+let storyboardOriginalRecovery = null;
 let storyboardAdmissionEpoch = 0;
 const storyboardGenerationPreparing = new Set();
 const storyboardPlanRetries = new WeakSet();
@@ -1594,6 +1596,7 @@ let storyboardGalleryInspectorRecordId = '';
 let storyboardLightboxEl = null;
 let storyboardLightboxEpoch = 0;
 let storyboardGalleryKind = 'stills';
+let storyboardGalleryTagFiltersOpen = false;
 let storyboardVideoGalleryVisibleCount = 24;
 let storyboardVideoGallerySession = null;
 let storyboardVideoTaskStore = null;
@@ -4082,6 +4085,7 @@ function closeModal() {
     const storyboardRoot = document.getElementById(MODAL_ID)?.querySelector('.sd-storyboard-root');
     if (storyboardRoot && storyboardState().view === 'create') storyboardCaptureWorkbench(storyboardRoot);
     storyboardCloseLightbox();
+    storyboardCloseImageInfo();
     storyboardCloseVideoViewer();
     storyboardCloseFilmViewer();
     storyboardGallerySelection.clear();
@@ -8523,6 +8527,7 @@ function bindStorageManagementEvents(root) {
     undoButton?.addEventListener('click', () => void undoConfigRestore());
     backup.querySelector('.sd-import-config')?.addEventListener('click', () => backup.querySelector('.sd-import-config-file')?.click());
     backup.querySelector('.sd-import-config-file')?.addEventListener('change', event => void importConfig(event));
+    backup.querySelector('.sd-storage-storyboard-recover')?.addEventListener('click', () => void storyboardImportPackage(null, { recoverOnly: true }));
     bindStoragePackageActions(backup,{exports:{collection:proseFloorTools.exportCollection,storyboard:()=>storyboardExportPackage({bundle:true}),reader:coreadExportData,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,notes:exportPinnedNotesBackup},
       imports:{collection:proseFloorTools.importCollection,storyboard:storyboardImportAnyPackage,reader:coreadImportDataFile,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e)}});
   }
@@ -8557,7 +8562,6 @@ function bindStorageManagementEvents(root) {
   onClick(root.querySelector('.sd-storage-comfy-receipts'), () => {
     if (activeTab !== 'imagegen') storyboardBeginSession();
     activeTab = 'imagegen'; storyboardNavigate(root, { view: 'logs' });
-    const modal = document.getElementById(MODAL_ID); if (modal) void storyboardOpenComfyInbox(modal);
   });
   onClick(root.querySelector('.sd-storage-refresh'), () => void refreshStorageInventory(true));
   onClick(root.querySelector('.sd-storage-assistant-library'),async()=>{const task=storageCleanupSession.begin(root);if(!task)return;try{await proseFloorTools.cleanupAssistant(root,confirmDialog,()=>task.check(),undefined,0,true);task.check();await refreshStorageInventory(true);}catch{toast('助手管理未完成，请核对账户后重新打开。','warning');}finally{task.release();}});
@@ -12582,7 +12586,6 @@ function storyboardBasePromptsForArtistRedraw(record, snapshot) {
 }
 
 function storyboardPageKey(state = storyboardState()) {
-  if (state.view === 'gallery' && storyboardGalleryKind === 'stills' && storyboardGalleryInspectorRecordId) return 'gallery:detail';
   if (state.view === 'create' && state.source === 'comfy') return 'create:comfy';
   if (state.editingArtistPresetId) return `artists:edit:${state.editingArtistPresetId}`;
   if (state.editingPromptItemId) return `presets:item:${state.editingPromptItemId}`;
@@ -12617,7 +12620,6 @@ function storyboardApplyRoute(entry = {}) {
   }
   if (Object.hasOwn(entry, 'promptItemDraft')) state.promptItemDraft = entry.promptItemDraft ? clone(entry.promptItemDraft) : null;
   if (Object.hasOwn(entry, 'galleryCollectionId')) storyboardGalleryOpenCollectionId = String(entry.galleryCollectionId || '');
-  if (Object.hasOwn(entry, 'galleryInspectorId')) storyboardGalleryInspectorRecordId = String(entry.galleryInspectorId || '');
   if (Object.hasOwn(entry, 'galleryVisibleCount')) storyboardGalleryVisibleCount = Math.max(40, Number(entry.galleryVisibleCount) || 40);
 }
 
@@ -12637,7 +12639,6 @@ function storyboardEndSession() {
   storyboardTagEditorState = null;
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyReadinessCleanup?.();
   if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyTargetsCleanup?.();
-  if (typeof document !== 'undefined') document.getElementById(MODAL_ID)?._sdComfyInboxCleanup?.();
   storyboardComfyLibraryController?.detach();
   storyboardComfyPoolController?.detach();
   storyboardCharacterArchiveController?.detach();
@@ -13262,8 +13263,8 @@ function storyboardGalleryCollections() {
   const store = getChatStore();
   if (!Array.isArray(store.storyboardCollections)) store.storyboardCollections = [];
   // Display windows must not truncate the chat-owned collection list.
-  store.storyboardCollections = store.storyboardCollections
-    .filter((item) => item && String(item.id || '').trim() && String(item.name || '').trim());
+  const valid=store.storyboardCollections.filter((item) => item && String(item.id || '').trim() && String(item.name || '').trim());
+  if(valid.length!==store.storyboardCollections.length)store.storyboardCollections=valid;
   return store.storyboardCollections;
 }
 
@@ -13342,9 +13343,9 @@ function storyboardMediaTagChipMarkup(tag) {
 }
 
 function storyboardMediaTagEditorMarkup(tags, knownTags, scope) {
-  const selected = uniqueClean(tags || []).slice(0, 30);
+  const selected = uniqueClean(tags || []);
   const suggestions = uniqueClean(knownTags || []).filter((tag) => !selected.includes(tag)).slice(0, 40);
-  return `<div class="sd-media-tag-editor" data-media-tag-editor="${htmlEscape(scope)}"><div class="sd-media-tag-chips">${selected.map(storyboardMediaTagChipMarkup).join('')}</div><div class="sd-media-tag-input-row"><input class="text_pole sd-media-tag-input" maxlength="80" placeholder="添加标签"><div class="sd-media-tag-suggestions">${suggestions.map((tag) => `<button type="button" data-media-tag-suggestion="${htmlEscape(tag)}">${htmlEscape(tag)}</button>`).join('')}</div></div></div>`;
+  return `<div class="sd-media-tag-editor" data-media-tag-editor="${htmlEscape(scope)}"><div class="sd-media-tag-chip-row"><div class="sd-media-tag-chips">${selected.map(storyboardMediaTagChipMarkup).join('')}</div><button type="button" class="sd-icon-btn" data-media-tag-add aria-label="添加标签"><i class="fa-solid fa-plus"></i></button></div><div class="sd-media-tag-input-row" hidden><div class="sd-media-tag-input-controls"><input class="text_pole sd-media-tag-input" maxlength="80" placeholder="标签名称" aria-label="标签名称"><button type="button" class="sd-icon-btn" data-media-tag-cancel aria-label="取消标签修改"><i class="fa-solid fa-xmark"></i></button><button type="button" class="sd-icon-btn" data-media-tag-confirm aria-label="确认标签"><i class="fa-solid fa-check"></i></button></div><div class="sd-media-tag-suggestions">${suggestions.map((tag) => `<button type="button" data-media-tag-suggestion="${htmlEscape(tag)}">${htmlEscape(tag)}</button>`).join('')}</div></div><span class="sd-media-tag-status" role="status"></span></div>`;
 }
 
 function storyboardMediaSidebarMarkup({ allCount, collections, currentId, countFor, tags, scope }) {
@@ -13353,29 +13354,21 @@ function storyboardMediaSidebarMarkup({ allCount, collections, currentId, countF
 }
 
 function storyboardMediaTagValues(editor) {
-  return uniqueClean(Array.from(editor?.querySelectorAll?.('[data-media-tag]') || []).map((chip) => String(chip.dataset.mediaTag || '').trim())).slice(0, 30);
+  return uniqueClean(Array.from(editor?.querySelectorAll?.('[data-media-tag]') || []).map((chip) => String(chip.dataset.mediaTag || '').trim()));
 }
 
-function storyboardPersistMediaTagEditor(editor) {
+async function storyboardPersistMediaTagEditor(editor, values=storyboardMediaTagValues(editor)) {
   const scope = String(editor?.dataset.mediaTagEditor || '');
-  if (!scope.startsWith('gallery:')) return;
-  if (!editor._qianmuGalleryCurrent?.()) return;
+  if (!scope.startsWith('gallery:')) return true;
+  if (!editor._qianmuGalleryCurrent?.()) return false;
+  await editor._qianmuGalleryVerify?.();
+  if (!editor._qianmuGalleryCurrent?.()) return false;
   const record = storyboardGalleryRecords().find((item) => item.id === scope.slice(8));
-  if (!record) return;
-  record.tags = storyboardMediaTagValues(editor);
-  void saveMetadata();
-}
-
-function storyboardMediaTagAdd(editor, rawValue) {
-  const value = String(rawValue || '').trim().replace(/^#+/, '').slice(0, 80);
-  if (!value) return false;
-  const values = storyboardMediaTagValues(editor);
-  if (values.some((tag) => tag.toLocaleLowerCase() === value.toLocaleLowerCase()) || values.length >= 30) return false;
-  editor.querySelector('.sd-media-tag-chips')?.insertAdjacentHTML('beforeend', storyboardMediaTagChipMarkup(value));
-  editor.querySelector(`[data-media-tag-suggestion="${CSS.escape(value)}"]`)?.setAttribute('hidden', '');
-  applyQianmuIcons(editor);
-  storyboardPersistMediaTagEditor(editor);
-  return true;
+  if (!record) return false;
+  const before=record.tags;record.tags=values;
+  try{await saveMetadata();}catch(error){if(record.tags===values)record.tags=before;throw error;}
+  editor._qianmuGallerySaved?.();
+  return editor._qianmuGalleryCurrent?.()===true;
 }
 
 function storyboardMediaTagFilterSuggestions(editor, query) {
@@ -13389,45 +13382,27 @@ function storyboardMediaTagFilterSuggestions(editor, query) {
 function storyboardBindMediaTagEditors(root) {
   root.querySelectorAll('[data-media-tag-editor]').forEach((editor) => {
     const input = editor.querySelector('.sd-media-tag-input');
-    const commit = (value) => {
-      String(value || '').split(/[,，\n]+/).forEach((tag) => storyboardMediaTagAdd(editor, tag));
-      if (input) { input.value = ''; storyboardMediaTagFilterSuggestions(editor, ''); input.focus(); }
+    const row=editor.querySelector('.sd-media-tag-input-row'),status=editor.querySelector('.sd-media-tag-status');let editing='',busy=false;
+    const cancel=()=>{editing='';input.value='';row.hidden=true;storyboardMediaTagFilterSuggestions(editor,'');editor.querySelector('[data-media-tag-add]')?.focus();};
+    const save=async values=>{
+      if(busy)return;busy=true;status.textContent='';editor.querySelectorAll('button,input').forEach(node=>node.disabled=true);
+      try{if(!await storyboardPersistMediaTagEditor(editor,values))return;editor.querySelector('.sd-media-tag-chips').innerHTML=values.map(storyboardMediaTagChipMarkup).join('');applyQianmuIcons(editor);cancel();}
+      catch(error){if(editor.isConnected)status.textContent=error.message||'标签未保存';}
+      finally{busy=false;editor.querySelectorAll('button,input').forEach(node=>node.disabled=false);}
     };
-    input?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ',') return;
-      event.preventDefault(); commit(input.value);
-    });
-    input?.addEventListener('input', () => {
-      if (/[,，\n]/.test(input.value)) {
-        const parts = input.value.split(/[,，\n]+/);
-        const tail = parts.pop() || '';
-        parts.forEach((tag) => storyboardMediaTagAdd(editor, tag));
-        input.value = tail;
-      }
-      storyboardMediaTagFilterSuggestions(editor, input.value);
-    });
-    editor.querySelectorAll('[data-media-tag-suggestion]').forEach((button) => button.addEventListener('click', () => commit(button.dataset.mediaTagSuggestion)));
-    editor.addEventListener('click', async (event) => {
-      const remove = event.target.closest('.sd-media-tag-remove');
-      if (remove) {
-        remove.closest('[data-media-tag]')?.remove();
-        storyboardPersistMediaTagEditor(editor);
-        storyboardMediaTagFilterSuggestions(editor, input?.value || '');
-        return;
-      }
-      const rename = event.target.closest('.sd-media-tag-rename');
-      if (!rename) return;
-      const chip = rename.closest('[data-media-tag]');
-      const oldValue = String(chip?.dataset.mediaTag || '');
-      const answer = await promptInput('编辑标签', '输入新的标签名。', oldValue);
-      const value = String(answer ?? '').trim().replace(/^#+/, '').slice(0, 80);
-      if (!chip || !value || value === oldValue) return;
-      if (storyboardMediaTagValues(editor).some((tag) => tag !== oldValue && tag.toLocaleLowerCase() === value.toLocaleLowerCase())) return toast('已有同名标签。', 'warning');
-      chip.dataset.mediaTag = value;
-      rename.textContent = value;
-      chip.querySelector('.sd-media-tag-remove')?.setAttribute('aria-label', `删除标签 ${value}`);
-      storyboardPersistMediaTagEditor(editor);
-      storyboardMediaTagFilterSuggestions(editor, input?.value || '');
+    const commit=raw=>{const value=String(raw||'').trim().replace(/^#+/,'').slice(0,80);if(!value)return;
+      const values=storyboardMediaTagValues(editor);if(values.some(tag=>tag!==editing&&tag.toLocaleLowerCase()===value.toLocaleLowerCase())){status.textContent='已有同名标签';return;}
+      if(!editing&&values.length>=30){status.textContent='每张图片最多 30 个标签';return;}
+      void save(editing?values.map(tag=>tag===editing?value:tag):[...values,value]);};
+    const open=value=>{editing=value;input.value=value;row.hidden=false;status.textContent='';storyboardMediaTagFilterSuggestions(editor,value);input.focus();};
+    editor.querySelector('[data-media-tag-add]')?.addEventListener('click',()=>open(''));
+    editor.querySelector('[data-media-tag-cancel]')?.addEventListener('click',cancel);
+    editor.querySelector('[data-media-tag-confirm]')?.addEventListener('click',()=>commit(input.value));
+    input?.addEventListener('keydown',event=>{if(event.isComposing)return;if(event.key==='Escape'){event.preventDefault();event.stopPropagation();cancel();}else if(event.key==='Enter'){event.preventDefault();commit(input.value);}});
+    input?.addEventListener('input',()=>storyboardMediaTagFilterSuggestions(editor,input.value));
+    editor.addEventListener('click',event=>{if(busy)return;const remove=event.target.closest('.sd-media-tag-remove'),rename=event.target.closest('.sd-media-tag-rename'),suggestion=event.target.closest('[data-media-tag-suggestion]');
+      if(remove)void save(storyboardMediaTagValues(editor).filter(tag=>tag!==remove.closest('[data-media-tag]').dataset.mediaTag));
+      else if(rename)open(rename.closest('[data-media-tag]').dataset.mediaTag);else if(suggestion){input.value=suggestion.dataset.mediaTagSuggestion;input.focus();}
     });
   });
 }
@@ -13847,7 +13822,7 @@ function renderStoryboardGenerationCard(state) {
 function renderStoryboardVariantControls(state, profile, capabilities, protocolBinding) {
   const supported = (state.source === 'comfy' || protocolBinding.imageProtocolVersion) ? capabilities.count : true;
   if (!supported) return '';
-  return `<details class="sd-storyboard-variants"><summary><span>单镜变体</span></summary><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>手动单镜张数</span><input class="text_pole sd-storyboard-field" data-storyboard-field="count" type="number" min="1" max="4" step="1" value="${htmlEscape(profile.count)}"></label></div></details>`;
+  return `<details class="sd-storyboard-variants"><summary><span>单镜变体</span></summary><div class="sd-storyboard-grid sd-storyboard-grid-two"><label><span>${state.source === 'comfy' ? '每镜候选数' : '手动单镜张数'}</span><input class="text_pole sd-storyboard-field" data-storyboard-field="count" type="number" min="1" max="${state.source === 'comfy' ? 8 : 4}" step="1" value="${htmlEscape(profile.count)}"></label></div></details>`;
 }
 
 function renderStoryboardCaptureSettings(state) {
@@ -14689,19 +14664,6 @@ function storyboardUpdateGalleryNarrative() {
     records: storyboardGalleryRecords(), plans:storyboardState().shotPlans, messages: ctx().chat || [], paragraphs: storyboardLinkReviewParagraphs });
 }
 
-function storyboardBindGalleryNarrative(root) {
-  if (!root.querySelector('.sd-gallery-narrative')) return;
-  const state = storyboardState(), owner = ctx().chatMetadata, chatKey = String(getChatKey() || ''), epoch = storyboardAdmissionEpoch;
-  bindGalleryNarrative(root, { session: storyboardGalleryNarrative, update: storyboardUpdateGalleryNarrative,
-    captureSource: () => captureCurrentChatSource({ getContext: ctx, epoch: () => storyboardAdmissionEpoch }),
-    isCurrent: () => root.isConnected && root.classList.contains('open') && state === storyboardState() && owner === ctx().chatMetadata
-      && chatKey === String(getChatKey() || '') && epoch === storyboardAdmissionEpoch && state.view === 'gallery' && storyboardGalleryKind === 'stills',
-    changed: all => {
-      if (all) { state.gallerySearch = ''; state.galleryTrack = 'all'; state.galleryTagFilters=[]; storyboardGalleryOpenCollectionId = ''; }
-      storyboardGallerySelection.clear(); storyboardGallerySelectMode = false; storyboardGalleryVisibleCount = 40;
-      storyboardGalleryInspectorRecordId = ''; renderModal();
-    } });
-}
 
 function storyboardGalleryViewGuard(root) {
   return captureGalleryViewGuard(root,{scope:()=>[storyboardState(),ctx().chatMetadata,String(getChatKey()||''),storyboardAdmissionEpoch,activeTab,storyboardState().view,storyboardGalleryKind],
@@ -14709,7 +14671,7 @@ function storyboardGalleryViewGuard(root) {
 }
 
 function storyboardShowGalleryCollection(root, collection, clearSearch=false) {
-  if (!collection || !storyboardGalleryCollections().includes(collection)) return;
+  if (!collection || !(collection.automatic?storyboardGalleryBrowserData().collections.some(row=>row.id===collection.id):storyboardGalleryCollections().includes(collection))) return;
   const state=storyboardState();storyboardRememberPageScroll(root);
   const saved=storyboardGalleryCollectionReturn,same=saved&&saved.owner===ctx().chatMetadata&&saved.key===String(getChatKey()||'')&&saved.epoch===storyboardAdmissionEpoch&&saved.state===state;
   if(!storyboardGalleryOpenCollectionId||!same)storyboardGalleryCollectionReturn={owner:ctx().chatMetadata,key:String(getChatKey()||''),epoch:storyboardAdmissionEpoch,state,
@@ -14730,43 +14692,24 @@ function storyboardLeaveGalleryCollection(root) {
 
 function storyboardShowGalleryInspector(root, record) {
   if (!record || !storyboardGalleryRecords().includes(record)) return;
-  storyboardRememberPageScroll(root);storyboardGalleryInspectorRecordId=record.id;storyboardPendingRestoreScroll=0;renderModal();
-  root.querySelector('[data-gallery-detail-back]')?.focus({preventScroll:true});
+  void storyboardOpenImageInfo(record).catch(error=>toast(error.message||'插画信息未能打开','warning'));
 }
 
-function storyboardLeaveGalleryInspector(root, id) {
-  storyboardRememberPageScroll(root);storyboardGalleryInspectorRecordId='';storyboardPendingRestoreScroll=storyboardPageScrolls.get('gallery')||0;renderModal();
-  const card=[...root.querySelectorAll('.sd-storyboard-gallery-card')].find(node=>node.dataset.storyboardRecord===id);
-  (card?.querySelector('.sd-storyboard-gallery-inspect')||root.querySelector('.sd-storyboard-gallery-search'))?.focus({preventScroll:true});
-}
 
-function storyboardBindGalleryInspector(root) {
-  if (!root.querySelector('[data-gallery-detail]')) return;
-  bindGalleryInspector(root,{isCurrent:storyboardGalleryViewGuard(root),readId:()=>storyboardGalleryInspectorRecordId,
-    readCollections:storyboardGalleryCollections,scope:()=>[ctx().chatMetadata,String(getChatKey()||''),storyboardAdmissionEpoch],
-    readRecord:()=>{const rows=storyboardGalleryRecords().filter(row=>row.id===storyboardGalleryInspectorRecordId);return rows.length===1?rows[0]:null;},
-    back:id=>storyboardLeaveGalleryInspector(root,id),onError:error=>toast(error.message||'画面操作未完成','warning'),
-    saveCollections:async(record,ids,verify)=>{await verify();assignGalleryMemberships(record,ids);await saveMetadata();},
-    actions:{preview:(record,{isCurrent})=>storyboardOpenLightbox(storyboardGalleryRecords().filter(row=>storyboardGalleryGroupId(row)===storyboardGalleryGroupId(record)).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)),record.id,{isCurrent}),
-      style:(record,{verify})=>storyboardApplyRecordStyle(record,{verify}),review:(record,{verify})=>storyboardReviewRecordLink(record,{verify}),
-      attach:(record,{verify})=>storyboardAttachProductionRecord(record,{verify}),
-      source:record=>{if(!storyboardUpdateGalleryNarrative().selectRecord(record))return toast('正文位置已变化，请重新核对','warning');
-        const state=storyboardState();state.gallerySearch='';state.galleryTrack='all';state.galleryTagFilters=[];storyboardGalleryOpenCollectionId='';storyboardGallerySelection.clear();
-        storyboardGallerySelectMode=false;storyboardGalleryVisibleCount=40;storyboardGalleryInspectorRecordId='';storyboardPendingRestoreScroll=0;renderModal();}}});
-}
-
-function storyboardFilteredGalleryRecords(state, sourceRecords = [...storyboardGalleryRecords()].reverse()) {
+function storyboardFilteredGalleryRecords(state, sourceRecords = [...storyboardGalleryRecords()].reverse(),browser=storyboardGalleryBrowserData(sourceRecords)) {
   const query = String(state.gallerySearch || '').trim().toLowerCase();
-  const allRecords = storyboardUpdateGalleryNarrative().filter(sourceRecords);
-  return allRecords.filter((record) => {
+  return sourceRecords.filter((record) => {
     const production = storyboardProductionDeliveryPolicy(record);
-    if (state.galleryTrack !== 'all' && production.track !== state.galleryTrack) return false;
-    if (storyboardGalleryOpenCollectionId && !galleryMembershipIds(record).includes(storyboardGalleryOpenCollectionId)) return false;
+    if (state.galleryTrack && state.galleryTrack !== 'all' && production.track !== state.galleryTrack) return false;
+    if (storyboardGalleryOpenCollectionId && !browser.memberships(record).includes(storyboardGalleryOpenCollectionId)) return false;
     if (!galleryTagsMatch(record,state.galleryTagFilters)) return false;
-    if (!query) return true;
-    return [record.prompt, record.finalPrompt, record.model, record.artistString, ...(record.tags || []), STORYBOARD_SOURCES[record.source]?.label, production.sourceLabel]
-      .some((value) => String(value || '').toLowerCase().includes(query));
+    return galleryRecordMatchesQuery(record,query,{collections:browser.collections,collectionNames:browser.collectionNames,memberships:browser.memberships,location:browser.location(record),production,sourceLabel:STORYBOARD_SOURCES[record.source]?.label});
   });
+}
+
+function storyboardGalleryBrowserData(records=storyboardGalleryRecords()) {
+  const narrative=storyboardUpdateGalleryNarrative();
+  return galleryBrowserProjection(records,storyboardGalleryCollections(),{sourceFor:record=>narrative.sourceFor(record)});
 }
 
 function storyboardSetArtistPreview(root, value) {
@@ -14902,50 +14845,37 @@ async function storyboardEditArtistPool(poolId = '') {
 }
 
 function renderStoryboardGallery(state) {
-  if (storyboardGalleryKind === 'motion') return renderStoryboardVideoGallery();
-  if (storyboardGalleryKind === 'film') return renderStoryboardFilmGallery();
-  const allRecords = [...storyboardGalleryRecords()].reverse();
-  const summary = summarizeGalleryRecords(allRecords, galleryMembershipIds);
-  const collections = storyboardGalleryCollections();
-  if (storyboardGalleryInspectorRecordId && !summary.record(storyboardGalleryInspectorRecordId)) storyboardGalleryInspectorRecordId='';
-  const inspected=summary.record(storyboardGalleryInspectorRecordId);
-  if (inspected) return renderGalleryInspector(inspected,{url:storyboardSafeUrl(inspected.url),sourceLabel:STORYBOARD_SOURCES[inspected.source]?.label||inspected.source||'分镜',
-    production:storyboardProductionDeliveryPolicy(inspected),collections,collectionIds:galleryMembershipIds(inspected),
-    tagEditor:storyboardMediaTagEditorMarkup(inspected.tags||[],summary.knownTags,`gallery:${inspected.id}`),location:storyboardUpdateGalleryNarrative().sourceFor(inspected)});
-  if (storyboardGalleryOpenCollectionId && !collections.some((item) => item.id === storyboardGalleryOpenCollectionId)) {
-    storyboardGalleryOpenCollectionId = '';
-  }
+  if (storyboardGalleryKind !== 'stills') return renderStoryboardFilmGallery();
+  const allRecords = [...storyboardGalleryRecords()].reverse(),browser=storyboardGalleryBrowserData(allRecords);
+  const collections=browser.collections,summary=summarizeGalleryRecords(allRecords,browser.memberships);
+  if (storyboardGalleryOpenCollectionId && !collections.some(item=>item.id===storyboardGalleryOpenCollectionId)) storyboardGalleryOpenCollectionId='';
   state.galleryTagFilters=(state.galleryTagFilters||[]).filter(tag=>summary.hasTag(tag));
-  const records = storyboardFilteredGalleryRecords(state, allRecords);
-  const groups = storyboardGalleryNarrative.orderGroups(storyboardGalleryGroups(records));
+  const records=storyboardFilteredGalleryRecords(state,allRecords,browser),groups=storyboardGalleryGroups(records);
   const currentCollection=collections.find(item=>item.id===storyboardGalleryOpenCollectionId)||null;
-  const otherFilters=Boolean(state.galleryTrack!=='all'||state.galleryTagFilters.length||storyboardGalleryNarrative.selected);
+  const otherFilters=Boolean(state.galleryTrack&&state.galleryTrack!=='all'||state.galleryTagFilters.length);
   const restricted=Boolean(otherFilters||String(state.gallerySearch||'').trim());
-  const folders=currentCollection?[]:galleryCollectionEntries(collections,{summary,visible:restricted?summarizeGalleryRecords(records,galleryMembershipIds):summary,
-    query:state.gallerySearch,restricted,otherFilters});
+  const folders=currentCollection?[]:galleryCollectionEntries(collections,{summary,visible:restricted?summarizeGalleryRecords(records,browser.memberships):summary,query:state.gallerySearch,restricted,otherFilters});
   const window=galleryBrowserWindow(groups,folders,storyboardGalleryVisibleCount);storyboardGalleryVisibleCount=window.cursor;
-  const visible=window.items;
+  const icon=(classes,label,name,extra='')=>`<button type="button" class="sd-icon-btn ${classes}" title="${label}" aria-label="${label}" ${extra}><i class="fa-solid ${name}"></i></button>`;
   return `<div class="sd-storyboard-gallery-page sd-gallery-browser-page">
-    ${renderStoryboardGalleryKindSwitch()}
-    <div class="sd-gallery-directory-entry"><button type="button" class="sd-btn sd-open-gallery-archive">已保存图库</button><button type="button" class="sd-btn sd-open-gallery-directory">角色与聊天</button></div>
-    ${renderGalleryNarrative(storyboardGalleryNarrative)}
-    ${renderGalleryCollectionPath(currentCollection)}
-    <section class="sd-card sd-storyboard-gallery-head"><small class="sd-gallery-results">${records.length} 张画面${folders.length ? ` · ${folders.length} 个合集` : ''}</small><div class="sd-storyboard-gallery-tools"><select class="text_pole sd-storyboard-gallery-track" aria-label="筛选画面来源"><option value="all" ${state.galleryTrack === 'all' ? 'selected' : ''}>全部来源</option><option value="main_camera" ${state.galleryTrack === 'main_camera' ? 'selected' : ''}>本段正文</option><option value="second_camera" ${state.galleryTrack === 'second_camera' ? 'selected' : ''}>世界背面</option></select><input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch)}" placeholder="搜索画面、画师、标签或合集"><button type="button" class="sd-icon-btn sd-storyboard-gallery-select-mode" aria-pressed="${storyboardGallerySelectMode}" title="${storyboardGallerySelectMode ? '完成多选' : '多选'}" aria-label="${storyboardGallerySelectMode ? '完成多选' : '多选'}"><i class="fa-solid ${storyboardGallerySelectMode ? 'fa-check' : 'fa-list-check'}"></i></button><button type="button" class="sd-icon-btn sd-storyboard-gallery-new-folder" title="新建合集" aria-label="新建合集"><i class="fa-solid fa-folder-plus"></i></button></div></section>
-    ${renderGalleryKeywordFilters(allRecords,state.galleryTagFilters,summary.keywords)}
-    <div class="sd-gallery-browser-main">
-    ${storyboardGallerySelectMode ? `<section class="sd-card sd-storyboard-gallery-bulk"><span>已选 <b>${storyboardGallerySelection.size}</b> 张</span><div>${renderGalleryBulkCollections(collections)}<button type="button" class="sd-btn sd-storyboard-gallery-move-selected" disabled>加入合集</button><button type="button" class="sd-btn sd-storyboard-gallery-select-all" ${records.length ? '' : 'disabled'}>全选结果</button><button type="button" class="sd-btn sd-danger sd-storyboard-gallery-delete-selected" ${storyboardGallerySelection.size ? '' : 'disabled'}>删除选中</button></div></section>` : ''}
-    ${window.total ? `${renderGalleryWindowControls(window)}<div class="sd-storyboard-gallery">${visible.map(entry=>{
+    ${renderStoryboardGalleryKindSwitch()}${renderGalleryCollectionPath(currentCollection)}
+    <section class="sd-card sd-storyboard-gallery-head"><div class="sd-storyboard-gallery-tools">
+      <input class="text_pole sd-storyboard-gallery-search" value="${htmlEscape(state.gallerySearch||'')}" placeholder="搜索画面、角色、标签或合集" data-gallery-count="${allRecords.length}" aria-label="搜索画面、角色、标签或合集">
+      <details class="sd-gallery-toolbar-popover sd-gallery-tags-popover" ${storyboardGalleryTagFiltersOpen?'open':''}><summary class="sd-icon-btn ${state.galleryTagFilters.length?'active':''}" title="标签筛选" aria-label="标签筛选"><i class="fa-solid fa-tags"></i></summary>${renderGalleryKeywordFilters(allRecords,state.galleryTagFilters,summary.keywords,{compact:true})||'<span class="sd-gallery-toolbar-empty">暂无标签</span>'}</details>
+      ${icon('sd-storyboard-gallery-select-mode',storyboardGallerySelectMode?'完成多选':'多选',storyboardGallerySelectMode?'fa-check':'fa-list-check',`aria-pressed="${storyboardGallerySelectMode}"`)}
+      ${icon('sd-storyboard-gallery-new-folder','新建合集','fa-folder-plus')}
+      <details class="sd-gallery-toolbar-popover sd-gallery-source-popover"><summary class="sd-icon-btn ${state.galleryTrack&&state.galleryTrack!=='all'?'active':''}" title="来源筛选" aria-label="来源筛选"><i class="fa-solid fa-filter"></i></summary><select class="text_pole sd-storyboard-gallery-track" aria-label="筛选画面来源"><option value="all" ${state.galleryTrack==='all'?'selected':''}>全部来源</option><option value="main_camera" ${state.galleryTrack==='main_camera'?'selected':''}>正文主线</option><option value="second_camera" ${state.galleryTrack==='second_camera'?'selected':''}>世界背面</option></select></details>
+    </div></section><div class="sd-gallery-browser-main">
+    ${storyboardGallerySelectMode?`<section class="sd-card sd-storyboard-gallery-bulk"><b aria-label="已选 ${storyboardGallerySelection.size} 张">${storyboardGallerySelection.size}</b><div class="sd-gallery-bulk-actions">${renderGalleryBulkCollections(storyboardGalleryCollections(),{compact:true})}${icon('sd-storyboard-gallery-select-all','全选','fa-check-double',records.length?'':'disabled')}${icon('sd-danger sd-storyboard-gallery-delete-selected','删除选中','fa-trash-can',storyboardGallerySelection.size?'':'disabled')}</div></section>`:''}
+    ${window.total?`${renderGalleryWindowControls(window)}<div class="sd-storyboard-gallery">${window.items.map(entry=>{
       if(entry.kind==='collection')return renderGalleryCollectionTile(entry,{safeUrl:storyboardSafeUrl});
-      const group=entry.group,record=group.variants[0];
-      return renderGalleryImageCard(group,{url:storyboardSafeUrl(record.url),status:storyboardRecordStatus(record),production:storyboardProductionDeliveryPolicy(record),
-        sourceLabel:STORYBOARD_SOURCES[record.source]?.label||record.source||'分镜',timeLabel:formatDateTime(record.createdAt),
-        selectionMode:storyboardGallerySelectMode,selection:storyboardGallerySelection,inspectedId:storyboardGalleryInspectorRecordId});
-    }).join('')}</div>${renderGalleryWindowControls(window,'bottom')}` : `<section class="sd-card sd-storyboard-empty"><i class="fa-solid fa-film"></i><p>${allRecords.length ? '这里暂时没有符合条件的画面。' : '阅片室还是空的。生成后的画面会完整保留在这里。'}</p></section>`}</div>
-  </div>`;
+      const group=entry.group,record=group.variants[0];return renderGalleryImageCard(group,{url:storyboardSafeUrl(record.url),production:storyboardProductionDeliveryPolicy(record),
+        sourceLabel:STORYBOARD_SOURCES[record.source]?.label||record.source||'分镜',sourceCharacter:browser.sourceName(record),selectionMode:storyboardGallerySelectMode,selection:storyboardGallerySelection});
+    }).join('')}</div>${renderGalleryWindowControls(window,'bottom')}`:`<section class="sd-card sd-storyboard-empty"><p>${allRecords.length?'没有符合条件的画面。':'阅片室还是空的。'}</p></section>`}</div></div>`;
 }
 
 function renderStoryboardGalleryKindSwitch() {
-  return `<nav class="sd-storyboard-gallery-kind-switch" aria-label="阅片类型"><button type="button" class="${storyboardGalleryKind === 'stills' ? 'active' : ''}" data-storyboard-gallery-kind="stills" aria-pressed="${storyboardGalleryKind === 'stills'}"><i class="fa-solid fa-images"></i><span>静帧</span></button><button type="button" class="${storyboardGalleryKind === 'motion' ? 'active' : ''}" data-storyboard-gallery-kind="motion" aria-pressed="${storyboardGalleryKind === 'motion'}"><i class="fa-solid fa-video"></i><span>动态</span></button><button type="button" class="${storyboardGalleryKind === 'film' ? 'active' : ''}" data-storyboard-gallery-kind="film" aria-pressed="${storyboardGalleryKind === 'film'}"><i class="fa-solid fa-film"></i><span>影片</span></button></nav>`;
+  return `<nav class="sd-storyboard-gallery-kind-switch" aria-label="阅片类型"><button type="button" class="${storyboardGalleryKind==='stills'?'active':''}" data-storyboard-gallery-kind="stills" aria-pressed="${storyboardGalleryKind==='stills'}"><i class="fa-solid fa-images"></i><span>静帧</span></button><button type="button" class="${storyboardGalleryKind!=='stills'?'active':''}" data-storyboard-gallery-kind="film" aria-pressed="${storyboardGalleryKind!=='stills'}"><i class="fa-solid fa-film"></i><span>影片</span></button></nav>`;
 }
 
 function storyboardVideoRatioClass(value) {
@@ -14999,7 +14929,11 @@ async function storyboardEnsureVideoDraftRuntime() {
 
 function storyboardCloseVideoDraftEditor() {
   storyboardVideoDraftOpenSequence++;
-  storyboardVideoDraftEditorEl?.remove();
+  const layer=storyboardVideoDraftEditorEl;
+  layer?.releaseAppearance?.();
+  if(layer?.open)layer.close();
+  layer?.remove();
+  if(layer?.returnTarget?.isConnected)layer.returnTarget.focus?.({preventScroll:true});
   storyboardVideoDraftEditorEl = null;
   storyboardVideoDraftEditor = null;
 }
@@ -15113,12 +15047,13 @@ function storyboardVideoDraftEditorMarkup(draft, originalShot = null) {
   </section>`;
 }
 
-async function storyboardOpenVideoDraftEditor(source) {
+async function storyboardOpenVideoDraftEditor(source, {isCurrent=()=>true} = {}) {
+  if(!isCurrent())return;
   const chatKey = String(getChatKey() || '');
   if (!chatKey) return toast('请先进入一个聊天。', 'warning');
   let request=++storyboardVideoDraftOpenSequence,scope;
   const epoch=storyboardSnapshotEpoch,owner=ctx().chatMetadata;
-  const current=()=>{if(request!==storyboardVideoDraftOpenSequence||epoch!==storyboardSnapshotEpoch||owner!==ctx().chatMetadata||chatKey!==String(getChatKey()||''))throw Error('draft_owner_changed');scope?.assertCurrent();};
+  const current=()=>{if(!isCurrent()||request!==storyboardVideoDraftOpenSequence||epoch!==storyboardSnapshotEpoch||owner!==ctx().chatMetadata||chatKey!==String(getChatKey()||''))throw Error('draft_owner_changed');scope?.assertCurrent();};
   try {
     const { draftModule, store } = await storyboardEnsureVideoDraftRuntime();current();
     let draft = null;
@@ -15140,8 +15075,10 @@ async function storyboardOpenVideoDraftEditor(source) {
     current();shotReader.assertCurrent();
     storyboardCloseVideoDraftEditor();request=storyboardVideoDraftOpenSequence;
     storyboardVideoDraftEditor = draftModule.normalizeVideoDraft(draft);
-    const layer = document.createElement('div');
+    const layer = document.createElement('dialog');
     layer.className = 'sd-storyboard-video-draft-layer';
+    layer.returnTarget=document.activeElement;
+    layer.setAttribute('aria-label','让镜头动起来');
     layer.tabIndex = -1;
     layer.innerHTML = storyboardVideoDraftEditorMarkup(storyboardVideoDraftEditor,sourceShot);
     applyQianmuIcons(layer);
@@ -15731,7 +15668,7 @@ async function storyboardOpenVideoDraftEditor(source) {
         }
         close();
         toast('动态镜头草稿已保存。', 'success');
-        if (activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'motion') renderModal();
+        if (activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'film') renderModal();
       } catch (_) {
         button.disabled = false;
         toast('动态镜头草稿保存失败，请稍后重试。', 'warning');
@@ -15740,18 +15677,21 @@ async function storyboardOpenVideoDraftEditor(source) {
     layer.addEventListener('click', (event) => { if (event.target === layer) close(); });
     layer.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
+      event.preventDefault();event.stopPropagation();
       if (confirmationPanel && !confirmationPanel.hidden) closeVideoConfirmation();
       else if (picker && !picker.hidden) closePicker();
       else close();
     });
+    layer.addEventListener('cancel',event=>{event.preventDefault();close();});
     document.body.appendChild(layer);
     storyboardVideoDraftEditorEl = layer;
-    appearanceSession.mountPortal(layer,{role:'media'});
+    layer.releaseAppearance=appearanceSession.mountPortal(layer,{inheritTheme:true});
     syncPicker();
     void refreshReadiness(false);
+    layer.showModal();
     layer.focus({ preventScroll: true });
   } catch (error) {
-    if(request===storyboardVideoDraftOpenSequence){storyboardCloseVideoDraftEditor();toast(storyboardVideoOperationIssueLabel(error?.message), 'warning');}
+    if(isCurrent()&&request===storyboardVideoDraftOpenSequence){storyboardCloseVideoDraftEditor();toast(storyboardVideoOperationIssueLabel(error?.message), 'warning');}
   } finally { scope?.close(); }
 }
 
@@ -16138,7 +16078,7 @@ function renderStoryboardFilmGallery() {
         ? `<div class="sd-storyboard-film-grid">${timelines.map((timeline) => `<article data-storyboard-film-id="${htmlEscape(timeline.timelineId)}"><button type="button" class="sd-storyboard-film-edit"><span><i class="fa-solid fa-film"></i></span><strong>${htmlEscape(timeline.title || '未命名影片')}</strong><small>${timeline.clips.length} 段 · ${htmlEscape(storyboardFilmDurationLabel(timeline.durationSeconds))}</small><time>${htmlEscape(formatDateTime(timeline.updatedAt))}</time></button><nav class="sd-storyboard-film-card-actions"><button type="button" class="sd-icon-btn sd-storyboard-film-preview" title="顺序预览" aria-label="顺序预览"><i class="fa-solid fa-play"></i></button><button type="button" class="sd-icon-btn sd-danger sd-storyboard-film-delete" title="删除影片时间线" aria-label="删除影片时间线"><i class="fa-solid fa-trash-can"></i></button></nav></article>`).join('')}</div>`
         : '<section class="sd-card sd-storyboard-video-empty"><i class="fa-solid fa-film"></i><p>当前聊天还没有影片时间线。</p></section>';
   const warning = [current.timelineError ? '部分影片草稿暂时无法读取。' : '', current.mediaError ? '动态素材索引暂时无法读取。' : ''].filter(Boolean).join(' ');
-  return `<div class="sd-storyboard-gallery-page sd-storyboard-film-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-film-head"><div class="sd-storyboard-gallery-title"><b>${timelines.length}</b></div><div><button type="button" class="sd-icon-btn sd-storyboard-film-refresh" title="刷新影片与素材索引" aria-label="刷新影片与素材索引" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-btn sd-primary sd-storyboard-film-new"><i class="fa-solid fa-plus"></i><span>新建影片</span></button></div></section>${warning ? `<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>${htmlEscape(warning)}</p>` : ''}${content}</div>`;
+  return `<div class="sd-storyboard-gallery-page sd-storyboard-film-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-film-head"><div><button type="button" class="sd-icon-btn sd-storyboard-film-refresh" title="刷新影片与素材索引" aria-label="刷新影片与素材索引" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button><button type="button" class="sd-btn sd-primary sd-storyboard-film-new"><i class="fa-solid fa-plus"></i><span>新建影片</span></button></div></section>${warning ? `<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>${htmlEscape(warning)}</p>` : ''}${timelines.length||current.status==='error'?content:''}${renderStoryboardVideoGallery({embedded:true})}</div>`;
 }
 
 async function storyboardEnsureFilmRuntime() {
@@ -16802,7 +16742,7 @@ async function storyboardOpenFilmViewer(timelineId) {
   }
 }
 
-function renderStoryboardVideoGallery() {
+function renderStoryboardVideoGallery({embedded=false}={}) {
   const chatKey = String(getChatKey() || '');
   const current = storyboardVideoGalleryRuntime.chatKey === chatKey ? storyboardVideoGalleryRuntime : { status: 'idle', chains: [], tasks: [], drafts: [], error: '', mediaError: '', taskError: '', draftError: '' };
   const chains = Array.isArray(current.chains) ? current.chains : [];
@@ -16824,7 +16764,7 @@ function renderStoryboardVideoGallery() {
   const taskWarning = current.taskError ? '部分任务状态暂时无法读取。' : '';
   const draftWarning = current.draftError ? '部分动态草稿暂时无法读取。' : '';
   const mediaWarning = current.mediaError && current.status !== 'error' ? '<p class="sd-storyboard-video-warning"><i class="fa-solid fa-triangle-exclamation"></i>部分本地成片暂时无法读取。</p>' : '';
-  return `<div class="sd-storyboard-gallery-page sd-storyboard-video-page">${renderStoryboardGalleryKindSwitch()}<section class="sd-card sd-storyboard-gallery-head sd-storyboard-video-head"><div class="sd-storyboard-gallery-title"><b>${chains.length}</b></div><button type="button" class="sd-icon-btn sd-storyboard-video-refresh" title="刷新本地成片、草稿与任务状态" aria-label="刷新本地成片、草稿与任务状态" ${current.status === 'loading' ? 'disabled' : ''}><i class="fa-solid fa-rotate"></i></button></section>${renderStoryboardVideoDraftShelf(drafts, draftWarning)}${renderStoryboardVideoTaskShelf(tasks, taskWarning)}${mediaWarning}${content}</div>`;
+  return `<div class="sd-storyboard-video-page">${embedded?'':renderStoryboardGalleryKindSwitch()}${renderStoryboardVideoDraftShelf(drafts, draftWarning)}${renderStoryboardVideoTaskShelf(tasks, taskWarning)}${mediaWarning}${content}</div>`;
 }
 
 function storyboardCloseVideoViewer() {
@@ -16847,7 +16787,7 @@ async function storyboardRefreshVideoGallery({ rerender = false, force = false }
   }
   const requestId = storyboardVideoGalleryRuntime.requestId + 1;
   Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'loading', requestId, chains: [], tasks: [], drafts: [], error: '', mediaError: '', taskError: '', draftError: '' });
-  if (rerender && storyboardGalleryKind === 'motion') renderModal();
+  if (rerender && storyboardGalleryKind === 'film') renderModal();
   try {
     const runtime = await featureRuntime.load('videoGallery');
     if (!storyboardVideoGallerySession) storyboardVideoGallerySession = runtime.createVideoGallerySession(blobStore);
@@ -16880,12 +16820,12 @@ async function storyboardRefreshVideoGallery({ rerender = false, force = false }
       });
       storyboardScheduleInlineRender(20);
     }
-    if (rerender && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'motion') renderModal();
+    if (rerender && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'film') renderModal();
     return chains;
   } catch (_) {
     if (requestId !== storyboardVideoGalleryRuntime.requestId) return [];
     Object.assign(storyboardVideoGalleryRuntime, { chatKey, status: 'error', chains: [], tasks: [], drafts: [], error: '动态阅片室的本地数据暂时无法读取。', mediaError: 'video_media_unavailable', taskError: 'video_tasks_unavailable', draftError: 'video_drafts_unavailable' });
-    if (rerender && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'motion') renderModal();
+    if (rerender && activeTab === 'imagegen' && storyboardState().view === 'gallery' && storyboardGalleryKind === 'film') renderModal();
     return [];
   }
 }
@@ -17661,7 +17601,8 @@ function renderStoryboardLogs(state) {
   const rows = logs.map((log, logIndex) => {
     const compiler=log.kind==='prompt_compiler';
     const source = compiler?'取景 API':STORYBOARD_SOURCES[log.source]?.label || log.source;
-    const statusLabel = log.kind==='comfy_preparation' ? (log.status==='success'?'准备完成':log.status==='cancelled'?'已替换':'准备失败') : log.status === 'success' ? '完成' : log.status === 'failed' ? (log.submissionState==='not_submitted'?'未提交':['unknown','accepted'].includes(log.submissionState)?'待核查':'失败') : log.status === 'cancelled' ? (compiler?'已中断':'已放弃') : log.status === 'queued' ? '等待' : '生成中';
+    const unresolved=log.status==='failed'&&['unknown','accepted'].includes(log.submissionState)&&!['failed','canceled','expired'].includes(log.params?.upstreamStatus);
+    const statusLabel = log.status === 'success' ? '成功' : log.status === 'failed' ? (unresolved?'未完成':'失败') : log.status === 'cancelled' ? '已取消' : log.status === 'queued' ? '等待中' : '进行中';
     const pipeline = storyboardPipelineForLog(log, state);
     const presentation=storyboardLogPresentation(log,pipeline);
     const stageRows = (pipeline?.stages || []).map((stage, stageIndex) => {
@@ -17669,28 +17610,23 @@ function renderStoryboardLogs(state) {
       const detailId=`sd-log-stage-${logIndex}-${stageIndex}`;
       return `<li class="${htmlEscape(stage.status)}"><button type="button" class="sd-storyboard-stage-toggle" data-storyboard-stage="${htmlEscape(stage.id)}" aria-controls="${detailId}" aria-expanded="false" aria-label="查看${htmlEscape(label)}详情"><span>${htmlEscape(label)}</span><b>${htmlEscape(stage.status === 'success' ? '完成' : stage.status === 'failed' ? '失败' : stage.status === 'cancelled' ? '已中断' : stage.status === 'queued' ? '等待' : '进行中')}</b><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>${stage.error ? `<small class="sd-storyboard-stage-error">${htmlEscape(storyboardLogPresentation({error:stage.error},null).reason)}</small>` : ''}<section id="${detailId}" class="sd-storyboard-stage-detail" hidden aria-label="${htmlEscape(label)}详情"><header><b>阶段详情</b><button type="button" class="sd-icon-btn sd-storyboard-copy-stage" title="复制${htmlEscape(label)}详情" aria-label="复制${htmlEscape(label)}详情"><i class="fa-solid fa-copy" aria-hidden="true"></i></button></header><pre></pre></section></li>`;
     }).join('');
-    const runAction = compiler?'':log.kind==='comfy_preparation'
-      ? `<button type="button" class="sd-btn sd-storyboard-retry-log" ${log.status==='failed'&&log.preparation?.version===1?'':'disabled'}>重新准备本镜</button>`
-      : log.status === 'queued'
-      ? '<button type="button" class="sd-btn sd-storyboard-cancel-queued-log">移出等待</button>'
-      : `<button type="button" class="sd-btn sd-storyboard-retry-log" ${log.status === 'generating' ? 'disabled' : ''}>${log.status === 'failed' ? (['unknown','accepted'].includes(log.submissionState)?'核查并重试':'重试') : '再生成'}</button>`;
-    return `<details class="sd-card sd-storyboard-log ${htmlEscape(log.status)}" data-tone="${presentation.tone}" data-storyboard-log="${htmlEscape(log.id)}">
-      <summary><span class="sd-storyboard-log-status">${statusLabel}</span><span class="sd-storyboard-log-kind">${presentation.kind}</span><time>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</time>${presentation.reason?`<span class="sd-storyboard-log-summary-reason">${htmlEscape(presentation.reason)}</span>`:''}</summary>
+    const number=String(log.id||'').slice(-10);
+    const displayNumber=logs.some(other=>other!==log&&String(other.id||'').slice(-10)===number)?String(log.id):number;
+    return `<details class="sd-card sd-storyboard-log ${htmlEscape(log.status)}" data-tone="${unresolved?'grey':presentation.tone}" data-storyboard-log="${htmlEscape(log.id)}">
+      <summary><span class="sd-storyboard-log-name">${presentation.kind} <span class="sd-storyboard-log-number">#${htmlEscape(displayNumber)}</span></span><time>${htmlEscape(formatDateTime(log.startedAt || log.queuedAt))}</time><span class="sd-storyboard-log-status">${statusLabel}</span></summary>
       <div class="sd-storyboard-log-body">
         <div class="sd-storyboard-log-meta"><span>耗时 ${log.durationMs ? `${(log.durationMs / 1000).toFixed(1)}s` : '—'}</span>${presentation.tokens==='token 未提供'?'':`<span>${presentation.tokens}</span>`}<span>${htmlEscape(source)}${log.model ? ` · ${htmlEscape(log.model)}` : ''}</span><span>${compiler&&log.promptOrigin==='world'?'世界画面':Number.isInteger(log.floor) ? `第 ${log.floor} 层` : '仅成片'}</span>${compiler?'':`<span>${htmlEscape([log.params?.width, log.params?.height].filter(Boolean).join(' × ') || '沿用尺寸')}</span>`}${log.params?.consistency === 'reference' ? '<span>参考图一致性</span>' : ''}${log.attempt > 1 ? `<span>第 ${log.attempt} 次</span>` : ''}</div>
-        ${['unknown','accepted'].includes(log.submissionState)&&log.status==='failed'?'<p class="sd-storyboard-log-reason">原请求结果待核查，请勿直接重新生成，以免重复付费。</p>':''}
+        ${unresolved?'<p class="sd-storyboard-log-reason">连接中断，尚未收到最终结果。</p>':presentation.reason?`<p class="sd-storyboard-log-reason">${htmlEscape(presentation.reason)}</p>`:''}
         ${log.params?.sceneStyle ? `<div class="sd-storyboard-log-meta"><span>风格来源 · ${htmlEscape(log.params.sceneStyle)}</span><span>${htmlEscape(log.params.comfyRouteBinding?.name || '')}</span></div>` : ''}
         ${stageRows ? `<ol class="sd-storyboard-pipeline-stages">${stageRows}</ol>` : ''}
         <details class="sd-storyboard-log-exchanges"><summary>完整发送与返回</summary><section class="sd-storyboard-log-exchange" data-log-exchange="input"><header>↑ 发送</header><pre></pre></section><section class="sd-storyboard-log-exchange" data-log-exchange="output"><header>↓ 返回</header><pre></pre></section>${renderRunningHubTaskUsage(log)}</details>
-        <div class="sd-storyboard-log-actions${storyboardCanReceiveComfyLog(log) ? ' sd-storyboard-comfy-log-actions' : ''}">${compiler?'':'<button type="button" class="sd-btn sd-storyboard-load-log">载入镜头台</button>'}${log.snapshot?.serviceTask?.attemptId ? '<button type="button" class="sd-btn sd-storyboard-receive-log">领取原图</button><button type="button" class="sd-btn sd-storyboard-review-log">核查原请求</button>' : ''}${storyboardCanReceiveComfyLog(log) ? '<button type="button" class="sd-btn sd-storyboard-receive-comfy" title="领取原任务图片，不重新生成">领取原图</button>' : ''}${runAction}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
+        <div class="sd-storyboard-log-actions">${log.recordId||log.recordIds?.length?'<button type="button" class="sd-btn sd-storyboard-log-image-info">插画信息</button>':''}${log.status==='queued'?'<button type="button" class="sd-btn sd-storyboard-cancel-queued-log">移出等待</button>':''}<button type="button" class="sd-btn sd-storyboard-copy-log">复制诊断</button></div>
       </div>
     </details>`;
   }).join('');
   return `<div class="sd-storyboard-logs-page">
-    <section class="sd-storyboard-log-maintenance" aria-label="收片与日志工具">
-    <div><div class="sd-storyboard-receipt-tools"><button type="button" class="sd-btn sd-storyboard-open-service-inbox">NAI 收片</button><button type="button" class="sd-btn sd-storyboard-open-comfy-inbox">Comfy 收片</button></div><div class="sd-storyboard-service-inbox" role="status"></div><div class="sd-storyboard-comfy-inbox"></div></div>
-    ${state.logs.length ? `<div class="sd-storyboard-log-actions"><button type="button" class="sd-btn sd-storyboard-export-logs">导出日志</button><button type="button" class="sd-btn sd-storyboard-clear-logs" ${storyboardActiveJobs.size || storyboardQueue.length || storyboardQueuePendingCount() || storyboardQueueSettling ? 'disabled' : ''}>清空日志</button></div>` : ''}
-    <section class="sd-card sd-storyboard-pack-card"><div><b>分镜资源联包</b><small>当前聊天与资源库，不包含 API Key</small></div><div><button type="button" class="sd-icon-btn sd-storyboard-pack-export" title="导出分镜资源联包" aria-label="导出分镜资源联包"><i class="fa-solid fa-file-export"></i></button><button type="button" class="sd-icon-btn sd-storyboard-pack-recover" title="核对导入" aria-label="核对导入"><i class="fa-solid fa-rotate-left"></i></button><label class="sd-icon-btn sd-storyboard-pack-import" title="导入联包或旧分镜包" aria-label="导入联包或旧分镜包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-native-file sd-storyboard-pack-file" accept=".qmb,application/json,.json"></label></div></section>
+    <section class="sd-storyboard-log-maintenance" aria-label="日志工具">
+    ${state.logs.length ? `<button type="button" class="sd-icon-btn sd-storyboard-clear-logs" title="清空日志" aria-label="清空日志" ${storyboardActiveJobs.size || storyboardQueue.length || storyboardQueuePendingCount() || storyboardQueueSettling || storyboardReceiveComfyImage.pending || storyboardReceiveServiceImage.pending ? 'disabled' : ''}><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>` : ''}
     </section>
     ${rows || '<p class="sd-storyboard-logs-empty" role="status">暂无取景或生图记录。</p>'}
   </div>`;
@@ -17698,7 +17634,7 @@ function renderStoryboardLogs(state) {
 
 function renderStoryboardTab() {
   const state = storyboardState();
-  if (state.view !== 'characters') storyboardReconcileGalleryLinks();
+  if (!['characters', 'logs'].includes(state.view)) storyboardReconcileGalleryLinks();
   const body = state.view === 'characters' ? '<div class="sd-character-archive-host" role="region" aria-label="角色库"></div>'
     : state.view === 'workflows' ? '<div class="sd-comfy-library-host" role="region" aria-label="工作流库"></div>'
     : state.view === 'comfy-pools' ? '<div class="sd-comfy-pool-host" role="region" aria-label="候选方案"></div>'
@@ -18656,7 +18592,7 @@ async function storyboardPreflightComfyForCompiler(state, profile, plan, inputGu
     const raw = sanitizeStoryboardWorkflow(selected.comfyWorkflow);
     if (!raw.ok || raw.removedFields.length || selected.comfyWorkflowNotice) throw new Error(selected.comfyWorkflowNotice || storyboardWorkflowIssue(raw));
     const parameters = Object.fromEntries(['width','height','count','steps','cfg','seed','sampler','scheduler'].map(key => [key, selected[key]]));
-    if (candidateId || automatic || plan?.origin === 'manual_supplement' || getStoryboardGenerationPolicy(state).maxImages > 1) parameters.count = '1';
+    // Comfy count binds candidates inside one workflow execution, not narrative shots.
     const runtime = await featureRuntime.load('comfyPreflight');
     let referenceCount;
     if(selected.comfyCharacterEnabled===true){
@@ -18696,6 +18632,9 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
   if (floor < 0 || !ctx().chat?.[floor]) { toast('当前没有可用于自动取景的正文。', 'warning'); return report('cancelled'); }
   let inputGuard;
   storyboardCompilerBusy = true;
+  const compilerFloor = { chatKey: String(getChatKey() || ''), floor, state, epoch: storyboardAdmissionEpoch };
+  storyboardCompilerFloor = compilerFloor;
+  storyboardScheduleInlineRender(0, floor);
   const startedAt = Date.now();
   let resultAccepted = false;
   let interruption, interruptionPromise, failureStage='preparation';
@@ -18908,11 +18847,17 @@ async function storyboardCompilePrompt(root, { plan = null, quiet = false, autom
     if (!quiet||!inputGuard||inputGuard.compilerAttempt||/^(ensemble_|st_account_storage_|storyboard_stream_(attempt|checkpoint)$)/.test(error?.code||'')||['storyboard_contract_failed','storyboard_input_capacity','storyboard_context_unavailable'].includes(error?.code)) toast(`${error?.comfyPreflight ? 'Comfy 配置未就绪' : '画面整理失败'}：${error?.message || error}`, error?.comfyPreflight ? 'warning' : 'error');
     return report('failed');
   } finally {
-    await streamAttempt?.finish('cancelled');
-    inputGuard?.dispose();
-    storyboardCompilerBusy = false;
-    storyboardScheduleAutomaticCapture();
-    if(!stream)renderModal();
+    try { await streamAttempt?.finish('cancelled'); }
+    finally {
+      try { inputGuard?.dispose(); }
+      finally {
+        storyboardCompilerBusy = false;
+        if (storyboardCompilerFloor === compilerFloor) storyboardCompilerFloor = null;
+        storyboardScheduleInlineRender(0);
+        storyboardScheduleAutomaticCapture();
+        if(!stream)renderModal();
+      }
+    }
   }
 }
 
@@ -19073,135 +19018,73 @@ async function storyboardResolveComfyRecoveryKey(connection) {
     resolve:credentialId=>storyboardResolveApiKey('comfy',credentialId,{exact:true})});
 }
 
-async function storyboardReceiveComfyImage(log, { refresh = true, taskLocator, cloudRecord } = {}) {
+async function storyboardReceiveComfyImage(log, { refresh = true, taskLocator, cloudRecord, silent = false, valid = () => true } = {}) {
   storyboardReceiveComfyImage.pending = (storyboardReceiveComfyImage.pending || 0) + 1;
   try {
     return await receiveComfyImage(log, { refresh, taskLocator, cloudRecord }, {
-      scope:()=>({owner:settings,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||'')}),
+      scope:()=>({owner:settings,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||'')}),valid,
       canReceive:storyboardCanReceiveComfyLog,sanitize:sanitizeStoryboardSnapshot,recovery:storyboardComfyRecoveryRuntime,
       resolveKey:storyboardResolveComfyRecoveryKey,deliver:storyboardDeliverGatewayResult,finish:storyboardFinishLog,
       resolveCloudKey:(row,guard)=>resolveComfyCloudRecoveryKey(row,{connections:()=>storyboardState().connections.comfy,resolve:id=>storyboardResolveApiKey('comfy',id,{exact:true}),guard}),
-      admission:storyboardImageAdmissionRuntime,scene:storyboardComfySceneRuntime,notify:toast,render:renderModal,
+      admission:storyboardImageAdmissionRuntime,scene:storyboardComfySceneRuntime,notify:silent?()=>{}:toast,render:renderModal,
     });
   } finally { storyboardReceiveComfyImage.pending--; }
 }
 
-async function storyboardOpenComfyInbox(root) {
-  const host = root.querySelector('.sd-storyboard-comfy-inbox'); if (!host) return;
-  root._sdComfyInboxCleanup?.();
-  const epoch = storyboardAdmissionEpoch, owner = settings, chat = String(getChatKey() || ''), ticket = uid('comfy-inbox'); host.dataset.ticket = ticket;
-  const valid = () => root.isConnected && host.isConnected && host.dataset.ticket === ticket && epoch === storyboardAdmissionEpoch && owner === settings && chat === String(getChatKey() || '');
-  host.textContent = '正在读取';
-  const nai = root.querySelector('.sd-storyboard-service-inbox'); if (nai) nai.hidden = true; host.hidden = false;
-  try {
-    const [view, service] = await Promise.all([featureRuntime.load('comfyInbox'), storyboardComfyRecoveryRuntime()]);
-    if (!valid()) return;
-    const dispose = view.mountComfyInbox(host, { service, isCurrent: valid, receive: async (row, mode, action) => {
-      if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
-      if (action === 'review') return service.reviewCloudOriginal(row, { valid });
-      const log = storyboardState().logs.find(item => (!row.logId || item.id === row.logId) && item.snapshot?.source === 'comfy' && item.snapshot?.imageAdmission?.attemptId === row.attemptId && item.snapshot?.imageAdmission?.namespace === row.namespace);
-      if (!action && log && storyboardCanReceiveComfyLog(log) && !row.originalOnly) return storyboardReceiveComfyImage(log, { refresh: false, taskLocator: row.taskLocator,
-        ...((row.engine==='cloud'||row.version===3)&&row.cloudRecord?{cloudRecord:row.cloudRecord}:{}) });
-      const chatKey = String(getChatKey() || '');
-      const apiKey = row.engine === 'cloud' || row.version === 3 ? await resolveComfyCloudRecoveryKey(row, {
-        connections:()=>storyboardState().connections.comfy, resolve:id=>storyboardResolveApiKey('comfy',id,{exact:true}),
-        guard:()=>{if(!valid())throw new Error('收片页面已变化，请重新打开');},
-      }) : row.baseUrl ? await storyboardResolveComfyRecoveryKey({ baseUrl: row.baseUrl, credentialId: row.credentialId }) : '';
-      if (!valid()) throw new Error('收片页面已变化，请重新打开后领取原图');
-      if(action==='cancel')return service.cancelCloudOriginal(row,{apiKey,valid});
-      return service.retrieveOriginal(row, { chatKey, apiKey, deliver: (job, data, archiveFiles, checkpoint, guard) =>
-        storyboardDeliverGatewayResult(job, null, data, { service: true, archiveFiles, checkpoint, guard: async () => {
-          await guard(); if (!valid() || String(getChatKey() || '') !== chatKey) throw new Error('收片页面已变化，请返回原页面领取');
-        } }),
-      });
-    } });
-    root._sdComfyInboxCleanup = () => { dispose(); host.dataset.ticket = ''; root._sdComfyInboxCleanup = null; };
-  } catch (error) { if (valid()) host.textContent = error.message || 'Comfy 收片管理暂不可用'; }
-}
 
-async function storyboardReceiveServiceImage(attemptId, discovered = null, expectedNamespace = discovered?.namespace) {
+async function storyboardReceiveServiceImage(attemptId, discovered = null, expectedNamespace = discovered?.namespace, { silent = false, valid = () => true } = {}) {
   storyboardReceiveServiceImage.pending = (storyboardReceiveServiceImage.pending || 0) + 1;
   try {
     return await receiveServiceImage(attemptId, discovered, expectedNamespace, {
-      scope:()=>({owner:settings,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||'')}),
+      scope:()=>({owner:settings,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||'')}),valid,
       service:storyboardImageServiceRuntime,state:storyboardState,clone,deliver:storyboardDeliverGatewayResult,
-      admission:storyboardImageAdmissionRuntime,channel:storyboardImageChannelRuntime,notify:toast,render:renderModal,
+      admission:storyboardImageAdmissionRuntime,channel:storyboardImageChannelRuntime,notify:silent?()=>{}:toast,render:silent?()=>{}:renderModal,
     });
   } finally { storyboardReceiveServiceImage.pending--; }
 }
 
-async function storyboardReviewServiceImage(task, namespace, valid = () => true) {
-  const epoch = storyboardAdmissionEpoch, current = () => epoch === storyboardAdmissionEpoch && valid();
-  const service = await storyboardImageServiceRuntime();
-  return service.reviewOriginal(task, { namespace, valid: current, onReviewed: async (original, guard) => {
-    await guard();
-    if (original.snapshot?.imageAdmission) {
-      const admission = await storyboardImageAdmissionRuntime(); await guard();
-      await admission.confirmReview(original.snapshot.imageAdmission, original.proof, current); await guard();
+function storyboardRecoverOriginalTasks() {
+  if(!storyboardOriginalRecovery){
+    if(typeof window!=='undefined')window.addEventListener('online',storyboardRecoverOriginalTasks);
+    storyboardOriginalRecovery=createOriginalTaskRecovery({
+  scope:()=>({owner:settings?.enabled&&storyboardState().enabled?settings:null,epoch:storyboardAdmissionEpoch,chat:String(getChatKey()||'')}),
+  logs:()=>storyboardState().logs,active:()=>new Set([...storyboardActiveJobs.keys(),...storyboardQueue.map(job=>job.id)]),
+  receive:async log=>{
+    const state=storyboardState(),snapshot=log.snapshot,valid=()=>state===storyboardState()&&state.logs.includes(log)&&settings.enabled&&state.enabled;
+    if(!valid())return;
+    if(snapshot.source==='comfy'){
+      if(!storyboardCanReceiveComfyLog(log))return;
+      await storyboardReceiveComfyImage(log,{refresh:false,silent:true,valid});
+    }else{
+      const result=await storyboardReceiveServiceImage(snapshot.serviceTask.attemptId,null,snapshot.imageAdmission.namespace,{silent:true,valid});
+      if(valid()&&result?.archived&&log.status!=='success'){log.error='';storyboardFinishLog(log,'success',{submissionState:'accepted',durationMs:Number(log.durationMs)||0});}
     }
-    const channel = await storyboardImageChannelRuntime(); await guard();
-    await channel.confirmReview({ ...original, valid: current }); await guard();
-  } });
+    if(!valid())return;
+    // Recovery never opens a panel or displaces a current input draft.
+    storyboardScheduleInlineRender(0);
+    if(activeTab==='imagegen'&&storyboardState().view==='logs')rerenderIfOpen();
+  },
+});
+  }
+  storyboardOriginalRecovery.trigger();
 }
 
-async function storyboardPaintServiceInbox(root, { server = false, cursor = null } = {}) {
-  const host = root.querySelector('.sd-storyboard-service-inbox');
-  if (!host) return;
-  const requestId = uid('service-list'); host.dataset.requestId = requestId;
-  const owner = settings, epoch = storyboardAdmissionEpoch, chat = String(getChatKey() || '');
-  host.textContent = '正在读取';
-  const current = () => host.isConnected && host.dataset.requestId === requestId && owner === settings && epoch === storyboardAdmissionEpoch && chat === String(getChatKey() || '');
-  try {
-    const service = await storyboardImageServiceRuntime();
-    const data = server ? await service.catalog({ cursor }) : null;
-    const rows = server ? data.originals : await service.list();
-    if (!current()) return;
-    const status = row => ({ prepared: '未提交', submitted: '结果待核查', reviewed: '已核查 · 原费用未知', reserved: '等待', submitting: '提交中', uncertain: '待核查', acknowledged: '已核查 · 原费用未知', succeeded: '完成', rejected: '已拒绝', released: '未提交', unverified: '记录待核查' }[row.status] || '待领取');
-    const reviewRows = [];
-    const reviewButton = row => {
-      if (row.resultAvailable || row.live || !['submitted','uncertain','acknowledged','reviewed'].includes(row.status)) return '';
-      if (reviewRows.some(item => item.attemptId === row.attemptId && (item.channelKey || item.taskLocator?.channelKey) === (row.channelKey || row.taskLocator?.channelKey))) return '';
-      const index = reviewRows.push({ ...row, namespace: server ? data.namespace : row.namespace }) - 1;
-      return `<button type="button" class="sd-btn" data-service-review-index="${index}">${row.status === 'reviewed' ? '同步核查' : '核查原请求'}</button>`;
-    };
-    const toolbar = `<div class="sd-service-inbox-toolbar"><button type="button" class="sd-btn ${server ? '' : 'active'}" data-service-scope="local" aria-pressed="${!server}">本机</button><button type="button" class="sd-btn ${server ? 'active' : ''}" data-service-scope="server" aria-pressed="${server}">服务器</button></div>`;
-    const totals = data?.totals;
-    const usage = server ? `<details class="sd-service-inbox-details"><summary>存储详情</summary><p class="sd-service-inbox-usage">当前账户 · ${Number(totals.count) || 0} 项原图暂存 · ${formatStorageBytes((Number(totals.imageBytes)||0)+(Number(totals.metadataBytes)||0)+(Number(totals.temporaryBytes)||0))}<br>等待预留 ${formatStorageBytes(totals.reservedBytes)}（非实际占用）</p></details>` : '';
-    const content = rows.map((row, index) => `<div class="sd-storyboard-log-actions"><span>${htmlEscape(formatDateTime(row.createdAt))} · ${htmlEscape(server ? row.model || 'NAI' : row.originalOnly ? '原图找回' : row.snapshot.profile?.model || 'NAI')}<small>${htmlEscape(status(row))}${server ? ` · ${formatStorageBytes(row.cacheBytes)}` : ''}</small></span><button type="button" class="sd-btn" data-service-receive-index="${index}" ${server && (!row.resultAvailable || row.live) ? 'disabled' : ''}>${!server && row.status === 'archived' ? '确认归档' : '领取原图'}</button>${reviewButton(row)}<button type="button" class="sd-icon-btn" data-service-remove-index="${index}" ${server && !row.canDiscard ? 'disabled' : ''} aria-label="${server ? '删除服务器暂存' : '移除此设备的领取记录'}" title="${server ? '删除服务器暂存' : '移除此设备的领取记录'}"><i class="fa-solid fa-trash-can"></i></button></div>`).join('');
-    const history = server && data.tasks.length ? `<details class="sd-service-inbox-history"><summary>任务记录 ${Number(totals.tasks)||0}</summary>${data.tasks.map(row => `<div><span>${htmlEscape(formatDateTime(row.createdAt))}</span><span>${htmlEscape(status(row))}</span>${reviewButton(row)}</div>`).join('')}${data.nextCursor ? '<button type="button" class="sd-btn" data-service-next>下一页</button>' : ''}</details>` : '';
-    const caution=[...rows,...(data?.tasks||[])].some(row=>!row.resultAvailable&&['submitted','uncertain','acknowledged','reviewed','unverified'].includes(row.status))?'<p class="sd-service-inbox-caution">原请求结果待核查，请勿直接重新生成，以免重复付费。</p>':'';
-    host.innerHTML = toolbar + caution + usage + content + history;
-    host.querySelectorAll('[data-service-review-index]').forEach(button => button.addEventListener('click', async () => {
-      const row = reviewRows[Number(button.dataset.serviceReviewIndex)]; button.disabled = true;
-      try {
-        const result = await storyboardReviewServiceImage(row, row.namespace, current);
-        if (!current()) return;
-        toast(result.cancelled ? '已取消核查，原状态保留' : result.message, result.cancelled ? 'info' : 'success');
-        if (!result.cancelled) await storyboardPaintServiceInbox(root, { server, cursor });
-      } catch (error) { if (current()) toast(error.message, 'warning'); }
-      finally { if (current()) button.disabled = false; }
-    }));
-    host.querySelectorAll('[data-service-scope]').forEach(button => button.addEventListener('click', () => void storyboardPaintServiceInbox(root, { server: button.dataset.serviceScope === 'server' })));
-    host.querySelector('[data-service-next]')?.addEventListener('click', () => void storyboardPaintServiceInbox(root, { server: true, cursor: data.nextCursor }));
-    host.querySelectorAll('[data-service-receive-index]').forEach(button => button.addEventListener('click', async () => {
-      if (!current()) return;
-      const row = rows[Number(button.dataset.serviceReceiveIndex)]; button.disabled = true;
-      try { await storyboardReceiveServiceImage(row.attemptId, server ? { ...row, namespace: data.namespace } : null, server ? data.namespace : row.namespace); }
-      finally { if (current()) button.disabled = false; }
-    }));
-    host.querySelectorAll('[data-service-remove-index]').forEach(button => button.addEventListener('click', async () => {
-      if (!current()) return;
-      const row = rows[Number(button.dataset.serviceRemoveIndex)]; button.disabled = true;
-      try {
-        if (server) { if (await service.discardOriginal({ ...row, namespace: data.namespace })) toast('已删除该项服务器暂存，已归档图片与防重记录保留', 'success'); }
-        else await service.dismiss(row.attemptId, { namespace: row.namespace });
-        if (current()) await storyboardPaintServiceInbox(root, { server });
-      } catch (error) { toast(error.message, 'warning'); }
-      finally { if (current()) button.disabled = false; }
-    }));
-    applyQianmuIcons(host);
-  } catch (error) { if (current()) host.textContent = error.message; }
+async function storyboardOpenImageLog(record) {
+  const state=storyboardState(),recordId=String(record?.id||'');
+  const attemptId=String(record?.imageAdmission?.attemptId||record?.taskId||record?.jobId||'');
+  const direct=state.logs.filter(log=>recordId&&(log.recordId===recordId||log.recordIds?.includes(recordId)));
+  const matches=direct.length?direct:state.logs.filter(log=>attemptId&&log.snapshot?.imageAdmission?.attemptId===attemptId);
+  if(matches.length!==1)return toast(matches.length?'图片关联了多个任务记录，未自动跳转':'这张图片的任务记录已不在日志中','info');
+  const log=matches[0];state.view='logs';openModal('imagegen');
+  // Existing archive hydration may replace the rows once; reveal after it settles.
+  await storyboardHydratePipelineArchive();
+  requestAnimationFrame(()=>{
+    if(state!==storyboardState()||activeTab!=='imagegen'||state.view!=='logs')return;
+    const row=[...document.querySelectorAll(`#${MODAL_ID} [data-storyboard-log]`)].find(item=>item.dataset.storyboardLog===log.id);
+    if(row){row.open=true;row.scrollIntoView({block:'center',behavior:'smooth'});}
+  });
 }
+
 
 async function storyboardSettleImageAdmission(job, outcome) {
   if(job.comfySceneClaim){
@@ -19289,7 +19172,7 @@ async function storyboardCheckComfyJobReadiness(job, references, valid) {
 async function storyboardProbeComfyCandidate(state, prepared, inputGuard, {candidate,shot,guard}) {
   await guard();inputGuard.assertCurrent();
   const route=candidate.target;
-  let profile=storyboardResolveRoutingProfile(state,route,null,prepared);profile.count='1';
+  const profile=storyboardResolveRoutingProfile(state,route,null,prepared);
   const prompt=compileStoryboardPrompt({providerId:'comfy',remoteModelId:'comfy-workflow',capabilityModelId:'comfy-workflow',shot}).prompt;
   // A technical probe has no prose anchor, plan, log, admission or delivery side effects.
   const previewState={...state,target:'gallery',inlineByDefault:false,promptDraft:{...state.promptDraft,userEditedCompiled:false,userEditedNegative:false}};
@@ -19330,14 +19213,14 @@ async function storyboardConfirmComfyExecution(job, valid) {
     if (!current()) throw new Error('工作流配置已变化，未提交生成');
   });
   if (!current()) return false;
-  const execution = { version: 1, automatic: strictAutomatic, outputNodeIds: job.profile?.comfyOutputNodeId ? [job.profile.comfyOutputNodeId] : [],
-    maxImages: strictAutomatic ? 1 : 8, allowUnverified: false };
+  const execution = { version: 2, automatic: strictAutomatic, outputNodeIds: job.profile?.comfyOutputNodeId ? [job.profile.comfyOutputNodeId] : [],
+    maxImages: 8, allowUnverified: !strictAutomatic };
   const report = runtime.inspectComfyImageExecution({ ...storyboardGatewayRequest(job, '', { references, vibes: [] }), comfyExecution: execution });
-  try { runtime.requireComfyExecution(report, execution); }
-  catch (error) { if (error.code !== 'comfy_manual_confirmation_required') throw error; }
+  runtime.requireComfyExecution(report, execution);
   const roleReview = Boolean(rolePlan?.participants?.length && (job.payload?.shotSpec?.characters||[]).filter(row=>row.visible!==false).length>1);
-  const needsConfirmation = !strictAutomatic && (retryRuntime || roleReview || rolePlan?.definitionWarnings>0 || !report.verified || report.selectedImages !== Math.max(1, Number(job.payload?.parameters?.count) || 1)
-    || report.savedImages !== report.selectedImages || report.maxIntermediateBatch > 1 || !report.singleSamplingChain);
+  // The selected workflow is the explicit manual generation configuration.
+  // Keep original-task retry review separate; ordinary redraw has no second popup.
+  const needsConfirmation = retryRuntime;
   if (needsConfirmation) {
     const number = value => value === null ? '未确定' : String(value);
     const text=`保存 ${number(report.savedImages)} 张，接收 ${number(report.selectedImages)} 张；内部最大批量 ${number(report.maxIntermediateBatch)}。\n`
@@ -19515,10 +19398,12 @@ function storyboardEnqueuePreparedBatch(jobs,{plan=null,chatKey=getChatKey(),isC
     enqueue:async(job,permit,current)=>{let reason='';const accepted=await storyboardQueueJob(job,()=>current()&&admissionCurrent(),message=>{reason=message;},permit);if(!accepted)reasons.set(job,reason);return accepted;},
     onAccepted,onRefused:(job,index)=>onRefused(job,reasons.get(job)||'',index),onStop,onFinish});
   entry.handle=handle;storyboardQueueBatches.add(entry);
+  if(entry.chatKey===String(getChatKey()||''))storyboardScheduleInlineRender(0);
   try{if(entry.chatKey===String(getChatKey()||''))renderModal();}catch(_){console.warn?.('[千幕] 分镜批次界面刷新失败');}
   void handle.done.then(result=>{
     entry.complete=true;
     storyboardQueueBatches.delete(entry);
+    if(entry.chatKey===String(getChatKey()||''))storyboardScheduleInlineRender(0);
     if(result.reportingErrors.length)console.warn('[千幕] 分镜批次回调失败');
     if(entry.stream&&entry.sourceCurrent()){
       if(result.stopped||result.failedCount)storyboardStreamRuntime?.takeover?.();
@@ -20097,7 +19982,7 @@ async function storyboardGenerate(root, { plan = null, automatic = false, produc
         let shotProfile;
         try { shotProfile = storyboardResolveRoutingProfile(state, route, sourceId === state.source ? profile : null, inputGuard.comfyRoutes); }
         catch (error) { return toast(`镜组配置：${error.message}`, 'warning'); }
-        if (autoChoice || automatic || manualSupplement || planned.length > 1) shotProfile.count = '1';
+        if (sourceId !== 'comfy' && (autoChoice || automatic || manualSupplement || planned.length > 1)) shotProfile.count = '1';
         const effectiveShot = await storyboardAdaptShotForModel(shot, sourceId, shotProfile.model, state, {
           chatKey: generationChatKey,
           capabilityModelId: shotProfile.capabilityModelId,
@@ -20335,6 +20220,7 @@ function storyboardDiscardActive() {
     storyboardSyncTaskState(job, 'cancelled', { error: '用户放弃收片', plan: storyboardPlanForJob(job) });
   }
   saveSettings();
+  storyboardScheduleInlineRender(0);
   toast('已放弃进行中的收片；后端若已提交，返回结果将不会写入成片或正文。', 'info');
   renderModal();
 }
@@ -20370,10 +20256,13 @@ function storyboardRemoveQueuedLog(log) {
   storyboardFinishLog(log, 'cancelled', { error: '已从等待队列移除' });
   storyboardSetPlanStatus(storyboardPlanForJob(job), 'cancelled', { error: '已从等待队列移除', job });
   storyboardQueueWindow.notify();
+  storyboardScheduleInlineRender(0);
   renderModal();
 }
 
 async function storyboardHandleChatChanged() {
+  storyboardCloseImageInfo();
+  storyboardScheduleInlineRender(0);
   const currentChatKey = String(getChatKey() || '');
   storyboardGalleryCollectionReturn = null;
   resetGalleryChoiceSessions();
@@ -20382,6 +20271,7 @@ async function storyboardHandleChatChanged() {
   storyboardSnapshotEpoch++;
   storyboardGalleryPreserver?.reset();storyboardScheduleGalleryPreservation();
   storyboardCloseLightbox();
+  storyboardCloseImageInfo();
   storyboardCloseVideoViewer();
   storyboardCloseFilmViewer();
   storyboardCloseVideoDraftEditor();
@@ -20392,7 +20282,7 @@ async function storyboardHandleChatChanged() {
   storyboardGalleryOpenCollectionId = '';
   storyboardGalleryVisibleCount = 40;
   const received = await storyboardDrainPendingDeliveries(currentChatKey);
-  if (currentChatKey === String(getChatKey() || '')) void storyboardArchiveGallerySnapshots();
+  if (currentChatKey === String(getChatKey() || '')) { void storyboardArchiveGallerySnapshots(); storyboardRecoverOriginalTasks(); }
   return received;
 }
 
@@ -20509,7 +20399,7 @@ async function storyboardConfirmGatewayModelBinding(job) {
       storyboardGatewayCapabilityPromise = runtime.probeQianmuImageCapabilities({ headers: storyboardRequestHeaders() })
         .finally(() => { storyboardGatewayCapabilityPromise = null; });
     }
-    const result = runtime.checkQianmuComfyExecutionBinding(await storyboardGatewayCapabilityPromise, { references: job.profile?.comfyReferences?.enabled === true || job.payload?.comfyCharacterPlan?.references?.enabled === true });
+    const result = runtime.checkQianmuComfyExecutionBinding(await storyboardGatewayCapabilityPromise, { executionVersion: job.comfyExecution.version, references: job.profile?.comfyReferences?.enabled === true || job.payload?.comfyCharacterPlan?.references?.enabled === true });
     if (!result.ok) throw Object.assign(new Error(result.message), { code: result.code, retryable: false, submissionState: 'not_submitted' });
     return 0;
   }
@@ -20568,6 +20458,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
   const production = storyboardProductionDeliveryPolicy(job);
   return {
     id: uid('shot'), taskId: job.id, groupId: job.id, variantRootId: job.variantRootId || job.planShotId || job.id,
+    requestQueuedAt: Number(log?.queuedAt) || Date.now(),
     inlineOrder: normalizeStoryboardInlineOrder(job.inlineOrder),
     ...(job.floorTake?{floorTake:normalizeStoryboardFloorTake(job.floorTake),floorTakeEligible:anchorState.valid===true}:{}),
     ...galleryMembershipSnapshot(job), tags: uniqueClean(job.tags || []).slice(0, 30), planId: job.planId || '', planShotId: job.planShotId || '', imageIndex: index, url, prompt: job.prompt, finalPrompt: job.payload?.prompt,
@@ -20580,6 +20471,7 @@ function storyboardCreateRecord(job, log, url, index, anchorState, response) {
     ...(job.shotSpec?.narrativeMoment?{narrativeMoment:clone(job.shotSpec.narrativeMoment)}:{}),
     productionContext: production.productionContext, sourceLabel: production.sourceLabel,
     messageRef: job.messageRef ? clone(job.messageRef) : null,
+    sourceCharacterName: String(job.sourceCharacterName||(job.messageRef?.role==='assistant'?job.messageRef.name:'')||(anchorState.valid&&message&&!message.is_user&&!message.is_system?message.name||'':'')),
     imageAdmission: job.imageAdmission ? clone(job.imageAdmission) : null,
     messageHash: message ? hashText(String(message.mes || '')) : '', swipeId: message ? Number(message.swipe_id || 0) : 0,
     promptMode: job.promptMode || 'manual', promptLocked: Boolean(job.promptLocked),
@@ -20636,22 +20528,35 @@ async function storyboardDeliverGatewayResult(job, log, data, { service = false,
   if (currentOwnsResult) {
     if (service && typeof ctx().saveMetadata !== 'function') throw new Error('当前聊天无法确认保存，原图已保留');
     const gallery = storyboardGalleryRecords(),takeReceipts=storyboardFloorTakeReceipts();
+    const current=()=>gallery===storyboardGalleryRecords()&&takeReceipts===storyboardFloorTakeReceipts()&&(!job.chatKey||job.chatKey===String(getChatKey()||''));
+    const assertCurrent=async()=>{
+      await storyboardAssertResultOwner(job);await guard();
+      if(!current())throw new Error('原聊天内容已变化，图片保留待恢复');
+    };
+    await assertCurrent();
     const inserted=[];
-    for (const record of records) {
-      // Recovered records keep their original IDs.
-      if (service) Object.assign(record, { floor: job.originalOnly ? null : anchorState.floor, inline: Boolean(!job.originalOnly && job.inlineByDefault && anchorState.valid&&storyboardFloorTakeInitialInline(record,gallery,takeReceipts)),...(job.floorTake?{floorTakeEligible:anchorState.valid===true}:{}), linkState: anchorState.valid && !job.originalOnly ? 'active' : resultLinkState || 'orphaned' });
-      if (!gallery.some(item => item.id === record.id)){gallery.push(record);inserted.push(record);}
+    try{
+      for (const record of records) {
+        // Recovered records keep their original IDs; never replace an existing variant.
+        if (service) Object.assign(record, { floor: job.originalOnly ? null : anchorState.floor, inline: Boolean(!job.originalOnly && job.inlineByDefault && anchorState.valid&&storyboardFloorTakeInitialInline(record,gallery,takeReceipts)),...(job.floorTake?{floorTakeEligible:anchorState.valid===true}:{}), linkState: anchorState.valid && !job.originalOnly ? 'active' : resultLinkState || 'orphaned' });
+        if (!gallery.some(item => item.id === record.id)){gallery.push(record);inserted.push(record);}
+      }
+      await saveStoryboardFloorTakes(gallery,async()=>{
+        await assertCurrent();await saveMetadata();await assertCurrent();
+      },record=>storyboardValidatedAnchor(record).valid,current,takeReceipts);
+    }catch(error){
+      // The serialized floor-take transaction owns its exact visibility/receipt
+      // rollback. Remove only records inserted by this delivery, never a prior commit.
+      for(const record of inserted){const at=gallery.indexOf(record);if(at>=0)gallery.splice(at,1);}
+      if(!await storyboardResultOwned(job))return storyboardStoreForeignAccountResult(job,data);
+      throw error;
     }
-    try{await saveStoryboardFloorTakes(gallery,async()=>{await storyboardAssertResultOwner(job);await saveMetadata();await storyboardAssertResultOwner(job);},record=>storyboardValidatedAnchor(record).valid,()=>gallery===storyboardGalleryRecords()&&(!job.chatKey||job.chatKey===String(getChatKey()||'')),takeReceipts);}
-    catch(error){if(await storyboardResultOwned(job))throw error;for(const record of inserted){const at=gallery.indexOf(record);if(at>=0)gallery.splice(at,1);}return storyboardStoreForeignAccountResult(job,data);}
-    if(!await storyboardResultOwned(job)){for(const record of inserted){const at=gallery.indexOf(record);if(at>=0)gallery.splice(at,1);}return storyboardStoreForeignAccountResult(job,data);}
     storyboardSetPlanStatus(plan, 'generating', { job, floor: anchorState.floor, stage: 'attachment', progress: 0.92, deliveryState, linkState: resultLinkState });
   } else {
     deliveryState = await storyboardStoreDeferredDelivery(job, records);
     if(!await owned())return false;
     storyboardSetPlanStatus(plan, 'generating', { job, floor: null, stage: 'delivery_pending', progress: 0.96, deliveryState, linkState: 'foreign' });
   }
-  if(!await owned())return false;
   storyboardPipelineStage(log, 'asset_persistence', 'success', {}, { recordIds: records.map(item => item.id) });
   storyboardPipelineStage(log, 'paragraph_anchor', 'success', {}, { requestedFloor: job.floor, finalFloor: anchorState.floor,
     fallback: !anchorState.valid && job.target !== 'gallery', deliveryState, deferredToOriginalChat: !currentOwnsResult });
@@ -20893,11 +20798,11 @@ async function storyboardRunJob(job, log) {
       const runningStage = [...(pipeline?.stages || [])].reverse().find((item) => item.status === 'running');
       if (runningStage) storyboardPipelineStage(log, runningStage.type, 'failed', {}, {}, error?.message || error);
       const upstreamNote = job.source === 'comfy' && /^[a-zA-Z0-9_-]{1,240}$/.test(error?.upstreamId || '') ? `；ComfyUI 原任务：${error.upstreamId}` : '';
-      const message = `${error?.message || error}${upstreamNote}${submissionState === 'unknown' && !String(error?.message).includes('结果未确认') ? '；结果未确认，请核对渠道记录，勿重复生成' : ''}`;
+      const message = `${error?.message || error}${upstreamNote}`;
       storyboardFinishLog(log, 'failed', { error: message, submissionState, cloudUsage: error?.cloudUsage });
       storyboardSetPlanStatus(plan, 'failed', { error: message, job });
-      const notice=submissionState==='not_submitted'?'本次请求未提交':['unknown','accepted'].includes(submissionState)?'原请求待核查':'分镜生成失败';
-      toast(`${notice}：${message}`,submissionState==='not_submitted'||['unknown','accepted'].includes(submissionState)?'warning':'error');
+      const unresolved=['unknown','accepted'].includes(submissionState);
+      toast(unresolved?'本次生成未完成，详情已记入日志':'本次生成失败，详情已记入日志',unresolved?'warning':'error');
     }
   } finally { await storyboardSettleImageAdmission(job, admissionOutcome); }
 }
@@ -20914,8 +20819,10 @@ async function storyboardRunQueuedJob(job) {
     await storyboardRunJob(job, log);
   } finally {
     storyboardActiveJobs.delete(job.id);
+    storyboardRecoverOriginalTasks();
     storyboardQueueWindow.notify();
     storyboardBusy = storyboardActiveJobs.size > 0;
+    storyboardScheduleInlineRender(0);
     renderModal();
     if (storyboardQueue.length) queueMicrotask(() => void storyboardPumpQueue());
   }
@@ -20953,44 +20860,34 @@ function storyboardMessageFloor(message) {
 }
 
 function storyboardMessageParagraphNodes(text) {
-  if (!text) return [];
-  const proseOnly = (node) => !node.closest?.('[data-qianmu-transient="storyboard"]');
-  const direct = Array.from(text.children || []).filter((node) => node.matches?.('p,div,li,blockquote') && proseOnly(node));
-  if (direct.length) return direct.filter((node) => storyboardCleanMessageText(node.textContent));
-  const blocks = Array.from(text.querySelectorAll?.('p,li,blockquote') || []);
-  return blocks.filter((node) => proseOnly(node) && storyboardCleanMessageText(node.textContent));
+  return storyboardProseParagraphs(text, storyboardCleanMessageText);
 }
 
 function storyboardInlineAnchorNode(text, records) {
-  const anchor = records.find((record) => record.paragraphAnchor)?.paragraphAnchor;
-  if (!anchor) return { node: text, score: 0, fallback: true };
-  const nodes = storyboardMessageParagraphNodes(text);
-  if (!nodes.length) return { node: text, score: 0, fallback: true };
-  let best = { node: text, score: 0, fallback: true };
-  nodes.forEach((node, index) => {
-    const score = scoreStoryboardParagraphAnchor(
-      anchor, storyboardCleanMessageText(node.textContent), index,
-      storyboardCleanMessageText(nodes[index - 1]?.textContent), storyboardCleanMessageText(nodes[index + 1]?.textContent),
-    );
-    if (score > best.score) best = { node, score, fallback: false };
-  });
-  return best.score >= 35 ? best : { node: text, score: best.score, fallback: true };
+  return resolveStoryboardProseAnchor(text, records, { clean: storyboardCleanMessageText, score: scoreStoryboardParagraphAnchor });
 }
 
 function storyboardInjectMessageButtons(chatRoot) {
-  injectStoryboardMessageButtons(chatRoot,{floorOf:storyboardMessageFloor,getContext:ctx,getState:storyboardState,planForMessage:storyboardPlanForMessage,applyIcons:applyQianmuIcons});
+  const chatKey = String(getChatKey() || ''), state = storyboardState();
+  const busyFloors = new Set([...storyboardQueue, ...storyboardActiveJobs.values()]
+    .filter(job => job.chatKey === chatKey && !job.discardRequested && (!job.imageOwnerState || job.imageOwnerState === state) && Number.isInteger(job.floor)).map(job => job.floor));
+  for (const batch of storyboardQueueBatches) if (!batch.complete && batch.chatKey === chatKey && Number.isInteger(batch.plan?.floor)) busyFloors.add(batch.plan.floor);
+  if (storyboardCompilerBusy === true && storyboardCompilerFloor?.chatKey === chatKey && storyboardCompilerFloor.state === state
+    && storyboardCompilerFloor.epoch === storyboardAdmissionEpoch) busyFloors.add(storyboardCompilerFloor.floor);
+  injectStoryboardMessageButtons(chatRoot,{floorOf:storyboardMessageFloor,getContext:ctx,getState:storyboardState,planForMessage:storyboardPlanForMessage,applyIcons:applyQianmuIcons,isBusy:floor=>busyFloors.has(floor)});
 }
 
 const STORYBOARD_INLINE_MARK = '<svg viewBox="0 0 256 256" aria-hidden="true"><path d="M208 144a15.78 15.78 0 0 1-10.42 14.94L146 178l-19 51.62a15.92 15.92 0 0 1-29.88 0L78 178l-51.62-19a15.92 15.92 0 0 1 0-29.88L78 110l19-51.62a15.92 15.92 0 0 1 29.88 0L146 110l51.62 19A15.78 15.78 0 0 1 208 144Zm-56-96h16v16a8 8 0 0 0 16 0V48h16a8 8 0 0 0 0-16h-16V16a8 8 0 0 0-16 0v16h-16a8 8 0 0 0 0 16Zm88 32h-8v-8a8 8 0 0 0-16 0v8h-8a8 8 0 0 0 0 16h8v8a8 8 0 0 0 16 0v-8h8a8 8 0 0 0 0-16Z"/></svg>';
 
-function storyboardInlineRecordMarkup(record) {
+function storyboardInlineRecordMarkup(record, shot = null) {
   const url = storyboardSafeUrl(record.url);
   const motion = storyboardInlineVideoForRecord(record.id);
-  return `<figure data-storyboard-record="${htmlEscape(record.id)}" data-storyboard-inline-slot="${htmlEscape(storyboardInlineSlotKey(record.inlineOrder))}" data-storyboard-task="${htmlEscape(record.taskId || record.groupId || '')}">
+  return `<figure data-storyboard-record="${htmlEscape(record.id)}" data-storyboard-inline-slot="${htmlEscape(shot?.key || storyboardInlineSlotKey(record.inlineOrder))}" data-storyboard-task="${htmlEscape(record.taskId || record.groupId || '')}">
     <button type="button" class="sd-storyboard-inline-preview" data-storyboard-chat-action="preview" title="查看画面"><img src="${htmlEscape(url)}" loading="lazy" alt="${htmlEscape(snip(record.prompt || '分镜', 48))}"></button>
     ${motion ? `<button type="button" class="sd-storyboard-inline-motion" data-storyboard-chat-action="play-motion" data-storyboard-video-asset="${htmlEscape(motion.assetId)}" title="播放动态镜头" aria-label="播放动态镜头"><i class="fa-solid fa-play"></i></button>` : ''}
-    <button type="button" class="sd-storyboard-inline-more" data-storyboard-chat-action="toggle-actions" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
-    <div class="sd-storyboard-inline-actions" aria-hidden="true"><button type="button" data-storyboard-chat-action="edit" title="编辑当前提示词" aria-label="编辑当前提示词"><i class="fa-solid fa-pen"></i></button>${getStoryboardCapabilities(record.source, record.capabilityModelId || record.model).supportsArtistSyntax ? `<button type="button" data-storyboard-chat-action="artist" title="更换画师并重绘" aria-label="更换画师并重绘"><i class="fa-solid fa-palette"></i></button>` : ''}<button type="button" data-storyboard-chat-action="redraw" title="重新生成" aria-label="重新生成"><i class="fa-solid fa-rotate-right" data-qm-icon="image-regenerate"></i></button><button type="button" data-storyboard-chat-action="motion" title="让镜头动起来" aria-label="让镜头动起来"><i class="fa-solid fa-video"></i></button><button type="button" data-storyboard-chat-action="collapse" title="折叠正文插图" aria-label="折叠正文插图"><i class="fa-solid fa-compress"></i></button><button type="button" data-storyboard-chat-action="copy" title="复制提示词" aria-label="复制提示词"><i class="fa-solid fa-copy"></i></button><button type="button" data-storyboard-chat-action="download" title="下载" aria-label="下载"><i class="fa-solid fa-download"></i></button><button type="button" data-storyboard-chat-action="detach" title="移出正文" aria-label="移出正文"><i class="fa-solid fa-eye-slash"></i></button></div>
+    ${shot?.records.length > 1 ? `<button type="button" class="sd-storyboard-inline-version is-previous" data-storyboard-chat-action="previous-version" title="上一张版本" aria-label="上一张版本"><i class="fa-solid fa-chevron-left"></i></button><button type="button" class="sd-storyboard-inline-version is-next" data-storyboard-chat-action="next-version" title="下一张版本" aria-label="下一张版本"><i class="fa-solid fa-chevron-right"></i></button>` : ''}
+    <button type="button" class="sd-storyboard-inline-more" data-storyboard-chat-action="toggle-actions" title="更多操作" aria-label="更多操作" aria-expanded="false"><span class="sd-storyboard-inline-dots" aria-hidden="true">•••</span></button>
+    <div class="sd-storyboard-inline-actions" aria-hidden="true"><button type="button" data-storyboard-chat-action="collapse" title="折叠" aria-label="折叠"><i class="fa-solid fa-compress"></i><span>折叠</span></button><button type="button" data-storyboard-chat-action="image-info" title="插画信息" aria-label="插画信息"><i class="fa-solid fa-pen"></i><span>插画信息</span></button><button type="button" data-storyboard-chat-action="image-log" title="查看日志" aria-label="查看日志"><i class="fa-solid fa-list"></i><span>查看日志</span></button></div>
   </figure>`;
 }
 
@@ -21165,101 +21062,97 @@ function storyboardRenderInlineImages(targetFloor = null) {
   for (const record of storyboardGalleryRecords()) {
     if (!storyboardInlineRecordValid(record)) continue;
     if (scopedFloor !== null && record.floor !== scopedFloor) continue;
-    if (!byFloor.has(record.floor)) byFloor.set(record.floor, { records: [], plans: [], tasks: [] });
-    byFloor.get(record.floor).records.push(record);
+    if (!byFloor.has(record.floor)) byFloor.set(record.floor, []);
+    byFloor.get(record.floor).push(record);
   }
   const currentChatKey = String(getChatKey() || '');
-  const plans=storyboardState().shotPlans||[],partialPlans=storyboardPartialPlanMap(plans,currentChatKey);
-  const tasks = storyboardCurrentInlineTasks();
-  const taskedPlans = new Set((storyboardState().taskStates || []).filter(task => task.chatKey === currentChatKey && task.uiVisible && task.inlineOrder).map(task => task.planId));
-  for (const task of tasks) {
-    if (scopedFloor !== null && task.floor !== scopedFloor) continue;
-    if (!byFloor.has(task.floor)) byFloor.set(task.floor, { records: [], plans: [], tasks: [] });
-    byFloor.get(task.floor).tasks.push(task);
-  }
-  for (const plan of plans) {
-    if (plan.chatKey && plan.chatKey !== currentChatKey) continue;
-    if (taskedPlans.has(plan.id) || (plan.linkState && plan.linkState !== 'active')) continue;
-    if (plan.origin !== 'manual_supplement' || !Number.isInteger(plan.floor) || !['screening', 'compiling', 'queued', 'generating', 'failed'].includes(plan.status)) continue;
-    if (scopedFloor !== null && plan.floor !== scopedFloor) continue;
-    if (!byFloor.has(plan.floor)) byFloor.set(plan.floor, { records: [], plans: [], tasks: [] });
-    byFloor.get(plan.floor).plans.push(plan);
-  }
+  const plans = storyboardState().shotPlans || [];
   const existingSelector = scopedFloor === null ? '.sd-storyboard-inline' : `.sd-storyboard-inline[data-storyboard-floor="${scopedFloor}"]`;
   const existing = new Set(chatRoot.querySelectorAll(existingSelector));
-  const previous = new Map([...existing].map(node => [JSON.stringify([node.dataset.storyboardFloor, node.dataset.storyboardParagraphIndex]), node]));
-  for (const [floor, group] of byFloor) {
+  const previous = new Map([...existing].map(node => [node.dataset.storyboardShotKey, node]));
+  for (const [floor, records] of byFloor) {
     const message = chatRoot.querySelector(`.mes[mesid="${floor}"], .mes[data-message-id="${floor}"]`);
     const text = message?.querySelector('.mes_text');
     if (!message || !text) continue;
-    const anchorGroups = new Map();
-    const displayIndexes = storyboardInlineDisplayIndexes([...group.records,...group.tasks],{plans});
-    for (const [record, kind] of [...group.records.map(record => [record, 'records']), ...group.tasks.map(task => [task, 'tasks'])]) {
-      const index = Number(record.paragraphAnchor?.paragraphIndex ?? record.paragraphSelection?.insertAfterIndex ?? -1);
-      const key = Number.isInteger(index) ? index : -1;
-      if (!anchorGroups.has(key)) anchorGroups.set(key, { records: [], plans: [], tasks: [] });
-      anchorGroups.get(key)[kind].push(record);
-    }
-    for (const plan of group.plans) {
-      const index = Number(plan.paragraphSelection?.insertAfterIndex ?? plan.shots?.[0]?.paragraphAnchor?.paragraphIndex ?? -1);
-      const key = Number.isInteger(index) ? index : -1;
-      if (!anchorGroups.has(key)) anchorGroups.set(key, { records: [], plans: [], tasks: [] });
-      anchorGroups.get(key).plans.push(plan);
-    }
-    const anchorTails = new Map(),seen=new Set();
-    for (const [paragraphIndex, items] of [...anchorGroups.entries()].sort((a, b) => a[0] - b[0])) {
-      items.records = sortStoryboardInlineRecords(items.records,{plans});
-      const entries = sortStoryboardInlineRecords([...items.records, ...items.tasks],{plans});
-      const taskEntries = new Set(items.tasks);
-      const partial = storyboardInlinePartialCompletion(entries, partialPlans,seen);
-      const markup = `${partial ? `<small role="status" class="sd-storyboard-inline-outcome">${htmlEscape(partial.label)}</small>` : ''}${items.records.length ? `<button type="button" class="sd-storyboard-inline-title" data-storyboard-chat-action="expand" title="展开正文插图" hidden><span class="sd-storyboard-inline-mark">${STORYBOARD_INLINE_MARK}</span><span class="sd-storyboard-inline-rule"></span><b>刻瞬于光</b><small>${items.records.length > 1 ? `${items.records.length} 幅画面` : '画面已折叠'}</small></button>` : ''}${entries.length ? `<div class="sd-storyboard-inline-reel">${entries.map(entry => taskEntries.has(entry) ? storyboardInlineTaskMarkup(entry, displayIndexes.get(entry)) : storyboardInlineRecordMarkup(entry)).join('')}</div>` : ''}${items.plans.map(storyboardInlinePlaceholderMarkup).join('')}`;
-      const signature = JSON.stringify([markup, storyboardCollapsedInlineFloors.has(floor)]);
-      const old = previous.get(JSON.stringify([String(floor), String(paragraphIndex)]));
-      const sameOwner = old?.dataset.storyboardChatKey === currentChatKey;
+    const shots = storyboardReadingShots(sortStoryboardInlineRecords(records, { plans }));
+    const anchorTails = new Map();
+    for (const shot of shots) {
+      const record = shot.record, paragraphIndex = Number(record.paragraphAnchor?.paragraphIndex ?? -1);
+      const anchor = storyboardInlineAnchorNode(text, [record]);
+      if (anchor.fallback) continue;
+      const collapsed = storyboardCollapsedInlineFloors.has(shot.key);
+      const markup = `<button type="button" class="sd-storyboard-inline-title" data-storyboard-chat-action="expand" title="展开插画" hidden><span class="sd-storyboard-inline-mark">${STORYBOARD_INLINE_MARK}</span><span class="sd-storyboard-inline-rule"></span><b>展开插画</b></button><div class="sd-storyboard-inline-reel">${storyboardInlineRecordMarkup(record, shot)}</div>`;
+      const signature = JSON.stringify([markup, collapsed]);
+      const old = previous.get(shot.key);
+      const sameOwner = old?.dataset.storyboardChatKey === currentChatKey && old.dataset.storyboardOwnerEpoch === String(storyboardAdmissionEpoch);
       const reusable = sameOwner && old._sdInlineSignature === signature;
       const view = sameOwner && !reusable ? storyboardCaptureInlineView(old) : null;
       const wrapper = reusable ? old : document.createElement('div');
       if (!reusable) {
-        wrapper.className = `sd-storyboard-inline ${items.records.length ? 'is-completed' : 'is-pending'}`;
+        wrapper.className = 'sd-storyboard-inline is-completed sd-storyboard-reading-shot';
         wrapper.dataset.qianmuTransient = 'storyboard';
         wrapper.dataset.storyboardFloor = String(floor);
         wrapper.dataset.storyboardParagraphIndex = String(paragraphIndex);
         wrapper.dataset.storyboardChatKey = currentChatKey;
+        wrapper.dataset.storyboardOwnerEpoch = String(storyboardAdmissionEpoch);
+        wrapper.dataset.storyboardShotKey = shot.key;
         wrapper._sdInlineSignature = signature;
-        if (entries.length > 1) wrapper.classList.add('sd-storyboard-filmstrip');
         wrapper.innerHTML = markup;
       }
       if (old) {
         existing.delete(old);
         if (!reusable) storyboardDisposeInlineWrapper(old);
       }
-      if (items.records.length && storyboardCollapsedInlineFloors.has(floor)) {
+      if (collapsed) {
         wrapper.classList.add('is-collapsed');
         wrapper.querySelector('.sd-storyboard-inline-title')?.removeAttribute('hidden');
         wrapper.querySelector('.sd-storyboard-inline-reel')?.setAttribute('hidden', '');
       }
       if (!reusable) applyQianmuIcons(wrapper);
-      const anchorRecords = entries.length ? entries : [{ paragraphAnchor: group.plans.find((plan) => plan.paragraphSelection?.insertAfterIndex === paragraphIndex)?.shots?.[0]?.paragraphAnchor }];
-      const anchor = storyboardInlineAnchorNode(text, anchorRecords);
       storyboardInsertInlineWrapper(text, anchor, wrapper, anchorTails);
-      wrapper.dataset.storyboardAnchorFallback = String(anchor.fallback);
       if (!reusable) storyboardRestoreInlineView(wrapper, view);
-      if (anchor.fallback && items.records.some((record) => !record.paragraphAnchorFallback)) {
-        items.records.forEach((record) => { record.paragraphAnchorFallback = true; });
-        storyboardScheduleLinkSave();
-      }
     }
   }
   existing.forEach(storyboardDisposeInlineWrapper);
 }
 
 function storyboardInsertInlineWrapper(text, anchor, wrapper, tails) {
-  const target = !anchor.fallback && anchor.node !== text ? anchor.node : text;
-  // Multiple unresolved paragraphs (or anchors resolving to the same paragraph) share a tail.
-  // Repeated insertion immediately after the original node would reverse their narrative order.
-  const tail = tails.get(target) || target;
-  if (tail.nextElementSibling !== wrapper) tail.insertAdjacentElement('afterend', wrapper);
-  tails.set(target, wrapper);
+  return insertStoryboardProseImage(text, anchor, wrapper, tails);
+}
+
+function storyboardReadingShots(records = storyboardGalleryRecords().filter(storyboardInlineRecordValid)) {
+  const requestTimes = new Map(), chatKey = String(getChatKey() || '');
+  for (const log of storyboardState().logs || []) {
+    if (log.snapshot?.chatKey && log.snapshot.chatKey !== chatKey) continue;
+    for (const id of [...(log.recordIds || []), log.recordId].filter(Boolean)) requestTimes.set(id, Number(log.queuedAt) || 0);
+  }
+  return buildStoryboardReadingShots(records, { chatKey,
+    choices: getChatStore().storyboardInlineChoices || {}, requestTimes });
+}
+
+async function storyboardSelectInlineVersion(wrapper, delta) {
+  const chatKey = String(getChatKey() || ''), metadata = ctx().chatMetadata, epoch = storyboardAdmissionEpoch;
+  if (!wrapper || wrapper.dataset.storyboardChatKey !== chatKey || wrapper.dataset.storyboardOwnerEpoch !== String(epoch) || wrapper.dataset.versionSaving) return;
+  const shot = storyboardReadingShots().find(item => item.key === wrapper.dataset.storyboardShotKey);
+  if (!shot || shot.records.length < 2) return;
+  const index = shot.records.findIndex(item => item.id === shot.record.id);
+  const next = shot.records[(index + delta + shot.records.length) % shot.records.length];
+  const store = getChatStore();
+  if (!store.storyboardInlineChoices || typeof store.storyboardInlineChoices !== 'object' || Array.isArray(store.storyboardInlineChoices)) store.storyboardInlineChoices = {};
+  const choices = store.storyboardInlineChoices;
+  const before = choices[shot.key], choice = { recordId: next.id, latestRequestId: shot.latestRequestId };
+  const current = () => chatKey === String(getChatKey() || '') && metadata === ctx().chatMetadata && epoch === storyboardAdmissionEpoch;
+  wrapper.dataset.versionSaving = 'true';
+  choices[shot.key] = choice;
+  try {
+    await saveMetadata();
+    if (current()) storyboardRenderInlineImages(next.floor);
+  } catch (_) {
+    if (choices[shot.key] === choice) {
+      if (before === undefined) delete choices[shot.key]; else choices[shot.key] = before;
+    }
+    if (current()) { storyboardRenderInlineImages(next.floor); toast('图片选择未保存，请重试。', 'warning'); }
+  } finally { delete wrapper.dataset.versionSaving; }
 }
 
 function storyboardScheduleInlineRender(delay = 80, floor = null) {
@@ -21312,6 +21205,9 @@ function storyboardScheduleInlineVideoHydration(delay = 900) {
 function storyboardCloseLightbox() {
   storyboardLightboxEpoch++;
   const layer = storyboardLightboxEl;
+  layer?.releaseZoom?.();
+  layer?.releaseAppearance?.();
+  if(layer?.open)layer.close();
   layer?.remove();
   storyboardLightboxEl = null;
   layer?.returnFocus?.();
@@ -21329,144 +21225,47 @@ function storyboardRecordParameterLabel(record) {
 }
 
 async function storyboardOpenLightbox(input, initialId = '', {isCurrent=()=>true} = {}) {
-  if (!isCurrent()) return;
-  let variants = (Array.isArray(input) ? input : [input]).filter((record) => storyboardSafeUrl(record?.url));
-  if (!variants.length) return;
-  const store = getChatStore(), state = storyboardState(), chatKey = String(getChatKey() || ''), epoch = storyboardAdmissionEpoch;
-  const sameContext = () => store===getChatStore() && state===storyboardState() && chatKey===String(getChatKey() || '') && epoch===storyboardAdmissionEpoch;
-  const returnTarget = document.activeElement;
-  let currentIndex = Math.max(0, variants.findIndex((record) => record.id === initialId));
-  storyboardCloseLightbox();
-  const openEpoch = storyboardLightboxEpoch;
-  const layer = document.createElement('div');
-  layer.className = 'sd-storyboard-lightbox';
-  layer.tabIndex = -1;
-  layer.setAttribute('role', 'dialog');
-  layer.setAttribute('aria-modal', 'true');
-  layer.setAttribute('aria-label', '阅片室图片详情');
-  layer.returnFocus = () => { if (sameContext() && returnTarget?.isConnected) returnTarget.focus({preventScroll:true}); };
-  let busy = false, identity, namespace;
-  try { identity = await featureRuntime.load('imageAdmission'); namespace = await identity.resolveImageAccountNamespace(); }
-  catch (_) { return toast('暂时无法确认当前账户，请稍后重新打开画面。','warning'); }
-  if (!isCurrent() || !sameContext() || openEpoch!==storyboardLightboxEpoch) return;
-  const currentRecord = id => sameContext() ? storyboardGalleryRecords().find(item=>item.id===id) : null;
-  const guard = async id => {
-    if (!sameContext() || storyboardLightboxEl!==layer || !currentRecord(id)) throw new Error('画面或聊天已变化，请重新打开');
-    if (namespace!==await identity.resolveImageAccountNamespace() || !sameContext() || storyboardLightboxEl!==layer || !currentRecord(id)) {
-      if (storyboardLightboxEl===layer) storyboardCloseLightbox();
-      throw new Error('账户或画面已变化，请重新打开');
-    }
-  };
-  const run = async (id, action) => {
-    if (busy) return;
-    busy=true;
-    try {
-      await guard(id);
-      layer.style.visibility='hidden';
-      await action(currentRecord(id),()=>guard(id));
-    } catch (error) { if (sameContext()) toast(error.message || '画面操作失败','warning'); }
-    finally {
-      busy=false;
-      if (storyboardLightboxEl===layer) {
-        if (!sameContext()) storyboardCloseLightbox();
-        else { layer.style.visibility=''; render();layer.focus({preventScroll:true}); }
-      }
-    }
-  };
-  const render = () => {
-    if (!sameContext()) return storyboardCloseLightbox();
-    const id = variants[currentIndex]?.id;
-    variants=variants.map(item=>currentRecord(item.id)).filter(item=>item && storyboardSafeUrl(item.url));
-    if (!variants.length) return storyboardCloseLightbox();
-    currentIndex=Math.max(0,variants.findIndex(item=>item.id===id));
-    const record = variants[currentIndex];
-    const url = storyboardSafeUrl(record?.url);
-    const production = storyboardProductionContext(record);
-    const sourceFloor = production.packetId ? '造物之眼 · 导演视角（非已发生事实）' : Number.isInteger(record.floor) ? `第 ${record.floor} 层` : (record.lastKnownFloor != null ? `原第 ${record.lastKnownFloor} 层` : '仅存于阅片室');
-    const positive = String(record.prompt || '').trim() || '—';
-    const negative = String(record.effectiveNegative || record.negative || '').trim() || '—';
-    const finalPrompt = String(record.finalPrompt || record.prompt || '').trim() || '—';
-    const artist = String(record.artistString || '').trim() || '—';
-    layer.innerHTML = `<button type="button" class="sd-storyboard-lightbox-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button><div class="sd-storyboard-lightbox-stage"><img src="${htmlEscape(url)}" alt="${htmlEscape(snip(finalPrompt, 80))}">${variants.length > 1 ? `<button type="button" class="sd-storyboard-lightbox-prev" aria-label="上一张"><i class="fa-solid fa-chevron-left"></i></button><button type="button" class="sd-storyboard-lightbox-next" aria-label="下一张"><i class="fa-solid fa-chevron-right"></i></button><span class="sd-storyboard-lightbox-index">${currentIndex + 1} / ${variants.length}</span>` : ''}</div><aside class="sd-storyboard-lightbox-detail"><dl><div><dt>来源楼层</dt><dd>${htmlEscape(sourceFloor)}</dd></div><div><dt>正面提示词</dt><dd>${htmlEscape(positive)}</dd></div><div><dt>负面提示词</dt><dd>${htmlEscape(negative)}</dd></div><div><dt>画师串</dt><dd>${htmlEscape(artist)}</dd></div><div><dt>模型与参数</dt><dd>${htmlEscape(`${STORYBOARD_SOURCES[record.source]?.label || record.source || '分镜'} · ${record.model || '默认模型'} · ${storyboardRecordParameterLabel(record)}`)}</dd></div><div><dt>种子</dt><dd>${htmlEscape(record.seed == null || record.seed === '' ? '随机' : String(record.seed))}</dd></div></dl><footer><button type="button" class="sd-btn sd-storyboard-lightbox-download">下载</button><button type="button" class="sd-btn sd-danger sd-storyboard-lightbox-delete">删除</button></footer></aside>`;
+  if(!isCurrent())return;
+  let variants=(Array.isArray(input)?input:[input]).filter(record=>storyboardSafeUrl(record?.url));
+  if(!variants.length)return;
+  const store=getChatStore(),state=storyboardState(),chatKey=String(getChatKey()||''),epoch=storyboardAdmissionEpoch;
+  const sameContext=()=>store===getChatStore()&&state===storyboardState()&&chatKey===String(getChatKey()||'')&&epoch===storyboardAdmissionEpoch;
+  const returnTarget=document.activeElement;
+  let currentIndex=Math.max(0,variants.findIndex(record=>record.id===initialId));
+  storyboardCloseLightbox();const openEpoch=storyboardLightboxEpoch;
+  const layer=document.createElement('dialog');layer.className='sd-storyboard-lightbox';layer.tabIndex=-1;
+  layer.setAttribute('aria-label','全屏看图');layer.setAttribute('aria-modal','true');
+  layer.returnFocus=()=>{if(sameContext()&&returnTarget?.isConnected)returnTarget.focus({preventScroll:true});};
+  let bindImageZoom;
+  try{const identity=await featureRuntime.load('imageAdmission');await identity.resolveImageAccountNamespace();({bindImageZoom}=await featureRuntime.load('imageZoom'));}
+  catch(_){if(isCurrent()&&sameContext()&&openEpoch===storyboardLightboxEpoch)toast('暂时无法打开图片，请稍后重试','warning');return;}
+  if(!isCurrent()||!sameContext()||openEpoch!==storyboardLightboxEpoch)return;
+  const render=()=>{
+    if(!sameContext())return storyboardCloseLightbox();
+    const id=variants[currentIndex]?.id;
+    variants=variants.map(item=>storyboardGalleryRecords().find(row=>row.id===item.id)).filter(item=>item&&storyboardSafeUrl(item.url));
+    if(!variants.length)return storyboardCloseLightbox();
+    currentIndex=Math.max(0,variants.findIndex(item=>item.id===id));const record=variants[currentIndex];
+    layer.releaseZoom?.();
+    layer.innerHTML='<button type="button" class="sd-storyboard-lightbox-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button><div class="sd-storyboard-lightbox-stage"><img src="'+htmlEscape(storyboardSafeUrl(record.url))+'" alt="插画" draggable="false">'+(variants.length>1?'<button type="button" class="sd-storyboard-lightbox-prev" aria-label="上一张"><i class="fa-solid fa-chevron-left"></i></button><button type="button" class="sd-storyboard-lightbox-next" aria-label="下一张"><i class="fa-solid fa-chevron-right"></i></button><span class="sd-storyboard-lightbox-index">'+(currentIndex+1)+' / '+variants.length+'</span>':'')+'</div>';
     applyQianmuIcons(layer);
-    const footer = layer.querySelector('.sd-storyboard-lightbox-detail footer');
-    const sourceHeading = layer.querySelector('.sd-storyboard-lightbox-detail dt');
-    footer?.insertAdjacentHTML('beforebegin',renderRunningHubTaskUsage(record));
-    if (sourceHeading) sourceHeading.textContent='来源';
-    if (!record.recipeUnavailable) {
-      footer?.insertAdjacentHTML('afterbegin',`<button type="button" class="sd-btn sd-storyboard-lightbox-edit">改提示词</button><button type="button" class="sd-btn sd-storyboard-lightbox-redraw">重绘</button>${record.source==='novel'?'<button type="button" class="sd-btn sd-storyboard-lightbox-artist">换画师重绘</button>':''}`);
-      if(record.source==='novel')footer?.insertAdjacentHTML('beforeend','<button type="button" class="sd-btn sd-storyboard-apply-style">套用风格配置</button>');
-      layer.querySelector('.sd-storyboard-apply-style')?.addEventListener('click',()=>void run(record.id,(item,verify)=>storyboardApplyRecordStyle(item,{verify})));
-      if(!record.snapshot&&!record.snapshotServerRef&&record.snapshotRef===storyboardSnapshotKey(record,storyboardRecordChatKey(record))){
-        footer?.insertAdjacentHTML('beforeend','<button type="button" class="sd-btn sd-storyboard-review-recipe">核对旧配方</button>');
-        layer.querySelector('.sd-storyboard-review-recipe')?.addEventListener('click',()=>void storyboardReviewLegacyRecipe(record,layer));
-      }
-      layer.querySelector('.sd-storyboard-lightbox-edit')?.addEventListener('click',()=>void run(record.id,item=>storyboardEditPrompt({record:item})));
-      layer.querySelector('.sd-storyboard-lightbox-redraw')?.addEventListener('click',()=>void run(record.id,(item,verify)=>storyboardRedrawRecord(item,{verify})));
-      layer.querySelector('.sd-storyboard-lightbox-artist')?.addEventListener('click',()=>void run(record.id,async(item,verify)=>{
-        const choice=await storyboardChooseArtistForRecord(item);
-        await verify();
-        if (choice) await storyboardRedrawRecord(item,{artistPreset:choice.artist,artistPool:choice.artistPool,rerollArtist:choice.rerollArtist,verify});
-      }));
-    }
-    layer.querySelector('.sd-storyboard-lightbox-close')?.addEventListener('click', storyboardCloseLightbox);
-    layer.querySelector('.sd-storyboard-lightbox-prev')?.addEventListener('click', () => { currentIndex = (currentIndex - 1 + variants.length) % variants.length; render(); });
-    layer.querySelector('.sd-storyboard-lightbox-next')?.addEventListener('click', () => { currentIndex = (currentIndex + 1) % variants.length; render(); });
-    layer.querySelector('.sd-storyboard-lightbox-download')?.addEventListener('click', () => void run(record.id,item=>storyboardDownloadRecord(item)));
-    layer.querySelector('.sd-storyboard-lightbox-delete')?.addEventListener('click', () => void run(record.id,async(record,verify) => {
-      if (!await confirmDialog('删除图片', '确定删除这张图片记录？SillyTavern 图片文件本身不会被清除。')) return;
-      await verify();
-      if (currentRecord(record.id)!==record) throw new Error('原画面已变化，未删除');
-      const snapshotRef = record.snapshotRef || storyboardSnapshotKey(record,chatKey);
-      const previousRecords = store.storyboardImages;
-      const remaining = storyboardGalleryRecords().filter((item) => item.id !== record.id);
-      store.storyboardImages = remaining;
-      try { await saveMetadata(); }
-      catch (error) {
-        if (store.storyboardImages===remaining) store.storyboardImages=previousRecords;
-        throw new Error('删除未能保存，原记录已保留');
-      }
-      storyboardGallerySelection.delete(record.id);
-      variants = variants.filter((item) => item.id !== record.id);
-      void storyboardDeleteRecordSnapshots({...record,snapshotRef});
-      if (!sameContext()) return;
-      storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null);
-      rerenderIfOpen();
-      if (!variants.length) storyboardCloseLightbox();
-      else { currentIndex = Math.min(currentIndex, variants.length - 1); render(); }
-    }));
+    layer.querySelector('.sd-storyboard-lightbox-close').addEventListener('click',storyboardCloseLightbox);
+    layer.querySelector('.sd-storyboard-lightbox-prev')?.addEventListener('click',()=>step(-1));
+    layer.querySelector('.sd-storyboard-lightbox-next')?.addEventListener('click',()=>step(1));
+    const zoom=bindImageZoom(layer.querySelector('.sd-storyboard-lightbox-stage'),layer.querySelector('img'),{isCurrent:()=>sameContext()&&layer.isConnected,onStale:storyboardCloseLightbox,onStep:delta=>{if(variants.length>1)step(delta);}});
+    layer.releaseZoom=zoom.dispose;
   };
-  layer.addEventListener('pointerdown', (event) => event.stopPropagation());
-  layer.addEventListener('click', (event) => {
-    event.stopPropagation();
-    if (event.target === layer) storyboardCloseLightbox();
+  const step=delta=>{currentIndex=(currentIndex+delta+variants.length)%variants.length;render();if(layer.isConnected&&layer.open)layer.focus({preventScroll:true});};
+  layer.addEventListener('pointerdown',event=>event.stopPropagation());
+  layer.addEventListener('cancel',event=>{event.preventDefault();storyboardCloseLightbox();});
+  layer.addEventListener('click',event=>{event.stopPropagation();if(event.target===layer)storyboardCloseLightbox();});
+  layer.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();storyboardCloseLightbox();}
+    if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();step(event.key==='ArrowRight'?1:-1);}
   });
-  let touchStart=null;
-  layer.addEventListener('pointerdown',event=>{if(event.isPrimary && event.target.closest('.sd-storyboard-lightbox-stage') && !event.target.closest('button')) touchStart={x:event.clientX,y:event.clientY};});
-  layer.addEventListener('pointercancel',()=>{touchStart=null;});
-  layer.addEventListener('pointerup',event=>{
-    if (!touchStart) return;
-    const dx=event.clientX-touchStart.x,dy=event.clientY-touchStart.y;touchStart=null;
-    if (!busy && variants.length>1 && Math.abs(dx)>48 && Math.abs(dx)>Math.abs(dy)*1.5) {currentIndex=(currentIndex+(dx<0?1:-1)+variants.length)%variants.length;render();}
-  });
-  layer.addEventListener('keydown', event => {
-    if (busy) return;
-    if (event.key==='Escape') {event.preventDefault();event.stopPropagation();storyboardCloseLightbox();}
-    if (['ArrowLeft','ArrowRight'].includes(event.key) && !event.target.closest('input,textarea,select')) {
-      event.preventDefault();currentIndex=(currentIndex+(event.key==='ArrowRight'?1:-1)+variants.length)%variants.length;render();
-    }
-    if (event.key==='Tab') {
-      const buttons=[...layer.querySelectorAll('button:not(:disabled)')];
-      const first=buttons[0],last=buttons.at(-1);
-      if (event.shiftKey && (document.activeElement===first || document.activeElement===layer)) {event.preventDefault();last?.focus();}
-      else if (!event.shiftKey && document.activeElement===last) {event.preventDefault();first?.focus();}
-    }
-  });
-  document.body.appendChild(layer);
-  storyboardLightboxEl = layer;
-  appearanceSession.mountPortal(layer,{role:'media'});
-  render();
-  layer.focus({ preventScroll: true });
+  document.body.appendChild(layer);storyboardLightboxEl=layer;
+  layer.releaseAppearance=appearanceSession.mountPortal(layer,{role:'media'});
+  render();if(storyboardLightboxEl===layer){layer.showModal();layer.focus({preventScroll:true});}
 }
 
 async function storyboardDownloadRecord(record) {
@@ -21983,16 +21782,14 @@ async function storyboardChooseArtistForRecord(record) {
   return { artist: index ? artists[index - 1] : null };
 }
 
-async function storyboardRedrawRecord(record, { artistPreset = undefined, artistPool = null, rerollArtist = false, verify = async()=>{} } = {}) {
+async function storyboardRedrawRecord(record, { artistPreset = undefined, artistPool = null, rerollArtist = false, verify = async()=>{}, snapshotOverride = null, isCurrent = ()=>true } = {}) {
   if (record?.recipeUnavailable) return toast('此图未保留原生成配置，不能按原配置重绘；可作为参考图使用。', 'info');
+  const refuse=message=>{if(snapshotOverride)throw new Error(message);return toast(message,'info');};
   const state = storyboardState();
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
   const world = Boolean(storyboardProductionContext(record).packetId);
   storyboardReconcileGalleryLinks({ persist: false });
-  if (!world && (!Number.isInteger(record?.floor) || !ctx().chat?.[record.floor])) {
-    await storyboardLoadRecordToWorkbench(record);
-    return toast('原正文楼层已不存在，已载入镜头台并改为安全确认后生成。', 'info');
-  }
+  const hasProseFloor=Number.isInteger(record?.floor)&&Boolean(ctx().chat?.[record.floor]);
   if (!world && record.linkState === 'inactive_swipe') return toast('请先切回这张图对应的回复版本。', 'warning');
 
   const linkedLog = state.logs.find((item) => item.recordId === record.id || item.recordIds?.includes(record.id));
@@ -22002,20 +21799,44 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined, artist
   const redrawSwipe = Number(redrawMessage?.swipe_id || 0);
   const redrawEpoch = storyboardAdmissionEpoch;
   const originalSnapshotRef = record.snapshotRef;
-  const recordIdentity = () => JSON.stringify([record.finalPrompt,record.prompt,record.negative,record.snapshot,record.snapshotServerRef,record.collectionId,record.collectionIds,record.tags]);
+  const recordIdentity = () => JSON.stringify([record.id,record.source,record.finalPrompt,record.prompt,record.negative,record.snapshot,record.snapshotRef,record.snapshotServerRef,record.collectionId,record.collectionIds,record.tags,
+    record.floor,record.chatKey,record.messageRef,record.messageHash,record.paragraphAnchor,record.paragraphSelection,
+    record.lastKnownFloor,record.imageAccountNamespace,record.imageAdmission,record.productionContext]);
   const originalRecordIdentity = recordIdentity();
-  const stillCurrent = () => state===storyboardState() && state.enabled && redrawEpoch===storyboardAdmissionEpoch
+  const stillCurrent = () => isCurrent() && state===storyboardState() && state.enabled && redrawEpoch===storyboardAdmissionEpoch
     && redrawChatKey===String(getChatKey() || '') && (!originalSnapshotRef || originalSnapshotRef===record.snapshotRef)
-    && originalRecordIdentity===recordIdentity() && (world || (ctx().chat?.[record.floor]===redrawMessage
+    && originalRecordIdentity===recordIdentity() && (world || !hasProseFloor || (ctx().chat?.[record.floor]===redrawMessage
       && redrawText===String(redrawMessage?.mes || '') && redrawSwipe===Number(redrawMessage?.swipe_id || 0)));
   // A saved inline edit belongs to this image; the generation log remains historical.
-  const snapshot = clone(await storyboardReadSnapshotForRecord(record) || linkedLog?.snapshot || {});
+  const originalRecipe=(!world&&!hasProseFloor)?clone(await storyboardReadSnapshotForRecord(record)||linkedLog?.snapshot||{}):null;
+  const snapshot = clone(snapshotOverride || originalRecipe || await storyboardReadSnapshotForRecord(record) || linkedLog?.snapshot || {});
   if (!stillCurrent()) {
     return toast('正文已切换，请在当前画面重新操作。', 'info');
   }
   if (!snapshot?.source || !snapshot?.profile || !snapshot?.payload) {
-    await storyboardLoadRecordToWorkbench(record);
-    return toast('这张旧图缺少完整生成设置，已载入镜头台，请确认后重绘。', 'info');
+    return refuse('这张旧图缺少完整生成设置；请关闭面板，在镜头台另建画面。当前修改未提交。');
+  }
+  let galleryOnly=false,galleryIdentity=null,galleryNamespace='',galleryGuard=async()=>{};
+  if(!world&&!hasProseFloor){
+    const unbound=value=>!Number.isInteger(value?.floor)&&!Number.isInteger(value?.lastKnownFloor)&&!value?.messageRef&&!value?.messageHash&&!value?.paragraphAnchor&&!value?.paragraphSelection;
+    galleryOnly=Boolean(originalRecipe?.target==='gallery'&&originalRecipe?.source&&originalRecipe?.profile&&originalRecipe?.payload&&unbound(originalRecipe)&&unbound(record));
+    if(!galleryOnly)return refuse('原正文位置已不存在；请先核对或重新关联正文位置。当前提示词保留，未生成。');
+    const profileKey=profile=>JSON.stringify(Object.fromEntries(Object.entries(profile||{}).filter(([key])=>key!=='comfyCharacterEnabled')));
+    if(snapshot.source!==originalRecipe.source||profileKey(snapshot.profile)!==profileKey(originalRecipe.profile)
+      ||JSON.stringify(snapshot.connection)!==JSON.stringify(originalRecipe.connection)
+      ||snapshot.target!=='gallery'||!unbound(snapshot)||snapshot.chatKey!==originalRecipe.chatKey
+      ||JSON.stringify(snapshot.imageAdmission)!==JSON.stringify(originalRecipe.imageAdmission)
+      ||snapshot.imageAccountNamespace!==originalRecipe.imageAccountNamespace)return refuse('原图生成配置与编辑草稿不一致，请重新打开；未生成。');
+    galleryIdentity=await featureRuntime.load('imageAdmission');galleryNamespace=await galleryIdentity.resolveImageAccountNamespace();
+    const namespaces=[record.imageAccountNamespace,record.imageAdmission?.namespace,record.imageAdmission?.scope?.namespace,
+      originalRecipe.imageAccountNamespace,originalRecipe.imageAdmission?.namespace,originalRecipe.imageAdmission?.scope?.namespace].filter(Boolean);
+    galleryGuard=async()=>{
+      await verify();
+      if(!stillCurrent()||!galleryNamespace||!storyboardGalleryRecords().includes(record)||!redrawChatKey||originalRecipe.chatKey!==redrawChatKey
+        ||record.chatKey&&record.chatKey!==redrawChatKey||namespaces.some(value=>value!==galleryNamespace)
+        ||galleryNamespace!==await galleryIdentity.resolveImageAccountNamespace()||!stillCurrent())throw Error('账户、聊天或原图已变化，请重新打开；未生成。');
+    };
+    await galleryGuard();
   }
   let worldIdentity, worldNamespace;
   if (world) {
@@ -22080,7 +21901,7 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined, artist
   const composed = replacingArtist
     ? storyboardPromptsForArtist(state, resolvedArtist, base.sourceId, base.modelId, { prompt: base.prompt, negative: base.negative, honorBaked: false, fallbackToStateArtist: false, capabilityModelId: base.capabilityModelId })
     : null;
-  const finalPrompt = String(replacingArtist ? composed.prompt : record.finalPrompt || record.prompt || snapshot.payload.prompt || snapshot.prompt || '').trim();
+  const finalPrompt = String(replacingArtist ? composed.prompt : snapshotOverride ? snapshot.payload.prompt : record.finalPrompt || record.prompt || snapshot.payload.prompt || snapshot.prompt || '').trim();
   if(!finalPrompt)return toast('画面提示为空，请保留画面描述后重绘','warning');
   const paragraphIndex = record.paragraphAnchor?.paragraphIndex ?? snapshot.paragraphAnchor?.paragraphIndex ?? 0;
   snapshot.prompt = replacingArtist ? base.prompt : finalPrompt;
@@ -22105,8 +21926,8 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined, artist
   snapshot.promptLocked = true;
   delete snapshot.floorTake; // A single-image redraw is not a retry of the entire take.
 
-  if (world) {
-    // A redraw is a new variant of the approved image, not a new factual/prose event.
+  if (world || galleryOnly) {
+    // A redraw is a new variant of this gallery image, not a new factual/prose event.
     Object.assign(snapshot,{target:'gallery',floor:null,inlineByDefault:false,messageRef:null,messageHash:'',swipeId:0,
       paragraphAnchor:null,paragraphSelection:null,planId:'',planShotId:'',chatKey:redrawChatKey});
   } else storyboardRelinkRedrawSnapshot(snapshot, record, record.floor, ctx().chat[record.floor], paragraphIndex);
@@ -22114,16 +21935,18 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined, artist
     ? { ...linkedLog, snapshot, effectivePrompt: snapshot.payload.prompt, effectiveNegative: snapshot.payload.negative }
     : { id: uid('shotlog'), attempt: 0, snapshot, effectivePrompt: snapshot.payload.prompt, effectiveNegative: snapshot.payload.negative };
   const job = storyboardJobFromLog(redrawLog);
-  if (!job) return toast('旧图缺少完整模型或连接快照，请载入镜头台确认。', 'warning');
+  if (!job) return refuse('旧图缺少完整模型或连接快照；请关闭面板，在镜头台另建画面。当前修改未提交。');
   job.variantRootId = storyboardGalleryGroupId(record);
+  job.sourceCharacterName = String(record.sourceCharacterName||(record.messageRef?.role==='assistant'?record.messageRef.name:'')||'');
   Object.assign(job,galleryMembershipSnapshot(record));
   job.tags = uniqueClean(record.tags || []).slice(0, 30);
   job.compilerStages = [];
   await verify();
+  await galleryGuard();
   try{await replacementGuard();}catch(error){return toast(error.message,'warning');}
   if (world && (worldNamespace!==await worldIdentity.resolveImageAccountNamespace() || !storyboardGalleryRecords().includes(record))) return toast('账户或原图已变化，未重绘。','info');
   if (!stillCurrent() || !replacementIsCurrent()) return toast('聊天、画面或画师配置已变化，未重绘。','info');
-  return storyboardQueueJob(job,()=>stillCurrent() && replacementIsCurrent());
+  return storyboardQueueJob(job,()=>stillCurrent() && replacementIsCurrent()&&(!galleryOnly||storyboardGalleryRecords().includes(record)));
 }
 
 async function storyboardChooseCaptureMode(floor, message, { reextract = false } = {}) {
@@ -22140,161 +21963,139 @@ async function storyboardChooseCaptureMode(floor, message, { reextract = false }
     selection:mode==='manual_supplement'?normalizeStoryboardParagraphSelection({mode,indexes,createdAt:Date.now()}):null};
 }
 
-async function storyboardEditPrompt({ plan = null, record = null } = {}) {
-  if (record?.recipeUnavailable) return toast('此图未保留原提示词，可在镜头台另行创作并选它作参考。', 'info');
-  const state = storyboardState();
-  const editingChatKey = String(getChatKey() || '');
-  const editingMetadata = ctx().chatMetadata;
-  let recordSnapshot = record ? await storyboardReadSnapshotForRecord(record) : null;
-  if (state !== storyboardState() || editingChatKey !== String(getChatKey() || '') || editingMetadata !== ctx().chatMetadata) return toast('聊天已切换，未修改原画面。','info');
-  const recordEditIdentity = () => JSON.stringify([record?.snapshotRef,record?.snapshotServerRef,record?.finalPrompt,record?.negative,record?.snapshot]);
-  const initialRecordEditIdentity = recordEditIdentity();
-  const hasCharacterEditor = Boolean(recordSnapshot && (recordSnapshot.payload?.shotSpec?.characters || recordSnapshot.shotSpec?.characters)?.length);
-  let charactersEdited = false;
-  const referenceProfile = recordSnapshot?.profile || state.profiles[state.source];
-  const referenceSource = recordSnapshot?.source || state.source;
-  const referenceEnabled = referenceSource === 'novel' && referenceProfile?.characterReferenceEnabled === true;
-  const comfyControl = Boolean(recordSnapshot && referenceSource==='comfy' && (referenceProfile?.comfyCharacterEnabled || referenceProfile?.comfyCharacterActivation));
-  let useComfyCharacters = referenceProfile?.comfyCharacterEnabled === true, comfyResetWorkflow;
-  let referenceIdentity,referenceNamespace;
-  if (referenceEnabled || comfyControl) {
-    try {
-      referenceIdentity = await featureRuntime.load('imageAdmission');
-      referenceNamespace = await referenceIdentity.resolveImageAccountNamespace();
-    } catch (error) { toast(error.message || '暂未确认参考图账户，请稍后重试','warning'); return false; }
-    if (state !== storyboardState() || editingChatKey !== String(getChatKey() || '')) return toast('聊天已切换，未修改原画面。','info');
-  }
-  let referenceShot = normalizeStoryboardShotSpec(recordSnapshot?.payload?.shotSpec || recordSnapshot?.shotSpec || plan?.shots?.[0]?.shotSpec || state.promptDraft.shots?.[0]?.shotSpec || {});
-  let referenceChoice = characterReferenceChoice(referenceShot), referencePlan;
-  const initialPrompt = String(record?.finalPrompt || record?.prompt || state.prompt || '').trim();
-  const initialNegative = String(recordSnapshot?.payload?.negative || record?.effectiveNegative || record?.negative || state.negative || '').trim();
-  const context = ctx();
-  let positive = initialPrompt;
-  let negative = initialNegative;
-  let generate = false;
-  if (context.Popup && context.POPUP_TYPE) {
-    for (;;) {
-    const wrap = document.createElement('div');
-    wrap.className = 'sd-storyboard-prompt-editor-dialog';
-    wrap.innerHTML = `<label><span>正面提示词</span><textarea class="text_pole sd-storyboard-edit-positive" rows="9"></textarea></label><label><span>负面提示词</span><textarea class="text_pole sd-storyboard-edit-negative" rows="5"></textarea></label><small>修改只会保存草稿；选择“保存并生成”才会发起生图请求。</small>`;
-    wrap.querySelector('.sd-storyboard-edit-positive').value = positive;
-    wrap.querySelector('.sd-storyboard-edit-negative').value = negative;
-    if (referenceEnabled) wrap.insertAdjacentHTML('afterbegin',renderCharacterReferencePicker(referenceShot));
-    if(comfyControl)wrap.insertAdjacentHTML('afterbegin',`<label class="sd-check"><input type="checkbox" class="sd-comfy-character-inline" ${useComfyCharacters?'checked':''}><span>使用本镜 Comfy 角色实现</span></label><small>停用后仍需满足原工作流的参考输入。</small>`);
-    try {
-      const popup = new context.Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存并生成', cancelButton: '取消', customButtons: [{ text: '仅保存', result: 2 },...(hasCharacterEditor?[{text:'人物详情',result:3}]:[])] });
-      const result = await popup.show();
-      if (!result) return false;
-      generate = result === true || result === 1 || String(result) === '1';
-      positive = String(wrap.querySelector('.sd-storyboard-edit-positive').value || '').trim().slice(0, 24000);
-      negative = String(wrap.querySelector('.sd-storyboard-edit-negative').value || '').trim().slice(0, 12000);
-      if (referenceEnabled) referenceChoice = wrap.querySelector('.sd-character-reference-picker').value;
-      if(comfyControl)useComfyCharacters=wrap.querySelector('.sd-comfy-character-inline').checked;
-      if(String(result)==='3'){
-        referenceIdentity ||= await featureRuntime.load('imageAdmission');
-        referenceNamespace ||= await referenceIdentity.resolveImageAccountNamespace();
-        const guard=async()=>{if(state!==storyboardState()||editingChatKey!==String(getChatKey()||'')||initialRecordEditIdentity!==recordEditIdentity()
-          ||referenceNamespace!==await referenceIdentity.resolveImageAccountNamespace())throw new Error('聊天、账户或原画面已变化，未保存修改');};
-        await guard();const runtime=await featureRuntime.load('characterShotEditor');await guard();
-        const draft=clone(recordSnapshot);draft.payload.prompt=positive;draft.payload.negative=negative;
-        if(referenceEnabled){draft.shotSpec=applyCharacterReferenceChoice(referenceShot,referenceChoice);draft.payload.shotSpec=clone(draft.shotSpec);}
-        if(comfyControl){draft.profile.comfyCharacterEnabled=useComfyCharacters;if(!useComfyCharacters){draft.payload.parameters.workflow=storyboardParseWorkflow(draft.profile.comfyWorkflow);delete draft.payload.comfyCharacterPlan;}}
-        const edited=await runtime.openCharacterShotEditor({snapshot:draft,context,namespace:referenceNamespace,guard});await guard();
-        if(edited){recordSnapshot=edited.snapshot;positive=recordSnapshot.payload.prompt;negative=recordSnapshot.payload.negative||'';referenceShot=clone(recordSnapshot.payload.shotSpec);charactersEdited=true;}
-        continue;
+function storyboardCloseImageInfo() {
+  storyboardImageInfoOpening++;
+  storyboardImageInfoView?.close();storyboardImageInfoView=null;
+}
+
+async function storyboardOpenImageInfo(record) {
+  if (!record || !storyboardGalleryRecords().includes(record)) return;
+  try{return await storyboardEditPrompt({record,inspect:true});}catch(error){toast(error.message||'插画信息未能打开','warning');return false;}
+}
+
+async function storyboardRemoveImage(record,verify=async()=>{}) {
+  if (!await confirmDialog('删除图片','删除这张图片记录？同镜其他版本会保留。')) return false;
+  await verify();
+  const store=getChatStore(),epoch=storyboardAdmissionEpoch,chatKey=String(getChatKey()||''),before=store.storyboardImages,next=before.filter(item=>item.id!==record.id);
+  store.storyboardImages=next;
+  try { await saveMetadata(); } catch(error) { if(store.storyboardImages===next)store.storyboardImages=before;throw error; }
+  if(store!==getChatStore()||epoch!==storyboardAdmissionEpoch||chatKey!==String(getChatKey()||''))return true;
+  storyboardGallerySelection.delete(record.id);
+  void storyboardDeleteRecordSnapshots(record);
+  storyboardRenderInlineImages(Number.isInteger(record.floor)?record.floor:null);
+  rerenderIfOpen();return true;
+}
+
+async function storyboardEditPrompt({ plan = null, record = null, inspect = false } = {}) {
+  if(record?.recipeUnavailable&&!inspect)return toast('此图未保留原生成配置，不能重新生成。','info');
+  storyboardCloseImageInfo();const opening=storyboardImageInfoOpening;
+  const state=storyboardState(),editingChatKey=String(getChatKey()||''),metadata=ctx().chatMetadata,epoch=storyboardAdmissionEpoch;
+  const identity=()=>JSON.stringify([record?.snapshotRef,record?.snapshotServerRef,record?.finalPrompt,record?.negative,record?.snapshot]);
+  const originalIdentity=identity();
+  const current=()=>opening===storyboardImageInfoOpening&&state===storyboardState()&&editingChatKey===String(getChatKey()||'')&&metadata===ctx().chatMetadata
+    &&epoch===storyboardAdmissionEpoch&&originalIdentity===identity()&&(!record||storyboardGalleryRecords().includes(record));
+  const refreshGallery=()=>{if(current()&&state.view==='gallery')try{rerenderIfOpen();}catch(error){console.warn('[千幕] 图片整理已保存，阅片室刷新未完成。',error);}};
+  const account=await featureRuntime.load('imageAdmission'),namespace=await account.resolveImageAccountNamespace();
+  if(!current())return false;
+  const guard=async()=>{if(!current()||namespace!==await account.resolveImageAccountNamespace()||!current())throw Error('聊天或画面已变化，请重新打开');};
+  let recordSnapshot=record&&!record.recipeUnavailable?await storyboardReadSnapshotForRecord(record):null;
+  if(!current())return false;
+  await guard();
+  const profile=recordSnapshot?.profile||state.profiles[state.source],source=recordSnapshot?.source||state.source;
+  const referenceEnabled=source==='novel'&&profile?.characterReferenceEnabled===true;
+  const comfyControl=Boolean(recordSnapshot&&source==='comfy'&&(profile?.comfyCharacterEnabled||profile?.comfyCharacterActivation));
+  const referenceShot=normalizeStoryboardShotSpec(recordSnapshot?.payload?.shotSpec||recordSnapshot?.shotSpec||plan?.shots?.[0]?.shotSpec||state.promptDraft.shots?.[0]?.shotSpec||{});
+  const characters=recordSnapshot?.payload?.shotSpec?.characters||recordSnapshot?.shotSpec?.characters||record?.shotSpec?.characters||[];
+  const characterEditor=characters.length&&!record?.recipeUnavailable?await featureRuntime.load('characterShotEditor'):null;
+  if(!current())return false;
+  await guard();
+  const positive=String(recordSnapshot?.payload?.prompt??record?.finalPrompt??record?.prompt??state.prompt??'').trim();
+  const negative=String(recordSnapshot?.payload?.negative??record?.effectiveNegative??record?.negative??state.negative??'').trim();
+  const extra=(referenceEnabled?renderCharacterReferencePicker(referenceShot):'')+(comfyControl?'<label class="sd-check"><input type="checkbox" class="sd-comfy-character-inline" '+(profile.comfyCharacterEnabled?'checked':'')+'>使用本镜角色配置</label>':'');
+  const parameters=record?'<dl><dt>来源</dt><dd>'+htmlEscape(Number.isInteger(record.floor)?'第 '+record.floor+' 层':'阅片室')+'</dd><dt>模型与参数</dt><dd>'+htmlEscape([STORYBOARD_SOURCES[record.source]?.label,record.model,storyboardRecordParameterLabel(record)].filter(Boolean).join(' · '))+'</dd><dt>种子</dt><dd>'+htmlEscape(record.seed??'随机')+'</dd></dl>'+renderRunningHubTaskUsage(record):'';
+  const view=openImageInfo({record:record?{...record,url:storyboardSafeUrl(record.url)}:null,positive,negative,extra,parameters,
+    modelLabel:record?(record.source==='comfy'?'ComfyUI':String(record.model||STORYBOARD_SOURCES[record.source]?.label||'')):'',
+    sourceCharacter:record?galleryRecordSourceCharacter(record,storyboardUpdateGalleryNarrative().sourceFor(record),{snapshot:recordSnapshot}):'',
+    characterNames:characters.map(character=>String(character.name||'').trim()).filter(Boolean),
+    characters:characterEditor?characterEditor.renderCharacterShotEditor(characters,{source,embedded:true}):'',
+    tagEditor:record?storyboardMediaTagEditorMarkup(record.tags||[],summarizeGalleryRecords(storyboardGalleryRecords(),galleryMembershipIds).knownTags,'gallery:'+record.id):'',
+    collections:record?storyboardGalleryCollections():[],collectionIds:record?galleryMembershipIds(record):[],
+    organizeActions:record?'<div class="sd-image-info-actions">'+(record.restoreLinkReview?'<button type="button" data-image-info-action="review">核对正文位置</button>':!Number.isInteger(record.floor)&&storyboardProductionDeliveryPolicy(record).requiresExplicitInsert?'<button type="button" data-image-info-action="attach">引用至当前正文</button>':'')+(record.source==='novel'&&!record.recipeUnavailable?'<button type="button" data-image-info-action="style">套用 NAI 风格配置</button>':'')+'</div>':'',
+    readCollections:storyboardGalleryCollections,readCollectionIds:()=>record?galleryMembershipIds(record):[],
+    mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),applyIcons:applyQianmuIcons,guard,copy:coreadCopyText,
+    onMount:(root,verify)=>{for(const editor of root.querySelectorAll('[data-media-tag-editor]')){editor._qianmuGalleryCurrent=()=>root.isConnected&&current();editor._qianmuGalleryVerify=verify;editor._qianmuGallerySaved=refreshGallery;}storyboardBindMediaTagEditors(root);},
+    onCollections:record?async(choice,verify)=>{choice.verify?.();await verify();const before=galleryMembershipSnapshot(record);
+      const collections=storyboardGalleryCollections(),records=storyboardGalleryRecords(),name=String(choice.name||'').trim();
+      if(name.length>80)throw Error('合集名称最多 80 字');
+      let collection=collections.find(item=>choice.id?item.id===choice.id:String(item.name).toLocaleLowerCase()===name.toLocaleLowerCase());
+      if(choice.checked&&!collection&&!name)throw Error('请选择合集或填写名称');
+      const created=choice.checked&&!collection?{id:uid('shotcollection'),name,createdAt:Date.now(),updatedAt:Date.now()}:null;
+      collection||=created;const id=collection?.id||choice.id;
+      const next=galleryMembershipChange(record,id,choice.checked);assignGalleryMemberships(record,next);if(created)collections.push(created);
+      try{await saveMetadata();}catch(error){
+        if(JSON.stringify(galleryMembershipIds(record))===JSON.stringify(next))Object.assign(record,before);
+        if(created&&!records.some(item=>galleryMembershipIds(item).includes(created.id))){const at=collections.indexOf(created);if(at>=0)collections.splice(at,1);}
+        throw error;
+      }refreshGallery();}:undefined,
+    onAction:async(action,{verify,close,host})=>{
+      await verify();
+      if(action==='preview'){await storyboardOpenLightbox(record,'',{isCurrent:verify.isCurrent});return;}
+      if(action==='download')return storyboardDownloadRecord(record);
+      if(action==='motion')return storyboardOpenVideoDraftEditor(record,{isCurrent:verify.isCurrent});
+      if(['style','review','attach'].includes(action)){
+        host.close();
+        try{return await (action==='style'?storyboardApplyRecordStyle:action==='review'?storyboardReviewRecordLink:storyboardAttachProductionRecord)(record,{verify});}
+        finally{if(host.isConnected){if(current())host.showModal();else close();}}
       }
-      break;
-    } catch (error) { toast(error.message||'人物编辑未完成，原画面未修改','warning');return false; }
-    }
-  } else {
-    const answer = await promptInput('编辑正面提示词', '修改后不会自动生图。', positive);
-    positive = String(answer ?? '').trim().slice(0, 24000);
-    if (!positive) return false;
-    const negativeAnswer = await promptInput('编辑负面提示词', '可留空。', negative);
-    negative = String(negativeAnswer ?? '').trim().slice(0, 12000);
-    generate = await confirmDialog('提示词已修改', '是否现在手动生成？');
-  }
-  if (!positive) return toast('正面提示词不能为空。', 'warning');
-  let currentReferenceNamespace = null;
-  try { if (referenceIdentity) currentReferenceNamespace = await referenceIdentity.resolveImageAccountNamespace(); }
-  catch (error) { toast(error.message || '暂未确认参考图账户，未保存修改','warning'); return false; }
-  if (state !== storyboardState() || editingChatKey !== String(getChatKey() || '')
-    || initialRecordEditIdentity !== recordEditIdentity()
-    || referenceIdentity && referenceNamespace !== currentReferenceNamespace) return toast('聊天或 ST 账户已变化，未保存修改。','warning');
-  if(comfyControl){
-    try {
-      if(referenceProfile.comfyCharacterActivation?.namespace!==referenceNamespace)throw new Error('Comfy 角色实现属于另一账户，未保存修改');
-      if(!useComfyCharacters)comfyResetWorkflow=storyboardParseWorkflow(referenceProfile.comfyWorkflow);
-    }catch(error){toast(error.message,'warning');return false;}
-  }
-  if (referenceEnabled) {
-    try {
-      referenceShot = applyCharacterReferenceChoice(referenceShot,referenceChoice);
-      const binding = resolveStoryboardProfileBinding(referenceSource,referenceProfile);
-      referencePlan = planCharacterReference({source:referenceSource,enabled:true,shot:referenceShot,
-        capabilities:getStoryboardCapabilities(referenceSource,binding.capabilityModelId),
-        hasVibes:Boolean(recordSnapshot ? recordSnapshot.payload?.selectedVibeIds?.length : state.selectedVibeIds?.length),
-        safetyAdapted:recordSnapshot?.safetyAdapted === true});
-      if (referencePlan?.status === 'selected' && referencePlan.namespace !== referenceNamespace) throw new Error('参考图属于另一 ST 账户，请重新选择');
-    } catch (error) { toast(error.message,'warning'); return false; }
-  }
-  if (record) {
-    record.finalPrompt = positive;
-    record.negative = negative;
-    record.promptLocked = true;
-    if (recordSnapshot) {
-      const nextSnapshot = clone(recordSnapshot);
-      nextSnapshot.prompt = positive;
-      nextSnapshot.negative = negative;
-      nextSnapshot.promptMode = 'manual';
-      nextSnapshot.promptLocked = true;
-      if (nextSnapshot.payload) {
-        nextSnapshot.payload.prompt = positive;
-        nextSnapshot.payload.negative = negative;
-        synchronizeStoryboardCaptionBase(nextSnapshot.payload);
-        if(charactersEdited){
-          for(const compiled of [nextSnapshot.compiledPrompt,nextSnapshot.payload.compiledPrompt])if(compiled){compiled.prompt=positive;compiled.negative=negative;compiled.providerOptions=clone(nextSnapshot.payload.parameters?.providerOptions||{});}
+      if(action==='inline'){
+        const before=record.inline;record.inline=before===false;
+        try{await saveMetadata();}catch(error){record.inline=before;throw error;}
+        await verify();host.querySelector('[data-image-info-action=inline]').textContent=record.inline?'移出正文':'放回正文';
+        storyboardRenderInlineImages(Number.isInteger(record.floor)?record.floor:null);return;
+      }
+      if(action==='delete'){
+        host.close();
+        try{if(await storyboardRemoveImage(record,verify))return 'close';}
+        finally{if(host.isConnected){if(current())host.showModal();else close();}}
+      }
+    },
+    onGenerate:async(draft,verify)=>{
+      await verify();
+      let snapshot=recordSnapshot?clone(recordSnapshot):null;
+      if(record&&!snapshot?.payload)throw Error('此图缺少原生成配置，不能重新生成');
+      if(snapshot){
+        snapshot.prompt=draft.positive;snapshot.negative=draft.negative;
+        snapshot.payload.prompt=draft.positive;snapshot.payload.negative=draft.negative;
+        if(characterEditor&&draft.host.dataset.charactersChanged==='true'){
+          const edited=await characterEditor.prepareCharacterShotEdit(snapshot,characterEditor.captureCharacterShotEditor(draft.host,characters),{namespace,guard:verify});
+          snapshot=edited.snapshot;
         }
-        if (referenceEnabled) {
-          nextSnapshot.shotSpec = clone(referenceShot);
-          nextSnapshot.payload.shotSpec = clone(referenceShot);
-          nextSnapshot.payload.characterReference = clone(referencePlan);
+        if(referenceEnabled){
+          const shot=applyCharacterReferenceChoice(snapshot.payload.shotSpec||referenceShot,draft.host.querySelector('.sd-character-reference-picker').value);
+          snapshot.shotSpec=clone(shot);snapshot.payload.shotSpec=clone(shot);
+          const binding=resolveStoryboardProfileBinding(source,profile);
+          snapshot.payload.characterReference=planCharacterReference({source,enabled:true,shot,capabilities:getStoryboardCapabilities(source,binding.capabilityModelId),hasVibes:Boolean(snapshot.payload.selectedVibeIds?.length),safetyAdapted:snapshot.safetyAdapted===true});
+          if(snapshot.payload.characterReference?.status==='selected'&&snapshot.payload.characterReference.namespace!==namespace)throw Error('参考图属于其他账户');
         }
         if(comfyControl){
-          nextSnapshot.profile.comfyCharacterEnabled=useComfyCharacters;
-          if(!useComfyCharacters){nextSnapshot.payload.parameters.workflow=comfyResetWorkflow;delete nextSnapshot.payload.comfyCharacterPlan;}
+          if(profile.comfyCharacterActivation?.namespace!==namespace)throw Error('角色配置属于其他账户');
+          snapshot.profile.comfyCharacterEnabled=draft.host.querySelector('.sd-comfy-character-inline').checked;
+          if(!snapshot.profile.comfyCharacterEnabled){snapshot.payload.parameters.workflow=storyboardParseWorkflow(profile.comfyWorkflow);delete snapshot.payload.comfyCharacterPlan;}
         }
+        snapshot.promptMode='manual';snapshot.promptLocked=true;synchronizeStoryboardCaptionBase(snapshot.payload);
+        for(const compiled of [snapshot.compiledPrompt,snapshot.payload.compiledPrompt])if(compiled){compiled.prompt=snapshot.payload.prompt;compiled.negative=snapshot.payload.negative;compiled.providerOptions=clone(snapshot.payload.parameters?.providerOptions||{});}
+        await verify();
+        return await storyboardRedrawRecord(record,{snapshotOverride:snapshot,verify,isCurrent:verify.isCurrent})===true;
       }
-      await storyboardStoreSnapshotForRecord(record, nextSnapshot);
-      if(charactersEdited){if(record.shotSpec)record.shotSpec=clone(nextSnapshot.shotSpec);if(record.compiledPrompt)record.compiledPrompt=clone(nextSnapshot.compiledPrompt);}
-    }
-    const current = () => state === storyboardState() && editingChatKey === String(getChatKey() || '') && editingMetadata === ctx().chatMetadata;
-    if (!current()) return false;
-    await saveMetadata();
-    if (!current()) return false;
-    await storyboardArchiveGallerySnapshots([record]);
-    if (!current()) return false;
-    storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null);
-    return generate ? storyboardRedrawRecord(record) : true;
-  }
-  state.prompt = positive;
-  state.negative = negative;
-  state.promptMode = 'manual';
-  state.promptDraft.compiled = positive;
-  state.promptDraft.negative = negative;
-  state.promptDraft.userEditedCompiled = true;
-  state.promptDraft.userEditedNegative = true;
-  state.promptDraft.artistPositiveBaked = true;
-  state.promptDraft.artistNegativeBaked = true;
-  if (state.promptDraft.shots?.length) {
-    Object.assign(state.promptDraft.shots[0], { prompt: positive, safePrompt: '', negative, userEdited: true });
-    if (referenceEnabled) state.promptDraft.shots[0].shotSpec = clone(referenceShot);
-  }
-  if (plan?.shots?.length) Object.assign(plan.shots[0], { prompt: positive, safePrompt: '', negative, userEdited: true, promptLocked: true });
-  if (referenceEnabled && plan?.shots?.length) plan.shots[0].shotSpec = clone(referenceShot);
-  if (plan) { plan.promptLocked = true; plan.autoGenerate = false; plan.status = 'prompt_ready'; plan.updatedAt = Date.now(); }
-  saveSettings();
-  return generate ? storyboardGenerate(null, { plan, automatic: false }) : true;
+      state.prompt=draft.positive;state.negative=draft.negative;state.promptMode='manual';
+      Object.assign(state.promptDraft,{compiled:draft.positive,negative:draft.negative,userEditedCompiled:true,userEditedNegative:true,artistPositiveBaked:true,artistNegativeBaked:true});
+      const shot=referenceEnabled?applyCharacterReferenceChoice(referenceShot,draft.host.querySelector('.sd-character-reference-picker').value):null;
+      for(const row of [state.promptDraft.shots?.[0],plan?.shots?.[0]])if(row)Object.assign(row,{prompt:draft.positive,safePrompt:'',negative:draft.negative,userEdited:true,promptLocked:true,...(shot?{shotSpec:clone(shot)}:{})});
+      if(plan){plan.promptLocked=true;plan.autoGenerate=false;plan.status='prompt_ready';plan.updatedAt=Date.now();}
+      saveSettings();return await storyboardGenerate(null,{plan,automatic:false})===true;
+    }});
+  storyboardImageInfoView=view;
+  try{return await view.finished;}finally{if(storyboardImageInfoView===view)storyboardImageInfoView=null;}
 }
 
 function storyboardCancelPlan(plan) {
@@ -22418,12 +22219,15 @@ async function storyboardOnChatClick(event) {
   }
   if (button.dataset.storyboardChatAction === 'expand') {
     const wrapper = button.closest('.sd-storyboard-inline');
-    if (!wrapper) return;
-    storyboardCollapsedInlineFloors.delete(Number(wrapper.dataset.storyboardFloor));
+    if (!wrapper || wrapper.dataset.storyboardChatKey !== String(getChatKey() || '') || wrapper.dataset.storyboardOwnerEpoch !== String(storyboardAdmissionEpoch)) return;
+    storyboardCollapsedInlineFloors.delete(wrapper.dataset.storyboardShotKey);
     wrapper.classList.remove('is-collapsed');
     wrapper.querySelector('.sd-storyboard-inline-title')?.setAttribute('hidden', '');
     wrapper.querySelector('.sd-storyboard-inline-reel')?.removeAttribute('hidden');
     return;
+  }
+  if (['previous-version', 'next-version'].includes(button.dataset.storyboardChatAction)) {
+    return storyboardSelectInlineVersion(button.closest('.sd-storyboard-inline'), button.dataset.storyboardChatAction === 'previous-version' ? -1 : 1);
   }
   if (['retry-task', 'reprepare-task', 'cancel-task', 'task-log'].includes(button.dataset.storyboardChatAction)) return storyboardOnInlineTaskAction(button);
   if (button.dataset.storyboardChatAction === 'cancel-plan' || button.dataset.storyboardChatAction === 'retry-plan') {
@@ -22434,12 +22238,17 @@ async function storyboardOnChatClick(event) {
   }
   const id = button.closest('[data-storyboard-record]')?.dataset.storyboardRecord;
   const record = storyboardGalleryRecords().find((item) => item.id === id);
-  if (!record) return;
+  const inlineOwner = button.closest('.sd-storyboard-inline');
+  if (!record || inlineOwner?.dataset.storyboardChatKey !== String(getChatKey() || '') || inlineOwner.dataset.storyboardOwnerEpoch !== String(storyboardAdmissionEpoch)) return;
   if (button.dataset.storyboardChatAction === 'toggle-actions') {
     const figure = button.closest('figure');
     const open = !figure.classList.contains('actions-open');
     document.querySelectorAll('#chat .sd-storyboard-inline figure.actions-open').forEach((item) => {
-      if (item !== figure) item.classList.remove('actions-open');
+      if (item !== figure) {
+        item.classList.remove('actions-open');
+        item.querySelector('.sd-storyboard-inline-more')?.setAttribute('aria-expanded', 'false');
+        item.querySelector('.sd-storyboard-inline-actions')?.setAttribute('aria-hidden', 'true');
+      }
     });
     figure.classList.toggle('actions-open', open);
     button.setAttribute('aria-expanded', String(open));
@@ -22447,6 +22256,8 @@ async function storyboardOnChatClick(event) {
     return;
   }
   if (button.dataset.storyboardChatAction === 'preview') return storyboardOpenLightbox(record);
+  if (button.dataset.storyboardChatAction === 'image-info') return storyboardOpenImageInfo(record);
+  if (button.dataset.storyboardChatAction === 'image-log') return storyboardOpenImageLog(record);
   if (button.dataset.storyboardChatAction === 'play-motion') return storyboardPlayInlineVideo(record, button);
   if (button.dataset.storyboardChatAction === 'motion') return storyboardOpenVideoDraftEditor(record);
   if (button.dataset.storyboardChatAction === 'copy') {
@@ -22472,8 +22283,8 @@ async function storyboardOnChatClick(event) {
   if (button.dataset.storyboardChatAction === 'collapse') {
     const wrapper = button.closest('.sd-storyboard-inline');
     if (!wrapper) return;
-    storyboardCollapsedInlineFloors.add(Number(wrapper.dataset.storyboardFloor));
-    storyboardReleaseInlineVideoPlaybacks(Number(wrapper.dataset.storyboardFloor));
+    storyboardCollapsedInlineFloors.add(wrapper.dataset.storyboardShotKey);
+    storyboardReleaseInlineVideoPlaybacks(null, new Set([record.id]));
     wrapper.classList.add('is-collapsed');
     wrapper.querySelector('.sd-storyboard-inline-title')?.removeAttribute('hidden');
     wrapper.querySelector('.sd-storyboard-inline-reel')?.setAttribute('hidden', '');
@@ -22519,7 +22330,6 @@ function bindStoryboardTabEvents(root) {
   root._sdTagCompleteCleanup?.();
   root._sdComfyReadinessCleanup?.();
   root._sdComfyTargetsCleanup?.();
-  root._sdComfyInboxCleanup?.();
   if (activeTab !== 'imagegen') return;
   const state = storyboardState();
   root._sdStoryboardState = state;
@@ -22561,7 +22371,7 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-comfy-workflow-file')?.addEventListener('change', event => { const file = event.target.files?.[0]; event.target.value = ''; void storyboardImportComfyWorkflow(root, file); });
   root.querySelector('.sd-comfy-workflow-apply')?.addEventListener('click', () => { const captured = storyboardCaptureWorkbench(root, 'comfy'); if (captured.workflowResult.ok) renderModal(); });
   if (state.view === 'logs') void storyboardHydratePipelineArchive({ rerender: true });
-  if (state.view === 'gallery' && storyboardGalleryKind === 'motion'
+  if (state.view === 'gallery' && storyboardGalleryKind === 'film'
     && (storyboardVideoGalleryRuntime.chatKey !== String(getChatKey() || '') || storyboardVideoGalleryRuntime.status === 'idle')) {
     void storyboardRefreshVideoGallery({ rerender: true });
   }
@@ -22570,35 +22380,11 @@ function bindStoryboardTabEvents(root) {
     void storyboardRefreshFilmGallery({ rerender: true });
   }
   storyboardBindMediaTagEditors(root);
-  storyboardBindGalleryNarrative(root);
-  root.querySelector('.sd-open-gallery-archive')?.addEventListener('click', async event => {
-    const button=event.currentTarget,epoch=storyboardAdmissionEpoch;
-    const current=()=>button.isConnected&&root.classList.contains('open')&&epoch===storyboardAdmissionEpoch&&state===storyboardState()&&state.view==='gallery'&&storyboardGalleryKind==='stills';
-    if(button.disabled)return;button.disabled=true;
-    try{
-      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-archive-view.js?v=1.59.414'),featureRuntime.load('imageAdmission')]);
-      const locate=async(input,options)=>{const m=await loadLocalChunk('./qianmu-gallery-location-view.js?v=1.59.414');if(!current())throw Error('图库页面已变化');return m.revealGalleryLocation({...input,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,account:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch&&isRuntimeOwner(),paragraphs:storyboardLinkReviewParagraphs},{...options,document,loadHost:()=>import(stMainScriptUrl()),confirmLarge:n=>confirmDialog('加载较早楼层',`需要载入约 ${n} 层正文，可能短暂卡顿。继续吗？`),beforeReveal:()=>{options.beforeReveal();closeModal();}});};
-      if(current()){const result=await module.openGalleryArchive({parent:root,account:()=>identity.resolveImageAccountNamespace(),headers:storyboardRequestHeaders,isCurrent:current,getContext:ctx,epoch:()=>storyboardAdmissionEpoch,canPrepare:()=>!storyboardImportPackage.busy&&!storyboardExportPackage.busy&&!storyboardActiveJobs.size&&!storyboardQueue.length&&!storyboardQueuePendingCount()&&!storyboardQueueSettling,locate}).finished;
-        if(current()&&result?.restored){storyboardScheduleInlineRender(0);renderModal();}}
-    }catch(error){if(current())toast(error?.message||'已保存图库暂不可用','warning');}
-    finally{if(button.isConnected)button.disabled=false;}
-  });
-  root.querySelector('.sd-open-gallery-directory')?.addEventListener('click', async event => {
-    const button = event.currentTarget, owner = ctx().chatMetadata, epoch = storyboardAdmissionEpoch;
-    const current = () => button.isConnected && root.classList.contains('open') && owner === ctx().chatMetadata
-      && epoch === storyboardAdmissionEpoch && state === storyboardState() && state.view === 'gallery' && storyboardGalleryKind === 'stills';
-    if (button.disabled) return; button.disabled = true;
-    try {
-      const module = await loadLocalChunk('./qianmu-gallery-directory-view.js?v=1.59.414');
-      if (current()) await module.openGalleryDirectory({ parent: root, getContext: ctx, epoch: () => storyboardAdmissionEpoch,
-        isCurrent: current, locate: record => storyboardOpenLightbox(record), save: ttsDownloadBlob }).finished;
-    } catch (error) { if (current()) toast(error?.message || '图库目录暂不可用', 'warning'); }
-    finally { if (button.isConnected) button.disabled = false; }
-  });
   root.querySelector('.sd-storyboard-close')?.addEventListener('click', () => {
     if (state.view === 'create') storyboardCaptureWorkbench(root);
     storyboardRememberPageScroll(root);
     storyboardCloseLightbox();
+    storyboardCloseImageInfo();
     storyboardCloseVideoViewer();
     storyboardCloseFilmViewer();
     saveSettings();
@@ -22710,7 +22496,7 @@ function bindStoryboardTabEvents(root) {
   });
   root.querySelectorAll('[data-storyboard-gallery-kind]').forEach((button) => button.addEventListener('click', () => {
     const requestedKind = String(button.dataset.storyboardGalleryKind || '');
-    const nextKind = ['motion', 'film'].includes(requestedKind) ? requestedKind : 'stills';
+    const nextKind = ['motion', 'film'].includes(requestedKind) ? 'film' : 'stills';
     if (nextKind === storyboardGalleryKind) return;
     storyboardRememberPageScroll(root);
     storyboardGalleryKind = nextKind;
@@ -22718,12 +22504,14 @@ function bindStoryboardTabEvents(root) {
     storyboardGalleryVisibleCount = 40;
     storyboardVideoGalleryVisibleCount = 24;
     storyboardCloseLightbox();
+    storyboardCloseImageInfo();
     storyboardCloseVideoViewer();
     storyboardCloseFilmViewer();
     renderModal();
   }));
   root.querySelectorAll('.sd-storyboard-film-refresh').forEach((button) => button.addEventListener('click', () => {
     void storyboardRefreshFilmGallery({ rerender: true, force: true });
+    void storyboardRefreshVideoGallery({ rerender: true, force: true });
   }));
   root.querySelector('.sd-storyboard-film-new')?.addEventListener('click', () => void storyboardOpenFilmEditor());
   root.querySelectorAll('[data-storyboard-film-id] .sd-storyboard-film-edit').forEach((button) => button.addEventListener('click', () => {
@@ -23445,22 +23233,16 @@ function bindStoryboardTabEvents(root) {
   root.querySelector('.sd-storyboard-check-connection')?.addEventListener('click', () => void storyboardCheckConnection(root));
   root.querySelector('.sd-comfy-check-workflow')?.addEventListener('click', () => void storyboardCheckComfyReadiness(root));
   bindStoryboardComfyTargets(root);
-  root.querySelector('.sd-storyboard-pack-export')?.addEventListener('click', () => void storyboardExportPackage({ bundle: true }));
-  root.querySelector('.sd-storyboard-pack-recover')?.addEventListener('click', () => void storyboardImportPackage(null, { recoverOnly: true }));
-  root.querySelector('.sd-storyboard-pack-import input')?.addEventListener('change', (event) => { const file = event.target.files?.[0]; event.target.value = ''; void storyboardImportAnyPackage(file); });
-  root.querySelector('.sd-storyboard-export-logs')?.addEventListener('click', async () => {
-    await storyboardHydratePipelineArchive();
-    const currentState = storyboardState();
-    const payload = {
-      type: 'qianmu-storyboard-log', version: 2, exportedAt: new Date().toISOString(),
-      logs: currentState.logs.map((log) => JSON.parse(storyboardLogText(log))),
-    };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = `qianmu-storyboard-log-${fileStamp()}.json`;
-    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-  });
   root.querySelector('.sd-storyboard-clear-logs')?.addEventListener('click', async () => {
+    const epoch=storyboardAdmissionEpoch,owner=settings,chatKey=getChatKey();
+    const current=()=>root.isConnected&&state===storyboardState()&&epoch===storyboardAdmissionEpoch&&owner===settings&&chatKey===getChatKey();
+    const busy=()=>storyboardActiveJobs.size||storyboardQueue.length||storyboardQueuePendingCount()||storyboardQueueSettling||storyboardReceiveComfyImage.pending||storyboardReceiveServiceImage.pending;
+    if(!current())return;
+    if(busy())return toast('请等待当前任务结束后清空日志','info');
     if (!await confirmDialog('清空分镜日志', '确定清空全部分镜日志？成片不会被删除。')) return;
+    if(!current())return;
+    if(busy())return toast('请等待当前任务结束后清空日志','info');
+    storyboardOriginalRecovery?.reset();
     const archiveEpoch = ++storyboardPipelineArchiveEpoch;
     if (blobStore.blobStoreAvailable()) {
       try { await blobStore.clearStoryboardPipelineLogs(); }
@@ -23469,6 +23251,7 @@ function bindStoryboardTabEvents(root) {
         return toast(`详细日志清理失败，原记录已保留：${error?.message || error}`, 'error');
       }
     }
+    if(!current()||archiveEpoch!==storyboardPipelineArchiveEpoch)return;
     storyboardPipelineArchiveCache.clear();
     storyboardPipelineArchiveWrites.clear();
     storyboardPipelineArchiveHydration = null;
@@ -23482,49 +23265,19 @@ function bindStoryboardTabEvents(root) {
     row.querySelector('.sd-storyboard-copy-log')?.addEventListener('click', () => {
       if (log) void coreadCopyText(storyboardLogText(log)).then(() => toast('诊断信息已复制。', 'success'));
     });
-    row.querySelector('.sd-storyboard-load-log')?.addEventListener('click', () => {
-      if (log) storyboardLoadLogToWorkbench(log);
-    });
-    row.querySelector('.sd-storyboard-retry-log')?.addEventListener('click', () => {
-      if (log) storyboardRetryLog(log);
-    });
-    row.querySelector('.sd-storyboard-receive-log')?.addEventListener('click', () => {
-      if (log?.snapshot?.serviceTask?.attemptId) void storyboardReceiveServiceImage(log.snapshot.serviceTask.attemptId);
-    });
-    row.querySelector('.sd-storyboard-review-log')?.addEventListener('click', async event => {
-      const button = event.currentTarget, epoch = storyboardAdmissionEpoch; button.disabled = true;
-      const current = () => root.isConnected && epoch === storyboardAdmissionEpoch;
-      try {
-        const service = await storyboardImageServiceRuntime();
-        const rows = await service.list(); if (!current()) return;
-        const original = rows.find(item => item.attemptId === log?.snapshot?.serviceTask?.attemptId);
-        if (!original) {
-          const nai = root.querySelector('.sd-storyboard-service-inbox'); if (nai) nai.hidden = false;
-          await storyboardPaintServiceInbox(root, { server: true });
-          if (current()) toast('本机原回执已缺失，请在服务器任务记录核查；不会套用当前连接', 'info');
-          return;
-        }
-        const result = await storyboardReviewServiceImage(original, original.namespace, current);
-        if (current()) toast(result.cancelled ? '已取消核查，原状态保留' : result.message, result.cancelled ? 'info' : 'success');
-      } catch (error) { if (current()) toast(error.message, 'warning'); }
-      finally { if (current()) button.disabled = false; }
-    });
-    row.querySelector('.sd-storyboard-receive-comfy')?.addEventListener('click', async event => {
-      event.currentTarget.disabled = true;
-      const button = event.currentTarget;
-      try { await storyboardReceiveComfyImage(log); } finally { button.disabled = false; }
+    row.querySelector('.sd-storyboard-log-image-info')?.addEventListener('click', () => {
+      const record=storyboardGalleryRecords().find(item=>item.id===log?.recordId||log?.recordIds?.includes(item.id));
+      if(record)void storyboardOpenImageInfo(record);else toast('当前聊天中未找到这张图片','info');
     });
     row.querySelector('.sd-storyboard-cancel-queued-log')?.addEventListener('click', () => storyboardRemoveQueuedLog(log));
   });
   let gallerySearchTimer = null;
+  let galleryMutationPending = false;
   const galleryFiltersCurrent=storyboardGalleryViewGuard(root);
-  root.querySelector('.sd-storyboard-open-service-inbox')?.addEventListener('click', () => {
-    root._sdComfyInboxCleanup?.();
-    const comfy = root.querySelector('.sd-storyboard-comfy-inbox'); if (comfy) { comfy.hidden = true; comfy.dataset.ticket = ''; }
-    const nai = root.querySelector('.sd-storyboard-service-inbox'); if (nai) nai.hidden = false;
-    void storyboardPaintServiceInbox(root);
-  });
-  root.querySelector('.sd-storyboard-open-comfy-inbox')?.addEventListener('click', () => void storyboardOpenComfyInbox(root));
+  const gallerySearchInput=root.querySelector('.sd-storyboard-gallery-search');
+  gallerySearchInput?.addEventListener('focus',()=>{gallerySearchInput.placeholder=`图库 ${gallerySearchInput.dataset.galleryCount||0} 张画面`;});
+  gallerySearchInput?.addEventListener('blur',()=>{gallerySearchInput.placeholder='搜索画面、角色、标签或合集';});
+  root.querySelector('.sd-gallery-tags-popover')?.addEventListener('toggle',event=>{if(galleryFiltersCurrent(event.currentTarget))storyboardGalleryTagFiltersOpen=event.currentTarget.open;});
   root.querySelector('.sd-storyboard-gallery-search')?.addEventListener('input', (event) => {
     if(!galleryFiltersCurrent(event.target))return;
     const input=event.target;
@@ -23542,44 +23295,52 @@ function bindStoryboardTabEvents(root) {
     if(galleryFiltersCurrent(event.currentTarget))storyboardLeaveGalleryCollection(root);
   });
   root.querySelector('.sd-storyboard-gallery-new-folder')?.addEventListener('click', async event => {
-    const button=event.currentTarget;if(!galleryFiltersCurrent(button))return;
+    const button=event.currentTarget;if(!galleryFiltersCurrent(button)||galleryMutationPending)return;
     const answer = await promptInput('新建阅片合集', '输入合集名称。', '');
     const name = String(answer ?? '').trim().slice(0, 80);
     if (!name || !galleryFiltersCurrent(button)) return;
-    const collections = storyboardGalleryCollections();
+    const collections = storyboardGalleryCollections(),collectionStore=getChatStore();
     if (collections.some((item) => item.name === name)) return toast('已有同名合集。', 'warning');
-    const collection={ id: uid('shotcollection'), name, createdAt: Date.now(), updatedAt: Date.now() };collections.push(collection);
-    await saveMetadata(); if(galleryFiltersCurrent(button))storyboardShowGalleryCollection(root,collection,true);
+    const collection={ id: uid('shotcollection'), name, createdAt: Date.now(), updatedAt: Date.now() };collections.push(collection);galleryMutationPending=true;
+    try{await saveMetadata();if(galleryFiltersCurrent(button))storyboardShowGalleryCollection(root,collection,true);}
+    catch(error){const at=collections.indexOf(collection);if(at>=0&&!collectionStore.storyboardImages?.some(record=>galleryMembershipIds(record).includes(collection.id)))collections.splice(at,1);if(galleryFiltersCurrent(button))toast('合集未能保存，请重试','warning');}
+    finally{galleryMutationPending=false;}
   });
-  root.querySelectorAll('[data-gallery-collection]').forEach((card) => {
-    const collection = storyboardGalleryCollections().find((item) => item.id === card.dataset.galleryCollection);
-    const current=()=>galleryFiltersCurrent(card)&&collection&&storyboardGalleryCollections().includes(collection);
+  const galleryCollectionCards=root.querySelectorAll('[data-gallery-collection]');
+  const galleryBrowseCollections=galleryCollectionCards.length?storyboardGalleryBrowserData().collections:[];
+  galleryCollectionCards.forEach((card) => {
+    const collection = galleryBrowseCollections.find((item) => item.id === card.dataset.galleryCollection);
+    const current=()=>galleryFiltersCurrent(card)&&collection&&(collection.automatic?storyboardGalleryBrowserData().collections.some(row=>row.id===collection.id):storyboardGalleryCollections().includes(collection));
     card.querySelector('.sd-media-collection-open')?.addEventListener('click', () => {
       if(current())storyboardShowGalleryCollection(root,collection,card.dataset.galleryCollectionClearSearch==='true');
     });
     card.querySelector('.sd-media-collection-rename')?.addEventListener('click', async () => {
-      if (!current()) return;
+      if (!current()||collection.automatic||galleryMutationPending) return;
       const previousName=collection.name;
       const answer = await promptInput('重命名阅片合集', '输入新的合集名称。', collection.name);
       const name = String(answer ?? '').trim().slice(0, 80);
       if (!current() || collection.name!==previousName || !name || name === collection.name) return;
       if (storyboardGalleryCollections().some((item) => item.id !== collection.id && item.name === name)) return toast('已有同名合集。', 'warning');
-      collection.name = name; collection.updatedAt = Date.now();
-      await saveMetadata(); if(galleryFiltersCurrent(card))renderModal();
+      const previousTime=collection.updatedAt,nextTime=Date.now();collection.name=name;collection.updatedAt=nextTime;galleryMutationPending=true;
+      try{await saveMetadata();if(galleryFiltersCurrent(card))renderModal();}
+      catch(error){if(collection.name===name&&collection.updatedAt===nextTime){collection.name=previousName;collection.updatedAt=previousTime;}if(galleryFiltersCurrent(card))toast('合集未能保存，请重试','warning');}
+      finally{galleryMutationPending=false;}
     });
     card.querySelector('.sd-media-collection-delete')?.addEventListener('click', async () => {
-      if (!current() || !await confirmDialog('解散阅片合集', `确定解散「${collection.name}」？图片会回到阅片室，不会被删除。`) || !current()) return;
-      storyboardGalleryRecords().forEach((record) => assignGalleryMemberships(record, galleryMembershipIds(record).filter((id) => id !== collection.id)));
-      const store = getChatStore();
-      store.storyboardCollections = storyboardGalleryCollections().filter((item) => item.id !== collection.id);
+      if (!current() || collection.automatic || galleryMutationPending || !await confirmDialog('解散阅片合集', `确定解散「${collection.name}」？图片会回到阅片室，不会被删除。`) || !current() || galleryMutationPending) return;
+      const changes=storyboardGalleryRecords().filter(record=>galleryMembershipIds(record).includes(collection.id)).map(record=>({record,ids:record.collectionIds,id:record.collectionId}));
+      for(const change of changes){assignGalleryMemberships(change.record,galleryMembershipIds(change.record).filter(id=>id!==collection.id));change.applied=change.record.collectionIds;}
+      const store=getChatStore(),oldCollections=storyboardGalleryCollections(),at=oldCollections.indexOf(collection),next=oldCollections.filter(item=>item!==collection);
+      store.storyboardCollections=next;galleryMutationPending=true;
       const inside=storyboardGalleryOpenCollectionId === collection.id;
-      await saveMetadata(); if(galleryFiltersCurrent(card)){if(inside)storyboardLeaveGalleryCollection(root);else renderModal();}
+      try{await saveMetadata();if(galleryFiltersCurrent(card)){if(inside)storyboardLeaveGalleryCollection(root);else renderModal();}}
+      catch(error){for(const change of changes)if(change.record.collectionIds===change.applied){change.record.collectionIds=change.ids;change.record.collectionId=change.id;}const liveCollections=store.storyboardCollections;if(Array.isArray(liveCollections)&&!liveCollections.some(row=>row.id===collection.id))liveCollections.splice(Math.max(0,Math.min(at,liveCollections.length)),0,collection);if(galleryFiltersCurrent(card))toast('合集未能移除，原归属已保留','warning');}
+      finally{galleryMutationPending=false;}
     });
   });
   const choiceScope=()=>[state,ctx().chatMetadata,String(getChatKey()||''),storyboardAdmissionEpoch];
   bindGalleryKeywordChoices(root,state,{readWords:()=>summarizeGalleryRecords(storyboardGalleryRecords(),galleryMembershipIds).keywords,isCurrent:galleryFiltersCurrent,scope:choiceScope,
     save:saveSettings,changed:()=>{storyboardGalleryVisibleCount=40;renderModal();},onError:error=>toast(error.message,'warning')});
-  storyboardBindGalleryInspector(root);
   root.querySelector('.sd-storyboard-gallery-select-mode')?.addEventListener('click', event => {
     if(!galleryFiltersCurrent(event.currentTarget))return;
     storyboardGallerySelectMode = !storyboardGallerySelectMode;
@@ -23594,27 +23355,26 @@ function bindStoryboardTabEvents(root) {
     renderModal();
   });
   root.querySelector('.sd-storyboard-gallery-delete-selected')?.addEventListener('click', async event => {
-    const button=event.currentTarget;if(!galleryFiltersCurrent(button))return;
+    const button=event.currentTarget;if(!galleryFiltersCurrent(button)||galleryMutationPending)return;
     const chosen=new Set(storyboardGallerySelection),expected=storyboardGalleryRecords().filter(item=>chosen.has(item.id));
     const count = storyboardGallerySelection.size;
     if (!count || !await confirmDialog('删除选中图片', `确定删除选中的 ${count} 条图片记录？SillyTavern 图片文件本身不会被清除。`)) return;
-    if(!galleryFiltersCurrent(button)||chosen.size!==storyboardGallerySelection.size||[...chosen].some(id=>!storyboardGallerySelection.has(id)))return;
+    if(!galleryFiltersCurrent(button)||galleryMutationPending||chosen.size!==storyboardGallerySelection.size||[...chosen].some(id=>!storyboardGallerySelection.has(id)))return;
     const expectedSet=new Set(expected),live=storyboardGalleryRecords().filter(item=>chosen.has(item.id));if(live.length!==expected.length||live.some(record=>!expectedSet.has(record)))return;
     const store = getChatStore();
-    const removedRecords = storyboardGalleryRecords().filter((item) => storyboardGallerySelection.has(item.id));
-    store.storyboardImages = storyboardGalleryRecords().filter((item) => !storyboardGallerySelection.has(item.id));
-    if (storyboardGallerySelection.has(storyboardGalleryInspectorRecordId)) storyboardGalleryInspectorRecordId = '';
-    storyboardGallerySelection.clear(); storyboardGallerySelectMode = false;
-    await saveMetadata();
-    if(!galleryFiltersCurrent(button))return;
-    void storyboardDeleteRecordSnapshots(removedRecords);
-    storyboardRenderInlineImages(); renderModal();
+    const before=storyboardGalleryRecords(),removedRecords=before.filter(item=>chosen.has(item.id)),next=before.filter(item=>!chosen.has(item.id));
+    store.storyboardImages=next;galleryMutationPending=true;
+    try{await saveMetadata();if(!galleryFiltersCurrent(button))return;
+      if(chosen.size===storyboardGallerySelection.size&&[...chosen].every(id=>storyboardGallerySelection.has(id))){storyboardGallerySelection.clear();storyboardGallerySelectMode=false;}
+      void storyboardDeleteRecordSnapshots(removedRecords);storyboardRenderInlineImages();renderModal();
+    }catch(error){if(store.storyboardImages===next)for(const record of removedRecords)if(!next.some(row=>row.id===record.id))next.splice(Math.min(before.indexOf(record),next.length),0,record);if(galleryFiltersCurrent(button))toast('图片未能删除，原记录与选择已保留','warning');}
+    finally{galleryMutationPending=false;}
   });
   bindGalleryBulkCollections(root,{readCollections:storyboardGalleryCollections,readRecords:storyboardGalleryRecords,readSelection:()=>storyboardGallerySelection,
     clearSelection:()=>{storyboardGallerySelection.clear();storyboardGallerySelectMode=false;},isCurrent:galleryFiltersCurrent,scope:choiceScope,save:saveMetadata,
-    changed:(count,target)=>{toast(target?`已将 ${count} 张图片加入合集。`:`已将 ${count} 张图片移出全部合集。`,'success');renderModal();},onError:error=>toast(error.message,'warning')});
+    changed:(count,target)=>{toast(target?`已将 ${count} 张图片加入合集。`:`已将 ${count} 张图片移出自建合集。`,'success');renderModal();},onError:error=>toast(error.message,'warning')});
   bindGalleryWindowControls(root, {
-    scope:()=>[storyboardState(),ctx().chatMetadata,String(getChatKey()||''),storyboardAdmissionEpoch,activeTab,state.view,storyboardGalleryKind,storyboardGalleryOpenCollectionId,state.gallerySearch,state.galleryTrack,JSON.stringify(state.galleryTagFilters),storyboardGalleryNarrative.selected?.label],
+    scope:()=>[storyboardState(),ctx().chatMetadata,String(getChatKey()||''),storyboardAdmissionEpoch,activeTab,state.view,storyboardGalleryKind,storyboardGalleryOpenCollectionId,state.gallerySearch,state.galleryTrack,JSON.stringify(state.galleryTagFilters)],
     readCursor:()=>storyboardGalleryVisibleCount,scroller:()=>storyboardScroller(root),
     change:cursor=>{storyboardGalleryVisibleCount=cursor;storyboardPendingRestoreScroll=0;renderModal();},
   });
@@ -23634,26 +23394,6 @@ function bindStoryboardTabEvents(root) {
       if (!galleryCurrent(card)) return;
       if (record && !storyboardGallerySelectMode) storyboardShowGalleryInspector(root,record);
       else toggleSelection();
-    });
-    card.querySelector('.sd-storyboard-download')?.addEventListener('click', () => {if(galleryCurrent(card))void storyboardDownloadRecord(record);});
-    card.querySelector('.sd-storyboard-gallery-inspect')?.addEventListener('click', () => {
-      if (galleryCurrent(card)) storyboardShowGalleryInspector(root,record);
-    });
-    card.querySelector('.sd-storyboard-inline-toggle')?.addEventListener('click', async () => {
-      if (!galleryCurrent(card) || !record || !storyboardGalleryRecords().includes(record)) return;
-      record.inline = record.inline === false;
-      await saveMetadata(); if(galleryCurrent(card)){storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();}
-    });
-    card.querySelector('.sd-storyboard-delete-record')?.addEventListener('click', async () => {
-      if (!galleryCurrent(card) || !record || !await confirmDialog('删除图片', `${variants.length > 1 ? '只删除当前显示的这一张；同组其他版本会继续保留。' : '确定删除这张图片记录？'} SillyTavern 图片文件本身不会被清除。`)) return;
-      if (!galleryCurrent(card) || !storyboardGalleryRecords().includes(record)) return;
-      const store = getChatStore(); store.storyboardImages = store.storyboardImages.filter((item) => item.id !== record.id);
-      if (storyboardGalleryInspectorRecordId === record.id) storyboardGalleryInspectorRecordId = '';
-      storyboardGallerySelection.delete(record.id);
-      await saveMetadata();
-      if (!galleryCurrent(card)) return;
-      void storyboardDeleteRecordSnapshots(record);
-      storyboardRenderInlineImages(Number.isInteger(record.floor) ? record.floor : null); renderModal();
     });
   });
   void storyboardRefreshSecretState(root);
@@ -25057,6 +24797,7 @@ function configApplyOptions() {
     afterApply:()=>{
       if (resetConfigConnectionSession(connections,settings.imagegen?.connections,storyboardDraftApiKeys,storyboardConnectionStatus)) storyboardCredentialRevision++;
       storyboardAdmissionEpoch++;
+      storyboardOriginalRecovery?.reset();
       storyboardSnapshotEpoch++;
       storyboardPipelineArchiveEpoch++;
       storyboardPipelineArchiveCache.clear();
@@ -35469,6 +35210,7 @@ function bindEvents() {
     resetDirectorNarrativeBridge();
     settings = getSettings();
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
+    storyboardScheduleInlineRender(0);
     injectSelection.clear();   // 切换聊天后旧写入勾选失效
     // 新角色/聊天可能绑定了不同世界书：作废世界书扫描态，下次推演或开取材页自动补扫（预设不随角色变，留存）
     contextScanCache.worldScannedAt = '';
@@ -35695,6 +35437,7 @@ function cleanupRuntime(resetSettings = false) {
       storyboardImageChannel?.close(); storyboardImageChannel = null;
       storyboardImageService?.close(); storyboardImageService = null;
       storyboardComfyRecovery?.close(); storyboardComfyRecovery = null;
+      storyboardOriginalRecovery?.reset();
       for (const job of storyboardActiveJobs.values()) {
         job.discardRequested = true;
         storyboardSyncTaskState(job, 'cancelled', { error: '扩展已停用或更新', plan: storyboardPlanForJob(job) });

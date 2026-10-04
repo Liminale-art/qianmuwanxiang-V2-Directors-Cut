@@ -30,7 +30,7 @@ test('real delivery checkpoints and deferred/current galleries keep the same tas
       storyboardValidatedAnchor:()=>({valid:true,floor:2}),
       storyboardCreateRecord:(_job,_log,url,index)=>({id:'unused',imageIndex:index,url}),
       sanitizeStoryboardSnapshot:()=>({}),getChatKey:()=>foreign?'other':'chat',ctx:()=>({saveMetadata(){}}),
-      storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:()=>[],saveMetadata:async()=>{},storyboardArchiveGallerySnapshots:()=>{},storyboardDeleteRecordSnapshots:()=>{},
+      storyboardGalleryRecords:()=>gallery,storyboardFloorTakeReceipts:(()=>{const receipts=[];return()=>receipts;})(),saveMetadata:async()=>{},storyboardArchiveGallerySnapshots:()=>{},storyboardDeleteRecordSnapshots:()=>{},
       storyboardStoreDeferredDelivery:async(_job,records)=>{deferred=structuredClone(records);return 'pending_chat';},
       storyboardFinishLog:(_log,_status,details)=>finished.push(details),toast:()=>{},
     });
@@ -51,7 +51,7 @@ test('actual log finish and collapsed renderer preserve summary without opening 
   const c=vm.createContext({renderRunningHubTaskUsage,storyboardPipelineForLog:()=>null,saveSettings:()=>{},storyboardArchivePipelineLog:()=>{},
     STORYBOARD_SOURCES:{comfy:{label:'Comfy'}},storyboardLogPresentation:()=>({tone:'green',kind:'生图',tokens:'token 未提供'}),
     htmlEscape:String,formatDateTime:()=>'',storyboardCanReceiveComfyLog:()=>false,storyboardActiveJobs:new Map(),storyboardQueue:[],
-    storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0});
+    storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0,storyboardReceiveComfyImage:{pending:0},storyboardReceiveServiceImage:{pending:0}});
   vm.runInContext(section('storyboardFinishLog')+'\n'+section('renderStoryboardLogs'),c);
   c.storyboardFinishLog(log,'success',runningHubUsageFields(response()));
   const html=c.renderStoryboardLogs(state);assert.match(html,/整次任务用量（非单张）/);assert.match(html,/999999999999999999/);

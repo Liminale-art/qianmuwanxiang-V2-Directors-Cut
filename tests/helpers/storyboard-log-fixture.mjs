@@ -11,6 +11,7 @@ export function logFixture(){
   const state={logs:[],pipelineLogs:[],logFilter:'failed'},context=vm.createContext({...core,renderRunningHubTaskUsage,htmlEscape:escape,formatDateTime:()=> '2026/9/7 23:10:00',
     storyboardActiveJobs:new Map(),storyboardQueue:[],
     storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0,
+    storyboardReceiveComfyImage:{pending:0},storyboardReceiveServiceImage:{pending:0},
     storyboardState:()=>state,storyboardCanReceiveComfyLog:log=>Boolean(log.comfyReceipt),storyboardPipelineForLog:log=>state.pipelineLogs.find(p=>p.id===log.pipelineId)});
   vm.runInContext(labels+'\n'+names.map(section).join('\n'),context);return {state,context};
 }

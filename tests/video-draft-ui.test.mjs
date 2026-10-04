@@ -13,12 +13,13 @@ function section(start, end) {
   return source.slice(from, to);
 }
 
-test('inline frames expose an isolated motion-draft action', () => {
+test('motion drafting lives in unified image info, not duplicate prose toolbar', () => {
   const markup = section('function storyboardInlineRecordMarkup', 'function storyboardInlinePlaceholderMarkup');
   const handler = section('async function storyboardOnChatClick', 'function storyboardBindChat');
-  assert.match(markup, /data-storyboard-chat-action="motion"/);
-  assert.match(markup, /让镜头动起来/);
-  assert.match(handler, /storyboardChatAction === 'motion'[^\n]+storyboardOpenVideoDraftEditor\(record\)/);
+  assert.doesNotMatch(markup, /data-storyboard-chat-action="motion"/);
+  assert.match(markup, /data-storyboard-chat-action="image-info"/);
+  assert.match(handler, /storyboardOpenImageInfo\(record\)/);
+  assert.match(section('async function storyboardEditPrompt','function storyboardCancelPlan'),/action==='motion'[\s\S]*?storyboardOpenVideoDraftEditor\(record,\{isCurrent:verify\.isCurrent\}\)/);
 });
 
 test('the draft editor keeps prompt work local and submits only through the explicit confirmation gate', () => {

@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
+import { prepareComfyWorkflow, comfyCandidateCount } from './qianmu-comfy-workflow.js';
 import { collectComfyStillResults, comfyTaskId, comfyStillMime, comfyReferenceStillMime } from './qianmu-comfy-results.js';
 import { normalizeComfyReceipt } from './qianmu-comfy-receipt.js';
 import { auditComfyWorkflow, requireComfyExecution, normalizeComfyExecution, COMFY_EXECUTION_VERSION } from './qianmu-comfy-audit.js';
@@ -70,7 +70,7 @@ export function imageGatewayCapabilities(serviceVersion = '') {
     },
     protocolBinding: { version: IMAGE_PROTOCOL_BINDING_VERSION, providers: IMAGE_COMPATIBLE_PROTOCOLS },
     novelVibe: {version:NOVEL_VIBE_VERSION,encoded:true,maxReferences:16},
-    comfyExecution: { version: COMFY_EXECUTION_VERSION, outputSelection: true, staticAccounting: true, staticReferencesVersion: 1 },
+    comfyExecution: { version: 1, candidateExecutionVersion: COMFY_EXECUTION_VERSION, outputSelection: true, staticAccounting: true, staticReferencesVersion: 1 },
     comfyServerTransport: { version: 2, authenticated: true, privateAccess: 'administrator-opt-in', dnsPinning: 'operation', redirects: false, trustedTargetRegistry: true },
     comfyQueue: { version: 1, scope: 'st-api-root', durableAcceptance: true, originalTaskLookup: true, resultRetrieval: true, outputReceiptVersion: 1, cachedResults: true, catalogVersion: 1, taskLocatorVersion: 1, cacheCleanup: true },
   };
@@ -249,7 +249,7 @@ export function sanitizeImageRequest(input) {
       outputFormat: asString(parameters.outputFormat, 20).toLowerCase(),
       // NovelAI 的批量数在镜头台入队前拆成独立任务。网关继续强制单张，
       // 防止旧前端或第三方调用重新把多张合并成一次不可恢复的请求。
-      count: provider === 'novel' ? 1 : clampNumber(parameters.count, 1, 4, 1, true),
+      count: provider === 'novel' ? 1 : provider === 'comfy' ? comfyCandidateCount(parameters.count) : clampNumber(parameters.count, 1, 4, 1, true),
       seed: clampNumber(parameters.seed, -1, Number.MAX_SAFE_INTEGER, undefined, true),
       steps: clampNumber(parameters.steps, 1, 300, undefined, true),
       scale: clampNumber(parameters.scale ?? parameters.cfg, 0, 100, undefined),

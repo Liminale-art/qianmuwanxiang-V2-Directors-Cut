@@ -84,7 +84,7 @@ test('candidate evaluation uses actual job construction, fixed prompt compilatio
     assert.equal(selected.status,'selected',JSON.stringify(selected.diagnostics));assert.equal(selected.candidateId,'candidate-0');assert.equal(selected.executionAuthorized,false);
     assert.equal(e.jobs.length,2);assert.equal(e.network.length,6);assert.ok(e.network.every(row=>row.method==='GET'&&new URL(row.url).pathname.startsWith('/api/object_info/')));
     assert.ok(e.keys.every(args=>args[0]==='comfy'&&args[2].exact===true));
-    assert.match(e.jobs[0].payload.prompt,/portrait quality.*morning light/s);assert.equal(e.jobs[0].profile.count,'1');assert.equal(e.jobs[0].target,'gallery');assert.equal(e.jobs[0].floor,null);
+    assert.match(e.jobs[0].payload.prompt,/portrait quality.*morning light/s);assert.equal(e.jobs[0].profile.count,'4');assert.equal(e.jobs[0].target,'gallery');assert.equal(e.jobs[0].floor,null);
     assert.equal(e.jobs[0].comfyExecution.automatic,true);assert.equal(e.jobs[0].imageAdmission,undefined);assert.equal(e.jobs[0].logId,undefined);
     assert.equal(JSON.stringify(e.state),before);assert.deepEqual(e.recipes.map(recipe=>recipe.document.workflow),graphs);assert.equal(e.context.storyboardQueue.length,0);
   }finally{e.close();}
@@ -96,7 +96,7 @@ test('missing nodes exclude automatic candidates and do not ask for manual conse
 test('fixed source quantity and selected outputs are audited before making any definition request',async()=>{
   const e=await environment();
   try{
-    const job={source:'comfy',automatic:true,profile:{model:'comfy-workflow'},connection:{baseUrl:'https://comfy.test',comfyTransport:'browser'},payload:{prompt:'x',parameters:{workflow:{text:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}},image:{class_type:'EmptyImage',inputs:{width:512,height:512,batch_size:3}},save:{class_type:'SaveImage',inputs:{images:['image',0]}}},count:1}}};
+    const job={source:'comfy',automatic:true,profile:{model:'comfy-workflow'},connection:{baseUrl:'https://comfy.test',comfyTransport:'browser'},payload:{prompt:'x',parameters:{workflow:{text:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}},image:{class_type:'EmptyImage',inputs:{width:512,height:512,batch_size:9}},save:{class_type:'SaveImage',inputs:{images:['image',0]}}},count:1}}};
     await assert.rejects(()=>e.context.storyboardConfirmComfyExecution(job,()=>true),/超过本次约定/);assert.equal(e.network.length,0);assert.equal(e.keys.length,0);
   }finally{e.close();}
 });

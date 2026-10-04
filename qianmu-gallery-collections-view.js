@@ -1,5 +1,38 @@
-import {htmlEscape as escape,snip} from './qianmu-storyboard-utils.js';
+import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
 import {galleryDisplayWindow} from './qianmu-gallery-window.js';
+import {galleryMembershipIds} from './qianmu-gallery-membership.js';
+
+// Source names belong to the saved picture, never whichever character is open now.
+export function galleryRecordSourceCharacter(record,location,{snapshot}={}){
+  const ref=record?.messageRef;
+  return String(record?.sourceCharacterName|| (ref?.role==='assistant'?ref.name:'') || snapshot?.sourceCharacterName
+    || (snapshot?.messageRef?.role==='assistant'?snapshot.messageRef.name:'') || location?.name || '').trim();
+}
+export function galleryBrowserProjection(records,manualCollections,{sourceFor=()=>null}={}){
+  const names=new Map(),locations=new Map(),automatic=new Map(),ids=new Set(manualCollections.map(row=>row.id));
+  for(const record of records){
+    const location=sourceFor(record),name=galleryRecordSourceCharacter(record,location);locations.set(record,location);names.set(record,name);
+    if(name&&!automatic.has(name)){
+      let id=`source-char:${encodeURIComponent(name)}`;while(ids.has(id))id=`source-char:${id}`;ids.add(id);
+      automatic.set(name,{id,name,automatic:true,createdAt:Number(record.createdAt)||0});
+    }
+  }
+  const memberships=record=>{const collection=automatic.get(names.get(record));return [...galleryMembershipIds(record),...(collection?[collection.id]:[])];};
+  const collections=[...automatic.values(),...manualCollections];
+  return {collections,collectionNames:new Map(collections.map(row=>[row.id,row.name])),memberships,sourceName:record=>names.get(record)||'',location:record=>locations.get(record)};
+}
+export function galleryRecordMatchesQuery(record,query,{collections=[],collectionNames,memberships=galleryMembershipIds,location,sourceLabel='',production={}}={}){
+  const term=String(query||'').trim().toLocaleLowerCase();if(!term)return true;
+  const tags=Array.isArray(record.tags)?record.tags:record.tags?[record.tags]:[];
+  const source=production.track==='main_camera'?'正文主线':production.sourceLabel;
+  const names=new Set(memberships(record));
+  return [record.prompt,record.finalPrompt,record.model,record.artistString,...tags,sourceLabel,source,
+    galleryRecordSourceCharacter(record,location),record.paragraphAnchor?.paragraphText,location?.paragraphText,
+    ...(Array.isArray(record.shotSpec?.characters)?record.shotSpec.characters.map(row=>row.name):[]),
+    Number.isInteger(location?.floor)?`第 ${location.floor+1} 层 第${location.floor+1}层 ${location.floor+1}`:'',
+    ...(collectionNames?[...names].map(id=>collectionNames.get(id)):collections.filter(row=>names.has(row.id)).map(row=>row.name))]
+    .some(value=>String(value||'').toLocaleLowerCase().includes(term));
+}
 
 // Metadata only. Image URLs are read only while painting a visible tile.
 export function galleryCollectionEntries(collections,{summary,visible=summary,query='',restricted=false,otherFilters=false}={}) {
@@ -37,24 +70,24 @@ export function renderGalleryCollectionTile(entry,{safeUrl}){
   return `<article class="sd-gallery-collection-tile" data-gallery-collection="${escape(collection.id)}" data-gallery-collection-clear-search="${clearSearch}">
     <button type="button" class="sd-media-collection-open" aria-label="打开合集：${escape(collection.name)}">${url?`<img src="${escape(url)}" loading="lazy" alt="">`:'<span class="sd-gallery-collection-empty"><i class="fa-regular fa-folder"></i></span>'}
       <span class="sd-gallery-collection-mark"><i class="fa-regular fa-folder"></i>合集</span><span class="sd-gallery-collection-caption"><b>${escape(collection.name)}</b><small>${count} ${matched?'张匹配':'张'}</small></span></button>
-    <div class="sd-gallery-collection-actions">${renderGalleryCollectionActions()}</div></article>`;
+    ${collection.automatic?'':`<div class="sd-gallery-collection-actions">${renderGalleryCollectionActions()}</div>`}</article>`;
 }
 export function renderGalleryCollectionActions(){
   return '<button type="button" class="sd-icon-btn sd-media-collection-rename" title="重命名合集" aria-label="重命名合集"><i class="fa-solid fa-pen"></i></button><button type="button" class="sd-icon-btn sd-media-collection-delete" title="解散合集（保留图片）" aria-label="解散合集（保留图片）"><i class="fa-solid fa-folder-minus"></i></button>';
 }
 export function renderGalleryCollectionPath(collection){
   if(!collection)return '';
-  return `<div class="sd-gallery-collection-path" data-gallery-collection="${escape(collection.id)}"><button type="button" class="sd-icon-btn" data-gallery-root title="返回阅片室" aria-label="返回阅片室"><i class="fa-solid fa-arrow-left"></i></button><b>${escape(collection.name)}</b><div>${renderGalleryCollectionActions()}</div></div>`;
+  return `<div class="sd-gallery-collection-path" data-gallery-collection="${escape(collection.id)}"><button type="button" class="sd-icon-btn" data-gallery-root title="返回阅片室" aria-label="返回阅片室"><i class="fa-solid fa-arrow-left"></i></button><b>${escape(collection.name)}</b>${collection.automatic?'':`<div>${renderGalleryCollectionActions()}</div>`}</div>`;
 }
 
-export function renderGalleryImageCard(group,{url='',status='',production={},sourceLabel='',timeLabel='',selectionMode=false,selection=new Set(),inspectedId=''}){
+export function renderGalleryImageCard(group,{url='',production={},sourceLabel='',sourceCharacter='',selectionMode=false,selection=new Set(),inspectedId=''}){
   const record=group.variants[0],memberIds=group.variants.map(item=>item.id),selected=memberIds.length>0&&memberIds.every(id=>selection.has(id));
   const tags=Array.isArray(record.tags)?record.tags:typeof record.tags==='string'&&record.tags?[record.tags]:[];
-  const model=String(record.model||'').trim()||`${sourceLabel||'分镜'} · 模型未记录`;
+  const model=record.source==='comfy'?'ComfyUI':String(record.model||'').trim()||sourceLabel||'分镜';
+  const source=production.track==='main_camera'?'正文主线':production.sourceLabel||'';
   return `<article class="sd-storyboard-gallery-card ${selected?'selected':''} ${inspectedId===record.id?'inspected':''} ${group.variants.length>1?'is-stack':''}" data-storyboard-record="${escape(record.id)}" data-storyboard-group="${escape(group.id)}" data-storyboard-members="${escape(memberIds.join(','))}">
     ${selectionMode?`<button type="button" class="sd-storyboard-gallery-check" aria-label="${selected?'取消选择':'选择'}"><i class="fa-solid ${selected?'fa-square-check':'fa-square'}"></i></button>`:''}
-    <button type="button" class="sd-storyboard-preview-record" ${url?'':'disabled'}>${url?`<img src="${escape(url)}" loading="lazy" alt="${escape(snip(record.prompt||'分镜',40))}">`:'<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}
+    <button type="button" class="sd-storyboard-preview-record" aria-label="打开画面详情" ${url?'':'disabled'}>${url?`<img src="${escape(url)}" loading="lazy" alt="插画">`:'<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}
     <span class="sd-gallery-model-label" title="${escape(model)}">${escape(model)}</span>${group.variants.length>1?`<span class="sd-storyboard-stack-count">${group.variants.length}</span>`:''}</button>
-    <div class="sd-storyboard-gallery-caption"><small>${escape(status||timeLabel)}</small><span class="sd-storyboard-production-label ${production.track==='second_camera'?'second-camera':''}">${escape(production.sourceLabel||'')}</span><p>${escape(snip(record.finalPrompt||record.prompt||'',110))}</p>${tags.length?`<div class="sd-storyboard-gallery-card-tags">${tags.slice(0,4).map(tag=>`<em>${escape(tag)}</em>`).join('')}</div>`:''}</div>
-    <div class="sd-storyboard-gallery-actions"><button type="button" class="sd-icon-btn sd-storyboard-gallery-inspect" title="整理详情" aria-label="整理详情"><i class="fa-solid fa-circle-info"></i></button><button type="button" class="sd-icon-btn sd-storyboard-download" title="下载当前图片" aria-label="下载当前图片"><i class="fa-solid fa-download"></i></button>${Number.isInteger(record.floor)?`<button type="button" class="sd-icon-btn sd-storyboard-inline-toggle" title="${record.inline===false?'插回正文':'移出正文'}" aria-label="${record.inline===false?'插回正文':'移出正文'}"><i class="fa-solid ${record.inline===false?'fa-eye':'fa-eye-slash'}"></i></button>`:''}<button type="button" class="sd-icon-btn sd-danger sd-storyboard-delete-record" title="删除当前图片" aria-label="删除当前图片"><i class="fa-solid fa-trash-can"></i></button></div></article>`;
+    <div class="sd-storyboard-gallery-caption"><span class="sd-storyboard-production-label ${production.track==='second_camera'?'second-camera':''}">${escape([sourceCharacter,source].filter(Boolean).join(' · '))}</span>${tags.length?`<div class="sd-storyboard-gallery-card-tags" title="${escape(tags.join(' · '))}">${tags.map(tag=>`<em>${escape(tag)}</em>`).join('')}</div>`:''}</div></article>`;
 }

@@ -139,7 +139,7 @@ export function renderStorageBackupSection(notesStorage, formatBytes = value => 
 }
 
 function storagePackageRow(key,label,accept) {
-  return `<div class="sd-storage-backup-row"><span>${label}</span><button type="button" class="sd-btn" data-storage-export="${key}" aria-label="导出${label}">导出</button><button type="button" class="sd-btn" data-storage-pick="${key}" aria-label="导入${label}">导入</button><input type="file" data-storage-import="${key}" accept="${accept}" hidden></div>`;
+  return `<div class="sd-storage-backup-row${key === 'storyboard' ? ' sd-storage-backup-storyboard' : ''}"><span>${label}</span><button type="button" class="sd-btn" data-storage-export="${key}" aria-label="导出${label}">导出</button><button type="button" class="sd-btn" data-storage-pick="${key}" aria-label="导入${label}">导入</button>${key === 'storyboard' ? '<button type="button" class="sd-icon-btn sd-storage-storyboard-recover" title="核对导入" aria-label="核对分镜导入"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></button>' : ''}<input type="file" data-storage-import="${key}" accept="${accept}" hidden></div>`;
 }
 
 function renderStorageResourceRows(data,formatBytes) {

@@ -25,6 +25,7 @@ import * as comfyAutoRuntime from '../qianmu-comfy-auto-runtime.js';
 import {normalizeComfyAutoPool,COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {readPinnedComfyRouteWorkflow} from '../qianmu-comfy-route.js';
 import {createStoryboardEnsembleController} from '../qianmu-ensemble-ui.js';
+import {inspectComfyImageExecution,requireComfyExecution} from '../qianmu-comfy-audit.js';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 function deferred(){let resolve;return {promise:new Promise(yes=>resolve=yes),resolve:()=>resolve()};}
@@ -1827,7 +1828,16 @@ test('actual ordinary compiler durably stores style choices and the later genera
     const records=[...f.storage.files.values()].map(value=>JSON.parse(value)).filter(row=>row.value?.schema==='qianmu.ensemble.recovery.v1');assert.equal(records.length,1);
     assert.deepEqual(records[0].value,copy(plan.ensembleRecovery));const start=f.storage.calls.length;assert.equal(await generate(),true,JSON.stringify({errors:f.errors,notices:f.notices}));
     assert.deepEqual(q.queue.map(row=>row.source),['comfy','novel','novel']);assert.equal(q.queue[0].profile.comfyRouteBinding.id,'portrait');assert.equal(q.queue[1].artistPresetId,'style-artist');
-    assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2]);assert.equal(f.counts.requests,2);assert.ok(q.queue.every(row=>row.imageAdmission.automaticSlot&&row.profile.count==='1'));
+    assert.deepEqual(q.queue.map(row=>row.inlineOrder.shotIndex),[0,1,2]);assert.equal(f.counts.requests,2);
+    assert.deepEqual(q.queue.map(row=>row.profile.count),['4','1','1']);
+    assert.deepEqual(q.queue.map(row=>row.payload.parameters.count),[4,1,1]);
+    assert.ok(q.queue.every(row=>row.imageAdmission.automaticSlot&&row.requestTotal===1));
+    const comfy=q.queue[0],policy={version:2,automatic:true,maxImages:8,outputNodeIds:['save'],allowUnverified:false};
+    const execution=requireComfyExecution(inspectComfyImageExecution({prompt:comfy.payload.prompt,negativePrompt:comfy.payload.negative,
+      model:comfy.profile.model,parameters:comfy.payload.parameters,comfyExecution:policy}),policy);
+    assert.equal(execution.expectedImages,4,'pinned workflow produces four candidates for its one narrative shot');
+    assert.equal(execution.maxImages,4);
+    assert.equal(q.rows.size,1);assert.equal([...q.rows.values()][0].entries.length,3,'three shots consume three narrative allowances, not six image slots');
     assert.equal(f.storage.calls.slice(start).filter(row=>row.path.includes('-ensemble-plan-')).length,4,'the authorized style snapshot is verified at handoff, not re-read from mutable storage for each queued mirror');f.assertReleased();
   }finally{binding.close();}
 });

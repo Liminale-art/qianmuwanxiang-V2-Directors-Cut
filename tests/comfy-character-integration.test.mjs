@@ -12,6 +12,7 @@ import {checkComfyCharacterReadiness} from '../qianmu-comfy-character-readiness.
 import {renderComfyWorkbench} from '../qianmu-comfy-workbench.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {graph,definitions,namespace,identity,implementation,job,recipe} from './helpers/comfy-character-fixture.mjs';
+import {exerciseImageInfo} from './helpers/image-info-edit-fixture.mjs';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const json=value=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
@@ -130,11 +131,11 @@ test('actual bridge rejects foreign identity, changed original/derived recipe an
   }
 });
 
-test('automatic multi-person role application stops, while manual execution combines quantity and role warning in one confirmation',async()=>{
+test('automatic multi-person role application stops, while explicit manual execution needs no extra technical confirmation',async()=>{
   const h=harness(),j=job();j.payload.shotSpec.characters.push({id:'unbound:bob',name:'Bob',visible:true});
   j.automatic=true;await assert.rejects(()=>h.context.storyboardConfirmComfyExecution(j,()=>true),/多人/);assert.equal(h.calls.some(row=>row[0]==='confirm'),false);
   j.automatic=false;assert.equal(await h.context.storyboardConfirmComfyExecution(j,()=>true),true);
-  assert.equal(h.calls.filter(row=>row[0]==='confirm').length,1);assert.match(h.calls.find(row=>row[0]==='confirm')[1],/人物分区/);
+  assert.equal(h.calls.filter(row=>row[0]==='confirm').length,0);
   assert.equal(j.comfyExecution.automatic,false);assert.deepEqual([...j.comfyExecution.outputNodeIds],['save']);
 });
 
@@ -156,13 +157,11 @@ test('readonly readiness keeps browser and ST routes distinct, strips implicit f
   await assert.rejects(()=>checkComfyCharacterReadiness(request,{transport:'gateway',fetchImpl:async()=>new Response('x'.repeat(256*1024+1))}),/返回过大/);
 });
 
-test('actual inline editing can disable only this image role recipe without changing global settings or auto-generating',async()=>{
-  const h=harness(),j=job();await h.context.storyboardPrepareComfyCharacterJob(j,{prepare:true});let saved,generated=0;
-  const record={id:'old',prompt:'garden',floor:0},fields={'.sd-storyboard-edit-positive':{value:''},'.sd-storyboard-edit-negative':{value:''},'.sd-comfy-character-inline':{checked:true}};
-  Object.assign(h.context,{getChatKey:()=> 'chat',storyboardReadSnapshotForRecord:async()=>copy(j),storyboardStoreSnapshotForRecord:async(_,value)=>saved=value,
-    document:{createElement:()=>({querySelector:selector=>fields[selector],insertAdjacentHTML(){}})},ctx:()=>({POPUP_TYPE:{CONFIRM:1},Popup:class{async show(){fields['.sd-comfy-character-inline'].checked=false;return 2;}}}),
-    synchronizeStoryboardCaptionBase(){},saveMetadata:async()=>{},storyboardArchiveGallerySnapshots:async()=>0,storyboardRenderInlineImages(){},storyboardRedrawRecord:()=>generated++});
-  vm.runInContext(section('storyboardEditPrompt'),h.context);assert.equal(await h.context.storyboardEditPrompt({record}),true);
+test('unified image info disables only the new redraw role recipe without changing old image or global settings',async()=>{
+  const h=harness(),j=job();await h.context.storyboardPrepareComfyCharacterJob(j,{prepare:true});
+  const before=copy(j),result=await exerciseImageInfo({snapshot:j,namespace,edit:({fields})=>{fields['.sd-comfy-character-inline'].checked=false;}});
+  assert.ifError(result.error);assert.equal(result.result,true);assert.equal(result.drafts.length,1);const saved=result.drafts[0];
   assert.equal(saved.profile.comfyCharacterEnabled,false);assert.equal(saved.payload.comfyCharacterPlan,undefined);
-  assert.equal(saved.payload.parameters.workflow.lora.inputs.strength_model,0);assert.equal(j.profile.comfyCharacterEnabled,true);assert.equal(generated,0);
+  assert.equal(saved.payload.parameters.workflow.lora.inputs.strength_model,0);assert.equal(j.profile.comfyCharacterEnabled,true);
+  assert.deepEqual(copy(j),before);assert.deepEqual(result.record,result.original);
 });

@@ -9,36 +9,45 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 
 const gate=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-test('actual gallery entry refreshes the current view only after verified restore closes, never for a stale or read-only session',async()=>{
-  const text=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=text.indexOf("  root.querySelector('.sd-open-gallery-archive')"),end=text.indexOf("  root.querySelector('.sd-open-gallery-directory')",start),glue=text.slice(start,end);
+test('retired gallery archive route is absent and actual storage backup remains the single explicit package/recovery entry',async()=>{
+  const text=await readFile(new URL('../index.js',import.meta.url),'utf8');
+  assert.doesNotMatch(text,/sd-open-gallery-archive|sd-open-gallery-directory|openGalleryArchive/);
+  assert.doesNotMatch(section('renderStoryboardGallery'),/sd-storyboard-gallery-resources|sd-storyboard-pack-/);
+  const source=section('bindStorageManagementEvents'),start=source.indexOf("  const backup ="),end=source.indexOf('  const bound =',start);
   assert.ok(start>0&&end>start);
-  for(const mode of ['read-only','restored','stale','uncertain']){
-    const finished=gate(),state={view:'gallery'};let click,rendered=0,inline=0,opened=0;
-    const button={isConnected:true,disabled:false,addEventListener(_,handler){click=handler;}},root={classList:{contains:()=>true},querySelector:()=>button};
-    const context=vm.createContext({root,state,storyboardAdmissionEpoch:1,storyboardState:()=>state,storyboardGalleryKind:'stills',
-      loadLocalChunk:async()=>({openGalleryArchive:()=>{opened++;return {finished:finished.promise};}}),featureRuntime:{load:async()=>({resolveImageAccountNamespace(){}})},
-      storyboardRequestHeaders:()=>({}),ctx:()=>({}),storyboardImportPackage:{},storyboardExportPackage:{},storyboardActiveJobs:new Map(),storyboardQueue:[],
-      storyboardScheduleInlineRender:()=>inline++,renderModal:()=>rendered++,toast:()=>assert.fail('unexpected error')});
-    vm.runInContext(glue,context);const work=click({currentTarget:button});await flush();assert.equal(opened,1);assert.equal(rendered,0);
-    if(mode==='stale')context.storyboardAdmissionEpoch++;finished.resolve({restored:['restored','stale'].includes(mode)});await work;
-    assert.equal(rendered,mode==='restored'?1:0);assert.equal(inline,rendered);assert.equal(button.disabled,false);
-  }
+  const calls=[];let recover,actions,bindings=0;
+  const backup={dataset:{},querySelector:selector=>selector==='.sd-storage-storyboard-recover'?{addEventListener:(_type,fn)=>{recover=fn;}}:null};
+  const importAny=async(...args)=>{calls.push(['import',...args]);},noop=()=>{};
+  const context=vm.createContext({root:{querySelector:()=>backup},storyboardImportPackage:async(...args)=>{calls.push(['recover',...args]);},
+    storyboardExportPackage:async options=>{calls.push(['export',options]);},storyboardImportAnyPackage:importAny,
+    bindStoragePackageActions:(node,options)=>{assert.equal(node,backup);actions=options;bindings++;},
+    proseFloorTools:{exportCollection:noop,importCollection:noop},coreadExportData:noop,coreadImportDataFile:noop,
+    exportTtsFavoritesBackup:noop,ttsExportAudioCache:noop,exportPinnedNotesBackup:noop});
+  const bind=()=>vm.runInContext('(()=>{'+source.slice(start,end)+'})()',context);
+  bind();bind();assert.equal(bindings,1);assert.deepEqual(calls,[]);assert.equal(actions.imports.storyboard,importAny);
+  recover();await flush();await actions.exports.storyboard();await actions.imports.storyboard('file');
+  assert.equal(calls.length,3);assert.equal(calls[0][0],'recover');assert.equal(calls[0][1],null);assert.equal(calls[0][2].recoverOnly,true);
+  assert.equal(calls[1][0],'export');assert.equal(calls[1][1].bundle,true);assert.deepEqual(calls[2],['import','file']);
 });
-test('actual archive entry loads navigation only on click and supplies current identity and host hooks',async()=>{
-  const text=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=text.indexOf("  root.querySelector('.sd-open-gallery-archive')"),end=text.indexOf("  root.querySelector('.sd-open-gallery-directory')",start);
-  let click,opened,navigation=0;const order=[],finished=gate(),state={view:'gallery'},document={},paragraphs=()=>[],loadContinuity=async()=>null;
-  const button={isConnected:true,addEventListener(_,fn){click=fn;}},root={classList:{contains:()=>true},querySelector:()=>button};
-  const context=vm.createContext({root,state,document,storyboardAdmissionEpoch:1,storyboardState:()=>state,storyboardGalleryKind:'stills',
-    loadLocalChunk:async path=>path.includes('location-view')?(navigation++,{revealGalleryLocation:async(input,options)=>{
-      assert.equal(await input.account(),'st-user:fixture');assert.equal(input.isCurrent(),true);assert.equal(input.paragraphs,paragraphs);assert.equal(options.document,document);assert.equal(input.loadContinuity,loadContinuity);
-      assert.equal(await options.confirmLarge(401),true);assert.equal(typeof options.loadHost,'function');options.beforeReveal();return {status:'located'};
-    }}):{openGalleryArchive:options=>{opened=options;return {finished:finished.promise};}},
-    featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=> 'st-user:fixture'})},storyboardRequestHeaders:()=>({}),ctx:()=>({}),
-    storyboardImportPackage:{},storyboardExportPackage:{},storyboardActiveJobs:new Map(),storyboardQueue:[],isRuntimeOwner:()=>true,storyboardLinkReviewParagraphs:paragraphs,
-    confirmDialog:async(_,message)=>{assert.match(message,/401/);return true;},closeModal:()=>order.push('main'),toast:()=>assert.fail('unexpected error')});
-  vm.runInContext(text.slice(start,end),context);const work=click({currentTarget:button});await flush();assert.equal(navigation,0);
-  assert.equal((await opened.locate({record:{id:'a'},scope:{},loadContinuity},{beforeReveal:()=>order.push('preview')})).status,'located');assert.equal(navigation,1);assert.deepEqual(order,['preview','main']);
-  context.storyboardAdmissionEpoch++;await assert.rejects(opened.locate({},{}),/页面已变化/);finished.resolve({restored:false});await work;
+test('actual storage catalog loads only on click, binds current identity and never refreshes a replaced or detached page',async()=>{
+  const source=section('bindStorageManagementEvents'),start=source.indexOf("  onClick(root.querySelector('.sd-storage-gallery-catalog')"),end=source.indexOf("  onClick(root.querySelector('button.sd-storage-characters')",start);
+  assert.ok(start>0&&end>start);
+  for(const mode of ['current','stale-load','stale-close','detached-load','detached-close']){
+    const loaded=gate(),finished=gate(),button={isConnected:true,disabled:false},host={};let click,options,loads=0,refreshes=0;
+    const context=vm.createContext({root:{querySelector:()=>button},onClick:(_button,fn)=>{assert.equal(_button,button);click=fn;},storyboardAdmissionEpoch:1,
+      loadLocalChunk:async path=>{assert.match(path,/gallery-catalog-management-view/);loads++;return loaded.promise;},
+      featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=> 'st-user:fixture'})},ctx:()=>host,ttsDownloadBlob:()=>{},
+      refreshStorageInventory:force=>{assert.equal(force,true);refreshes++;},toast:()=>assert.fail('no failure expected')});
+    vm.runInContext(source.slice(start,end),context);assert.equal(loads,0);
+    const work=click({currentTarget:button});await click({currentTarget:button});assert.equal(loads,1);
+    if(mode==='stale-load')context.storyboardAdmissionEpoch++;if(mode==='detached-load')button.isConnected=false;
+    loaded.resolve({openGalleryCatalogManagement:input=>{options=input;return {finished:finished.promise};}});await flush();
+    if(['stale-load','detached-load'].includes(mode))assert.equal(options,undefined);
+    else{assert.equal(options.anchor,button);assert.equal(options.getContext(),host);assert.equal(await options.resolveNamespace(),'st-user:fixture');assert.equal(options.isCurrent(),true);
+      if(mode==='stale-close'){context.storyboardAdmissionEpoch++;assert.equal(options.isCurrent(),false);}if(mode==='detached-close')button.isConnected=false;
+    }
+    finished.resolve();await work;assert.equal(refreshes,mode==='current'?1:0);assert.equal(button.disabled,false);
+  }
 });
 function fixture(t,extra={}){
   const window=new EventTarget(),document=new EventTarget(),timers=new Map(),opened=[],errors=[];

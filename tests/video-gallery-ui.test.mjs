@@ -7,13 +7,13 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 test('the screening room separates stills and motion without changing the main storyboard route', () => {
   assert.match(source, /data-storyboard-gallery-kind="stills"/);
-  assert.match(source, /data-storyboard-gallery-kind="motion"/);
-  assert.match(source, /function renderStoryboardGallery\(state\) \{\s*if \(storyboardGalleryKind === 'motion'\) return renderStoryboardVideoGallery\(\)/);
+  assert.doesNotMatch(source, /data-storyboard-gallery-kind="motion"/);
+  assert.match(source, /if \(storyboardGalleryKind !== 'stills'\) return renderStoryboardFilmGallery\(\)/);
   assert.match(source, /\['gallery', '阅片室'/);
 });
 
 test('the motion list stays metadata-only and loads media only after a card is opened', () => {
-  const renderStart = source.indexOf('function renderStoryboardVideoGallery()');
+  const renderStart = source.indexOf('function renderStoryboardVideoGallery(');
   const refreshStart = source.indexOf('async function storyboardRefreshVideoGallery', renderStart);
   const renderBlock = source.slice(renderStart, refreshStart);
   assert.ok(renderStart > 0 && refreshStart > renderStart);
@@ -25,7 +25,7 @@ test('the motion list stays metadata-only and loads media only after a card is o
 });
 
 test('motion storage is loaded only in the selected gallery view and never at startup', () => {
-  assert.match(source, /state\.view === 'gallery' && storyboardGalleryKind === 'motion'[\s\S]*storyboardRefreshVideoGallery/);
+  assert.match(source, /state\.view === 'gallery' && storyboardGalleryKind === 'film'[\s\S]*storyboardRefreshVideoGallery/);
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('export async function onActivate'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)|storyboardRefreshVideoGallery/);
   assert.match(source, /featureRuntime\.load\('videoGallery'\)/);

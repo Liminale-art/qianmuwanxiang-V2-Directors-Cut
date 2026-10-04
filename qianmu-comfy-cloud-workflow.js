@@ -1,6 +1,6 @@
 // Bind host-issued uploads only at reference slots in the ORIGINAL template.
 // Native string binding stays untouched. No network or workflow topology edits.
-import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
+import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js?v=1.59.440';
 import { parseBoundedJson } from './qianmu-json-input.js';
 import { matchComfyCloudUpload } from './qianmu-comfy-cloud-upload-contract.js';
 import { COMFY_REFERENCE_LIMIT } from './qianmu-comfy-reference-contract.js';

@@ -11,6 +11,8 @@ import {snapshot} from './helpers/character-shot-fixture.mjs';
 import {generateDirectImage} from '../qianmu-image-direct.js';
 import {generateImage} from '../qianmu-image-gateway.js';
 import {prepareGalleryRecipeFieldRelease} from '../qianmu-gallery-recipe-fields.js';
+import {comfyWorkflowReferenceHash} from '../qianmu-comfy-references.js';
+import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js?v=1.59.440';
 const copy=structuredClone;
 const fields=row=>({name:row.name,...Object.fromEntries(['identity','outfit','temporaryState','expression','pose','action','gaze','props'].map(key=>[key,row[key].join('\n')])),negative:row.negative??row.archiveSnapshot?.negative??'',spatial:{region:row.spatial.region,crop:row.spatial.crop,x:row.spatial.center[0],y:row.spatial.center[1]}});
 
@@ -111,26 +113,55 @@ test('Comfy edited identity keeps the private recipe isolated and refresh invali
   characters[0].archiveSnapshot.comfyImplementation.implementations[0].workflow.revision='changed';await assert.rejects(()=>prepareCharacterShotEdit(old,characters,{namespace}),/工作流版本/);
 });
 
-test('person display escapes markup, offers no fake Comfy negative input and never includes private files',()=>{
-  const rows=snapshot().shotSpec.characters;rows[0].name='<img src=x>';const html=renderCharacterShotEditor(rows,{source:'comfy'});
-  assert.doesNotMatch(html,/<img|data-shot-character-field="negative"|alice.png/);assert.match(html,/&lt;img/);assert.match(html,/使用最新档案/);assert.match(html,/重建正面词/);
+test('Comfy person editing dynamically prepares an eight-candidate count slot without mutating its recipe',async()=>{
+  const old=comfyJob(),workflow=copy(old.payload.parameters.workflow);
+  workflow.candidates={class_type:'RepeatLatentBatch',inputs:{samples:['encode',0],amount:'%qianmu_count%'}};
+  workflow.sampler.inputs.latent_image=['candidates',0];
+  const identity={...old.profile.comfyCharacterActivation.workflow,hash:await comfyWorkflowReferenceHash(workflow)};
+  old.profile.comfyWorkflow=JSON.stringify(workflow);old.profile.comfyCharacterActivation.workflow=copy(identity);old.profile.count=8;
+  old.payload.parameters.workflow=workflow;old.payload.parameters.count=8;
+  for(const shot of [old.shotSpec,old.payload.shotSpec])shot.characters[0].archiveSnapshot.comfyImplementation.implementations[0].workflow=copy(identity);
+  old.payload.prompt=storyboard.compileStoryboardPrompt({providerId:'comfy',remoteModelId:'comfy-workflow',shot:old.shotSpec,workflow:old.profile.comfyWorkflow}).prompt;
+  const before=copy(old),characters=copy(old.shotSpec.characters);characters[0].action=['holds a red umbrella'];
+  // This real edit loads the role-preparation module dynamically and validates
+  // its %qianmu_count% slot; the pre-v440 cached validator rejected 5 through 8.
+  const {snapshot:next}=await prepareCharacterShotEdit(old,characters,{namespace});
+  assert.equal(next.profile.count,8);assert.equal(next.payload.parameters.count,8);
+  assert.match(next.payload.prompt,/holds a red umbrella/);assert.equal(next.payload.comfyCharacterPlan,undefined);
+  const bound=prepareComfyWorkflow(next.payload.parameters.workflow,{prompt:next.payload.prompt,parameters:next.payload.parameters,referenceCount:1}).bind(['checked-reference.png']);
+  assert.equal(bound.candidates.inputs.amount,8);assert.deepEqual(old,before);
+  const over=copy(old);over.profile.count=over.payload.parameters.count=9;
+  await assert.rejects(()=>prepareCharacterShotEdit(over,characters,{namespace}),{code:'comfy_invalid_parameter'});
 });
 
-for(const choice of ['save','cancel','generate','changed'])for(const released of [false,true])test(`actual prompt editor -> person draft -> preview ${choice} released=${released} preserves explicit save/generate boundary`,async()=>{
-  const state=storyboard.createStoryboardDefaults(),original=snapshot(),record={id:'image',floor:0,prompt:original.payload.prompt,finalPrompt:original.payload.prompt,negative:original.payload.negative};
-  if(released){record.snapshot=original;record.shotSpec=copy(original.shotSpec);prepareGalleryRecipeFieldRelease(record,original,storyboard.storyboardRecipeRecordMetadata).apply();delete record.snapshot;assert.equal(record.shotSpec,undefined);}
-  let saved=null,generated=0,round=0;const notices=[],draft=copy(original.shotSpec.characters);draft[0].action=['opens a door'];
-  const updated=(await prepareCharacterShotEdit(original,draft,{namespace})).snapshot;
-  const fields={'.sd-storyboard-edit-positive':{value:''},'.sd-storyboard-edit-negative':{value:''}};
-  const context=vm.createContext({...storyboard,clone:copy,storyboardState:()=>state,getChatKey:()=> 'chat',storyboardReadSnapshotForRecord:async()=>copy(original),toast:m=>notices.push(m),
-    storyboardStoreSnapshotForRecord:async(_,value)=>saved=copy(value),saveMetadata:async()=>{},storyboardArchiveGallerySnapshots:async()=>0,storyboardRenderInlineImages(){},storyboardRedrawRecord:()=>{generated++;return true;},
-    document:{createElement:()=>({querySelector:selector=>fields[selector],insertAdjacentHTML(){}})},
-    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:{openCharacterShotEditor:async()=>{if(choice==='changed')record.finalPrompt='other edit';return {snapshot:updated};}}},
-    ctx:()=>({POPUP_TYPE:{CONFIRM:1},Popup:class{constructor(wrap,type,title,options){this.options=options;}async show(){round++;if(round===1){assert.ok(this.options.customButtons.some(row=>row.result===3));return 3;}assert.equal(fields['.sd-storyboard-edit-positive'].value,original.payload.prompt);return choice==='cancel'?0:choice==='generate'?1:2;}}}),
+test('person display escapes markup, offers no fake Comfy negative input and never includes private files',()=>{
+  const rows=snapshot().shotSpec.characters;rows[0].name='<img src=x>';const html=renderCharacterShotEditor(rows,{source:'comfy'});
+  assert.doesNotMatch(html,/<img|data-shot-character-field="negative"|alice.png|重建正面词/);assert.match(html,/&lt;img/);assert.match(html,/使用最新档案/);
+});
+
+for(const choice of ['cancel','generate','changed','refused','retry'])for(const released of [false,true])test('unified image editor '+choice+' released='+released+' never rewrites old image',async()=>{
+  const state=storyboard.createStoryboardDefaults(),original=snapshot(),metadata={},record={id:'image',floor:0,prompt:original.payload.prompt,finalPrompt:original.payload.prompt,negative:original.payload.negative};
+  if(released){record.snapshot=original;record.shotSpec=copy(original.shotSpec);prepareGalleryRecipeFieldRelease(record,original,storyboard.storyboardRecipeRecordMetadata).apply();delete record.snapshot;}
+  const before=copy(record),characters=copy(original.shotSpec.characters);characters[0].action=['opens a door'];
+  let submitted=null,writes=0,generated=0;
+  const field={value:original.payload.prompt},host={dataset:{charactersChanged:'true'},querySelector:()=>field};
+  const context=vm.createContext({...storyboard,clone:copy,storyboardState:()=>state,getChatKey:()=> 'chat',ctx:()=>({chatMetadata:metadata}),storyboardAdmissionEpoch:1,
+    storyboardGalleryRecords:()=>[record],storyboardReadSnapshotForRecord:async()=>copy(original),storyboardCloseImageInfo:()=>{},storyboardImageInfoView:null,storyboardImageInfoOpening:0,
+    htmlEscape:x=>String(x),storyboardRecordParameterLabel:()=>'',renderRunningHubTaskUsage:()=>'',STORYBOARD_SOURCES:{novel:{label:'NAI'}},
+    storyboardMediaTagEditorMarkup:()=>'',summarizeGalleryRecords:()=>({knownTags:[]}),galleryMembershipIds:()=>[],storyboardGalleryCollections:()=>[],
+    galleryRecordSourceCharacter:()=>'',storyboardUpdateGalleryNarrative:()=>({sourceFor:()=>null}),
+    storyboardSafeUrl:()=>'',applyQianmuIcons:()=>{},coreadCopyText:()=>{},appearanceSession:{},storyboardBindMediaTagEditors:()=>{},
+    saveMetadata:async()=>{writes++;},storyboardStoreSnapshotForRecord:async()=>{writes++;},storyboardArchiveGallerySnapshots:async()=>{writes++;},
+    storyboardRedrawRecord:async(row,{snapshotOverride,verify})=>{assert.equal(row,record);await verify();generated++;submitted=copy(snapshotOverride);return choice==='retry'?generated===2:choice!=='refused';},
+    featureRuntime:{load:async key=>key==='imageAdmission'?{resolveImageAccountNamespace:async()=>namespace}:{renderCharacterShotEditor:()=>'',captureCharacterShotEditor:()=>characters,prepareCharacterShotEdit}},
+    openImageInfo:options=>({close(){},finished:Promise.resolve().then(async()=>{
+      if(choice==='cancel')return false;if(choice==='changed')record.finalPrompt='external edit';
+      try{const submit=()=>options.onGenerate({positive:field.value,negative:original.payload.negative,host,changed:true},options.guard);const accepted=await submit();return choice==='retry'?await submit():accepted;}catch{return false;}
+    })}),
   });
   vm.runInContext(section('storyboardEditPrompt'),context);const result=await context.storyboardEditPrompt({record});
-  assert.equal(Boolean(result),choice==='save'||choice==='generate');assert.equal(generated,choice==='generate'?1:0);
-  if(choice==='save'||choice==='generate'){assert.deepEqual(saved.shotSpec.characters[0].action,['opens a door']);assert.equal(saved.payload.parameters.providerOptions.v4_prompt.caption.base_caption,saved.payload.prompt);}
-  else assert.equal(saved,null);
-  if(released)assert.equal(record.shotSpec,undefined,'editing does not hydrate a hot duplicate');
+  assert.equal(result,['generate','retry'].includes(choice));assert.equal(generated,choice==='retry'?2:['generate','refused'].includes(choice)?1:0);assert.equal(writes,0);
+  if(submitted){assert.deepEqual(submitted.shotSpec.characters[0].action,['opens a door']);assert.equal(submitted.payload.parameters.providerOptions.v4_prompt.caption.base_caption,submitted.payload.prompt);}
+  if(choice!=='changed')assert.deepEqual(record,before);
+  if(released)assert.equal(record.shotSpec,undefined);
 });

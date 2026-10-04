@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { buildGalleryNarrative, createGalleryNarrativeSession, GALLERY_UNPLACED } from '../qianmu-gallery-narrative.js';
-import { renderGalleryNarrative } from '../qianmu-gallery-narrative-view.js';
 import { createStoryboardMessageReference, createStoryboardParagraphAnchor } from '../qianmu-storyboard.js';
 import { hashText } from '../qianmu-storyboard-utils.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
@@ -109,7 +108,7 @@ test('explicit cleanup releases chat ownership, lookup data and selected positio
     f.sync(); assert.equal(f.session.sourceCount, 1); assert.equal(f.session.selected, null);
 });
 
-test('directory pagination is bounded, deterministic, searchable, escaped and read-only across 500 floors', () => {
+test('source session pagination is bounded, deterministic, searchable and read-only across 500 floors', () => {
     const f = fixture(500); for (let floor = 0; floor < 500; floor++) f.add(floor);
     const before = JSON.stringify(f.records); f.sync();
     const seen = new Set(); for (let page = 0; page < 42; page++) {
@@ -119,7 +118,6 @@ test('directory pagination is bounded, deterministic, searchable, escaped and re
     }
     assert.equal(seen.size, 500); assert.equal(f.session.view().page, 41);
     f.session.search('开场 499'); assert.equal(f.session.view().total, 1); assert.equal(f.session.view().page, 0);
-    const markup = renderGalleryNarrative(f.session); assert.ok(markup.includes('&lt;b&gt;')); assert.ok(!markup.includes('CHAR <b>'));
     assert.equal(JSON.stringify(f.records), before);
 });
 
@@ -142,13 +140,15 @@ test('source-scoped groups follow verified paragraph order and frozen shot order
 test('real gallery filter ignores saved model preference while retaining search, track and collection intersection', async () => {
     const {galleryTagsMatch}=await import('../qianmu-gallery-keywords.js');
     const {galleryMembershipIds}=await import('../qianmu-gallery-membership.js');
+    const {galleryBrowserProjection,galleryRecordMatchesQuery}=await import('../qianmu-gallery-collections-view.js');
     const records = [{ id: 'a', source: 'novel', prompt: 'coast', collectionIds: ['c'], track: 'main_camera' },
         { id: 'b', source: 'comfy', prompt: 'coast', collectionIds: [], track: 'main_camera' },
         { id: 'c', source: 'comfy', prompt: 'woods', collectionIds: ['c'], track: 'second_camera' }];
-    const sandbox = vm.createContext({ galleryMembershipIds,galleryTagsMatch,storyboardUpdateGalleryNarrative: () => ({ filter: value => value }), storyboardGalleryRecords: () => records,
+    const sandbox = vm.createContext({ galleryMembershipIds,galleryTagsMatch,galleryBrowserProjection,galleryRecordMatchesQuery,
+        storyboardUpdateGalleryNarrative: () => ({ sourceFor: () => null }), storyboardGalleryRecords: () => records,storyboardGalleryCollections:()=>[{id:'c',name:'Collection'}],
         storyboardProductionDeliveryPolicy: record => ({ track: record.track, sourceLabel: '' }), storyboardGalleryOpenCollectionId: '',
         storyboardItemCollectionIds: record => record.collectionIds, STORYBOARD_SOURCES: {} });
-    vm.runInContext(storyboardFunctionSource('storyboardFilteredGalleryRecords'), sandbox);
+    vm.runInContext(['storyboardGalleryBrowserData','storyboardFilteredGalleryRecords'].map(storyboardFunctionSource).join('\n'), sandbox);
     const state = { gallerySource: 'novel', gallerySearch: '', galleryTrack: 'all' }, ids = () => [...sandbox.storyboardFilteredGalleryRecords(state)].map(row => row.id);
     records[0].tags=['night','together'];records[1].tags=['night'];records[2].tags=['forest'];
     assert.deepEqual(ids(), ['c', 'b', 'a']);state.galleryTagFilters=['night','together'];assert.deepEqual(ids(),['a']);state.galleryTagFilters=[];
@@ -156,14 +156,15 @@ test('real gallery filter ignores saved model preference while retaining search,
     sandbox.storyboardGalleryOpenCollectionId = 'c'; assert.deepEqual(ids(), ['a']); state.galleryTrack = 'second_camera'; assert.deepEqual(ids(), []);
 });
 
-test('production gallery binds the new directory and ships both modules without model selector', async () => {
+test('production gallery uses narrative source metadata without exposing a second directory or model selector', async () => {
     const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-    assert.ok(storyboardFunctionSource('renderStoryboardGallery').includes('renderGalleryNarrative(storyboardGalleryNarrative)'));
-    assert.ok(source.includes('storyboardBindGalleryNarrative(root);'));
-    assert.match(storyboardFunctionSource('storyboardBindGalleryInspector'),/storyboardUpdateGalleryNarrative\(\)\.selectRecord\(record\)/);
-    const inspector=await readFile(new URL('../qianmu-gallery-inspector.js',import.meta.url),'utf8');
-    assert.ok(inspector.includes('data-gallery-detail-action="source"'));
+    assert.doesNotMatch(storyboardFunctionSource('renderStoryboardGallery'),/renderGalleryNarrative|已保存图库|角色与聊天|data-gallery-detail=/);
+    assert.doesNotMatch(source,/storyboardBindGalleryNarrative\(root\)|storyboardBindGalleryInspector\(root\)/);
+    assert.match(storyboardFunctionSource('storyboardGalleryBrowserData'),/storyboardUpdateGalleryNarrative\(\)[\s\S]*sourceFor\(record\)/);
+    assert.match(storyboardFunctionSource('storyboardShowGalleryInspector'),/storyboardOpenImageInfo\(record\)/);
     assert.ok(!source.includes('class="text_pole sd-storyboard-gallery-source"'));
     const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-    for (const name of ['qianmu-gallery-narrative.js', 'qianmu-gallery-narrative-view.js']) assert.ok(release.files.includes(name));
+    for (const name of ['qianmu-gallery-narrative.js', 'qianmu-gallery-collections-view.js','qianmu-image-info-view.js']) assert.ok(release.files.includes(name));
+    assert.ok(!release.files.includes('qianmu-gallery-narrative-view.js'));
+    await assert.rejects(readFile(new URL('../qianmu-gallery-narrative-view.js',import.meta.url)),{code:'ENOENT'});
 });

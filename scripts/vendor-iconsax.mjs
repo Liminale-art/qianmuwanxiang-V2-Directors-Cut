@@ -18,7 +18,7 @@ export const glyphs = {
   'chat-dots':'message-text', chats:'messages', check:'qianmu-check', 'check-circle':'tick-circle',
   'check-square':'tick-square', checks:'qianmu-checks', circle:'record', clear:'broom', clock:'clock',
   'cloud-moon':'moon', coffee:'coffee', context:'shapes', copy:'copy', coread:'book-open', cpu:'cpu',
-  crosshair:'gps', database:'driver', 'dots-three':'more', 'download-simple':'document-download', eraser:'eraser',
+  crosshair:'gps', database:'driver', 'dots-three':'qianmu-ellipsis', 'download-simple':'document-download', eraser:'eraser',
   eye:'eye', 'eye-slash':'eye-slash', feather:'pen-tool', 'file-arrow-down':'document-download',
   'file-arrow-up':'document-upload', 'film-slate':'video-play', 'film-strip':'video-horizontal', flask:'lamp-charge',
   'floor-tools':'align-bottom', 'floppy-disk':'save-2', focus:'notification', folder:'folder', 'folder-minus':'folder-minus',
@@ -106,6 +106,8 @@ if(process.argv.includes('--write')) {
   // The universal actions lacking a matching Iconsax silhouette retain the
   // existing Lucide geometry. Functional pin states must not become a map marker.
   const familiar={
+    // Three horizontal dots, not the triangular Iconsax more silhouette.
+    'qianmu-ellipsis':'<g fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.75"/><circle cx="12" cy="12" r="1.75"/><circle cx="19" cy="12" r="1.75"/></g>',
     // Original single, continuous wave for the reader underline-style control.
     // All themes keep the same line; this is neither a wind nor a sound icon.
     'qianmu-underline-wave':'<path d="M3 12C4.5 8 6 8 7.5 12S10.5 16 12 12S15 8 16.5 12S19.5 16 21 12"/>',
@@ -124,7 +126,7 @@ if(process.argv.includes('--write')) {
   };
   // The supplied backstage SVG is fire-9 Broken, not the unrelated icon named fire.
   const names=[...new Set([...Object.values(glyphs),'magic-star'])].sort(), result={}, hashes={}, pending=names.filter(name=>!familiar[name]).flatMap(name=>variantsFor(name).map(variant=>({name,variant,style:name==='fire-9'&&variant==='outline'?'broken':styles[variant]||variant}))), errors=[];
-  for(const [name,body] of Object.entries(familiar)) for(const variant of Object.keys(styles)) (result[name]||={})[variant]=`<g fill="${['qianmu-pin','qianmu-star','qianmu-star-half','qianmu-play','qianmu-stop','qianmu-heart'].includes(name)&&variant==='bold'?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${body}</g>`;
+for(const [name,body] of Object.entries(familiar)) for(const variant of Object.keys(styles)) (result[name]||={})[variant]=name==='qianmu-ellipsis'?body:`<g fill="${['qianmu-pin','qianmu-star','qianmu-star-half','qianmu-play','qianmu-stop','qianmu-heart'].includes(name)&&variant==='bold'?'currentColor':'none'}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${body}</g>`;
   await Promise.all(Array.from({length:4},async()=>{
     for(;;) { const item=pending.shift(); if(!item) break;
       try {

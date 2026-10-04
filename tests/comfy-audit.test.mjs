@@ -34,7 +34,7 @@ test('native single still has a versioned explicit final-output and quantity con
 });
 
 test('contract rejects invalid or future versions, duplicate IDs and automatic overrides', () => {
-  for(const extra of [{version:2},{outputNodeIds:['save','save']},{outputNodeIds:['../save']},{maxImages:9},{allowUnverified:1},
+  for(const extra of [{version:3},{outputNodeIds:['save','save']},{outputNodeIds:['../save']},{maxImages:9},{allowUnverified:1},
     {automatic:true,maxImages:8},{automatic:true,maxImages:1,allowUnverified:true}]) {
     assert.throws(()=>normalizeComfyExecution(policy(extra)),{code:'comfy_execution_contract',submissionState:'not_submitted'});
   }
@@ -162,7 +162,7 @@ for(const channel of ['direct','gateway']){
   const run=(request,options)=>channel==='direct'?generateDirectImage(request,{waitImpl:async()=>{},...options}):generateImage(request,{resolveHost:async()=>[{address:'8.8.8.8',family:4}],...options});
   test(`${channel}: invalid / over-limit / uncertain automatic execution performs no DNS, upload, probe or submit`,async()=>{
     const uncertain=graph();uncertain.custom=node('Unknown',{});
-    const requests=[input(graph(),policy({version:2})),input(graph(9)),input(graph(4),automatic()),input(uncertain,automatic())];
+    const requests=[input(graph(),policy({version:3})),input(graph(9)),input(graph(4),automatic()),input(uncertain,automatic())];
     for(const request of requests){let calls=0;await assert.rejects(()=>run(request,{probeTransport:true,resolveHost:async()=>{calls++;return[{address:'8.8.8.8',family:4}];},fetchImpl:async()=>{calls++;throw Error('unexpected network');}}),error=>{
       assert.ok(error.code.startsWith('comfy_'));assert.equal(error.submissionState,'not_submitted');assert.equal(isDirectImageTransportError(error),false);
       if(channel==='gateway')assert.equal(imageGatewayErrorPayload(error).status,400);return true;

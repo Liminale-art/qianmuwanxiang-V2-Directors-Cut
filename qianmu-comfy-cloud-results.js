@@ -54,7 +54,7 @@ export function collectComfyCloudStillResults(rawReceipt, body) {
     outputs.push(Object.freeze(record));
   }
   if (!outputs.length) fail('missing', '云端已结束，但没有所选节点的最终静帧');
-  if (execution.automatic && finalIds.size !== 1
+  if (execution.automatic && finalIds.size !== execution.expectedImages
     || execution.expectedImages != null && outputs.length !== execution.expectedImages) fail('count', '云端成图数量与本次约定不一致，未收片');
   // Asset ids are durable identities. Signed URLs, filenames and provider error
   // text are deliberately not retained; they grant no later download authority.

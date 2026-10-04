@@ -1,92 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import vm from 'node:vm';
-import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
+import {readFileSync} from 'node:fs';
+import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {logFixture} from './helpers/storyboard-log-fixture.mjs';
 
-const deferred=()=>{let resolve;return {promise:new Promise(r=>{resolve=r;}),resolve:()=>resolve()};};
-function fixture() {
-  const host={dataset:{},isConnected:true},nai={},calls=[];let chat='original-chat',mounted;
-  const root={isConnected:true,querySelector:selector=>selector.includes('comfy')?host:nai};
-  const service={retrieveOriginal:async(row,options)=>{calls.push('retrieve');assert.equal(options.apiKey,'original-key');
-    assert.equal(options.chatKey,'original-chat');assert.equal(row.attemptId,'original');
-    return options.deliver({}, {}, [], async()=>{},async()=>{});
-  }};
-  const view={mountComfyInbox:(_host,options)=>{mounted=options;return ()=>calls.push('dispose');}};
-  const c=vm.createContext({settings:{},storyboardAdmissionEpoch:0,getChatKey:()=>chat,uid:()=> 'ticket',
-    featureRuntime:{load:async()=>view},storyboardComfyRecoveryRuntime:async()=>service,storyboardState:()=>({logs:[]}),
-    storyboardResolveComfyRecoveryKey:async()=> 'original-key',storyboardDeliverGatewayResult:async(_job,log,_data,options)=>{
-      assert.equal(log,null);assert.equal(options.service,true);await options.guard();calls.push('archive');return {archived:true};
-    }});
-  vm.runInContext(storyboardFunctionSource('storyboardOpenComfyInbox'),c);
-  return {c,root,host,calls,service,view,get mounted(){return mounted;},change(kind){
-    if(kind==='owner')c.settings={};else if(kind==='epoch')c.storyboardAdmissionEpoch++;
-    else if(kind==='chat')chat='other';else root._sdComfyInboxCleanup();
-  }};
-}
-const row={attemptId:'original',originalOnly:true,baseUrl:'https://comfy.test',credentialId:'original-credential'};
-
-test('receipt-less cloud review is keyless and dispatched before log, credential or delivery work',async()=>{
-  const e=fixture();let reviews=0;
-  e.c.storyboardState=()=>assert.fail('review must not read recipe logs or credentials');
-  e.c.resolveComfyCloudRecoveryKey=()=>assert.fail('review must not resolve an API Key');
-  e.c.storyboardResolveComfyRecoveryKey=()=>assert.fail('review must not resolve a native Key');
-  e.service.reviewCloudOriginal=async(selected,options)=>{
-    assert.equal(selected.attemptId,'original');assert.equal(options.valid(),true);
-    e.change('chat');assert.equal(options.valid(),false);reviews++;return {reviewed:true};
-  };
-  await e.c.storyboardOpenComfyInbox(e.root);
-  assert.equal((await e.mounted.receive({...row,engine:'cloud'},'server','review')).reviewed,true);
-  assert.equal(reviews,1);assert.deepEqual(e.calls,[]);
-});
-
-test('cancel from the inbox uses the original cloud credential and cannot fall through to receipt or archive',async()=>{
-  const e=fixture();let cancellation=0;
-  e.c.resolveComfyCloudRecoveryKey=async(_selected,ports)=>{await ports.guard();return 'original-key';};
-  e.service.cancelCloudOriginal=async(selected,options)=>{
-    assert.equal(selected.engine,'cloud');assert.equal(options.apiKey,'original-key');assert.equal(options.valid(),true);
-    e.change('chat');assert.equal(options.valid(),false);cancellation++;return {warning:'已请求取消'};
-  };
-  await e.c.storyboardOpenComfyInbox(e.root);
-  await e.mounted.receive({...row,engine:'cloud'},'server','cancel');assert.equal(cancellation,1);assert.deepEqual(e.calls,[]);
-});
-
-test('original-only inbox rejects late credential results after page, owner, epoch or chat changes',async()=>{
-  for(const kind of ['owner','epoch','chat','dispose']) {
-    const e=fixture(),entered=deferred(),release=deferred();await e.c.storyboardOpenComfyInbox(e.root);
-    e.c.storyboardResolveComfyRecoveryKey=async()=>{entered.resolve();await release.promise;return 'original-key';};
-    const receiving=e.mounted.receive(row);await entered.promise;e.change(kind);release.resolve();
-    await assert.rejects(receiving,/收片页面已变化/);
-    assert.equal(e.calls.includes('retrieve'),false);assert.equal(e.calls.includes('archive'),false);
-    await assert.rejects(e.mounted.receive(row),/收片页面已变化/);
+const source=readFileSync(new URL('../index.js',import.meta.url),'utf8');
+// Inbox retired; receipt/ownership guarantees remain tested by the receive suites.
+test('empty and populated logs never render receipt inboxes or original-task review buttons',()=>{
+  const {state,context:c}=logFixture();
+  for(const status of [null,'failed','success','generating']){
+    state.logs=status?[{id:'original',status,submissionState:'accepted',source:'comfy',comfyReceipt:true,snapshot:{serviceTask:{attemptId:'original'}}}]:[];
+    assert.doesNotMatch(c.renderStoryboardLogs(state),/NAI 收片|Comfy 收片|领取原图|核查原请求|sd-storyboard-(?:comfy|service)-inbox/);
   }
 });
-
-test('a delayed inbox module cannot mount over a different configuration or chat',async()=>{
-  for(const kind of ['owner','epoch','chat']) {
-    const e=fixture(),release=deferred();e.c.featureRuntime.load=async()=>{await release.promise;return e.view;};
-    const opening=e.c.storyboardOpenComfyInbox(e.root);e.change(kind);release.resolve();await opening;
-    assert.equal(e.mounted,undefined);assert.deepEqual(e.calls,[]);
-  }
+test('retired Comfy inbox is not dynamically loaded or mounted by the production entry',()=>{
+  assert.doesNotMatch(source,/comfyInbox\s*:|import\(['"]\.\/qianmu-comfy-inbox-view|mountComfyInbox/);
 });
-
-test('original-only delivery rechecks the page after the asynchronous account guard',async()=>{
-  for(const changed of [false,true]) {
-    const e=fixture();e.service.retrieveOriginal=async(_row,options)=>options.deliver({}, {}, [], async()=>{},async()=>{
-      if(changed)e.change('owner');
-    });
-    await e.c.storyboardOpenComfyInbox(e.root);
-    if(changed)await assert.rejects(e.mounted.receive(row),/收片页面已变化/);
-    else assert.equal((await e.mounted.receive(row)).archived,true);
-    assert.deepEqual(e.calls,changed?[]:['archive']);
-  }
-  const e=fixture();await e.c.storyboardOpenComfyInbox(e.root);await e.mounted.receive(row);
-  assert.deepEqual(e.calls,['retrieve','archive']);
+test('retired frontend callbacks and inbox cleanup bindings cannot retain a stale page owner',()=>{
+  assert.doesNotMatch(source,/storyboardOpenComfyInbox|storyboardPaintServiceInbox|storyboardReviewServiceImage|_sdComfyInboxCleanup/);
+  assert.doesNotMatch(source,/sd-storyboard-open-service-inbox|sd-storyboard-open-comfy-inbox|sd-storyboard-receive-comfy/);
 });
-
-test('cloud inbox resolves only the original cloud key and keeps the shared archive guard',async()=>{
-  const e=fixture();let resolutions=0;
-  e.c.resolveComfyCloudRecoveryKey=async(selected,ports)=>{assert.equal(selected.engine,'cloud');await ports.guard();resolutions++;return 'original-key';};
-  e.c.storyboardResolveComfyRecoveryKey=()=>assert.fail('cloud must not resolve a native host credential');
-  await e.c.storyboardOpenComfyInbox(e.root);await e.mounted.receive({...row,engine:'cloud'});
-  assert.equal(resolutions,1);assert.deepEqual(e.calls,['retrieve','archive']);
+test('automatic recovery uses the exact original attempt and guarded save, never a catalog or submission',()=>{
+  const recovery=section('storyboardRecoverOriginalTasks');
+  assert.match(recovery,/state\.logs\.includes\(log\)/);
+  assert.match(recovery,/storyboardReceiveComfyImage\(log,\{refresh:false,silent:true,valid\}\)/);
+  assert.match(recovery,/storyboardReceiveServiceImage\(snapshot\.serviceTask\.attemptId,null,snapshot\.imageAdmission\.namespace,\{silent:true,valid\}\)/);
+  assert.doesNotMatch(recovery,/\.catalog\(|\.submit\(|storyboardGenerate|storyboardRetryLog|prepareCloudSubmission/);
+});
+test('log rendering stays read only and does not trigger original recovery',()=>{
+  assert.doesNotMatch(section('renderStoryboardLogs'),/storyboardRecoverOriginalTasks|storyboardReceiveComfyImage\(|storyboardReceiveServiceImage\(/);
+  assert.match(section('storyboardHandleChatChanged'),/storyboardRecoverOriginalTasks\(\)/);
+});
+test('resource packages live only in Data Management, never mixed into gallery or logs',()=>{
+  const gallery=section('renderStoryboardGallery'),logs=section('renderStoryboardLogs');
+  assert.doesNotMatch(gallery,/sd-storyboard-pack-|sd-storyboard-gallery-resources/);
+  assert.doesNotMatch(logs,/sd-storyboard-pack-|资源联包|不包含 API Key/);
+  const bindings=section('bindStorageManagementEvents');
+  assert.match(bindings,/storyboard:\(\)=>storyboardExportPackage\(\{bundle:true\}\)/);
+  assert.match(bindings,/storyboard:storyboardImportAnyPackage/);
+  assert.match(bindings,/sd-storage-storyboard-recover[\s\S]*storyboardImportPackage\(null, \{ recoverOnly: true \}\)/);
 });

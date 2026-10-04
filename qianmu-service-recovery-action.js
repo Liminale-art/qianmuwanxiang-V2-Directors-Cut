@@ -2,11 +2,13 @@
 export async function receiveServiceImage(attemptId, discovered, expectedNamespace, deps) {
   const initial = deps.scope();
   const current = () => {
+    if(deps.valid&&!deps.valid())throw new Error('原任务记录已变化，未继续保存图片');
     const next = deps.scope();
     if (next.owner !== initial.owner || next.epoch !== initial.epoch || next.chat !== initial.chat)
       throw new Error('收片配置或聊天已变化，请从当前页面重新领取原图');
   };
   try {
+    current();
     const service = await deps.service(); current();
     if (discovered) {
       const remembered = await service.rememberOriginal(discovered, { chatKey:initial.chat }); current();

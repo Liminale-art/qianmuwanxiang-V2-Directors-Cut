@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
-import {renderGalleryInspector,captureGalleryViewGuard,bindGalleryInspector} from '../qianmu-gallery-inspector.js';
+import * as galleryGuard from '../qianmu-gallery-inspector.js';
+import {renderImageInfo} from '../qianmu-image-info-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
-import {createChoiceFrame} from './helpers/gallery-choice-fixture.mjs';
-import {assignGalleryMemberships} from '../qianmu-gallery-membership.js';
+const {captureGalleryViewGuard}=galleryGuard;
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
@@ -14,44 +14,26 @@ class Node {
   addEventListener(name,callback){(this.listeners[name]||=[]).push(callback);}
   fire(name='click'){for(const callback of this.listeners[name]||[])callback({currentTarget:this,target:this});}
 }
-function fixture(){
-  const f={record:{id:'one'},id:'one',owner:{},active:true,backs:0,errors:[],calls:0,collections:[{id:'collection',name:'Collection'}],save:async()=>{}};
-  const area=new Node({galleryDetail:'one'}),back=new Node(),button=new Node({galleryDetailAction:'preview'}),tag=new Node(),choice=createChoiceFrame('detail-collections');
-  area.querySelector=()=>back;area.querySelectorAll=selector=>selector==='[data-gallery-detail-action]'?[button]:selector==='[data-media-tag-editor]'?[tag]:[];
-  const root={isConnected:true,contains:node=>node.isConnected,querySelector:()=>area,querySelectorAll:()=>[choice.frame]};
-  const scope=()=>[f.owner,f.active],isCurrent=captureGalleryViewGuard(root,{scope,isActive:()=>f.active});
-  f.bind=(actions={preview:async()=>{f.calls++;}})=>bindGalleryInspector(root,{isCurrent,readRecord:()=>f.record,readId:()=>f.id,readCollections:()=>f.collections,scope:()=>[f.owner],
-    back:()=>f.backs++,actions,saveCollections:async(row,values,verify)=>{await f.save();await verify();f.calls++;assignGalleryMemberships(row,values);},onError:error=>f.errors.push(error)});
-  return Object.assign(f,{root,area,back,button,choice,tag,isCurrent});
-}
-
-test('selected-only renderer escapes metadata and enables style only for usable NAI records',()=>{
-  assert.equal(renderGalleryInspector(null),'');
-  for(const source of ['novel','openai','comfy'])for(const unavailable of [false,true]){
-    const row={id:'<id>',source,recipeUnavailable:unavailable,model:'<model>',prompt:'<script>unsafe</script>',tags:[]};
-    Object.defineProperty(row,'snapshot',{get(){assert.fail('no recipe read during render');}});
-    const html=renderGalleryInspector(row,{url:'/safe.png',sourceLabel:'<source>',location:{paragraphKey:'p'},collections:[{id:'"',name:'<name>'}]});
-    assert.equal(html.includes('data-gallery-detail-action="style"'),source==='novel'&&!unavailable);
-    assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>|<model>|<name>/);assert.match(html,/查看本段全部静帧/);
-    assert.equal((html.match(/<img /g)||[]).length,1);
-  }
+test('retired inspector contains only the live gallery guard and no duplicate detail renderer or binder',()=>{
+  assert.deepEqual(Object.keys(galleryGuard),['captureGalleryViewGuard']);
+  const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');assert.doesNotMatch(css,/sd-gallery-detail|sd-storyboard-inspector-source/);
 });
 
-test('detail retains full prompt, does not crop images, and review/explicit insert controls stay mutually appropriate',()=>{
-  const row={id:'one',prompt:'x'.repeat(3000),restoreLinkReview:{}};
-  const html=renderGalleryInspector(row,{production:{requiresExplicitInsert:true}});
-  assert.ok(html.includes(row.prompt));assert.match(html,/data-gallery-detail-action="review"/);assert.doesNotMatch(html,/data-gallery-detail-action="attach"|<img /);
-  delete row.restoreLinkReview;assert.match(renderGalleryInspector(row,{production:{requiresExplicitInsert:true}}),/data-gallery-detail-action="attach"/);
-  const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');assert.match(css,/\.sd-gallery-detail-visual img \{[^}]*object-fit: contain/);
-  assert.match(css,/@media \(max-width: 720px\) \{[\s\S]*?\.sd-gallery-detail-layout \{ grid-template-columns: minmax\(0, 1fr\)/);
-  assert.match(css,/\.sd-gallery-browser-main \{ min-width: 0/);
+test('shared detail retains escaped full prompts and reads no recipe during rendering',()=>{
+  const row={id:'one',url:'/safe.png'},positive='<script>'+ 'x'.repeat(3000)+'</script>';
+  Object.defineProperty(row,'snapshot',{get(){assert.fail('no recipe read during render');}});
+  const html=renderImageInfo({record:row,positive,modelLabel:'<model>',sourceCharacter:'<source>'});
+  assert.ok(html.includes('x'.repeat(3000)));assert.match(html,/&lt;script&gt;/);assert.match(html,/&lt;model&gt;/);assert.match(html,/&lt;source&gt;/);
+  assert.doesNotMatch(html,/<script>|<model>|<source>|data-gallery-detail|查看本段全部静帧|原图与重绘工具/);assert.equal((html.match(/<img /g)||[]).length,1);
 });
 
-for(const [label,change] of Object.entries({owner:f=>f.owner={},closed:f=>f.active=false,detached:f=>f.area.isConnected=false,
-  root:f=>f.root.isConnected=false,id:f=>f.id='two',replacement:f=>f.record={id:'one'},removed:f=>f.record=null}))
-test(`stale ${label} detail cannot preview, change collections or persist tags`,async()=>{
-  const f=fixture();f.bind();assert.equal(f.tag._qianmuGalleryCurrent(),true);change(f);f.button.fire();await f.choice.choose('collection');await tick();
-  assert.equal(f.calls,0);assert.equal(f.tag._qianmuGalleryCurrent(),false);
+for(const [label,change] of Object.entries({owner:f=>f.owner={},closed:f=>f.active=false,detached:f=>f.node.isConnected=false,
+  root:f=>f.root.isConnected=false,reparented:f=>f.contains=false,id:f=>f.id='two',replacement:f=>f.record={id:'one'},removed:f=>f.record=null}))
+test(`live gallery guard rejects ${label} changes`,()=>{
+  const f={owner:{},active:true,id:'one',record:{id:'one'},contains:true,node:{isConnected:true},root:{isConnected:true}};
+  f.root.contains=()=>f.contains;
+  const current=captureGalleryViewGuard(f.root,{scope:()=>[f.owner,f.id,f.record],isActive:()=>f.active});
+  assert.equal(current(f.node),true);change(f);assert.equal(current(f.node),false);
 });
 
 test('guard captures mutable scope values and fails closed on errors',()=>{
@@ -60,55 +42,36 @@ test('guard captures mutable scope values and fails closed on errors',()=>{
   assert.equal(captureGalleryViewGuard(root,{scope:()=>{throw Error('not ready');},isActive:()=>true})(node),false);
 });
 
-test('rebind disposes old actions and collection inputs become usable again after save',async()=>{
-  const f=fixture();f.bind();f.bind();f.button.fire();await tick();assert.equal(f.calls,1);
-  await f.choice.choose('collection');await tick();assert.equal(f.calls,2);assert.deepEqual(f.record.collectionIds,['collection']);assert.equal(f.choice.list.buttons[0].disabled,false);
+test('gallery opens the same image info without resetting scroll, filters or paging',()=>{
+  const record={id:'one'},state={view:'gallery',gallerySearch:'kept'};let opened=null;
+  const root={scrollTop:620},c=vm.createContext({storyboardGalleryRecords:()=>[record],storyboardOpenImageInfo:async row=>{opened=row;},toast:()=>assert.fail('no error'),storyboardState:()=>state});
+  vm.runInContext(section('storyboardShowGalleryInspector'),c);
+  c.storyboardShowGalleryInspector(root,record);assert.equal(opened,record);assert.equal(root.scrollTop,620);assert.equal(state.gallerySearch,'kept');
+  opened=null;c.storyboardShowGalleryInspector(root,{id:'foreign'});assert.equal(opened,null);
 });
 
-test('only one pending detail action runs, but back remains available and stale completion is silent',async()=>{
-  const f=fixture(),wait=deferred();let writes=0;
-  f.bind({preview:async(row,{verify})=>{f.calls++;await wait.promise;await verify();writes++;}});
-  f.button.fire();f.button.fire();assert.equal(f.choice.list.buttons[0].disabled,true);f.back.fire();assert.equal(f.backs,1);
-  f.area.isConnected=false;wait.resolve();await tick();assert.equal(f.calls,1);assert.equal(writes,0);assert.equal(f.errors.length,0);
-});
-
-test('actual navigation keeps browser scroll and paging separate from detail scroll and focus',()=>{
-  const state={view:'gallery'},scrolls=new Map(),body={dataset:{storyboardPage:'gallery'},scrollTop:620,querySelector:()=>null},record={id:'one'};let focused=0;
-  const target={focus:options=>{assert.equal(options.preventScroll,true);focused++;}},card={dataset:{storyboardRecord:'one'},querySelector:()=>target};
-  const root={querySelector:selector=>selector==='[data-gallery-detail-back]'?target:body,querySelectorAll:()=>[card]};
-  const c=vm.createContext({storyboardState:()=>state,storyboardGalleryKind:'stills',storyboardGalleryInspectorRecordId:'',storyboardGalleryVisibleCount:80,
-    storyboardPageScrolls:scrolls,storyboardPendingRestoreScroll:null,storyboardGalleryRecords:()=>[record],document:{querySelector:()=>null},
-    renderModal:()=>{body.dataset.storyboardPage=c.storyboardPageKey();body.scrollTop=c.storyboardPendingRestoreScroll;}});
-  vm.runInContext(['storyboardPageKey','storyboardScroller','storyboardRememberPageScroll','storyboardShowGalleryInspector','storyboardLeaveGalleryInspector'].map(section).join('\n'),c);
-  c.storyboardShowGalleryInspector(root,record);assert.equal(c.storyboardPageKey(),'gallery:detail');assert.equal(body.scrollTop,0);assert.equal(scrolls.get('gallery'),620);
-  body.scrollTop=120;c.storyboardLeaveGalleryInspector(root,record.id);assert.equal(c.storyboardPageKey(),'gallery');assert.equal(body.scrollTop,620);
-  assert.equal(c.storyboardGalleryVisibleCount,80);assert.equal(focused,2);
-});
-
-test('actual tag persistence requires the live detail guard before reading or saving records',()=>{
+test('actual tag persistence requires the live detail guard before reading or saving records',async()=>{
   const record={id:'one'},editor={dataset:{mediaTagEditor:'gallery:one'},_qianmuGalleryCurrent:()=>false};let reads=0,saves=0;
   const c=vm.createContext({storyboardGalleryRecords:()=>{reads++;return [record];},storyboardMediaTagValues:()=>['tag'],saveMetadata:()=>saves++});
-  vm.runInContext(section('storyboardPersistMediaTagEditor'),c);c.storyboardPersistMediaTagEditor(editor);assert.equal(reads,0);assert.equal(saves,0);
-  editor._qianmuGalleryCurrent=()=>true;c.storyboardPersistMediaTagEditor(editor);assert.deepEqual(record.tags,['tag']);assert.equal(saves,1);
+  vm.runInContext(section('storyboardPersistMediaTagEditor'),c);await c.storyboardPersistMediaTagEditor(editor);assert.equal(reads,0);assert.equal(saves,0);
+  editor._qianmuGalleryCurrent=()=>true;await c.storyboardPersistMediaTagEditor(editor);assert.deepEqual(record.tags,['tag']);assert.equal(saves,1);
 });
 
-test('actual detail binding shares complete variants, keeps style deferred, and location clears all other filters',async()=>{
-  const record={id:'shown',group:'same',createdAt:2},hidden={id:'hidden',group:'same',createdAt:1},other={id:'other',group:'other'};
-  const state={gallerySearch:'word',galleryTrack:'main_camera',galleryTagFilters:['red']};let options,opened,styleCalls=0,renders=0;
-  const current=()=>true,root={querySelector:()=>({})};
-  const c=vm.createContext({bindGalleryInspector:(_root,value)=>{options=value;},storyboardGalleryViewGuard:()=>current,
-    storyboardGalleryCollections:()=>[],
-    storyboardGalleryInspectorRecordId:'shown',storyboardGalleryRecords:()=>[hidden,record,other],storyboardGalleryGroupId:row=>row.group,
-    storyboardOpenLightbox:(rows,id,guard)=>{opened={rows,id,guard};},storyboardApplyRecordStyle:async()=>{styleCalls++;},
-    storyboardUpdateGalleryNarrative:()=>({selectRecord:value=>value===record}),storyboardState:()=>state,
-    storyboardGallerySelection:new Set(['shown']),storyboardGallerySelectMode:true,storyboardGalleryVisibleCount:80,
-    storyboardGalleryOpenCollectionId:'collection',storyboardPendingRestoreScroll:120,renderModal:()=>renders++});
-  vm.runInContext(section('storyboardBindGalleryInspector'),c);c.storyboardBindGalleryInspector(root);
-  assert.equal(options.readRecord(),record);assert.equal(styleCalls,0);
-  await options.actions.preview(record,{isCurrent:current});assert.deepEqual(Array.from(opened.rows),[record,hidden]);assert.equal(opened.id,'shown');assert.equal(opened.guard.isCurrent,current);
-  await options.actions.style(record,{verify:async()=>{}});assert.equal(styleCalls,1);
-  options.actions.source(record);assert.equal(c.storyboardGalleryInspectorRecordId,'');assert.equal(c.storyboardGalleryVisibleCount,40);assert.equal(c.storyboardPendingRestoreScroll,0);
-  assert.equal(state.gallerySearch,'');assert.equal(state.galleryTrack,'all');assert.equal(state.galleryTagFilters.length,0);assert.equal(c.storyboardGallerySelection.size,0);assert.equal(renders,1);
+test('actual unified entry accepts only the current record, preserves browsing state and reports open failure honestly',async()=>{
+  const record={id:'shown'},state={gallerySearch:'word',galleryTrack:'main_camera',galleryTagFilters:['red']};
+  let records=[record],opened=[],notices=[];
+  const c=vm.createContext({storyboardGalleryRecords:()=>records,storyboardEditPrompt:async options=>{opened.push(options);return true;},
+    toast:(...args)=>notices.push(args),storyboardState:()=>state,storyboardGallerySelection:new Set(['shown']),
+    storyboardGallerySelectMode:true,storyboardGalleryVisibleCount:80,storyboardGalleryOpenCollectionId:'collection',storyboardPendingRestoreScroll:120});
+  vm.runInContext(section('storyboardOpenImageInfo'),c);
+  assert.equal(await c.storyboardOpenImageInfo(record),true);assert.equal(opened.length,1);assert.equal(opened[0].record,record);assert.equal(opened[0].inspect,true);
+  assert.deepEqual(state,{gallerySearch:'word',galleryTrack:'main_camera',galleryTagFilters:['red']});
+  assert.equal(c.storyboardGalleryVisibleCount,80);assert.equal(c.storyboardGalleryOpenCollectionId,'collection');assert.equal(c.storyboardPendingRestoreScroll,120);
+  assert.deepEqual([...c.storyboardGallerySelection],['shown']);assert.equal(c.storyboardGallerySelectMode,true);
+  await c.storyboardOpenImageInfo({id:'shown'});records=[];await c.storyboardOpenImageInfo(record);records=[{id:'shown'}];await c.storyboardOpenImageInfo(record);
+  assert.equal(opened.length,1);assert.equal(notices.length,0);
+  records=[record];c.storyboardEditPrompt=async()=>{throw Error('read failed');};
+  assert.equal(await c.storyboardOpenImageInfo(record),false);assert.deepEqual(notices,[['read failed','warning']]);
 });
 
 test('actual view guard rejects chat id changes even with reused metadata and rejects non-gallery navigation',()=>{
@@ -147,40 +110,30 @@ test('actual explicit insertion rechecks after recipe read, and unchanged source
   const good=attachFixture();assert.equal(await good.c.storyboardAttachProductionRecord(good.record),true);assert.equal(good.saves,1);assert.equal(good.record.floor,0);
 });
 
-test('actual stale card cannot select/open, and confirmation cannot delete a replacement chat record',async()=>{
+test('actual cards expose only selection and unified details, and reject stale or replaced records',async()=>{
   const buttons=Object.fromEntries(['check','preview-record','inspect','delete-record'].map(name=>[name,new Node()]));
-  const record={id:'one'},store={storyboardImages:[record]},wait=deferred();let current=true,saves=0,opens=0;
+  const record={id:'one'},store={storyboardImages:[record]};let current=true,opens=0;
   const card={dataset:{storyboardMembers:'one'},querySelector:selector=>buttons[selector.replace('.sd-storyboard-gallery-','').replace('.sd-storyboard-','')]||null};
   const c=vm.createContext({galleryCardBindings:()=>[{card,record,variants:[record]}],galleryCurrent:()=>current,root:{querySelectorAll:()=>[card]},
     storyboardGalleryRecords:()=>store.storyboardImages,storyboardGalleryGroupId:()=> 'one',storyboardGallerySelection:new Set(),
-    storyboardGallerySelectMode:false,storyboardGalleryInspectorRecordId:'',storyboardShowGalleryInspector:()=>opens++,renderModal:()=>{},
-    confirmDialog:()=>wait.promise,getChatStore:()=>store,saveMetadata:async()=>{saves++;}});
+    storyboardGallerySelectMode:false,storyboardGalleryInspectorRecordId:'',storyboardOpenImageInfo:async()=>opens++,renderModal:()=>{},toast:()=>assert.fail('no error expected')});
   const source=section('bindStoryboardTabEvents'),start=source.indexOf("  galleryCardBindings(root.querySelectorAll('.sd-storyboard-gallery-card"),end=source.indexOf('  void storyboardRefreshSecretState',start);
-  vm.runInContext(source.slice(start,end),c);for(const button of Object.values(buttons))assert.equal(button.listeners.click.length,1);
-  buttons['delete-record'].fire();current=false;store.storyboardImages=[{id:'one',otherChat:true}];
-  buttons.check.fire();buttons['preview-record'].fire();buttons.inspect.fire();wait.resolve(true);await tick();
-  assert.equal(saves,0);assert.equal(opens,0);assert.equal(c.storyboardGallerySelection.size,0);assert.equal(store.storyboardImages[0].otherChat,true);
+  vm.runInContext(section('storyboardShowGalleryInspector')+'\n'+source.slice(start,end),c);
+  assert.equal(buttons.check.listeners.click.length,1);assert.equal(buttons['preview-record'].listeners.click.length,1);
+  assert.equal(buttons.inspect.listeners.click,undefined);assert.equal(buttons['delete-record'].listeners.click,undefined);
+  buttons['preview-record'].fire();assert.equal(opens,1);
+  current=false;buttons.check.fire();buttons['preview-record'].fire();assert.equal(opens,1);assert.equal(c.storyboardGallerySelection.size,0);
+  current=true;store.storyboardImages=[{id:'one',otherChat:true}];buttons.check.fire();buttons['preview-record'].fire();await tick();
+  assert.equal(opens,1);assert.equal(c.storyboardGallerySelection.size,0);assert.equal(store.storyboardImages[0].otherChat,true);
 });
 
-test('detail presents only 24 collection choices even when 5001 collections exist',()=>{
-  const collections=Array.from({length:5001},(_,i)=>({id:'c'+i,name:'Collection '+i}));
-  const html=renderGalleryInspector({id:'one'},{collections,collectionIds:['c5000','legacy']});
-  assert.equal((html.match(/data-choice-id=/g)||[]).length,24);assert.match(html,/已选 2/);assert.doesNotMatch(html,/data-gallery-detail-collection/);
-});
-
-test('actual detail edits preserve page-external and absent-library memberships',async()=>{
-  const f=fixture();f.collections=Array.from({length:80},(_,i)=>({id:'c'+i,name:'Collection '+i}));f.record.collectionIds=['c0','c50','legacy'];f.bind();
-  await f.choice.choose('c0');assert.deepEqual(f.record.collectionIds,['c50','legacy']);
-  await f.choice.search('legacy');await f.choice.choose('legacy');assert.deepEqual(f.record.collectionIds,['c50']);assert.equal(f.errors.length,0);
-});
-
-test('actual detail can remove one old over-limit membership without silently clipping others; additions are rejected',async()=>{
-  const f=fixture();f.collections=Array.from({length:80},(_,i)=>({id:'c'+i,name:'Collection '+i}));f.record.collectionIds=f.collections.slice(0,40).map(row=>row.id);f.bind();
-  await f.choice.choose('c0');assert.equal(f.record.collectionIds.length,39);await f.choice.search('Collection 50');await f.choice.choose('c50');
-  assert.equal(f.record.collectionIds.length,39);assert.equal(f.record.collectionIds.includes('c50'),false);assert.match(f.errors[0].message,/最多归入 30/);
-});
-
-test('pending collection save excludes a competing preview immediately and rechecks source before writing',async()=>{
-  const f=fixture(),wait=deferred();f.save=()=>wait.promise;f.bind();const pending=f.choice.choose('collection');f.button.fire();await tick();
-  assert.equal(f.calls,0);f.back.fire();assert.equal(f.backs,1);f.owner={};wait.resolve();await pending;assert.equal(f.calls,0);assert.equal(f.errors.length,0);
+test('unified deletion rechecks its live source guard after confirmation and cannot delete a replacement chat record',async()=>{
+  const record={id:'one'},replacement={id:'one',otherChat:true},store={storyboardImages:[record]},wait=deferred();let saves=0;
+  const c=vm.createContext({confirmDialog:()=>wait.promise,getChatStore:()=>store,storyboardAdmissionEpoch:1,getChatKey:()=> 'chat',
+    saveMetadata:async()=>{saves++;},storyboardGallerySelection:new Set(),storyboardDeleteRecordSnapshots:()=>assert.fail('no archive deletion'),
+    storyboardRenderInlineImages:()=>assert.fail('no inline mutation'),rerenderIfOpen:()=>assert.fail('no rerender')});
+  vm.runInContext(section('storyboardRemoveImage'),c);
+  const pending=c.storyboardRemoveImage(record,async()=>{if(!store.storyboardImages.includes(record))throw Error('source changed');});
+  store.storyboardImages=[replacement];wait.resolve(true);await assert.rejects(pending,/source changed/);
+  assert.equal(saves,0);assert.deepEqual(store.storyboardImages,[replacement]);
 });
