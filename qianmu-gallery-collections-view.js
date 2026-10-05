@@ -9,14 +9,16 @@ export function galleryRecordSourceCharacter(record,location,{snapshot}={}){
     || (snapshot?.messageRef?.role==='assistant'?snapshot.messageRef.name:'') || location?.name || '').trim();
 }
 export function galleryBrowserProjection(records,manualCollections,{sourceFor=()=>null}={}){
-  const names=new Map(),locations=new Map(),automatic=new Map(),ids=new Set(manualCollections.map(row=>row.id));
+  const names=new Map(),locations=new Map(),automatic=new Map(),counts=new Map(),ids=new Set(manualCollections.map(row=>row.id));
   for(const record of records){
     const location=sourceFor(record),name=galleryRecordSourceCharacter(record,location);locations.set(record,location);names.set(record,name);
+    if(name)counts.set(name,(counts.get(name)||0)+1);
     if(name&&!automatic.has(name)){
       let id=`source-char:${encodeURIComponent(name)}`;while(ids.has(id))id=`source-char:${id}`;ids.add(id);
       automatic.set(name,{id,name,automatic:true,createdAt:Number(record.createdAt)||0});
     }
   }
+  for(const name of automatic.keys())if(counts.get(name)<2)automatic.delete(name);
   const memberships=record=>{const collection=automatic.get(names.get(record));return [...galleryMembershipIds(record),...(collection?[collection.id]:[])];};
   const collections=[...automatic.values(),...manualCollections];
   return {collections,collectionNames:new Map(collections.map(row=>[row.id,row.name])),memberships,sourceName:record=>names.get(record)||'',location:record=>locations.get(record)};
@@ -42,7 +44,7 @@ export function galleryCollectionEntries(collections,{summary,visible=summary,qu
     if(restricted&&!count&&(!nameMatch||otherFilters))return [];
     const clearSearch=Boolean(nameMatch&&!count&&!otherFilters);
     return [{kind:'collection',collection,clearSearch,count:clearSearch?summary.collectionCount(collection.id):count,
-      matched:restricted&&!clearSearch,cover:(clearSearch?summary:visible).collectionPreview(collection.id)}];
+      matched:restricted&&!clearSearch,cover:(clearSearch?summary:visible).collectionPreview(collection.id),covers:(clearSearch?summary:visible).collectionPreviews(collection.id)}];
   }).sort((a,b)=>(Number(b.collection.createdAt)||0)-(Number(a.collection.createdAt)||0));
 }
 
@@ -66,10 +68,12 @@ export function galleryBrowserWindow(groups,collections,cursor){
 }
 
 export function renderGalleryCollectionTile(entry,{safeUrl}){
-  const {collection,cover,count,matched,clearSearch}=entry,url=cover?safeUrl(cover.url):'';
+  const {collection,cover,count,matched,clearSearch}=entry;
+  const urls=(entry.covers||[cover]).filter(Boolean).slice(0,4).map(record=>safeUrl(record.url));
+  const mosaic=Array.from({length:4},(_,index)=>`<span>${urls[index]?`<img src="${escape(urls[index])}" loading="lazy" alt="">`:''}</span>`).join('');
   return `<article class="sd-gallery-collection-tile" data-gallery-collection="${escape(collection.id)}" data-gallery-collection-clear-search="${clearSearch}">
-    <button type="button" class="sd-media-collection-open" aria-label="打开合集：${escape(collection.name)}">${url?`<img src="${escape(url)}" loading="lazy" alt="">`:'<span class="sd-gallery-collection-empty"><i class="fa-regular fa-folder"></i></span>'}
-      <span class="sd-gallery-collection-mark"><i class="fa-regular fa-folder"></i>合集</span><span class="sd-gallery-collection-caption"><b>${escape(collection.name)}</b><small>${count} ${matched?'张匹配':'张'}</small></span></button>
+    <button type="button" class="sd-media-collection-open" aria-label="打开合集：${escape(collection.name)}"><span class="sd-gallery-collection-mosaic ${urls.some(Boolean)?'':'sd-gallery-collection-empty'}">${mosaic}</span>
+      <span class="sd-gallery-collection-caption"><b>${escape(collection.name)}</b><small>${count} ${matched?'张匹配':'张'}</small></span></button>
     ${collection.automatic?'':`<div class="sd-gallery-collection-actions">${renderGalleryCollectionActions()}</div>`}</article>`;
 }
 export function renderGalleryCollectionActions(){
@@ -83,11 +87,9 @@ export function renderGalleryCollectionPath(collection){
 export function renderGalleryImageCard(group,{url='',production={},sourceLabel='',sourceCharacter='',selectionMode=false,selection=new Set(),inspectedId=''}){
   const record=group.variants[0],memberIds=group.variants.map(item=>item.id),selected=memberIds.length>0&&memberIds.every(id=>selection.has(id));
   const tags=Array.isArray(record.tags)?record.tags:typeof record.tags==='string'&&record.tags?[record.tags]:[];
-  const model=record.source==='comfy'?'ComfyUI':String(record.model||'').trim()||sourceLabel||'分镜';
   const source=production.track==='main_camera'?'正文主线':production.sourceLabel||'';
-  return `<article class="sd-storyboard-gallery-card ${selected?'selected':''} ${inspectedId===record.id?'inspected':''} ${group.variants.length>1?'is-stack':''}" data-storyboard-record="${escape(record.id)}" data-storyboard-group="${escape(group.id)}" data-storyboard-members="${escape(memberIds.join(','))}">
-    ${selectionMode?`<button type="button" class="sd-storyboard-gallery-check" aria-label="${selected?'取消选择':'选择'}"><i class="fa-solid ${selected?'fa-square-check':'fa-square'}"></i></button>`:''}
-    <button type="button" class="sd-storyboard-preview-record" aria-label="打开画面详情" ${url?'':'disabled'}>${url?`<img src="${escape(url)}" loading="lazy" alt="插画">`:'<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}
-    <span class="sd-gallery-model-label" title="${escape(model)}">${escape(model)}</span>${group.variants.length>1?`<span class="sd-storyboard-stack-count">${group.variants.length}</span>`:''}</button>
-    <div class="sd-storyboard-gallery-caption"><span class="sd-storyboard-production-label ${production.track==='second_camera'?'second-camera':''}">${escape([sourceCharacter,source].filter(Boolean).join(' · '))}</span>${tags.length?`<div class="sd-storyboard-gallery-card-tags" title="${escape(tags.join(' · '))}">${tags.map(tag=>`<em>${escape(tag)}</em>`).join('')}</div>`:''}</div></article>`;
+  return `<article class="sd-storyboard-gallery-card ${selected?'selected':''} ${selectionMode?'is-selecting':''} ${inspectedId===record.id?'inspected':''} ${group.variants.length>1?'is-stack':''}" data-storyboard-record="${escape(record.id)}" data-storyboard-group="${escape(group.id)}" data-storyboard-members="${escape(memberIds.join(','))}" ${selectionMode?`tabindex="0" role="checkbox" aria-checked="${selected}" aria-label="选择画面"`:''}>
+    <button type="button" class="sd-storyboard-preview-record" aria-label="${selectionMode?'选择画面':'打开画面详情'}" ${selectionMode?'tabindex="-1"':''} ${url||selectionMode?'':'disabled'}>${url?`<img src="${escape(url)}" loading="lazy" alt="插画">`:'<span class="sd-storyboard-image-missing"><i class="fa-solid fa-image"></i></span>'}
+    ${group.variants.length>1?`<span class="sd-storyboard-stack-count">${group.variants.length}</span>`:''}</button>
+    <div class="sd-storyboard-gallery-caption"><span class="sd-storyboard-production-label ${production.track==='second_camera'?'second-camera':''}">${escape([sourceCharacter,source].filter(Boolean).join(' · '))}</span>${tags.length?`<div class="sd-storyboard-gallery-card-tags" title="${escape(tags.join(' · '))}">${tags.slice(0,3).map(tag=>`<em>${escape(tag)}</em>`).join('')}${tags.length>3?`<em class="sd-gallery-card-tag-overflow" aria-label="${escape(tags.slice(3).join(' · '))}">…</em>`:''}</div>`:''}</div></article>`;
 }

@@ -82,13 +82,13 @@ test('visible collection tile escapes metadata, validates URL, leaves image rati
   assert.equal(renderGalleryCollectionPath(null),'');assert.match(renderGalleryCollectionPath(entry.collection),/data-gallery-root/);
 });
 
-test('image card model badge uses recorded model only, escapes text and retains complete group selection',()=>{
+test('image card uses whole-card accessible selection without visible checkbox or model badges',()=>{
   const group={id:'g',variants:[{id:'a',source:'novel',model:'<model>',tags:'legacy',floor:0},{id:'b'}]},before=JSON.stringify(group);
   const html=renderGalleryImageCard(group,{url:'/ok',selectionMode:true,selection:new Set(['a','b'])});
-  assert.match(html,/data-storyboard-members="a,b"/);assert.match(html,/fa-square-check/);assert.match(html,/sd-gallery-model-label" title="&lt;model&gt;"/);
+  assert.match(html,/data-storyboard-members="a,b"/);assert.match(html,/role="checkbox" aria-checked="true"/);assert.doesNotMatch(html,/fa-square|sd-gallery-model-label|<model>/);
   assert.match(html,/<em>legacy<\/em>/);assert.equal(JSON.stringify(group),before);assert.match(html,/sd-storyboard-stack-count">2/);
-  assert.match(renderGalleryImageCard({id:'x',variants:[{id:'x'}]},{sourceLabel:'ComfyUI'}),/ComfyUI/);
-  const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');assert.match(css,/\.sd-gallery-model-label \{[^}]*top: 8px; right: 8px/);
+  assert.doesNotMatch(renderGalleryImageCard({id:'x',variants:[{id:'x'}]},{sourceLabel:'ComfyUI'}),/ComfyUI/);
+  const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
   assert.match(css,/\.sd-gallery-browser-main \.sd-storyboard-gallery \{ columns: 2 118px/);
 });
 
@@ -141,7 +141,7 @@ function events(){
   card.querySelector=selector=>buttons[selector.replace('.sd-media-collection-','')];
   const root={querySelector:selector=>nodes[selector]||null,querySelectorAll:selector=>selector==='[data-gallery-collection]'?[card]:selector==='[data-gallery-tag-filter]'?[tag]:[]};
   const state={gallerySearch:'',galleryTagFilters:[]};
-  const c=vm.createContext({root,state,bindGalleryBulkCollections,bindGalleryKeywordChoices,galleryMembershipIds,assignGalleryMemberships,storyboardState:()=>state,storyboardGalleryViewGuard:()=>node=>f.current&&node.isConnected,
+  const c=vm.createContext({root,state,bindGalleryBulkCollections,bindGalleryKeywordChoices,bindGalleryToolbar:()=>{},applyQianmuIcons:()=>{},appearanceSession:{mountPortal:()=>()=>{}},openGalleryNameDialog:()=>f.prompt(),galleryMembershipIds,assignGalleryMemberships,storyboardState:()=>state,storyboardGalleryViewGuard:()=>node=>f.current&&node.isConnected,
     storyboardGalleryCollections:()=>store.storyboardCollections,storyboardGalleryRecords:()=>store.storyboardImages,storyboardGalleryBrowserData:()=>({collections:store.storyboardCollections}),
     storyboardFilteredGalleryRecords:()=>store.storyboardImages,storyboardItemCollectionIds:row=>row.collectionIds||[],
     storyboardAssignCollectionIds:(row,ids)=>row.collectionIds=[...new Set(ids)],getChatStore:()=>store,
@@ -211,7 +211,7 @@ test('failed bulk delete keeps prior records and selection while preserving a co
 test('search placeholder shows total picture count only while focused and empty',async()=>{
   const f=events(),input=f.nodes['.sd-storyboard-gallery-search'];input.dataset.galleryCount='45';
   await input.fire('focus');assert.equal(input.placeholder,'图库 45 张画面');
-  await input.fire('blur');assert.equal(input.placeholder,'搜索画面、角色、标签或合集');
+  await input.fire('blur');assert.equal(input.placeholder,'搜索任意关键词');
 });
 test('failed dissolve restores its own collection after an intervening reader and preserves new folders',async()=>{
   const f=events(),created={id:'other',name:'Other'};

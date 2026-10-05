@@ -169,11 +169,11 @@ test('actual empty gallery still displays empty collection and filters cannot si
   assert.doesNotMatch(html,/data-gallery-collection=/);
 });
 
-test('actual large mixed render reads cover URLs only for visible tiles and model badges only for visible cards',()=>{
+test('actual large mixed render reads at most four covers per visible collection and never reads model badges',()=>{
   const e=rendererFixture(5001,501);let urls=0,models=0;
   for(const row of e.rows){Object.defineProperty(row,'url',{get(){urls++;return '/image.png';}});Object.defineProperty(row,'model',{get(){models++;return 'recorded-model';}});}
-  const html=e.c.renderStoryboardGallery(e.state);assert.equal(urls,40);assert.equal(models,30);
-  assert.equal((html.match(/class="sd-gallery-model-label"/g)||[]).length,30);assert.equal(e.collectionReads,5001);
+  const html=e.c.renderStoryboardGallery(e.state);assert.equal(urls,70);assert.equal(models,0);
+  assert.equal((html.match(/class="sd-gallery-model-label"/g)||[]).length,0);assert.equal(e.collectionReads,5001);
 });
 
 test('actual selected gallery renders bounded bulk choices instead of thousands of select options',()=>{

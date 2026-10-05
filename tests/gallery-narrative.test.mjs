@@ -161,7 +161,7 @@ test('production gallery uses narrative source metadata without exposing a secon
     assert.doesNotMatch(storyboardFunctionSource('renderStoryboardGallery'),/renderGalleryNarrative|已保存图库|角色与聊天|data-gallery-detail=/);
     assert.doesNotMatch(source,/storyboardBindGalleryNarrative\(root\)|storyboardBindGalleryInspector\(root\)/);
     assert.match(storyboardFunctionSource('storyboardGalleryBrowserData'),/storyboardUpdateGalleryNarrative\(\)[\s\S]*sourceFor\(record\)/);
-    assert.match(storyboardFunctionSource('storyboardShowGalleryInspector'),/storyboardOpenImageInfo\(record\)/);
+    assert.match(storyboardFunctionSource('storyboardShowGalleryInspector'),/storyboardOpenImageInfo\(record,\{readonly:true\}\)/,'gallery opens the reading surface, not the prose prompt editor');
     assert.ok(!source.includes('class="text_pole sd-storyboard-gallery-source"'));
     const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
     for (const name of ['qianmu-gallery-narrative.js', 'qianmu-gallery-collections-view.js','qianmu-image-info-view.js']) assert.ok(release.files.includes(name));

@@ -2,30 +2,55 @@ import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
 import {galleryCollectionChoices} from './qianmu-gallery-membership.js';
 
 const icon=(name,label,attrs='')=>`<button type="button" class="sd-icon-btn" ${attrs} aria-label="${escape(label)}" title="${escape(label)}"><i class="fa-solid fa-${name}"></i></button>`;
+// Read only the preserved request, never rebuild history from today's settings.
+export function imageInfoFinalPrompts(record={},snapshot=null) {
+  const payload=snapshot?.payload,options=payload?.parameters?.providerOptions;
+  const read=(field,stored,nativeKey)=>{
+    const caption=(snapshot?.source||record.source)==='novel'?options?.[nativeKey]?.caption:null;
+    if(typeof caption?.base_caption==='string')return {value:[caption.base_caption,...(Array.isArray(caption.char_captions)?caption.char_captions:[]).map(item=>typeof item?.char_caption==='string'?item.char_caption:'')].filter(Boolean).join('\n\n'),available:true};
+    if(typeof payload?.[field]==='string')return {value:payload[field],available:true};
+    if(typeof record[stored]==='string')return {value:record[stored],available:true};
+    return {value:'',available:false};
+  };
+  const positive=read('prompt','finalPrompt','v4_prompt'),negative=read('negative','effectiveNegative','v4_negative_prompt');
+  return {positive:positive.value,negative:negative.value,positiveAvailable:positive.available,negativeAvailable:negative.available};
+}
+export function imageInfoParameterMarkup(record={},snapshot=null) {
+  const p=snapshot?.payload?.parameters,rows=[],read=(key,legacy=key)=>p?p[key]:record[legacy];
+  const number=(value)=>value!==''&&value!=null&&Number.isFinite(Number(value))?Number(value):null;
+  const add=(label,value)=>{if(value!==''&&value!=null)rows.push(`<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`);};
+  const width=number(read('width')),height=number(read('height'));
+  if(width>0&&height>0)add('尺寸',`${width} × ${height}`);
+  const steps=number(read('steps')),cfg=number(p?(p.cfg??p.scale??p.guidanceScale):record.cfg),seed=read('seed');
+  if(steps>0)add('步数',steps);if(cfg>0)add('引导',cfg);
+  add('种子',seed);add('采样',read('sampler'));add('调度',read('scheduler'));
+  return rows.length?`<dl class="sd-image-info-parameter-grid">${rows.join('')}</dl>`:'';
+}
 function collectionChips(collections,ids){
   return galleryCollectionChoices(collections,ids).filter(item=>ids.includes(item.id)).map(item=>`<span class="sd-media-tag-chip"><span>${escape(item.label)}</span>${icon('xmark','移出合集 '+item.label,`data-image-collection-remove="${escape(item.id)}"`)}</span>`).join('');
 }
-export function renderImageInfo({record=null,positive='',negative='',characters='',characterNames=[],sourceCharacter='',modelLabel='',extra='',parameters='',tagEditor='',collections=[],collectionIds=[],organizeActions=''}={}) {
-  const readonly=record?.recipeUnavailable===true;
-  const names=[...new Set(characterNames.filter(name=>typeof name==='string'&&name.trim()).map(name=>name.trim()))];
-  return `<header>${icon('arrow-left','返回','data-image-info-close')}<h2>${record?'画面详情':'编辑提示词'}</h2>${modelLabel?`<span class="sd-image-info-model">${escape(modelLabel)}</span>`:''}</header>
+export function renderImageInfo({record=null,positive='',negative='',characters='',characterNames=[],sourceCharacter='',modelLabel='',extra='',parameters='',tagEditor='',collections=[],collectionIds=[],organizeActions='',readonly=false,positiveAvailable=true,negativeAvailable=true}={}) {
+  const locked=readonly||record?.recipeUnavailable===true;
+  const names=[...new Set(characterNames.filter(name=>typeof name==='string'&&name.trim()).map(name=>name.trim()))].filter(name=>name!==sourceCharacter.trim());
+  const promptCard=(field,label,value,available)=>`<section class="sd-image-info-prompt"><span>${label}${available?icon('copy','复制'+label,`data-image-info-copy="${field}"`):''}</span>${readonly?`<div class="sd-image-info-prompt-text${available?'':' is-empty'}" data-image-info-${field}>${escape(available?(value||'无'):'未保留最终提示词')}</div>`:`<textarea data-image-info-${field} rows="${field==='positive'?7:3}" maxlength="${field==='positive'?24000:12000}" ${locked?'readonly':''}>${escape(value)}</textarea>`}</section>`;
+  return `<header>${icon('arrow-left','返回','data-image-info-close data-image-info-back')}<h2>${record?'画面详情':'编辑提示词'}</h2>${modelLabel?`<span class="sd-image-info-model">${escape(modelLabel)}</span>`:''}</header>
     <div class="sd-image-info-body">
-    ${record?.url?`<div class="sd-image-info-media"><button type="button" class="sd-image-info-preview" data-image-info-action="preview" aria-label="全屏看图"><img src="${escape(record.url)}" alt="当前插画"></button><div class="sd-image-info-quick-menu"><div data-image-info-menu hidden>${icon('download','下载','data-image-info-action="download"')}${icon('trash-can','删除','data-image-info-action="delete"')}</div>${icon('ellipsis','图片菜单','data-image-info-menu-toggle aria-expanded="false"')}</div></div>`:''}
+    ${record?.url?`<div class="sd-image-info-media"><button type="button" class="sd-image-info-preview" data-image-info-action="preview" aria-label="全屏看图"><img src="${escape(record.url)}" alt="当前插画"></button><div class="sd-image-info-quick-menu">${icon('download','下载','data-image-info-action="download"')}${icon('trash-can','删除','data-image-info-action="delete"')}</div></div>`:''}
     ${sourceCharacter||names.length?`<div class="sd-image-info-cast">${sourceCharacter?`<span class="sd-image-info-source-character">${escape(sourceCharacter)}</span>`:''}${names.map(name=>`<span>${escape(name)}</span>`).join('')}</div>`:''}
-    ${record?`<section class="sd-image-info-organize"><div class="sd-image-info-tag-section"><span>标签</span>${tagEditor}</div><div class="sd-image-info-collection-section"><span>合集</span><div class="sd-image-info-collection-chips"><span data-image-collection-chips>${collectionChips(collections,collectionIds)}</span>${icon('plus','添加合集','data-image-collection-add')}</div><div class="sd-image-info-collection-editor" hidden><div class="sd-image-info-collection-input"><input data-image-collection-input maxlength="80" placeholder="选择合集或输入新名称" aria-label="合集名称">${icon('xmark','取消添加合集','data-image-collection-cancel')}${icon('check','确认合集','data-image-collection-confirm')}</div><div data-image-collection-options></div></div></div>${organizeActions}</section>`:''}
-    <label class="sd-image-info-prompt"><span>正面提示词<button type="button" class="sd-icon-btn" data-image-info-copy="positive" aria-label="复制正面提示词"><i class="fa-solid fa-copy"></i></button></span><textarea data-image-info-positive rows="7" maxlength="24000" ${readonly?'readonly':''}>${escape(positive)}</textarea></label>
-    <label class="sd-image-info-prompt"><span>负面提示词<button type="button" class="sd-icon-btn" data-image-info-copy="negative" aria-label="复制负面提示词"><i class="fa-solid fa-copy"></i></button></span><textarea data-image-info-negative rows="3" maxlength="12000" ${readonly?'readonly':''}>${escape(negative)}</textarea></label>
-    ${characters?`<details class="sd-image-info-characters"><summary>人物详情</summary><button type="button" data-image-info-reset-characters hidden>撤销人物修改</button><div data-image-info-characters>${characters}</div></details>`:''}${extra}
+    ${record?`<section class="sd-image-info-organize"><div class="sd-image-info-tag-section"><span>标签</span>${tagEditor}</div><div class="sd-image-info-collection-section"><span>合集</span><div class="sd-image-info-collection-chips"><span data-image-collection-chips>${collectionChips(collections,collectionIds)}</span><button type="button" class="sd-media-tag-chip sd-image-info-chip-add" data-image-collection-add aria-label="添加合集"><i class="fa-solid fa-plus"></i></button></div><div class="sd-image-info-collection-editor" hidden><div class="sd-image-info-collection-input"><input data-image-collection-input maxlength="80" placeholder="选择合集或输入新名称" aria-label="合集名称">${icon('xmark','取消添加合集','data-image-collection-cancel')}${icon('check','确认合集','data-image-collection-confirm')}</div><div data-image-collection-options></div></div></div>${readonly?'':organizeActions}</section>`:''}
+    ${promptCard('positive','正面提示词',positive,positiveAvailable)}
+    ${promptCard('negative','负面提示词',negative,negativeAvailable)}
+    ${!readonly&&characters?`<details class="sd-image-info-characters"><summary>人物详情</summary><button type="button" data-image-info-reset-characters hidden>撤销人物修改</button><div data-image-info-characters>${characters}</div></details>`:''}${readonly?'':extra}
     ${parameters?`<details class="sd-image-info-parameters"><summary>生成参数</summary>${parameters}</details>`:''}
-    ${record?`<div class="sd-image-info-actions"><button type="button" data-image-info-action="motion">让镜头动起来</button>${Number.isInteger(record.floor)&&!record.restoreLinkReview?`<button type="button" data-image-info-action="inline">${record.inline===false?'放回正文':'移出正文'}</button>`:''}</div>`:''}
+    ${!readonly&&record?`<div class="sd-image-info-actions"><button type="button" data-image-info-action="motion">让镜头动起来</button>${Number.isInteger(record.floor)&&!record.restoreLinkReview?`<button type="button" data-image-info-action="inline">${record.inline===false?'放回正文':'移出正文'}</button>`:''}</div>`:''}
     <p class="sd-image-info-status" role="status" aria-live="polite"></p></div>
-    <footer><button type="button" data-image-info-close>取消</button>${readonly?'':`<button type="button" class="sd-primary" data-image-info-generate>保存并生成</button>`}</footer>`;
+    ${readonly?'':`<footer><button type="button" data-image-info-close>取消</button>${locked?'':`<button type="button" class="sd-primary" data-image-info-generate>保存并生成</button>`}</footer>`}`;
 }
 
 // One owned surface for prose and gallery. Draft fields never mutate a record.
 export function openImageInfo({document=globalThis.document,mountPortal=()=>()=>{},applyIcons=()=>{},guard=async()=>{},copy,
   onGenerate,onAction=async()=>{},onMount=()=>{},onCollections,readCollections=()=>options.collections||[],readCollectionIds=()=>options.collectionIds||[],...options}={}) {
-  const dialog=document.createElement('dialog');dialog.className='sd-image-info-dialog';dialog.setAttribute('aria-label',options.record?'插画信息':'编辑提示词');
+  const dialog=document.createElement('dialog');dialog.className='sd-image-info-dialog'+(options.readonly?' sd-image-info-readonly':'');dialog.setAttribute('aria-label',options.record?'插画信息':'编辑提示词');
   dialog.innerHTML=renderImageInfo(options);const returnTarget=document.activeElement;
   const positive=dialog.querySelector('[data-image-info-positive]'),negative=dialog.querySelector('[data-image-info-negative]'),status=dialog.querySelector('.sd-image-info-status'),submit=dialog.querySelector('[data-image-info-generate]'),resetCharacters=dialog.querySelector('[data-image-info-reset-characters]');
   let closed=false,pending=false,submitting=false,unmount=()=>{},resolve;const finished=new Promise(done=>{resolve=done;});
@@ -47,12 +72,10 @@ export function openImageInfo({document=globalThis.document,mountPortal=()=>()=>
   dialog.addEventListener('input',event=>{if(event.target.closest('[data-image-info-characters]'))dialog.dataset.charactersChanged='true';update();});
   dialog.addEventListener('change',event=>{if(event.target.closest('[data-image-info-characters]'))dialog.dataset.charactersChanged='true';update();});
   resetCharacters?.addEventListener('click',()=>void run(async verify=>{await verify();dialog.querySelector('[data-image-info-characters]').innerHTML=options.characters;dialog.dataset.charactersChanged='false';applyIcons(dialog);status.textContent='已撤销人物修改，提示词保留';}));
-  dialog.querySelectorAll('[data-image-info-copy]').forEach(button=>button.addEventListener('click',()=>void run(async verify=>{await copy(button.dataset.imageInfoCopy==='positive'?positive.value:negative.value);await verify();status.textContent='已复制';})));
+  dialog.querySelectorAll('[data-image-info-copy]').forEach(button=>button.addEventListener('click',()=>void run(async verify=>{const field=button.dataset.imageInfoCopy;await copy(options.readonly?options[field]:field==='positive'?positive.value:negative.value);await verify();status.textContent='已复制';})));
   dialog.querySelectorAll('[data-image-info-action]').forEach(button=>button.addEventListener('click',()=>void run(async verify=>{
-    const menu=dialog.querySelector('[data-image-info-menu]');if(menu)menu.hidden=true;dialog.querySelector('[data-image-info-menu-toggle]')?.setAttribute('aria-expanded','false');
     const result=await onAction(button.dataset.imageInfoAction,{verify,close,host:dialog});if(result==='close')close();
   })));
-  dialog.querySelector('[data-image-info-menu-toggle]')?.addEventListener('click',event=>{const menu=dialog.querySelector('[data-image-info-menu]');menu.hidden=!menu.hidden;event.currentTarget.setAttribute('aria-expanded',String(!menu.hidden));});
   submit?.addEventListener('click',()=>void run(async verify=>{
     submitting=true;update();
     const draft=values();if(!draft.positive)throw Error('请填写正面提示词');

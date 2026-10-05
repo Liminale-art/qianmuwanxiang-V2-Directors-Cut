@@ -6,16 +6,16 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
-const ENTRY_RELEASE = '1.59.440';
-const STYLE_RELEASE = '1.59.440';
+const ENTRY_RELEASE = '1.59.441';
+const STYLE_RELEASE = '1.59.441';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);
 // Only the floor-tools path consumes the updated busy-button behavior. The
 // other floor-entry consumers use unchanged prose/character predicates.
-const moduleRelease = (file,parent) => file === 'index.js' || file === 'qianmu-prose-floor-tools.js'
+const moduleRelease = (file,parent) => file === 'index.js' ? ENTRY_RELEASE : file === 'qianmu-prose-floor-tools.js'
   || file === 'qianmu-icon-renderer.js' && parent === 'index.js'
-  || file === 'qianmu-prose-floor-entries.js' && parent === 'qianmu-prose-floor-tools.js' ? ENTRY_RELEASE
+  || file === 'qianmu-prose-floor-entries.js' && parent === 'qianmu-prose-floor-tools.js' ? '1.59.440'
   : localLoaderClosure.has(file) ? '1.59.425' : file === 'qianmu-storyboard-capture-view.js' ? '1.59.424' : file === 'qianmu-main-tabs.js' ? '1.59.421' : ICONSAX_RELEASE;
 // Refresh the real reverse import closure of changed client modules, including
 // both consumers of the shared notes facade. Comment-only store edits do not

@@ -1,21 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {galleryBrowserProjection,galleryRecordSourceCharacter,galleryRecordMatchesQuery,renderGalleryImageCard,renderGalleryCollectionPath} from '../qianmu-gallery-collections-view.js';
 import {renderGalleryBulkCollections} from '../qianmu-gallery-taxonomy.js';
 import {renderGalleryKeywordFilters} from '../qianmu-gallery-keywords-view.js';
+import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+
+test('gallery global listeners are released before rerender, close, disable and the non-storyboard early return',()=>{
+  for(const name of ['renderModal','closeModal','bindStoryboardTabEvents'])assert.match(section(name),/_sdGalleryToolbarCleanup\?\.\(\)/,name);
+  const entry=readFileSync(new URL('../index.js',import.meta.url),'utf8'),disable=entry.slice(entry.indexOf('export async function onDisable()'));assert.match(disable,/_sdGalleryToolbarCleanup\?\.\(\)/);
+  const source=section('bindStoryboardTabEvents');assert.ok(source.indexOf('_sdGalleryToolbarCleanup')<source.indexOf("if (activeTab !== 'imagegen') return;"));
+});
 
 test('source-character collections derive only saved assistant metadata, never read recipes or rewrite memberships',()=>{
   const records=[{id:'a',messageRef:{name:'Alice',role:'assistant'},collectionIds:['manual']},{id:'b',messageRef:{name:'Alice',role:'assistant'}},{id:'c',messageRef:{name:'User',role:'user'}},{id:'d',sourceCharacterName:'Bob'}];
   const before=JSON.stringify(records);for(const row of records)Object.defineProperty(row,'snapshot',{get(){assert.fail('ordinary gallery must not read recipes');}});
   const result=galleryBrowserProjection(records,[{id:'manual',name:'Manual'}]);
-  assert.equal(result.collections.length,3);assert.equal(result.collections[0].name,'Alice');assert.equal(result.collections[1].name,'Bob');
+  assert.equal(result.collections.length,2);assert.equal(result.collections[0].name,'Alice');assert.equal(result.collections[1].name,'Manual');assert.deepEqual(result.memberships(records[3]),[]);
   assert.deepEqual(result.memberships(records[0]),['manual','source-char:Alice']);assert.deepEqual(result.memberships(records[2]),[]);
   assert.equal(JSON.stringify(records),before);assert.equal(galleryRecordSourceCharacter(records[2]),'');
   assert.equal(galleryRecordSourceCharacter(records[2],{name:'Verified source'}),'Verified source');
   assert.doesNotMatch(renderGalleryCollectionPath(result.collections[0]),/rename|delete/);
 });
 test('derived character collection ids cannot collide with manual collection ids',()=>{
-  const result=galleryBrowserProjection([{id:'x',sourceCharacterName:'Alice'}],[{id:'source-char:Alice',name:'Manual'}]);
+  const result=galleryBrowserProjection([{id:'x',sourceCharacterName:'Alice'},{id:'y',sourceCharacterName:'Alice'}],[{id:'source-char:Alice',name:'Manual'}]);
   assert.equal(new Set(result.collections.map(row=>row.id)).size,2);
 });
 test('collection-name search uses the render-local name index instead of scanning every collection for every image',()=>{
@@ -28,10 +36,10 @@ test('unified search covers saved cast, source CHAR, exact source paragraph, mod
   for(const term of ['source char','ALICE','Bob','日常','Model 9','Holiday','sunny room','bird','第27层','正文主线'])assert.equal(galleryRecordMatchesQuery(record,term,options),true,term);
   assert.equal(galleryRecordMatchesQuery(record,'not here',options),false);
 });
-test('cards contain only image, source name/source type, model corner and one tag row; no prompt floor or actions',()=>{
+test('cards contain only image, source name/source type and one tag row; no model corner, prompt floor or actions',()=>{
   const html=renderGalleryImageCard({id:'g',variants:[{id:'r',source:'comfy',model:'comfy-workflow',floor:26,prompt:'do not display this prompt',tags:['日常','独处','室内','夜色','宁静']} ]},{url:'/image.png',sourceCharacter:'Source CHAR',production:{track:'main_camera'}});
-  assert.match(html,/Source CHAR · 正文主线/);assert.match(html,/ComfyUI/);assert.doesNotMatch(html,/第 26|do not display|comfy-workflow|gallery-actions|gallery-inspect|<p>/);
-  assert.equal((html.match(/sd-storyboard-gallery-card-tags/g)||[]).length,1);assert.equal((html.match(/<em>/g)||[]).length,5);
+  assert.match(html,/Source CHAR · 正文主线/);assert.doesNotMatch(html,/ComfyUI|sd-gallery-model-label|第 26|do not display|comfy-workflow|gallery-actions|gallery-inspect|<p>/);
+  assert.equal((html.match(/sd-storyboard-gallery-card-tags/g)||[]).length,1);assert.equal((html.match(/<em>/g)||[]).length,3);assert.match(html,/sd-gallery-card-tag-overflow" aria-label="夜色 · 宁静">…/);
 });
 test('compact keyword and bulk controls hide counts and expose distinct accessible icon actions',()=>{
   const keywords=renderGalleryKeywordFilters([],['日常'],['日常','独处'],{compact:true});assert.doesNotMatch(keywords,/已选 \d/);assert.match(keywords,/data-choice-compact="true"/);

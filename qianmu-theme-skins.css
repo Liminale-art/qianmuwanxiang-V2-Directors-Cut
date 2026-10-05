@@ -1,6 +1,31 @@
 /* Optional skins over the real renderers. Load after style.css.
    Only explicitly registered Qianmu roots opt in; classic and host UI stay untouched.
    Layout/content/data lifecycles remain owned by their existing renderers. */
+/* A private local-only face avoids both host font variables and host web-font
+   declarations using common family names. No download or network fallback. */
+@font-face {
+  font-family: "Qianmu Glass Local Heiti";
+  src: local("PingFang SC"), local("Microsoft YaHei"), local("Noto Sans CJK SC"),
+    local("Source Han Sans SC"), local("WenQuanYi Micro Hei");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+/* Apply only to registered glass roots, including detached Qianmu dialogs.
+   Family alone changes: keep typography scale/weight, icon fonts, technical
+   monospace and canvas-rendered user artwork intact. Removing the theme
+   attribute restores the original host/classic/editorial cascade immediately. */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] {
+  --qm-glass-font: "Qianmu Glass Local Heiti", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--qm-glass-font) !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] :not(:is(
+  i, svg, svg *, pre, pre *, code, code *, kbd, kbd *, samp, samp *,
+  .sd-term, .sd-term *, .sd-storyboard-workflow, .sd-comfy-library-json,
+  .fa, .fas, .far, .fab, .fal, .fad, .fat, [class^="fa-"], [class*=" fa-"]
+)) {
+  font-family: var(--qm-glass-font) !important;
+}
 :is(#story-director-modal, [data-qm-theme]):is([data-qm-theme="editorial"], [data-qm-theme="glass"]) {
   --sd-window-glow: none;
   --qm-card-radius: 5px;
@@ -147,6 +172,13 @@
   box-shadow: none !important;
   text-shadow: none !important;
 }
+/* Reading surfaces retain the shared palette without turning each glyph into a button tile. */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme].sd-image-info-dialog :is([data-image-info-back], .sd-image-info-quick-menu .sd-icon-btn, .sd-media-tag-chip .sd-icon-btn),
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme].sd-image-info-readonly [data-image-info-copy],
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme].sd-gallery-name-dialog form > header .sd-icon-btn {
+  border:0!important; background:transparent!important; color:var(--qm-ink)!important; box-shadow:none!important;
+}
+#story-director-modal[data-qm-theme="glass"] .sd-storyboard-titlebar > .sd-storyboard-close { border:0!important; background:transparent!important; box-shadow:none!important; }
 /* Match the legacy button:not(...) specificity so new-theme action chips do
    not silently fall back to classic rectangular corners in the real panels. */
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, button.sd-btn, .sd-option-chip) {

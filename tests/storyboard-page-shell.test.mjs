@@ -64,6 +64,7 @@ assert.equal(sandbox.storyboardPendingRestoreScroll, 275, 'same editor restores 
 assert.equal(state.promptItemDraft.instruction, '保持草稿');
 assert.doesNotMatch(fn('renderStoryboardArtistLibrary'), /<h3>ARTIST LIBRARY<\/h3>/);
 assert.doesNotMatch(fn('renderStoryboardLogs'), /GENERATION LOG|<h3>分镜日志<\/h3>/);
+assert.doesNotMatch(fn('renderStoryboardCreate'), /最近画面|sd-storyboard-last|storyboardGalleryRecords/, 'workbench does not duplicate the saved gallery or scan it for a recent picture');
 assert.doesNotMatch(fn('renderStoryboardPresetLibrary'), /<header><b>\$\{editingItem/);
 assert.match(css, /\.sd-storyboard-root \{ --qm-control-height: 40px;/);
 assert.match(css, /\.sd-world-edge::before \{[^}]*width: 2px;[^}]*linear-gradient\(to bottom, transparent/);

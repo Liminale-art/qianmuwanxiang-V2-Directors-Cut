@@ -9,9 +9,9 @@ for(const mode of ['new','existing','duplicate-case','remove','save-failure','me
   const collections=[{id:'old',name:'Old folder'},{id:'existing',name:'Scenes'}];
   const ids=mode==='membership-limit'?Array.from({length:31},(_,i)=>'legacy-'+i):['old'];
   const record={id:'image',floor:0,source:'comfy',collectionIds:ids,collectionId:ids[0]},before=structuredClone(record),beforeCollections=structuredClone(collections);let saves=0,namespace='st-user:fixture';
-  const result=await exerciseImageInfo({snapshot,record,collections,inspectOnly:true,readNamespace:async()=>namespace,
+  const result=await exerciseImageInfo({snapshot,record,collections,inspectOnly:true,readonly:true,readNamespace:async()=>namespace,
     save:async()=>{saves++;if(mode==='save-failure')throw Error('save unavailable');},
-    onOpen:async options=>{if(mode==='foreign-owner')namespace='st-user:other';
+    onOpen:async options=>{assert.equal(options.readonly,true);assert.equal(options.onGenerate,undefined);if(mode==='foreign-owner')namespace='st-user:other';
       const choice=mode==='remove'?{id:'old',checked:false}:mode==='existing'?{id:'existing',checked:true}:mode==='duplicate-case'?{name:'sCeNeS',checked:true}:{name:'New folder',checked:true};
       await options.onCollections(choice,options.guard);
     }});

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {storyboardFunctionSource} from './storyboard-form-fixture.mjs';
 
-const functions = ['storyboardCloseImageInfo','storyboardEditPrompt','storyboardCloseLightbox','storyboardOpenLightbox',
+const functions = ['storyboardCloseImageInfo','storyboardOpenImageInfo','storyboardEditPrompt','storyboardCloseLightbox','storyboardOpenLightbox',
   'storyboardMediaTagChipMarkup','storyboardMediaTagEditorMarkup','storyboardMediaTagValues','storyboardPersistMediaTagEditor','storyboardMediaTagFilterSuggestions','storyboardBindMediaTagEditors',
   'storyboardRecordParameterLabel','storyboardSafeUrl','storyboardRecordChatKey',
   'storyboardVideoDraftModeLabel','storyboardEnsureVideoDraftRuntime','storyboardCloseVideoDraftEditor',
@@ -29,6 +29,7 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
       intent:{summary:'A person stands in a kitchen.'},characters:[{id:'person-1',name:'Test person',identity:['red hair'],outfit:['blue coat'],action:['standing'],spatial:{region:'center',crop:'full',center:[.5,.5]}}]});
     const canvas=document.createElement('canvas');canvas.width=420;canvas.height=620;
     const paint=canvas.getContext('2d');paint.fillStyle='#8fa69b';paint.fillRect(0,0,420,620);
+    if(window.surfaceArtwork){const image=new Image();image.src=surfaceArtwork.src;await image.decode();const crop=surfaceArtwork.crop||[0,0,image.naturalWidth,image.naturalHeight];canvas.width=crop[2];canvas.height=crop[3];paint.drawImage(image,...crop,0,0,canvas.width,canvas.height);}
     const url=canvas.toDataURL('image/png');
     const snapshot={source:'comfy',profile:{...structuredClone(state.profiles.comfy),model:'comfy-workflow'},prompt:'red hair, blue coat, kitchen',negative:'blur',
       payload:{prompt:'red hair, blue coat, kitchen',negative:'blur',shotSpec:shot,parameters:{}}};
@@ -69,8 +70,9 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
       return import('/'+modules[name]+'.js');
     }};
     window.appearanceSession=appearance.createQianmuAppearanceSession({readSettings:()=>settings,loadStyles:()=>({promise:Promise.resolve(true),cancel(){}})});
-    window.setAppearance=async(family,mode='light')=>{settings.appearance=preferences.updateAppearancePreferences(settings,{family,mode});await appearanceSession.sync();};
+    window.setAppearance=async(family,mode='light')=>{settings.theme=mode;settings.appearance=preferences.updateAppearancePreferences(settings,{family,mode});await appearanceSession.sync();};
     window.openInfo=record=>{window.infoResult=storyboardEditPrompt({record:record||records[0]});};
+    window.openGalleryInfo=record=>{window.infoResult=storyboardOpenImageInfo(record||records[0],{readonly:true});};
     window.setInput=(selector,value)=>{const field=document.querySelector(selector);field.value=value;field.dispatchEvent(new Event('input',{bubbles:true}));};
     window.deferred=()=>{let resolve;const promise=new Promise(done=>resolve=done);return {promise,resolve};};
     window.rect=node=>{const r=node.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
@@ -156,6 +158,61 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
     ok(label+' cancel has no writes',await page.evaluate(()=>calls.forbidden===0&&calls.redraw===0));
   }
   ok('matrix never mutates saved records/snapshots',await page.evaluate(()=>JSON.stringify([records,[...snapshots]]))===original);
+  await page.evaluate(()=>{window.readonlyOriginalTags=records[0].tags;records[0].tags=['独处','日常','室内','午后','安静'];});
+  for(const family of ['classic','glass','editorial'])for(const mode of ['light','dark'])for(const width of [320,390,960]){
+    const height=width===320?568:800,label=`gallery readonly ${family}/${mode}/${width}`;
+    await page.setViewportSize({width,height});
+    await page.evaluate(async({family,mode})=>{await setAppearance(family,mode);openGalleryInfo();},{family,mode});
+    await page.waitForSelector('.sd-image-info-readonly');
+    const detail=await page.evaluate(()=>{
+      const root=document.querySelector('.sd-image-info-readonly'),cast=root.querySelector('.sd-image-info-source-character');
+      const sample=document.createElement('canvas');sample.width=sample.height=1;const paint=sample.getContext('2d');
+      const rgb=(colors)=>{paint.clearRect(0,0,1,1);for(const color of colors){paint.fillStyle=color;paint.fillRect(0,0,1,1);}return [...paint.getImageData(0,0,1,1).data].slice(0,3);};
+      const luminance=values=>values.map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,index)=>sum+v*[.2126,.7152,.0722][index],0);
+      const a=luminance(rgb([getComputedStyle(root).backgroundColor,getComputedStyle(cast).backgroundColor])),b=luminance(rgb([getComputedStyle(cast).color]));
+      return {surface:inspectSurface('.sd-image-info-readonly'),font:parseFloat(getComputedStyle(root).fontSize),
+        edits:root.querySelectorAll('textarea,[data-image-info-generate],[data-image-info-characters],[data-image-info-action=motion],[data-image-info-action=inline]').length,
+        positive:root.querySelector('[data-image-info-positive]').textContent,negative:root.querySelector('[data-image-info-negative]').textContent,
+        quick:root.querySelector('.sd-image-info-quick-menu').querySelectorAll('button').length,
+        sourceColor:getComputedStyle(cast).color,sourceBackground:getComputedStyle(cast).backgroundColor,
+        sourceContrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),
+        backBorder:getComputedStyle(root.querySelector('[data-image-info-back]')).borderStyle,
+        tag:rect(root.querySelector('.sd-media-tag-chips').lastElementChild),add:rect(root.querySelector('[data-media-tag-add]')),
+        addBorder:getComputedStyle(root.querySelector('[data-media-tag-add]')).borderStyle,
+        cards:[...root.querySelectorAll('.sd-image-info-prompt')].map(rect)};
+    });
+    ok(label+' actual gallery entry opens readonly native owner',detail.surface.modal&&detail.edits===0&&detail.surface.footer===null);
+    ok(label+' theme surface is contained and isolated from ST',viewport(detail.surface.box,width,height)&&detail.surface.overflow<=1&&detail.surface.background!=='rgb(25, 27, 29)');
+    ok(label+' compact consistent typography',detail.font>=12&&detail.font<=14);
+    ok(label+' source label has legible contrast '+detail.sourceContrast.toFixed(2),detail.sourceContrast>=4.5);
+    ok(label+' displays persisted combined prompts',detail.positive==='red hair, blue coat, kitchen'&&detail.negative==='blur');
+    ok(label+' visible direct photo actions',detail.quick===2&&await page.locator('[data-image-info-action=download]').isVisible()&&await page.locator('[data-image-info-action=delete]').isVisible());
+    ok(label+' no boxed return control',detail.backBorder==='none');
+    ok(label+' add chip continues after last wrapped tag',Math.abs(detail.add.top-detail.tag.top)<2&&detail.add.left>detail.tag.left&&detail.addBorder==='none');
+    ok(label+' prompt cards stay within panel width',detail.cards.every(box=>box.left>=detail.surface.box.left&&box.right<=detail.surface.box.right+.5));
+    await page.locator('[data-image-info-action=preview]').click();await page.waitForSelector('.sd-storyboard-lightbox');
+    ok(label+' fullscreen remains above readonly detail',await page.evaluate(()=>Boolean(document.elementFromPoint(innerWidth/2,innerHeight/2)?.closest('.sd-storyboard-lightbox'))));
+    await page.keyboard.press('Escape');
+    ok(label+' fullscreen returns to readonly detail',await page.locator('.sd-image-info-readonly').isVisible());
+    await page.locator('[data-image-info-copy=positive]').click();
+    await page.waitForFunction(()=>document.querySelector('.sd-image-info-status')?.textContent==='已复制');
+    ok(label+' copy uses exact saved prompt without enabling generation',await page.evaluate(()=>calls.lastCopy==='red hair, blue coat, kitchen'&&calls.redraw===0&&calls.forbidden===0));
+    await page.locator('[data-image-info-back]').click();
+  }
+  await page.evaluate(()=>{if(readonlyOriginalTags===undefined)delete records[0].tags;else records[0].tags=readonlyOriginalTags;delete window.readonlyOriginalTags;});
+  ok('readonly matrix does not mutate saved records or snapshots',await page.evaluate(()=>JSON.stringify([records,[...snapshots]]))===original);
+  await page.evaluate(()=>{
+    window.originalGallerySnapshot=structuredClone(snapshots.get('frame-1'));
+    const snapshot=snapshots.get('frame-1');snapshot.source='novel';snapshot.payload.parameters.providerOptions={
+      v4_prompt:{caption:{base_caption:'saved scene',char_captions:[{char_caption:'red hair, blue coat'},{char_caption:'black hair, green dress'}]}},
+      v4_negative_prompt:{caption:{base_caption:'saved negative',char_captions:[{char_caption:'long hair'},{char_caption:'blue dress'}]}}};
+    openGalleryInfo();
+  });await page.waitForSelector('.sd-image-info-readonly');
+  ok('actual readonly entry combines saved native character captions',await page.locator('[data-image-info-positive]').textContent()==='saved scene\n\nred hair, blue coat\n\nblack hair, green dress');
+  await page.locator('[data-image-info-copy=negative]').click();await page.waitForFunction(()=>document.querySelector('.sd-image-info-status')?.textContent==='已复制');
+  ok('readonly copy retains native negative captions with no character editor',await page.evaluate(()=>calls.lastCopy==='saved negative\n\nlong hair\n\nblue dress'&&!document.querySelector('[data-image-info-characters]')));
+  await page.locator('[data-image-info-back]').click();
+  await page.evaluate(()=>{snapshots.set('frame-1',originalGallerySnapshot);delete window.originalGallerySnapshot;});
   for(const action of ['preview','motion'])for(const fail of [false,true]){
     await page.evaluate(({action,fail})=>{
       window.runtimeGate={name:action==='preview'?'imageZoom':'videoDraft',fail,...deferred()};
@@ -257,8 +314,7 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
   ok('detail top is back, title and model only',detail.header.includes('画面详情')&&detail.header.includes('ComfyUI')&&!/SCREENING ROOM|关闭/.test(detail.header));
   ok('source CHAR precedes appearing character labels',detail.cast.indexOf('Source CHAR')<detail.cast.indexOf('Test person'));
   ok('one image download menu and collapsed metadata inputs',detail.menus===1&&detail.collectionsHidden&&detail.tagHidden);
-  await page.locator('[data-image-info-menu-toggle]').click();
-  ok('image quick menu reveals download and delete',await page.locator('[data-image-info-action=download]').isVisible()&&await page.locator('[data-image-info-action=delete]').isVisible());
+  ok('image quick actions show download and delete directly',await page.locator('[data-image-info-action=download]').isVisible()&&await page.locator('[data-image-info-action=delete]').isVisible()&&await page.locator('[data-image-info-menu-toggle]').count()===0);
   await page.locator('[data-media-tag-add]').click();await page.locator('.sd-media-tag-input').fill('Cancel-only tag');
   await page.locator('[data-media-tag-cancel]').click();
   ok('tag cancellation hides input without saving',await page.locator('.sd-media-tag-input-row').isHidden()&&await page.evaluate(()=>calls.forbidden===0&&!records[0].tags?.length));
@@ -301,7 +357,7 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
     window.originalRemoveImage=storyboardRemoveImage;window.deleteGate=deferred();
     window.storyboardRemoveImage=async(_record,verify)=>{await verify();const popup=document.createElement('dialog');popup.id='delete-fixture';document.body.appendChild(popup);popup.showModal();await deleteGate.promise;popup.close();popup.remove();await verify();return false;};
   });
-  await page.locator('[data-image-info-menu-toggle]').click();await page.locator('[data-image-info-action=delete]').click();await page.waitForSelector('#delete-fixture');
+  await page.locator('[data-image-info-action=delete]').click();await page.waitForSelector('#delete-fixture');
   ok('delete confirmation is not hidden below detail',await page.evaluate(()=>document.querySelector('#delete-fixture').matches(':modal')&&!document.querySelector('.sd-image-info-dialog').open));
   await page.evaluate(()=>deleteGate.resolve());await page.waitForFunction(()=>document.querySelector('.sd-image-info-dialog').matches(':modal'));
   ok('cancel deletion returns exact unsaved prompt draft',await page.locator('[data-image-info-positive]').inputValue()==='Draft survives metadata edits');

@@ -113,17 +113,17 @@ test('actual explicit insertion rechecks after recipe read, and unchanged source
 test('actual cards expose only selection and unified details, and reject stale or replaced records',async()=>{
   const buttons=Object.fromEntries(['check','preview-record','inspect','delete-record'].map(name=>[name,new Node()]));
   const record={id:'one'},store={storyboardImages:[record]};let current=true,opens=0;
-  const card={dataset:{storyboardMembers:'one'},querySelector:selector=>buttons[selector.replace('.sd-storyboard-gallery-','').replace('.sd-storyboard-','')]||null};
+  const card=new Node({storyboardMembers:'one'});card.querySelector=selector=>buttons[selector.replace('.sd-storyboard-gallery-','').replace('.sd-storyboard-','')]||null;
   const c=vm.createContext({galleryCardBindings:()=>[{card,record,variants:[record]}],galleryCurrent:()=>current,root:{querySelectorAll:()=>[card]},
     storyboardGalleryRecords:()=>store.storyboardImages,storyboardGalleryGroupId:()=> 'one',storyboardGallerySelection:new Set(),
     storyboardGallerySelectMode:false,storyboardGalleryInspectorRecordId:'',storyboardOpenImageInfo:async()=>opens++,renderModal:()=>{},toast:()=>assert.fail('no error expected')});
   const source=section('bindStoryboardTabEvents'),start=source.indexOf("  galleryCardBindings(root.querySelectorAll('.sd-storyboard-gallery-card"),end=source.indexOf('  void storyboardRefreshSecretState',start);
   vm.runInContext(section('storyboardShowGalleryInspector')+'\n'+source.slice(start,end),c);
-  assert.equal(buttons.check.listeners.click.length,1);assert.equal(buttons['preview-record'].listeners.click.length,1);
+  assert.equal(card.listeners.click.length,1);assert.equal(card.listeners.keydown.length,1);assert.equal(buttons.check.listeners.click,undefined);assert.equal(buttons['preview-record'].listeners.click.length,1);
   assert.equal(buttons.inspect.listeners.click,undefined);assert.equal(buttons['delete-record'].listeners.click,undefined);
   buttons['preview-record'].fire();assert.equal(opens,1);
-  current=false;buttons.check.fire();buttons['preview-record'].fire();assert.equal(opens,1);assert.equal(c.storyboardGallerySelection.size,0);
-  current=true;store.storyboardImages=[{id:'one',otherChat:true}];buttons.check.fire();buttons['preview-record'].fire();await tick();
+  current=false;c.storyboardGallerySelectMode=true;card.fire();buttons['preview-record'].fire();assert.equal(opens,1);assert.equal(c.storyboardGallerySelection.size,0);
+  current=true;store.storyboardImages=[{id:'one',otherChat:true}];card.fire();buttons['preview-record'].fire();await tick();
   assert.equal(opens,1);assert.equal(c.storyboardGallerySelection.size,0);assert.equal(store.storyboardImages[0].otherChat,true);
 });
 
