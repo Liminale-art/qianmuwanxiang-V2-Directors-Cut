@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {collectReleaseFiles,buildRelease} from '../scripts/build-release.mjs';
 
-const root=new URL('../',import.meta.url),version='1.59.441';
+const root=new URL('../',import.meta.url),version='1.59.442',viewVersion='1.59.441';
 const edge=(parent,...children)=>children.map(child=>[parent,`qianmu-${child}.js`]);
 const affectedEdges=[
   ...edge('index.js','image-info-view','gallery-collections-view','gallery-taxonomy','gallery-summary'),
@@ -23,16 +23,17 @@ test('illustration entry, stylesheet and host package advertise one local versio
     assert.ok(result.files.includes(file),`${file} must be available offline in the installed extension`);
 });
 
-test('gallery refinement refreshes only its changed views and metadata dependencies',async()=>{
+test('gallery toolbar CSS release preserves existing view and metadata module URLs',async()=>{
   const files=await collectReleaseFiles(),sources=new Map(await Promise.all(files.filter(file=>file.endsWith('.js')).map(async file=>[file,await source(file)])));
   const actual=new Set();
   for(const [parent,content] of sources)for(const match of content.matchAll(/['"]\.\/([^'"\r\n]+\.js)\?v=1\.59\.441['"]/g))actual.add(key([parent,match[1]]));
   assert.deepEqual([...actual].sort(),affectedEdges.map(key).sort(),'do not expand a focused release into a repository-wide cache change');
   for(const [parent,child] of affectedEdges){
     assert.ok(files.includes(child));
-    assert.ok(sources.get(parent).includes(`'./${child}?v=${version}'`),`${parent} must refresh the literal child address`);
+    assert.ok(sources.get(parent).includes(`'./${child}?v=${viewVersion}'`),`${parent} must retain the unchanged child address`);
     assert.ok(!sources.get(parent).includes(`'./${child}'`),`${parent} cannot also consume the stale bare export`);
   }
+  for(const content of sources.values())assert.doesNotMatch(content,/['"]\.\/[^'"\r\n]+\.js\?v=1\.59\.442['"]/,'a CSS-only fix must not refresh unchanged module URLs');
   const unchanged=[
     ['qianmu-prose-assistant-floor.js','qianmu-prose-floor-entries.js?v=1.59.419'],
     ['qianmu-text-collection-floor.js','qianmu-prose-floor-entries.js?v=1.59.419'],
