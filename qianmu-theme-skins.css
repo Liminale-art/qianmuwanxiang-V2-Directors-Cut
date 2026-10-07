@@ -1,8 +1,8 @@
 /* Optional skins over the real renderers. Load after style.css.
    Only explicitly registered Qianmu roots opt in; classic and host UI stay untouched.
    Layout/content/data lifecycles remain owned by their existing renderers. */
-/* A private local-only face avoids both host font variables and host web-font
-   declarations using common family names. No download or network fallback. */
+/* Private installed-font fallback: the optional Sarasa face is loaded by the
+   appearance session only for the minimal theme (persisted family: glass). */
 @font-face {
   font-family: "Qianmu Glass Local Heiti";
   src: local("PingFang SC"), local("Microsoft YaHei"), local("Noto Sans CJK SC"),
@@ -12,12 +12,13 @@
   font-display: swap;
 }
 /* Apply only to registered glass roots, including detached Qianmu dialogs.
-   Family alone changes: keep typography scale/weight, icon fonts, technical
+   Keep the existing heading/emphasis weights, typography scale, icon fonts, technical
    monospace and canvas-rendered user artwork intact. Removing the theme
    attribute restores the original host/classic/editorial cascade immediately. */
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] {
-  --qm-glass-font: "Qianmu Glass Local Heiti", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --qm-glass-font: "Sarasa Gothic SC", "Qianmu Glass Local Heiti", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-family: var(--qm-glass-font) !important;
+  font-weight: normal;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme="glass"] :not(:is(
   i, svg, svg *, pre, pre *, code, code *, kbd, kbd *, samp, samp *,

@@ -1,6 +1,6 @@
 // Pure output contract. It checks structure and explicit empty/duplicate items,
 // not narrative truth or literary quality; those remain in the creative guidance.
-import { CREATIVE_COUNTS, CREATIVE_SECTION_LABELS } from './qianmu-creative-prompts.js?v=1.59.443';
+import { CREATIVE_COUNTS, CREATIVE_SECTION_LABELS } from './qianmu-creative-prompts.js?v=1.59.444';
 
 const CORE_ARRAYS = ['quests', 'character_dynamics', 'npc_updates', 'chain_reactions', 'relation_undercurrents'];
 const WORLD_ARRAYS = ['world_chatter', 'factions', 'faction_relations', 'world_events'];
@@ -30,29 +30,29 @@ function enabled(field, options) {
 /** A model-facing JSON shape plus concise field/count requirements. */
 export function createCreativeSchema(options = {}) {
   const shape = {
-    story_status: { title: '本轮标题', current_arc: '当前脉络', current_stage: '当前阶段', cycle: '故事内日期或时段；未知留空，不按推演轮数推进', progress: 0, mood: '当前基调', summary: '已成立处境与本轮焦点，候选不是既成事实' },
-    quests: [{ title: '际遇名称', description: '可亲历、可回应的完整情境', trigger: '靠近此情境的条件', inject_prompt: '供正文选择使用的情境提示，不代替 USER 接受或行动' }],
-    character_dynamics: [{ title: '此间一人', content: 'CHAR 此刻具体而完整的事务' }],
-    npc_updates: [{ name: '人物名', role: '身份', current_goal: '眼前在意', emotional_state: '有依据的当下状态', next_action: '具体做法及其条件', hidden_agenda: '已有依据或本轮授权的隐秘打算', relations: '有作用的关系', inject_prompt: '可承接提示，不将候选写成已发生' }],
-    chain_reactions: [{ spark: '具体起因', chain: '传导动作、当前后果及未发生部分的成立条件' }],
-    relation_undercurrents: [{ parties: '关系双方或各方', tone: '关系基调', tension: '独立关系关切与具体表现', drift: '有条件的可能走向', user_awareness: 'USER 实际知情范围' }],
+    story_status: { title: 'Title for this run', current_arc: 'Current narrative thread', current_stage: 'Current stage', cycle: 'In-story date or time period; leave blank if unknown, and do not advance it by generation count', progress: 0, mood: 'Current tone', summary: 'Established circumstances and the focus of this run; possibilities are not established facts' },
+    quests: [{ title: 'Encounter title', description: 'A complete situation that can be experienced and responded to', trigger: 'Conditions for approaching this situation', inject_prompt: 'An optional situational cue for the narrative; do not accept or act on behalf of USER' }],
+    character_dynamics: [{ title: 'Title for 此间一人', content: "A concrete, complete account of CHAR's current affairs" }],
+    npc_updates: [{ name: 'Character name', role: 'Identity or role', current_goal: 'Present concern', emotional_state: 'Grounded present state', next_action: 'Concrete action and its conditions', hidden_agenda: 'A hidden intention already grounded in the sources or authorized for this run', relations: 'Relationships currently having an effect', inject_prompt: 'A cue that can be carried forward; do not portray a possibility as already having happened' }],
+    chain_reactions: [{ spark: 'Concrete cause', chain: 'Actions transmitting the effects, present consequences, and conditions for parts that have not yet happened' }],
+    relation_undercurrents: [{ parties: 'The two or more people involved', tone: 'Relationship tone', tension: 'A distinct relational concern and its concrete expression', drift: 'A possible direction and its conditions', user_awareness: "The actual extent of USER's knowledge" }],
   };
-  if (enabled('world_chatter', options)) shape.world_chatter = [{ text: '短声景', who: '人物或群体', where: '所在之处' }];
+  if (enabled('world_chatter', options)) shape.world_chatter = [{ text: 'Brief soundscape', who: 'Person or group', where: 'Location' }];
   if (enabled('factions', options)) {
-    shape.factions = [{ id: '沿用已有 id；新增留空', name: '组织名', type: '组织类型', agenda: '诉求', standing: '当前处境', trend: 'rising/stable/declining/turbulent 之一', scale: '城邦内/区域性/跨区域/全局性 之一，按实际规模选择', clues: ['具体风声或应对'] }];
-    shape.faction_relations = [{ between: ['组织名或 id', '组织名或 id'], kind: '冲突/同盟/张力/中立/依附', note: '实际联系及其依据' }];
-    shape.world_events = [{ id: '沿用已有 id；新增留空', title: '局势名称', essence: '有作用的持续局势及当下影响', scope: '实际涉及范围', stage: '酝酿/爆发/蔓延/消退/落定', drift: '可能走向及其条件', touched: 'advance/mention/idle', status: 'active/closed' }];
+    shape.factions = [{ id: 'Reuse the existing id; leave blank for a new entry', name: 'Organization name', type: 'Organization type', agenda: 'Aims', standing: 'Current circumstances', trend: 'One of rising/stable/declining/turbulent', scale: 'One of 城邦内/区域性/跨区域/全局性, chosen according to actual scale', clues: ['Concrete signs, rumors, or responses'] }];
+    shape.faction_relations = [{ between: ['Organization name or id', 'Organization name or id'], kind: '冲突/同盟/张力/中立/依附', note: 'Actual connection and its basis' }];
+    shape.world_events = [{ id: 'Reuse the existing id; leave blank for a new entry', title: 'Situation title', essence: 'An ongoing situation with active effects and its present impact', scope: 'Actual scope involved', stage: '酝酿/爆发/蔓延/消退/落定', drift: 'Possible direction and its conditions', touched: 'advance/mention/idle', status: 'active/closed' }];
   }
-  if (enabled('parallel_scene', options)) shape.parallel_scene = { title: '未映之幕标题', content: '明确成立于平行番外的完整场景' };
-  if (enabled('interlude', options)) shape.interlude = { type: ['theater', 'phone'].includes(options.interludeType) ? options.interludeType : '本轮指定：theater 或 phone', title: '幕间拾趣标题', owner: options.interludeType === 'phone' ? '从本轮正文及有效记忆已经出现的非 USER 人物中选择手机所属者' : '', content: '指定形式的完整小卡' };
-  shape.limitations = [{ field: '仅在确实受限时填写输出字段名', missing: 1, reason: '必然越界的具体来源或设定限制；missing 为实际正整数缺口；正常完成时 limitations 为 []' }];
+  if (enabled('parallel_scene', options)) shape.parallel_scene = { title: 'Title for 未映之幕', content: 'A complete scene explicitly true within a parallel side story' };
+  if (enabled('interlude', options)) shape.interlude = { type: ['theater', 'phone'].includes(options.interludeType) ? options.interludeType : 'Selected for this run: theater or phone', title: 'Title for 幕间拾趣', owner: options.interludeType === 'phone' ? "Choose the phone's owner from non-USER characters already present in this run's narrative or valid memory" : '', content: 'A complete card in the specified form' };
+  shape.limitations = [{ field: 'Name the output field only when it is genuinely constrained', missing: 1, reason: 'The specific source or setting constraint that makes completion necessarily cross a boundary; missing is the actual positive-integer shortfall; use limitations: [] when complete' }];
   const quotas = Object.entries(CREATIVE_COUNTS).filter(([field]) => enabled(field, options)).map(([field, count]) => {
-    const label = CREATIVE_SECTION_LABELS[field] || ({ factions: '世界格局组织', world_events: '世界格局局势' })[field];
-    return `${field}（${label}）：${count.max === count.min ? `恰好 ${count.min}` : count.max ? `${count.min}–${count.max}` : `至少 ${count.min}`} ${CARD_FIELDS.includes(field) ? '张完整卡片' : '条有效内容'}`;
+    const label = CREATIVE_SECTION_LABELS[field] || ({ factions: '世界格局: organizations', world_events: '世界格局: situations' })[field];
+    return `${field} (${label}): ${count.max === count.min ? `exactly ${count.min}` : count.max ? `${count.min}–${count.max}` : `at least ${count.min}`} ${CARD_FIELDS.includes(field) ? 'complete card' : 'substantive entries'}`;
   });
   const ownerRule = options.interludeType === 'phone' && Array.isArray(options.eligiblePhoneOwners)
-    ? `\n手机所属者仅可从本轮已确认名单选择：${JSON.stringify(options.eligiblePhoneOwners)}。排除 USER 及全部别名；名单为空时不得虚构所属者。` : '';
-  return `只返回一个 JSON 对象，字段形状如下（数组展示一个结构示例，实际数量按下方底线）：\n${JSON.stringify(shape, null, 2)}\n\n${quotas.join('\n')}\nfaction_relations 仅按实际联系填写，不强制连线或新增。缺口由 limitations 如实报告，不因此当作已足额。候选与已成立经历分清；已成立状态有当前作用即可承接。关闭的栏目不生成。未映之幕与幕间拾趣独立，不提供正文注入字段。${ownerRule}`;
+    ? `\nChoose the phone's owner only from this run's confirmed list: ${JSON.stringify(options.eligiblePhoneOwners)}. Exclude USER and every alias; do not invent an owner when the list is empty.` : '';
+  return `Return only one JSON object with the following field shapes (arrays show one structural example; use the required counts below for the actual output). Write narrative text in the current chat's language; default to Chinese when no language is established. English instructions and field descriptions do not require English story output. Preserve JSON keys and enum values exactly.\n${JSON.stringify(shape, null, 2)}\n\n${quotas.join('\n')}\nFill faction_relations only from actual connections; do not force links or new additions. Report shortfalls honestly in limitations; reporting a shortfall does not satisfy the required count. Distinguish possibilities from established experiences; an established state can be carried forward while it still matters now. Do not generate disabled sections. 未映之幕 and 幕间拾趣 are independent and have no narrative-injection fields.${ownerRule}`;
 }
 
 /** Preserve legacy/unknown data; normalize only new section shapes and quests. */

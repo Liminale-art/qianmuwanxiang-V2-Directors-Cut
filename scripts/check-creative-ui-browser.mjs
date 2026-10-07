@@ -21,7 +21,7 @@ function between(startText, endText) {
   assert.ok(start >= 0 && end > start, `Missing actual event block ${startText}`);
   return entry.slice(start, end);
 }
-const renderers = ['renderDashboardTab', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
+const renderers = ['renderDashboardTab', 'renderDirectorMemoryReview', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
   'renderCastWorldFront', 'renderPlanSectionFold', 'renderRelationUndercurrentsCard', 'renderWorldChatterCard',
   'renderNoPlan', 'renderItemList', 'renderItemCard', 'renderItemChips', 'renderInjectBadge', 'renderInjectDock',
   'renderHeroActions', 'renderGenerateRow', 'renderHistorySection', 'renderInjectSections', 'renderDirectorSettingsTab']
@@ -77,10 +77,12 @@ try {
     };
     window.baseSettings = { parallelSceneEnabled: true, interludeEnabled: true, worldChatterEnabled: true, geopoliticsEnabled: true,
       injectEnabled: false, injectDepth: 2, autoRefresh: false, autoRefreshEvery: 10 };
+    window.qaChat = []; window.qaStore = { history: [] };
+    window.qaMemoryText = '【已保存的故事记忆】\n<script>这里只是原文</script>\n' + long;
     Object.assign(window, {
-      settings: structuredClone(baseSettings), busy: false, editorView: null, worldPage: 'front', chatterExpanded: true,
+      settings: structuredClone(baseSettings), directorMemoryInspection: null, busy: false, editorView: null, worldPage: 'front', chatterExpanded: true,
       injectSelection: new Map(), saveCalls: [], toastMessages: [], draftCalls: [], qaCloseCalls: 0,
-      currentPlan: () => plan, getChatStore: () => ({ history: [] }), getContextItemId: item => item.title || item.name || 'fixture',
+      currentPlan: () => plan, getChatStore: () => qaStore, ctx: () => ({ chat: qaChat }), getChatKey: () => 'isolated-chat', getContextItemId: item => item.title || item.name || 'fixture',
       renderDirectorWorldEntryLink: () => '', renderInjectPreview: () => '', renderBackstageBlueprintCard: () => '',
       DEFAULT_SYSTEM_PROMPT: '合成设置，不发送', JSON_SCHEMA_TEXT: '{}',
       saveSettings: () => saveCalls.push(structuredClone(settings)), toast: text => toastMessages.push(text),
@@ -91,6 +93,10 @@ try {
     window.mount = (view, themeName) => {
       window.controller?.dispose();
       window.activeTab = view;
+      window.directorMemoryInspection = { ownerSettings: settings, chat: qaChat, store: qaStore, key: 'isolated-chat',
+        log: { time: '2026/10/7 15:00:00', status: 'success', request: JSON.stringify([{ role: 'system', content: '' }, { role: 'user', content: qaMemoryText }]) },
+        snapshot: { start: 0, length: qaMemoryText.length, status: 'ready', production: 'layered', summaryMode: 'mixed' } };
+      settings.logHistory = [directorMemoryInspection.log];
       const content = ({ dashboard: renderDashboardTab, tasksnodes: renderTasksNodesTab, castworld: renderCastWorldFront, settings: renderDirectorSettingsTab })[view]();
       const tabs = [['dashboard', '审片'], ['tasksnodes', '际遇'], ['castworld', '世界'], ['context', '取材'],
         ['settings', '幕后'], ['theater', '幕外'], ['tts', '配音'], ['focus', '专注']];
@@ -113,6 +119,14 @@ try {
     for (const view of ['dashboard', 'tasksnodes', 'castworld', 'settings']) {
       await page.evaluate(({ view, theme }) => { settings = structuredClone(baseSettings); mount(view, theme); }, { view, theme });
       await frame();
+      if (view === 'dashboard') {
+        const review = page.locator('[data-director-memory-review]');
+        check(await review.locator('details').getAttribute('open') === null, `${theme}/${width}: memory review starts collapsed`);
+        await review.locator('summary').click();
+        check(await review.locator('.sd-memory-review-text').textContent() === await page.evaluate(() => qaMemoryText), `${theme}/${width}: exact escaped memory text`);
+        check(await review.locator('script,button,input,textarea').count() === 0, `${theme}/${width}: memory review has no executable content or write action`);
+        check(await page.locator('.sd-body > :last-child').getAttribute('data-director-memory-review') !== null, `${theme}/${width}: memory review is last`);
+      }
       if (view === 'tasksnodes' || view === 'castworld') {
         const summary = page.locator('.sd-item-card > summary').first();
         await summary.click();
@@ -123,7 +137,7 @@ try {
       const result = await page.evaluate(() => {
         const root = document.getElementById('story-director-modal'), win = root.querySelector('.sd-window'), body = root.querySelector('.sd-body');
         const box = win.getBoundingClientRect();
-        const overflow = [...root.querySelectorAll('.sd-body,.sd-cols-inner,.sd-card,.sd-item-detail,.sd-director-extra-content,.sd-director-narrative,.sd-chain-node')]
+        const overflow = [...root.querySelectorAll('.sd-body,.sd-cols-inner,.sd-card,.sd-item-detail,.sd-director-extra-content,.sd-director-narrative,.sd-chain-node,.sd-memory-review-text')]
           .filter(node => node.getClientRects().length && getComputedStyle(node).display !== 'none')
           .map(node => ({ className: node.className, delta: node.scrollWidth - node.clientWidth,
             right: node.getBoundingClientRect().right, left: node.getBoundingClientRect().left }))
@@ -143,7 +157,7 @@ try {
       check(result.windowInside && result.pageOverflow <= 2 && result.overflow.length === 0, `${key}: no horizontal overflow`, result);
       check(result.firstVisible && result.bodyWidth > 200, `${key}: usable content area`);
       check(JSON.stringify(result.host) === JSON.stringify(['17px', 'serif', 'rgb(220, 230, 240)', 'rgb(30, 40, 50)']), `${key}: host typography and colors unchanged`, result.host);
-      if (theme === 'glass') check(result.font.includes('Qianmu Glass Local Heiti'), `${key}: local glass font`);
+      if (theme === 'glass') check(result.font.startsWith('"Sarasa Gothic SC"') && result.font.includes('Qianmu Glass Local Heiti'), `${key}: minimal theme uses Sarasa with local fallback`);
       if (view === 'dashboard') {
         check(result.extras === 2 && result.extraActions === 0, `${key}: two independent read-only cards`);
         check(result.bodyText.includes('未映之幕') && result.bodyText.includes('幕间拾趣') && !result.bodyText.includes('众声'), `${key}: current review sections`);
@@ -168,6 +182,10 @@ try {
         await page.locator('.sd-body').evaluate(node => { node.scrollTop = 0; });
         const file = join(process.env.QIANMU_CREATIVE_QA_DIR, `creative_${theme}_${view}_${width}.png`);
         await page.screenshot({ path: file }); screenshots.push(file);
+        if (view === 'dashboard') {
+          const memoryFile = join(process.env.QIANMU_CREATIVE_QA_DIR, `memory_review_${theme}_${width}.png`);
+          await page.locator('[data-director-memory-review]').screenshot({ path: memoryFile }); screenshots.push(memoryFile);
+        }
       }
     }
   }

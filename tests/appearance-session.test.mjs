@@ -18,13 +18,67 @@ function eventElement() {
     root.listenerCount = type => listeners.get(type)?.size || 0;
     return root;
 }
-function fixture() {
-    let settings = { theme: 'light' }, loads = [], errors = [];
-    const session = createQianmuAppearanceSession({ readSettings: () => settings, onError: error => errors.push(error), loadStyles: () => {
+function fixture(document) {
+    let settings = { theme: 'light' }, loads = [], fontLoads = [], errors = [];
+    const session = createQianmuAppearanceSession({ document, readSettings: () => settings, onError: error => errors.push(error), loadStyles: () => {
         const load = { cancelled: 0 }; load.promise = new Promise(resolve => load.resolve = resolve); load.cancel = () => { load.cancelled++; load.resolve(false); }; loads.push(load); return load;
+    }, loadFont: () => {
+        const load = { cancelled: 0 }; load.promise = new Promise(resolve => load.resolve = resolve); load.cancel = () => { load.cancelled++; load.resolve(false); }; fontLoads.push(load); return load;
     } });
-    return { session, loads, errors, set: value => settings = value };
+    return { session, loads, fontLoads, errors, set: value => settings = value };
 }
+
+test('minimal font is opt-in, nonblocking and shared by all owned portals, with local fallback on failure', async () => {
+    const f = fixture(), root = element(); f.session.mount(root); await f.session.sync();
+    assert.equal(f.fontLoads.length, 0);
+    f.set({ appearance: { ...preference, family: 'editorial' } }); const paper = f.session.sync();
+    f.loads[0].resolve(true); await paper; assert.equal(f.fontLoads.length, 0);
+    f.set({ appearance: preference }); assert.equal(await f.session.sync(), true);
+    assert.equal(f.fontLoads.length, 1); assert.equal(root.getAttribute('data-qm-theme'), 'glass');
+    f.session.mountPortal(element()); await f.session.sync(); assert.equal(f.fontLoads.length, 1);
+    f.fontLoads[0].resolve(false); await f.session.sync(); await f.session.sync();
+    assert.equal(f.session.status, 'ready'); assert.equal(f.fontLoads.length, 1); assert.deepEqual(f.errors, []);
+    f.set({ appearance: { ...preference, family: 'editorial' } }); await f.session.sync();
+    assert.equal(f.fontLoads[0].cancelled, 1); assert.equal(root.getAttribute('data-qm-theme'), 'editorial');
+    f.set({ appearance: preference }); await f.session.sync(); assert.equal(f.fontLoads.length, 2);
+    f.session.reset(); assert.equal(f.fontLoads[1].cancelled, 1); assert.equal(root.getAttribute('data-qm-theme'), null);
+});
+
+test('abandoned or failed skin loading never starts the optional minimal font', async () => {
+    for (const loaded of [false, true]) {
+        const f = fixture(); f.set({ appearance: preference }); f.session.mount(element());
+        const ready = f.session.sync(); if (loaded) f.set({ theme: 'light' });
+        f.loads[0].resolve(loaded); await ready; assert.equal(f.fontLoads.length, 0); f.session.reset();
+    }
+});
+
+test('the existing classic repaint action releases the font and can restore it after action rollback', async () => {
+    const document = { createElement: () => ({ ...element(), remove() {} }), body: { appendChild() {} }, defaultView: { getComputedStyle: () => ({ getPropertyValue: () => '' }) } };
+    const f = fixture(document), root = element(); root.classList = { contains: () => false };
+    f.set({ appearance: preference }); f.session.mount(root); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    f.set({ theme: 'light' }); f.session.repaintClassic();
+    assert.equal(f.fontLoads[0].cancelled, 1); assert.equal(root.getAttribute('data-qm-theme'), null);
+    f.set({ appearance: preference }); f.session.repaintClassic();
+    assert.equal(f.fontLoads.length, 2); assert.equal(root.getAttribute('data-qm-theme'), 'glass'); f.session.reset();
+});
+
+test('font-loader exceptions and rejection never turn a usable minimal theme into an error', async () => {
+    for (const loadFont of [() => { throw Error('font blocked'); }, () => ({ promise: Promise.reject(Error('font blocked')), cancel() {} })]) {
+        const errors = [], root = element();
+        const session = createQianmuAppearanceSession({ readSettings: () => ({ appearance: preference }), loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }), loadFont, onError: error => errors.push(error) });
+        session.mount(root); await session.sync(); await session.sync();
+        assert.equal(session.status, 'ready'); assert.equal(root.getAttribute('data-qm-theme'), 'glass'); assert.deepEqual(errors, []); session.reset();
+    }
+});
+
+test('the specified remote font uses an anonymous no-referrer stylesheet owned by the current session', async () => {
+    const links = [], document = { createElement: () => ({ remove() { this.removed = true; } }), head: { appendChild: link => links.push(link) } };
+    const session = createQianmuAppearanceSession({ document, readSettings: () => ({ appearance: preference }), loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
+    session.mount(element()); await session.sync();
+    assert.equal(links.length, 1); assert.equal(links[0].href, 'https://fontsapi.zeoseven.com/161/main/result.css');
+    assert.equal(links[0].referrerPolicy, 'no-referrer'); assert.equal(links[0].crossOrigin, 'anonymous');
+    links[0].onload(); session.reset(); assert.equal(links[0].removed, true);
+});
 
 test('classic mounts are inert, idempotent and do not request the optional skin', async () => {
     const f = fixture(), root = element(), off = f.session.mount(root);

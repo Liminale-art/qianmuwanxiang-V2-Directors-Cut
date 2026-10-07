@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {collectReleaseFiles,buildRelease} from '../scripts/build-release.mjs';
 
-const root=new URL('../',import.meta.url),version='1.59.443',viewVersion='1.59.441';
+const root=new URL('../',import.meta.url),version='1.59.444',viewVersion='1.59.441';
 const edge=(parent,...children)=>children.map(child=>[parent,`qianmu-${child}.js`]);
 const affectedEdges=[
   ...edge('index.js','image-info-view','gallery-collections-view','gallery-taxonomy','gallery-summary'),

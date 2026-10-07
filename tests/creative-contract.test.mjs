@@ -39,13 +39,13 @@ test('schema preserves stable fields, count source, enabled world shapes and one
   for (const key of ['story_status', 'quests', 'character_dynamics', 'npc_updates', 'chain_reactions', 'relation_undercurrents', 'world_chatter', 'factions', 'faction_relations', 'world_events', 'parallel_scene', 'interlude', 'limitations']) assert.ok(Object.hasOwn(shape, key), key);
   assert.equal(shape.interlude.type, 'phone');
   assert.equal(typeof shape.story_status.cycle, 'string');
-  assert.match(shape.story_status.cycle, /故事内日期或时段/);
+  assert.match(shape.story_status.cycle, /In-story date or time period/);
   assert.match(shape.factions[0].trend, /rising\/stable\/declining\/turbulent/);
   assert.match(shape.factions[0].scale, /城邦内\/区域性\/跨区域\/全局性/);
   assert.doesNotMatch(schema, /world_updates|director_comment|至少1桩跨地域|孤点至多|唯变是传/);
   assert.match(schema, /阿岚/);
   assert.match(schema, /老周/);
-  for (const [field, quota] of Object.entries(CREATIVE_COUNTS)) assert.match(schema, new RegExp(`${field}（[^\n]+${quota.min}`));
+  for (const [field, quota] of Object.entries(CREATIVE_COUNTS)) assert.match(schema, new RegExp(`${field} \\([^\n]+${quota.min}`));
   assert.deepEqual(Object.keys(shape.quests[0]), ['title', 'description', 'trigger', 'inject_prompt']);
 });
 
@@ -53,11 +53,28 @@ test('schema defaults new cards on without silently selecting a type, keeps old 
   const shape = parseShape(createCreativeSchema());
   assert.ok(shape.parallel_scene);
   assert.ok(shape.interlude);
-  assert.equal(shape.interlude.type, '本轮指定：theater 或 phone');
+  assert.equal(shape.interlude.type, 'Selected for this run: theater or phone');
   for (const field of ['world_chatter', 'factions', 'world_events', 'faction_relations']) assert.ok(!Object.hasOwn(shape, field));
   const off = parseShape(createCreativeSchema(OFF));
   assert.ok(!Object.hasOwn(off, 'parallel_scene'));
   assert.ok(!Object.hasOwn(off, 'interlude'));
+});
+
+test('English output protocol keeps narrative language, Chinese enums and established contract boundaries', () => {
+  const schema = createCreativeSchema(FULL), shape = parseShape(schema);
+  assert.match(schema, /Write narrative text in the current chat's language; default to Chinese when no language is established/);
+  assert.match(schema, /English instructions and field descriptions do not require English story output/);
+  assert.match(schema, /Preserve JSON keys and enum values exactly/);
+  assert.equal(shape.faction_relations[0].kind, '冲突/同盟/张力/中立/依附');
+  assert.equal(shape.world_events[0].stage, '酝酿/爆发/蔓延/消退/落定');
+  assert.equal(shape.world_events[0].touched, 'advance/mention/idle');
+  assert.equal(shape.world_events[0].status, 'active/closed');
+  assert.match(shape.limitations[0].reason, /missing is the actual positive-integer shortfall; use limitations: \[\] when complete/);
+  assert.match(schema, /reporting a shortfall does not satisfy the required count/);
+  assert.match(schema, /Distinguish possibilities from established experiences/);
+  assert.match(schema, /未映之幕 and 幕间拾趣 are independent and have no narrative-injection fields/);
+  assert.match(schema, /Exclude USER and every alias; do not invent an owner when the list is empty/);
+  assert.match(shape.quests[0].inject_prompt, /do not accept or act on behalf of USER/);
 });
 
 test('complete core and all enabled optional sections pass without a world echo quota', () => {
@@ -188,7 +205,7 @@ test('phone owners may come from narrative or effective memory without being cha
   const options = { ...FULL, eligiblePhoneOwners: undefined, phoneSourceText: '阿岚想起旧日那场争执。老周曾把钥匙留在桌上。SOURCE_PRIVATE_MARKER' };
   assert.deepEqual(validateCreativePlan(plan, options), []);
   assert.ok(!createCreativeSchema(options).includes('SOURCE_PRIVATE_MARKER'));
-  assert.match(createCreativeSchema(options), /本轮正文及有效记忆已经出现的非 USER 人物/);
+  assert.match(createCreativeSchema(options), /non-USER characters already present in this run's narrative or valid memory/);
   assert.ok(validateCreativePlan(plan, { ...options, phoneSourceText: '阿岚在等回信。' }).some(issue => issue.field === 'interlude'));
   assert.ok(validateCreativePlan(plan, { ...options, phoneSourceText: '' }).some(issue => issue.field === 'interlude'));
   assert.ok(validateCreativePlan(plan, { ...options, personaNames: ['老周'] }).some(issue => issue.field === 'interlude' && issue.reason.includes('USER')));

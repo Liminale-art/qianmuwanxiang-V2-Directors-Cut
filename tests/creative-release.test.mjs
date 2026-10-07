@@ -4,10 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = '1.59.443';
+const version = '1.59.444';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
-  'qianmu-creative-runtime.js', 'qianmu-memory-context.js',
+  'qianmu-creative-runtime.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js',
+]);
+const retained = new Set([
+  'qianmu-memory-context.js',
   'qianmu-director-live.js', 'qianmu-hive-commands.js',
   'qianmu-prose-hive.js', 'qianmu-prose-floor-tools.js',
 ]);
@@ -21,8 +24,8 @@ test('creative release refreshes every literal consumer and remains reachable fr
     const references = [...source.matchAll(/(['"])(\.\/[^'"\r\n]+\.js(?:\?[^'"\r\n]*)?)\1/g)].map(match => {
       const url = new URL(match[2], new URL(file, root));
       const target = decodeURIComponent(url.pathname.slice(root.pathname.length));
-      if (refreshed.has(target)) {
-        assert.equal(url.search, `?v=${version}`, `${file} -> ${target}`);
+      if (refreshed.has(target) || retained.has(target)) {
+        assert.equal(url.search, `?v=${refreshed.has(target) ? version : '1.59.443'}`, `${file} -> ${target}`);
         assert.equal(url.hash, '');
       }
       return target;
@@ -36,7 +39,7 @@ test('creative release refreshes every literal consumer and remains reachable fr
     for (const next of graph.get(file) || []) visit(next);
   }
   visit('index.js');
-  for (const file of refreshed) {
+  for (const file of [...refreshed, ...retained]) {
     assert.ok(files.includes(file), `${file} is included in the release`);
     assert.ok(reached.has(file), `${file} is reachable from the installed entry`);
   }

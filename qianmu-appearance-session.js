@@ -5,10 +5,12 @@ import { THEME_KEYS } from './qianmu-classic-palettes.js';
 import { mountQianmuInputBoundary } from './qianmu-input-boundary.js';
 
 const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-reader-scroll,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-viewer > aside,.sd-storyboard-video-draft-body,.sd-storyboard-video-draft-picker-grid,.sd-video-confirmation-body,.sd-storyboard-film-viewer > aside,.sd-storyboard-film-viewer-segments,.sd-storyboard-film-source-grid,dialog.sd-bundle-dialog > main,.sd-focus-voice-menu,.sd-focus-library-body,.sd-focus-voice-drawer-list,.sd-comfy-route-picker,.sd-comfy-route-dialog .popup-content,.sd-ensemble-target-picker,.sd-ensemble-target-dialog .popup-content,textarea';
+const MINIMAL_FONT_URL = 'https://fontsapi.zeoseven.com/161/main/result.css';
 
 // Load once, after the existing stylesheet. Classic sessions make no request.
-export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, schedule = setTimeout, cancelSchedule = clearTimeout } = {}) {
+export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, schedule = setTimeout, cancelSchedule = clearTimeout, external = false } = {}) {
     const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = String(url);
+    if (external) { link.referrerPolicy = 'no-referrer'; link.crossOrigin = 'anonymous'; }
     let settle, done = false, timer;
     const promise = new Promise(resolve => { settle = resolve; });
     function finish(loaded) {
@@ -23,15 +25,27 @@ export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, sc
 
 /** App-owned mount boundaries, not a document observer. Never renders or saves. */
 export function createQianmuAppearanceSession({ readSettings, styleUrl, document = globalThis.document,
-    readCoverAccent, loadStyles = () => loadQianmuAppearanceStyles(document, styleUrl), onError = () => {}, WeakReference = globalThis.WeakRef } = {}) {
+    readCoverAccent, loadStyles = () => loadQianmuAppearanceStyles(document, styleUrl),
+    loadFont = () => loadQianmuAppearanceStyles(document, MINIMAL_FONT_URL, { external: true }),
+    onError = () => {}, WeakReference = globalThis.WeakRef } = {}) {
     if (typeof readSettings !== 'function' || typeof loadStyles !== 'function' || typeof onError !== 'function') throw new TypeError('Appearance session callbacks are required.');
-    let ready = false, loading = null, failed = false, epoch = 0, mounted = new WeakMap();
+    let ready = false, loading = null, fontLoading = null, failed = false, epoch = 0, mounted = new WeakMap();
     // Weak ownership preserves the existing detached-portal collection behavior.
     const roots = new Set();
     const createRuntime = () => createQianmuAppearanceRuntime({
         readSettings: () => ready ? readSettings() : { theme: readSettings()?.theme }, readCoverAccent, WeakReference,
     });
     let runtime = createRuntime();
+    function syncFont() {
+        if (!ready || !runtime.supported || readAppearancePreferences(readSettings()).family !== 'glass') {
+            fontLoading?.cancel(); fontLoading = null; return;
+        }
+        if (fontLoading) return;
+        // Decorative network dependency only: never delay/roll back a usable skin,
+        // retry on every mount, or turn a font outage into an appearance error.
+        try { fontLoading = loadFont(); void Promise.resolve(fontLoading.promise).catch(() => {}); }
+        catch { fontLoading = { cancel() {} }; }
+    }
     function sync() {
         for (const reference of roots) {
             const root = reference.deref();
@@ -39,6 +53,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
             else if (!root.isConnected) mounted.get(root)?.off();
         }
         runtime.sync();
+        syncFont();
         if (!runtime.supported || ready || failed || readAppearancePreferences(readSettings()).family === 'classic') return Promise.resolve(ready);
         if (!loading) {
             const started = epoch;
@@ -47,7 +62,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
             loading.result = Promise.resolve(loading.promise).then(loaded => {
                 if (started !== epoch) return false;
                 ready = loaded === true; failed = !ready;
-                if (ready) runtime.sync();
+                if (ready) { runtime.sync(); syncFont(); }
                 else onError(new Error('Qianmu appearance stylesheet could not load; keeping classic.'));
                 return ready;
             }, error => {
@@ -70,7 +85,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         roots.add(reference);
         let active = true;
         const entry = { signature, off() { if (!active) return; active = false; releaseInput(); release(); roots.delete(reference); if (mounted.get(root) === entry) mounted.delete(root); } };
-        mounted.set(root, entry); if (!ready) void sync(); return entry.off;
+        mounted.set(root, entry); if (!ready) void sync(); else syncFont(); return entry.off;
     }
     function mountNotes(ownerDocument) {
         const panel = ownerDocument.getElementById('qianmu-notes-panel-layer'), floating = ownerDocument.getElementById('qianmu-notes-float-layer');
@@ -90,6 +105,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
             if (!runtime.supported) return;
             const key = readSettings()?.theme;
             runtime.rebaseClassic(createQianmuClassicPainter(document, THEME_KEYS.includes(key) ? key : 'light', options));
+            syncFont();
         },
         mountPortal(root, { inheritTheme = false, ...options } = {}) {
             if (!root?.isConnected || !runtime.supported) return () => {};
@@ -106,7 +122,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         reset() {
             epoch++;
             for (const reference of roots) { const root = reference.deref(); if (root) mounted.get(root)?.off(); }
-            roots.clear(); runtime.dispose(); loading?.cancel(); loading = null; ready = false; failed = false; mounted = new WeakMap(); runtime = createRuntime();
+            roots.clear(); runtime.dispose(); loading?.cancel(); fontLoading?.cancel(); loading = null; fontLoading = null; ready = false; failed = false; mounted = new WeakMap(); runtime = createRuntime();
         },
     });
 }

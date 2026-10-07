@@ -33,6 +33,29 @@ test('unknown older text is retained rather than guessing that it was a default'
   assert.equal(blank.systemPrompt, next.systemPrompt);
   assert.equal(blank.outputSchemaText, next.outputSchemaText);
 });
+test('exact v443 fingerprints upgrade markerless defaults without matching edited identity or schema', () => {
+  // The fingerprints were measured from the shipped v443 strings. Stub only the
+  // hash input here so this regression need not bundle another retired prompt.
+  const fingerprints = { 'v443-system': '91ad6303', 'v443-schema': '1bc3cd38' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v443-system', outputSchemaText: 'v443-schema', appliedPromptDefaultHash: marker,
+      appliedSchemaDefaultHash: marker, systemPromptBackup: 'user backup', outputSchemaBackup: 'format backup' };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt);
+    assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.systemPromptBackup, 'user backup');
+    assert.equal(settings.outputSchemaBackup, 'format backup');
+    settings.systemPrompt = 'v443-system with a user edit';
+    settings.outputSchemaText = 'v443-schema with a user edit';
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, 'v443-system with a user edit');
+    assert.equal(settings.outputSchemaText, 'v443-schema with a user edit');
+  }
+});
 test('chat blueprint marker never authorizes replacing edited or unknown text', () => {
   for (const edited of [true, false]) {
     const store = { blueprint: 'user work', blueprintEdited: edited, blueprintRevision: 0 };

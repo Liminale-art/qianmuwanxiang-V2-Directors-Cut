@@ -16,14 +16,14 @@ function section(name) {
 function fixture(plan, settings = {}) {
   const links = [];
   const c = vm.createContext({
-    settings, currentPlan: () => plan, htmlEscape: escape, snip: value => String(value),
+    settings, directorMemoryInspection: null, currentPlan: () => plan, htmlEscape: escape, snip: value => String(value),
     getContextItemId: item => item.title || item.name || 'one', injectSelection: new Set(),
     renderHistorySection: () => '<div>history</div>', renderHeroActions: () => '', renderGenerateRow: () => '',
     renderWorldChatterCard: () => '<section>尘寰群生</section>', renderRelationUndercurrentsCard: () => '<section>关系暗涌</section>',
     renderDirectorWorldEntryLink: (field, index) => { links.push({ field, index }); return '<span class="sd-world-media-entry"></span>'; },
     renderInjectPreview: () => '', renderBackstageBlueprintCard: () => '', DEFAULT_SYSTEM_PROMPT: '', JSON_SCHEMA_TEXT: '',
   });
-  vm.runInContext(['renderDashboardTab', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
+  vm.runInContext(['renderDashboardTab', 'renderDirectorMemoryReview', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
     'renderCastWorldFront', 'renderPlanSectionFold', 'renderNoPlan', 'renderItemList', 'renderItemCard', 'renderItemChips',
     'renderInjectSections', 'renderDirectorSettingsTab'].map(section).join('\n'), c);
   return { c, links };

@@ -66,7 +66,9 @@ test('appearance families are text-only and mode leads the accent row without a 
     const html=renderQianmuThemeMenu([], 'light', {supported:true});
     const families=html.slice(html.indexOf('class="sd-theme-family-options"'), html.indexOf('id="qianmu-theme-details"'));
     assert.doesNotMatch(families,/sd-theme-dot|<svg|<img/);
-    for(const name of ['纸间','流光','经典'])assert.match(families,new RegExp(`>${name}<`));
+    for(const name of ['纸间','极简','经典'])assert.match(families,new RegExp(`>${name}<`));
+    assert.doesNotMatch(families, /流光/);
+    assert.match(families, /data-appearance-family="glass"[^>]*><span class="sd-theme-name">极简<\/span>/);
     assert.match(html,/class="sd-theme-swatches"><button[^>]+data-appearance-mode-toggle/);
     assert.doesNotMatch(html,/sd-theme-detail-head|>强调色<|>\+</);
     assert.match(html,/sd-theme-custom-color[^>]*><span aria-hidden="true"><\/span><input/);
@@ -160,9 +162,13 @@ test('successful in-place selection updates radio state and returns focus, a rej
 
 test('production rerender, allowed close and extension disposal all release menu ownership', async () => {
     const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-    assert.match(entry, /function closeModal\(\) \{\s*if \(focusClockBlockExit\(\)\) return;\s*document.getElementById\(MODAL_ID\)\?\._sdThemeMenuCleanup\?\.\(\);/);
+    const closeStart = entry.indexOf('function closeModal()'), close = entry.slice(closeStart, entry.indexOf('\nfunction ', closeStart + 1));
+    assert.match(close, /^function closeModal\(\) \{\s*if \(focusClockBlockExit\(\)\) return;/);
+    assert.match(close, /document.getElementById\(MODAL_ID\)\?\._sdGalleryToolbarCleanup\?\.\(\);/);
+    assert.match(close, /document.getElementById\(MODAL_ID\)\?\._sdThemeMenuCleanup\?\.\(\);/);
     assert.match(entry, /modal\._sdThemeMenuCleanup\?\.\(\);\s*storyboardCaptureTagDraft/);
-    assert.match(entry, /clean\('panels', \(\) => \{\s*document.getElementById\(MODAL_ID\)\?\._sdThemeMenuCleanup\?\.\(\);/);
+    const panelsStart = entry.indexOf("clean('panels',"), panels = entry.slice(panelsStart, entry.indexOf("\n    clean('", panelsStart + 1));
+    assert.match(panels, /document.getElementById\(MODAL_ID\)\?\._sdThemeMenuCleanup\?\.\(\);/);
     assert.match(entry, /renderQianmuThemeMenu\(THEMES, themeKey, \{settings,supported:appearanceSession.supported\}\)/);
     const start = entry.indexOf('function renderModal()'), render = entry.slice(start, entry.indexOf('\nfunction ', start + 1));
     assert.equal(/const themePick =|const closeOnce =/.test(render), false, 'the old leaking menu binder must be removed from renderModal');

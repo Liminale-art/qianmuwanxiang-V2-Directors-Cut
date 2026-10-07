@@ -1,11 +1,16 @@
 // Creative defaults and one-request state. No storage, network or model calls.
 import { hashText } from './qianmu-storyboard-utils.js';
-import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.443';
+import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.444';
 
-const LEGACY_DEFAULT_HASHES = Object.freeze({ systemPrompt: '2045b006', outputSchemaText: '05c30a9e', blueprint: '4c919687' });
-const unchangedDefault = (value, current, legacyHash, appliedHash) => {
+// Exact bundled defaults from v1.59.442 and v1.59.443, not phrase-based DIY detection.
+const LEGACY_DEFAULT_HASHES = Object.freeze({
+  systemPrompt: Object.freeze(['2045b006', '91ad6303']),
+  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38']),
+  blueprint: Object.freeze(['4c919687', '1d95c305']),
+});
+const unchangedDefault = (value, current, legacyHashes, appliedHash) => {
   const text = String(value ?? '');
-  return !text.trim() || text === current || hashText(text) === legacyHash
+  return !text.trim() || text === current || legacyHashes.includes(hashText(text))
     || (appliedHash && appliedHash !== '__legacy__' && hashText(text) === appliedHash);
 };
 

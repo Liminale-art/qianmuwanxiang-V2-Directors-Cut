@@ -21,7 +21,7 @@ await context.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin === 'https://qianmu.test') {
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="zh-CN"><meta name="viewport" content="width=device-width,initial-scale=1"><body></body></html>' });
-        if (/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname)) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url), 'utf8') });
+        if (/^\/qianmu-[a-z0-9-]+\.(?:js|css)$/.test(url.pathname)) return route.fulfill({ contentType: url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url), 'utf8') });
     }
     external++;
     return route.abort();
@@ -76,6 +76,7 @@ try {
             document.querySelector('.fixture-following').addEventListener('click', () => fixture.outsideClicks++);
             window.session = createQianmuAppearanceSession({ readSettings: () => settings,
                 loadStyles: () => ({ promise: Promise.resolve(++fixture.styleLoads !== 1 || !failStyles), cancel() {} }),
+                loadFont: () => ({ promise: Promise.resolve(false), cancel() {} }),
                 onError: () => fixture.styleErrors++ });
             session.mount(root); session.mountNotes(document);
             window.unbind = bindQianmuThemeMenu(root, key => { selectQianmuClassicTheme({ settings, themeKey: key, session, save: saveAppearance, resolveLogo: () => null }); },

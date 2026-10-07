@@ -22,7 +22,7 @@ function completePlan(){
 function fixture(){
   let store={plan:{original:true}},context={chat:[]},account='st-user:a',calls=0,repairs=0,saves=0,injects=0,invocation;
   const gate=deferred(),sent=deferred();
-  const c={worldCompletions:[],busy:false,cancelRequested:false,abortController:null,directorRun:null,directorLiveLog:null,activeTab:'dashboard',MODAL_ID:'panel',
+  const c={worldCompletions:[],busy:false,cancelRequested:false,abortController:null,directorRun:null,directorLiveLog:null,directorMemoryInspection:null,activeTab:'dashboard',MODAL_ID:'panel',
     settings:{enabled:true,providerMode:'external',streamEnabled:true,logHistory:[]},document:{getElementById:()=>null},AbortController,Date,console,
     validateApiSettings:()=>true,toast:()=>{},apiToast:()=>{},uid:()=>String(Math.random()),getChatStore:()=>store,getChatKey:()=>context.chatId||'one',ctx:()=>context,
     featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account})},renderBusyState:()=>{},buildPrompt:async run=>{run.creativeOptions=creativeOptions;run.sourceFingerprint='fixture-source';return 'fixture';},directorSourceFingerprint:()=>'fixture-source',DEFAULT_SYSTEM_PROMPT:'system',

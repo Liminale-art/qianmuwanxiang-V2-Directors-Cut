@@ -7,9 +7,11 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
-const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
 const page = await context.newPage();
-const checks = [], errors = [], unexpectedRequests = [], fixtureFontRequests = [];
+const checks = [], errors = [], unexpectedRequests = [], fixtureFontRequests = [], minimalFontRequests = [];
+const fontUrl = 'https://fontsapi.zeoseven.com/161/main/result.css';
+let fontMode = 'font-error';
 const check = (name, actual) => { assert.ok(actual, name); checks.push(name); };
 const uiIds = ['heading', 'hero', 'navigation', 'label', 'input', 'textarea', 'select', 'button', 'prose', 'prose-child',
     'reader', 'notes', 'capture', 'capture-prose', 'dialog', 'dialog-title', 'dialog-input', 'dialog-button', 'art-preview', 'version'];
@@ -50,6 +52,14 @@ const html = `<!doctype html><html><head><meta name="viewport" content="width=de
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
     const url = new URL(route.request().url());
+    if (url.origin === 'https://fontsapi.zeoseven.com') {
+        minimalFontRequests.push({ path: url.pathname, mode: fontMode });
+        const headers = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
+        if (url.href !== fontUrl || fontMode === 'css-error') return route.fulfill({ status: 404, headers, body: '' });
+        // Entirely synthetic network results: no real Sarasa or provider download.
+        const src = fontMode === 'success' ? 'local("Microsoft YaHei"),local("PingFang SC"),local("Noto Sans CJK SC")' : 'url("./fixture.woff2")';
+        return route.fulfill({ headers, contentType: 'text/css', body: `@font-face{font-family:"Sarasa Gothic SC";src:${src};font-style:normal;font-weight:400;font-display:swap}` });
+    }
     if (url.origin === 'https://host-font.invalid') {
         fixtureFontRequests.push(url.pathname);
         return route.fulfill({ status: 404, body: '' }); // Simulated ST web-font failure, never sent externally.
@@ -64,10 +74,13 @@ await context.route('**/*', async route => {
 async function snapshot() {
     return page.evaluate(({ uiIds, preserveIds }) => {
         const fonts = ids => Object.fromEntries(ids.map(id => [id, getComputedStyle(document.getElementById(id)).fontFamily]));
+        const weights = ids => Object.fromEntries(ids.map(id => [id, getComputedStyle(document.getElementById(id)).fontWeight]));
         const sample = document.getElementById('prose-child');
         const range = document.createRange(); range.selectNodeContents(sample);
         return {
             ui: fonts(uiIds), preserve: fonts(preserveIds),
+            weights: weights(['heading', 'hero', 'art-preview', ...preserveIds]),
+            baselineWeight: getComputedStyle(document.getElementById('story-director-modal')).fontWeight,
             host: fonts(['host-heading', 'host-prose', 'host-input']),
             pseudo: getComputedStyle(document.getElementById('fa'), '::before').fontFamily,
             svg: document.querySelector('#svg-icons svg')?.outerHTML,
@@ -80,9 +93,15 @@ async function snapshot() {
 async function theme(family, mode = 'light') {
     await page.evaluate(async ({ family, mode }) => {
         settings.appearance = updateAppearancePreferences(settings, { family, mode });
-        await session.sync(); await document.fonts.ready;
+        await session.sync();
         await new Promise(resolve => requestAnimationFrame(resolve));
     }, { family, mode });
+    // The optional font must not block session.sync; wait only in this test.
+    await page.waitForFunction(url => {
+        const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find(node => node.href === url);
+        return !link || Boolean(link.sheet);
+    }, fontUrl);
+    await page.evaluate(() => document.fonts.ready);
 }
 
 try {
@@ -106,14 +125,17 @@ try {
     const classic = await snapshot();
     await theme('editorial'); const editorial = await snapshot();
     check('classic and editorial keep their original serif/host fonts before glass', classic.ui.heading.includes('Georgia') && editorial.ui.navigation.includes('Georgia'));
+    check('classic and editorial never request the minimal-theme font', minimalFontRequests.length === 0);
     await theme('glass'); const glass = await snapshot();
-    for (const [id, font] of Object.entries(glass.ui)) check(`glass ${id} uses the private local Heiti face`, font.includes('Qianmu Glass Local Heiti'));
+    for (const [id, font] of Object.entries(glass.ui)) check(`minimal ${id} prefers Sarasa with private local Heiti fallback`, font.startsWith('"Sarasa Gothic SC"') && font.includes('Qianmu Glass Local Heiti'));
+    check('font asset failure is simulated without any external network', minimalFontRequests.some(row => row.path.endsWith('fixture.woff2')));
+    check('minimal uses normal body weight and preserves heading/emphasis/code/icon hierarchy', glass.baselineWeight === '400' && JSON.stringify(glass.weights) === JSON.stringify(classic.weights));
     check('glass does not alter host heading/body/input', JSON.stringify(glass.host) === JSON.stringify(classic.host));
     assert.deepEqual(glass.preserve, classic.preserve, 'code/term/legacy icon fonts remain unchanged');
     checks.push('code/term/legacy icon fonts remain unchanged');
     check('legacy icon pseudo font and actual SVG artwork remain intact', glass.pseudo === classic.pseudo && Boolean(glass.svg) && glass.svg === classic.svg);
     check('custom excerpt canvas content remains byte-identical', glass.canvas === classic.canvas);
-    const face = await page.evaluate(() => [...document.styleSheets].flatMap(sheet => [...sheet.cssRules]).filter(rule => rule.type === CSSRule.FONT_FACE_RULE && rule.style.fontFamily.includes('Qianmu Glass Local Heiti')).map(rule => ({ src: rule.style.getPropertyValue('src'), display: rule.style.getPropertyValue('font-display') })));
+    const face = await page.evaluate(() => [...document.styleSheets].filter(sheet => !sheet.href || new URL(sheet.href).origin === location.origin).flatMap(sheet => [...sheet.cssRules]).filter(rule => rule.type === CSSRule.FONT_FACE_RULE && rule.style.fontFamily.includes('Qianmu Glass Local Heiti')).map(rule => ({ src: rule.style.getPropertyValue('src'), display: rule.style.getPropertyValue('font-display') })));
     check('private Heiti face resolves installed fonts only, with no URL/import', face.length > 0 && face.every(row => row.src.includes('local(') && !/url\(/i.test(row.src)));
     const cdp = await context.newCDPSession(page);
     await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
@@ -124,9 +146,17 @@ try {
     }
     const onlineFonts = await platformFonts();
     // Chromium may use the system sans face for an injected whitespace glyph.
-    assert.ok(onlineFonts.some(font => /YaHei|PingFang|Noto Sans|Source Han Sans|WenQuanYi|Heiti/i.test(font.familyName))
-        && onlineFonts.every(font => font.glyphCount > 0 && /YaHei|PingFang|Noto Sans|Source Han Sans|WenQuanYi|Heiti|Tahoma|Segoe|Arial/i.test(font.familyName)), `Chinese glyphs should resolve to installed Heiti: ${JSON.stringify(onlineFonts)}`);
-    checks.push('Chinese glyphs actually resolve to installed Heiti, not only a CSS alias');
+    assert.ok(onlineFonts.some(font => /Sarasa|YaHei|PingFang|Noto Sans|Source Han Sans|WenQuanYi|Heiti/i.test(font.familyName))
+        && onlineFonts.every(font => font.glyphCount > 0 && /Sarasa|YaHei|PingFang|Noto Sans|Source Han Sans|WenQuanYi|Heiti|Tahoma|Segoe|Arial/i.test(font.familyName)), `Chinese glyphs remain readable with the remote font blocked: ${JSON.stringify(onlineFonts)}`);
+    checks.push('font-download failure leaves readable installed Sarasa or local Heiti glyphs');
+    // Sarasa may already be installed on the QA machine. Model its absence by
+    // changing only this fixture's first-choice family; never touch system fonts.
+    await page.evaluate(() => document.querySelectorAll('[data-qm-theme="glass"]').forEach(root => root.style.setProperty('--qm-glass-font', '"Fixture Missing Face", "Qianmu Glass Local Heiti", sans-serif')));
+    await page.evaluate(() => document.fonts.ready);
+    const forcedFallbackFonts = await platformFonts();
+    check('private installed Heiti really renders when Sarasa is unavailable', forcedFallbackFonts.some(font => /YaHei|PingFang|Noto Sans|Source Han Sans|WenQuanYi|Heiti/i.test(font.familyName)) && forcedFallbackFonts.every(font => !/Sarasa/.test(font.familyName)));
+    await page.evaluate(() => document.querySelectorAll('[data-qm-theme="glass"]').forEach(root => root.style.removeProperty('--qm-glass-font')));
+    await page.evaluate(() => document.fonts.ready);
 
     // This simulates the ST network font changing while Qianmu stays mounted.
     await page.evaluate(() => {
@@ -161,14 +191,35 @@ try {
         for (const id of ['story-director-modal', 'reader', 'qianmu-notes-panel-layer']) document.getElementById(id).style.setProperty('--sd-font', 'Georgia,serif');
         document.getElementById('capture').style.setProperty('--qm-prose-font', 'Georgia,serif');
     });
-    await theme('classic'); const backClassic = await snapshot();
+    await page.evaluate(async () => {
+        const { selectQianmuClassicTheme } = await import('/qianmu-appearance-actions.js');
+        selectQianmuClassicTheme({ settings, themeKey: 'light', session, save() {}, resolveLogo: () => null });
+        await document.fonts.ready;
+    });
+    const backClassic = await snapshot();
     check('switching glass to classic restores every original UI font', JSON.stringify(backClassic.ui) === JSON.stringify(classic.ui));
+    check('leaving minimal releases its external font stylesheet', await page.locator(`link[href="${fontUrl}"]`).count() === 0);
     await theme('editorial'); const backEditorial = await snapshot();
     check('switching glass to editorial restores every original UI font', JSON.stringify(backEditorial.ui) === JSON.stringify(editorial.ui));
+
+    fontMode = 'css-error'; await theme('glass');
+    check('failed font stylesheet leaves minimal ready and legible', await page.evaluate(() => session.status === 'ready') && JSON.stringify((await snapshot()).ui) === JSON.stringify(glass.ui));
+    check('failed font stylesheet is released rather than leaving a blocking link', await page.locator(`link[href="${fontUrl}"]`).count() === 0);
+    await theme('classic'); fontMode = 'success'; await theme('glass');
+    const loadedSarasa = await page.evaluate(async () => {
+        await document.fonts.load('16px "Sarasa Gothic SC"', '中文 Text');
+        return [...document.fonts].some(face => face.family.includes('Sarasa Gothic SC') && face.status === 'loaded');
+    });
+    check('mocked successful Sarasa stylesheet activates the requested family', loadedSarasa);
+    const loaded = await snapshot(), requestsBeforeMode = minimalFontRequests.length;
+    check('successful font loading leaves host and protected technical/icon fonts untouched', JSON.stringify(loaded.host) === JSON.stringify(classic.host) && JSON.stringify(loaded.preserve) === JSON.stringify(classic.preserve));
+    await theme('glass', 'dark');
+    check('dark mode keeps Sarasa without a duplicate stylesheet request', minimalFontRequests.length === requestsBeforeMode && JSON.stringify((await snapshot()).ui) === JSON.stringify(glass.ui));
     await theme('glass');
     await page.evaluate(() => session.reset()); const reset = await snapshot();
     check('session disposal removes glass typography and restores classic', reset.theme === 'classic' && JSON.stringify(reset.ui) === JSON.stringify(classic.ui));
+    check('session disposal removes its optional font stylesheet', await page.locator(`link[href="${fontUrl}"]`).count() === 0);
     check('no unrelated network requests or page errors', unexpectedRequests.length === 0 && errors.length === 0);
     await cdp.detach();
-    console.log(JSON.stringify({ passed: checks.length, checks, platformFonts: onlineFonts, errors, unexpectedRequests, simulatedHostFontRequests: fixtureFontRequests.length, productionWrites: 0, providerRequests: 0 }, null, 2));
+    console.log(JSON.stringify({ passed: checks.length, checks, blockedRemotePlatformFonts: onlineFonts, forcedFallbackFonts, errors, unexpectedRequests, simulatedMinimalFontRequests: minimalFontRequests, simulatedHostFontRequests: fixtureFontRequests.length, externalNetwork: 0, productionWrites: 0, providerRequests: 0 }, null, 2));
 } finally { await context.close(); await browser.close(); }
