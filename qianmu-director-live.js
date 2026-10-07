@@ -1,13 +1,16 @@
 const FIELDS = {
-  quests: ['任务', ['title', 'objective', 'description', 'trigger', 'reward']],
-  npc_updates: ['角色动向', ['name', 'role', 'current_goal', 'emotional_state', 'next_action', 'hidden_agenda']],
+  quests: ['际遇', ['title', 'content', 'description', 'trigger']],
+  character_dynamics: ['此间一人', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
+  npc_updates: ['其他人物动向', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
   world_updates: ['世界回声', ['title', 'type', 'content', 'scope', 'timing']],
-  chain_reactions: ['因果链', ['spark', 'chain', 'impact']],
+  chain_reactions: ['涟漪', ['spark', 'chain', 'impact']],
   relation_undercurrents: ['关系暗涌', ['title', 'parties', 'surface', 'undercurrent', 'tension', 'content']],
-  director_comment: ['众声', ['text', 'content']],
+  parallel_scene: ['未映之幕', ['title', 'content']],
+  interlude: ['幕间拾趣', ['title', 'owner', 'content']],
 };
+const OBJECT_FIELDS = new Set(['parallel_scene', 'interlude']);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-// Consume only complete JSON values at known top-level array positions. Never repair a partial object.
+// Consume only closed known cards. Top-level extras stay read-only, just like array previews.
 export function completeDirectorCards(source) {
   const text = String(source || ''), cards = [], stack = [];
   let string = false, escaped = false, tokenStart = -1, key = '', itemStart = -1, expectKey = false;
@@ -29,6 +32,7 @@ export function completeDirectorCards(source) {
       if (stack.length === 2 && stack[1] === '[' && itemStart < 0) itemStart = i;
       continue;
     } else if (ch === '{' || ch === '[') {
+      if (stack.length === 1 && ch === '{' && OBJECT_FIELDS.has(key)) itemStart = i;
       if (stack.length === 2 && stack[1] === '[' && itemStart < 0) itemStart = i;
       stack.push(ch);
       if (stack.length === 1) expectKey = true;
@@ -38,17 +42,22 @@ export function completeDirectorCards(source) {
       // Only closing the outer item completes it; nested arrays/objects leave its start intact.
       if (stack.length === 2 && stack[1] === '[') { stack.pop(); itemStart = -1; continue; }
       stack.pop(); if (!stack.length) break;
+      if (stack.length === 1 && ch === '}' && OBJECT_FIELDS.has(key) && itemStart >= 0) {
+        add(text.slice(itemStart, i + 1), true); itemStart = -1;
+      }
     } else if (stack.length === 1 && ch === ',') { key = ''; expectKey = true; continue; }
     else if (stack.length === 2 && stack[1] === '[' && ch === ',') { itemStart = -1; continue; }
     else continue;
     if (stack.length === 2 && stack[1] === '[' && itemStart >= 0) { add(text.slice(itemStart, i + 1)); itemStart = -1; }
   }
-  function add(raw) {
+  function add(raw, objectField = false) {
     if (!Object.hasOwn(FIELDS, key)) return;
+    if (OBJECT_FIELDS.has(key) !== objectField) return;
     let value; try { value = JSON.parse(raw); } catch (_) { return; }
+    if (OBJECT_FIELDS.has(key) && (!value || typeof value.content !== 'string' || !value.content.trim())) return;
+    if (key === 'interlude' && !['theater', 'phone'].includes(value.type)) return;
     const [label, fields] = FIELDS[key];
-    const lines = typeof value === 'string' && key === 'director_comment' ? [value]
-      : value && !Array.isArray(value) && typeof value === 'object' ? fields.map(field => Array.isArray(value[field]) ? value[field].filter(x => typeof x === 'string').join(' · ') : typeof value[field] === 'string' ? value[field] : '').filter(Boolean) : [];
+    const lines = value && !Array.isArray(value) && typeof value === 'object' ? fields.map(field => Array.isArray(value[field]) ? value[field].filter(x => typeof x === 'string').join(' · ') : typeof value[field] === 'string' ? value[field] : '').filter(Boolean) : [];
     if (!lines.some(line => line.trim())) return;
     cards.push({ field: key, label, value, lines });
   }
@@ -77,7 +86,25 @@ export function parseDirectorFinal(raw) {
 
 export function renderModelDiagnostics(log) {
   const info = log.completion;
-  return `${info ? `<p class="sd-muted">结束原因：${escape(info.finishReason || '渠道未提供')}${info.interrupted ? ' · 未完整完成' : ''}${info.compatibility ? ` · ${escape(info.compatibility)}` : ''}</p>` : ''}
+  const memoryLabel = { partial: '部分记忆可用，本次仅采用已核对内容。', unverified: '记忆暂无法核对，本次未采用。', unsupported: '当前记忆版本尚未适配，本次未采用。' }[log.memory?.status];
+  const memoryCodes = memoryLabel && Array.isArray(log.memory?.diagnostics)
+    ? log.memory.diagnostics.filter(item => typeof item?.code === 'string').map(item => `${item.code}${typeof item.scope === 'string' && item.scope ? ` · ${item.scope}` : ''}`) : [];
+  const issues = Array.isArray(log.quality) ? log.quality : Array.isArray(log.quality?.issues) ? log.quality.issues : [];
+  const qualityFields = new Map();
+  for (const issue of issues) {
+    if (!issue || typeof issue.field !== 'string') continue;
+    const previous = qualityFields.get(issue.field) || { missing: 0, reason: '' };
+    const missing = Number.isInteger(issue.missing) && issue.missing > 0 ? issue.missing : 0;
+    qualityFields.set(issue.field, { missing: Math.max(previous.missing, missing), reason: previous.reason || (typeof issue.reason === 'string' ? issue.reason : '') });
+  }
+  const qualityText = [...qualityFields].map(([field, issue]) => {
+    const label = FIELDS[field]?.[0] || ({ world_chatter: '尘寰群生', factions: '世界格局·组织', faction_relations: '世界格局·关系', world_events: '世界格局·局势', limitations: '受限说明' })[field] || '其他栏目';
+    return `${label}${issue.missing ? `缺 ${issue.missing} ${OBJECT_FIELDS.has(field) ? '张' : '条'}` : `：${issue.reason || '内容尚未符合要求'}`}`;
+  }).join('；');
+  return `${memoryLabel ? `<p class="sd-muted sd-memory-notice">${escape(memoryLabel)}</p>` : ''}
+    ${memoryCodes.length ? `<details><summary>记忆核对详情</summary><pre class="sd-term">${escape(memoryCodes.join('\n'))}</pre></details>` : ''}
+    ${qualityText ? `<p class="sd-muted sd-creative-quality">本次内容未完整：${escape(qualityText)}</p>` : ''}
+    ${info ? `<p class="sd-muted">结束原因：${escape(info.finishReason || '渠道未提供')}${info.interrupted ? ' · 未完整完成' : ''}${info.compatibility ? ` · ${escape(info.compatibility)}` : ''}</p>` : ''}
     ${info?.rawTransport ? `<details><summary>未解析的原始响应片段</summary><pre class="sd-term">${escape(info.rawTransport)}</pre></details>` : ''}
     <details class="sd-log-reasoning" ${log.reasoning ? '' : 'hidden'}><summary>渠道返回的推理内容</summary><pre class="sd-term sd-term-reasoning">${escape(log.reasoning || '')}</pre></details>
     ${log.repairResponse || log.repairError ? `<div class="sd-log-cap">定向补写（独立回复，不拼入首轮原文）</div><pre class="sd-term">${escape(log.repairResponse || log.repairError)}</pre>` : ''}`;

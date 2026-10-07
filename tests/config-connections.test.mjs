@@ -11,6 +11,7 @@ import {mergeDefaults} from '../qianmu-storyboard-utils.js';
 import * as utilities from '../qianmu-storyboard-utils.js';
 import * as ttsProviders from '../qianmu-tts-providers.js';
 import {normalizeQianmuStructuredOutputMode} from '../qianmu-llm-output.js';
+import {upgradeCreativeDefaults} from '../qianmu-creative-runtime.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function settings(prefix='source') {
@@ -86,8 +87,8 @@ function fixture() {
 }
 
 function realMigrationFixture() {
-  const e=fixture();Object.assign(e.c,utilities,ttsProviders,{normalizeQianmuStructuredOutputMode,
-    DEFAULT_SETTINGS:{tts:{},quickWheelCustomEnabled:['dashboard','notes']},DEFAULT_SYSTEM_PROMPT:'fixture system',JSON_SCHEMA_TEXT:'{}',PROMPT_REVISION:1,LOG_LIMIT:10});
+  const e=fixture();Object.assign(e.c,utilities,ttsProviders,{normalizeQianmuStructuredOutputMode,upgradeCreativeDefaults,
+    DEFAULT_SETTINGS:{tts:{},quickWheelCustomEnabled:['dashboard','notes']},DEFAULT_SYSTEM_PROMPT:'fixture system',DEFAULT_BLUEPRINT:'fixture blueprint',JSON_SCHEMA_TEXT:'{}',PROMPT_REVISION:1,LOG_LIMIT:10});
   // Production functions live in an ES module: match its strict assignment semantics.
   vm.runInContext('"use strict";\n'+['migrateWidgetSettings','migrateTtsProviderSettings','migrateSettings'].map(section).join('\n'),e.c);
   return e;

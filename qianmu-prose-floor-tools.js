@@ -1,5 +1,5 @@
 import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.425';
-import {createProseHive} from './qianmu-prose-hive.js?v=1.59.419';
+import {createProseHive} from './qianmu-prose-hive.js?v=1.59.443';
 import {configureStAccountStorage} from './qianmu-st-account-storage.js';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.425';
 import {createProseAssistantRenameCoordinator} from './qianmu-prose-assistant-rename.js';

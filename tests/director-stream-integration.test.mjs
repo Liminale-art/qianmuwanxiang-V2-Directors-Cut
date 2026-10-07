@@ -2,40 +2,64 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { parseDirectorFinal, renderDirectorLive, paintModelLog } from '../qianmu-director-live.js';
+import { parseDirectorFinal, renderDirectorLive, paintModelLog, renderModelDiagnostics } from '../qianmu-director-live.js';
+import { normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems } from '../qianmu-creative-contract.js';
+import { isPlainObject, mergeDefaults } from '../qianmu-storyboard-utils.js';
 const entry=await fs.readFile(new URL('../index.js',import.meta.url),'utf8');
 const source=entry.slice(entry.indexOf('function makeStreamLogUpdater('),entry.indexOf('// MIGRATED to qianmu-storyboard-utils.js (commit 19)'));
+const normalizeSource=entry.slice(entry.indexOf('function normalizePlan('),entry.indexOf('// directorItemText -'));
+const qualitySource=entry.slice(entry.indexOf('function directorDedupePlan('),entry.indexOf('async function repairDirectorPlanQuality('));
 const stop=entry.slice(entry.indexOf('function stopGeneration()'),entry.indexOf('// 幕外停止：'));
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
+const creativeOptions=Object.freeze({parallelSceneEnabled:false,interludeEnabled:false});
+function completePlan(){
+  return {quests:Array.from({length:5},(_,i)=>({title:i?'offer '+i:'first',description:i?'a visitor brings letter '+i:'complete card'})),
+    character_dynamics:Array.from({length:2},(_,i)=>({title:'moment '+i,content:'the character attends to letter '+i})),
+    npc_updates:Array.from({length:3},(_,i)=>({name:'neighbor '+i,next_action:'collect delivery '+i})),
+    chain_reactions:Array.from({length:3},(_,i)=>({spark:'road '+i+' closes',chain:'delivery '+i+' takes the longer route'})),
+    relation_undercurrents:Array.from({length:3},(_,i)=>({parties:'character and neighbor '+i,tension:'unreturned letter '+i+' keeps the promise open'}))};
+}
 function fixture(){
   let store={plan:{original:true}},context={chat:[]},account='st-user:a',calls=0,repairs=0,saves=0,injects=0,invocation;
   const gate=deferred(),sent=deferred();
   const c={worldCompletions:[],busy:false,cancelRequested:false,abortController:null,directorRun:null,directorLiveLog:null,activeTab:'dashboard',MODAL_ID:'panel',
     settings:{enabled:true,providerMode:'external',streamEnabled:true,logHistory:[]},document:{getElementById:()=>null},AbortController,Date,console,
     validateApiSettings:()=>true,toast:()=>{},apiToast:()=>{},uid:()=>String(Math.random()),getChatStore:()=>store,getChatKey:()=>context.chatId||'one',ctx:()=>context,
-    featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account})},renderBusyState:()=>{},buildPrompt:async()=>'fixture',DEFAULT_SYSTEM_PROMPT:'system',
-    pushLog:log=>{c.settings.logHistory.push(log);return log;},saveSettings:()=>{},clone:structuredClone,normalizePlan:x=>x,parseDirectorFinal,
-    directorDedupePlan:()=>[],repairDirectorPlanQuality:async()=>{repairs++;return {repaired:false,needs:{},removed:[],raw:'',error:''};},
+    featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account})},renderBusyState:()=>{},buildPrompt:async run=>{run.creativeOptions=creativeOptions;run.sourceFingerprint='fixture-source';return 'fixture';},directorSourceFingerprint:()=>'fixture-source',DEFAULT_SYSTEM_PROMPT:'system',
+    pushLog:log=>{c.settings.logHistory.push(log);return log;},saveSettings:()=>{},clone:structuredClone,parseDirectorFinal,
+    isPlainObject,mergeDefaults,normalizeCreativeSections,validateCreativePlan,pruneInvalidCreativeItems,
+    repairDirectorPlanQuality:async()=>{repairs++;return {repaired:false,needs:{},removed:[],raw:'',error:''};},
     saveMetadata:async()=>saves++,applyDirectorInjection:async()=>injects++,refreshDirectorProductionPackets:async()=>{},injectSelection:new Set(),
     storyboardQueueNewWorldPlan:async(plan,owner)=>{assert.equal(saves,1);assert.equal(injects,1);assert.equal(plan,store.plan);assert.equal(owner.store,store);assert.equal(owner.namespace,account);c.worldCompletions.push({plan,owner});},
     renderModal:()=>{},renderFloatButton:()=>{},rerenderIfOpen:()=>{},paintModelLog,renderDirectorLive,
     callExternalApi:async(messages,onDelta,cfg,controller)=>{calls++;invocation={messages,onDelta,cfg,controller};sent.resolve();return gate.promise;},
   };
-  vm.createContext(c);vm.runInContext(source+'\n'+stop,c);
+  vm.createContext(c);vm.runInContext(normalizeSource+'\n'+qualitySource+'\n'+source+'\n'+stop,c);
   return {c,gate,sent,run:()=>c.generateDirectorPlan(),get request(){return invocation;},get store(){return store;},get calls(){return calls;},get repairs(){return repairs;},get saves(){return saves;},get injects(){return injects;},
     switchChat(){store={plan:{other:true}};context={chat:[],chatId:'two'};},switchAccount(){account='st-user:b';}};
 }
 
 test('actual director streams into its own log, stages complete cards, and commits only the completed final object',async()=>{
   const e=fixture(),run=e.run();await e.sent.promise;
-  const prefix='{"quests":[{"title":"first","objective":"complete card"}';
+  const full=completePlan(),raw=JSON.stringify(full),prefix=raw.slice(0,raw.indexOf('},{')+1);
   e.request.onDelta(prefix);assert.equal(e.store.plan.original,true);assert.equal(e.saves,0);
   assert.match(renderDirectorLive(e.c.directorLiveLog),/complete card/);
-  const raw=prefix+']}';e.request.cfg.onResponse({text:raw,reasoning:'separate thoughts',finishReason:'stop',complete:true});e.gate.resolve(raw);await run;
+  e.request.cfg.onResponse({text:raw,reasoning:'separate thoughts',finishReason:'stop',complete:true});e.gate.resolve(raw);await run;
   assert.equal(e.store.plan.quests[0].title,'first');assert.equal(e.saves,1);assert.equal(e.injects,1);assert.equal(e.calls,1);
   assert.equal(e.c.worldCompletions.length,1);
   const log=e.c.settings.logHistory[0];assert.equal(log.response,raw);assert.equal(log.reasoning,'separate thoughts');assert.equal(log.completion.finishReason,'stop');assert.equal(log.status,'success');
   assert.equal(e.c.busy,false);
+});
+
+test('actual creative-shortfall failure log renders named missing sections from its runtime quality object',async()=>{
+  const e=fixture(),run=e.run();await e.sent.promise;
+  const plan=completePlan();plan.character_dynamics=[];
+  e.gate.resolve(JSON.stringify(plan));await run;
+  const log=e.c.settings.logHistory[0];
+  assert.equal(log.status,'error');assert.ok(Array.isArray(log.quality.issues));
+  assert.equal(log.quality.gaps.character_dynamics,2);
+  assert.match(renderModelDiagnostics(log),/此间一人缺 2 条/);
+  assert.equal(e.saves,0);assert.equal(e.injects,0);assert.equal(e.store.plan.original,true);
 });
 
 test('actual truncation retains received cards and raw prose without repair requests, overwriting prior plan or injecting',async()=>{

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_GUIDES, CREATIVE_COUNTS } from '../qianmu-creative-prompts.js';
+import { createCreativeSchema } from '../qianmu-creative-contract.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -36,17 +38,19 @@ assert.doesNotMatch(css, /\.sd-geo-focused \.sd-geo-node\.sd-on \.sd-geo-node-do
 assert.match(css, /\.sd-geo-focused \.sd-geo-node\.sd-on \.sd-geo-node-focus-ring\s*\{[^}]*opacity: \.9/);
 assert.doesNotMatch(css, /@keyframes sd-geo-focus-ring/);
 
-// 任务仅变更叙述人称：四个任务视角锚点一致为第三人称，原有核心约束仍在。
-const systemPrompt = source.slice(source.indexOf('const DEFAULT_SYSTEM_PROMPT'), source.indexOf('const JSON_SCHEMA_TEXT'));
-const schemaPrompt = source.slice(source.indexOf('const JSON_SCHEMA_TEXT'), source.indexOf('const DIRECTOR_SECTION_RULES'));
-const finalPrompt = source.slice(source.indexOf('【最终任务·发送前重申'), source.indexOf('【势·关系网·最后重申】'));
-assert.match(systemPrompt, /第三人称向心视角/);
-assert.match(systemPrompt, /quests采用以\{\{user\}\}为中心的第三人称/);
-assert.match(schemaPrompt, /以第三人称描述 \{\{user\}\} 的行动、观察、心理和下一步安排/);
-assert.match(finalPrompt, /任务用以 \{\{user\}\} 为中心的第三人称/);
-assert.doesNotMatch(systemPrompt, /quests[^\n]*第一人称/);
-for (const invariant of ['任务 5 条', 'NPC 是有完整生活的人', '任务可被选择、延后、转向', '时间段务必拉开层次']) {
-  assert.match(systemPrompt, new RegExp(invariant));
-}
+// 已定稿的际遇取代旧任务职业框定；供给量与 USER 自主权仍须守住。
+const systemPrompt = CREATIVE_SYSTEM_PROMPT;
+const schemaPrompt = createCreativeSchema({ interludeType: 'theater' });
+assert.match(source, /const DEFAULT_SYSTEM_PROMPT = CREATIVE_SYSTEM_PROMPT;/);
+assert.match(source, /segments\.push\(creativeSectionGuidance\(run\.creativeOptions\)\)/);
+assert.match(source, /segments\.push\(createCreativeSchema\(run\.creativeOptions\)\)/);
+assert.equal(CREATIVE_COUNTS.quests.min, 5);
+assert.match(systemPrompt, /禁止替 \{\{user\}\} 决定思想、情绪、立场与行动/);
+assert.match(CREATIVE_GUIDES.quests, /具体可接近的情境/);
+assert.match(CREATIVE_GUIDES.quests, /不写成向 \{\{user\}\} 布置目标、奖励和完成步骤的任务清单/);
+assert.match(schemaPrompt, /不代替 USER 接受或行动/);
+assert.doesNotMatch(schemaPrompt, /以第三人称描述.*心理和下一步安排/);
+assert.match(systemPrompt, /按照故事内实际经过的时间和已满足的条件推进/);
+assert.match(systemPrompt, /各方既能与 \{\{user\}\} 产生有来由的交集，也有独立于主角的事务/);
 
 console.log('v1.33.1 visual and task-prompt refinement contract OK');

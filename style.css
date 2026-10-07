@@ -3214,7 +3214,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   #story-director-modal .sd-chatter-stage { height: auto; max-height: 260px; overflow-y: auto; -webkit-mask: none; mask: none; }
 }
 
-/* 因果链：可视化的连锁链路，逐环以箭头串联 */
+/* 涟漪：可视化的传播链路，完整保留每环的叙事情境。 */
 #story-director-modal .sd-chain-flowlist { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 #story-director-modal .sd-chain-item {
   border: 1px solid var(--sd-border);
@@ -3230,6 +3230,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   gap: 6px 4px;
 }
 #story-director-modal .sd-chain-node {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: .9em;
   line-height: 1.4;
   padding: 4px 10px;
@@ -3334,7 +3337,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-inject-subfold > p { margin: 8px 0 0; }
 #story-director-modal .sd-inject-subfold .sd-inject-section-grid { padding-top: 0; }
 #story-director-modal .sd-inject-title .sd-info-tag { margin-left: 2px; }
-#story-director-modal .sd-derivative-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+#story-director-modal .sd-derivative-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 #story-director-modal .sd-derivative-options .sd-option-chip { width: 100%; padding-inline: 5px; }
 #story-director-modal .sd-director-law-fold { margin-top: 0; }
 #story-director-modal .sd-director-law-fold > summary { justify-content: space-between !important; padding: 0 !important; }
@@ -9105,7 +9108,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 .sd-tts-toolbar > :is(.sd-tts-trigger, .sd-tts-reextract, .sd-tts-regenall, .sd-tts-playall) > .qm-glyph-icon > svg.qm-glyph-svg,
 .sd-tts-inline > .qm-glyph-icon > svg.qm-glyph-svg { transform: scale(1.05); }
 
-/* 审片：当前幕回归信息行；任务/世界仅保留同排跳转标签。 */
+/* 审片：当前幕回归信息行；际遇/世界仅保留同排跳转标签。 */
 #story-director-modal .sd-hero .sd-scene-current { margin-top: 3px; }
 #story-director-modal .sd-hero .sd-two {
   display: grid;
@@ -9120,21 +9123,16 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-status-card .sd-count-tags { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; gap: 6px; }
 #story-director-modal .sd-status-card .sd-count-tag { justify-content: center; min-height: 30px; padding: 4px 8px !important; }
 
-/* 众声固定三席，分别置于克制的底色分区内。 */
-#story-director-modal .sd-voices-list { display: grid; gap: 5px; }
-#story-director-modal .sd-voices-list > p {
-  margin: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--sd-hairline);
-  border-radius: 9px;
-  background: var(--sd-glass-weak);
-  font-size: 11.5px;
-  line-height: 1.55;
-}
-#story-director-modal .sd-voices-list > p:nth-child(even) { background: var(--sd-glass); }
+/* 审片番外仅阅读，沿用三主题的卡片、文字和留白，不模拟外部手机界面。 */
+#story-director-modal .sd-director-extra-card { min-width: 0; }
+#story-director-modal .sd-director-extra-card .sd-section-title { align-items: baseline; flex-wrap: wrap; gap: 5px 10px; }
+#story-director-modal .sd-director-extra-card .sd-section-title > span { color: var(--sd-muted); font-size: 11px; overflow-wrap: anywhere; }
+#story-director-modal .sd-director-extra-card h4 { margin: 12px 0 8px; color: var(--sd-text); font-size: 12px; line-height: 1.55; }
+#story-director-modal .sd-director-extra-content,
+#story-director-modal .sd-director-narrative { margin: 8px 0 0; color: var(--sd-text); font-size: 11.5px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
 #story-director-modal .sd-lib-main h4 { font-size: 11.5px; font-weight: 600; }
 
-/* 任务与世界共用的条目层级。 */
+/* 际遇与世界共用的条目层级。 */
 #story-director-modal .sd-item-summary-main h4,
 #story-director-modal .sd-item-detail dt,
 #story-director-modal .sd-item-detail dd,

@@ -3,6 +3,10 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-creative-prompts.js",
+    "qianmu-creative-contract.js",
+    "qianmu-creative-runtime.js",
+    "qianmu-memory-context.js",
     "qianmu-image-info-view.js",
     "qianmu-image-zoom.js",
     "qianmu-storyboard-inline-reading.js",

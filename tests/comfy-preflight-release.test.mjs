@@ -47,7 +47,7 @@ test('RunningHub workflow-id consumers have an explicit local cache closure',asy
     assert.ok(!source.includes(`from './${child}'`),`${parent} must not also use the stale bare contract`);
   }
   const files=await collectReleaseFiles();
-  assert.equal(files.length,687,'three focused illustration modules extend the existing whitelist');
+  assert.equal(files.length,691,'four creative runtime modules extend the existing whitelist');
   for(const file of ['qianmu-comfy-console.js','qianmu-comfy-cloud-request.js','qianmu-comfy-library-view.js','qianmu-comfy-validation-scope.js'])assert.ok(files.includes(file));
   const helper=await import('../qianmu-comfy-console.js?v=1.59.435');
   assert.equal(helper.runningHubWorkflowId({comfyConsoleUrl:'https://www.runninghub.cn/post/1234567890123456789?source=workspace'},{baseUrl:'https://www.runninghub.cn'}),'1234567890123456789');
@@ -60,7 +60,7 @@ test('workflow-id release leaves compatible preload and feature-loader addresses
   const floorTools=await readFile(new URL('qianmu-prose-floor-tools.js',root),'utf8');
   assert.ok(entry.includes("'./qianmu-feature-runtime.js?v=1.59.425'"));
   assert.ok(floorTools.includes("'./qianmu-idle-preload.js?v=1.59.425'"));
-  assert.ok(entry.includes("'./qianmu-prose-floor-tools.js?v=1.59.440'"));
+  assert.ok(entry.includes("'./qianmu-prose-floor-tools.js?v=1.59.443'"));
   assert.ok(preload.includes('qianmu-comfy-library-view.js?v=1.59.414') || floorTools.includes('qianmu-comfy-library-view.js?v=1.59.414'));
 });
 
@@ -68,7 +68,7 @@ test('illustration update preserves host node evidence and refreshes original-ta
   const files=await collectReleaseFiles();
   for(const file of ['qianmu-comfy-cloud-response.js','qianmu-comfy-cloud-query.js','qianmu-runninghub-results.js','qianmu-runninghub-download.js','qianmu-comfy-cloud-receive.js'])assert.ok(files.includes(file));
   const entry=await readFile(new URL('index.js',root),'utf8');
-  assert.ok(entry.includes("const VERSION = '1.59.440';"));
+  assert.ok(entry.includes("const VERSION = '1.59.443';"));
   assert.deepEqual([...entry.matchAll(/'\.\/([^']+\.js)\?v=1\.59\.439'/g)].map(match=>match[1]),
     ['qianmu-world-shot.js','qianmu-comfy-prompt.js','qianmu-storyboard-contract.js']);
   assert.ok(entry.includes("'./qianmu-comfy-recovery-action.js?v=1.59.440'"));
@@ -93,7 +93,7 @@ test('authored still guidance and tag projection use only their complete local c
     for(const match of source.matchAll(/'\.\/([^']+\.js)\?v=1\.59\.439'/g))actual.push([file,match[1]]);
   }
   assert.deepEqual(actual.sort(),edges.sort(),'unrelated browser dependencies keep their existing identities');
-  assert.equal(files.length,687);
+  assert.equal(files.length,691);
   const {compileComfyPromptRendering}=await import('../qianmu-comfy-prompt.js?v=1.59.439');
   const rendered=compileComfyPromptRendering({format:'tags',global:'1 person',characters:[{character_id:'a',positive:'short black hair'}]},
     {characters:[{id:'a',name:'Alice'}]});

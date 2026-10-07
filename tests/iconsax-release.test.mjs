@@ -6,15 +6,15 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
-const ENTRY_RELEASE = '1.59.442';
-const STYLE_RELEASE = '1.59.442';
+const ENTRY_RELEASE = '1.59.443';
+const STYLE_RELEASE = '1.59.443';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);
 // Only the floor-tools path consumes the updated busy-button behavior. The
 // other floor-entry consumers use unchanged prose/character predicates.
-const moduleRelease = (file,parent) => file === 'index.js' ? ENTRY_RELEASE : file === 'qianmu-prose-floor-tools.js'
-  || file === 'qianmu-icon-renderer.js' && parent === 'index.js'
+const moduleRelease = (file,parent) => ['index.js','qianmu-prose-floor-tools.js','qianmu-prose-hive.js'].includes(file) ? ENTRY_RELEASE
+  : file === 'qianmu-icon-renderer.js' && parent === 'index.js'
   || file === 'qianmu-prose-floor-entries.js' && parent === 'qianmu-prose-floor-tools.js' ? '1.59.440'
   : localLoaderClosure.has(file) ? '1.59.425' : file === 'qianmu-storyboard-capture-view.js' ? '1.59.424' : file === 'qianmu-main-tabs.js' ? '1.59.421' : ICONSAX_RELEASE;
 // Refresh the real reverse import closure of changed client modules, including
@@ -92,7 +92,7 @@ test('affected modules use their intended release URL without duplicating shared
   for (const file of changedNodes) assert.ok(visited.has(file), `${file}: reachable from the installed entry`);
   // This is deliberately not a whole-repository version bump.
   assert.ok([...graph.get('index.js')].some(({target, url}) => !changedNodes.has(target) && url.search === '?v=1.59.414'));
-  assert.ok([...graph.get('index.js')].some(({target, url}) => target === 'qianmu-hive-commands.js' && url.search === '?v=1.59.417'), 'unchanged hive commands retain their existing URL');
+  assert.ok([...graph.get('index.js')].some(({target, url}) => target === 'qianmu-hive-commands.js' && url.search === `?v=${ENTRY_RELEASE}`), 'renamed creative commands refresh with this release');
   for (const file of ['index.js', 'qianmu-notes-panel-sync.js']) {
     const notes = graph.get(file).find(({target}) => target === 'qianmu-notes.js');
     assert.equal(notes?.url.search, `?v=${ICONSAX_RELEASE}`, `${file}: notes facade must not become a second singleton`);

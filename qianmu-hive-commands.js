@@ -5,7 +5,7 @@ export const QIANMU_HIVE_COMMANDS = Object.freeze([
   { id: 'notes', label: '便笺', icon: 'fa-note-sticky', glyph: 'notes' },
   { id: 'assistant', label: '场外特助', icon: 'fa-comments', glyph:'assistant' },
   { id: 'text-collection', label: '正文收藏', icon: 'fa-star', glyph:'bookmarks' },
-  { id: 'tasksnodes', label: '任务', icon: 'fa-list-check', glyph: 'tasks' },
+  { id: 'tasksnodes', label: '际遇', icon: 'fa-list-check', glyph: 'tasks' },
   { id: 'castworld', label: '世界', icon: 'fa-earth-asia', glyph: 'world' },
   { id: 'context', label: '取材', icon: 'fa-box-archive', glyph: 'context' },
   { id: 'settings', label: '幕后', icon: 'fa-feather-pointed', glyph: 'backstage' },
