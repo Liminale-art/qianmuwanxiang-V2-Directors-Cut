@@ -46,7 +46,7 @@ try {
         Object.assign(window, {
             settings: { theme: 'dark' }, editorView: null, calls: { scan: 0, forbidden: 0 },
             maybeAutoScanContext: () => { calls.scan++; }, getCharacterName: () => '旅人', getPersonaName: () => '观星者',
-            getChatStore: () => storyStore, getChatKey: () => 'isolated-qa', getCurrentPresetName: () => presetName,
+            getChatStore: () => storyStore, currentPlan: () => storyStore.plan, getChatKey: () => 'isolated-qa', getCurrentPresetName: () => presetName,
             listPresetNames: () => contextScanCache.presetNames, getPresetEntries: name => contextScanCache.presets[name] || [],
             detectBoundWorldBookNames: () => contextScanCache.boundWorldBookNames,
             getSelectedPresetNames: () => fixtureEmpty ? [] : [presetName],
@@ -120,6 +120,41 @@ try {
                     document.querySelector('.sd-inject-term').scrollTop = 65;
                 }
             }, tab);
+            if (tab === 'settings') {
+                ok(label + ' current plans omit the retired world scope without hiding the two real sources',
+                    await page.locator('.sd-inject-section-toggle[data-key=world]').count() === 0
+                    && await page.locator('.sd-inject-section-toggle[data-key=nodes],.sd-inject-section-toggle[data-key=geopolitics]').count() === 2);
+                for (const selector of ['.sd-inject-section', '.sd-derivative-options .sd-option-chip']) {
+                    const chip = page.locator(selector).first();
+                    const readState = () => chip.evaluate(node => {
+                        const style = getComputedStyle(node);
+                        return { checked: node.querySelector('input').checked, background: style.backgroundColor,
+                            color: style.color, border: style.borderColor, contrast: readContrast(node) };
+                    });
+                    const settle = () => chip.evaluate(node => {
+                        getComputedStyle(node).backgroundColor;
+                        return Promise.all(node.getAnimations().map(animation => animation.finished));
+                    });
+                    await chip.evaluate(node => { node.querySelector('input').checked = false; });
+                    await settle();
+                    const off = await readState();
+                    await chip.click();
+                    // Inspect the settled style rather than an intermediate transition frame.
+                    await settle();
+                    const on = await readState();
+                    ok(label + selector + ' checked state has visible fill and readable text',
+                        !off.checked && on.checked && off.background !== on.background && on.contrast >= 4.5 && off.contrast >= 4.5);
+                    await chip.locator('input').focus();
+                    ok(label + selector + ' keyboard focus remains visible', await chip.evaluate(node => {
+                        const style = getComputedStyle(node); return style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) >= 2;
+                    }));
+                    await page.keyboard.press('Space');
+                    await settle();
+                    const restored = await readState();
+                    ok(label + selector + ' keyboard toggle restores unselected appearance: ' + JSON.stringify({ off, restored }),
+                        !restored.checked && restored.background === off.background && restored.color === off.color && restored.border === off.border);
+                }
+            }
             const edit = page.locator(tab === 'context' ? '.sd-tag-rule-name' : '.sd-blueprint');
             await edit.fill('保留尚未保存的用户编辑\n'.repeat(tab === 'context' ? 1 : 60));
             await edit.evaluate(node => { node.focus(); node.setSelectionRange(3, 8); node.scrollTop = 65; });
@@ -161,6 +196,10 @@ try {
                 await page.locator(tab === 'context' ? '[data-acc=acc-presets]' : '.sd-backstage-blueprint-card').scrollIntoViewIfNeeded();
                 await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
                 await page.screenshot({ caret: 'initial', animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-${tab}-393.png`, qa)) });
+            }
+            if (width === 393 && tab === 'settings') {
+                await page.locator('.sd-injection-card').scrollIntoViewIfNeeded();
+                await page.locator('.sd-injection-card').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-injection-393.png`, qa)) });
             }
             if (tab === 'context') {
                 await page.evaluate(() => renderFixture('context', 'legacy-review'));

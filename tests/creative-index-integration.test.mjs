@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { parseDirectorFinal, paintModelLog, renderDirectorLive } from '../qianmu-director-live.js';
 import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
 import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from '../qianmu-creative-contract.js';
-import { selectCreativeOptions, mergeCreativeRepair, upgradeCreativeDefaults, upgradeCreativeBlueprint } from '../qianmu-creative-runtime.js';
+import { selectCreativeOptions, mergeCreativeRepair, upgradeCreativeDefaults, upgradeCreativeBlueprint, recentInterludeHint } from '../qianmu-creative-runtime.js';
 import { hashText, isPlainObject, mergeDefaults, uniqueClean, sanitizeEventStage, advanceEventStage } from '../qianmu-storyboard-utils.js';
 
 const entry = await fs.readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -18,7 +18,6 @@ const promptSource = between('function directorHistorySelection(', '\nfunction v
 const normalizeSource = between('function normalizePlan(', '// directorItemText -');
 const qualitySource = between('function directorDedupePlan(', 'function makeStreamLogUpdater(');
 const generationSource = between('function makeStreamLogUpdater(', '// MIGRATED to qianmu-storyboard-utils.js (commit 19)');
-const memoryReviewSource = between('function renderDirectorMemoryReview(', '\nfunction renderDashboardTab(');
 const geoSource = between('const FACTION_TRENDS =', '\nfunction buildPlanDigest(');
 const plain = value => JSON.parse(JSON.stringify(value));
 const BASIC = Object.freeze({ parallelSceneEnabled: false, interludeEnabled: false });
@@ -47,16 +46,16 @@ test('actual director host route uses Qianmu limits and never falls back to ambi
 
 function fullPlan(options = {}) {
   const plan = {
-    story_status: { title: '街角', cycle: '周三傍晚', summary: '旧信仍未领走。' },
-    quests: Array.from({ length: 5 }, (_, i) => ({ title: `来信${i}`, description: `第${i}份信送到了街口，伙计正在寻找收信者。` })),
+    story_status: { title: '街角', cycle: '周三傍晚', directions: [{ title: '旧账回响', content: '账单核对逐渐改变街坊间的赊欠规则。' }, { title: '另一处收信人', content: '不同收信人的经历让跨城联络成为新的主线。' }] },
+    quests: Array.from({ length: 5 }, (_, i) => ({ title: `来信${i}`, subject: '伙计', description: `第${i}份信送到了街口，伙计正在寻找收信者。` })),
     character_dynamics: Array.from({ length: 2 }, (_, i) => ({ title: `待办${i}`, content: `阿岚把第${i}份账单拿到灯下核对，尚未动笔。` })),
     npc_updates: Array.from({ length: 3 }, (_, i) => ({ name: `邻居${i}`, next_action: `邻居正在为第${i}家店铺检查送货的路。` })),
-    chain_reactions: Array.from({ length: 3 }, (_, i) => ({ spark: `第${i}条路临时改道。`, chain: `伙计将第${i}车货改送后巷，掌柜先通知收货人。` })),
-    relation_undercurrents: Array.from({ length: 3 }, (_, i) => ({ parties: `阿岚和邻居${i}`, tension: `第${i}张欠条尚未提起，两人都先谈了眼前的天气。` })),
+    chain_reactions: Array.from({ length: 3 }, (_, i) => ({ spark: `第${i}条路临时改道。`, chain: `伙计将第${i}车货改送后巷 → 掌柜通知收货人延迟 → 邻街工坊调整当日排班` })),
+    relation_undercurrents: Array.from({ length: 3 }, (_, i) => ({ parties: [`邻居${i}`, `铺主${i}`], tension: `第${i}张欠条尚未提起，两人都先谈了眼前的天气。` })),
     limitations: [],
   };
   if (options.parallelSceneEnabled !== false) plan.parallel_scene = { title: '如果赶上早班车', content: 'PARALLEL_ONLY_CONTENT：车门没有在面前关上，旧友从空座旁抬起头。' };
-  if (options.interludeEnabled !== false) plan.interlude = { type: 'phone', title: '早班群', owner: '阿岚', content: 'INTERLUDE_ONLY_CONTENT：老周：钥匙带了吗？阿岚：今天不是换锁吗。' };
+  if (options.interludeEnabled !== false) plan.interlude = { type: 'phone', title: '早班群', owner: '阿岚', conversation_kind: 'group', messages: Array.from({ length: 6 }, (_, i) => ({ sender: i % 2 ? '阿岚' : '老周', content: `INTERLUDE_ONLY_CONTENT：第${i}条钥匙交接消息。`, time: `08:0${i}` })) };
   return plan;
 }
 
@@ -85,9 +84,9 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     readGagaMemoryContext: options => { assert.equal(options.pluginAvailable, true); return { text: memoryText, status: memoryResult.status || 'ready', diagnostics: [], snapshot: { production: 'layered', summaryMode: 'mixed', fingerprint: memoryFingerprint } }; },
     htmlEscape: value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]),
     estimateTokens: value => Math.ceil(String(value).length / 4), hashText, isPlainObject, mergeDefaults, uniqueClean,
-    creativeSectionGuidance, createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity, mergeCreativeRepair,
+    creativeSectionGuidance, createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity, mergeCreativeRepair, recentInterludeHint,
     selectCreativeOptions: (value, options) => { selectionCount++; return selectCreativeOptions(value, { ...options, random: () => .9 }); },
-    busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null, directorMemoryInspection: null, activeTab: 'dashboard', MODAL_ID: 'panel',
+    busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null, activeTab: 'dashboard', MODAL_ID: 'panel',
     document: { getElementById: () => null }, AbortController, Date, console, clone: structuredClone,
     validateApiSettings: () => true, toast: () => {}, apiToast: () => {}, uid: prefix => `${prefix}-${++id}`,
     featureRuntime: { load: async () => assert.fail('ordinary director requests must not load image admission') },
@@ -96,6 +95,7 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     renderBusyState: () => {}, renderModal: () => {}, renderFloatButton: () => {}, rerenderIfOpen: () => {},
     pushLog: log => { settings.logHistory.push(log); return log; }, saveSettings: () => {},
     saveMetadata: async () => { saveCount++; }, applyDirectorInjection: async () => { injectCount++; }, injectSelection: new Map(),
+    resetCreativeSocialState: () => {},
     storyboardQueueNewWorldPlan: async () => assert.fail('disabled storyboard must not receive director work'), parseDirectorFinal, paintModelLog, renderDirectorLive,
     FACTION_RELATION_KINDS: ['冲突', '同盟', '张力', '中立', '依附'], sanitizeEventStage, advanceEventStage,
     callExternalApi: async (messages, onDelta, config, controller) => {
@@ -108,7 +108,7 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     },
   };
   vm.createContext(c);
-  vm.runInContext([promptSource, normalizeSource, qualitySource, geoSource, generationSource, memoryReviewSource].join('\n'), c);
+  vm.runInContext([promptSource, normalizeSource, qualitySource, geoSource, generationSource].join('\n'), c);
   vm.runInContext('directorMemoryHostModule = memoryHostFixture;', c);
   return { c, store, context, settings, requests, get selectionCount() { return selectionCount; }, get saves() { return saveCount; }, get injects() { return injectCount; },
     changeMemory() { memoryText = 'CHANGED_MEMORY'; memoryFingerprint = 'memory-v2'; } };
@@ -188,7 +188,10 @@ test('actual buildPrompt binds sources, custom blueprint and one fixed interlude
   e.store.plan = fullPlan(); e.store.plan.world_chatter = [{ text: 'CHATTER_ONLY_CONTENT' }]; e.store.plan.director_comment = ['COMMENT_ONLY_CONTENT'];
   const run = {}, prompt = await e.c.buildPrompt(run);
   for (const marker of ['WORLD_SOURCE', 'PRESET_SOURCE', 'MEMORY_SOURCE', 'HISTORY_SOURCE', 'USER_SOURCE', 'CUSTOM_BLUEPRINT', 'CUSTOM_SCHEMA']) assert.ok(prompt.includes(marker), marker);
-  for (const marker of ['PARALLEL_ONLY_CONTENT', 'INTERLUDE_ONLY_CONTENT', 'CHATTER_ONLY_CONTENT', 'COMMENT_ONLY_CONTENT']) assert.ok(!prompt.includes(marker), marker);
+  for (const marker of ['PARALLEL_ONLY_CONTENT', 'CHATTER_ONLY_CONTENT', 'COMMENT_ONLY_CONTENT']) assert.ok(!prompt.includes(marker), marker);
+  assert.ok(!JSON.stringify(projectCreativeContinuity(e.store.plan)).includes('INTERLUDE_ONLY_CONTENT'));
+  assert.match(prompt, /上轮趣味防重复参照[\s\S]*不是事实来源[\s\S]*INTERLUDE_ONLY_CONTENT/);
+  assert.doesNotMatch(prompt, /第1条钥匙交接消息/, 'only the bounded first excerpt is sent, never the full old chat');
   assert.equal(e.selectionCount, 1);
   assert.equal(run.creativeOptions.interludeType, 'phone');
   assert.equal(run.creativeOptions.parallelSceneEnabled, true);
@@ -200,99 +203,59 @@ test('actual buildPrompt binds sources, custom blueprint and one fixed interlude
   assert.ok(prompt.includes('只从正文已经出现的 CHAR 或其他非 USER 人物中选取手机所属者'));
 });
 
-test('temporary memory review reads the exact request range, not duplicate headings or later memory', async () => {
+test('removing the temporary memory card preserves exact request memory and its diagnostics without a second archive', async () => {
   const memory = '【长期记忆】\n<script>not executable</script>\n【近期正文】\n' + '一段完整的旧经历'.repeat(1400);
   const e = fixture({ settings: BASIC, memoryResult: { text: memory },
     worldText: '【已保存的故事记忆】\nDECOY_NOT_MEMORY', responses: [JSON.stringify(fullPlan(BASIC))] });
   await e.c.generateDirectorPlan();
-  const review = e.c.directorMemoryInspection, request = JSON.parse(review.log.request)[1].content;
-  assert.equal(request.slice(review.snapshot.start, review.snapshot.start + review.snapshot.length), memory);
-  assert.equal(review.snapshot.length, memory.length);
-  const html = e.c.renderDirectorMemoryReview(true);
-  assert.match(html, /分层滚动 · 混合/); assert.match(html, /推演成功/);
-  assert.match(html, /&lt;script&gt;not executable&lt;\/script&gt;/);
-  assert.doesNotMatch(html, /<script>|DECOY_NOT_MEMORY/);
+  const log = e.settings.logHistory[0], originalRequest = log.request;
+  const request = JSON.parse(originalRequest)[1].content;
+  assert.ok(request.includes('【已保存的故事记忆】\n' + memory));
+  assert.equal(log.memory.status, 'ready');
   e.changeMemory();
-  assert.equal(e.c.renderDirectorMemoryReview(true), html, 'opening does not reread or replace the request snapshot');
+  assert.equal(log.request, originalRequest, 'subsequent memory changes never rewrite a recorded request');
   assert.doesNotMatch(JSON.stringify(e.store), /not executable|memoryInspection|memory-v1/);
-  assert.equal('memoryInspection' in review.log, false, 'the card adds no persistent memory copy to logs');
-  assert.equal('text' in review.snapshot, false, 'only offsets and display metadata are retained');
+  assert.equal('memoryInspection' in log, false);
+  assert.doesNotMatch(entry, /directorMemoryInspection|renderDirectorMemoryReview|bindDirectorMemoryReview|data-director-memory-review|run\.memoryInspection|memoryOffset/);
 });
 
-test('temporary review is available for failed requests without implying the old plan used them', async () => {
+test('failed requests preserve the actual memory in logs without implying the saved plan used it', async () => {
   const e = fixture({ settings: BASIC, responses: [() => { throw new Error('fixture transport rejected'); }] });
   await e.c.generateDirectorPlan();
-  const html = e.c.renderDirectorMemoryReview(true);
-  assert.match(html, /推演失败/); assert.match(html, /MEMORY_SOURCE/);
-  assert.match(html, /不是当前审片的剧情内容/); assert.match(html, /不代表模型已经收到或采用/);
+  const log = e.settings.logHistory[0];
+  assert.equal(log.status, 'error'); assert.match(log.request, /MEMORY_SOURCE/);
+  assert.equal(log.memory.status, 'ready');
   assert.equal(e.store.plan.original, true); assert.equal(e.saves, 0);
 });
 
-test('empty and partial memory keep their actual request-time status without a fabricated current snapshot', async () => {
-  for (const [status, text, label] of [['disabled', '', '记忆联动未启用'], ['empty', '', '没有可用记忆'],
-    ['partial', 'ONLY_VALID_PART', '部分纳入请求内容']]) {
+test('empty and partial memory retain actual request-time diagnostics after inspection UI removal', async () => {
+  for (const [status, text] of [['disabled', ''], ['empty', ''], ['partial', 'ONLY_VALID_PART']]) {
     const e = fixture({ settings: BASIC, memoryResult: { status, text }, responses: [JSON.stringify(fullPlan(BASIC))] });
     await e.c.generateDirectorPlan();
-    const html = e.c.renderDirectorMemoryReview(true);
-    assert.ok(html.includes(label));
-    if (text) assert.ok(html.includes(text)); else assert.doesNotMatch(html, /class="sd-memory-review-text"|已纳入请求内容/);
+    const log = e.settings.logHistory[0];
+    assert.equal(log.memory.status, status);
+    if (text) assert.ok(log.request.includes(text)); else assert.doesNotMatch(log.request, /MEMORY_SOURCE|ONLY_VALID_PART/);
   }
 });
 
-test('preflight failures and session changes cannot expose another chat or fabricate submitted memory', async () => {
+test('preflight failures do not fabricate a submitted memory request', async () => {
   const failed = fixture({ settings: { ...BASIC, contextBudget: 1 } });
   await failed.c.generateDirectorPlan();
   assert.equal(failed.requests.length, 0);
-  assert.match(failed.c.renderDirectorMemoryReview(true), /未形成请求/);
-  assert.doesNotMatch(failed.c.renderDirectorMemoryReview(true), /MEMORY_SOURCE|class="sd-memory-review-text"/);
-  for (const change of [e => { e.context.chat = []; }, e => { e.c.settings = { ...e.settings }; },
-    e => { e.c.getChatKey = () => 'another-chat'; }, e => { e.c.getChatStore = () => ({}); },
-    e => { e.c.directorMemoryInspection = null; }]) {
-    const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
-    await e.c.generateDirectorPlan(); change(e);
-    const html = e.c.renderDirectorMemoryReview(true);
-    assert.match(html, /本页尚无推演请求记录/); assert.doesNotMatch(html, /MEMORY_SOURCE|推演成功/);
-  }
+  assert.equal(failed.settings.logHistory[0].request, '');
+  assert.equal(failed.settings.logHistory[0].memory, undefined);
 });
 
-test('a later API preflight failure replaces the previous successful inspection', async () => {
+test('a later API preflight failure preserves the original request log without carrying its memory to the failure', async () => {
   const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
   await e.c.generateDirectorPlan();
-  assert.match(e.c.renderDirectorMemoryReview(true), /推演成功/);
+  const original = e.settings.logHistory[0], request = original.request;
   e.c.validateApiSettings = () => false;
   await e.c.generateDirectorPlan();
-  const html = e.c.renderDirectorMemoryReview(true);
-  assert.match(html, /未形成请求/); assert.doesNotMatch(html, /推演成功|MEMORY_SOURCE/);
+  assert.equal(original.request, request); assert.equal(original.status, 'success');
+  assert.equal(e.settings.logHistory[1].request, '');
+  assert.equal(e.settings.logHistory[1].memory, undefined);
   assert.equal(e.requests.length, 1);
-});
-
-test('cleared or evicted logs cannot remain visible through the temporary inspection reference', async () => {
-  const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
-  await e.c.generateDirectorPlan();
-  e.settings.logHistory = [];
-  assert.match(e.c.renderDirectorMemoryReview(true), /本页尚无推演请求记录/);
-  assert.doesNotMatch(e.c.renderDirectorMemoryReview(true), /MEMORY_SOURCE|推演成功/);
-  assert.match(entry, /if \(selected.includes\('__diagnostics__'\)\) \{\s*settings.logHistory = \[\];\s*directorMemoryInspection = null/);
-});
-
-test('stream deltas do not repeatedly parse or replace the unchanged memory review', async () => {
-  const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
-  await e.c.generateDirectorPlan();
-  let paints = 0, card;
-  const makeCard = () => {
-    const detail = { open: true };
-    return { querySelector: () => detail, set outerHTML(value) { assert.match(value, /记忆联动/); paints++; card = makeCard(); } };
-  };
-  card = makeCard();
-  e.c.renderLogEntry = () => '';
-  e.c.paintModelLog = () => {};
-  e.c.bindDirectorMemoryReview = () => {};
-  e.c.document.getElementById = () => ({ querySelector: selector => selector === '[data-director-memory-review]' ? card : null });
-  e.c.refreshDirectorLiveUI();
-  for (let index = 0; index < 50; index++) { e.c.directorLiveLog.response += '字'; e.c.refreshDirectorLiveUI(); }
-  assert.equal(paints, 1); assert.equal(card.querySelector().open, true);
-  e.settings.logHistory = []; e.c.refreshDirectorLiveUI();
-  assert.equal(paints, 2, 'log removal invalidates the display even without a new request');
 });
 
 test('actual preparation stops on changed memory before request and does not discard old results', async () => {
@@ -354,7 +317,7 @@ test('actual repair reuses the exact source prompt and fixed interlude, and appe
   assert.equal(e.store.plan.quests.length, 5);
   assert.equal(e.store.plan.character_dynamics[0].content, first.character_dynamics[0].content);
   assert.equal(e.store.plan.interlude.type, 'phone');
-  assert.equal(e.store.plan.interlude.content, first.interlude.content);
+  assert.deepEqual(plain(e.store.plan.interlude.messages), first.interlude.messages);
   assert.equal(e.settings.logHistory[0].status, 'success');
   assert.equal(e.saves, 1); assert.equal(e.injects, 1);
 });

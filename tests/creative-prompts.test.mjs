@@ -10,9 +10,9 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), '69c59a415c4b91466429d51642cd66f58352df61398e844d6faaddcad42276c7');
-  assert.equal(digest(CREATIVE_BLUEPRINT), '1f7c02a2ab51647f6cef2f72b599fd1fc1925562e4ae850b4af90fd7abdeb75b');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'c8796895a675c1d451cc951f5dc8de7b9f810aac92a422ec3582cfc5356270af');
+  assert.equal(digest(CREATIVE_LAWS), '8e4918a66dba60539930fa29da4affab8b975ad41bed2daed9233460758ad3d1');
+  assert.equal(digest(CREATIVE_BLUEPRINT), '357d6e5aa79e1880809067fd2f8b261b0924d44b10b3c29fb8aafac161eb7daf');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '2a61c9c1b145f74c44015b3ea54b964db611f4e05a18acf4f836598068952ba7');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
 });
@@ -31,12 +31,12 @@ test('progression is mandatory without declaring candidates real or taking USER 
 });
 
 test('section responsibilities reject recaps, protagonist monopoly and unsupported conspiracy without a forced tone', () => {
-  assert.match(CREATIVE_GUIDES.quests, /每条必须提供一个正文现有落点之外的新切入口/);
+  assert.match(CREATIVE_GUIDES.quests, /每条预演提供一个正文现有落点之外、可以接近和回应的近景情境/);
   assert.match(CREATIVE_GUIDES.character_dynamics, /只以本聊天的 CHAR 为动态主体/);
   assert.match(CREATIVE_GUIDES.character_dynamics, /群聊中的多个 CHAR/);
-  assert.match(CREATIVE_GUIDES.npc_updates, /至少一条即使暂时移除主角也能成立/);
-  assert.match(CREATIVE_GUIDES.chain_reactions, /至少延伸出一项正文尚未发生的后续影响/);
-  assert.match(CREATIVE_GUIDES.relation_undercurrents, /既有配角关系具备展开空间时/);
+  assert.match(CREATIVE_GUIDES.npc_updates, /即使暂时移除主角仍会进行/);
+  assert.match(CREATIVE_GUIDES.chain_reactions, /至少延伸到正文尚未呈现的一处结果/);
+  assert.match(CREATIVE_GUIDES.relation_undercurrents, /至少两条是配角之间的关系/);
   assert.match(CREATIVE_LAWS, /A changed viewpoint, title, or emotional metaphor alone does not make a retelling new content/);
   assert.match(CREATIVE_LAWS, /Do not turn an ordinary remark, coincidence, or lack of information into evidence of guilt, a conspiracy/);
   assert.match(CREATIVE_LAWS, /Neither a dark turn nor a reassuring outcome is mandatory/);
@@ -47,7 +47,7 @@ test('count source is frozen and rendered in approved laws without an invented w
   assert.ok(Object.isFrozen(CREATIVE_COUNTS));
   for (const count of Object.values(CREATIVE_COUNTS)) assert.ok(Object.isFrozen(count));
   assert.deepEqual(Object.fromEntries(Object.entries(CREATIVE_COUNTS).map(([key, value]) => [key, value.min])), {
-    quests: 5, character_dynamics: 2, npc_updates: 3, chain_reactions: 3, relation_undercurrents: 3,
+    story_status: 2, quests: 5, character_dynamics: 2, npc_updates: 3, chain_reactions: 3, relation_undercurrents: 3,
     world_chatter: 8, factions: 3, world_events: 2, parallel_scene: 1, interlude: 1,
   });
   assert.ok(!Object.hasOwn(CREATIVE_COUNTS, 'world_updates'));
@@ -85,12 +85,12 @@ test('English laws preserve authorization, knowledge, story-time and limited-sho
 });
 
 test('default guides include separate parallel scene and exactly the fixed interlude form', () => {
-  for (const type of ['theater', 'phone']) {
+  for (const type of ['forum', 'phone']) {
     const result = creativeSectionGuidance({ interludeType: type });
     assert.ok(result.includes(CREATIVE_GUIDES.parallel_scene));
     assert.ok(result.includes(CREATIVE_GUIDES.interlude));
     assert.ok(result.includes(CREATIVE_GUIDES[type]));
-    assert.ok(!result.includes(CREATIVE_GUIDES[type === 'theater' ? 'phone' : 'theater']));
+    assert.ok(!result.includes(CREATIVE_GUIDES[type === 'forum' ? 'phone' : 'forum']));
     assert.ok(!result.includes(CREATIVE_GUIDES.world_chatter));
     assert.ok(!result.includes(CREATIVE_GUIDES.geopolitics));
   }
@@ -103,7 +103,7 @@ test('each optional guide honors its own switch without consuming another quota'
   assert.ok(result.includes(CREATIVE_GUIDES.geopolitics));
   assert.ok(!result.includes(CREATIVE_GUIDES.parallel_scene));
   assert.ok(!result.includes(CREATIVE_GUIDES.interlude));
-  assert.ok(!result.includes(CREATIVE_GUIDES.theater));
+  assert.ok(!result.includes(CREATIVE_GUIDES.forum));
   assert.ok(!result.includes(CREATIVE_GUIDES.phone));
   for (const key of ['character_dynamics', 'npc_updates', 'quests', 'chain_reactions', 'relation_undercurrents']) assert.ok(result.includes(CREATIVE_GUIDES[key]));
 });
@@ -113,4 +113,30 @@ test('caller must fix one interlude form; pure guide never silently selects or r
   const options = Object.freeze({ interludeType: 'phone' });
   assert.equal(creativeSectionGuidance(options), creativeSectionGuidance(options));
   assert.doesNotThrow(() => creativeSectionGuidance({ interludeEnabled: false }));
+});
+
+test('v446 responsibilities separate distant directions, previews, lateral ripples and supporting relations', () => {
+  assert.equal(CREATIVE_SECTION_LABELS.quests, '预演');
+  assert.equal(CREATIVE_SECTION_LABELS.interlude, '世界论坛');
+  assert.match(CREATIVE_GUIDES.story_status, /中远景/);
+  assert.match(CREATIVE_GUIDES.quests, /subject 明确写本条主体/);
+  assert.match(CREATIVE_GUIDES.chain_reactions, /3–5 个简短节点/);
+  assert.match(CREATIVE_GUIDES.chain_reactions, /至少一条体现横向广度/);
+  assert.match(CREATIVE_GUIDES.relation_undercurrents, /不能加入第三人规避/);
+  assert.match(CREATIVE_GUIDES.world_chatter, /纯天气、景色与声音不占名额/);
+  assert.match(CREATIVE_GUIDES.parallel_scene, /过去、近未来或遥远未来/);
+  assert.match(CREATIVE_GUIDES.parallel_scene, /无须标题/);
+  assert.match(CREATIVE_GUIDES.interlude, /所有字段只写安全纯文本，不输出 HTML/);
+  assert.match(CREATIVE_GUIDES.interlude, /不固定围绕阴谋、热搜或主角点评/);
+});
+
+test('newcomer requirement is included only for enabled runs and honors actual closed settings', () => {
+  const off = creativeSectionGuidance({ interludeEnabled: false });
+  const on = creativeSectionGuidance({ interludeEnabled: false, newcomerMode: true });
+  assert.ok(!off.includes(CREATIVE_GUIDES.newcomer));
+  assert.ok(on.includes(CREATIVE_GUIDES.newcomer));
+  assert.match(CREATIVE_GUIDES.newcomer, /此前尚未出现的全新人物/);
+  assert.match(CREATIVE_GUIDES.newcomer, /已有线索、事务、人物关系或行动后果/);
+  assert.match(CREATIVE_GUIDES.newcomer, /不要求世界级大事件/);
+  assert.match(CREATIVE_GUIDES.newcomer, /明确封闭设定或人物禁限/);
 });

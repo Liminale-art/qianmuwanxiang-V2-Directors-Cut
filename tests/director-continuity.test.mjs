@@ -20,8 +20,8 @@ assert.deepEqual(Object.fromEntries(['quests', 'character_dynamics', 'npc_update
 }, '核心栏目供给量必须沿用定稿，不因旧协议清理降低');
 const historySource = source.slice(source.indexOf('function directorHistorySelection('), source.indexOf('let directorMemoryHostModule'));
 assert.match(historySource, /\[楼层['"]\s*\+\s*\(recentStartIndex \+ offset\)/, '推演近期对话必须携带可核验楼层号');
-const schema = createCreativeSchema({ interludeType: 'theater' });
-assert.doesNotMatch(schema, /director_comment|world_updates|threads/, '旧点评和旧重复栏目不再成为新输出配额');
+const schema = createCreativeSchema({ interludeType: 'forum' });
+assert.doesNotMatch(schema, /"(?:director_comment|world_updates|threads)"\s*:/, '旧点评和旧重复栏目不再成为新输出配额');
 assert.match(source, /plan\.director_comment = \(Array\.isArray[\s\S]*\.slice\(0, 3\)/, '众声回传必须兼容旧字符串并限制为三条');
 assert.ok(!Object.hasOwn(CREATIVE_COUNTS, 'director_comment'), '旧点评只读兼容，不再强制生成三席');
 const qualitySource = source.slice(source.indexOf('function directorDedupePlan('), source.indexOf('function makeStreamLogUpdater('));

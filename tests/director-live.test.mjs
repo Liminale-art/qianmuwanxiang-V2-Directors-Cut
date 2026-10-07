@@ -53,7 +53,7 @@ test('new creative fields use current names and stage object extras only after t
   const prefix='{"character_dynamics":[{"title":"值班","content":"核对交接记录"}],"parallel_scene":';
   for(let i=0;i<=parallel.length;i++)assert.equal(completeDirectorCards(prefix+parallel.slice(0,i)).length,1+Number(i===parallel.length),String(i));
   const cards=completeDirectorCards(prefix+parallel+',"interlude":'+interlude+'}');
-  assert.deepEqual(cards.map(card=>card.label),['此间一人','未映之幕','幕间拾趣']);
+  assert.deepEqual(cards.map(card=>card.label),['此间一人','未映之幕','世界论坛']);
   const html=renderDirectorLive({id:'one',status:'loading',response:prefix+parallel+',"interlude":'+interlude+'}'});
   assert.match(html,/另一句话/);assert.match(html,/今晚还来/);assert.doesNotMatch(html,/sd-inject|sd-world-media-entry|data-inject/);
 });
@@ -76,10 +76,26 @@ test('memory and incomplete creative output are understandable without exposing 
   ]};
   const html=renderModelDiagnostics(log);
   assert.match(html,/部分记忆可用/);assert.match(html,/<details><summary>记忆核对详情/);
-  assert.match(html,/此间一人缺 1 条/);assert.match(html,/幕间拾趣缺 1 张/);
+  assert.match(html,/此间一人缺 1 条/);assert.match(html,/世界论坛缺 1 张/);
   assert.equal(html.match(/此间一人/g).length,1);assert.doesNotMatch(html,/PRIVATE|character_dynamics/);
   for(const status of ['ready','empty','disabled'])assert.doesNotMatch(renderModelDiagnostics({memory:{status,diagnostics:log.memory.diagnostics}}),/记忆|record_source_changed/);
   assert.match(renderModelDiagnostics({memory:{status:'unverified'}}),/记忆暂无法核对/);
   assert.match(renderModelDiagnostics({memory:{status:'unsupported'}}),/尚未适配/);
   assert.match(renderModelDiagnostics({memory:{status:'partial',diagnostics:[{code:'<script>',scope:'<unsafe>'}]}}),/&lt;script&gt;/);
+});
+
+test('structured directions and social cards wait for their outer object and retain nested payloads', () => {
+  const values = {
+    story_status: { directions: [{ title: '跨城追索', content: '来源核对改变调查范围。' }, { title: '旧案回响', content: '既往裁决进入新的审查。' }] },
+    interlude: { type: 'forum', title: '街坊交流', posts: [{ author: '居民', content: '<script>unsafe</script>', replies: [{ author: '店主', content: '新路线' }] }] },
+  };
+  for (const [field, value] of Object.entries(values)) {
+    const prefix = `{"${field}":`, body = JSON.stringify(value);
+    for (let i = 0; i < body.length; i++) assert.deepEqual(completeDirectorCards(prefix + body.slice(0, i)), []);
+    const log = { status: 'loading', response: prefix + body + '}' };
+    assert.deepEqual(directorPreviewPlan(log)[field], value);
+    assert.doesNotMatch(renderDirectorLive(log), /<script>/);
+  }
+  const phone = { type: 'phone', title: '值班群', owner: '同事', messages: [{ sender: '组员', content: '我带钥匙。' }] };
+  assert.deepEqual(directorPreviewPlan({ status: 'loading', response: JSON.stringify({ interlude: phone }) }).interlude, phone);
 });

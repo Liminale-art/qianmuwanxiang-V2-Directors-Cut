@@ -1,13 +1,13 @@
 const FIELDS = {
-  story_status: ['剧情推演', ['title', 'summary', 'current_arc', 'current_stage', 'mood']],
-  quests: ['际遇', ['title', 'content', 'description', 'trigger']],
+  story_status: ['推演方向', ['title', 'summary', 'current_arc']],
+  quests: ['预演', ['title', 'content', 'description', 'trigger']],
   character_dynamics: ['此间一人', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
   npc_updates: ['其他人物动向', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
   world_updates: ['世界回声', ['title', 'type', 'content', 'scope', 'timing']],
   chain_reactions: ['涟漪', ['spark', 'chain', 'impact']],
   relation_undercurrents: ['关系暗涌', ['title', 'parties', 'surface', 'undercurrent', 'tension', 'content']],
   parallel_scene: ['未映之幕', ['title', 'content']],
-  interlude: ['幕间拾趣', ['title', 'owner', 'content']],
+  interlude: ['世界论坛', ['title', 'owner', 'content']],
   world_chatter: ['尘寰群生', ['who', 'where', 'text']],
   factions: ['世界格局', ['name', 'standing', 'agenda']],
   faction_relations: ['势力关系', ['a', 'b', 'kind', 'note']],
@@ -59,10 +59,28 @@ export function completeDirectorCards(source) {
     if (!Object.hasOwn(FIELDS, key)) return;
     if (OBJECT_FIELDS.has(key) !== objectField) return;
     let value; try { value = JSON.parse(raw); } catch (_) { return; }
-    if (['parallel_scene', 'interlude'].includes(key) && (!value || typeof value.content !== 'string' || !value.content.trim())) return;
-    if (key === 'interlude' && !['theater', 'phone'].includes(value.type)) return;
+    if (key === 'parallel_scene' && (!value || typeof value.content !== 'string' || !value.content.trim())) return;
+    if (key === 'interlude') {
+      if (!value || !['forum', 'theater', 'phone'].includes(value.type)) return;
+      const entries = value.type === 'forum' ? value.posts : value.type === 'phone' ? value.messages : null;
+      if (!(typeof value.content === 'string' && value.content.trim()) &&
+        !(Array.isArray(entries) && entries.some(item => typeof item?.content === 'string' && item.content.trim()))) return;
+    }
     const [label, fields] = FIELDS[key];
     const lines = value && !Array.isArray(value) && typeof value === 'object' ? fields.map(field => Array.isArray(value[field]) ? value[field].filter(x => typeof x === 'string').join(' · ') : typeof value[field] === 'string' ? value[field] : '').filter(Boolean) : [];
+    if (key === 'story_status' && Array.isArray(value?.directions)) {
+      for (const direction of value.directions) {
+        if (typeof direction?.content === 'string' && direction.content.trim()) {
+          lines.push([typeof direction.title === 'string' ? direction.title : '', direction.content].filter(Boolean).join('：'));
+        }
+      }
+    }
+    if (key === 'interlude') {
+      const entries = value.type === 'forum' ? value.posts : value.messages;
+      if (Array.isArray(entries)) for (const entry of entries) {
+        if (typeof entry?.content === 'string' && entry.content.trim()) lines.push(entry.content);
+      }
+    }
     if (!lines.some(line => line.trim())) return;
     cards.push({ field: key, label, value, lines });
   }

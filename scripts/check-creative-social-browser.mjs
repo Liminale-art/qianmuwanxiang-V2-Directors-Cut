@@ -1,0 +1,156 @@
+// Synthetic, isolated renderer QA. No user browser, ST, provider or model access.
+import assert from 'node:assert/strict';
+import { readFile, mkdir } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
+const css = await Promise.all(['style.css', 'qianmu-theme-skins.css']
+  .map(file => readFile(new URL('../' + file, import.meta.url), 'utf8')));
+const origin = 'https://qianmu.test';
+const assets = new Set(['qianmu-creative-social.js', 'qianmu-creative-social.css', 'qianmu-storyboard-utils.js', 'qianmu-icon-renderer.js',
+  'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-text-collection-floor.css']);
+const checks = [], failures = [], pageErrors = [], blocked = [], screenshots = [];
+const check = (value, label, detail) => value ? checks.push(label) : failures.push({ label, detail });
+const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || 'chrome', headless: true });
+const context = await browser.newContext({ viewport: { width: 393, height: 900 }, serviceWorkers: 'block' });
+context.setDefaultTimeout(5000);
+await context.route('**/*', async route => {
+  const url = new URL(route.request().url()), file = url.pathname.slice(1);
+  if (url.origin === origin && url.pathname === '/') return route.fulfill({ contentType: 'text/html',
+    body: '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' });
+  if (url.origin === origin && assets.has(file)) return route.fulfill({ contentType: file.endsWith('.css') ? 'text/css' : 'text/javascript',
+    body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
+  blocked.push(route.request().url()); return route.abort();
+});
+const page = await context.newPage();
+page.on('pageerror', error => pageErrors.push(error.message));
+const frame = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+try {
+  await page.goto(origin);
+  for (const content of css) await page.addStyleTag({ content });
+  await page.evaluate(async () => {
+    Object.assign(window, await import('/qianmu-creative-social.js'));
+    const theme = await import('/qianmu-theme-surfaces.js');
+    window.samples = {
+      forum: { type: 'forum', title: '桥头街坊 · 雨停之前', posts: [
+        { author: '卖花的周姨', handle: 'zhou_flower', time: '刚刚', content: '买了花却忘记带伞的人，可以回来躲雨。花也可以。', replies: [
+          { author: '小林', content: '人已经进门了，花还在外面等快递。' }, { author: '卖花的周姨', content: '那让花也进来。今天不查购买记录。' }] },
+        { author: '桥头夜班', handle: 'night_shift', time: '一刻钟前', content: '今晚桥修好了，回家的路少绕一条街。值班室那张绕行地图终于可以退役了。', replies: [
+          { author: '老陈', content: '地图别扔，画得比我家那幅山水好。' }] },
+        { author: '小雨', handle: 'before_rain', time: '半小时前', content: '我爸用十年没碰过的相机拍了晚霞。他说胶卷得洗出来才能给我看。\n我现在每天都在等一家不存在的照相馆营业。', replies: [
+          { author: '邮差', content: '桥西那家还在。老板星期四去钓鱼，其他时候都在。' }] },
+      ] },
+      phone: { type: 'phone', title: '夜班互助 · 明早谁带早餐', owner: '林芷', conversation_kind: 'group', messages: [
+        { sender: '周宁', content: '谁在茶水间留下了一只非常郑重的保温桶？', time: '21:03' },
+        { sender: '林芷', content: '我。明早吃。', time: '21:03' },
+        { sender: '小陈', content: '我听见这句话时已经打开了。', time: '21:04' },
+        { sender: '林芷', content: '那明早你带。', time: '21:04' },
+        { sender: '小陈', content: '我只是确认它是否安全。还原得很完整。', time: '21:05' },
+        { sender: '周宁', content: '他把盖子装反了。', time: '21:05' },
+        { sender: '林芷', content: '明早两份。', time: '21:06' },
+        { sender: '小陈', content: '收到。申请把安全检查交还专业人员。', time: '21:06' },
+      ] },
+    };
+    window.mount = (kind, themeName, mode = 'light') => {
+      window.surface?.dispose();
+      document.body.innerHTML = `<button id="host-control" style="font:17px serif;background:rgb(30,40,50);color:rgb(220,230,240)">宿主</button>
+        <div id="story-director-modal" class="sd-theme-light open"><div class="sd-backdrop"></div><section class="sd-window" role="dialog" aria-label="千幕">
+        <header class="sd-header"><div class="sd-titlebox"><h2>千幕</h2></div></header>
+        <main class="sd-body">${renderCreativeSocialCard(samples[kind])}</main></section></div>`;
+      const root = document.getElementById('story-director-modal');
+      window.surface = theme.createQianmuThemeSurfaceController(); surface.register(root);
+      surface.setTheme(themeName === 'classic' ? null : { theme: themeName, mode, accent: '#4a618f' });
+      bindCreativeSocialEvents(root); bindCreativeSocialEvents(root);
+    };
+  });
+
+  for (const width of [320, 393, 1280]) for (const theme of ['classic', 'editorial', 'glass']) for (const kind of ['forum', 'phone']) {
+    const label = `${theme}/${width}/${kind}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(({ theme, kind }) => { resetCreativeSocialState(); mount(kind, theme); }, { theme, kind });
+    await frame();
+    const layout = await page.evaluate(() => {
+      const root = document.getElementById('story-director-modal'), win = root.querySelector('.sd-window'), box = win.getBoundingClientRect();
+      const overflow = [...root.querySelectorAll('.sd-body,.sd-creative-social,.sd-social-panel,.sd-social-post,.sd-social-message-main')]
+        .filter(node => node.getClientRects().length && getComputedStyle(node).display !== 'none')
+        .map(node => ({ className: node.className, delta: node.scrollWidth - node.clientWidth, box: node.getBoundingClientRect().toJSON() }))
+        .filter(node => node.delta > 2 || node.box.left < box.left - 2 || node.box.right > box.right + 2);
+      const hostStyle = getComputedStyle(document.getElementById('host-control'));
+      const expected = getComputedStyle(root).getPropertyValue('--qm-type-body').trim();
+      const paragraphs = [...root.querySelectorAll('.sd-social-post-content,.sd-social-message-main p')].map(node => getComputedStyle(node).fontSize);
+      return { overflow, pageOverflow: document.documentElement.scrollWidth - innerWidth, windowInside: box.left >= -1 && box.right <= innerWidth + 1,
+        expected, paragraphs, host: [hostStyle.fontSize, hostStyle.fontFamily, hostStyle.color, hostStyle.backgroundColor],
+        title: root.querySelector('.sd-section-title h3').textContent,
+        outgoing: root.querySelectorAll('form,textarea,input,[contenteditable],a').length };
+    });
+    check(layout.overflow.length === 0 && layout.pageOverflow <= 2 && layout.windowInside, `${label}: no overflow`, layout);
+    check(layout.paragraphs.length > 0 && layout.paragraphs.every(size => size === layout.expected), `${label}: shared body scale`, layout);
+    check(JSON.stringify(layout.host) === JSON.stringify(['17px', 'serif', 'rgb(220, 230, 240)', 'rgb(30, 40, 50)']), `${label}: host unchanged`, layout);
+    check(layout.title === '世界论坛' && layout.outgoing === 0, `${label}: fictional reading panel has no sending or navigation`, layout);
+
+    if (kind === 'forum') {
+      const like = page.locator('[data-qm-social-action="like"]').first();
+      const initial = await like.evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node).borderColor]);
+      await like.focus(); await page.keyboard.press('Enter');
+      check(await like.getAttribute('aria-pressed') === 'true' && await like.locator('span').textContent() === '已赞', `${label}: keyboard like once despite repeat binding`);
+      const selected = await like.evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node).borderColor]);
+      check(JSON.stringify(initial) !== JSON.stringify(selected), `${label}: visible selected state`);
+      await like.click(); check(await like.getAttribute('aria-pressed') === 'false', `${label}: like toggles off`);
+      const bookmark = page.locator('[data-qm-social-action="bookmark"]').first();
+      await bookmark.click(); check(await bookmark.getAttribute('aria-pressed') === 'true', `${label}: local bookmark on`);
+      const replies = page.locator('[data-qm-social-action="replies"]').first();
+      await replies.click(); check(await replies.getAttribute('aria-expanded') === 'true' && await page.locator('.sd-social-replies').first().isVisible(), `${label}: reply list opens`);
+      await page.evaluate(({ theme }) => mount('forum', theme), { theme });
+      check(await page.locator('[data-qm-social-action="bookmark"]').first().getAttribute('aria-pressed') === 'true'
+        && await page.locator('[data-qm-social-action="replies"]').first().getAttribute('aria-expanded') === 'true', `${label}: remount keeps local choices`);
+      await page.locator('[data-qm-social-action="replies"]').first().click();
+      check(!await page.locator('.sd-social-replies').first().isVisible(), `${label}: replies close`);
+    } else {
+      check(await page.locator('.sd-social-message:visible').count() === 6, `${label}: initial six messages`);
+      const expand = page.locator('.sd-social-expand');
+      await expand.focus(); await page.keyboard.press('Space');
+      check(await expand.getAttribute('aria-expanded') === 'true' && await page.locator('.sd-social-message:visible').count() === 8, `${label}: keyboard expands messages`);
+      await page.evaluate(({ theme }) => mount('phone', theme), { theme });
+      check(await page.locator('.sd-social-message:visible').count() === 8, `${label}: remount retains expansion`);
+      await page.locator('.sd-social-expand').click();
+      check(await page.locator('.sd-social-message:visible').count() === 6, `${label}: long conversation collapses`);
+    }
+    if (process.env.QIANMU_SOCIAL_QA_DIR && width === 393) {
+      await mkdir(process.env.QIANMU_SOCIAL_QA_DIR, { recursive: true });
+      await page.locator('.sd-body').evaluate(node => { node.scrollTop = 0; });
+      const path = join(process.env.QIANMU_SOCIAL_QA_DIR, `social_${theme}_${kind}_${width}.png`);
+      await page.screenshot({ path }); screenshots.push(path);
+    }
+  }
+
+  const edges = await page.evaluate(() => {
+    const root = document.getElementById('story-director-modal');
+    samples.attack = { type: 'forum', title: '<img src="https://outside.test/avatar" onerror="alert(1)">', posts: [{ author: '<script>x</script>', content: '<a href="https://outside.test">open</a>' + 'unbroken'.repeat(200), replies: [] }] };
+    mount('attack', 'glass');
+    const card = document.querySelector('.sd-creative-social');
+    return { blockedMarkup: card.querySelectorAll('script,img,a').length === 0,
+      visibleText: card.textContent.includes('<img src='), controls: card.querySelectorAll('button').length,
+      fits: card.scrollWidth - card.clientWidth <= 2 };
+  });
+  check(edges.blockedMarkup && edges.visibleText, 'all model HTML/URLs are text only', edges);
+  check(edges.fits && edges.controls === 3, 'long unbroken content wraps in structured feed', edges);
+
+  await page.evaluate(() => { resetCreativeSocialState(); mount('forum', 'editorial'); });
+  await page.locator('[data-qm-social-action="like"]').first().click();
+  await page.evaluate(() => mount('forum', 'glass'));
+  check(await page.locator('[data-qm-social-action="like"]').first().getAttribute('aria-pressed') === 'true', 'theme changes retain current-result local reaction');
+  await page.evaluate(() => { resetCreativeSocialState(); mount('forum', 'glass'); });
+  check(await page.locator('[data-qm-social-action="like"]').first().getAttribute('aria-pressed') === 'false', 'new result/chat reset clears local reactions');
+  await page.evaluate(() => bindCreativeSocialEvents(document.querySelector('.sd-body')));
+  await page.locator('[data-qm-social-action="like"]').first().click();
+  check(await page.locator('[data-qm-social-action="like"]').first().getAttribute('aria-pressed') === 'true', 'stream-host nested in a bound modal handles click once');
+  check(await page.locator('[data-qm-social-action="like"]').first().locator('svg').count() === 1, 'reaction retains icon markup while updating only its label');
+  check(pageErrors.length === 0, 'no page errors', pageErrors);
+  check(blocked.length === 0, 'no unlisted or external requests', blocked);
+  console.log(JSON.stringify({ passed: checks.length, failures, screenshots, pageErrors, blocked,
+    scope: 'isolated synthetic renderer and real theme CSS; no deployment or model-quality claim' }, null, 2));
+  if (failures.length) process.exitCode = 1;
+} finally { await context.close(); await browser.close(); }

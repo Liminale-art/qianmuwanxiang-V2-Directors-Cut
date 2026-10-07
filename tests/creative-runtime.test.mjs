@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { hashText } from '../qianmu-storyboard-utils.js';
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT } from '../qianmu-creative-prompts.js';
-import { createCreativeSchema, validateCreativePlan } from '../qianmu-creative-contract.js';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, mergeCreativeRepair } from '../qianmu-creative-runtime.js';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
+import { createCreativeSchema, validateCreativePlan, projectCreativeContinuity } from '../qianmu-creative-contract.js';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint, mergeCreativeRepair } from '../qianmu-creative-runtime.js';
 
 const next = { systemPrompt: CREATIVE_SYSTEM_PROMPT, outputSchemaText: createCreativeSchema(), blueprint: CREATIVE_BLUEPRINT };
 test('known defaults migrate, custom identity/schema/templates and backups survive repeated initialization', () => {
@@ -109,8 +109,8 @@ test('interlude is selected once, supports non-speaker story characters, and can
   assert.ok(options.personaNames.includes('用户别名'));
   assert.equal(options.eligiblePhoneOwners, undefined);
   assert.equal(options.phoneSourceText, input.narrativeText);
-  const theater = selectCreativeOptions({}, { ...input, sourceText: '旧时客栈，众人围炉看戏。' });
-  assert.equal(theater.interludeType, 'theater'); assert.equal(calls, 1);
+  const forum = selectCreativeOptions({}, { ...input, sourceText: '旧时客栈，众人围炉看戏。' });
+  assert.equal(forum.interludeType, 'forum'); assert.equal(calls, 1);
   const off = selectCreativeOptions({ interludeEnabled: false }, input);
   assert.equal(off.interludeType, null); assert.equal(calls, 1);
 });
@@ -123,9 +123,9 @@ test('character scope accepts multiple confirmed CHARs, excludes USER, and respe
   assert.deepEqual(selectCreativeOptions({}, { characterName: '玩家', personaNames: ['玩家'] }).characterNames, []);
 });
 test('repair adds only missing entries and clears resolved limitations without rewriting valid entries', () => {
-  const first = { title: '已通过', description: '已有完整情境' };
+  const first = { subject: '街坊', title: '已通过', description: '已有完整情境' };
   const plan = { quests: [first], limitations: [{ field: 'quests', missing: 4, reason: '材料未说明后续联系' }] };
-  const additions = Array.from({ length: 6 }, (_, i) => ({ title: `补充${i}`, description: `独立情境${i}` }));
+  const additions = Array.from({ length: 6 }, (_, i) => ({ subject: '街坊', title: `补充${i}`, description: `独立情境${i}` }));
   mergeCreativeRepair(plan, { quests: additions, npc_updates: [{ name: '不在修复范围' }] }, [{ field: 'quests', missing: 4 }]);
   assert.equal(plan.quests.length, 5); assert.equal(plan.quests[0], first);
   assert.equal(plan.npc_updates, undefined); assert.deepEqual(plan.limitations, []);
@@ -180,13 +180,70 @@ test('real injection includes CHAR dynamics but not fun, parallel or old review 
   assert.match(sandbox.buildPlanDigest({ character_dynamics: [{ title: '未言', hidden_agenda: '保留调查的时间' }] }), /保留调查的时间/);
 });
 
-test('relation display preserves natural-language awareness, full tension, and escaped content aliases', () => {
+test('relation display removes awareness decoration while preserving full tension and escaped aliases', () => {
   const sandbox = { htmlEscape: value => String(value ?? '').replaceAll('<', '&lt;'), renderDirectorWorldEntryLink: () => '' };
   vm.createContext(sandbox);
   const tail = source.slice(source.indexOf('function renderRelationUndercurrentsCard('));
   vm.runInContext(tail.slice(0, tail.indexOf('\nfunction ', 1)), sandbox);
   const content = '双方正在等待进一步的证据，暂未改变原有立场。'.repeat(12);
   const html = sandbox.renderRelationUndercurrentsCard({ relation_undercurrents: [{ parties: '<甲>、乙', content, tone: '关切与戒备并存', user_awareness: '只听说了最初的争执' }] });
-  assert.ok(html.includes(content)); assert.match(html, /只听说了最初的争执/); assert.match(html, /&lt;甲>/);
+  assert.ok(html.includes(content)); assert.doesNotMatch(html, /只听说了最初的争执/); assert.match(html, /&lt;甲>/);
   assert.match(html, /关切与戒备并存/);
+});
+
+test('exact v445 defaults migrate to v446 while edited defaults, templates and backups survive', () => {
+  const fingerprints = { 'v445-system': '39271a80', 'v445-schema': '3826d107', 'v445-blueprint': '261d4a1a' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v445-system', outputSchemaText: 'v445-schema', appliedPromptDefaultHash: marker,
+      appliedSchemaDefaultHash: marker, systemPromptBackup: 'manual backup', outputSchemaBackup: 'manual format',
+      templates: [{ id: 'default-free-blueprint', content: 'v445-blueprint' }, { id: 'mine', content: 'v445-blueprint' }] };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt); assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.templates[0].content, next.blueprint); assert.equal(settings.templates[1].content, 'v445-blueprint');
+    assert.equal(settings.systemPromptBackup, 'manual backup'); assert.equal(settings.outputSchemaBackup, 'manual format');
+    const store = { blueprint: 'v445-blueprint', appliedBlueprintDefaultHash: marker };
+    sandbox.upgradeCreativeBlueprint(store, next.blueprint, 446); assert.equal(store.blueprint, next.blueprint);
+    const custom = { systemPrompt: 'v445-system edited', outputSchemaText: 'v445-schema edited', templates: [{ id: 'default-free-blueprint', content: 'v445-blueprint edited' }] };
+    sandbox.upgradeCreativeDefaults(custom, next);
+    assert.equal(custom.systemPrompt, 'v445-system edited'); assert.equal(custom.outputSchemaText, 'v445-schema edited');
+    assert.equal(custom.templates[0].content, 'v445-blueprint edited');
+  }
+});
+
+test('nested direction repairs keep anchors and valid entries, selecting excess without rewrites', () => {
+  const first = { title: '一条远路', content: '此后两年的发展方向。' };
+  const second = { title: '另一条路', content: '数周后另一个条件可能变化。' };
+  const plan = { story_status: { title: '原标题', current_arc: '原主线', cycle: '仲夏', directions: [first] } };
+  mergeCreativeRepair(plan, { story_status: { title: '不应覆写', directions: [second, { title: '多余', content: '不应加上' }] } }, [{ field: 'story_status', missing: 1 }]);
+  assert.deepEqual(plan.story_status, { title: '原标题', current_arc: '原主线', cycle: '仲夏', directions: [first, second] });
+  assert.equal(plan.story_status.directions[0], first);
+  const third = { title: '第三', content: '三' }, fourth = { title: '第四', content: '四' };
+  plan.story_status.directions.push(third, fourth);
+  const issue = { field: 'story_status', excess: 1, max: 3, validIndices: [0, 1, 2, 3] };
+  mergeCreativeRepair(plan, { keep_indices: { story_status: [0, 1, 1] } }, [issue]);
+  assert.equal(plan.story_status.directions.length, 4);
+  mergeCreativeRepair(plan, { keep_indices: { story_status: [0, 2, 3] } }, [issue]);
+  assert.deepEqual(plan.story_status.directions, [first, third, fourth]);
+  assert.equal(plan.story_status.title, '原标题');
+});
+
+test('prior interlude supplies only a bounded nonfactual variety hint, separate from mainline continuity', () => {
+  const previousInterlude = { type: 'forum', title: '上轮话题', posts: [{ content: '首帖 '.repeat(100), replies: [{ content: 'PRIVATE_REPLY' }] }, { content: 'SECOND_POST' }], extra: 'UNKNOWN_FIELD' };
+  const hint = recentInterludeHint(previousInterlude);
+  assert.deepEqual(Object.keys(JSON.parse(hint)), ['type', 'title', 'first_excerpt']);
+  assert.equal(JSON.parse(hint).first_excerpt.length, 180);
+  assert.doesNotMatch(hint, /PRIVATE_REPLY|SECOND_POST|UNKNOWN_FIELD/);
+  const options = selectCreativeOptions({ newcomerMode: true }, { previousInterlude });
+  assert.equal(options.interludeType, 'forum'); assert.equal(options.newcomerMode, true); assert.equal(options.recentInterludeHint, hint);
+  const guide = creativeSectionGuidance(options);
+  assert.match(guide, /不是事实来源、主线线索或续写指令/); assert.ok(guide.includes(hint));
+  assert.deepEqual(projectCreativeContinuity({ interlude: previousInterlude, recentInterludeHint: hint }), { reference_kind: 'candidate_reference' });
+  const off = selectCreativeOptions({ interludeEnabled: false }, { previousInterlude });
+  assert.equal(off.recentInterludeHint, ''); assert.ok(!creativeSectionGuidance(off).includes(hint));
+  for (const value of [null, undefined, {}, [], { type: 'forum', posts: [] }]) assert.equal(recentInterludeHint(value), '');
+  assert.match(recentInterludeHint({ type: 'phone', title: '旧手机', messages: [{ content: '首条消息' }, { content: '不可复制整段对话' }] }), /首条消息/);
 });

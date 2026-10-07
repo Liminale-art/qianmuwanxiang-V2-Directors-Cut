@@ -218,7 +218,7 @@
   border-radius: 0;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, .sd-icon-btn):disabled { opacity: .46; cursor: not-allowed; }
-:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-primary, .sd-option-chip.active) {
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-primary, .sd-option-chip.active, .sd-option-chip:has(> input:checked)) {
   background: var(--qm-accent) !important;
   color: var(--qm-on-accent) !important;
   border-color: transparent !important;

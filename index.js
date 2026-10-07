@@ -1,15 +1,16 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.445';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.445';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, mergeCreativeRepair } from './qianmu-creative-runtime.js?v=1.59.445';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.446';
+import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.446';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.446';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, mergeCreativeRepair, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.446';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.443';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
-import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.443';
+import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.446';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
-import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.443';
+import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.446';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.422';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -29,7 +30,7 @@ import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor}
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
-import { directorPreviewPlan, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.445';
+import { directorPreviewPlan, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.446';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js?v=1.59.445';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
@@ -305,7 +306,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.445';
+const VERSION = '1.59.446';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -813,8 +814,8 @@ const FLOAT_LOGO_URLS = Object.freeze({
 });
 const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-DOUBAO-APIKEY.md';
 
-const PROMPT_REVISION = 25;
-const BLUEPRINT_REVISION = 2;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
+const PROMPT_REVISION = 26;
+const BLUEPRINT_REVISION = 3;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
 const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;
@@ -1221,8 +1222,6 @@ let contextAutoScanned = false;    // 本次 ST 会话内是否已自动补扫�
 let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染加入场动画，之后的静默重渲染（刷新/扫描/切换）不再重播，消除闪动
 let busy = false;                  // 推演忙碌态
 let directorRun = null, directorLiveLog = null;
-// Temporary inspection only: retain request offsets, never another memory archive.
-let directorMemoryInspection = null;
 let abortController = null;         // 推演中止句柄
 let cancelRequested = false;       // 推演取消标记
 let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许并发）
@@ -1426,7 +1425,7 @@ let theaterExportSelection = new Set();
 let ttsSchemeSearch = '';            // 台词指导方案库搜索
 let ttsSchemeExportMode = false;     // 台词指导方案库多选导出态
 let ttsSchemeExportSelection = new Set();
-let injectSelection = new Map();   // 写入勾选持久化（id→text，跨重渲染/切主题/切标签保留，Map 顺序即勾选先后）
+let injectSelection = new Map();   // 本轮写入选择：跨重渲染/主题/标签保留；同卡段落在写入时按展示顺序组合。
 let accState = {};                 // 折叠面板开合状态记忆
 
 function isRuntimeOwner() {
@@ -3025,7 +3024,7 @@ function buildPlanDigest(plan) {
   const st = plan.story_status || {};
   const lines = [];
   lines.push('【千幕·暗线灵感池】');
-  lines.push('以下是千幕提供的候选际遇与人物、世界动向，尚不自动成为已发生事实。依正文、有效记忆和人物知情范围承接，让行动及其后果自然交汇。世界里的人与事各有节奏；{{user}} 可参与、可旁观，也可全然不知。');
+  lines.push('以下是千幕提供的候选预演与人物、世界动向，尚不自动成为已发生事实。依正文、有效记忆和人物知情范围承接，让行动及其后果自然交汇。世界里的人与事各有节奏；{{user}} 可参与、可旁观，也可全然不知。');
   const arcLine = [st.current_arc, st.current_stage].filter(Boolean).join(' · ');
   if (arcLine) lines.push(`当前幕：${snip(arcLine, INJ_LEN.arc)}`);
   if (st.mood) lines.push(`氛围：${snip(st.mood, INJ_LEN.line)}`);
@@ -3225,6 +3224,7 @@ function directorSourceFingerprint() {
     contextBudget: settings.contextBudget,
     hostModel: settings.providerMode === 'sillytavern' ? [context.mainApi, context.getChatCompletionModel?.(), hostModelSettings] : null,
     continuity: projectCreativeContinuity(getChatStore().plan),
+    interludeVariety: settings.interludeEnabled !== false ? recentInterludeHint(getChatStore().plan?.interlude) : '',
     geopolitics: settings.geopoliticsEnabled ? [getChatStore().factions, getChatStore().factionRelations, getChatStore().worldEvents] : null,
     features: [settings.worldChatterEnabled, settings.geopoliticsEnabled, settings.parallelSceneEnabled, settings.interludeEnabled, settings.newcomerMode],
     memory: directorMemorySnapshot().snapshot?.fingerprint || '',
@@ -3244,7 +3244,6 @@ async function buildPrompt(run = {}) {
   const references = ['【世界设定与人物资料】\n角色/群聊：' + charName + '\n用户：' + personaName + '\n' + worldText];
   const presetText = await buildPresetContextText();
   if (presetText) references.push('【选用预设参考】\n' + presetText);
-  const memoryOffset = references.join('\n\n').length + 2 + '【已保存的故事记忆】\n'.length;
   if (memory.text) references.push('【已保存的故事记忆】\n' + memory.text);
   if (history.text) references.push('【近期正文】\n' + history.text);
   const referenceText = references.join('\n\n');
@@ -3256,7 +3255,7 @@ async function buildPrompt(run = {}) {
       ? (ctx().groups?.find(group => String(group.id) === String(ctx().groupId))?.members || [])
         .map(avatar => ctx().characters?.find(character => character?.avatar === avatar)?.name).filter(Boolean)
       : [charName],
-    sourceText: referenceText, narrativeText: [history.text, memory.text].filter(Boolean).join('\n'),
+    sourceText: referenceText, narrativeText: [history.text, memory.text].filter(Boolean).join('\n'), previousInterlude: store.plan?.interlude,
   });
   run.memoryStatus = { status: memory.status, diagnostics: memory.diagnostics };
   run.sourceFingerprint = directorSourceFingerprint();
@@ -3269,7 +3268,6 @@ async function buildPrompt(run = {}) {
     const geo = buildGeopoliticsArchiveSegment(store);
     if (geo) segments.push(geo);
   }
-  if (settings.newcomerMode) segments.push('【本轮偏好】关注适合出现的新人物及其与现有生活的联系，依当前题材、节奏和因果选择参与方式。');
   segments.push(creativeSectionGuidance(run.creativeOptions));
   if (settings.outputSchemaText && settings.outputSchemaText !== JSON_SCHEMA_TEXT) {
     segments.push('[User-defined format preferences]\n' + settings.outputSchemaText + '\nPreserve these presentation preferences while retaining the required fields in the output contract below so that the interface can read the result.');
@@ -3278,10 +3276,6 @@ async function buildPrompt(run = {}) {
   segments.push('[Final output]\nReturn the complete result as JSON. Follow Laws of the Ensemble and the enabled sections for quantities and substantive content. Leave disabled sections empty; keep candidate developments and side stories within their respective boundaries.');
   const prompt = segments.join('\n\n');
   if (budget > 0 && estimateTokens(prompt + '\n' + (settings.systemPrompt || DEFAULT_SYSTEM_PROMPT)) > budget) throw new Error('完整创作资料超过当前上下文预算，请调整选取范围或预算后重试。未裁切、未提交。');
-  run.memoryInspection = {
-    status: memory.status, production: memory.snapshot?.production || '', summaryMode: memory.snapshot?.summaryMode || '',
-    start: referencePrefix.length + memoryOffset, length: memory.text?.length || 0,
-  };
   return prompt;
 }
 
@@ -3499,7 +3493,7 @@ async function repairDirectorPlanQuality(plan, previousPlan, store, request = {}
   // Reuse the exact source snapshot, permissions, quotas and random choice from this request.
   // Side stories never enter the repairer's mainline reference.
   const excessFields = Object.fromEntries(needs.issues.filter(issue => issue.excess > 0).map(issue => [issue.field, plan[issue.field]]));
-  const userPrompt = request.userPrompt + '\n\n[Complete the missing or invalid parts]\nKeep all existing valid content. Return only the fields with issues listed below. For arrays, supply only missing entries; rewrite a standalone card only if that card is invalid. For an array exceeding its upper limit, use keep_indices:{field_name:[original_zero_based_indices]} to select exactly max existing entries, preserving their original text rather than rewriting them. Update limitations and remove any shortfalls that have been resolved.\n'
+  const userPrompt = request.userPrompt + '\n\n[Complete the missing or invalid parts]\nKeep all existing valid content. Return only the fields with issues listed below. For arrays, supply only missing entries; rewrite a standalone card only if that card is invalid. For story_status, supply missing directions inside story_status.directions; retain all valid existing directions and anchors. For an array exceeding its upper limit, use keep_indices:{field_name:[original_zero_based_indices]} to select exactly max existing entries, preserving their original text rather than rewriting them. keep_indices.story_status selects indices within directions, not the surrounding object. Update limitations and remove any shortfalls that have been resolved.\n'
     + JSON.stringify(needs.issues) + '\n[Existing valid mainline reference]\n' + JSON.stringify(projectCreativeContinuity(plan))
     + (Object.keys(excessFields).length ? '\n[Original entries for this request\'s count selection only]\n' + JSON.stringify(excessFields) : '');
   let raw = '';
@@ -3540,22 +3534,6 @@ function makeStreamLogUpdater(log) {
 
 function refreshDirectorLiveUI() {
   const root = document.getElementById(MODAL_ID), host = root?.querySelector('[data-director-live-host]');
-  const review = root?.querySelector('[data-director-memory-review]');
-  if (review) {
-    const inspection = directorMemoryInspection;
-    const stamp = [inspection, inspection?.snapshot, inspection?.log?.status, inspection?.log?.request,
-      settings, ctx().chat, getChatKey(), getChatStore(), settings.logHistory?.includes(inspection?.log)];
-    // Token deltas do not change reference material. Avoid repeatedly parsing a
-    // large request and replacing the user's text selection while streaming.
-    if (!review._reviewStamp || stamp.some((value, index) => value !== review._reviewStamp[index])) {
-      const expanded = Boolean(review.querySelector('details')?.open);
-      const html = renderDirectorMemoryReview(expanded);
-      review.outerHTML = html;
-      const replacement = root.querySelector('[data-director-memory-review]');
-      if (replacement) { replacement._reviewStamp = stamp; replacement.querySelector('details').open = expanded; }
-      bindDirectorMemoryReview(root);
-    }
-  }
   const list = root?.querySelector('.sd-log-list'), log = directorLiveLog;
   if (list && log && ![...list.children].some(entry => entry.dataset.acc === `log-${log.id}`)) {
     list.querySelector('.sd-log-empty')?.remove(); list.insertAdjacentHTML('afterbegin', renderLogEntry(log, 0));
@@ -3584,7 +3562,6 @@ function refreshDirectorLiveUI() {
   applyQianmuIcons(host);
   applyAccState(host);
   host.querySelectorAll('details[data-acc]').forEach(node => { if (folds.has(node.dataset.acc)) node.open = folds.get(node.dataset.acc); });
-  bindDirectorMemoryReview(host);
   bindDirectorReadingEvents(host);
 }
 async function generateDirectorPlan(showSuccessToast = true, silentFailure = false, options = {}) {
@@ -3592,8 +3569,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   if (!settings.enabled) return toast('千幕已关闭。', 'warning');
   if (busy) return;
   if (!validateApiSettings()) {
-    const log = pushLog({ id: uid('log'), kind: 'director', status: 'error', time: new Date().toLocaleString(), duration: '', request: '', response: '', error: '请检查API设置' });
-    directorMemoryInspection = { ownerSettings: settings, store: getChatStore(), chat: ctx().chat, key: getChatKey(), log, snapshot: null };
+    pushLog({ id: uid('log'), kind: 'director', status: 'error', time: new Date().toLocaleString(), duration: '', request: '', response: '', error: '请检查API设置' });
     rerenderIfOpen();
     if (!silentFailure) apiToast();
     return;
@@ -3607,7 +3583,6 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   const modelKeys = ['providerMode', 'apiUrl', 'apiKey', 'model', 'temperature', 'maxOutputTokens'];
   const modelValues = modelKeys.map(field => settings[field]);
   const controller = new AbortController(), run = { controller, log }; directorRun = run; abortController = controller;
-  directorMemoryInspection = { ownerSettings, store, chat, key, log, snapshot: null };
   directorLiveLog = log; refreshDirectorLiveUI();
   const alive = () => directorRun === run && settings === ownerSettings && ctx().chat === chat && getChatKey() === key && getChatStore() === store;
   let namespace;
@@ -3634,7 +3609,6 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     namespace = await resolveDirectorAccount(); await guard();
     const userPrompt = await buildPrompt(run);
     await guard();
-    if (directorMemoryInspection?.log === log) directorMemoryInspection.snapshot = run.memoryInspection || null;
     const systemPrompt = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
     const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
     log.memory = run.memoryStatus;
@@ -3686,6 +3660,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     // 否则旧 factions/world_events/threads 会被重新塞回 store.plan、经【上次审片状态】喂回模型，导致清空后仍复刻旧格局。
     store.history = [{ id: uid('hist'), createdAt: now, directorPlanRevisionId:store.directorPlanRevisionId, plan: clone(newPlan) }, ...(Array.isArray(store.history) ? store.history : [])].slice(0, 5);
     injectSelection.clear();   // 新推演结果生成，旧写入勾选失效
+    resetCreativeSocialState();
     run.sourceFingerprint = directorSourceFingerprint(); // 本次同步写入成为新的核对基准，后续仍拦截用户改源。
     await saveMetadata();
     await guard();
@@ -6075,7 +6050,6 @@ function applyAccState(modal) {
       });
     } else if (typeof accState[key] === 'boolean') el.open = accState[key];
   });
-  bindDirectorMemoryReview(modal);
 }
 
 // 读取 ST 当前正文字体，写入 --sd-font（视觉隔离保留，仅字体跟随）
@@ -6732,7 +6706,7 @@ function renderModal() {
   snapshotAccState(modal);
   const tabs = [
     ['dashboard', '审片'],
-    ['tasksnodes', '际遇'],
+    ['tasksnodes', '预演'],
     ['castworld', '世界'],
     ['context', '取材'],
     ['settings', '幕后'],
@@ -7464,105 +7438,44 @@ function renderGenerateRow() {
     : '<i class="fa-solid fa-clapperboard" data-qm-icon="dashboard"></i>推演下一幕';
   return `<div class="sd-button-row">
     <button class="sd-btn sd-primary sd-generate-main ${busy ? 'sd-as-stop' : ''}">${mainContent}</button>
-    <button class="sd-btn sd-newcomer-toggle ${settings.newcomerMode ? 'active' : ''}" type="button" title="选中后，本次推演将引入全新角色与世界事件"><i class="fa-solid fa-user-plus"></i>新角入场</button>
+    <button class="sd-btn sd-newcomer-toggle ${settings.newcomerMode ? 'active' : ''}" type="button" title="关注与既有事务、人物或场所有实际关联的新人物"><i class="fa-solid fa-user-plus"></i>新角入场</button>
   </div>`;
-}
-
-function renderDirectorMemoryReview(expanded = false) {
-  const current = directorMemoryInspection;
-  const owned = current && current.ownerSettings === settings && current.chat === ctx().chat
-    && current.key === getChatKey() && current.store === getChatStore() && settings.logHistory?.includes(current.log);
-  const snapshot = owned ? current.snapshot : null;
-  const log = owned ? current.log : null;
-  let text = '', prepared = Boolean(snapshot && log?.request);
-  if (expanded && prepared) {
-    try {
-      const messages = JSON.parse(log.request);
-      const prompt = Array.isArray(messages) && messages[1]?.role === 'user' ? messages[1].content : null;
-      prepared = typeof prompt === 'string' && Number.isInteger(snapshot.start) && Number.isInteger(snapshot.length)
-        && snapshot.start >= 0 && snapshot.length >= 0 && (!snapshot.length || snapshot.start + snapshot.length <= prompt.length);
-      if (prepared && snapshot.length) text = prompt.slice(snapshot.start, snapshot.start + snapshot.length);
-    } catch (_) { prepared = false; /* Never replace a missing request snapshot with today's memory. */ }
-  }
-  const memoryLabel = { ready: '已纳入请求内容', partial: '部分纳入请求内容', empty: '没有可用记忆',
-    unavailable: '未读取到记忆插件或当前记忆', disabled: '记忆联动未启用',
-    unsupported: '当前记忆版本或模式未适配', unverified: '记忆来源未通过核对' }[snapshot?.status] || '没有可查阅的记忆';
-  const requestLabel = !log ? '暂无记录' : !prepared ? (log.status === 'loading' ? '准备中' : '未形成请求')
-    : ({ loading: '正在推演', success: '推演成功', error: '推演失败', cancelled: '已取消' }[log.status] || '请求已组装');
-  const production = { manual: '完整剧情梳理', layered: '分层滚动' }[snapshot?.production];
-  const format = { novel: '小说前情', structured: '结构化', mixed: '混合' }[snapshot?.summaryMode];
-  const meta = [production, format].filter(Boolean).join(' · ');
-  return `<section class="sd-card sd-memory-review" data-director-memory-review>
-    <details class="sd-plain-fold" data-acc="director-memory-review"${expanded ? ' open' : ''}>
-      <summary><b>记忆联动</b><span class="sd-memory-review-badge">临时查阅</span><span class="sd-memory-review-status">${htmlEscape(requestLabel)}</span></summary>
-      <div class="sd-fold-body" data-memory-loaded="${expanded}">
-        ${expanded ? `
-        <p class="sd-memory-review-caption">本页最近一次推演的请求参考，不是当前审片的剧情内容；切聊或刷新后清空。</p>
-        ${log ? `<div class="sd-memory-review-meta"><span>${htmlEscape(log.time || '')}</span>${meta ? `<span>${htmlEscape(meta)}</span>` : ''}</div>` : ''}
-        <p class="sd-memory-review-state">${htmlEscape(prepared ? memoryLabel : log?.status === 'loading' ? '正在准备本次资料。' : log ? '准备未完成，没有已组装的请求可供核对。' : '本页尚无推演请求记录。')}</p>
-        ${text ? `<p class="sd-memory-review-caption">以下为请求中的记忆原文；纳入请求不代表模型已经收到或采用。</p><div class="sd-memory-review-text">${htmlEscape(text)}</div>` : ''}
-        ` : ''}
-      </div>
-    </details>
-  </section>`;
-}
-
-function bindDirectorMemoryReview(root) {
-  const card = root.querySelector('[data-director-memory-review]');
-  const details = card?.querySelector('details');
-  if (!details || details._sdMemoryBound) return;
-  details._sdMemoryBound = true;
-  details.addEventListener('toggle', () => {
-    const body = details.querySelector('.sd-fold-body');
-    if (!details.open) { body?.replaceChildren(); if (body) body.dataset.memoryLoaded = 'false'; return; }
-    if (!body || body.dataset.memoryLoaded === 'true') return;
-    const template = document.createElement('template');
-    template.innerHTML = renderDirectorMemoryReview(true);
-    body.innerHTML = template.content.querySelector('.sd-fold-body')?.innerHTML || '';
-    body.dataset.memoryLoaded = 'true';
-  });
 }
 
 function renderDashboardTab() {
   const p = directorDisplayPlan();
   if (!p) {
     return `<section class="sd-card sd-plan-card"><div class="sd-hero-top"><h3 style="margin:0">剧情推演</h3>${renderHeroActions(false)}</div><div class="sd-empty">尚未推演剧情</div>${renderGenerateRow()}</section>
-    ${renderHistorySection()}${renderDirectorMemoryReview()}`;
+    ${renderHistorySection()}`;
   }
   const st = p.story_status || {};
+  const directions = (Array.isArray(st.directions) ? st.directions : []).filter(item => item && (item.title || item.content));
   return `
     <section class="sd-card sd-hero">
       <div class="sd-hero-top"><div class="sd-kicker">${htmlEscape(st.cycle || '下一幕')}</div>${renderHeroActions(!p._streamPreview)}</div>
-      <div class="sd-two sd-scene-current"><b>当前幕：</b><span>${htmlEscape(st.title || '当前故事')}</span></div>
-      <p>${htmlEscape(st.summary || '')}</p>
-      <div class="sd-two"><b>主线：</b><span>${htmlEscape(st.current_arc || '-')}</span></div>
-      <div class="sd-two"><b>阶段：</b><span>${htmlEscape(st.current_stage || '-')}</span></div>
-      <div class="sd-two"><b>氛围：</b><span>${htmlEscape(st.mood || '-')}</span></div>
+      <div class="sd-two sd-scene-current"><b>推演方向</b><span>${htmlEscape(st.title || st.current_arc || '')}</span></div>
+      ${directions.length ? `<div class="sd-director-directions">${directions.map(item => `<article class="sd-director-direction">${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}<p>${htmlEscape(item.content || '')}</p></article>`).join('')}</div>` : `<p class="sd-director-narrative">${htmlEscape(st.summary || '')}</p>`}
       ${renderGenerateRow()}
     </section>
     <section class="sd-card sd-status-card">
       <div class="sd-count-tags">
-        <button class="sd-count-tag sd-count-group" data-jump="tasksnodes"><span class="sd-ct-label">际遇</span></button>
+        <button class="sd-count-tag sd-count-group" data-jump="tasksnodes"><span class="sd-ct-label">预演</span></button>
         <button class="sd-count-tag sd-count-group" data-jump="castworld"><span class="sd-ct-label">世界</span></button>
       </div>
     </section>
     ${settings.parallelSceneEnabled !== false ? renderDirectorExtraCard(p.parallel_scene, 'parallel') : ''}
     ${settings.interludeEnabled !== false ? renderDirectorExtraCard(p.interlude, 'interlude') : ''}
-    ${renderHistorySection()}${renderDirectorMemoryReview()}`;
+    ${renderHistorySection()}`;
 }
 
 // 番外只供阅读，不提供写入正文、暗线或世界素材的操作。
 function renderDirectorExtraCard(value, kind) {
-  const parallel = kind === 'parallel';
+  if (kind !== 'parallel') return renderCreativeSocialCard(value);
   const item = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const validForm = parallel || ['theater', 'phone'].includes(item.type);
-  const content = validForm && typeof item.content === 'string' ? item.content.trim() : '';
-  const title = typeof item.title === 'string' ? item.title.trim() : '';
-  const owner = typeof item.owner === 'string' ? item.owner.trim() : '';
-  const caption = parallel ? '平行番外' : item.type === 'phone' ? (owner ? `${owner}的手机` : '角色手机') : item.type === 'theater' ? '戏中戏' : '';
-  return `<section class="sd-card sd-director-extra-card sd-director-extra-${parallel ? 'parallel' : 'interlude'}">
-    <div class="sd-section-title"><h3>${parallel ? '未映之幕' : '幕间拾趣'}</h3>${content && caption ? `<span>${htmlEscape(caption)}</span>` : ''}</div>
-    ${content ? `${title ? `<h4>${htmlEscape(title)}</h4>` : ''}<div class="sd-director-extra-content">${htmlEscape(content)}</div>` : '<p class="sd-muted">尚未生成</p>'}
+  const content = typeof item.content === 'string' ? item.content.trim() : '';
+  return `<section class="sd-card sd-director-extra-card sd-director-extra-parallel">
+    <div class="sd-section-title"><h3>未映之幕</h3>${content ? '<span>平行番外</span>' : ''}</div>
+    ${content ? `<div class="sd-director-extra-content">${htmlEscape(content)}</div>` : '<p class="sd-muted">尚未生成</p>'}
   </section>`;
 }
 
@@ -8503,7 +8416,6 @@ function bindStorageManagementEvents(root) {
       cleanup.check();
       if (selected.includes('__diagnostics__')) {
         settings.logHistory = [];
-        directorMemoryInspection = null;
         settings.logOpenState = {};
         const storyboard = storyboardState();
         storyboard.logs = [];
@@ -8568,8 +8480,8 @@ function bindStorageManagementEvents(root) {
 
 function renderTasksNodesTab() {
   const p = directorDisplayPlan();
-  if (!p) return renderNoPlan('际遇尚未生成');
-  return `${renderPlanSectionFold('际遇', p.quests || [], 'quest', 'tnfold-quest', p._streamPreview)}${renderChainReactionsCard(p)}`;
+  if (!p) return renderNoPlan('预演尚未生成');
+  return `${renderPlanSectionFold('预演', p.quests || [], 'quest', 'tnfold-quest', p._streamPreview)}${renderChainReactionsCard(p)}`;
 }
 
 function renderCastWorldTab() {
@@ -8618,7 +8530,7 @@ function bindWorldFlipEvents(root) {
   root.querySelectorAll('.sd-world-edge').forEach((button) => button.addEventListener('click', flip));
   // Horizontal touch intent only. Controls, text selection and the interactive map own their gestures.
   let gesture = null;
-  const interactive = 'button, input, select, textarea, a, summary, [contenteditable], [role="slider"], svg, canvas, .sd-geo-map';
+  const interactive = 'button, input, select, textarea, a, summary, [contenteditable], [role="button"], [role="slider"], svg, canvas, .sd-geo-map';
   shell.addEventListener('pointerdown', (event) => {
     gesture = null;
     if (event.isPrimary === false || !['touch', 'pen'].includes(event.pointerType)) return;
@@ -8643,7 +8555,7 @@ function bindWorldFlipEvents(root) {
   shell.addEventListener('lostpointercapture', () => { gesture = null; });
 }
 
-// 关系暗涌：角色之间自行纠缠的张力（可负可中可正），独立于 {{user}} 演变。一行一簇关系，标出基调、走势与 user 知情程度。
+// 关系暗涌：角色之间自行演变的关系，保留旧资料但不把知情程度变成阅读标签。
 function renderRelationUndercurrentsCard(p) {
   const normTone = (t) => {
     const s = String(t || '').trim().toLowerCase();
@@ -8655,23 +8567,20 @@ function renderRelationUndercurrentsCard(p) {
   const list = (Array.isArray(p.relation_undercurrents) ? p.relation_undercurrents : [])
     .map((r, sourceIndex) => ({
       sourceIndex,
-      parties: String(r && r.parties || '').trim(),
+      parties: Array.isArray(r?.parties) ? r.parties.map(name => String(name || '').trim()).filter(Boolean).join(' · ') : String(r && r.parties || '').trim(),
       tone: normTone(r && r.tone),
       toneText: String(r && r.tone || '').trim(),
       tension: String(r && (r.tension || r.content) || '').trim(),
       drift: String(r && r.drift || '').trim(),
-      awareness: String(r && r.user_awareness || '').trim(),
     }))
     .filter((r) => r.parties || r.tension);
-  const awareLabel = { unaware: '浑然不知', rumor: '仅有耳闻', witness: '在场旁观' };
   const toneLabel = { neg: '负面', neu: '中立', pos: '正向' };
   const body = list.length
     ? list.map((r) => {
-        const tag = awareLabel[r.awareness.toLowerCase()] || r.awareness;
         const toneText = ({ neg: '负面', negative: '负面', neu: '中立', neutral: '中立', pos: '正向', positive: '正向' })[r.toneText.toLowerCase()] || r.toneText;
         const tone = r.tone ? `<span class="sd-relus-tone sd-relus-tone-${r.tone}">${htmlEscape(toneText || toneLabel[r.tone])}</span>` : '';
         return `<article class="sd-relus-row sd-relus-${r.tone || 'neu'}">
-          <div class="sd-relus-head">${tone}<span class="sd-relus-parties">${htmlEscape(r.parties)}</span>${tag ? `<span class="sd-relus-aware" title="{{user}} 的知情程度">${htmlEscape(tag)}</span>` : ''}${p._streamPreview ? '' : renderDirectorWorldEntryLink('relation_undercurrents',r.sourceIndex)}</div>
+          <div class="sd-relus-head">${tone}<span class="sd-relus-parties">${htmlEscape(r.parties)}</span>${p._streamPreview ? '' : renderDirectorWorldEntryLink('relation_undercurrents',r.sourceIndex)}</div>
           ${r.tension ? `<p class="sd-relus-tension">${htmlEscape(r.tension)}</p>` : ''}
           ${r.drift ? `<p class="sd-relus-drift"><i class="fa-solid fa-arrow-trend-up"></i>${htmlEscape(r.drift)}</p>` : ''}
         </article>`;
@@ -8743,33 +8652,51 @@ function renderItemList(items, kind, readOnly = false) {
   return items.map((item, idx) => renderItemCard(item, kind, idx, readOnly)).join('');
 }
 
+function directorItemParagraphs(item, kind) {
+  const fields = [], add = (key, label, value) => {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (text && !fields.some(field => field.text === text)) fields.push({ key, label, text });
+  };
+  if (kind === 'quest') {
+    add('scene', '情境', item.description || item.content || item.objective);
+    add('condition', '发生条件', item.trigger);
+  } else {
+    add('scene', '动向', item.content || item.description);
+    if (!fields.length) {
+      add('goal', '在意', item.current_goal);
+      add('action', '进展', item.next_action);
+      add('hidden', '未言之事', item.hidden_agenda);
+      add('relation', '联系', item.relations || item.relationship_to_user);
+    }
+  }
+  add('draft', '落笔', item.inject_prompt);
+  return fields;
+}
+
+function renderDirectorParagraph(paragraph, { cardId, subject, order, readOnly }) {
+  const id = `${cardId}:paragraph:${paragraph.key}`, selected = injectSelection.has(id);
+  const action = readOnly ? '' : ` role="button" tabindex="0" aria-pressed="${selected}" aria-label="选择${htmlEscape(paragraph.label)}：${htmlEscape(subject)}" data-director-paragraph data-id="${htmlEscape(id)}" data-card-id="${htmlEscape(cardId)}" data-order="${order}" data-subject="${htmlEscape(subject)}" data-label="${htmlEscape(paragraph.label)}" data-text="${htmlEscape(paragraph.text)}"`;
+  return `<div class="sd-director-paragraph${selected && !readOnly ? ' is-selected' : ''}"${action}><span class="sd-director-paragraph-label">${htmlEscape(paragraph.label)}</span><p>${htmlEscape(paragraph.text)}</p></div>`;
+}
+
 function renderItemCard(item, kind, idx, readOnly = false) {
   const title = item.title || item.name || `项目 ${idx + 1}`;
   const prompt = item.inject_prompt || item.content || item.description || item.objective || item.event || item.next_action || item.current_goal || item.hidden_agenda || item.relations || '';
   const injectId = `${kind}-${idx}-${getContextItemId(item)}`;
   const chips = renderItemChips(item, kind);
-  const narrative = ['quest', 'character', 'npc'].includes(kind) ? String(item.content || item.description || '').trim() : '';
+  const segmented = ['quest', 'character', 'npc'].includes(kind);
+  const subject = String((kind === 'quest' ? item.subject : item.name) || '').trim() || `事项：${title}`;
   const sourceField = ({quest:'quests',npc:'npc_updates',world:'world_updates'})[kind];
-  const fields = [];
-  if (kind === 'quest') {
-    if (!narrative) fields.push(['情境', item.objective]);
-    fields.push(['可回应之处', item.trigger]);
-  } else if (kind === 'npc' || kind === 'character') {
-    if (!narrative) fields.push(['在意', item.current_goal], ['进展', item.next_action], ['未言之事', item.hidden_agenda], ['联系', item.relations || item.relationship_to_user]);
-  } else {
-    fields.push(['内容', item.content], ['波及', item.scope]);
-  }
+  const fields = [['内容', item.content], ['波及', item.scope]];
   const checked = injectSelection.has(injectId) ? 'checked' : '';
   return `<details class="sd-item-card sd-item-fold sd-item-${htmlEscape(kind)}" data-acc="${readOnly ? 'preview-' : ''}item-${htmlEscape(injectId)}"${readOnly ? ' open' : ''}>
     <summary>
       <div class="sd-item-summary-main"><h4>${htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}</div>
       ${sourceField && !readOnly ? renderDirectorWorldEntryLink(sourceField,idx) : ''}
-      ${prompt && !readOnly ? `<label class="sd-inject-select-label" title="加入写入队列"><input type="checkbox" class="sd-select-inject" data-text="${htmlEscape(prompt)}" data-id="${htmlEscape(injectId)}" ${checked}></label>` : ''}
+      ${prompt && !readOnly && !segmented ? `<label class="sd-inject-select-label" title="加入写入队列"><input type="checkbox" class="sd-select-inject" data-text="${htmlEscape(prompt)}" data-id="${htmlEscape(injectId)}" ${checked}></label>` : ''}
     </summary>
     <div class="sd-item-detail">
-      ${narrative ? `<p class="sd-director-narrative">${htmlEscape(narrative)}</p>` : ''}
-      <dl>${fields.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `<dt>${htmlEscape(k)}</dt><dd>${htmlEscape(v)}</dd>`).join('')}</dl>
-      ${prompt && !readOnly ? `${item.inject_prompt && item.inject_prompt !== narrative ? `<div class="sd-inject-preview"><pre>${htmlEscape(prompt)}</pre></div>` : ''}<div class="sd-button-row"><button class="sd-btn sd-inject" data-text="${htmlEscape(prompt)}"><i class="fa-solid fa-pen-to-square"></i>写入输入框</button></div>` : ''}
+      ${segmented ? `<div class="sd-director-paragraphs">${directorItemParagraphs(item, kind).map((paragraph, order) => renderDirectorParagraph(paragraph, { cardId: injectId, subject, order, readOnly })).join('')}</div>` : `<dl>${fields.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `<dt>${htmlEscape(k)}</dt><dd>${htmlEscape(v)}</dd>`).join('')}</dl>`}
     </div>
   </details>`;
 }
@@ -8959,13 +8886,16 @@ function renderContextEntry(kind, groupName, item, index, sourceLabel = '') {
 // 注入范围开关：勾选哪些类别会被写进暗线灵感池（控注入 token）
 function renderInjectSections() {
   const sec = settings.injectSections || {};
+  const legacyWorld = currentPlan()?.world_updates;
   const items = [
-    ['quests', '际遇'],
+    ['quests', '预演'],
     ['nodes', '涟漪'],
     ['npc', '人物动向'],
     ['relations', '关系暗涌'],
-    ['world', '世界涟漪'],
   ];
+  // New plans no longer generate world_updates; retain its original toggle only
+  // while reading an older plan that actually contains that material.
+  if (Array.isArray(legacyWorld) && legacyWorld.some(item => item && (item.title || item.content || item.timing))) items.push(['world', '世界涟漪（旧版）']);
   if (settings.geopoliticsEnabled) items.push(['geopolitics', '世界格局']);
   const boxes = items.map(([key, label]) => `<label class="sd-option-chip sd-inject-section"><input type="checkbox" class="sd-inject-section-toggle" data-key="${key}" ${sec[key] !== false ? 'checked' : ''}><span>${label}</span></label>`).join('');
   return `<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-sections"><summary><b>注入范围</b></summary><div class="sd-inject-section-grid">${boxes}</div></details>`;
@@ -9010,7 +8940,7 @@ function renderDirectorSettingsTab() {
       <h3>衍生模块</h3>
       <div class="sd-derivative-options">
         <label class="sd-option-chip"><input type="checkbox" class="sd-parallel-scene-enabled" ${settings.parallelSceneEnabled !== false ? 'checked' : ''}><span>未映之幕</span></label>
-        <label class="sd-option-chip"><input type="checkbox" class="sd-interlude-enabled" ${settings.interludeEnabled !== false ? 'checked' : ''}><span>幕间拾趣</span></label>
+        <label class="sd-option-chip"><input type="checkbox" class="sd-interlude-enabled" ${settings.interludeEnabled !== false ? 'checked' : ''}><span>世界论坛</span></label>
         <label class="sd-option-chip"><input type="checkbox" class="sd-worldchatter-enabled" ${settings.worldChatterEnabled ? 'checked' : ''}><span>尘寰群生</span></label>
         <label class="sd-option-chip"><input type="checkbox" class="sd-geopolitics-enabled" ${settings.geopoliticsEnabled ? 'checked' : ''}><span>世界格局</span></label>
       </div>
@@ -23949,6 +23879,75 @@ function updateInjectDock(root = document) {
   dockButton.disabled = count === 0;
 }
 
+function collectDirectorSelectedText(selection = injectSelection) {
+  const groups = new Map(), output = [];
+  for (const value of selection.values()) {
+    if (typeof value === 'string') { if (value.trim()) output.push(value); continue; }
+    if (!value || !value.cardId || !value.text) continue;
+    let group = groups.get(value.cardId);
+    if (!group) { group = { subject: value.subject, items: [] }; groups.set(value.cardId, group); output.push(group); }
+    group.items.push(value);
+  }
+  return output.map(value => {
+    if (typeof value === 'string') return value;
+    const paragraphs = value.items.slice().sort((a, b) => a.order - b.order)
+      .map(item => `${item.label ? `${item.label}：` : ''}${item.text}`);
+    return `【${value.subject || '事项'}】\n${paragraphs.join('\n\n')}`;
+  });
+}
+
+function bindDirectorSelectionEvents(root) {
+  const panel = root.closest?.(`#${MODAL_ID}`) || root;
+  root.querySelectorAll('[data-director-paragraph]').forEach(el => {
+    if (el._sdSelectionBound) return;
+    el._sdSelectionBound = true;
+    let gesture = null;
+    const toggle = () => {
+      const selected = !injectSelection.has(el.dataset.id);
+      if (selected) injectSelection.set(el.dataset.id, { cardId: el.dataset.cardId, order: Number(el.dataset.order),
+        subject: el.dataset.subject, label: el.dataset.label, text: el.dataset.text });
+      else injectSelection.delete(el.dataset.id);
+      el.classList.toggle('is-selected', selected); el.setAttribute('aria-pressed', String(selected));
+      updateInjectDock(panel);
+    };
+    el.addEventListener('pointerdown', event => { gesture = { x: event.clientX, y: event.clientY, moved: event.button !== 0 }; });
+    el.addEventListener('pointermove', event => {
+      if (gesture && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 6) gesture.moved = true;
+    }, { passive: true });
+    el.addEventListener('pointercancel', () => { if (gesture) gesture.moved = true; });
+    el.addEventListener('click', event => {
+      if (gesture?.moved || globalThis.getSelection?.()?.toString() || event.detail > 1) return;
+      toggle();
+    });
+    el.addEventListener('keydown', event => {
+      if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); gesture = null; toggle(); }
+    });
+  });
+  // Historical cards keep their whole-item selection; no extra state store.
+  root.querySelectorAll('.sd-select-inject').forEach(el => {
+    if (el._sdSelectionBound) return;
+    el._sdSelectionBound = true;
+    el.addEventListener('click', event => event.stopPropagation());
+    el.addEventListener('change', () => {
+      if (el.checked) injectSelection.set(el.dataset.id, el.dataset.text || '');
+      else injectSelection.delete(el.dataset.id);
+      updateInjectDock(panel);
+    });
+  });
+  const button = panel.querySelector('.sd-inject-selected');
+  if (button && !button._sdSelectionBound) {
+    button._sdSelectionBound = true;
+    button.addEventListener('click', () => {
+      const texts = collectDirectorSelectedText();
+      if (!texts.length) return;
+      const ok = injectToInput(texts.join('\n\n'));
+      toast(ok ? `已写入 ${injectSelection.size} 项。` : '未找到输入框。', ok ? 'success' : 'error');
+      if (ok) closeModal();
+    });
+  }
+  updateInjectDock(panel);
+}
+
 function nestedScrollAtBoundary(element, deltaY) {
   if (!(element instanceof Element) || !Number.isFinite(deltaY) || deltaY === 0) return false;
   const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight);
@@ -24025,6 +24024,8 @@ function bindPanelScrollStability(root) {
 }
 
 function bindDirectorReadingEvents(root) {
+  bindCreativeSocialEvents(root);
+  bindDirectorSelectionEvents(root);
   root.querySelectorAll('.sd-generate-main').forEach((el) => el.addEventListener('click', () => {
     if (busy) stopGeneration();
     else generateDirectorPlan();
@@ -24033,7 +24034,7 @@ function bindDirectorReadingEvents(root) {
     settings.newcomerMode = !settings.newcomerMode;
     saveSettings();
     root.querySelectorAll('.sd-newcomer-toggle').forEach((btn) => btn.classList.toggle('active', settings.newcomerMode));
-    toast(settings.newcomerMode ? '新角入场已开启：下次推演将引入全新角色与世界事件。' : '新角入场已关闭。', 'info');
+    toast(settings.newcomerMode ? '新角入场已开启：关注与既有故事有实际关联的新人物。' : '新角入场已关闭。', 'info');
   }));
   root.querySelectorAll('.sd-inject-badge').forEach((el) => el.addEventListener('click', async () => {
     settings.injectEnabled = !settings.injectEnabled;
@@ -24051,6 +24052,7 @@ function bindDirectorReadingEvents(root) {
     delete store.injectOverride;
     store.updatedAt = '';
     injectSelection.clear();
+    resetCreativeSocialState();
     await saveMetadata();
     await applyDirectorInjection();
     toast('当前推演已清空。', 'success');
@@ -24072,6 +24074,7 @@ function bindDirectorReadingEvents(root) {
     resetDirectorNarrativeBridge();
     delete getChatStore().injectOverride;
     injectSelection.clear();
+    resetCreativeSocialState();
     await saveMetadata();
     await applyDirectorInjection();
     const restoredStore = getChatStore();
@@ -24166,30 +24169,6 @@ function bindActiveTabEvents(root) {
     });
   }));
   bindDirectorReadingEvents(root);
-  root.querySelectorAll('.sd-inject').forEach((el) => el.addEventListener('click', () => {
-    const ok = injectToInput(el.dataset.text || '');
-    toast(ok ? '已写入输入框。' : '未找到输入框。', ok ? 'success' : 'error');
-    if (ok) closeModal();
-  }));
-  // 写入勾选持久化——勾选状态存入 injectSelection，重渲染/切主题不丢失
-  root.querySelectorAll('.sd-select-inject').forEach((el) => {
-    el.addEventListener('click', (event) => event.stopPropagation());
-    el.addEventListener('change', () => {
-      // 跨界面合计：勾选写入选择集（Map 保留先后顺序），取消则移除
-      if (el.checked) injectSelection.set(el.dataset.id, el.dataset.text || '');
-      else injectSelection.delete(el.dataset.id);
-      updateInjectDock(root);
-    });
-  });
-  root.querySelector('.sd-inject-selected')?.addEventListener('click', () => {
-    // 按勾选先后顺序合计写入（含其它标签页中已选、当前未渲染的条目）
-    const texts = Array.from(injectSelection.values()).map((t) => String(t || '')).filter(Boolean);
-    if (!texts.length) return;
-    const ok = injectToInput(texts.join('\n\n'));
-    toast(ok ? `已写入 ${texts.length} 项。` : '未找到输入框。', ok ? 'success' : 'error');
-    if (ok) closeModal();
-  });
-  updateInjectDock(root);
 
   root.querySelector('.sd-save-blueprint')?.addEventListener('click', async () => {
     getChatStore().blueprint = root.querySelector('.sd-blueprint')?.value || DEFAULT_BLUEPRINT;
@@ -24401,7 +24380,7 @@ function bindActiveTabEvents(root) {
   root.querySelector('.sd-interlude-enabled')?.addEventListener('change', (e) => {
     settings.interludeEnabled = !!e.target.checked;
     saveSettings();
-    toast(settings.interludeEnabled ? '幕间拾趣已开启。' : '幕间拾趣已关闭。', 'info');
+    toast(settings.interludeEnabled ? '世界论坛已开启。' : '世界论坛已关闭。', 'info');
   });
   root.querySelector('.sd-geopolitics-enabled')?.addEventListener('change', async (e) => {
     settings.geopoliticsEnabled = !!e.target.checked;
@@ -35119,7 +35098,7 @@ function bindEvents() {
   const rerenderHandler = async () => {
     storyboardCaptureView?.closeStoryboardCaptureChooser(document);
     storyboardEnsembleController?.dispose();storyboardEnsembleController=null;storyboardEnsembleContext=null;storyboardEnsembleRevision++;
-    directorRun?.controller.abort(); directorLiveLog = null; directorMemoryInspection = null;
+    directorRun?.controller.abort(); directorLiveLog = null;
     if(storyboardVibeControllerContext&&storyboardVibeControllerContext.chat!==String(getChatKey()||'')){
       storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
     }
@@ -35130,6 +35109,7 @@ function bindEvents() {
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
     storyboardScheduleInlineRender(0);
     injectSelection.clear();   // 切换聊天后旧写入勾选失效
+    resetCreativeSocialState();
     // 新角色/聊天可能绑定了不同世界书：作废世界书扫描态，下次推演或开取材页自动补扫（预设不随角色变，留存）
     contextScanCache.worldScannedAt = '';
     contextScanCache.boundWorldBookNames = [];
@@ -35296,8 +35276,9 @@ function cleanupRuntime(resetSettings = false) {
   cancelStartupFallback();
   if (!isRuntimeOwner()) return;
   initialized = false;
+  resetCreativeSocialState();
   proseFloorTools.dispose();
-  directorRun?.controller.abort(); directorLiveLog = null; directorMemoryInspection = null;
+  directorRun?.controller.abort(); directorLiveLog = null;
   const clean = (label, callback) => {
     try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }
   };

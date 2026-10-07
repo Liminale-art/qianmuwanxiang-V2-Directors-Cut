@@ -1,4 +1,5 @@
 @import url('./qianmu-text-collection-floor.css');
+@import url('./qianmu-creative-social.css?v=1.59.446');
 
 /* ============================================================
    千幕 (Qianmu)
@@ -2250,6 +2251,15 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   min-width: 158px;
   min-height: 38px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, .24) !important;
+}
+
+#story-director-modal[data-qm-theme="glass"] .sd-inject-dock > .sd-btn.sd-inject-selected {
+  background: color-mix(in srgb, var(--qm-raised, var(--sd-glass)) 66%, transparent) !important;
+  color: var(--qm-ink, var(--sd-text)) !important;
+  border: 1px solid color-mix(in srgb, var(--qm-line, var(--sd-border)) 70%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(1.15) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.15) !important;
+  box-shadow: 0 5px 20px color-mix(in srgb, var(--qm-ink, var(--sd-text)) 12%, transparent) !important;
 }
 
 /* ---------- 11. 编剧 / 剧本库 ---------- */
@@ -9110,47 +9120,60 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 .sd-tts-toolbar > :is(.sd-tts-trigger, .sd-tts-reextract, .sd-tts-regenall, .sd-tts-playall) > .qm-glyph-icon > svg.qm-glyph-svg,
 .sd-tts-inline > .qm-glyph-icon > svg.qm-glyph-svg { transform: scale(1.05); }
 
-/* 审片：当前幕回归信息行；际遇/世界仅保留同排跳转标签。 */
+/* 审片远观方向与预演近景沿用同一套字号，不再叠加状态说明。 */
 #story-director-modal .sd-hero .sd-scene-current { margin-top: 3px; }
 #story-director-modal .sd-hero .sd-two {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--qm-type-body);
 }
-#story-director-modal .sd-hero .sd-two > b { font-size: 12px; }
-#story-director-modal .sd-hero .sd-two > span { min-width: 0; font-size: 11.5px; line-height: 1.55; }
+#story-director-modal .sd-hero .sd-two > b { font-size: inherit; }
+#story-director-modal .sd-hero .sd-two > span { min-width: 0; font-size: inherit; line-height: 1.7; }
 #story-director-modal .sd-status-card { padding: 8px 10px !important; }
 #story-director-modal .sd-status-card .sd-count-tags { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; gap: 6px; }
 #story-director-modal .sd-status-card .sd-count-tag { justify-content: center; min-height: 30px; padding: 4px 8px !important; }
+#story-director-modal .sd-director-directions { display: grid; gap: 12px; margin: 14px 0; }
+#story-director-modal .sd-director-direction { min-width: 0; padding: 0 0 0 12px; border-left: 2px solid var(--sd-hairline); }
+#story-director-modal .sd-director-direction h4 { margin: 0 0 5px; font-size: var(--qm-type-body); font-weight: 600; line-height: 1.5; }
+#story-director-modal .sd-director-direction p { margin: 0; font-size: var(--qm-type-body); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+#story-director-modal .sd-director-paragraphs { display: grid; gap: 8px; }
+#story-director-modal .sd-director-paragraph {
+  min-width: 0; padding: 10px 12px; border: 1px solid transparent; border-radius: 12px;
+  background: var(--sd-glass-weak); color: var(--sd-text); user-select: text; touch-action: pan-y;
+}
+#story-director-modal .sd-director-paragraph[role="button"] { cursor: pointer; }
+#story-director-modal .sd-director-paragraph-label { display: block; margin-bottom: 4px; color: var(--sd-muted); font-size: var(--qm-type-caption); line-height: 1.45; }
+#story-director-modal .sd-director-paragraph p { margin: 0; font-size: var(--qm-type-body); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+#story-director-modal .sd-director-paragraph.is-selected {
+  background: color-mix(in srgb, var(--sd-accent) 12%, var(--sd-card));
+  border-color: color-mix(in srgb, var(--sd-accent) 65%, var(--sd-border));
+}
+#story-director-modal .sd-director-paragraph:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: 2px; }
 
 /* 审片番外仅阅读，沿用三主题的卡片、文字和留白，不模拟外部手机界面。 */
 #story-director-modal .sd-director-extra-card { min-width: 0; }
 #story-director-modal .sd-director-extra-card .sd-section-title { align-items: baseline; flex-wrap: wrap; gap: 5px 10px; }
-#story-director-modal .sd-director-extra-card .sd-section-title > span { color: var(--sd-muted); font-size: 11px; overflow-wrap: anywhere; }
-#story-director-modal .sd-director-extra-card h4 { margin: 12px 0 8px; color: var(--sd-text); font-size: 12px; line-height: 1.55; }
+#story-director-modal .sd-director-extra-card .sd-section-title > span { color: var(--sd-muted); font-size: var(--qm-type-caption); overflow-wrap: anywhere; }
+#story-director-modal .sd-director-extra-card h4 { margin: 12px 0 8px; color: var(--sd-text); font-size: var(--qm-type-body); line-height: 1.55; }
 #story-director-modal .sd-director-extra-content,
-#story-director-modal .sd-director-narrative { margin: 8px 0 0; color: var(--sd-text); font-size: 11.5px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+#story-director-modal .sd-director-narrative { margin: 8px 0 0; color: var(--sd-text); font-size: var(--qm-type-body); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 #story-director-modal .sd-lib-main h4 { font-size: 11.5px; font-weight: 600; }
 
-/* Temporary read-only request inspection; no independent theme or persistent archive. */
-#story-director-modal .sd-memory-review { min-width: 0; }
-#story-director-modal .sd-memory-review summary { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 9px; }
-#story-director-modal .sd-memory-review-badge { padding: 2px 7px; border-radius: 999px; background: var(--sd-soft); color: var(--sd-muted); font-size: 10px; }
-#story-director-modal .sd-memory-review-status { margin-left: auto; color: var(--sd-muted); font-size: 11px; }
-#story-director-modal .sd-memory-review-caption { margin: 8px 0; color: var(--sd-muted); font-size: 11px; line-height: 1.65; }
-#story-director-modal .sd-memory-review-meta { display: flex; flex-wrap: wrap; gap: 5px 12px; color: var(--sd-muted); font-size: 11px; }
-#story-director-modal .sd-memory-review-state { margin: 10px 0; color: var(--sd-text); font-size: 11.5px; }
-#story-director-modal .sd-memory-review-text { box-sizing: border-box; width: 100%; max-height: 360px; margin: 10px 0 0; padding: 12px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--sd-border); border-radius: 12px; background: var(--sd-soft); color: var(--sd-text); font: inherit; font-size: 11.5px; line-height: 1.75; }
-
-/* 际遇与世界共用的条目层级。 */
+/* Creative reading uses the existing Qianmu type scale, not nested em ratios. */
 #story-director-modal .sd-item-summary-main h4,
-#story-director-modal .sd-item-detail dt,
+#story-director-modal .sd-relus-parties { font-size: var(--qm-type-body); font-weight: 600; }
 #story-director-modal .sd-item-detail dd,
 #story-director-modal .sd-inject-preview pre,
-#story-director-modal .sd-chain-node { font-size: 11.5px; }
-#story-director-modal .sd-relus-parties { font-size: 11.5px; font-weight: 600; }
+#story-director-modal .sd-chain-node,
+#story-director-modal .sd-relus-tension,
+#story-director-modal .sd-relus-drift,
+#story-director-modal .sd-chatter-say { font-size: var(--qm-type-body); line-height: 1.7; }
+#story-director-modal .sd-item-detail dt,
+#story-director-modal .sd-chatter-src,
+#story-director-modal .sd-relus-tone,
+#story-director-modal .sd-relus-aware { font-size: var(--qm-type-caption); line-height: 1.45; }
 
 /* 分镜与取材共用目录—条目形态；所有宽度采用 border-box 防止窄屏右缘溢出。 */
 #story-director-modal .sd-storyboard-worldbook-card,

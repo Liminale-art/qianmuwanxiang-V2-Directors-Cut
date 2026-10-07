@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { projectCreativeContinuity } from '../qianmu-creative-contract.js';
-import { selectCreativeOptions } from '../qianmu-creative-runtime.js';
+import { selectCreativeOptions, recentInterludeHint } from '../qianmu-creative-runtime.js';
 import { hashText } from '../qianmu-storyboard-utils.js';
 
 const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -30,7 +30,7 @@ function fixture() {
         worldBooks: { world: [{ id: 'w1', content: '城市世界' }] } };
     const state = { memoryFingerprint: 'memory-a', memoryStatus: 'ready', presetNames: ['writing'], bookNames: ['world'],
         char: '林队', persona: '读者', charDescription: '刑警', personaDescription: '记者', onWorld: null, onPreset: null };
-    const c = { settings, contextScanCache: scan, hashText, projectCreativeContinuity, selectCreativeOptions,
+    const c = { settings, contextScanCache: scan, hashText, projectCreativeContinuity, selectCreativeOptions, recentInterludeHint,
         ctx: () => context, getChatStore: () => store, getChatKey: () => 'chat',
         getCharacterName: () => state.char, getPersonaName: () => state.persona,
         getCharacterDescription: () => state.charDescription, getPersonaDescription: () => state.personaDescription,
@@ -88,10 +88,16 @@ test('actual prompt keeps mainline continuity but never forwards parallel, fun o
     assert.equal(run.memoryStatus.status, 'ready');
     assert.ok(Object.isFrozen(run.creativeOptions));
 });
-test('editing a read-only side story does not dirty the mainline input snapshot', () => {
+test('parallel stories remain outside input; only the enabled bounded fun hint is guarded', () => {
     const e = fixture(), before = e.c.directorSourceFingerprint();
-    e.store.plan.parallel_scene.content += '修改'; e.store.plan.interlude.content += '修改';
+    e.store.plan.parallel_scene.content += '修改';
     assert.equal(e.c.directorSourceFingerprint(), before);
+    e.store.plan.interlude.content += '修改';
+    assert.notEqual(e.c.directorSourceFingerprint(), before);
+    e.settings.interludeEnabled = false;
+    const disabled = e.c.directorSourceFingerprint(); e.store.plan.interlude.title += '关闭后修改';
+    assert.equal(e.c.directorSourceFingerprint(), disabled);
+    assert.doesNotMatch(JSON.stringify(projectCreativeContinuity(e.store.plan)), /SECRET_INTERLUDE|趣味/);
 });
 test('over-budget reference input fails intact before model submission instead of cutting memory', async () => {
     const e = fixture(); e.settings.contextBudget = 1;

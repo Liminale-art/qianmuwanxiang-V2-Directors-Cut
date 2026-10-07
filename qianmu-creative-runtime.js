@@ -1,12 +1,12 @@
 // Creative defaults and one-request state. No storage, network or model calls.
 import { hashText } from './qianmu-storyboard-utils.js';
-import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.445';
+import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.446';
 
-// Exact bundled defaults from v1.59.442 through v1.59.444, not phrase-based DIY detection.
+// Exact bundled defaults from v1.59.442 through v1.59.445, not phrase-based DIY detection.
 const LEGACY_DEFAULT_HASHES = Object.freeze({
-  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd']),
-  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc']),
-  blueprint: Object.freeze(['4c919687', '1d95c305']),
+  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd', '39271a80']),
+  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107']),
+  blueprint: Object.freeze(['4c919687', '1d95c305', '261d4a1a']),
 });
 const unchangedDefault = (value, current, legacyHashes, appliedHash) => {
   const text = String(value ?? '');
@@ -42,7 +42,15 @@ export function upgradeCreativeBlueprint(store, blueprint, revision) {
   return store;
 }
 
-export function selectCreativeOptions(settings = {}, { chat = [], personaNames = [], characterName = '', characterNames, sourceText = '', narrativeText = '', random = Math.random } = {}) {
+export function recentInterludeHint(card) {
+  if (!card || typeof card !== 'object' || Array.isArray(card)) return '';
+  const short = (value, max) => typeof value === 'string' ? value.replace(/\s+/gu, ' ').trim().slice(0, max) : '';
+  const first = card.type === 'forum' ? card.posts?.[0]?.content : card.type === 'phone' ? card.messages?.[0]?.content : card.content;
+  const hint = { type: short(card.type, 16), title: short(card.title, 80), first_excerpt: short(first, 180) };
+  return hint.title || hint.first_excerpt ? JSON.stringify(hint) : '';
+}
+
+export function selectCreativeOptions(settings = {}, { chat = [], personaNames = [], characterName = '', characterNames, sourceText = '', narrativeText = '', previousInterlude, random = Math.random } = {}) {
   const normalize = name => String(name || '').trim().toLocaleLowerCase();
   const excluded = new Set(personaNames.map(normalize).filter(Boolean));
   for (const message of chat) if (message?.is_user) excluded.add(normalize(message.name));
@@ -50,10 +58,12 @@ export function selectCreativeOptions(settings = {}, { chat = [], personaNames =
     .map(message => String(message.name || '').trim()).filter(name => name && !excluded.has(normalize(name))))];
   const hasPhone = /手机|短信|群聊|微信|移动终端|smartphone|cell\s*phone|text\s*message|group\s*chat/i.test(sourceText);
   const interludeEnabled = settings.interludeEnabled !== false;
-  const interludeType = !interludeEnabled ? null : hasPhone && owners.length && random() >= .5 ? 'phone' : 'theater';
+  const interludeType = !interludeEnabled ? null : hasPhone && owners.length && random() >= .5 ? 'phone' : 'forum';
   return Object.freeze({
     worldChatterEnabled: Boolean(settings.worldChatterEnabled), geopoliticsEnabled: Boolean(settings.geopoliticsEnabled),
     parallelSceneEnabled: settings.parallelSceneEnabled !== false, interludeEnabled, interludeType,
+    newcomerMode: settings.newcomerMode === true,
+    recentInterludeHint: interludeEnabled ? recentInterludeHint(previousInterlude) : '',
     personaNames: [...excluded], characterName,
     characterNames: [...new Set((Array.isArray(characterNames) ? characterNames : [characterName])
       .filter(name => typeof name === 'string').map(name => name.trim()).filter(name => name && !excluded.has(normalize(name))))],
@@ -68,20 +78,28 @@ export function mergeCreativeRepair(plan, patch, issues, options = {}) {
       if (patch[field] && typeof patch[field] === 'object' && !Array.isArray(patch[field])) plan[field] = patch[field];
       continue;
     }
+    const entries = field === 'story_status' ? plan.story_status?.directions : plan[field];
+    const additions = field === 'story_status' ? patch.story_status?.directions : patch[field];
+    const setEntries = value => {
+      if (field === 'story_status') {
+        if (!plan.story_status || typeof plan.story_status !== 'object' || Array.isArray(plan.story_status)) plan.story_status = {};
+        plan.story_status.directions = value;
+      } else plan[field] = value;
+    };
     const excess = issues.find(issue => issue.field === field && issue.excess > 0);
     if (excess) {
       // A repair may select existing entries, never rewrite good entries to meet an upper bound.
       const indices = patch.keep_indices?.[field];
-      if (Array.isArray(plan[field]) && Array.isArray(indices) && indices.length === excess.max
+      if (Array.isArray(entries) && Array.isArray(indices) && indices.length === excess.max
         && new Set(indices).size === indices.length && indices.every(index => Number.isInteger(index) && excess.validIndices.includes(index))) {
-        plan[field] = indices.map(index => plan[field][index]);
+        setEntries(indices.map(index => entries[index]));
       }
       continue;
     }
-    if (!Array.isArray(patch[field])) continue;
+    if (!Array.isArray(additions)) continue;
     const missing = Math.max(0, ...issues.filter(issue => issue.field === field).map(issue => Number(issue.missing) || 0));
-    if (missing) plan[field] = [...(Array.isArray(plan[field]) ? plan[field] : []), ...patch[field].slice(0, missing)];
-    else if (field === 'faction_relations' && !Array.isArray(plan[field])) plan[field] = patch[field];
+    if (missing) setEntries([...(Array.isArray(entries) ? entries : []), ...additions.slice(0, missing)]);
+    else if (field === 'faction_relations' && !Array.isArray(entries)) setEntries(additions);
   }
   if (Array.isArray(patch.limitations)) plan.limitations = patch.limitations;
   const gaps = validateCreativePlan({ ...plan, limitations: [] }, options);

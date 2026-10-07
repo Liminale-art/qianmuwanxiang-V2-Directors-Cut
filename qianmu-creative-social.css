@@ -1,0 +1,116 @@
+/* Scoped fictional forum/chat reading surfaces. All three families use the
+   existing Qianmu palette, typography and icon variants; never style host UI. */
+#story-director-modal .sd-creative-social {
+  --social-surface: var(--qm-raised, var(--sd-glass-weak));
+  --social-line: var(--qm-line, var(--sd-border));
+  --social-ink: var(--qm-ink, var(--sd-text));
+  --social-muted: var(--qm-muted, var(--sd-muted));
+  --social-accent: var(--qm-accent, var(--sd-accent));
+  min-width: 0;
+  color: var(--social-ink);
+}
+#story-director-modal .sd-creative-social :is(p, strong, span, h4) { overflow-wrap: anywhere; }
+#story-director-modal .sd-creative-social .sd-section-title { flex-wrap: wrap; gap: 5px 12px; }
+#story-director-modal .sd-creative-social .sd-section-title > span { font-size: var(--qm-type-caption, 11px); }
+#story-director-modal .sd-social-panel {
+  min-width: 0;
+  border: 1px solid var(--social-line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--social-surface) 55%, transparent);
+  overflow: hidden;
+}
+#story-director-modal .sd-social-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--social-line);
+  background: color-mix(in srgb, var(--social-surface) 72%, transparent);
+}
+#story-director-modal .sd-social-panel-head > .qm-glyph-icon { font-size: 19px; flex: 0 0 auto; }
+#story-director-modal .sd-social-panel-head > div { min-width: 0; display: grid; gap: 3px; }
+#story-director-modal .sd-social-panel-head strong { font-size: var(--qm-type-body, 12px); font-weight: 600; line-height: 1.5; }
+#story-director-modal :is(.sd-social-panel-head span, .sd-social-time, .sd-social-author > div > span, .sd-social-message-meta) {
+  font-size: var(--qm-type-caption, 11px);
+  line-height: 1.45;
+  color: var(--social-muted);
+}
+#story-director-modal .sd-social-post { min-width: 0; padding: 14px; }
+#story-director-modal .sd-social-post + .sd-social-post { border-top: 1px solid var(--social-line); }
+#story-director-modal .sd-social-author { display: flex; align-items: center; gap: 9px; min-width: 0; }
+#story-director-modal .sd-social-author > div { display: flex; flex-wrap: wrap; gap: 1px 7px; align-items: baseline; min-width: 0; flex: 1; }
+#story-director-modal .sd-social-author strong { font-size: var(--qm-type-body, 12px); line-height: 1.5; font-weight: 600; }
+#story-director-modal .sd-social-time { margin-left: auto; max-width: 35%; }
+#story-director-modal .sd-social-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 29px;
+  width: 29px;
+  height: 29px;
+  border: 1px solid color-mix(in srgb, var(--social-accent) 18%, var(--social-line));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--social-accent) 9%, var(--social-surface));
+  color: var(--social-ink);
+  font-size: var(--qm-type-caption, 11px);
+  font-weight: 600;
+}
+#story-director-modal .sd-social-avatar-small { flex-basis: 23px; width: 23px; height: 23px; }
+#story-director-modal :is(.sd-social-post-content, .sd-social-reply p, .sd-social-message-main p, .sd-social-legacy p) {
+  margin: 9px 0 0;
+  color: var(--social-ink);
+  font-size: var(--qm-type-body, 12px);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#story-director-modal .sd-social-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; margin-top: 9px; }
+#story-director-modal :is(.sd-social-action, .sd-social-expand) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 5px 8px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--social-muted);
+  font-family: inherit;
+  font-size: var(--qm-type-caption, 11px);
+  line-height: 1.45;
+  box-shadow: none;
+  cursor: pointer;
+}
+#story-director-modal .sd-social-action .qm-glyph-icon { font-size: 14px; }
+#story-director-modal :is(.sd-social-action, .sd-social-expand):hover:not(:disabled) { background: color-mix(in srgb, var(--social-accent) 7%, transparent); color: var(--social-ink); }
+#story-director-modal .sd-social-action[aria-pressed="true"],
+#story-director-modal .sd-social-action[aria-expanded="true"] { color: var(--social-ink); border-color: var(--social-line); background: color-mix(in srgb, var(--social-accent) 13%, var(--social-surface)); }
+#story-director-modal :is(.sd-social-action, .sd-social-expand):focus-visible { outline: 2px solid var(--social-accent); outline-offset: 2px; }
+#story-director-modal .sd-social-action:disabled { opacity: .55; cursor: default; }
+#story-director-modal .sd-social-replies { margin: 8px 0 0 13px; border-left: 2px solid var(--social-line); padding-left: 12px; }
+#story-director-modal .sd-social-reply { display: flex; align-items: flex-start; gap: 7px; padding: 8px 0; }
+#story-director-modal .sd-social-reply > div { min-width: 0; }
+#story-director-modal .sd-social-reply strong { font-size: var(--qm-type-caption, 11px); font-weight: 600; }
+#story-director-modal .sd-social-reply p { margin: 3px 0 0; }
+#story-director-modal .sd-social-messages { list-style: none; padding: 14px; margin: 0; display: grid; gap: 13px; }
+#story-director-modal .sd-social-message { display: flex; align-items: flex-start; gap: 7px; min-width: 0; margin: 0; padding: 0; }
+#story-director-modal .sd-social-message-main { min-width: 0; max-width: 87%; }
+#story-director-modal .sd-social-message-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; }
+#story-director-modal .sd-social-message-meta strong { font-weight: 500; }
+#story-director-modal .sd-social-message-main p { margin-top: 4px; padding: 8px 10px; border: 1px solid var(--social-line); border-radius: 3px 11px 11px; background: var(--social-surface); }
+#story-director-modal .sd-social-message-own { flex-direction: row-reverse; }
+#story-director-modal .sd-social-message-own .sd-social-message-meta { justify-content: flex-end; }
+#story-director-modal .sd-social-message-own .sd-social-message-main p { background: color-mix(in srgb, var(--social-accent) 9%, var(--social-surface)); border-radius: 11px 3px 11px 11px; }
+#story-director-modal .sd-social-expand { display: flex; width: calc(100% - 28px); margin: 0 14px 12px; border-color: var(--social-line); }
+#story-director-modal .sd-social-expand[aria-expanded="true"] .qm-glyph-icon { transform: rotate(180deg); }
+#story-director-modal .sd-social-legacy h4 { margin: 0; font-size: var(--qm-type-body, 12px); }
+#story-director-modal .sd-social-empty { margin: 12px 0; font-size: var(--qm-type-body, 12px); }
+#story-director-modal .sd-creative-social [hidden] { display: none !important; }
+#story-director-modal[data-qm-theme="editorial"] :is(.sd-social-panel, .sd-social-message-main p, .sd-social-action, .sd-social-expand) { border-radius: 0; }
+@media (max-width: 380px) {
+  #story-director-modal :is(.sd-social-post, .sd-social-panel-head, .sd-social-messages) { padding: 11px; }
+  #story-director-modal .sd-social-actions { column-gap: 2px; }
+  #story-director-modal .sd-social-action { padding-inline: 6px; }
+}

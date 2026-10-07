@@ -11,12 +11,12 @@ const FULL = Object.freeze({ worldChatterEnabled: true, geopoliticsEnabled: true
 const items = (field, make) => Array.from({ length: CREATIVE_COUNTS[field].min }, (_, i) => make(i));
 function complete(options = FULL) {
   const result = {
-    story_status: { title: '街角的新日子', summary: '旧店仍在等那封回信' },
-    quests: items('quests', i => ({ title: `来信${i}`, description: `第${i}家店铺的伙计带来了未取的回信，正等人认领。`, trigger: '听见招呼后可以询问' })),
+    story_status: { title: '街角的新日子', directions: items('story_status', i => ({ title: `远景${i}`, content: `第${i}片旧城的工会改制会逐步影响下一季的工作选择。` })) },
+    quests: items('quests', i => ({ subject: `店铺${i}`, title: `来信${i}`, description: `第${i}家店铺的伙计带来了未取的回信，正等人认领。`, trigger: '听见招呼后可以询问' })),
     character_dynamics: items('character_dynamics', i => ({ title: `抉择${i}`, content: `阿岚把第${i}份旧账暂存在抽屉，打算核清出处后再归还。` })),
     npc_updates: items('npc_updates', i => ({ name: `邻居${i}`, current_goal: `要赶在第${i}次班车离开前把旧物交到失主手中。`, next_action: `向第${i}位门卫问路。` })),
-    chain_reactions: items('chain_reactions', i => ({ spark: `第${i}条道路延期修整`, chain: `第${i}家送货铺收到改道通知，转告掌柜后延迟发车。` })),
-    relation_undercurrents: items('relation_undercurrents', i => ({ parties: `阿岚与邻居${i}`, tension: `第${i}张借条仍没有拿出来，两人避开了还款日期。` })),
+    chain_reactions: items('chain_reactions', i => ({ spark: `第${i}条道路延期修整`, chain: `第${i}家送货铺收到改道通知 → 掌柜延迟发车 → 当天的菜贩调整供货计划` })),
+    relation_undercurrents: items('relation_undercurrents', i => ({ parties: [`店主${i}`, `邻居${i}`], tension: `第${i}张借条仍没有拿出来，两人避开了还款日期。` })),
     limitations: [],
   };
   if (options.worldChatterEnabled) result.world_chatter = items('world_chatter', i => ({ text: `第${i}间早餐铺老板掀开蒸笼，招呼伙计添柴。`, who: `铺主${i}`, where: `巷口${i}` }));
@@ -26,7 +26,9 @@ function complete(options = FULL) {
     result.world_events = items('world_events', i => ({ id: `e${i}`, title: `议价${i}`, essence: `第${i}个街区的租约仍在协商，短工先沿用上月工钱。`, status: 'active', touched: 'idle', stage: '酝酿' }));
   }
   if (options.parallelSceneEnabled !== false) result.parallel_scene = { title: '若赶上了那趟车', content: '那次没有误车，他在空座旁重新见到了旧友。' };
-  if (options.interludeEnabled !== false) result.interlude = { type: options.interludeType || 'theater', title: '早班群里', owner: options.interludeType === 'phone' ? '阿岚' : '', content: '老周：我带钥匙了。阿岚：可今天要换锁。' };
+  if (options.interludeEnabled !== false) result.interlude = options.interludeType === 'phone'
+    ? { type: 'phone', title: '早班群里', owner: '阿岚', conversation_kind: 'group', messages: Array.from({ length: 6 }, (_, i) => ({ sender: i % 2 ? '阿岚' : '老周', content: `第${i}件小事得商量一下。`, time: `08:0${i}` })) }
+    : { type: 'forum', title: '街坊的告示板', posts: Array.from({ length: 3 }, (_, i) => ({ author: `街坊${i}`, handle: `小院${i}`, content: `第${i}件日常发现`, time: `午后${i}时`, replies: [{ author: '茶摊老板', content: '待会来看看。' }] })) };
   return result;
 }
 const parseShape = schema => {
@@ -46,14 +48,17 @@ test('schema preserves stable fields, count source, enabled world shapes and one
   assert.match(schema, /阿岚/);
   assert.match(schema, /老周/);
   for (const [field, quota] of Object.entries(CREATIVE_COUNTS)) assert.match(schema, new RegExp(`${field} \\([^\n]+${quota.min}`));
-  assert.deepEqual(Object.keys(shape.quests[0]), ['title', 'description', 'trigger', 'inject_prompt']);
+  assert.deepEqual(Object.keys(shape.quests[0]), ['subject', 'title', 'description', 'trigger', 'inject_prompt']);
+  assert.deepEqual(Object.keys(shape.story_status), ['title', 'current_arc', 'cycle', 'directions']);
+  assert.ok(!Object.hasOwn(shape.parallel_scene, 'title'));
+  assert.ok(!Object.hasOwn(shape.relation_undercurrents[0], 'user_awareness'));
 });
 
 test('schema defaults new cards on without silently selecting a type, keeps old world options off', () => {
   const shape = parseShape(createCreativeSchema());
   assert.ok(shape.parallel_scene);
   assert.ok(shape.interlude);
-  assert.equal(shape.interlude.type, 'Selected for this run: theater or phone');
+  assert.equal(shape.interlude.type, 'Selected for this run: forum or phone');
   for (const field of ['world_chatter', 'factions', 'world_events', 'faction_relations']) assert.ok(!Object.hasOwn(shape, field));
   const off = parseShape(createCreativeSchema(OFF));
   assert.ok(!Object.hasOwn(off, 'parallel_scene'));
@@ -72,7 +77,7 @@ test('English output protocol keeps narrative language, Chinese enums and establ
   assert.match(shape.limitations[0].reason, /missing is the actual positive-integer shortfall; use limitations: \[\] when complete/);
   assert.match(schema, /reporting a shortfall does not satisfy the required count/);
   assert.match(schema, /Distinguish possibilities from established experiences/);
-  assert.match(schema, /未映之幕 and 幕间拾趣 are independent and have no narrative-injection fields/);
+  assert.match(schema, /未映之幕 and 世界论坛 are independent and have no narrative-injection fields/);
   assert.match(schema, /Exclude USER and every alias; do not invent an owner when the list is empty/);
   assert.match(shape.quests[0].inject_prompt, /do not accept or act on behalf of USER/);
 });
@@ -114,7 +119,7 @@ test('every core quantity is independently enforced; genuine limitation is still
 
 test('empty, placeholder and same-field repeated bodies do not count, valid entries survive pruning', () => {
   const plan = complete(OFF), first = structuredClone(plan.quests[0]);
-  plan.quests = [first, {}, { description: '暂无内容' }, { ...first, title: '仅改标题不能变成新条目' }, { description: '另一家店正在寻找错拿的伞。' }];
+  plan.quests = [first, {}, { description: '暂无内容' }, { ...first, title: '仅改标题不能变成新条目' }, { subject: '另一家店', description: '另一家店正在寻找错拿的伞。' }];
   const issues = validateCreativePlan(plan, OFF).filter(item => item.field === 'quests');
   assert.deepEqual(issues.find(item => item.reason.includes('空白')).indices, [1, 2]);
   assert.deepEqual(issues.find(item => item.reason.includes('重复')).indices, [3]);
@@ -305,4 +310,94 @@ test('empty and malformed inputs do not throw or gain false completeness', () =>
     assert.ok(validateCreativePlan(value, OFF).length);
     assert.deepEqual(projectCreativeContinuity(value), { reference_kind: 'candidate_reference' });
   }
+});
+
+test('directions enforce 2–3 distinct structured entries while preserving old status anchors', () => {
+  const plan = complete(OFF);
+  plan.story_status.summary = '历史存档摘要不丢弃';
+  plan.story_status.directions.push({ title: '重复标题', content: plan.story_status.directions[0].content });
+  const issues = validateCreativePlan(plan, OFF);
+  assert.ok(issues.some(issue => issue.field === 'story_status' && issue.reason.includes('重复')));
+  const pruned = pruneInvalidCreativeItems(plan, OFF).plan;
+  assert.equal(pruned.story_status.directions.length, 2);
+  assert.equal(pruned.story_status.summary, '历史存档摘要不丢弃');
+  assert.equal(projectCreativeContinuity(pruned).story_status.directions[0].content, plan.story_status.directions[0].content);
+  plan.story_status.directions = Array.from({ length: 4 }, (_, i) => ({ title: `远景${i}`, content: `条件${i}会改变未来两年的选择。` }));
+  assert.ok(validateCreativePlan(plan, OFF).some(issue => issue.field === 'story_status' && issue.excess === 1));
+  assert.equal(pruneInvalidCreativeItems(plan, OFF).plan.story_status.directions.length, 4);
+  const legacy = { story_status: { current_stage: '旧阶段', summary: '旧摘要' } };
+  assert.deepEqual(normalizeCreativeSections(legacy).story_status, legacy.story_status);
+  assert.ok(validateCreativePlan(legacy, OFF).some(issue => issue.field === 'story_status' && issue.missing === 2));
+});
+
+test('preview subjects are explicit and ripple node counts do not pretend to assess literature', () => {
+  const plan = complete(OFF);
+  delete plan.quests[0].subject;
+  assert.ok(validateCreativePlan(plan, OFF).some(issue => issue.field === 'quests' && issue.indices?.includes(0)));
+  assert.ok(!Object.hasOwn(normalizeCreativeSections(plan).quests[0], 'subject'), 'do not infer the subject from a title');
+  plan.quests[0].subject = '城中送信事务';
+  assert.deepEqual(validateCreativePlan(plan, OFF), []);
+  for (const chain of ['一处起因 → 一处后果', '甲 → 乙 → 丙 → 丁 → 戊 → 己', '甲 →  → 丙']) {
+    plan.chain_reactions[0].chain = chain;
+    assert.ok(validateCreativePlan(plan, OFF).some(issue => issue.field === 'chain_reactions' && issue.indices?.includes(0)));
+  }
+  plan.chain_reactions[0].chain = '送货停下 → 当事人联系店主 → 新的发货条件形成';
+  assert.deepEqual(validateCreativePlan(plan, OFF), [], 'structural checks do not score whether lateral breadth is artistically sufficient');
+});
+
+test('relations exclude USER–CHAR pairs even with a third party and require two supporting-only links', () => {
+  const options = { ...OFF, personaNames: ['访客'], characterNames: ['阿岚', '老周'] };
+  const plan = complete(OFF);
+  for (const parties of [['访客', '阿岚'], ['邻居', '老周', '访客'], ['{{user}}', '{{char}}', '甲']]) {
+    plan.relation_undercurrents[0].parties = parties;
+    assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'relation_undercurrents' && issue.reason.includes('USER–CHAR')));
+  }
+  plan.relation_undercurrents[0].parties = ['阿岚', '配角甲'];
+  assert.deepEqual(validateCreativePlan(plan, options), []);
+  plan.relation_undercurrents[1].parties = ['老周', '配角乙', '配角丙'];
+  assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'relation_undercurrents' && issue.reason.includes('至少两条') && issue.missing === 1));
+  assert.equal(pruneInvalidCreativeItems(plan, options).plan.relation_undercurrents.length, 3, 'supporting shortfall must not delete otherwise valid entries');
+  const legacy = { relation_undercurrents: [{ parties: '甲、乙', tension: '旧关系', user_awareness: '旧记录' }] };
+  assert.deepEqual(normalizeCreativeSections(legacy).relation_undercurrents, legacy.relation_undercurrents, 'legacy text remains unsplit and untouched');
+});
+
+test('forum bounds and complete replies are enforced, while legacy theater remains readable but not valid new output', () => {
+  const options = { ...FULL, interludeType: 'forum' }, plan = complete(options);
+  assert.deepEqual(validateCreativePlan(plan, options), []);
+  for (const count of [2, 6]) {
+    const bad = structuredClone(plan);
+    bad.interlude.posts = Array.from({ length: count }, (_, i) => ({ ...plan.interlude.posts[0], content: `主题${i}` }));
+    assert.ok(validateCreativePlan(bad, options).some(issue => issue.field === 'interlude'));
+  }
+  for (const replies of [[], [{ author: '甲' }], Array.from({ length: 4 }, () => ({ author: '甲', content: '回复' }))]) {
+    const bad = structuredClone(plan); bad.interlude.posts[0].replies = replies;
+    assert.ok(validateCreativePlan(bad, options).some(issue => issue.field === 'interlude'));
+  }
+  const old = { type: 'theater', title: '戏中戏', content: '旧版存档正文' };
+  plan.interlude = old;
+  assert.deepEqual(normalizeCreativeSections(plan).interlude, old);
+  assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'interlude'));
+});
+
+test('phone requires 6–10 messages and multiple speakers but permits natural repeated short replies', () => {
+  const plan = complete();
+  plan.interlude.messages[0].content = '好'; plan.interlude.messages[1].content = '好';
+  assert.deepEqual(validateCreativePlan(plan, FULL), []);
+  for (const count of [5, 11]) {
+    const bad = structuredClone(plan);
+    bad.interlude.messages = Array.from({ length: count }, (_, i) => ({ ...plan.interlude.messages[i % 6], time: `09:${i}` }));
+    assert.ok(validateCreativePlan(bad, FULL).some(issue => issue.field === 'interlude'));
+  }
+  const solo = structuredClone(plan); solo.interlude.messages.forEach(message => { message.sender = '阿岚'; });
+  assert.ok(validateCreativePlan(solo, FULL).some(issue => issue.field === 'interlude' && issue.reason.includes('两位')));
+  const exactDuplicate = structuredClone(plan); exactDuplicate.interlude.messages[5] = structuredClone(exactDuplicate.interlude.messages[0]);
+  assert.ok(validateCreativePlan(exactDuplicate, FULL).some(issue => issue.field === 'interlude' && issue.reason.includes('完全相同')));
+  const missingTime = structuredClone(plan); delete missingTime.interlude.messages[0].time;
+  assert.ok(validateCreativePlan(missingTime, FULL).some(issue => issue.field === 'interlude'));
+  const direct = structuredClone(plan); direct.interlude.conversation_kind = 'direct';
+  assert.deepEqual(validateCreativePlan(direct, FULL), []);
+  direct.interlude.messages[5].sender = '邻居';
+  assert.ok(validateCreativePlan(direct, FULL).some(issue => issue.field === 'interlude' && issue.reason.includes('私聊')));
+  direct.interlude.conversation_kind = 'group';
+  assert.deepEqual(validateCreativePlan(direct, FULL), [], 'group may have more than two speakers');
 });

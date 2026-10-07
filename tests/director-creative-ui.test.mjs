@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { QIANMU_HIVE_COMMANDS } from '../qianmu-hive-commands.js';
 import { directorPreviewPlan } from '../qianmu-director-live.js';
+import { renderCreativeSocialCard } from '../qianmu-creative-social.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -17,15 +18,15 @@ function section(name) {
 function fixture(plan, settings = {}) {
   const links = [];
   const c = vm.createContext({
-    settings, directorMemoryInspection: null, directorLiveLog: null, directorPreviewPlan, currentPlan: () => plan, htmlEscape: escape, snip: value => String(value),
-    getContextItemId: item => item.title || item.name || 'one', injectSelection: new Set(),
+    settings, directorLiveLog: null, directorPreviewPlan, renderCreativeSocialCard, currentPlan: () => plan, htmlEscape: escape, snip: value => String(value),
+    getContextItemId: item => item.title || item.name || 'one', injectSelection: new Map(),
     renderHistorySection: () => '<div>history</div>', renderHeroActions: () => '', renderGenerateRow: () => '',
     renderWorldChatterCard: () => '<section>尘寰群生</section>', renderRelationUndercurrentsCard: () => '<section>关系暗涌</section>',
     renderDirectorWorldEntryLink: (field, index) => { links.push({ field, index }); return '<span class="sd-world-media-entry"></span>'; },
     renderInjectPreview: () => '', renderBackstageBlueprintCard: () => '', DEFAULT_SYSTEM_PROMPT: '', JSON_SCHEMA_TEXT: '',
   });
-  vm.runInContext(['directorDisplayPlan', 'renderDashboardTab', 'renderDirectorMemoryReview', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
-    'renderCastWorldFront', 'renderPlanSectionFold', 'renderNoPlan', 'renderItemList', 'renderItemCard', 'renderItemChips',
+  vm.runInContext(['directorDisplayPlan', 'renderDashboardTab', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
+    'renderCastWorldFront', 'renderPlanSectionFold', 'renderNoPlan', 'renderItemList', 'directorItemParagraphs', 'renderDirectorParagraph', 'renderItemCard', 'renderItemChips', 'collectDirectorSelectedText',
     'renderInjectSections', 'renderDirectorSettingsTab'].map(section).join('\n'), c);
   return { c, links };
 }
@@ -36,25 +37,60 @@ test('review shows separate read-only extras, escapes their content and respects
     interlude: { type: 'phone', owner: '<同事>', title: '未读消息', content: '发来一句问候。' } };
   const before = JSON.stringify(plan), { c } = fixture(plan);
   const html = c.renderDashboardTab();
-  assert.match(html, /未映之幕/); assert.match(html, /幕间拾趣/); assert.match(html, /平行番外/);
+  assert.match(html, /未映之幕/); assert.match(html, /世界论坛/); assert.match(html, /平行番外/);
   assert.match(html, /&lt;同事&gt;的手机/); assert.match(html, /第一段\n第二段&lt;script&gt;/);
+  assert.doesNotMatch(html, /&lt;另一幕&gt;|data-director-memory-review|临时查阅/);
+  assert.match(html, /<h4>未读消息<\/h4>/, 'only parallel story subtitles are removed');
   assert.doesNotMatch(html, /众声|retired commentary|<script>|sd-inject|sd-world-media-entry/);
   c.settings.interludeEnabled = false;
-  assert.doesNotMatch(c.renderDashboardTab(), /幕间拾趣|发来一句问候/);
+  assert.doesNotMatch(c.renderDashboardTab(), /世界论坛|发来一句问候/);
   c.settings.parallelSceneEnabled = false;
   assert.doesNotMatch(c.renderDashboardTab(), /未映之幕|第一段/);
   assert.equal(JSON.stringify(plan), before);
   assert.doesNotMatch(c.renderDirectorExtraCard({ type: 'wrong', content: 'invalid' }, 'interlude'), /invalid/);
 });
 
-test('encounters preserve concrete scene and user-initiated draft action without task rewards or priority labels', () => {
-  const { c } = fixture({ quests: [{ title: '门前的来客', description: '邮差带来一封无人领取的信。', trigger: '愿意停下来听他说明。',
+test('rehearsals expose three independently selectable paragraphs with an explicit subject and no whole-card checkbox', () => {
+  const { c } = fixture({ quests: [{ title: '门前的来客', subject: '邮差', description: '邮差带来一封无人领取的信。', trigger: '愿意停下来听他说明。',
     objective: 'old objective', reward: 'old reward', priority: 'high', type: 'main', status: 'active', deadline: '明早', inject_prompt: '门边有人询问信件的主人。' }] });
   const html = c.renderTasksNodesTab();
-  assert.match(html, /际遇/); assert.match(html, /邮差带来/); assert.match(html, /可回应之处/); assert.match(html, /写入输入框/);
+  assert.match(html, /预演/); assert.match(html, /邮差带来/); assert.match(html, /发生条件/);
+  assert.equal((html.match(/data-director-paragraph /g) || []).length, 3);
+  assert.match(html, /data-subject="邮差"/); assert.match(html, /role="button" tabindex="0" aria-pressed="false"/);
+  assert.doesNotMatch(html, /写入输入框|sd-select-inject|class="sd-btn sd-inject"/);
+  assert.doesNotMatch(section('bindActiveTabEvents'), /querySelectorAll\('\.sd-inject'\)/);
   assert.doesNotMatch(html, /任务|奖励|收获|优先级|期限|old objective|old reward|>main<|>active</);
   assert.match(html, /时机/);
-  assert.equal(QIANMU_HIVE_COMMANDS.find(item => item.id === 'tasksnodes').label, '际遇');
+  assert.equal(QIANMU_HIVE_COMMANDS.find(item => item.id === 'tasksnodes').label, '预演');
+});
+
+test('review presents independent distant directions, omits stage and mood, and reads old summaries without rewriting them', () => {
+  const plan = { story_status: { title: '街角的分岔', summary: 'OLD_SUMMARY', current_stage: 'OLD_STAGE', mood: 'OLD_MOOD',
+    directions: [{ title: '账本换了主人', content: '学徒将旧账交还家人，积年的生意开始转向。' }, { title: '共同修缮', content: '几家店铺各让出一天人手，旧街开始重新接纳夜客。' }] } };
+  const { c } = fixture(plan), original = JSON.stringify(plan);
+  const html = c.renderDashboardTab();
+  assert.equal((html.match(/class="sd-director-direction"/g) || []).length, 2);
+  assert.match(html, /共同修缮/); assert.doesNotMatch(html, /OLD_SUMMARY|OLD_STAGE|OLD_MOOD|阶段：|氛围：/);
+  assert.equal(JSON.stringify(plan), original);
+  delete plan.story_status.directions;
+  assert.match(c.renderDashboardTab(), /OLD_SUMMARY/);
+  assert.equal(plan.story_status.current_stage, 'OLD_STAGE');
+});
+
+test('paragraph drafts retain display order, one explicit subject prefix, and safe named-affair fallback', () => {
+  const { c } = fixture(null);
+  const fields = c.directorItemParagraphs({ description: '正文已有称呼不可用来猜姓名', trigger: '完成取证后', inject_prompt: '递交报告。' }, 'quest');
+  for (const order of [2, 0, 1]) c.injectSelection.set(`part-${order}`, { cardId: 'quest-one', subject: '邵宁', order, ...fields[order] });
+  c.injectSelection.set('old-whole-card', '旧世界原文');
+  const text = c.collectDirectorSelectedText();
+  assert.equal(text[0], '【邵宁】\n情境：正文已有称呼不可用来猜姓名\n\n发生条件：完成取证后\n\n落笔：递交报告。');
+  assert.equal(text[1], '旧世界原文');
+  assert.equal((text[0].match(/【邵宁】/g) || []).length, 1);
+  assert.match(c.renderItemCard({ title: '门口的旧信', description: '甲和乙在说话。' }, 'quest', 0), /data-subject="事项：门口的旧信"/);
+  assert.match(c.renderItemCard({ name: '邵宁', next_action: '递交报告。' }, 'npc', 0), /data-subject="邵宁"/);
+  assert.doesNotMatch(c.renderItemCard({ subject: '邵宁', description: '递交报告。' }, 'quest', 0, true), /data-director-paragraph|role="button"|tabindex|sd-select-inject/);
+  const duplicate = c.directorItemParagraphs({ description: '同一段', inject_prompt: '同一段' }, 'quest');
+  assert.equal(duplicate.length, 1);
 });
 
 test('character life and other people are independent sections, with distinct selection ids and legacy world reading retained', () => {
@@ -97,7 +133,7 @@ test('derivative switches are checked by default and each immediately saves only
   assert.equal(c.settings.parallelSceneEnabled, false); assert.equal(c.settings.interludeEnabled, false);
   handlers.get('.sd-interlude-enabled')({ target: { checked: true } });
   assert.equal(c.settings.interludeEnabled, true); assert.equal(c.settings.parallelSceneEnabled, false);
-  assert.equal(saves, 2); assert.deepEqual(messages, ['未映之幕已关闭。', '幕间拾趣已开启。']);
+  assert.equal(saves, 2); assert.deepEqual(messages, ['未映之幕已关闭。', '世界论坛已开启。']);
 });
 
 test('creative card typography and overflow remain scoped to the Qianmu modal and inherit theme tokens', () => {
