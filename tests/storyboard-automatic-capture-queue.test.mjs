@@ -41,6 +41,17 @@ function environment() {
   return { state, chat, calls, notices, errors, timers, context, flush, setChat: value => { chatKey = value; } };
 }
 
+test('disabled storyboard reserves no capture even when automatic image preferences are retained', async () => {
+  const e = environment(); e.state.enabled = false;
+  assert.equal(e.state.automation.autoGenerate, true);
+  e.state.directorBridge.worldSideShotsEnabled = true;
+  e.state.directorBridge.worldAutoGenerate = true;
+  assert.equal(await e.context.storyboardHandleAutomaticCapture(0), false);
+  await e.flush();
+  assert.equal(e.context.storyboardAutomaticPending.size, 0);
+  assert.deepEqual(e.calls, []); assert.equal(e.timers.size, 0);
+});
+
 test('duplicate notifications queue once, preserve the received floor and yield the host event', async () => {
   const e = environment();
   assert.equal(await e.context.storyboardHandleAutomaticCapture('0'), true);

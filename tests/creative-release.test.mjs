@@ -4,15 +4,15 @@ import { readFile } from 'node:fs/promises';
 import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = '1.59.444';
+const version = '1.59.445';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
-  'qianmu-creative-runtime.js', 'qianmu-theme-menu.js', 'qianmu-appearance-session.js',
+  'qianmu-creative-runtime.js', 'qianmu-director-live.js', 'qianmu-st-context-sources.js', 'qianmu-model-host.js',
 ]);
-const retained = new Set([
-  'qianmu-memory-context.js',
-  'qianmu-director-live.js', 'qianmu-hive-commands.js',
-  'qianmu-prose-hive.js', 'qianmu-prose-floor-tools.js',
+const retained = new Map([
+  ['qianmu-theme-menu.js', '1.59.444'], ['qianmu-appearance-session.js', '1.59.444'],
+  ['qianmu-memory-context.js', '1.59.443'], ['qianmu-hive-commands.js', '1.59.443'],
+  ['qianmu-prose-hive.js', '1.59.443'], ['qianmu-prose-floor-tools.js', '1.59.443'],
 ]);
 const files = await collectReleaseFiles();
 const sources = new Map(await Promise.all(files.filter(file => file.endsWith('.js'))
@@ -25,7 +25,7 @@ test('creative release refreshes every literal consumer and remains reachable fr
       const url = new URL(match[2], new URL(file, root));
       const target = decodeURIComponent(url.pathname.slice(root.pathname.length));
       if (refreshed.has(target) || retained.has(target)) {
-        assert.equal(url.search, `?v=${refreshed.has(target) ? version : '1.59.443'}`, `${file} -> ${target}`);
+        assert.equal(url.search, `?v=${refreshed.has(target) ? version : retained.get(target)}`, `${file} -> ${target}`);
         assert.equal(url.hash, '');
       }
       return target;
@@ -39,7 +39,7 @@ test('creative release refreshes every literal consumer and remains reachable fr
     for (const next of graph.get(file) || []) visit(next);
   }
   visit('index.js');
-  for (const file of [...refreshed, ...retained]) {
+  for (const file of [...refreshed, ...retained.keys()]) {
     assert.ok(files.includes(file), `${file} is included in the release`);
     assert.ok(reached.has(file), `${file} is reachable from the installed entry`);
   }

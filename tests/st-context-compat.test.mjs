@@ -165,3 +165,49 @@ test('legacy worldbook helper remains available only on hosts without official r
   f.sandbox.TavernHelper = { getWorldbookNames: async () => ['Legacy file'], getWorldbook: async () => [{ uid: 1, content: 'legacy world' }] };
   assert.deepEqual(f.json(await f.sandbox.listWorldBooks()), ['Legacy file']); assert.equal((await f.sandbox.getWorldBookEntries('Legacy file'))[0].content, 'legacy world');
 });
+
+test('preset defaults follow the current CC order rather than every prompt in the preset inventory', () => {
+  const f = fixture();
+  f.context.chatCompletionSettings.prompts = [
+    {identifier:'disabled', content:'disabled text'}, {identifier:'unlisted', content:'not in active list'},
+    {identifier:'second', enabled:false, content:'second'}, {identifier:'first', content:'first'},
+  ];
+  f.context.chatCompletionSettings.prompt_order = [
+    {character_id:100000, order:[{identifier:'disabled', enabled:true}]},
+    {character_id:100001, order:[{identifier:'first', enabled:true},{identifier:'disabled',enabled:false},{identifier:'second',enabled:true}]},
+    {character_id:42, order:[{identifier:'unlisted', enabled:true}]},
+  ];
+  const rows = f.sandbox.getPresetEntries('Current');
+  assert.deepEqual(f.json(rows.map(({identifier,enabled})=>[identifier,enabled])), [
+    ['first',true],['disabled',false],['second',true],['unlisted',false],
+  ]);
+  assert.equal(f.context.chatCompletionSettings.prompts[0].enabled, undefined);
+});
+
+test('saved and helper preset orders retain explicit off and unlisted defaults without consulting the live preset order', () => {
+  const f = fixture();
+  f.state.presets[1] = {prompts:[{identifier:'on',content:'saved on'},{identifier:'off',content:'saved off'}],
+    prompt_order:[{character_id:100001,order:[{identifier:'on',enabled:true},{identifier:'off',enabled:false}]}]};
+  assert.deepEqual(f.json(f.sandbox.getPresetEntries('Other').map(row=>row.enabled)),[true,false]);
+  const legacy = fixture({official:false}); legacy.context.chatCompletionSettings = {};
+  legacy.sandbox.TavernHelper = {getPreset:()=>({prompts:[{identifier:'off',content:'off'},{identifier:'on',content:'on'}],
+    prompt_order:[{identifier:'on',enabled:true},{identifier:'off',enabled:false}]})};
+  assert.deepEqual(legacy.json(legacy.sandbox.getPresetEntries('Legacy').map(row=>[row.identifier,row.enabled])),[['on',true],['off',false]]);
+});
+
+test('unknown or empty preset order never infers permission from the presence of text', () => {
+  const f = fixture();
+  f.context.chatCompletionSettings.prompts = [{identifier:'on',enabled:true,content:'on'},{identifier:'unknown',content:'unknown'}];
+  assert.deepEqual(f.json(f.sandbox.getPresetEntries('Current').map(row=>row.enabled)),[true,false]);
+  for (const prompt_order of [[],[{character_id:999,order:[{identifier:'on',enabled:true}]}]]) {
+    f.context.chatCompletionSettings.prompt_order = prompt_order;
+    assert.deepEqual(f.json(f.sandbox.getPresetEntries('Current').map(row=>row.enabled)),[false,false]);
+  }
+});
+
+test('worldbook disable is normalized into an independent initial selection default', async () => {
+  const f = fixture(); f.state.world = {entries:{0:{uid:0,disable:true,content:'off'},1:{uid:1,enabled:false,content:'off'},2:{uid:2,content:'on'}}};
+  const rows = await f.sandbox.getWorldBookEntries('Book');
+  assert.deepEqual(f.json(rows.map(row=>row.enabled)),[false,false,true]);
+  assert.equal(f.state.world.entries[0].enabled,undefined);
+});

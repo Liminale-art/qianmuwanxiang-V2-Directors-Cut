@@ -23,6 +23,28 @@ const geoSource = between('const FACTION_TRENDS =', '\nfunction buildPlanDigest(
 const plain = value => JSON.parse(JSON.stringify(value));
 const BASIC = Object.freeze({ parallelSceneEnabled: false, interludeEnabled: false });
 
+test('actual director host route uses Qianmu limits and never falls back to ambient generateRaw hooks', async () => {
+  const source = between('async function callSillyTavernModel(', '// 字符串感知')
+    .replace(/await import\('\.\/qianmu-model-host\.js(?:\?[^']*)?'\)/, 'hostModule');
+  let available = true, sent, rawCalls = 0;
+  const c = { settings: { maxOutputTokens: 6200, temperature: 0.4 }, ctx: () => ({}),
+    hostModule: { hostChatModelAvailable: () => available, callHostChatModel: async options => { sent = options; return { text: 'complete' }; } },
+    getGenerateRaw: () => async () => { rawCalls++; return 'legacy'; } };
+  vm.createContext(c); vm.runInContext(source, c);
+  await c.callSillyTavernModel('selected', 'rules', null, { directorRequest: true });
+  assert.equal(sent.maxTokens, 6200); assert.equal(sent.temperature, 0.4);
+  assert.deepEqual(plain(sent.messages), [{ role: 'system', content: 'rules' }, { role: 'user', content: 'selected' }]);
+  await c.callSillyTavernModel('selected', 'rules', null, { directorRequest: true, max_tokens: 1400, temperature: 0 });
+  assert.equal(sent.maxTokens, 1400); assert.equal(sent.temperature, 0);
+  available = false;
+  for (const delta of [null, () => {}]) {
+    await assert.rejects(c.callSillyTavernModel('selected', 'rules', delta, { directorRequest: true }), /不支持千幕独立取材请求/);
+  }
+  assert.equal(rawCalls, 0);
+  assert.equal(await c.callSillyTavernModel('unrelated feature'), 'legacy');
+  assert.equal(rawCalls, 1);
+});
+
 function fullPlan(options = {}) {
   const plan = {
     story_status: { title: '街角', cycle: '周三傍晚', summary: '旧信仍未领走。' },
@@ -68,11 +90,13 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null, directorMemoryInspection: null, activeTab: 'dashboard', MODAL_ID: 'panel',
     document: { getElementById: () => null }, AbortController, Date, console, clone: structuredClone,
     validateApiSettings: () => true, toast: () => {}, apiToast: () => {}, uid: prefix => `${prefix}-${++id}`,
-    featureRuntime: { load: async () => ({ resolveImageAccountNamespace: async () => 'st-user:one' }) },
+    featureRuntime: { load: async () => assert.fail('ordinary director requests must not load image admission') },
+    resolveImageAccountNamespace: async () => 'st-user:one',
+    storyboardState: () => ({ enabled: false, automation: { autoGenerate: true }, directorBridge: { worldSideShotsEnabled: true, worldAutoGenerate: true } }),
     renderBusyState: () => {}, renderModal: () => {}, renderFloatButton: () => {}, rerenderIfOpen: () => {},
     pushLog: log => { settings.logHistory.push(log); return log; }, saveSettings: () => {},
     saveMetadata: async () => { saveCount++; }, applyDirectorInjection: async () => { injectCount++; }, injectSelection: new Map(),
-    storyboardQueueNewWorldPlan: async () => {}, parseDirectorFinal, paintModelLog, renderDirectorLive,
+    storyboardQueueNewWorldPlan: async () => assert.fail('disabled storyboard must not receive director work'), parseDirectorFinal, paintModelLog, renderDirectorLive,
     FACTION_RELATION_KINDS: ['冲突', '同盟', '张力', '中立', '依附'], sanitizeEventStage, advanceEventStage,
     callExternalApi: async (messages, onDelta, config, controller) => {
       const request = { messages, onDelta, config, controller }; requests.push(request);
@@ -89,6 +113,75 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
   return { c, store, context, settings, requests, get selectionCount() { return selectionCount; }, get saves() { return saveCount; }, get injects() { return injectCount; },
     changeMemory() { memoryText = 'CHANGED_MEMORY'; memoryFingerprint = 'memory-v2'; } };
 }
+
+test('director remains independent of image admission when storyboard is off despite retained automatic preferences', async () => {
+  const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
+  await e.c.generateDirectorPlan();
+  assert.equal(e.requests.length, 1); assert.equal(e.saves, 1); assert.equal(e.injects, 1);
+  assert.equal(e.settings.logHistory[0].kind, 'director'); assert.equal(e.settings.logHistory[0].status, 'success');
+});
+
+test('account verification failures belong to director diagnostics, never claim an image was submitted', async () => {
+  for (const afterRequest of [false, true]) {
+    const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
+    e.c.resolveImageAccountNamespace = async () => {
+      if (!afterRequest || e.requests.length) throw new Error('暂未确认当前 ST 账户，未提交生图，请稍后重试');
+      return 'st-user:one';
+    };
+    await e.c.generateDirectorPlan();
+    assert.equal(e.requests.length, afterRequest ? 1 : 0);
+    assert.equal(e.saves, 0); assert.equal(e.injects, 0); assert.equal(e.store.plan.original, true);
+    const log = e.settings.logHistory[0];
+    assert.equal(log.kind, 'director'); assert.equal(log.status, 'error');
+    assert.match(log.error, /推演/); assert.doesNotMatch(log.error, /生图/);
+    if (afterRequest) assert.equal(log.response, JSON.stringify(fullPlan(BASIC)));
+  }
+});
+
+test('host prompt inventory does not affect the director source fingerprint, while connection parameters still do', () => {
+  const e = fixture({ settings: { providerMode: 'sillytavern' } });
+  e.context.mainApi = 'openai'; e.context.getChatCompletionModel = () => 'gemini-fixture';
+  e.context.chatCompletionSettings = { temperature: 0.7, prompts: { toJSON() { assert.fail('unselected host inventory must not be serialized'); } }, prompt_order: [] };
+  const first = e.c.directorSourceFingerprint();
+  e.context.chatCompletionSettings.prompts = [{ content: 'unselected'.repeat(100000) }];
+  e.context.chatCompletionSettings.prompt_order = [{ character_id: 100001, order: [] }];
+  assert.equal(e.c.directorSourceFingerprint(), first);
+  e.context.chatCompletionSettings.temperature = 0.8;
+  assert.notEqual(e.c.directorSourceFingerprint(), first);
+});
+
+test('group role boundaries use actual character members, never the group display name', async () => {
+  const e = fixture({ settings: BASIC });
+  Object.assign(e.context, { groupId: 'g', groups: [{ id: 'g', name: '街坊', members: ['a.png', 'b.png'] }],
+    characters: [{ avatar: 'a.png', name: '阿岚' }, { avatar: 'b.png', name: '老周' }] });
+  let run = {}; await e.c.buildPrompt(run);
+  assert.deepEqual([...run.creativeOptions.characterNames], ['阿岚', '老周']);
+  e.context.groups = []; run = {}; await e.c.buildPrompt(run);
+  assert.deepEqual([...run.creativeOptions.characterNames], []);
+});
+
+test('source guards serialize selected entries only, while selected content and toggles remain guarded', () => {
+  const e = fixture(), c = e.c;
+  c.getContextItemId = item => item.id;
+  c.getSelectedPresetNames = () => ['P']; c.getSelectedWorldBookNames = () => ['W'];
+  e.settings.selectedPresetItems = { P: { on: true, off: false } };
+  e.settings.selectedWorldBookItemsByChat = { 'chat-one': { W: { on: true, off: false } } };
+  const forbidden = { id: 'off', toJSON() { assert.fail('unselected source content must not be serialized'); } };
+  c.contextScanCache.presets = { P: [{ id: 'on', content: 'selected preset' }, forbidden] };
+  c.contextScanCache.worldBooks = { W: [{ id: 'on', content: 'selected world' }, forbidden] };
+  const first = c.directorSourceFingerprint();
+  c.contextScanCache.presets.P[1] = { id: 'off', content: 'unselected'.repeat(100000) };
+  c.contextScanCache.worldBooks.W[1] = { id: 'off', content: 'unselected'.repeat(100000) };
+  assert.equal(c.directorSourceFingerprint(), first);
+  c.contextScanCache.presets.P[0].content += ' changed';
+  assert.notEqual(c.directorSourceFingerprint(), first);
+  c.contextScanCache.presets.P[0].content = 'selected preset';
+  c.contextScanCache.worldBooks.W[0].content += ' changed';
+  assert.notEqual(c.directorSourceFingerprint(), first);
+  c.contextScanCache.worldBooks.W[0].content = 'selected world';
+  e.settings.selectedPresetItems.P.off = true;
+  assert.notEqual(c.directorSourceFingerprint(), first);
+});
 
 test('actual buildPrompt binds sources, custom blueprint and one fixed interlude choice per run', async () => {
   const e = fixture({ settings: { outputSchemaText: 'CUSTOM_SCHEMA：字段附带私人阅读偏好。' } });
@@ -115,12 +208,12 @@ test('temporary memory review reads the exact request range, not duplicate headi
   const review = e.c.directorMemoryInspection, request = JSON.parse(review.log.request)[1].content;
   assert.equal(request.slice(review.snapshot.start, review.snapshot.start + review.snapshot.length), memory);
   assert.equal(review.snapshot.length, memory.length);
-  const html = e.c.renderDirectorMemoryReview();
+  const html = e.c.renderDirectorMemoryReview(true);
   assert.match(html, /分层滚动 · 混合/); assert.match(html, /推演成功/);
   assert.match(html, /&lt;script&gt;not executable&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>|DECOY_NOT_MEMORY/);
   e.changeMemory();
-  assert.equal(e.c.renderDirectorMemoryReview(), html, 'opening does not reread or replace the request snapshot');
+  assert.equal(e.c.renderDirectorMemoryReview(true), html, 'opening does not reread or replace the request snapshot');
   assert.doesNotMatch(JSON.stringify(e.store), /not executable|memoryInspection|memory-v1/);
   assert.equal('memoryInspection' in review.log, false, 'the card adds no persistent memory copy to logs');
   assert.equal('text' in review.snapshot, false, 'only offsets and display metadata are retained');
@@ -129,7 +222,7 @@ test('temporary memory review reads the exact request range, not duplicate headi
 test('temporary review is available for failed requests without implying the old plan used them', async () => {
   const e = fixture({ settings: BASIC, responses: [() => { throw new Error('fixture transport rejected'); }] });
   await e.c.generateDirectorPlan();
-  const html = e.c.renderDirectorMemoryReview();
+  const html = e.c.renderDirectorMemoryReview(true);
   assert.match(html, /推演失败/); assert.match(html, /MEMORY_SOURCE/);
   assert.match(html, /不是当前审片的剧情内容/); assert.match(html, /不代表模型已经收到或采用/);
   assert.equal(e.store.plan.original, true); assert.equal(e.saves, 0);
@@ -140,7 +233,7 @@ test('empty and partial memory keep their actual request-time status without a f
     ['partial', 'ONLY_VALID_PART', '部分纳入请求内容']]) {
     const e = fixture({ settings: BASIC, memoryResult: { status, text }, responses: [JSON.stringify(fullPlan(BASIC))] });
     await e.c.generateDirectorPlan();
-    const html = e.c.renderDirectorMemoryReview();
+    const html = e.c.renderDirectorMemoryReview(true);
     assert.ok(html.includes(label));
     if (text) assert.ok(html.includes(text)); else assert.doesNotMatch(html, /class="sd-memory-review-text"|已纳入请求内容/);
   }
@@ -150,14 +243,14 @@ test('preflight failures and session changes cannot expose another chat or fabri
   const failed = fixture({ settings: { ...BASIC, contextBudget: 1 } });
   await failed.c.generateDirectorPlan();
   assert.equal(failed.requests.length, 0);
-  assert.match(failed.c.renderDirectorMemoryReview(), /未形成请求/);
-  assert.doesNotMatch(failed.c.renderDirectorMemoryReview(), /MEMORY_SOURCE|class="sd-memory-review-text"/);
+  assert.match(failed.c.renderDirectorMemoryReview(true), /未形成请求/);
+  assert.doesNotMatch(failed.c.renderDirectorMemoryReview(true), /MEMORY_SOURCE|class="sd-memory-review-text"/);
   for (const change of [e => { e.context.chat = []; }, e => { e.c.settings = { ...e.settings }; },
     e => { e.c.getChatKey = () => 'another-chat'; }, e => { e.c.getChatStore = () => ({}); },
     e => { e.c.directorMemoryInspection = null; }]) {
     const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
     await e.c.generateDirectorPlan(); change(e);
-    const html = e.c.renderDirectorMemoryReview();
+    const html = e.c.renderDirectorMemoryReview(true);
     assert.match(html, /本页尚无推演请求记录/); assert.doesNotMatch(html, /MEMORY_SOURCE|推演成功/);
   }
 });
@@ -165,10 +258,10 @@ test('preflight failures and session changes cannot expose another chat or fabri
 test('a later API preflight failure replaces the previous successful inspection', async () => {
   const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
   await e.c.generateDirectorPlan();
-  assert.match(e.c.renderDirectorMemoryReview(), /推演成功/);
+  assert.match(e.c.renderDirectorMemoryReview(true), /推演成功/);
   e.c.validateApiSettings = () => false;
   await e.c.generateDirectorPlan();
-  const html = e.c.renderDirectorMemoryReview();
+  const html = e.c.renderDirectorMemoryReview(true);
   assert.match(html, /未形成请求/); assert.doesNotMatch(html, /推演成功|MEMORY_SOURCE/);
   assert.equal(e.requests.length, 1);
 });
@@ -177,8 +270,8 @@ test('cleared or evicted logs cannot remain visible through the temporary inspec
   const e = fixture({ settings: BASIC, responses: [JSON.stringify(fullPlan(BASIC))] });
   await e.c.generateDirectorPlan();
   e.settings.logHistory = [];
-  assert.match(e.c.renderDirectorMemoryReview(), /本页尚无推演请求记录/);
-  assert.doesNotMatch(e.c.renderDirectorMemoryReview(), /MEMORY_SOURCE|推演成功/);
+  assert.match(e.c.renderDirectorMemoryReview(true), /本页尚无推演请求记录/);
+  assert.doesNotMatch(e.c.renderDirectorMemoryReview(true), /MEMORY_SOURCE|推演成功/);
   assert.match(entry, /if \(selected.includes\('__diagnostics__'\)\) \{\s*settings.logHistory = \[\];\s*directorMemoryInspection = null/);
 });
 
@@ -193,6 +286,7 @@ test('stream deltas do not repeatedly parse or replace the unchanged memory revi
   card = makeCard();
   e.c.renderLogEntry = () => '';
   e.c.paintModelLog = () => {};
+  e.c.bindDirectorMemoryReview = () => {};
   e.c.document.getElementById = () => ({ querySelector: selector => selector === '[data-director-memory-review]' ? card : null });
   e.c.refreshDirectorLiveUI();
   for (let index = 0; index < 50; index++) { e.c.directorLiveLog.response += '字'; e.c.refreshDirectorLiveUI(); }

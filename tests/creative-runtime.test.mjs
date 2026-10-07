@@ -56,6 +56,40 @@ test('exact v443 fingerprints upgrade markerless defaults without matching edite
     assert.equal(settings.outputSchemaText, 'v443-schema with a user edit');
   }
 });
+
+test('exact v444 fingerprints upgrade prompt, schema and built-in blueprint without replacing edits', () => {
+  const fingerprints = { 'v444-system': 'a4c1bafd', 'v444-schema': '241c5ebc', 'v444-blueprint': '1d95c305' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v444-system', outputSchemaText: 'v444-schema', appliedPromptDefaultHash: marker,
+      appliedSchemaDefaultHash: marker, systemPromptBackup: 'old manual draft', outputSchemaBackup: 'old manual format',
+      templates: [{ id: 'default-free-blueprint', content: 'v444-blueprint' }, { id: 'mine', content: 'v444-blueprint' }] };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt);
+    assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.templates[0].content, next.blueprint);
+    assert.equal(settings.templates[1].content, 'v444-blueprint');
+    assert.equal(settings.systemPromptBackup, 'old manual draft');
+    assert.equal(settings.outputSchemaBackup, 'old manual format');
+    const store = { blueprint: 'v444-blueprint', appliedBlueprintDefaultHash: marker };
+    sandbox.upgradeCreativeBlueprint(store, next.blueprint, 445);
+    assert.equal(store.blueprint, next.blueprint);
+    const edited = { systemPrompt: 'v444-system with an edit', outputSchemaText: 'v444-schema with an edit',
+      templates: [{ id: 'default-free-blueprint', content: 'v444-blueprint with an edit' },
+        { id: 'default-free-blueprint', content: 'v444-blueprint', edited: true }] };
+    const original = structuredClone(edited);
+    sandbox.upgradeCreativeDefaults(edited, next);
+    assert.equal(edited.systemPrompt, original.systemPrompt);
+    assert.equal(edited.outputSchemaText, original.outputSchemaText);
+    assert.deepEqual(edited.templates, original.templates);
+    const customStore = { blueprint: 'v444-blueprint with an edit', appliedBlueprintDefaultHash: '1d95c305' };
+    sandbox.upgradeCreativeBlueprint(customStore, next.blueprint, 445);
+    assert.equal(customStore.blueprint, 'v444-blueprint with an edit');
+  }
+});
 test('chat blueprint marker never authorizes replacing edited or unknown text', () => {
   for (const edited of [true, false]) {
     const store = { blueprint: 'user work', blueprintEdited: edited, blueprintRevision: 0 };
@@ -79,6 +113,14 @@ test('interlude is selected once, supports non-speaker story characters, and can
   assert.equal(theater.interludeType, 'theater'); assert.equal(calls, 1);
   const off = selectCreativeOptions({ interludeEnabled: false }, input);
   assert.equal(off.interludeType, null); assert.equal(calls, 1);
+});
+
+test('character scope accepts multiple confirmed CHARs, excludes USER, and respects an unavailable group scope', () => {
+  const options = selectCreativeOptions({}, { characterName: '群聊显示名', characterNames: [' 陈警官 ', '林医生', '陈警官', '玩家'], personaNames: ['玩家'] });
+  assert.deepEqual(options.characterNames, ['陈警官', '林医生']);
+  assert.deepEqual(selectCreativeOptions({}, { characterName: '陈警官' }).characterNames, ['陈警官']);
+  assert.deepEqual(selectCreativeOptions({}, { characterName: '群聊显示名', characterNames: [] }).characterNames, []);
+  assert.deepEqual(selectCreativeOptions({}, { characterName: '玩家', personaNames: ['玩家'] }).characterNames, []);
 });
 test('repair adds only missing entries and clears resolved limitations without rewriting valid entries', () => {
   const first = { title: '已通过', description: '已有完整情境' };

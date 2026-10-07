@@ -8,7 +8,8 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 assert.match(source, /logOpenState:\s*\{\}/);
 assert.match(source, /function pushLog[\s\S]*logOpenState\[entry\.id\] = false[\s\S]*validIds/);
 assert.match(source, /function applyAccState[\s\S]*key\?\.startsWith\('log-'\)[\s\S]*addEventListener\('toggle'[\s\S]*saveSettings\(\)/);
-assert.match(source, /sd-log-entry[^`]*logOpenState\?\.\[id\] === true \? ' open' : ''/);
+assert.match(source, /function renderLogEntry\(log, index, expanded = settings\.logOpenState\?\.\[String\(log\.id \|\| index\)\] === true\)/);
+assert.match(source, /sd-log-entry[^`]*expanded \? ' open' : ''/);
 assert.doesNotMatch(source, /sd-log-entry[^`]*index === 0 \? 'open'/);
 
 // 注入子卡之间保留紧凑留白；剧组之律副注释靠右。

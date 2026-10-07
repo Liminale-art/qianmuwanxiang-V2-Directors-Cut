@@ -2671,6 +2671,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   gap: 8px;
 }
 
+#story-director-modal [data-director-live-host] { display: contents; }
+
 #story-director-modal .sd-log-entry {
   border: 1px solid var(--sd-border) !important;
   border-radius: 12px !important;

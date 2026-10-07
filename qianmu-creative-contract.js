@@ -1,6 +1,6 @@
 // Pure output contract. It checks structure and explicit empty/duplicate items,
 // not narrative truth or literary quality; those remain in the creative guidance.
-import { CREATIVE_COUNTS, CREATIVE_SECTION_LABELS } from './qianmu-creative-prompts.js?v=1.59.444';
+import { CREATIVE_COUNTS, CREATIVE_SECTION_LABELS } from './qianmu-creative-prompts.js?v=1.59.445';
 
 const CORE_ARRAYS = ['quests', 'character_dynamics', 'npc_updates', 'chain_reactions', 'relation_undercurrents'];
 const WORLD_ARRAYS = ['world_chatter', 'factions', 'faction_relations', 'world_events'];
@@ -10,6 +10,8 @@ const clone = value => value === undefined ? undefined : structuredClone(value);
 const text = value => typeof value === 'string' ? value : '';
 const canonical = value => text(value).normalize('NFKC').replace(/\s+/gu, '').toLocaleLowerCase();
 const names = value => (Array.isArray(value) ? value : typeof value === 'string' ? [value] : []).map(canonical).filter(Boolean);
+const characterNames = options => Array.isArray(options.characterNames) ? options.characterNames
+  : typeof options.characterName === 'string' && options.characterName.trim() ? [options.characterName.trim()] : [];
 const PLACEHOLDER = /^(?:无|暂无|暂无内容|暂无变化|无变化|无内容|没有内容|待补充|待定|略|省略|暗流涌动|有所察觉|n\/?a|none|null|undefined|tbd|todo|\.\.\.|…|—|-)$/iu;
 function substantive(value) {
   return typeof value === 'string' && Boolean(value.trim()) && !PLACEHOLDER.test(value.trim().replace(/[。.!！]+$/u, ''));
@@ -31,11 +33,11 @@ function enabled(field, options) {
 export function createCreativeSchema(options = {}) {
   const shape = {
     story_status: { title: 'Title for this run', current_arc: 'Current narrative thread', current_stage: 'Current stage', cycle: 'In-story date or time period; leave blank if unknown, and do not advance it by generation count', progress: 0, mood: 'Current tone', summary: 'Established circumstances and the focus of this run; possibilities are not established facts' },
-    quests: [{ title: 'Encounter title', description: 'A complete situation that can be experienced and responded to', trigger: 'Conditions for approaching this situation', inject_prompt: 'An optional situational cue for the narrative; do not accept or act on behalf of USER' }],
-    character_dynamics: [{ title: 'Title for 此间一人', content: "A concrete, complete account of CHAR's current affairs" }],
-    npc_updates: [{ name: 'Character name', role: 'Identity or role', current_goal: 'Present concern', emotional_state: 'Grounded present state', next_action: 'Concrete action and its conditions', hidden_agenda: 'A hidden intention already grounded in the sources or authorized for this run', relations: 'Relationships currently having an effect', inject_prompt: 'A cue that can be carried forward; do not portray a possibility as already having happened' }],
-    chain_reactions: [{ spark: 'Concrete cause', chain: 'Actions transmitting the effects, present consequences, and conditions for parts that have not yet happened' }],
-    relation_undercurrents: [{ parties: 'The two or more people involved', tone: 'Relationship tone', tension: 'A distinct relational concern and its concrete expression', drift: 'A possible direction and its conditions', user_awareness: "The actual extent of USER's knowledge" }],
+    quests: [{ title: 'Encounter title', description: 'A new actionable opening beyond the source stopping point: another actor or event changes the situation before USER chooses a response', trigger: 'Concrete access or timing conditions, not a repeated source event or an instruction for USER to invent the next development', inject_prompt: 'An optional situational cue for the narrative; do not accept or act on behalf of USER' }],
+    character_dynamics: [{ name: 'The CHAR who owns this affair; use an established name, never USER or an alias; group chats may include several CHARs', title: 'Title for 此间一人', content: "CHAR's own affair carried into a concrete action, resulting condition, or consequential next step beyond the source recap; not a summary of the latest interaction with USER" }],
+    npc_updates: [{ name: 'Other character name, excluding USER and every CHAR in the current chat', role: 'Identity or role', current_goal: "This person's own present concern", emotional_state: 'Grounded present state', next_action: 'Specific next action and what it changes, with its conditions; not a request for USER to supply the development', hidden_agenda: 'Leave blank unless a concealed intention has a concrete basis; privacy or uncertainty alone does not imply malice or a conspiracy', relations: 'Specific ties with other people that matter to this affair, not automatically a tie to USER or CHAR', inject_prompt: 'A cue that can be carried forward; do not portray a possibility as already having happened' }],
+    chain_reactions: [{ spark: 'Concrete cause, briefly identifying what is already established', chain: 'Extend beyond the already narrated effects: affected party, transmission, action, and a downstream consequence not yet present in the narrative; identify conditions and candidate status for what has not happened' }],
+    relation_undercurrents: [{ parties: 'The two or more people involved; include independently motivated supporting relationships, not only USER and CHAR', tone: 'Relationship tone grounded in their actual circumstances', tension: 'A distinct relational concern expressed through a specific behavior or exchange not already recapped in another entry', drift: 'What this expression changes or keeps constrained, with conditions for a possible next development', user_awareness: "The actual extent of USER's knowledge, not everything the reader can see" }],
   };
   if (enabled('world_chatter', options)) shape.world_chatter = [{ text: 'Brief soundscape', who: 'Person or group', where: 'Location' }];
   if (enabled('factions', options)) {
@@ -52,7 +54,9 @@ export function createCreativeSchema(options = {}) {
   });
   const ownerRule = options.interludeType === 'phone' && Array.isArray(options.eligiblePhoneOwners)
     ? `\nChoose the phone's owner only from this run's confirmed list: ${JSON.stringify(options.eligiblePhoneOwners)}. Exclude USER and every alias; do not invent an owner when the list is empty.` : '';
-  return `Return only one JSON object with the following field shapes (arrays show one structural example; use the required counts below for the actual output). Write narrative text in the current chat's language; default to Chinese when no language is established. English instructions and field descriptions do not require English story output. Preserve JSON keys and enum values exactly.\n${JSON.stringify(shape, null, 2)}\n\n${quotas.join('\n')}\nFill faction_relations only from actual connections; do not force links or new additions. Report shortfalls honestly in limitations; reporting a shortfall does not satisfy the required count. Distinguish possibilities from established experiences; an established state can be carried forward while it still matters now. Do not generate disabled sections. 未映之幕 and 幕间拾趣 are independent and have no narrative-injection fields.${ownerRule}`;
+  const roleRule = names(characterNames(options)).length
+    ? `\nConfirmed CHAR names for this request: ${JSON.stringify(characterNames(options))}. Use a name from this list for character_dynamics.name; npc_updates covers other people. USER and aliases ${JSON.stringify(options.personaNames || [])} are excluded from both sections as the subject. They may appear in an interaction without becoming its subject.` : '';
+  return `Return only one JSON object with the following field shapes (arrays show one structural example; use the required counts below for the actual output). Write narrative text in the current chat's language; default to Chinese when no language is established. English instructions and field descriptions do not require English story output. Preserve JSON keys and enum values exactly.\n${JSON.stringify(shape, null, 2)}\n\n${quotas.join('\n')}\nFill faction_relations only from actual connections; do not force links or new additions. Report shortfalls honestly in limitations; reporting a shortfall does not satisfy the required count. Distinguish possibilities from established experiences. Write candidates concretely without turning them into mainline facts. Every encounter provides a new opening, every CHAR entry carries an affair forward, and every ripple extends into a new downstream consequence; recaps and repeated emotional readings do not satisfy these purposes. Enduring world states and relationships can remain in force when their current effects add distinct information. Do not generate disabled sections. 未映之幕 and 幕间拾趣 are independent and have no narrative-injection fields.${roleRule}${ownerRule}`;
 }
 
 /** Preserve legacy/unknown data; normalize only new section shapes and quests. */
@@ -86,8 +90,18 @@ const CONTENT_FIELDS = {
   world_chatter: ['text'], factions: ['agenda', 'standing', 'trend', 'clues'],
   faction_relations: ['between', 'kind', 'note'], world_events: ['essence', 'content'],
 };
-function itemProblem(field, item) {
+function itemProblem(field, item, options) {
   if (!isObject(item)) return '条目不是有效对象';
+  // Only an explicit structured subject can prove a role violation. Do not
+  // infer it from mentions in prose/title or reject existing unnamed DIY cards.
+  if (['character_dynamics', 'npc_updates'].includes(field) && has(item, 'name')) {
+    const subject = canonical(item.name);
+    const users = new Set(['user', '{{user}}', '<user>', '用户', ...names(options.personaNames)]);
+    const characters = new Set(names(characterNames(options)));
+    if (users.has(subject)) return '人物动态主体不能是 USER 或其别名';
+    if (field === 'character_dynamics' && characters.size && !characters.has(subject)) return '此间一人的主体须为本聊天的 CHAR';
+    if (field === 'npc_updates' && characters.has(subject)) return 'CHAR 的事务应在此间一人，不计入其他人物动向';
+  }
   switch (field) {
     case 'quests': return has(item, 'description', 'content', 'objective') ? '' : '缺少可回应的具体情境';
     case 'character_dynamics': return has(item, 'content', 'current_goal', 'next_action', 'hidden_agenda', 'relations') ? '' : '缺少具体人物事务';
@@ -102,11 +116,11 @@ function itemProblem(field, item) {
   }
 }
 
-function inspectArray(field, value) {
+function inspectArray(field, value, options) {
   const validIndices = [], invalidIndices = [], duplicateIndices = [], seen = new Set();
   if (!Array.isArray(value)) return { validIndices, invalidIndices, duplicateIndices };
   value.forEach((item, index) => {
-    if (itemProblem(field, item)) { invalidIndices.push(index); return; }
+    if (itemProblem(field, item, options)) { invalidIndices.push(index); return; }
     const key = joined(item, CONTENT_FIELDS[field]);
     if (seen.has(key)) { duplicateIndices.push(index); return; }
     seen.add(key);
@@ -159,8 +173,8 @@ export function validateCreativePlan(plan, options = {}) {
       issues.push({ field, reason: '栏目必须是数组', missing: count?.min || 0, indices: [], validIndices: [] });
       continue;
     }
-    const { validIndices, invalidIndices, duplicateIndices } = inspectArray(field, value);
-    if (invalidIndices.length) issues.push({ field, reason: '空白、占位或缺少栏目必要内容的条目不计数', indices: invalidIndices, validIndices });
+    const { validIndices, invalidIndices, duplicateIndices } = inspectArray(field, value, options);
+    if (invalidIndices.length) issues.push({ field, reason: `空白、占位或栏目内容不合要求的条目不计数：${[...new Set(invalidIndices.map(index => itemProblem(field, value[index], options)))].join('；')}`, indices: invalidIndices, validIndices });
     if (duplicateIndices.length) issues.push({ field, reason: '同栏目重复内容不重复计数', indices: duplicateIndices, validIndices });
     if (count && validIndices.length < count.min) issues.push({ field, reason: '有效内容不足', missing: count.min - validIndices.length, indices: [...invalidIndices, ...duplicateIndices].sort((a, b) => a - b), validIndices });
     if (count?.max && validIndices.length > count.max) issues.push({ field, reason: '本次输出超过栏目数量上限', excess: validIndices.length - count.max, max: count.max, validIndices });

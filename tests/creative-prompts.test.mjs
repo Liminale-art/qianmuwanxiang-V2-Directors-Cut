@@ -8,13 +8,39 @@ import {
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 
-test('Chinese identity, blueprint and guides stay exact while laws use the reviewed English translation', () => {
+test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), '7027760ade49fde47ae039b6a090a0d9652abf4af2b0f154011bc5cf79f72ce3');
-  assert.equal(digest(CREATIVE_BLUEPRINT), '05fe16a12a9532f018685009a9c4eaa1f4f29fb9aef50ca778eb78459553dc76');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'a77f2eb0894ce463f66e4efe2523662b52588ba90437f610d0b4a071b63325de');
+  assert.equal(digest(CREATIVE_LAWS), '69c59a415c4b91466429d51642cd66f58352df61398e844d6faaddcad42276c7');
+  assert.equal(digest(CREATIVE_BLUEPRINT), '1f7c02a2ab51647f6cef2f72b599fd1fc1925562e4ae850b4af90fd7abdeb75b');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'c8796895a675c1d451cc951f5dc8de7b9f810aac92a422ec3582cfc5356270af');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
+});
+
+test('progression is mandatory without declaring candidates real or taking USER agency', () => {
+  assert.match(CREATIVE_LAWS, /Every run must supply developments beyond the input's existing stopping point/);
+  assert.match(CREATIVE_LAWS, /Each encounter must introduce a new, actionable opening/);
+  assert.match(CREATIVE_LAWS, /Each CHAR entry must carry one of CHAR's own affairs into a concrete action or consequential next step/);
+  assert.match(CREATIVE_LAWS, /Each ripple must extend its cause into a downstream consequence beyond the already narrated chain/);
+  assert.match(CREATIVE_LAWS, /Candidate status controls whether a development is established in the mainline, not whether it is written concretely/);
+  assert.match(CREATIVE_LAWS, /This does not move the mainline clock or complete an unresolved USER decision/);
+  assert.match(CREATIVE_LAWS, /enduring organizations, unresolved tensions, and quiet lives need not undergo an artificial reversal/);
+  assert.doesNotMatch(CREATIVE_LAWS, /Do not force growth, warmer relationships, mainline advancement/);
+  assert.match(CREATIVE_BLUEPRINT, /承接是让旧事产生新作用/);
+  assert.match(CREATIVE_BLUEPRINT, /不把“接下来如何推进”的工作交还给读者/);
+});
+
+test('section responsibilities reject recaps, protagonist monopoly and unsupported conspiracy without a forced tone', () => {
+  assert.match(CREATIVE_GUIDES.quests, /每条必须提供一个正文现有落点之外的新切入口/);
+  assert.match(CREATIVE_GUIDES.character_dynamics, /只以本聊天的 CHAR 为动态主体/);
+  assert.match(CREATIVE_GUIDES.character_dynamics, /群聊中的多个 CHAR/);
+  assert.match(CREATIVE_GUIDES.npc_updates, /至少一条即使暂时移除主角也能成立/);
+  assert.match(CREATIVE_GUIDES.chain_reactions, /至少延伸出一项正文尚未发生的后续影响/);
+  assert.match(CREATIVE_GUIDES.relation_undercurrents, /既有配角关系具备展开空间时/);
+  assert.match(CREATIVE_LAWS, /A changed viewpoint, title, or emotional metaphor alone does not make a retelling new content/);
+  assert.match(CREATIVE_LAWS, /Do not turn an ordinary remark, coincidence, or lack of information into evidence of guilt, a conspiracy/);
+  assert.match(CREATIVE_LAWS, /Neither a dark turn nor a reassuring outcome is mandatory/);
+  assert.match(CREATIVE_LAWS, /excluding USER; 其他人物动向: at least 3 entries about other non-USER, non-CHAR people/);
 });
 
 test('count source is frozen and rendered in approved laws without an invented world echo quota', () => {

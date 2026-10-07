@@ -5,8 +5,23 @@ import { isNoisePresetName, normalizePresetEntries, parseAnyString, parseNameSou
 const attempt = (read, fallback) => { try { return read(); } catch (_) { return fallback; } };
 const manager = context => attempt(() => context.getPresetManager?.('openai'), null);
 const presetNames = names => uniqueClean(names).filter(name => !isNoisePresetName(name));
-const copyPrompts = value => structuredClone(normalizePresetEntries(value));
-const copyWorld = (value, name) => structuredClone(Array.isArray(value) ? value : Object.values(value?.entries || value?.[name]?.entries || {}));
+const copyPrompts = value => {
+    const rows = structuredClone(normalizePresetEntries(Array.isArray(value) ? value : value?.prompts));
+    const orders = Array.isArray(value?.prompt_order) ? value.prompt_order : null;
+    // ST chat completion uses global dummy 100001 (100000 is the older default list).
+    // Never concatenate every character/order list or treat unlisted inventory prompts as enabled.
+    const order = orders && (orders.every(row => row?.identifier != null)
+        ? orders : (orders.find(row => String(row?.character_id) === '100001')
+            || orders.find(row => String(row?.character_id) === '100000'))?.order || []);
+    const byId = new Map((order || []).map((row, index) => [String(row?.identifier), { row, index }]));
+    for (const row of rows) {
+        row.enabled = order ? byId.get(String(row.identifier))?.row.enabled === true
+            : row.enabled === true && row.disable !== true;
+    }
+    return order ? rows.sort((a, b) => (byId.get(String(a.identifier))?.index ?? Infinity) - (byId.get(String(b.identifier))?.index ?? Infinity)) : rows;
+};
+const copyWorld = (value, name) => structuredClone(Array.isArray(value) ? value : Object.values(value?.entries || value?.[name]?.entries || {}))
+    .map(row => row && typeof row === 'object' && !Array.isArray(row) ? { ...row, enabled: row.enabled !== false && row.disable !== true } : row);
 const namesOnly = values => [...new Set((Array.isArray(values) ? values : []).filter(value => typeof value === 'string' && value.trim()))];
 const headers = (context, globals) => context.getRequestHeaders?.() || { 'Content-Type': 'application/json', 'X-CSRF-Token': globals.document?.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || globals.token || '' };
 
@@ -19,7 +34,7 @@ export function stCurrentPresetName(context, globals = globalThis) {
 }
 
 export function stCurrentPresetEntries(context) {
-    return Array.isArray(context.chatCompletionSettings?.prompts) ? copyPrompts(context.chatCompletionSettings.prompts) : [];
+    return Array.isArray(context.chatCompletionSettings?.prompts) ? copyPrompts(context.chatCompletionSettings) : [];
 }
 
 export function stPresetNames(context, globals = globalThis) {
@@ -40,13 +55,13 @@ export function stPresetEntries(context, name, globals = globalThis) {
     if (typeof context.getPresetManager === 'function') {
         const preset = attempt(() => manager(context)?.getCompletionPresetByName?.(name), null);
         // Missing/empty official data is authoritative; do not resurrect an old helper/global snapshot.
-        return preset ? copyPrompts(preset.prompts || []) : [];
+        return preset ? copyPrompts(preset) : [];
     }
     const helper = attempt(() => globals.TavernHelper?.getPreset?.(name), null);
-    if (helper?.prompts || Array.isArray(helper)) return copyPrompts(helper.prompts || helper);
+    if (helper?.prompts || Array.isArray(helper)) return copyPrompts(helper);
     for (const pool of [globals.presets, globals.oai_settings?.presets, globals.power_user?.presets, context.presets]) {
         const preset = (pool && Object.hasOwn(pool, name) ? pool[name] : null) || (Array.isArray(pool) ? pool.find(row => row?.name === name) : null);
-        if (preset?.prompts || Array.isArray(preset)) return copyPrompts(preset.prompts || preset);
+        if (preset?.prompts || Array.isArray(preset)) return copyPrompts(preset);
     }
     return [];
 }

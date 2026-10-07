@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { renderModelDiagnostics } from '../qianmu-director-live.js';
+import { renderModelDiagnostics, modelFailureText } from '../qianmu-director-live.js';
 
 const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -13,7 +13,20 @@ assert.ok(start > 0 && end > start, 'production log renderer is available');
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const settings = { logOpenState: {} };
 const render = vm.runInNewContext(`${entry.slice(start, end)}\nrenderLogEntry`, {
-  settings, renderModelDiagnostics, htmlEscape: escape, infoTag: value => `<small>${escape(value)}</small>`, estimateTokens: value => String(value).length,
+  settings, renderModelDiagnostics, modelFailureText, htmlEscape: escape, infoTag: value => `<small>${escape(value)}</small>`, estimateTokens: value => String(value).length,
+});
+
+test('collapsed logs never read, tokenize or escape heavyweight request and response bodies', () => {
+  const log = { id: 'heavy', status: 'error', time: 'today', kind: 'director' };
+  for (const key of ['request', 'response', 'reasoning', 'completion']) Object.defineProperty(log, key, { get() { assert.fail(`Collapsed row read ${key}`); } });
+  const html = render(log, 0);
+  assert.match(html, /data-loaded="false"/); assert.doesNotMatch(html, /<pre|token|失败提示/);
+});
+
+test('stopped and truncated logs put all failure reasons before request/response, not under the output', () => {
+  const html = render({ id: 'stopped', status: 'cancelled', completion: { interrupted: true, finishReason: 'length' }, response: 'partial' }, 0, true);
+  assert.match(html, /sd-log-failure[\s\S]*本次推演已停止。[\s\S]*结束原因：length[\s\S]*sd-term-request/);
+  assert.doesNotMatch(html.slice(html.indexOf('sd-log-diagnostics')), /结束原因|未完整完成/);
 });
 const labels = {success:'成功', error:'失败', cancelled:'已取消', loading:'生成中', none:'状态未知'};
 

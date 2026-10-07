@@ -8,7 +8,8 @@ import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixtu
 
 const names = ['renderActiveTab', 'renderContextTab', 'renderTagRules', 'renderPresetSourcePanel',
     'renderSelectedPresetEntries', 'renderWorldBookSourcePanel', 'renderSelectedWorldBookEntries',
-    'renderContextEntry', 'getContextItemId', 'getTagRules', 'cleanContextText', 'badge',
+    'renderContextEntry', 'getContextItemId', 'getContextSelectionReviewStore', 'contextSourceNeedsSelectionReview',
+    'renderContextSelectionReview', 'getTagRules', 'cleanContextText', 'badge',
     'renderDirectorSettingsTab', 'renderInjectSections', 'renderInjectPreview',
     'renderBackstageBlueprintCard', 'renderBlueprintEditorContent', 'templateLibraryCfg',
     'renderLibrarySection', 'renderLibraryListBody', 'renderLibraryRow'];
@@ -29,8 +30,8 @@ await context.route('**/*', async route => {
     if (url.origin === 'https://qianmu.test' && url.pathname === '/') return route.fulfill({
         contentType: 'text/html; charset=utf-8', body: `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><style>body{margin:0}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;height:100dvh!important;box-sizing:border-box}#story-director-modal .sd-window{width:100%!important;height:100%!important;max-height:none!important;margin:0!important}</style><div id="story-director-modal" class="open sd-theme-dark"><section class="sd-window"><main class="sd-body"></main></section></div>`,
     });
-    if (url.origin === 'https://qianmu.test' && /^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname)) {
-        return route.fulfill({ contentType: 'application/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url)) });
+    if (url.origin === 'https://qianmu.test' && /^\/qianmu-[a-z0-9-]+\.(?:js|css)$/.test(url.pathname)) {
+        return route.fulfill({ contentType: url.pathname.endsWith('.css') ? 'text/css' : 'application/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url)) });
     }
     external++; return route.abort();
 });
@@ -45,12 +46,12 @@ try {
         Object.assign(window, {
             settings: { theme: 'dark' }, editorView: null, calls: { scan: 0, forbidden: 0 },
             maybeAutoScanContext: () => { calls.scan++; }, getCharacterName: () => '旅人', getPersonaName: () => '观星者',
-            getChatStore: () => storyStore, getCurrentPresetName: () => presetName,
+            getChatStore: () => storyStore, getChatKey: () => 'isolated-qa', getCurrentPresetName: () => presetName,
             listPresetNames: () => contextScanCache.presetNames, getPresetEntries: name => contextScanCache.presets[name] || [],
             detectBoundWorldBookNames: () => contextScanCache.boundWorldBookNames,
             getSelectedPresetNames: () => fixtureEmpty ? [] : [presetName],
             getSelectedWorldBookNames: () => fixtureEmpty ? [] : [worldName], isWorldBookGlobal: name => name === worldName,
-            isPresetItemSelected: (_name, id) => id === 0, isWorldItemSelected: (_name, id) => id === 1,
+            isPresetItemSelected: (_name, id) => String(id) === '0', isWorldItemSelected: (_name, id) => String(id) === '1',
             DEFAULT_BLUEPRINT: '默认聊天剧本', DEFAULT_SYSTEM_PROMPT: '默认剧组之律', JSON_SCHEMA_TEXT: '{"type":"object"}',
             currentDirectorInjectionText: () => '注入仅为隔离只读夹具\n<img src=x onerror=alert(1)>\n' + '原文保持不变\n'.repeat(90),
             applyQianmuIcons,
@@ -58,7 +59,8 @@ try {
         const forbidden = () => { calls.forbidden++; throw Error('Production writes are forbidden'); };
         window.saveSettings = window.saveMetadata = window.applyDirectorInjection = window.generate = forbidden;
         (0, eval)(source);
-        window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
+        window.appearance = createQianmuAppearanceSession({ readSettings: () => settings,
+            loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }), loadFont: () => ({ promise: Promise.resolve(true), cancel() {} }) });
         appearance.mount(document.querySelector('#story-director-modal'));
         window.setAppearance = async (family, mode) => {
             settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync();
@@ -70,6 +72,7 @@ try {
             window.templateSearch = state === 'search-empty' ? '不存在的剧本' : '';
             window.templateExportMode = state === 'export'; window.templateExportSelection = new Set(['t0']);
             const entries = Array.from({ length: 32 }, (_, i) => ({ uid: i, name: '条目' + i + '-' + 'x'.repeat(80), content: '<thinking>应被过滤的内部文本</thinking>' + '海风与叙事线索\n'.repeat(220) }));
+            if (state === 'legacy-review') { entries[0].enabled = false; entries[1].disable = true; }
             window.contextScanCache = {
                 currentPresetName: presetName, presetNames: fixtureEmpty ? [] : [presetName, '备用预设'],
                 presetScannedAt: fixtureEmpty ? 0 : 1, worldScannedAt: fixtureEmpty ? 0 : 1,
@@ -77,6 +80,7 @@ try {
                 presets: fixtureEmpty ? {} : { [presetName]: entries }, worldBooks: fixtureEmpty ? {} : { [worldName]: entries },
             };
             Object.assign(settings, {
+                contextSourceSelectionReviews: { presets: {}, worldBooks: {} },
                 contextOptions: { includeChatHistory: true, contextDepth: 12, tagRules: [{ name: 'thinking', action: 'remove' }] },
                 autoRefresh: true, autoRefreshEvery: 10, injectEnabled: state !== 'disabled', injectDepth: 2,
                 injectSections: { quests: true, nodes: true, npc: false, world: true }, geopoliticsEnabled: true, worldChatterEnabled: true,
@@ -157,6 +161,14 @@ try {
                 await page.locator(tab === 'context' ? '[data-acc=acc-presets]' : '.sd-backstage-blueprint-card').scrollIntoViewIfNeeded();
                 await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
                 await page.screenshot({ caret: 'initial', animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-${tab}-393.png`, qa)) });
+            }
+            if (tab === 'context') {
+                await page.evaluate(() => renderFixture('context', 'legacy-review'));
+                ok(label + ' legacy selection review stays inside the existing two entry groups', await page.locator('.sd-context-block > .sd-button-row .sd-confirm-context-selection').count() === 2);
+                ok(label + ' legacy review actions fit the card without a new popup', await page.locator('.sd-confirm-context-selection').evaluateAll(nodes => nodes.every(node => {
+                    const bounds = node.getBoundingClientRect(), card = node.closest('.sd-context-block').getBoundingClientRect();
+                    return bounds.width > 0 && bounds.left >= card.left && bounds.right <= card.right + 1;
+                })));
             }
             await page.evaluate(tab => renderFixture(tab, 'empty'), tab);
             ok(label + ' confirmed empty state preserves original guidance and disabled recovery', await page.evaluate(tab => tab === 'context'

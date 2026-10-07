@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { QIANMU_HIVE_COMMANDS } from '../qianmu-hive-commands.js';
+import { directorPreviewPlan } from '../qianmu-director-live.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
@@ -16,14 +17,14 @@ function section(name) {
 function fixture(plan, settings = {}) {
   const links = [];
   const c = vm.createContext({
-    settings, directorMemoryInspection: null, currentPlan: () => plan, htmlEscape: escape, snip: value => String(value),
+    settings, directorMemoryInspection: null, directorLiveLog: null, directorPreviewPlan, currentPlan: () => plan, htmlEscape: escape, snip: value => String(value),
     getContextItemId: item => item.title || item.name || 'one', injectSelection: new Set(),
     renderHistorySection: () => '<div>history</div>', renderHeroActions: () => '', renderGenerateRow: () => '',
     renderWorldChatterCard: () => '<section>尘寰群生</section>', renderRelationUndercurrentsCard: () => '<section>关系暗涌</section>',
     renderDirectorWorldEntryLink: (field, index) => { links.push({ field, index }); return '<span class="sd-world-media-entry"></span>'; },
     renderInjectPreview: () => '', renderBackstageBlueprintCard: () => '', DEFAULT_SYSTEM_PROMPT: '', JSON_SCHEMA_TEXT: '',
   });
-  vm.runInContext(['renderDashboardTab', 'renderDirectorMemoryReview', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
+  vm.runInContext(['directorDisplayPlan', 'renderDashboardTab', 'renderDirectorMemoryReview', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
     'renderCastWorldFront', 'renderPlanSectionFold', 'renderNoPlan', 'renderItemList', 'renderItemCard', 'renderItemChips',
     'renderInjectSections', 'renderDirectorSettingsTab'].map(section).join('\n'), c);
   return { c, links };
@@ -103,4 +104,26 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
   assert.match(styles, /#story-director-modal \.sd-director-extra-content,[\s\S]*var\(--sd-text\)[\s\S]*white-space:\s*pre-wrap;[\s\S]*overflow-wrap:\s*anywhere/);
   assert.match(styles, /#story-director-modal \.sd-chain-node\s*\{[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere/);
   assert.match(styles, /#story-director-modal \.sd-derivative-options\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
+});
+
+test('failed or stopped streams restore the saved plan and cannot obscure loaded history', () => {
+  const plan = { story_status: { title: '已保存方案' } }, { c } = fixture(plan);
+  c.directorLiveLog = { status: 'loading', response: '{"story_status":{"title":"未采纳片段"}}' };
+  assert.match(c.renderDashboardTab(), /未采纳片段/); assert.doesNotMatch(c.renderDashboardTab(), /已保存方案/);
+  for (const status of ['error', 'cancelled']) {
+    c.directorLiveLog.status = status;
+    assert.match(c.renderDashboardTab(), /已保存方案/); assert.doesNotMatch(c.renderDashboardTab(), /未采纳片段/);
+  }
+  plan.story_status.title = '载入的历史';
+  assert.match(c.renderDashboardTab(), /载入的历史/);
+});
+
+test('stream refresh binds only reading actions and preserves the world shell instead of rerunning global tab teardown', () => {
+  const refresh = section('refreshDirectorLiveUI'), actions = section('bindDirectorReadingEvents');
+  assert.match(refresh, /bindDirectorReadingEvents\(host\)/);
+  assert.doesNotMatch(refresh, /bindActiveTabEvents\(host\)|bindCoreadTabEvents|bindTheaterTabEvents/);
+  assert.match(refresh, /worldBody\.innerHTML/);
+  assert.doesNotMatch(actions, /unmountReaderPortal|document\.addEventListener|window\.addEventListener|bindCoreadTabEvents/);
+  assert.match(section('bindActiveTabEvents'), /bindDirectorReadingEvents\(root\)/);
+  assert.equal((source.match(/root\.querySelectorAll\('\.sd-generate-main'\)/g) || []).length, 1);
 });

@@ -1,11 +1,11 @@
 // Creative defaults and one-request state. No storage, network or model calls.
 import { hashText } from './qianmu-storyboard-utils.js';
-import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.444';
+import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.445';
 
-// Exact bundled defaults from v1.59.442 and v1.59.443, not phrase-based DIY detection.
+// Exact bundled defaults from v1.59.442 through v1.59.444, not phrase-based DIY detection.
 const LEGACY_DEFAULT_HASHES = Object.freeze({
-  systemPrompt: Object.freeze(['2045b006', '91ad6303']),
-  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38']),
+  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd']),
+  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc']),
   blueprint: Object.freeze(['4c919687', '1d95c305']),
 });
 const unchangedDefault = (value, current, legacyHashes, appliedHash) => {
@@ -42,7 +42,7 @@ export function upgradeCreativeBlueprint(store, blueprint, revision) {
   return store;
 }
 
-export function selectCreativeOptions(settings = {}, { chat = [], personaNames = [], characterName = '', sourceText = '', narrativeText = '', random = Math.random } = {}) {
+export function selectCreativeOptions(settings = {}, { chat = [], personaNames = [], characterName = '', characterNames, sourceText = '', narrativeText = '', random = Math.random } = {}) {
   const normalize = name => String(name || '').trim().toLocaleLowerCase();
   const excluded = new Set(personaNames.map(normalize).filter(Boolean));
   for (const message of chat) if (message?.is_user) excluded.add(normalize(message.name));
@@ -54,7 +54,10 @@ export function selectCreativeOptions(settings = {}, { chat = [], personaNames =
   return Object.freeze({
     worldChatterEnabled: Boolean(settings.worldChatterEnabled), geopoliticsEnabled: Boolean(settings.geopoliticsEnabled),
     parallelSceneEnabled: settings.parallelSceneEnabled !== false, interludeEnabled, interludeType,
-    personaNames: [...excluded], characterName, phoneSourceText: narrativeText,
+    personaNames: [...excluded], characterName,
+    characterNames: [...new Set((Array.isArray(characterNames) ? characterNames : [characterName])
+      .filter(name => typeof name === 'string').map(name => name.trim()).filter(name => name && !excluded.has(normalize(name))))],
+    phoneSourceText: narrativeText,
   });
 }
 

@@ -1,4 +1,5 @@
 const FIELDS = {
+  story_status: ['剧情推演', ['title', 'summary', 'current_arc', 'current_stage', 'mood']],
   quests: ['际遇', ['title', 'content', 'description', 'trigger']],
   character_dynamics: ['此间一人', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
   npc_updates: ['其他人物动向', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
@@ -7,8 +8,12 @@ const FIELDS = {
   relation_undercurrents: ['关系暗涌', ['title', 'parties', 'surface', 'undercurrent', 'tension', 'content']],
   parallel_scene: ['未映之幕', ['title', 'content']],
   interlude: ['幕间拾趣', ['title', 'owner', 'content']],
+  world_chatter: ['尘寰群生', ['who', 'where', 'text']],
+  factions: ['世界格局', ['name', 'standing', 'agenda']],
+  faction_relations: ['势力关系', ['a', 'b', 'kind', 'note']],
+  world_events: ['世界事件', ['title', 'essence', 'content']],
 };
-const OBJECT_FIELDS = new Set(['parallel_scene', 'interlude']);
+const OBJECT_FIELDS = new Set(['story_status', 'parallel_scene', 'interlude']);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 // Consume only closed known cards. Top-level extras stay read-only, just like array previews.
 export function completeDirectorCards(source) {
@@ -54,7 +59,7 @@ export function completeDirectorCards(source) {
     if (!Object.hasOwn(FIELDS, key)) return;
     if (OBJECT_FIELDS.has(key) !== objectField) return;
     let value; try { value = JSON.parse(raw); } catch (_) { return; }
-    if (OBJECT_FIELDS.has(key) && (!value || typeof value.content !== 'string' || !value.content.trim())) return;
+    if (['parallel_scene', 'interlude'].includes(key) && (!value || typeof value.content !== 'string' || !value.content.trim())) return;
     if (key === 'interlude' && !['theater', 'phone'].includes(value.type)) return;
     const [label, fields] = FIELDS[key];
     const lines = value && !Array.isArray(value) && typeof value === 'object' ? fields.map(field => Array.isArray(value[field]) ? value[field].filter(x => typeof x === 'string').join(' · ') : typeof value[field] === 'string' ? value[field] : '').filter(Boolean) : [];
@@ -64,14 +69,32 @@ export function completeDirectorCards(source) {
   return cards;
 }
 
-export function renderDirectorLive(log, { tasksOnly = false } = {}) {
+export function directorPreviewPlan(log) {
+  if (!log || log.status !== 'loading') return null;
+  const plan = { _streamPreview: true };
+  for (const card of completeDirectorCards(log.response)) {
+    if (OBJECT_FIELDS.has(card.field)) plan[card.field] = card.value;
+    else (plan[card.field] ||= []).push(card.value);
+  }
+  return plan;
+}
+
+// Used only by the world-map's read-only streaming surface. Other pages reuse
+// their ordinary field renderers, without an extra progress card or write actions.
+export function renderDirectorLive(log, { fields = Object.keys(FIELDS), tasksOnly = false } = {}) {
   if (!log || log.status === 'success') return '';
-  const cards = completeDirectorCards(log.response).filter(card => !tasksOnly || ['quests','chain_reactions'].includes(card.field));
-  return `<section class="sd-card sd-director-live" data-live-log="${escape(log.id)}">
-    <div class="sd-field-head"><h3>${log.status === 'loading' ? '正在推演' : '本次未完整完成'}</h3><button type="button" class="sd-btn sd-director-log" data-log-id="${escape(log.id)}">查看本次原文</button></div>
-    <p class="sd-muted">${escape(log.error || (cards.length ? '已收到的完整条目如下；尚未写入当前结果或暗线。' : '正在接收回复；完整条目到达后逐卡显示。'))}</p>
-    <div class="sd-live-cards">${cards.map(card => `<article class="sd-lib-row"><div class="sd-lib-main"><small class="sd-muted">${escape(card.label)}</small>${card.lines.map((line, i) => i === 0 ? `<h4>${escape(line)}</h4>` : `<p>${escape(line)}</p>`).join('')}</div></article>`).join('')}</div>
-  </section>`;
+  const cards = completeDirectorCards(log.response).filter(card => fields.includes(card.field) && (!tasksOnly || ['quests','chain_reactions'].includes(card.field)));
+  return [...new Set(cards.map(card => card.field))].map(field => `<section class="sd-card sd-plan-section"><h3>${escape(FIELDS[field][0])}</h3>${cards.filter(card => card.field === field).map(card => `<article class="sd-lib-row"><div class="sd-lib-main">${card.lines.map((line, i) => i === 0 ? `<h4>${escape(line)}</h4>` : `<p>${escape(line)}</p>`).join('')}</div></article>`).join('')}</section>`).join('');
+}
+
+export function modelFailureText(log) {
+  const info = log.completion;
+  const failed = ['error', 'cancelled'].includes(log.status) || info?.interrupted;
+  if (!failed) return log.error || '';
+  const reason = info?.finishReason;
+  const finish = reason && !['stop', 'end_turn', 'completed'].includes(reason)
+    ? `结束原因：${reason}` : info?.interrupted ? '回复未完整完成。' : '';
+  return [...new Set([log.error || (log.status === 'cancelled' ? '本次推演已停止。' : '本次推演未完成。'), finish].filter(Boolean))].join('\n');
 }
 
 export function parseDirectorFinal(raw) {
@@ -104,7 +127,7 @@ export function renderModelDiagnostics(log) {
   return `${memoryLabel ? `<p class="sd-muted sd-memory-notice">${escape(memoryLabel)}</p>` : ''}
     ${memoryCodes.length ? `<details><summary>记忆核对详情</summary><pre class="sd-term">${escape(memoryCodes.join('\n'))}</pre></details>` : ''}
     ${qualityText ? `<p class="sd-muted sd-creative-quality">本次内容未完整：${escape(qualityText)}</p>` : ''}
-    ${info ? `<p class="sd-muted">结束原因：${escape(info.finishReason || '渠道未提供')}${info.interrupted ? ' · 未完整完成' : ''}${info.compatibility ? ` · ${escape(info.compatibility)}` : ''}</p>` : ''}
+    ${info?.compatibility ? `<p class="sd-muted">${escape(info.compatibility)}</p>` : ''}
     ${info?.rawTransport ? `<details><summary>未解析的原始响应片段</summary><pre class="sd-term">${escape(info.rawTransport)}</pre></details>` : ''}
     <details class="sd-log-reasoning" ${log.reasoning ? '' : 'hidden'}><summary>渠道返回的推理内容</summary><pre class="sd-term sd-term-reasoning">${escape(log.reasoning || '')}</pre></details>
     ${log.repairResponse || log.repairError ? `<div class="sd-log-cap">定向补写（独立回复，不拼入首轮原文）</div><pre class="sd-term">${escape(log.repairResponse || log.repairError)}</pre>` : ''}`;
@@ -113,12 +136,22 @@ export function renderModelDiagnostics(log) {
 export function paintModelLog(root, log, renderEntry) {
   if (!root) return;
   const entry = [...root.querySelectorAll('.sd-log-entry')].find(node => node.dataset.acc === `log-${log.id}`);
+  if (!entry) return;
+  if (!entry.open) {
+    if (renderEntry && log.status !== 'loading') {
+      const template = entry.ownerDocument.createElement('template'); template.innerHTML = renderEntry(log, 0, false);
+      const summary = template.content.firstElementChild?.querySelector('summary');
+      if (summary) entry.querySelector('summary').innerHTML = summary.innerHTML;
+    }
+    return;
+  }
   const request = entry?.querySelector('.sd-term-request');
-  if (request && log.request && request.textContent !== log.request) request.textContent = log.request;
+  if (request && request._rawText !== log.request) { request.textContent = log.request || '暂无'; request._rawText = log.request; }
   const pre = entry?.querySelector('.sd-term-response');
-  if (pre) {
+  if (pre && pre._rawText !== log.response) {
     const follow = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24, top = pre.scrollTop;
     pre.textContent = log.response || '';
+    pre._rawText = log.response;
     pre.scrollTop = follow ? pre.scrollHeight : top;
   }
   const thoughts = entry?.querySelector('.sd-term-reasoning');

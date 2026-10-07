@@ -21,7 +21,7 @@ function between(startText, endText) {
   assert.ok(start >= 0 && end > start, `Missing actual event block ${startText}`);
   return entry.slice(start, end);
 }
-const renderers = ['renderDashboardTab', 'renderDirectorMemoryReview', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
+const renderers = ['directorDisplayPlan', 'renderDashboardTab', 'renderDirectorMemoryReview', 'bindDirectorMemoryReview', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
   'renderCastWorldFront', 'renderPlanSectionFold', 'renderRelationUndercurrentsCard', 'renderWorldChatterCard',
   'renderNoPlan', 'renderItemList', 'renderItemCard', 'renderItemChips', 'renderInjectBadge', 'renderInjectDock',
   'renderHeroActions', 'renderGenerateRow', 'renderHistorySection', 'renderInjectSections', 'renderDirectorSettingsTab']
@@ -29,7 +29,7 @@ const renderers = ['renderDashboardTab', 'renderDirectorMemoryReview', 'renderDi
 const switchEvents = between("  root.querySelector('.sd-parallel-scene-enabled')?.addEventListener", "  root.querySelector('.sd-geopolitics-enabled')?.addEventListener");
 const draftEvents = between("  root.querySelectorAll('.sd-inject').forEach", '  // 写入勾选持久化');
 const assets = new Set(['qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js',
-  'qianmu-storyboard-utils.js', 'qianmu-main-tabs.js', 'qianmu-text-collection-floor.css']);
+  'qianmu-storyboard-utils.js', 'qianmu-main-tabs.js', 'qianmu-director-live.js', 'qianmu-text-collection-floor.css']);
 const origin = 'https://qianmu.test';
 const checks = [], failures = [], screenshots = [], pageErrors = [], blocked = [];
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || 'chrome', headless: true });
@@ -59,7 +59,7 @@ try {
   await page.addStyleTag({ content: css });
   await page.addStyleTag({ content: skin });
   await page.evaluate(async ({ renderers, switchEvents, draftEvents }) => {
-    Object.assign(window, await import('/qianmu-storyboard-utils.js'), await import('/qianmu-main-tabs.js'));
+    Object.assign(window, await import('/qianmu-storyboard-utils.js'), await import('/qianmu-main-tabs.js'), await import('/qianmu-director-live.js'));
     const theme = await import('/qianmu-theme-surfaces.js'), icons = await import('/qianmu-icon-renderer.js');
     const long = '他将交接记录重新对照，发现同一件事在两位同事的描述里有不同的侧重。'.repeat(16)
       + '\n' + 'long_unbroken_reference_'.repeat(18);
@@ -80,7 +80,7 @@ try {
     window.qaChat = []; window.qaStore = { history: [] };
     window.qaMemoryText = '【已保存的故事记忆】\n<script>这里只是原文</script>\n' + long;
     Object.assign(window, {
-      settings: structuredClone(baseSettings), directorMemoryInspection: null, busy: false, editorView: null, worldPage: 'front', chatterExpanded: true,
+      settings: structuredClone(baseSettings), directorMemoryInspection: null, directorLiveLog: null, busy: false, editorView: null, worldPage: 'front', chatterExpanded: true,
       injectSelection: new Map(), saveCalls: [], toastMessages: [], draftCalls: [], qaCloseCalls: 0,
       currentPlan: () => plan, getChatStore: () => qaStore, ctx: () => ({ chat: qaChat }), getChatKey: () => 'isolated-chat', getContextItemId: item => item.title || item.name || 'fixture',
       renderDirectorWorldEntryLink: () => '', renderInjectPreview: () => '', renderBackstageBlueprintCard: () => '',
@@ -106,6 +106,7 @@ try {
         ${view === 'castworld' ? '<div class="sd-world-viewport">' : ''}<main class="sd-body">${['castworld', 'tasksnodes'].includes(view) ? `<div class="sd-cols-inner">${content}</div>` : content}</main>${view === 'castworld' ? '</div>' : ''}
         ${renderInjectDock()}</section></div>`;
       const root = document.getElementById('story-director-modal');
+      bindDirectorMemoryReview(root);
       icons.applyQianmuIcons(root);
       window.controller = theme.createQianmuThemeSurfaceController(); controller.register(root);
       controller.setTheme(themeName === 'classic' ? null : { theme: themeName, mode: 'light', accent: '#4a618f' });
@@ -189,6 +190,60 @@ try {
       }
     }
   }
+  const streamSources = ['refreshDirectorLiveUI', 'bindDirectorReadingEvents', 'renderCastWorldTab', 'applyAccState', 'renderLogEntry', 'renderLogDetail'].map(section).join('\n');
+  const streaming = await page.evaluate(async ({ streamSources }) => {
+    Object.assign(window, { MODAL_ID: 'story-director-modal', LOG_LIMIT: 5, accState: {},
+      applyQianmuIcons: () => {}, renderModal: () => mount(activeTab, 'glass'),
+      LOG_STATUS_LABELS: { loading: '生成中', success: '成功', error: '失败', cancelled: '已取消', none: '状态未知' },
+      LOG_KIND_LABELS: { director: '推演', theater: '小剧场' }, infoTag: value => `<span>${htmlEscape(value)}</span>` });
+    (0, eval)(streamSources);
+    settings = structuredClone(baseSettings); busy = true;
+    const raw = JSON.stringify({ story_status: { title: '独立的新一幕', summary: '已发生的新变化。' },
+      quests: [{ title: '际遇专属', description: '邮差带来了退回的新信。' }],
+      character_dynamics: [{ title: '角色专属', content: '同事已将调班签字递了过去。' }],
+      chain_reactions: [{ spark: '涟漪专属', chain: '停运 → 改道' }],
+      parallel_scene: { title: '番外专属', content: '另一种已展开的片刻。' } });
+    directorLiveLog = { id: 'stream-qa', status: 'loading', response: raw.slice(0, -1), request: 'X'.repeat(1400000) };
+    const old = JSON.stringify(plan), checks = {};
+    for (const view of ['dashboard', 'tasksnodes', 'castworld']) {
+      mount(view, 'glass');
+      const root = document.getElementById(MODAL_ID), body = root.querySelector('.sd-body');
+      const saved = body.innerHTML; body.innerHTML = `<div data-director-live-host>${saved}</div>`;
+      const host = body.firstElementChild;
+      refreshDirectorLiveUI();
+      const text = host.textContent;
+      checks[`${view}: correct field placement`] = view === 'dashboard' ? text.includes('番外专属') && !text.includes('际遇专属') && !text.includes('角色专属')
+        : view === 'tasksnodes' ? text.includes('际遇专属') && text.includes('涟漪专属') && !text.includes('番外专属') && !text.includes('角色专属')
+        : text.includes('角色专属') && !text.includes('际遇专属') && !text.includes('番外专属');
+      checks[`${view}: no progress card or premature actions`] = !host.querySelector('.sd-director-live,.sd-select-inject,.sd-inject,.sd-world-media-entry') && !text.includes('正在接收回复');
+      const first = host.firstElementChild;
+      directorLiveLog.response += ' ';
+      refreshDirectorLiveUI();
+      checks[`${view}: incomplete delta keeps DOM and scroll`] = first === host.firstElementChild;
+      if (view === 'castworld') {
+        const shell = host.querySelector('.sd-world-flip-shell');
+        directorLiveLog.response = JSON.stringify({ ...JSON.parse(raw), npc_updates: [{ name: '新闭合条目', content: '已经做出的另一项安排。' }] });
+        refreshDirectorLiveUI();
+        checks['world page shell retains edge and gesture ownership'] = shell === host.querySelector('.sd-world-flip-shell') && host.textContent.includes('新闭合条目');
+      }
+    }
+    checks['preview never alters committed plan'] = JSON.stringify(plan) === old;
+    directorLiveLog.status = 'error';
+    refreshDirectorLiveUI();
+    checks['failed background completion restores saved page'] = document.querySelector('.sd-body').textContent.includes('留在桌边的两份记录') && !document.querySelector('.sd-body').textContent.includes('新闭合条目');
+    const log = { ...directorLiveLog, status: 'cancelled', error: '用户中断', completion: { interrupted: true, finishReason: 'length' } };
+    directorLiveLog = null; directorMemoryInspection = null; settings.logHistory = [log]; settings.logOpenState = {};
+    const root = document.getElementById(MODAL_ID); root.querySelector('.sd-body').innerHTML = renderLogEntry(log, 0);
+    const entry = root.querySelector('.sd-log-entry'); applyAccState(root);
+    checks['collapsed 1.4M-character request stays outside DOM'] = root.innerHTML.length < 15000 && !entry.querySelector('pre');
+    entry.querySelector('summary').click(); await new Promise(resolve => setTimeout(resolve, 20));
+    checks['explicit log open preserves entire original request'] = entry.querySelector('.sd-term-request')?.textContent === log.request;
+    checks['interruption reason stays in failure panel'] = entry.querySelector('.sd-log-failure')?.textContent.includes('结束原因：length') && !entry.querySelector('.sd-log-diagnostics')?.textContent.includes('结束原因');
+    entry.querySelector('summary').click(); await new Promise(resolve => setTimeout(resolve, 20));
+    checks['closing log releases heavyweight DOM without deleting source'] = !entry.querySelector('pre') && log.request.length === 1400000;
+    return checks;
+  }, { streamSources });
+  for (const [label, value] of Object.entries(streaming)) check(value, label);
   check(pageErrors.length === 0, 'no page errors', pageErrors);
   check(blocked.length === 0, 'no external or unlisted requests attempted', blocked);
   console.log(JSON.stringify({ passed: checks.length, matrix: { themes: ['classic', 'editorial', 'glass'], widths: [320, 393, 1280], views: ['dashboard', 'tasksnodes', 'castworld', 'settings'] }, failures, screenshots, blocked, pageErrors,

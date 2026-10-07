@@ -13,6 +13,7 @@ const between = (start, end) => {
     return entry.slice(begin, finish);
 };
 const fingerprintSource = between('function directorSourceFingerprint()', 'async function buildPrompt(');
+const itemIdentitySource = between('function getContextItemId(', 'function getContextSelectionReviewStore(');
 const promptSource = between('async function buildPrompt(', 'function buildGeopoliticsArchiveSegment(');
 
 function fixture() {
@@ -43,7 +44,7 @@ function fixture() {
         creativeSectionGuidance: () => '栏目引导', createCreativeSchema: () => '当前输出协议',
         DEFAULT_BLUEPRINT: '默认剧本', JSON_SCHEMA_TEXT: 'default schema', console,
     };
-    vm.createContext(c); vm.runInContext(fingerprintSource + '\n' + promptSource, c);
+    vm.createContext(c); vm.runInContext(itemIdentitySource + '\n' + fingerprintSource + '\n' + promptSource, c);
     return { c, context, store, settings, scan, state };
 }
 

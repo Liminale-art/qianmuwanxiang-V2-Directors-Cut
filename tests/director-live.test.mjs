@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { completeDirectorCards, renderDirectorLive, renderModelDiagnostics } from '../qianmu-director-live.js';
+import { completeDirectorCards, directorPreviewPlan, renderDirectorLive, renderModelDiagnostics, modelFailureText } from '../qianmu-director-live.js';
 
 test('only closed known top-level cards are staged; nested fields and incomplete strings never become cards',()=>{
   const first={title:'Read "{quoted}"',objective:'A\nB',extra:{quests:[{title:'must not appear'}]}};
@@ -27,8 +27,24 @@ test('duplicate fields, unknown content and empty objects cannot masquerade as v
 test('preview is read-only, escaped, leaves old plan untouched and disappears only on complete success',()=>{
   const log={id:'<unsafe>',status:'error',error:'<failure>',response:'{"quests":[{"title":"<img>","objective":"正文"}],"npc_updates":[{"name":"角色"}]}'};
   const before=JSON.stringify(log),html=renderDirectorLive(log),tasks=renderDirectorLive(log,{tasksOnly:true});
-  assert.equal(JSON.stringify(log),before);assert.match(html,/&lt;img&gt;/);assert.match(html,/&lt;failure&gt;/);assert.doesNotMatch(html,/<img>|data-inject|sd-lib-load/);
+  assert.equal(JSON.stringify(log),before);assert.match(html,/&lt;img&gt;/);assert.doesNotMatch(html,/failure|正在推演|本次未完整完成|<img>|data-inject|sd-lib-load/);
   assert.doesNotMatch(tasks,/其他人物动向/);assert.equal(renderDirectorLive({...log,status:'success'}),'');
+});
+
+test('all closed creative fields project into ordinary sections without adopting or mutating the raw log', () => {
+  const log = { status: 'loading', response: '{"story_status":{"title":"next"},"world_chatter":[{"text":"news"}],"quests":[{"title":"closed"},{"title":"unfinished' };
+  const before = JSON.stringify(log), plan = directorPreviewPlan(log);
+  assert.equal(plan.story_status.title, 'next'); assert.equal(plan.world_chatter[0].text, 'news');
+  assert.equal(plan.quests.length, 1); assert.equal(plan._streamPreview, true);
+  assert.equal(JSON.stringify(log), before); assert.equal(directorPreviewPlan({ ...log, status: 'success' }), null);
+  for (const status of ['error', 'cancelled']) assert.equal(directorPreviewPlan({ ...log, status }), null);
+});
+
+test('failure and interruption reasons belong to the failure panel, never below returned text', () => {
+  const log = { status: 'error', error: '回复截断', completion: { finishReason: 'length', interrupted: true } };
+  assert.match(modelFailureText(log), /回复截断\n结束原因：length/);
+  assert.doesNotMatch(renderModelDiagnostics(log), /结束原因|未完整完成|渠道未提供/);
+  assert.match(modelFailureText({ status: 'cancelled' }), /已停止/);
 });
 
 test('new creative fields use current names and stage object extras only after their own closing delimiter',()=>{

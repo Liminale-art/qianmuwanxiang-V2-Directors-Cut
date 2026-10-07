@@ -77,6 +77,21 @@ test('English output protocol keeps narrative language, Chinese enums and establ
   assert.match(shape.quests[0].inject_prompt, /do not accept or act on behalf of USER/);
 });
 
+test('output descriptions request concrete progression and explicit multi-CHAR subjects without changing quotas', () => {
+  const schema = createCreativeSchema({ ...FULL, characterNames: ['阿岚', '老周'] }), shape = parseShape(schema);
+  assert.match(shape.quests[0].description, /new actionable opening beyond the source stopping point/);
+  assert.match(shape.character_dynamics[0].name, /never USER or an alias; group chats may include several CHARs/);
+  assert.match(shape.character_dynamics[0].content, /concrete action, resulting condition, or consequential next step/);
+  assert.match(shape.npc_updates[0].name, /excluding USER and every CHAR/);
+  assert.match(shape.npc_updates[0].hidden_agenda, /Leave blank unless/);
+  assert.match(shape.chain_reactions[0].chain, /downstream consequence not yet present in the narrative/);
+  assert.match(schema, /Confirmed CHAR names for this request: \["阿岚","老周"\]/);
+  assert.match(schema, /They may appear in an interaction without becoming its subject/);
+  assert.match(schema, /character_dynamics \(此间一人\): at least 2/);
+  assert.match(schema, /npc_updates \(其他人物动向\): at least 3/);
+  assert.match(schema, /Write candidates concretely without turning them into mainline facts/);
+});
+
 test('complete core and all enabled optional sections pass without a world echo quota', () => {
   assert.deepEqual(validateCreativePlan(complete(), FULL), []);
   assert.deepEqual(validateCreativePlan(complete(OFF), OFF), []);
@@ -119,6 +134,41 @@ test('same event across fields and persistent valid states are not forcibly repl
   plan.quests[0].description = shared;
   assert.deepEqual(validateCreativePlan(plan, OFF), []);
   assert.deepEqual(pruneInvalidCreativeItems(plan, OFF).plan, normalizeCreativeSections(plan));
+});
+
+test('explicit character subjects stay separate from USER and NPCs across fields, including group chats', () => {
+  const options = { ...OFF, characterNames: ['阿岚', '老周'], personaNames: ['访客', 'Guest'] };
+  const plan = complete(OFF);
+  plan.character_dynamics[0].name = '阿岚';
+  plan.character_dynamics[1].name = ' 老周 ';
+  assert.deepEqual(validateCreativePlan(plan, options), []);
+  for (const field of ['character_dynamics', 'npc_updates']) for (const subject of ['访客', ' Guest ', 'USER', '{{user}}']) {
+    const bad = structuredClone(plan); bad[field][0].name = subject;
+    const issue = validateCreativePlan(bad, options).find(item => item.field === field && item.reason.includes('USER'));
+    assert.deepEqual(issue.indices, [0], `${field}: ${subject}`);
+    assert.equal(pruneInvalidCreativeItems(bad, options).plan[field].length, plan[field].length - 1);
+    assert.equal(bad[field].length, plan[field].length, 'input history remains untouched');
+  }
+  for (const subject of ['阿岚', '老周']) {
+    const bad = structuredClone(plan); bad.npc_updates[1].name = subject;
+    assert.ok(validateCreativePlan(bad, options).some(issue => issue.field === 'npc_updates' && issue.reason.includes('此间一人')));
+  }
+  const wrongSection = structuredClone(plan); wrongSection.character_dynamics[0].name = '邻居0';
+  assert.ok(validateCreativePlan(wrongSection, options).some(issue => issue.field === 'character_dynamics' && issue.reason.includes('CHAR')));
+});
+
+test('role checks use explicit subject data, never guess from titles, mentions or literary wording', () => {
+  const plan = complete(OFF), options = { ...OFF, characterNames: ['阿岚'], personaNames: ['访客'] };
+  plan.character_dynamics[0] = { name: '阿岚', title: '访客与老周', content: '阿岚给访客留了口信。他有所察觉，但尚不能确定缘由，决定先核对证据。' };
+  plan.character_dynamics[1] = { title: '访客眼中的巷口', content: '自定义旧格式没有明确人物主体，不能仅凭标题判定。' };
+  plan.npc_updates[0].current_goal = '和阿岚、访客分别谈过后，开始检查窗台。';
+  assert.deepEqual(validateCreativePlan(plan, options), []);
+  assert.deepEqual(pruneInvalidCreativeItems(plan, options).plan, normalizeCreativeSections(plan));
+  const unknownGroup = { ...options, characterName: '群聊名称', characterNames: [] };
+  plan.character_dynamics[1].name = '老周';
+  assert.deepEqual(validateCreativePlan(plan, unknownGroup), [], 'an unavailable group roster does not become a false singleton');
+  const single = { ...OFF, characterName: '阿岚' };
+  assert.ok(validateCreativePlan(plan, single).some(issue => issue.field === 'character_dynamics'));
 });
 
 test('range ceilings are reported but qualified records are never arbitrarily truncated', () => {

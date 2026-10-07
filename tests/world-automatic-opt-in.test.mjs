@@ -45,3 +45,13 @@ test('only a successfully adopted new director plan dispatches the automatic wor
   for(const name of ['init','renderStoryboardProductionSources','prepareDirectorWorldEntryLinks','refreshDirectorProductionPackets'])assert.doesNotMatch(section(name),/storyboardQueueNewWorldPlan/);
   assert.match(section('resetDirectorNarrativeBridge'),/storyboardResetWorldAutomatic\(\)/);
 });
+
+test('world bridge returns before loading image features when its master or own switch is off',async()=>{
+  for(const enabled of [false,true]){
+    const plan={},store={plan},state={enabled,directorBridge:{worldSideShotsEnabled:!enabled,worldAutoGenerate:true},automation:{autoGenerate:true}};
+    const context=vm.createContext({settings:{enabled:true},storyboardState:()=>state,storyboardWorldAutomaticEpoch:0,getChatStore:()=>store,
+      featureRuntime:{load:()=>assert.fail('no image feature is allowed')},refreshDirectorProductionPackets:()=>assert.fail('no image material is allowed')});
+    vm.runInContext(section('storyboardQueueNewWorldPlan'),context);
+    assert.equal(await context.storyboardQueueNewWorldPlan(plan,{store,chatKey:'chat',namespace:'st-user:fixture'}),false);
+  }
+});

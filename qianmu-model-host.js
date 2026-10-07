@@ -18,11 +18,27 @@ export async function callHostChatModel({ context, messages, stream = false, max
   if (!hostChatModelAvailable(context)) throw new Error('当前 ST 连接没有独立聊天补全接口，无法启用此流式路径');
   const settings = structuredClone(context.chatCompletionSettings), model = context.getChatCompletionModel();
   const overrides = { model, messages: structuredClone(messages), stream: Boolean(stream) };
-  if (Number(maxTokens) > 0) overrides.max_tokens = Number(maxTokens);
-  if (Number.isFinite(temperature)) overrides.temperature = temperature;
-  const payload = await context.ChatCompletionService.presetToGeneratePayload(settings, {}, overrides);
+  // Apply Qianmu's limits before official model-specific conversion (for example,
+  // max_completion_tokens and temperature omission), not over the finished payload.
+  const presetOverrides = {};
+  if (Number(maxTokens) > 0) presetOverrides.openai_max_tokens = Number(maxTokens);
+  if (Number.isFinite(temperature)) presetOverrides.temperature = temperature;
+  const payload = await context.ChatCompletionService.presetToGeneratePayload(settings, presetOverrides, overrides);
   await check();
   if (!payload || !Array.isArray(payload.messages) || !payload.model || !payload.chat_completion_source) throw new Error('ST 未提供完整模型配置，未发送请求');
+  // Borrow transport/sampling settings only. Host preset factories must not
+  // append their own prompt, worldbook, chat, or instruction messages here.
+  const convertedMessages = payload.messages;
+  payload.messages = structuredClone(messages).map((message, index) => {
+    // ST's official o1 adapter converts system to user. Preserve that narrow
+    // transport conversion only when order, length and content are unchanged.
+    const converted = convertedMessages[index];
+    if (/^(openai\/)?o1/.test(model) && convertedMessages.length === messages.length
+      && message.role === 'system' && converted?.role === 'user' && converted.content === message.content) {
+      message.role = 'user';
+    }
+    return message;
+  });
   payload.stream = Boolean(stream);
   const endpoint = '/api/backends/chat-completions/generate';
   const origin = globalThis.location?.origin;
