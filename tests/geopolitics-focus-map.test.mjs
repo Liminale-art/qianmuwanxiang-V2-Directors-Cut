@@ -33,6 +33,18 @@ assert.doesNotMatch(css, /@keyframes sd-geo-event-travel/);
 assert.match(css, /\.sd-geo-event-pulse \{ stroke-dasharray: none; \}/);
 assert.match(css, /prefers-reduced-motion:[\s\S]*sd-geo-event-pulse/);
 
+// 关系亮段沿原曲线流动；实线、事件柔光、方向箭头与节点锚点保持原有职责。
+assert.match(source, /class="sd-geo-edge-motion" d="\$\{d\}" pathLength="100"/);
+assert.match(source, /const flowDelay = -\(geoStableHash\(key\) % 90\) \/ 10/);
+assert.match(css, /\.sd-geo-edge-motion\s*\{[^}]*stroke-dasharray:\s*10 90;[^}]*animation:\s*sd-geo-edge-travel 9s linear infinite/);
+assert.match(css, /@keyframes sd-geo-edge-travel \{ to \{ stroke-dashoffset: -100; \} \}/);
+assert.match(css, /prefers-reduced-motion:[\s\S]*\.sd-geo-edge-motion \{ display: none; \}/);
+
+// 糖果色只属于日间星图；状态标签使用独立深墨，夜间回退原有语义色。
+assert.match(css, /#story-director-modal:not\(\.sd-theme-dark\):not\(\[data-qm-mode="dark"\]\) \.sd-geo-stage,\s*#story-director-modal\[data-qm-mode="light"\] \.sd-geo-stage \{[^}]*--sd-geo-conflict: #e15a84;[^}]*--sd-geo-ally-ink: #126d5e;/);
+assert.match(css, /\.sd-geo-node-rising \.sd-geo-tag-text \{ fill: var\(--sd-geo-ally-ink, var\(--sd-geo-ally\)\); \}/);
+assert.match(css, /\.sd-geo-d-trend-turbulent \{ color: var\(--sd-geo-conflict-ink, var\(--sd-geo-conflict\)\); \}/);
+
 // 本单元只调整可视化，不得改写原有世界格局的生成、合并与注入入口。
 for (const contract of ['mergeGeopolitics', 'buildGeopoliticsDigest', 'buildGeopoliticsArchiveSegment']) {
   assert.match(source, new RegExp(`function ${contract}`));

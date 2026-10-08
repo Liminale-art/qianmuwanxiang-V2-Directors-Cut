@@ -1,5 +1,5 @@
 const FIELDS = {
-  story_status: ['推演方向', ['title', 'summary', 'current_arc']],
+  story_status: ['命运之脉', ['title', 'summary', 'current_arc']],
   quests: ['预演', ['title', 'content', 'description', 'trigger']],
   character_dynamics: ['此间一人', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
   npc_updates: ['其他人物动向', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
@@ -7,7 +7,7 @@ const FIELDS = {
   chain_reactions: ['涟漪', ['spark', 'chain', 'impact']],
   relation_undercurrents: ['关系暗涌', ['title', 'parties', 'surface', 'undercurrent', 'tension', 'content']],
   parallel_scene: ['未映之幕', ['title', 'content']],
-  interlude: ['世界论坛', ['title', 'owner', 'content']],
+  interlude: ['幕间拾趣', ['title', 'owner', 'content']],
   world_chatter: ['尘寰群生', ['who', 'where', 'text']],
   factions: ['世界格局', ['name', 'standing', 'agenda']],
   faction_relations: ['势力关系', ['a', 'b', 'kind', 'note']],
@@ -88,8 +88,10 @@ export function completeDirectorCards(source) {
 }
 
 export function directorPreviewPlan(log) {
-  if (!log || log.status !== 'loading') return null;
-  const plan = { _streamPreview: true };
+  if (!log || !(log.status === 'loading' || (['error', 'cancelled'].includes(log.status) && log.request))) return null;
+  const plan = { _streamPreview: true, _generation: {
+    status: log.status, completion: { finishReason: log.completion?.finishReason, interrupted: log.completion?.interrupted }, quality: log.quality, creativeOptions: log.creativeOptions,
+  } };
   for (const card of completeDirectorCards(log.response)) {
     if (OBJECT_FIELDS.has(card.field)) plan[card.field] = card.value;
     else (plan[card.field] ||= []).push(card.value);
@@ -97,12 +99,55 @@ export function directorPreviewPlan(log) {
   return plan;
 }
 
+const qualityIssues = log => Array.isArray(log?.quality) ? log.quality : Array.isArray(log?.quality?.issues) ? log.quality.issues : [];
+
+export function directorSectionEnabled(plan, field, fallback = {}) {
+  const options = plan?._generation?.creativeOptions || fallback;
+  if (field === 'parallel_scene') return options.parallelSceneEnabled !== false;
+  if (field === 'interlude') return options.interludeEnabled !== false;
+  if (field === 'world_chatter') return Boolean(options.worldChatterEnabled);
+  if (['factions', 'faction_relations', 'world_events'].includes(field)) return Boolean(options.geopoliticsEnabled);
+  return true;
+}
+
+// Small in-place status, derived from the same recorded outcome as the log.
+// Never infer a token limit or model refusal from an absent section alone.
+export function directorSectionStatus(plan, field) {
+  const generation = plan?._generation;
+  if (!generation || !['error', 'cancelled'].includes(generation.status)) return '';
+  const value = plan[field], hasContent = Array.isArray(value) ? value.length > 0 : Boolean(value);
+  const affected = qualityIssues(generation).some(issue => issue?.field === field);
+  if (!affected && (generation.quality || hasContent || ['faction_relations', 'world_updates'].includes(field))) return '';
+  if (generation.status === 'cancelled') return '已停止，本栏未完整生成。详情见日志。';
+  if (/^(length|max_tokens|max_output_tokens)$/i.test(generation.completion?.finishReason || '')) return '回复截断，本栏未完整生成。详情见日志。';
+  return hasContent ? '本栏返回不完整，已收到内容保留供查阅。详情见日志。' : '本栏未生成成功。详情见日志。';
+}
+
+export function directorQualitySummary(log) {
+  const fields = new Map();
+  for (const issue of qualityIssues(log)) {
+    if (!issue || !Object.hasOwn(FIELDS, issue.field)) continue;
+    const previous = fields.get(issue.field) || { missing: 0, reason: '' };
+    fields.set(issue.field, { missing: Math.max(previous.missing, Number.isInteger(issue.missing) ? issue.missing : 0), reason: previous.reason || (typeof issue.reason === 'string' ? issue.reason : '') });
+  }
+  return [...fields].map(([field, issue]) => `${FIELDS[field][0]}${issue.missing > 0 ? `缺 ${issue.missing} ${['parallel_scene', 'interlude'].includes(field) ? '张' : '条'}` : `：${issue.reason || '内容尚未符合要求'}`}`).join('；');
+}
+
 // Used only by the world-map's read-only streaming surface. Other pages reuse
 // their ordinary field renderers, without an extra progress card or write actions.
 export function renderDirectorLive(log, { fields = Object.keys(FIELDS), tasksOnly = false } = {}) {
   if (!log || log.status === 'success') return '';
-  const cards = completeDirectorCards(log.response).filter(card => fields.includes(card.field) && (!tasksOnly || ['quests','chain_reactions'].includes(card.field)));
-  return [...new Set(cards.map(card => card.field))].map(field => `<section class="sd-card sd-plan-section"><h3>${escape(FIELDS[field][0])}</h3>${cards.filter(card => card.field === field).map(card => `<article class="sd-lib-row"><div class="sd-lib-main">${card.lines.map((line, i) => i === 0 ? `<h4>${escape(line)}</h4>` : `<p>${escape(line)}</p>`).join('')}</div></article>`).join('')}</section>`).join('');
+  const plan = directorPreviewPlan(log);
+  const cards = completeDirectorCards(log.response).filter(card => fields.includes(card.field) && (!tasksOnly || ['quests','chain_reactions'].includes(card.field))
+    && (!log.creativeOptions || directorSectionEnabled(plan, card.field, log.creativeOptions)));
+  const shown = new Set(cards.map(card => card.field));
+  if (plan && log.status !== 'loading') for (const field of fields) {
+    if ((!tasksOnly || ['quests', 'chain_reactions'].includes(field)) && directorSectionEnabled(plan, field) && directorSectionStatus(plan, field)) shown.add(field);
+  }
+  return [...shown].map(field => {
+    const status = directorSectionStatus(plan, field);
+    return `<section class="sd-card sd-plan-section"><h3>${escape(FIELDS[field][0])}</h3>${status ? `<p class="sd-muted sd-director-section-notice">${escape(status)}</p>` : ''}${cards.filter(card => card.field === field).map(card => `<article class="sd-lib-row"><div class="sd-lib-main">${card.lines.map((line, i) => i === 0 ? `<h4>${escape(line)}</h4>` : `<p>${escape(line)}</p>`).join('')}</div></article>`).join('')}</section>`;
+  }).join('');
 }
 
 export function modelFailureText(log) {
@@ -130,25 +175,14 @@ export function renderModelDiagnostics(log) {
   const memoryLabel = { partial: '部分记忆可用，本次仅采用已核对内容。', unverified: '记忆暂无法核对，本次未采用。', unsupported: '当前记忆版本尚未适配，本次未采用。' }[log.memory?.status];
   const memoryCodes = memoryLabel && Array.isArray(log.memory?.diagnostics)
     ? log.memory.diagnostics.filter(item => typeof item?.code === 'string').map(item => `${item.code}${typeof item.scope === 'string' && item.scope ? ` · ${item.scope}` : ''}`) : [];
-  const issues = Array.isArray(log.quality) ? log.quality : Array.isArray(log.quality?.issues) ? log.quality.issues : [];
-  const qualityFields = new Map();
-  for (const issue of issues) {
-    if (!issue || typeof issue.field !== 'string') continue;
-    const previous = qualityFields.get(issue.field) || { missing: 0, reason: '' };
-    const missing = Number.isInteger(issue.missing) && issue.missing > 0 ? issue.missing : 0;
-    qualityFields.set(issue.field, { missing: Math.max(previous.missing, missing), reason: previous.reason || (typeof issue.reason === 'string' ? issue.reason : '') });
-  }
-  const qualityText = [...qualityFields].map(([field, issue]) => {
-    const label = FIELDS[field]?.[0] || ({ world_chatter: '尘寰群生', factions: '世界格局·组织', faction_relations: '世界格局·关系', world_events: '世界格局·局势', limitations: '受限说明' })[field] || '其他栏目';
-    return `${label}${issue.missing ? `缺 ${issue.missing} ${OBJECT_FIELDS.has(field) ? '张' : '条'}` : `：${issue.reason || '内容尚未符合要求'}`}`;
-  }).join('；');
+  const qualityText = directorQualitySummary(log);
   return `${memoryLabel ? `<p class="sd-muted sd-memory-notice">${escape(memoryLabel)}</p>` : ''}
     ${memoryCodes.length ? `<details><summary>记忆核对详情</summary><pre class="sd-term">${escape(memoryCodes.join('\n'))}</pre></details>` : ''}
-    ${qualityText ? `<p class="sd-muted sd-creative-quality">本次内容未完整：${escape(qualityText)}</p>` : ''}
+    ${qualityText ? `<p class="sd-muted sd-creative-quality">本次内容未完整：${escape(qualityText)}。${log.repairResponse || log.repairError ? '处理详情见历史补写记录。' : '未自动补写。'}</p>` : ''}
     ${info?.compatibility ? `<p class="sd-muted">${escape(info.compatibility)}</p>` : ''}
     ${info?.rawTransport ? `<details><summary>未解析的原始响应片段</summary><pre class="sd-term">${escape(info.rawTransport)}</pre></details>` : ''}
     <details class="sd-log-reasoning" ${log.reasoning ? '' : 'hidden'}><summary>渠道返回的推理内容</summary><pre class="sd-term sd-term-reasoning">${escape(log.reasoning || '')}</pre></details>
-    ${log.repairResponse || log.repairError ? `<div class="sd-log-cap">定向补写（独立回复，不拼入首轮原文）</div><pre class="sd-term">${escape(log.repairResponse || log.repairError)}</pre>` : ''}`;
+    ${log.repairResponse || log.repairError ? `<div class="sd-log-cap">历史补写记录 · 独立模型回复</div><pre class="sd-term">${escape(log.repairResponse || log.repairError)}</pre>` : ''}`;
 }
 
 export function paintModelLog(root, log, renderEntry) {

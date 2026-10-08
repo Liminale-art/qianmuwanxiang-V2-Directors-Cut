@@ -11,7 +11,7 @@ const FULL = Object.freeze({ worldChatterEnabled: true, geopoliticsEnabled: true
 const items = (field, make) => Array.from({ length: CREATIVE_COUNTS[field].min }, (_, i) => make(i));
 function complete(options = FULL) {
   const result = {
-    story_status: { title: '街角的新日子', directions: items('story_status', i => ({ title: `远景${i}`, content: `第${i}片旧城的工会改制会逐步影响下一季的工作选择。` })) },
+    story_status: { title: '街角的新日子', directions: items('story_status', i => ({ horizon: i ? 'far' : 'near', title: `脉络${i}`, content: `第${i}片旧城的工会改制会逐步影响下一季的工作选择。` })) },
     quests: items('quests', i => ({ subject: `店铺${i}`, title: `来信${i}`, description: `第${i}家店铺的伙计带来了未取的回信，正等人认领。`, trigger: '听见招呼后可以询问' })),
     character_dynamics: items('character_dynamics', i => ({ title: `抉择${i}`, content: `阿岚把第${i}份旧账暂存在抽屉，打算核清出处后再归还。` })),
     npc_updates: items('npc_updates', i => ({ name: `邻居${i}`, current_goal: `要赶在第${i}次班车离开前把旧物交到失主手中。`, next_action: `向第${i}位门卫问路。` })),
@@ -50,6 +50,10 @@ test('schema preserves stable fields, count source, enabled world shapes and one
   for (const [field, quota] of Object.entries(CREATIVE_COUNTS)) assert.match(schema, new RegExp(`${field} \\([^\n]+${quota.min}`));
   assert.deepEqual(Object.keys(shape.quests[0]), ['subject', 'title', 'description', 'trigger', 'inject_prompt']);
   assert.deepEqual(Object.keys(shape.story_status), ['title', 'current_arc', 'cycle', 'directions']);
+  assert.deepEqual(shape.story_status.directions.map(item => item.horizon), ['near', 'far']);
+  assert.match(shape.quests[0].trigger, /standalone narrative sentence/i);
+  assert.match(shape.quests[0].inject_prompt, /prose, not an instruction/);
+  assert.match(shape.interlude.title, /actual group name/);
   assert.ok(!Object.hasOwn(shape.parallel_scene, 'title'));
   assert.ok(!Object.hasOwn(shape.relation_undercurrents[0], 'user_awareness'));
 });
@@ -77,16 +81,16 @@ test('English output protocol keeps narrative language, Chinese enums and establ
   assert.match(shape.limitations[0].reason, /missing is the actual positive-integer shortfall; use limitations: \[\] when complete/);
   assert.match(schema, /reporting a shortfall does not satisfy the required count/);
   assert.match(schema, /Distinguish possibilities from established experiences/);
-  assert.match(schema, /未映之幕 and 世界论坛 are independent and have no narrative-injection fields/);
+  assert.match(schema, /未映之幕 and 幕间拾趣 are independent and have no narrative-injection fields/);
   assert.match(schema, /Exclude USER and every alias; do not invent an owner when the list is empty/);
-  assert.match(shape.quests[0].inject_prompt, /do not accept or act on behalf of USER/);
+  assert.match(shape.quests[0].inject_prompt, /no action decided for USER/);
 });
 
 test('output descriptions request concrete progression and explicit multi-CHAR subjects without changing quotas', () => {
   const schema = createCreativeSchema({ ...FULL, characterNames: ['阿岚', '老周'] }), shape = parseShape(schema);
-  assert.match(shape.quests[0].description, /new actionable opening beyond the source stopping point/);
+  assert.match(shape.quests[0].description, /new opening beyond the source stopping point/);
   assert.match(shape.character_dynamics[0].name, /never USER or an alias; group chats may include several CHARs/);
-  assert.match(shape.character_dynamics[0].content, /concrete action, resulting condition, or consequential next step/);
+  assert.match(shape.character_dynamics[0].content, /concrete action or changed conditions/);
   assert.match(shape.npc_updates[0].name, /excluding USER and every CHAR/);
   assert.match(shape.npc_updates[0].hidden_agenda, /Leave blank unless/);
   assert.match(shape.chain_reactions[0].chain, /downstream consequence not yet present in the narrative/);
@@ -312,22 +316,30 @@ test('empty and malformed inputs do not throw or gain false completeness', () =>
   }
 });
 
-test('directions enforce 2–3 distinct structured entries while preserving old status anchors', () => {
+test('directions enforce one near and one far entry while preserving old status anchors', () => {
   const plan = complete(OFF);
   plan.story_status.summary = '历史存档摘要不丢弃';
-  plan.story_status.directions.push({ title: '重复标题', content: plan.story_status.directions[0].content });
+  plan.story_status.directions.push({ horizon: 'near', title: '重复标题', content: plan.story_status.directions[0].content });
   const issues = validateCreativePlan(plan, OFF);
   assert.ok(issues.some(issue => issue.field === 'story_status' && issue.reason.includes('重复')));
   const pruned = pruneInvalidCreativeItems(plan, OFF).plan;
   assert.equal(pruned.story_status.directions.length, 2);
   assert.equal(pruned.story_status.summary, '历史存档摘要不丢弃');
   assert.equal(projectCreativeContinuity(pruned).story_status.directions[0].content, plan.story_status.directions[0].content);
-  plan.story_status.directions = Array.from({ length: 4 }, (_, i) => ({ title: `远景${i}`, content: `条件${i}会改变未来两年的选择。` }));
-  assert.ok(validateCreativePlan(plan, OFF).some(issue => issue.field === 'story_status' && issue.excess === 1));
-  assert.equal(pruneInvalidCreativeItems(plan, OFF).plan.story_status.directions.length, 4);
+  assert.equal(projectCreativeContinuity(pruned).story_status.directions[1].horizon, 'far');
+  plan.story_status.directions = Array.from({ length: 3 }, (_, i) => ({ horizon: 'near', title: `近线${i}`, content: `条件${i}会改变这次谈话。` }));
+  const sameHorizonIssues = validateCreativePlan(plan, OFF).filter(issue => issue.field === 'story_status');
+  assert.ok(sameHorizonIssues.some(issue => issue.reason.includes('各一条')));
+  assert.ok(sameHorizonIssues.some(issue => issue.missing === 1));
+  assert.equal(pruneInvalidCreativeItems(plan, OFF).plan.story_status.directions.length, 1);
+  assert.equal(plan.story_status.directions.length, 3, 'source response is not mutated');
+  plan.story_status.directions = [{ horizon: 'future', title: '未知', content: '不会擅自转成远线' }];
+  assert.ok(validateCreativePlan(plan, OFF).some(issue => issue.field === 'story_status' && issue.missing === 2));
   const legacy = { story_status: { current_stage: '旧阶段', summary: '旧摘要' } };
   assert.deepEqual(normalizeCreativeSections(legacy).story_status, legacy.story_status);
   assert.ok(validateCreativePlan(legacy, OFF).some(issue => issue.field === 'story_status' && issue.missing === 2));
+  const oldDirections = { story_status: { directions: [{ title: '旧方向', content: '未经标记的历史正文' }] } };
+  assert.deepEqual(normalizeCreativeSections(oldDirections).story_status, oldDirections.story_status, 'historical reading never invents a horizon');
 });
 
 test('preview subjects are explicit and ripple node counts do not pretend to assess literature', () => {

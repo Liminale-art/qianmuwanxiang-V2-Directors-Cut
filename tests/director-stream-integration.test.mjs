@@ -2,19 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { parseDirectorFinal, renderDirectorLive, paintModelLog, renderModelDiagnostics } from '../qianmu-director-live.js';
+import { parseDirectorFinal, renderDirectorLive, paintModelLog, renderModelDiagnostics, directorPreviewPlan, directorQualitySummary } from '../qianmu-director-live.js';
 import { normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems } from '../qianmu-creative-contract.js';
 import { isPlainObject, mergeDefaults } from '../qianmu-storyboard-utils.js';
 const entry=await fs.readFile(new URL('../index.js',import.meta.url),'utf8');
 const source=entry.slice(entry.indexOf('function makeStreamLogUpdater('),entry.indexOf('// MIGRATED to qianmu-storyboard-utils.js (commit 19)'));
 const normalizeSource=entry.slice(entry.indexOf('function normalizePlan('),entry.indexOf('// directorItemText -'));
-const qualitySource=entry.slice(entry.indexOf('function directorDedupePlan('),entry.indexOf('async function repairDirectorPlanQuality('));
+const qualitySource=entry.slice(entry.indexOf('function directorDedupePlan('),entry.indexOf('function makeStreamLogUpdater('));
 const stop=entry.slice(entry.indexOf('function stopGeneration()'),entry.indexOf('// 幕外停止：'));
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 const creativeOptions=Object.freeze({parallelSceneEnabled:false,interludeEnabled:false});
 function completePlan(){
   return {quests:Array.from({length:5},(_,i)=>({title:i?'offer '+i:'first',subject:'visitor',description:i?'a visitor brings letter '+i:'complete card'})),
-    story_status:{directions:[{title:'New routes',content:'The delivery dispute changes the regional routes.'},{title:'Old debts',content:'The accounts bring a different generation into the dispute.'}]},
+    story_status:{directions:[{horizon:'near',title:'New routes',content:'The delivery dispute changes the regional routes.'},{horizon:'far',title:'Old debts',content:'The accounts bring a different generation into the dispute.'}]},
     character_dynamics:Array.from({length:2},(_,i)=>({title:'moment '+i,content:'the character attends to letter '+i})),
     npc_updates:Array.from({length:3},(_,i)=>({name:'neighbor '+i,next_action:'collect delivery '+i})),
     chain_reactions:Array.from({length:3},(_,i)=>({spark:'road '+i+' closes',chain:'delivery '+i+' takes the longer route → suppliers postpone arrivals → shops change their opening hours'})),
@@ -29,7 +29,7 @@ function fixture(){
     featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account})},renderBusyState:()=>{},buildPrompt:async run=>{run.creativeOptions=creativeOptions;run.sourceFingerprint='fixture-source';return 'fixture';},directorSourceFingerprint:()=>'fixture-source',DEFAULT_SYSTEM_PROMPT:'system',
     resolveImageAccountNamespace:async()=>account,storyboardState:()=>({enabled:true,directorBridge:{worldSideShotsEnabled:true}}),
     pushLog:log=>{c.settings.logHistory.push(log);return log;},saveSettings:()=>{},clone:structuredClone,parseDirectorFinal,
-    isPlainObject,mergeDefaults,normalizeCreativeSections,validateCreativePlan,pruneInvalidCreativeItems,
+    isPlainObject,mergeDefaults,normalizeCreativeSections,validateCreativePlan,pruneInvalidCreativeItems,directorPreviewPlan,directorQualitySummary,
     repairDirectorPlanQuality:async()=>{repairs++;return {repaired:false,needs:{},removed:[],raw:'',error:''};},
     saveMetadata:async()=>saves++,applyDirectorInjection:async()=>injects++,refreshDirectorProductionPackets:async()=>{},injectSelection:new Set(),resetCreativeSocialState:()=>{},
     storyboardQueueNewWorldPlan:async(plan,owner)=>{assert.equal(saves,1);assert.equal(injects,1);assert.equal(plan,store.plan);assert.equal(owner.store,store);assert.equal(owner.namespace,account);c.worldCompletions.push({plan,owner});},

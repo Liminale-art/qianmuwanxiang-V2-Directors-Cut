@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { completeDirectorCards, directorPreviewPlan, renderDirectorLive, renderModelDiagnostics, modelFailureText } from '../qianmu-director-live.js';
+import { completeDirectorCards, directorPreviewPlan, directorSectionStatus, directorSectionEnabled, directorQualitySummary, renderDirectorLive, renderModelDiagnostics, modelFailureText } from '../qianmu-director-live.js';
 
 test('only closed known top-level cards are staged; nested fields and incomplete strings never become cards',()=>{
   const first={title:'Read "{quoted}"',objective:'A\nB',extra:{quests:[{title:'must not appear'}]}};
@@ -47,13 +47,45 @@ test('failure and interruption reasons belong to the failure panel, never below 
   assert.match(modelFailureText({ status: 'cancelled' }), /已停止/);
 });
 
+test('old repair responses stay readable as historical evidence without promising current automatic calls', () => {
+  const html = renderModelDiagnostics({ repairResponse: '<partial JSON>', response: 'FIRST ORIGINAL' });
+  assert.match(html, /历史补写记录 · 独立模型回复/);
+  assert.match(html, /&lt;partial JSON&gt;/);
+  assert.doesNotMatch(html, /FIRST ORIGINAL|定向补写|<partial JSON>|仅追加一次|额外消耗 token/);
+  assert.doesNotMatch(renderModelDiagnostics({}), /历史补写记录/);
+});
+
+test('submitted incomplete runs retain readonly cards and show factual section notices from the same log', () => {
+  const log = { request: 'sent', status: 'error', response: '{"quests":[{"title":"已收到","description":"来信放在桌上。"}]}',
+    creativeOptions: { interludeEnabled: false, parallelSceneEnabled: true, worldChatterEnabled: false },
+    quality: { issues: [{ field: 'quests', missing: 4 }, { field: 'story_status', missing: 1 }, { field: 'parallel_scene', missing: 1 }] },
+    completion: { finishReason: 'stop', complete: true } };
+  const before = JSON.stringify(log), plan = directorPreviewPlan(log);
+  assert.equal(plan._streamPreview, true); assert.equal(plan.quests[0].title, '已收到');
+  assert.match(directorSectionStatus(plan, 'quests'), /返回不完整/);
+  assert.match(directorSectionStatus(plan, 'parallel_scene'), /未生成成功/);
+  assert.doesNotMatch(directorSectionStatus(plan, 'parallel_scene'), /截断/);
+  assert.equal(directorSectionEnabled(plan, 'interlude', { interludeEnabled: true }), false);
+  assert.equal(directorSectionEnabled(plan, 'world_chatter', { worldChatterEnabled: true }), false);
+  assert.equal(directorSectionStatus(plan, 'faction_relations'), '', 'an optional absent connection is not a failed section');
+  assert.match(directorQualitySummary(log), /命运之脉缺 1 条/);
+  assert.match(renderModelDiagnostics(log), /未自动补写/);
+  const ended = directorPreviewPlan({ ...log, completion: { finishReason: 'MAX_TOKENS', interrupted: true } });
+  assert.match(directorSectionStatus(ended, 'parallel_scene'), /回复截断/);
+  assert.match(directorSectionStatus(directorPreviewPlan({ ...log, status: 'cancelled' }), 'quests'), /已停止/);
+  assert.equal(directorSectionStatus(directorPreviewPlan({ ...log, status: 'loading' }), 'quests'), '');
+  assert.equal(directorPreviewPlan({ ...log, request: '' }), null, 'no request means no failed-run overlay on saved content');
+  assert.equal(directorPreviewPlan({ ...log, status: 'success' }), null);
+  assert.equal(JSON.stringify(log), before);
+});
+
 test('new creative fields use current names and stage object extras only after their own closing delimiter',()=>{
   const parallel=JSON.stringify({title:'另一刻',content:'他说了另一句话。',nested:{content:'not an extra card'}});
   const interlude=JSON.stringify({type:'phone',owner:'同事',title:'未读',content:'A：今晚还来吗？\nB：带着笔记。'});
   const prefix='{"character_dynamics":[{"title":"值班","content":"核对交接记录"}],"parallel_scene":';
   for(let i=0;i<=parallel.length;i++)assert.equal(completeDirectorCards(prefix+parallel.slice(0,i)).length,1+Number(i===parallel.length),String(i));
   const cards=completeDirectorCards(prefix+parallel+',"interlude":'+interlude+'}');
-  assert.deepEqual(cards.map(card=>card.label),['此间一人','未映之幕','世界论坛']);
+  assert.deepEqual(cards.map(card=>card.label),['此间一人','未映之幕','幕间拾趣']);
   const html=renderDirectorLive({id:'one',status:'loading',response:prefix+parallel+',"interlude":'+interlude+'}'});
   assert.match(html,/另一句话/);assert.match(html,/今晚还来/);assert.doesNotMatch(html,/sd-inject|sd-world-media-entry|data-inject/);
 });
@@ -76,7 +108,7 @@ test('memory and incomplete creative output are understandable without exposing 
   ]};
   const html=renderModelDiagnostics(log);
   assert.match(html,/部分记忆可用/);assert.match(html,/<details><summary>记忆核对详情/);
-  assert.match(html,/此间一人缺 1 条/);assert.match(html,/世界论坛缺 1 张/);
+  assert.match(html,/此间一人缺 1 条/);assert.match(html,/幕间拾趣缺 1 张/);
   assert.equal(html.match(/此间一人/g).length,1);assert.doesNotMatch(html,/PRIVATE|character_dynamics/);
   for(const status of ['ready','empty','disabled'])assert.doesNotMatch(renderModelDiagnostics({memory:{status,diagnostics:log.memory.diagnostics}}),/记忆|record_source_changed/);
   assert.match(renderModelDiagnostics({memory:{status:'unverified'}}),/记忆暂无法核对/);

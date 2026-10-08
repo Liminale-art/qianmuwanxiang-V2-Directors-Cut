@@ -28,8 +28,9 @@ const qualitySource = source.slice(source.indexOf('function directorDedupePlan('
 assert.match(qualitySource, /pruneInvalidCreativeItems\(plan, options\)/, '逐条剔除只依新合同，不再强换合格条目');
 assert.match(qualitySource, /validateCreativePlan\(plan, options\)/, '所有启用栏目仍经过真实数量与有效条目校验');
 assert.doesNotMatch(qualitySource, /directorSimilarity|0\.96|疑似沿用上轮|机械复述/, '有效存续状态不再因相似度被强制换新');
-assert.match(qualitySource, /request\.userPrompt\s*\+/, '补写必须复用同一份请求资料');
-assert.match(qualitySource, /mergeCreativeRepair\(plan, patch,/, '只把被请求字段的补写合并到现有结果');
+assert.match(qualitySource, /log\.quality = needs/, '缺项校验写入日志，供栏目与结束提示共用');
+assert.doesNotMatch(qualitySource, /callSillyTavernModel|callExternalApi|mergeCreativeRepair/, '质量校验不能偷偷触发模型补写');
+assert.doesNotMatch(source, /repairDirectorPlanQuality/, '主入口彻底撤掉自动定向补写');
 
 const normalizeSource = source.slice(source.indexOf('function normalizePlan('), source.indexOf('// directorItemText -'));
 const sandbox = { isPlainObject, mergeDefaults, normalizeCreativeSections };

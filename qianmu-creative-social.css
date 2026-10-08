@@ -19,6 +19,15 @@
   background: color-mix(in srgb, var(--social-surface) 55%, transparent);
   overflow: hidden;
 }
+#story-director-modal .sd-social-scroll {
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--social-muted) 35%, transparent) transparent;
+  overscroll-behavior-y: contain;
+}
+#story-director-modal .sd-social-scroll:focus-visible { outline: 2px solid var(--social-accent); outline-offset: -2px; }
 #story-director-modal .sd-social-panel-head {
   display: flex;
   align-items: center;
@@ -65,7 +74,7 @@
   overflow-wrap: anywhere;
 }
 #story-director-modal .sd-social-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; margin-top: 9px; }
-#story-director-modal :is(.sd-social-action, .sd-social-expand) {
+#story-director-modal .sd-social-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -84,10 +93,10 @@
   cursor: pointer;
 }
 #story-director-modal .sd-social-action .qm-glyph-icon { font-size: 14px; }
-#story-director-modal :is(.sd-social-action, .sd-social-expand):hover:not(:disabled) { background: color-mix(in srgb, var(--social-accent) 7%, transparent); color: var(--social-ink); }
+#story-director-modal .sd-social-action:hover:not(:disabled) { background: color-mix(in srgb, var(--social-accent) 7%, transparent); color: var(--social-ink); }
 #story-director-modal .sd-social-action[aria-pressed="true"],
 #story-director-modal .sd-social-action[aria-expanded="true"] { color: var(--social-ink); border-color: var(--social-line); background: color-mix(in srgb, var(--social-accent) 13%, var(--social-surface)); }
-#story-director-modal :is(.sd-social-action, .sd-social-expand):focus-visible { outline: 2px solid var(--social-accent); outline-offset: 2px; }
+#story-director-modal .sd-social-action:focus-visible { outline: 2px solid var(--social-accent); outline-offset: 2px; }
 #story-director-modal .sd-social-action:disabled { opacity: .55; cursor: default; }
 #story-director-modal .sd-social-replies { margin: 8px 0 0 13px; border-left: 2px solid var(--social-line); padding-left: 12px; }
 #story-director-modal .sd-social-reply { display: flex; align-items: flex-start; gap: 7px; padding: 8px 0; }
@@ -103,12 +112,10 @@
 #story-director-modal .sd-social-message-own { flex-direction: row-reverse; }
 #story-director-modal .sd-social-message-own .sd-social-message-meta { justify-content: flex-end; }
 #story-director-modal .sd-social-message-own .sd-social-message-main p { background: color-mix(in srgb, var(--social-accent) 9%, var(--social-surface)); border-radius: 11px 3px 11px 11px; }
-#story-director-modal .sd-social-expand { display: flex; width: calc(100% - 28px); margin: 0 14px 12px; border-color: var(--social-line); }
-#story-director-modal .sd-social-expand[aria-expanded="true"] .qm-glyph-icon { transform: rotate(180deg); }
 #story-director-modal .sd-social-legacy h4 { margin: 0; font-size: var(--qm-type-body, 12px); }
 #story-director-modal .sd-social-empty { margin: 12px 0; font-size: var(--qm-type-body, 12px); }
 #story-director-modal .sd-creative-social [hidden] { display: none !important; }
-#story-director-modal[data-qm-theme="editorial"] :is(.sd-social-panel, .sd-social-message-main p, .sd-social-action, .sd-social-expand) { border-radius: 0; }
+#story-director-modal[data-qm-theme="editorial"] :is(.sd-social-panel, .sd-social-message-main p, .sd-social-action) { border-radius: 0; }
 @media (max-width: 380px) {
   #story-director-modal :is(.sd-social-post, .sd-social-panel-head, .sd-social-messages) { padding: 11px; }
   #story-director-modal .sd-social-actions { column-gap: 2px; }

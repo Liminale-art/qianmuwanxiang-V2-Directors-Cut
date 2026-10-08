@@ -1,12 +1,12 @@
 // Creative defaults and one-request state. No storage, network or model calls.
 import { hashText } from './qianmu-storyboard-utils.js';
-import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.446';
+import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.447';
 
-// Exact bundled defaults from v1.59.442 through v1.59.445, not phrase-based DIY detection.
+// Exact bundled defaults from v1.59.442 through v1.59.446, not phrase-based DIY detection.
 const LEGACY_DEFAULT_HASHES = Object.freeze({
-  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd', '39271a80']),
-  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107']),
-  blueprint: Object.freeze(['4c919687', '1d95c305', '261d4a1a']),
+  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd', '39271a80', 'bba2effb']),
+  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107', '51ab8d18']),
+  blueprint: Object.freeze(['4c919687', '1d95c305', '261d4a1a', '1d8cdeb6']),
 });
 const unchangedDefault = (value, current, legacyHashes, appliedHash) => {
   const text = String(value ?? '');
@@ -47,6 +47,7 @@ export function recentInterludeHint(card) {
   const short = (value, max) => typeof value === 'string' ? value.replace(/\s+/gu, ' ').trim().slice(0, max) : '';
   const first = card.type === 'forum' ? card.posts?.[0]?.content : card.type === 'phone' ? card.messages?.[0]?.content : card.content;
   const hint = { type: short(card.type, 16), title: short(card.title, 80), first_excerpt: short(first, 180) };
+  if (card.type === 'phone' && short(card.owner, 60)) hint.owner = short(card.owner, 60);
   return hint.title || hint.first_excerpt ? JSON.stringify(hint) : '';
 }
 
@@ -54,11 +55,12 @@ export function selectCreativeOptions(settings = {}, { chat = [], personaNames =
   const normalize = name => String(name || '').trim().toLocaleLowerCase();
   const excluded = new Set(personaNames.map(normalize).filter(Boolean));
   for (const message of chat) if (message?.is_user) excluded.add(normalize(message.name));
-  const owners = [...new Set(chat.filter(message => message && !message.is_user && !message.is_system)
-    .map(message => String(message.name || '').trim()).filter(name => name && !excluded.has(normalize(name))))];
   const hasPhone = /手机|短信|群聊|微信|移动终端|smartphone|cell\s*phone|text\s*message|group\s*chat/i.test(sourceText);
   const interludeEnabled = settings.interludeEnabled !== false;
-  const interludeType = !interludeEnabled ? null : hasPhone && owners.length && random() >= .5 ? 'phone' : 'forum';
+  // Chat speaker labels are not the cast: supporting people can be present only
+  // in prose/memory. Let the model choose from those sources; validation checks
+  // the chosen name against that same bounded narrative and USER exclusions.
+  const interludeType = !interludeEnabled ? null : hasPhone && typeof narrativeText === 'string' && narrativeText.trim() && random() >= .5 ? 'phone' : 'forum';
   return Object.freeze({
     worldChatterEnabled: Boolean(settings.worldChatterEnabled), geopoliticsEnabled: Boolean(settings.geopoliticsEnabled),
     parallelSceneEnabled: settings.parallelSceneEnabled !== false, interludeEnabled, interludeType,
@@ -98,7 +100,22 @@ export function mergeCreativeRepair(plan, patch, issues, options = {}) {
     }
     if (!Array.isArray(additions)) continue;
     const missing = Math.max(0, ...issues.filter(issue => issue.field === field).map(issue => Number(issue.missing) || 0));
-    if (missing) setEntries([...(Array.isArray(entries) ? entries : []), ...additions.slice(0, missing)]);
+    if (missing && field === 'story_status') {
+      const accepted = [...(Array.isArray(entries) ? entries : [])];
+      const present = new Set(accepted.map(item => item?.horizon));
+      let remaining = missing;
+      for (const candidate of additions) {
+        if (!remaining) break;
+        if (!candidate || !['near', 'far'].includes(candidate.horizon) || present.has(candidate.horizon)) continue;
+        const directions = [...accepted, candidate];
+        const invalid = validateCreativePlan({ ...plan, story_status: { ...plan.story_status, directions } }, options)
+          .some(issue => issue.field === 'story_status' && issue.indices?.includes(directions.length - 1));
+        if (invalid) continue;
+        accepted.push(candidate); present.add(candidate.horizon); remaining--;
+      }
+      setEntries(accepted);
+    }
+    else if (missing) setEntries([...(Array.isArray(entries) ? entries : []), ...additions.slice(0, missing)]);
     else if (field === 'faction_relations' && !Array.isArray(entries)) setEntries(additions);
   }
   if (Array.isArray(patch.limitations)) plan.limitations = patch.limitations;

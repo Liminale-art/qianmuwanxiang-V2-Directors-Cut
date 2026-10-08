@@ -1,5 +1,5 @@
 @import url('./qianmu-text-collection-floor.css');
-@import url('./qianmu-creative-social.css?v=1.59.446');
+@import url('./qianmu-creative-social.css?v=1.59.447');
 
 /* ============================================================
    千幕 (Qianmu)
@@ -1370,6 +1370,18 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
     -webkit-column-break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* Narrative folds may exceed one column's balanced height. Chromium fragments
+     those folds (including their overflow/blur layers), clipping leading text.
+     Reading pages use real grid cells; source pickers retain their column flow. */
+  #story-director-modal .sd-cols-inner:has(.sd-plan-section) { column-count: auto; }
+  #story-director-modal .sd-cols-inner:has(> .sd-plan-section),
+  #story-director-modal .sd-cols-inner > [data-director-live-host]:has(> .sd-plan-section),
+  #story-director-modal .sd-world-page:has(> .sd-plan-section) {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start;
+  }
+  #story-director-modal .sd-cols-inner:has(> .sd-plan-section) > .sd-card,
+  #story-director-modal .sd-cols-inner > [data-director-live-host]:has(> .sd-plan-section) > .sd-card,
+  #story-director-modal .sd-world-page:has(> .sd-plan-section) > .sd-card { min-width: 0; margin-bottom: 0; }
 }
 
 #story-director-modal .sd-card,
@@ -1665,9 +1677,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 #story-director-modal .sd-hero h3 {
-  font-family: Georgia, 'Times New Roman', serif !important;
-  font-size: clamp(22px, 2.6vw, 31px) !important;
-  letter-spacing: .04em;
+  font-family: inherit !important;
+  font-size: 15px !important;
+  letter-spacing: .03em;
 }
 
 #story-director-modal .sd-two { margin-top: 7px; line-height: 1.55; }
@@ -2237,6 +2249,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 /* ---------- 10. 写入坞 ---------- */
+#story-director-modal .sd-window:has(> .sd-inject-dock) > .sd-body,
+#story-director-modal .sd-window:has(> .sd-inject-dock) > .sd-world-viewport > .sd-body {
+  /* Both direct and world reading shells must be able to scroll their final
+     text above the floating action, including safe-area insets on phones. */
+  padding-bottom: calc(50px + max(14px, env(safe-area-inset-bottom)));
+}
 #story-director-modal .sd-inject-dock {
   position: absolute;
   left: 50%;
@@ -3236,28 +3254,23 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   padding: 10px 12px;
 }
 #story-director-modal .sd-chain-track {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 4px;
+  display: block;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
 }
 #story-director-modal .sd-chain-node {
   box-sizing: border-box;
   max-width: 100%;
   overflow-wrap: anywhere;
-  font-size: .9em;
-  line-height: 1.4;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--sd-glass);
-  border: 1px solid var(--sd-border);
+  font-size: var(--qm-type-body);
+  line-height: 1.85;
 }
 #story-director-modal .sd-chain-node-spark {
   font-weight: 600;
-  background: color-mix(in srgb, var(--sd-accent) 16%, transparent);
-  border-color: color-mix(in srgb, var(--sd-accent) 40%, var(--sd-border));
+  color: var(--sd-text);
 }
-#story-director-modal .sd-chain-link { flex: 0 0 auto; font-size: .82em; color: var(--sd-accent); opacity: .75; }
+#story-director-modal .sd-chain-link-head { white-space: nowrap; }
+#story-director-modal .sd-chain-link { display: inline; padding: 0 .36em; font-size: .92em; color: var(--sd-accent); opacity: .8; }
 
 /* 关系暗涌：NPC 之间自行纠缠的张力，一行一对/一簇关系 */
 #story-director-modal .sd-relus-row {
@@ -3271,9 +3284,10 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-relus-row.sd-relus-neg { border-left-color: color-mix(in srgb, #c2606a 60%, var(--sd-border)); }
 #story-director-modal .sd-relus-row.sd-relus-pos { border-left-color: color-mix(in srgb, #5f9e74 60%, var(--sd-border)); }
 #story-director-modal .sd-relus-row + .sd-relus-row { margin-top: 9px; }
-#story-director-modal .sd-relus-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-#story-director-modal .sd-relus-parties { font-weight: 600; font-size: .95em; }
+#story-director-modal .sd-relus-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+#story-director-modal .sd-relus-parties { flex: 1 1 auto; font-weight: 600; font-size: .95em; }
 #story-director-modal .sd-relus-tone {
+  margin-left: auto;
   font-size: .72em;
   padding: 1px 7px;
   border-radius: 999px;
@@ -3291,7 +3305,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   opacity: .8;
 }
 #story-director-modal .sd-relus-tension { margin: 6px 0 0; font-size: .9em; line-height: 1.5; }
-#story-director-modal .sd-relus-drift { margin: 5px 0 0; font-size: .84em; line-height: 1.45; opacity: .82; display: flex; gap: 5px; align-items: baseline; }
+#story-director-modal .sd-relus-drift { margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--sd-accent) 7%, var(--sd-glass)); font-size: .84em; line-height: 1.45; display: flex; gap: 5px; align-items: baseline; }
 #story-director-modal .sd-relus-drift i { color: var(--sd-accent); font-size: .9em; opacity: .8; }
 
 /* 幕后说明灰色小字：统一缩到与输出格式提示同字号 */
@@ -3709,6 +3723,28 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   --sd-geo-skin-pop: rgba(28, 30, 38, .97);
   --sd-geo-skin-bg: color-mix(in srgb, var(--qm-surface, #131820) 94%, #506b88);
 }
+/* 日间星图用明亮糖果色区分关系；小字另用同色系深墨，夜间沿用原色。 */
+#story-director-modal:not(.sd-theme-dark):not([data-qm-mode="dark"]) .sd-geo-stage,
+#story-director-modal[data-qm-mode="light"] .sd-geo-stage {
+  --sd-geo-conflict: #e15a84;
+  --sd-geo-ally: #159b82;
+  --sd-geo-tension: #cf7d46;
+  --sd-geo-neutral: #8196b6;
+  --sd-geo-vassal: #9970cf;
+  --sd-geo-stable: #258fc7;
+  --sd-geo-decline: #9a91b0;
+  --sd-geo-clue-blue: #319dcd;
+  --sd-geo-ally-ink: #126d5e;
+  --sd-geo-conflict-ink: #a52e59;
+  --sd-geo-neutral-ink: #566781;
+  --sd-geo-clue-ink: #206d96;
+  --sd-geo-skin-border: #ae91d23d;
+  --sd-geo-skin-line: #a78aca8c;
+  --sd-geo-skin-axis: #c078bed9;
+  --sd-geo-skin-clue: #69b7dfd9;
+  --sd-geo-skin-glow: #d5b8ef3d;
+  --sd-geo-skin-bg: color-mix(in srgb, var(--qm-surface, #f6f4ed) 35%, #fffaff);
+}
 #story-director-modal .sd-geo-stage-head { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 2px 0 4px; }
 #story-director-modal .sd-geo-view-switch { display: inline-grid; grid-template-columns: repeat(2, 1fr); gap: 2px; padding: 2px; border: 1px solid var(--sd-geo-skin-border); border-radius: 99px; background: rgba(255,255,255,.035); }
 #story-director-modal .sd-geo-view-btn { min-width: 50px; padding: 3px 10px; border: 0; border-radius: 99px; background: transparent; color: var(--sd-geo-skin-muted); font: inherit; font-size: .75em; cursor: pointer; }
@@ -3748,7 +3784,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 @keyframes sd-geo-star-breathe { 0%,100% { opacity: .45; } 50% { opacity: .95; } }
 @keyframes sd-geo-halo-breathe { 0%,100% { opacity: .2; } 50% { opacity: .5; } }
 
-/* 同一条贝塞尔路径形成柔化的液态边缘与实色线芯；无位移/流动动画。 */
+/* 实色线芯与柔光始终固定；短亮段沿同一路径流动，不挪动节点或关系锚点。 */
 #story-director-modal .sd-geo-edge { transition: opacity .25s ease; }
 #story-director-modal .sd-geo-edge-secondary { opacity: 0; pointer-events: none; }
 #story-director-modal .sd-kind-hidden { display: none !important; }
@@ -3757,6 +3793,13 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   stroke-width: 1.7; stroke-linecap: round; opacity: .86;
   stroke-dasharray: none; stroke-dashoffset: 0;
 }
+#story-director-modal .sd-geo-edge-motion {
+  stroke-width: 3; stroke-linecap: round; opacity: .95; pointer-events: none;
+  stroke-dasharray: 10 90; stroke-dashoffset: 0;
+  animation: sd-geo-edge-travel 9s linear infinite;
+  animation-delay: var(--flow-delay, 0s);
+}
+@keyframes sd-geo-edge-travel { to { stroke-dashoffset: -100; } }
 /* 各关系只改变色彩与浓淡，不再用速度编码。 */
 #story-director-modal .sd-geo-edge-conflict .sd-geo-edge-base { opacity: .4; }
 #story-director-modal .sd-geo-edge-neutral .sd-geo-edge-base { opacity: .2; }
@@ -3803,8 +3846,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-node-tag { pointer-events: none; }
 #story-director-modal .sd-geo-tag-bg { fill: var(--sd-geo-skin-pop); stroke: var(--sd-geo-skin-border); stroke-width: 1; opacity: .95; }
 #story-director-modal .sd-geo-tag-text { fill: var(--sd-geo-skin-text); font-size: 10px; font-weight: 600; }
-#story-director-modal .sd-geo-node-rising .sd-geo-tag-text { fill: var(--sd-geo-ally); }
-#story-director-modal .sd-geo-node-turbulent .sd-geo-tag-text { fill: var(--sd-geo-conflict); }
+#story-director-modal .sd-geo-node-rising .sd-geo-tag-text { fill: var(--sd-geo-ally-ink, var(--sd-geo-ally)); }
+#story-director-modal .sd-geo-node-turbulent .sd-geo-tag-text { fill: var(--sd-geo-conflict-ink, var(--sd-geo-conflict)); }
 
 /* 线索星点明显大于装饰点；保留透明大命中圈，聚焦时才展开交互。 */
 #story-director-modal .sd-geo-clue-orbit { fill: none; stroke: var(--sd-geo-clue-blue); stroke-width: .9; opacity: .35; pointer-events: none; }
@@ -3882,7 +3925,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-list-body .sd-geo-list-agenda { display: flex; gap: 6px; color: var(--sd-geo-skin-muted); }
 #story-director-modal .sd-geo-list-agenda i { margin-top: 4px; color: var(--sd-accent); }
 #story-director-modal .sd-geo-list-clues { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-#story-director-modal .sd-geo-list-clues span { padding: 2px 8px; border-radius: 99px; font-size: .72em; color: var(--sd-geo-clue-blue); background: rgba(56,224,255,.07); border: 1px solid rgba(56,224,255,.14); }
+#story-director-modal .sd-geo-list-clues span { padding: 2px 8px; border-radius: 99px; font-size: .72em; color: var(--sd-geo-clue-ink, var(--sd-geo-clue-blue)); background: rgba(56,224,255,.07); border: 1px solid rgba(56,224,255,.14); }
 #story-director-modal .sd-geo-list-body ul { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
 #story-director-modal .sd-geo-list-rel { display: grid; grid-template-columns: 7px 34px minmax(0, 1fr); align-items: baseline; gap: 7px; font-size: .78em; }
 #story-director-modal .sd-geo-list-rel > i { width: 7px; height: 7px; border-radius: 50%; }
@@ -3900,9 +3943,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-d-head { display: flex; align-items: center; gap: 9px; }
 #story-director-modal .sd-geo-d-head h4 { margin: 0; font-size: 1.02em; font-weight: 700; min-width: 0; flex: 1 1 auto; }
 #story-director-modal .sd-geo-d-trend { font-size: .76em; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--sd-pre); color: var(--sd-muted); flex: 0 0 auto; }
-#story-director-modal .sd-geo-d-trend-rising { color: var(--sd-geo-ally); }
-#story-director-modal .sd-geo-d-trend-declining { color: var(--sd-geo-neutral); }
-#story-director-modal .sd-geo-d-trend-turbulent { color: var(--sd-geo-conflict); }
+#story-director-modal .sd-geo-d-trend-rising { color: var(--sd-geo-ally-ink, var(--sd-geo-ally)); }
+#story-director-modal .sd-geo-d-trend-declining { color: var(--sd-geo-neutral-ink, var(--sd-geo-neutral)); }
+#story-director-modal .sd-geo-d-trend-turbulent { color: var(--sd-geo-conflict-ink, var(--sd-geo-conflict)); }
 #story-director-modal .sd-geo-d-close { background: none; border: none; cursor: pointer; color: var(--sd-muted); padding: 2px 4px; flex: 0 0 auto; }
 #story-director-modal .sd-geo-d-close:hover { color: var(--sd-text); }
 #story-director-modal .sd-geo-d-meta { display: flex; flex-wrap: wrap; gap: 5px 8px; margin-top: 6px; }
@@ -4001,6 +4044,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 @media (prefers-reduced-motion: reduce) {
   #story-director-modal .sd-geo-orbit,
   #story-director-modal .sd-geo-edge-flow,
+  #story-director-modal .sd-geo-edge-motion,
   #story-director-modal .sd-geo-bed-dot,
   #story-director-modal .sd-geo-axis-star,
   #story-director-modal .sd-geo-axis-halo,
@@ -4010,6 +4054,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   #story-director-modal .sd-geo-event-node-pulse,
   #story-director-modal .sd-evt-stage-erupt::before { animation: none; }
   #story-director-modal .sd-geo-edge-flow { opacity: .6; stroke-dasharray: none; }
+  #story-director-modal .sd-geo-edge-motion { display: none; }
   #story-director-modal .sd-geo-event-pulse,
   #story-director-modal .sd-geo-event-node-pulse { opacity: .34; }
 }
@@ -9120,24 +9165,20 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 .sd-tts-toolbar > :is(.sd-tts-trigger, .sd-tts-reextract, .sd-tts-regenall, .sd-tts-playall) > .qm-glyph-icon > svg.qm-glyph-svg,
 .sd-tts-inline > .qm-glyph-icon > svg.qm-glyph-svg { transform: scale(1.05); }
 
-/* 审片远观方向与预演近景沿用同一套字号，不再叠加状态说明。 */
-#story-director-modal .sd-hero .sd-scene-current { margin-top: 3px; }
-#story-director-modal .sd-hero .sd-two {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: 4px;
-  font-size: var(--qm-type-body);
-}
-#story-director-modal .sd-hero .sd-two > b { font-size: inherit; }
-#story-director-modal .sd-hero .sd-two > span { min-width: 0; font-size: inherit; line-height: 1.7; }
+/* 命运之脉：同一标题基线、次行时间，两段连续阅读而非任务标题。 */
+#story-director-modal .sd-hero-top > h3 { margin: 0; font-family: inherit !important; font-size: var(--qm-type-card-title) !important; line-height: 1.35 !important; }
+#story-director-modal .sd-fate-time { margin: 2px 0 10px; color: var(--sd-muted); font-size: var(--qm-type-caption); line-height: 1.45; }
 #story-director-modal .sd-status-card { padding: 8px 10px !important; }
 #story-director-modal .sd-status-card .sd-count-tags { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; gap: 6px; }
 #story-director-modal .sd-status-card .sd-count-tag { justify-content: center; min-height: 30px; padding: 4px 8px !important; }
-#story-director-modal .sd-director-directions { display: grid; gap: 12px; margin: 14px 0; }
-#story-director-modal .sd-director-direction { min-width: 0; padding: 0 0 0 12px; border-left: 2px solid var(--sd-hairline); }
-#story-director-modal .sd-director-direction h4 { margin: 0 0 5px; font-size: var(--qm-type-body); font-weight: 600; line-height: 1.5; }
+#story-director-modal .sd-director-directions { display: grid; gap: 0; margin: 0 0 14px; }
+#story-director-modal .sd-director-direction { min-width: 0; display: flow-root; padding: 0; }
+#story-director-modal .sd-director-direction + .sd-director-direction::before {
+  content: ''; display: block; height: 1px; margin: 15px 0;
+  background: linear-gradient(to right, transparent, var(--sd-border) 42%, transparent 49%, transparent 51%, var(--sd-border) 58%, transparent);
+}
 #story-director-modal .sd-director-direction p { margin: 0; font-size: var(--qm-type-body); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+#story-director-modal .sd-director-direction p::first-letter { float: left; font-size: 2.7em; line-height: 1.15; margin: .03em .12em 0 0; font-weight: 600; }
 #story-director-modal .sd-director-paragraphs { display: grid; gap: 8px; }
 #story-director-modal .sd-director-paragraph {
   min-width: 0; padding: 10px 12px; border: 1px solid transparent; border-radius: 12px;
@@ -9145,6 +9186,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 }
 #story-director-modal .sd-director-paragraph[role="button"] { cursor: pointer; }
 #story-director-modal .sd-director-paragraph-label { display: block; margin-bottom: 4px; color: var(--sd-muted); font-size: var(--qm-type-caption); line-height: 1.45; }
+#story-director-modal .sd-director-section-notice { margin: 8px 0; color: var(--sd-muted); font-size: var(--qm-type-caption); line-height: 1.55; }
 #story-director-modal .sd-director-paragraph p { margin: 0; font-size: var(--qm-type-body); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 #story-director-modal .sd-director-paragraph.is-selected {
   background: color-mix(in srgb, var(--sd-accent) 12%, var(--sd-card));

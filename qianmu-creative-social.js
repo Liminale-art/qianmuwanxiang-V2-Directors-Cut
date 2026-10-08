@@ -30,7 +30,6 @@ function normalizedItem(value) {
   // Historical results stay readable, without pretending prose is a structured feed.
   if (['theater', 'phone'].includes(item.type) && text(item.content)) return {
     type: 'legacy', title: text(item.title), content: text(item.content),
-    caption: item.type === 'phone' ? (text(item.owner) ? `${text(item.owner)}的手机` : '角色手机') : '历史番外',
   };
   return { type: 'empty' };
 }
@@ -48,7 +47,7 @@ function identity(item) {
 
 function session(key) {
   let value = sessions.get(key);
-  if (!value) value = { likes: new Set(), bookmarks: new Set(), replies: new Set(), expanded: false };
+  if (!value) value = { likes: new Set(), bookmarks: new Set(), replies: new Set(), scrollTop: 0 };
   sessions.delete(key);
   sessions.set(key, value);
   while (sessions.size > SESSION_LIMIT) sessions.delete(sessions.keys().next().value);
@@ -67,8 +66,8 @@ function action(kind, index, active, label, symbol, extra = '') {
 function forumBody(item, key, state) {
   if (!item.posts.length) return '<p class="sd-muted sd-social-empty">尚未生成</p>';
   return `<div class="sd-social-panel sd-social-forum">
-    <div class="sd-social-panel-head">${icon('globe-hemisphere-east')}<div><strong>${htmlEscape(item.title || '此刻的世界')}</strong><span>世界论坛</span></div></div>
-    <div class="sd-social-feed">${item.posts.map((post, index) => {
+    <div class="sd-social-panel-head">${icon('globe-hemisphere-east')}<div><strong>${htmlEscape(item.title || '此刻的世界')}</strong></div></div>
+    <div class="sd-social-feed sd-social-scroll" data-qm-social-scroll tabindex="0" role="region" aria-label="论坛帖子">${item.posts.map((post, index) => {
       const liked = state.likes.has(index), bookmarked = state.bookmarks.has(index), expanded = state.replies.has(index);
       const repliesId = `${key}-replies-${index}`;
       return `<article class="sd-social-post">
@@ -85,33 +84,31 @@ function forumBody(item, key, state) {
   </div>`;
 }
 
-function phoneBody(item, key, state) {
+function phoneBody(item, key) {
   if (!item.messages.length) return '<p class="sd-muted sd-social-empty">尚未生成</p>';
-  const long = item.messages.length > 6, id = `${key}-messages`;
-  const participants = [...new Set(item.messages.map(message => message.sender))];
+  const id = `${key}-messages`;
+  const contact = item.messages.find(message => message.sender !== item.owner)?.sender;
   return `<div class="sd-social-panel sd-social-phone">
-    <div class="sd-social-panel-head">${icon(item.conversation_kind === 'group' ? 'chats' : 'chat')}<div><strong>${htmlEscape(item.title || (item.conversation_kind === 'group' ? '群聊' : '消息'))}</strong><span>${htmlEscape(item.owner ? `${item.owner}的手机` : '角色手机')} · ${item.conversation_kind === 'group' ? `群聊 · ${participants.length}人发言` : '私信'}</span></div></div>
-    <ol class="sd-social-messages" id="${id}">${item.messages.map((message, index) => {
+    <div class="sd-social-panel-head">${icon(item.conversation_kind === 'group' ? 'chats' : 'chat')}<div><strong>${htmlEscape(item.title || (item.conversation_kind === 'group' ? '群聊' : contact || '消息'))}</strong>${item.owner ? `<span>${htmlEscape(item.owner)}的手机</span>` : ''}</div></div>
+    <ol class="sd-social-messages sd-social-scroll" id="${id}" data-qm-social-scroll tabindex="0" aria-label="${item.conversation_kind === 'group' ? '群聊消息' : '私信消息'}">${item.messages.map(message => {
       const own = message.sender === item.owner;
-      return `<li class="sd-social-message${own ? ' sd-social-message-own' : ''}"${index >= 6 ? ` data-social-message-extra${state.expanded ? '' : ' hidden'}` : ''}>
+      return `<li class="sd-social-message${own ? ' sd-social-message-own' : ''}">
         ${avatar(message.sender, true)}<div class="sd-social-message-main"><div class="sd-social-message-meta"><strong>${htmlEscape(message.sender)}</strong>${message.time ? `<span>${htmlEscape(message.time)}</span>` : ''}</div><p>${htmlEscape(message.content)}</p></div>
       </li>`;
     }).join('')}</ol>
-    ${long ? `<button type="button" class="sd-social-expand" data-qm-social-action="messages" aria-expanded="${state.expanded}" aria-controls="${id}" data-social-remaining="${item.messages.length - 6}">${state.expanded ? '收起后续消息' : `展开后续 ${item.messages.length - 6} 条消息`}${icon('caret-down')}</button>` : ''}
   </div>`;
 }
 
 /** Render the complete Qianmu card. All model content is escaped, never HTML/URLs. */
-export function renderCreativeSocialCard(value) {
+export function renderCreativeSocialCard(value, { notice = '' } = {}) {
   const item = normalizedItem(value), key = identity(item);
   const state = item.type === 'forum' || item.type === 'phone' ? session(key) : null;
   const body = item.type === 'forum' ? forumBody(item, key, state)
-    : item.type === 'phone' ? phoneBody(item, key, state)
+    : item.type === 'phone' ? phoneBody(item, key)
       : item.type === 'legacy' ? `<div class="sd-social-legacy">${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}<p>${htmlEscape(item.content)}</p></div>`
-        : '<p class="sd-muted sd-social-empty">尚未生成</p>';
-  const caption = item.type === 'legacy' ? item.caption : item.type === 'forum' ? '众人正在说' : item.type === 'phone' ? '消息一隅' : '';
+        : notice ? '' : '<p class="sd-muted sd-social-empty">尚未生成</p>';
   return `<section class="sd-card sd-director-extra-card sd-director-extra-interlude sd-creative-social" data-qm-social="${key}">
-    <div class="sd-section-title"><h3>世界论坛</h3>${caption ? `<span>${htmlEscape(caption)}</span>` : ''}</div>${body}</section>`;
+    <div class="sd-section-title"><h3>幕间拾趣</h3></div>${notice ? `<p class="sd-muted sd-director-section-notice">${htmlEscape(notice)}</p>` : ''}${body}</section>`;
 }
 
 /** Bind once per current root; repeated renders cannot accumulate listeners. */
@@ -139,16 +136,25 @@ export function bindCreativeSocialEvents(root) {
       if (expanded) state.replies.add(index); else state.replies.delete(index);
       target.hidden = !expanded;
       button.setAttribute('aria-expanded', String(expanded));
-    } else if (kind === 'messages') {
-      state.expanded = !state.expanded;
-      card.querySelectorAll('[data-social-message-extra]').forEach(message => { message.hidden = !state.expanded; });
-      button.setAttribute('aria-expanded', String(state.expanded));
-      button.innerHTML = `${state.expanded ? '收起后续消息' : `展开后续 ${Number(button.dataset.socialRemaining) || 0} 条消息`}${icon('caret-down')}`;
     }
   };
+  // Scrolling is part of this already-bounded reading session, not saved data.
+  // Capture is required because native scroll events do not bubble.
+  const onScroll = event => {
+    const viewport = event.target;
+    if (!viewport?.matches?.('[data-qm-social-scroll]') || !root.contains(viewport)) return;
+    const key = viewport.closest('.sd-creative-social')?.dataset.qmSocial;
+    if (key) session(key).scrollTop = Math.max(0, Number(viewport.scrollTop) || 0);
+  };
+  root.querySelectorAll?.('[data-qm-social-scroll]').forEach(viewport => {
+    const key = viewport.closest('.sd-creative-social')?.dataset.qmSocial;
+    if (key) viewport.scrollTop = session(key).scrollTop;
+  });
   root.addEventListener('click', onClick);
+  root.addEventListener('scroll', onScroll, { capture: true, passive: true });
   const dispose = () => {
     root.removeEventListener('click', onClick);
+    root.removeEventListener('scroll', onScroll, true);
     if (bindings.get(root) === dispose) bindings.delete(root);
   };
   bindings.set(root, dispose);

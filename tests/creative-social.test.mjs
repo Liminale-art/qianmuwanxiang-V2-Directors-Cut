@@ -15,7 +15,9 @@ test.beforeEach(() => resetCreativeSocialState());
 
 test('forum is structured feed with existing Qianmu icons and local actions', () => {
   const html = renderCreativeSocialCard(forum);
-  assert.match(html, /<h3>世界论坛<\/h3>/);
+  assert.match(html, /<h3>幕间拾趣<\/h3>/);
+  assert.doesNotMatch(html, /众人正在说|消息一隅|<span>世界论坛<\/span>/);
+  assert.match(html, /data-qm-social-scroll tabindex="0" role="region"/);
   assert.match(html, /class="sd-social-post"/);
   assert.match(html, /@rose/);
   assert.match(html, /data-qm-social-action="like"/);
@@ -36,20 +38,20 @@ test('all model text remains text, including names, handles, titles, replies and
   assert.match(html, /&lt;img/);
 });
 
-test('structured phone has named messages, owner alignment and local expand only', () => {
+test('structured phone displays every message inside an accessible scroll viewport', () => {
   const html = renderCreativeSocialCard(phone);
   assert.equal((html.match(/class="sd-social-message(?: sd-social-message-own)?"/g) || []).length, 8);
   assert.equal((html.match(/sd-social-message-own"/g) || []).length, 4);
-  assert.equal((html.match(/data-social-message-extra hidden/g) || []).length, 2);
-  assert.match(html, /林芷的手机 · 群聊 · 2人发言/);
-  assert.doesNotMatch(html, /2人群聊/); // The transcript cannot establish the full group membership.
-  assert.match(html, /展开后续 2 条消息/);
+  assert.match(html, /林芷的手机/);
+  assert.match(html, /data-qm-social-scroll tabindex="0" aria-label="群聊消息"/);
+  assert.doesNotMatch(html, /人发言|人群聊|展开后续|data-social-message-extra| hidden/);
   assert.doesNotMatch(html, /data-qm-social-action="like"|textarea|发送|input/);
 });
 
 test('direct conversation and short message list do not add a fake send affordance', () => {
   const html = renderCreativeSocialCard({ ...phone, conversation_kind: 'direct', messages: phone.messages.slice(0, 6) });
-  assert.match(html, /林芷的手机 · 私信/);
+  assert.match(html, /林芷的手机/);
+  assert.match(html, /aria-label="私信消息"/);
   assert.doesNotMatch(html, /sd-social-expand|data-social-message-extra|type="submit"/);
 });
 
@@ -92,15 +94,19 @@ test('renderer and local interactions do not mutate generated source objects', (
 });
 
 function fakeRoot(key) {
-  const listeners = new Set();
+  const listeners = new Set(), scrollListeners = new Set();
   const card = { dataset: { qmSocial: key } };
-  const root = { addEventListener: (_, fn) => listeners.add(fn), removeEventListener: (_, fn) => listeners.delete(fn),
-    contains: node => node === card || node === button };
+  const viewport = { scrollTop: 0, matches: selector => selector === '[data-qm-social-scroll]', closest: () => card };
+  const root = { addEventListener: (type, fn) => (type === 'scroll' ? scrollListeners : listeners).add(fn),
+    removeEventListener: (type, fn) => (type === 'scroll' ? scrollListeners : listeners).delete(fn),
+    querySelectorAll: () => [viewport], contains: node => node === card || node === button || node === viewport };
   const label = { textContent: '' }, attrs = {};
   const button = { disabled: false, dataset: { qmSocialAction: 'like', socialIndex: '0' },
     closest: selector => selector === '.sd-creative-social' ? card : button,
     setAttribute: (name, value) => { attrs[name] = value; }, querySelector: selector => selector === '.sd-social-action-label' ? label : null };
-  return { root, button, label, attrs, listeners, click: () => { for (const listener of listeners) listener({ target: button }); } };
+  return { root, button, label, attrs, listeners, scrollListeners, viewport,
+    click: () => { for (const listener of listeners) listener({ target: button }); },
+    scroll: top => { viewport.scrollTop = top; for (const listener of scrollListeners) listener({ target: viewport }); } };
 }
 
 test('binding is idempotent and reactions remain local across rerenders until reset', () => {
@@ -118,7 +124,26 @@ test('binding is idempotent and reactions remain local across rerenders until re
   assert.equal(fixture.attrs['aria-pressed'], 'false');
   fixture.click(); resetCreativeSocialState();
   assert.match(renderCreativeSocialCard(forum), /data-qm-social-action="like"[^>]*aria-pressed="false"/);
-  dispose(); assert.equal(fixture.listeners.size, 0);
+  dispose(); assert.equal(fixture.listeners.size, 0); assert.equal(fixture.scrollListeners.size, 0);
+});
+
+test('same-result remount restores local scroll position, a new result and reset start at top', () => {
+  const key = /data-qm-social="([^"]+)"/.exec(renderCreativeSocialCard(phone))[1];
+  const first = fakeRoot(key); bindCreativeSocialEvents(first.root); first.scroll(240);
+  const remounted = fakeRoot(key); bindCreativeSocialEvents(remounted.root);
+  assert.equal(remounted.viewport.scrollTop, 240);
+  const changedKey = /data-qm-social="([^"]+)"/.exec(renderCreativeSocialCard({ ...phone, title: '另一个群' }))[1];
+  const changed = fakeRoot(changedKey); bindCreativeSocialEvents(changed.root);
+  assert.equal(changed.viewport.scrollTop, 0);
+  resetCreativeSocialState();
+  const cleared = fakeRoot(key); bindCreativeSocialEvents(cleared.root);
+  assert.equal(cleared.viewport.scrollTop, 0);
+});
+
+test('phone title fallback is the actual interlocutor, not an invented chapter heading', () => {
+  const html = renderCreativeSocialCard({ ...phone, title: '', conversation_kind: 'direct' });
+  assert.match(html, /<strong>同事<\/strong>/);
+  assert.doesNotMatch(html, /<strong>消息<\/strong>|消息一隅/);
 });
 
 test('nested streamed host and modal listeners handle the same click only once', () => {

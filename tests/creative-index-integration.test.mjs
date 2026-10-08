@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { parseDirectorFinal, paintModelLog, renderDirectorLive } from '../qianmu-director-live.js';
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
+import { parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewPlan, directorQualitySummary } from '../qianmu-director-live.js';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, CREATIVE_GUIDES, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
 import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from '../qianmu-creative-contract.js';
-import { selectCreativeOptions, mergeCreativeRepair, upgradeCreativeDefaults, upgradeCreativeBlueprint, recentInterludeHint } from '../qianmu-creative-runtime.js';
+import { selectCreativeOptions, upgradeCreativeDefaults, upgradeCreativeBlueprint, recentInterludeHint } from '../qianmu-creative-runtime.js';
 import { hashText, isPlainObject, mergeDefaults, uniqueClean, sanitizeEventStage, advanceEventStage } from '../qianmu-storyboard-utils.js';
 
 const entry = await fs.readFile(new URL('../index.js', import.meta.url), 'utf8');
@@ -46,7 +46,7 @@ test('actual director host route uses Qianmu limits and never falls back to ambi
 
 function fullPlan(options = {}) {
   const plan = {
-    story_status: { title: '街角', cycle: '周三傍晚', directions: [{ title: '旧账回响', content: '账单核对逐渐改变街坊间的赊欠规则。' }, { title: '另一处收信人', content: '不同收信人的经历让跨城联络成为新的主线。' }] },
+    story_status: { title: '街角', cycle: '周三傍晚', directions: [{ horizon: 'near', title: '旧账回响', content: '账单核对逐渐改变街坊间的赊欠规则。' }, { horizon: 'far', title: '另一处收信人', content: '不同收信人的经历让跨城联络成为新的主线。' }] },
     quests: Array.from({ length: 5 }, (_, i) => ({ title: `来信${i}`, subject: '伙计', description: `第${i}份信送到了街口，伙计正在寻找收信者。` })),
     character_dynamics: Array.from({ length: 2 }, (_, i) => ({ title: `待办${i}`, content: `阿岚把第${i}份账单拿到灯下核对，尚未动笔。` })),
     npc_updates: Array.from({ length: 3 }, (_, i) => ({ name: `邻居${i}`, next_action: `邻居正在为第${i}家店铺检查送货的路。` })),
@@ -62,7 +62,7 @@ function fullPlan(options = {}) {
 function fixture({ settings: overrides = {}, responses = [], duringWorldRead, memoryResult = {}, worldText = 'WORLD_SOURCE：旧码头仍在维修，有手机。' } = {}) {
   let saveCount = 0, injectCount = 0, selectionCount = 0, id = 0;
   let memoryText = memoryResult.text ?? 'MEMORY_SOURCE：旧码头的欠款尚未结清。', memoryFingerprint = 'memory-v1';
-  const requests = [];
+  const requests = [], toasts = [];
   const store = { blueprint: 'CUSTOM_BLUEPRINT：保留缓慢的日常节奏。', plan: { original: true }, history: [] };
   const context = { name1: '访客', chatMetadata: {}, extensionSettings: { gagaDogSummary: {} }, chat: [
     { name: '阿岚', is_user: false, mes: 'HISTORY_SOURCE：阿岚拿起手机，读到了老周的短信。' },
@@ -84,11 +84,11 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     readGagaMemoryContext: options => { assert.equal(options.pluginAvailable, true); return { text: memoryText, status: memoryResult.status || 'ready', diagnostics: [], snapshot: { production: 'layered', summaryMode: 'mixed', fingerprint: memoryFingerprint } }; },
     htmlEscape: value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]),
     estimateTokens: value => Math.ceil(String(value).length / 4), hashText, isPlainObject, mergeDefaults, uniqueClean,
-    creativeSectionGuidance, createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity, mergeCreativeRepair, recentInterludeHint,
+    creativeSectionGuidance, createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity, recentInterludeHint,
     selectCreativeOptions: (value, options) => { selectionCount++; return selectCreativeOptions(value, { ...options, random: () => .9 }); },
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null, activeTab: 'dashboard', MODAL_ID: 'panel',
     document: { getElementById: () => null }, AbortController, Date, console, clone: structuredClone,
-    validateApiSettings: () => true, toast: () => {}, apiToast: () => {}, uid: prefix => `${prefix}-${++id}`,
+    validateApiSettings: () => true, toast: (...args) => { toasts.push(args); }, apiToast: () => {}, uid: prefix => `${prefix}-${++id}`,
     featureRuntime: { load: async () => assert.fail('ordinary director requests must not load image admission') },
     resolveImageAccountNamespace: async () => 'st-user:one',
     storyboardState: () => ({ enabled: false, automation: { autoGenerate: true }, directorBridge: { worldSideShotsEnabled: true, worldAutoGenerate: true } }),
@@ -96,7 +96,7 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     pushLog: log => { settings.logHistory.push(log); return log; }, saveSettings: () => {},
     saveMetadata: async () => { saveCount++; }, applyDirectorInjection: async () => { injectCount++; }, injectSelection: new Map(),
     resetCreativeSocialState: () => {},
-    storyboardQueueNewWorldPlan: async () => assert.fail('disabled storyboard must not receive director work'), parseDirectorFinal, paintModelLog, renderDirectorLive,
+    storyboardQueueNewWorldPlan: async () => assert.fail('disabled storyboard must not receive director work'), parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewPlan, directorQualitySummary,
     FACTION_RELATION_KINDS: ['冲突', '同盟', '张力', '中立', '依附'], sanitizeEventStage, advanceEventStage,
     callExternalApi: async (messages, onDelta, config, controller) => {
       const request = { messages, onDelta, config, controller }; requests.push(request);
@@ -107,10 +107,12 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
       return raw;
     },
   };
+  c.callSillyTavernModel = async (userPrompt, systemPrompt, onDelta, config) => c.callExternalApi(
+    [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], onDelta, config, config?.controller);
   vm.createContext(c);
   vm.runInContext([promptSource, normalizeSource, qualitySource, geoSource, generationSource].join('\n'), c);
   vm.runInContext('directorMemoryHostModule = memoryHostFixture;', c);
-  return { c, store, context, settings, requests, get selectionCount() { return selectionCount; }, get saves() { return saveCount; }, get injects() { return injectCount; },
+  return { c, store, context, settings, requests, toasts, get selectionCount() { return selectionCount; }, get saves() { return saveCount; }, get injects() { return injectCount; },
     changeMemory() { memoryText = 'CHANGED_MEMORY'; memoryFingerprint = 'memory-v2'; } };
 }
 
@@ -200,7 +202,7 @@ test('actual buildPrompt binds sources, custom blueprint and one fixed interlude
   assert.match(prompt, /candidate_reference/);
   assert.match(prompt, /仍为候选参考/);
   assert.ok(prompt.includes('"type": "phone"'));
-  assert.ok(prompt.includes('只从正文已经出现的 CHAR 或其他非 USER 人物中选取手机所属者'));
+  assert.ok(prompt.includes(CREATIVE_GUIDES.phone), 'the complete current phone viewpoint and naming guidance reaches the actual request');
 });
 
 test('removing the temporary memory card preserves exact request memory and its diagnostics without a second archive', async () => {
@@ -294,42 +296,41 @@ test('actual phone admission includes a narrative supporting character who is no
 
 test('worldbook-only names do not become phone owners without appearing in narrative or effective memory', async () => {
   const plan = fullPlan(); plan.interlude.owner = '方先生';
-  const e = fixture({ worldText: 'WORLD_SOURCE：方先生拥有手机，只在设定中出现。', responses: [JSON.stringify(plan), '{}'] });
+  const e = fixture({ worldText: 'WORLD_SOURCE：方先生拥有手机，只在设定中出现。', responses: [JSON.stringify(plan)] });
   await e.c.generateDirectorPlan();
-  assert.equal(e.requests.length, 2);
+  assert.equal(e.requests.length, 1);
   assert.equal(e.saves, 0); assert.equal(e.store.plan.original, true);
   assert.ok(e.settings.logHistory[0].quality.issues.some(issue => issue.field === 'interlude'));
 });
 
-test('actual repair reuses the exact source prompt and fixed interlude, and appends only missing items', async () => {
-  const first = fullPlan(), missing = first.quests.pop(), originalQualified = structuredClone(first.quests);
-  const patch = { quests: [missing], character_dynamics: [{ title: '不得覆盖', content: 'UNREQUESTED_REPLACEMENT' }], interlude: { type: 'theater', title: '不能换型', content: 'UNREQUESTED_INTERLUDE' }, limitations: [] };
-  const e = fixture({ responses: [JSON.stringify(first), JSON.stringify(patch)] });
-  await e.c.generateDirectorPlan();
-  assert.equal(e.requests.length, 2); assert.equal(e.selectionCount, 1);
-  const firstPrompt = e.requests[0].messages[1].content, repairPrompt = e.requests[1].messages[1].content;
-  assert.ok(repairPrompt.startsWith(firstPrompt + '\n\n[Complete the missing or invalid parts]'));
-  for (const marker of ['WORLD_SOURCE', 'PRESET_SOURCE', 'MEMORY_SOURCE', 'HISTORY_SOURCE', 'CUSTOM_BLUEPRINT']) assert.ok(repairPrompt.includes(marker));
-  assert.ok(!repairPrompt.includes('INTERLUDE_ONLY_CONTENT'));
-  assert.ok(!repairPrompt.includes('PARALLEL_ONLY_CONTENT'));
-  assert.equal(e.requests[1].messages[0].content, e.requests[0].messages[0].content);
-  assert.deepEqual(plain(e.store.plan.quests.slice(0, 4)), originalQualified);
-  assert.equal(e.store.plan.quests.length, 5);
-  assert.equal(e.store.plan.character_dynamics[0].content, first.character_dynamics[0].content);
-  assert.equal(e.store.plan.interlude.type, 'phone');
-  assert.deepEqual(plain(e.store.plan.interlude.messages), first.interlude.messages);
-  assert.equal(e.settings.logHistory[0].status, 'success');
-  assert.equal(e.saves, 1); assert.equal(e.injects, 1);
+test('each provider makes one request only; incomplete output keeps original responses and per-run switches without repair', async () => {
+  for (const providerMode of ['external', 'sillytavern']) {
+    const first = fullPlan(); first.quests.pop();
+    const e = fixture({ settings: { providerMode }, responses: [JSON.stringify(first), () => assert.fail('no automatic supplemental model call')] });
+    await e.c.generateDirectorPlan();
+    assert.equal(e.requests.length, 1); assert.equal(e.selectionCount, 1);
+    assert.equal(e.store.plan.original, true); assert.equal(e.saves, 0); assert.equal(e.injects, 0);
+    const log = e.settings.logHistory[0];
+    assert.equal(log.response, JSON.stringify(first));
+    assert.equal(log.repairResponse, undefined); assert.equal(log.repairError, undefined);
+    assert.match(log.error, /未自动补写/);
+    assert.deepEqual(plain(log.creativeOptions), { parallelSceneEnabled: true, interludeEnabled: true, interludeType: 'phone', worldChatterEnabled: false, geopoliticsEnabled: false });
+    assert.doesNotMatch(JSON.stringify(log.creativeOptions), /SOURCE|personaNames|phoneSourceText|characterNames/);
+    assert.ok(log.quality.issues.some(issue => issue.field === 'quests' && issue.missing === 1));
+    assert.equal(directorPreviewPlan(log).quests.length, 4);
+    assert.equal(e.toasts.length, 1); assert.match(e.toasts[0][0], /预演.*未自动补写/);
+  }
 });
 
-test('remaining gaps after the one repair retain prior plan, history and injection selection', async () => {
+test('first-response gaps retain prior plan, history and injection selection without requesting completion', async () => {
   const incomplete = fullPlan(BASIC); incomplete.quests.pop();
-  const e = fixture({ settings: BASIC, responses: [JSON.stringify(incomplete), JSON.stringify({ quests: [], limitations: [{ field: 'quests', missing: 1, reason: '明确的封闭设定不允许补充可接近的场景。' }] })] });
+  incomplete.limitations = [{ field: 'quests', missing: 1, reason: '明确的封闭设定不允许补充可接近的场景。' }];
+  const e = fixture({ settings: BASIC, responses: [JSON.stringify(incomplete)] });
   e.store.history = [{ id: 'old-history', plan: { old: true } }];
   e.c.injectSelection.set('old-selection', 'keep');
   const old = e.store.plan;
   await e.c.generateDirectorPlan();
-  assert.equal(e.requests.length, 2);
+  assert.equal(e.requests.length, 1);
   assert.equal(e.store.plan, old);
   assert.equal(e.store.history[0].id, 'old-history');
   assert.equal(e.c.injectSelection.get('old-selection'), 'keep');
@@ -342,7 +343,7 @@ test('remaining gaps after the one repair retain prior plan, history and injecti
   assert.equal(log.response, JSON.stringify(incomplete));
 });
 
-test('source changes during first request prevent repair and adoption even when JSON is complete', async () => {
+test('source changes during first request prevent adoption and do not launch another request', async () => {
   const incomplete = fullPlan(BASIC); incomplete.quests.pop();
   const e = fixture({ settings: BASIC, responses: [({ context }) => { context.chat[0].mes += ' NEW_SOURCE'; return JSON.stringify(incomplete); }] });
   await e.c.generateDirectorPlan();
@@ -351,13 +352,47 @@ test('source changes during first request prevent repair and adoption even when 
   assert.match(e.settings.logHistory[0].error, /正文、记忆或创作设置已变化/);
 });
 
-test('source changes during repair cannot adopt late supplemental content', async () => {
-  const incomplete = fullPlan(BASIC), missing = incomplete.quests.pop();
-  const e = fixture({ settings: BASIC, responses: [JSON.stringify(incomplete), ({ context }) => { context.chat[1].mes += ' USER_REVISION'; return JSON.stringify({ quests: [missing], limitations: [] }); }] });
-  await e.c.generateDirectorPlan();
-  assert.equal(e.requests.length, 2); assert.equal(e.store.plan.original, true);
-  assert.equal(e.saves, 0); assert.equal(e.injects, 0);
-  assert.match(e.settings.logHistory[0].error, /正文、记忆或创作设置已变化/);
+test('cancelled, interrupted and malformed responses preserve received cards without supplementation, saving or injection', async () => {
+  const first = fullPlan(BASIC);
+  const partial = '{"story_status":' + JSON.stringify(first.story_status) + ',"quests":[' + JSON.stringify(first.quests[0]) + ',{"title":"unfinished';
+  for (const providerMode of ['external', 'sillytavern']) for (const failure of ['cancelled', 'interrupted', 'invalid-json']) {
+    const e = fixture({ settings: { ...BASIC, providerMode, streamEnabled: true }, responses: [({ request }) => {
+      request.onDelta(partial);
+      if (failure === 'invalid-json') return partial;
+      const error = new Error(failure === 'cancelled' ? 'USER_CANCELLED' : 'MODEL_STREAM_INTERRUPTED: transport fixture');
+      if (failure === 'cancelled') error.name = 'AbortError';
+      else error.modelResponse = { text: partial, reasoning: '', finishReason: 'length', complete: false, interrupted: true };
+      throw error;
+    }] });
+    await e.c.generateDirectorPlan();
+    assert.equal(e.requests.length, 1, `${providerMode}:${failure}`);
+    assert.equal(e.saves, 0); assert.equal(e.injects, 0); assert.equal(e.store.plan.original, true);
+    const log = e.settings.logHistory[0];
+    assert.equal(log.response, partial);
+    assert.equal(log.status, failure === 'cancelled' ? 'cancelled' : 'error');
+    assert.ok(log.quality.issues.some(issue => issue.field === 'quests' && issue.missing === 4));
+    assert.equal(directorPreviewPlan(log).quests.length, 1);
+    assert.equal(e.toasts.length, 1); assert.match(e.toasts[0][0], /未自动补写/);
+    if (failure === 'interrupted') { assert.match(log.error, /transport fixture/); assert.equal(log.completion.finishReason, 'length'); }
+    if (failure === 'invalid-json') { assert.match(log.error, /模型输出格式有误/); assert.equal(log.completion.interrupted, undefined, 'format error is not fabricated truncation'); }
+  }
+});
+
+test('complete outputs save and inject once per provider, while background gaps still produce one summary', async () => {
+  for (const providerMode of ['external', 'sillytavern']) {
+    const complete = fixture({ settings: { ...BASIC, providerMode }, responses: [JSON.stringify(fullPlan(BASIC))] });
+    await complete.c.generateDirectorPlan();
+    assert.equal(complete.requests.length, 1); assert.equal(complete.saves, 1); assert.equal(complete.injects, 1);
+    assert.equal(complete.settings.logHistory[0].status, 'success');
+    assert.equal(complete.store.directorQuality.repaired, undefined);
+    const partial = fullPlan(BASIC); partial.quests.pop();
+    const background = fixture({ settings: { ...BASIC, providerMode }, responses: [JSON.stringify(partial)] });
+    await background.c.generateDirectorPlan(false, true, { background: true });
+    assert.equal(background.requests.length, 1); assert.equal(background.saves, 0); assert.equal(background.injects, 0);
+    assert.equal(background.toasts.length, 1); assert.match(background.toasts[0][0], /预演.*未自动补写/);
+  }
+  assert.doesNotMatch(qualitySource, /repairDirectorPlanQuality|callExternalApi|callSillyTavernModel|mergeCreativeRepair/);
+  assert.doesNotMatch(generationSource, /repairDirectorPlanQuality|repairResponse\s*=|repairError\s*=/);
 });
 
 test('actual normalization supports new readable cards and legacy fields without auto-validating bad interludes', () => {

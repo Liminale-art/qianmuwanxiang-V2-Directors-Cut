@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.446';
-import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.446';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.446';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, mergeCreativeRepair, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.446';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.447';
+import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.447';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.447';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.447';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.443';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -30,7 +30,7 @@ import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor}
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
-import { directorPreviewPlan, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.446';
+import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.447';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js?v=1.59.445';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
@@ -306,7 +306,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.446';
+const VERSION = '1.59.447';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -814,8 +814,8 @@ const FLOAT_LOGO_URLS = Object.freeze({
 });
 const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-DOUBAO-APIKEY.md';
 
-const PROMPT_REVISION = 26;
-const BLUEPRINT_REVISION = 3;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
+const PROMPT_REVISION = 27;
+const BLUEPRINT_REVISION = 4;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
 const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;
@@ -3484,36 +3484,11 @@ function directorHasQualityNeeds(needs) {
   return Boolean(needs.issues?.length);
 }
 
-async function repairDirectorPlanQuality(plan, previousPlan, store, request = {}) {
-  const options = request.creativeOptions || {};
-  const needs = directorQualityNeeds(plan, previousPlan, store, options);
-  if (!directorHasQualityNeeds(needs)) return { plan, needs, repaired: false, raw: '', error: '' };
-  const requestedFields = uniqueClean(needs.issues.map(issue => issue.field));
-  const systemPrompt = request.systemPrompt || settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-  // Reuse the exact source snapshot, permissions, quotas and random choice from this request.
-  // Side stories never enter the repairer's mainline reference.
-  const excessFields = Object.fromEntries(needs.issues.filter(issue => issue.excess > 0).map(issue => [issue.field, plan[issue.field]]));
-  const userPrompt = request.userPrompt + '\n\n[Complete the missing or invalid parts]\nKeep all existing valid content. Return only the fields with issues listed below. For arrays, supply only missing entries; rewrite a standalone card only if that card is invalid. For story_status, supply missing directions inside story_status.directions; retain all valid existing directions and anchors. For an array exceeding its upper limit, use keep_indices:{field_name:[original_zero_based_indices]} to select exactly max existing entries, preserving their original text rather than rewriting them. keep_indices.story_status selects indices within directions, not the surrounding object. Update limitations and remove any shortfalls that have been resolved.\n'
-    + JSON.stringify(needs.issues) + '\n[Existing valid mainline reference]\n' + JSON.stringify(projectCreativeContinuity(plan))
-    + (Object.keys(excessFields).length ? '\n[Original entries for this request\'s count selection only]\n' + JSON.stringify(excessFields) : '');
-  let raw = '';
-  try {
-    await request.guard?.();
-    raw = settings.providerMode === 'sillytavern'
-      ? await callSillyTavernModel(userPrompt, systemPrompt, null, { controller: request.controller, guard: request.guard, directorRequest: true, stream_response: false, max_tokens: Math.min(4200, Math.max(1400, Number(settings.maxOutputTokens || 2600))) })
-      : await callExternalApi([{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], null, {
-        guard: request.guard, stream: false, temperature: Math.min(.85, Math.max(.45, Number(settings.temperature || .7))),
-        maxTokens: Math.min(4200, Math.max(1400, Number(settings.maxOutputTokens || 2600))),
-      }, request.controller || abortController);
-    await request.guard?.();
-    const patch = parseDirectorFinal(raw);
-    mergeCreativeRepair(plan, patch, needs.issues.filter(issue => requestedFields.includes(issue.field)), options);
-    const removed = directorDedupePlan(plan, options);
-    return { plan, needs, repaired: true, raw, removed, error: '' };
-  } catch (error) {
-    if (error?.name === 'AbortError' || error?.message === 'USER_CANCELLED') throw error;
-    return { plan, needs, repaired: false, raw: error?.modelResponse?.text || raw, error: error?.message || String(error) };
-  }
+function recordDirectorQuality(log, plan, creativeOptions = {}) {
+  const needs = directorQualityNeeds(plan, null, null, creativeOptions);
+  log.quality = needs;
+  log.limitations = Array.isArray(plan?.limitations) ? plan.limitations : [];
+  return needs;
 }
 
 function makeStreamLogUpdater(log) {
@@ -3595,7 +3570,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     }
   };
   const guard = async () => {
-    if (modelKeys.some((field, i) => settings[field] !== modelValues[i])) throw new Error('模型配置已变更，本次原文保留但不继续补写或采用；请按新配置重新推演。');
+    if (modelKeys.some((field, i) => settings[field] !== modelValues[i])) throw new Error('模型配置已变更，本次原文保留但未采用；请按新配置重新推演。');
     if (!alive() || controller.signal.aborted || namespace && namespace !== await resolveDirectorAccount()) {
       controller.abort(); throw Object.assign(new Error('生成所属的聊天或账户已变化，未写入其他聊天'), { name: 'AbortError' });
     }
@@ -3612,6 +3587,8 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     const systemPrompt = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
     const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
     log.memory = run.memoryStatus;
+    log.creativeOptions = Object.fromEntries(['parallelSceneEnabled', 'interludeEnabled', 'interludeType', 'worldChatterEnabled', 'geopoliticsEnabled']
+      .map(field => [field, run.creativeOptions[field]]));
     if (['partial', 'unverified', 'unsupported'].includes(log.memory?.status)) {
       toast(log.memory.status === 'unsupported' ? '当前记忆版本尚未适配，本次仅使用其他已选资料。' : '部分记忆无法核对，本次只采用可用资料；详情已记入日志。', 'warning');
     }
@@ -3626,27 +3603,17 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     await guard();
     if (cancelRequested) throw new Error('USER_CANCELLED');
     log.response = String(raw || '');
-    const previousPlan = store.plan ? clone(store.plan) : null;
     const newPlan = normalizePlan(parseDirectorFinal(raw), run.creativeOptions);
     const initialRemoved = directorDedupePlan(newPlan, run.creativeOptions);
-    const quality = await repairDirectorPlanQuality(newPlan, previousPlan, store, { controller, guard, userPrompt, systemPrompt, creativeOptions: run.creativeOptions });
-    await guard();
-    if (cancelRequested) throw new Error('USER_CANCELLED');
-    if (quality.raw) log.repairResponse = quality.raw;
-    if (quality.error) log.repairError = quality.error;
-    const remaining = directorQualityNeeds(newPlan, previousPlan, store, run.creativeOptions);
+    const remaining = recordDirectorQuality(log, newPlan, run.creativeOptions);
     if (directorHasQualityNeeds(remaining)) {
-      log.quality = remaining;
-      log.limitations = newPlan.limitations || [];
-      throw Object.assign(new Error('本次内容未完整达到栏目要求，旧结果保留；已收内容和缺项可在日志查看。'), { code: 'MODEL_OUTPUT_INCOMPLETE' });
+      throw Object.assign(new Error('本次内容未完整达到栏目要求，旧结果保留；已收内容可只读查看，缺项已记入日志，未自动补写。'), { code: 'MODEL_OUTPUT_INCOMPLETE' });
     }
     const now = new Date().toISOString();
     store.directorQuality = {
       at: now,
-      repaired: quality.repaired,
-      needs: quality.needs,
-      removed: [...initialRemoved, ...(quality.removed || [])],
-      repairError: quality.error || '',
+      needs: remaining,
+      removed: initialRemoved,
     };
     store.plan = newPlan;
     store.directorPlanRevisionId = uid('drev');
@@ -3676,18 +3643,30 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     }
   } catch (error) {
     if (error?.modelResponse) updateResponse(error.modelResponse);
+    if (log.request && run.creativeOptions && !log.quality) {
+      // Analyse only closed cards already received. This never repairs, changes
+      // the transport failure, advances the plan, or launches another request.
+      try {
+        const preview = directorPreviewPlan({ ...log, status: 'loading' });
+        const partial = normalizePlan(preview || {}, run.creativeOptions);
+        directorDedupePlan(partial, run.creativeOptions);
+        recordDirectorQuality(log, partial, run.creativeOptions);
+      } catch (_) { /* Diagnostics must not replace the original failure. */ }
+    }
     const msg = error?.name === 'AbortError' ? 'USER_CANCELLED' : (error?.message || String(error));
     const isJsonFail = msg.startsWith('JSON_PARSE_FAILED::');
     log.status = msg === 'USER_CANCELLED' ? 'cancelled' : 'error';
     log.error = msg === 'INVALID_API_SETTINGS' ? '请检查API设置'
       : msg === 'USER_CANCELLED' ? '已取消生成'
-      : isJsonFail ? `模型输出格式有误，本次结果未写入；已收到的原文和完整条目仍可查看，未自动重试。\n原始错误：${msg.slice(19)}`
+      : isJsonFail ? `模型输出格式有误，本次结果未写入；已收到的原文和完整条目仍可查看，未自动补写。\n原始错误：${msg.slice(19)}`
       : msg;
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     if (alive()) saveSettings();
     // 失败提示照常后台弹出（推演完成/失败的反馈关界面也要能收到）；日志里始终有完整记录可回看
-    if (!silentFailure && alive()) {
-      if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
+    const summary = directorQualitySummary(log);
+    if (alive() && (!silentFailure || summary)) {
+      if (summary) toast(`${msg === 'USER_CANCELLED' ? '已停止推演' : '本次推演未完整完成'}：${summary}。未自动补写，已收内容与原始原因可查看。`, 'warning');
+      else if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
       else if (error?.code === 'MODEL_OUTPUT_INCOMPLETE' || isJsonFail) toast(`本次推演未完整完成：${log.error}`, 'warning');
       else if (msg === 'INVALID_API_SETTINGS') apiToast();
       else toast(`生成失败：${log.error}`, 'error');
@@ -6838,6 +6817,11 @@ function directorDisplayPlan() {
   return directorPreviewPlan(directorLiveLog) || currentPlan();
 }
 
+function renderDirectorSectionNotice(plan, field) {
+  const status = directorSectionStatus(plan, field);
+  return status ? `<p class="sd-muted sd-director-section-notice" data-director-section-status="${htmlEscape(field)}">${htmlEscape(status)}</p>` : '';
+}
+
 function renderCoreadRuntimeGate() {
   const runtime = coreadReaderRuntimeStatus();
   const failed = runtime.status === 'error';
@@ -7065,10 +7049,12 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     const key = [rel.a, rel.b].sort().join('::'), primary = primaryKeys.has(key), kindCls = geoRelationClass(rel.kind);
     const marker = rel.kind === '依附' ? ' marker-end="url(#sd-geo-arrow)"' : '';
     const title = `${factions[a].name} · ${rel.kind} · ${factions[b].name}${rel.note ? `\n${rel.note}` : ''}`;
+    const flowDelay = -(geoStableHash(key) % 90) / 10;
     edgeMeta.push({ rel, d, key });
     return `<g class="sd-geo-edge sd-geo-edge-${kindCls} ${primary ? 'sd-geo-edge-primary' : 'sd-geo-edge-secondary'}${selectedKinds.has(rel.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(rel.kind)}" data-ea="${htmlEscape(rel.a)}" data-eb="${htmlEscape(rel.b)}">`
       + `<path class="sd-geo-edge-base" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none"><title>${htmlEscape(title)}</title></path>`
-      + `<path class="sd-geo-edge-flow" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none"${marker}></path></g>`;
+      + `<path class="sd-geo-edge-flow" d="${d}" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none"${marker}></path>`
+      + `<path class="sd-geo-edge-motion" d="${d}" pathLength="100" stroke="${GEO_REL_COLOR[rel.kind] || GEO_REL_COLOR['中立']}" fill="none" style="--flow-delay:${flowDelay}s" aria-hidden="true"></path></g>`;
   }).join('');
 
   const eventPulses = activeEvents.map((event, eventIndex) => {
@@ -7438,7 +7424,7 @@ function renderGenerateRow() {
     : '<i class="fa-solid fa-clapperboard" data-qm-icon="dashboard"></i>推演下一幕';
   return `<div class="sd-button-row">
     <button class="sd-btn sd-primary sd-generate-main ${busy ? 'sd-as-stop' : ''}">${mainContent}</button>
-    <button class="sd-btn sd-newcomer-toggle ${settings.newcomerMode ? 'active' : ''}" type="button" title="关注与既有事务、人物或场所有实际关联的新人物"><i class="fa-solid fa-user-plus"></i>新角入场</button>
+    <button class="sd-btn sd-newcomer-toggle ${settings.newcomerMode ? 'active' : ''}" type="button" aria-pressed="${!!settings.newcomerMode}" title="关注与既有事务、人物或场所有实际关联的新人物"><i class="fa-solid fa-user-plus"></i>新角入场</button>
   </div>`;
 }
 
@@ -7449,12 +7435,14 @@ function renderDashboardTab() {
     ${renderHistorySection()}`;
   }
   const st = p.story_status || {};
-  const directions = (Array.isArray(st.directions) ? st.directions : []).filter(item => item && (item.title || item.content));
+  const directions = (Array.isArray(st.directions) ? st.directions : []).filter(item => item && (item.title || item.content))
+    .sort((a, b) => ({ near: 0, far: 1 }[a.horizon] ?? 2) - ({ near: 0, far: 1 }[b.horizon] ?? 2));
   return `
     <section class="sd-card sd-hero">
-      <div class="sd-hero-top"><div class="sd-kicker">${htmlEscape(st.cycle || '下一幕')}</div>${renderHeroActions(!p._streamPreview)}</div>
-      <div class="sd-two sd-scene-current"><b>推演方向</b><span>${htmlEscape(st.title || st.current_arc || '')}</span></div>
-      ${directions.length ? `<div class="sd-director-directions">${directions.map(item => `<article class="sd-director-direction">${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}<p>${htmlEscape(item.content || '')}</p></article>`).join('')}</div>` : `<p class="sd-director-narrative">${htmlEscape(st.summary || '')}</p>`}
+      <div class="sd-hero-top"><h3>命运之脉</h3>${renderHeroActions(!p._streamPreview || p._generation?.status !== 'loading')}</div>
+      ${st.cycle ? `<div class="sd-fate-time">${htmlEscape(st.cycle)}</div>` : ''}
+      ${renderDirectorSectionNotice(p, 'story_status')}
+      ${directions.length ? `<div class="sd-director-directions">${directions.map(item => `<article class="sd-director-direction"><p>${htmlEscape(item.content || item.title || '')}</p></article>`).join('')}</div>` : `<p class="sd-director-narrative">${htmlEscape(st.summary || st.title || st.current_arc || '')}</p>`}
       ${renderGenerateRow()}
     </section>
     <section class="sd-card sd-status-card">
@@ -7463,25 +7451,27 @@ function renderDashboardTab() {
         <button class="sd-count-tag sd-count-group" data-jump="castworld"><span class="sd-ct-label">世界</span></button>
       </div>
     </section>
-    ${settings.parallelSceneEnabled !== false ? renderDirectorExtraCard(p.parallel_scene, 'parallel') : ''}
-    ${settings.interludeEnabled !== false ? renderDirectorExtraCard(p.interlude, 'interlude') : ''}
+    ${directorSectionEnabled(p, 'parallel_scene', settings) ? renderDirectorExtraCard(p.parallel_scene, 'parallel', p) : ''}
+    ${directorSectionEnabled(p, 'interlude', settings) ? renderDirectorExtraCard(p.interlude, 'interlude', p) : ''}
     ${renderHistorySection()}`;
 }
 
 // 番外只供阅读，不提供写入正文、暗线或世界素材的操作。
-function renderDirectorExtraCard(value, kind) {
-  if (kind !== 'parallel') return renderCreativeSocialCard(value);
+function renderDirectorExtraCard(value, kind, plan = directorDisplayPlan()) {
+  if (kind !== 'parallel') return renderCreativeSocialCard(value, { notice: directorSectionStatus(plan, 'interlude') });
+  const notice = renderDirectorSectionNotice(plan, 'parallel_scene');
   const item = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const content = typeof item.content === 'string' ? item.content.trim() : '';
   return `<section class="sd-card sd-director-extra-card sd-director-extra-parallel">
-    <div class="sd-section-title"><h3>未映之幕</h3>${content ? '<span>平行番外</span>' : ''}</div>
-    ${content ? `<div class="sd-director-extra-content">${htmlEscape(content)}</div>` : '<p class="sd-muted">尚未生成</p>'}
+    <div class="sd-section-title"><h3>未映之幕</h3></div>
+    ${notice}${content ? `<div class="sd-director-extra-content">${htmlEscape(content)}</div>` : notice ? '' : '<p class="sd-muted">尚未生成</p>'}
   </section>`;
 }
 
 // 涟漪承接实际起因与传播；只按显式箭头分段，不截断叙事情境。
 function renderChainReactionsCard(p) {
   const list = Array.isArray(p.chain_reactions) ? p.chain_reactions : [];
+  const notice = renderDirectorSectionNotice(p, 'chain_reactions');
   const body = list.length
     ? `<ol class="sd-chain-flowlist">${list.map((c, index) => {
         const spark = String(c.spark || '').trim();
@@ -7489,14 +7479,18 @@ function renderChainReactionsCard(p) {
         if (!spark && !chain) return '';
         const steps = [spark, ...chain.split(/\s*(?:→|->|⇒)\s*/)]
           .map((s) => String(s || '').trim()).filter(Boolean);
-        const nodes = steps.map((s, i) => `<span class="sd-chain-node${i === 0 ? ' sd-chain-node-spark' : ''}">${htmlEscape(s)}</span>`).join('<i class="fa-solid fa-angle-right sd-chain-link"></i>');
+        const nodes = steps.map((s, i) => {
+          if (i === 0) return `<span class="sd-chain-node sd-chain-node-spark">${htmlEscape(s)}</span>`;
+          const characters = Array.from(s), head = characters.splice(0, 2).join('');
+          return `<wbr><span class="sd-chain-node"><span class="sd-chain-link-head"><span class="sd-chain-link" aria-hidden="true">→</span>${htmlEscape(head)}</span>${htmlEscape(characters.join(''))}</span>`;
+        }).join('');
         return `<li class="sd-chain-item"><div class="sd-chain-track">${nodes}</div>${p._streamPreview ? '' : renderDirectorWorldEntryLink('chain_reactions',index)}</li>`;
       }).filter(Boolean).join('')}</ol>`
-    : '<p class="sd-muted">尚未浮现涟漪。</p>';
+    : notice ? '' : '<p class="sd-muted">尚未浮现涟漪。</p>';
   return `<section class="sd-card sd-chain-card">
     <details class="sd-plain-fold" data-acc="tnfold-chain" open>
       <summary><b>涟漪</b></summary>
-      <div class="sd-fold-body">${body}</div>
+      <div class="sd-fold-body">${notice}${body}</div>
     </details>
   </section>`;
 }
@@ -8557,6 +8551,7 @@ function bindWorldFlipEvents(root) {
 
 // 关系暗涌：角色之间自行演变的关系，保留旧资料但不把知情程度变成阅读标签。
 function renderRelationUndercurrentsCard(p) {
+  const notice = renderDirectorSectionNotice(p, 'relation_undercurrents');
   const normTone = (t) => {
     const s = String(t || '').trim().toLowerCase();
     if (/(neg|负|阴|敌|怨|裂)/.test(s)) return 'neg';
@@ -8580,26 +8575,29 @@ function renderRelationUndercurrentsCard(p) {
         const toneText = ({ neg: '负面', negative: '负面', neu: '中立', neutral: '中立', pos: '正向', positive: '正向' })[r.toneText.toLowerCase()] || r.toneText;
         const tone = r.tone ? `<span class="sd-relus-tone sd-relus-tone-${r.tone}">${htmlEscape(toneText || toneLabel[r.tone])}</span>` : '';
         return `<article class="sd-relus-row sd-relus-${r.tone || 'neu'}">
-          <div class="sd-relus-head">${tone}<span class="sd-relus-parties">${htmlEscape(r.parties)}</span>${p._streamPreview ? '' : renderDirectorWorldEntryLink('relation_undercurrents',r.sourceIndex)}</div>
+          <div class="sd-relus-head"><span class="sd-relus-parties">${htmlEscape(r.parties)}</span>${tone}${p._streamPreview ? '' : renderDirectorWorldEntryLink('relation_undercurrents',r.sourceIndex)}</div>
           ${r.tension ? `<p class="sd-relus-tension">${htmlEscape(r.tension)}</p>` : ''}
           ${r.drift ? `<p class="sd-relus-drift"><i class="fa-solid fa-arrow-trend-up"></i>${htmlEscape(r.drift)}</p>` : ''}
         </article>`;
       }).join('')
-    : '<p class="sd-muted">暂无关系暗涌。</p>';
+    : notice ? '' : '<p class="sd-muted">暂无关系暗涌。</p>';
   return `<section class="sd-card sd-relus-card">
     <details class="sd-plain-fold" data-acc="castfold-relus" open>
-      <summary><b>关系暗涌</b><span class="sd-summary-note">${list.length} 条</span></summary>
-      <div class="sd-fold-body">${body}</div>
+      <summary><b>关系暗涌</b></summary>
+      <div class="sd-fold-body">${notice}${body}</div>
     </details>
   </section>`;
 }
 
-// 可折叠版分区：summary 显示标题+条数，整组可收起；data-acc 记忆开合状态
+// 分区仅呈现有意义的身份，不重复展示条数；data-acc 记忆开合状态。
 function renderPlanSectionFold(title, items, kind, accKey, readOnly = false) {
+  const field = { quest: 'quests', character: 'character_dynamics', npc: 'npc_updates', world: 'world_updates' }[kind];
+  const notice = field ? renderDirectorSectionNotice(directorDisplayPlan(), field) : '';
+  const characterNames = kind === 'character' ? [...new Set((items || []).map(item => String(item?.name || '').trim()).filter(Boolean))].join(' · ') : '';
   return `<section class="sd-card sd-plan-section">
     <details class="sd-plain-fold" data-acc="${htmlEscape(accKey)}" open>
-      <summary><b>${htmlEscape(title)}</b><span class="sd-summary-note">${items?.length || 0} 条</span></summary>
-      <div class="sd-fold-body">${renderItemList(items || [], kind, readOnly)}</div>
+      <summary><b>${htmlEscape(title)}</b>${characterNames ? `<span class="sd-summary-note sd-character-names">${htmlEscape(characterNames)}</span>` : ''}</summary>
+      <div class="sd-fold-body">${notice}${items?.length || !notice ? renderItemList(items || [], kind, readOnly) : ''}</div>
     </details>
   </section>`;
 }
@@ -8607,7 +8605,8 @@ function renderPlanSectionFold(title, items, kind, accKey, readOnly = false) {
 // 尘寰群生卡：世间嘈杂之声。默认是一方动态浮现的「市井舞台」——气泡缓缓滚动渐隐渐出，中段清晰、边缘模糊；
 // 点「展开」切换为完整台本列表（出处坐标 + 台词，台本式两行），便于通读。
 function renderWorldChatterCard(p) {
-  if (!settings.worldChatterEnabled) return '';
+  if (!directorSectionEnabled(p, 'world_chatter', settings)) return '';
+  const notice = renderDirectorSectionNotice(p, 'world_chatter');
   const list = (Array.isArray(p.world_chatter) ? p.world_chatter : [])
     .map((c) => ({
       text: String(c && (c.text ?? c) || '').trim(),
@@ -8618,7 +8617,7 @@ function renderWorldChatterCard(p) {
   if (!list.length) {
     return `<section class="sd-card sd-chatter-card">
       <div class="sd-section-title"><h3>尘寰群生</h3><span>随推演刷新</span></div>
-      <p class="sd-muted">暂未捕获群声。将在下次推演时，从世界里采集。</p>
+      ${notice || '<p class="sd-muted">暂未捕获群声。将在下次推演时，从世界里采集。</p>'}
     </section>`;
   }
   const lineHtml = (c) => `<div class="sd-chatter-line">${(c.who || c.where) ? `<span class="sd-chatter-src">${htmlEscape([c.who, c.where].filter(Boolean).join(' · '))}</span>` : ''}<span class="sd-chatter-say">${htmlEscape(c.text)}</span></div>`;
@@ -8627,7 +8626,7 @@ function renderWorldChatterCard(p) {
   if (chatterExpanded) {
     return `<section class="sd-card sd-chatter-card">
       <div class="sd-section-title"><h3>尘寰群生</h3><button type="button" class="sd-icon-btn sd-chatter-toggle" title="收起" aria-label="收起"><i class="fa-solid fa-compress"></i></button></div>
-      <div class="sd-chatter-list">${list.map(lineHtml).join('')}</div>
+      ${notice}<div class="sd-chatter-list">${list.map(lineHtml).join('')}</div>
     </section>`;
   }
 
@@ -8639,7 +8638,7 @@ function renderWorldChatterCard(p) {
   }).join('');
   return `<section class="sd-card sd-chatter-card">
     <div class="sd-section-title"><h3>尘寰群生</h3><button type="button" class="sd-icon-btn sd-chatter-toggle" title="展开" aria-label="展开"><i class="fa-solid fa-expand"></i></button></div>
-    <div class="sd-chatter-stage" aria-label="市井浮声"><div class="sd-chatter-track">${stage}</div></div>
+    ${notice}<div class="sd-chatter-stage" aria-label="市井浮声"><div class="sd-chatter-track">${stage}</div></div>
   </section>`;
 }
 
@@ -8676,7 +8675,7 @@ function directorItemParagraphs(item, kind) {
 function renderDirectorParagraph(paragraph, { cardId, subject, order, readOnly }) {
   const id = `${cardId}:paragraph:${paragraph.key}`, selected = injectSelection.has(id);
   const action = readOnly ? '' : ` role="button" tabindex="0" aria-pressed="${selected}" aria-label="选择${htmlEscape(paragraph.label)}：${htmlEscape(subject)}" data-director-paragraph data-id="${htmlEscape(id)}" data-card-id="${htmlEscape(cardId)}" data-order="${order}" data-subject="${htmlEscape(subject)}" data-label="${htmlEscape(paragraph.label)}" data-text="${htmlEscape(paragraph.text)}"`;
-  return `<div class="sd-director-paragraph${selected && !readOnly ? ' is-selected' : ''}"${action}><span class="sd-director-paragraph-label">${htmlEscape(paragraph.label)}</span><p>${htmlEscape(paragraph.text)}</p></div>`;
+  return `<div class="sd-director-paragraph${selected && !readOnly ? ' is-selected' : ''}"${action}>${paragraph.label !== '动向' ? `<span class="sd-director-paragraph-label">${htmlEscape(paragraph.label)}</span>` : ''}<p>${htmlEscape(paragraph.text)}</p></div>`;
 }
 
 function renderItemCard(item, kind, idx, readOnly = false) {
@@ -8940,7 +8939,7 @@ function renderDirectorSettingsTab() {
       <h3>衍生模块</h3>
       <div class="sd-derivative-options">
         <label class="sd-option-chip"><input type="checkbox" class="sd-parallel-scene-enabled" ${settings.parallelSceneEnabled !== false ? 'checked' : ''}><span>未映之幕</span></label>
-        <label class="sd-option-chip"><input type="checkbox" class="sd-interlude-enabled" ${settings.interludeEnabled !== false ? 'checked' : ''}><span>世界论坛</span></label>
+        <label class="sd-option-chip"><input type="checkbox" class="sd-interlude-enabled" ${settings.interludeEnabled !== false ? 'checked' : ''}><span>幕间拾趣</span></label>
         <label class="sd-option-chip"><input type="checkbox" class="sd-worldchatter-enabled" ${settings.worldChatterEnabled ? 'checked' : ''}><span>尘寰群生</span></label>
         <label class="sd-option-chip"><input type="checkbox" class="sd-geopolitics-enabled" ${settings.geopoliticsEnabled ? 'checked' : ''}><span>世界格局</span></label>
       </div>
@@ -23890,9 +23889,10 @@ function collectDirectorSelectedText(selection = injectSelection) {
   }
   return output.map(value => {
     if (typeof value === 'string') return value;
-    const paragraphs = value.items.slice().sort((a, b) => a.order - b.order)
-      .map(item => `${item.label ? `${item.label}：` : ''}${item.text}`);
-    return `【${value.subject || '事项'}】\n${paragraphs.join('\n\n')}`;
+    // Selected paragraphs are the draft: retain their prose and natural
+    // conditions, without adding assignment headings or guessing a subject.
+    return value.items.slice().sort((a, b) => a.order - b.order)
+      .map(item => item.text).join('\n\n');
   });
 }
 
@@ -24024,7 +24024,7 @@ function bindPanelScrollStability(root) {
 }
 
 function bindDirectorReadingEvents(root) {
-  bindCreativeSocialEvents(root);
+  bindCreativeSocialEvents(root.querySelector('.sd-window') || root);
   bindDirectorSelectionEvents(root);
   root.querySelectorAll('.sd-generate-main').forEach((el) => el.addEventListener('click', () => {
     if (busy) stopGeneration();
@@ -24033,7 +24033,10 @@ function bindDirectorReadingEvents(root) {
   root.querySelectorAll('.sd-newcomer-toggle').forEach((el) => el.addEventListener('click', () => {
     settings.newcomerMode = !settings.newcomerMode;
     saveSettings();
-    root.querySelectorAll('.sd-newcomer-toggle').forEach((btn) => btn.classList.toggle('active', settings.newcomerMode));
+    root.querySelectorAll('.sd-newcomer-toggle').forEach((btn) => {
+      btn.classList.toggle('active', settings.newcomerMode);
+      btn.setAttribute('aria-pressed', String(settings.newcomerMode));
+    });
     toast(settings.newcomerMode ? '新角入场已开启：关注与既有故事有实际关联的新人物。' : '新角入场已关闭。', 'info');
   }));
   root.querySelectorAll('.sd-inject-badge').forEach((el) => el.addEventListener('click', async () => {
@@ -24043,9 +24046,8 @@ function bindDirectorReadingEvents(root) {
     renderModal();
     toast(settings.injectEnabled ? '暗线注入已开启。' : '暗线注入已关闭。', 'info');
   }));
-    root.querySelector('.sd-clear-plan')?.addEventListener('click', async () => {
-    const yes = await confirmDialog('清空当前推演', '将彻底清除当前推演结果与暗线注入，也不会并入下次推演提示词，可随时从历史重新载入。确认清空？');
-    if (!yes) return;
+  root.querySelector('.sd-clear-plan')?.addEventListener('click', async () => {
+    directorLiveLog = null;
     const store = getChatStore();
     store.plan = null;
     resetDirectorNarrativeBridge();
@@ -24064,6 +24066,7 @@ function bindDirectorReadingEvents(root) {
   root.querySelectorAll('.sd-load-history').forEach((el) => el.addEventListener('click', async () => {
     const record = (getChatStore().history || []).find((x) => x.id === el.dataset.id);
     if (!record?.plan) return;
+    directorLiveLog = null;
     const restored = clone(record.plan);
     // 防御：旧版历史快照可能残留活档案字段（factions/伏笔等）。载入只回滚推演方案，绝不让世界格局/伏笔随之复活，
     // 否则旧 factions 会经【上次审片状态】喂回模型、复刻旧格局（与扫帚清空的语义冲突）。
@@ -24380,7 +24383,7 @@ function bindActiveTabEvents(root) {
   root.querySelector('.sd-interlude-enabled')?.addEventListener('change', (e) => {
     settings.interludeEnabled = !!e.target.checked;
     saveSettings();
-    toast(settings.interludeEnabled ? '世界论坛已开启。' : '世界论坛已关闭。', 'info');
+    toast(settings.interludeEnabled ? '幕间拾趣已开启。' : '幕间拾趣已关闭。', 'info');
   });
   root.querySelector('.sd-geopolitics-enabled')?.addEventListener('change', async (e) => {
     settings.geopoliticsEnabled = !!e.target.checked;

@@ -10,9 +10,9 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), '8e4918a66dba60539930fa29da4affab8b975ad41bed2daed9233460758ad3d1');
-  assert.equal(digest(CREATIVE_BLUEPRINT), '357d6e5aa79e1880809067fd2f8b261b0924d44b10b3c29fb8aafac161eb7daf');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '2a61c9c1b145f74c44015b3ea54b964db611f4e05a18acf4f836598068952ba7');
+  assert.equal(digest(CREATIVE_LAWS), 'a96b4e3d89f7483d25c288a405ae63031481f815a39f6c006cb9b4e0d31be1b2');
+  assert.equal(digest(CREATIVE_BLUEPRINT), 'a8321a5e49a730406cae2ef5616d7a78c4bbce3950def2c8923a0ba69fe35a97');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'e42bddfb17c54df84ef18a7b914a9795ba85278f7f5727ee1c38e20b6165d85a');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
 });
@@ -115,19 +115,32 @@ test('caller must fix one interlude form; pure guide never silently selects or r
   assert.doesNotThrow(() => creativeSectionGuidance({ interludeEnabled: false }));
 });
 
-test('v446 responsibilities separate distant directions, previews, lateral ripples and supporting relations', () => {
+test('v447 responsibilities weave near/far trajectories, lived voices and varied social viewpoints', () => {
   assert.equal(CREATIVE_SECTION_LABELS.quests, '预演');
-  assert.equal(CREATIVE_SECTION_LABELS.interlude, '世界论坛');
-  assert.match(CREATIVE_GUIDES.story_status, /中远景/);
+  assert.equal(CREATIVE_SECTION_LABELS.interlude, '幕间拾趣');
+  assert.equal(CREATIVE_SECTION_LABELS.story_status, '命运之脉');
+  assert.deepEqual(CREATIVE_COUNTS.story_status, { min: 2, max: 2 });
+  assert.match(CREATIVE_GUIDES.story_status, /near.*far/);
+  assert.match(CREATIVE_GUIDES.story_status, /行动如何遇见另一人的打算/);
+  assert.match(CREATIVE_GUIDES.story_status, /而非按人物职业或固有人设分派任务/);
   assert.match(CREATIVE_GUIDES.quests, /subject 明确写本条主体/);
   assert.match(CREATIVE_GUIDES.chain_reactions, /3–5 个简短节点/);
   assert.match(CREATIVE_GUIDES.chain_reactions, /至少一条体现横向广度/);
   assert.match(CREATIVE_GUIDES.relation_undercurrents, /不能加入第三人规避/);
-  assert.match(CREATIVE_GUIDES.world_chatter, /纯天气、景色与声音不占名额/);
+  assert.match(CREATIVE_GUIDES.world_chatter, /不要求藏线索、送情报或推动案件/);
+  assert.match(CREATIVE_LAWS, /Situated human speech in 尘寰群生 may instead reveal temperament, an ordinary concern, or a way of living, without supplying a clue or new plot condition/);
+  assert.match(CREATIVE_GUIDES.world_chatter, /纯天气、景色、机械声和动物反应不占名额/);
   assert.match(CREATIVE_GUIDES.parallel_scene, /过去、近未来或遥远未来/);
   assert.match(CREATIVE_GUIDES.parallel_scene, /无须标题/);
   assert.match(CREATIVE_GUIDES.interlude, /所有字段只写安全纯文本，不输出 HTML/);
   assert.match(CREATIVE_GUIDES.interlude, /不固定围绕阴谋、热搜或主角点评/);
+  assert.match(CREATIVE_GUIDES.phone, /配角、路人和其他已有姓名者/);
+  assert.match(CREATIVE_GUIDES.phone, /已知人物确实有限时自然复用/);
+  assert.match(CREATIVE_GUIDES.phone, /群聊时就是群名.*私聊时就是对方的联系人显示名/);
+  assert.match(CREATIVE_GUIDES.forum, /带一点在地性与网感/);
+  assert.match(CREATIVE_LAWS, /Write selectable narrative passages as third-person authorial prose/);
+  assert.match(CREATIVE_LAWS, /do not repeat them as bracketed labels/);
+  assert.match(CREATIVE_GUIDES.quests, /人物带着具体言行进入场景的短小落笔/);
 });
 
 test('newcomer requirement is included only for enabled runs and honors actual closed settings', () => {

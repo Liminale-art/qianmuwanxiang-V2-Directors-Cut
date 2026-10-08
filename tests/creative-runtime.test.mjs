@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { hashText } from '../qianmu-storyboard-utils.js';
 import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
-import { createCreativeSchema, validateCreativePlan, projectCreativeContinuity } from '../qianmu-creative-contract.js';
+import { createCreativeSchema, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from '../qianmu-creative-contract.js';
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint, mergeCreativeRepair } from '../qianmu-creative-runtime.js';
+import { directorSectionStatus } from '../qianmu-director-live.js';
 
 const next = { systemPrompt: CREATIVE_SYSTEM_PROMPT, outputSchemaText: createCreativeSchema(), blueprint: CREATIVE_BLUEPRINT };
 test('known defaults migrate, custom identity/schema/templates and backups survive repeated initialization', () => {
@@ -113,6 +114,10 @@ test('interlude is selected once, supports non-speaker story characters, and can
   assert.equal(forum.interludeType, 'forum'); assert.equal(calls, 1);
   const off = selectCreativeOptions({ interludeEnabled: false }, input);
   assert.equal(off.interludeType, null); assert.equal(calls, 1);
+  const noSpeakerLabel = selectCreativeOptions({}, { chat: [], sourceText: '手机可用', narrativeText: '小余刚把发酵缸洗净。她的手机又响了。', random: () => .9 });
+  assert.equal(noSpeakerLabel.interludeType, 'phone', 'prose-only supporting characters are not excluded by chat speaker labels');
+  const noNarrative = selectCreativeOptions({}, { chat: [{ name: '陈警官' }], sourceText: '手机', random: () => .9 });
+  assert.equal(noNarrative.interludeType, 'forum', 'a speaker label alone cannot prove a story owner');
 });
 
 test('character scope accepts multiple confirmed CHARs, excludes USER, and respects an unavailable group scope', () => {
@@ -181,8 +186,10 @@ test('real injection includes CHAR dynamics but not fun, parallel or old review 
 });
 
 test('relation display removes awareness decoration while preserving full tension and escaped aliases', () => {
-  const sandbox = { htmlEscape: value => String(value ?? '').replaceAll('<', '&lt;'), renderDirectorWorldEntryLink: () => '' };
+  const sandbox = { directorSectionStatus, htmlEscape: value => String(value ?? '').replaceAll('<', '&lt;'), renderDirectorWorldEntryLink: () => '' };
   vm.createContext(sandbox);
+  const notice = source.slice(source.indexOf('function renderDirectorSectionNotice('));
+  vm.runInContext(notice.slice(0, notice.indexOf('\nfunction ', 1)), sandbox);
   const tail = source.slice(source.indexOf('function renderRelationUndercurrentsCard('));
   vm.runInContext(tail.slice(0, tail.indexOf('\nfunction ', 1)), sandbox);
   const content = '双方正在等待进一步的证据，暂未改变原有立场。'.repeat(12);
@@ -215,8 +222,8 @@ test('exact v445 defaults migrate to v446 while edited defaults, templates and b
 });
 
 test('nested direction repairs keep anchors and valid entries, selecting excess without rewrites', () => {
-  const first = { title: '一条远路', content: '此后两年的发展方向。' };
-  const second = { title: '另一条路', content: '数周后另一个条件可能变化。' };
+  const first = { horizon: 'near', title: '来信', content: '送信人按约敲门。' };
+  const second = { horizon: 'far', title: '另一条路', content: '数周后另一个条件可能变化。' };
   const plan = { story_status: { title: '原标题', current_arc: '原主线', cycle: '仲夏', directions: [first] } };
   mergeCreativeRepair(plan, { story_status: { title: '不应覆写', directions: [second, { title: '多余', content: '不应加上' }] } }, [{ field: 'story_status', missing: 1 }]);
   assert.deepEqual(plan.story_status, { title: '原标题', current_arc: '原主线', cycle: '仲夏', directions: [first, second] });
@@ -229,6 +236,40 @@ test('nested direction repairs keep anchors and valid entries, selecting excess 
   mergeCreativeRepair(plan, { keep_indices: { story_status: [0, 2, 3] } }, [issue]);
   assert.deepEqual(plan.story_status.directions, [first, third, fourth]);
   assert.equal(plan.story_status.title, '原标题');
+});
+
+test('duplicate horizons are repaired by adding the missing horizon without rewriting the valid prose', () => {
+  const near = { horizon: 'near', title: '等船', content: '茶摊老板把钥匙留给了送信人。' };
+  const sourcePlan = { story_status: { cycle: '傍晚', directions: [near, { horizon: 'near', title: '等信', content: '这一近线不能顶替远线。' }] } };
+  const options = { interludeEnabled: false, parallelSceneEnabled: false };
+  const { plan } = pruneInvalidCreativeItems(sourcePlan, options);
+  const issues = validateCreativePlan(plan, options).filter(issue => issue.field === 'story_status');
+  assert.equal(issues[0].missing, 1);
+  const far = { horizon: 'far', title: '渡口易主', content: '租期届满后，旧日托付改变了渡口接班人的选择。' };
+  mergeCreativeRepair(plan, { story_status: { directions: [far] } }, issues, options);
+  assert.deepEqual(plan.story_status.directions, [near, far]);
+  assert.equal(plan.story_status.cycle, '傍晚');
+  assert.ok(!validateCreativePlan(plan, options).some(issue => issue.field === 'story_status'));
+  assert.equal(sourcePlan.story_status.directions.length, 2);
+});
+
+test('a full direction patch skips a repeated valid horizon and malformed additions before filling the missing horizon', () => {
+  const near = { horizon: 'near', title: '旧信', content: '送信人在茶摊门前取回了钥匙。' };
+  const far = { horizon: 'far', title: '故人归来', content: '旧信辗转到港口，改变了返乡人的航程。' };
+  const plan = { story_status: { cycle: '晚秋', directions: [near] } };
+  const options = { interludeEnabled: false, parallelSceneEnabled: false };
+  const issues = validateCreativePlan(plan, options).filter(issue => issue.field === 'story_status');
+  const additions = [
+    { horizon: 'near', title: '试图改写', content: '已有近线不能被这个覆盖。' },
+    { horizon: 'far', title: '缺内容' },
+    { horizon: 'far', title: '重复正文', content: near.content },
+    far,
+  ];
+  mergeCreativeRepair(plan, { story_status: { directions: additions } }, issues, options);
+  assert.deepEqual(plan.story_status.directions, [near, far]);
+  assert.equal(plan.story_status.directions[0], near);
+  assert.equal(plan.story_status.cycle, '晚秋');
+  assert.ok(!validateCreativePlan(plan, options).some(issue => issue.field === 'story_status'));
 });
 
 test('prior interlude supplies only a bounded nonfactual variety hint, separate from mainline continuity', () => {
@@ -246,4 +287,40 @@ test('prior interlude supplies only a bounded nonfactual variety hint, separate 
   assert.equal(off.recentInterludeHint, ''); assert.ok(!creativeSectionGuidance(off).includes(hint));
   for (const value of [null, undefined, {}, [], { type: 'forum', posts: [] }]) assert.equal(recentInterludeHint(value), '');
   assert.match(recentInterludeHint({ type: 'phone', title: '旧手机', messages: [{ content: '首条消息' }, { content: '不可复制整段对话' }] }), /首条消息/);
+  const phoneHint = recentInterludeHint({ type: 'phone', title: '下班不接电话', owner: '旧主人'.repeat(100), messages: [{ content: '首条消息' }], private: '不可带出' });
+  assert.equal(JSON.parse(phoneHint).owner.length, 60);
+  assert.doesNotMatch(phoneHint, /不可带出/);
+  assert.match(creativeSectionGuidance({ interludeType: 'phone', recentInterludeHint: phoneHint }), /不把换人当作硬凑陌生人的理由/);
+});
+
+test('exact v446 fingerprints migrate to v447 without replacing edited defaults, templates or backups', () => {
+  const fingerprints = { 'v446-system': 'bba2effb', 'v446-schema': '51ab8d18', 'v446-blueprint': '1d8cdeb6' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v446-system', outputSchemaText: 'v446-schema', appliedPromptDefaultHash: marker,
+      appliedSchemaDefaultHash: marker, systemPromptBackup: 'manual draft', outputSchemaBackup: 'manual format',
+      templates: [{ id: 'default-free-blueprint', content: 'v446-blueprint' }, { id: 'mine', content: 'v446-blueprint' }] };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt);
+    assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.templates[0].content, next.blueprint);
+    assert.equal(settings.templates[1].content, 'v446-blueprint');
+    assert.equal(settings.systemPromptBackup, 'manual draft');
+    assert.equal(settings.outputSchemaBackup, 'manual format');
+    const store = { blueprint: 'v446-blueprint', appliedBlueprintDefaultHash: marker };
+    sandbox.upgradeCreativeBlueprint(store, next.blueprint, 447);
+    assert.equal(store.blueprint, next.blueprint);
+    const edited = { systemPrompt: 'v446-system edited', outputSchemaText: 'v446-schema edited',
+      templates: [{ id: 'default-free-blueprint', content: 'v446-blueprint edited' }, { id: 'default-free-blueprint', content: 'v446-blueprint', edited: true }] };
+    const original = structuredClone(edited);
+    sandbox.upgradeCreativeDefaults(edited, next);
+    assert.equal(edited.systemPrompt, original.systemPrompt); assert.equal(edited.outputSchemaText, original.outputSchemaText);
+    assert.deepEqual(edited.templates, original.templates);
+    const customStore = { blueprint: 'v446-blueprint edited', appliedBlueprintDefaultHash: '1d8cdeb6' };
+    sandbox.upgradeCreativeBlueprint(customStore, next.blueprint, 447);
+    assert.equal(customStore.blueprint, 'v446-blueprint edited');
+  }
 });
