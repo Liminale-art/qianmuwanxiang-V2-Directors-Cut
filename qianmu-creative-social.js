@@ -18,7 +18,7 @@ function normalizedItem(value) {
     posts: list(item.posts).slice(0, 50).map(record).filter(post => text(post.author) && text(post.content)).map(post => ({
       author: text(post.author), handle: text(post.handle), content: text(post.content), time: text(post.time),
       replies: list(post.replies).slice(0, 30).map(record).filter(reply => text(reply.author) && text(reply.content))
-        .map(reply => ({ author: text(reply.author), content: text(reply.content) })),
+        .map(reply => ({ author: text(reply.author), content: text(reply.content), reply_to: text(reply.reply_to) })),
     })),
   };
   if (item.type === 'phone' && list(item.messages).length) return {
@@ -47,7 +47,7 @@ function identity(item) {
 
 function session(key) {
   let value = sessions.get(key);
-  if (!value) value = { likes: new Set(), bookmarks: new Set(), replies: new Set(), scrollTop: 0 };
+  if (!value) value = { likes: new Set(), replies: new Set(), scrollTop: 0 };
   sessions.delete(key);
   sessions.set(key, value);
   while (sessions.size > SESSION_LIMIT) sessions.delete(sessions.keys().next().value);
@@ -68,7 +68,7 @@ function forumBody(item, key, state) {
   return `<div class="sd-social-panel sd-social-forum">
     <div class="sd-social-panel-head">${icon('globe-hemisphere-east')}<div><strong>${htmlEscape(item.title || '此刻的世界')}</strong></div></div>
     <div class="sd-social-feed sd-social-scroll" data-qm-social-scroll tabindex="0" role="region" aria-label="论坛帖子">${item.posts.map((post, index) => {
-      const liked = state.likes.has(index), bookmarked = state.bookmarks.has(index), expanded = state.replies.has(index);
+      const liked = state.likes.has(index), expanded = state.replies.has(index);
       const repliesId = `${key}-replies-${index}`;
       return `<article class="sd-social-post">
         <header class="sd-social-author">${avatar(post.author)}<div><strong>${htmlEscape(post.author)}</strong>${post.handle ? `<span>${htmlEscape(post.handle.startsWith('@') ? post.handle : `@${post.handle}`)}</span>` : ''}</div>${post.time ? `<span class="sd-social-time">${htmlEscape(post.time)}</span>` : ''}</header>
@@ -76,9 +76,8 @@ function forumBody(item, key, state) {
         <div class="sd-social-actions" aria-label="本地模拟互动">
           ${action('like', index, liked, liked ? '已赞' : '赞', 'bookmarks', 'title="仅本次阅读的模拟点赞"')}
           ${action('replies', index, expanded, `回复 ${post.replies.length}`, 'chat', `aria-controls="${repliesId}"${post.replies.length ? '' : ' disabled'}`)}
-          ${action('bookmark', index, bookmarked, bookmarked ? '已收藏' : '收藏', 'bookmark', 'title="仅本次阅读的模拟收藏"')}
         </div>
-        <div class="sd-social-replies" id="${repliesId}"${expanded ? '' : ' hidden'}>${post.replies.map(reply => `<div class="sd-social-reply">${avatar(reply.author, true)}<div><strong>${htmlEscape(reply.author)}</strong><p>${htmlEscape(reply.content)}</p></div></div>`).join('')}</div>
+        <div class="sd-social-replies" id="${repliesId}"${expanded ? '' : ' hidden'}>${post.replies.map(reply => `<div class="sd-social-reply">${avatar(reply.author, true)}<div><strong>${htmlEscape(reply.author)}</strong>${reply.reply_to ? `<span class="sd-social-reply-to">回复 ${htmlEscape(reply.reply_to)}</span>` : ''}<p>${htmlEscape(reply.content)}</p></div></div>`).join('')}</div>
       </article>`;
     }).join('')}</div>
   </div>`;
@@ -124,12 +123,12 @@ export function bindCreativeSocialEvents(root) {
     // belongs to the nearest reading root, not both delegated listeners.
     event.stopPropagation?.();
     const state = session(key), kind = button.dataset.qmSocialAction, index = Number(button.dataset.socialIndex);
-    if (kind === 'like' || kind === 'bookmark') {
-      const set = kind === 'like' ? state.likes : state.bookmarks;
+    if (kind === 'like') {
+      const set = state.likes;
       const selected = !set.has(index);
       if (selected) set.add(index); else set.delete(index);
       button.setAttribute('aria-pressed', String(selected));
-      button.querySelector('.sd-social-action-label').textContent = kind === 'like' ? (selected ? '已赞' : '赞') : (selected ? '已收藏' : '收藏');
+      button.querySelector('.sd-social-action-label').textContent = selected ? '已赞' : '赞';
     } else if (kind === 'replies') {
       const expanded = !state.replies.has(index), target = card.querySelector(`[id="${button.getAttribute('aria-controls')}"]`);
       if (!target) return;

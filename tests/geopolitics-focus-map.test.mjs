@@ -11,6 +11,10 @@ assert.match(source, /function geoLabelLayout[\s\S]*candidates[\s\S]*overlap/);
 assert.match(source, /function geoPrimaryRelationKeys[\s\S]*Math\.min\(8/);
 assert.match(source, /sd-geo-edge-primary.*sd-geo-edge-secondary/);
 assert.match(css, /\.sd-geo-edge-secondary\s*\{[^}]*opacity:\s*0/);
+assert.doesNotMatch(source, /sd-geo-axis-halo/);
+assert.doesNotMatch(css, /\.sd-geo-axis-halo\s*\{/);
+assert.match(css, /\.sd-geo-edge-base\s*\{[^}]*stroke-width:\s*1\.15;[^}]*filter:\s*none/);
+assert.match(css, /\.sd-geo-focused \.sd-geo-edge\.sd-dim\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden/);
 
 // 点选势力后展开一、二级牵连；线索轨道仅属于当前聚焦势力。
 assert.match(source, /const direct = new Set\(\)[\s\S]*const second = new Set\(\)/);
@@ -33,7 +37,7 @@ assert.doesNotMatch(css, /@keyframes sd-geo-event-travel/);
 assert.match(css, /\.sd-geo-event-pulse \{ stroke-dasharray: none; \}/);
 assert.match(css, /prefers-reduced-motion:[\s\S]*sd-geo-event-pulse/);
 
-// 关系亮段沿原曲线流动；实线、事件柔光、方向箭头与节点锚点保持原有职责。
+// 关系亮段沿原曲线流动；固定实线不再带模糊色晕，方向箭头与节点锚点保持原有职责。
 assert.match(source, /class="sd-geo-edge-motion" d="\$\{d\}" pathLength="100"/);
 assert.match(source, /const flowDelay = -\(geoStableHash\(key\) % 90\) \/ 10/);
 assert.match(css, /\.sd-geo-edge-motion\s*\{[^}]*stroke-dasharray:\s*10 90;[^}]*animation:\s*sd-geo-edge-travel 9s linear infinite/);

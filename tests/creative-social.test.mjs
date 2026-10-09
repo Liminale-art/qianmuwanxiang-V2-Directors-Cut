@@ -21,7 +21,7 @@ test('forum is structured feed with existing Qianmu icons and local actions', ()
   assert.match(html, /class="sd-social-post"/);
   assert.match(html, /@rose/);
   assert.match(html, /data-qm-social-action="like"/);
-  assert.match(html, /data-qm-social-action="bookmark"/);
+  assert.doesNotMatch(html, /data-qm-social-action="bookmark"|收藏/);
   assert.match(html, /aria-controls="social-.*-replies-0"/);
   assert.match(html, /qm-glyph-icon/);
   assert.match(html, /class="sd-social-action-label"/);
@@ -36,6 +36,16 @@ test('all model text remains text, including names, handles, titles, replies and
   }] });
   assert.doesNotMatch(html, /<img|<script|onerror="|href=/);
   assert.match(html, /&lt;img/);
+});
+
+test('forum replies can show a lived-in back-and-forth target without becoming a control', () => {
+  const html = renderCreativeSocialCard({ ...forum, posts: [{ ...forum.posts[0], replies: [
+    { author: '楼主', reply_to: '邮差', content: '那我下班后再来取。' },
+    { author: '邻居', reply_to: '楼主', content: '我也顺路，帮你带过去。' },
+  ] }] });
+  assert.match(html, /回复 邮差/);
+  assert.match(html, /回复 楼主/);
+  assert.doesNotMatch(html, /收藏|data-qm-social-action="bookmark"/);
 });
 
 test('structured phone displays every message inside an accessible scroll viewport', () => {

@@ -10,9 +10,9 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), 'a96b4e3d89f7483d25c288a405ae63031481f815a39f6c006cb9b4e0d31be1b2');
-  assert.equal(digest(CREATIVE_BLUEPRINT), 'a8321a5e49a730406cae2ef5616d7a78c4bbce3950def2c8923a0ba69fe35a97');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'e42bddfb17c54df84ef18a7b914a9795ba85278f7f5727ee1c38e20b6165d85a');
+  assert.equal(digest(CREATIVE_LAWS), '1e1979a300154d37eb78bc635f8eb6dc3001370c14d065875ded88aa464a044f');
+  assert.equal(digest(CREATIVE_BLUEPRINT), '483319eed8fc5a703e40239fed919ec15439f15265dfe55587ca72286ae33ee7');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'd7ef7dcc3038781bdcdd20b9ba758da4329cd5c329603ab5c2b5dfa6777a395a');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
 });
@@ -23,6 +23,9 @@ test('progression is mandatory without declaring candidates real or taking USER 
   assert.match(CREATIVE_LAWS, /Each CHAR entry must carry one of CHAR's own affairs into a concrete action or consequential next step/);
   assert.match(CREATIVE_LAWS, /Each ripple must extend its cause into a downstream consequence beyond the already narrated chain/);
   assert.match(CREATIVE_LAWS, /Candidate status controls whether a development is established in the mainline, not whether it is written concretely/);
+  assert.match(CREATIVE_LAWS, /causal dramatic beat/);
+  assert.match(CREATIVE_LAWS, /non-USER, non-CHAR actor or group/);
+  assert.match(CREATIVE_LAWS, /concrete event, choice, discovery, or changed circumstance/);
   assert.match(CREATIVE_LAWS, /This does not move the mainline clock or complete an unresolved USER decision/);
   assert.match(CREATIVE_LAWS, /enduring organizations, unresolved tensions, and quiet lives need not undergo an artificial reversal/);
   assert.doesNotMatch(CREATIVE_LAWS, /Do not force growth, warmer relationships, mainline advancement/);
@@ -132,6 +135,11 @@ test('v447 responsibilities weave near/far trajectories, lived voices and varied
   assert.match(CREATIVE_GUIDES.world_chatter, /纯天气、景色、机械声和动物反应不占名额/);
   assert.match(CREATIVE_GUIDES.parallel_scene, /过去、近未来或遥远未来/);
   assert.match(CREATIVE_GUIDES.parallel_scene, /无须标题/);
+  assert.match(CREATIVE_GUIDES.parallel_scene, /3–6 个有呼吸的出版式段落/);
+  assert.match(CREATIVE_GUIDES.parallel_scene, /不要用抽象升华/);
+  assert.match(CREATIVE_GUIDES.story_status, /near 与 far 只由时态锚定/);
+  assert.match(CREATIVE_GUIDES.story_status, /至少一条从非 \{\{user\}\}、非 \{\{char\}\} 的人物或群体开始/);
+  assert.match(CREATIVE_GUIDES.story_status, /不连续堆叠“可能、也许、应该、似乎”/);
   assert.match(CREATIVE_GUIDES.interlude, /所有字段只写安全纯文本，不输出 HTML/);
   assert.match(CREATIVE_GUIDES.interlude, /不固定围绕阴谋、热搜或主角点评/);
   assert.match(CREATIVE_GUIDES.phone, /配角、路人和其他已有姓名者/);

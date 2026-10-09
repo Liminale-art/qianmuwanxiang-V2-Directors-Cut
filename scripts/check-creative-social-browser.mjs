@@ -100,9 +100,10 @@ try {
     check(await page.locator('.sd-section-title > span').count() === 0, `${label}: no superfluous corner caption`);
     const viewport = await page.locator('[data-qm-social-scroll]').evaluate(node => ({
       height: node.getBoundingClientRect().height, overflow: getComputedStyle(node).overflowY,
+      overscroll: getComputedStyle(node).overscrollBehaviorY,
       focusable: node.tabIndex, scrollHeight: node.scrollHeight, clientHeight: node.clientHeight,
     }));
-    check(viewport.height <= Math.min(900 * .58, 520) + 1 && viewport.overflow === 'auto' && viewport.focusable === 0,
+    check(viewport.height <= Math.min(900 * .58, 520) + 1 && viewport.overflow === 'auto' && viewport.overscroll === 'auto' && viewport.focusable === 0,
       `${label}: panel content has responsive bounded accessible scrolling`, viewport);
 
     if (kind === 'forum') {
@@ -113,12 +114,11 @@ try {
       const selected = await like.evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node).borderColor]);
       check(JSON.stringify(initial) !== JSON.stringify(selected), `${label}: visible selected state`);
       await like.click(); check(await like.getAttribute('aria-pressed') === 'false', `${label}: like toggles off`);
-      const bookmark = page.locator('[data-qm-social-action="bookmark"]').first();
-      await bookmark.click(); check(await bookmark.getAttribute('aria-pressed') === 'true', `${label}: local bookmark on`);
+      check(await page.locator('[data-qm-social-action="bookmark"]').count() === 0, `${label}: collection action removed`);
       const replies = page.locator('[data-qm-social-action="replies"]').first();
       await replies.click(); check(await replies.getAttribute('aria-expanded') === 'true' && await page.locator('.sd-social-replies').first().isVisible(), `${label}: reply list opens`);
       await page.evaluate(({ theme }) => mount('forum', theme), { theme });
-      check(await page.locator('[data-qm-social-action="bookmark"]').first().getAttribute('aria-pressed') === 'true'
+      check(await page.locator('[data-qm-social-action="bookmark"]').count() === 0
         && await page.locator('[data-qm-social-action="replies"]').first().getAttribute('aria-expanded') === 'true', `${label}: remount keeps local choices`);
       await page.locator('[data-qm-social-action="replies"]').first().click();
       check(!await page.locator('.sd-social-replies').first().isVisible(), `${label}: replies close`);
@@ -168,7 +168,7 @@ try {
       fits: card.scrollWidth - card.clientWidth <= 2 };
   });
   check(edges.blockedMarkup && edges.visibleText, 'all model HTML/URLs are text only', edges);
-  check(edges.fits && edges.controls === 3, 'long unbroken content wraps in structured feed', edges);
+  check(edges.fits && edges.controls === 2, 'long unbroken content wraps in structured feed', edges);
 
   await page.evaluate(() => { resetCreativeSocialState(); mount('forum', 'editorial'); });
   await page.locator('[data-qm-social-action="like"]').first().click();

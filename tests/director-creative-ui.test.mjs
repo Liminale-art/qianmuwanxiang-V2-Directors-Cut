@@ -25,7 +25,7 @@ function fixture(plan, settings = {}) {
     renderInjectPreview: () => '', renderBackstageBlueprintCard: () => '', DEFAULT_SYSTEM_PROMPT: '', JSON_SCHEMA_TEXT: '',
   });
   vm.runInContext(['directorDisplayPlan', 'renderDirectorSectionNotice', 'renderDashboardTab', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
-    'renderCastWorldFront', 'renderWorldChatterCard', 'renderRelationUndercurrentsCard', 'renderPlanSectionFold', 'renderNoPlan', 'renderItemList', 'directorItemParagraphs', 'renderDirectorParagraph', 'renderItemCard', 'renderItemChips', 'collectDirectorSelectedText',
+    'renderCastWorldFront', 'renderWorldChatterCard', 'renderRelationUndercurrentsCard', 'renderPlanSectionFold', 'renderNoPlan', 'renderItemList', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph', 'renderItemCard', 'renderItemChips', 'collectDirectorSelectedText',
     'renderInjectSections', 'renderDirectorSettingsTab'].map(section).join('\n'), c);
   return { c, links };
 }
@@ -37,7 +37,7 @@ test('review shows separate read-only extras, escapes their content and respects
   const before = JSON.stringify(plan), { c } = fixture(plan);
   const html = c.renderDashboardTab();
   assert.match(html, /未映之幕/); assert.match(html, /幕间拾趣/); assert.doesNotMatch(html, /平行番外/);
-  assert.doesNotMatch(html, /<同事>/); assert.match(html, /第一段\n第二段&lt;script&gt;/);
+  assert.doesNotMatch(html, /<同事>/); assert.match(html, /<p>第一段<br>第二段&lt;script&gt;<\/p>/);
   assert.doesNotMatch(html, /&lt;另一幕&gt;|data-director-memory-review|临时查阅/);
   assert.match(html, /<h4>未读消息<\/h4>/, 'only parallel story subtitles are removed');
   assert.doesNotMatch(html, /众声|retired commentary|<script>|sd-inject|sd-world-media-entry/);
@@ -84,9 +84,14 @@ test('paragraph drafts retain original prose in display order without planning l
   for (const order of [2, 0, 1]) c.injectSelection.set(`part-${order}`, { cardId: 'quest-one', subject: '邵宁', order, ...fields[order] });
   c.injectSelection.set('old-whole-card', '旧世界原文');
   const text = c.collectDirectorSelectedText();
-  assert.equal(text[0], '正文已有称呼不可用来猜姓名\n\n完成取证后\n\n递交报告。');
-  assert.equal(text[1], '旧世界原文');
-  assert.doesNotMatch(text[0], /【邵宁】|情境：|发生条件：|落笔：/);
+  assert.deepEqual(Array.from(text), ['正文已有称呼不可用来猜姓名', '递交报告。', '完成取证后', '旧世界原文']);
+  assert.doesNotMatch(text.join('\n'), /【邵宁】|情境：|发生条件：|落笔：/);
+  c.injectSelection.clear();
+  const cardId = 'quest-0-one';
+  for (const index of [1, 2]) c.injectSelection.set(`${cardId}:paragraph:${fields[index].key}`, { cardId, subject: '邵宁', order: index, text: fields[index].text });
+  const selectedHtml = c.renderItemCard({ subject: '邵宁', description: '正文已有称呼不可用来猜姓名', trigger: '完成取证后', inject_prompt: '递交报告。' }, 'quest', 0);
+  assert.match(selectedHtml, /data-selection-order="1"/);
+  assert.match(selectedHtml, /data-selection-order="2"/);
   assert.match(c.renderItemCard({ title: '门口的旧信', description: '甲和乙在说话。' }, 'quest', 0), /data-subject="事项：门口的旧信"/);
   assert.match(c.renderItemCard({ name: '邵宁', next_action: '递交报告。' }, 'npc', 0), /data-subject="邵宁"/);
   assert.doesNotMatch(c.renderItemCard({ subject: '邵宁', description: '递交报告。' }, 'quest', 0, true), /data-director-paragraph|role="button"|tabindex|sd-select-inject/);
@@ -163,7 +168,8 @@ test('newcomer state updates every button and clearing current plan never delete
 });
 
 test('creative card typography and overflow remain scoped to the Qianmu modal and inherit theme tokens', () => {
-  assert.match(styles, /#story-director-modal \.sd-director-extra-content,[\s\S]*var\(--sd-text\)[\s\S]*white-space:\s*pre-wrap;[\s\S]*overflow-wrap:\s*anywhere/);
+  assert.match(styles, /#story-director-modal \.sd-director-extra-content\s*\{[^}]*var\(--sd-text\)[^}]*overflow-wrap:\s*anywhere/);
+  assert.match(styles, /#story-director-modal \.sd-director-extra-content p\s*\{[^}]*text-indent:\s*2em/);
   assert.match(styles, /#story-director-modal \.sd-chain-node\s*\{[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere/);
   assert.match(styles, /#story-director-modal \.sd-derivative-options\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
 });

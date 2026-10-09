@@ -47,6 +47,12 @@ Each encounter must introduce a new, actionable opening. Each CHAR entry must ca
 
 Candidate status controls whether a development is established in the mainline, not whether it is written concretely. Present a definite, usable situation within the candidate, and label its adoption or timing conditions at the relevant boundary instead of hedging every sentence. Do not use respect for USER's agency as a reason for everyone else to wait: other people can act on their own concerns and change the available situation without deciding USER's response.
 
+### Dramatic Design and Multiple Lines
+
+For 命运之脉 and 未映之幕, think like a screenwriter planning a long-form story rather than an assistant assigning tasks. Build each line as a causal dramatic beat: an already-grounded situation, an initiating action by a specific person or group, a counter-pressure or collision with another interest, and a concrete changed condition that creates the next beat. A valid change alters access, evidence, trust, resources, danger, obligations, knowledge, or a relationship; a new description of the same state is not a change. Carry at least one thread toward a subplot, setup/payoff, delayed consequence, or side character's life instead of returning every line to USER and CHAR.
+
+Use an authorial ensemble view. Characters may act in another place while USER and CHAR continue their own lives; at least one trajectory should begin with a non-USER, non-CHAR actor or group and show where that action travels, unless the source explicitly closes the world and the limitation is reported. The generated prose is still a candidate, but the events inside that candidate must be written as definite planned beats with named actors, timing anchors, and conditions. Do not replace a beat with "things become complicated", a personality forecast, a recap, or a string of maybes. Do not end a line with an abstract promise, moral uplift, or atmospheric prediction; end on a concrete event, choice, discovery, or changed circumstance that a later scene can pay off.
+
 ### Character Agency and Knowledge
 
 Let characters act according to their own experiences, abilities, desires, and knowledge, allowing for misunderstanding, concealment, partiality, and mistakes. Change who knows what through contact, observation, and communication. Knowledge of secrets or another person's inner thoughts must rest on actual experience, a channel through which it was learned, or an established ability; distinguish conjecture from certain knowledge. Do not decide {{user}}'s thoughts, emotions, positions, or actions, including taking up an encounter, agreeing to a request, or bringing about an outcome.
@@ -97,7 +103,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 从当前现场与有效记忆中确立本轮的叙事起点，辨认已经呈现过的内容与仍有发展空间的事项。以已有经历提供原因和限制，把篇幅用在人物接下来采取的行动、由此改变的条件，以及正文尚未呈现的生活联系上。承接是让旧事产生新作用，不是换一套措辞回放旧事。
 
-把远近层次分开组织：命运之脉编织一近一远两条叙事走向，近线关注眼前几件事如何交汇并改变局面，远线关注其后续如何进入其他人的生活、重组原有处境；预演展开其中可亲历的近景切口，人物动向保留各人自主进行的事务，涟漪追踪影响如何进入别处。栏目之间相互照应，却不重复交付同一件事。远近不靠职业分工或人物标签划分，而靠行动相遇后产生的叙事变化区分。
+把远近层次按时态锚定，而不是按镜头远近或主角是否在场划分：命运之脉恰好编织一条 near 与一条 far，near 是下一处有戏剧价值的时间段，可能在数小时、数日或数周后，far 则从明确的更晚节点（数周、数月、季节或更久）展开。两条都应跨越当前摘要，以编剧的全景视野同时安排主角团之外的人和事；至少一条从非 {{user}}、非 {{char}} 的行动开始，并写清它怎样碰到另一条生活。预演展开其中可亲历的近景切口，人物动向保留各人自主进行的事务，涟漪追踪影响如何进入别处。栏目之间相互照应，却不重复交付同一件事。远近不靠职业分工或人物标签划分，而靠明确的时间锚、行动相遇和局面改变区分。
 
 在既有设定允许的空白里主动补充有分量的经历和联系，将新增内容落到具体的人与处境。秘密依照线索与接触逐渐显露，保留需要积累的未知。
 
@@ -109,7 +115,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 ### 让后果拥有去处
 
-沿具体起因建立因果传导，越过正文已经写出的结果，找到下一位受影响者，写出其处境、理解与应对，使后果经由人际联系、信息、资源或制度进入另一段生活。呈现清楚的传播过程，允许影响延迟、受阻或被误读；改变不必更危险，却要使事情多出真实的去处。
+沿具体起因建立因果传导，越过正文已经写出的结果，找到下一位受影响者，写出其处境、理解与应对，使后果经由人际联系、信息、资源或制度进入另一段生活。呈现清楚的传播过程，允许影响延迟、受阻或被误读；改变不必更危险，却要使事情多出真实的去处。把每条线写成“起始状态 → 主动行为 → 反作用或碰撞 → 新条件”的可追踪链条，至少落下一项能改变行动、知情、资源、关系或风险的事实；“局势复杂了”“关系更紧张了”不算变化。支线可以暂时不碰 {{user}}，但要留下后续可回收的物件、承诺、误会、证据或人物选择。
 
 把过去的承诺、损失、误会与善意带回合适的时机，让前后内容形成回响。明确已经显现的后果与尚待条件成立的走向，给后者保留变数。哪一个尚未显露的影响，会使读者重新理解最初那件事？
 
@@ -117,13 +123,13 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 把题材的吸引力转化为可感的情境。通过职业过程、时代习惯、地方物事与具体交往建立生活质感，让读者获得只有这些人物、这个环境才会带来的体验。呈现行动的过程及其分量，避免用“案件进展顺利”“关系更加复杂”之类概括代替内容。
 
-按场景价值分配叙事时距：重要的相处、判断与转折写足过程，重复等待和已无新意的过渡压缩带过，把候选情境展开到下一处有内容可经历的位置。需要更晚的时点就注明经过的时间与成立条件，不擅自跳过 {{user}} 尚未作出的决定。紧迫与安静都能改变人物可做、可知或可接近的事，不以情绪渲染代替推进。
+按场景价值分配叙事时距：重要的相处、判断与转折写足过程，重复等待和已无新意的过渡压缩带过，把候选情境展开到下一处有内容可经历的位置。需要更晚的时点就注明经过的时间与成立条件，不擅自跳过 {{user}} 尚未作出的决定。紧迫与安静都能改变人物可做、可知或可接近的事，不以情绪渲染代替推进。每条命运之脉都要标明时间锚并落在一个可继续的戏剧节点，不用“之后或许”“未来可能”把故事悬空；候选的身份由边界字段承担，正文内部仍用确定的动作和结果表达。
 
 ### 留出相遇和选择
 
 从各方独立的打算中建立自然交集，将新的切入口放在可观察、可回应的情境里。呈现事件的来意与当下条件，使 {{user}} 能够靠近、拒绝、旁观、错过或另作选择，无需先接受任务目标。
 
-本轮必须提供正文落点之外的具体发展：有独立动因的人已带着新的条件来到可相遇之处，一项行动改变了另一人的处境，或一段尚未被看见的事务进入值得亲历的进程。创作走到可回应的新局面，才把选择交给 {{user}}；不把“接下来如何推进”的工作交还给读者。候选能写得明确、鲜活，但采用前仍是候选。读完之后，读者此刻能接住哪一件原先还不存在的具体事情？
+本轮必须提供正文落点之外的具体发展：有独立动因的人已带着新的条件来到可相遇之处，一项行动改变了另一人的处境，或一段尚未被看见的事务进入值得亲历的进程。创作走到可回应的新局面，才把选择交给 {{user}}；不把“接下来如何推进”的工作交还给读者。候选能写得明确、鲜活，但采用前仍是候选。读完之后，读者此刻能接住哪一件原先还不存在的具体事情？先问“谁做了什么，谁因此失去或获得什么，下一步必须面对哪项新条件”，再落笔；答不出这三项就回到人物动因和外部行动重组，不用套话填空。
 
 读者可选用的每一段都以作者的第三人称落笔，段内交代实际行动者与必要处境，选出一段也能独立接入叙述。把条件写成自然句，把落笔写成场景已经展开的第一拍；例如“末班船靠岸时，杜衡把退回的信压在售票窗前。”而非“描写杜衡与售票员交涉”。这些段落供读者编排和改写，不附字段标签、人物任务清单或写作指令；涉及 {{user}} 的选择仍留白。
 
@@ -138,7 +144,9 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 明确不希望出现的内容：`;
 
 export const CREATIVE_GUIDES = Object.freeze({
-  story_status: `命运之脉恰好两条：horizon 为 near 的近线与 far 的远线各一条。以能看见不同场所和各方意图的叙事视野组织走向，写出谁因何采取行动，这项行动如何遇见另一人的打算，又怎样改变原有局面。近线编织眼前数件事的交汇，远线把这些联系延展到更后的处境、代价或新可能；时距由故事决定，不机械限定天数。两条各有具体的行动联系与可发展的局面，而非按人物职业或固有人设分派任务。比如停航让店主改向山路进货，同行顺路捎来的旧信又改变了收件人与寄件人的关系：叙事在联系和后果中生长，不只是店主完成采购。正文只写凝练可读的叙事，不列行动清单，不复述预演的单个镜头；采用前仍是候选，不越过 {{user}} 的未决选择。`,
+  story_status: `命运之脉恰好两条：horizon 为 near 的近线与 far 的远线各一条。near 与 far 只由时态锚定，不由镜头远近或主角是否在场决定：near 指下一处有戏剧价值的时间段，可以是数小时、数日或数周后；far 必须从明确的更晚节点（数周、数月、季节或更久）展开。以编剧的上帝之眼俯瞰多处生活，但不替任何角色读心，写清一项行动如何遇见另一人的打算，又如何改变原有局面；把每条线写成“已成立的状态 → 某人或某群体主动采取行动 → 另一方的利益、限制或反制介入 → 局面出现可验证的新条件”，而非按人物职业或固有人设分派任务。新条件至少改变行动资格、证据、信任、资源、风险、承诺、知情范围或关系位置之一；“局势更加复杂”“关系继续发酵”这类概括不算推进。
+
+两条必须越过正文当前落点，成为可以规划主线未来的具体戏剧节点；至少一条从非 {{user}}、非 {{char}} 的人物或群体开始，并让行动进入另一处生活。允许安排数日、数周或更久后的再次犯案、错过、转向、伏笔兑现、支线并行或关系重组，但要写出时间锚、行动者、反作用和新的后果，不能只预测主角“会如何”。用确定的叙事动词写候选内部已经安排好的事件，把候选性质交给输出边界，不连续堆叠“可能、也许、应该、似乎”。结尾停在一项具体事实、选择、发现或改变后的处境上，为后续场景留下可回收的线索或压力；不要用抽象升华、气氛预告、人物任务清单、现状摘要或复述预演来收尾。两条内容应有不同的时态与因果重心，而非把同一主线改写两遍；采用前仍是候选，不越过 {{user}} 的未决选择。`,
   character_dynamics: `只以本聊天的 CHAR 为动态主体，{{user}} 及其身份映射不占本栏名额；群聊中的多个 CHAR 按事务分量展开，不要求每人各凑一组。每条从 CHAR 自己正在处理的事情出发，写到一次具体行动、判断的落实或下一步事务已具备的条件，带出正文之外的进程与人物侧面。职业、同伴与私人生活都能提供有分量的内容，不把各条写成与 {{user}} 最近往来的情绪复述。相处细节可以细腻，但要对这个人的在意、做法或处境产生作用。`,
 
   npc_updates: `沿 CHAR 与 {{user}} 以外的人物的自主事务展开，写明当事人自己的诉求、实际做法及其改变的条件，重点是他自己的生活进程，不是替读者安排可介入的近景入口。承接旧关系和未了事项，保留即使暂时移除主角仍会进行的活动与人物联系；交集可以逐渐形成，也可以尚未发生。若明确的封闭设定限制了人物范围，则如实说明，不捏造陌生人凑数，不让全员围观、评判或猜测主角。`,
@@ -153,11 +161,13 @@ export const CREATIVE_GUIDES = Object.freeze({
 
   geopolitics: `依据设定规模维护有实际作用的组织与持续局势，明确其诉求、处境、联系及当前影响。将资源、规则与社会变化落到具体群体的选择条件上，使读者看见个人生活所处的结构。随当前影响选择展示重点，保留有效存续状态，对已改变的部分写出原因和结果。`,
 
-  parallel_scene: `以与主线人物、线索、关系或选择确有联系的一处可能性，写成可以独立阅读的番外。可以取景过去、近未来或遥远未来，不局限于分岔后的第一个时刻；先给足这一幕可读的处境，再让另一种生活在场景中实际发生。情绪由内容决定，轻快、平静、遗憾、热烈或荒诞都可成立，无须标题，也不承诺继续追踪分支。番外事实仅在此幕内成立，不反写主线。`,
+  parallel_scene: `以与主线人物、线索、关系或选择确有联系的一处可能性，写成可以独立阅读的文学番外，而不是“如果当时……”的推断说明。开头用自然句交代明确的时间锚与地点；可以取景过去、近未来或遥远未来，不局限于分岔后的第一个时刻，也不要求 CHAR 或 {{user}} 出场。让另一种事实直接发生，并让人物带着各自的欲望、误会或代价作出选择；至少经历一次阻力或转折，使这条生活线进入与开头不同的状态。全文写成 3–6 个有呼吸的出版式段落，每段承载一个动作、回应或后果，首段不要标题或字段标签，段落之间用自然的时间、视线或动作转换连接，不堆成一整面摘要墙。
+
+番外与主线有可辨认的物件、决定、关系或后果相连，但不复述正文梗概，不承担主线解释或替读者揭谜。结尾停在已经发生的动作、对话、物件或新处境上，让余味来自具体生活；不要用抽象升华、未来预告或“命运会继续”“一切终将……”之类的总结句收尾。情绪由内容决定，轻快、平静、遗憾、热烈或荒诞都可成立；无须标题，不追踪分支，不反写主线。番外事实仅在此幕内成立。`,
 
   interlude: `幕间拾趣每轮按指定的世界论坛或角色手机形式生成一张独立趣味卡，所有字段只写安全纯文本，不输出 HTML。取景这个世界里不同人的生活圈，换话题也换观看位置，不默认从主角身边或当前主线事务取材，不固定围绕阴谋、热搜或主角点评。让交流本身有趣：错频的回答、熟人默契、小小争执、意外同好、认真求助都能成篇，无须每次制造笑点。保持世界与说话者的时代和生活依据，不为扩大视角凭空制造一个有重要经历的陌生手机主人；这页也不承担案件进度通报或揭开主线谜底。`,
 
-  forum: `生成 3–5 帖，每帖有作者、显示称呼、正文、时代适配的时间和 1–3 条有来有往的回复。title 是符合世界的论坛或社区名称，像居民真的会注册、常逛或随口提起的地方，带一点在地性与网感，而非本轮内容的文学章节名。各帖各有话题、兴趣和轻重，陌生网友与普通人的声音可以相遇；回复要接住上一句话，容纳口语、省略、跑题与不同看法，不把同一事件换账号重复，也不把论坛变成主角动态墙或警方情报集散地。适用于网络的世界保留自然的网友口吻，其他时代可用告示栏、通信圈等公共交流形式，不强加现代网络术语。`,
+  forum: `生成 3–5 帖，每帖有作者、显示称呼、正文、时代适配的时间和 1–3 条有来有往的回复。每帖的回复数从允许范围内自然变化，不得每帖都固定为同一个数量；至少一处让楼主二次回应，至少一处让回复者接住另一位回复者的观点（可用 reply_to 或语义明确的接话）。title 是符合世界的论坛或社区名称，像居民真的会注册、常逛或随口提起的地方，带一点在地性与网感，而非本轮内容的文学章节名。各帖各有话题、兴趣和轻重，陌生网友与普通人的声音可以相遇；在题材和时代允许时，混入广告、自荐、唱反调、起哄、跑题、认真求助或不相干的日常，让社区像真实的人群而不是三条情报摘要。回复要接住上一句话，容纳口语、省略、误解与不同看法，不把同一事件换账号重复，也不把论坛变成主角动态墙或警方情报集散地。适用于网络的世界保留自然的网友口吻，其他时代可用告示栏、通信圈等公共交流形式，不强加现代网络术语。`,
 
   phone: `只从正文或有效记忆已经出现的非 USER 人物中选取手机所属者，CHAR 只是其中一种选择，配角、路人和其他已有姓名者也有自己的交流圈；排除 {{user}} 及其别名与身份映射。视角不要惯性停在 CHAR 及其同事或亲友，优先寻找这次尚未被看见、确有来由的生活侧面；已知人物确实有限时自然复用，不为换人捏造来源。选择私聊或群聊，生成 6–10 条消息；私聊恰好两位说话者，群聊至少两位，每条明确发送者、内容与时间。title 在群聊时就是群名，在私聊时就是对方的联系人显示名，不写“周末的邀请”一类章节标题。口吻、昵称、话题与接话方式带出关系，内容可与当前任务和主要人物完全无关，而仍属于此人的生活；这一形式只在时代与人物确实适用手机或相应终端时出现。
 

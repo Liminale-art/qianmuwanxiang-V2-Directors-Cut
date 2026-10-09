@@ -23,8 +23,8 @@ function between(startText, endText) {
 }
 const renderers = ['directorDisplayPlan', 'renderDirectorSectionNotice', 'renderDashboardTab', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
   'renderCastWorldFront', 'renderCastWorldTab', 'renderPlanSectionFold', 'renderRelationUndercurrentsCard', 'renderWorldChatterCard',
-  'renderNoPlan', 'renderItemList', 'directorItemParagraphs', 'renderDirectorParagraph', 'renderItemCard', 'renderItemChips', 'renderInjectBadge', 'renderInjectDock',
-  'renderHeroActions', 'renderGenerateRow', 'renderHistorySection', 'renderInjectSections', 'renderDirectorSettingsTab', 'updateInjectDock', 'collectDirectorSelectedText', 'bindDirectorSelectionEvents', 'bindDirectorReadingEvents']
+  'renderNoPlan', 'renderItemList', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph', 'renderItemCard', 'renderItemChips', 'renderInjectBadge', 'renderInjectDock',
+  'renderHeroActions', 'renderGenerateRow', 'renderHistorySection', 'renderInjectSections', 'renderDirectorSettingsTab', 'updateInjectDock', 'updateDirectorSelectionOrder', 'collectDirectorSelectedText', 'bindDirectorSelectionEvents', 'bindDirectorReadingEvents']
   .map(section).join('\n');
 const switchEvents = between("  root.querySelector('.sd-parallel-scene-enabled')?.addEventListener", "  root.querySelector('.sd-geopolitics-enabled')?.addEventListener");
 const assets = new Set(['qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js',
@@ -163,8 +163,9 @@ try {
         check(await selected.getAttribute('aria-pressed') === 'true' && await selected.evaluate(node => getComputedStyle(node).backgroundColor) !== idleBackground,
           `${theme}/${width}/${view}: selected paragraph has distinct fill and accessible state`);
         check(await page.locator('.sd-inject-selected span').textContent() === '1', `${theme}/${width}/${view}: batch selection count updates`);
+        const selectedDraft = await page.evaluate(() => collectDirectorSelectedText().join('\n\n'));
         await page.locator('.sd-inject-selected').click();
-        check(await page.evaluate(() => draftCalls.at(-1) === collectDirectorSelectedText().join('\n\n')), `${theme}/${width}/${view}: batch action writes the selected synthetic draft`);
+        check(await page.evaluate(expected => draftCalls.at(-1) === expected && injectSelection.size === 0, selectedDraft), `${theme}/${width}/${view}: batch action writes then clears the selected synthetic draft`);
       }
       const result = await page.evaluate(() => {
         const root = document.getElementById('story-director-modal'), win = root.querySelector('.sd-window'), body = root.querySelector('.sd-body');
@@ -223,8 +224,8 @@ try {
       if (captionSizes.length) check(captionSizes.every(item => item.size === expectedCaption), `${key}: secondary labels share the caption scale`, result.typography);
       if (result.dockStyle) {
         const dock = result.dockStyle;
-        check(dock.enabled && (theme === 'glass' ? dock.blur.includes('blur(18px)') && dock.alpha > 0 && dock.alpha < 1
-          : dock.background === dock.referenceBackground && dock.blur === dock.referenceBlur), `${key}: selected-write button follows its theme treatment`, dock);
+        check(!dock.enabled || (theme === 'glass' ? dock.blur.includes('blur(18px)') && dock.alpha > 0 && dock.alpha < 1
+          : dock.background === dock.referenceBackground && dock.blur === dock.referenceBlur), `${key}: selected-write button follows its theme treatment when active`, dock);
         const clearance = await page.evaluate(() => {
           const body = document.querySelector('.sd-body'), dock = document.querySelector('.sd-inject-dock');
           const original = body.scrollTop; body.scrollTop = body.scrollHeight;
@@ -314,9 +315,9 @@ try {
   await paragraphs.nth(2).focus(); await page.keyboard.press('Space');
   await paragraphs.nth(0).focus(); await page.keyboard.press('Enter');
   await paragraphs.nth(1).focus(); await page.keyboard.press('Enter');
-  const ordered = await page.evaluate(() => ({ size: injectSelection.size, text: collectDirectorSelectedText()[0] }));
-  check(ordered.size === 3 && ordered.text === await page.evaluate(() => [plan.quests[0].description, plan.quests[0].trigger, plan.quests[0].inject_prompt].join('\n\n')),
-    'keyboard selection survives repeated binding and assembles original prose in display order');
+  const ordered = await page.evaluate(() => ({ size: injectSelection.size, text: collectDirectorSelectedText().join('\n\n') }));
+  check(ordered.size === 3 && ordered.text === await page.evaluate(() => [plan.quests[0].description, plan.quests[0].inject_prompt, plan.quests[0].trigger].join('\n\n')),
+    'keyboard selection survives repeated binding and assembles prose in user selection order', ordered);
   check(await paragraphs.nth(1).evaluate(node => getComputedStyle(node).outlineStyle !== 'none'), 'keyboard focus is visible on selected paragraphs');
   const beforeGestures = await page.evaluate(() => injectSelection.size);
   await paragraphs.nth(0).dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 20, clientY: 20 });

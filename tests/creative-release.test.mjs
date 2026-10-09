@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = '1.59.447';
+const version = '1.59.448';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js', 'qianmu-director-live.js', 'qianmu-creative-social.js',
@@ -57,6 +57,6 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.equal(manifest.js, `index.js?v=${version}`);
   assert.equal(manifest.css, `style.css?v=${version}`);
   assert.ok(files.includes('qianmu-creative-social.css'));
-  assert.match(await readFile(new URL('style.css', root), 'utf8'), /@import url\('\.\/qianmu-creative-social\.css\?v=1\.59\.447'\)/);
+  assert.match(await readFile(new URL('style.css', root), 'utf8'), /@import url\('\.\/qianmu-creative-social\.css\?v=1\.59\.448'\)/);
   assert.ok(sources.get('index.js').includes(`const VERSION = '${version}';`));
 });

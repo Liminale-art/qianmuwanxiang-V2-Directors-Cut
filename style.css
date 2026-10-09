@@ -1,5 +1,5 @@
 @import url('./qianmu-text-collection-floor.css');
-@import url('./qianmu-creative-social.css?v=1.59.447');
+@import url('./qianmu-creative-social.css?v=1.59.448');
 
 /* ============================================================
    千幕 (Qianmu)
@@ -3247,12 +3247,20 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* 涟漪：可视化的传播链路，完整保留每环的叙事情境。 */
 #story-director-modal .sd-chain-flowlist { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 #story-director-modal .sd-chain-item {
+  --sd-chain-tone: #83b9e9;
+  --sd-chain-fill: 15%;
   border: 1px solid var(--sd-border);
-  border-left: 3px solid color-mix(in srgb, var(--sd-accent) 60%, var(--sd-border));
+  border-left: 3px solid color-mix(in srgb, var(--sd-chain-tone) 72%, var(--sd-border));
   border-radius: 10px;
-  background: var(--sd-glass-weak);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sd-chain-tone) var(--sd-chain-fill), transparent), transparent 88%), var(--sd-glass-weak);
   padding: 10px 12px;
 }
+#story-director-modal .sd-chain-item.sd-chain-tone-0 { --sd-chain-tone: #ed91ad; }
+#story-director-modal .sd-chain-item.sd-chain-tone-1 { --sd-chain-tone: #83b9e9; }
+#story-director-modal .sd-chain-item.sd-chain-tone-2 { --sd-chain-tone: #93c9a7; }
+#story-director-modal .sd-chain-item:first-child { --sd-chain-fill: 27%; border-left-width: 5px; }
+#story-director-modal .sd-chain-item:nth-child(2) { --sd-chain-fill: 17%; }
+#story-director-modal .sd-chain-item:nth-child(3) { --sd-chain-fill: 11%; border-left-color: color-mix(in srgb, var(--sd-chain-tone) 48%, var(--sd-border)); }
 #story-director-modal .sd-chain-track {
   display: block;
   line-height: 1.85;
@@ -3270,7 +3278,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   color: var(--sd-text);
 }
 #story-director-modal .sd-chain-link-head { white-space: nowrap; }
-#story-director-modal .sd-chain-link { display: inline; padding: 0 .36em; font-size: .92em; color: var(--sd-accent); opacity: .8; }
+#story-director-modal .sd-chain-link { display: inline; padding: 0 .36em; font-size: .92em; color: color-mix(in srgb, var(--sd-chain-tone) 82%, var(--sd-accent)); opacity: .8; }
 
 /* 关系暗涌：NPC 之间自行纠缠的张力，一行一对/一簇关系 */
 #story-director-modal .sd-relus-row {
@@ -3770,27 +3778,21 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-bed-dot {
   fill: var(--sd-geo-skin-clue); opacity: .65; animation: sd-geo-star-breathe 5.6s ease-in-out infinite; animation-delay: var(--d, 0s);
 }
-/* 中央轴心仅柔光呼吸，不绕动实际关系节点。 */
+/* 中央轴心仅保留星形呼吸，不绕动实际关系节点或添加外圈光晕。 */
 #story-director-modal .sd-geo-axis { pointer-events: none; }
 #story-director-modal .sd-geo-axis-star {
   fill: var(--sd-geo-skin-axis); transform-origin: center; animation: sd-geo-star-breathe 7s ease-in-out infinite;
 }
-#story-director-modal .sd-geo-axis-halo {
-  fill: none; stroke: var(--sd-geo-skin-axis); stroke-width: 1; opacity: .4;
-  transform-origin: center;
-  animation: sd-geo-halo-breathe 7s ease-in-out infinite;
-}
 @keyframes sd-geo-orbit-turn { to { transform: rotate(360deg); } }
 @keyframes sd-geo-star-breathe { 0%,100% { opacity: .45; } 50% { opacity: .95; } }
-@keyframes sd-geo-halo-breathe { 0%,100% { opacity: .2; } 50% { opacity: .5; } }
 
-/* 实色线芯与柔光始终固定；短亮段沿同一路径流动，不挪动节点或关系锚点。 */
+/* 固定关系线只保留细实线；短亮段沿同一路径流动，不挪动节点或关系锚点。 */
 #story-director-modal .sd-geo-edge { transition: opacity .25s ease; }
 #story-director-modal .sd-geo-edge-secondary { opacity: 0; pointer-events: none; }
 #story-director-modal .sd-kind-hidden { display: none !important; }
-#story-director-modal .sd-geo-edge-base { stroke-width: 5; stroke-linecap: round; opacity: .27; filter: blur(1.4px); }
+#story-director-modal .sd-geo-edge-base { stroke-width: 1.15; stroke-linecap: round; opacity: .42; filter: none; }
 #story-director-modal .sd-geo-edge-flow {
-  stroke-width: 1.7; stroke-linecap: round; opacity: .86;
+  stroke-width: 1.2; stroke-linecap: round; opacity: .76;
   stroke-dasharray: none; stroke-dashoffset: 0;
 }
 #story-director-modal .sd-geo-edge-motion {
@@ -3865,7 +3867,11 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-node .sd-geo-clues { transition: opacity .22s ease; }
 #story-director-modal .sd-geo-node .sd-geo-node-tag { transition: opacity .22s ease; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-dim { opacity: .26; }
-#story-director-modal .sd-geo-focused .sd-geo-edge.sd-dim { opacity: .12; }
+#story-director-modal .sd-geo-focused .sd-geo-edge.sd-dim {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-near { opacity: .9; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-far { opacity: .58; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-on { opacity: 1; }
@@ -4047,7 +4053,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   #story-director-modal .sd-geo-edge-motion,
   #story-director-modal .sd-geo-bed-dot,
   #story-director-modal .sd-geo-axis-star,
-  #story-director-modal .sd-geo-axis-halo,
   #story-director-modal .sd-geo-clue,
   #story-director-modal .sd-geo-node-focus-ring,
   #story-director-modal .sd-geo-event-pulse,
@@ -9181,7 +9186,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-director-direction p::first-letter { float: left; font-size: 2.7em; line-height: 1.15; margin: .03em .12em 0 0; font-weight: 600; }
 #story-director-modal .sd-director-paragraphs { display: grid; gap: 8px; }
 #story-director-modal .sd-director-paragraph {
-  min-width: 0; padding: 10px 12px; border: 1px solid transparent; border-radius: 12px;
+  position: relative; min-width: 0; padding: 10px 12px; border: 1px solid transparent; border-radius: 12px;
   background: var(--sd-glass-weak); color: var(--sd-text); user-select: text; touch-action: pan-y;
 }
 #story-director-modal .sd-director-paragraph[role="button"] { cursor: pointer; }
@@ -9192,6 +9197,26 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
   background: color-mix(in srgb, var(--sd-accent) 12%, var(--sd-card));
   border-color: color-mix(in srgb, var(--sd-accent) 65%, var(--sd-border));
 }
+#story-director-modal .sd-director-paragraph[data-selection-order]:not([data-selection-order=""])::after {
+  content: attr(data-selection-order);
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--sd-accent);
+  color: var(--sd-primary-text, #fff);
+  font-size: var(--qm-type-caption);
+  line-height: 1;
+  font-weight: 700;
+  pointer-events: none;
+}
+#story-director-modal .sd-director-paragraph[data-selection-order]:not([data-selection-order=""]) { padding-right: 42px; }
 #story-director-modal .sd-director-paragraph:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: 2px; }
 
 /* 审片番外仅阅读，沿用三主题的卡片、文字和留白，不模拟外部手机界面。 */
@@ -9199,7 +9224,9 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-director-extra-card .sd-section-title { align-items: baseline; flex-wrap: wrap; gap: 5px 10px; }
 #story-director-modal .sd-director-extra-card .sd-section-title > span { color: var(--sd-muted); font-size: var(--qm-type-caption); overflow-wrap: anywhere; }
 #story-director-modal .sd-director-extra-card h4 { margin: 12px 0 8px; color: var(--sd-text); font-size: var(--qm-type-body); line-height: 1.55; }
-#story-director-modal .sd-director-extra-content,
+#story-director-modal .sd-director-extra-content { margin: 8px 0 0; color: var(--sd-text); font-size: var(--qm-type-body); line-height: 1.85; overflow-wrap: anywhere; }
+#story-director-modal .sd-director-extra-content p { margin: 0; text-indent: 2em; white-space: pre-wrap; }
+#story-director-modal .sd-director-extra-content p + p { margin-top: 1em; }
 #story-director-modal .sd-director-narrative { margin: 8px 0 0; color: var(--sd-text); font-size: var(--qm-type-body); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 #story-director-modal .sd-lib-main h4 { font-size: 11.5px; font-weight: 600; }
 

@@ -42,6 +42,9 @@ test('schema preserves stable fields, count source, enabled world shapes and one
   assert.equal(shape.interlude.type, 'phone');
   assert.equal(typeof shape.story_status.cycle, 'string');
   assert.match(shape.story_status.cycle, /In-story date or time period/);
+  assert.match(shape.story_status.directions[0].title, /anchored to a concrete upcoming time window/);
+  assert.match(shape.story_status.directions[0].content, /verifiable new condition/);
+  assert.match(shape.story_status.directions[1].content, /setup\/payoff or side-character life/);
   assert.match(shape.factions[0].trend, /rising\/stable\/declining\/turbulent/);
   assert.match(shape.factions[0].scale, /城邦内\/区域性\/跨区域\/全局性/);
   assert.doesNotMatch(schema, /world_updates|director_comment|至少1桩跨地域|孤点至多|唯变是传/);
@@ -82,6 +85,8 @@ test('English output protocol keeps narrative language, Chinese enums and establ
   assert.match(schema, /reporting a shortfall does not satisfy the required count/);
   assert.match(schema, /Distinguish possibilities from established experiences/);
   assert.match(schema, /未映之幕 and 幕间拾趣 are independent and have no narrative-injection fields/);
+  assert.match(shape.parallel_scene.content, /3–6 paragraphs with a turn and changed condition/);
+  assert.match(schema, /specific ending; it is not a synopsis, branch analysis, or moral epilogue/);
   assert.match(schema, /Exclude USER and every alias; do not invent an owner when the list is empty/);
   assert.match(shape.quests[0].inject_prompt, /no action decided for USER/);
 });

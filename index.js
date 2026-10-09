@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.447';
-import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.447';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.447';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.447';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.448';
+import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.448';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.448';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.448';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.443';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -30,7 +30,7 @@ import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor}
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
-import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.447';
+import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.448';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js?v=1.59.445';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
@@ -306,7 +306,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.447';
+const VERSION = '1.59.448';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -814,8 +814,8 @@ const FLOAT_LOGO_URLS = Object.freeze({
 });
 const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-DOUBAO-APIKEY.md';
 
-const PROMPT_REVISION = 27;
-const BLUEPRINT_REVISION = 4;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
+const PROMPT_REVISION = 28;
+const BLUEPRINT_REVISION = 5;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
 const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;
@@ -7070,7 +7070,10 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     return `<circle class="sd-geo-event-node-pulse sd-geo-event-pulse-${stage}" cx="${cx}" cy="${cy}" r="${18 + eventIndex * 3}" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></circle>`;
   }).join('');
 
-  const axis = `<g class="sd-geo-axis"><circle class="sd-geo-axis-halo" cx="${cx}" cy="${cy}" r="13"></circle><path class="sd-geo-axis-star" d="${starPath(cx, cy, 7.5, 3)}"></path></g>`;
+  // The centre star is a quiet orientation mark.  Keep its animated fill, but
+  // do not add a surrounding halo: the old ring competed with the selected
+  // relationship highlight and read as a second active node.
+  const axis = `<g class="sd-geo-axis"><path class="sd-geo-axis-star" d="${starPath(cx, cy, 7.5, 3)}"></path></g>`;
   const nodes = factions.map((f, i) => {
     const p = points.get(f.id), tagPos = labels.get(f.id), trend = FACTION_TRENDS.includes(f.trend) ? f.trend : 'stable';
     const rad = 8 + Math.min(5, relCount[i] * 1.15), clues = Array.isArray(f.clues) ? f.clues.filter(Boolean).slice(0, 5) : [];
@@ -7445,12 +7448,6 @@ function renderDashboardTab() {
       ${directions.length ? `<div class="sd-director-directions">${directions.map(item => `<article class="sd-director-direction"><p>${htmlEscape(item.content || item.title || '')}</p></article>`).join('')}</div>` : `<p class="sd-director-narrative">${htmlEscape(st.summary || st.title || st.current_arc || '')}</p>`}
       ${renderGenerateRow()}
     </section>
-    <section class="sd-card sd-status-card">
-      <div class="sd-count-tags">
-        <button class="sd-count-tag sd-count-group" data-jump="tasksnodes"><span class="sd-ct-label">预演</span></button>
-        <button class="sd-count-tag sd-count-group" data-jump="castworld"><span class="sd-ct-label">世界</span></button>
-      </div>
-    </section>
     ${directorSectionEnabled(p, 'parallel_scene', settings) ? renderDirectorExtraCard(p.parallel_scene, 'parallel', p) : ''}
     ${directorSectionEnabled(p, 'interlude', settings) ? renderDirectorExtraCard(p.interlude, 'interlude', p) : ''}
     ${renderHistorySection()}`;
@@ -7462,9 +7459,17 @@ function renderDirectorExtraCard(value, kind, plan = directorDisplayPlan()) {
   const notice = renderDirectorSectionNotice(plan, 'parallel_scene');
   const item = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const content = typeof item.content === 'string' ? item.content.trim() : '';
+  const paragraphs = content
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .map(text => text.trim())
+    .filter(Boolean);
+  const prose = paragraphs.length
+    ? paragraphs.map(text => `<p>${htmlEscape(text).replace(/\n/g, '<br>')}</p>`).join('')
+    : '';
   return `<section class="sd-card sd-director-extra-card sd-director-extra-parallel">
     <div class="sd-section-title"><h3>未映之幕</h3></div>
-    ${notice}${content ? `<div class="sd-director-extra-content">${htmlEscape(content)}</div>` : notice ? '' : '<p class="sd-muted">尚未生成</p>'}
+    ${notice}${prose ? `<div class="sd-director-extra-content">${prose}</div>` : notice ? '' : '<p class="sd-muted">尚未生成</p>'}
   </section>`;
 }
 
@@ -7472,6 +7477,11 @@ function renderDirectorExtraCard(value, kind, plan = directorDisplayPlan()) {
 function renderChainReactionsCard(p) {
   const list = Array.isArray(p.chain_reactions) ? p.chain_reactions : [];
   const notice = renderDirectorSectionNotice(p, 'chain_reactions');
+  const toneSeed = [p.story_status?.cycle, p.story_status?.title, ...list.map(item => `${item?.spark || ''}|${item?.chain || ''}`)].join('|');
+  // Keep the palette stable for one generated plan without relying on a
+  // global/random source that would make a rerender flash different colors.
+  const toneHash = Array.from(toneSeed).reduce((sum, char) => ((sum * 31) + char.charCodeAt(0)) >>> 0, 0);
+  const toneBase = toneHash % 3;
   const body = list.length
     ? `<ol class="sd-chain-flowlist">${list.map((c, index) => {
         const spark = String(c.spark || '').trim();
@@ -7484,7 +7494,8 @@ function renderChainReactionsCard(p) {
           const characters = Array.from(s), head = characters.splice(0, 2).join('');
           return `<wbr><span class="sd-chain-node"><span class="sd-chain-link-head"><span class="sd-chain-link" aria-hidden="true">→</span>${htmlEscape(head)}</span>${htmlEscape(characters.join(''))}</span>`;
         }).join('');
-        return `<li class="sd-chain-item"><div class="sd-chain-track">${nodes}</div>${p._streamPreview ? '' : renderDirectorWorldEntryLink('chain_reactions',index)}</li>`;
+        const tone = (toneBase + index) % 3;
+        return `<li class="sd-chain-item sd-chain-tone-${tone}" data-chain-tone="${tone}"><div class="sd-chain-track">${nodes}</div>${p._streamPreview ? '' : renderDirectorWorldEntryLink('chain_reactions',index)}</li>`;
       }).filter(Boolean).join('')}</ol>`
     : notice ? '' : '<p class="sd-muted">尚未浮现涟漪。</p>';
   return `<section class="sd-card sd-chain-card">
@@ -8657,8 +8668,11 @@ function directorItemParagraphs(item, kind) {
     if (text && !fields.some(field => field.text === text)) fields.push({ key, label, text });
   };
   if (kind === 'quest') {
-    add('scene', '情境', item.description || item.content || item.objective);
+    // Read like a scene beat rather than a report: what is written first,
+    // why it can happen, and only then the resulting situation.
+    add('draft', '落笔', item.inject_prompt);
     add('condition', '发生条件', item.trigger);
+    add('scene', '情境', item.description || item.content || item.objective);
   } else {
     add('scene', '动向', item.content || item.description);
     if (!fields.length) {
@@ -8668,13 +8682,25 @@ function directorItemParagraphs(item, kind) {
       add('relation', '联系', item.relations || item.relationship_to_user);
     }
   }
-  add('draft', '落笔', item.inject_prompt);
+  if (kind !== 'quest') add('draft', '落笔', item.inject_prompt);
   return fields;
 }
 
+function directorSelectionOrder(id, selection = injectSelection) {
+  let order = 0;
+  for (const [key, value] of selection.entries()) {
+    // Legacy whole-card checkboxes remain writable but have no visible
+    // paragraph badge, so they must not consume a paragraph's number.
+    if (!value || typeof value !== 'object' || !value.cardId) continue;
+    if (key === id) return order + 1;
+    order += 1;
+  }
+  return 0;
+}
+
 function renderDirectorParagraph(paragraph, { cardId, subject, order, readOnly }) {
-  const id = `${cardId}:paragraph:${paragraph.key}`, selected = injectSelection.has(id);
-  const action = readOnly ? '' : ` role="button" tabindex="0" aria-pressed="${selected}" aria-label="选择${htmlEscape(paragraph.label)}：${htmlEscape(subject)}" data-director-paragraph data-id="${htmlEscape(id)}" data-card-id="${htmlEscape(cardId)}" data-order="${order}" data-subject="${htmlEscape(subject)}" data-label="${htmlEscape(paragraph.label)}" data-text="${htmlEscape(paragraph.text)}"`;
+  const id = `${cardId}:paragraph:${paragraph.key}`, selected = injectSelection.has(id), selectionOrder = selected ? directorSelectionOrder(id) : 0;
+  const action = readOnly ? '' : ` role="button" tabindex="0" aria-pressed="${selected}" aria-label="选择${htmlEscape(paragraph.label)}：${htmlEscape(subject)}" data-director-paragraph data-id="${htmlEscape(id)}" data-card-id="${htmlEscape(cardId)}" data-order="${order}" data-subject="${htmlEscape(subject)}" data-label="${htmlEscape(paragraph.label)}" data-text="${htmlEscape(paragraph.text)}" data-selection-order="${selectionOrder || ''}"`;
   return `<div class="sd-director-paragraph${selected && !readOnly ? ' is-selected' : ''}"${action}>${paragraph.label !== '动向' ? `<span class="sd-director-paragraph-label">${htmlEscape(paragraph.label)}</span>` : ''}<p>${htmlEscape(paragraph.text)}</p></div>`;
 }
 
@@ -23879,20 +23905,21 @@ function updateInjectDock(root = document) {
 }
 
 function collectDirectorSelectedText(selection = injectSelection) {
-  const groups = new Map(), output = [];
-  for (const value of selection.values()) {
-    if (typeof value === 'string') { if (value.trim()) output.push(value); continue; }
-    if (!value || !value.cardId || !value.text) continue;
-    let group = groups.get(value.cardId);
-    if (!group) { group = { subject: value.subject, items: [] }; groups.set(value.cardId, group); output.push(group); }
-    group.items.push(value);
-  }
-  return output.map(value => {
-    if (typeof value === 'string') return value;
-    // Selected paragraphs are the draft: retain their prose and natural
-    // conditions, without adding assignment headings or guessing a subject.
-    return value.items.slice().sort((a, b) => a.order - b.order)
-      .map(item => item.text).join('\n\n');
+  // Map insertion order is the user's reading/selection order. Preserve it
+  // verbatim across cards instead of regrouping by card or by field order;
+  // this keeps an author-chosen intercut usable as-is in the draft input.
+  return [...selection.values()].map(value => {
+    if (typeof value === 'string') return value.trim();
+    return value && typeof value.text === 'string' ? value.text.trim() : '';
+  }).filter(Boolean);
+}
+
+function updateDirectorSelectionOrder(root) {
+  root?.querySelectorAll?.('[data-director-paragraph]').forEach((el) => {
+    const order = directorSelectionOrder(el.dataset.id);
+    el.dataset.selectionOrder = order ? String(order) : '';
+    el.classList.toggle('is-selected', order > 0);
+    el.setAttribute('aria-pressed', String(order > 0));
   });
 }
 
@@ -23908,7 +23935,8 @@ function bindDirectorSelectionEvents(root) {
         subject: el.dataset.subject, label: el.dataset.label, text: el.dataset.text });
       else injectSelection.delete(el.dataset.id);
       el.classList.toggle('is-selected', selected); el.setAttribute('aria-pressed', String(selected));
-      updateInjectDock(panel);
+      updateDirectorSelectionOrder(panel);
+      updateInjectDock(document);
     };
     el.addEventListener('pointerdown', event => { gesture = { x: event.clientX, y: event.clientY, moved: event.button !== 0 }; });
     el.addEventListener('pointermove', event => {
@@ -23916,7 +23944,12 @@ function bindDirectorSelectionEvents(root) {
     }, { passive: true });
     el.addEventListener('pointercancel', () => { if (gesture) gesture.moved = true; });
     el.addEventListener('click', event => {
-      if (gesture?.moved || globalThis.getSelection?.()?.toString() || event.detail > 1) return;
+      const selection = globalThis.getSelection?.();
+      // A stale selection elsewhere in the modal must not swallow a fresh
+      // paragraph click; only suppress the toggle when text is selected inside
+      // this same paragraph.
+      const selectingThisParagraph = selection?.toString() && selection.anchorNode && el.contains(selection.anchorNode);
+      if (gesture?.moved || selectingThisParagraph || event.detail > 1) return;
       toggle();
     });
     el.addEventListener('keydown', event => {
@@ -23931,7 +23964,8 @@ function bindDirectorSelectionEvents(root) {
     el.addEventListener('change', () => {
       if (el.checked) injectSelection.set(el.dataset.id, el.dataset.text || '');
       else injectSelection.delete(el.dataset.id);
-      updateInjectDock(panel);
+      updateDirectorSelectionOrder(panel);
+      updateInjectDock(document);
     });
   });
   const button = panel.querySelector('.sd-inject-selected');
@@ -23942,10 +23976,17 @@ function bindDirectorSelectionEvents(root) {
       if (!texts.length) return;
       const ok = injectToInput(texts.join('\n\n'));
       toast(ok ? `已写入 ${injectSelection.size} 项。` : '未找到输入框。', ok ? 'success' : 'error');
-      if (ok) closeModal();
+      if (ok) {
+        // A completed write is a one-shot author action. Reopening the panel
+        // must not resurrect the previous selection state.
+        injectSelection.clear();
+        updateDirectorSelectionOrder(panel);
+        updateInjectDock(document);
+        closeModal();
+      }
     });
   }
-  updateInjectDock(panel);
+  updateInjectDock(document);
 }
 
 function nestedScrollAtBoundary(element, deltaY) {
@@ -24060,7 +24101,6 @@ function bindDirectorReadingEvents(root) {
     toast('当前推演已清空。', 'success');
     renderModal();
   });
-  root.querySelectorAll('.sd-count-tag').forEach((el) => el.addEventListener('click', () => { activeTab = el.dataset.jump; renderModal(); }));
   // 尘寰群生：浮现舞台 ⇄ 完整台本列表
   root.querySelector('.sd-chatter-toggle')?.addEventListener('click', () => { chatterExpanded = !chatterExpanded; renderModal(); });
   root.querySelectorAll('.sd-load-history').forEach((el) => el.addEventListener('click', async () => {

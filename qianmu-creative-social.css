@@ -25,7 +25,10 @@
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--social-muted) 35%, transparent) transparent;
-  overscroll-behavior-y: contain;
+  /* Let a finished forum/chat viewport hand the same gesture back to the
+     reading surface.  `contain` traps the wheel/touch at the card boundary. */
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
 }
 #story-director-modal .sd-social-scroll:focus-visible { outline: 2px solid var(--social-accent); outline-offset: -2px; }
 #story-director-modal .sd-social-panel-head {
@@ -102,6 +105,7 @@
 #story-director-modal .sd-social-reply { display: flex; align-items: flex-start; gap: 7px; padding: 8px 0; }
 #story-director-modal .sd-social-reply > div { min-width: 0; }
 #story-director-modal .sd-social-reply strong { font-size: var(--qm-type-caption, 11px); font-weight: 600; }
+#story-director-modal .sd-social-reply-to { margin-left: 6px; color: var(--social-muted); font-size: var(--qm-type-caption, 11px); }
 #story-director-modal .sd-social-reply p { margin: 3px 0 0; }
 #story-director-modal .sd-social-messages { list-style: none; padding: 14px; margin: 0; display: grid; gap: 13px; }
 #story-director-modal .sd-social-message { display: flex; align-items: flex-start; gap: 7px; min-width: 0; margin: 0; padding: 0; }
