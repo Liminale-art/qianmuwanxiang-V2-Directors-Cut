@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { renderQianmuThemeMenu, bindQianmuThemeMenu } from '../qianmu-theme-menu.js';
 
+const skinStyles = await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
+
 function fixture() {
     function node(className, parent = null) {
         const events = new Map(), attributes = new Map(), classes = new Set([className]);
@@ -90,6 +92,13 @@ test('rainbow custom dot remains circular independently of the rectangular edito
     assert.match(css,/\.sd-theme-swatch > span \{[^}]+border-radius: 50%/);
     assert.match(css,/\.sd-theme-classic-options \{[^}]+repeat\(6,/);
     assert.match(css,/\.sd-theme-swatches \{[^}]+repeat\(8,/);
+});
+
+test('new skin roots rebind heading gradients after leaving the classic dream palette', () => {
+    const root = skinStyles.match(/:is\(#story-director-modal, \[data-qm-theme\]\):is\(\[data-qm-theme="editorial"\], \[data-qm-theme="glass"\]\) \{([\s\S]*?)\n\}/)?.[1] || '';
+    assert.match(root, /--sd-title-grad:\s*linear-gradient\(92deg,\s*var\(--qm-accent\),\s*var\(--qm-ink\)\)/);
+    assert.match(root, /--sd-subtitle-grad:\s*linear-gradient\(90deg,\s*var\(--qm-accent\),\s*var\(--qm-muted\)\s*70%\)/);
+    assert.doesNotMatch(root, /#c79ad6|#8f9fe0|#79c7c0/);
 });
 
 test('the production header no longer renders the tagline in any family',async()=>{

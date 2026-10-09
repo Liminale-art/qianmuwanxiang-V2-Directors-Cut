@@ -7490,9 +7490,9 @@ function renderChainReactionsCard(p) {
         const steps = [spark, ...chain.split(/\s*(?:→|->|⇒)\s*/)]
           .map((s) => String(s || '').trim()).filter(Boolean);
         const nodes = steps.map((s, i) => {
-          if (i === 0) return `<span class="sd-chain-node sd-chain-node-spark">${htmlEscape(s)}</span>`;
+          if (i === 0) return `<span class="sd-chain-node sd-chain-node-spark" data-chain-depth="0">${htmlEscape(s)}</span>`;
           const characters = Array.from(s), head = characters.splice(0, 2).join('');
-          return `<wbr><span class="sd-chain-node"><span class="sd-chain-link-head"><span class="sd-chain-link" aria-hidden="true">→</span>${htmlEscape(head)}</span>${htmlEscape(characters.join(''))}</span>`;
+          return `<wbr><span class="sd-chain-node" data-chain-depth="${i}"><span class="sd-chain-link-head"><span class="sd-chain-link" aria-hidden="true">→</span>${htmlEscape(head)}</span>${htmlEscape(characters.join(''))}</span>`;
         }).join('');
         const tone = (toneBase + index) % 3;
         return `<li class="sd-chain-item sd-chain-tone-${tone}" data-chain-tone="${tone}"><div class="sd-chain-track">${nodes}</div>${p._streamPreview ? '' : renderDirectorWorldEntryLink('chain_reactions',index)}</li>`;
@@ -8714,10 +8714,17 @@ function renderItemCard(item, kind, idx, readOnly = false) {
   const sourceField = ({quest:'quests',npc:'npc_updates',world:'world_updates'})[kind];
   const fields = [['内容', item.content], ['波及', item.scope]];
   const checked = injectSelection.has(injectId) ? 'checked' : '';
+  const cardSelectionOrders = !readOnly && kind === 'character'
+    ? directorItemParagraphs(item, kind).map(paragraph => directorSelectionOrder(`${injectId}:paragraph:${paragraph.key}`)).filter(Boolean)
+    : [];
+  const cardSelectionBadge = kind === 'character' && !readOnly
+    ? `<span class="sd-selection-order-card" data-selection-card-id="${htmlEscape(injectId)}" data-selection-card-order="${htmlEscape(cardSelectionOrders.join('、'))}" aria-label="${cardSelectionOrders.length ? `写入顺序 ${htmlEscape(cardSelectionOrders.join('、'))}` : '未选择写入段落'}">${htmlEscape(cardSelectionOrders.join('、'))}</span>`
+    : '';
   return `<details class="sd-item-card sd-item-fold sd-item-${htmlEscape(kind)}" data-acc="${readOnly ? 'preview-' : ''}item-${htmlEscape(injectId)}"${readOnly ? ' open' : ''}>
     <summary>
       <div class="sd-item-summary-main"><h4>${htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}</div>
       ${sourceField && !readOnly ? renderDirectorWorldEntryLink(sourceField,idx) : ''}
+      ${cardSelectionBadge}
       ${prompt && !readOnly && !segmented ? `<label class="sd-inject-select-label" title="加入写入队列"><input type="checkbox" class="sd-select-inject" data-text="${htmlEscape(prompt)}" data-id="${htmlEscape(injectId)}" ${checked}></label>` : ''}
     </summary>
     <div class="sd-item-detail">
@@ -23920,6 +23927,16 @@ function updateDirectorSelectionOrder(root) {
     el.dataset.selectionOrder = order ? String(order) : '';
     el.classList.toggle('is-selected', order > 0);
     el.setAttribute('aria-pressed', String(order > 0));
+  });
+  root?.querySelectorAll?.('.sd-selection-order-card').forEach((badge) => {
+    const cardId = badge.dataset.selectionCardId;
+    const orders = [...injectSelection.keys()]
+      .filter(id => injectSelection.get(id)?.cardId === cardId && id.includes(':paragraph:'))
+      .map(id => directorSelectionOrder(id)).filter(Boolean);
+    const value = orders.join('、');
+    badge.dataset.selectionCardOrder = value;
+    badge.textContent = value;
+    badge.setAttribute('aria-label', value ? `写入顺序 ${value}` : '未选择写入段落');
   });
 }
 

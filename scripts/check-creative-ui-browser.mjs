@@ -71,7 +71,7 @@ try {
         priority: 'old-priority', reward: 'old-reward', inject_prompt: '邮差带着未送达的信来到门前。' }],
       character_dynamics: [{ name: '陈晖', title: '留在桌边的两份记录', content: long }],
       npc_updates: [{ name: '林芷', role: '同事', current_goal: '核对收件日期', next_action: '她决定先向收件人核对日期，而不是照着旧表格作结论。', inject_prompt: '林芷拿起电话核对日期。' }],
-      chain_reactions: [{ spark: '旧桥暂停通行', chain: long }],
+      chain_reactions: [{ spark: '旧桥暂停通行', chain: `邮路临时改道 → ${long} → 老街几户人家重新核对旧账` }],
       relation_undercurrents: [{ parties: '同事与值班员', tone: '中立', tension: '两人都记得那次迟到，却对迟到的原因保持了不同理解。', drift: '他们决定各自重新核对交接日期。', user_awareness: 'rumor' }],
       parallel_scene: { title: '如果他多留了一刻', content: long },
       interlude: { type: 'phone', owner: '林芷', conversation_kind: 'group', title: '值班室里的空座', messages: [
@@ -151,21 +151,74 @@ try {
         check(await page.locator('.sd-director-direction h4').count() === 0 && await page.locator('.sd-director-extra-parallel .sd-section-title > span').count() === 0, `${theme}/${width}: no task-like direction headings or redundant parallel caption`);
       }
       if (view === 'tasksnodes' || view === 'castworld') {
-        const summary = page.locator('.sd-item-card > summary').first();
+        const summary = view === 'castworld'
+          ? page.locator('.sd-item-character > summary').first()
+          : page.locator('.sd-item-card > summary').first();
         await summary.click();
-        check(await page.locator('.sd-item-card').first().getAttribute('open') !== null, `${theme}/${width}/${view}: real summary expands`);
+        check(await summary.locator('xpath=..').getAttribute('open') !== null, `${theme}/${width}/${view}: real summary expands`);
         check(await page.locator('.sd-item-card .sd-inject').count() === 0, `${theme}/${width}/${view}: no duplicate single-card write action`);
         check(await page.locator('.sd-inject-selected').isDisabled(), `${theme}/${width}/${view}: batch writing waits for selection`);
         check(await page.locator('.sd-item-card .sd-select-inject').count() === 0, `${theme}/${width}/${view}: paragraph selection replaces whole-card checkboxes`);
-        const selected = page.locator('.sd-item-card [data-director-paragraph]').first();
+        const selected = view === 'castworld'
+          ? page.locator('.sd-item-character [data-director-paragraph]').first()
+          : page.locator('.sd-item-card [data-director-paragraph]').first();
         const idleBackground = await selected.evaluate(node => getComputedStyle(node).backgroundColor);
+        const unselectedGeometry = view === 'castworld' ? await selected.locator('p').evaluate(node => {
+          const rect = node.getBoundingClientRect();
+          return { left: rect.left, width: rect.width, paddingLeft: getComputedStyle(node.parentElement).paddingLeft };
+        }) : null;
         await selected.locator('p').click();
         check(await selected.getAttribute('aria-pressed') === 'true' && await selected.evaluate(node => getComputedStyle(node).backgroundColor) !== idleBackground,
           `${theme}/${width}/${view}: selected paragraph has distinct fill and accessible state`);
         check(await page.locator('.sd-inject-selected span').textContent() === '1', `${theme}/${width}/${view}: batch selection count updates`);
+        if (view === 'castworld') {
+          const characterOrder = await page.locator('.sd-item-character > summary .sd-selection-order-card').first().evaluate(node => {
+            const marker = getComputedStyle(node);
+            const paragraph = node.closest('.sd-item-card')?.querySelector('[data-director-paragraph]');
+            const inlineMarker = paragraph ? getComputedStyle(paragraph, '::after') : null;
+            const body = paragraph?.querySelector('p');
+            return {
+              text: node.textContent,
+              data: node.dataset.selectionCardOrder,
+              color: marker.color,
+              background: marker.backgroundColor,
+              border: marker.borderStyle,
+              size: parseFloat(marker.fontSize),
+              bodySize: body ? parseFloat(getComputedStyle(body).fontSize) : 0,
+              paddingLeft: paragraph ? getComputedStyle(paragraph).paddingLeft : '',
+              inlineDisplay: inlineMarker?.display,
+              paragraphData: paragraph ? { order: paragraph.dataset.selectionOrder, pressed: paragraph.getAttribute('aria-pressed') } : null,
+              bodyRect: body ? (() => { const rect = body.getBoundingClientRect(); return { left: rect.left, width: rect.width }; })() : null,
+            };
+          });
+          check(characterOrder.text === '1' && characterOrder.data === '1', `${theme}/${width}/${view}: character selection order is summarized in the card header`, characterOrder);
+          check(characterOrder.background === 'rgba(0, 0, 0, 0)' && characterOrder.border === 'none' && characterOrder.color !== 'rgba(0, 0, 0, 0)' && characterOrder.size < characterOrder.bodySize,
+            `${theme}/${width}/${view}: character order marker is a compact accent-colored number without a box`, characterOrder);
+          check(characterOrder.inlineDisplay === 'none' && characterOrder.paddingLeft === '12px' && characterOrder.paragraphData?.order === '1'
+            && Math.abs(characterOrder.bodyRect.left - unselectedGeometry.left) < .5 && Math.abs(characterOrder.bodyRect.width - unselectedGeometry.width) < .5,
+          `${theme}/${width}/${view}: character paragraph keeps its body alignment without an inline marker`, characterOrder);
+        }
         const selectedDraft = await page.evaluate(() => collectDirectorSelectedText().join('\n\n'));
         await page.locator('.sd-inject-selected').click();
         check(await page.evaluate(expected => draftCalls.at(-1) === expected && injectSelection.size === 0, selectedDraft), `${theme}/${width}/${view}: batch action writes then clears the selected synthetic draft`);
+      }
+      if (view === 'tasksnodes') {
+        const ripple = await page.locator('.sd-chain-item').first().evaluate(item => {
+          const tone = getComputedStyle(item).getPropertyValue('--sd-chain-tone').trim();
+          const probe = document.createElement('span'); probe.style.color = tone; item.append(probe);
+          const toneColor = getComputedStyle(probe).color; probe.remove();
+          const nodes = [...item.querySelectorAll('.sd-chain-node')];
+          return {
+            railGradient: getComputedStyle(item).backgroundImage.includes('linear-gradient'),
+            nodeGradients: nodes.map(node => getComputedStyle(node).backgroundImage.includes('linear-gradient')),
+            fills: nodes.map(node => parseFloat(getComputedStyle(node).getPropertyValue('--sd-chain-node-fill'))),
+            arrowColors: [...item.querySelectorAll('.sd-chain-link')].map(node => getComputedStyle(node).color),
+            toneColor,
+          };
+        });
+        check(ripple.railGradient && ripple.nodeGradients.length >= 3 && ripple.nodeGradients.every(Boolean), `${theme}/${width}: ripple rail and node surfaces retain gradients`, ripple);
+        check(ripple.fills[0] > ripple.fills[1] && ripple.fills[1] > ripple.fills[2], `${theme}/${width}: each ripple origin is visually heavier than downstream nodes`, ripple);
+        check(ripple.arrowColors.length > 0 && ripple.arrowColors.every(color => color === ripple.toneColor), `${theme}/${width}: ripple arrows use their chain tone`, ripple);
       }
       const result = await page.evaluate(() => {
         const root = document.getElementById('story-director-modal'), win = root.querySelector('.sd-window'), body = root.querySelector('.sd-body');
@@ -251,6 +304,13 @@ try {
         check(result.bodyText.includes('此间一人') && result.bodyText.includes('其他人物动向'), `${key}: distinct character sections`);
         check(await page.locator('.sd-character-names').textContent() === '陈晖' && !/\d+ 条/.test(result.bodyText), `${key}: real CHAR name replaces all reading counts`);
         check(await page.locator('.sd-item-character .sd-director-paragraph-label').count() === 0, `${key}: character movement label is absent`);
+        const characterOrder = await page.locator('.sd-item-character > summary .sd-selection-order-card').first().evaluate(node => ({
+          text: node.textContent,
+          data: node.dataset.selectionCardOrder,
+          hidden: getComputedStyle(node).display === 'none',
+          paragraphOrder: node.closest('.sd-item-card')?.querySelector('[data-director-paragraph]')?.dataset.selectionOrder || '',
+        }));
+        check(characterOrder.text === '' && characterOrder.data === '' && characterOrder.hidden && characterOrder.paragraphOrder === '', `${key}: completed write clears the character selection marker`, characterOrder);
         const relation = await page.locator('.sd-relus-row').first().evaluate(node => ({
           first: node.querySelector('.sd-relus-head').firstElementChild.className,
           nameRight: node.querySelector('.sd-relus-parties').getBoundingClientRect().right,
@@ -279,6 +339,48 @@ try {
         await page.screenshot({ path: file }); screenshots.push(file);
       }
     }
+  }
+  // Ripple visual hierarchy is per origin, not per <li>: every chain starts
+  // at a strong node, then fades through its downstream nodes. Exercise all
+  // registered families/modes because the optional skin used to erase the
+  // gradient with a generic nested-card !important background.
+  for (const theme of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) {
+    await page.setViewportSize({ width: 393, height: 900 });
+    await page.evaluate(({ theme, mode }) => {
+      const previous = plan.chain_reactions;
+      plan.chain_reactions = [
+        { spark: '甲条起点', chain: '甲一 → 甲二 → 甲三' },
+        { spark: '乙条起点', chain: '乙一 → 乙二 → 乙三' },
+        { spark: '丙条起点', chain: '丙一 → 丙二 → 丙三' },
+      ];
+      settings = structuredClone(baseSettings); mount('tasksnodes', theme, mode);
+      plan.chain_reactions = previous;
+    }, { theme, mode });
+    await frame();
+    const hierarchy = await page.evaluate(() => {
+      const toRgb = hex => {
+        const digits = hex.replace(/^#/, '');
+        if (!/^[0-9a-f]{6}$/i.test(digits)) return '';
+        return `rgb(${Number.parseInt(digits.slice(0, 2), 16)}, ${Number.parseInt(digits.slice(2, 4), 16)}, ${Number.parseInt(digits.slice(4, 6), 16)})`;
+      };
+      return [...document.querySelectorAll('.sd-chain-item')].map(item => {
+        const tone = getComputedStyle(item).getPropertyValue('--sd-chain-tone').trim();
+        const nodes = [...item.querySelectorAll('.sd-chain-node')].map(node => {
+          const style = getComputedStyle(node), link = node.querySelector('.sd-chain-link');
+          return { depth: Number(node.dataset.chainDepth), fill: Number.parseFloat(style.getPropertyValue('--sd-chain-node-fill')), background: style.backgroundImage,
+            arrow: link ? getComputedStyle(link).color : '', expectedArrow: link ? toRgb(tone) : '' };
+        });
+        return { tone, nodes };
+      });
+    });
+    const tones = new Set(hierarchy.map(row => row.tone));
+    check(hierarchy.length === 3 && tones.size === 3, `${theme}/${mode}: three ripple rows receive distinct tone families`, hierarchy);
+    check(hierarchy.every(row => row.nodes.length === 4 && row.nodes.every(node => node.background.includes('linear-gradient'))),
+      `${theme}/${mode}: every origin and downstream node keeps a gradient surface`, hierarchy);
+    check(hierarchy.every(row => row.nodes.every((node, index, nodes) => index === 0 || node.fill < nodes[index - 1].fill)),
+      `${theme}/${mode}: each ripple fades from its origin through downstream nodes`, hierarchy);
+    check(hierarchy.every(row => row.nodes.slice(1).every(node => node.arrow === node.expectedArrow)),
+      `${theme}/${mode}: each ripple arrow uses its own tone`, hierarchy);
   }
   // Dark surfaces at desktop widths use the same shell and retain readable
   // paragraph leading characters, including cards taller than the viewport.

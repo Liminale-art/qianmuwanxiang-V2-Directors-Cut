@@ -250,6 +250,33 @@ try {
         }
     }
 
+    // Switching directly from the classic dream palette to the minimal skin
+    // leaves the remembered classic class on the modal for compatibility. The
+    // heading must nevertheless bind to live --qm-* tokens, and a later accent
+    // edit must repaint it rather than preserving dream's rainbow gradient.
+    await page.setViewportSize({ width: 393, height: 900 });
+    await page.evaluate(() => setup({ family: 'classic', mode: 'light', classic: 'dream' }));
+    await trigger.click(); await familyButton('glass').click(); await settled();
+    const dreamToGlass = await page.evaluate(() => {
+        const root = fixture.root, title = root.querySelector('.sd-header h2'), css = getComputedStyle(root);
+        return { dreamClass: root.classList.contains('sd-theme-dream'), titleVar: css.getPropertyValue('--sd-title-grad').trim(),
+            subtitleVar: css.getPropertyValue('--sd-subtitle-grad').trim(), background: getComputedStyle(title).backgroundImage };
+    });
+    assert.equal(dreamToGlass.dreamClass, true, 'regression fixture keeps the remembered dream class while mounting glass');
+    assert.match(dreamToGlass.titleVar, /^linear-gradient\(92deg, /, 'glass heading gradient uses the live accent mapping');
+    assert.doesNotMatch(dreamToGlass.titleVar, /#c79ad6|#8f9fe0|#79c7c0/, 'dream rainbow does not leak through the new skin');
+    assert.match(dreamToGlass.subtitleVar, /^linear-gradient\(90deg, /, 'glass subtitle gradient uses the live accent mapping');
+    const beforeTitleAccent = dreamToGlass.background;
+    await page.locator('.sd-theme-color').evaluate(input => {
+        input.focus(); input.value = '#c84e78';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await settled();
+    const afterTitleAccent = await page.locator('.sd-header h2').evaluate(node => getComputedStyle(node).backgroundImage);
+    assert.notEqual(afterTitleAccent, beforeTitleAccent, 'changing minimal accent repaints the heading gradient');
+    checks.push('classic dream → minimal: remembered rainbow is reset to live title/subtitle tokens and follows accent edits');
+
     // Keyboard navigation stays in visible choices; native color controls remain
     // focusable and Escape/outside close do not change the chosen theme.
     await page.setViewportSize({ width: 393, height: 900 });

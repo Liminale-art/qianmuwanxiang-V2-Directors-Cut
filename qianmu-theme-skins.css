@@ -29,6 +29,12 @@
 }
 :is(#story-director-modal, [data-qm-theme]):is([data-qm-theme="editorial"], [data-qm-theme="glass"]) {
   --sd-window-glow: none;
+  /* A classic dream class can remain on the modal while a new skin is
+     mounted. Rebind the heading gradients to live skin tokens so the old
+     dream rainbow cannot leak into minimal/editorial or stale after an
+     accent-color change. */
+  --sd-title-grad: linear-gradient(92deg, var(--qm-accent), var(--qm-ink));
+  --sd-subtitle-grad: linear-gradient(90deg, var(--qm-accent), var(--qm-muted) 70%);
   --qm-card-radius: 5px;
   --qm-button-radius: 9px;
   --qm-action-ink: color-mix(in srgb, var(--qm-accent) 55%, var(--qm-ink));
@@ -336,9 +342,17 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
 
 /* Existing story folds remain nested in their original cards. Share the family
    shape without stacking another blur layer or changing injection controls. */
-#story-director-modal[data-qm-theme] :is(.sd-item-card, .sd-chain-item, .sd-relus-row) {
+#story-director-modal[data-qm-theme] :is(.sd-item-card, .sd-relus-row) {
   border-radius: var(--qm-card-radius) !important;
   background: color-mix(in srgb, var(--qm-raised) 36%, transparent) !important;
+}
+#story-director-modal[data-qm-theme] .sd-chain-item {
+  border-radius: var(--qm-card-radius) !important;
+  /* Keep the per-chain rail subtle, but do not replace the node gradients
+     below with the generic raised surface used by other nested cards. */
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--sd-chain-tone) var(--sd-chain-fill, 6%), transparent),
+    transparent 88%), color-mix(in srgb, var(--qm-raised) 28%, transparent) !important;
 }
 #story-director-modal[data-qm-theme] :is(.sd-item-summary-main h4, .sd-item-detail dd, .sd-chain-node, .sd-relus-parties, .sd-relus-tension, .sd-relus-drift) {
   min-width: 0;

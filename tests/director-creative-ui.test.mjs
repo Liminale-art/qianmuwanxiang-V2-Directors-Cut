@@ -8,6 +8,7 @@ import { renderCreativeSocialCard } from '../qianmu-creative-social.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const skinStyles = await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 function section(name) {
   const match = new RegExp(`^(?:async )?function ${name}\\(`, 'm').exec(source);
@@ -99,6 +100,20 @@ test('paragraph drafts retain original prose in display order without planning l
   assert.equal(duplicate.length, 1);
 });
 
+test('character paragraph order is summarized in the card header without an inline marker', () => {
+  const { c } = fixture(null);
+  const item = { name: '陈晖', content: '他把两份记录放在桌上。', inject_prompt: '他在页脚写下新的日期。' };
+  const cardId = 'character-0-陈晖';
+  c.injectSelection.set(`${cardId}:paragraph:scene`, { cardId, text: item.content });
+  c.injectSelection.set(`${cardId}:paragraph:draft`, { cardId, text: item.inject_prompt });
+  const html = c.renderItemCard(item, 'character', 0);
+  assert.match(html, /class="sd-selection-order-card"[^>]*data-selection-card-id="character-0-陈晖"[^>]*>1、2<\/span>/);
+  assert.match(html, /class="sd-director-paragraph[^\"]*"[^>]*data-selection-order="1"/);
+  assert.match(html, /class="sd-director-paragraph[^\"]*"[^>]*data-selection-order="2"/);
+  assert.match(html, /sd-item-character/);
+  assert.match(styles, /\.sd-item-character \.sd-director-paragraph\[data-selection-order\][^}]*display:\s*none/);
+});
+
 test('character life and other people are independent sections, with distinct selection ids and legacy world reading retained', () => {
   const plan = { character_dynamics: [{ name: '陈晖', title: '交接', content: '他把两份记录放在同事面前。' }],
     npc_updates: [{ title: '交接', name: '邻居', content: '她收起暂未寄出的信。' }], world_updates: [] };
@@ -118,8 +133,40 @@ test('ripples keep full consequences and do not manufacture extra nodes by split
   const html = c.renderChainReactionsCard({ chain_reactions: [{ spark: '一座桥暂停通行', chain }] });
   assert.match(html, /<b>涟漪<\/b>/); assert.ok(html.replace(/<[^>]+>/g, '').includes(chain));
   assert.match(html, /class="sd-chain-link-head"><span class="sd-chain-link" aria-hidden="true">→<\/span>邮路/);
+  assert.match(html, /sd-chain-node sd-chain-node-spark" data-chain-depth="0"/);
+  assert.match(html, /sd-chain-node" data-chain-depth="1"/);
   assert.equal((html.match(/sd-chain-node(?: |")/g) || []).length, 2);
   assert.doesNotMatch(html, /因果链|世界自行流转的连锁/);
+});
+
+test('each ripple marks node depth for per-origin emphasis and theme skins retain node gradients', () => {
+  const { c } = fixture(null);
+  const html = c.renderChainReactionsCard({ story_status: { cycle: '夜间', title: '三条传播' }, chain_reactions: [
+    { spark: '甲条起点', chain: '甲一 → 甲二 → 甲三' },
+    { spark: '乙条起点', chain: '乙一 → 乙二 → 乙三' },
+    { spark: '丙条起点', chain: '丙一 → 丙二 → 丙三' },
+  ] });
+  assert.equal((html.match(/data-chain-tone="[012]"/g) || []).length, 3);
+  assert.equal(new Set([...html.matchAll(/data-chain-tone="([012])"/g)].map(match => match[1])).size, 3,
+    'three ripple rows receive distinct tone assignments');
+  for (const depth of [0, 1, 2, 3]) assert.equal((html.match(new RegExp(`data-chain-depth="${depth}"`, 'g')) || []).length, 3,
+    `each ripple exposes depth ${depth}`);
+  assert.match(styles, /\.sd-chain-node-spark\s*\{[^}]*--sd-chain-node-fill:\s*31%/);
+  assert.match(styles, /\.sd-chain-node\[data-chain-depth="2"\]\s*\{[^}]*--sd-chain-node-fill:\s*11%/);
+  assert.match(styles, /\.sd-chain-node\[data-chain-depth="3"\]\s*\{[^}]*--sd-chain-node-fill:\s*7%/);
+  assert.match(styles, /\.sd-chain-link\s*\{[^}]*color:\s*var\(--sd-chain-tone\)/);
+  assert.match(skinStyles, /#story-director-modal\[data-qm-theme\] \.sd-chain-item\s*\{[^}]*linear-gradient/,
+    'editorial and glass override the rail without removing the gradient');
+  assert.doesNotMatch(skinStyles, /:is\(\.sd-item-card, \.sd-chain-item, \.sd-relus-row\)[^}]*background:[^}]*!important/,
+    'theme skins must not let a generic nested-card background erase ripple gradients');
+});
+
+test('ripples put the strongest gradient on each chain origin and preserve it in editorial and glass skins', () => {
+  assert.match(styles, /\.sd-chain-node-spark\s*\{[^}]*--sd-chain-node-fill:\s*31%[^}]*--sd-chain-node-tail:\s*15%/);
+  assert.match(styles, /\.sd-chain-node\[data-chain-depth="2"\]\s*\{[^}]*--sd-chain-node-fill:\s*11%/);
+  assert.match(styles, /\.sd-chain-link\s*\{[^}]*color:\s*var\(--sd-chain-tone\)/);
+  assert.match(skinStyles, /#story-director-modal\[data-qm-theme\] \.sd-chain-item\s*\{[^}]*background:\s*linear-gradient\([^}]*var\(--sd-chain-tone\)/s);
+  assert.doesNotMatch(skinStyles, /:is\(\.sd-item-card, \.sd-chain-item, \.sd-relus-row\)\s*\{[^}]*background:/s);
 });
 
 test('derivative switches are checked by default and each immediately saves only its own preference', () => {
@@ -172,6 +219,10 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
   assert.match(styles, /#story-director-modal \.sd-director-extra-content p\s*\{[^}]*text-indent:\s*2em/);
   assert.match(styles, /#story-director-modal \.sd-chain-node\s*\{[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere/);
   assert.match(styles, /#story-director-modal \.sd-derivative-options\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /#story-director-modal \.sd-selection-order-card\s*\{[^}]*color:\s*var\(--sd-accent\)[^}]*font-size:\s*\.78em/);
+  assert.match(styles, /#story-director-modal \.sd-selection-order-card:empty\s*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(styles, /#story-director-modal \.sd-selection-order-card\s*\{[^}]*background(?:-color)?\s*:/);
+  assert.doesNotMatch(styles, /#story-director-modal \.sd-director-paragraph\[data-selection-order\][^}]*padding-right/);
 });
 
 test('failed or stopped entries without a recorded request do not obscure the saved plan', () => {
