@@ -31,6 +31,15 @@ function fixture(plan, settings = {}) {
   return { c, links };
 }
 
+test('live generation does not render a stale saved plan before the first closed card', () => {
+  const previous = { story_status: { title: '旧方向' }, quests: [{ title: '旧卡' }] };
+  const { c } = fixture(previous);
+  c.directorLiveLog = { status: 'loading', response: '{"quests":[' };
+  assert.equal(c.directorDisplayPlan(), null);
+  c.directorLiveLog = { status: 'loading', response: '{"quests":[{"title":"新卡"}]}' };
+  assert.equal(c.directorDisplayPlan().quests[0].title, '新卡');
+});
+
 test('review shows separate read-only extras, escapes their content and respects both switches without mutating history', () => {
   const plan = { story_status: { title: '现场' }, director_comment: ['retired commentary'],
     parallel_scene: { title: '<另一幕>', content: '第一段\n第二段<script>' },
@@ -85,7 +94,7 @@ test('paragraph drafts retain original prose in display order without planning l
   for (const order of [2, 0, 1]) c.injectSelection.set(`part-${order}`, { cardId: 'quest-one', subject: '邵宁', order, ...fields[order] });
   c.injectSelection.set('old-whole-card', '旧世界原文');
   const text = c.collectDirectorSelectedText();
-  assert.deepEqual(Array.from(text), ['正文已有称呼不可用来猜姓名', '递交报告。', '完成取证后', '旧世界原文']);
+  assert.deepEqual(Array.from(text), ['递交报告。', '完成取证后', '正文已有称呼不可用来猜姓名', '旧世界原文']);
   assert.doesNotMatch(text.join('\n'), /【邵宁】|情境：|发生条件：|落笔：/);
   c.injectSelection.clear();
   const cardId = 'quest-0-one';
@@ -94,7 +103,9 @@ test('paragraph drafts retain original prose in display order without planning l
   assert.match(selectedHtml, /data-selection-order="1"/);
   assert.match(selectedHtml, /data-selection-order="2"/);
   assert.match(c.renderItemCard({ title: '门口的旧信', description: '甲和乙在说话。' }, 'quest', 0), /data-subject="事项：门口的旧信"/);
-  assert.match(c.renderItemCard({ name: '邵宁', next_action: '递交报告。' }, 'npc', 0), /data-subject="邵宁"/);
+  const npcHtml = c.renderItemCard({ name: '邵宁', next_action: '递交报告。' }, 'npc', 0);
+  assert.match(npcHtml, /data-subject="邵宁"/);
+  assert.match(npcHtml, /data-text="【邵宁】递交报告。"/);
   assert.doesNotMatch(c.renderItemCard({ subject: '邵宁', description: '递交报告。' }, 'quest', 0, true), /data-director-paragraph|role="button"|tabindex|sd-select-inject/);
   const duplicate = c.directorItemParagraphs({ description: '同一段', inject_prompt: '同一段' }, 'quest');
   assert.equal(duplicate.length, 1);
@@ -217,6 +228,8 @@ test('newcomer state updates every button and clearing current plan never delete
 test('creative card typography and overflow remain scoped to the Qianmu modal and inherit theme tokens', () => {
   assert.match(styles, /#story-director-modal \.sd-director-extra-content\s*\{[^}]*var\(--sd-text\)[^}]*overflow-wrap:\s*anywhere/);
   assert.match(styles, /#story-director-modal \.sd-director-extra-content p\s*\{[^}]*text-indent:\s*2em/);
+  assert.match(styles, /#story-director-modal \.sd-director-direction p::first-letter\s*\{[^}]*color:\s*var\(--sd-accent\)/);
+  assert.match(styles, /#story-director-modal \.sd-director-direction \+ \.sd-director-direction::before\s*\{[^}]*background:\s*var\(--sd-border\)/);
   assert.match(styles, /#story-director-modal \.sd-chain-node\s*\{[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere/);
   assert.match(styles, /#story-director-modal \.sd-derivative-options\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(styles, /#story-director-modal \.sd-selection-order-card\s*\{[^}]*color:\s*var\(--sd-accent\)[^}]*font-size:\s*\.78em/);
@@ -242,7 +255,7 @@ test('failed and cancelled requests keep closed cards read-only with section-loc
     quests: [{ title: '已收到预演', subject: '邮差', description: '预演片段仍然可读。' }],
     character_dynamics: [{ name: '陈晖', title: '已收到人物', content: '人物片段仍然可读。' }] }).slice(0, -1) + ',"interlude":{"type":"phone","messages":[';
   const { c } = fixture({ story_status: { title: '旧方案不应冒充本次结果' } });
-  for (const [status, completion, expected] of [['error', undefined, '本栏未生成成功'], ['error', { finishReason: 'length' }, '回复截断'], ['cancelled', undefined, '已停止']]) {
+  for (const [status, completion, expected] of [['error', undefined, '本栏未生成成功'], ['error', { finishReason: 'length' }, '回复截断'], ['cancelled', undefined, '']]) {
     c.directorLiveLog = { status, request: 'isolated request', response, completion,
       creativeOptions: { parallelSceneEnabled: true, interludeEnabled: true, worldChatterEnabled: true, geopoliticsEnabled: true },
       quality: { issues: ['story_status', 'quests', 'character_dynamics', 'npc_updates', 'chain_reactions', 'relation_undercurrents',
@@ -250,15 +263,20 @@ test('failed and cancelled requests keep closed cards read-only with section-loc
     const dashboard = c.renderDashboardTab(), tasks = c.renderTasksNodesTab(), world = c.renderCastWorldFront();
     assert.match(dashboard, /命运片段仍然可读/); assert.match(tasks, /预演片段仍然可读/); assert.match(world, /人物片段仍然可读/);
     for (const html of [dashboard, tasks, world]) {
-      assert.ok(html.includes(expected));
+      if (expected) assert.ok(html.includes(expected));
+      else assert.doesNotMatch(html, /已停止，本栏未完整生成|本栏未生成成功|回复截断/);
       assert.doesNotMatch(html, /旧方案不应冒充本次结果|data-director-paragraph|sd-select-inject|sd-world-media-entry|正在推演|sd-director-live/);
       if (!completion) assert.doesNotMatch(html, /回复截断/);
     }
-    assert.match(dashboard, /data-director-section-status="story_status"/);
-    assert.match(tasks, /data-director-section-status="chain_reactions"/);
-    assert.match(world, /data-director-section-status="npc_updates"/);
+    if (status !== 'cancelled') {
+      assert.match(dashboard, /data-director-section-status="story_status"/);
+      assert.match(tasks, /data-director-section-status="chain_reactions"/);
+      assert.match(world, /data-director-section-status="npc_updates"/);
+    }
     const geo = renderDirectorLive(c.directorLiveLog, { fields: ['factions', 'faction_relations', 'world_events'] });
-    assert.ok(geo.includes(expected)); assert.doesNotMatch(geo, /sd-inject|正在推演/);
+    if (expected) assert.ok(geo.includes(expected));
+    else assert.doesNotMatch(geo, /已停止，本栏未完整生成|本栏未生成成功|回复截断/);
+    assert.doesNotMatch(geo, /sd-inject|正在推演/);
   }
 });
 

@@ -25,7 +25,8 @@ test('collapsed logs never read, tokenize or escape heavyweight request and resp
 
 test('stopped and truncated logs put all failure reasons before request/response, not under the output', () => {
   const html = render({ id: 'stopped', status: 'cancelled', completion: { interrupted: true, finishReason: 'length' }, response: 'partial' }, 0, true);
-  assert.match(html, /sd-log-failure[\s\S]*本次推演已停止。[\s\S]*结束原因：length[\s\S]*sd-term-request/);
+  assert.match(html, /sd-log-failure[\s\S]*已中断。[\s\S]*sd-term-request/);
+  assert.doesNotMatch(html, /结束原因：length/);
   assert.doesNotMatch(html.slice(html.indexOf('sd-log-diagnostics')), /结束原因|未完整完成/);
 });
 const labels = {success:'成功', error:'失败', cancelled:'已取消', loading:'生成中', none:'状态未知'};

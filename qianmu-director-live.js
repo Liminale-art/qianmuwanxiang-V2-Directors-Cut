@@ -1,3 +1,5 @@
+import { extractJson } from './qianmu-storyboard-utils.js';
+
 const FIELDS = {
   story_status: ['命运之脉', ['title', 'summary', 'current_arc']],
   quests: ['预演', ['title', 'content', 'description', 'trigger']],
@@ -89,10 +91,14 @@ export function completeDirectorCards(source) {
 
 export function directorPreviewPlan(log) {
   if (!log || !(log.status === 'loading' || (['error', 'cancelled'].includes(log.status) && log.request))) return null;
+  const cards = completeDirectorCards(log.response);
+  // Do not manufacture an empty live plan. A stream has not produced a
+  // renderable section until at least one complete top-level card closes.
+  if (!cards.length) return null;
   const plan = { _streamPreview: true, _generation: {
     status: log.status, completion: { finishReason: log.completion?.finishReason, interrupted: log.completion?.interrupted }, quality: log.quality, creativeOptions: log.creativeOptions,
   } };
-  for (const card of completeDirectorCards(log.response)) {
+  for (const card of cards) {
     if (OBJECT_FIELDS.has(card.field)) plan[card.field] = card.value;
     else (plan[card.field] ||= []).push(card.value);
   }
@@ -118,7 +124,9 @@ export function directorSectionStatus(plan, field) {
   const value = plan[field], hasContent = Array.isArray(value) ? value.length > 0 : Boolean(value);
   const affected = qualityIssues(generation).some(issue => issue?.field === field);
   if (!affected && (generation.quality || hasContent || ['faction_relations', 'world_updates'].includes(field))) return '';
-  if (generation.status === 'cancelled') return '已停止，本栏未完整生成。详情见日志。';
+  // Interruptions are represented once in the log failure panel; avoid
+  // repeating a verbose notice inside every partially rendered section.
+  if (generation.status === 'cancelled') return '';
   if (/^(length|max_tokens|max_output_tokens)$/i.test(generation.completion?.finishReason || '')) return '回复截断，本栏未完整生成。详情见日志。';
   return hasContent ? '本栏返回不完整，已收到内容保留供查阅。详情见日志。' : '本栏未生成成功。详情见日志。';
 }
@@ -154,32 +162,39 @@ export function modelFailureText(log) {
   const info = log.completion;
   const failed = ['error', 'cancelled'].includes(log.status) || info?.interrupted;
   if (!failed) return log.error || '';
+  // An explicit interruption is a single, concise state. Do not append the
+  // quality shortfall accumulated from the partial stream to it.
+  if (log.status === 'cancelled' || info?.interrupted) return '已中断。';
   const reason = info?.finishReason;
   const finish = reason && !['stop', 'end_turn', 'completed'].includes(reason)
     ? `结束原因：${reason}` : info?.interrupted ? '回复未完整完成。' : '';
-  return [...new Set([log.error || (log.status === 'cancelled' ? '本次推演已停止。' : '本次推演未完成。'), finish].filter(Boolean))].join('\n');
+  const quality = log.response && directorQualitySummary(log);
+  const missing = quality ? `缺失内容：${quality}` : '';
+  return [...new Set([log.error || (log.status === 'cancelled' ? '本次推演已停止。' : '本次推演未完成。'), missing, finish].filter(Boolean))].join('\n');
 }
 
 export function parseDirectorFinal(raw) {
-  const text = String(raw || ''), start = text.indexOf('{'), end = text.lastIndexOf('}');
   try {
-    if (start < 0 || end < start) throw new Error('没有完整对象');
-    const value = JSON.parse(text.slice(start, end + 1));
+    // Use the shared conservative parser: it strips fenced JSON, removes
+    // trailing commas, inserts only unambiguous delimiters outside strings,
+    // and closes a genuinely truncated object at its last complete value.
+    // This repairs common model formatting slips without asking another model
+    // or silently inventing missing content.
+    const value = extractJson(raw);
     if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('不是对象');
     return value;
-  } catch (error) { throw new Error(`JSON_PARSE_FAILED::${error.message}`); }
+  } catch (error) {
+    if (String(error?.message || '').startsWith('JSON_PARSE_FAILED::')) throw error;
+    throw new Error(`JSON_PARSE_FAILED::${error?.message || String(error)}`);
+  }
 }
 
 export function renderModelDiagnostics(log) {
   const info = log.completion;
-  const memoryLabel = { partial: '部分记忆可用，本次仅采用已核对内容。', unverified: '记忆暂无法核对，本次未采用。', unsupported: '当前记忆版本尚未适配，本次未采用。' }[log.memory?.status];
-  const memoryCodes = memoryLabel && Array.isArray(log.memory?.diagnostics)
-    ? log.memory.diagnostics.filter(item => typeof item?.code === 'string').map(item => `${item.code}${typeof item.scope === 'string' && item.scope ? ` · ${item.scope}` : ''}`) : [];
-  const qualityText = directorQualitySummary(log);
-  return `${memoryLabel ? `<p class="sd-muted sd-memory-notice">${escape(memoryLabel)}</p>` : ''}
-    ${memoryCodes.length ? `<details><summary>记忆核对详情</summary><pre class="sd-term">${escape(memoryCodes.join('\n'))}</pre></details>` : ''}
-    ${qualityText ? `<p class="sd-muted sd-creative-quality">本次内容未完整：${escape(qualityText)}。${log.repairResponse || log.repairError ? '处理详情见历史补写记录。' : '未自动补写。'}</p>` : ''}
-    ${info?.compatibility ? `<p class="sd-muted">${escape(info.compatibility)}</p>` : ''}
+  // Failure facts belong in the single failure panel above the raw response.
+  // Keep this area for transport provenance and optional reasoning only; do
+  // not append memory diagnostics or quality notices beneath the response.
+  return `${info?.compatibility ? `<p class="sd-muted">${escape(info.compatibility)}</p>` : ''}
     ${info?.rawTransport ? `<details><summary>未解析的原始响应片段</summary><pre class="sd-term">${escape(info.rawTransport)}</pre></details>` : ''}
     <details class="sd-log-reasoning" ${log.reasoning ? '' : 'hidden'}><summary>渠道返回的推理内容</summary><pre class="sd-term sd-term-reasoning">${escape(log.reasoning || '')}</pre></details>
     ${log.repairResponse || log.repairError ? `<div class="sd-log-cap">历史补写记录 · 独立模型回复</div><pre class="sd-term">${escape(log.repairResponse || log.repairError)}</pre>` : ''}`;

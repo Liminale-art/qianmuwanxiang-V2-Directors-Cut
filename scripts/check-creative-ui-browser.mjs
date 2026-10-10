@@ -418,7 +418,7 @@ try {
   await paragraphs.nth(0).focus(); await page.keyboard.press('Enter');
   await paragraphs.nth(1).focus(); await page.keyboard.press('Enter');
   const ordered = await page.evaluate(() => ({ size: injectSelection.size, text: collectDirectorSelectedText().join('\n\n') }));
-  check(ordered.size === 3 && ordered.text === await page.evaluate(() => [plan.quests[0].description, plan.quests[0].inject_prompt, plan.quests[0].trigger].join('\n\n')),
+  check(ordered.size === 3 && ordered.text === await page.evaluate(() => [plan.quests[0].inject_prompt, plan.quests[0].trigger, plan.quests[0].description].join('\n\n')),
     'keyboard selection survives repeated binding and assembles prose in user selection order', ordered);
   check(await paragraphs.nth(1).evaluate(node => getComputedStyle(node).outlineStyle !== 'none'), 'keyboard focus is visible on selected paragraphs');
   const beforeGestures = await page.evaluate(() => injectSelection.size);
@@ -551,7 +551,7 @@ try {
     checks['collapsed 1.4M-character request stays outside DOM'] = root.innerHTML.length < 15000 && !entry.querySelector('pre');
     entry.querySelector('summary').click(); await new Promise(resolve => setTimeout(resolve, 20));
     checks['explicit log open preserves entire original request'] = entry.querySelector('.sd-term-request')?.textContent === log.request;
-    checks['interruption reason stays in failure panel'] = entry.querySelector('.sd-log-failure')?.textContent.includes('结束原因：length') && !entry.querySelector('.sd-log-diagnostics')?.textContent.includes('结束原因');
+    checks['interruption reason stays in failure panel'] = entry.querySelector('.sd-log-failure')?.textContent.includes('已中断') && !entry.querySelector('.sd-log-diagnostics')?.textContent.includes('结束原因');
     entry.querySelector('summary').click(); await new Promise(resolve => setTimeout(resolve, 20));
     checks['closing log releases heavyweight DOM without deleting source'] = !entry.querySelector('pre') && log.request.length === 1400000;
     return checks;
@@ -583,12 +583,13 @@ try {
     await frame();
     const content = await page.locator('.sd-body').textContent();
     const marker = { dashboard: '已收到的命运片段', tasksnodes: '已收到预演', castworld: '已收到人物', worldgeo: '已收到的势力' }[view];
-    check(content.includes(marker) && await page.locator('.sd-director-section-notice').count() > 0, `${outcome}/${view}: received content remains beside local missing notices`);
+    const noticeCount = await page.locator('.sd-director-section-notice').count();
+    check(content.includes(marker) && (outcome === 'cancelled' ? noticeCount === 0 : noticeCount > 0), `${outcome}/${view}: received content remains beside local missing notices`);
     check(await page.locator('[data-director-paragraph],.sd-select-inject,.sd-inject-selected,.sd-world-media-entry,.sd-director-live').count() === 0
       && !content.includes('正在推演'), `${outcome}/${view}: partial results are read-only without a separate progress card`);
     check(outcome === 'truncated' ? content.includes('回复截断') : !content.includes('回复截断'), `${outcome}/${view}: truncation is stated only with a recorded length finish reason`);
-    if (outcome === 'cancelled') check(content.includes('已停止'), `${outcome}/${view}: cancellation has its own concise notice`);
-    if (view === 'worldgeo') check(!content.includes('势力关系') && await page.locator('.sd-director-section-notice').count() === 2, `${outcome}/${view}: optional empty faction relations are not reported as missing`);
+    if (outcome === 'cancelled') check(!content.includes('已停止') && !content.includes('本栏未生成成功'), `${outcome}/${view}: cancellation has no repeated section notice`);
+    if (view === 'worldgeo') check(!content.includes('势力关系') && (outcome === 'cancelled' ? noticeCount === 0 : noticeCount === 2), `${outcome}/${view}: optional empty faction relations are not reported as missing`);
     if (process.env.QIANMU_CREATIVE_QA_DIR && ((outcome === 'truncated' && view === 'dashboard') || (outcome === 'unknown' && view === 'tasksnodes') || (outcome === 'cancelled' && view === 'castworld'))) {
       const file = join(process.env.QIANMU_CREATIVE_QA_DIR, `partial_${outcome}_${view}_393.png`);
       await page.screenshot({ path: file }); screenshots.push(file);

@@ -16,7 +16,7 @@ function complete(options = FULL) {
     character_dynamics: items('character_dynamics', i => ({ title: `抉择${i}`, content: `阿岚把第${i}份旧账暂存在抽屉，打算核清出处后再归还。` })),
     npc_updates: items('npc_updates', i => ({ name: `邻居${i}`, current_goal: `要赶在第${i}次班车离开前把旧物交到失主手中。`, next_action: `向第${i}位门卫问路。` })),
     chain_reactions: items('chain_reactions', i => ({ spark: `第${i}条道路延期修整`, chain: `第${i}家送货铺收到改道通知 → 掌柜延迟发车 → 当天的菜贩调整供货计划` })),
-    relation_undercurrents: items('relation_undercurrents', i => ({ parties: [`店主${i}`, `邻居${i}`], tension: `第${i}张借条仍没有拿出来，两人避开了还款日期。` })),
+    relation_undercurrents: items('relation_undercurrents', i => ({ parties: i === 2 ? [`店主${i}`, `邻居${i}`, `调度员${i}`] : [`店主${i}`, `邻居${i}`], tension: `第${i}张借条仍没有拿出来，两人避开了还款日期。` })),
     limitations: [],
   };
   if (options.worldChatterEnabled) result.world_chatter = items('world_chatter', i => ({ text: `第${i}间早餐铺老板掀开蒸笼，招呼伙计添柴。`, who: `铺主${i}`, where: `巷口${i}` }));
@@ -51,7 +51,7 @@ test('schema preserves stable fields, count source, enabled world shapes and one
   assert.match(schema, /阿岚/);
   assert.match(schema, /老周/);
   for (const [field, quota] of Object.entries(CREATIVE_COUNTS)) assert.match(schema, new RegExp(`${field} \\([^\n]+${quota.min}`));
-  assert.deepEqual(Object.keys(shape.quests[0]), ['subject', 'title', 'description', 'trigger', 'inject_prompt']);
+  assert.deepEqual(Object.keys(shape.quests[0]), ['subject', 'title', 'trigger', 'description', 'inject_prompt']);
   assert.deepEqual(Object.keys(shape.story_status), ['title', 'current_arc', 'cycle', 'directions']);
   assert.deepEqual(shape.story_status.directions.map(item => item.horizon), ['near', 'far']);
   assert.match(shape.quests[0].trigger, /standalone narrative sentence/i);
@@ -376,6 +376,21 @@ test('relations exclude USER–CHAR pairs even with a third party and require tw
   assert.equal(pruneInvalidCreativeItems(plan, options).plan.relation_undercurrents.length, 3, 'supporting shortfall must not delete otherwise valid entries');
   const legacy = { relation_undercurrents: [{ parties: '甲、乙', tension: '旧关系', user_awareness: '旧记录' }] };
   assert.deepEqual(normalizeCreativeSections(legacy).relation_undercurrents, legacy.relation_undercurrents, 'legacy text remains unsplit and untouched');
+});
+
+test('relation output keeps a deliberate two-person and three-person mix', () => {
+  const plan = complete(OFF), options = { ...OFF, characterNames: ['阿岚'] };
+  assert.deepEqual(validateCreativePlan(plan, options), []);
+  plan.relation_undercurrents = plan.relation_undercurrents.map(item => ({ ...item, parties: item.parties.slice(0, 2) }));
+  assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'relation_undercurrents' && /双人关系.*三人关系/.test(issue.reason)));
+});
+
+test('character and NPC emotional cues stay concise when supplied', () => {
+  const plan = complete(OFF), options = { ...OFF, characterNames: ['阿岚'] };
+  plan.character_dynamics[0] = { name: '阿岚', content: '阿岚把旧账暂存在抽屉。', emotional_state: '克制而警觉' };
+  assert.deepEqual(validateCreativePlan(plan, options), []);
+  plan.npc_updates[0].emotional_state = '这是一整段会把人物当前情绪、缘由、关系判断和后续行动全部解释清楚的冗长分析句。';
+  assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'npc_updates' && issue.reason.includes('4–32')));
 });
 
 test('forum bounds and complete replies are enforced, while legacy theater remains readable but not valid new output', () => {

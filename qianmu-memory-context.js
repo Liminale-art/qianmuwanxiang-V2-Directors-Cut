@@ -1,8 +1,10 @@
-// Read-only interoperability with gaga-dog-summary schema 6 (0.8.1).
-// Field/provenance contract inspected at upstream d87a55da0e393ebbde2017bb5cdf838d09fadc6d.
-// No upstream implementation, prompts, settings, or persistent state are imported.
+// Read-only interoperability with gaga-dog-summary schema 6/7.
+// Field/provenance contract is intentionally kept to the plugin's approved
+// story fields; no upstream implementation, prompts, settings, or persistent
+// state are imported.
 export const GAGA_MEMORY_KEY = 'gagaDogSummary';
-export const GAGA_MEMORY_SCHEMA = 6;
+export const GAGA_MEMORY_SCHEMA = 7;
+export const GAGA_MEMORY_SUPPORTED_SCHEMAS = Object.freeze(new Set([6, GAGA_MEMORY_SCHEMA]));
 
 const record = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const list = value => Array.isArray(value) ? value : [];
@@ -34,6 +36,7 @@ function sourceRef(message, index) {
     const name = String(message?.name ?? message?.sender ?? (message?.is_user ? 'User' : 'Character'));
     return {
         index, key: `${message?.send_date ?? message?.date ?? ''}|${name}|${wireHash(content)}|${index}`,
+        messageId: text(message?.extra?.gagaDogMessageId || message?.extra?.gaga_dog_message_id), name,
         hash: wireHash(`${name}\n${content}`), fullHash: wireHash(`${name}\n${full}`), fullLength: full.length,
     };
 }
@@ -44,10 +47,27 @@ function flattenRefs(value) {
 function refsMatch(refsValue, current) {
     const refs = flattenRefs(refsValue);
     if (!refs.length) return 'unknown';
+    const byKey = new Map(current.map(item => [item.key, item]));
+    const byId = new Map(current.filter(item => item.messageId).map(item => [item.messageId, item]));
+    const byContent = new Map(current.map(item => [`${item.name}|${item.fullHash}`, item]));
     for (const ref of refs) {
-        if (!record(ref) || !Number.isInteger(ref.index) || !text(ref.hash)) return 'unknown';
-        const now = current[ref.index];
-        if (!now || now.hash !== ref.hash || (ref.key && now.key !== ref.key)) return 'changed';
+        if (!record(ref) || !text(ref.hash)) return 'unknown';
+        // Newer plugin records retain a stable message id. Older records use
+        // the key/index pair; content fallback covers migrations that rebuilt
+        // a key after a harmless chat move without weakening hash checks.
+        const indexed = Number.isInteger(ref.index) ? current[ref.index] : null;
+        const byIdMatch = ref.messageId && byId.get(ref.messageId);
+        const byKeyMatch = ref.key && byKey.get(ref.key);
+        const byContentMatch = ref.messageId && ref.fullHash && ref.name && byContent.get(`${ref.name}|${ref.fullHash}`);
+        const now = byIdMatch
+            || byKeyMatch
+            // Content fallback is only safe for the new stable-id wire form;
+            // legacy refs without an id must continue to detect reindex/date
+            // changes through their original key/index provenance.
+            || byContentMatch
+            || indexed;
+        if (!now || now.hash !== ref.hash || (ref.fullHash && now.fullHash !== ref.fullHash)) return 'changed';
+        if (ref.key && !byIdMatch && !byKeyMatch && !byContentMatch && indexed?.key !== ref.key) return 'changed';
         if (ref.fullHash ? now.fullHash !== ref.fullHash : now.fullLength > 6000) return ref.fullHash ? 'changed' : 'unknown';
     }
     return 'valid';
@@ -149,12 +169,12 @@ export function readGagaMemoryContext({ chatMetadata, chat, settings, pluginAvai
         } : null;
         const stamp = JSON.stringify(canonical([snapshot.chatKey, pluginAvailable !== false, settings?.workshopEnabled !== false,
             production, revision, current, status, blocks, diagnostics]));
-        snapshot.fingerprint = `gaga6:${stamp.length}:${wireHash(stamp)}:${wireHash([...stamp].reverse().join(''))}`;
+        snapshot.fingerprint = `gaga-memory:${snapshot.schemaVersion || 'unknown'}:${stamp.length}:${wireHash(stamp)}:${wireHash([...stamp].reverse().join(''))}`;
         return { status, blocks, snapshot, diagnostics, text: blocks.map(block => `【${block.label}】\n${block.text}`).join('\n\n') };
     };
     if (pluginAvailable === false || !state) { status = 'unavailable'; return finish(); }
     if (settings?.workshopEnabled === false || state.enabled === false) { status = 'disabled'; return finish(); }
-    if (state.schemaVersion !== GAGA_MEMORY_SCHEMA || !productions.has(production) || !modes.has(summaryMode)) {
+    if (!GAGA_MEMORY_SUPPORTED_SCHEMAS.has(state.schemaVersion) || !productions.has(production) || !modes.has(summaryMode)) {
         status = 'unsupported'; diagnose('unsupported_memory_schema_or_mode'); return finish();
     }
     if (!hasContent(state)) return finish();

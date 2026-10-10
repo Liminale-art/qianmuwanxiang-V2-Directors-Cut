@@ -6,10 +6,10 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 
 const htmlEscape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const fixture = () => {
-  const label = {dataset: {}, textContent: '', title: ''}, latestLabel = {textContent:''}, versions = {current:{textContent:''},latest:{textContent:''}}, attributes = {}, button = {isConnected: true, setAttribute: (key, value) => {attributes[key] = value;}};
+  const label = {dataset: {}, textContent: '', title: ''}, latestLabel = {textContent:''}, versions = {current:{textContent:''},latest:{textContent:''}}, warning = {dataset:{}, textContent:'', hidden:true}, attributes = {}, button = {isConnected: true, setAttribute: (key, value) => {attributes[key] = value;}};
   const modal = {open: true, classList: {contains: () => modal.open}, contains: node => node === button && button.isConnected,
     querySelector: selector => selector === '.sd-optional-service-label' ? label : selector === '.sd-storage-service-refresh' ? button
-      : selector === '.sd-storage-service-latest-label' ? latestLabel : versions[selector.replace('.sd-storage-service-','')] || null,
+      : selector === '.sd-storage-service-latest-label' ? latestLabel : selector === '.sd-storage-service-update-warning' ? warning : versions[selector.replace('.sd-storage-service-','')] || null,
     querySelectorAll: () => []};
   const counters = {load: 0, probe: 0, latest: 0, video: 0}; let release, reject;
   const context = vm.createContext({htmlEscape, VERSION:'1.59.392', MODAL_ID: 'fixture', document: {getElementById: () => modal},
@@ -23,8 +23,8 @@ const fixture = () => {
     paintStorageManagementCard: () => assert.fail('backend check must not replace the storage card'),
     storyboardPaintVideoConnectionState: async () => {counters.video++;},
   });
-  vm.runInContext(['optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'renderStorageServiceStatus', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n'), context);
-  return {context, modal, label, latestLabel, versions, button, attributes, counters, resolve: value => release(value), reject: value => reject(value)};
+  vm.runInContext(['optionalServiceLabel', 'qianmuReleaseTuple', 'qianmuReleaseCompare', 'optionalServiceNeedsUpdate', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'renderStorageServiceStatus', 'paintOptionalServiceState', 'refreshOptionalServiceState', 'bindStorageManagementEvents'].map(section).join('\n'), context);
+  return {context, modal, label, latestLabel, versions, warning, button, attributes, counters, resolve: value => release(value), reject: value => reject(value)};
 };
 
 test('compact backend footer covers ready, missing, checking and failure without exposing diagnostics', () => {
@@ -117,6 +117,21 @@ test('current and latest versions stay distinct and only verified version string
   }
   f.context.optionalServiceState.status='error';assert.equal(f.context.optionalServiceLabel('current'),'未获取');
   assert.equal(f.counters.probe,0,'render and version lookup never start requests');
+});
+
+test('an older installed enhancement service gets an explicit update reminder', () => {
+  const f = fixture();
+  f.context.optionalServiceState = {status:'ready',services:[],version:'1.59.438',latestVersion:'1.59.448'};
+  const html = f.context.renderStorageServiceStatus();
+  assert.match(html, /data-needs-update="true"/);
+  assert.match(html, /增强服务需更新至 v1\.59\.448/);
+  f.context.paintOptionalServiceState();
+  assert.equal(f.warning.hidden, false);
+  assert.equal(f.warning.dataset.needsUpdate, 'true');
+  f.context.optionalServiceState.version = '1.59.448';
+  f.context.paintOptionalServiceState();
+  assert.equal(f.warning.hidden, true);
+  assert.equal(f.warning.dataset.needsUpdate, 'false');
 });
 
 test('health refresh preserves a separately verified latest version through missing and failed probes', async () => {

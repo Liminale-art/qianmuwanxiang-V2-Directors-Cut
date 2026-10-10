@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { parseDirectorFinal, renderDirectorLive, paintModelLog, renderModelDiagnostics, directorPreviewPlan, directorQualitySummary } from '../qianmu-director-live.js';
+import { parseDirectorFinal, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, directorPreviewPlan, directorQualitySummary } from '../qianmu-director-live.js';
 import { normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems } from '../qianmu-creative-contract.js';
 import { isPlainObject, mergeDefaults } from '../qianmu-storyboard-utils.js';
 const entry=await fs.readFile(new URL('../index.js',import.meta.url),'utf8');
@@ -18,8 +18,20 @@ function completePlan(){
     character_dynamics:Array.from({length:2},(_,i)=>({title:'moment '+i,content:'the character attends to letter '+i})),
     npc_updates:Array.from({length:3},(_,i)=>({name:'neighbor '+i,next_action:'collect delivery '+i})),
     chain_reactions:Array.from({length:3},(_,i)=>({spark:'road '+i+' closes',chain:'delivery '+i+' takes the longer route → suppliers postpone arrivals → shops change their opening hours'})),
-    relation_undercurrents:Array.from({length:3},(_,i)=>({parties:['neighbor '+i,'shopkeeper '+i],tension:'unreturned letter '+i+' keeps the promise open'}))};
+    relation_undercurrents:Array.from({length:3},(_,i)=>({parties:i===2?['neighbor '+i,'shopkeeper '+i,'dispatcher '+i]:['neighbor '+i,'shopkeeper '+i],tension:'unreturned letter '+i+' keeps the promise open'}))};
 }
+
+test('director parser repairs fenced JSON with a missing property comma without a second model call', () => {
+  const malformed = '```json\n{"story_status":{"title":"街角"} "quests":[{"title":"门口"}]}\n```';
+  const parsed = parseDirectorFinal(malformed);
+  assert.equal(parsed.story_status.title, '街角');
+  assert.deepEqual(parsed.quests, [{ title: '门口' }]);
+});
+
+test('director parser keeps genuinely invalid output as a JSON failure', () => {
+  assert.throws(() => parseDirectorFinal('{"story_status":'), /JSON_PARSE_FAILED::/);
+});
+
 function fixture(){
   let store={plan:{original:true}},context={chat:[]},account='st-user:a',calls=0,repairs=0,saves=0,injects=0,invocation;
   const gate=deferred(),sent=deferred();
@@ -60,7 +72,7 @@ test('actual creative-shortfall failure log renders named missing sections from 
   const log=e.c.settings.logHistory[0];
   assert.equal(log.status,'error');assert.ok(Array.isArray(log.quality.issues));
   assert.equal(log.quality.gaps.character_dynamics,2);
-  assert.match(renderModelDiagnostics(log),/此间一人缺 2 条/);
+  assert.match(modelFailureText(log),/此间一人缺 2 条/);
   assert.equal(e.saves,0);assert.equal(e.injects,0);assert.equal(e.store.plan.original,true);
 });
 

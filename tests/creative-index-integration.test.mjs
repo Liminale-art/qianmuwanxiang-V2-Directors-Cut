@@ -51,7 +51,7 @@ function fullPlan(options = {}) {
     character_dynamics: Array.from({ length: 2 }, (_, i) => ({ title: `待办${i}`, content: `阿岚把第${i}份账单拿到灯下核对，尚未动笔。` })),
     npc_updates: Array.from({ length: 3 }, (_, i) => ({ name: `邻居${i}`, next_action: `邻居正在为第${i}家店铺检查送货的路。` })),
     chain_reactions: Array.from({ length: 3 }, (_, i) => ({ spark: `第${i}条路临时改道。`, chain: `伙计将第${i}车货改送后巷 → 掌柜通知收货人延迟 → 邻街工坊调整当日排班` })),
-    relation_undercurrents: Array.from({ length: 3 }, (_, i) => ({ parties: [`邻居${i}`, `铺主${i}`], tension: `第${i}张欠条尚未提起，两人都先谈了眼前的天气。` })),
+    relation_undercurrents: Array.from({ length: 3 }, (_, i) => ({ parties: i === 2 ? [`邻居${i}`, `铺主${i}`, `调度员${i}`] : [`邻居${i}`, `铺主${i}`], tension: `第${i}张欠条尚未提起，两人都先谈了眼前的天气。` })),
     limitations: [],
   };
   if (options.parallelSceneEnabled !== false) plan.parallel_scene = { title: '如果赶上早班车', content: 'PARALLEL_ONLY_CONTENT：车门没有在面前关上，旧友从空座旁抬起头。' };
@@ -205,6 +205,26 @@ test('actual buildPrompt binds sources, custom blueprint and one fixed interlude
   assert.ok(prompt.includes(CREATIVE_GUIDES.phone), 'the complete current phone viewpoint and naming guidance reaches the actual request');
 });
 
+test('same-floor rerolls discard the previous candidate branch and synthetic director injection', async () => {
+  const e = fixture({ settings: BASIC });
+  e.store.plan = fullPlan(); e.store.lastPlanIdx = e.context.chat.length - 1;
+  e.context.chat.push({ name: 'System', is_system: true, mes: 'OLD_DIRECTOR_DIGEST', extra: { qianmu_injected: true } });
+  // Keep the stored floor aligned with the expanded chat fixture.
+  e.store.lastPlanIdx = e.context.chat.length - 1;
+  const run = {}, prompt = await e.c.buildPrompt(run);
+  assert.equal(run.sameFloorReroll, true);
+  assert.match(prompt, /同楼层独立重推演/);
+  assert.doesNotMatch(prompt, /上次推演参考/);
+  assert.doesNotMatch(prompt, /OLD_DIRECTOR_DIGEST/);
+});
+
+test('new-floor prompts retain ordinary continuity for the prior candidate plan', async () => {
+  const e = fixture({ settings: BASIC });
+  e.store.plan = fullPlan(); e.store.lastPlanIdx = 0;
+  const prompt = await e.c.buildPrompt({});
+  assert.match(prompt, /上次推演参考/);
+});
+
 test('removing the temporary memory card preserves exact request memory and its diagnostics without a second archive', async () => {
   const memory = '【长期记忆】\n<script>not executable</script>\n【近期正文】\n' + '一段完整的旧经历'.repeat(1400);
   const e = fixture({ settings: BASIC, memoryResult: { text: memory },
@@ -313,12 +333,12 @@ test('each provider makes one request only; incomplete output keeps original res
     const log = e.settings.logHistory[0];
     assert.equal(log.response, JSON.stringify(first));
     assert.equal(log.repairResponse, undefined); assert.equal(log.repairError, undefined);
-    assert.match(log.error, /未自动补写/);
+    assert.doesNotMatch(log.error, /未自动补写/);
     assert.deepEqual(plain(log.creativeOptions), { parallelSceneEnabled: true, interludeEnabled: true, interludeType: 'phone', worldChatterEnabled: false, geopoliticsEnabled: false });
     assert.doesNotMatch(JSON.stringify(log.creativeOptions), /SOURCE|personaNames|phoneSourceText|characterNames/);
     assert.ok(log.quality.issues.some(issue => issue.field === 'quests' && issue.missing === 1));
     assert.equal(directorPreviewPlan(log).quests.length, 4);
-    assert.equal(e.toasts.length, 1); assert.match(e.toasts[0][0], /预演.*未自动补写/);
+    assert.equal(e.toasts.length, 1); assert.match(e.toasts[0][0], /预演.*已收内容/);
   }
 });
 
@@ -337,7 +357,7 @@ test('first-response gaps retain prior plan, history and injection selection wit
   assert.equal(e.saves, 0); assert.equal(e.injects, 0);
   const log = e.settings.logHistory[0];
   assert.equal(log.status, 'error');
-  assert.match(log.error, /旧结果保留/);
+  assert.doesNotMatch(log.error, /旧结果保留/);
   assert.ok(log.quality.issues.some(issue => issue.field === 'quests' && issue.missing === 1));
   assert.equal(log.limitations[0].missing, 1);
   assert.equal(log.response, JSON.stringify(incomplete));
@@ -372,9 +392,9 @@ test('cancelled, interrupted and malformed responses preserve received cards wit
     assert.equal(log.status, failure === 'cancelled' ? 'cancelled' : 'error');
     assert.ok(log.quality.issues.some(issue => issue.field === 'quests' && issue.missing === 4));
     assert.equal(directorPreviewPlan(log).quests.length, 1);
-    assert.equal(e.toasts.length, 1); assert.match(e.toasts[0][0], /未自动补写/);
+    assert.equal(e.toasts.length, 1); assert.doesNotMatch(e.toasts[0][0], /未自动补写/);
     if (failure === 'interrupted') { assert.match(log.error, /transport fixture/); assert.equal(log.completion.finishReason, 'length'); }
-    if (failure === 'invalid-json') { assert.match(log.error, /模型输出格式有误/); assert.equal(log.completion.interrupted, undefined, 'format error is not fabricated truncation'); }
+    if (failure === 'invalid-json') { assert.match(log.error, /模型输出格式有误|未完整完成/); assert.equal(log.completion.interrupted, undefined, 'format error is not fabricated truncation'); }
   }
 });
 
@@ -389,7 +409,7 @@ test('complete outputs save and inject once per provider, while background gaps 
     const background = fixture({ settings: { ...BASIC, providerMode }, responses: [JSON.stringify(partial)] });
     await background.c.generateDirectorPlan(false, true, { background: true });
     assert.equal(background.requests.length, 1); assert.equal(background.saves, 0); assert.equal(background.injects, 0);
-    assert.equal(background.toasts.length, 1); assert.match(background.toasts[0][0], /预演.*未自动补写/);
+    assert.equal(background.toasts.length, 1); assert.match(background.toasts[0][0], /预演.*已收内容/);
   }
   assert.doesNotMatch(qualitySource, /repairDirectorPlanQuality|callExternalApi|callSillyTavernModel|mergeCreativeRepair/);
   assert.doesNotMatch(generationSource, /repairDirectorPlanQuality|repairResponse\s*=|repairError\s*=/);

@@ -42,9 +42,9 @@ test('all closed creative fields project into ordinary sections without adopting
 
 test('failure and interruption reasons belong to the failure panel, never below returned text', () => {
   const log = { status: 'error', error: '回复截断', completion: { finishReason: 'length', interrupted: true } };
-  assert.match(modelFailureText(log), /回复截断\n结束原因：length/);
+  assert.equal(modelFailureText(log), '已中断。');
   assert.doesNotMatch(renderModelDiagnostics(log), /结束原因|未完整完成|渠道未提供/);
-  assert.match(modelFailureText({ status: 'cancelled' }), /已停止/);
+  assert.match(modelFailureText({ status: 'cancelled' }), /已中断/);
 });
 
 test('old repair responses stay readable as historical evidence without promising current automatic calls', () => {
@@ -69,10 +69,11 @@ test('submitted incomplete runs retain readonly cards and show factual section n
   assert.equal(directorSectionEnabled(plan, 'world_chatter', { worldChatterEnabled: true }), false);
   assert.equal(directorSectionStatus(plan, 'faction_relations'), '', 'an optional absent connection is not a failed section');
   assert.match(directorQualitySummary(log), /命运之脉缺 1 条/);
-  assert.match(renderModelDiagnostics(log), /未自动补写/);
+  assert.doesNotMatch(renderModelDiagnostics(log), /未自动补写|本次内容未完整|命运之脉缺/);
+  assert.match(modelFailureText(log), /缺失内容：.*命运之脉缺 1 条/);
   const ended = directorPreviewPlan({ ...log, completion: { finishReason: 'MAX_TOKENS', interrupted: true } });
   assert.match(directorSectionStatus(ended, 'parallel_scene'), /回复截断/);
-  assert.match(directorSectionStatus(directorPreviewPlan({ ...log, status: 'cancelled' }), 'quests'), /已停止/);
+  assert.equal(directorSectionStatus(directorPreviewPlan({ ...log, status: 'cancelled' }), 'quests'), '');
   assert.equal(directorSectionStatus(directorPreviewPlan({ ...log, status: 'loading' }), 'quests'), '');
   assert.equal(directorPreviewPlan({ ...log, request: '' }), null, 'no request means no failed-run overlay on saved content');
   assert.equal(directorPreviewPlan({ ...log, status: 'success' }), null);
@@ -107,13 +108,9 @@ test('memory and incomplete creative output are understandable without exposing 
     {field:'interlude',reason:'缺少小卡',missing:1},
   ]};
   const html=renderModelDiagnostics(log);
-  assert.match(html,/部分记忆可用/);assert.match(html,/<details><summary>记忆核对详情/);
-  assert.match(html,/此间一人缺 1 条/);assert.match(html,/幕间拾趣缺 1 张/);
-  assert.equal(html.match(/此间一人/g).length,1);assert.doesNotMatch(html,/PRIVATE|character_dynamics/);
-  for(const status of ['ready','empty','disabled'])assert.doesNotMatch(renderModelDiagnostics({memory:{status,diagnostics:log.memory.diagnostics}}),/记忆|record_source_changed/);
-  assert.match(renderModelDiagnostics({memory:{status:'unverified'}}),/记忆暂无法核对/);
-  assert.match(renderModelDiagnostics({memory:{status:'unsupported'}}),/尚未适配/);
-  assert.match(renderModelDiagnostics({memory:{status:'partial',diagnostics:[{code:'<script>',scope:'<unsafe>'}]}}),/&lt;script&gt;/);
+  assert.doesNotMatch(html,/记忆|record_source_changed|PRIVATE|character_dynamics|此间一人缺|幕间拾趣缺/);
+  assert.doesNotMatch(renderModelDiagnostics({memory:{status:'unsupported',diagnostics:[{code:'unsupported_memory_schema_or_mode'}]}}),/尚未适配|记忆核对/);
+  assert.equal(modelFailureText({...log,status:'error'}), '本次推演未完成。');
 });
 
 test('structured directions and social cards wait for their outer object and retain nested payloads', () => {

@@ -57,12 +57,24 @@ test('disabled, absent, unsupported and source-less imported memory never masque
     const imported = fixture(); stateOf(imported).checkpoints = [];
     assert.equal(readGagaMemoryContext(imported).status, 'unverified');
     assert.equal(readGagaMemoryContext(imported).text, '');
-    for (const version of [undefined, 5, 7, '6']) {
+    for (const version of [undefined, 5, 8, '6']) {
         const input = fixture(); stateOf(input).schemaVersion = version;
         assert.equal(readGagaMemoryContext(input).status, 'unsupported');
     }
+    const upgraded = fixture(); stateOf(upgraded).schemaVersion = 7;
+    assert.equal(readGagaMemoryContext(upgraded).status, 'ready');
     const missingChat = fixture(); delete missingChat.chat;
     assert.equal(readGagaMemoryContext(missingChat).status, 'unverified');
+});
+test('schema 7 message ids survive chat reindexing while preserving full source hashes', () => {
+    const input = fixture();
+    stateOf(input).schemaVersion = 7;
+    input.chat.forEach((message, index) => { message.extra = { gagaDogMessageId: `stable-${index}` }; });
+    stateOf(input).checkpoints[0].range.refs.forEach((ref, index) => { ref.messageId = `stable-${index}`; });
+    input.chat.unshift({ name: '旁白', mes: '前置楼层', send_date: 'before', is_user: false });
+    assert.equal(readGagaMemoryContext(input).status, 'ready');
+    input.chat[1].mes += '被编辑';
+    assert.equal(readGagaMemoryContext(input).blocks.length, 0);
 });
 test('auto recording off and pending drafts do not erase already committed memory', () => {
     const input = fixture({ memoryMode: 'layered' });
@@ -119,12 +131,16 @@ test('clear or empty selected artifact never falls back to another format or sta
     input.chatMetadata = {}; assert.equal(readGagaMemoryContext(input).status, 'unavailable');
 });
 test('edit, swipe, delete and source movement invalidate aggregate before upstream handler runs', () => {
-    for (const change of [input => { input.chat[0].mes += '更改'; }, input => { input.chat[1].mes = '另一 Swipe'; },
-        input => { input.chat.splice(0, 1); }, input => { input.chat[0].send_date = '新来源'; }]) {
+    for (const [label, change] of [
+        ['edit', input => { input.chat[0].mes += '更改'; }],
+        ['swipe', input => { input.chat[1].mes = '另一 Swipe'; }],
+        ['delete', input => { input.chat.splice(0, 1); }],
+        ['source-date', input => { input.chat[0].send_date = '新来源'; }],
+    ]) {
         const input = fixture({ memoryMode: 'layered' }); stateOf(input).roundCapsules.push(capsule(2, 3)); change(input);
         const output = readGagaMemoryContext(input);
-        assert.equal(output.status, 'unverified'); assert.equal(output.blocks.length, 0);
-        assert.ok(output.diagnostics.some(item => item.code === 'memory_source_changed'));
+        assert.equal(output.status, 'unverified', label); assert.equal(output.blocks.length, 0, label);
+        assert.ok(output.diagnostics.some(item => item.code === 'memory_source_changed'), label);
     }
 });
 test('appended recent body is not confused with invalidation; changing chat identity changes fingerprint', () => {
