@@ -1927,8 +1927,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-storage-service-versions > span { min-width: 0; overflow-wrap: anywhere; }
 #story-director-modal .sd-storage-service-versions > span:last-child { text-align: right; }
 #story-director-modal .sd-storage-service-versions b { color: var(--sd-text); font-size: inherit; font-weight: 500; }
-#story-director-modal .sd-storage-service-update-warning { grid-column: 1 / -1; color: #a26417; font-size: 11px; line-height: 1.5; }
-#story-director-modal:is(.sd-theme-dark, [data-qm-mode="dark"]) .sd-storage-service-update-warning { color: #efc779; }
 #story-director-modal .sd-storage-service button.sd-storage-service-refresh { justify-self: end; width: 30px; min-width: 30px; height: 30px; min-height: 30px; }
 #story-director-modal .sd-storage-service-refresh[aria-busy="true"] { opacity: .65; cursor: progress; }
 #story-director-modal .sd-storage-overview > span:not(.sd-storage-hero) { flex-wrap: wrap; line-height: 1.5; }

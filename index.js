@@ -7600,33 +7600,6 @@ function optionalServiceLabel(kind = 'status') {
   return '未检测';
 }
 
-function qianmuReleaseTuple(value) {
-  const match = String(value || '').trim().replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3]), match[4] || ''] : null;
-}
-
-function qianmuReleaseCompare(left, right) {
-  if (!left || !right) return 0;
-  for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] - right[i];
-  if (left[3] === right[3]) return 0;
-  if (!left[3]) return 1;
-  if (!right[3]) return -1;
-  return left[3].localeCompare(right[3]);
-}
-
-function optionalServiceNeedsUpdate() {
-  if (optionalServiceState.status !== 'ready') return false;
-  const current = qianmuReleaseTuple(optionalServiceState.version);
-  const paired = qianmuReleaseTuple(VERSION);
-  const published = qianmuReleaseTuple(optionalServiceState.latestVersion);
-  const expected = qianmuReleaseCompare(published, paired) > 0 ? published : paired || published;
-  if (!current || !expected) return false;
-  for (let i = 0; i < 3; i++) {
-    if (current[i] !== expected[i]) return current[i] < expected[i];
-  }
-  return Boolean(current[3] && !expected[3]);
-}
-
 function optionalServiceLatestDisplay() {
   const latest = optionalServiceLabel('latest');
   if (latest === '未获取') return { label: '配套', version: `v${VERSION}` };
@@ -7656,12 +7629,6 @@ function paintOptionalServiceState() {
   for (const kind of ['current', 'latest']) {
     const version = modal.querySelector(`.sd-storage-service-${kind}`);
     if (version) version.textContent = kind === 'latest' ? latest.version : optionalServiceLabel(kind);
-  }
-  const warning = modal.querySelector('.sd-storage-service-update-warning');
-  if (warning) {
-    warning.textContent = optionalServiceNeedsUpdate() ? `增强服务需更新至 ${latest.version}，更新后请重启 ST。` : '';
-    warning.hidden = !optionalServiceNeedsUpdate();
-    warning.dataset.needsUpdate = String(optionalServiceNeedsUpdate());
   }
   const refresh = modal.querySelector('.sd-storage-service-refresh');
   if (refresh) {
@@ -7733,13 +7700,10 @@ function runtimeHealthSnapshot() {
 function renderStorageServiceStatus() {
   const checking = optionalServiceState.status === 'checking';
   const latest = optionalServiceLatestDisplay();
-  const needsUpdate = optionalServiceNeedsUpdate();
-  const updateText = needsUpdate ? `增强服务需更新至 ${latest.version}，更新后请重启 ST。` : '';
   return `<div class="sd-storage-service" role="group" aria-label="后端服务">
     <span class="sd-storage-service-status" role="status" aria-live="polite"><span>后端服务</span><b class="sd-optional-service-label" data-status="${htmlEscape(optionalServiceState.status)}" title="${htmlEscape(optionalServiceDetail())}">${htmlEscape(optionalServiceLabel())}</b></span>
     <button type="button" class="sd-icon-btn sd-storage-service-refresh" title="重新检测后端服务与配套版本" aria-label="重新检测后端服务与配套版本" aria-busy="${checking}" aria-disabled="${checking}"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
     <span class="sd-storage-service-versions"><span>当前 <b class="sd-storage-service-current">${htmlEscape(optionalServiceLabel('current'))}</b></span><span><span class="sd-storage-service-latest-label">${latest.label}</span> <b class="sd-storage-service-latest">${htmlEscape(latest.version)}</b></span></span>
-    <span class="sd-storage-service-update-warning" data-needs-update="${needsUpdate}" role="status" aria-live="polite"${needsUpdate ? '' : ' hidden'}>${htmlEscape(updateText)}</span>
   </div>`;
 }
 
