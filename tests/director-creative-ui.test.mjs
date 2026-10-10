@@ -238,6 +238,8 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
   assert.doesNotMatch(styles, /#story-director-modal \.sd-director-paragraph\[data-selection-order\][^}]*padding-right/);
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-summary-main h4[\s\S]*font-size:\s*var\(--qm-type-card-title\)/,
     'preview item titles follow the fate-card title scale');
+  assert.match(styles, /#story-director-modal \.sd-relus-parties,[\s\S]*font-size:\s*var\(--qm-type-card-title\)/,
+    'relationship participants follow the same card-title scale');
   assert.match(styles, /#story-director-modal \.sd-item-fold > summary\s*\{[^}]*align-items:\s*center/,
     'preview item summary content is vertically centered');
   assert.match(styles, /#story-director-modal \.sd-selection-order-card\s*\{[^}]*top:\s*12px/,

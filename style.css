@@ -11327,6 +11327,7 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
    to body text. */
 #story-director-modal .sd-plan-section > details > summary > b,
 #story-director-modal .sd-plan-section .sd-item-summary-main h4,
+#story-director-modal .sd-relus-parties,
 #story-director-modal .sd-relus-card > details > summary > b,
 #story-director-modal .sd-chatter-card .sd-section-title h3,
 #story-director-modal .sd-geo-events-fold > summary > b,
