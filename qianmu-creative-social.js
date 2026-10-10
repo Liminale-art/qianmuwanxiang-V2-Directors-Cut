@@ -1,7 +1,7 @@
 // Read-only fictional social panels. Reactions are bounded, session-local UI state:
 // no host draft, account, storage, network or generation operation belongs here.
 import { htmlEscape } from './qianmu-storyboard-utils.js';
-import { qianmuIconMarkup } from './qianmu-icon-renderer.js';
+import { qianmuIconMarkup } from './qianmu-icon-renderer.js?v=1.59.419';
 
 const SESSION_LIMIT = 48;
 const sessions = new Map();

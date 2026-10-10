@@ -1,4 +1,8 @@
-# 千幕服务端插件一键安装
+# 千幕服务端插件安装、更新与环境说明
+
+> **开发联调基准：VPS + PM2。** 本项目的前端与服务端实测默认在 VPS 上由 PM2 托管的 SillyTavern 完成。开发分支、服务端插件提交节点和健康接口版本必须在同一次联调前分别核对；前端页面能打开不代表服务端已更新。每次前端交付若有配套后端版本要求，应由开发交付说明明确提醒核对，本文件不把这类提醒做成插件内提示。
+
+这份文件同时是普通用户的安装/更新入口。请按自己的部署方式只执行对应小节，不要把 VPS、Windows、Docker 的停止或启动命令混用。原来的 `INSTALL-DOUBAO-APIKEY.md` 已更名为本文件，旧书签请改用 `INSTALL-SERVER-PLUGIN.md`。
 
 同一个千幕服务端插件同时为以下功能提供同源请求：
 
@@ -6,11 +10,23 @@
 - 分镜中的 NovelAI、Banana / Gemini、GPT Image 2 / OpenAI 兼容中转、Doubao Seedream 与 ComfyUI。
 - 影片/H3 属于后续阶段；健康接口中的兼容声明不代表当前已开放影片功能。
 
-先等待正在生成的任务结束，再停止 SillyTavern 后端。安装时需要输入 `STOPPED` 确认；关闭网页不等于停止后端。脚本不会替你停止或重启进程。
+先等待正在生成的任务结束，再停止 SillyTavern 后端。安装时需要输入 `STOPPED` 确认；关闭网页不等于停止后端。安装脚本不会替你停止或重启进程；PM2、Docker 和 Windows 的停启方式分别写在下方对应小节。
 
 安装程序会保留独立版本的配置备份，下载/更新成功后才开启 `enableServerPlugins`。本地改动、重复配置项或链接目录会暂停安装，不覆盖用户改动。不需要执行 `npm install`。请使用与前端相匹配的服务版本；不同安装分支不会因为刷新浏览器自动同步。
 
 安装前还应核对两项宿主条件：`enableServerPlugins` 是 ST 的全局插件开关，开启前检查实际 `plugins` 扫描目录，不要将旧千幕或其他插件的备份副本留在其中重复加载；备份应放在扫描目录以外。另核对当前 ST 的 `enableServerPluginsAutoUpdate` 配置及启动行为：若启动时会拉取插件，安装时核对的提交可能发生变化，启动后须再次核对实际提交与健康接口版本。不要为了固定千幕而未经确认改动影响所有插件的全局自动更新开关。
+
+## 部署方式速查
+
+| 环境 | 停止方式 | 更新入口 | 启动方式 |
+| --- | --- | --- | --- |
+| **VPS + PM2（开发联调基准）** | `pm2 stop <已核对的进程名>` | 进入 ST 根目录，按「PM2 部署」小节核对分支后更新 | `pm2 start <已核对的进程名>`，再查健康接口 |
+| VPS 原生 Linux | 按现有 systemd / supervisor / 手工方式停止 | `install-server-plugin.sh` | 按原方式启动，再查健康接口 |
+| Docker Compose | 停止对应 Compose 服务 | `install-server-plugin.sh`，并确认插件目录挂载 | `docker compose start <服务名>` 或按原编排启动 |
+| Windows 本地 | 退出或停止 ST 后端进程 | `install-server-plugin.ps1` | 按原方式启动，再查健康接口 |
+| macOS / Linux 本地 | 退出或停止 ST 后端进程 | `install-server-plugin.sh` | 按原方式启动，再查健康接口 |
+
+表格只说明边界，不会替你猜进程名、Compose 服务名或安装路径；实际执行前以对应小节的只读核对为准。
 
 ## 云端 / VPS 部署（Linux）
 

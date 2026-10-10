@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
-const guide = await readFile(new URL('../INSTALL-DOUBAO-APIKEY.md', import.meta.url), 'utf8');
+const guide = await readFile(new URL('../INSTALL-SERVER-PLUGIN.md', import.meta.url), 'utf8');
 const pm2 = guide.split('### PM2 部署\n')[1]?.split('\n## ')[0];
 const blocks = [...(pm2 || '').matchAll(/```bash\n([\s\S]*?)\n```/g)].map(match => match[1]);
 const maintenance = blocks.find(block => /pm2 stop sillytavern/.test(block));

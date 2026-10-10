@@ -28,6 +28,11 @@ try{
   await page.goto('https://qianmu.test/');await page.evaluate(async source=>{
     const [utils,{createQianmuAppearanceSession},{updateAppearancePreferences},{applyQianmuIcons}]=await Promise.all([import('/qianmu-storyboard-utils.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),import('/qianmu-icon-renderer.js')]);
     for(const key of ['computeWorldHeat','heatTier','geoStableHash','geoRelationClass','snip','htmlEscape','sanitizeEventStage','EVENT_STAGE_LADDER'])window[key]=utils[key];
+    // The isolated renderer evaluates only the map helpers, so provide the
+    // production relation-label helper as a global dependency as well.
+    window.geoRelationKindMarkup=kind=>kind==='冲突'
+      ? '<span class="sd-geo-rel-icon sd-geo-rel-icon-conflict" role="img" aria-label="冲突" title="冲突"><i class="fa-solid fa-bolt" aria-hidden="true"></i></span>'
+      : `<b>${htmlEscape(kind)}</b>`;
     window.applyQianmuIcons=applyQianmuIcons;window.getChatStore=()=>worldFixture;window.settings={theme:'dark',geopoliticsEnabled:true};window.activeTab='castworld';window.worldPage='geopolitics';
     window.directorLiveLog=null;window.directorPreviewPlan=()=>null;
     window.calls={settings:0,confirmation:0,forbidden:0};window.saveSettings=()=>calls.settings++;window.confirmDialog=async()=>{calls.confirmation++;return false;};

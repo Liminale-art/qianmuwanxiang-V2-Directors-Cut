@@ -812,7 +812,7 @@ const FLOAT_LOGO_URLS = Object.freeze({
   kraft: FLOAT_LOGO_URL,
   dream: new URL('./qianmulogo-dream.png', import.meta.url).href,
 });
-const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-DOUBAO-APIKEY.md';
+const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-SERVER-PLUGIN.md';
 
 const PROMPT_REVISION = 28;
 const BLUEPRINT_REVISION = 5;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
@@ -6895,6 +6895,12 @@ const GEO_TREND_CN = { rising: '上升', stable: '稳守', declining: '衰退', 
 const GEO_TREND_ICON = { rising: '▲', stable: '＝', declining: '▼', turbulent: '✦' };
 // 世界事件五阶段各自配色与类名（标签 + 阶梯 + 边缘统一取用）
 const EVENT_STAGE_CLS = { 酝酿: 'brew', 爆发: 'erupt', 蔓延: 'spread', 消退: 'fade', 落定: 'settle' };
+// 关系类型在详情里不再占用一整段文字：冲突用一个带无障碍标题的小图标，
+// 其它关系保留文字，避免第一次查看世界格局时需要猜测语义。
+function geoRelationKindMarkup(kind) {
+  if (kind === '冲突') return '<span class="sd-geo-rel-icon sd-geo-rel-icon-conflict" role="img" aria-label="冲突" title="冲突"><i class="fa-solid fa-bolt" aria-hidden="true"></i></span>';
+  return `<b>${htmlEscape(kind)}</b>`;
+}
 
 // 世界温度：由关系张力 + 事件烈度合成 0-100，映射四档态势
 // computeWorldHeat - 已迁移到 qianmu-storyboard-utils.js
@@ -7103,10 +7109,10 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     return `<circle class="sd-geo-event-node-pulse sd-geo-event-pulse-${stage}" cx="${cx}" cy="${cy}" r="${18 + eventIndex * 3}" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></circle>`;
   }).join('');
 
-  // The centre star is a quiet orientation mark.  Keep its animated fill, but
-  // do not add a surrounding halo: the old ring competed with the selected
-  // relationship highlight and read as a second active node.
-  const axis = `<g class="sd-geo-axis"><path class="sd-geo-axis-star" d="${starPath(cx, cy, 7.5, 3)}"></path></g>`;
+  // The centre star is a quiet orientation mark.  Use one fixed hairline ring
+  // as the coordinate anchor; the former soft halo read like a second active
+  // node and is intentionally not rendered.
+  const axis = `<g class="sd-geo-axis"><circle class="sd-geo-axis-ring" cx="${cx}" cy="${cy}" r="14"></circle><path class="sd-geo-axis-star" d="${starPath(cx, cy, 7.5, 3)}"></path></g>`;
   const nodes = factions.map((f, i) => {
     const p = points.get(f.id), tagPos = labels.get(f.id), trend = FACTION_TRENDS.includes(f.trend) ? f.trend : 'stable';
     const rad = 8 + Math.min(5, relCount[i] * 1.15), clues = Array.isArray(f.clues) ? f.clues.filter(Boolean).slice(0, 5) : [];
@@ -7176,7 +7182,7 @@ function renderFactionListView(factions, rels) {
       const direction = r.kind === '依附'
         ? (r.a === f.id ? `依附于 ${byId.get(other)?.name || '某势力'}` : `${byId.get(other)?.name || '某势力'} 依附于此`)
         : `与 ${byId.get(other)?.name || '某势力'}`;
-      return `<li class="sd-geo-list-rel${selectedKinds.has(r.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(r.kind)}"><i style="background:${GEO_REL_COLOR[r.kind] || GEO_REL_COLOR['中立']}"></i><b>${htmlEscape(r.kind)}</b><span>${htmlEscape(direction)}${r.note ? ` · ${htmlEscape(r.note)}` : ''}</span></li>`;
+      return `<li class="sd-geo-list-rel${selectedKinds.has(r.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(r.kind)}"><i style="background:${GEO_REL_COLOR[r.kind] || GEO_REL_COLOR['中立']}"></i>${geoRelationKindMarkup(r.kind)}<span>${htmlEscape(direction)}${r.note ? ` · ${htmlEscape(r.note)}` : ''}</span></li>`;
     }).join('');
     const clues = (Array.isArray(f.clues) ? f.clues : []).filter(Boolean).map((clue) => `<span>${htmlEscape(clue)}</span>`).join('');
     return `<details class="sd-geo-list-card" data-acc="geo-list-${htmlEscape(f.id)}">
@@ -7358,7 +7364,7 @@ function bindGeopoliticsTabEvents(root) {
       const other = r.a === fid ? r.b : r.a;
       const dirTxt = r.kind === '依附' ? (r.a === fid ? `依附于 ${nameOf(other)}` : `${nameOf(other)} 依附于此`) : `与 ${nameOf(other)}`;
       const kindCls = { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[r.kind] || 'neutral';
-      return `<li class="sd-geo-d-rel sd-geo-d-rel-${kindCls}"><span class="sd-geo-d-kind">${htmlEscape(r.kind)}</span><span class="sd-geo-d-rtext">${htmlEscape(dirTxt)}${r.note ? ` · ${htmlEscape(r.note)}` : ''}</span></li>`;
+      return `<li class="sd-geo-d-rel sd-geo-d-rel-${kindCls}"><span class="sd-geo-d-kind">${geoRelationKindMarkup(r.kind)}</span><span class="sd-geo-d-rtext">${htmlEscape(dirTxt)}${r.note ? ` · ${htmlEscape(r.note)}` : ''}</span></li>`;
     }).join('');
     panel.innerHTML = `<div class="sd-geo-d-head"><h4>${htmlEscape(f.name)}</h4>${trendChip}<button type="button" class="sd-geo-d-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div>`
       + `<div class="sd-geo-d-meta">${[f.type, f.scale].filter(Boolean).map((t) => `<span>${htmlEscape(t)}</span>`).join('')}</div>`

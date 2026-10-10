@@ -3675,12 +3675,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-tier-boil { --sd-geo-band-tint: rgba(210, 96, 63, .32); }
 #story-director-modal .sd-geo-band-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: relative; }
 #story-director-modal .sd-geo-tier { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; }
-#story-director-modal .sd-geo-tier-label { font-size: 1.18em; font-weight: 700; letter-spacing: .05em; line-height: 1.1; }
+#story-director-modal .sd-geo-tier-label { font-size: var(--sd-geo-card-title, var(--qm-type-card-title, 13px)); font-weight: 700; letter-spacing: .05em; line-height: 1.1; }
 #story-director-modal .sd-geo-tier-calm .sd-geo-tier-label { color: var(--sd-geo-ally); }
 #story-director-modal .sd-geo-tier-undercurrent .sd-geo-tier-label { color: var(--sd-geo-tension); }
 #story-director-modal .sd-geo-tier-turmoil .sd-geo-tier-label,
 #story-director-modal .sd-geo-tier-boil .sd-geo-tier-label { color: var(--sd-geo-conflict); }
-#story-director-modal .sd-geo-tier-desc { font-size: .8em; color: var(--sd-muted); }
+#story-director-modal .sd-geo-tier-desc { font-size: var(--sd-geo-card-label, var(--qm-type-label, 11px)); color: var(--sd-muted); }
 #story-director-modal .sd-geo-heat-num { font-size: 1.3em; font-weight: 700; line-height: 1; display: flex; align-items: baseline; gap: 4px; flex: 0 0 auto; }
 #story-director-modal .sd-geo-band-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 #story-director-modal .sd-geo-clear { flex: 0 0 auto; opacity: .75; }
@@ -3708,6 +3708,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* 格局五阶段语义色跨星图与事件卡共用，星图自身随日夜模式切换。 */
 #story-director-modal .sd-geo-tab {
+  --sd-geo-card-title: var(--qm-type-card-title, 13px);
+  --sd-geo-card-body: var(--qm-type-body, 12px);
+  --sd-geo-card-label: var(--qm-type-label, 11px);
   --sd-geo-stage-brew: #d39a3c;
   --sd-geo-stage-erupt: #d2603f;
   --sd-geo-stage-spread: #cf7a3a;
@@ -3718,6 +3721,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-stage {
   --sd-text: var(--sd-geo-skin-text);
   --sd-muted: var(--sd-geo-skin-muted);
+  --sd-geo-card-title: var(--qm-type-card-title, 13px);
+  --sd-geo-card-body: var(--qm-type-body, 12px);
+  --sd-geo-card-label: var(--qm-type-label, 11px);
   --sd-border: var(--sd-geo-skin-border);
   --sd-hairline: var(--sd-geo-skin-border);
   --sd-card: var(--sd-geo-skin-card);
@@ -3802,8 +3808,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-map {
   display: block; width: 100%; max-width: 460px; margin: 2px auto 0; height: auto; overflow: visible;
   touch-action: manipulation;
-  background:
-    radial-gradient(58% 50% at 50% 49%, var(--sd-geo-skin-glow), transparent 72%);
+  /* The center star owns its glow; avoid a broad background halo that makes
+     the fixed coordinate ring look like an active event pulse. */
+  background: transparent;
   border-radius: 14px;
 }
 /* 装饰星轨轻缓旋转，人物节点及关系线锚点始终不动。 */
@@ -3817,13 +3824,22 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-bed-dot {
   fill: var(--sd-geo-skin-clue); opacity: .65; animation: sd-geo-star-breathe 5.6s ease-in-out infinite; animation-delay: var(--d, 0s);
 }
-/* 中央轴心仅保留星形呼吸，不绕动实际关系节点或添加外圈光晕。 */
+/* 中央轴心使用固定细线圆环；只有星体本身呼吸发光。 */
 #story-director-modal .sd-geo-axis { pointer-events: none; }
+#story-director-modal .sd-geo-axis-ring {
+  fill: none;
+  stroke: var(--sd-geo-skin-axis);
+  stroke-width: .9;
+  opacity: .78;
+  vector-effect: non-scaling-stroke;
+}
 #story-director-modal .sd-geo-axis-star {
-  fill: var(--sd-geo-skin-axis); transform-origin: center; animation: sd-geo-star-breathe 7s ease-in-out infinite;
+  fill: var(--sd-geo-skin-axis); transform-origin: center;
+  filter: drop-shadow(0 0 2px var(--sd-geo-skin-axis)) drop-shadow(0 0 5px var(--sd-geo-skin-axis));
+  animation: sd-geo-star-breathe 7s ease-in-out infinite;
 }
 @keyframes sd-geo-orbit-turn { to { transform: rotate(360deg); } }
-@keyframes sd-geo-star-breathe { 0%,100% { opacity: .45; } 50% { opacity: .95; } }
+@keyframes sd-geo-star-breathe { 0%,100% { opacity: .72; } 50% { opacity: 1; } }
 
 /* 固定关系线只保留细实线；短亮段沿同一路径流动，不挪动节点或关系锚点。 */
 #story-director-modal .sd-geo-edge { transition: opacity .25s ease; }
@@ -3905,14 +3921,28 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* 聚焦态：星核位置完全不动，只用原位外环、辉光与关系线明暗建立层级，避免节点与连线脱节。 */
 #story-director-modal .sd-geo-node .sd-geo-clues { transition: opacity .22s ease; }
 #story-director-modal .sd-geo-node .sd-geo-node-tag { transition: opacity .22s ease; }
-#story-director-modal .sd-geo-focused .sd-geo-node.sd-dim { opacity: .26; }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-dim {
+  /* Do not fade the whole SVG group: an alpha-dimmed dot reveals the
+     relationship path behind it. Keep the node as an opaque visual stop and
+     soften its own paint instead. */
+  opacity: 1;
+}
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-dim {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }
-#story-director-modal .sd-geo-focused .sd-geo-node.sd-near { opacity: .9; }
-#story-director-modal .sd-geo-focused .sd-geo-node.sd-far { opacity: .58; }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-near,
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-far { opacity: 1; }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-dim .sd-geo-node-dot {
+  fill: var(--sd-geo-skin-bg);
+  stroke: var(--sd-geo-neutral);
+  stroke-width: .9;
+  opacity: .92;
+}
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-dim .sd-geo-node-tag { opacity: .28; }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-far .sd-geo-node-dot { opacity: .72; }
+#story-director-modal .sd-geo-focused .sd-geo-node.sd-far .sd-geo-node-tag { opacity: .58; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-on { opacity: 1; }
 #story-director-modal .sd-geo-focused .sd-geo-edge.sd-near { opacity: .42; }
 #story-director-modal .sd-geo-focused .sd-geo-node.sd-on .sd-geo-node-dot { stroke: rgba(255,255,255,.7); stroke-width: 1.2; filter: drop-shadow(0 0 5px currentColor); }
@@ -3957,22 +3987,22 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-list-card { border: 1px solid var(--sd-geo-skin-border); border-radius: 10px; background: rgba(255,255,255,.035); overflow: hidden; }
 #story-director-modal .sd-geo-list-card > summary { display: grid; grid-template-columns: 10px minmax(82px, auto) minmax(0, 1fr) auto 24px; align-items: center; gap: 8px; min-height: 42px; padding: 7px 10px; cursor: pointer; list-style: none; }
 #story-director-modal .sd-geo-list-card > summary::-webkit-details-marker { display: none; }
-#story-director-modal .sd-geo-list-card > summary strong { font-size: .88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-geo-list-card > summary > span { color: var(--sd-geo-skin-muted); font-size: .73em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-geo-list-card > summary em { color: var(--sd-geo-skin-muted); font-size: .73em; font-style: normal; white-space: nowrap; }
-#story-director-modal .sd-geo-list-card > summary small { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 99px; color: var(--sd-geo-skin-muted); background: rgba(255,255,255,.06); }
+#story-director-modal .sd-geo-list-card > summary strong { font-size: var(--sd-geo-card-title); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-geo-list-card > summary > span { color: var(--sd-geo-skin-muted); font-size: var(--sd-geo-card-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-geo-list-card > summary em { color: var(--sd-geo-skin-muted); font-size: var(--sd-geo-card-label); font-style: normal; white-space: nowrap; }
+#story-director-modal .sd-geo-list-card > summary small { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 99px; color: var(--sd-geo-skin-muted); background: rgba(255,255,255,.06); font-size: var(--sd-geo-card-label); }
 #story-director-modal .sd-geo-list-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sd-geo-stable); }
 #story-director-modal .sd-geo-list-dot-rising { background: var(--sd-geo-ally); }
 #story-director-modal .sd-geo-list-dot-declining { background: var(--sd-geo-decline); }
 #story-director-modal .sd-geo-list-dot-turbulent { background: var(--sd-geo-conflict); }
 #story-director-modal .sd-geo-list-body { padding: 2px 12px 12px 30px; border-top: 1px solid var(--sd-geo-skin-border); animation: sd-geo-detail-in .18s ease; }
-#story-director-modal .sd-geo-list-body > p { margin: 8px 0 0; color: var(--sd-geo-skin-text); font-size: .84em; line-height: 1.55; }
+#story-director-modal .sd-geo-list-body > p { margin: 8px 0 0; color: var(--sd-geo-skin-text); font-size: var(--sd-geo-card-body); line-height: 1.55; }
 #story-director-modal .sd-geo-list-body .sd-geo-list-agenda { display: flex; gap: 6px; color: var(--sd-geo-skin-muted); }
 #story-director-modal .sd-geo-list-agenda i { margin-top: 4px; color: var(--sd-accent); }
 #story-director-modal .sd-geo-list-clues { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 #story-director-modal .sd-geo-list-clues span { padding: 2px 8px; border-radius: 99px; font-size: .72em; color: var(--sd-geo-clue-ink, var(--sd-geo-clue-blue)); background: rgba(56,224,255,.07); border: 1px solid rgba(56,224,255,.14); }
 #story-director-modal .sd-geo-list-body ul { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-#story-director-modal .sd-geo-list-rel { display: grid; grid-template-columns: 7px 34px minmax(0, 1fr); align-items: baseline; gap: 7px; font-size: .78em; }
+#story-director-modal .sd-geo-list-rel { display: grid; grid-template-columns: 7px 34px minmax(0, 1fr); align-items: center; gap: 7px; font-size: var(--sd-geo-card-label); line-height: 1.45; }
 #story-director-modal .sd-geo-list-rel > i { width: 7px; height: 7px; border-radius: 50%; }
 #story-director-modal .sd-geo-list-rel > b { font-weight: 600; color: var(--sd-geo-skin-text); }
 #story-director-modal .sd-geo-list-rel > span { color: var(--sd-geo-skin-muted); line-height: 1.45; word-break: break-word; }
@@ -3986,26 +4016,34 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 @keyframes sd-geo-detail-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 #story-director-modal .sd-geo-d-head { display: flex; align-items: center; gap: 9px; }
-#story-director-modal .sd-geo-d-head h4 { margin: 0; font-size: 1.02em; font-weight: 700; min-width: 0; flex: 1 1 auto; }
-#story-director-modal .sd-geo-d-trend { font-size: .76em; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--sd-pre); color: var(--sd-muted); flex: 0 0 auto; }
+#story-director-modal .sd-geo-d-head h4 { margin: 0; font-size: var(--sd-geo-card-title); line-height: 1.35; font-weight: 700; min-width: 0; flex: 1 1 auto; }
+#story-director-modal .sd-geo-d-trend { font-size: var(--sd-geo-card-label); font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--sd-pre); color: var(--sd-muted); flex: 0 0 auto; }
 #story-director-modal .sd-geo-d-trend-rising { color: var(--sd-geo-ally-ink, var(--sd-geo-ally)); }
 #story-director-modal .sd-geo-d-trend-declining { color: var(--sd-geo-neutral-ink, var(--sd-geo-neutral)); }
 #story-director-modal .sd-geo-d-trend-turbulent { color: var(--sd-geo-conflict-ink, var(--sd-geo-conflict)); }
 #story-director-modal .sd-geo-d-close { background: none; border: none; cursor: pointer; color: var(--sd-muted); padding: 2px 4px; flex: 0 0 auto; }
 #story-director-modal .sd-geo-d-close:hover { color: var(--sd-text); }
 #story-director-modal .sd-geo-d-meta { display: flex; flex-wrap: wrap; gap: 5px 8px; margin-top: 6px; }
-#story-director-modal .sd-geo-d-meta span { font-size: .76em; color: var(--sd-muted); padding: 1px 8px; border-radius: 99px; border: 1px solid var(--sd-hairline); }
-#story-director-modal .sd-geo-d-standing { margin: 8px 0 0; font-size: .88em; line-height: 1.5; color: var(--sd-text); }
-#story-director-modal .sd-geo-d-agenda { display: flex; gap: 6px; margin: 6px 0 0; font-size: .85em; line-height: 1.5; color: var(--sd-muted); }
+#story-director-modal .sd-geo-d-meta span { font-size: var(--sd-geo-card-label); color: var(--sd-muted); padding: 1px 8px; border-radius: 99px; border: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-geo-d-standing { margin: 8px 0 0; font-size: var(--sd-geo-card-body); line-height: 1.5; color: var(--sd-text); }
+#story-director-modal .sd-geo-d-agenda { display: flex; gap: 6px; margin: 6px 0 0; font-size: var(--sd-geo-card-body); line-height: 1.5; color: var(--sd-muted); }
 #story-director-modal .sd-geo-d-agenda i { color: var(--sd-accent); margin-top: 3px; flex: 0 0 auto; font-size: .9em; }
 #story-director-modal .sd-geo-d-rels { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-#story-director-modal .sd-geo-d-rel { display: flex; align-items: baseline; gap: 8px; font-size: .84em; line-height: 1.45; padding-left: 9px; border-left: 2.5px solid var(--sd-geo-neutral); }
+#story-director-modal .sd-geo-d-rel { display: flex; align-items: center; gap: 8px; font-size: var(--sd-geo-card-body); line-height: 1.45; padding-left: 9px; border-left: 2.5px solid var(--sd-geo-neutral); }
 #story-director-modal .sd-geo-d-rel-conflict { border-left-color: var(--sd-geo-conflict); }
 #story-director-modal .sd-geo-d-rel-ally { border-left-color: var(--sd-geo-ally); }
 #story-director-modal .sd-geo-d-rel-tension { border-left-color: var(--sd-geo-tension); }
 #story-director-modal .sd-geo-d-rel-vassal { border-left-color: var(--sd-geo-vassal); }
-#story-director-modal .sd-geo-d-kind { flex: 0 0 auto; font-weight: 600; color: var(--sd-text); }
+#story-director-modal .sd-geo-d-kind { display: inline-flex; align-items: center; flex: 0 0 auto; font-weight: 600; color: var(--sd-text); }
 #story-director-modal .sd-geo-d-rtext { color: var(--sd-muted); min-width: 0; word-break: break-word; }
+
+/* 冲突在详情与列表中用紧凑小图标表达，文字仍保留在 title/aria-label 中。 */
+#story-director-modal .sd-geo-rel-icon {
+  display: inline-grid; place-items: center; width: 15px; height: 15px; box-sizing: border-box;
+  border: 1px solid currentColor; border-radius: 4px; color: var(--sd-geo-conflict-ink, var(--sd-geo-conflict));
+  background: color-mix(in srgb, currentColor 10%, transparent); font-size: 8px; line-height: 1;
+}
+#story-director-modal .sd-geo-rel-icon i { line-height: 1; }
 
 /* 底部·世界事件卡（Boss 事件式） */
 #story-director-modal .sd-geo-events {
@@ -4033,10 +4071,10 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-evt-closed { opacity: .6; }
 #story-director-modal .sd-evt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; }
 #story-director-modal .sd-evt-head::-webkit-details-marker { display: none; }
-#story-director-modal .sd-evt-head h4 { margin: 0; font-size: 1.04em; font-weight: 700; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-evt-head h4 { margin: 0; font-size: var(--sd-geo-card-title); line-height: 1.35; font-weight: 700; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #story-director-modal .sd-evt-body { animation: sd-geo-detail-in .18s ease; }
 #story-director-modal .sd-evt-badge {
-  flex: 0 0 auto; font-size: .74em; font-weight: 600; padding: 1px 8px; border-radius: 99px;
+  flex: 0 0 auto; font-size: var(--sd-geo-card-label); font-weight: 600; padding: 1px 8px; border-radius: 99px;
   color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,.32); background: var(--sd-geo-stage-settle);
 }
 /* 阶段徽章：各阶段一色 */
@@ -4045,7 +4083,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-evt-stage-spread .sd-evt-badge { background: var(--sd-geo-stage-spread); }
 #story-director-modal .sd-evt-stage-fade .sd-evt-badge { background: var(--sd-geo-stage-fade); }
 #story-director-modal .sd-evt-stage-settle .sd-evt-badge { background: var(--sd-geo-stage-settle); }
-#story-director-modal .sd-evt-essence { margin: 7px 0 0; font-size: .87em; line-height: 1.5; color: var(--sd-text); }
+#story-director-modal .sd-evt-essence { margin: 7px 0 0; font-size: var(--sd-geo-card-body); line-height: 1.5; color: var(--sd-text); }
 #story-director-modal .sd-evt-ladder { display: flex; align-items: flex-start; gap: 0; margin: 11px 0 9px; }
 #story-director-modal .sd-evt-step { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; }
 #story-director-modal .sd-evt-step i {
@@ -4056,7 +4094,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   content: ''; position: absolute; top: 4px; left: -50%; width: 100%; height: 2px; background: var(--sd-border); z-index: 0;
 }
 #story-director-modal .sd-evt-step:first-child::before { display: none; }
-#story-director-modal .sd-evt-step em { font-size: .64em; font-style: normal; color: var(--sd-muted); white-space: nowrap; }
+#story-director-modal .sd-evt-step em { font-size: var(--sd-geo-card-label); font-style: normal; color: var(--sd-muted); white-space: nowrap; }
 /* 阶梯当前点：取本阶段色，标签也染同色 */
 #story-director-modal .sd-evt-st-brew.sd-evt-now i { background: var(--sd-geo-stage-brew); border-color: var(--sd-geo-stage-brew); }
 #story-director-modal .sd-evt-st-erupt.sd-evt-now i { background: var(--sd-geo-stage-erupt); border-color: var(--sd-geo-stage-erupt); }
@@ -4067,13 +4105,13 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-evt-now i { transform: scale(1.5); }
 #story-director-modal .sd-evt-now em { color: var(--sd-text); font-weight: 600; }
 #story-director-modal .sd-evt-done i { background: var(--sd-geo-stage-settle); border-color: var(--sd-geo-stage-settle); }
-#story-director-modal .sd-evt-foot { display: flex; flex-direction: column; gap: 6px; font-size: .78em; color: var(--sd-muted); }
+#story-director-modal .sd-evt-foot { display: flex; flex-direction: column; gap: 6px; font-size: var(--sd-geo-card-label); color: var(--sd-muted); }
 #story-director-modal .sd-evt-foot span { display: flex; align-items: flex-start; gap: 5px; min-width: 0; }
 #story-director-modal .sd-evt-foot span > span { line-height: 1.45; word-break: break-word; }
 #story-director-modal .sd-evt-scope { color: var(--sd-accent); }
 #story-director-modal .sd-evt-foot i { opacity: .7; margin-top: 2px; flex: 0 0 auto; }
 #story-director-modal .sd-geo-closed { margin-top: 12px; }
-#story-director-modal .sd-geo-closed summary { cursor: pointer; font-size: .86em; color: var(--sd-muted); padding: 4px 0; }
+#story-director-modal .sd-geo-closed summary { cursor: pointer; font-size: var(--sd-geo-card-label); color: var(--sd-muted); padding: 4px 0; }
 #story-director-modal .sd-geo-closed[open] summary { margin-bottom: 10px; }
 
 @media (max-width: 520px) {
@@ -11281,4 +11319,38 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   #story-director-modal .sd-gallery-browser-page .sd-storyboard-gallery-tools { gap: 3px !important; }
   #story-director-modal .sd-gallery-browser-page .sd-storyboard-gallery-tools > .sd-icon-btn,
   #story-director-modal .sd-gallery-toolbar-popover > summary { width: 30px !important; min-width: 30px !important; padding: 6px !important; }
+}
+
+/* Creative reading alignment: 命运之脉 is the reference card-title scale for
+   预演、此间一人、关系暗涌 and 世界格局. These selectors intentionally live
+   at the end so the older compact typography pass cannot pull these cards down
+   to body text. */
+#story-director-modal .sd-plan-section > details > summary > b,
+#story-director-modal .sd-plan-section .sd-item-summary-main h4,
+#story-director-modal .sd-relus-card > details > summary > b,
+#story-director-modal .sd-chatter-card .sd-section-title h3,
+#story-director-modal .sd-geo-events-fold > summary > b,
+#story-director-modal .sd-evt-head h4,
+#story-director-modal .sd-geo-list-card > summary strong,
+#story-director-modal .sd-geo-d-head h4 {
+  font-size: var(--qm-type-card-title) !important;
+  line-height: 1.35 !important;
+}
+
+/* Keep the selectable item title centered in the summary row even when its
+   metadata chips wrap to a second line. The order marker is a header badge,
+   not an inline paragraph node, so it stays aligned to the title's top line. */
+#story-director-modal .sd-item-fold > summary { align-items: center !important; }
+#story-director-modal .sd-item-summary-main {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+#story-director-modal .sd-item-summary-main h4 { align-self: flex-start; }
+#story-director-modal .sd-selection-order-card {
+  top: 12px;
+  transform: none;
+  font-size: .72em;
+  line-height: 1.1;
 }

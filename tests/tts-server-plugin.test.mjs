@@ -42,7 +42,7 @@ const serverPluginSource = await readFile(new URL('../server-plugin.js', import.
 assert.equal([...routes.keys()].some((route) => route.includes('/text-collections')), false);
 assert.doesNotMatch(serverPluginSource, /qianmu-text-collection|installTextCollection|textCollection(?:Options|Native)/);
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
-const installGuide = await readFile(new URL('../INSTALL-DOUBAO-APIKEY.md', import.meta.url), 'utf8');
+const installGuide = await readFile(new URL('../INSTALL-SERVER-PLUGIN.md', import.meta.url), 'utf8');
 const shellInstaller = await readFile(new URL('../install-server-plugin.sh', import.meta.url), 'utf8');
 const powershellInstaller = await readFile(new URL('../install-server-plugin.ps1', import.meta.url), 'utf8');
 assert.equal(packageJson.main, 'server-plugin.js');

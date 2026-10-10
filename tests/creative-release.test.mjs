@@ -12,7 +12,7 @@ const refreshed = new Set([
 const retained = new Map([
   ['qianmu-hive-commands.js', '1.59.446'], ['qianmu-prose-hive.js', '1.59.446'], ['qianmu-prose-floor-tools.js', '1.59.446'],
   ['qianmu-theme-menu.js', '1.59.444'], ['qianmu-appearance-session.js', '1.59.444'],
-  ['qianmu-memory-context.js', '1.59.443'],
+  ['qianmu-memory-context.js', '1.59.448'],
   ['qianmu-st-context-sources.js', '1.59.445'], ['qianmu-model-host.js', '1.59.445'],
 ]);
 const files = await collectReleaseFiles();
