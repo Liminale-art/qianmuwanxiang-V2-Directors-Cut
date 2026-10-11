@@ -31,7 +31,7 @@ import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composit
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
 import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.448';
-import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames } from './qianmu-st-context-sources.js?v=1.59.445';
+import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.448';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
 import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.414';
@@ -190,6 +190,7 @@ import {
 } from './qianmu-notes.js?v=1.59.419';
 import { createNotesPanelSync, captureNotesRefresh, mergeNotesRefresh } from './qianmu-notes-panel-sync.js?v=1.59.419';
 import { readNotesDeviceState, saveNotesDeviceState } from './qianmu-notes-device.js';
+import { bindProseAssistantWindow } from './qianmu-prose-assistant-window.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
 import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js?v=1.59.444';
 import { QIANMU_HIVE_THEME_LOGO } from './qianmu-hive-theme-logo.js';
@@ -1347,6 +1348,7 @@ let notesActiveId = '';
 let notesSearch = '';
 let notesZCounter = 10;
 let notesPanelResizeObserver = null;
+let notesPanelWindowDispose = null;
 const notesSaveTimers = new Map();
 let notesSyncPanel = null, notesDevice = null, notesViewEpoch = 0, notesReadEpoch = 0;
 let storyboardInlineTimer = null;
@@ -3786,26 +3788,39 @@ function stopTheater() {
 function injectToInput(text) {
   const value = String(text || '').trim();
   if (!value) return false;
+  const selectors = ['#send_textarea', 'textarea#send_textarea', 'textarea[name="user_input"]', '#chat-input textarea', 'textarea'];
+  const input = selectors.flatMap((s) => Array.from(document.querySelectorAll(s))).find((el) => !el.disabled && !el.readOnly);
+  let existing = input ? String(input.value || '') : '';
+  if (!existing) {
+    try {
+      const context = ctx();
+      const getter = context.getInputText || context.getInputValue || context.getUserInput;
+      if (typeof getter === 'function') existing = String(getter.call(context) || '');
+      else existing = String(context.inputText || context.userInput || '');
+    } catch (_) {}
+  }
+  // Selection is an authoring aid: keep anything already drafted and append
+  // the chosen passages as a separate block.  This also makes repeated writes
+  // predictable instead of silently replacing the user's draft.
+  const nextValue = existing.trim() ? `${existing.trimEnd()}\n\n${value}` : value;
   try {
     const context = ctx();
     if (typeof context.setInputText === 'function') {
-      context.setInputText(value);
+      context.setInputText(nextValue);
       return true;
     }
   } catch (_) {}
   try {
     if (typeof globalThis.triggerSlash === 'function') {
-      globalThis.triggerSlash('/setinput ' + value);
+      globalThis.triggerSlash('/setinput ' + nextValue);
       return true;
     }
   } catch (_) {}
-  const selectors = ['#send_textarea', 'textarea#send_textarea', 'textarea[name="user_input"]', '#chat-input textarea', 'textarea'];
-  const input = selectors.flatMap((s) => Array.from(document.querySelectorAll(s))).find((el) => !el.disabled && !el.readOnly);
   if (!input) return false;
   input.focus();
   const proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
-  if (descriptor?.set) descriptor.set.call(input, value); else input.value = value;
+  if (descriptor?.set) descriptor.set.call(input, nextValue); else input.value = nextValue;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return true;
@@ -6233,13 +6248,14 @@ function renderNotesPanel() {
       <div class="sd-note-item-tools" hidden><button type="button" class="sd-note-copy" title="复制" aria-label="复制"><i class="fa-solid fa-copy"></i></button><button type="button" class="sd-note-pin ${note.pinned ? 'active' : ''}" title="${note.pinned ? '取消常驻' : '常驻'}" aria-label="常驻便笺"><i class="fa-solid fa-thumbtack"></i></button><button type="button" class="sd-note-delete" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </div>
   </article>`).join('');
+  const resizeHandle = '<span class="sd-notes-resize" data-notes-resize tabindex="0" role="separator" aria-label="调整便笺窗口大小"></span>';
   if (active) return `<div class="sd-notes-stage"><section class="sd-notes-panel is-editor" role="dialog" aria-modal="false" aria-label="编辑便笺">
     <header><b>便笺</b><div><label class="sd-icon-btn sd-note-font-size-control" title="字号：${editorFontSize}px"><i class="fa-solid fa-font" aria-hidden="true"></i><select class="sd-note-font-size" aria-label="便笺字号">${editorFontOptions}</select></label><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-icon-btn sd-notes-list" title="便笺列表" aria-label="便笺列表"><i class="fa-solid fa-list"></i></button><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div></header>
-    <div class="sd-note-editor" data-note-id="${htmlEscape(active.id)}"><textarea class="sd-note-body" maxlength="20000" aria-label="便笺内容">${htmlEscape(active.body)}</textarea></div>
+    <div class="sd-note-editor" data-note-id="${htmlEscape(active.id)}"><textarea class="sd-note-body" maxlength="20000" aria-label="便笺内容">${htmlEscape(active.body)}</textarea></div>${resizeHandle}
   </section></div>`;
   return `<div class="sd-notes-stage"><section class="sd-notes-panel" role="dialog" aria-modal="false" aria-label="便笺">
     <header><b>便笺</b><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-    <div class="sd-notes-list-view"><div class="sd-notes-search-row"><input class="text_pole sd-notes-search" value="${htmlEscape(notesSearch)}" placeholder="搜索" aria-label="搜索便笺"><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button></div><div class="sd-note-list">${list}</div></div>
+    <div class="sd-notes-list-view"><div class="sd-notes-search-row"><input class="text_pole sd-notes-search" value="${htmlEscape(notesSearch)}" placeholder="搜索" aria-label="搜索便笺"><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button></div><div class="sd-note-list">${list}</div></div>${resizeHandle}
   </section></div>`;
 }
 
@@ -6275,6 +6291,8 @@ function clampNotesPanelSize(size = {}) {
 function stopNotesPanelResizeTracking() {
   notesPanelResizeObserver?.disconnect?.();
   notesPanelResizeObserver = null;
+  notesPanelWindowDispose?.();
+  notesPanelWindowDispose = null;
 }
 
 function syncNotesPanelSizeToViewport(layer = document.getElementById(NOTES_PANEL_LAYER_ID)) {
@@ -6295,22 +6313,39 @@ function syncNotesPanelSizeToViewport(layer = document.getElementById(NOTES_PANE
 function bindNotesPanelResize(layer) {
   stopNotesPanelResizeTracking();
   syncNotesPanelSizeToViewport(layer);
-  if (notesPanelUsesCompactLayout() || typeof ResizeObserver !== 'function') return;
   const panel = layer?.querySelector?.('.sd-notes-panel');
   if (!(panel instanceof Element)) return;
-  const initialRect = panel.getBoundingClientRect();
-  let previous = clampNotesPanelSize({ width: initialRect.width, height: initialRect.height });
-  notesPanelResizeObserver = new ResizeObserver(() => {
-    if (notesPanelUsesCompactLayout() || !panel.isConnected) return;
-    const rect = panel.getBoundingClientRect();
-    const size = clampNotesPanelSize({ width: rect.width, height: rect.height });
-    if (Math.abs(previous.width - size.width) < 1 && Math.abs(previous.height - size.height) < 1) return;
-    previous = size;
-    const noteSettings = notesFeatureSettings();
-    noteSettings.panelSize = size;
-    persistNotesDevice();
-  });
-  notesPanelResizeObserver.observe(panel);
+  if (!notesPanelUsesCompactLayout() && typeof ResizeObserver === 'function') {
+    const initialRect = panel.getBoundingClientRect();
+    let previous = clampNotesPanelSize({ width: initialRect.width, height: initialRect.height });
+    notesPanelResizeObserver = new ResizeObserver(() => {
+      if (notesPanelUsesCompactLayout() || !panel.isConnected) return;
+      const rect = panel.getBoundingClientRect();
+      const size = clampNotesPanelSize({ width: rect.width, height: rect.height });
+      if (Math.abs(previous.width - size.width) < 1 && Math.abs(previous.height - size.height) < 1) return;
+      previous = size;
+      const noteSettings = notesFeatureSettings();
+      noteSettings.panelSize = size;
+      persistNotesDevice();
+    });
+    notesPanelResizeObserver.observe(panel);
+  }
+  const header = panel.querySelector(':scope > header');
+  const resize = panel.querySelector('[data-notes-resize]');
+  if (!notesPanelUsesCompactLayout() && header instanceof Element && resize instanceof Element) {
+    notesPanelWindowDispose = bindProseAssistantWindow(panel, {
+      handle: header,
+      storageKey: 'qianmu.notes.window.v1',
+      initial: notesFeatureSettings().panelSize,
+      margin: 18,
+      minWidth: 280,
+      minHeight: 250,
+      defaultWidth: .6,
+      defaultHeight: .6,
+      maxDefaultWidth: 720,
+      maxDefaultHeight: 560,
+    });
+  }
 }
 
 function renderNotesPanelPortal() {
@@ -7104,9 +7139,15 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     if (edge) return `<path class="sd-geo-event-pulse sd-geo-event-pulse-${stage}${selectedKinds.has(edge.rel.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(edge.rel.kind)}" d="${edge.d}"><title>${htmlEscape(event.title || '世界事件')}</title></path>`;
     if (involved[0] && points.get(involved[0])) {
       const p = points.get(involved[0]);
+      // A single-faction layout puts that faction on the orientation star;
+      // suppress its pulse as well so the centre stays a quiet anchor.
+      if (Math.hypot(p.x - cx, p.y - cy) < 1) return '';
       return `<circle class="sd-geo-event-node-pulse sd-geo-event-pulse-${stage}" cx="${p.x}" cy="${p.y}" r="18" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></circle>`;
     }
-    return `<circle class="sd-geo-event-node-pulse sd-geo-event-pulse-${stage}" cx="${cx}" cy="${cy}" r="${18 + eventIndex * 3}" style="--pulse-delay:${(eventIndex * .47).toFixed(2)}s"><title>${htmlEscape(event.title || '世界事件')}</title></circle>`;
+    // Do not place an event pulse on the centre star when the event cannot be
+    // anchored to a faction.  That fallback read as an orange halo around the
+    // orientation mark; unanchored events remain represented in the event cards.
+    return '';
   }).join('');
 
   // The centre star is a quiet orientation mark.  Use one fixed hairline ring
@@ -7128,7 +7169,7 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     }).join('');
     const tag = `<g class="sd-geo-node-tag" transform="translate(${(tagPos.x - p.x).toFixed(1)},${(tagPos.y - p.y).toFixed(1)})"><rect class="sd-geo-tag-bg" width="${tagPos.w}" height="${tagPos.h}" rx="9"></rect><text class="sd-geo-tag-text" x="${(tagPos.w / 2).toFixed(1)}" y="12.5" text-anchor="middle">${GEO_TREND_ICON[f.trend] || '＝'} ${htmlEscape(tagPos.label)}</text></g>`;
     const tip = `${f.name}（${snip(f.type, 12)}·${f.scale || ''}·${GEO_TREND_CN[f.trend] || '稳守'}）${f.standing ? `\n${f.standing}` : ''}${f.agenda ? `\n诉求：${f.agenda}` : ''}`;
-    return `<g class="sd-geo-node sd-geo-node-${trend}" data-fid="${htmlEscape(f.id)}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${htmlEscape(f.name)}"><title>${htmlEscape(tip)}</title><g class="sd-geo-clues"><ellipse class="sd-geo-clue-orbit" cx="0" cy="0" rx="${orx}" ry="${ory}" transform="rotate(${(baseA * 180 / Math.PI).toFixed(1)})"></ellipse>${clueSvg}</g><circle class="sd-geo-node-focus-ring" r="${rad + 7}"></circle><circle class="sd-geo-node-hit" r="19"></circle><circle class="sd-geo-node-dot" r="${rad}"></circle>${tag}</g>`;
+    return `<g class="sd-geo-node sd-geo-node-${trend}" data-fid="${htmlEscape(f.id)}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${htmlEscape(f.name)}"><title>${htmlEscape(tip)}</title><g class="sd-geo-clues"><ellipse class="sd-geo-clue-orbit" cx="0" cy="0" rx="${orx}" ry="${ory}" transform="rotate(${(baseA * 180 / Math.PI).toFixed(1)})"></ellipse>${clueSvg}</g><circle class="sd-geo-node-focus-ring" r="${rad + 7}"></circle><circle class="sd-geo-node-hit" r="19"></circle><circle class="sd-geo-node-cover" r="${(rad + 1.8).toFixed(1)}"></circle><circle class="sd-geo-node-dot" r="${rad}"></circle>${tag}</g>`;
   }).join('');
 
   return `<svg class="sd-geo-map" viewBox="0 0 ${W} ${H}" role="img" aria-label="势力关系聚焦星图" preserveAspectRatio="xMidYMid meet"><defs><marker id="sd-geo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--sd-geo-vassal)"></path></marker></defs><g class="sd-geo-bed">${bed}</g>${axis}<g class="sd-geo-edges">${edges}</g><g class="sd-geo-event-pulses">${eventPulses}</g><g class="sd-geo-nodes">${nodes}</g></svg>`;
@@ -7186,7 +7227,7 @@ function renderFactionListView(factions, rels) {
     }).join('');
     const clues = (Array.isArray(f.clues) ? f.clues : []).filter(Boolean).map((clue) => `<span>${htmlEscape(clue)}</span>`).join('');
     return `<details class="sd-geo-list-card" data-acc="geo-list-${htmlEscape(f.id)}">
-      <summary><i class="sd-geo-list-dot sd-geo-list-dot-${htmlEscape(f.trend || 'stable')}"></i><strong>${htmlEscape(f.name)}</strong><span>${htmlEscape([f.type, f.scale].filter(Boolean).join(' · '))}</span><em>${GEO_TREND_ICON[f.trend] || '＝'} ${GEO_TREND_CN[f.trend] || '稳守'}</em><small>${mine.length}</small></summary>
+      <summary><i class="sd-geo-list-dot sd-geo-list-dot-${htmlEscape(f.trend || 'stable')}"></i><strong>${htmlEscape(f.name)}</strong><span>${htmlEscape([f.type, f.scale].filter(Boolean).join(' · '))}</span><em>${GEO_TREND_ICON[f.trend] || '＝'} ${GEO_TREND_CN[f.trend] || '稳守'}</em></summary>
       <div class="sd-geo-list-body">
         ${f.standing ? `<p>${htmlEscape(f.standing)}</p>` : ''}
         ${f.agenda ? `<p class="sd-geo-list-agenda"><i class="fa-solid fa-bullseye"></i>${htmlEscape(f.agenda)}</p>` : ''}
@@ -8892,7 +8933,10 @@ function renderPresetSourcePanel() {
   const selected = getSelectedPresetNames().filter((name) => names.includes(name));
   const active = selected[0] || '';
   const headLabel = active || '未选择';
-  const rows = names.map((name) => `<label class="sd-source-row"><input type="radio" name="sd-preset-radio" class="sd-pick-preset" data-name="${htmlEscape(name)}" ${name === active ? 'checked' : ''}><span>${htmlEscape(name)}</span>${currentName && name === currentName ? badge('当前使用') : ''}</label>`).join('');
+  const renderRow = (name) => `<label class="sd-source-row"><input type="radio" name="sd-preset-radio" class="sd-pick-preset" data-name="${htmlEscape(name)}" ${name === active ? 'checked' : ''}><span>${htmlEscape(name)}</span>${currentName && name === currentName ? badge('当前使用') : ''}</label>`;
+  const rows = groupPresetNames(names).map((entry) => entry.grouped
+    ? `<details class="sd-preset-version-group" data-preset-group="${htmlEscape(entry.base)}" ${entry.items.some((item) => item.name === active) ? 'open' : ''}><summary class="sd-source-row"><span>${htmlEscape(entry.base)}</span><small>${entry.items.length} 个版本</small></summary><div class="sd-preset-version-items">${entry.items.map((item) => renderRow(item.name)).join('')}</div></details>`
+    : renderRow(entry.name)).join('');
   return `
     <div class="sd-context-source-pick">
       <details class="sd-dropdown" data-acc="dd-preset">
@@ -8902,7 +8946,6 @@ function renderPresetSourcePanel() {
           ${rows}
         </div>
       </details>
-      <button type="button" class="sd-icon-btn sd-refresh-presets" title="读取预设" aria-label="读取预设"><i class="fa-solid fa-rotate"></i></button>
     </div>
     ${active ? renderSelectedPresetEntries([active]) : ''}`;
 }
@@ -8937,7 +8980,6 @@ function renderWorldBookSourcePanel() {
         <summary class="sd-dropdown-head"><span>世界书目录</span><b>${selected.length} 项</b></summary>
         <div class="sd-dropdown-body sd-scroll">${rows}</div>
       </details>
-      <button type="button" class="sd-icon-btn sd-refresh-worldbooks" title="读取世界书" aria-label="读取世界书"><i class="fa-solid fa-rotate"></i></button>
     </div>
     ${viewName ? renderSelectedWorldBookEntries([viewName]) : ''}`;
 }
@@ -24409,8 +24451,6 @@ function bindActiveTabEvents(root) {
     saveSettings();
     renderModal();
   }));
-  root.querySelectorAll('.sd-refresh-presets').forEach((el) => el.addEventListener('click', () => refreshPresets(true)));
-  root.querySelectorAll('.sd-refresh-worldbooks').forEach((el) => el.addEventListener('click', () => refreshWorldBooks(true)));
   root.querySelectorAll('.sd-pick-preset').forEach((el) => el.addEventListener('change', () => {
     // Clear hidden legacy selections too; the blank option means no preset at all.
     setPresetNameSelected(el.dataset.name, true);

@@ -1,14 +1,14 @@
 // Device-only geometry; no conversation content is stored here.
-export function bindProseAssistantWindow(panel,{handle,storageKey}={}){
+export function bindProseAssistantWindow(panel,{handle,storageKey,initial={},margin=10,minWidth=280,minHeight=220,defaultWidth=.88,defaultHeight=.68,maxDefaultWidth=540,maxDefaultHeight=600}={}){
  const view=panel.ownerDocument.defaultView,viewport=view.visualViewport,listeners=[];let gesture=null,closed=false,touched=false;
  const listen=(node,type,fn)=>{node?.addEventListener(type,fn);listeners.push(()=>node?.removeEventListener(type,fn));};
- function fit(value={}){const x=viewport?.offsetLeft||0,y=viewport?.offsetTop||0,w=viewport?.width||view.innerWidth,h=viewport?.height||view.innerHeight;
-  const number=(v,f)=>Number.isFinite(v)?v:f,maxW=Math.max(1,w-20),maxH=Math.max(1,h-20);
-  const width=Math.max(Math.min(280,maxW),Math.min(maxW,number(value.width,Math.min(w*.88,540))));
-  const height=Math.max(Math.min(220,maxH),Math.min(maxH,number(value.height,Math.min(h*.68,600))));
-  return {width,height,x:Math.max(x+10,Math.min(x+w-10-width,number(value.x,x+(w-width)/2))),y:Math.max(y+10,Math.min(y+h-10-height,number(value.y,y+(h-height)/2)))};
+  function fit(value={}){const x=viewport?.offsetLeft||0,y=viewport?.offsetTop||0,w=viewport?.width||view.innerWidth,h=viewport?.height||view.innerHeight;
+  const number=(v,f)=>Number.isFinite(v)?v:f,maxW=Math.max(1,w-margin*2),maxH=Math.max(1,h-margin*2);
+  const width=Math.max(Math.min(minWidth,maxW),Math.min(maxW,number(value.width,Math.min(w*defaultWidth,maxDefaultWidth))));
+  const height=Math.max(Math.min(minHeight,maxH),Math.min(maxH,number(value.height,Math.min(h*defaultHeight,maxDefaultHeight))));
+  return {width,height,x:Math.max(x+margin,Math.min(x+w-margin-width,number(value.x,x+(w-width)/2))),y:Math.max(y+margin,Math.min(y+h-margin-height,number(value.y,y+(h-height)/2)))};
  }
- const readSaved=()=>{try{return storageKey?JSON.parse(view.localStorage.getItem(storageKey)||'{}')||{}:{};}catch{return {};}};
+ const readSaved=()=>{try{return storageKey?{...initial,...(JSON.parse(view.localStorage.getItem(storageKey)||'{}')||{})}:{...initial};}catch{return {...initial};}};
  let saved=readSaved();
  let box=fit(saved),preferred={...box};const paint=()=>{for(const [name,value] of Object.entries({left:box.x,top:box.y,width:box.width,height:box.height}))panel.style[name]=`${value}px`;};paint();
  const persist=()=>{touched=true;try{if(storageKey)view.localStorage.setItem(storageKey,JSON.stringify(box));}catch{}};

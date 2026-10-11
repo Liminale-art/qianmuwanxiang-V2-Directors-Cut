@@ -351,8 +351,16 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
   /* Keep the per-chain rail subtle, but do not replace the node gradients
      below with the generic raised surface used by other nested cards. */
   background: linear-gradient(90deg,
-    color-mix(in srgb, var(--sd-chain-tone) var(--sd-chain-fill, 6%), transparent),
+    color-mix(in srgb, var(--sd-chain-tone) var(--sd-chain-fill, 9%), transparent),
     transparent 88%), color-mix(in srgb, var(--qm-raised) 28%, transparent) !important;
+}
+#story-director-modal[data-qm-theme] .sd-chain-node {
+  /* Keep the origin-to-tail gradient visible in editorial and glass skins;
+     the generic raised nested-card surface must not flatten these nodes. */
+  background: linear-gradient(104deg,
+    color-mix(in srgb, var(--sd-chain-tone) var(--sd-chain-node-fill, 20%), transparent),
+    color-mix(in srgb, var(--sd-chain-tone) var(--sd-chain-node-tail, 8%), transparent) 82%,
+    transparent 100%) !important;
 }
 #story-director-modal[data-qm-theme] :is(.sd-item-summary-main h4, .sd-item-detail dd, .sd-chain-node, .sd-relus-parties, .sd-relus-tension, .sd-relus-drift) {
   min-width: 0;

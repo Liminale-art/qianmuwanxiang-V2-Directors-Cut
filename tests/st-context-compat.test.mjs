@@ -34,6 +34,19 @@ test('official preset manager reads CC prompt names and arbitrary presets withou
   assert.ok(f.calls.filter(row => row[0] === 'manager').every(row => row[1] === 'openai')); assert.equal(f.context.mainApi, 'novel');
 });
 
+test('versioned preset names group only when siblings exist and sort newest first', () => {
+  const grouped = sources.groupPresetNames(['单独 v2', '写作 v1.2', '写作 v1.10', '普通预设', '写作 v1.3']);
+  assert.deepEqual(grouped, [
+    { grouped: false, name: '单独 v2' },
+    { grouped: true, base: '写作', items: [
+      { name: '写作 v1.10', version: [1, 10], versionText: '1.10' },
+      { name: '写作 v1.3', version: [1, 3], versionText: '1.3' },
+      { name: '写作 v1.2', version: [1, 2], versionText: '1.2' },
+    ] },
+    { grouped: false, name: '普通预设' },
+  ]);
+});
+
 test('official current prompt edits and empty arrays are authoritative, not replaced by saved or stale helper content', () => {
   const f = fixture(); f.sandbox.TavernHelper = { getPreset: () => ({ prompts: [{ content: 'stale helper' }] }) };
   assert.equal(f.sandbox.getPresetEntries('Current')[0].content, 'unsaved live prompt');

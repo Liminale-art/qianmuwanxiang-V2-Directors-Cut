@@ -25,6 +25,78 @@ const copyWorld = (value, name) => structuredClone(Array.isArray(value) ? value 
 const namesOnly = values => [...new Set((Array.isArray(values) ? values : []).filter(value => typeof value === 'string' && value.trim()))];
 const headers = (context, globals) => context.getRequestHeaders?.() || { 'Content-Type': 'application/json', 'X-CSRF-Token': globals.document?.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || globals.token || '' };
 
+// Context picker presentation helper. ST exposes preset names as a flat list,
+// while users commonly keep versioned copies side by side (for example
+// "剧本助手 v1.2" and "剧本助手 v1.3").  Group only when there are at least
+// two explicit versioned siblings; a lone version remains a normal row so the
+// picker never hides the original name or invents a category for it.
+const PRESET_VERSION_PATTERNS = [
+    /^(.*?)[\s._·\-([（【]*(?:v|ver|version|版本)\s*([0-9]+(?:\.[0-9]+){0,3})\s*[\])）】]*$/i,
+    /^(.*?)[\s._·-]+([0-9]+\.[0-9]+(?:\.[0-9]+){0,2})\s*$/i,
+];
+
+function parsePresetVersionName(name) {
+    const value = String(name || '').trim();
+    if (!value) return null;
+    for (const pattern of PRESET_VERSION_PATTERNS) {
+        const match = pattern.exec(value);
+        const base = String(match?.[1] || '').replace(/[\s._·-]+$/, '').trim();
+        if (!base || !match?.[2]) continue;
+        const version = match[2].split('.').map(Number);
+        if (version.some(number => !Number.isSafeInteger(number) || number < 0)) continue;
+        return { name: value, base, version, versionText: match[2] };
+    }
+    return null;
+}
+
+const comparePresetVersions = (a, b) => {
+    for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+        const delta = (b[index] || 0) - (a[index] || 0);
+        if (delta) return delta;
+    }
+    return 0;
+};
+
+/**
+ * Return flat picker rows and version groups without changing the underlying
+ * preset names used for selection or context reads.  A grouped row is
+ * `{grouped:true, base, items:[{name,versionText}]}`; singleton rows retain
+ * `{grouped:false, name}`.  The function is exported so the grouping contract
+ * can be checked without a DOM or live ST connection.
+ */
+export function groupPresetNames(names) {
+    const rows = namesOnly(names).map((name, index) => {
+        const parsed = parsePresetVersionName(name);
+        return { name, index, parsed };
+    });
+    const groups = new Map();
+    for (const row of rows) {
+        if (!row.parsed) continue;
+        const key = row.parsed.base.toLocaleLowerCase();
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(row);
+    }
+    const groupedRows = new Set();
+    const result = [];
+    for (const row of rows) {
+        if (!row.parsed) {
+            result.push({ grouped: false, name: row.name });
+            continue;
+        }
+        const siblings = groups.get(row.parsed.base.toLocaleLowerCase()) || [];
+        if (siblings.length < 2) {
+            result.push({ grouped: false, name: row.name });
+            continue;
+        }
+        if (groupedRows.has(row.parsed.base.toLocaleLowerCase())) continue;
+        groupedRows.add(row.parsed.base.toLocaleLowerCase());
+        const items = [...siblings].sort((a, b) => comparePresetVersions(a.parsed.version, b.parsed.version) || a.index - b.index)
+            .map(item => ({ name: item.name, version: [...item.parsed.version], versionText: item.parsed.versionText }));
+        result.push({ grouped: true, base: row.parsed.base, items });
+    }
+    return result;
+}
+
 export function stCurrentPresetName(context, globals = globalThis) {
     const chat = context.chatCompletionSettings || {};
     const names = [attempt(() => manager(context)?.getSelectedPresetName(), ''), chat.preset_settings_openai, chat.preset_settings, chat.name, chat.preset, chat.presetName, chat.preset_name];

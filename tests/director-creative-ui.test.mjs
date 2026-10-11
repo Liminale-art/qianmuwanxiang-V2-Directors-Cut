@@ -111,6 +111,18 @@ test('paragraph drafts retain original prose in display order without planning l
   assert.equal(duplicate.length, 1);
 });
 
+test('writing selected passages appends to an existing chat draft instead of replacing it', () => {
+  let written = '';
+  const input = { value: '已有作者草稿', disabled: false, readOnly: false };
+  const c = vm.createContext({
+    ctx: () => ({ setInputText: value => { written = value; } }),
+    document: { querySelectorAll: () => [input] },
+  });
+  vm.runInContext(section('injectToInput'), c);
+  assert.equal(c.injectToInput('新选择片段'), true);
+  assert.equal(written, '已有作者草稿\n\n新选择片段');
+});
+
 test('character paragraph order is summarized in the card header without an inline marker', () => {
   const { c } = fixture(null);
   const item = { name: '陈晖', content: '他把两份记录放在桌上。', inject_prompt: '他在页脚写下新的日期。' };
@@ -162,9 +174,9 @@ test('each ripple marks node depth for per-origin emphasis and theme skins retai
     'three ripple rows receive distinct tone assignments');
   for (const depth of [0, 1, 2, 3]) assert.equal((html.match(new RegExp(`data-chain-depth="${depth}"`, 'g')) || []).length, 3,
     `each ripple exposes depth ${depth}`);
-  assert.match(styles, /\.sd-chain-node-spark\s*\{[^}]*--sd-chain-node-fill:\s*31%/);
-  assert.match(styles, /\.sd-chain-node\[data-chain-depth="2"\]\s*\{[^}]*--sd-chain-node-fill:\s*11%/);
-  assert.match(styles, /\.sd-chain-node\[data-chain-depth="3"\]\s*\{[^}]*--sd-chain-node-fill:\s*7%/);
+  assert.match(styles, /\.sd-chain-node-spark\s*\{[^}]*--sd-chain-node-fill:\s*40%/);
+  assert.match(styles, /\.sd-chain-node\[data-chain-depth="2"\]\s*\{[^}]*--sd-chain-node-fill:\s*15%/);
+  assert.match(styles, /\.sd-chain-node\[data-chain-depth="3"\]\s*\{[^}]*--sd-chain-node-fill:\s*9%/);
   assert.match(styles, /\.sd-chain-link\s*\{[^}]*color:\s*var\(--sd-chain-tone\)/);
   assert.match(skinStyles, /#story-director-modal\[data-qm-theme\] \.sd-chain-item\s*\{[^}]*linear-gradient/,
     'editorial and glass override the rail without removing the gradient');
@@ -173,8 +185,8 @@ test('each ripple marks node depth for per-origin emphasis and theme skins retai
 });
 
 test('ripples put the strongest gradient on each chain origin and preserve it in editorial and glass skins', () => {
-  assert.match(styles, /\.sd-chain-node-spark\s*\{[^}]*--sd-chain-node-fill:\s*31%[^}]*--sd-chain-node-tail:\s*15%/);
-  assert.match(styles, /\.sd-chain-node\[data-chain-depth="2"\]\s*\{[^}]*--sd-chain-node-fill:\s*11%/);
+  assert.match(styles, /\.sd-chain-node-spark\s*\{[^}]*--sd-chain-node-fill:\s*40%[^}]*--sd-chain-node-tail:\s*18%/);
+  assert.match(styles, /\.sd-chain-node\[data-chain-depth="2"\]\s*\{[^}]*--sd-chain-node-fill:\s*15%/);
   assert.match(styles, /\.sd-chain-link\s*\{[^}]*color:\s*var\(--sd-chain-tone\)/);
   assert.match(skinStyles, /#story-director-modal\[data-qm-theme\] \.sd-chain-item\s*\{[^}]*background:\s*linear-gradient\([^}]*var\(--sd-chain-tone\)/s);
   assert.doesNotMatch(skinStyles, /:is\(\.sd-item-card, \.sd-chain-item, \.sd-relus-row\)\s*\{[^}]*background:/s);
