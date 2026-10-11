@@ -11502,7 +11502,7 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   line-height: 1.7;
 }
 
-/* v1.59.449 · final visual correction pass
+/* final visual correction pass
    Card headings are one continuous ink→accent gradient.  The previous tail
    ornament made the heading itself look unfinished, especially on the
    editorial skin. */
