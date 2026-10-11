@@ -17,8 +17,9 @@ test('guide gives one short copy-paste install command and a visible success mar
 test('Baota update block is non-interactive and assumes the current ST root', () => {
   assert.ok(oneClick, 'guide must provide one copy-paste Bash block');
   for (const marker of [
+    "bash -s <<'QIANMU_UPDATE'",
     'ST_ROOT=$(pwd -P)',
-    'pm2 jlist',
+    "PM2_NAME='sillytavern'",
     'QIANMU_SERVER_STOPPED=1',
     'pm2 stop "$PM2_NAME"',
     'pm2 start "$PM2_NAME"',
@@ -26,6 +27,8 @@ test('Baota update block is non-interactive and assumes the current ST root', ()
     '更新完成：PM2=',
   ]) assert.ok(oneClick.includes(marker), `missing one-click marker: ${marker}`);
   assert.doesNotMatch(oneClick, /read\s+-r\s+-p|健康检查地址|SillyTavern 根目录绝对路径/);
+  assert.doesNotMatch(oneClick, /pm2\s+jlist|\bnode\b|\|\s*(QIANMU_SERVER_STOPPED=1\s+)?sh\b/);
+  assert.match(oneClick, /\nQIANMU_UPDATE$/);
   assert.ok(oneClick.indexOf('pm2 stop "$PM2_NAME"') < oneClick.indexOf('install-server-plugin.sh'));
   assert.ok(oneClick.indexOf('install-server-plugin.sh') < oneClick.indexOf('pm2 start "$PM2_NAME"'));
   const syntax = spawnSync(bash, ['-n'], { input: `${oneClick}\n`, encoding: 'utf8', windowsHide: true, timeout: 10000 });

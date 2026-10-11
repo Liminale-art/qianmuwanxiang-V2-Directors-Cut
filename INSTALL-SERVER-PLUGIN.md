@@ -29,43 +29,34 @@ QIANMU_SERVER_STOPPED=1 curl -fsSL https://raw.githubusercontent.com/Liminale-ar
 
 ## 已有安装更新（VPS + PM2，一次粘贴）
 
-这段命令默认在 **SillyTavern 根目录**执行，不会询问目录、PM2 名称或健康地址，也不需要中途反复回车。它会自动完成：检查 → 停止 PM2 → 更新开发分支 → 安装插件 → 启动 PM2 → 检查在线状态。
+这段命令默认在 **SillyTavern 根目录**执行。开发测试环境的 PM2 进程名固定为 `sillytavern`，脚本不会扫描或猜测进程，也不会询问目录、进程名或健康地址。整段命令会在一个独立的 Bash 子进程中运行；更新失败只会结束这次更新，宝塔终端仍保持打开，不需要中途反复回车。它会依次完成：检查 → 停止 PM2 → 更新开发分支 → 安装插件 → 启动 PM2 → 检查在线状态。
 
 ```bash
-set -euo pipefail
+bash -s <<'QIANMU_UPDATE'
+set -Eeuo pipefail
 ST_ROOT=$(pwd -P)
 PLUGIN="$ST_ROOT/plugins/Omniscene"
 BRANCH='refactor/storyboard-modularization'
 REPO='https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git'
+PM2_NAME='sillytavern'
+INSTALLER=''
 fail() { printf '\n更新失败：%s\n请保留上面的终端输出，不要连续重复执行。\n' "$*" >&2; exit 1; }
-trap 'code=$?; [ "$code" -eq 0 ] || printf "服务可能仍保持停止，请先查看上面的失败原因。\\n" >&2' EXIT
+finish() {
+  code=$?
+  [ -z "$INSTALLER" ] || rm -f -- "$INSTALLER" || true
+  [ "$code" -eq 0 ] || printf '服务可能仍保持停止，请先查看上面的失败原因。\n' >&2
+  return "$code"
+}
+trap finish EXIT
 
 [ -f "$ST_ROOT/config.yaml" ] || [ -f "$ST_ROOT/config/config.yaml" ] || fail '当前目录不是 SillyTavern 根目录。'
 command -v pm2 >/dev/null 2>&1 || fail '找不到 pm2，请在宝塔终端加载运行 ST 的 Node/PM2 环境。'
-command -v node >/dev/null 2>&1 || fail '找不到 node，无法自动识别 PM2 进程。'
 [ -d "$PLUGIN/.git" ] && [ ! -L "$PLUGIN/.git" ] || fail '没有找到现有 Git 插件；首次安装请执行上面的安装命令。'
+pm2 describe "$PM2_NAME" >/dev/null 2>&1 || fail '找不到 PM2 进程 sillytavern，请先在宝塔确认进程名称。'
 
 remote=$(git -C "$PLUGIN" remote get-url origin) || fail '无法读取插件远端地址。'
 [ "${remote%/}" = "$REPO" ] || [ "${remote%/}" = 'git@github.com:Liminale-art/qianmuwanxiang-V2-Directors-Cut.git' ] || fail "插件远端不是官方仓库：$remote"
 [ -z "$(git -C "$PLUGIN" status --short)" ] || fail '插件有未提交的本地改动，请先备份并核对。'
-
-export ST_ROOT
-PM2_NAME="${QIANMU_PM2_NAME:-}"
-if [ -z "$PM2_NAME" ]; then
-PM2_NAME=$(pm2 jlist 2>/dev/null | node -e '
-let text="";
-process.stdin.on("data", chunk => text += chunk);
-process.stdin.on("end", () => {
-  const root = String(process.env.ST_ROOT || "").replace(/\\/g, "/").replace(/\\/$/, "");
-  let rows;
-  try { rows = JSON.parse(text); } catch { process.exit(2); }
-  const matches = rows.filter(row => String(row.pm2_env?.pm_cwd || "").replace(/\\/g, "/").replace(/\\/$/, "") === root);
-  if (matches.length !== 1) process.exit(3);
-  process.stdout.write(String(matches[0].name || ""));
-});
-') || fail '无法自动识别唯一的 PM2 进程；请先用 pm2 status 确认只有一个 ST 进程。'
-fi
-[ -n "$PM2_NAME" ] || fail 'PM2 进程名为空。'
 
 git -C "$PLUGIN" fetch origin "$BRANCH" || fail '获取服务端分支失败。'
 if git -C "$PLUGIN" show-ref --verify --quiet "refs/heads/$BRANCH"; then
@@ -77,7 +68,9 @@ fi
 [ -z "$(git -C "$PLUGIN" status --short)" ] || fail '切换分支后出现本地改动，已停止。'
 
 pm2 stop "$PM2_NAME" || fail 'PM2 停止失败。'
-QIANMU_SERVER_STOPPED=1 curl -fsSL "https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/$BRANCH/install-server-plugin.sh" | QIANMU_SERVER_STOPPED=1 sh || fail '插件更新失败。'
+INSTALLER=$(mktemp)
+curl -fsSL "https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/$BRANCH/install-server-plugin.sh" -o "$INSTALLER" || fail '下载安装脚本失败。'
+QIANMU_SERVER_STOPPED=1 sh "$INSTALLER" || fail '插件更新失败。'
 COMMIT=$(git -C "$PLUGIN" rev-parse HEAD) || fail '无法读取更新后的提交节点。'
 pm2 start "$PM2_NAME" || fail '插件已更新，但 PM2 启动失败。'
 sleep 2
@@ -85,11 +78,12 @@ pm2 describe "$PM2_NAME" | grep -Eq 'status[[:space:]]+online|online' || fail 'P
 
 printf '\n更新完成：PM2=%s，服务端提交=%s\n' "$PM2_NAME" "$COMMIT"
 printf '现在刷新 ST 页面；如需核对接口，再访问 /api/plugins/qianmu-tts/health。\n'
+QIANMU_UPDATE
 ```
 
 最后看到 `更新完成：PM2=...，服务端提交=...`，才算更新成功。脚本在停止后任一步失败都会停在现场，不会把失败伪报成成功。
 
-如果服务器上确实有多个 PM2 服务，脚本会明确停在“无法自动识别”这一步，不会猜错进程。此时只需把命令开头的 `ST_ROOT=$(pwd -P)` 前面加上 `QIANMU_PM2_NAME=你的ST进程名`，再执行同一段；不需要逐步回答问题。
+本开发环境已经固定使用 `sillytavern`。如果你的部署实际使用了别的 PM2 名称，只改脚本最前面的 `PM2_NAME='sillytavern'` 一处即可。
 
 ## PM2 手动确认（只在一键命令提示时使用）
 
