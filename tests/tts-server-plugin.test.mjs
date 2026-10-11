@@ -48,13 +48,12 @@ const powershellInstaller = await readFile(new URL('../install-server-plugin.ps1
 assert.equal(packageJson.main, 'server-plugin.js');
 assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
 assert.equal(manifest.version, packageJson.version);
-assert.match(installGuide, /install-server-plugin\.sh \| sh/);
+assert.match(installGuide, /install-server-plugin\.sh \| QIANMU_SERVER_STOPPED=1 sh/);
 assert.match(installGuide, /install-server-plugin\.ps1 \| iex/);
-assert.match(installGuide, /云端 \/ VPS 部署/);
-assert.match(installGuide, /本地部署/);
-assert.match(installGuide, /重启 SillyTavern 后端服务或 Docker 容器/);
-assert.match(installGuide, /不是只刷新、关闭或重新打开 ST 网页/);
-assert.match(installGuide, /st\.example\.com\/api\/plugins\/qianmu-tts\/health/);
+assert.match(installGuide, /VPS \+ PM2，一次粘贴/);
+assert.match(installGuide, /Windows 本地安装/);
+assert.match(installGuide, /只刷新网页不算完成/);
+assert.match(installGuide, /后端启动后，可在浏览器打开/);
 assert.match(shellInstaller, /enableServerPlugins: true/);
 assert.match(shellInstaller, /mkdir -p "\$PLUGIN_PARENT"/);
 assert.match(shellInstaller, /config\/config\.yaml/);
