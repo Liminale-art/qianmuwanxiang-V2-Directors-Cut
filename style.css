@@ -11382,28 +11382,14 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   line-height: 1.35 !important;
 }
 
-/* The three creative item lists are deliberately a half-step quieter than
-   the section title; relationship names follow the same optical measure. */
+/* The three creative item lists sit one optical step below the section title;
+   relationship names follow the same compact measure. */
 #story-director-modal .sd-plan-section .sd-item-summary-main h4,
 #story-director-modal .sd-relus-parties {
-  font-size: calc(var(--qm-type-card-title) - .5px) !important;
+  font-size: calc(var(--qm-type-card-title) - 1px) !important;
 }
 #story-director-modal .sd-chain-card > details > summary > b {
   font-size: var(--qm-type-card-title) !important;
-}
-
-/* Small tail ornament: the title stays ink-coloured and readable, while its
-   final edge resolves into the live theme accent. */
-#story-director-modal :is(.sd-card-title-row > h3, .sd-section-title h3, .sd-hero-top > h3, .sd-plain-fold > summary > b)::after {
-  content: '';
-  display: inline-block;
-  width: 1.35em;
-  height: .18em;
-  margin-inline-start: .42em;
-  vertical-align: .12em;
-  border-radius: 999px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--sd-accent) 0%, transparent), var(--sd-accent));
-  opacity: .82;
 }
 
 /* Keep the selectable item title centered in the summary row even when its
@@ -11514,4 +11500,199 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-backstage-blueprint .sd-lib-item {
   font-size: var(--qm-type-body);
   line-height: 1.7;
+}
+
+/* v1.59.449 · final visual correction pass
+   Card headings are one continuous ink→accent gradient.  The previous tail
+   ornament made the heading itself look unfinished, especially on the
+   editorial skin. */
+#story-director-modal {
+  --qm-card-title-gradient: linear-gradient(102deg, var(--sd-text) 0%, var(--sd-text) 30%, var(--sd-accent) 100%);
+  --qm-source-control-height: 42px;
+}
+#story-director-modal :is(
+  .sd-card-title-row > h3,
+  .sd-section-title h3,
+  .sd-hero-top > h3,
+  .sd-plain-fold > summary > b,
+  .sd-card > h3,
+  .sd-template-head h3,
+  .sd-plan-section > details > summary > b,
+  .sd-item-summary-main h4,
+  .sd-relus-parties,
+  .sd-chain-card > details > summary > b,
+  .sd-geo-events-fold > summary > b,
+  .sd-evt-head h4,
+  .sd-geo-list-card > summary strong,
+  .sd-geo-d-head h4,
+  .sd-backstage-blueprint-body > .sd-field-head > h3,
+  .sd-backstage-blueprint-library .sd-template-head h3,
+  .sd-backstage-blueprint-library .sd-lib-main > h4
+) {
+  background-image: var(--qm-card-title-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: var(--sd-text) !important;
+}
+
+/* Remove the old decorative dash after headings; the heading text now carries
+   the accent itself. */
+#story-director-modal :is(.sd-card-title-row > h3, .sd-section-title h3, .sd-hero-top > h3, .sd-plain-fold > summary > b)::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Item/relationship names need a visible optical step below the fate-card
+   title. A full 1px reduction survives browser rasterisation at the compact
+   mobile sizes while remaining on the shared type scale. */
+#story-director-modal .sd-plan-section .sd-item-summary-main h4,
+#story-director-modal .sd-relus-parties {
+  font-size: calc(var(--qm-type-card-title) - 1px) !important;
+  font-weight: 560 !important;
+  letter-spacing: 0 !important;
+}
+
+/* The collapsed rehearsal rows have a real vertical rhythm; centering the
+   summary content needs a minimum row height, otherwise align-items:center has
+   no visible effect because the row is only as tall as its text. */
+#story-director-modal .sd-plan-section .sd-item-fold > summary {
+  min-height: 68px;
+  box-sizing: border-box;
+  align-items: center !important;
+}
+#story-director-modal .sd-plan-section .sd-item-summary-main {
+  min-height: 40px;
+  align-self: center;
+  justify-content: center;
+}
+
+/* World-map dossier: use a stable three-column header and stacked, padded
+   evidence rows so long names cannot push the close button onto a second line. */
+#story-director-modal .sd-geo-detail { padding: 14px; }
+#story-director-modal .sd-geo-d-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+#story-director-modal .sd-geo-d-head h4 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#story-director-modal .sd-geo-d-trend { justify-self: end; }
+#story-director-modal .sd-geo-d-close {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+#story-director-modal .sd-geo-d-meta { margin-top: 8px; }
+#story-director-modal :is(.sd-geo-d-standing, .sd-geo-d-agenda) {
+  margin: 9px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sd-geo-skin-pop) 42%, transparent);
+  line-height: 1.6;
+}
+#story-director-modal .sd-geo-d-rels {
+  display: grid;
+  gap: 8px;
+  margin-top: 11px;
+}
+#story-director-modal .sd-geo-d-rel {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-left-width: 3px;
+  border-radius: 0 9px 9px 0;
+  background: color-mix(in srgb, var(--sd-geo-skin-pop) 30%, transparent);
+  line-height: 1.55;
+}
+#story-director-modal .sd-geo-d-kind { justify-content: center; min-height: 20px; }
+#story-director-modal .sd-geo-d-rtext { line-height: 1.55; }
+
+/* List view follows the same left edge and keeps metadata in its own column. */
+#story-director-modal .sd-geo-list-card > summary {
+  grid-template-columns: 8px minmax(0, 1.35fr) minmax(0, .8fr) auto;
+  min-height: 46px;
+  padding: 8px 11px;
+}
+#story-director-modal .sd-geo-list-card > summary > span,
+#story-director-modal .sd-geo-list-card > summary > em { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#story-director-modal .sd-geo-list-body {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 13px 28px;
+}
+#story-director-modal .sd-geo-list-body > p { margin: 0; }
+
+@media (max-width: 520px) {
+  #story-director-modal .sd-geo-d-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+  #story-director-modal .sd-geo-d-head h4 { grid-column: 1; grid-row: 1; }
+  #story-director-modal .sd-geo-d-trend { grid-column: 1; grid-row: 2; justify-self: start; }
+  #story-director-modal .sd-geo-d-close { grid-column: 2; grid-row: 1 / span 2; }
+}
+
+/* 取材与幕后共用同一条控件基线。目录、条目、文件夹和剧本库行都以
+   42px 为一个可扫描单位，字号沿用推演页的 body/caption 阶梯。 */
+#story-director-modal :is(
+  .sd-context-source-pick .sd-dropdown-head,
+  .sd-context-source-pick .sd-source-row,
+  .sd-context-block > summary,
+  .sd-unified-source-entry > summary,
+  .sd-lib-folder > summary,
+  .sd-lib-row
+) {
+  min-height: var(--qm-source-control-height);
+  box-sizing: border-box;
+}
+#story-director-modal :is(.sd-context-source-pick .sd-dropdown-head, .sd-context-block > summary) {
+  font-size: var(--qm-type-body) !important;
+}
+#story-director-modal :is(.sd-context-source-pick .sd-source-row, .sd-unified-source-entry > summary, .sd-lib-row) {
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.35;
+}
+#story-director-modal .sd-context-source-pick .sd-dropdown-head > span,
+#story-director-modal .sd-context-block > summary > span,
+#story-director-modal .sd-lib-folder > summary > span {
+  color: var(--sd-muted);
+  font-size: var(--qm-type-caption) !important;
+}
+#story-director-modal :is(.sd-context-source-pick .sd-dropdown-head > b, .sd-context-block > summary > b) {
+  font-size: var(--qm-type-body) !important;
+  font-weight: 600;
+}
+#story-director-modal .sd-context-source-pick .sd-source-row { padding-block: 6px; }
+#story-director-modal .sd-unified-source-entry > summary { display: flex; align-items: center; padding-block: 6px; }
+#story-director-modal .sd-lib-folder > summary { padding-block: 8px; font-size: var(--qm-type-body) !important; }
+#story-director-modal .sd-lib-main h4 { font-size: var(--qm-type-body) !important; line-height: 1.35; }
+#story-director-modal .sd-lib-row { padding-block: 6px; }
+#story-director-modal .sd-lib-search { min-height: var(--qm-source-control-height) !important; height: var(--qm-source-control-height); font-size: var(--qm-type-body) !important; }
+
+/* The desktop list rhythm above must not leak into the compact phone layout.
+   Keep the marker, title and state columns stable at narrow widths; the
+   secondary metadata span is intentionally hidden on phones. */
+@media (max-width: 520px) {
+  #story-director-modal .sd-geo-list-card > summary {
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    gap: 7px;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+  #story-director-modal .sd-geo-list-card > summary > span { display: none; }
+  #story-director-modal .sd-geo-list-body {
+    padding: 10px 10px 12px 12px;
+  }
 }

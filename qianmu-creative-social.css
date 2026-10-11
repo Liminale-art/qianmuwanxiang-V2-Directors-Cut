@@ -23,13 +23,16 @@
   max-height: min(58vh, 520px);
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--social-muted) 35%, transparent) transparent;
+  /* Keep the forum/chat surface scrollable without leaving a second visible
+     scrollbar beside the director page on desktop. */
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
   /* Let a finished forum/chat viewport hand the same gesture back to the
      reading surface.  `contain` traps the wheel/touch at the card boundary. */
   overscroll-behavior-y: auto;
   touch-action: pan-y;
 }
+#story-director-modal .sd-social-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
 #story-director-modal .sd-social-scroll:focus-visible { outline: 2px solid var(--social-accent); outline-offset: -2px; }
 #story-director-modal .sd-social-panel-head {
   display: flex;

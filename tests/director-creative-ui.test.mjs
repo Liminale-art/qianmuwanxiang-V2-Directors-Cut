@@ -8,6 +8,7 @@ import { renderCreativeSocialCard } from '../qianmu-creative-social.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const socialStyles = await readFile(new URL('../qianmu-creative-social.css', import.meta.url), 'utf8');
 const skinStyles = await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 function section(name) {
@@ -250,6 +251,16 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
   assert.doesNotMatch(styles, /#story-director-modal \.sd-director-paragraph\[data-selection-order\][^}]*padding-right/);
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-summary-main h4[\s\S]*font-size:\s*var\(--qm-type-card-title\)/,
     'preview item titles follow the fate-card title scale');
+  assert.match(styles, /--qm-card-title-gradient:\s*linear-gradient\([^;]+var\(--sd-accent\)/,
+    'card titles use one continuous ink-to-accent gradient');
+  assert.match(styles, /\.sd-card-title-row > h3,\s+\.sd-section-title h3[\s\S]*background-clip:\s*text/,
+    'the gradient is clipped to the title glyphs');
+  assert.match(styles, /\.sd-plan-section \.sd-item-summary-main h4,[\s\S]*font-size:\s*calc\(var\(--qm-type-card-title\) - 1px\)/,
+    'preview item titles have a visibly subordinate type step');
+  assert.match(styles, /\.sd-context-source-pick \.sd-dropdown-head,[\s\S]*\.sd-lib-row[\s\S]*min-height:\s*var\(--qm-source-control-height\)/,
+    'source directories and backstage library rows share a control-height baseline');
+  assert.match(socialStyles, /\.sd-social-scroll\s*\{[\s\S]*scrollbar-width:\s*none/,
+    'interlude feeds keep scrolling without a desktop scrollbar');
   assert.match(styles, /#story-director-modal \.sd-relus-parties,[\s\S]*font-size:\s*var\(--qm-type-card-title\)/,
     'relationship participants follow the same card-title scale');
   assert.match(styles, /#story-director-modal \.sd-item-fold > summary\s*\{[^}]*align-items:\s*center/,
