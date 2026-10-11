@@ -11796,6 +11796,15 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   align-items: center;
   justify-content: center;
 }
+#story-director-modal .sd-widget-toggle-row > .sd-widget-toggle {
+  font-size: calc(var(--qm-type-body) + 1px) !important;
+}
+#story-director-modal .sd-float-size-control label,
+#story-director-modal .sd-wheel-custom-details > summary,
+#story-director-modal .sd-wheel-custom-details > summary > b {
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.35;
+}
 #story-director-modal .sd-wheel-custom-details > summary {
   min-height: 34px;
   align-items: center;
