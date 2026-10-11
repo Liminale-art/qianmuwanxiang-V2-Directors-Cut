@@ -32,7 +32,7 @@ QIANMU_SERVER_STOPPED=1 curl -fsSL https://raw.githubusercontent.com/Liminale-ar
 这段命令默认在 **SillyTavern 根目录**执行。开发测试环境的 PM2 进程名固定为 `sillytavern`。整行复制并按一次回车即可；它会下载独立更新脚本，在子进程中完成检查 → 停止 PM2 → 更新分支 → 更新插件 → 启动 PM2 → 检查在线状态。更新失败只结束子进程，不会关闭宝塔终端，也不会等待额外输入。
 
 ```bash
-bash -c 'set -o pipefail; curl -fsSL --retry 2 --connect-timeout 15 --max-time 120 https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/update-server-plugin.sh | bash'
+bash -c 'set -o pipefail; printf "\n[千幕更新] 下载更新脚本...\n"; curl -fL --retry 2 --connect-timeout 15 --max-time 120 https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/update-server-plugin.sh | bash'
 ```
 
 最后看到 `更新完成：PM2=...，服务端提交=...`，才算更新成功。没有看到这行就保留错误输出，不要连续重跑；如果 PM2 已停止，先按提示处理。

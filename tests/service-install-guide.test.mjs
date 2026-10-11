@@ -17,7 +17,7 @@ test('guide gives copy-paste commands with visible success markers', () => {
 
 test('Baota update is one line, non-interactive, and runs in a child shell', () => {
   assert.ok(oneClick, 'guide must provide one copy-paste Bash line');
-  assert.match(oneClick, /^bash -c 'set -o pipefail; curl -fsSL --retry 2 --connect-timeout 15 --max-time 120 https:\/\/raw\.githubusercontent\.com\/Liminale-art\/qianmuwanxiang-V2-Directors-Cut\/refactor\/storyboard-modularization\/update-server-plugin\.sh \| bash'$/);
+  assert.match(oneClick, /^bash -c 'set -o pipefail; printf "\\n\[千幕更新\] 下载更新脚本\.\.\\.\\n"; curl -fL --retry 2 --connect-timeout 15 --max-time 120 https:\/\/raw\.githubusercontent\.com\/Liminale-art\/qianmuwanxiang-V2-Directors-Cut\/refactor\/storyboard-modularization\/update-server-plugin\.sh \| bash'$/);
   assert.doesNotMatch(oneClick, /<<|read\s+-r\s+-p|pm2\s+jlist|\bnode\b|健康检查地址/);
   assert.doesNotMatch(oneClick, /curl[^\n|]*\|\s*(QIANMU_SERVER_STOPPED=1\s+)?sh/);
   const syntax = spawnSync(bash, ['-n'], { input: `${oneClick}\n`, encoding: 'utf8', windowsHide: true, timeout: 10000 });
