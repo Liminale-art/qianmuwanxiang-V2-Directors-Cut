@@ -11696,3 +11696,246 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
     padding: 10px 10px 12px 12px;
   }
 }
+
+/* v1.59.449 · 幕外／配音／日志／小组件收尾。 */
+
+/* 幕外设置：小剧组标题与剧札目录共用卡片标题级别，预设折叠保持窄而可点。 */
+#story-director-modal .sd-current-blueprint-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+#story-director-modal .sd-theater-settings-fold > summary > b,
+#story-director-modal .sd-theater-settings-fold + .sd-card .sd-template-head h3,
+#story-director-modal [data-lib="script"] .sd-template-head h3 {
+  font-size: calc(var(--qm-type-card-title) + 1px) !important;
+  line-height: 1.35 !important;
+}
+#story-director-modal .sd-theater-preset-row { grid-template-columns: minmax(0, 1fr); }
+#story-director-modal .sd-theater-settings-body > .sd-context-block > summary {
+  min-height: 34px !important;
+  padding: 7px 10px !important;
+}
+#story-director-modal .sd-theater-history-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+#story-director-modal .sd-theater-history-row > .checkbox_label,
+#story-director-modal .sd-theater-history-row > .sd-depth-field {
+  width: 100%;
+  min-width: 0;
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.35;
+}
+#story-director-modal .sd-theater-history-row > .checkbox_label { justify-content: flex-start; }
+#story-director-modal .sd-theater-history-row > .sd-depth-field { justify-content: space-between; }
+#story-director-modal .sd-theater-history-row .sd-depth-field input { width: 72px !important; }
+#story-director-modal .sd-theater-instruction-compact {
+  min-height: 190px !important;
+  font-size: 13.5px !important;
+  line-height: 1.65 !important;
+}
+#story-director-modal .sd-theater-latest-list {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+#story-director-modal .sd-theater-latest-preview {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px dashed var(--sd-border) !important;
+  border-radius: 10px !important;
+  background: var(--sd-glass-weak) !important;
+  color: var(--sd-muted) !important;
+  font: inherit;
+  font-size: var(--qm-type-caption) !important;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  cursor: pointer;
+}
+#story-director-modal .sd-theater-latest-preview:hover { color: var(--sd-accent) !important; border-color: var(--sd-accent) !important; }
+
+/* 配音折叠标题比普通卡片高一档；保存按钮保留文字并补充可识别图标。 */
+#story-director-modal .sd-tts-model-card > h3,
+#story-director-modal .sd-plain-fold[data-acc^="tts-"] > summary > b {
+  font-size: calc(var(--qm-type-card-title) + 1px) !important;
+  line-height: 1.35 !important;
+}
+#story-director-modal .sd-tts-save-conn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+#story-director-modal .sd-tts-save-conn i { font-size: .9em; margin-inline-end: 5px; }
+
+/* API 日志：只保留最近五次，留存提示放在标题行右侧且不再写成句子。 */
+#story-director-modal .sd-log-retention {
+  margin-left: auto;
+  color: var(--sd-muted);
+  font-size: calc(var(--qm-type-caption) - 2px) !important;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+#story-director-modal .sd-log-card > .sd-card-title-row > h3 {
+  font-size: calc(var(--qm-type-card-title) + 1px) !important;
+}
+#story-director-modal .sd-log-list { max-height: none; }
+
+/* 小组件开关、编辑蜂巢入口与蜂巢项目共用同一尺寸／对齐基线。 */
+#story-director-modal .sd-widget-toggle,
+#story-director-modal .sd-wheel-command-toggle {
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+}
+#story-director-modal .sd-wheel-custom-details > summary {
+  min-height: 34px;
+  align-items: center;
+  box-sizing: border-box;
+  padding-block: 6px;
+}
+#story-director-modal .sd-wheel-custom-details > summary > span { line-height: 1.35; }
+
+/* 悬浮球尺寸滑杆：定制轨道与旋钮，旋钮按轨道中线居中且不随主题失焦。 */
+#story-director-modal .sd-float-size {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  height: 24px;
+  padding: 0 !important;
+  background: transparent !important;
+  accent-color: var(--sd-accent);
+  cursor: pointer;
+}
+#story-director-modal .sd-float-size::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sd-accent) 74%, var(--sd-glass-weak)), var(--sd-border));
+}
+#story-director-modal .sd-float-size::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5.5px;
+  border: 2px solid var(--sd-card);
+  border-radius: 50%;
+  background: var(--sd-accent);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--sd-accent) 38%, transparent);
+}
+#story-director-modal .sd-float-size::-moz-range-track {
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sd-accent) 74%, var(--sd-glass-weak)), var(--sd-border));
+}
+#story-director-modal .sd-float-size::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--sd-card);
+  border-radius: 50%;
+  background: var(--sd-accent);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--sd-accent) 38%, transparent);
+}
+
+/* 极简（glass）下剧札目录也要有完整边框，避免文件夹／条目只剩半截底色。 */
+#story-director-modal[data-qm-theme="glass"] [data-lib="script"] :is(.sd-lib-folder, .sd-lib-row) {
+  box-sizing: border-box;
+  border: 1px solid var(--qm-line, var(--sd-border)) !important;
+  overflow: visible;
+}
+
+/* Final creative-card rhythm: keep the entry fold rows compact while the
+   title block is centered against the full row (including chips and the
+   optional selection badge). NPC names sit one optical step inward from the
+   card edge and below the main section-title scale. */
+#story-director-modal .sd-plan-section .sd-item-fold > summary {
+  min-height: 58px !important;
+  padding-block: 0 !important;
+  align-items: center !important;
+}
+#story-director-modal .sd-plan-section .sd-item-summary-main {
+  min-height: 0 !important;
+  align-self: center !important;
+  justify-content: center !important;
+}
+#story-director-modal .sd-plan-section .sd-item-summary-main h4 {
+  margin: 0 !important;
+  line-height: 1.25 !important;
+}
+#story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main h4 {
+  margin-inline-start: 8px !important;
+  font-size: calc(var(--qm-type-card-title) - 1px) !important;
+}
+
+/* Relationship drift is prose with a lead icon. Inline layout lets only the
+   first line consume the icon's width; wrapped lines return to the text edge
+   instead of forming a hanging flex-column indent. */
+#story-director-modal .sd-relus-drift {
+  display: block !important;
+}
+#story-director-modal .sd-relus-drift > i {
+  display: inline-block;
+  width: 1.15em;
+  margin-inline-end: .35em;
+  text-align: center;
+  vertical-align: baseline;
+}
+
+/* 取材字号层级：身份与分区标题沿用命运之脉卡题，参考开关向上一级，
+   目录条目继续使用正文级，避免同一页出现多个无意的字号体系。 */
+#story-director-modal .sd-context-identity-card .sd-fixed-ref-label,
+#story-director-modal .sd-accordion[data-acc="acc-tags"] > summary > b,
+#story-director-modal .sd-accordion[data-acc="acc-presets"] > summary > b,
+#story-director-modal .sd-accordion[data-acc="acc-worlds"] > summary > b {
+  font-size: var(--qm-type-card-title) !important;
+  line-height: 1.35;
+}
+#story-director-modal .sd-context-reference-row .checkbox_label,
+#story-director-modal .sd-context-reference-row .sd-depth-field {
+  font-size: var(--qm-type-card-title) !important;
+  line-height: 1.35;
+}
+
+/* 幕后控制项与衍生开关是可操作的正文入口，字级与参考开关一致；
+   注入预览标题、token 标签也锁到同一级，不再因 info-tag 的继承放大。 */
+#story-director-modal .sd-injection-card > .sd-refresh-row,
+#story-director-modal .sd-injection-card > .sd-refresh-row .checkbox_label,
+#story-director-modal .sd-injection-card > .sd-refresh-row .sd-floor-refresh,
+#story-director-modal .sd-derivative-options .sd-option-chip > span {
+  font-size: var(--qm-type-card-title) !important;
+  line-height: 1.35;
+}
+#story-director-modal .sd-inject-subfold > summary,
+#story-director-modal .sd-inject-title > b,
+#story-director-modal .sd-inject-title .sd-info-tag {
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.35;
+}
+
+/* 编剧内部两级标题比外层折叠标题退一级，剧组之律与编剧标题保持同一基线。 */
+#story-director-modal .sd-backstage-blueprint-body > .sd-field-head > h3,
+#story-director-modal .sd-backstage-blueprint-library .sd-template-head h3,
+#story-director-modal .sd-director-law-fold > summary > b {
+  font-size: calc(var(--qm-type-card-title) - 1px) !important;
+  line-height: 1.35;
+}
+
+/* 这两块标题仍保留主题的黑→强调色渐变，而不是退回纯色。 */
+#story-director-modal .sd-inject-title > b,
+#story-director-modal .sd-injection-card > h3,
+#story-director-modal .sd-derivative-card > h3,
+#story-director-modal .sd-director-law-fold > summary > b {
+  background-image: var(--qm-card-title-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: var(--sd-text) !important;
+}

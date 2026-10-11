@@ -265,6 +265,14 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
     'relationship participants follow the same card-title scale');
   assert.match(styles, /#story-director-modal \.sd-item-fold > summary\s*\{[^}]*align-items:\s*center/,
     'preview item summary content is vertically centered');
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-fold > summary\s*\{[^}]*min-height:\s*58px[^}]*padding-block:\s*0/,
+    'preview entry folds keep a compact centered row');
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-npc \.sd-item-summary-main h4\s*\{[^}]*margin-inline-start:\s*8px[^}]*font-size:\s*calc\(var\(--qm-type-card-title\) - 1px\)/,
+    'other-person names are inset and one type step smaller');
+  assert.match(styles, /#story-director-modal \.sd-relus-drift\s*\{[^}]*display:\s*block/,
+    'relationship drift uses inline prose flow');
+  assert.match(styles, /#story-director-modal \.sd-relus-drift > i\s*\{[^}]*display:\s*inline-block/,
+    'relationship drift arrow only occupies the first line');
   assert.match(styles, /#story-director-modal \.sd-selection-order-card\s*\{[^}]*top:\s*12px/,
     'character selection order stays on the title header line');
   assert.match(styles, /#story-director-modal \.sd-geo-axis-ring\s*\{[^}]*stroke-width:\s*\.9/,

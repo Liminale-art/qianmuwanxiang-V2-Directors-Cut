@@ -1676,10 +1676,13 @@ function migrateSettings(s) {
     }
     s._presetGlobalMigrated = true;
   }
-  if (!isPlainObject(s.theater)) s.theater = { instruction: '', apiProfileId: '', presetName: '', presetItems: {}, scripts: [], favorites: [], lastOutput: null };
+  if (!isPlainObject(s.theater)) s.theater = { instruction: '', apiProfileId: '', presetName: '', presetItems: {}, scripts: [], favorites: [], lastOutput: null, recentOutputs: [] };
   if (!Array.isArray(s.theater.scripts)) s.theater.scripts = [];
   if (!Array.isArray(s.theater.favorites)) s.theater.favorites = [];
   if (!isPlainObject(s.theater.presetItems)) s.theater.presetItems = {};
+  if (!Array.isArray(s.theater.recentOutputs)) s.theater.recentOutputs = s.theater.lastOutput ? [s.theater.lastOutput] : [];
+  if (s.theater.lastOutput && !s.theater.recentOutputs.some((item) => item?.id === s.theater.lastOutput.id)) s.theater.recentOutputs.unshift(s.theater.lastOutput);
+  s.theater.recentOutputs = s.theater.recentOutputs.filter(Boolean).slice(0, 3);
   if (!Array.isArray(s.templates)) s.templates = [];
   // tags → folder：取首个旧标签作为文件夹，移除 tags 字段
   s.templates = s.templates.map((tpl) => {
@@ -2015,7 +2018,8 @@ function renderLibraryRow(cfg, item) {
 
 function renderLibraryListBody(cfg, items) {
   if (!items.length) {
-    return `<p class="sd-muted">${cfg.getSearch() ? '没有匹配的条目。' : htmlEscape(cfg.emptyText || '暂无条目')}</p>`;
+    const emptyText = cfg.getSearch() ? '没有匹配的条目。' : String(cfg.emptyText || '暂无条目');
+    return emptyText ? `<p class="sd-muted">${htmlEscape(emptyText)}</p>` : '';
   }
   const { folderList, loose } = groupByFolder(items, cfg.getFolder, cfg.getName, cfg.sortAlpha);
   const folderHtml = folderList.map(({ name, list }) => {
@@ -8852,7 +8856,8 @@ function templateLibraryCfg() {
     exportMode: templateExportMode,
     selection: templateExportSelection,
     inlineCount: true,
-    emptyText: '暂无剧本',
+    // 剧本库为空时保留搜索与工具栏，但不再在正文区撑出“暂无剧本”空列。
+    emptyText: '',
     searchPlaceholder: '搜索剧本标题…',
   };
 }
@@ -9022,14 +9027,12 @@ function renderInjectSections() {
 
 function renderInjectPreview() {
   const store = getChatStore();
-  if (!store?.plan) {
-    return '<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-preview"><summary><b>当前注入内容</b></summary><p class="sd-muted">尚无推演结果，暂无可注入的暗线。</p></details>';
-  }
-  if (!settings.injectEnabled) {
-    return '<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-preview"><summary><b>当前注入内容</b></summary><p class="sd-muted">暗线注入已关闭，本次推演结果不会被注入聊天。</p></details>';
-  }
+  // 关闭暗线注入或尚无可用推演时，不渲染一张解释性空卡；设置页只保留
+  // 真正可检查的注入范围与开关，避免“未开启”占据主要阅读空间。
+  if (!store?.plan || !settings.injectEnabled) return '';
   const custom = Object.prototype.hasOwnProperty.call(store, 'injectOverride') && typeof store.injectOverride === 'string';
   const text = currentDirectorInjectionText(store.plan);
+  if (!String(text || '').trim()) return '';
   // 与日志同款的终端式呈现：等宽块 + token 估算
   return `<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-preview">
     <summary><span class="sd-inject-title"><b>当前注入内容</b>${infoTag(`约 ${estimateTokens(text)} token`)}</span><span class="sd-inject-meta">${custom ? infoTag('已手动修改') : ''}<button type="button" class="sd-icon-btn sd-icon-sm sd-edit-injection" title="修改当前注入内容" aria-label="修改当前注入内容"><i class="fa-solid fa-pencil"></i></button></span></summary>
@@ -9208,7 +9211,8 @@ function ttsSchemeLibraryCfg() {
     exportMode: ttsSchemeExportMode,
     selection: ttsSchemeExportSelection,
     inlineCount: true,
-    emptyText: '暂无方案',
+    // 空方案库不显示解释性占位行，添加方案按钮仍保留。
+    emptyText: '',
     searchPlaceholder: '搜索方案标题…',
   };
 }
@@ -9339,7 +9343,7 @@ function renderTtsTab() {
       <details class="sd-plain-fold" data-acc="tts-api" open>
         <summary><b>${htmlEscape(provider.label)}</b></summary>
         ${renderTtsProviderConnection(provider, p)}
-        <div class="sd-button-row"><button type="button" class="sd-btn sd-tts-test-conn"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button><button type="button" class="sd-btn sd-tts-save-conn">保存</button></div>
+        <div class="sd-button-row"><button type="button" class="sd-btn sd-tts-test-conn"><i class="fa-solid fa-plug-circle-check"></i>测试连接</button><button type="button" class="sd-btn sd-tts-save-conn" title="保存连接设置"><i class="fa-solid fa-floppy-disk"></i>保存</button></div>
       </details>
     </section>
     <section class="sd-card ${dis}">
@@ -12123,7 +12127,9 @@ function storyboardVideoBudgetPolicy() {
 
 function renderPlugTab() {
   const isExternal = settings.providerMode === 'external';
-  const logs = Array.isArray(settings.logHistory) ? settings.logHistory : [];
+  // Keep the API/log surface intentionally short even when an older settings
+  // payload still contains more rows than the current retention policy.
+  const logs = (Array.isArray(settings.logHistory) ? settings.logHistory : []).slice(0, LOG_LIMIT);
   const models = uniqueClean([settings.model, ...(settings.availableModels || [])]);
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
   const floatSize = getFloatSize();
@@ -12170,9 +12176,8 @@ function renderPlugTab() {
       </div>
       ${renderQuickWheelSettings()}
     </section>
-    <section class="sd-card">
-      <h3>日志</h3>
-      <p class="sd-muted">保留最近 ${LOG_LIMIT} 次生成记录。</p>
+    <section class="sd-card sd-log-card">
+      <div class="sd-card-title-row"><h3>日志</h3><span class="sd-log-retention">最近 ${LOG_LIMIT} 次</span></div>
       <div class="sd-log-list">${logs.length ? logs.map((log, i) => renderLogEntry(log, i)).join('') : '<p class="sd-muted sd-log-empty">暂无日志。</p>'}</div>
     </section>
     ${renderStorageManagementCard()}
@@ -34115,12 +34120,15 @@ function coreadImportData() {
    ============================================================ */
 function getTheater() {
   if (!isPlainObject(settings.theater)) {
-    settings.theater = { instruction: '', apiProfileId: '', presetName: '', presetItems: {}, scripts: [], favorites: [], lastOutput: null };
+    settings.theater = { instruction: '', apiProfileId: '', presetName: '', presetItems: {}, scripts: [], favorites: [], lastOutput: null, recentOutputs: [] };
   }
   const t = settings.theater;
   if (!Array.isArray(t.scripts)) t.scripts = [];
   if (!Array.isArray(t.favorites)) t.favorites = [];
   if (!isPlainObject(t.presetItems)) t.presetItems = {};
+  if (!Array.isArray(t.recentOutputs)) t.recentOutputs = t.lastOutput ? [t.lastOutput] : [];
+  if (t.lastOutput && !t.recentOutputs.some((item) => item?.id === t.lastOutput.id)) t.recentOutputs.unshift(t.lastOutput);
+  t.recentOutputs = t.recentOutputs.filter(Boolean).slice(0, 3);
   if (typeof t.useChatHistory === 'undefined') t.useChatHistory = true;
   if (typeof t.historyDepth === 'undefined') t.historyDepth = 5;
   return t;
@@ -34291,7 +34299,7 @@ function renderTheaterTab() {
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
   const presetNames = uniqueClean([t.presetName, getCurrentPresetName(), ...(contextScanCache.presetNames || listPresetNames())]).filter((n) => !isNoisePresetName(n));
   if (t.presetName) initTheaterPresetSelection(t.presetName);
-  const out = t.lastOutput;
+  const recentOutputs = (t.recentOutputs || (t.lastOutput ? [t.lastOutput] : [])).slice(0, 3);
   return `
     <section class="sd-card">
       <details class="sd-plain-fold sd-theater-settings-fold" data-acc="theater-settings" open>
@@ -34308,7 +34316,6 @@ function renderTheaterTab() {
               <option value="">无</option>
               ${presetNames.map((n) => `<option value="${htmlEscape(n)}" ${n === t.presetName ? 'selected' : ''}>${htmlEscape(n)}</option>`).join('')}
             </select>
-            <button type="button" class="sd-icon-btn sd-theater-refresh-preset" title="读取预设" aria-label="读取预设"><i class="fa-solid fa-rotate"></i></button>
           </div>
           ${t.presetName ? renderTheaterPresetEntries(t.presetName) : ''}
           <div class="sd-theater-history-row">
@@ -34326,10 +34333,9 @@ function renderTheaterTab() {
         <button class="sd-btn sd-theater-save-script"><i class="fa-solid fa-bookmark"></i>保存到剧札</button>
         <button class="sd-icon-btn sd-theater-open-favorites" title="收藏夹 (${t.favorites.length})" aria-label="收藏夹"><i class="fa-solid fa-star"></i></button>
       </div>
-      ${out ? `<div class="sd-theater-latest sd-button-row">
-        <span class="sd-muted">最近一幕：${htmlEscape(theaterOpening(out))}</span>
-        <button class="sd-btn sd-mini-btn sd-theater-open-latest"><i class="fa-solid fa-book-open"></i>阅读</button>
-      </div>` : ''}
+      ${recentOutputs.length ? `<div class="sd-theater-latest-list" aria-label="最近三幕">${recentOutputs.map((scene) => `<button type="button" class="sd-theater-latest sd-theater-latest-preview" data-id="${htmlEscape(scene.id || '')}" title="点此阅读">
+        ${htmlEscape(theaterOpening(scene, 72))}
+      </button>`).join('')}</div>` : ''}
     </section>
     <section class="sd-card">${renderLibrarySection(theaterScriptLibraryCfg())}</section>`;
 }
@@ -34448,7 +34454,7 @@ function renderTheaterFavoritesView() {
 
 function renderTheaterPresetEntries(presetName) {
   const entries = contextScanCache.presets?.[presetName] || getPresetEntries(presetName);
-  if (!entries.length) return '<p class="sd-muted" style="margin:8px 0">未读取到该预设条目，点「读取」试试。</p>';
+  if (!entries.length) return '<p class="sd-muted" style="margin:8px 0">该预设暂无可选条目。</p>';
   const rows = entries.map((item, index) => {
     const id = getContextItemId(item, index);
     const title = item.name || item.identifier || item.role || `条目 ${index + 1}`;
@@ -34512,6 +34518,7 @@ async function stageTheaterScene() {
     log.response = content;
     if (!content) throw new Error('模型返回为空');
     t.lastOutput = { id: uid('scene'), source: theaterScriptSource || '', instruction, content, isHtml: looksLikeHtml(extractTheaterBody(content)), createdAt: new Date().toISOString() };
+    t.recentOutputs = [t.lastOutput, ...(t.recentOutputs || [])].filter((scene, index, list) => scene?.id && list.findIndex((item) => item?.id === scene.id) === index).slice(0, 3);
     log.status = 'success';
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     saveSettings();
@@ -34557,6 +34564,10 @@ function saveTheaterSceneEdit(scene, value) {
   if (t.lastOutput && t.lastOutput.id === scene.id) {
     t.lastOutput.content = content;
     t.lastOutput.isHtml = scene.isHtml;
+  }
+  if (Array.isArray(t.recentOutputs)) {
+    const recent = t.recentOutputs.find((item) => item.id === scene.id);
+    if (recent) { recent.content = content; recent.isHtml = scene.isHtml; }
   }
   const fav = t.favorites.find((f) => f.id === scene.id);
   if (fav) { fav.content = content; fav.isHtml = scene.isHtml; }
@@ -34733,16 +34744,6 @@ function bindTheaterTabEvents(root) {
     saveSettings();
     renderModal();
   });
-  root.querySelector('.sd-theater-refresh-preset')?.addEventListener('click', async () => {
-    await refreshPresets(false);
-    const t = getTheater();
-    if (t.presetName) {
-      contextScanCache.presets[t.presetName] = getPresetEntries(t.presetName);
-      initTheaterPresetSelection(t.presetName);
-    }
-    toast('预设已读取。', 'success');
-    renderModal();
-  });
   root.querySelectorAll('.sd-theater-preset-item').forEach((el) => {
     el.addEventListener('click', (event) => event.stopPropagation());
     el.addEventListener('change', () => setTheaterPresetItemSelected(getTheater().presetName, el.dataset.id, el.checked));
@@ -34781,7 +34782,10 @@ function bindTheaterTabEvents(root) {
     toast('已存入剧札。', 'success');
     renderModal();
   });
-  root.querySelector('.sd-theater-open-latest')?.addEventListener('click', () => openTheaterReader(getTheater().lastOutput));
+  root.querySelectorAll('.sd-theater-latest-preview').forEach((el) => el.addEventListener('click', () => {
+    const scene = getTheater().recentOutputs?.find((item) => item.id === el.dataset.id) || getTheater().lastOutput;
+    openTheaterReader(scene);
+  }));
   root.querySelector('.sd-theater-open-favorites')?.addEventListener('click', openTheaterFavorites);
 
   bindLibraryEvents(root, theaterScriptLibraryCfg, {
