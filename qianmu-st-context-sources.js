@@ -46,7 +46,16 @@ function parsePresetVersionName(name) {
     let versionText = '';
     let version = null;
     const matches = [...body.matchAll(/(?:^|[\s._-])(?:v|ver|version|版本)?\s*(\d+(?:\.\d+){0,3})(?=$|[\s._-])/gi)];
-    const match = matches.at(-1);
+    let match = matches.at(-1);
+    // A release can append another numeric label, e.g. "5.1.3 5.5".
+    // Walk back across adjacent numeric suffixes to the actual series version;
+    // stop at words so a model name such as "Claude-3.5-Sonnet" stays intact.
+    for (let index = matches.length - 2; index >= 0; index -= 1) {
+        const previous = matches[index];
+        const between = body.slice(previous.index + previous[0].length, match.index);
+        if (!/^[\s._-]*$/.test(between)) break;
+        match = previous;
+    }
     if (match) {
         versionText = match[1];
         version = versionText.split('.').map(Number);

@@ -4000,66 +4000,50 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   box-shadow: 0 0 5px var(--sd-geo-clue-blue), 0 0 2px var(--sd-geo-clue-blue);
 }
 
-/* 列表视图：与星图共享筛选状态，窄屏或势力很多时更适合逐条阅读。 */
-#story-director-modal .sd-geo-list-view { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
-#story-director-modal .sd-geo-list-card { border: 1px solid var(--sd-geo-skin-border); border-radius: 10px; background: rgba(255,255,255,.035); overflow: hidden; }
-#story-director-modal .sd-geo-list-card > summary { display: grid; grid-template-columns: 10px minmax(82px, auto) minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 42px; padding: 7px 10px; cursor: pointer; list-style: none; }
+/* World dossiers: one reading layout for the star-map panel and list cards. */
+#story-director-modal .sd-geo-list-view { display: flex; flex-direction: column; gap: 9px; margin-top: 8px; }
+#story-director-modal .sd-geo-list-card { border: 1px solid var(--sd-geo-skin-border); border-radius: 12px; background: color-mix(in srgb, var(--sd-geo-skin-card) 72%, transparent); overflow: hidden; }
+#story-director-modal .sd-geo-list-card > summary { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 48px; padding: 12px 14px; cursor: pointer; list-style: none; }
 #story-director-modal .sd-geo-list-card > summary::-webkit-details-marker { display: none; }
-#story-director-modal .sd-geo-list-card > summary strong { font-size: var(--sd-geo-card-title); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#story-director-modal .sd-geo-list-card > summary > span { color: var(--sd-geo-skin-muted); font-size: var(--sd-geo-card-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-geo-list-card > summary strong { font-size: var(--sd-geo-card-title); line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
 #story-director-modal .sd-geo-list-card > summary em { color: var(--sd-geo-skin-muted); font-size: var(--sd-geo-card-label); font-style: normal; white-space: nowrap; }
 #story-director-modal .sd-geo-list-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sd-geo-stable); }
 #story-director-modal .sd-geo-list-dot-rising { background: var(--sd-geo-ally); }
 #story-director-modal .sd-geo-list-dot-declining { background: var(--sd-geo-decline); }
 #story-director-modal .sd-geo-list-dot-turbulent { background: var(--sd-geo-conflict); }
-#story-director-modal .sd-geo-list-body { padding: 2px 12px 12px 30px; border-top: 1px solid var(--sd-geo-skin-border); animation: sd-geo-detail-in .18s ease; }
-#story-director-modal .sd-geo-list-body > p { margin: 8px 0 0; color: var(--sd-geo-skin-text); font-size: var(--sd-geo-card-body); line-height: 1.55; }
-#story-director-modal .sd-geo-list-body > p,
-#story-director-modal .sd-geo-d-standing,
-#story-director-modal .sd-geo-d-agenda {
-  padding: 8px 10px;
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--sd-geo-skin-pop) 42%, transparent);
-}
-#story-director-modal .sd-geo-list-body .sd-geo-list-agenda { display: flex; gap: 6px; color: var(--sd-geo-skin-muted); }
-#story-director-modal .sd-geo-list-agenda i { margin-top: 4px; color: var(--sd-accent); }
-#story-director-modal .sd-geo-list-clues { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-#story-director-modal .sd-geo-list-clues span { padding: 2px 8px; border-radius: 99px; font-size: .72em; color: var(--sd-geo-clue-ink, var(--sd-geo-clue-blue)); background: rgba(56,224,255,.07); border: 1px solid rgba(56,224,255,.14); }
-#story-director-modal .sd-geo-list-body ul { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-#story-director-modal .sd-geo-list-rel { display: grid; grid-template-columns: 7px 34px minmax(0, 1fr); align-items: center; gap: 7px; font-size: var(--sd-geo-card-label); line-height: 1.45; }
-#story-director-modal .sd-geo-list-rel > i { width: 7px; height: 7px; border-radius: 50%; }
-#story-director-modal .sd-geo-list-rel > b { font-weight: 600; color: var(--sd-geo-skin-text); }
-#story-director-modal .sd-geo-list-rel > span { color: var(--sd-geo-skin-muted); line-height: 1.45; word-break: break-word; }
-
-
-/* 势力详情面板（点选节点后展开） */
+#story-director-modal .sd-geo-list-body { padding: 0 14px 16px; animation: sd-geo-detail-in .18s ease; }
 #story-director-modal .sd-geo-detail {
-  margin-top: 10px; padding: 12px 14px; border-radius: 12px;
-  border: 1px solid var(--sd-border); background: var(--sd-glass-weak);
+  margin-top: 12px; padding: 16px; border-radius: 12px;
+  border: 1px solid var(--sd-geo-skin-border); background: var(--sd-geo-skin-card);
   animation: sd-geo-detail-in .22s ease;
 }
 @keyframes sd-geo-detail-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-#story-director-modal .sd-geo-d-head { display: flex; align-items: center; gap: 9px; }
-#story-director-modal .sd-geo-d-head h4 { margin: 0; font-size: var(--sd-geo-card-title); line-height: 1.35; font-weight: 700; min-width: 0; flex: 1 1 auto; }
-#story-director-modal .sd-geo-d-trend { font-size: var(--sd-geo-card-label); font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--sd-pre); color: var(--sd-muted); flex: 0 0 auto; }
+#story-director-modal .sd-geo-d-head { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; gap: 6px 12px; }
+#story-director-modal .sd-geo-d-head h4 { margin: 0; font-size: var(--sd-geo-card-title); line-height: 1.45; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+#story-director-modal .sd-geo-d-trend { grid-column: 1; justify-self: start; font-size: var(--sd-geo-card-label); font-weight: 600; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--sd-geo-skin-muted) 9%, transparent); color: var(--sd-geo-skin-muted); }
 #story-director-modal .sd-geo-d-trend-rising { color: var(--sd-geo-ally-ink, var(--sd-geo-ally)); }
 #story-director-modal .sd-geo-d-trend-declining { color: var(--sd-geo-neutral-ink, var(--sd-geo-neutral)); }
 #story-director-modal .sd-geo-d-trend-turbulent { color: var(--sd-geo-conflict-ink, var(--sd-geo-conflict)); }
-#story-director-modal .sd-geo-d-close { background: none; border: none; cursor: pointer; color: var(--sd-muted); padding: 2px 4px; flex: 0 0 auto; }
-#story-director-modal .sd-geo-d-close:hover { color: var(--sd-text); }
-#story-director-modal .sd-geo-d-meta { display: flex; flex-wrap: wrap; gap: 5px 8px; margin-top: 6px; }
-#story-director-modal .sd-geo-d-meta span { font-size: var(--sd-geo-card-label); color: var(--sd-muted); padding: 1px 8px; border-radius: 99px; border: 1px solid var(--sd-hairline); }
-#story-director-modal .sd-geo-d-standing { margin: 8px 0 0; font-size: var(--sd-geo-card-body); line-height: 1.55; color: var(--sd-text); }
-#story-director-modal .sd-geo-d-agenda { display: flex; gap: 6px; margin: 6px 0 0; font-size: var(--sd-geo-card-body); line-height: 1.55; color: var(--sd-muted); }
-#story-director-modal .sd-geo-d-agenda i { color: var(--sd-accent); margin-top: 3px; flex: 0 0 auto; font-size: .9em; }
-#story-director-modal .sd-geo-d-rels { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-#story-director-modal .sd-geo-d-rel { display: flex; align-items: center; gap: 8px; font-size: var(--sd-geo-card-body); line-height: 1.45; padding-left: 9px; border-left: 2.5px solid var(--sd-geo-neutral); }
-#story-director-modal .sd-geo-d-rel-conflict { border-left-color: var(--sd-geo-conflict); }
-#story-director-modal .sd-geo-d-rel-ally { border-left-color: var(--sd-geo-ally); }
-#story-director-modal .sd-geo-d-rel-tension { border-left-color: var(--sd-geo-tension); }
-#story-director-modal .sd-geo-d-rel-vassal { border-left-color: var(--sd-geo-vassal); }
-#story-director-modal .sd-geo-d-kind { display: inline-flex; align-items: center; flex: 0 0 auto; font-weight: 600; color: var(--sd-text); }
-#story-director-modal .sd-geo-d-rtext { color: var(--sd-muted); min-width: 0; word-break: break-word; }
+#story-director-modal .sd-geo-d-close { grid-column: 2; grid-row: 1; display: inline-grid; place-items: center; width: 28px; min-width: 28px; height: 28px; background: none; border: none; cursor: pointer; color: var(--sd-geo-skin-muted); padding: 0; }
+#story-director-modal .sd-geo-d-close:hover { color: var(--sd-geo-skin-text); }
+#story-director-modal .sd-geo-dossier { display: grid; gap: 14px; min-width: 0; padding-top: 12px; color: var(--sd-geo-skin-text); }
+#story-director-modal .sd-geo-d-meta { display: flex; flex-wrap: wrap; gap: 5px 14px; padding-bottom: 11px; border-bottom: 1px solid var(--sd-geo-skin-border); }
+#story-director-modal .sd-geo-d-meta span { font-size: var(--sd-geo-card-label); color: var(--sd-geo-skin-muted); }
+#story-director-modal .sd-geo-dossier-section { display: grid; gap: 6px; min-width: 0; }
+#story-director-modal .sd-geo-dossier-section > h5 { margin: 0; color: var(--sd-geo-skin-muted); font-size: var(--sd-geo-card-label); font-weight: 600; line-height: 1.4; letter-spacing: .08em; }
+#story-director-modal .sd-geo-dossier p { margin: 0; padding: 0; background: none; border: none; font-size: var(--sd-geo-card-body); font-weight: 400; line-height: 1.75; overflow-wrap: anywhere; }
+#story-director-modal .sd-geo-d-standing { font-size: var(--sd-geo-card-body); color: var(--sd-geo-skin-text); }
+#story-director-modal .sd-geo-d-agenda { color: var(--sd-geo-skin-text); }
+#story-director-modal .sd-geo-dossier-clues { display: grid; gap: 5px; list-style: none; margin: 0; padding: 0; }
+#story-director-modal .sd-geo-dossier-clues > li { position: relative; padding-left: 12px; color: var(--sd-geo-skin-text); font-size: var(--sd-geo-card-body); line-height: 1.65; overflow-wrap: anywhere; }
+#story-director-modal .sd-geo-dossier-clues > li::before { content: ''; position: absolute; left: 0; top: .7em; width: 4px; height: 4px; border-radius: 50%; background: var(--sd-geo-clue-ink, var(--sd-geo-clue-blue)); }
+#story-director-modal .sd-geo-d-rels { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+#story-director-modal .sd-geo-dossier-relation { display: grid; gap: 5px; padding: 11px 12px; min-width: 0; border: 1px solid var(--sd-geo-skin-border); border-radius: 8px; background: color-mix(in srgb, var(--sd-geo-skin-pop) 20%, transparent); }
+#story-director-modal .sd-geo-dossier-relation-head { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 9px; min-width: 0; }
+#story-director-modal .sd-geo-dossier-relation-head > strong { font-size: var(--sd-geo-card-body); color: var(--sd-geo-skin-text); font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+#story-director-modal .sd-geo-d-kind { display: inline-flex; align-items: center; flex: 0 0 auto; white-space: nowrap; font-size: var(--sd-geo-card-label); font-weight: 600; color: var(--sd-geo-skin-text); }
+#story-director-modal .sd-geo-d-kind > b { font-weight: inherit; }
+#story-director-modal .sd-geo-d-rtext { color: var(--sd-geo-skin-muted); min-width: 0; }
 
 /* 冲突在详情与列表中用紧凑小图标表达，文字仍保留在 title/aria-label 中。 */
 #story-director-modal .sd-geo-rel-icon {
@@ -4096,6 +4080,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-evt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; }
 #story-director-modal .sd-evt-head::-webkit-details-marker { display: none; }
 #story-director-modal .sd-evt-head h4 { margin: 0; font-size: var(--sd-geo-card-title); line-height: 1.35; font-weight: 700; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-modal .sd-geo-events .sd-evt-head h4 { font-size: calc(var(--qm-type-card-title, 13px) - 1px) !important; }
 #story-director-modal .sd-evt-body { display: grid; gap: 9px; animation: sd-geo-detail-in .18s ease; }
 #story-director-modal .sd-evt-badge {
   flex: 0 0 auto; font-size: var(--sd-geo-card-label); font-weight: 600; padding: 1px 8px; border-radius: 99px;
@@ -4141,10 +4126,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 @media (max-width: 520px) {
   #story-director-modal .sd-geo-stage { padding: 9px 9px 12px; }
   #story-director-modal .sd-geo-map { width: calc(100% + 4px); margin-left: -2px; }
-  #story-director-modal .sd-geo-list-card > summary { grid-template-columns: 9px minmax(0, 1fr) auto; gap: 7px; }
-  #story-director-modal .sd-geo-list-card > summary > span { display: none; }
-  #story-director-modal .sd-geo-list-body { padding-left: 11px; }
-  #story-director-modal .sd-geo-d-head { flex-wrap: wrap; }
+  #story-director-modal .sd-geo-list-card > summary { gap: 8px; padding: 11px 12px; }
+  #story-director-modal .sd-geo-list-body { padding: 0 12px 14px; }
+  #story-director-modal .sd-geo-detail { padding: 14px; }
 }
 
 /* 减少动态：尊重系统「减少动画」偏好 */
@@ -9403,6 +9387,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 }
 #story-director-modal .sd-unified-source-entry:hover,
 #story-director-modal .sd-unified-source-entry[open] { background: var(--sd-glass) !important; }
+/* 分镜世界书仍提供正文预览；取材使用纯勾选行，不再命中这两条。 */
 #story-director-modal .sd-unified-source-entry > summary { width: 100%; }
 #story-director-modal .sd-unified-source-entry > pre {
   width: 100%;
@@ -11633,83 +11618,6 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   justify-content: center;
 }
 
-/* World-map dossier: use a stable three-column header and stacked, padded
-   evidence rows so long names cannot push the close button onto a second line. */
-#story-director-modal .sd-geo-detail { padding: 14px; }
-#story-director-modal .sd-geo-d-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 8px;
-}
-#story-director-modal .sd-geo-d-head h4 {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#story-director-modal .sd-geo-d-trend { justify-self: end; }
-#story-director-modal .sd-geo-d-close {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  padding: 0;
-  display: inline-grid;
-  place-items: center;
-}
-#story-director-modal .sd-geo-d-meta { margin-top: 8px; }
-#story-director-modal :is(.sd-geo-d-standing, .sd-geo-d-agenda) {
-  margin: 9px 0 0;
-  padding: 9px 11px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--sd-geo-skin-pop) 42%, transparent);
-  line-height: 1.6;
-}
-#story-director-modal .sd-geo-d-rels {
-  display: grid;
-  gap: 8px;
-  margin-top: 11px;
-}
-#story-director-modal .sd-geo-d-rel {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-  min-width: 0;
-  padding: 8px 10px;
-  border-left-width: 3px;
-  border-radius: 0 9px 9px 0;
-  background: color-mix(in srgb, var(--sd-geo-skin-pop) 30%, transparent);
-  line-height: 1.55;
-}
-#story-director-modal .sd-geo-d-kind { justify-content: center; min-height: 20px; }
-#story-director-modal .sd-geo-d-rtext { line-height: 1.55; }
-
-/* List view follows the same left edge and keeps metadata in its own column. */
-#story-director-modal .sd-geo-list-card > summary {
-  grid-template-columns: 8px minmax(0, 1.35fr) minmax(0, .8fr) auto;
-  min-height: 46px;
-  padding: 8px 11px;
-}
-#story-director-modal .sd-geo-list-card > summary > span,
-#story-director-modal .sd-geo-list-card > summary > em { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-#story-director-modal .sd-geo-list-body {
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px 13px 28px;
-}
-#story-director-modal .sd-geo-list-body > p { margin: 0; }
-
-@media (max-width: 520px) {
-  #story-director-modal .sd-geo-d-head {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-  }
-  #story-director-modal .sd-geo-d-head h4 { grid-column: 1; grid-row: 1; }
-  #story-director-modal .sd-geo-d-trend { grid-column: 1; grid-row: 2; justify-self: start; }
-  #story-director-modal .sd-geo-d-close { grid-column: 2; grid-row: 1 / span 2; }
-}
-
 /* 取材与幕后共用同一条控件基线。目录、条目、文件夹和剧本库行都以
    42px 为一个可扫描单位，字号沿用推演页的 body/caption 阶梯。 */
 #story-director-modal :is(
@@ -11741,27 +11649,22 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   font-weight: 600;
 }
 #story-director-modal .sd-context-source-pick .sd-source-row { padding-block: 6px; }
+#story-director-modal .sd-context-source-pick .sd-world-name {
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.35 !important;
+}
+#story-director-modal .sd-context-block .sd-context-item {
+  min-height: var(--qm-source-control-height);
+  padding: 8px 10px;
+  font-size: var(--qm-type-body) !important;
+  line-height: 1.35;
+}
+#story-director-modal .sd-context-block .sd-context-entry-label { width: 100%; margin: 0 !important; }
 #story-director-modal .sd-unified-source-entry > summary { display: flex; align-items: center; padding-block: 6px; }
 #story-director-modal .sd-lib-folder > summary { padding-block: 8px; font-size: var(--qm-type-body) !important; }
 #story-director-modal .sd-lib-main h4 { font-size: var(--qm-type-body) !important; line-height: 1.35; }
 #story-director-modal .sd-lib-row { padding-block: 6px; }
 #story-director-modal .sd-lib-search { min-height: var(--qm-source-control-height) !important; height: var(--qm-source-control-height); font-size: var(--qm-type-body) !important; }
-
-/* The desktop list rhythm above must not leak into the compact phone layout.
-   Keep the marker, title and state columns stable at narrow widths; the
-   secondary metadata span is intentionally hidden on phones. */
-@media (max-width: 520px) {
-  #story-director-modal .sd-geo-list-card > summary {
-    grid-template-columns: 8px minmax(0, 1fr) auto;
-    gap: 7px;
-    min-height: 44px;
-    padding: 8px 10px;
-  }
-  #story-director-modal .sd-geo-list-card > summary > span { display: none; }
-  #story-director-modal .sd-geo-list-body {
-    padding: 10px 10px 12px 12px;
-  }
-}
 
 /* v1.59.449 · 幕外／配音／日志／小组件收尾。 */
 
@@ -11920,11 +11823,23 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   box-shadow: 0 1px 4px color-mix(in srgb, var(--sd-accent) 38%, transparent);
 }
 
-/* 极简（glass）下剧札目录也要有完整边框，避免文件夹／条目只剩半截底色。 */
-#story-director-modal[data-qm-theme="glass"] [data-lib="script"] :is(.sd-lib-folder, .sd-lib-row) {
+/* 剧札只有一层细边框。目录内不透明标题的圆角须对齐外框内沿：极简外框
+   为 22px，而旧标题固定 9px，会将四角边线盖住；叠加内描边并不能修复。 */
+#story-director-modal [data-lib="script"] :is(.sd-lib-folder, .sd-lib-row) {
   box-sizing: border-box;
   border: 1px solid var(--qm-line, var(--sd-border)) !important;
+  box-shadow: none;
   overflow: visible;
+}
+#story-director-modal [data-lib="script"] .sd-lib-folder > summary {
+  --sd-script-folder-inner-radius: 9px;
+  border-radius: var(--sd-script-folder-inner-radius) var(--sd-script-folder-inner-radius) 0 0;
+}
+#story-director-modal[data-qm-theme] [data-lib="script"] .sd-lib-folder > summary {
+  --sd-script-folder-inner-radius: max(0px, calc(var(--qm-card-radius) - 1px));
+}
+#story-director-modal [data-lib="script"] .sd-lib-folder:not([open]) > summary {
+  border-radius: var(--sd-script-folder-inner-radius);
 }
 
 /* Final creative-card rhythm: keep the entry fold rows compact while the
@@ -12065,8 +11980,13 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-context-identity-card .sd-fixed-ref-label {
   font-size: var(--qm-type-card-title) !important;
   font-weight: 700 !important;
+  background-image: var(--qm-card-title-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
 }
-#story-director-modal .sd-context-identity-card .sd-fixed-ref { font-weight: 700 !important; }
+#story-director-modal .sd-context-identity-card .sd-fixed-ref,
+#story-director-modal .sd-context-identity-card .sd-info-tag { font-weight: 400 !important; }
 #story-director-modal .sd-context-reference-row :is(.checkbox_label, .sd-depth-field) {
   font-size: var(--qm-type-action-title) !important;
   line-height: 1.35 !important;
@@ -12082,7 +12002,11 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 
 /* 幕后：标题、四个衍生开关、暗线开关与推演动作同级；注入范围标签再大
    一档便于触控，但不放大 token 标签。编剧与剧组之律采用同一标题级。 */
-#story-director-modal .sd-injection-card > .sd-refresh-row :is(.checkbox_label, .sd-floor-refresh),
+#story-director-modal .sd-refresh-row.sd-settings-refresh-row :is(.checkbox_label, .sd-floor-refresh) {
+  font-size: var(--qm-type-action-title) !important;
+  font-weight: 400 !important;
+  line-height: 1.35 !important;
+}
 #story-director-modal .sd-derivative-options .sd-option-chip > span {
   font-size: var(--qm-type-action-title) !important;
   font-weight: 700 !important;
@@ -12091,9 +12015,12 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   font-size: calc(var(--qm-type-action-title) + 1px) !important;
 }
 #story-director-modal .sd-director-law-fold > summary > b,
-#story-director-modal .sd-backstage-blueprint > summary > b,
-#story-director-modal .sd-backstage-blueprint-body > .sd-field-head > h3 {
+#story-director-modal .sd-backstage-blueprint > summary > b {
   font-size: var(--qm-type-card-title) !important;
+  font-weight: 700 !important;
+}
+#story-director-modal .sd-backstage-blueprint-body > .sd-field-head > h3 {
+  font-size: calc(var(--qm-type-card-title) - 1px) !important;
   font-weight: 700 !important;
 }
 #story-director-modal .sd-backstage-blueprint .sd-textarea,
@@ -12102,7 +12029,7 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-backstage-blueprint-library .sd-lib-main > h4 { font-size: calc(var(--qm-type-body) - 1px) !important; }
 
 /* 幕外：指令正文与“上演此幕”使用同一字号，最近三幕一行省略并保持点选
-   阅读。收藏夹空态收窄并居中；极简剧札文件夹和条目用内外双线防止右缘被裁。 */
+   阅读。收藏夹空态收窄并居中。 */
 #story-director-modal .sd-theater-instruction-compact { font-size: var(--qm-type-action-title) !important; line-height: 1.65 !important; }
 #story-director-modal :is(
   .sd-theater-settings-fold > summary > b,
@@ -12122,11 +12049,6 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 }
 #story-director-modal .sd-favorites-empty { margin: 0 !important; padding: 24px 8px !important; text-align: center; font-size: var(--qm-type-caption) !important; }
 #story-director-modal[data-qm-theme="glass"] [data-lib="script"] .sd-lib-list { padding-inline: 2px; }
-#story-director-modal[data-qm-theme="glass"] [data-lib="script"] :is(.sd-lib-folder, .sd-lib-row) {
-  width: calc(100% - 2px);
-  margin-inline: 1px;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qm-line, var(--sd-border)) 72%, transparent);
-}
 
 /* 所有千幕卡片标题最终走同一套黑→主题强调色渐变，避免幕外、配音和幕后
    的局部规则再次把标题拉大或退回纯色。 */

@@ -28,10 +28,11 @@ assert.match(source, /geopoliticsRelationKinds:\s*\[\.\.\.FACTION_RELATION_KINDS
 assert.match(source, /sd-geo-filter[\s\S]*aria-pressed/);
 assert.match(source, /settings\.geopoliticsRelationKinds = FACTION_RELATION_KINDS\.filter/);
 assert.match(source, /settings\.geopoliticsView = view[\s\S]*saveSettings\(\)/);
-assert.match(source, /function renderFactionListView[\s\S]*sd-geo-list-card[\s\S]*sd-geo-list-rel/);
-// 冲突在世界格局卡内使用紧凑图标，保留 title/aria-label 供识别；卡片字号沿用千幕视觉标尺。
+assert.match(source, /function renderFactionDossierBody[\s\S]*sd-geo-list-rel[\s\S]*sd-geo-dossier-relation/);
+assert.match(source, /function renderFactionListView[\s\S]*sd-geo-list-card[\s\S]*renderFactionDossierBody\(f, factions, rels\)/);
+// 新档案明确标出所有关系类型，旧图标辅助仍保留独立入口；卡片字号沿用千幕视觉标尺。
 assert.match(source, /function geoRelationKindMarkup\(kind\)[\s\S]*sd-geo-rel-icon-conflict[\s\S]*fa-bolt/);
-assert.match(source, /sd-geo-d-kind[^\n]*geoRelationKindMarkup\(r\.kind\)/);
+assert.match(source, /sd-geo-d-kind[^\n]*htmlEscape\(r\.kind\)/);
 assert.match(css, /\.sd-geo-rel-icon\s*\{[^}]*width:\s*15px;[^}]*height:\s*15px/);
 assert.match(css, /\.sd-geo-list-card > summary strong\s*\{[^}]*font-size:\s*var\(--sd-geo-card-title/);
 assert.match(css, /\.sd-evt-head h4\s*\{[^}]*font-size:\s*var\(--sd-geo-card-title/);

@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
 const constants=['FACTION_RELATION_KINDS','FACTION_TRENDS','GEO_REL_COLOR','GEO_TREND_CN','GEO_TREND_ICON','EVENT_STAGE_CLS'].map(name=>{const match=source.match(new RegExp('^const '+name+' = .+;','m'));assert.ok(match,name);return match[0];}).join('\n');
-const functions=['geoRelationKindsSelected','geoFactionClusters','geoClusteredNodeLayout','geoLabelLayout','geoPrimaryRelationKeys','renderFactionStarMap','starPath','renderWorldEventCard','renderFactionListView','renderGeopoliticsTab','bindGeopoliticsTabEvents','renderWorldPageEdges'].map(storyboardFunctionSource).join('\n');
+const functions=['geoRelationKindsSelected','geoFactionClusters','geoClusteredNodeLayout','geoLabelLayout','geoPrimaryRelationKeys','renderFactionStarMap','starPath','renderWorldEventCard','renderFactionDossierBody','renderFactionListView','renderGeopoliticsTab','bindGeopoliticsTabEvents','renderWorldPageEdges'].map(storyboardFunctionSource).join('\n');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8')+'\n'+await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8');
 // Baseline night colors predate the day-only candy override. Compare computed
 // variables and actual SVG ink, not moving-frame screenshot pixels.
@@ -28,11 +28,6 @@ try{
   await page.goto('https://qianmu.test/');await page.evaluate(async source=>{
     const [utils,{createQianmuAppearanceSession},{updateAppearancePreferences},{applyQianmuIcons}]=await Promise.all([import('/qianmu-storyboard-utils.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),import('/qianmu-icon-renderer.js')]);
     for(const key of ['computeWorldHeat','heatTier','geoStableHash','geoRelationClass','snip','htmlEscape','sanitizeEventStage','EVENT_STAGE_LADDER'])window[key]=utils[key];
-    // The isolated renderer evaluates only the map helpers, so provide the
-    // production relation-label helper as a global dependency as well.
-    window.geoRelationKindMarkup=kind=>kind==='冲突'
-      ? '<span class="sd-geo-rel-icon sd-geo-rel-icon-conflict" role="img" aria-label="冲突" title="冲突"><i class="fa-solid fa-bolt" aria-hidden="true"></i></span>'
-      : `<b>${htmlEscape(kind)}</b>`;
     window.applyQianmuIcons=applyQianmuIcons;window.getChatStore=()=>worldFixture;window.settings={theme:'dark',geopoliticsEnabled:true};window.activeTab='castworld';window.worldPage='geopolitics';
     window.directorLiveLog=null;window.directorPreviewPlan=()=>null;
     window.calls={settings:0,confirmation:0,forbidden:0};window.saveSettings=()=>calls.settings++;window.confirmDialog=async()=>{calls.confirmation++;return false;};
@@ -41,9 +36,9 @@ try{
     window.setAppearance=async(family,mode)=>{if(family==='classic'){settings.theme=mode;document.querySelector('#story-director-modal').className='open sd-theme-'+mode;}settings.appearance=updateAppearancePreferences(settings,{family,mode});await appearance.sync();};
     window.renderMap=(mode='populated')=>{
       settings.geopoliticsView='map';delete settings.geopoliticsRelationKinds;calls.settings=0;calls.confirmation=0;calls.forbidden=0;
-      window.worldFixture={factions:['港口商会','远行者','城中守望','林地联盟'].map((name,i)=>({id:'f'+i,name,type:'团体',scale:'区域',trend:['rising','stable','declining','turbulent'][i],standing:'保留当下世界中的独立立场',agenda:'维持各自的诉求',clues:['未寄出的旧信','守望潮汐']})),
-        factionRelations:[{a:'f0',b:'f1',kind:'同盟',note:'共同探索'},{a:'f0',b:'f2',kind:'冲突',note:'分歧尚未化解'},{a:'f1',b:'f3',kind:'依附',note:'暂时协作'},{a:'f2',b:'f3',kind:'张力',note:'彼此观望'},{a:'f0',b:'f3',kind:'中立',note:'尚无交集'}],
-        worldEvents:EVENT_STAGE_LADDER.map((stage,i)=>({id:'e'+i,title:'港口商会与远行者 · 事件 '+i,stage,essence:'线索-'+ 'a'.repeat(96),scope:'沿海聚落',drift:'后续由当前叙事决定',status:'active'})).concat({id:'closed',title:'已落定的旧事',stage:'落定',status:'closed',essence:'历史事实仍保留'})};
+      window.worldFixture={factions:['港口商会与沿岸航运联合办事处','远行者','城中守望','林地联盟'].map((name,i)=>({id:'f'+i,name,type:'商业组织',scale:'区域性',trend:['rising','stable','declining','turbulent'][i],standing:'商会在风暴后重整沿岸仓储与航运，旧港停泊的货船仍在等待清点。值班员已经取回登记簿，却发现昨夜入港的三批货物没有留下收货人的名字。',agenda:'查清货物去向并恢复航线，同时保护与沿岸聚落签订的长期约定。',clues:['未寄出的旧信','旧仓库登记簿缺失的一页与夜间经过栈桥的运货车辆']})),
+        factionRelations:[{a:'f0',b:'f1',kind:'同盟',note:'远行者提供沿岸的日常走访线索，商会则开放旧仓库的出入记录。双方正在核对一批未登记货物的来历，以确认它是否与近日失踪的航标有关。'},{a:'f0',b:'f2',kind:'冲突',note:'城中守望要求扣留所有涉事船只，但商会担心停航会让沿岸聚落失去补给。双方尚未就检查范围达成一致，值班员保留的原始记录成为接下来协商的关键。'},{a:'f1',b:'f3',kind:'依附',note:'暂时协作'},{a:'f2',b:'f3',kind:'张力',note:'彼此观望'},{a:'f0',b:'f3',kind:'中立',note:'尚无交集'}],
+        worldEvents:EVENT_STAGE_LADDER.map((stage,i)=>({id:'e'+i,title:'港口商会与沿岸航运联合办事处与远行者 · 事件 '+i,stage,essence:'线索-'+ 'a'.repeat(96),scope:'沿海聚落',drift:'后续由当前叙事决定',status:'active'})).concat({id:'closed',title:'已落定的旧事',stage:'落定',status:'closed',essence:'历史事实仍保留'})};
       if(mode==='empty')worldFixture={factions:[],factionRelations:[],worldEvents:[]};if(mode==='events-only'){worldFixture.factions=[];worldFixture.factionRelations=[];}
       const body=document.querySelector('.sd-body');body.innerHTML=renderGeopoliticsTab();bindGeopoliticsTabEvents(body);applyQianmuIcons(body);body.scrollTop=0;
       document.querySelectorAll('.sd-world-edge').forEach(node=>node.remove());body.parentElement.insertAdjacentHTML('beforeend',renderWorldPageEdges());applyQianmuIcons(body.parentElement);
@@ -64,6 +59,11 @@ try{
     ok(label+' focused map removes unrelated relationship lines instead of leaking them through dim nodes',await page.locator('.sd-geo-edge.sd-dim').evaluateAll(nodes=>nodes.every(node=>{const style=getComputedStyle(node);return style.opacity==='0'&&style.visibility==='hidden'&&style.pointerEvents==='none';})));
     await page.locator('.sd-geo-detail').evaluate(node=>Promise.all(node.getAnimations().map(animation=>animation.finished)));
     ok(label+' faction detail retains readable foreground in the active day/night palette',await page.locator('.sd-geo-d-head h4,.sd-geo-d-standing,.sd-geo-d-agenda,.sd-geo-d-meta span,.sd-geo-d-kind,.sd-geo-d-rtext').evaluateAll(nodes=>nodes.length>5&&nodes.every(node=>mapTextContrast(node)>=4.5)));
+    ok(label+' world event titles are one step smaller and active-count note is absent',await page.locator('.sd-geo-events').evaluate(node=>!node.querySelector('.sd-geo-events-fold > summary .sd-summary-note')&&parseFloat(getComputedStyle(node.querySelector('.sd-evt-head h4')).fontSize)===parseFloat(getComputedStyle(node.querySelector('.sd-geo-events-fold > summary > b')).fontSize)-1));
+    ok(label+' dossier relationship text spans a full row and kind labels never break vertically',await page.locator('.sd-geo-detail .sd-geo-dossier-relation').evaluateAll(nodes=>nodes.length>0&&nodes.every(node=>{const heading=node.querySelector('.sd-geo-dossier-relation-head'),note=node.querySelector('.sd-geo-d-rtext'),kind=node.querySelector('.sd-geo-d-kind');return getComputedStyle(kind).whiteSpace==='nowrap'&&heading.getBoundingClientRect().bottom<=note.getBoundingClientRect().top&&Math.abs(heading.getBoundingClientRect().left-note.getBoundingClientRect().left)<1&&note.clientWidth>=node.clientWidth-30&&node.scrollWidth<=node.clientWidth+1;})));
+    ok(label+' both dossier views expose identical content including full clues',await page.evaluate(()=>{const map=document.querySelector('.sd-geo-detail .sd-geo-dossier'),list=document.querySelector('[data-acc="geo-list-f0"] .sd-geo-dossier');return map.textContent.replace(/\s+/g,'')===list.textContent.replace(/\s+/g,'');}));
+    ok(label+' dossier paragraphs use normal weight and all relation kinds have visible words',await page.locator('.sd-geo-detail').evaluate(node=>[...node.querySelectorAll('.sd-geo-dossier p')].every(p=>getComputedStyle(p).fontWeight==='400')&&[...node.querySelectorAll('.sd-geo-d-kind')].every(kind=>['同盟','冲突','依附','张力','中立'].includes(kind.textContent))));
+    if(width===393){await page.locator('.sd-geo-detail').screenshot({animations:'disabled',path:fileURLToPath(new URL(`${family}-${mode}-dossier-map-393.png`,qa))});}
     await page.locator('[data-fid=f0] .sd-geo-clue-hit').first().dispatchEvent('click');ok(label+' clue handler reveals the original text',await page.locator('.sd-geo-cluepop').textContent()==='未寄出的旧信');
     const stable=await page.evaluate(async({family,mode})=>{
       const body=document.querySelector('.sd-body'),node=body.querySelector('[data-fid=f0]');node.focus({preventScroll:true});body.scrollTop=30;
@@ -73,10 +73,12 @@ try{
     },{family,mode});ok(label+' hot theme swap keeps geometry, selected faction, clue, animation and owner: '+JSON.stringify(stable),Object.values(stable).every(Boolean));
     await page.locator('.sd-geo-filter[data-kind="冲突"]').click();ok(label+' relationship filter updates both real views',await page.locator('.sd-geo-edge[data-kind="冲突"]').evaluate(node=>node.classList.contains('sd-kind-hidden'))&&await page.locator('.sd-geo-list-rel[data-kind="冲突"]').evaluateAll(nodes=>nodes.every(node=>node.classList.contains('sd-kind-hidden'))));
     await page.locator('.sd-geo-filter[data-kind="同盟"]').click();ok(label+' hiding a relation hides its event glow with the core',await page.locator('.sd-geo-event-pulse[data-kind="同盟"]').evaluateAll(nodes=>nodes.length>0&&nodes.every(node=>node.classList.contains('sd-kind-hidden'))));await page.locator('.sd-geo-filter[data-kind="同盟"]').click();
+    await page.locator('.sd-geo-filter[data-kind="冲突"]').click();
     await page.locator('.sd-geo-view-btn[data-view=list]').click();ok(label+' list switch uses the existing handler and keeps the map mounted',await page.locator('.sd-geo-list-view').isVisible()&&!await page.locator('.sd-geo-map-view').isVisible()&&await page.locator('.sd-geo-node').count()===4);
-    await page.locator('.sd-geo-list-card').first().evaluate(node=>node.open=true);
-    ok(label+' expanded list keeps day/night text contrast',await page.locator('.sd-geo-list-card[open] .sd-geo-list-body p,.sd-geo-list-card[open] .sd-geo-list-rel > b,.sd-geo-list-card[open] .sd-geo-list-rel > span').evaluateAll(nodes=>nodes.length>2&&nodes.every(node=>mapTextContrast(node)>=4.5)));
-    if(mode==='light')ok(label+' candy status and clue labels retain at least 4.5 text contrast',await page.locator('.sd-geo-d-trend,.sd-geo-list-card[open] .sd-geo-list-clues span').evaluateAll(nodes=>nodes.length>2&&nodes.every(node=>mapTextContrast(node)>=4.5)));
+    await page.locator('[data-acc="geo-list-f0"]').evaluate(node=>node.open=true);
+    ok(label+' expanded list keeps day/night text contrast',await page.locator('.sd-geo-list-card[open] .sd-geo-list-body p,.sd-geo-list-card[open] .sd-geo-dossier-relation-head > strong,.sd-geo-list-card[open] .sd-geo-d-kind').evaluateAll(nodes=>nodes.length>2&&nodes.every(node=>mapTextContrast(node)>=4.5)));
+    if(mode==='light')ok(label+' candy status and clue labels retain at least 4.5 text contrast',await page.locator('.sd-geo-d-trend,.sd-geo-list-card[open] .sd-geo-dossier-clues li').evaluateAll(nodes=>nodes.length>2&&nodes.every(node=>mapTextContrast(node)>=4.5)));
+    if(width===393){await page.locator('[data-acc="geo-list-f0"]').screenshot({animations:'disabled',path:fileURLToPath(new URL(`${family}-${mode}-dossier-list-393.png`,qa))});}
     if(family!=='classic'){
       ok(label+' event grid and its inner text do not overflow',await page.locator('.sd-evt-grid, .sd-evt-essence').evaluateAll(nodes=>nodes.filter(node=>node.getClientRects().length).every(node=>node.scrollWidth<=node.clientWidth+1)));
       ok(label+' outer surfaces match the selected family',await page.locator('.sd-geo-events').evaluate((node,family)=>getComputedStyle(node).borderTopLeftRadius===(family==='glass'?'22px':'0px'),family));

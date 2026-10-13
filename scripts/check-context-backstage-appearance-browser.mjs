@@ -38,12 +38,13 @@ await context.route('**/*', async route => {
 try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async source => {
-        const [utils, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }] = await Promise.all([
+        const [utils, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }, sources] = await Promise.all([
             import('/qianmu-storyboard-utils.js'), import('/qianmu-appearance-session.js'),
-            import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
+            import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'), import('/qianmu-st-context-sources.js'),
         ]);
         for (const name of ['htmlEscape', 'infoTag', 'uniqueClean', 'isNoisePresetName', 'escapeRegExp', 'groupByFolder', 'estimateTokens']) window[name] = utils[name];
         Object.assign(window, {
+            groupPresetNames: sources.groupPresetNames,
             settings: { theme: 'dark' }, editorView: null, calls: { scan: 0, forbidden: 0 },
             maybeAutoScanContext: () => { calls.scan++; }, getCharacterName: () => '旅人', getPersonaName: () => '观星者',
             getChatStore: () => storyStore, currentPlan: () => storyStore.plan, getChatKey: () => 'isolated-qa', getCurrentPresetName: () => presetName,
@@ -67,14 +68,14 @@ try {
         };
         window.renderFixture = (tab, state = 'populated') => {
             window.activeTab = tab; window.fixtureEmpty = state === 'empty';
-            window.presetName = fixtureEmpty ? '' : '临海预设-' + 'p'.repeat(60);
+            window.presetName = fixtureEmpty ? '' : '【照见】Claude-Versatile-5.1.3 5.5';
             window.worldName = '沿海世界书-' + 'w'.repeat(60); window.lastWorldView = '';
             window.templateSearch = state === 'search-empty' ? '不存在的剧本' : '';
             window.templateExportMode = state === 'export'; window.templateExportSelection = new Set(['t0']);
             const entries = Array.from({ length: 32 }, (_, i) => ({ uid: i, name: '条目' + i + '-' + 'x'.repeat(80), content: '<thinking>应被过滤的内部文本</thinking>' + '海风与叙事线索\n'.repeat(220) }));
             if (state === 'legacy-review') { entries[0].enabled = false; entries[1].disable = true; }
             window.contextScanCache = {
-                currentPresetName: presetName, presetNames: fixtureEmpty ? [] : [presetName, '备用预设'],
+                currentPresetName: presetName, presetNames: fixtureEmpty ? [] : [presetName, '【照见】Claude-Versatile-5.0.9（试吃）', '临海预设-' + 'p'.repeat(60)],
                 presetScannedAt: fixtureEmpty ? 0 : 1, worldScannedAt: fixtureEmpty ? 0 : 1,
                 boundWorldBookNames: fixtureEmpty ? [] : [worldName], worldBookNames: fixtureEmpty ? [] : [worldName, '另一卷'],
                 presets: fixtureEmpty ? {} : { [presetName]: entries }, worldBooks: fixtureEmpty ? {} : { [worldName]: entries },
@@ -107,19 +108,48 @@ try {
             await page.setViewportSize({ width, height: width === 320 ? 568 : 898 });
             await page.evaluate(async ({ family, mode, tab }) => { await setAppearance(family, mode); renderFixture(tab); }, { family, mode, tab });
             ok(label + ' actual source or backstage controls remain available', await page.evaluate(tab => tab === 'context'
-                ? document.querySelectorAll('.sd-context-item').length === 64 && document.querySelectorAll('.sd-refresh-presets,.sd-refresh-worldbooks').length === 2
+                ? document.querySelectorAll('.sd-context-item').length === 64 && document.querySelectorAll('.sd-refresh-presets,.sd-refresh-worldbooks').length === 0
                 : document.querySelectorAll('.sd-save-blueprint,.sd-save-director-settings,.sd-edit-injection,.sd-lib-import').length === 4 && document.querySelectorAll('.sd-lib-row').length === 32, tab));
             await page.evaluate(tab => {
                 if (tab === 'context') {
-                    document.querySelectorAll('.sd-dropdown,.sd-context-item').forEach(node => { node.open = true; });
+                    document.querySelectorAll('.sd-dropdown').forEach(node => { node.open = true; });
                     document.querySelectorAll('.sd-entry-scroll').forEach(node => { node.scrollTop = 40; });
-                    document.querySelectorAll('.sd-context-item pre').forEach(node => { node.scrollTop = 60; });
                 } else {
                     document.querySelectorAll('.sd-plain-fold,.sd-lib-folder').forEach(node => { node.open = true; });
                     document.querySelector('.sd-lib-list').scrollTop = 55;
                     document.querySelector('.sd-inject-term').scrollTop = 65;
                 }
             }, tab);
+            if (tab === 'context') {
+                ok(label + ' the currently used preset belongs to its series and the count is digits only', await page.evaluate(() => {
+                    const row = document.querySelector('.sd-pick-preset:checked').closest('.sd-source-row');
+                    const group = row.closest('.sd-preset-version-group');
+                    return !!group && group.querySelector('summary small').textContent.trim() === '2'
+                        && row.textContent.includes('当前使用');
+                }));
+                ok(label + ' source entries are selectable without content previews', await page.evaluate(() =>
+                    document.querySelectorAll('.sd-context-item input[type=checkbox]').length === 64
+                    && !document.querySelector('.sd-context-item:is(details),.sd-context-item pre,.sd-context-item summary')));
+                ok(label + ' world and preset directory names use the same font size', await page.evaluate(() =>
+                    getComputedStyle(document.querySelector('.sd-world-name > span')).fontSize
+                    === getComputedStyle(document.querySelector('.sd-pick-preset:checked + span')).fontSize));
+                ok(label + ' identity labels have a gradient while names remain regular', await page.evaluate(() =>
+                    [...document.querySelectorAll('.sd-fixed-ref-label')].every(node => getComputedStyle(node).backgroundImage.includes('linear-gradient'))
+                    && [...document.querySelectorAll('.sd-fixed-ref .sd-info-tag')].every(node => getComputedStyle(node).fontWeight === '400')));
+                if (width === 393 && family === 'glass' && mode === 'light') await page.locator('.sd-context-identity-card').screenshot({
+                    animations: 'disabled', path: fileURLToPath(new URL('glass-light-identity-393.png', qa)),
+                });
+            } else {
+                ok(label + ' refresh and injection rows share a regular-weight action font', await page.evaluate(() => {
+                    const labels = [...document.querySelectorAll('.sd-settings-refresh-row :is(.checkbox_label,.sd-floor-refresh)')];
+                    return labels.length === 4 && labels.every(node => {
+                        const s = getComputedStyle(node); return s.fontSize === '12px' && s.fontWeight === '400';
+                    });
+                }));
+                ok(label + ' current script is one step smaller than the screenwriter heading', await page.evaluate(() =>
+                    parseFloat(getComputedStyle(document.querySelector('.sd-backstage-blueprint > summary > b')).fontSize)
+                    - parseFloat(getComputedStyle(document.querySelector('.sd-backstage-blueprint-body > .sd-field-head h3')).fontSize) === 1));
+            }
             if (tab === 'settings') {
                 ok(label + ' current plans omit the retired world scope without hiding the two real sources',
                     await page.locator('.sd-inject-section-toggle[data-key=world]').count() === 0
@@ -171,20 +201,20 @@ try {
                 return { dom: body.innerHTML === html && all.every(node => node.isConnected), draft: edit.value === value,
                     selection: edit.selectionStart === 3 && edit.selectionEnd === 8, focus: document.activeElement === edit,
                     controls: controls.every(([node, value, checked]) => node.value === value && node.checked === checked),
-                    exercisedNestedScroll: positions.filter(([, top]) => top > 0).length >= 3,
+                    exercisedNestedScroll: positions.filter(([, top]) => top > 0).length >= (tab === 'context' ? 2 : 3),
                     scroll: positions.every(([node, top]) => Math.abs(node.scrollTop - top) < 1),
                     state: saved === JSON.stringify([storyStore, contextScanCache, calls, settings.contextOptions, settings.templates]), tab: activeTab === tab };
             }, { family, mode, tab });
             ok(label + ' hot swap preserves draft, native state, nested scroll and read owner: ' + JSON.stringify(stable), Object.values(stable).every(Boolean));
-            ok(label + ' source text is escaped and filtering still uses the existing rules', await page.evaluate(tab => !document.querySelector('.sd-body img') && (tab !== 'context' || [...document.querySelectorAll('.sd-context-item pre')].every(node => !node.textContent.includes('应被过滤') && node.textContent.length <= 2000)), tab));
+            ok(label + ' private entry bodies are not rendered and injected text stays escaped', await page.evaluate(tab => !document.querySelector('.sd-body img') && (tab !== 'context' || !document.querySelector('.sd-body').textContent.includes('应被过滤')), tab));
             if (family !== 'classic') {
                 const overflow = await page.locator(tab === 'context' ? '.sd-dropdown-head,.sd-context-entry-label > span' : '.sd-backstage-blueprint-body,.sd-director-law-body').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).map(node => ({ className: node.className, scroll: node.scrollWidth, width: node.clientWidth })).filter(node => node.scroll > node.width + 1));
                 ok(label + ' inner content fits narrow cards: ' + JSON.stringify(overflow.slice(0, 3)), overflow.length === 0);
                 const surface = page.locator(tab === 'context' ? '.sd-context-source-pick .sd-dropdown' : '.sd-backstage-blueprint-library .sd-lib-folder').first();
                 ok(label + ' nested source surfaces follow family corners', await surface.evaluate((node, family) => getComputedStyle(node).borderTopLeftRadius === (family === 'glass' ? '22px' : '0px'), family));
-                const scrolls = page.locator(tab === 'context' ? '.sd-entry-scroll,.sd-context-item pre' : '.sd-lib-list,.sd-inject-term');
+                const scrolls = page.locator(tab === 'context' ? '.sd-entry-scroll' : '.sd-lib-list,.sd-inject-term');
                 ok(label + ' nested scroll stays available without a visible scrollbar', await scrolls.evaluateAll(nodes => nodes.every(node => getComputedStyle(node).scrollbarWidth === 'none')));
-                ok(label + ' source/terminal text remains readable', await page.locator(tab === 'context' ? '.sd-context-item pre' : '.sd-inject-term').evaluateAll(nodes => nodes.every(node => readContrast(node) >= 4.5)));
+                ok(label + ' source/terminal text remains readable', await page.locator(tab === 'context' ? '.sd-context-entry-label > span' : '.sd-inject-term').evaluateAll(nodes => nodes.length > 0 && nodes.every(node => readContrast(node) >= 4.5)));
                 if (tab === 'settings') {
                     ok(label + ' template names and row actions remain visible', await page.locator('.sd-lib-row h4,.sd-lib-row .sd-lib-edit,.sd-lib-row .sd-lib-delete').evaluateAll(nodes => nodes.length === 96 && nodes.every(node => {
                         const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
@@ -212,12 +242,12 @@ try {
             await page.evaluate(tab => renderFixture(tab, 'empty'), tab);
             ok(label + ' confirmed empty state preserves original guidance and disabled recovery', await page.evaluate(tab => tab === 'context'
                 ? document.querySelector('.sd-body').textContent.includes('未读取到预设') && document.querySelector('.sd-body').textContent.includes('未读取到世界书')
-                : document.querySelector('.sd-body').textContent.includes('尚无推演结果') && document.querySelector('.sd-body').textContent.includes('暂无剧本') && document.querySelector('.sd-restore-blueprint').disabled && document.querySelector('.sd-restore-system').disabled, tab));
+                : !document.querySelector('[data-acc="inject-preview"]') && !document.querySelector('.sd-lib-empty') && document.querySelector('.sd-restore-blueprint').disabled && document.querySelector('.sd-restore-system').disabled, tab));
             ok(label + ' theme never performs a source scan or write', await page.evaluate(tab => calls.forbidden === 0 && calls.scan === (tab === 'context' ? 1 : 0), tab));
         }
     }
     await page.evaluate(() => renderFixture('settings', 'disabled'));
-    ok('disabled injection cannot display an active injection preview', await page.locator('.sd-inject-term').count() === 0 && await page.locator('.sd-inject-subfold').last().textContent().then(text => text.includes('暗线注入已关闭')));
+    ok('disabled injection does not render an empty preview card', await page.locator('.sd-inject-term,[data-acc="inject-preview"]').count() === 0);
     await page.evaluate(() => renderFixture('settings', 'export'));
     ok('original template export selection and controls remain present', await page.locator('.sd-lib-select:checked').count() === 1 && await page.locator('.sd-lib-confirm-export,.sd-lib-cancel-export').count() === 2);
     await page.evaluate(() => renderFixture('settings', 'search-empty'));

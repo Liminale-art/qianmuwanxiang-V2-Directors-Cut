@@ -7244,9 +7244,35 @@ function renderWorldEventCard(e) {
   </details>`;
 }
 
-function renderFactionListView(factions, rels) {
-  const byId = new Map(factions.map((f) => [f.id, f]));
+// Both world views read the same dossier. Relationship labels are a heading,
+// never a narrow side column that takes width away from a long explanation.
+function renderFactionDossierBody(f, factions, rels, view = 'list') {
+  const byId = new Map(factions.map((item) => [item.id, item]));
   const selectedKinds = new Set(geoRelationKindsSelected());
+  const relationClass = view === 'list' ? 'sd-geo-list-rel' : 'sd-geo-d-rel';
+  const relationRows = rels.filter((r) => r.a === f.id || r.b === f.id).map((r) => {
+    const other = r.a === f.id ? r.b : r.a;
+    const otherName = byId.get(other)?.name || '某势力';
+    const direction = r.kind === '依附'
+      ? (r.a === f.id ? `依附于 ${otherName}` : `${otherName} 依附于此`)
+      : otherName;
+    return `<li class="sd-geo-dossier-relation ${relationClass}${selectedKinds.has(r.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(r.kind)}">
+      <div class="sd-geo-dossier-relation-head"><span class="sd-geo-d-kind">${htmlEscape(r.kind)}</span><strong>${htmlEscape(direction)}</strong></div>
+      ${r.note ? `<p class="sd-geo-d-rtext">${htmlEscape(r.note)}</p>` : ''}
+    </li>`;
+  }).join('');
+  const clues = (Array.isArray(f.clues) ? f.clues : []).filter(Boolean);
+  const meta = [f.type, f.scale].filter(Boolean);
+  return `<div class="sd-geo-dossier">
+    ${meta.length ? `<div class="sd-geo-d-meta">${meta.map((text) => `<span>${htmlEscape(text)}</span>`).join('')}</div>` : ''}
+    ${f.standing ? `<section class="sd-geo-dossier-section"><h5>当下</h5><p class="sd-geo-d-standing">${htmlEscape(f.standing)}</p></section>` : ''}
+    ${f.agenda ? `<section class="sd-geo-dossier-section"><h5>诉求</h5><p class="sd-geo-d-agenda">${htmlEscape(f.agenda)}</p></section>` : ''}
+    ${clues.length ? `<section class="sd-geo-dossier-section"><h5>线索</h5><ul class="sd-geo-dossier-clues">${clues.map((clue) => `<li>${htmlEscape(clue)}</li>`).join('')}</ul></section>` : ''}
+    ${relationRows ? `<section class="sd-geo-dossier-section sd-geo-dossier-relations"><h5>牵连</h5><ul class="sd-geo-d-rels">${relationRows}</ul></section>` : ''}
+  </div>`;
+}
+
+function renderFactionListView(factions, rels) {
   const ordered = factions.slice().sort((a, b) => {
     const trendOrder = { turbulent: 0, rising: 1, stable: 2, declining: 3 };
     const ar = rels.filter((r) => r.a === a.id || r.b === a.id).length;
@@ -7254,23 +7280,9 @@ function renderFactionListView(factions, rels) {
     return (trendOrder[a.trend] ?? 2) - (trendOrder[b.trend] ?? 2) || br - ar || geoStableHash(a.id) - geoStableHash(b.id);
   });
   return ordered.map((f) => {
-    const mine = rels.filter((r) => r.a === f.id || r.b === f.id);
-    const relRows = mine.map((r) => {
-      const other = r.a === f.id ? r.b : r.a;
-      const direction = r.kind === '依附'
-        ? (r.a === f.id ? `依附于 ${byId.get(other)?.name || '某势力'}` : `${byId.get(other)?.name || '某势力'} 依附于此`)
-        : `与 ${byId.get(other)?.name || '某势力'}`;
-      return `<li class="sd-geo-list-rel${selectedKinds.has(r.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(r.kind)}"><i style="background:${GEO_REL_COLOR[r.kind] || GEO_REL_COLOR['中立']}"></i>${geoRelationKindMarkup(r.kind)}<span>${htmlEscape(direction)}${r.note ? ` · ${htmlEscape(r.note)}` : ''}</span></li>`;
-    }).join('');
-    const clues = (Array.isArray(f.clues) ? f.clues : []).filter(Boolean).map((clue) => `<span>${htmlEscape(clue)}</span>`).join('');
     return `<details class="sd-geo-list-card" data-acc="geo-list-${htmlEscape(f.id)}">
-      <summary><i class="sd-geo-list-dot sd-geo-list-dot-${htmlEscape(f.trend || 'stable')}"></i><strong>${htmlEscape(f.name)}</strong><span>${htmlEscape([f.type, f.scale].filter(Boolean).join(' · '))}</span><em>${GEO_TREND_ICON[f.trend] || '＝'} ${GEO_TREND_CN[f.trend] || '稳守'}</em></summary>
-      <div class="sd-geo-list-body">
-        ${f.standing ? `<p>${htmlEscape(f.standing)}</p>` : ''}
-        ${f.agenda ? `<p class="sd-geo-list-agenda"><i class="fa-solid fa-bullseye"></i>${htmlEscape(f.agenda)}</p>` : ''}
-        ${clues ? `<div class="sd-geo-list-clues">${clues}</div>` : ''}
-        ${relRows ? `<ul>${relRows}</ul>` : '<p class="sd-muted sd-hint-sm">暂无牵连关系。</p>'}
-      </div>
+      <summary><i class="sd-geo-list-dot sd-geo-list-dot-${htmlEscape(f.trend || 'stable')}"></i><strong>${htmlEscape(f.name)}</strong><em>${GEO_TREND_ICON[f.trend] || '＝'} ${GEO_TREND_CN[f.trend] || '稳守'}</em></summary>
+      <div class="sd-geo-list-body">${renderFactionDossierBody(f, factions, rels)}</div>
     </details>`;
   }).join('');
 }
@@ -7332,7 +7344,7 @@ function renderGeopoliticsTab() {
 
   const eventsHtml = `<section class="sd-geo-events">
     ${activeEvents.length
-      ? `<details class="sd-plain-fold sd-geo-events-fold" data-acc="geo-events-fold" open><summary><b>世界事件</b><span class="sd-summary-note">${activeEvents.length} 桩进行中</span></summary><div class="sd-evt-grid">${activeEvents.map(renderWorldEventCard).join('')}</div></details>`
+      ? `<details class="sd-plain-fold sd-geo-events-fold" data-acc="geo-events-fold" open><summary><b>世界事件</b></summary><div class="sd-evt-grid">${activeEvents.map(renderWorldEventCard).join('')}</div></details>`
       : `<div class="sd-section-title"><h3>世界事件</h3></div><p class="sd-muted">暂无进行中的世界事件。</p>`}
     ${closedEvents.length ? `<details class="sd-geo-closed" data-acc="geo-closed-fold"><summary>已落定的旧事（${closedEvents.length}）</summary><div class="sd-evt-grid">${closedEvents.map(renderWorldEventCard).join('')}</div></details>` : ''}
   </section>`;
@@ -7387,7 +7399,6 @@ function bindGeopoliticsTabEvents(root) {
   const factions = Array.isArray(store.factions) ? store.factions : [];
   const rels = Array.isArray(store.factionRelations) ? store.factionRelations : [];
   const byId = new Map(factions.map((f) => [f.id, f]));
-  const nameOf = (id) => byId.get(id)?.name || '某势力';
   let focused = null;
   const pop = root.querySelector('.sd-geo-cluepop');
   const wrap = root.querySelector('.sd-geo-mapwrap');
@@ -7437,18 +7448,8 @@ function bindGeopoliticsTabEvents(root) {
     });
     // 详情面板：势力档案 + 它牵连的每一道关系
     const trendChip = `<span class="sd-geo-d-trend sd-geo-d-trend-${f.trend || 'stable'}">${GEO_TREND_ICON[f.trend] || '＝'} ${GEO_TREND_CN[f.trend] || '稳守'}</span>`;
-    const activeKinds = new Set(geoRelationKindsSelected());
-    const myRels = rels.filter((r) => activeKinds.has(r.kind) && (r.a === fid || r.b === fid)).map((r) => {
-      const other = r.a === fid ? r.b : r.a;
-      const dirTxt = r.kind === '依附' ? (r.a === fid ? `依附于 ${nameOf(other)}` : `${nameOf(other)} 依附于此`) : `与 ${nameOf(other)}`;
-      const kindCls = { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[r.kind] || 'neutral';
-      return `<li class="sd-geo-d-rel sd-geo-d-rel-${kindCls}"><span class="sd-geo-d-kind">${geoRelationKindMarkup(r.kind)}</span><span class="sd-geo-d-rtext">${htmlEscape(dirTxt)}${r.note ? ` · ${htmlEscape(r.note)}` : ''}</span></li>`;
-    }).join('');
-    panel.innerHTML = `<div class="sd-geo-d-head"><h4>${htmlEscape(f.name)}</h4>${trendChip}<button type="button" class="sd-geo-d-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div>`
-      + `<div class="sd-geo-d-meta">${[f.type, f.scale].filter(Boolean).map((t) => `<span>${htmlEscape(t)}</span>`).join('')}</div>`
-      + (f.standing ? `<p class="sd-geo-d-standing">${htmlEscape(f.standing)}</p>` : '')
-      + (f.agenda ? `<p class="sd-geo-d-agenda"><i class="fa-solid fa-bullseye"></i>${htmlEscape(f.agenda)}</p>` : '')
-      + (myRels ? `<ul class="sd-geo-d-rels">${myRels}</ul>` : '<p class="sd-muted sd-hint-sm">暂无牵连关系。</p>');
+    panel.innerHTML = `<div class="sd-geo-d-head"><h4>${htmlEscape(f.name)}</h4><button type="button" class="sd-geo-d-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>${trendChip}</div>`
+      + renderFactionDossierBody(f, factions, rels, 'map');
     applyQianmuIcons(panel);
     panel.hidden = false;
     panel.querySelector('.sd-geo-d-close')?.addEventListener('click', (e) => { e.stopPropagation(); clear(); });
@@ -8973,7 +8974,7 @@ function renderPresetSourcePanel() {
   const headLabel = active || '未选择';
   const renderRow = (name) => `<label class="sd-source-row"><input type="radio" name="sd-preset-radio" class="sd-pick-preset" data-name="${htmlEscape(name)}" ${name === active ? 'checked' : ''}><span>${htmlEscape(name)}</span>${currentName && name === currentName ? badge('当前使用') : ''}</label>`;
   const rows = groupPresetNames(names).map((entry) => entry.grouped
-    ? `<details class="sd-preset-version-group" data-preset-group="${htmlEscape(entry.base)}" ${entry.items.some((item) => item.name === active) ? 'open' : ''}><summary class="sd-source-row"><span>${htmlEscape(entry.base)}</span><small>${entry.items.length} 个版本</small></summary><div class="sd-preset-version-items">${entry.items.map((item) => renderRow(item.name)).join('')}</div></details>`
+    ? `<details class="sd-preset-version-group" data-preset-group="${htmlEscape(entry.base)}" ${entry.items.some((item) => item.name === active) ? 'open' : ''}><summary class="sd-source-row"><span>${htmlEscape(entry.base)}</span><small>${entry.items.length}</small></summary><div class="sd-preset-version-items">${entry.items.map((item) => renderRow(item.name)).join('')}</div></details>`
     : renderRow(entry.name)).join('');
   return `
     <div class="sd-context-source-pick">
@@ -9035,9 +9036,8 @@ function renderSelectedWorldBookEntries(selectedNames) {
 function renderContextEntry(kind, groupName, item, index, sourceLabel = '') {
   const id = getContextItemId(item, index);
   const title = item.name || item.identifier || item.comment || item.role || (Array.isArray(item.key) ? item.key.join(', ') : item.key) || `条目 ${index + 1}`;
-  const content = item.content || item.prompt || item.message || item.text || '';
   const checked = kind === 'preset' ? isPresetItemSelected(groupName, id) : isWorldItemSelected(groupName, id);
-  return `<details class="sd-source-row sd-context-item sd-unified-source-entry" data-acc="ci-${kind}-${htmlEscape(String(groupName))}-${htmlEscape(String(id))}"><summary><label class="sd-context-entry-label"><input type="checkbox" class="sd-context-check" data-kind="${kind}" data-group="${htmlEscape(groupName)}" data-id="${htmlEscape(String(id))}" ${checked ? 'checked' : ''}><span>${htmlEscape(title)}</span>${sourceLabel ? infoTag(sourceLabel) : ''}</label></summary><pre>${htmlEscape(cleanContextText(content).slice(0, 2000))}</pre></details>`;
+  return `<div class="sd-source-row sd-context-item sd-unified-source-entry"><label class="sd-context-entry-label"><input type="checkbox" class="sd-context-check" data-kind="${kind}" data-group="${htmlEscape(groupName)}" data-id="${htmlEscape(String(id))}" ${checked ? 'checked' : ''}><span>${htmlEscape(title)}</span>${sourceLabel ? infoTag(sourceLabel) : ''}</label></div>`;
 }
 
 // 注入范围开关：勾选哪些类别会被写进暗线灵感池（控注入 token）
@@ -9077,14 +9077,14 @@ function renderDirectorSettingsTab() {
   return `
     <section class="sd-card">
       <div class="sd-card-title-row"><h3>刷新</h3><p class="sd-muted sd-hint-sm">仅计入角色回复层</p></div>
-      <div class="sd-refresh-row">
+      <div class="sd-refresh-row sd-settings-refresh-row">
         <label class="checkbox_label"><input type="checkbox" class="sd-auto-refresh" ${settings.autoRefresh ? 'checked' : ''}> 自动推演</label>
         <label class="sd-floor-refresh"><span>每</span><input class="text_pole sd-auto-every" type="number" min="2" max="50" value="${htmlEscape(settings.autoRefreshEvery || 10)}"><span>层</span></label>
       </div>
     </section>
     <section class="sd-card sd-injection-card">
       <h3>暗线注入正文</h3>
-      <div class="sd-refresh-row">
+      <div class="sd-refresh-row sd-settings-refresh-row">
         <label class="checkbox_label"><input type="checkbox" class="sd-inject-enabled" ${settings.injectEnabled ? 'checked' : ''}> 启用暗线注入</label>
         <label class="sd-floor-refresh"><span>注入深度</span><input class="text_pole sd-inject-depth" type="number" min="0" max="20" value="${htmlEscape(settings.injectDepth ?? 2)}"></label>
       </div>
