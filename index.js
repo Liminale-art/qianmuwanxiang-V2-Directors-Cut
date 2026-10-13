@@ -1221,6 +1221,7 @@ let chatterExpanded = false;       // 尘寰群生：false=动态浮现舞台，
 let contextScanCache = { presets: {}, worldBooks: {}, presetNames: [], worldBookNames: [], currentPresetName: '', boundWorldBookNames: [], presetScannedAt: '', worldScannedAt: '' };
 let contextAutoScanned = false;    // 保留旧状态字段，实际刷新由时间戳与 in-flight 守卫共同决定
 let contextRefreshPromise = null;
+let presetRefreshPromise = null;
 let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染加入场动画，之后的静默重渲染（刷新/扫描/切换）不再重播，消除闪动
 let busy = false;                  // 推演忙碌态
 let directorRun = null, directorLiveLog = null;
@@ -2565,30 +2566,37 @@ async function refreshWorldBooks(showToast = true) {
 }
 
 async function refreshContextSources(showToast = false) {
-  await refreshPresets(false);
+  // 幕外正在读预设时复用该次读取，随后仍补齐取材需要的世界书。
+  await (presetRefreshPromise || refreshPresets(false));
   await refreshWorldBooks(false);
   if (showToast) toast('已刷新。', 'success');
 }
 
 // 目录没有可见的“刷新”按钮，但打开取材/幕外时仍要拿到 ST 当前目录。
-// 用短暂的时间窗合并连续 render，避免 renderModal -> 扫描 -> renderModal 形成循环，
-// 同时让移动端从后台切回或 ST 切换预设后不再只看到上一次缓存。
+// 先登记在途任务，再在微任务中读取：refreshPresets 会同步重绘，不能在守卫赋值前调用。
+// 预设与完整取材分开守卫，避免幕外的在途读取吞掉切入取材后的世界书刷新。
 function requestPresetRefreshIfStale(maxAge = 15000) {
+  if (contextRefreshPromise || presetRefreshPromise) return contextRefreshPromise || presetRefreshPromise;
   const scannedAt = Date.parse(contextScanCache.presetScannedAt || '');
-  if (contextRefreshPromise || (scannedAt && Date.now() - scannedAt < maxAge)) return;
-  contextRefreshPromise = refreshPresets(false)
+  if (scannedAt && Date.now() - scannedAt < maxAge) return;
+  presetRefreshPromise = Promise.resolve()
+    .then(() => refreshPresets(false))
     .catch((error) => console.warn(`[${MODULE_NAME}] preset directory refresh failed`, error))
-    .finally(() => { contextRefreshPromise = null; });
+    .finally(() => { presetRefreshPromise = null; });
+  return presetRefreshPromise;
 }
 
 function requestContextRefreshIfStale(maxAge = 15000) {
+  if (contextRefreshPromise) return contextRefreshPromise;
   const presetAt = Date.parse(contextScanCache.presetScannedAt || '');
   const worldAt = Date.parse(contextScanCache.worldScannedAt || '');
   const fresh = presetAt && worldAt && Date.now() - Math.min(presetAt, worldAt) < maxAge;
-  if (contextRefreshPromise || fresh) return;
-  contextRefreshPromise = refreshContextSources(false)
+  if (fresh) return;
+  contextRefreshPromise = Promise.resolve()
+    .then(() => refreshContextSources(false))
     .catch((error) => console.warn(`[${MODULE_NAME}] context directory refresh failed`, error))
     .finally(() => { contextRefreshPromise = null; });
+  return contextRefreshPromise;
 }
 
 // 懒加载补扫：ST 重进/刷新后 contextScanCache 是空的（仅存于内存），勾选状态却留在 settings。
