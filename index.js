@@ -31,7 +31,7 @@ import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composit
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
 import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.448';
-import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.448';
+import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
 import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.414';
@@ -192,7 +192,7 @@ import { createNotesPanelSync, captureNotesRefresh, mergeNotesRefresh } from './
 import { readNotesDeviceState, saveNotesDeviceState } from './qianmu-notes-device.js';
 import { bindProseAssistantWindow } from './qianmu-prose-assistant-window.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
-import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js?v=1.59.444';
+import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js?v=1.59.450';
 import { QIANMU_HIVE_THEME_LOGO } from './qianmu-hive-theme-logo.js';
 import { THEMES, THEME_KEYS, QUICK_HIVE_THEME_PALETTES, READER_PORTAL_BG } from './qianmu-classic-palettes.js';
 import { selectQianmuClassicTheme, changeQianmuAppearance } from './qianmu-appearance-actions.js';
@@ -1219,7 +1219,8 @@ let ttsEditorReturnScroll = null;  // 进入行内编辑器前的正文滚动位
 let theaterScriptSource = '';   // 当前此幕指令来自哪个剧札标题；空=即兴（手动输入/未保存）
 let chatterExpanded = false;       // 尘寰群生：false=动态浮现舞台，true=展开完整台本列表
 let contextScanCache = { presets: {}, worldBooks: {}, presetNames: [], worldBookNames: [], currentPresetName: '', boundWorldBookNames: [], presetScannedAt: '', worldScannedAt: '' };
-let contextAutoScanned = false;    // 本次 ST 会话内是否已自动补扫过取材（重进/刷新后首开取材页时懒加载一次）
+let contextAutoScanned = false;    // 保留旧状态字段，实际刷新由时间戳与 in-flight 守卫共同决定
+let contextRefreshPromise = null;
 let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染加入场动画，之后的静默重渲染（刷新/扫描/切换）不再重播，消除闪动
 let busy = false;                  // 推演忙碌态
 let directorRun = null, directorLiveLog = null;
@@ -2569,13 +2570,32 @@ async function refreshContextSources(showToast = false) {
   if (showToast) toast('已刷新。', 'success');
 }
 
+// 目录没有可见的“刷新”按钮，但打开取材/幕外时仍要拿到 ST 当前目录。
+// 用短暂的时间窗合并连续 render，避免 renderModal -> 扫描 -> renderModal 形成循环，
+// 同时让移动端从后台切回或 ST 切换预设后不再只看到上一次缓存。
+function requestPresetRefreshIfStale(maxAge = 15000) {
+  const scannedAt = Date.parse(contextScanCache.presetScannedAt || '');
+  if (contextRefreshPromise || (scannedAt && Date.now() - scannedAt < maxAge)) return;
+  contextRefreshPromise = refreshPresets(false)
+    .catch((error) => console.warn(`[${MODULE_NAME}] preset directory refresh failed`, error))
+    .finally(() => { contextRefreshPromise = null; });
+}
+
+function requestContextRefreshIfStale(maxAge = 15000) {
+  const presetAt = Date.parse(contextScanCache.presetScannedAt || '');
+  const worldAt = Date.parse(contextScanCache.worldScannedAt || '');
+  const fresh = presetAt && worldAt && Date.now() - Math.min(presetAt, worldAt) < maxAge;
+  if (contextRefreshPromise || fresh) return;
+  contextRefreshPromise = refreshContextSources(false)
+    .catch((error) => console.warn(`[${MODULE_NAME}] context directory refresh failed`, error))
+    .finally(() => { contextRefreshPromise = null; });
+}
+
 // 懒加载补扫：ST 重进/刷新后 contextScanCache 是空的（仅存于内存），勾选状态却留在 settings。
 // 首开取材页时若尚未扫描过，则后台静默补扫一次，扫完重渲染，让面板照实回到「已读取 + 既有勾选」。
 function maybeAutoScanContext() {
-  if (contextAutoScanned) return;
-  if (contextScanCache.presetScannedAt && contextScanCache.worldScannedAt) { contextAutoScanned = true; return; }
-  contextAutoScanned = true;   // 先置位，避免渲染→扫描→重渲染→再扫描的循环
-  refreshContextSources(false).catch((error) => console.warn(`[${MODULE_NAME}] auto scan context failed`, error));
+  contextAutoScanned = true;
+  requestContextRefreshIfStale();
 }
 
 function getPresetNameStore() {
@@ -3932,6 +3952,9 @@ async function commitEditorValue(target, val) {
   } else if (target === 'sd-system-prompt') {
     settings.systemPrompt = val || DEFAULT_SYSTEM_PROMPT;
     settings.systemPromptHash = settings.systemPrompt === DEFAULT_SYSTEM_PROMPT ? hashText(DEFAULT_SYSTEM_PROMPT) : '';
+    saveSettings();
+  } else if (target === 'sd-output-schema') {
+    settings.outputSchemaText = val || JSON_SCHEMA_TEXT;
     saveSettings();
   } else if (target === 'sd-inject-preview') {
     getChatStore().injectOverride = String(val ?? '').trim();
@@ -6830,6 +6853,8 @@ function renderModal() {
     if (el.dataset.tab !== 'theater') theaterView = null;
     editorView = null;   // 切标签即退出行内编辑视图
     activeTab = el.dataset.tab;
+    if (activeTab === 'theater') requestPresetRefreshIfStale(0);
+    if (activeTab === 'context') requestContextRefreshIfStale(0);
     renderModal();
   });
   bindActiveTabEvents(modal);
@@ -9045,7 +9070,7 @@ function renderDirectorSettingsTab() {
     <section class="sd-card">
       <div class="sd-card-title-row"><h3>刷新</h3><p class="sd-muted sd-hint-sm">仅计入角色回复层</p></div>
       <div class="sd-refresh-row">
-        <label class="checkbox_label"><input type="checkbox" class="sd-auto-refresh" ${settings.autoRefresh ? 'checked' : ''}> 自动推演剧情</label>
+        <label class="checkbox_label"><input type="checkbox" class="sd-auto-refresh" ${settings.autoRefresh ? 'checked' : ''}> 自动推演</label>
         <label class="sd-floor-refresh"><span>每</span><input class="text_pole sd-auto-every" type="number" min="2" max="50" value="${htmlEscape(settings.autoRefreshEvery || 10)}"><span>层</span></label>
       </div>
     </section>
@@ -9074,7 +9099,7 @@ function renderDirectorSettingsTab() {
         <div class="sd-director-law-body">
           <div class="sd-field-head"><label>提示词</label><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-system-prompt" data-title="剧组之律" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
           <textarea class="text_pole sd-textarea sd-system-prompt" spellcheck="false">${htmlEscape(settings.systemPrompt || DEFAULT_SYSTEM_PROMPT)}</textarea>
-          <div class="sd-field-head sd-output-schema-head"><label>输出格式</label></div>
+          <div class="sd-field-head sd-output-schema-head"><label>输出格式</label><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-output-schema" data-title="输出格式" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
           <textarea class="text_pole sd-textarea sd-output-schema" spellcheck="false">${htmlEscape(settings.outputSchemaText || JSON_SCHEMA_TEXT)}</textarea>
           <div class="sd-button-row"><button class="sd-btn sd-save-director-settings">保存幕后</button><button class="sd-btn sd-restore-system" title="找回更新前你上一次使用的提示词与输出格式" ${(settings.systemPromptBackup || settings.outputSchemaBackup) ? '' : 'disabled'}>恢复上次</button><button class="sd-btn sd-reset-system">恢复默认</button></div>
         </div>
@@ -34284,6 +34309,7 @@ function theaterScriptLibraryCfg() {
 }
 
 function renderTheaterTab() {
+  requestPresetRefreshIfStale();
   if (!theaterCatalogReady) {
     if (!theaterCatalogLoading && !theaterCatalogError) {
       void ensureTheaterCatalog().then(() => {
@@ -34441,7 +34467,7 @@ function renderTheaterFavoritesView() {
         <button type="button" class="sd-btn sd-lib-load sd-fav-read" data-id="${htmlEscape(f.id)}">阅读</button>
         <button type="button" class="sd-icon-btn sd-icon-sm sd-danger sd-fav-remove" data-id="${htmlEscape(f.id)}" title="移出收藏"><i class="fa-solid fa-star-half-stroke"></i></button>
       </div></article>`).join('')
-    : '<p class="sd-muted">收藏夹还空着。</p>';
+    : '<p class="sd-muted sd-favorites-empty">收藏夹为空</p>';
   return `
     <section class="sd-card sd-reader-card sd-editor-card sd-theater-view-card">
       <div class="sd-reader-bar sd-sticky-bar">

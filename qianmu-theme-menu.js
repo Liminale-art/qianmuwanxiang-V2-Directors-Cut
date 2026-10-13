@@ -23,6 +23,11 @@ export function renderQianmuThemeMenu(themes, selected, { settings, supported = 
           <div class="sd-theme-classic-options" role="group" aria-label="经典颜色"${preference.family === 'classic' ? '' : ' hidden'}>${classic}</div>
           <div class="sd-theme-accent-options" role="group" aria-label="强调色"${preference.family === 'classic' ? ' hidden' : ''}>
             <div class="sd-theme-swatches"><button type="button" class="sd-theme-opt sd-theme-mode-toggle" role="menuitem" data-appearance-mode-toggle aria-label="切换至${preference.mode === 'dark' ? '日间' : '夜间'}" title="切换至${preference.mode === 'dark' ? '日间' : '夜间'}">${modeIcon(preference.mode)}</button>${swatches}<label class="sd-theme-custom-color sd-theme-swatch${accents.some(([accent]) => accent === preference.accent) ? '' : ' active'}" title="自定强调色"><span aria-hidden="true"></span><input class="sd-theme-color" type="color" value="${preference.accent}" aria-label="自定强调色"></label></div>
+            <div class="sd-theme-custom-picker" hidden aria-label="自定义强调色编辑器">
+              <div class="sd-theme-sv" role="slider" aria-label="饱和度与明度" tabindex="0"><i aria-hidden="true"></i></div>
+              <input class="sd-theme-hue" type="range" min="0" max="360" step="1" value="0" aria-label="色相">
+              <div class="sd-theme-rgb"><label>R<input type="number" min="0" max="255" data-channel="r" aria-label="红色"></label><label>G<input type="number" min="0" max="255" data-channel="g" aria-label="绿色"></label><label>B<input type="number" min="0" max="255" data-channel="b" aria-label="蓝色"></label></div>
+            </div>
           </div>
         </div><div class="sd-theme-feedback" hidden><span class="sd-theme-status" role="status" aria-live="polite"></span><button type="button" class="sd-theme-opt sd-theme-retry" role="menuitem" hidden>重试</button></div>` : classic}
       </div>
@@ -37,8 +42,63 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     const keys = new Map(buttons.map(button => [button, { classic: button.dataset.theme, family: button.dataset.appearanceFamily, accent: button.dataset.appearanceAccent }]));
     const classicOptions = menu.querySelector?.('.sd-theme-classic-options'), accentOptions = menu.querySelector?.('.sd-theme-accent-options');
     const color = menu.querySelector?.('.sd-theme-color'), customColor = menu.querySelector?.('.sd-theme-custom-color'), mode = menu.querySelector?.('.sd-theme-mode-toggle');
+    const customPicker = menu.querySelector?.('.sd-theme-custom-picker'), sv = customPicker?.querySelector?.('.sd-theme-sv'), hue = customPicker?.querySelector?.('.sd-theme-hue');
+    const rgbInputs = customPicker ? [...customPicker.querySelectorAll?.('[data-channel]') || []] : [];
     const feedback = menu.querySelector?.('.sd-theme-feedback'), status = menu.querySelector?.('.sd-theme-status'), retry = menu.querySelector?.('.sd-theme-retry');
     let disposed = false, listening = false, actionError = '', sequence = 0;
+    let pickerHsv = { h: 0, s: 0, v: 1 };
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    function hexRgb(hex) {
+        const raw = String(hex || '').replace(/^#/, '');
+        if (!/^[a-f\d]{6}$/i.test(raw)) return { r: 0, g: 0, b: 0 };
+        return { r: parseInt(raw.slice(0, 2), 16), g: parseInt(raw.slice(2, 4), 16), b: parseInt(raw.slice(4, 6), 16) };
+    }
+    function rgbHex({ r, g, b }) { return `#${[r, g, b].map(value => clamp(Math.round(Number(value) || 0), 0, 255).toString(16).padStart(2, '0')).join('')}`; }
+    function rgbHsv({ r, g, b }) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+        let h = 0;
+        if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
+    }
+    function hsvRgb({ h, s, v }) {
+        const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
+        const rgb = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+        return { r: (rgb[0] + m) * 255, g: (rgb[1] + m) * 255, b: (rgb[2] + m) * 255 };
+    }
+    function syncPicker(hex) {
+        if (!customPicker) return;
+        pickerHsv = rgbHsv(hexRgb(hex));
+        if (hue) hue.value = String(Math.round(pickerHsv.h));
+        if (sv) {
+            sv.style.backgroundImage = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${pickerHsv.h} 100% 50%))`;
+            const marker = sv.querySelector?.('i');
+            if (marker) { marker.style.left = `${pickerHsv.s * 100}%`; marker.style.top = `${(1 - pickerHsv.v) * 100}%`; }
+        }
+        const rgb = hexRgb(hex);
+        for (const input of rgbInputs) input.value = String(rgb[input.dataset.channel] ?? 0);
+    }
+    function applyCustomHex(hex) {
+        if (disposed || !appearance || appearance.read().family === 'classic' || !/^#[a-f\d]{6}$/i.test(hex)) return;
+        if (color) color.value = hex.toLowerCase();
+        actionError = ''; sequence++;
+        try { const result = appearance.change({ accent: hex.toLowerCase(), source: 'manual' }); refresh(); settle(result); }
+        catch { actionError = '颜色切换未完成，已保留原设置。'; refresh(); }
+    }
+    function updatePickerFromHsv() { syncPicker(rgbHex(hsvRgb(pickerHsv))); applyCustomHex(rgbHex(hsvRgb(pickerHsv))); }
+    function updateSv(event) {
+        if (!sv || !appearance || appearance.read().family === 'classic') return;
+        const rect = sv.getBoundingClientRect?.();
+        if (!rect?.width || !rect?.height) return;
+        pickerHsv.s = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+        pickerHsv.v = clamp(1 - (event.clientY - rect.top) / rect.height, 0, 1);
+        event.preventDefault(); updatePickerFromHsv();
+    }
+    function updateRgb() {
+        const rgb = { r: 0, g: 0, b: 0 };
+        for (const input of rgbInputs) rgb[input.dataset.channel] = clamp(Number(input.value), 0, 255);
+        applyCustomHex(rgbHex(rgb));
+    }
     function refresh() {
         if (disposed || !appearance) return;
         const preference = appearance.read(), resource = appearance.status();
@@ -52,7 +112,9 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         }
         if (classicOptions) classicOptions.hidden = preference.family !== 'classic';
         if (accentOptions) accentOptions.hidden = preference.family === 'classic';
+        if (customPicker && preference.family === 'classic') customPicker.hidden = true;
         if (color && color.value !== preference.accent) color.value = preference.accent;
+        syncPicker(preference.accent);
         if (customColor) {
             customColor.classList[accents.some(([accent]) => accent === preference.accent) ? 'remove' : 'add']('active');
         }
@@ -81,6 +143,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     }
     function close(restoreFocus = false) {
         menu.hidden = true; pick.classList.remove('open'); trigger.setAttribute('aria-expanded', 'false');
+        if (customPicker) customPicker.hidden = true;
         if (listening) { document.removeEventListener('click', outside, true); listening = false; }
         if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
     }
@@ -143,6 +206,14 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         try { const result = appearance.change({ accent: color.value, source: 'manual' }); refresh(); settle(result); }
         catch { actionError = '颜色切换未完成，已保留原设置。'; refresh(); }
     }
+    function toggleCustomPicker(event) {
+        if (!customColor || !customPicker || !appearance || appearance.read().family === 'classic') return;
+        event.preventDefault(); event.stopPropagation();
+        customPicker.hidden = !customPicker.hidden;
+        if (!customPicker.hidden) syncPicker(appearance.read().accent);
+    }
+    const onHueInput = () => { pickerHsv.h = Number(hue?.value) || 0; updatePickerFromHsv(); };
+    const onSvMove = event => { if (event.buttons) updateSv(event); };
     function keydown(event) {
         if (disposed) return;
         if (menu.hidden) {
@@ -153,7 +224,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         }
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); return; }
         if (event.key === 'Tab') { close(true); return; }
-        if (event.target === color) return; // Native color picker owns its arrow keys.
+        if (event.target === color || event.target === hue || event.target.closest?.('.sd-theme-custom-picker')) return;
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault(); event.stopPropagation();
         const options = available(), index = options.indexOf(document.activeElement);
@@ -164,10 +235,19 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     }
     trigger.addEventListener('click', toggle); menu.addEventListener('click', select); pick.addEventListener('keydown', keydown);
     color?.addEventListener('input', chooseColor); color?.addEventListener('change', chooseColor);
+    customColor?.addEventListener('click', toggleCustomPicker);
+    sv?.addEventListener('pointerdown', updateSv); sv?.addEventListener('pointermove', onSvMove);
+    hue?.addEventListener('input', onHueInput);
+    rgbInputs.forEach(input => input.addEventListener('change', updateRgb));
     if (appearance) { refresh(); settle(appearance.sync()); }
     return () => {
         if (disposed) return; disposed = true; sequence++; close();
         trigger.removeEventListener('click', toggle); menu.removeEventListener('click', select); pick.removeEventListener('keydown', keydown);
         color?.removeEventListener('input', chooseColor); color?.removeEventListener('change', chooseColor);
+        customColor?.removeEventListener('click', toggleCustomPicker);
+        sv?.removeEventListener('pointerdown', updateSv);
+        sv?.removeEventListener('pointermove', onSvMove);
+        hue?.removeEventListener('input', onHueInput);
+        rgbInputs.forEach(input => input.removeEventListener('change', updateRgb));
     };
 }

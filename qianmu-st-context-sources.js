@@ -26,27 +26,39 @@ const namesOnly = values => [...new Set((Array.isArray(values) ? values : []).fi
 const headers = (context, globals) => context.getRequestHeaders?.() || { 'Content-Type': 'application/json', 'X-CSRF-Token': globals.document?.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || globals.token || '' };
 
 // Context picker presentation helper. ST exposes preset names as a flat list,
-// while users commonly keep versioned copies side by side (for example
-// "剧本助手 v1.2" and "剧本助手 v1.3").  Group only when there are at least
-// two explicit versioned siblings; a lone version remains a normal row so the
-// picker never hides the original name or invents a category for it.
-const PRESET_VERSION_PATTERNS = [
-    /^(.*?)[\s._·\-([（【]*(?:v|ver|version|版本)\s*([0-9]+(?:\.[0-9]+){0,3})\s*[\])）】]*$/i,
-    /^(.*?)[\s._·-]+([0-9]+\.[0-9]+(?:\.[0-9]+){0,2})\s*$/i,
-];
-
+// while users commonly keep versioned copies side by side. Names in the wild
+// also carry a family prefix (【照见】), a dotted version in the middle/end and
+// trial labels such as “(试吃1)”. Strip those decorations for the grouping key,
+// but keep the concrete original name as the selectable row.
 function parsePresetVersionName(name) {
     const value = String(name || '').trim();
     if (!value) return null;
-    for (const pattern of PRESET_VERSION_PATTERNS) {
-        const match = pattern.exec(value);
-        const base = String(match?.[1] || '').replace(/[\s._·-]+$/, '').trim();
-        if (!base || !match?.[2]) continue;
-        const version = match[2].split('.').map(Number);
-        if (version.some(number => !Number.isSafeInteger(number) || number < 0)) continue;
-        return { name: value, base, version, versionText: match[2] };
+    const prefixMatch = value.match(/^((?:【[^】]*】|\[[^\]]*\])\s*)+/);
+    const prefix = String(prefixMatch?.[0] || '');
+    let body = value.slice(prefix.length).trim();
+    // Parenthesised suffixes are release labels, not part of the series name.
+    // Remove more than one so “Name 4.8 (试吃1) (NSFW)” remains groupable.
+    let stripped = '';
+    while (stripped !== body) {
+        stripped = body;
+        body = body.replace(/\s*(?:\([^()]*\)|（[^（）]*）|\[[^\[\]]*\]|【[^】]*】)\s*$/g, '').trim();
     }
-    return null;
+    let versionText = '';
+    let version = null;
+    const matches = [...body.matchAll(/(?:^|[\s._-])(?:v|ver|version|版本)?\s*(\d+(?:\.\d+){0,3})(?=$|[\s._-])/gi)];
+    const match = matches.at(-1);
+    if (match) {
+        versionText = match[1];
+        version = versionText.split('.').map(Number);
+        // match.index points at the delimiter (or the beginning for a bare
+        // version), so slicing there removes both the delimiter and an
+        // optional “v / version / 版本” marker from the series base.
+        body = body.slice(0, match.index).replace(/[\s._-]+$/, '').trim();
+    }
+    const core = body.replace(/[\s._·-]+$/, '').trim();
+    if (!core) return null;
+    const key = `${prefix.trim()} ${core}`.trim().replace(/[\s._·-]+/g, ' ').toLocaleLowerCase();
+    return { name: value, base: `${prefix}${core}`.trim(), key, version, versionText };
 }
 
 const comparePresetVersions = (a, b) => {
@@ -72,7 +84,7 @@ export function groupPresetNames(names) {
     const groups = new Map();
     for (const row of rows) {
         if (!row.parsed) continue;
-        const key = row.parsed.base.toLocaleLowerCase();
+        const key = row.parsed.key;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(row);
     }
@@ -83,15 +95,27 @@ export function groupPresetNames(names) {
             result.push({ grouped: false, name: row.name });
             continue;
         }
-        const siblings = groups.get(row.parsed.base.toLocaleLowerCase()) || [];
-        if (siblings.length < 2) {
+        const key = row.parsed.key;
+        const siblings = groups.get(key) || [];
+        // An unversioned base joins a group only when the same series has at
+        // least one explicit version. A lone unversioned or lone version stays
+        // as the original flat row.
+        if (siblings.length < 2 || !siblings.some(item => item.parsed.version)) {
             result.push({ grouped: false, name: row.name });
             continue;
         }
-        if (groupedRows.has(row.parsed.base.toLocaleLowerCase())) continue;
-        groupedRows.add(row.parsed.base.toLocaleLowerCase());
-        const items = [...siblings].sort((a, b) => comparePresetVersions(a.parsed.version, b.parsed.version) || a.index - b.index)
-            .map(item => ({ name: item.name, version: [...item.parsed.version], versionText: item.parsed.versionText }));
+        if (groupedRows.has(key)) continue;
+        groupedRows.add(key);
+        const items = [...siblings].sort((a, b) => {
+            if (!a.parsed.version && !b.parsed.version) return a.index - b.index;
+            if (!a.parsed.version) return 1;
+            if (!b.parsed.version) return -1;
+            return comparePresetVersions(a.parsed.version, b.parsed.version) || a.index - b.index;
+        }).map(item => ({
+            name: item.name,
+            version: item.parsed.version ? [...item.parsed.version] : [],
+            versionText: item.parsed.versionText,
+        }));
         result.push({ grouped: true, base: row.parsed.base, items });
     }
     return result;

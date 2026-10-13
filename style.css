@@ -11536,6 +11536,72 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   color: var(--sd-text) !important;
 }
 
+/* 自定义强调色色盘：不用手机系统的 input[type=color] 弹层，PC 与移动端均
+   使用同一块饱和度/明度面、色相条和 RGB 输入。原生 input 仍保留作无障碍
+   与旧浏览器兜底，但点击彩色圆点优先打开这套统一控件。 */
+#story-director-modal .sd-theme-custom-picker {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 2px;
+  padding: 9px;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 12px;
+  background: var(--sd-glass-weak);
+}
+#story-director-modal .sd-theme-custom-picker[hidden] { display: none !important; }
+#story-director-modal .sd-theme-sv {
+  position: relative;
+  height: 126px;
+  border-radius: 9px;
+  background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, #f00);
+  cursor: crosshair;
+  touch-action: none;
+  overflow: hidden;
+}
+#story-director-modal .sd-theme-sv > i {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  width: 15px;
+  height: 15px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #18202a, 0 1px 3px #0008;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+#story-director-modal .sd-theme-hue {
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00) !important;
+  cursor: pointer;
+}
+#story-director-modal .sd-theme-hue::-webkit-slider-runnable-track { height: 8px; border-radius: 999px; background: inherit; }
+#story-director-modal .sd-theme-hue::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 17px;
+  height: 17px;
+  margin-top: -4.5px;
+  border: 2px solid var(--sd-card);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px #18202a, 0 1px 3px #0006;
+}
+#story-director-modal .sd-theme-hue::-moz-range-track { height: 8px; border-radius: 999px; background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+#story-director-modal .sd-theme-hue::-moz-range-thumb { width: 13px; height: 13px; border: 2px solid var(--sd-card); border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #18202a; }
+#story-director-modal .sd-theme-rgb { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+#story-director-modal .sd-theme-rgb label { display: grid; gap: 3px; color: var(--sd-muted); font-size: var(--qm-type-caption) !important; text-align: center; }
+#story-director-modal .sd-theme-rgb input { width: 100%; min-width: 0; min-height: 30px !important; height: 30px !important; padding: 3px 5px !important; text-align: center; font-size: var(--qm-type-body) !important; }
+@media (max-width: 520px) {
+  #story-director-modal .sd-theme-menu.is-appearance { width: min(320px, calc(100vw - 32px)); }
+  #story-director-modal .sd-theme-sv { height: 150px; }
+}
+
 /* Remove the old decorative dash after headings; the heading text now carries
    the accent itself. */
 #story-director-modal :is(.sd-card-title-row > h3, .sd-section-title h3, .sd-hero-top > h3, .sd-plain-fold > summary > b)::after {
@@ -11942,6 +12008,146 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-injection-card > h3,
 #story-director-modal .sd-derivative-card > h3,
 #story-director-modal .sd-director-law-fold > summary > b {
+  background-image: var(--qm-card-title-gradient) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: var(--sd-text) !important;
+}
+
+/* v1.59.450 · 统一动作基线与移动端细节收口。动作按钮“推演下一幕”
+   实际使用 12px；所有可折叠创作条目的标题、幕后开关和暗线范围以它为
+   交互字号基准，卡片标题仍保持 14px 的标题层级。 */
+#story-director-modal { --qm-type-action-title: 12px; }
+
+/* 命运之脉分隔线两端自然收束，不再像一条硬切到卡片边缘的横杠。 */
+#story-director-modal .sd-director-direction + .sd-director-direction::before {
+  background: linear-gradient(90deg, transparent, var(--sd-border) 18%, var(--sd-border) 82%, transparent) !important;
+}
+
+/* 纸间／极简的新角入场选中态与主操作按钮完全同源。 */
+#story-director-modal :is(.sd-newcomer-toggle.active, .sd-newcomer-toggle[aria-pressed="true"]) {
+  background: var(--sd-primary) !important;
+  color: var(--sd-primary-text) !important;
+  border-color: transparent !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,.2) inset, 0 1px 2px rgba(0,0,0,.06) !important;
+}
+
+/* “推演下一幕”是条目标题的唯一字号基准；角色名、关系名加粗但不再
+   抢过卡片分区标题。折叠行收窄后仍由 summary 的居中布局托住多行芯片。 */
+#story-director-modal :is(.sd-generate-main, .sd-newcomer-toggle) {
+  font-size: var(--qm-type-action-title) !important;
+  font-weight: 700 !important;
+}
+#story-director-modal .sd-plan-section .sd-item-summary-main h4,
+#story-director-modal .sd-relus-parties {
+  font-size: var(--qm-type-action-title) !important;
+  font-weight: 700 !important;
+}
+#story-director-modal .sd-plan-section .sd-item-fold > summary {
+  min-height: 54px !important;
+  padding-block: 7px !important;
+}
+#story-director-modal .sd-plan-section .sd-item-summary-main {
+  min-height: 0 !important;
+  gap: 6px;
+}
+#story-director-modal .sd-plan-section .sd-item-summary-main h4 { margin: 0 !important; line-height: 1.3 !important; }
+#story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main h4 {
+  margin-inline-start: 12px !important;
+  font-size: var(--qm-type-action-title) !important;
+}
+#story-director-modal .sd-plan-section .sd-item-npc > summary { gap: 10px; }
+#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row { gap: 6px; align-items: stretch; }
+#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { margin: 0; line-height: 1.35; }
+
+/* 取材：身份标签是卡片标题级并明确加粗；上下文参考与楼层数按动作基线。 */
+#story-director-modal .sd-context-identity-card .sd-fixed-ref-label {
+  font-size: var(--qm-type-card-title) !important;
+  font-weight: 700 !important;
+}
+#story-director-modal .sd-context-identity-card .sd-fixed-ref { font-weight: 700 !important; }
+#story-director-modal .sd-context-reference-row :is(.checkbox_label, .sd-depth-field) {
+  font-size: var(--qm-type-action-title) !important;
+  line-height: 1.35 !important;
+}
+#story-director-modal :is(
+  .sd-context-source-pick .sd-dropdown-head,
+  .sd-context-source-pick .sd-source-row,
+  .sd-context-block > summary,
+  .sd-unified-source-entry > summary,
+  .sd-lib-folder > summary,
+  .sd-lib-row
+) { min-height: var(--qm-source-control-height) !important; }
+
+/* 幕后：标题、四个衍生开关、暗线开关与推演动作同级；注入范围标签再大
+   一档便于触控，但不放大 token 标签。编剧与剧组之律采用同一标题级。 */
+#story-director-modal .sd-injection-card > .sd-refresh-row :is(.checkbox_label, .sd-floor-refresh),
+#story-director-modal .sd-derivative-options .sd-option-chip > span {
+  font-size: var(--qm-type-action-title) !important;
+  font-weight: 700 !important;
+}
+#story-director-modal .sd-injection-card .sd-inject-section-grid .sd-option-chip > span {
+  font-size: calc(var(--qm-type-action-title) + 1px) !important;
+}
+#story-director-modal .sd-director-law-fold > summary > b,
+#story-director-modal .sd-backstage-blueprint > summary > b,
+#story-director-modal .sd-backstage-blueprint-body > .sd-field-head > h3 {
+  font-size: var(--qm-type-card-title) !important;
+  font-weight: 700 !important;
+}
+#story-director-modal .sd-backstage-blueprint .sd-textarea,
+#story-director-modal .sd-director-law-body > .sd-textarea { min-height: 340px !important; }
+#story-director-modal .sd-output-schema-head .sd-expand-editor { display: inline-flex !important; }
+#story-director-modal .sd-backstage-blueprint-library .sd-lib-main > h4 { font-size: calc(var(--qm-type-body) - 1px) !important; }
+
+/* 幕外：指令正文与“上演此幕”使用同一字号，最近三幕一行省略并保持点选
+   阅读。收藏夹空态收窄并居中；极简剧札文件夹和条目用内外双线防止右缘被裁。 */
+#story-director-modal .sd-theater-instruction-compact { font-size: var(--qm-type-action-title) !important; line-height: 1.65 !important; }
+#story-director-modal :is(
+  .sd-theater-settings-fold > summary > b,
+  .sd-theater-settings-fold + .sd-card .sd-template-head h3,
+  [data-lib="script"] .sd-template-head h3,
+  .sd-tts-model-card > h3,
+  .sd-plain-fold[data-acc^="tts-"] > summary > b,
+  .sd-log-card > .sd-card-title-row > h3
+) { font-size: var(--qm-type-card-title) !important; }
+#story-director-modal .sd-theater-latest-preview {
+  display: block !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
+  -webkit-line-clamp: unset !important;
+  line-height: 1.45 !important;
+}
+#story-director-modal .sd-favorites-empty { margin: 0 !important; padding: 24px 8px !important; text-align: center; font-size: var(--qm-type-caption) !important; }
+#story-director-modal[data-qm-theme="glass"] [data-lib="script"] .sd-lib-list { padding-inline: 2px; }
+#story-director-modal[data-qm-theme="glass"] [data-lib="script"] :is(.sd-lib-folder, .sd-lib-row) {
+  width: calc(100% - 2px);
+  margin-inline: 1px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qm-line, var(--sd-border)) 72%, transparent);
+}
+
+/* 所有千幕卡片标题最终走同一套黑→主题强调色渐变，避免幕外、配音和幕后
+   的局部规则再次把标题拉大或退回纯色。 */
+#story-director-modal :is(
+  .sd-card > h3,
+  .sd-card-title-row > h3,
+  .sd-section-title h3,
+  .sd-hero-top > h3,
+  .sd-template-head h3,
+  .sd-plain-fold > summary > b,
+  .sd-accordion > summary > b,
+  .sd-plan-section > details > summary > b,
+  .sd-item-summary-main h4,
+  .sd-relus-parties,
+  .sd-chain-card > details > summary > b,
+  .sd-geo-events-fold > summary > b,
+  .sd-evt-head h4,
+  .sd-geo-list-card > summary strong,
+  .sd-geo-d-head h4,
+  .sd-backstage-blueprint-library .sd-lib-main > h4
+) {
   background-image: var(--qm-card-title-gradient) !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
