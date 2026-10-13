@@ -22,7 +22,7 @@ test('widget toggles stay in two columns and hive choices stay in three at every
 });
 
 test('hive labels can wrap without shrinking their icons or forcing a fourth column', () => {
-    const base = rules('#story-director-modal .sd-widget-toggle').join('\n');
+    const base = rules('#story-director-modal .sd-widget-toggle:not(.sd-btn)').join('\n');
     const icons = rules('#story-director-modal .sd-wheel-command-toggle > :is(i, .qm-glyph-icon)').join('\n');
     const labels = rules('#story-director-modal .sd-wheel-command-toggle > span').join('\n');
     assert.match(base, /min-width:\s*0/);
@@ -33,10 +33,10 @@ test('hive labels can wrap without shrinking their icons or forcing a fourth col
     assert.match(labels, /overflow-wrap:\s*anywhere/);
 });
 
-test('the smaller hive title and selected tags retain the existing theme system', () => {
-    const summary = rules('#story-director-modal .sd-wheel-custom-details > summary').at(-1);
-    const active = rules('#story-director-modal .sd-widget-toggle.active').join('\n');
-    assert.match(summary, /font-size:\s*calc\(1em\s*-\s*2px\)/);
+test('the hive title and selected tags retain the existing theme system', () => {
+    const summary = rules('#story-director-modal .sd-wheel-custom-details > summary > b').at(-1);
+    const active = rules('#story-director-modal .sd-widget-toggle-row > .sd-widget-toggle.active').join('\n');
+    assert.match(summary, /font-size:\s*var\(--qm-type-body\)/);
     assert.match(active, /var\(--sd-accent\)/);
     assert.match(active, /var\(--sd-card\)/);
     assert.doesNotMatch(css, /\.sd-wheel-command-toggle[^{}]*\{[^}]*border-radius/, 'choice buttons must share widget/theme corners');

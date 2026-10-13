@@ -5,6 +5,8 @@ import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { focusDefaults } from '../tests/helpers/focus-lock-fixture.mjs';
+import { titleGradientProbe } from './helpers/title-gradient-probe.mjs';
+const titleControlsOnly = process.argv.includes('--title-controls');
 const require = createRequire(import.meta.url), { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const deadline = setTimeout(() => { console.error('Focus appearance checks exceeded 120 seconds'); void browser.close(); }, 120000);
@@ -18,6 +20,8 @@ await context.route('**/*', async route => {
     if (url.origin === 'https://qianmu.test') {
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body></body>' });
         if (/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname)) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url), 'utf8') });
+        if (/^\/qianmu-[a-z0-9-]+\.css$/.test(url.pathname)) return route.fulfill({ contentType: 'text/css', body: await readFile(new URL('..' + url.pathname, import.meta.url), 'utf8') });
+        if (url.pathname === '/favicon.ico') return route.fulfill({ status: 204 });
     }
     external++; return route.abort();
 });
@@ -56,7 +60,7 @@ try {
             window.voiceContext = { hasCharacter: true, characterKey: 'character:A.png', characterName: '隔离角色', providerId: 'MiniMax', voice: { voiceId: 'v0' }, options: Array.from({ length: 40 }, (_, index) => ({ key: `v${index}`, label: `音色 ${index} · 清晰且较长的显示名称` })), selected: 'v0', relation: 'neutral', enabled: true };
             window.settings = { theme: classic }; if (family) settings.appearance = updateAppearancePreferences(settings, { family, mode });
             render();
-            window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
+            window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }), loadFont: () => ({ promise: Promise.resolve(true), cancel() {} }) });
             appearance.mount(root); await appearance.sync();
             window.library = createFocusDialogueLibrary({ owner: () => account, legacy: async () => [], save: () => counts.save++ });
             window.drawer = createFocusVoiceDrawer({ document, getModal: () => root, rowsForView: () => f.dialogueLibrary.rows.map(row => ({ ...row, task: '隔离专注', sourceTime: 1700000000000 })),
@@ -100,6 +104,37 @@ try {
                 selection: kind === 'editor' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null, ...snapshot(kind) };
         };
     }, focusDefaults);
+    if (titleControlsOnly) {
+        for (const width of [320, 393, 1100]) for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) {
+            const label = `${width}/${family}/${mode}`;
+            await page.setViewportSize({ width, height: 900 });
+            await page.evaluate(options => setup(options), { family, mode, classic: mode });
+            const title = await page.locator('.sd-focus-settings > summary > span:first-child').evaluate(titleGradientProbe);
+            assert.ok(title.gradient && title.textSized, `${label} cycle title paints gradient across actual text: ${JSON.stringify(title)}`);
+            checks.push(`${label}: cycle title gradient is text sized`);
+            await page.locator('.sd-focus-settings > summary').focus();
+            await page.keyboard.press('Enter');
+            assert.equal(await page.locator('.sd-focus-settings').evaluate(node => node.open), false);
+            await page.keyboard.press('Enter');
+            assert.equal(await page.locator('.sd-focus-settings').evaluate(node => node.open), true);
+            await page.locator('.sd-focus-auto-next').focus();
+            await page.keyboard.press('Space');
+            const stable = await page.evaluate(async ({ family, mode }) => {
+                const control = document.querySelector('.sd-focus-auto-next'), fold = document.querySelector('.sd-focus-settings');
+                const old = { control, checked: control.checked, saves: counts.save, renders: counts.render, state: JSON.stringify(f) };
+                settings.appearance = updateAppearancePreferences(settings, { family: family === 'glass' ? 'editorial' : 'glass', mode: mode === 'light' ? 'dark' : 'light' }); await appearance.sync();
+                settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync();
+                return document.activeElement === old.control && old.control.isConnected && control.checked === old.checked && counts.save === old.saves && counts.render === old.renders && JSON.stringify(f) === old.state && fold.open;
+            }, { family, mode });
+            assert.ok(stable, `${label} native keyboard and selected auto-start state survive skin change`);
+            checks.push(`${label}: keyboard collapse/reopen and selected state retained`);
+            if (screenshots && width === 393) {
+                await page.evaluate(() => document.activeElement?.blur());
+                await page.locator('.sd-focus-settings').scrollIntoViewIfNeeded();
+                await page.screenshot({ path: path.join(screenshots, `${family}-${mode}-cycle-title-393.png`), animations: 'disabled' });
+            }
+        }
+    } else {
     for (const width of [320, 393, 1280]) for (const family of ['editorial', 'glass']) for (const mode of ['light', 'dark']) {
         const label = `${width}/${family}/${mode}`;
         await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
@@ -209,6 +244,7 @@ try {
         checks.push(`${kind}: reduced-transparency choice uses an opaque, unblurred canvas`);
     }
     await cdp.detach();
+    }
     assert.deepEqual(errors, []); assert.equal(external, 0);
     console.log(JSON.stringify({ passed: checks.length, errors, external, checks, scope: 'actual focus/voice/dialogue/autosave/drawer owners, isolated account; synthetic composition events are not a real IME or device test' }));
 } finally { clearTimeout(deadline); await browser.close(); }

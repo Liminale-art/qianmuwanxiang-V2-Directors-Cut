@@ -4,6 +4,9 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
+import { titleGradientProbe } from './helpers/title-gradient-probe.mjs';
+
+const titleControlsOnly = process.argv.includes('--title-controls');
 
 const names = ['renderActiveTab', 'renderTtsTab', 'renderTtsVoiceMapRows', 'renderTtsVoiceEntryRows',
     'renderTtsVoiceLibRows', 'renderTtsNpcRows', 'renderTtsTagRows', 'renderTtsPronDictRows',
@@ -31,6 +34,8 @@ await context.route('**/*', async route => {
     if (url.origin === 'https://qianmu.test' && /^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname)) return route.fulfill({
         contentType: 'application/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url)),
     });
+    if (url.origin === 'https://qianmu.test' && /^\/qianmu-[a-z0-9-]+\.css$/.test(url.pathname)) return route.fulfill({ contentType: 'text/css', body: await readFile(new URL('..' + url.pathname, import.meta.url)) });
+    if (url.origin === 'https://qianmu.test' && url.pathname === '/favicon.ico') return route.fulfill({ status: 204 });
     external++; return route.abort();
 });
 try {
@@ -52,9 +57,13 @@ try {
         const forbidden = () => { calls++; throw Error('Synthesis, ST persistence and library changes are forbidden'); };
         window.synthesizeTts = window.saveSettings = window.saveMetadata = window.ttsStartChat = window.ttsStopChat = forbidden;
         (0, eval)(source);
-        window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
+        window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }), loadFont: () => ({ promise: Promise.resolve(true), cancel() {} }) });
         appearance.mount(document.querySelector('#story-director-modal'));
-        window.setAppearance = async (family, mode) => { settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync(); };
+        window.setAppearance = async (family, mode) => {
+            settings.theme = mode;
+            const root = document.querySelector('#story-director-modal'); root.classList.remove('sd-theme-dark', 'sd-theme-light'); root.classList.add(`sd-theme-${mode}`);
+            settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync();
+        };
         window.renderVoices = (id, state = 'populated') => {
             const p = createTtsProviderDefaults(id), empty = state === 'empty';
             p.apiKey = ''; // Never read real credentials, even for a masked input.
@@ -82,11 +91,30 @@ try {
             return (Math.max(luminance(bg), luminance(fg)) + .05) / (Math.min(luminance(bg), luminance(fg)) + .05);
         };
     }, source);
-    for (const [family, mode] of [['classic', 'dark'], ['editorial', 'light'], ['editorial', 'dark'], ['glass', 'light'], ['glass', 'dark']]) {
-        for (const width of [320, 393, 1100]) for (const provider of ['minimax', 'doubao', 'elevenlabs']) {
+    for (const [family, mode] of [['classic', 'light'], ['classic', 'dark'], ['editorial', 'light'], ['editorial', 'dark'], ['glass', 'light'], ['glass', 'dark']]) {
+        for (const width of [320, 393, 1100]) for (const provider of titleControlsOnly ? ['minimax'] : ['minimax', 'doubao', 'elevenlabs']) {
             const label = `${family}/${mode}/${width}/${provider}`;
             await page.setViewportSize({ width, height: width === 320 ? 568 : 898 });
             await page.evaluate(async ({ family, mode, provider }) => { await setAppearance(family, mode); renderVoices(provider); }, { family, mode, provider });
+            if (titleControlsOnly) {
+                const title = await page.locator('.sd-tts-model-card > h3').evaluate(titleGradientProbe);
+                ok(`${label} model title paints gradient across actual text: ${JSON.stringify(title)}`, title.gradient && title.textSized);
+                const continuity = await page.evaluate(async ({ family, mode }) => {
+                    const select = document.querySelector('.sd-tts-provider'), toggle = document.querySelector('.sd-tts-enabled');
+                    select.focus(); select.value = 'doubao';
+                    const old = { title: document.querySelector('.sd-tts-model-card > h3'), select, value: select.value, pressed: toggle.getAttribute('aria-pressed'), state: JSON.stringify(settings.tts) };
+                    await setAppearance(family === 'glass' ? 'editorial' : 'glass', mode === 'light' ? 'dark' : 'light'); await setAppearance(family, mode);
+                    return old.title.isConnected && document.activeElement === old.select && select.value === old.value && toggle.getAttribute('aria-pressed') === old.pressed && JSON.stringify(settings.tts) === old.state && calls === 0;
+                }, { family, mode });
+                ok(`${label} model keyboard focus, native selection and enable state survive theme swap`, continuity);
+                if (width === 393) {
+                    await page.locator('.sd-tts-provider').selectOption(provider);
+                    await page.evaluate(() => document.activeElement?.blur());
+                    await page.locator('.sd-tts-model-card').scrollIntoViewIfNeeded();
+                    await page.screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-title-controls-393.png`, qa)), animations: 'disabled' });
+                }
+                continue;
+            }
             ok(label + ' actual provider form and all original library controls are present', await page.evaluate(() =>
                 document.querySelectorAll('.sd-tts-provider option').length === 3 && document.querySelectorAll('.sd-tts-lib-test').length === 30
                 && document.querySelectorAll('.sd-tts-narch-test').length === 25 && document.querySelectorAll('.sd-tts-fav-refresh,.sd-tts-save-prompt,.sd-tts-save-scheme').length === 3
@@ -138,6 +166,7 @@ try {
                 && document.querySelector('.sd-tts-npc-list').textContent.includes('尚未配置原型') && document.querySelector('.sd-tts-fav-list').textContent.includes('刷新收藏')
                 && document.querySelector('.sd-tts-restore-prompt').disabled && calls === 0));
         }
+        if (titleControlsOnly) continue;
         await page.evaluate(() => renderVoices('doubao', 'legacy-auth'));
         ok(`${family}/${mode} original legacy authentication fields remain isolated`, await page.locator('.sd-tts-app-id,.sd-tts-access-key').count() === 2 && await page.locator('.sd-tts-key').count() === 0);
         await page.evaluate(() => renderVoices('elevenlabs', 'legacy-model'));

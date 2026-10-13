@@ -76,6 +76,15 @@ test('new or empty plans do not render the retired world switch, even with unrel
   assert.doesNotMatch(c.renderInjectSections(), /data-key="world"/);
 });
 
+test('compact scope captions keep the five established selection keys', () => {
+  const { c } = fixture();
+  const html = c.renderInjectSections();
+  const pairs = [...html.matchAll(/data-key="([^"]+)"[^>]*><span>([^<]+)<\/span>/g)]
+    .map(([, key, label]) => [key, label]);
+  assert.deepEqual(pairs, [['quests', '预演'], ['nodes', '涟漪'], ['npc', '动向'], ['relations', '关系'], ['geopolitics', '世界']]);
+  assert.deepEqual(c.settings.injectSections, allOff, 'caption changes never rewrite selection preferences');
+});
+
 test('historical world material exposes only its own old-version switch and honors its existing value', () => {
   const { c, store } = fixture();
   store.plan.world_updates = [{ title: '历史世界条目', content: 'LEGACY_WORLD_ONLY' }];

@@ -45,7 +45,12 @@ assert.match(source, /title:\s*'台词指导方案库'[\s\S]*emptyText:\s*''/);
 assert.match(css, /主面板排版基线[\s\S]*font-size:\s*15px !important[\s\S]*font-size:\s*12px !important/);
 assert.match(css, /直接作为卡片标题的折叠栏统一采用[\s\S]*min-height:\s*22px/);
 assert.match(css, /\.sd-current-blueprint-actions\s*\{[\s\S]*grid-template-columns:\s*repeat\(2/);
-assert.match(css, /\.sd-widget-toggle-row > \.sd-widget-toggle\s*\{[\s\S]*font-size:\s*calc\(var\(--qm-type-body\) \+ 1px\)/);
+// 顶部小组件开关复用保存 API 的标准按钮，蜂巢内部命令仍保留原布局。
+assert.equal((source.match(/class="sd-btn sd-widget-toggle /g) || []).length, 2);
+assert.match(css, /\.sd-widget-toggle:not\(\.sd-btn\)\s*\{/);
+assert.doesNotMatch(css, /\.sd-widget-toggle-row > \.sd-widget-toggle\s*\{[^}]*font-size:/);
+assert.match(css, /\.sd-focus-settings > summary > span:first-child,[\s\S]*background-image:\s*var\(--qm-card-title-gradient\)/);
+assert.match(css, /:is\(\.sd-tts-model-card, \.sd-model-config, \.sd-widget-card\) > h3,[\s\S]*width:\s*fit-content/);
 assert.match(css, /\.sd-float-size-control label,[\s\S]*\.sd-wheel-custom-details > summary > b[\s\S]*font-size:\s*var\(--qm-type-body\)/);
 assert.ok((source.match(/const margin = 4;/g) || []).length >= 2);
 

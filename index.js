@@ -9047,13 +9047,13 @@ function renderInjectSections() {
   const items = [
     ['quests', '预演'],
     ['nodes', '涟漪'],
-    ['npc', '人物动向'],
-    ['relations', '关系暗涌'],
+    ['npc', '动向'],
+    ['relations', '关系'],
   ];
   // New plans no longer generate world_updates; retain its original toggle only
   // while reading an older plan that actually contains that material.
   if (Array.isArray(legacyWorld) && legacyWorld.some(item => item && (item.title || item.content || item.timing))) items.push(['world', '世界涟漪（旧版）']);
-  if (settings.geopoliticsEnabled) items.push(['geopolitics', '世界格局']);
+  if (settings.geopoliticsEnabled) items.push(['geopolitics', '世界']);
   const boxes = items.map(([key, label]) => `<label class="sd-option-chip sd-inject-section"><input type="checkbox" class="sd-inject-section-toggle" data-key="${key}" ${sec[key] !== false ? 'checked' : ''}><span>${label}</span></label>`).join('');
   return `<details class="sd-plain-fold sd-inject-subfold" data-acc="inject-sections"><summary><b>注入范围</b></summary><div class="sd-inject-section-grid">${boxes}</div></details>`;
 }
@@ -12200,8 +12200,8 @@ function renderPlugTab() {
     <section class="sd-card sd-widget-card">
       <h3>小组件</h3>
       <div class="sd-widget-toggle-row" role="group" aria-label="小组件开关">
-        <button type="button" class="sd-widget-toggle ${settings.floatingButton ? 'active' : ''}" data-widget-toggle="floating" aria-pressed="${settings.floatingButton ? 'true' : 'false'}"><span>悬浮球</span></button>
-        <button type="button" class="sd-widget-toggle ${settings.quickWheelEnabled !== false ? 'active' : ''}" data-widget-toggle="wheel" aria-pressed="${settings.quickWheelEnabled !== false ? 'true' : 'false'}"><span>蜂巢格</span></button>
+        <button type="button" class="sd-btn sd-widget-toggle ${settings.floatingButton ? 'active' : ''}" data-widget-toggle="floating" aria-pressed="${settings.floatingButton ? 'true' : 'false'}"><span>悬浮球</span></button>
+        <button type="button" class="sd-btn sd-widget-toggle ${settings.quickWheelEnabled !== false ? 'active' : ''}" data-widget-toggle="wheel" aria-pressed="${settings.quickWheelEnabled !== false ? 'true' : 'false'}"><span>蜂巢格</span></button>
       </div>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
         <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>

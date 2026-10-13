@@ -3369,9 +3369,17 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-tts-fx-hint { display: block; margin: 2px 0 6px; opacity: .85; }
 #story-director-modal .sd-inject-section-grid {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 0 0;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 4px 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+#story-director-modal .sd-inject-section-grid > .sd-inject-section {
+  flex: 1 0 auto;
+  padding-inline: 5px;
+  white-space: nowrap;
 }
 #story-director-modal .sd-option-chip {
   position: relative;
@@ -3416,7 +3424,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-inject-subfold + .sd-inject-subfold { margin-top: 4px; }
 #story-director-modal .sd-inject-subfold[open] > summary { margin-bottom: 9px; padding-bottom: 8px !important; border-bottom: 1px solid var(--sd-hairline); }
 #story-director-modal .sd-inject-subfold > p { margin: 8px 0 0; }
-#story-director-modal .sd-inject-subfold .sd-inject-section-grid { padding-top: 0; }
 #story-director-modal .sd-inject-title .sd-info-tag { margin-left: 2px; }
 #story-director-modal .sd-derivative-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 #story-director-modal .sd-derivative-options .sd-option-chip { width: 100%; padding-inline: 5px; }
@@ -4020,6 +4027,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 @keyframes sd-geo-detail-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 #story-director-modal .sd-geo-d-head { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; gap: 6px 12px; }
 #story-director-modal .sd-geo-d-head h4 { margin: 0; font-size: var(--sd-geo-card-title); line-height: 1.45; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+/* These are faction-unit headings, one step below the surrounding card title. */
+#story-director-modal .sd-geo-stage .sd-geo-d-head h4,
+#story-director-modal .sd-geo-stage .sd-geo-list-card > summary strong { font-size: calc(var(--qm-type-card-title, 13px) - 1px) !important; }
 #story-director-modal .sd-geo-d-trend { grid-column: 1; justify-self: start; font-size: var(--sd-geo-card-label); font-weight: 600; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--sd-geo-skin-muted) 9%, transparent); color: var(--sd-geo-skin-muted); }
 #story-director-modal .sd-geo-d-trend-rising { color: var(--sd-geo-ally-ink, var(--sd-geo-ally)); }
 #story-director-modal .sd-geo-d-trend-declining { color: var(--sd-geo-neutral-ink, var(--sd-geo-neutral)); }
@@ -4038,7 +4048,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-dossier-clues > li { position: relative; padding-left: 12px; color: var(--sd-geo-skin-text); font-size: var(--sd-geo-card-body); line-height: 1.65; overflow-wrap: anywhere; }
 #story-director-modal .sd-geo-dossier-clues > li::before { content: ''; position: absolute; left: 0; top: .7em; width: 4px; height: 4px; border-radius: 50%; background: var(--sd-geo-clue-ink, var(--sd-geo-clue-blue)); }
 #story-director-modal .sd-geo-d-rels { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-#story-director-modal .sd-geo-dossier-relation { display: grid; gap: 5px; padding: 11px 12px; min-width: 0; border: 1px solid var(--sd-geo-skin-border); border-radius: 8px; background: color-mix(in srgb, var(--sd-geo-skin-pop) 20%, transparent); }
+#story-director-modal .sd-geo-dossier-relation { display: grid; gap: 5px; padding: 0 0 10px; min-width: 0; border: 0; border-bottom: 1px solid var(--sd-geo-skin-border); border-radius: 0; background: none; }
+#story-director-modal .sd-geo-dossier-relation:last-child { padding-bottom: 0; border-bottom: 0; }
 #story-director-modal .sd-geo-dossier-relation-head { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 9px; min-width: 0; }
 #story-director-modal .sd-geo-dossier-relation-head > strong { font-size: var(--sd-geo-card-body); color: var(--sd-geo-skin-text); font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 #story-director-modal .sd-geo-d-kind { display: inline-flex; align-items: center; flex: 0 0 auto; white-space: nowrap; font-size: var(--sd-geo-card-label); font-weight: 600; color: var(--sd-geo-skin-text); }
@@ -4092,7 +4103,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-evt-stage-spread .sd-evt-badge { background: var(--sd-geo-stage-spread); }
 #story-director-modal .sd-evt-stage-fade .sd-evt-badge { background: var(--sd-geo-stage-fade); }
 #story-director-modal .sd-evt-stage-settle .sd-evt-badge { background: var(--sd-geo-stage-settle); }
-#story-director-modal .sd-evt-essence { margin: 0; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, var(--sd-geo-skin-pop) 42%, transparent); font-size: var(--sd-geo-card-body); line-height: 1.55; color: var(--sd-text); }
+#story-director-modal .sd-evt-essence { margin: 0; padding: 8px 0; border-radius: 0; background: none; font-size: var(--sd-geo-card-body); line-height: 1.55; color: var(--sd-text); overflow-wrap: anywhere; }
 #story-director-modal .sd-evt-ladder { display: flex; align-items: flex-start; gap: 0; margin: 11px 0 9px; }
 #story-director-modal .sd-evt-step { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; }
 #story-director-modal .sd-evt-step i {
@@ -8945,12 +8956,14 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-widget-card { display: grid; gap: 9px; }
 #story-director-modal .sd-widget-card > h3 { margin: 0; }
 #story-director-modal .sd-widget-toggle-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
-#story-director-modal .sd-widget-toggle {
+#story-director-modal .sd-widget-toggle:not(.sd-btn) {
   min-width: 0; min-height: 31px; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   padding: 4px 7px !important; border: 1px solid var(--sd-hairline) !important; border-radius: 8px !important;
   background: var(--sd-glass-weak) !important; color: var(--sd-muted) !important; font: inherit; font-size: 10.5px; cursor: pointer;
 }
-#story-director-modal .sd-widget-toggle.active { border-color: color-mix(in srgb, var(--sd-accent) 40%, var(--sd-hairline)) !important; background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-card)) !important; color: var(--sd-accent) !important; }
+#story-director-modal .sd-widget-toggle.active,
+#story-director-modal .sd-widget-toggle-row > .sd-widget-toggle.active { border-color: color-mix(in srgb, var(--sd-accent) 40%, var(--sd-hairline)) !important; background: color-mix(in srgb, var(--sd-accent) 13%, var(--sd-card)) !important; }
+#story-director-modal .sd-widget-toggle.active:where(:not(.sd-btn)) { color: var(--sd-accent) !important; }
 #story-director-modal .sd-widget-toggle :is(i, .qm-glyph-icon) { width: 14px; height: 14px; font-size: 14px; }
 #story-director-modal .sd-wheel-settings { margin-top: 0; }
 #story-director-modal .sd-wheel-custom-details > summary { min-height: 31px; padding-block: 4px; font-size: calc(1em - 2px); }
@@ -11765,9 +11778,7 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   align-items: center;
   justify-content: center;
 }
-#story-director-modal .sd-widget-toggle-row > .sd-widget-toggle {
-  font-size: calc(var(--qm-type-body) + 1px) !important;
-}
+#story-director-modal .sd-widget-toggle-row > .sd-widget-toggle { min-width: 0; width: 100%; }
 #story-director-modal .sd-float-size-control label,
 #story-director-modal .sd-wheel-custom-details > summary,
 #story-director-modal .sd-wheel-custom-details > summary > b {
@@ -12000,8 +12011,8 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   .sd-lib-row
 ) { min-height: var(--qm-source-control-height) !important; }
 
-/* 幕后：标题、四个衍生开关、暗线开关与推演动作同级；注入范围标签再大
-   一档便于触控，但不放大 token 标签。编剧与剧组之律采用同一标题级。 */
+/* 幕后开关与注入范围采用同一动作字级。注入范围保持一排，旧资料的
+   额外标签允许横向滚动。编剧与剧组之律采用同一标题级。 */
 #story-director-modal .sd-refresh-row.sd-settings-refresh-row :is(.checkbox_label, .sd-floor-refresh) {
   font-size: var(--qm-type-action-title) !important;
   font-weight: 400 !important;
@@ -12009,10 +12020,10 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 }
 #story-director-modal .sd-derivative-options .sd-option-chip > span {
   font-size: var(--qm-type-action-title) !important;
-  font-weight: 700 !important;
+  font-weight: 400 !important;
 }
 #story-director-modal .sd-injection-card .sd-inject-section-grid .sd-option-chip > span {
-  font-size: calc(var(--qm-type-action-title) + 1px) !important;
+  font-size: var(--qm-type-action-title) !important;
 }
 #story-director-modal .sd-director-law-fold > summary > b,
 #story-director-modal .sd-backstage-blueprint > summary > b {
@@ -12053,6 +12064,7 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 /* 所有千幕卡片标题最终走同一套黑→主题强调色渐变，避免幕外、配音和幕后
    的局部规则再次把标题拉大或退回纯色。 */
 #story-director-modal :is(
+  .sd-focus-settings > summary > span:first-child,
   .sd-card > h3,
   .sd-card-title-row > h3,
   .sd-section-title h3,
@@ -12075,4 +12087,11 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   color: var(--sd-text) !important;
+}
+
+/* 短标题的渐变必须铺在文字上，而非整行；保留专注折叠行的完整点击区域。 */
+#story-director-modal :is(.sd-tts-model-card, .sd-model-config, .sd-widget-card) > h3,
+#story-director-modal .sd-focus-settings > summary > span:first-child {
+  width: fit-content;
+  max-width: 100%;
 }

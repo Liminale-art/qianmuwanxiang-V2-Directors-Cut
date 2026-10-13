@@ -88,7 +88,7 @@ try {
                 systemPrompt: '保留用户编排\n'.repeat(90), outputSchemaText: '{"unchanged":true}', systemPromptBackup: '', outputSchemaBackup: '',
                 templates: fixtureEmpty ? [] : Array.from({ length: 32 }, (_, i) => ({ id: 't' + i, name: '原剧本' + i, folder: i < 3 ? '旅途' : '' })),
             });
-            window.storyStore = { blueprint: '当前剧本草稿\n'.repeat(90), blueprintBackup: '', plan: fixtureEmpty ? null : { unchanged: true } };
+            window.storyStore = { blueprint: '当前剧本草稿\n'.repeat(90), blueprintBackup: '', plan: fixtureEmpty ? null : state === 'legacy-world' ? { unchanged: true, world_updates: [{ title: '原有世界涟漪', content: '保留旧资料' }] } : { unchanged: true } };
             calls.scan = calls.forbidden = 0;
             const body = document.querySelector('.sd-body'); body.innerHTML = renderActiveTab(); applyQianmuIcons(body); body.scrollTop = 0;
         };
@@ -154,6 +154,22 @@ try {
                 ok(label + ' current plans omit the retired world scope without hiding the two real sources',
                     await page.locator('.sd-inject-section-toggle[data-key=world]').count() === 0
                     && await page.locator('.sd-inject-section-toggle[data-key=nodes],.sd-inject-section-toggle[data-key=geopolitics]').count() === 2);
+                const scopeRow = await page.evaluate(() => {
+                    const grid = document.querySelector('.sd-inject-section-grid');
+                    const spans = [...grid.querySelectorAll('.sd-option-chip > span')];
+                    const bounds = spans.map(node => node.closest('label').getBoundingClientRect());
+                    return { labels: spans.map(node => node.textContent).join('/'),
+                        fonts: spans.map(node => getComputedStyle(node).fontSize),
+                        tops: bounds.map(rect => rect.top), widths: bounds.map(rect => rect.width),
+                        scrollWidth: grid.scrollWidth, clientWidth: grid.clientWidth };
+                });
+                ok(label + ' five compact scope labels stay on one complete row without overflow: ' + JSON.stringify(scopeRow),
+                    scopeRow.labels === '预演/涟漪/动向/关系/世界'
+                    && scopeRow.fonts.every(size => size === '12px')
+                    && scopeRow.tops.every(top => Math.abs(top - scopeRow.tops[0]) < 1)
+                    && scopeRow.scrollWidth <= scopeRow.clientWidth + 1);
+                ok(label + ' all derivative controls use regular weight', await page.locator('.sd-derivative-options .sd-option-chip > span')
+                    .evaluateAll(nodes => nodes.length === 4 && nodes.every(node => getComputedStyle(node).fontWeight === '400')));
                 for (const selector of ['.sd-inject-section', '.sd-derivative-options .sd-option-chip']) {
                     const chip = page.locator(selector).first();
                     const readState = () => chip.evaluate(node => {
@@ -227,9 +243,33 @@ try {
                 await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
                 await page.screenshot({ caret: 'initial', animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-${tab}-393.png`, qa)) });
             }
-            if (width === 393 && tab === 'settings') {
+            if ((width === 320 || width === 393) && tab === 'settings') {
                 await page.locator('.sd-injection-card').scrollIntoViewIfNeeded();
-                await page.locator('.sd-injection-card').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-injection-393.png`, qa)) });
+                await page.locator('.sd-injection-card').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-injection-${width}.png`, qa)) });
+                await page.locator('.sd-derivative-card').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-derivatives-${width}.png`, qa)) });
+            }
+            if (tab === 'settings') {
+                await page.evaluate(() => { renderFixture('settings', 'legacy-world'); document.querySelector('[data-acc="inject-sections"]').open = true; });
+                ok(label + ' old world material retains its sixth independent control on one scrollable row', await page.evaluate(() => {
+                    const grid = document.querySelector('.sd-inject-section-grid');
+                    const chips = [...grid.querySelectorAll('.sd-option-chip')];
+                    const top = chips[0].getBoundingClientRect().top;
+                    return chips.length === 6 && !!grid.querySelector('[data-key="world"]')
+                        && getComputedStyle(grid).overflowX === 'auto'
+                        && chips.every(node => Math.abs(node.getBoundingClientRect().top - top) < 1);
+                }));
+                if (width === 320) ok(label + ' overflow remains reachable by horizontal scrolling', await page.evaluate(() => {
+                    const grid = document.querySelector('.sd-inject-section-grid');
+                    grid.scrollLeft = grid.scrollWidth;
+                    return grid.scrollWidth > grid.clientWidth && grid.scrollLeft > 0;
+                }));
+                const legacy = page.locator('.sd-inject-section-toggle[data-key=world]');
+                const before = await legacy.isChecked();
+                await legacy.focus();
+                await page.keyboard.press('Space');
+                ok(label + ' old world control remains keyboard toggleable', await legacy.isChecked() !== before);
+                await legacy.locator('..').click();
+                ok(label + ' old world label remains clickable', await legacy.isChecked() === before);
             }
             if (tab === 'context') {
                 await page.evaluate(() => renderFixture('context', 'legacy-review'));

@@ -7,6 +7,16 @@ import { createRequire } from 'node:module';
 import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from '../qianmu-hive-commands.js';
 import {isQianmuOwnedDockDescriptor} from '../qianmu-hive-ownership.js';
+import {titleGradientProbe} from './helpers/title-gradient-probe.mjs';
+
+const titleControlsOnly = process.argv.includes('--title-controls');
+function widgetStyleProbe(node) {
+    const style = getComputedStyle(node), text = getComputedStyle(node.querySelector('span') || node);
+    return {
+        geometry: { ...Object.fromEntries(['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle', 'borderRadius'].map(key => [key, style[key]])), fontSize: text.fontSize, fontWeight: text.fontWeight },
+        background: style.backgroundColor, color: text.color, border: style.borderColor,
+    };
+}
 
 const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const declarations = ['VERSION', 'FLOAT_SIZE_MIN', 'FLOAT_SIZE_MAX', 'LOG_LIMIT', 'QUICK_HIVE_SAFETY_LIMIT', 'LOG_STATUS_LABELS', 'LOG_KIND_LABELS'].map(name => {
@@ -14,7 +24,7 @@ const declarations = ['VERSION', 'FLOAT_SIZE_MIN', 'FLOAT_SIZE_MAX', 'LOG_LIMIT'
 });
 declarations.push(`const QUICK_COMMANDS = ${JSON.stringify(QIANMU_HIVE_COMMANDS)};`,upgradeProseHiveCommands.toString(),isQianmuOwnedDockDescriptor.toString(), 'const QUICK_COMMAND_IDS = QUICK_COMMANDS.map(item => item.id);');
 declarations.push('let feedbackOpenScope = null;');
-const names = ['renderActiveTab', 'renderPlugTab', 'renderQuickWheelSettings', 'normalizeQuickWheelSettings',
+const names = ['renderActiveTab', 'renderPlugTab', 'renderQuickWheelSettings', 'normalizeQuickWheelSettings', 'bindWidgetSettings',
     'storyboardVideoBudgetPolicy',
     'renderLogEntry', 'renderStorageServiceStatus', 'formatStorageBytes', 'optionalServiceLabel', 'optionalServiceLatestDisplay', 'optionalServiceDetail', 'renderStorageManagementCard'];
 const source = declarations.join('\n') + '\n' + names.map(storyboardFunctionSource).join('\n');
@@ -25,7 +35,7 @@ const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHAN
 const context = await browser.newContext(), page = await context.newPage();
 const deadline = setTimeout(() => { void browser.close(); }, 120000), checks = [], errors = [];
 let external = 0;
-const ok = (name, value) => { assert.ok(value, name); checks.push(name); };
+const ok = (name, value) => { assert.ok(value, name); checks.push(name.replace(/: (\{|\[).*$/, '')); };
 const qa = new URL('../dist/local-qa/settings-appearance/', import.meta.url); await mkdir(qa, { recursive: true });
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
@@ -36,6 +46,8 @@ await context.route('**/*', async route => {
     if (url.origin === 'https://qianmu.test' && /^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname)) return route.fulfill({
         contentType: 'application/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url)),
     });
+    if (url.origin === 'https://qianmu.test' && /^\/qianmu-[a-z0-9-]+\.css$/.test(url.pathname)) return route.fulfill({ contentType: 'text/css', body: await readFile(new URL('..' + url.pathname, import.meta.url)) });
+    if (url.origin === 'https://qianmu.test' && url.pathname === '/favicon.ico') return route.fulfill({ status: 204 });
     external++; return route.abort();
 });
 try {
@@ -57,9 +69,13 @@ try {
         const forbidden = () => { calls++; throw Error('Real provider, storage and configuration operations are forbidden'); };
         window.saveSettings = window.collectStorageInventory = window.stageTheaterScene = window.storyboardEnsureVideoCoordinator = forbidden;
         (0, eval)(source);
-        window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
+        window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }), loadFont: () => ({ promise: Promise.resolve(true), cancel() {} }) });
         appearance.mount(document.querySelector('#story-director-modal'));
-        window.setAppearance = async (family, mode) => { settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync(); };
+        window.setAppearance = async (family, mode) => {
+            settings.theme = mode;
+            const root = document.querySelector('#story-director-modal'); root.classList.remove('sd-theme-dark', 'sd-theme-light'); root.classList.add(`sd-theme-${mode}`);
+            settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync();
+        };
         window.renderSettingsFixture = (state = 'ready') => {
             window.fixtureMode = state;
             Object.assign(settings, {
@@ -96,7 +112,7 @@ try {
         };
         window.contrast = node => {
             const cv = document.createElement('canvas'); cv.width = cv.height = 1; const ctx = cv.getContext('2d');
-            ctx.fillStyle = getComputedStyle(document.querySelector('.sd-window')).getPropertyValue('--qm-bg') || '#181818'; ctx.fillRect(0, 0, 1, 1);
+            ctx.fillStyle = getComputedStyle(document.querySelector('.sd-window')).getPropertyValue('--qm-bg') || (settings.theme === 'dark' ? '#181818' : '#ffffff'); ctx.fillRect(0, 0, 1, 1);
             const parents = []; for (let el = node; el; el = el.parentElement) parents.unshift(el);
             for (const el of parents) { ctx.fillStyle = getComputedStyle(el).backgroundColor; ctx.fillRect(0, 0, 1, 1); }
             const bg = [...ctx.getImageData(0, 0, 1, 1).data]; ctx.fillStyle = getComputedStyle(node).color; ctx.fillRect(0, 0, 1, 1);
@@ -104,16 +120,69 @@ try {
             return (Math.max(luminance(bg), luminance(fg)) + .05) / (Math.min(luminance(bg), luminance(fg)) + .05);
         };
     }, source);
-    for (const [family, mode] of [['classic', 'dark'], ['editorial', 'light'], ['editorial', 'dark'], ['glass', 'light'], ['glass', 'dark']]) {
-        for (const width of [320, 393, 1100]) for (const state of ['ready', 'host', 'error', 'partial']) {
+    for (const [family, mode] of [['classic', 'light'], ['classic', 'dark'], ['editorial', 'light'], ['editorial', 'dark'], ['glass', 'light'], ['glass', 'dark']]) {
+        for (const width of [320, 393, 1100]) for (const state of titleControlsOnly ? ['ready'] : ['ready', 'host', 'error', 'partial']) {
             const label = `${family}/${mode}/${width}/${state}`;
             await page.setViewportSize({ width, height: width === 320 ? 568 : 898 });
             await page.evaluate(async ({ family, mode, state }) => { await setAppearance(family, mode); renderSettingsFixture(state); }, { family, mode, state });
+            if (titleControlsOnly) {
+                for (const selector of ['.sd-model-config > h3', '.sd-widget-card > h3']) {
+                    const title = await page.locator(selector).evaluate(titleGradientProbe);
+                    ok(`${label} ${selector} paints gradient across actual text: ${JSON.stringify(title)}`, title.gradient && title.textSized);
+                }
+                await page.evaluate(() => {
+                    window.widgetEventCounts = { save: 0, refresh: 0, render: 0 };
+                    window.saveSettings = () => widgetEventCounts.save++;
+                    window.refreshWidgetRuntime = () => widgetEventCounts.refresh++;
+                    window.renderModal = () => {
+                        widgetEventCounts.render++;
+                        const body = document.querySelector('.sd-body'); body.innerHTML = renderActiveTab(); applyQianmuIcons(body); bindWidgetSettings(body);
+                    };
+                    bindWidgetSettings(document.querySelector('.sd-body'));
+                });
+                const expected = await page.locator('.sd-save-api').evaluate(widgetStyleProbe);
+                for (const name of ['floating', 'wheel']) {
+                    const control = page.locator(`[data-widget-toggle="${name}"]`);
+                    const states = [];
+                    for (const [key, active] of [['Enter', false], ['Space', true]]) {
+                        const before = await page.evaluate(() => ({ ...widgetEventCounts }));
+                        await control.focus(); await page.keyboard.press(key);
+                        const action = await page.evaluate(({ name, active, before }) => {
+                            const field = name === 'floating' ? 'floatingButton' : 'quickWheelEnabled';
+                            return settings[field] === active && document.querySelector(`[data-widget-toggle="${name}"]`).getAttribute('aria-pressed') === String(active)
+                                && widgetEventCounts.refresh === before.refresh + 1 && widgetEventCounts.render === before.render + 1 && widgetEventCounts.save > before.save;
+                        }, { name, active, before });
+                        ok(`${label} ${name} ${key} invokes actual toggle binding and renders ${active}`, action);
+                        await page.mouse.move(0, 0); await page.evaluate(() => document.getAnimations().forEach(animation => animation.finish()));
+                        const actual = await control.evaluate(widgetStyleProbe); states.push(actual);
+                        ok(`${label} ${name} ${active} matches save API type and border: ${JSON.stringify({ expected: expected.geometry, actual: actual.geometry })}`, JSON.stringify(actual.geometry) === JSON.stringify(expected.geometry));
+                        if (!active) ok(`${label} ${name} off state matches save API colors: ${JSON.stringify({ expected, actual })}`, actual.background === expected.background && actual.color === expected.color && actual.border === expected.border);
+                        await control.hover(); await page.evaluate(() => document.getAnimations().forEach(animation => animation.finish()));
+                        const hovered = await control.evaluate(node => ({ ratio: contrast(node), color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor }));
+                        ok(`${label} ${name} ${active ? 'selected' : 'off'} hover stays readable: ${JSON.stringify(hovered)}`, hovered.ratio >= 4.5);
+                    }
+                    ok(`${label} ${name} selected and off states remain distinct: ${JSON.stringify(states)}`, states[0].background !== states[1].background || states[0].border !== states[1].border || states[0].color !== states[1].color);
+                }
+                const stable = await page.evaluate(async ({ family, mode }) => {
+                    const button = document.querySelector('[data-widget-toggle="wheel"]'); button.focus();
+                    const before = [button, button.getAttribute('aria-pressed'), JSON.stringify(settings)];
+                    await setAppearance(family === 'glass' ? 'editorial' : 'glass', mode === 'light' ? 'dark' : 'light'); await setAppearance(family, mode);
+                    return button.isConnected && document.activeElement === before[0] && button.getAttribute('aria-pressed') === before[1] && JSON.stringify(settings) === before[2] && calls === 0;
+                }, { family, mode });
+                ok(`${label} theme switch retains keyboard focus and toggle state`, stable);
+                if (width === 393) {
+                    await page.evaluate(() => document.activeElement?.blur());
+                    await page.locator('.sd-model-config').screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-model-title-393.png`, qa)), animations: 'disabled' });
+                    await page.locator('.sd-widget-card').scrollIntoViewIfNeeded();
+                    await page.screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-title-controls-393.png`, qa)), animations: 'disabled' });
+                }
+                continue;
+            }
             ok(label + ' active settings remain without retired dynamic-channel cards', await page.evaluate(() =>
                 document.querySelectorAll('.sd-save-api,.sd-test-api,.sd-fetch-models,.sd-storage-service-refresh,.sd-storage-refresh').length === 5
                 && !document.querySelector('.sd-video-channel-card,.sd-video-budget-card,.sd-video-h3-check,.sd-video-budget-save')
                 && !document.querySelector('.sd-runtime-health-card') && document.querySelector('.sd-storage-card > :last-child').classList.contains('sd-storage-service')
-                && document.querySelectorAll('[data-widget-toggle]').length === 4 && document.querySelectorAll('.sd-wheel-command-toggle').length === 16 && document.querySelectorAll('.sd-log-entry').length === 5));
+                && document.querySelectorAll('[data-widget-toggle]').length === 2 && document.querySelectorAll('.sd-wheel-command-toggle').length === 16 && document.querySelectorAll('.sd-log-entry').length === 5));
             ok(label + ' paid automation remains locked behind its existing policy', await page.evaluate(() => {
                 const policy = storyboardVideoBudgetPolicy(); return policy.automatic.enabled === false && policy.manual.requireCostConfirmation && policy.highResolution.requireExplicitConfirmation;
             }));
@@ -161,11 +230,12 @@ try {
                 }
             }
         }
+        if (titleControlsOnly) continue;
         await page.evaluate(() => renderSettingsFixture('loading'));
         ok(`${family}/${mode} storage loading is not mistaken for zero usage`, await page.locator('.sd-storage-card').textContent().then(text => text.includes('准备扫描')) && await page.locator('.sd-storage-hero').count() === 0);
         await page.evaluate(() => renderSettingsFixture('empty'));
         ok(`${family}/${mode} empty inventory cannot enable cleanup`, await page.locator('.sd-storage-clean').isDisabled() && await page.locator('.sd-storage-chat-clean').isDisabled() && await page.locator('.sd-log-entry').count() === 0);
     }
     await page.evaluate(() => appearance.reset()); assert.deepEqual(errors, []); assert.equal(external, 0);
-    console.log(JSON.stringify({ passed: checks.length, checks, errors, external, scope: 'actual settings/health/storage renderers; synthetic snapshots and native state, no host business handlers' }));
+    console.log(JSON.stringify({ passed: checks.length, checks, errors, external, scope: titleControlsOnly ? 'actual settings renderers and widget click binding; in-memory save/refresh/render fixtures, no real host persistence' : 'actual settings/health/storage renderers; synthetic snapshots and native state, no host business handlers' }));
 } finally { clearTimeout(deadline); await context.close(); await browser.close(); }
