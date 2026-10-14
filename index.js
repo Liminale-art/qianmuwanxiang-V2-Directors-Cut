@@ -8727,7 +8727,7 @@ function renderPlanSectionFold(title, items, kind, accKey, readOnly = false) {
   if (!(items?.length) && !notice) return '';
   return `<section class="sd-card sd-plan-section">
     <details class="sd-plain-fold" data-acc="${htmlEscape(accKey)}" open>
-      <summary><b>${htmlEscape(title)}</b>${characterNames ? `<span class="sd-summary-note sd-character-names">${htmlEscape(characterNames)}</span>` : ''}</summary>
+      <summary><b>${htmlEscape(characterNames ? `${title} · ${characterNames}` : title)}</b></summary>
       <div class="sd-fold-body">${notice}${items?.length ? renderItemList(items || [], kind, readOnly) : ''}</div>
     </details>
   </section>`;
@@ -8842,7 +8842,7 @@ function renderItemCard(item, kind, idx, readOnly = false) {
   const cardSelectionBadge = kind === 'character' && !readOnly
     ? `<span class="sd-selection-order-card" data-selection-card-id="${htmlEscape(injectId)}" data-selection-card-order="${htmlEscape(cardSelectionOrders.join('、'))}" aria-label="${cardSelectionOrders.length ? `写入顺序 ${htmlEscape(cardSelectionOrders.join('、'))}` : '未选择写入段落'}">${htmlEscape(cardSelectionOrders.join('、'))}</span>`
     : '';
-  return `<details class="sd-item-card sd-item-fold sd-item-${htmlEscape(kind)}" data-acc="${readOnly ? 'preview-' : ''}item-${htmlEscape(injectId)}"${readOnly ? ' open' : ''}>
+  return `<details class="sd-item-card sd-item-fold sd-item-${htmlEscape(kind)}${kind === 'npc' && idx % 2 === 0 ? ' sd-npc-name-left' : ''}" data-acc="${readOnly ? 'preview-' : ''}item-${htmlEscape(injectId)}"${readOnly ? ' open' : ''}>
     <summary>
       <div class="sd-item-summary-main"><h4>${htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}</div>
       ${sourceField && !readOnly ? renderDirectorWorldEntryLink(sourceField,idx) : ''}
@@ -9363,8 +9363,9 @@ function renderTtsTab() {
   return `
     <section class="sd-card sd-tts-model-card">
       <h3>模型选择</h3>
+      <label for="sd-tts-provider">配音模型</label>
       <div class="sd-tts-model-row">
-        <select class="text_pole sd-tts-provider" aria-label="模型选择">${providers.map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === providerId ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select>
+        <select id="sd-tts-provider" class="text_pole sd-tts-provider" aria-label="配音模型">${providers.map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === providerId ? 'selected' : ''}>${htmlEscape(item.label)}</option>`).join('')}</select>
         <button type="button" class="sd-btn sd-tts-enabled ${t.enabled ? 'is-enabled' : ''}" aria-pressed="${t.enabled ? 'true' : 'false'}">${t.enabled ? '已启用' : '未启用'}</button>
       </div>
       <label for="sd-tts-extract-api">台词分析抓取模型</label>
@@ -29583,7 +29584,7 @@ async function coreadDissolveCollection(collectionId) {
   if (!collection) return false;
   const mutation = coreadCaptureCollectionMutation(collectionId);
   if (!mutation.isCurrent()) return false;
-  if (!await confirmDialog(`确定解散「${collection.name}」？`, '')) return false;
+  if (!await confirmDialog(`确定删除合集「${collection.name}」？`, '仅删除合集，内含书籍保留在书架中。')) return false;
   if (!mutation.currentCollection()) return false;
   c.collections = c.collections.filter((item) => item.id !== collectionId);
   if (c.libCollectionId === collectionId) c.libCollectionId = '';
@@ -30072,10 +30073,27 @@ function coreadCanDeleteBooks() {
   return true;
 }
 
-async function coreadRequestDeleteBooks(bookIds) {
+async function coreadRequestDeleteBooks(bookIds, collectionIds = []) {
   const ids = [...new Set((bookIds || []).map(String).filter(Boolean))];
-  if (!ids.length || !coreadCanDeleteBooks()) return false;
+  const folderIds = [...new Set((collectionIds || []).map(String).filter(Boolean))];
+  if ((!ids.length && !folderIds.length) || (ids.length && !coreadCanDeleteBooks())) return false;
   const entries = ids.map(id => ({ id, book: coreadBookMeta(id), mutation: coreadCaptureCollectionMutation('', [id]) }));
+  const removedBookIds = new Set();
+  const collectionEntries = folderIds.map(id => {
+    const collection = (coread().collections || []).find(item => item.id === id);
+    return { id, snapshot: collection ? { ...collection, bookIds: [...collection.bookIds] } : null, mutation: coreadCaptureCollectionMutation(id) };
+  });
+  const collectionSignature = collection => collection ? JSON.stringify([collection.id, collection.name, collection.bookIds, collection.createdAt, collection.updatedAt]) : null;
+  const collectionsReady = () => collectionEntries.every(entry => {
+    if (!entry.snapshot || !entry.mutation.isCurrent()) return false;
+    const current = (coread().collections || []).find(item => item.id === entry.id);
+    // Only accept membership changes made by this exact batch's explicit book deletions.
+    const expected = { ...entry.snapshot, bookIds: entry.snapshot.bookIds.filter(id => !removedBookIds.has(id)) };
+    if (collectionSignature(current) !== collectionSignature(expected)) {
+      toast('所选合集已变化，请重新选择。', 'warning'); return false;
+    }
+    return true;
+  });
   const ready = entry => {
     if (!entry.mutation.booksAreCurrent()) return false;
     if (!entry.book || coreadBookMeta(entry.id) !== entry.book) {
@@ -30083,28 +30101,42 @@ async function coreadRequestDeleteBooks(bookIds) {
     }
     return coreadCanDeleteBooks();
   };
-  const allReady = () => entries.every(ready);
+  const allReady = () => entries.every(ready) && collectionsReady();
   if (!allReady()) return false;
-  const firstTitle = entries[0].book.title || '未命名书籍';
-  const label = ids.length > 1 ? `《${firstTitle}》等 ${ids.length} 本书` : `《${firstTitle}》`;
-  if (!await confirmDialog(`确定删除${label}？`, '正文、阅读进度和伴读对话会一并清除；相关长期记忆默认保留。') || !allReady()) return false;
-  const deleteMemory = await coreadChooseDeleteMemory(label, { isCurrent: allReady });
+  const firstTitle = entries[0]?.book.title || '未命名书籍';
+  const bookLabel = ids.length > 1 ? `《${firstTitle}》等 ${ids.length} 本书` : ids.length ? `《${firstTitle}》` : '';
+  const folderLabel = folderIds.length > 1 ? `${folderIds.length} 个合集` : folderIds.length ? `合集「${collectionEntries[0].snapshot.name}」` : '';
+  const label = [bookLabel, folderLabel].filter(Boolean).join('及');
+  const detail = [ids.length ? '所选书籍的正文、阅读进度和伴读对话会一并清除；相关长期记忆默认保留。' : '',
+    folderIds.length ? '仅删除所选合集，未单独勾选的内含书籍保留在书架中。' : ''].filter(Boolean).join('\n');
+  if (!await confirmDialog(`确定删除${label}？`, detail) || !allReady()) return false;
+  const deleteMemory = ids.length ? await coreadChooseDeleteMemory(bookLabel, { isCurrent: allReady }) : false;
   if (deleteMemory === null || !allReady()) return false;
   let removed = 0;
   for (const entry of entries) {
-    if (!ready(entry)) break;
+    if (!ready(entry) || !collectionsReady()) break;
     try {
       if (!await coreadDeleteBook(entry.id, { deleteMemory, silent: true, mutation: entry.mutation })) break;
       removed++;
+      removedBookIds.add(entry.id);
     } catch (error) {
       console.warn(`[${MODULE_NAME}] delete book interrupted`, error);
       toast('删除过程未完成，请核对书架后再试。', 'warning');
       return entries[0].mutation.isCurrent();
     }
   }
+  let removedCollections = 0;
+  if (removed === ids.length && folderIds.length && collectionsReady()) {
+    const c = coread();
+    c.collections = c.collections.filter(item => !folderIds.includes(item.id));
+    if (folderIds.includes(c.libCollectionId)) c.libCollectionId = '';
+    saveSettings();
+    removedCollections = folderIds.length;
+    toast(`已删除 ${removedCollections} 个合集，未选中的书籍已保留。`, 'info');
+  }
   // 数量只表示已移除的书架条目，不作为各项缓存/世界书清理完成的凭据。
   if (removed) toast(removed === ids.length ? `已从书架移除 ${removed} 本书。` : `已从书架移除 ${removed}/${ids.length} 本书，剩余操作已停止。`, removed === ids.length ? 'info' : 'warning');
-  return removed > 0 && entries[0].mutation.isCurrent();
+  return (removed > 0 || removedCollections > 0) && (entries[0] || collectionEntries[0]).mutation.isCurrent();
 }
 
 async function coreadDeleteBook(bookId, options = {}) {
@@ -30592,7 +30624,7 @@ function renderLibraryView() {
       <button class="sd-reader-collection-back" title="返回书架"><i class="fa-solid fa-arrow-left"></i></button>
       <div><strong>${htmlEscape(activeCollection.name)}</strong><span>${activeCollection.bookIds.length} 本书</span></div>
       <button class="sd-reader-collection-edit" data-collection="${htmlEscape(activeCollection.id)}" title="重命名合集"><i class="fa-solid fa-pen"></i></button>
-      <button class="sd-reader-collection-dissolve" data-collection="${htmlEscape(activeCollection.id)}" title="解散合集"><i class="fa-solid fa-folder-minus"></i></button>
+      <button class="sd-reader-collection-dissolve" data-collection="${htmlEscape(activeCollection.id)}" title="删除合集（保留书籍）" aria-label="删除合集（保留书籍）"><i class="fa-solid fa-trash"></i></button>
     </div>` : '';
   const emptyText = activeCollection
     ? '这个合集还是空的。可在列表视图批量归入，或从书籍信息中选择合集。'
@@ -31508,7 +31540,7 @@ function renderCompanionSetupBody() {
       ${presetNames.length
         ? `<details class="sd-reader-cwb-dropdown" data-fold="preset"${cp.foldPresetOpen !== false ? ' open' : ''}>
             <summary><span>选择</span><b>${pHeadRight}</b></summary>
-            <div class="sd-reader-cwb-list sd-context-source-pick">${presetRows}</div>
+            <div class="sd-reader-cwb-list sd-reader-preset-list">${presetRows}</div>
           </details>
           ${pViewName
             ? `<details class="sd-reader-cwb-itemfold" data-fold="presetitems"${cp.foldPresetItemsOpen !== false ? ' open' : ''}>
@@ -32089,7 +32121,13 @@ function bindLibraryViewEvents(root) {
     coread().libCollectionId = ''; saveSettings(); renderModal();
   });
   root.querySelectorAll('.sd-reader-collection-card, .sd-reader-collection-row').forEach((item) => item.addEventListener('click', (event) => {
-    if (event.target.closest('.sd-reader-collection-edit, .sd-reader-collection-dissolve')) return;
+    if (event.target.closest('.sd-reader-collection-edit, .sd-reader-collection-dissolve, .sd-reader-collection-check')) return;
+    const check = item.querySelector('.sd-reader-collection-check');
+    if (check && !check.hidden) {
+      check.checked = !check.checked;
+      check.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
     coread().libCollectionId = item.dataset.collection || ''; saveSettings(); renderModal();
   }));
   root.querySelectorAll('.sd-reader-collection-edit').forEach((button) => button.addEventListener('click', async (event) => {
@@ -32197,18 +32235,23 @@ function bindLibraryViewEvents(root) {
   // 勾选框变化：更新批量删除按钮状态
   const updateBatchBtn = () => {
     const checks = root.querySelectorAll('.sd-reader-book-check:checked');
+    const collections = root.querySelectorAll('.sd-reader-collection-check:checked');
+    const selectedCount = checks.length + collections.length;
     const batchBtn = root.querySelector('.sd-reader-batch-delete');
     const collectBtn = root.querySelector('.sd-reader-batch-collect');
     const countSpan = root.querySelector('.sd-reader-batch-count');
-    if (collectBtn) collectBtn.disabled = checks.length === 0;
-    if (batchBtn) {
-      batchBtn.disabled = checks.length === 0;
-      if (countSpan) countSpan.textContent = checks.length;
+    if (collectBtn) {
+      collectBtn.disabled = checks.length === 0 || collections.length > 0;
+      collectBtn.title = collections.length ? '合集不能归入其他合集，请只选择书籍' : '归入合集';
     }
-    const visibleChecks = Array.from(root.querySelectorAll('.sd-reader-book-check')).filter((check) => check.closest('.sd-reader-row')?.style.display !== 'none');
+    if (batchBtn) {
+      batchBtn.disabled = selectedCount === 0;
+      if (countSpan) countSpan.textContent = selectedCount;
+    }
+    const visibleChecks = Array.from(root.querySelectorAll('.sd-reader-book-check, .sd-reader-collection-check')).filter((check) => check.closest('.sd-reader-row, .sd-reader-collection-row')?.style.display !== 'none');
     root.querySelector('.sd-reader-batch-toggle-all')?.setAttribute('aria-pressed', String(visibleChecks.length > 0 && visibleChecks.every((check) => check.checked)));
   };
-  root.querySelectorAll('.sd-reader-book-check').forEach((chk) => chk.addEventListener('change', updateBatchBtn));
+  root.querySelectorAll('.sd-reader-book-check, .sd-reader-collection-check').forEach((chk) => chk.addEventListener('change', updateBatchBtn));
   // 多选是当前书架视图的临时状态；收起/重绘即清空，不保存到书籍资料。
   root.querySelector('.sd-reader-batch-mode')?.addEventListener('click', (event) => {
     const button = event.currentTarget;
@@ -32219,7 +32262,7 @@ function bindLibraryViewEvents(root) {
     button.classList.toggle('active', expanded);
     const actions = root.querySelector('.sd-reader-batch-actions');
     if (actions) actions.hidden = !expanded;
-    root.querySelectorAll('.sd-reader-book-check').forEach((check) => {
+    root.querySelectorAll('.sd-reader-book-check, .sd-reader-collection-check').forEach((check) => {
       check.hidden = !expanded;
       if (!expanded) check.checked = false;
     });
@@ -32228,7 +32271,7 @@ function bindLibraryViewEvents(root) {
   // 全选/取消全选
   const toggleAll = root.querySelector('.sd-reader-batch-toggle-all');
   toggleAll?.addEventListener('click', () => {
-    const checks = Array.from(root.querySelectorAll('.sd-reader-book-check')).filter((check) => !check.hidden && check.closest('.sd-reader-row')?.style.display !== 'none');
+    const checks = Array.from(root.querySelectorAll('.sd-reader-book-check, .sd-reader-collection-check')).filter((check) => !check.hidden && check.closest('.sd-reader-row, .sd-reader-collection-row')?.style.display !== 'none');
     const allChecked = Array.from(checks).every((c) => c.checked);
     checks.forEach((c) => { c.checked = !allChecked; });
     updateBatchBtn();
@@ -32242,9 +32285,10 @@ function bindLibraryViewEvents(root) {
   const batchDel = root.querySelector('.sd-reader-batch-delete');
   batchDel?.addEventListener('click', async () => {
     const checks = Array.from(root.querySelectorAll('.sd-reader-book-check:checked'));
-    if (!checks.length) return;
+    const collections = Array.from(root.querySelectorAll('.sd-reader-collection-check:checked'));
+    if (!checks.length && !collections.length) return;
     const ids = checks.map((c) => c.dataset.book);
-    if (await coreadRequestDeleteBooks(ids)) renderModal();
+    if (await coreadRequestDeleteBooks(ids, collections.map(check => check.dataset.collection))) renderModal();
   });
 }
 
@@ -34378,7 +34422,6 @@ function renderTheaterTab() {
             <option value="">跟随当前 API 设置</option>
             ${profiles.map((p) => `<option value="${htmlEscape(p.id)}" ${p.id === t.apiProfileId ? 'selected' : ''}>${htmlEscape(p.name || p.model || '未命名API')}</option>`).join('')}
           </select>
-          <label>预设</label>
           ${renderTheaterPresetPicker(t.presetName)}
           ${t.presetName ? renderTheaterPresetEntries(t.presetName) : ''}
           <div class="sd-theater-history-row">
@@ -34541,14 +34584,13 @@ function bindTheaterPresetPicker(root) {
 
 function renderTheaterPresetEntries(presetName) {
   const entries = contextScanCache.presets?.[presetName] || getPresetEntries(presetName);
-  if (!entries.length) return '<p class="sd-muted" style="margin:8px 0">该预设暂无可选条目。</p>';
   const rows = entries.map((item, index) => {
     const id = getContextItemId(item, index);
     const title = item.name || item.identifier || item.role || `条目 ${index + 1}`;
     const checked = isTheaterPresetItemSelected(presetName, id) ? 'checked' : '';
-    return `<label class="sd-source-row"><input type="checkbox" class="sd-theater-preset-item" data-id="${htmlEscape(String(id))}" ${checked}><span>${htmlEscape(title)}</span></label>`;
+    return `<div class="sd-source-row sd-context-item sd-unified-source-entry"><label class="sd-context-entry-label"><input type="checkbox" class="sd-theater-preset-item" data-id="${htmlEscape(String(id))}" ${checked}><span>${htmlEscape(title)}</span></label></div>`;
   }).join('');
-  return `<details class="sd-context-block" data-acc="theater-preset-entries"><summary><b>预设条目</b></summary><div class="sd-source-list sd-entry-scroll sd-scroll">${rows}</div></details>`;
+  return `<details class="sd-dropdown sd-context-block sd-unified-source-block" data-acc="theater-preset-entries" open><summary class="sd-dropdown-head"><span>预设条目</span><b>${htmlEscape(presetName)}</b></summary><div class="sd-dropdown-body sd-entry-scroll sd-scroll">${rows || '<p class="sd-muted">暂无条目</p>'}</div></details>`;
 }
 
 async function stageTheaterScene() {

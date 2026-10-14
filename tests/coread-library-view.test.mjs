@@ -39,6 +39,8 @@ test('collection preview resolves current metadata, ignores missing books and li
   assert.equal((grid.match(/class="sd-reader-collection-tile"/g)||[]).length,4);assert.equal((grid.match(/loading="lazy"/g)||[]).length,4);
   assert.match(grid,/6 本书/);assert.match(grid,/data-search="name &lt;&amp; book 0 author/);assert.doesNotMatch(grid,/data-cover="b4"|\bsrc=/);
   const list=c.renderLibraryCollectionItem(collection,'list');assert.match(list,/sd-reader-collection-dissolve/);assert.doesNotMatch(list,/<img/);
+  assert.match(list,/sd-reader-collection-check[^>]*hidden/);
+  assert.match(grid,/sd-reader-collection-dissolve[^>]*title="删除合集（保留书籍）"/);
   assert.equal(JSON.stringify(collection),before);
 });
 

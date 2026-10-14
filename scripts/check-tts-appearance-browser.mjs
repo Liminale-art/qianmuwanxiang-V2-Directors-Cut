@@ -104,6 +104,28 @@ try {
             const label = `${family}/${mode}/${width}/${provider}`;
             await page.setViewportSize({ width, height: width === 320 ? 568 : 898 });
             await page.evaluate(async ({ family, mode, provider }) => { await setAppearance(family, mode); renderVoices(provider); }, { family, mode, provider });
+            if (extractLayoutOnly || titleControlsOnly) {
+                const labels = await page.locator('.sd-tts-model-card').evaluate(card => {
+                    const providerLabel = card.querySelector('label[for="sd-tts-provider"]'), extractLabel = card.querySelector('label[for="sd-tts-extract-api"]');
+                    const provider = card.querySelector('#sd-tts-provider'), extract = card.querySelector('#sd-tts-extract-api'), row = card.querySelector('.sd-tts-model-row');
+                    if (!providerLabel || !extractLabel || !provider || !extract) return null;
+                    const a = providerLabel.getBoundingClientRect(), b = extractLabel.getBoundingClientRect(), r = row.getBoundingClientRect(), s = extract.getBoundingClientRect();
+                    return { providerText: providerLabel.textContent, extractText: extractLabel.textContent,
+                        providerIdUnique: document.querySelectorAll('#sd-tts-provider').length === 1,
+                        linked: providerLabel.control === provider && extractLabel.control === extract && provider.labels.length === 1 && extract.labels.length === 1,
+                        visible: a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0,
+                        sameSize: getComputedStyle(providerLabel).fontSize === getComputedStyle(extractLabel).fontSize,
+                        providerGap: r.top - a.bottom, sectionGap: b.top - r.bottom, extractGap: s.top - b.bottom,
+                        aligned: Math.abs(a.left - b.left) < .6 && Math.abs(a.left - r.left) < .6 && Math.abs(b.left - s.left) < .6,
+                        accessibleName: provider.getAttribute('aria-label') };
+                });
+                ok(`${label} both visible model subtitles label their own unique selects: ${JSON.stringify(labels)}`, labels && labels.providerText === '配音模型' && labels.extractText === '台词分析抓取模型' && labels.providerIdUnique && labels.linked && labels.visible && labels.accessibleName === '配音模型');
+                ok(`${label} provider/extraction subtitles have matching typography and left edges`, labels.sameSize && labels.aligned);
+                ok(`${label} model sections have breathing room and captions do not touch controls: ${JSON.stringify(labels)}`, labels.providerGap >= 5 && labels.sectionGap >= 10 && labels.extractGap >= 5);
+                if (width === 393 && provider === 'minimax' && family === 'glass' && mode === 'light') {
+                    await page.locator('.sd-tts-model-card').screenshot({ path: fileURLToPath(new URL('glass-light-model-subtitles-393.png', qa)), animations: 'disabled' });
+                }
+            }
             if (extractLayoutOnly) {
                 await page.evaluate(() => {
                     settings.tts.extractApiProfileId = 'fixture';

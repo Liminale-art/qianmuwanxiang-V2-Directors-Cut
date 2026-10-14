@@ -145,11 +145,34 @@ test('character life and other people are independent sections, with distinct se
   const html = c.renderCastWorldFront();
   assert.match(html, /此间一人/); assert.match(html, /其他人物动向/); assert.match(html, /他把两份记录/); assert.match(html, /暂未寄出/);
   assert.match(html, /data-id="character-0-/); assert.match(html, /data-id="npc-0-/);
-  assert.match(html, /sd-character-names">陈晖/); assert.doesNotMatch(html, /\d+ 条<|sd-director-paragraph-label">动向</);
+  assert.match(html, /<summary><b>此间一人 · 陈晖<\/b><\/summary>/); assert.doesNotMatch(html, /sd-character-names|\d+ 条<|sd-director-paragraph-label">动向</);
   assert.doesNotMatch(html, /世界回声/); assert.ok(links.every(item => item.field !== undefined));
   plan.world_updates = [{ title: '旧记录', content: '仍可阅读的历史世界记录' }];
   assert.match(c.renderCastWorldFront(), /仍可阅读的历史世界记录/);
   assert.equal(plan.character_dynamics.length, 1);
+});
+
+test('character heading appends unique escaped names without a repeated right-side note', () => {
+  const { c } = fixture(null);
+  const items = [{ name: ' 陈晖 ', content: '甲' }, { name: '陈晖', content: '乙' }, { name: '<林医生>', content: '丙' }];
+  const before = JSON.stringify(items);
+  const html = c.renderPlanSectionFold('此间一人', items, 'character', 'castfold-character');
+  assert.match(html, /<summary><b>此间一人 · 陈晖 · &lt;林医生&gt;<\/b><\/summary>/);
+  assert.doesNotMatch(html, /sd-character-names|<林医生>/);
+  assert.match(c.renderPlanSectionFold('此间一人', [{ title: '片段', content: '无角色名' }], 'character', 'castfold-character'), /<summary><b>此间一人<\/b><\/summary>/);
+  assert.equal(JSON.stringify(items), before);
+});
+
+test('NPC display alternates name sides by item index without changing identities or read-only semantics', () => {
+  const { c } = fixture(null);
+  for (const readOnly of [false, true]) for (let index = 0; index < 4; index++) {
+    const html = c.renderItemCard({ name: '邵宁', role: '法医', emotional_state: '专注', content: '核对记录。' }, 'npc', index, readOnly);
+    assert.equal(/sd-npc-name-left/.test(html), index % 2 === 0);
+    assert.match(html, new RegExp(`data-acc="${readOnly ? 'preview-' : ''}item-npc-${index}-邵宁"`));
+    assert.match(html, /<b>定位<\/b>法医/);
+    assert.match(html, /<b>情绪<\/b>专注/);
+    if (readOnly) assert.doesNotMatch(html, /data-director-paragraph /);
+  }
 });
 
 test('ripples keep full consequences and do not manufacture extra nodes by splitting natural connective words', () => {
@@ -267,8 +290,12 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
     'preview item summary content is vertically centered');
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-fold > summary\s*\{[^}]*min-height:\s*58px[^}]*padding-block:\s*0/,
     'preview entry folds keep a compact centered row');
-  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-npc \.sd-item-summary-main h4\s*\{[^}]*margin-inline-start:\s*8px[^}]*font-size:\s*calc\(var\(--qm-type-card-title\) - 1px\)/,
-    'other-person names are inset and one type step smaller');
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-npc \.sd-item-summary-main h4\s*\{[^}]*align-self:\s*start[^}]*font-size:\s*clamp\(20px, 5\.6vw, 36px\)[^}]*linear-gradient\(to bottom[^}]*62%[^}]*8%/,
+    'other-person names use the requested top-aligned, lighter large gradient');
+  assert.match(styles, /\.sd-item-npc\.sd-npc-name-left \.sd-item-summary-main h4\s*\{[^}]*grid-column:\s*1[^}]*text-align:\s*left/,
+    'alternating NPC names have a dedicated left column without affecting other card types');
+  assert.match(styles, /\.sd-item-npc \.sd-mini-chip-row \.sd-badge\s*\{[^}]*border:\s*0 !important[^}]*background:\s*none !important[^}]*box-shadow:\s*none !important/,
+    'NPC role and emotion remain text-only across theme overrides');
   assert.match(styles, /#story-director-modal \.sd-relus-drift\s*\{[^}]*display:\s*block/,
     'relationship drift uses inline prose flow');
   assert.match(styles, /#story-director-modal \.sd-relus-drift > i\s*\{[^}]*display:\s*inline-block/,

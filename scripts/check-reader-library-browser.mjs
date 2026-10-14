@@ -9,6 +9,7 @@ import {checkCollectionMutationBrowser} from '../tests/helpers/coread-collection
 import {checkBookEditBrowser} from '../tests/helpers/coread-book-edit-browser.mjs';
 import {checkBookDeleteBrowser} from '../tests/helpers/coread-book-delete-browser.mjs';
 import {checkShelfRefinementBrowser} from '../tests/helpers/coread-shelf-refinement-browser.mjs';
+import {checkCollectionDeleteBrowser} from '../tests/helpers/coread-collection-delete-browser.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=(await readFile(new URL('../style.css',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')),view=await readFile(new URL('../qianmu-reader-library-view.js',import.meta.url),'utf8');
 const utils=await readFile(new URL('../qianmu-storyboard-utils.js',import.meta.url),'utf8'),icons=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
@@ -88,5 +89,6 @@ try{
   const refinement=await checkShelfRefinementBrowser(page);
   const bookEdits=await checkBookEditBrowser(page);
   const bookDeletes=await checkBookDeleteBrowser(page);
-  assert.equal(external,0,JSON.stringify(externalUrls));assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,refinement,bookEdits,bookDeletes,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'synthetic host Popup, books and navigation; metadata edits/deletions use native isolated IndexedDB; no real user import/deletion or physical mobile drag validation'}));
+  const collectionDeletes=await checkCollectionDeleteBrowser(page);
+  assert.equal(external,0,JSON.stringify(externalUrls));assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,refinement,bookEdits,bookDeletes,collectionDeletes,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'synthetic host Popup, books and navigation; metadata edits/deletions use native isolated IndexedDB; no real user import/deletion or physical mobile drag validation'}));
 }finally{await context.close();await browser.close();}

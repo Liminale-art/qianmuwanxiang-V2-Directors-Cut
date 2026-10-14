@@ -82,3 +82,16 @@ test('special characters are escaped in group, radio, and companion names', () =
     assert.match(html, /&lt;img/);
   }
 });
+
+test('theater entries use the materials dropdown and selectable row structure, including empty entries', () => {
+  const s = fixture();
+  s.initTheaterPresetSelection(s.current);
+  const normalize = html => html.replaceAll('sd-theater-preset-item', 'sd-context-check')
+    .replaceAll('theater-preset-entries', 'blk-preset-entries')
+    .replace(/ data-kind="preset" data-group="[^"]*"/g, '');
+  assert.equal(normalize(s.renderTheaterPresetEntries(s.current)), normalize(s.renderSelectedPresetEntries([s.current])));
+  s.contextScanCache.presets[s.current] = [];
+  assert.equal(normalize(s.renderTheaterPresetEntries(s.current)), normalize(s.renderSelectedPresetEntries([s.current])));
+  assert.match(s.renderTheaterTab(), /<\/select>\s*<div class="sd-context-source-pick">/);
+  assert.doesNotMatch(s.renderTheaterTab(), /<label>预设<\/label>/);
+});

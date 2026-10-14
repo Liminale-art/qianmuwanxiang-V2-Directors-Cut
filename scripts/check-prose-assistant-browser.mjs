@@ -4,16 +4,17 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext(),page=await context.newPage();
-const checks=[],errors=[];let external=0;
+const checks=[],errors=[],blocked=[];let external=0;
 const allowed=new Set(['qianmu-feature-runtime.js','qianmu-prose-floor-entries.js','qianmu-icon-renderer.js','qianmu-plain-text-range.js','qianmu-current-chat-source.js','qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js','qianmu-account-local-store.js',...['floor','panel','window','source','context','session','request','messages','preferences','history-contract','history','history-runtime','markdown','conversation-list','title'].map(name=>'qianmu-prose-assistant-'+name+'.js')]);
 const timer=setTimeout(()=>{console.error('Assistant panel checks exceeded 90 seconds');void browser.close();},90000);
 page.on('pageerror',error=>errors.push(error.message));
 await context.route('**/*',async route=>{const url=new URL(route.request().url()),file=url.pathname.slice(1);
  if(url.origin==='https://qianmu.test'){
   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><button id="entry">助手</button><main id="fixture"></main>'});
-  if(file==='qianmu-prose-assistant.css')return route.fulfill({contentType:'text/css',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
+  if(file==='favicon.ico')return route.fulfill({status:204});
+  if(['qianmu-prose-assistant.css','qianmu-text-collection-floor.css','qianmu-creative-social.css'].includes(file))return route.fulfill({contentType:'text/css',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
   if(allowed.has(file))return route.fulfill({contentType:'text/javascript',body:await readFile(new URL('../'+file,import.meta.url),'utf8')});
- }external++;return route.abort();
+ }external++;blocked.push(url.href);return route.abort();
 });
 const action=name=>page.locator('[data-pa-action="'+name+'"]'),question=()=>page.getByLabel('向场外特助提问');
 const settled=()=>page.waitForFunction(()=>document.querySelector('.qm-prose-assistant-dialog')?.getAttribute('aria-busy')==='false');
@@ -95,5 +96,5 @@ try{
  assert.equal(await page.locator('[data-qm-prose-assistant]').count(),0);assert.equal(await page.getByRole('dialog').count(),1);assert.equal(await page.evaluate(()=>fixture.sameController),true);await action('close').click();await page.waitForFunction(()=>!fixture.controller.busy);
  await page.evaluate(async()=>{delete fixture.host.chatId;fixture.host.chat=[];fixture.controllerPanel=await fixture.controller.openAssistant();});assert.equal(await page.getByRole('dialog').count(),1);assert.equal(await page.getByRole('dialog').getAttribute('aria-label'),'场外特助');await action('settings').click();assert.equal(await page.getByLabel('参考楼层数').isDisabled(),true);await action('close').click();await page.waitForFunction(()=>!fixture.controller.busy);checks.push('actual lazy controller opens the offstage account conversation without an active chat');
  await page.evaluate(async()=>{const opening=fixture.controller.openAssistant();fixture.controller.disposeFloor();await opening;});assert.equal(await page.locator('[data-qm-prose-assistant-portal]').count(),0);checks.push('hive controller removes legacy floor entry, reuses one panel and cleans an interrupted lazy open');
- assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({ok:true,checks,external,pageErrors:errors},null,2));
+ assert.equal(external,0,JSON.stringify(blocked));assert.deepEqual(errors,[]);console.log(JSON.stringify({ok:true,checks,external,pageErrors:errors},null,2));
 }finally{clearTimeout(timer);await context.close();await browser.close();}

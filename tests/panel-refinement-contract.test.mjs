@@ -32,6 +32,8 @@ assert.match(source, /sd-template-title[\s\S]*cfg\.inlineCount[\s\S]*sd-template
 
 // 配音：模型和文字状态同行；重复人设链路与 MiniMax/ElevenLabs 高级连接入口彻底移除。
 assert.match(source, /<h3>模型选择<\/h3>[\s\S]*sd-tts-model-row[\s\S]*sd-tts-provider[\s\S]*sd-tts-enabled/);
+assert.match(source, /<label for="sd-tts-provider">配音模型<\/label>\s*<div class="sd-tts-model-row">\s*<select id="sd-tts-provider" class="text_pole sd-tts-provider" aria-label="配音模型"/);
+assert.match(source, /<label for="sd-tts-extract-api">台词分析抓取模型<\/label>\s*<select id="sd-tts-extract-api"/);
 assert.match(source, /t\.enabled = !t\.enabled/);
 assert.match(source, /<b>泛用音色<\/b><span class="sd-tts-sub">自动根据此库为NPC适配<\/span>/);
 assert.match(source, /<summary><b>其他参数<\/b><\/summary>/);

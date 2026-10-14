@@ -3444,10 +3444,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-theater-settings-body > .text_pole { width: 100% !important; }
 #story-director-modal .sd-theater-preset-row { grid-template-columns: minmax(0, 1fr) 36px; }
 #story-director-modal .sd-theater-preset-row > .sd-icon-btn { width: 36px; height: 36px; min-width: 36px; }
-#story-director-modal .sd-theater-settings-body > .sd-context-block { margin-left: 0; margin-right: 0; width: 100%; }
+#story-director-modal .sd-theater-settings-body > :is(.sd-context-source-pick, .sd-unified-source-block) { margin-inline: 0 !important; width: 100%; }
 
 /* 配音模型开关使用明确的文字状态，避免与普通布尔胶囊混淆。 */
 #story-director-modal .sd-tts-model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+#story-director-modal .sd-tts-model-card > label[for="sd-tts-provider"] { margin-bottom: 6px; }
+#story-director-modal .sd-tts-model-card > .sd-tts-model-row + label { margin-top: 12px; }
 #story-director-modal .sd-tts-model-row > .text_pole { margin: 0 !important; min-width: 0; }
 #story-director-modal .sd-tts-auth-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #story-director-modal .sd-tts-auth-row > .text_pole { flex: 1 1 auto; min-width: 0; margin: 0 !important; }
@@ -4503,7 +4505,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 .sd-reader-view-toggle, .sd-reader-collection-create, .sd-reader-batch-mode, .sd-reader-batch-toggle-all { width: 36px; padding: 0; flex: 0 0 auto; }
 .sd-reader-batch-mode.active { color: var(--sd-accent); background: var(--sd-glass); }
 .sd-reader-batch-actions { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px; }
-#story-director-modal .sd-reader-batch-actions[hidden], #story-director-modal .sd-reader-book-check[hidden] { display: none !important; }
+#story-director-modal .sd-reader-batch-actions[hidden], #story-director-modal :is(.sd-reader-book-check, .sd-reader-collection-check)[hidden] { display: none !important; }
 .sd-reader-batch-collect, .sd-reader-batch-delete { font-size: calc(.9em - 1px); white-space: nowrap; padding-inline: 6px; }
 .sd-reader-batch-collect:disabled, .sd-reader-batch-delete:disabled { opacity: .38; cursor: default; }
 /* 排序：只留小图标（去文字）·下拉仿字号菜单，宽度自适应刚够 */
@@ -4645,6 +4647,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal:is([data-qm-mode="light"], :not([data-qm-mode]):not(.sd-theme-dark)) .sd-reader-cover-author { color: inherit; }
 #story-director-modal:is([data-qm-mode="light"], :not([data-qm-mode]):not(.sd-theme-dark)) .sd-reader-cover-author { opacity: .9; }
 .sd-reader-collection-card .sd-reader-card-meta { padding-right: 25px; }
+.sd-reader-collection-card .sd-reader-collection-meta { padding-right: 0; padding-bottom: 26px; }
 @media (max-width: 620px) {
   .sd-reader-lib-grid .sd-reader-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
   .sd-reader-card, .sd-reader-collection-card { gap: 5px; min-width: 0; }
@@ -4693,11 +4696,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   background: transparent; color: var(--sd-muted); width: 30px; height: 30px; padding: 0; flex: 0 0 auto; border-radius: 8px;
 }
 .sd-reader-row:hover .sd-reader-card-del { opacity: 1; }
-.sd-reader-card-edit { width: 30px; height: 30px; padding: 0; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); opacity: .68; cursor: pointer; }
-.sd-reader-card-edit:hover { opacity: 1; color: var(--sd-accent); background: var(--sd-glass-weak); }
+.sd-reader-card-edit, .sd-reader-collection-tool { width: 30px; height: 30px; padding: 0; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); opacity: .68; cursor: pointer; }
+.sd-reader-card-edit:hover, .sd-reader-collection-tool:hover { opacity: 1; color: var(--sd-accent); background: var(--sd-glass-weak); }
 .sd-reader-card-edit-grid { position: absolute; right: 0; bottom: -2px; width: 25px; height: 25px; font-size: .72em; }
 .sd-reader-card-grid-tools { position: absolute; right: 0; bottom: -2px; display: inline-flex; align-items: center; gap: 1px; }
 .sd-reader-card-grid-tools .sd-reader-card-edit,
+.sd-reader-card-grid-tools .sd-reader-collection-tool,
 .sd-reader-card-grid-tools .sd-reader-collection-remove-book { width: 25px; height: 25px; font-size: .72em; }
 .sd-reader-row .sd-reader-card-edit { opacity: .62; }
 .sd-reader-row:hover .sd-reader-card-edit { opacity: 1; }
@@ -4724,7 +4728,6 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 .sd-reader-collection-edit:hover { opacity: 1; color: var(--sd-accent); background: var(--sd-glass-weak); }
 .sd-reader-collection-dissolve:hover { opacity: 1; color: var(--sd-danger, #d66); background: var(--sd-glass-weak); }
-.sd-reader-collection-card .sd-reader-collection-edit { position: absolute; right: 0; bottom: -2px; width: 25px; height: 25px; font-size: .72em; }
 .sd-reader-collection-head {
   display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 8px 10px; box-sizing: border-box;
   border: 1px solid var(--sd-hairline); border-radius: 13px; background: var(--sd-glass-weak);
@@ -11494,9 +11497,39 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   border-top: 1px solid var(--sd-hairline);
 }
 #story-director-modal .sd-preset-version-items .sd-source-row { margin: 0; }
-#story-director-modal .sd-reader-preset-version-group { margin-bottom: 4px; }
-#story-director-modal .sd-reader-preset-version-group .sd-reader-cwb-tag { flex: 0 0 auto; }
-#story-director-modal .sd-reader-preset-version-group .sd-reader-cps-name > span { white-space: normal; overflow-wrap: anywhere; }
+/* The companion setup also lives in the detached reader portal. Its series
+   headers use the list's type scale and a tinted frame, never a disclosure arrow. */
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group {
+  margin-bottom: 4px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--sd-hairline);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sd-glass-weak) 72%, transparent);
+}
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group > summary {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  list-style: none;
+  cursor: pointer;
+  font-size: .85em !important;
+  font-weight: 600;
+  line-height: 1.35;
+}
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group > summary::before,
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group > summary::after { content: none; display: none; }
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group > summary::marker { content: ''; }
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group > summary::-webkit-details-marker { display: none; }
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group > summary > span { min-width: 0; overflow-wrap: anywhere; }
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group > summary > small { flex: 0 0 auto; margin-left: auto; color: var(--sd-muted); font-size: .9em; }
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group > .sd-preset-version-items { display: grid; gap: 2px; padding: 2px 6px 6px; border-top: 1px solid var(--sd-hairline); }
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group .sd-reader-cwb-tag { flex: 0 0 auto; }
+:is(#story-director-modal, #sd-reader-portal) .sd-reader-preset-version-group .sd-reader-cps-name > span { white-space: normal; overflow-wrap: anywhere; }
 
 /* The backstage editor is a writing surface, not a second typography system. */
 #story-director-modal .sd-backstage-blueprint > summary > b,
@@ -11712,10 +11745,6 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   line-height: 1.35 !important;
 }
 #story-director-modal .sd-theater-preset-row { grid-template-columns: minmax(0, 1fr); }
-#story-director-modal .sd-theater-settings-body > .sd-context-block > summary {
-  min-height: 34px !important;
-  padding: 7px 10px !important;
-}
 #story-director-modal .sd-theater-history-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -12006,30 +12035,32 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  align-self: end;
+  align-self: start;
   max-width: clamp(80px, 25vw, 180px);
   text-align: right;
   overflow-wrap: anywhere;
   font-size: clamp(20px, 5.6vw, 36px) !important;
   line-height: 1.1 !important;
-  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--sd-text) 78%, transparent), color-mix(in srgb, var(--sd-accent) 12%, transparent)) !important;
+  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--sd-text) 62%, transparent), color-mix(in srgb, var(--sd-accent) 8%, transparent)) !important;
 }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row {
   grid-column: 1;
   grid-row: 1;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
 }
+#story-director-modal .sd-plan-section .sd-item-npc.sd-npc-name-left .sd-item-summary-main { grid-template-columns: auto minmax(0, 1fr); }
+#story-director-modal .sd-plan-section .sd-item-npc.sd-npc-name-left .sd-item-summary-main h4 { grid-column: 1; justify-content: flex-start; text-align: left; }
+#story-director-modal .sd-plan-section .sd-item-npc.sd-npc-name-left .sd-mini-chip-row { grid-column: 2; }
 #story-director-modal .sd-plan-section .sd-item-npc > summary { gap: 10px; }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row { gap: 6px; align-items: stretch; }
-#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { margin: 0; line-height: 1.35; }
+#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { display: block; margin: 0; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; line-height: 1.35; }
 @media (max-width: 430px) {
   /* A media entry gets its own visible row instead of squeezing the emotion
      into a few characters. Inline labels let wrapped chip prose use its width. */
   #story-director-modal .sd-plan-section .sd-item-npc > summary:has(> .sd-world-media-entry) { flex-wrap: wrap; }
   #story-director-modal .sd-plan-section .sd-item-npc > summary:has(> .sd-world-media-entry) .sd-item-summary-main { flex-basis: 100%; }
   #story-director-modal .sd-plan-section .sd-item-npc > summary > .sd-world-media-entry { margin-inline-start: auto !important; }
-  #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { display: block; }
 }
 
 /* 取材身份复用角色库标签；上下文参考与楼层数按动作基线。 */

@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const functions = ['renderPlanSectionFold', 'renderItemList', 'renderItemCard', 'renderItemChips', 'getContextItemId', 'renderDirectorWorldEntryLink', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
-const qa = new URL('../dist/local-qa/npc-name/', import.meta.url);
+const qa = new URL('../dist/local-qa/npc-alternating/', import.meta.url);
 await mkdir(qa, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage();
@@ -32,10 +32,11 @@ try {
     window.htmlEscape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
     window.directorDisplayPlan = () => plan;
     window.renderDirectorSectionNotice = () => '';
-    window.plan = { npc_updates: [
+    window.plan = { character_dynamics: [{ name: '秦铎', title: '核对夜班记录', content: '他将新记录放在值班室的桌边。' }], npc_updates: [
       { id: 'npc2', name: '韩立', role: '江北分局刑侦大队副大队长', emotional_state: '沉稳务实，对老城区物业的猫腻门儿清。', current_goal: '查清旧案的细节。' },
       { id: 'npc3', name: '赵德海', role: '杨家弄老旧小区物业代管员（新角入场）', emotional_state: '惊慌失措，存着侥幸心理想把责任推给流动租客，却又担心隐瞒的收据被找到。', current_goal: '想确认被收走的钥匙是否已经登记。' },
-      { id: 'npc4', name: '长孙无忌', role: '夜班资料室负责人，负责登记资料、核实来源并联系下一班交接人员', emotional_state: '冷静专注，面对现场反复变化的线索仍保持谨慎，准备完整核对每一项记录。', current_goal: '保留纸面原件与交接记录。' }
+      { id: 'npc4', name: '长孙无忌', role: '夜班资料室负责人，负责登记资料、核实来源并联系下一班交接人员', emotional_state: '冷静专注，面对现场反复变化的线索仍保持谨慎，准备完整核对每一项记录。', current_goal: '保留纸面原件与交接记录。' },
+      { id: 'npc5', name: '邵宁', role: '江北分局法医', emotional_state: '冷静专注，对现场围观者的议论毫无反应。', current_goal: '核对检验报告。' }
     ] };
     (0, eval)(source);
     window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
@@ -43,7 +44,7 @@ try {
     window.renderFixture = async (family, mode) => {
       if (family === 'classic') { settings.theme = mode; document.querySelector('#story-director-modal').className = 'open sd-theme-' + mode; }
       settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync();
-      document.querySelector('.sd-body').innerHTML = renderPlanSectionFold('其他人物动向', plan.npc_updates, 'npc', 'castfold-npc');
+      document.querySelector('.sd-body').innerHTML = renderPlanSectionFold('此间一人', plan.character_dynamics, 'character', 'castfold-character') + renderPlanSectionFold('其他人物动向', plan.npc_updates, 'npc', 'castfold-npc');
       applyQianmuIcons(document.querySelector('#story-director-modal'));
     };
   }, functions);
@@ -51,10 +52,12 @@ try {
     const label = `${family}/${mode}/${width}`;
     await page.setViewportSize({ width, height: 1000 });
     await page.evaluate(async ({ family, mode }) => renderFixture(family, mode), { family, mode });
-    ok(label + ' renders full two-, three- and four-character names with original chips', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.length === 3 && nodes.every((node, index) => node.querySelector('h4').textContent === plan.npc_updates[index].name && node.querySelectorAll('.sd-badge').length === 2 && node.textContent.includes(plan.npc_updates[index].emotional_state))));
-    ok(label + ' names are larger, right-aligned and vertically translucent rather than the shared title gradient', await page.locator('.sd-item-npc h4').evaluateAll(nodes => nodes.every(node => { const style = getComputedStyle(node); return parseFloat(style.fontSize) >= 20 && style.textAlign === 'right' && style.backgroundImage.startsWith('linear-gradient(') && !/linear-gradient\(\d/.test(style.backgroundImage) && /\/ 0\.78\)/.test(style.backgroundImage) && /\/ 0\.12\)/.test(style.backgroundImage) && style.backgroundClip === 'text' && style.webkitTextFillColor === 'rgba(0, 0, 0, 0)'; })));
-    const geometry = await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.map(node => { const name = node.querySelector('h4'), chips = node.querySelector('.sd-mini-chip-row'), emotion = chips.lastElementChild, nameRect = name.getBoundingClientRect(), chipsRect = chips.getBoundingClientRect(), bottom = emotion.getBoundingClientRect().bottom; return { overlap: nameRect.left < chipsRect.right, beyondEmotion: nameRect.bottom - bottom, clipped: name.scrollWidth > name.clientWidth + 1, overflow: node.scrollWidth > node.clientWidth + 1, gap: nameRect.left - chipsRect.right }; }));
-    ok(label + ' names never overlap chips or descend below emotion: ' + JSON.stringify(geometry), geometry.every(item => !item.overlap && item.beyondEmotion <= 1 && !item.clipped && !item.overflow && item.gap >= 9));
+    ok(label + ' character name appears once in the title suffix instead of a right-side note', await page.locator('[data-acc="castfold-character"] > summary').evaluate(node => node.textContent === '此间一人 · 秦铎' && !node.querySelector('.sd-character-names') && node.children.length === 1));
+    ok(label + ' renders four full two-, three- and four-character names with original text labels', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.length === 4 && nodes.every((node, index) => node.querySelector('h4').textContent === plan.npc_updates[index].name && node.querySelectorAll('.sd-badge').length === 2 && node.textContent.includes(plan.npc_updates[index].emotional_state))));
+    ok(label + ' names alternate left/right with a lighter vertical gradient and top alignment', await page.locator('.sd-item-npc h4').evaluateAll(nodes => nodes.every((node, index) => { const style = getComputedStyle(node); return parseFloat(style.fontSize) >= 20 && style.textAlign === (index % 2 === 0 ? 'left' : 'right') && style.alignSelf === 'start' && style.backgroundImage.startsWith('linear-gradient(') && !/linear-gradient\(\d/.test(style.backgroundImage) && /\/ 0\.62\)/.test(style.backgroundImage) && /\/ 0\.08\)/.test(style.backgroundImage) && style.backgroundClip === 'text' && style.webkitTextFillColor === 'rgba(0, 0, 0, 0)'; })));
+    ok(label + ' role and emotion are unboxed transparent text with no border or shadow', await page.locator('.sd-item-npc .sd-badge').evaluateAll(nodes => nodes.every(node => { const style = getComputedStyle(node); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none' && style.boxShadow === 'none' && ['Top', 'Right', 'Bottom', 'Left'].every(side => style[`border${side}Width`] === '0px'); })));
+    const geometry = await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.map((node, index) => { const name = node.querySelector('h4'), chips = node.querySelector('.sd-mini-chip-row'), nameRect = name.getBoundingClientRect(), chipsRect = chips.getBoundingClientRect(); return { topDifference: Math.abs(nameRect.top - chipsRect.top), clipped: name.scrollWidth > name.clientWidth + 1, overflow: node.scrollWidth > node.clientWidth + 1, gap: index % 2 === 0 ? chipsRect.left - nameRect.right : nameRect.left - chipsRect.right }; }));
+    ok(label + ' alternating names share the top edge without overlapping text: ' + JSON.stringify(geometry), geometry.every(item => item.topDifference <= 1 && !item.clipped && !item.overflow && item.gap >= 9));
     ok(label + ' long role/emotion text and whole page do not overflow horizontally', await page.locator('.sd-body,.sd-item-npc .sd-badge').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1)));
     ok(label + ' two-to-four-character names stay on one line', await page.locator('.sd-item-npc h4').evaluateAll(nodes => nodes.every(node => node.clientHeight <= parseFloat(getComputedStyle(node).lineHeight) + 1)));
     if (width <= 430) {
@@ -64,11 +67,25 @@ try {
     }
     const first = page.locator('.sd-item-npc').first();
     await first.locator('summary').focus(); await page.keyboard.press('Enter');
-    ok(label + ' native keyboard expansion retains the name layout and detail text', await first.evaluate(node => node.open && node.querySelector('.sd-director-paragraph p').textContent === plan.npc_updates[0].current_goal && node.querySelector('h4').getBoundingClientRect().bottom <= node.querySelector('.sd-mini-chip-row').getBoundingClientRect().bottom + 1));
+    ok(label + ' native keyboard expansion retains top-aligned names and detail text', await first.evaluate(node => node.open && node.querySelector('.sd-director-paragraph p').textContent === plan.npc_updates[0].current_goal && Math.abs(node.querySelector('h4').getBoundingClientRect().top - node.querySelector('.sd-mini-chip-row').getBoundingClientRect().top) <= 1));
     await page.keyboard.press('Enter');
     ok(label + ' native keyboard collapse still works', await first.evaluate(node => !node.open));
-    if (width === 393 || family === 'glass') await page.locator('.sd-plan-section').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-${width}.png`, qa)) });
+    const media = page.locator('.sd-item-npc .sd-world-media-entry');
+    await media.scrollIntoViewIfNeeded(); await media.focus();
+    ok(label + ' unchanged media entry stays keyboard-focusable and unobscured', await media.evaluate(node => { const rect = node.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2); return !node.disabled && document.activeElement === node && (hit === node || node.contains(hit)); }));
+    if (width === 393 || family === 'glass') await page.locator('.sd-body').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-${width}.png`, qa)) });
+    await page.evaluate(async ({ family, mode }) => {
+      window.savedNpcFixture = plan.npc_updates;
+      window.savedCharacterFixture = plan.character_dynamics;
+      plan.character_dynamics = [{ name: '安德烈亚·冯·罗森伯格与夜班资料室联合调查员', title: '较长角色名的生活片段', content: '保持完整的角色身份。' }];
+      plan.npc_updates = [{ id: 'long', name: '安德烈亚·冯·罗森伯格', role: '跨区域联合资料复核负责人', emotional_state: '谨慎核对全部记录，保持现场交接秩序。', content: '原文保持可读。' }, { id: 'bare', name: '无名旅人', content: '缺少定位与情绪的旧条目。' }];
+      await renderFixture(family, mode);
+    }, { family, mode });
+    ok(label + ' long and missing-chip identities keep full names, content and bounded layout', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.length === 2 && nodes.every((node, index) => node.querySelector('h4').textContent === plan.npc_updates[index].name && node.scrollWidth <= node.clientWidth + 1 && node.querySelector('h4').scrollWidth <= node.querySelector('h4').clientWidth + 1) && !nodes[1].querySelector('.sd-mini-chip-row')));
+    ok(label + ' long character title suffix wraps without clipping or a second right-side name', await page.locator('[data-acc="castfold-character"] > summary').evaluate(node => node.textContent === '此间一人 · ' + plan.character_dynamics[0].name && node.scrollWidth <= node.clientWidth + 1 && !node.querySelector('.sd-character-names')));
+    if (family === 'glass' && width === 320) await page.locator('.sd-item-npc').first().screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-long-name-${width}.png`, qa)) });
+    await page.evaluate(() => { plan.npc_updates = savedNpcFixture; plan.character_dynamics = savedCharacterFixture; });
   }
   assert.deepEqual(errors, []); assert.equal(external, 0, JSON.stringify(blocked));
-  console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'actual NPC renderer with isolated 2/3/4-character identities; no host state, writes, generation or real browser session' }));
+  console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'actual character and NPC renderers with four alternating identities plus long-name/missing-chip boundaries; no host state, writes, generation or real browser session' }));
 } finally { clearTimeout(deadline); await context.close(); await browser.close(); }

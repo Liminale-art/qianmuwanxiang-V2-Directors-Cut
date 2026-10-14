@@ -14,7 +14,7 @@ const deleteRequest = source.slice(source.indexOf('async function coreadRequestD
 assert.match(deleteRequest, /等 \$\{ids\.length\} 本书/, '批量删书提示必须只展示首本书与总数');
 assert.doesNotMatch(deleteRequest, /\.join\('、'\)/, '批量删书提示不得罗列全部书名');
 assert.match(libraryBinding, /coreadRequestDeleteBooks\(\[el\.dataset\.book\]\)/, '单本删除复用带原确认归属的入口');
-assert.match(libraryBinding, /coreadRequestDeleteBooks\(ids\)/, '批量删除复用同一入口');
+assert.match(libraryBinding, /coreadRequestDeleteBooks\(ids, collections\.map\(check => check\.dataset\.collection\)\)/, '批量删除复用同一入口并明确传递合集，不能展开成内部书目');
 
 assert.match(createCoreadPanelFixture().renderReaderVoiceClips(), /声音抽屉是空的/, '语音条空白态必须使用约定短文案');
 assert.match(source, /支持 EPUB、MOBI、TXT/, '空书架必须提示可导入格式');

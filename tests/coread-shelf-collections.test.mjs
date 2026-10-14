@@ -10,7 +10,7 @@ assert.match(source, /collections:\s*\[\][\s\S]*libCollectionId:\s*''/, '伴读�
 const collectionData = source.slice(source.indexOf('function coreadCollections'), source.indexOf('// 网格封面'));
 assert.match(collectionData, /validBooks[\s\S]*claimedBooks[\s\S]*bookIds/, '合集迁移必须清理失效书目并保证一本书只有一个归属');
 assert.match(collectionData, /function coreadMoveBooksToCollection[\s\S]*function coreadDissolveCollection/, '必须提供移动与安全解散合集的数据操作');
-assert.match(collectionData, /confirmDialog\(`确定解散「\$\{collection\.name\}」？`, ''\)/, '解散合集必须使用单句确认文案');
+assert.match(collectionData, /confirmDialog\(`确定删除合集「\$\{collection\.name\}」？`, '仅删除合集，内含书籍保留在书架中。'\)/, '删除合集必须明确确认且保留书籍');
 
 const {c,data}=createLibraryFixture();data.books=[{id:'book',title:'Book'}];data.collections=[{id:'collection',name:'Collection',bookIds:['book']}];
 const grid=c.renderLibraryView();data.libViewMode='list';const list=c.renderLibraryView();data.libCollectionId='collection';

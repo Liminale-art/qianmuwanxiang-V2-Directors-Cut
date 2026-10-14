@@ -130,3 +130,38 @@ test('failed world cleanup leaves local resources and shelf available for retry'
   assert.equal(await pending,false);assert.equal(f.data.books.length,2);assert.ok(!f.calls.includes('delete-body'));assert.equal(f.c.coreadMemoryWrites,0);
   assert.match(f.notices.at(-1)[0],/部分世界书记忆可能/);
 });
+
+test('collection-only deletion preserves all books and uses the existing confirmation without a memory prompt',async()=>{
+  const f=requestFixture(),books=JSON.stringify(f.data.books),pending=f.c.coreadRequestDeleteBooks([],['folder','folder']);
+  assert.match(f.prompts[0][1],/确定删除合集「Folder」/);f.confirm(true);
+  assert.equal(await pending,true);assert.equal(f.data.collections.length,0);assert.equal(JSON.stringify(f.data.books),books);
+  assert.deepEqual(f.calls,['save-settings']);assert.equal(f.prompts.length,1);
+});
+
+test('collection deletion refuses canceled, missing or changed targets and stale owners without writes',async()=>{
+  for(const change of ['cancel','owner','page','runtime','name','membership','removed']){
+    const f=requestFixture(),pending=f.c.coreadRequestDeleteBooks([],['folder']);
+    if(change==='owner')f.c.settings={enabled:true,coread:structuredClone(f.data)};
+    if(change==='page')f.page.isConnected=false;
+    if(change==='runtime')f.c.runtime={};
+    if(change==='name')f.data.collections[0].name='Changed';
+    if(change==='membership')f.data.collections[0].bookIds=['a'];
+    if(change==='removed')f.data.collections=[];
+    const before=JSON.stringify([f.data,f.c.settings]);f.confirm(change!=='cancel');
+    assert.equal(await pending,false,change);assert.equal(JSON.stringify([f.data,f.c.settings]),before,change);assert.deepEqual(f.calls,[],change);
+  }
+  const missing=requestFixture();assert.equal(await missing.c.coreadRequestDeleteBooks([],['missing']),false);assert.equal(missing.prompts.length,0);
+});
+
+test('mixed consent deletes only explicitly selected books, tolerating its own membership update',async()=>{
+  const f=requestFixture(),pending=f.c.coreadRequestDeleteBooks(['a'],['folder']);
+  assert.match(f.prompts[0][1],/Alpha.*合集「Folder」/);f.confirm(true);await tick();f.memory(false);await tick();f.answerSave(true);
+  assert.equal(await pending,true);assert.equal(f.data.collections.length,0);assert.deepEqual(Array.from(f.data.books,b=>b.id),['b']);
+  assert.equal(f.calls.filter(c=>c==='delete-body').length,1);assert.equal(f.calls.filter(c=>c==='save-settings').length,2);
+});
+
+test('a changed collection during the memory choice cancels the entire mixed batch before cleanup',async()=>{
+  const f=requestFixture(),pending=f.c.coreadRequestDeleteBooks(['a'],['folder']);f.confirm(true);await tick();
+  f.data.collections[0].name='New name';const before=JSON.stringify(f.data);f.memory(false);
+  assert.equal(await pending,false);assert.equal(JSON.stringify(f.data),before);assert.deepEqual(f.calls,[]);
+});

@@ -61,6 +61,8 @@ export async function checkShelfRefinementBrowser(page) {
     verify(await page.locator('.sd-reader-book-check:visible').count()===2&&await page.locator('.sd-reader-batch-toggle-all').getAttribute('aria-pressed')==='false',label+' clearing search restores partial-selection state');
     await page.locator('.sd-reader-batch-toggle-all').click();
     verify(await page.locator('.sd-reader-book-check:checked').count()===2,label+' select all');
+    verify(await page.locator('.sd-reader-collection-check:checked').count()===1,label+' select all includes folders');
+    verify(await page.locator('.sd-reader-batch-collect').isDisabled(),label+' selected folders cannot be nested');
     const geometry=await page.locator('.sd-reader-batch-actions').evaluate(el=>{
       const buttons=[...el.querySelectorAll('button')],rects=buttons.map(b=>b.getBoundingClientRect());
       return {oneRow:rects.every(r=>Math.abs(r.top-rects[0].top)<1),contained:rects.every(r=>r.left>=0&&r.right<=innerWidth),

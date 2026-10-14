@@ -41,13 +41,14 @@ export function renderCoreadLibraryCollectionView(collection, books, viewMode, h
   if (viewMode === 'list') {
     return `
       <div class="sd-reader-collection-row" data-collection="${htmlEscape(collection.id)}" data-search="${htmlEscape(searchText)}">
+        <input type="checkbox" class="sd-reader-collection-check" data-collection="${htmlEscape(collection.id)}" aria-label="选择合集「${htmlEscape(collection.name)}」" hidden>
         <span class="sd-reader-collection-row-icon"><i class="fa-solid fa-folder"></i></span>
         <div class="sd-reader-row-main">
           <span class="sd-reader-row-title" title="${htmlEscape(collection.name)}">${htmlEscape(collection.name)}</span>
           <span class="sd-reader-row-sub">${books.length} 本书</span>
         </div>
         <button class="sd-reader-collection-edit" data-collection="${htmlEscape(collection.id)}" title="重命名合集"><i class="fa-solid fa-pen"></i></button>
-        <button class="sd-reader-collection-dissolve" data-collection="${htmlEscape(collection.id)}" title="解散合集"><i class="fa-solid fa-folder-minus"></i></button>
+        <button class="sd-reader-collection-dissolve" data-collection="${htmlEscape(collection.id)}" title="删除合集（保留书籍）" aria-label="删除合集（保留书籍）"><i class="fa-solid fa-trash"></i></button>
         <i class="fa-solid fa-chevron-right sd-reader-collection-enter"></i>
       </div>`;
   }
@@ -59,10 +60,13 @@ export function renderCoreadLibraryCollectionView(collection, books, viewMode, h
   return `
     <div class="sd-reader-collection-card" data-collection="${htmlEscape(collection.id)}" data-search="${htmlEscape(searchText)}">
       <div class="sd-reader-card-cover sd-reader-collection-cover">${tiles}</div>
-      <div class="sd-reader-card-meta">
+      <div class="sd-reader-card-meta sd-reader-collection-meta">
         <div class="sd-reader-card-title" title="${htmlEscape(collection.name)}">${htmlEscape(collection.name)}</div>
         <div class="sd-reader-card-sub">${books.length} 本书</div>
-        <button class="sd-reader-collection-edit sd-reader-card-edit-grid" data-collection="${htmlEscape(collection.id)}" title="重命名合集"><i class="fa-solid fa-pen"></i></button>
+        <div class="sd-reader-card-grid-tools">
+          <button class="sd-reader-collection-edit sd-reader-collection-tool" data-collection="${htmlEscape(collection.id)}" title="重命名合集"><i class="fa-solid fa-pen"></i></button>
+          <button class="sd-reader-collection-dissolve sd-reader-collection-tool" data-collection="${htmlEscape(collection.id)}" title="删除合集（保留书籍）" aria-label="删除合集（保留书籍）"><i class="fa-solid fa-trash"></i></button>
+        </div>
       </div>
     </div>`;
 }
