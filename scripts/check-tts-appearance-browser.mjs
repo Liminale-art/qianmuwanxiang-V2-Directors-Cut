@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
 import { titleGradientProbe } from './helpers/title-gradient-probe.mjs';
 
 const titleControlsOnly = process.argv.includes('--title-controls');
+const folderBordersOnly = process.argv.includes('--folder-borders');
+const baseline = folderBordersOnly && process.argv.includes('--baseline');
+const baselineRef = process.env.QIANMU_TTS_BASELINE_REF || '970dc7ae';
 
 const names = ['renderActiveTab', 'renderTtsTab', 'renderTtsVoiceMapRows', 'renderTtsVoiceEntryRows',
     'renderTtsVoiceLibRows', 'renderTtsNpcRows', 'renderTtsTagRows', 'renderTtsPronDictRows',
@@ -16,14 +20,17 @@ const names = ['renderActiveTab', 'renderTtsTab', 'renderTtsVoiceMapRows', 'rend
 const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const guide = index.match(/^const DOUBAO_APIKEY_GUIDE_URL = .+;/m); assert.ok(guide);
 const source = guide[0] + '\n' + names.map(storyboardFunctionSource).join('\n');
-const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n'
-    + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
+const stylesheet = file => baseline
+    ? execFileSync('git', ['show', `${baselineRef}:${file}`], { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8' })
+    : readFile(new URL('../' + file, import.meta.url), 'utf8');
+const css = await stylesheet('style.css') + '\n' + await stylesheet('qianmu-theme-skins.css');
 const require = createRequire(import.meta.url), { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage();
 const deadline = setTimeout(() => { void browser.close(); }, 120000), checks = [], errors = [];
 let external = 0;
-const ok = (name, value) => { assert.ok(value, name); checks.push(name); };
+const failures = [];
+const ok = (name, value) => { if (!value) failures.push(name); if (!baseline) assert.ok(value, name); checks.push(name); };
 const qa = new URL('../dist/local-qa/tts-appearance/', import.meta.url); await mkdir(qa, { recursive: true });
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
@@ -40,7 +47,7 @@ await context.route('**/*', async route => {
 });
 try {
     await page.goto('https://qianmu.test/');
-    await page.evaluate(async source => {
+    await page.evaluate(async ({ source, folderBordersOnly }) => {
         const [utils, providers, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }] = await Promise.all([
             import('/qianmu-storyboard-utils.js'), import('/qianmu-tts-providers.js'), import('/qianmu-appearance-session.js'),
             import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
@@ -70,8 +77,8 @@ try {
             if (id === 'elevenlabs') p.model = state === 'legacy-model' ? 'eleven_multilingual_v2' : 'eleven_v3';
             if (id === 'doubao') p.authMode = state === 'legacy-auth' ? 'legacy' : 'apiKey';
             p.voiceLibrary = empty ? [] : Array.from({ length: 30 }, (_, i) => ({ id: 'voice' + i, voiceId: 'fixture-voice-' + i,
-                name: i === 0 ? '音色 <img src=x> 只作文本' : '旅人音色 ' + i, folder: i < 5 ? '主角' : '', model: ['auto', 'seed-tts-2.0', 'seed-icl-2.0', 'seed-icl-1.0'][i % 4] }));
-            p.npcArchetypes = empty ? [] : Array.from({ length: 25 }, (_, i) => ({ id: 'npc' + i, voiceId: 'fixture-npc-' + i, label: '路人原型 ' + i, folder: i < 4 ? '街头' : '', model: 'auto' }));
+                name: i === 0 ? '音色 <img src=x> 只作文本' : '旅人音色 ' + i, folder: folderBordersOnly ? (i < 15 ? 'female' : 'male') : (i < 5 ? '主角' : ''), model: ['auto', 'seed-tts-2.0', 'seed-icl-2.0', 'seed-icl-1.0'][i % 4] }));
+            p.npcArchetypes = empty ? [] : Array.from({ length: 25 }, (_, i) => ({ id: 'npc' + i, voiceId: 'fixture-npc-' + i, label: '路人原型 ' + i, folder: folderBordersOnly ? (i < 12 ? 'female' : 'male') : (i < 4 ? '街头' : ''), model: 'auto' }));
             p.pronunciationDict = [{ from: '处理', to: 'chu3li3' }];
             window.voiceMap = empty ? [] : [{ name: '旅人', voiceId: 'fixture-voice-1', voiceLibraryId: 'voice1' }, { name: '自定义角色', voiceId: 'unlisted-fixture' }];
             if (state === 'manual') { p.voiceLibrary = []; voiceMap = [{ name: '手动角色', voiceId: 'manual-fixture' }]; }
@@ -90,12 +97,71 @@ try {
             const fg = [...ctx.getImageData(0, 0, 1, 1).data], luminance = c => c.slice(0, 3).reduce((sum, v, i) => { v /= 255; return sum + [.2126, .7152, .0722][i] * (v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); }, 0);
             return (Math.max(luminance(bg), luminance(fg)) + .05) / (Math.min(luminance(bg), luminance(fg)) + .05);
         };
-    }, source);
+    }, { source, folderBordersOnly });
     for (const [family, mode] of [['classic', 'light'], ['classic', 'dark'], ['editorial', 'light'], ['editorial', 'dark'], ['glass', 'light'], ['glass', 'dark']]) {
-        for (const width of [320, 393, 1100]) for (const provider of titleControlsOnly ? ['minimax'] : ['minimax', 'doubao', 'elevenlabs']) {
+        for (const width of [320, 393, 1100]) for (const provider of titleControlsOnly || folderBordersOnly ? ['minimax'] : ['minimax', 'doubao', 'elevenlabs']) {
             const label = `${family}/${mode}/${width}/${provider}`;
             await page.setViewportSize({ width, height: width === 320 ? 568 : 898 });
             await page.evaluate(async ({ family, mode, provider }) => { await setAppearance(family, mode); renderVoices(provider); }, { family, mode, provider });
+            if (folderBordersOnly) {
+                for (const open of [false, true]) {
+                    await page.evaluate(open => {
+                        document.querySelectorAll('.sd-plain-fold').forEach(node => { node.open = true; });
+                        document.querySelectorAll('.sd-tts-lib-list,.sd-tts-npc-list').forEach(list => {
+                            list.scrollTop = 0;
+                            list.querySelectorAll('.sd-lib-folder').forEach(folder => { folder.open = open; });
+                        });
+                    }, open);
+                    for (const kind of ['lib', 'npc']) {
+                        const list = page.locator(`.sd-tts-${kind}-list`), state = `${label}/${kind}/${open ? 'open' : 'closed'}`;
+                        const measured = await list.evaluate(list => {
+                            const folders = [...list.querySelectorAll('.sd-lib-folder')];
+                            const rows = [...list.querySelectorAll('.sd-lib-folder,.sd-lib-row')].filter(node => node.getClientRects().length);
+                            return {
+                                cornersMatch: folders.every(folder => {
+                                    const f = getComputedStyle(folder), s = getComputedStyle(folder.querySelector('summary'));
+                                    return ['Left', 'Right'].every(side => {
+                                        const top = Math.max(0, parseFloat(f[`borderTop${side}Radius`]) - parseFloat(f.borderTopWidth));
+                                        const bottom = folder.open ? 0 : Math.max(0, parseFloat(f[`borderBottom${side}Radius`]) - parseFloat(f.borderBottomWidth));
+                                        return Math.abs(parseFloat(s[`borderTop${side}Radius`]) - top) < .01 && Math.abs(parseFloat(s[`borderBottom${side}Radius`]) - bottom) < .01;
+                                    });
+                                }),
+                                singleThinBorder: rows.every(node => {
+                                    const style = getComputedStyle(node);
+                                    return ['Top', 'Right', 'Bottom', 'Left'].every(side => style[`border${side}Width`] === '1px') && style.boxShadow === 'none';
+                                }),
+                                insideScrollPort: rows.every(node => {
+                                    const r = node.getBoundingClientRect(), p = list.getBoundingClientRect();
+                                    return r.left >= p.left && r.right <= p.right + .1;
+                                }),
+                                sticky: folders.every(folder => getComputedStyle(folder.querySelector('summary')).position === 'sticky'),
+                                noHorizontalOverflow: list.scrollWidth <= list.clientWidth,
+                            };
+                        });
+                        for (const [key, value] of Object.entries(measured)) ok(`${state} ${key}`, value);
+                        if (width === 393 && mode === 'light') {
+                            const card = page.locator(`.sd-card:has(.sd-tts-${kind}-list)`);
+                            await card.scrollIntoViewIfNeeded();
+                            await card.screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${baseline ? 'before' : 'after'}-${family}-${kind}-${open ? 'open' : 'closed'}-393.png`, qa)) });
+                        }
+                        if (open) {
+                            await list.evaluate(node => { node.scrollTop = 90; });
+                            ok(`${state} sticky header stays inside scrolling list`, await list.evaluate(node => Math.abs(node.querySelector('summary').getBoundingClientRect().top - node.getBoundingClientRect().top) < 1));
+                        }
+                    }
+                }
+                for (const kind of ['lib', 'npc']) {
+                    const summary = page.locator(`.sd-tts-${kind}-list .sd-lib-folder > summary`).first();
+                    await summary.focus(); await summary.press('Enter');
+                    ok(`${label}/${kind} keyboard collapse`, await summary.evaluate(node => !node.parentElement.open));
+                    await summary.press('Space');
+                    ok(`${label}/${kind} keyboard reopen`, await summary.evaluate(node => node.parentElement.open));
+                }
+                ok(`${label} library entries and identity remain intact without service calls`, await page.evaluate(() =>
+                    document.querySelectorAll('.sd-tts-lib-test').length === 30 && document.querySelectorAll('.sd-tts-narch-test').length === 25
+                    && ttsProviderConfig().voiceLibrary[0].voiceId === 'fixture-voice-0' && ttsProviderConfig().npcArchetypes[0].voiceId === 'fixture-npc-0' && calls === 0));
+                continue;
+            }
             if (titleControlsOnly) {
                 const title = await page.locator('.sd-tts-model-card > h3').evaluate(titleGradientProbe);
                 ok(`${label} model title paints gradient across actual text: ${JSON.stringify(title)}`, title.gradient && title.textSized);
@@ -166,7 +232,7 @@ try {
                 && document.querySelector('.sd-tts-npc-list').textContent.includes('尚未配置原型') && document.querySelector('.sd-tts-fav-list').textContent.includes('刷新收藏')
                 && document.querySelector('.sd-tts-restore-prompt').disabled && calls === 0));
         }
-        if (titleControlsOnly) continue;
+        if (titleControlsOnly || folderBordersOnly) continue;
         await page.evaluate(() => renderVoices('doubao', 'legacy-auth'));
         ok(`${family}/${mode} original legacy authentication fields remain isolated`, await page.locator('.sd-tts-app-id,.sd-tts-access-key').count() === 2 && await page.locator('.sd-tts-key').count() === 0);
         await page.evaluate(() => renderVoices('elevenlabs', 'legacy-model'));
@@ -177,5 +243,5 @@ try {
         ok(`${family}/${mode} disabled model state remains visible without changing data`, await page.locator('.sd-tts-enabled').getAttribute('aria-pressed') === 'false' && await page.locator('.sd-disabled-card').count() > 5 && await page.evaluate(() => calls === 0));
     }
     await page.evaluate(() => appearance.reset()); assert.deepEqual(errors, []); assert.equal(external, 0);
-    console.log(JSON.stringify({ passed: checks.length, checks, errors, external, scope: 'actual TTS renderers and provider capabilities; no playback, credential access, synthesis or ST business handlers' }));
+    console.log(JSON.stringify({ baseline, passed: checks.length - failures.length, failed: failures, checks, errors, external, scope: 'actual TTS renderers and provider capabilities; no playback, credential access, synthesis or ST business handlers' }));
 } finally { clearTimeout(deadline); await context.close(); await browser.close(); }

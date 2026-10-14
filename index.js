@@ -8933,8 +8933,8 @@ function renderContextTab() {
   return `
     <section class="sd-card sd-base-card sd-context-identity-card">
       <div class="sd-base-row">
-        <span class="sd-fixed-ref"><span class="sd-fixed-ref-label">当前角色</span>${infoTag(getCharacterName())}</span>
-        <span class="sd-fixed-ref"><span class="sd-fixed-ref-label">当前用户</span>${infoTag(getPersonaName())}</span>
+        <div class="sd-reader-setup-identity"><span class="sd-reader-setup-tag"><em>CHAR</em><b title="${htmlEscape(getCharacterName())}">${htmlEscape(getCharacterName())}</b></span></div>
+        <div class="sd-reader-setup-identity"><span class="sd-reader-setup-tag"><em>USER</em><b title="${htmlEscape(getPersonaName())}">${htmlEscape(getPersonaName())}</b></span></div>
       </div>
     </section>
     <section class="sd-card sd-base-card">

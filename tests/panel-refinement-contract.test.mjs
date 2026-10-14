@@ -5,7 +5,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 // 取材：身份独立成卡，上下文与层数同排；进入面板后自动读取，不再占用低频刷新按钮。
-assert.match(source, /sd-context-identity-card[\s\S]*当前角色[\s\S]*当前用户[\s\S]*sd-context-reference-row[\s\S]*上下文参考[\s\S]*参考层数/);
+assert.match(source, /sd-context-identity-card[\s\S]*<em>CHAR<\/em>[\s\S]*<em>USER<\/em>[\s\S]*sd-context-reference-row[\s\S]*上下文参考[\s\S]*参考层数/);
 assert.match(source, /sd-context-source-pick[\s\S]*<span>预设目录<\/span>/);
 assert.match(source, /sd-context-source-pick[\s\S]*<span>世界书目录<\/span>/);
 assert.doesNotMatch(source, /sd-refresh-presets|sd-refresh-worldbooks/);

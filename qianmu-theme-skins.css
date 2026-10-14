@@ -404,6 +404,15 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
 #story-director-modal[data-qm-theme] :is(.sd-tts-lib-list, .sd-tts-npc-list, [data-lib="ttsscheme"]) .sd-lib-folder {
   background: color-mix(in srgb, var(--qm-raised) 36%, transparent) !important;
 }
+/* The opaque voice-folder header must follow the inside of its one-pixel
+   frame. A fixed 9px header covers the glass family's 22px outer corners. */
+#story-director-modal[data-qm-theme] :is(.sd-tts-lib-list, .sd-tts-npc-list) .sd-lib-folder > summary {
+  --sd-tts-folder-inner-radius: max(0px, calc(var(--qm-card-radius) - 1px));
+  border-radius: var(--sd-tts-folder-inner-radius) var(--sd-tts-folder-inner-radius) 0 0;
+}
+#story-director-modal[data-qm-theme] :is(.sd-tts-lib-list, .sd-tts-npc-list) .sd-lib-folder:not([open]) > summary {
+  border-radius: var(--sd-tts-folder-inner-radius);
+}
 #story-director-modal[data-qm-theme] .sd-tts-enabled.is-enabled {
   color: color-mix(in srgb, #4fae73 50%, var(--qm-ink)) !important;
   background: color-mix(in srgb, #4fae73 10%, var(--qm-raised)) !important;

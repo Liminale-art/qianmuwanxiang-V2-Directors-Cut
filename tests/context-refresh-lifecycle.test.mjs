@@ -45,7 +45,7 @@ function fixture({ worldScannedAt = '', failWorld = false } = {}) {
 test('first materials render schedules one scan without synchronous render reentry', async () => {
   const f = fixture();
   const html = f.sandbox.renderContextTab();
-  assert.match(html, /当前角色/);
+  assert.match(html, /<em>CHAR<\/em>/);
   assert.equal(f.calls.presets, 0, 'register the in-flight guard before scanning');
   assert.equal(f.calls.renders, 0, 'the initial render must return before any refresh repaint');
   await f.settle();

@@ -38,12 +38,14 @@ await context.route('**/*', async route => {
 try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async source => {
-        const [utils, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }, sources] = await Promise.all([
+        const [utils, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }, sources, identityView, archiveView] = await Promise.all([
             import('/qianmu-storyboard-utils.js'), import('/qianmu-appearance-session.js'),
             import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'), import('/qianmu-st-context-sources.js'),
+            import('/qianmu-reader-identity-view.js'), import('/qianmu-character-archive-view.js'),
         ]);
         for (const name of ['htmlEscape', 'infoTag', 'uniqueClean', 'isNoisePresetName', 'escapeRegExp', 'groupByFolder', 'estimateTokens']) window[name] = utils[name];
         Object.assign(window, {
+            renderCoreadIdentityView: identityView.renderCoreadIdentityView, renderCharacterArchive: archiveView.renderCharacterArchive,
             groupPresetNames: sources.groupPresetNames,
             settings: { theme: 'dark' }, editorView: null, calls: { scan: 0, forbidden: 0 },
             maybeAutoScanContext: () => { calls.scan++; }, getCharacterName: () => '旅人', getPersonaName: () => '观星者',
@@ -102,7 +104,7 @@ try {
             return (Math.max(luminance(bg), luminance(fg)) + .05) / (Math.min(luminance(bg), luminance(fg)) + .05);
         };
     }, source);
-    for (const [family, mode] of [['classic', 'dark'], ['editorial', 'light'], ['editorial', 'dark'], ['glass', 'light'], ['glass', 'dark']]) {
+    for (const [family, mode] of [['classic', 'light'], ['classic', 'dark'], ['editorial', 'light'], ['editorial', 'dark'], ['glass', 'light'], ['glass', 'dark']]) {
         for (const width of [320, 393, 1100]) for (const tab of ['context', 'settings']) {
             const label = `${family}/${mode}/${width}/${tab}`;
             await page.setViewportSize({ width, height: width === 320 ? 568 : 898 });
@@ -133,11 +135,42 @@ try {
                 ok(label + ' world and preset directory names use the same font size', await page.evaluate(() =>
                     getComputedStyle(document.querySelector('.sd-world-name > span')).fontSize
                     === getComputedStyle(document.querySelector('.sd-pick-preset:checked + span')).fontSize));
-                ok(label + ' identity labels have a gradient while names remain regular', await page.evaluate(() =>
-                    [...document.querySelectorAll('.sd-fixed-ref-label')].every(node => getComputedStyle(node).backgroundImage.includes('linear-gradient'))
-                    && [...document.querySelectorAll('.sd-fixed-ref .sd-info-tag')].every(node => getComputedStyle(node).fontWeight === '400')));
-                if (width === 393 && family === 'glass' && mode === 'light') await page.locator('.sd-context-identity-card').screenshot({
-                    animations: 'disabled', path: fileURLToPath(new URL('glass-light-identity-393.png', qa)),
+                ok(label + ' CHAR and USER tags match the actual character archive label styling', await page.evaluate(() => {
+                    const card = document.querySelector('.sd-context-identity-card');
+                    const tags = [...card.querySelectorAll('.sd-reader-setup-tag')];
+                    const reference = document.createElement('div');
+                    reference.style.cssText = `position:absolute;left:-10000px;width:${card.clientWidth}px`;
+                    reference.innerHTML = renderCharacterArchive({ rows: [], bindings: [], subjects: [
+                        { category: 'char', subjectKey: 'char:qa', name: getCharacterName(), avatar: '' },
+                        { category: 'user', subjectKey: 'user:qa', name: getPersonaName(), avatar: '' },
+                    ], chatKey: 'isolated-qa', search: '', collapsed: {}, shown: {} }, {
+                        identity: (role, name, avatar, icon) => renderCoreadIdentityView({ role, name, avatar, icon }, htmlEscape),
+                    });
+                    card.parentElement.append(reference);
+                    try {
+                        const archiveTags = [...reference.querySelectorAll('.sd-reader-setup-tag')];
+                        const properties = ['fontSize', 'fontWeight', 'color', 'backgroundColor', 'borderTopWidth', 'borderTopColor', 'borderRadius', 'padding', 'letterSpacing'];
+                        const signature = node => properties.map(key => getComputedStyle(node)[key]).join('|');
+                        return tags.length === 2 && archiveTags.length === 2 && tags.every((tag, i) =>
+                            tag.querySelector('em').textContent === ['CHAR', 'USER'][i]
+                            && ['', 'em', 'b'].every(selector => signature(selector ? tag.querySelector(selector) : tag)
+                                === signature(selector ? archiveTags[i].querySelector(selector) : archiveTags[i])));
+                    } finally { reference.remove(); }
+                }));
+                ok(label + ' long identity names stay in two bounded tags with the full name available', await page.evaluate(() => {
+                    const card = document.querySelector('.sd-context-identity-card'), names = [...card.querySelectorAll('.sd-reader-setup-tag b')];
+                    const saved = names.map(node => node.textContent);
+                    try {
+                        names.forEach(node => { node.textContent = '很长的当前身份名字'.repeat(8); });
+                        return names.every(node => {
+                            const tag = node.parentElement, box = tag.getBoundingClientRect(), host = tag.parentElement.getBoundingClientRect();
+                            return node.hasAttribute('title') && getComputedStyle(node).textOverflow === 'ellipsis'
+                                && box.left >= host.left - 1 && box.right <= host.right + 1 && tag.scrollWidth <= tag.clientWidth + 1;
+                        }) && Math.abs(names[0].parentElement.getBoundingClientRect().top - names[1].parentElement.getBoundingClientRect().top) < 1;
+                    } finally { names.forEach((node, i) => { node.textContent = saved[i]; }); }
+                }));
+                if (width === 320 || width === 393) await page.locator('.sd-context-identity-card').screenshot({
+                    animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-identity-${width}.png`, qa)),
                 });
             } else {
                 ok(label + ' refresh and injection rows share a regular-weight action font', await page.evaluate(() => {

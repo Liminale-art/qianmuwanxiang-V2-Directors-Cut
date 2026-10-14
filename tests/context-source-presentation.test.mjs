@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as utils from '../qianmu-storyboard-utils.js';
 import { groupPresetNames } from '../qianmu-st-context-sources.js';
+import { renderCoreadIdentityView } from '../qianmu-reader-identity-view.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 
 function fixture({ current = '', names = [], selected = [] } = {}) {
@@ -18,6 +19,27 @@ function fixture({ current = '', names = [], selected = [] } = {}) {
   vm.runInContext(['badge', 'getContextItemId', 'renderPresetSourcePanel', 'renderWorldBookSourcePanel', 'renderContextEntry'].map(storyboardFunctionSource).join('\n'), sandbox);
   return sandbox;
 }
+
+test('context identities reuse archive tag markup, escape names, and follow the current host without writes', () => {
+  const names = { char: '秦铎"<&', user: 'User<script>' };
+  const settings = { contextOptions: {} }, before = JSON.stringify(settings);
+  const sandbox = vm.createContext({ ...utils, settings, contextScanCache: {},
+    getCharacterName: () => names.char, getPersonaName: () => names.user,
+    maybeAutoScanContext() {}, renderTagRules: () => '', renderPresetSourcePanel: () => '', renderWorldBookSourcePanel: () => '',
+  });
+  vm.runInContext(storyboardFunctionSource('renderContextTab'), sandbox);
+  const tagPattern = /<span class="sd-reader-setup-tag">[\s\S]*?<\/span>/g;
+  for (const charName of [names.char, '切换后的角色']) {
+    names.char = charName;
+    const html = sandbox.renderContextTab();
+    const actual = html.match(tagPattern);
+    const expected = [['CHAR', names.char], ['USER', names.user]].map(([role, name]) =>
+      renderCoreadIdentityView({ role, name, avatar: '', icon: '' }, utils.htmlEscape).match(tagPattern)[0]);
+    assert.deepEqual(actual, expected);
+    assert.doesNotMatch(html, /当前角色|当前用户|sd-fixed-ref-label|sd-reader-identity-avatar|data-coread-identity|<script>/);
+  }
+  assert.equal(JSON.stringify(settings), before);
+});
 
 test('current preset with an additional numeric release suffix joins its existing series', () => {
   const current = '【照见】Claude-Versatile-5.1.3 5.5';

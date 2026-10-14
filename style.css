@@ -11890,9 +11890,8 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   vertical-align: baseline;
 }
 
-/* 取材字号层级：身份与分区标题沿用命运之脉卡题，参考开关向上一级，
+/* 取材字号层级：分区标题沿用命运之脉卡题，参考开关向上一级，
    目录条目继续使用正文级，避免同一页出现多个无意的字号体系。 */
-#story-director-modal .sd-context-identity-card .sd-fixed-ref-label,
 #story-director-modal .sd-accordion[data-acc="acc-tags"] > summary > b,
 #story-director-modal .sd-accordion[data-acc="acc-presets"] > summary > b,
 #story-director-modal .sd-accordion[data-acc="acc-worlds"] > summary > b {
@@ -11987,17 +11986,7 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row { gap: 6px; align-items: stretch; }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { margin: 0; line-height: 1.35; }
 
-/* 取材：身份标签是卡片标题级并明确加粗；上下文参考与楼层数按动作基线。 */
-#story-director-modal .sd-context-identity-card .sd-fixed-ref-label {
-  font-size: var(--qm-type-card-title) !important;
-  font-weight: 700 !important;
-  background-image: var(--qm-card-title-gradient) !important;
-  -webkit-background-clip: text !important;
-  background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-}
-#story-director-modal .sd-context-identity-card .sd-fixed-ref,
-#story-director-modal .sd-context-identity-card .sd-info-tag { font-weight: 400 !important; }
+/* 取材身份复用角色库标签；上下文参考与楼层数按动作基线。 */
 #story-director-modal .sd-context-reference-row :is(.checkbox_label, .sd-depth-field) {
   font-size: var(--qm-type-action-title) !important;
   line-height: 1.35 !important;
