@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixture.mjs';
 
 const names = ['renderActiveTab', 'renderTheaterTab', 'theaterOpening', 'renderTheaterMarkdown',
-    'withHiddenScrollbar', 'renderTheaterReadView', 'renderTheaterFavoritesView', 'renderTheaterPresetEntries',
+    'withHiddenScrollbar', 'renderTheaterReadView', 'renderTheaterFavoritesView', 'renderTheaterPresetEntries', 'renderTheaterPresetPicker', 'badge',
     'theaterScriptLibraryCfg', 'initTheaterPresetSelection', 'isTheaterPresetItemSelected', 'isTheaterFavorited',
     'getContextItemId', 'renderLibrarySection', 'renderLibraryListBody', 'renderLibraryRow'];
 const source = names.map(storyboardFunctionSource).join('\n');
@@ -33,11 +33,12 @@ await context.route('**/*', async route => {
 try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async source => {
-        const [utils, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }] = await Promise.all([
-            import('/qianmu-storyboard-utils.js'), import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
+        const [utils, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }, { groupPresetNames }] = await Promise.all([
+            import('/qianmu-storyboard-utils.js'), import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'), import('/qianmu-st-context-sources.js'),
         ]);
         for (const name of ['htmlEscape', 'uniqueClean', 'isNoisePresetName', 'groupByFolder', 'extractTheaterBody', 'snip', 'theaterSubtitle', 'formatDateTime']) window[name] = utils[name];
         Object.assign(window, {
+            groupPresetNames,
             settings: { theme: 'dark', apiProfiles: [{ id: 'fixture', name: '隔离 API' }] }, activeTab: 'theater', editorView: null,
             MODAL_ID: 'story-director-modal', THEATER_INSTRUCTION_PLACEHOLDER: '隔离此幕指令', calls: { catalog: 0, render: 0, forbidden: 0 },
             getTheater: () => theaterFixture, getCurrentPresetName: () => '原预设', listPresetNames: () => ['原预设'],

@@ -9,6 +9,7 @@ import { titleGradientProbe } from './helpers/title-gradient-probe.mjs';
 
 const titleControlsOnly = process.argv.includes('--title-controls');
 const folderBordersOnly = process.argv.includes('--folder-borders');
+const extractLayoutOnly = process.argv.includes('--extract-layout');
 const baseline = folderBordersOnly && process.argv.includes('--baseline');
 const baselineRef = process.env.QIANMU_TTS_BASELINE_REF || '970dc7ae';
 
@@ -16,7 +17,7 @@ const names = ['renderActiveTab', 'renderTtsTab', 'renderTtsVoiceMapRows', 'rend
     'renderTtsVoiceLibRows', 'renderTtsNpcRows', 'renderTtsTagRows', 'renderTtsPronDictRows',
     'ttsSchemeLibraryCfg', 'renderTtsFavoritesPlaceholder', 'renderTtsProviderOptions',
     'renderTtsProviderConnection', 'renderTtsProviderParams', 'renderTtsMinimaxExtras',
-    'ttsDoubaoVoiceModel', 'ttsDoubaoVoiceModelLabel', 'renderLibrarySection', 'renderLibraryListBody', 'renderLibraryRow'];
+    'ttsDoubaoVoiceModel', 'ttsDoubaoVoiceModelLabel', 'renderLibrarySection', 'renderLibraryListBody', 'renderLibraryRow', 'bindTtsTabEvents'];
 const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const guide = index.match(/^const DOUBAO_APIKEY_GUIDE_URL = .+;/m); assert.ok(guide);
 const source = guide[0] + '\n' + names.map(storyboardFunctionSource).join('\n');
@@ -103,6 +104,48 @@ try {
             const label = `${family}/${mode}/${width}/${provider}`;
             await page.setViewportSize({ width, height: width === 320 ? 568 : 898 });
             await page.evaluate(async ({ family, mode, provider }) => { await setAppearance(family, mode); renderVoices(provider); }, { family, mode, provider });
+            if (extractLayoutOnly) {
+                await page.evaluate(() => {
+                    settings.tts.extractApiProfileId = 'fixture';
+                    const body = document.querySelector('.sd-body'); body.innerHTML = renderActiveTab(); applyQianmuIcons(body);
+                    window.fixtureSaves = 0; window.saveSettings = () => { fixtureSaves++; };
+                    window.bindLibraryEvents = () => {}; window.ttsRefreshFavorites = () => {}; window.toast = () => {};
+                    bindTtsTabEvents(body);
+                    window.beforeExtractChange = JSON.stringify([settings.tts.provider, settings.tts.guidanceSchemes, voiceMap]);
+                });
+                ok(`${label} extraction profile appears once inside model card, not prompt card`, await page.evaluate(() =>
+                    document.querySelectorAll('.sd-tts-extract-api').length === 1
+                    && !!document.querySelector('.sd-tts-model-card > .sd-tts-extract-api')
+                    && !!document.querySelector('[data-acc="tts-extract-prompt"]')
+                    && !document.querySelector('[data-acc="tts-extract-prompt"] .sd-tts-extract-api')
+                    && document.querySelector('.sd-tts-extract-api').value === 'fixture'));
+                ok(`${label} profile options preserve current main API fallback and saved profile identity`, await page.locator('.sd-tts-extract-api').evaluate(el =>
+                    el.options.length === 2 && el.options[0].value === '' && el.options[1].value === 'fixture' && el.options[1].textContent === '隔离提取模型'));
+                await page.locator('.sd-tts-extract-api').selectOption('');
+                ok(`${label} actual change handler saves fallback without changing voice provider`, await page.evaluate(() => settings.tts.extractApiProfileId === '' && fixtureSaves === 1 && JSON.stringify([settings.tts.provider, settings.tts.guidanceSchemes, voiceMap]) === beforeExtractChange));
+                await page.locator('.sd-tts-extract-api').selectOption('fixture');
+                ok(`${label} actual change handler saves selected profile`, await page.evaluate(() => settings.tts.extractApiProfileId === 'fixture' && fixtureSaves === 2));
+                await page.locator('.sd-tts-extract-api').evaluate(el => { el.value = ''; });
+                await page.locator('.sd-tts-save-conn').click();
+                ok(`${label} explicit save still reads moved profile control`, await page.evaluate(() => settings.tts.extractApiProfileId === '' && fixtureSaves === 3 && calls === 0));
+                ok(`${label} moved select fits model card`, await page.locator('.sd-tts-extract-api').evaluate(el => {
+                    const rect = el.getBoundingClientRect(), card = el.closest('.sd-card').getBoundingClientRect();
+                    return rect.left >= card.left && rect.right <= card.right + 1 && rect.width > 100;
+                }));
+                if (width === 393 && provider === 'minimax' && family === 'glass' && mode === 'light') {
+                    await page.locator('.sd-tts-model-card').screenshot({ path: fileURLToPath(new URL('glass-light-extract-model-393.png', qa)), animations: 'disabled' });
+                }
+                await page.evaluate(provider => { renderVoices(provider, 'empty'); document.querySelectorAll('.sd-plain-fold').forEach(el => { el.open = true; }); }, provider);
+                const empty = await page.locator('[data-lib="ttsscheme"] .sd-lib-list > p.sd-muted').evaluate(el => {
+                    const s = getComputedStyle(el), parent = el.closest('.sd-lib-list').getBoundingClientRect(), rect = el.getBoundingClientRect();
+                    return { text: el.textContent, align: s.textAlign, size: parseFloat(s.fontSize), caption: parseFloat(s.getPropertyValue('--qm-type-caption')), body: parseFloat(s.getPropertyValue('--qm-type-body')), center: Math.abs(rect.left + rect.width / 2 - parent.left - parent.width / 2) < 1 };
+                });
+                ok(`${label} empty guidance is small centered caption: ${JSON.stringify(empty)}`, empty.text === '空空如也' && empty.align === 'center' && empty.center && empty.size === empty.caption && empty.size < empty.body);
+                if (width === 393 && provider === 'minimax' && family === 'glass' && mode === 'light') {
+                    await page.locator('[data-lib="ttsscheme"]').screenshot({ path: fileURLToPath(new URL('glass-light-empty-scheme-393.png', qa)), animations: 'disabled' });
+                }
+                continue;
+            }
             if (folderBordersOnly) {
                 for (const open of [false, true]) {
                     await page.evaluate(open => {
@@ -232,7 +275,7 @@ try {
                 && document.querySelector('.sd-tts-npc-list').textContent.includes('尚未配置原型') && document.querySelector('.sd-tts-fav-list').textContent.includes('刷新收藏')
                 && document.querySelector('.sd-tts-restore-prompt').disabled && calls === 0));
         }
-        if (titleControlsOnly || folderBordersOnly) continue;
+        if (titleControlsOnly || folderBordersOnly || extractLayoutOnly) continue;
         await page.evaluate(() => renderVoices('doubao', 'legacy-auth'));
         ok(`${family}/${mode} original legacy authentication fields remain isolated`, await page.locator('.sd-tts-app-id,.sd-tts-access-key').count() === 2 && await page.locator('.sd-tts-key').count() === 0);
         await page.evaluate(() => renderVoices('elevenlabs', 'legacy-model'));
@@ -243,5 +286,5 @@ try {
         ok(`${family}/${mode} disabled model state remains visible without changing data`, await page.locator('.sd-tts-enabled').getAttribute('aria-pressed') === 'false' && await page.locator('.sd-disabled-card').count() > 5 && await page.evaluate(() => calls === 0));
     }
     await page.evaluate(() => appearance.reset()); assert.deepEqual(errors, []); assert.equal(external, 0);
-    console.log(JSON.stringify({ baseline, passed: checks.length - failures.length, failed: failures, checks, errors, external, scope: 'actual TTS renderers and provider capabilities; no playback, credential access, synthesis or ST business handlers' }));
+    console.log(JSON.stringify({ baseline, passed: checks.length - failures.length, failed: failures, checks, errors, external, scope: extractLayoutOnly ? 'actual TTS rendering and extraction profile change/save handlers; isolated save counter, no credential access, playback, synthesis or host writes' : 'actual TTS renderers and provider capabilities; no playback, credential access, synthesis or ST business handlers' }));
 } finally { clearTimeout(deadline); await context.close(); await browser.close(); }

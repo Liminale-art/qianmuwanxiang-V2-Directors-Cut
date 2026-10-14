@@ -64,6 +64,10 @@ test('full library preserves list batch controls, native import and distinct emp
   assert.match(html,/<input type="file" class="sd-reader-import-input sd-reader-native-file" accept="fixture-books-only">/);assert.doesNotMatch(html,/sd-reader-batch-delete/);
   data.libViewMode='list';html=c.renderLibraryView();assert.match(html,/sd-reader-collection-create[^]*sd-reader-batch-collect[^]*sd-reader-batch-delete/);
   assert.match(html,/sd-reader-batch-collect" title="归入合集" disabled/);
+  assert.match(html,/sd-reader-batch-mode[^>]*aria-expanded="false"/);
+  assert.match(html,/sd-reader-batch-actions[^>]*hidden/);
+  assert.match(c.renderLibraryBookItem(book('one'),'list'),/sd-reader-book-check[^>]*hidden/);
+  assert.doesNotMatch(html,/sd-reader-batch-delete[^>]*>\s*<i/);
   data.libTags=['unmatched'];html=c.renderLibraryView();assert.match(html,/没有符合当前标签的书籍/);assert.doesNotMatch(html,/支持 EPUB/);
   data.libTags=[];data.collections=[{id:'empty',name:'Empty',bookIds:[]}];data.libCollectionId='empty';html=c.renderLibraryView();assert.match(html,/这个合集还是空的/);assert.doesNotMatch(html,/支持 EPUB/);
 });

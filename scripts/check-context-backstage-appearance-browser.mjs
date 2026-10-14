@@ -316,6 +316,15 @@ try {
             ok(label + ' confirmed empty state preserves original guidance and disabled recovery', await page.evaluate(tab => tab === 'context'
                 ? document.querySelector('.sd-body').textContent.includes('未读取到预设') && document.querySelector('.sd-body').textContent.includes('未读取到世界书')
                 : !document.querySelector('[data-acc="inject-preview"]') && !document.querySelector('.sd-lib-empty') && document.querySelector('.sd-restore-blueprint').disabled && document.querySelector('.sd-restore-system').disabled, tab));
+            if (tab === 'settings') {
+                await page.evaluate(() => { document.querySelectorAll('.sd-accordion,.sd-plain-fold').forEach(el => { el.open = true; }); });
+                const empty = await page.locator('.sd-backstage-blueprint-library .sd-lib-list > p.sd-muted').evaluate(el => {
+                    const style = getComputedStyle(el), parent = el.closest('.sd-lib-list').getBoundingClientRect(), rect = el.getBoundingClientRect();
+                    return { text: el.textContent, align: style.textAlign, size: parseFloat(style.fontSize), caption: parseFloat(style.getPropertyValue('--qm-type-caption')), body: parseFloat(style.getPropertyValue('--qm-type-body')), center: Math.abs(rect.left + rect.width / 2 - parent.left - parent.width / 2) < 1 };
+                });
+                ok(label + ' empty blueprint library is small centered caption: ' + JSON.stringify(empty), empty.text === '空空如也' && empty.align === 'center' && empty.center && empty.size === empty.caption && empty.size < empty.body);
+                if (family === 'glass' && mode === 'light' && width === 393) await page.locator('.sd-backstage-blueprint-library').screenshot({ path: fileURLToPath(new URL('glass-light-empty-blueprint-393.png', qa)), animations: 'disabled' });
+            }
             ok(label + ' theme never performs a source scan or write', await page.evaluate(tab => calls.forbidden === 0 && calls.scan === (tab === 'context' ? 1 : 0), tab));
         }
     }

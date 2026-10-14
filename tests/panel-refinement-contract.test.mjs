@@ -38,8 +38,9 @@ assert.match(source, /<summary><b>其他参数<\/b><\/summary>/);
 assert.doesNotMatch(source, /人设参照|renderTtsExtractWorldBooks|ttsBuildExtractContext|高级连接/);
 assert.match(source, /epEmoji\(name\)[\s\S]*htmlEscape\(url\)/);
 assert.match(source, /sd-tts-save-conn[\s\S]*fa-floppy-disk[\s\S]*保存/);
-assert.match(source, /title:\s*'剧本库'[\s\S]*emptyText:\s*''/);
-assert.match(source, /title:\s*'台词指导方案库'[\s\S]*emptyText:\s*''/);
+assert.match(source, /title:\s*'剧本库'[\s\S]*emptyText:\s*'空空如也'/);
+assert.match(source, /title:\s*'台词指导方案库'[\s\S]*emptyText:\s*'空空如也'/);
+assert.match(source, /sd-tts-model-card[^]*sd-tts-model-row[^]*台词分析抓取模型[^]*sd-tts-extract-api[^]*<\/section>/);
 
 // 全局卡片标题/说明与折叠高度统一；蜂巢可更贴近视口边缘。
 assert.match(css, /主面板排版基线[\s\S]*font-size:\s*15px !important[\s\S]*font-size:\s*12px !important/);

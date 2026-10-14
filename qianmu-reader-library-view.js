@@ -5,7 +5,7 @@ export function renderCoreadLibraryBookView(book, viewMode, collectionId, {htmlE
   if (viewMode === 'list') {
     return `
       <div class="sd-reader-row" data-book="${htmlEscape(book.id)}">
-        <input type="checkbox" class="sd-reader-book-check" data-book="${htmlEscape(book.id)}">
+        <input type="checkbox" class="sd-reader-book-check" data-book="${htmlEscape(book.id)}" aria-label="选择《${htmlEscape(book.title)}》" hidden>
         <div class="sd-reader-row-main">
           <span class="sd-reader-row-title" title="${htmlEscape(book.title)}">${htmlEscape(book.title)}</span>
           <span class="sd-reader-row-sub">${book.author ? htmlEscape(book.author) + ' · ' : ''}${bookStat}</span>

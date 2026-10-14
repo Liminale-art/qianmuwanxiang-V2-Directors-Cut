@@ -32,7 +32,7 @@ export async function checkBookDeleteBrowser(page) {
   for(const width of [320,360,430,1100])for(const scenario of scenarios){
     await page.setViewportSize({width,height:898});await page.evaluate(s=>prepareBookDelete(s),scenario);
     const batch=['batch','next-book'].includes(scenario);
-    if(batch){for(const id of ['a','b'])await page.locator(`.sd-reader-book-check[data-book="${id}"]`).check();await page.locator('.sd-reader-batch-delete').tap();}
+    if(batch){await page.locator('.sd-reader-batch-mode').tap();for(const id of ['a','b'])await page.locator(`.sd-reader-book-check[data-book="${id}"]`).check();await page.locator('.sd-reader-batch-delete').tap();}
     else await page.locator('.sd-reader-card-del[data-book="a"]').tap();
     await page.locator('#shelf-popup-fixture').waitFor();
     const box=await page.locator('#shelf-popup-fixture').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width+1);

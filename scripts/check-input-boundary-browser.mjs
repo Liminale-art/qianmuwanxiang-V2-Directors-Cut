@@ -13,6 +13,8 @@ await context.route('**/*', async route => {
     if (url.origin === 'https://qianmu.test') {
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><textarea id="host"></textarea><section id="root"><textarea id="editor"></textarea><button id="own-button">Own control</button><div contenteditable="true" id="rich"><span>editable</span></div></section></body></html>' });
         if (/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname)) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url), 'utf8') });
+        if (/^\/qianmu-[a-z0-9-]+\.css$/.test(url.pathname)) return route.fulfill({ contentType: 'text/css', body: await readFile(new URL('..' + url.pathname, import.meta.url), 'utf8') });
+        if (url.pathname === '/favicon.ico') return route.fulfill({ status: 204 });
     }
     externalRequests++; return route.abort();
 });
@@ -74,6 +76,51 @@ try {
         const mounted = dispatch(); session.reset(); return { mounted, reset: dispatch() };
     });
     assert.deepEqual(reset, { mounted: 0, reset: 1 });
+    // Exercise actual theme surfaces and the shared CSS in all owned control
+    // containers. No host configuration, real popup, or provider is used.
+    await page.addStyleTag({ content: ':is(button,input,select,textarea,summary,a):focus{outline:4px solid black!important} :is(input,select,textarea):focus{box-shadow:0 0 3px black!important} [data-focus-fixture]{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;height:auto!important}' });
+    await page.keyboard.press('Tab');
+    const focusChecks = await page.evaluate(async () => {
+        const { createQianmuAppearanceSession } = await import('/qianmu-appearance-session.js');
+        const { updateAppearancePreferences } = await import('/qianmu-appearance-settings.js');
+        let settings = { theme: 'light' }, checks = 0;
+        const session = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }), loadFont: () => ({ promise: Promise.resolve(true), cancel() {} }) });
+        const roots = ['story-director-modal', 'sd-reader-portal', 'qianmu-notes-panel-layer', 'boundary', 'theme-portal', 'lightbox', 'assistant'].map(kind => {
+            const root = document.createElement('section'); root.dataset.focusFixture = kind;
+            if (kind.includes('portal') || kind.startsWith('story-') || kind.startsWith('qianmu-')) root.id = kind;
+            if (kind === 'boundary') root.dataset.qmInputBoundary = '';
+            if (kind === 'lightbox') root.className = 'sd-storyboard-lightbox';
+            if (kind === 'assistant') root.className = 'qm-prose-assistant-dialog';
+            root.style.setProperty('--sd-accent', '#7187a8');
+            root.innerHTML = '<div class="sd-storyboard-root"><input class="sd-input" value="API"><input type="number" value="3"><select class="sd-select"><option>预设 / 模型</option></select><textarea class="sd-textarea">编辑内容</textarea><div contenteditable="true" tabindex="0">富文本</div><button class="sd-btn">保存</button><input type="checkbox"><input type="radio"><input type="range"><details><summary>折叠</summary></details><a href="#">查看</a></div><div class="sd-geo-stage"><button>世界</button></div><button class="sd-theme-swatch active"><span>主题</span></button>';
+            document.body.append(root); session.mountPortal(root); return root;
+        });
+        function check(condition, message) { if (!condition) throw Error(message); checks++; }
+        function accentOf(node) {
+            const probe = document.createElement('i'); probe.style.color = 'var(--sd-accent, var(--qm-accent, #7187a8))'; node.append(probe);
+            const color = getComputedStyle(probe).color; probe.remove(); return color;
+        }
+        for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) {
+            settings = { ...settings, theme: mode, appearance: updateAppearancePreferences(settings, { family, mode }) }; await session.sync();
+            for (const root of roots) {
+                root.classList.toggle('sd-theme-light', mode === 'light'); root.classList.toggle('sd-theme-dark', mode === 'dark');
+                const label = `${family}/${mode}/${root.dataset.focusFixture}`;
+                for (const field of root.querySelectorAll('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea,[contenteditable]')) {
+                    field.focus(); const style = getComputedStyle(field);
+                    check(document.activeElement === field && style.outlineStyle === 'none' && style.boxShadow === 'none', `${label}: ${field.tagName} editing frame is neutral`);
+                }
+                for (const control of root.querySelectorAll('button,input[type="checkbox"],input[type="radio"],input[type="range"],summary,a')) {
+                    control.focus(); const style = getComputedStyle(control);
+                    const accent = accentOf(control.parentElement);
+                    check(control.matches(':focus-visible') && style.outlineStyle === 'solid' && style.outlineColor === accent, `${label}: ${control.tagName} retains accent keyboard cue (${style.outlineColor} vs ${accent})`);
+                }
+                if (root.id === 'story-director-modal') check(getComputedStyle(root.querySelector('.sd-theme-swatch > span')).outlineColor === accentOf(root), `${label}: selected swatch uses accent`);
+            }
+        }
+        document.querySelector('#host').focus();
+        check(getComputedStyle(document.querySelector('#host')).outlineColor === 'rgb(0, 0, 0)', 'host black focus remains outside Qianmu ownership');
+        session.reset(); roots.forEach(root => root.remove()); return checks;
+    });
     assert.equal(externalRequests, 0); assert.deepEqual(errors, []);
-    console.log('PASS: owned bubbling hotkeys, Chinese text, composition events, real clipboard copy/paste, native host input, idempotency and appearance reset (offline fixture only).');
+    console.log(`PASS: owned bubbling hotkeys, Chinese text, composition events, real clipboard copy/paste, native host input, idempotency, appearance reset and ${focusChecks} theme/control focus checks (offline fixture only).`);
 } finally { await context.close(); await browser.close(); }

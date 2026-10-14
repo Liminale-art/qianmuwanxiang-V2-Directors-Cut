@@ -38,6 +38,7 @@ export async function checkCollectionMutationBrowser(page) {
     await page.setViewportSize({width,height:898});await page.evaluate(()=>prepareCollectionMutation());
     const selectors={create:'.sd-reader-collection-create',rename:'.sd-reader-collection-edit',dissolve:'.sd-reader-collection-dissolve'};
     if(action==='move'||action==='nested'){
+      await page.locator('.sd-reader-batch-mode').tap();
       await page.locator('.sd-reader-book-check[data-book="a"]').check();await page.locator('.sd-reader-batch-collect').tap();
       await page.locator('.sd-reader-collection-pick').selectOption(action==='move'?'folder':'__new__');
       if(action==='nested'){await page.locator('#shelf-popup-ok').tap();await page.locator('#shelf-name-fixture').waitFor();}

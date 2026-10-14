@@ -1242,7 +1242,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-theme-swatches { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 2px; margin: 4px 0; }
 #story-director-modal .sd-theme-opt.sd-theme-swatch { min-width: 0; padding: 4px 0 !important; justify-content: center; }
 #story-director-modal .sd-theme-swatch > span { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; background: var(--sd-swatch); box-shadow: inset 0 0 0 1px #8884; }
-#story-director-modal .sd-theme-swatch.active > span { outline: 1px solid var(--sd-text); outline-offset: 3px; }
+#story-director-modal .sd-theme-swatch.active > span { outline: 1px solid var(--sd-accent); outline-offset: 3px; }
 #story-director-modal .sd-theme-custom-color { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 36px; margin: 0; cursor: pointer; }
 #story-director-modal .sd-theme-custom-color > span { background: conic-gradient(#e87888, #eab76a, #91c778, #6bc9c5, #7da4e4, #b98bdd, #e87888); pointer-events: none; }
 /* Keep the native picker itself as the full hit target, including keyboard use. */
@@ -3633,13 +3633,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-float-size-control label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #story-director-modal .sd-float-size-value { color: var(--sd-accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #story-director-modal .sd-float-size { width: 100%; margin: 0; }
-#story-director-modal .sd-wheel-settings { margin-top: 10px; padding: 11px 12px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-glass-weak); }
+#story-director-modal .sd-wheel-settings { margin-top: 10px; padding: 8px 12px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-glass-weak); }
 #story-director-modal .sd-wheel-setting-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-#story-director-modal .sd-wheel-custom-details { margin-top: 9px; border-top: 1px solid var(--sd-hairline); }
+#story-director-modal .sd-wheel-custom-details { margin-top: 0; border-top: 0; }
 #story-director-modal .sd-wheel-custom-details > summary { min-height: 40px; padding: 8px 3px 6px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--sd-text); list-style: none; }
 #story-director-modal .sd-wheel-custom-details > summary::-webkit-details-marker { display: none; }
-#story-director-modal .sd-wheel-custom-details > summary::before { content: '\f078'; font-family: 'Font Awesome 6 Free'; font-weight: 900; color: var(--sd-muted); font-size: 11px; transition: transform .18s ease; }
-#story-director-modal .sd-wheel-custom-details[open] > summary::before { transform: rotate(180deg); }
+#story-director-modal .sd-wheel-custom-details > summary::before { content: none; display: none; }
 #story-director-modal .sd-wheel-custom-details > summary > span { flex: 1; }
 #story-director-modal .sd-wheel-custom-details > summary > b { color: var(--sd-accent); font-size: 12px; font-weight: 600; }
 @media (max-width: 520px) {
@@ -3758,6 +3757,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   --sd-geo-skin-border: #3489ac38;
   --sd-geo-skin-text: #264459;
   --sd-geo-skin-muted: #496777;
+  --sd-geo-label-ink: #666b70;
   --sd-geo-skin-line: #61a7c466;
   --sd-geo-skin-axis: #229dc3b3;
   --sd-geo-skin-clue: #2ea4c6cc;
@@ -3784,6 +3784,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   --sd-geo-skin-border: rgba(233, 231, 226, .12);
   --sd-geo-skin-text: #e9e7e2;
   --sd-geo-skin-muted: #acb7c5;
+  --sd-geo-label-ink: #b6b9be;
   --sd-geo-skin-line: rgba(186, 196, 220, .5);
   --sd-geo-skin-axis: rgba(200, 210, 235, .7);
   --sd-geo-skin-clue: rgba(214, 222, 240, .9);
@@ -4010,10 +4011,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* World dossiers: one reading layout for the star-map panel and list cards. */
 #story-director-modal .sd-geo-list-view { display: flex; flex-direction: column; gap: 9px; margin-top: 8px; }
 #story-director-modal .sd-geo-list-card { border: 1px solid var(--sd-geo-skin-border); border-radius: 12px; background: color-mix(in srgb, var(--sd-geo-skin-card) 72%, transparent); overflow: hidden; }
-#story-director-modal .sd-geo-list-card > summary { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 48px; padding: 12px 14px; cursor: pointer; list-style: none; }
+#story-director-modal .sd-geo-list-card > summary { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 9px; min-height: 48px; padding: 12px 14px; cursor: pointer; list-style: none; }
 #story-director-modal .sd-geo-list-card > summary::-webkit-details-marker { display: none; }
 #story-director-modal .sd-geo-list-card > summary strong { font-size: var(--sd-geo-card-title); line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
-#story-director-modal .sd-geo-list-card > summary em { color: var(--sd-geo-skin-muted); font-size: var(--sd-geo-card-label); font-style: normal; white-space: nowrap; }
 #story-director-modal .sd-geo-list-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sd-geo-stable); }
 #story-director-modal .sd-geo-list-dot-rising { background: var(--sd-geo-ally); }
 #story-director-modal .sd-geo-list-dot-declining { background: var(--sd-geo-decline); }
@@ -4026,11 +4026,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 @keyframes sd-geo-detail-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 #story-director-modal .sd-geo-d-head { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; gap: 6px 12px; }
+#story-director-modal .sd-geo-unit-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
 #story-director-modal .sd-geo-d-head h4 { margin: 0; font-size: var(--sd-geo-card-title); line-height: 1.45; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
 /* These are faction-unit headings, one step below the surrounding card title. */
 #story-director-modal .sd-geo-stage .sd-geo-d-head h4,
 #story-director-modal .sd-geo-stage .sd-geo-list-card > summary strong { font-size: calc(var(--qm-type-card-title, 13px) - 1px) !important; }
-#story-director-modal .sd-geo-d-trend { grid-column: 1; justify-self: start; font-size: var(--sd-geo-card-label); font-weight: 600; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--sd-geo-skin-muted) 9%, transparent); color: var(--sd-geo-skin-muted); }
+#story-director-modal .sd-geo-d-trend { flex: 0 0 auto; white-space: nowrap; font-size: var(--sd-geo-card-label); font-weight: 600; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--sd-geo-skin-muted) 9%, transparent); color: var(--sd-geo-skin-muted); }
 #story-director-modal .sd-geo-d-trend-rising { color: var(--sd-geo-ally-ink, var(--sd-geo-ally)); }
 #story-director-modal .sd-geo-d-trend-declining { color: var(--sd-geo-neutral-ink, var(--sd-geo-neutral)); }
 #story-director-modal .sd-geo-d-trend-turbulent { color: var(--sd-geo-conflict-ink, var(--sd-geo-conflict)); }
@@ -4040,20 +4041,18 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-geo-d-meta { display: flex; flex-wrap: wrap; gap: 5px 14px; padding-bottom: 11px; border-bottom: 1px solid var(--sd-geo-skin-border); }
 #story-director-modal .sd-geo-d-meta span { font-size: var(--sd-geo-card-label); color: var(--sd-geo-skin-muted); }
 #story-director-modal .sd-geo-dossier-section { display: grid; gap: 6px; min-width: 0; }
-#story-director-modal .sd-geo-dossier-section > h5 { margin: 0; color: var(--sd-geo-skin-muted); font-size: var(--sd-geo-card-label); font-weight: 600; line-height: 1.4; letter-spacing: .08em; }
+#story-director-modal .sd-geo-dossier-section > h5 { justify-self: start; margin: 0; padding: 2px 7px; border-radius: 99px; color: var(--sd-geo-label-ink); background: color-mix(in srgb, var(--sd-geo-label-ink) 9%, transparent); font-size: var(--sd-geo-card-label); font-weight: 400; line-height: 1.4; }
 #story-director-modal .sd-geo-dossier p { margin: 0; padding: 0; background: none; border: none; font-size: var(--sd-geo-card-body); font-weight: 400; line-height: 1.75; overflow-wrap: anywhere; }
 #story-director-modal .sd-geo-d-standing { font-size: var(--sd-geo-card-body); color: var(--sd-geo-skin-text); }
 #story-director-modal .sd-geo-d-agenda { color: var(--sd-geo-skin-text); }
-#story-director-modal .sd-geo-dossier-clues { display: grid; gap: 5px; list-style: none; margin: 0; padding: 0; }
-#story-director-modal .sd-geo-dossier-clues > li { position: relative; padding-left: 12px; color: var(--sd-geo-skin-text); font-size: var(--sd-geo-card-body); line-height: 1.65; overflow-wrap: anywhere; }
-#story-director-modal .sd-geo-dossier-clues > li::before { content: ''; position: absolute; left: 0; top: .7em; width: 4px; height: 4px; border-radius: 50%; background: var(--sd-geo-clue-ink, var(--sd-geo-clue-blue)); }
 #story-director-modal .sd-geo-d-rels { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 #story-director-modal .sd-geo-dossier-relation { display: grid; gap: 5px; padding: 0 0 10px; min-width: 0; border: 0; border-bottom: 1px solid var(--sd-geo-skin-border); border-radius: 0; background: none; }
 #story-director-modal .sd-geo-dossier-relation:last-child { padding-bottom: 0; border-bottom: 0; }
-#story-director-modal .sd-geo-dossier-relation-head { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 9px; min-width: 0; }
-#story-director-modal .sd-geo-dossier-relation-head > strong { font-size: var(--sd-geo-card-body); color: var(--sd-geo-skin-text); font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
-#story-director-modal .sd-geo-d-kind { display: inline-flex; align-items: center; flex: 0 0 auto; white-space: nowrap; font-size: var(--sd-geo-card-label); font-weight: 600; color: var(--sd-geo-skin-text); }
-#story-director-modal .sd-geo-d-kind > b { font-weight: inherit; }
+#story-director-modal .sd-geo-dossier-relation-head { display: flex; align-items: center; justify-content: space-between; gap: 5px 9px; min-width: 0; }
+#story-director-modal .sd-geo-dossier-relation-head > strong { min-width: 0; font-size: var(--sd-geo-card-body); color: var(--sd-geo-skin-text); font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+#story-director-modal .sd-geo-d-kind { display: inline-flex; align-items: center; flex: 0 0 auto; white-space: nowrap; font-size: var(--sd-geo-card-label); font-weight: 600; padding: 1px 8px; border-radius: 99px; color: var(--sd-geo-skin-muted); background: color-mix(in srgb, currentColor 10%, transparent); }
+#story-director-modal .sd-geo-dossier-relation[data-kind="冲突"] .sd-geo-d-kind { color: var(--sd-geo-conflict-ink, var(--sd-geo-conflict)); }
+#story-director-modal .sd-geo-dossier-relation[data-kind="同盟"] .sd-geo-d-kind { color: var(--sd-geo-ally-ink, var(--sd-geo-ally)); }
 #story-director-modal .sd-geo-d-rtext { color: var(--sd-geo-skin-muted); min-width: 0; }
 
 /* 冲突在详情与列表中用紧凑小图标表达，文字仍保留在 title/aria-label 中。 */
@@ -4496,12 +4495,16 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   border: 1px solid var(--sd-border); border-radius: 9px; padding: 0 12px; font: inherit; font-size: .92em;
 }
 .sd-reader-sort-toggle, .sd-reader-view-toggle, .sd-reader-collection-create,
-.sd-reader-batch-toggle-all, .sd-reader-batch-collect, .sd-reader-batch-delete {
+.sd-reader-batch-mode, .sd-reader-batch-toggle-all, .sd-reader-batch-collect, .sd-reader-batch-delete {
   height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
   background: var(--sd-input-bg); color: var(--sd-text); border: 1px solid var(--sd-border);
   border-radius: 9px; padding: 0 12px; font: inherit; font-size: .9em; cursor: pointer; gap: 5px;
 }
-.sd-reader-view-toggle, .sd-reader-collection-create, .sd-reader-batch-toggle-all { width: 36px; padding: 0; flex: 0 0 auto; }
+.sd-reader-view-toggle, .sd-reader-collection-create, .sd-reader-batch-mode, .sd-reader-batch-toggle-all { width: 36px; padding: 0; flex: 0 0 auto; }
+.sd-reader-batch-mode.active { color: var(--sd-accent); background: var(--sd-glass); }
+.sd-reader-batch-actions { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px; }
+#story-director-modal .sd-reader-batch-actions[hidden], #story-director-modal .sd-reader-book-check[hidden] { display: none !important; }
+.sd-reader-batch-collect, .sd-reader-batch-delete { font-size: calc(.9em - 1px); white-space: nowrap; padding-inline: 6px; }
 .sd-reader-batch-collect:disabled, .sd-reader-batch-delete:disabled { opacity: .38; cursor: default; }
 /* 排序：只留小图标（去文字）·下拉仿字号菜单，宽度自适应刚够 */
 .sd-reader-sort-pick { position: relative; display: inline-flex; flex: 0 0 auto; }
@@ -4632,6 +4635,15 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   font-size: .58em; font-weight: 650; line-height: 1.25; text-align: center; overflow: hidden; word-break: break-word;
 }
 .sd-reader-collection-tile-empty { background: var(--sd-glass); }
+/* 日间文字封面采用深色封皮及高亮书名；不继承日间按钮的深色前景。 */
+#story-director-modal:is([data-qm-mode="light"], :not([data-qm-mode]):not(.sd-theme-dark)) .sd-reader-cover-ph,
+#story-director-modal:is([data-qm-mode="light"], :not([data-qm-mode]):not(.sd-theme-dark)) .sd-reader-collection-tile-ph {
+  background: linear-gradient(150deg, color-mix(in srgb, var(--sd-accent) 38%, #17202b), #202833);
+  color: #f7f9fc;
+}
+#story-director-modal:is([data-qm-mode="light"], :not([data-qm-mode]):not(.sd-theme-dark)) .sd-reader-cover-title,
+#story-director-modal:is([data-qm-mode="light"], :not([data-qm-mode]):not(.sd-theme-dark)) .sd-reader-cover-author { color: inherit; }
+#story-director-modal:is([data-qm-mode="light"], :not([data-qm-mode]):not(.sd-theme-dark)) .sd-reader-cover-author { opacity: .9; }
 .sd-reader-collection-card .sd-reader-card-meta { padding-right: 25px; }
 @media (max-width: 620px) {
   .sd-reader-lib-grid .sd-reader-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
@@ -11084,10 +11096,15 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-focus-actions .sd-focus-lock.active { color:var(--sd-accent);background:color-mix(in srgb,var(--sd-accent) 16%,transparent); }
 .sd-storyboard-task-usage { min-width:0;max-width:100%;overflow-wrap:anywhere;text-align:left;font-size:var(--sd-font-small,12px);color:var(--sd-text-muted); }
 
-/* Text editing keeps the resting field boundary: no extra focus ring/glow.
-   Scoped to owned surfaces; buttons, tabs, toggles and host ST fields keep focus cues. */
-html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-boundary], .qm-prose-assistant-dialog)
-  :is(textarea, [contenteditable="true"], input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"])):is(:focus, :focus-visible) {
+/* Owned controls never fall back to the browser's black focus frame. Keyboard
+   actions retain an accent cue; editing/selection keeps its resting boundary. */
+html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-layer, [data-qm-input-boundary], [data-qm-theme], .sd-storyboard-lightbox, .qm-prose-assistant-dialog)
+  :is(button, input, select, textarea, summary, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--sd-accent, var(--qm-accent, #7187a8)) !important;
+  outline-offset: 2px;
+}
+html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-layer, [data-qm-input-boundary], [data-qm-theme], .sd-storyboard-lightbox, .qm-prose-assistant-dialog)
+  :is(textarea, select, [contenteditable="true"], input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"])):is(:focus, :focus-visible) {
   outline: none !important; box-shadow: none !important;
 }
 
@@ -11477,6 +11494,9 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   border-top: 1px solid var(--sd-hairline);
 }
 #story-director-modal .sd-preset-version-items .sd-source-row { margin: 0; }
+#story-director-modal .sd-reader-preset-version-group { margin-bottom: 4px; }
+#story-director-modal .sd-reader-preset-version-group .sd-reader-cwb-tag { flex: 0 0 auto; }
+#story-director-modal .sd-reader-preset-version-group .sd-reader-cps-name > span { white-space: normal; overflow-wrap: anywhere; }
 
 /* The backstage editor is a writing surface, not a second typography system. */
 #story-director-modal .sd-backstage-blueprint > summary > b,
@@ -11786,10 +11806,10 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   line-height: 1.35;
 }
 #story-director-modal .sd-wheel-custom-details > summary {
-  min-height: 34px;
+  min-height: 28px;
   align-items: center;
   box-sizing: border-box;
-  padding-block: 6px;
+  padding-block: 2px;
 }
 #story-director-modal .sd-wheel-custom-details > summary > span { line-height: 1.35; }
 
@@ -11855,8 +11875,8 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 
 /* Final creative-card rhythm: keep the entry fold rows compact while the
    title block is centered against the full row (including chips and the
-   optional selection badge). NPC names sit one optical step inward from the
-   card edge and below the main section-title scale. */
+   optional selection badge). The NPC name treatment is scoped separately
+   below so other creative-card titles retain this rhythm. */
 #story-director-modal .sd-plan-section .sd-item-fold > summary {
   min-height: 58px !important;
   padding-block: 0 !important;
@@ -11870,10 +11890,6 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
 #story-director-modal .sd-plan-section .sd-item-summary-main h4 {
   margin: 0 !important;
   line-height: 1.25 !important;
-}
-#story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main h4 {
-  margin-inline-start: 8px !important;
-  font-size: calc(var(--qm-type-card-title) - 1px) !important;
 }
 
 /* Relationship drift is prose with a lead icon. Inline layout lets only the
@@ -11978,13 +11994,43 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   gap: 6px;
 }
 #story-director-modal .sd-plan-section .sd-item-summary-main h4 { margin: 0 !important; line-height: 1.3 !important; }
+#story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+}
 #story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main h4 {
-  margin-inline-start: 12px !important;
-  font-size: var(--qm-type-action-title) !important;
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: end;
+  max-width: clamp(80px, 25vw, 180px);
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-size: clamp(20px, 5.6vw, 36px) !important;
+  line-height: 1.1 !important;
+  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--sd-text) 78%, transparent), color-mix(in srgb, var(--sd-accent) 12%, transparent)) !important;
+}
+#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row {
+  grid-column: 1;
+  grid-row: 1;
+  flex-direction: column;
+  justify-content: center;
 }
 #story-director-modal .sd-plan-section .sd-item-npc > summary { gap: 10px; }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row { gap: 6px; align-items: stretch; }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { margin: 0; line-height: 1.35; }
+@media (max-width: 430px) {
+  /* A media entry gets its own visible row instead of squeezing the emotion
+     into a few characters. Inline labels let wrapped chip prose use its width. */
+  #story-director-modal .sd-plan-section .sd-item-npc > summary:has(> .sd-world-media-entry) { flex-wrap: wrap; }
+  #story-director-modal .sd-plan-section .sd-item-npc > summary:has(> .sd-world-media-entry) .sd-item-summary-main { flex-basis: 100%; }
+  #story-director-modal .sd-plan-section .sd-item-npc > summary > .sd-world-media-entry { margin-inline-start: auto !important; }
+  #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { display: block; }
+}
 
 /* 取材身份复用角色库标签；上下文参考与楼层数按动作基线。 */
 #story-director-modal .sd-context-reference-row :is(.checkbox_label, .sd-depth-field) {
@@ -12048,6 +12094,15 @@ html body :is(#story-director-modal, #qianmu-notes-panel-layer, [data-qm-input-b
   line-height: 1.45 !important;
 }
 #story-director-modal .sd-favorites-empty { margin: 0 !important; padding: 24px 8px !important; text-align: center; font-size: var(--qm-type-caption) !important; }
+#story-director-modal :is(.sd-backstage-blueprint-library, [data-lib="ttsscheme"]) .sd-lib-list > p.sd-muted {
+  margin: 0;
+  padding: 20px 8px;
+  text-align: center;
+  font-size: var(--qm-type-caption) !important;
+}
+#story-director-modal :is(.sd-backstage-blueprint-library, [data-lib="ttsscheme"]) .sd-lib-list:has(> p.sd-muted:only-child) {
+  padding-inline: 0;
+}
 #story-director-modal[data-qm-theme="glass"] [data-lib="script"] .sd-lib-list { padding-inline: 2px; }
 
 /* 所有千幕卡片标题最终走同一套黑→主题强调色渐变，避免幕外、配音和幕后

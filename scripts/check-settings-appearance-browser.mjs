@@ -134,6 +134,7 @@ try {
                     window.widgetEventCounts = { save: 0, refresh: 0, render: 0 };
                     window.saveSettings = () => widgetEventCounts.save++;
                     window.refreshWidgetRuntime = () => widgetEventCounts.refresh++;
+                    window.closeQuickWheel = () => {};
                     window.renderModal = () => {
                         widgetEventCounts.render++;
                         const body = document.querySelector('.sd-body'); body.innerHTML = renderActiveTab(); applyQianmuIcons(body); bindWidgetSettings(body);
@@ -170,6 +171,59 @@ try {
                     return button.isConnected && document.activeElement === before[0] && button.getAttribute('aria-pressed') === before[1] && JSON.stringify(settings) === before[2] && calls === 0;
                 }, { family, mode });
                 ok(`${label} theme switch retains keyboard focus and toggle state`, stable);
+                const hiveSummary = page.locator('.sd-wheel-custom-details > summary');
+                const hiveShape = await hiveSummary.evaluate(node => {
+                    const style = getComputedStyle(node), before = getComputedStyle(node, '::before'), after = getComputedStyle(node, '::after');
+                    const rect = node.getBoundingClientRect(), center = rect.top + rect.height / 2;
+                    return {
+                        noArrow: style.listStyleType === 'none' && (before.content === 'none' || before.display === 'none')
+                            && (after.content === 'none' || after.content === 'normal' || after.display === 'none') && !node.querySelector('i, svg'),
+                        paddingTop: parseFloat(style.paddingTop), paddingBottom: parseFloat(style.paddingBottom), minHeight: parseFloat(style.minHeight), height: rect.height,
+                        centered: [...node.children].every(child => { const r = child.getBoundingClientRect(); return Math.abs(r.top + r.height / 2 - center) <= 1; }),
+                    };
+                });
+                ok(`${label} hive fold has no arrow or marker: ${JSON.stringify(hiveShape)}`, hiveShape.noArrow);
+                ok(`${label} hive fold is compact with centered title and count: ${JSON.stringify(hiveShape)}`, hiveShape.paddingTop === 2 && hiveShape.paddingBottom === 2 && hiveShape.minHeight === 28 && hiveShape.height <= 29 && hiveShape.centered);
+                const hiveBefore = await page.evaluate(() => {
+                    window.hiveCommandsBefore = [...document.querySelectorAll('.sd-wheel-command-toggle')];
+                    return { order: settings.quickWheelCustomOrder.join('|'), selected: settings.quickWheelCustomEnabled.join('|'), count: hiveCommandsBefore.length };
+                });
+                await hiveSummary.focus(); await page.keyboard.press('Enter');
+                await page.waitForFunction(() => !settings.quickWheelCustomExpanded);
+                await page.keyboard.press('Tab');
+                ok(`${label} hive Enter folds, saves and skips hidden commands in keyboard navigation`, await page.locator('.sd-wheel-custom-details').evaluate(node => !node.open && !document.activeElement?.closest('.sd-wheel-custom-list')));
+                const foldedCenter = await hiveSummary.evaluate(node => {
+                    const frame = node.closest('.sd-wheel-settings'), style = getComputedStyle(frame), rect = frame.getBoundingClientRect();
+                    const center = rect.top + rect.height / 2;
+                    return { paddingTop: parseFloat(style.paddingTop), paddingBottom: parseFloat(style.paddingBottom), height: rect.height,
+                        centered: [...node.children].every(child => { const r = child.getBoundingClientRect(); return Math.abs(r.top + r.height / 2 - center) <= 1; }) };
+                });
+                ok(`${label} folded hive title and count center inside compact outer frame: ${JSON.stringify(foldedCenter)}`, foldedCenter.centered && foldedCenter.paddingTop === 8 && foldedCenter.paddingBottom === 8 && foldedCenter.height <= 46);
+                await hiveSummary.focus(); await page.keyboard.press('Space');
+                await page.waitForFunction(() => settings.quickWheelCustomExpanded);
+                ok(`${label} hive Space reopens original command elements without altering enabled entries`, await page.evaluate(before => {
+                    const details = document.querySelector('.sd-wheel-custom-details');
+                    return details.open && settings.quickWheelCustomOrder.join('|') === before.order && settings.quickWheelCustomEnabled.join('|') === before.selected
+                        && before.count === 16 && hiveCommandsBefore.every(node => node.isConnected && node.getClientRects().length > 0);
+                }, hiveBefore));
+                const hiveCommand = page.locator('.sd-wheel-command-toggle').first();
+                const originalPressed = await hiveCommand.getAttribute('aria-pressed');
+                await hiveCommand.focus(); await page.keyboard.press('Space');
+                ok(`${label} hive inner command retains actual keyboard toggle and live count`, await hiveCommand.evaluate((node, previous) => {
+                    const selected = node.getAttribute('aria-pressed') === 'true';
+                    return node.getAttribute('aria-pressed') !== previous && settings.quickWheelCustomEnabled.includes(node.dataset.command) === selected
+                        && document.querySelector('.sd-wheel-custom-details > summary > b').textContent === `${settings.quickWheelCustomEnabled.length} 项`;
+                }, originalPressed));
+                await page.keyboard.press('Enter');
+                ok(`${label} hive inner command can restore its original selection`, await hiveCommand.getAttribute('aria-pressed') === originalPressed);
+                if (family === 'glass' && mode === 'light' && width === 393) {
+                    await hiveSummary.focus(); await page.keyboard.press('Enter');
+                    await page.waitForFunction(() => !settings.quickWheelCustomExpanded);
+                    await page.evaluate(() => document.activeElement?.blur());
+                    await page.locator('.sd-widget-card').screenshot({ path: fileURLToPath(new URL('glass-light-hive-compact-fold-393.png', qa)), animations: 'disabled' });
+                    await hiveSummary.focus(); await page.keyboard.press('Space');
+                    await page.waitForFunction(() => settings.quickWheelCustomExpanded);
+                }
                 if (width === 393) {
                     await page.evaluate(() => document.activeElement?.blur());
                     await page.locator('.sd-model-config').screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-model-title-393.png`, qa)), animations: 'disabled' });

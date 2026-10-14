@@ -8,16 +8,23 @@ import {storyboardFunctionSource as section} from '../tests/helpers/storyboard-f
 import {checkCollectionMutationBrowser} from '../tests/helpers/coread-collection-browser.mjs';
 import {checkBookEditBrowser} from '../tests/helpers/coread-book-edit-browser.mjs';
 import {checkBookDeleteBrowser} from '../tests/helpers/coread-book-delete-browser.mjs';
+import {checkShelfRefinementBrowser} from '../tests/helpers/coread-shelf-refinement-browser.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
-const css=await readFile(new URL('../style.css',import.meta.url),'utf8'),view=await readFile(new URL('../qianmu-reader-library-view.js',import.meta.url),'utf8');
+const css=(await readFile(new URL('../style.css',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8')),view=await readFile(new URL('../qianmu-reader-library-view.js',import.meta.url),'utf8');
 const utils=await readFile(new URL('../qianmu-storyboard-utils.js',import.meta.url),'utf8'),icons=await readFile(new URL('../qianmu-icon-renderer.js',import.meta.url),'utf8');
 const functions=libraryFunctions+'\n'+['coreadMoveBooksToCollection','loadShelfCovers','bindLibraryBookDrag','bindLibraryViewEvents'].map(section).join('\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext({hasTouch:true});
-const errors=[];let external=0;await context.route('**/*',route=>route.request().url()==='https://qianmu.test/'?route.fulfill({contentType:'text/html',body:'<!doctype html><title>Isolated shelf</title>'}):(external++,route.abort()));const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+const errors=[],externalUrls=[];let external=0;await context.route('**/*',async route=>{
+  const url=new URL(route.request().url());
+  if(url.href==='https://qianmu.test/')return route.fulfill({contentType:'text/html',body:'<!doctype html><title>Isolated shelf</title>'});
+  if(url.origin==='https://qianmu.test'&&/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url),'utf8')});
+  if(url.origin==='https://qianmu.test'&&/^\/qianmu-[a-z0-9-]+\.css$/.test(url.pathname))return route.fulfill({contentType:'text/css',body:await readFile(new URL('..'+url.pathname,import.meta.url),'utf8')});
+  external++;externalUrls.push(url.href);return route.abort();
+});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
 try{
   await page.goto('https://qianmu.test/');
-  await page.setContent(`<style>${css}</style><style>body{margin:0;background:#222}#story-director-modal{position:static!important;display:block!important;width:100%;box-sizing:border-box;padding:12px}</style><div id="story-director-modal" class="sd-theme-dark"><div id="shelf"></div></div>`);
+  await page.setContent(`<style>${css}</style><style>body{margin:0}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;height:100dvh!important;box-sizing:border-box}#story-director-modal .sd-window{width:100%!important;height:100%!important;max-height:none!important;margin:0!important}</style><div id="story-director-modal" class="open sd-theme-dark"><section class="sd-window"><main id="shelf" class="sd-body"></main></section></div>`);
   await page.evaluate(async({view,utils,icons,functions})=>{
     Object.assign(window,await import('data:text/javascript,'+encodeURIComponent(view)),await import('data:text/javascript,'+encodeURIComponent(utils)),await import('data:text/javascript,'+encodeURIComponent(icons)));
     window.COREAD_BOOK_ACCEPT='fixture-books-only';window.shelfCoverUrls=new Map();window.coread=()=>shelfData;
@@ -60,6 +67,9 @@ try{
     await page.locator('.sd-reader-card[data-book="a"] .sd-reader-collection-remove-book').tap();
     assert.deepEqual(await page.evaluate(()=>shelfData.collections[0].bookIds),['f']);assert.equal(await page.evaluate(()=>shelfData.books.find(b=>b.id==='a').progress),15);
     await page.locator('.sd-reader-collection-back').tap();await page.locator('.sd-reader-view-toggle').tap();
+    assert.equal(await page.locator('.sd-reader-batch-actions').isVisible(),false);
+    assert.equal(await page.locator('.sd-reader-book-check:visible').count(),0);
+    await page.locator('.sd-reader-batch-mode').tap();
     assert.equal(await page.locator('.sd-reader-batch-collect').isDisabled(),true);await page.locator('.sd-reader-book-check[data-book="b"]').check();
     assert.equal(await page.locator('.sd-reader-batch-collect').isEnabled(),true);assert.equal(await page.locator('.sd-reader-batch-count').innerText(),'1');
     assert.deepEqual(await page.evaluate(()=>shelfCalls.filter(x=>x[0]==='open')),[]);await page.locator('.sd-reader-batch-collect').tap();
@@ -75,7 +85,8 @@ try{
     await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/reader-library-${width}.png`,import.meta.url))});layouts.push({width,boxes,nativeFileHit:native,toolIsolation:true,mouseDrag:true,ownershipPreserved:true});
   }
   const mutations=await checkCollectionMutationBrowser(page);
+  const refinement=await checkShelfRefinementBrowser(page);
   const bookEdits=await checkBookEditBrowser(page);
   const bookDeletes=await checkBookDeleteBrowser(page);
-  assert.equal(external,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,bookEdits,bookDeletes,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'synthetic host Popup, books and navigation; metadata edits/deletions use native isolated IndexedDB; no real user import/deletion or physical mobile drag validation'}));
+  assert.equal(external,0,JSON.stringify(externalUrls));assert.deepEqual(errors,[]);console.log(JSON.stringify({layouts,mutations,refinement,bookEdits,bookDeletes,realTemplates:true,realEvents:true,localCoverBlob:true,external,errors,limits:'synthetic host Popup, books and navigation; metadata edits/deletions use native isolated IndexedDB; no real user import/deletion or physical mobile drag validation'}));
 }finally{await context.close();await browser.close();}

@@ -235,7 +235,7 @@
   border-color: color-mix(in srgb, var(--qm-danger) 40%, var(--qm-line)) !important;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(button, input, select, textarea, summary, a):focus-visible {
-  outline: 2px solid var(--qm-ink) !important;
+  outline: 2px solid var(--qm-accent) !important;
   outline-offset: 3px;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-body, .sd-storyboard-scroll, textarea, .sd-note-list) {
@@ -522,7 +522,7 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
 }
 #story-director-modal[data-qm-theme] .sd-geo-stage { border-radius: var(--qm-card-radius); }
 #story-director-modal[data-qm-theme] .sd-geo-stage :is(button, [role="button"]):focus-visible {
-  outline: 2px solid var(--sd-geo-skin-text) !important;
+  outline: 2px solid var(--sd-accent) !important;
   outline-offset: 3px;
 }
 #story-director-modal[data-qm-theme] .sd-evt-grid { grid-template-columns: repeat(auto-fill, minmax(min(248px, 100%), 1fr)); }

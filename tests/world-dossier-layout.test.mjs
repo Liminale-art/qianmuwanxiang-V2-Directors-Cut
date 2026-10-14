@@ -22,12 +22,16 @@ const relations = [
   { a: 'a', b: 'b', kind: '张力', note: '筛选隐藏但记录保留' },
 ];
 
-test('map and list share all dossier information without truncating long notes or clues', () => {
+test('map and list share full prose while clues remain exclusively in the star-map bubbles', () => {
   const list = context.renderFactionDossierBody(factions[0], factions, relations);
   const map = context.renderFactionDossierBody(factions[0], factions, relations, 'map');
   assert.equal(map.replaceAll(/sd-geo-d-rel(?=[ "])/g, 'sd-geo-list-rel'), list);
-  for (const text of [factions[0].standing, factions[0].agenda, ...factions[0].clues, ...relations.map((r) => r.note)]) assert.ok(map.includes(text), text);
-  assert.match(map, /sd-geo-dossier-relation-head[^]*<strong>林地联盟<\/strong><\/div>\s*<p class="sd-geo-d-rtext">/);
+  for (const text of [factions[0].standing, factions[0].agenda, ...relations.map((r) => r.note)]) assert.ok(map.includes(text), text);
+  for (const text of factions[0].clues) assert.ok(!map.includes(text), text);
+  assert.doesNotMatch(map, /sd-geo-dossier-clues|<h5>线索/);
+  assert.deepEqual(factions[0].clues, ['第一条线索', '第二条完整线索']);
+  assert.match(storyboardFunctionSource('renderFactionStarMap'), /f\.clues/);
+  assert.match(map, /sd-geo-dossier-relation-head[^]*<strong>林地联盟<\/strong><span class="sd-geo-d-kind">同盟<\/span><\/div>\s*<p class="sd-geo-d-rtext">/);
   assert.match(map, /林地联盟 依附于此/);
   assert.match(map, /sd-kind-hidden" data-kind="张力"/);
   assert.match(map, /sd-geo-d-kind">同盟<\/span>/);
@@ -48,4 +52,19 @@ test('list keeps stable accordion identifiers and delegates its content to the s
   assert.match(storyboardFunctionSource('renderFactionListView'), /renderFactionDossierBody\(f, factions, rels\)/);
   assert.match(storyboardFunctionSource('bindGeopoliticsTabEvents'), /renderFactionDossierBody\(f, factions, rels, 'map'\)/);
   assert.doesNotMatch(source, /桩进行中/);
+  assert.match(html, /sd-geo-unit-title"><strong>林地联盟<\/strong><span class="sd-geo-d-trend/);
+  assert.match(storyboardFunctionSource('bindGeopoliticsTabEvents'), /sd-geo-unit-title"><h4>\$\{htmlEscape\(f\.name\)\}<\/h4>\$\{trendChip\}/);
+});
+
+test('world edge cue only invites entry from the front while return controls remain available', () => {
+  const edges = vm.createContext({ getChatStore: () => ({ factions }), settings: { geopoliticsEnabled: true }, worldPage: 'front' });
+  vm.runInContext(storyboardFunctionSource('renderWorldPageEdges'), edges);
+  assert.equal((edges.renderWorldPageEdges().match(/has-content/g) || []).length, 2);
+  edges.worldPage = 'geopolitics';
+  assert.doesNotMatch(edges.renderWorldPageEdges(), /has-content/);
+  assert.equal((edges.renderWorldPageEdges().match(/aria-label="返回世界正面"/g) || []).length, 2);
+  edges.settings.geopoliticsEnabled = false;
+  assert.ok(edges.renderWorldPageEdges());
+  edges.worldPage = 'front';
+  assert.equal(edges.renderWorldPageEdges(), '');
 });
