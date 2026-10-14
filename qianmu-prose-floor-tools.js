@@ -1,4 +1,4 @@
-import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.425';
+import {createProseAssistantFloorTools} from './qianmu-prose-assistant-floor.js?v=1.59.449';
 import {createProseHive} from './qianmu-prose-hive.js?v=1.59.446';
 import {configureStAccountStorage} from './qianmu-st-account-storage.js';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.425';

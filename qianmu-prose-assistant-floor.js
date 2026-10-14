@@ -18,7 +18,16 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     for(const [name,value] of [['--qm-pa-prose-font',style.fontFamily],['--qm-pa-prose-size',style.fontSize]])if(value)portal.style.setProperty(name,value);
   }
   async function openAssistant(){
-    if(!current())return null;if(cleaning){notify?.('请先结束助手记录清理。','warning');return null;}if(entry){const prior=entry;if(!prior.panel)return null;if(await prior.panel.reopen()){if(entry!==prior)return null;inheritProseTypography(prior.portal);return prior.panel;}if(entry&&entry!==prior)return entry.panel;close(prior);}
+    if(!current())return null;if(cleaning){notify?.('请先结束助手记录清理。','warning');return null;}
+    if(entry&&!entry.valid())close(entry);
+    if(entry){
+      const prior=entry;if(!prior.panel)return null;const reopened=await prior.panel.reopen();
+      // Reopening can await an account guard while navigation disposes this
+      // record. An old invocation must neither rebuild nor adopt a newer panel.
+      if(!prior.valid()){close(prior);return null;}
+      if(reopened){inheritProseTypography(prior.portal);return prior.panel;}
+      close(prior);
+    }
     const document=root?.ownerDocument||globalThis.document,context=getContext(),chat=context.chat,metadata=context.chatMetadata,owner=JSON.stringify([context.chatId,context.characterId,context.groupId]),revision=epoch;
     const record={closed:false,controller:new document.defaultView.AbortController(),panel:null,portal:null,detach:null,valid:()=>false};entry=record;
     record.valid=()=>{
