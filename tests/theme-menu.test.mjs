@@ -26,8 +26,67 @@ function fixture() {
     const buttons = ['light', 'dark', 'summer'].map(key => { const button = node('sd-theme-opt', menu); button.dataset.theme = key; button.setAttribute('aria-checked', String(key === 'dark')); return button; });
     menu.querySelectorAll = () => buttons;
     const outside = node('outside');
-    return { document, root, pick, trigger, menu, buttons, outside, listenerCount: () => document.events.get('click')?.size || 0 };
+    return { document, root, pick, trigger, menu, buttons, outside, node, listenerCount: () => document.events.get('click')?.size || 0 };
 }
+
+function colorFixture() {
+    const f = fixture(), picker = f.node('sd-theme-custom-picker', f.menu), color = f.node('sd-theme-color', f.menu), custom = f.node('sd-theme-custom-color', f.menu);
+    const hex = f.node('sd-theme-hex', picker), rgb = ['r','g','b'].map(channel => { const input=f.node('channel',picker);input.dataset.channel=channel;return input; });
+    picker.hidden=true;picker.querySelector=selector=>selector==='.sd-theme-hex'?hex:null;picker.querySelectorAll=()=>rgb;
+    f.menu.querySelector=selector=>({'.sd-theme-custom-picker':picker,'.sd-theme-color':color,'.sd-theme-custom-color':custom}[selector]||null);
+    let preference={family:'glass',mode:'dark',accent:'#527c69',source:'cover',classic:'dark'}, fail=false;
+    const changes=[], appearance={read:()=>preference,status:()=> 'ready',sync:()=>Promise.resolve(),change:patch=>{changes.push(patch);if(fail)throw new Error('test save failure');preference={...preference,...patch};return Promise.resolve();}};
+    const dispose=bindQianmuThemeMenu(f.root,()=>{},appearance);
+    f.trigger.emit('click');custom.emit('click');
+    return {...f,picker,color,custom,hex,rgb,appearance,changes,dispose,fail:()=>{fail=true;},press:(target,key)=>f.pick.emit('keydown',{target,key})};
+}
+
+test('custom color markup keeps SV and four labelled fields without a hue slider',async()=>{
+    const html=renderQianmuThemeMenu([], 'light', {supported:true});
+    assert.match(html,/sd-theme-sv/);assert.equal((html.match(/data-channel=/g)||[]).length,3);
+    assert.match(html,/>Hex<input class="sd-theme-hex" type="text" maxlength="7" autocomplete="off" spellcheck="false" aria-label="Hex 颜色"/);
+    assert.doesNotMatch(html,/sd-theme-hue|aria-label="色相"/);
+    const source=await readFile(new URL('../qianmu-theme-menu.js',import.meta.url),'utf8');
+    assert.doesNotMatch(source,/onHueInput|sd-theme-hue/);
+    const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
+    assert.match(css,/\.sd-theme-rgb \{[^}]+repeat\(3, minmax\(0, 1fr\)\) minmax\(0, 1\.8fr\)/);
+    assert.match(css,/#story-director-modal#story-director-modal \.sd-theme-rgb input \{[^}]+color: var\(--sd-text\) !important; -webkit-text-fill-color: currentColor !important/);
+});
+
+test('RGB/Hex commit only complete values, normalize shorthand and synchronize both representations',()=>{
+    const f=colorFixture();
+    assert.deepEqual(f.rgb.map(input=>input.value),['82','124','105']);assert.equal(f.hex.value,'#527c69');
+    for(const value of ['', '-1','256','1.5','1e2']){f.rgb[0].value=value;f.rgb[0].emit('change');assert.equal(f.changes.length,0);}
+    f.rgb[0].value='200';f.rgb[0].emit('change');assert.equal(f.hex.value,'#c87c69');
+    for(const value of ['', '#','#12','#1234','#12345','#gggggg']){f.hex.value=value;f.hex.emit('change');assert.equal(f.changes.length,1);}
+    f.hex.value='#0Cf';f.hex.emit('change');assert.equal(f.hex.value,'#00ccff');assert.deepEqual(f.rgb.map(input=>input.value),['0','204','255']);assert.equal(f.color.value,'#00ccff');
+    f.hex.value='#123aBc';f.press(f.hex,'Enter');assert.equal(f.hex.value,'#123abc');
+    f.hex.emit('change');assert.equal(f.changes.length,3);f.dispose();
+});
+
+test('picker keyboard retains internal Tab and Enter while Escape and focus departure close',()=>{
+    const f=colorFixture();
+    assert.equal(f.press(f.rgb[0],'Tab').prevented,undefined);assert.equal(f.menu.hidden,false);
+    f.hex.value='#abc';assert.equal(f.press(f.hex,'Enter').prevented,true);assert.equal(f.menu.hidden,false);
+    f.pick.emit('focusout',{relatedTarget:f.rgb[1]});assert.equal(f.menu.hidden,false);
+    f.outside.focus();f.pick.emit('focusout',{relatedTarget:f.outside});assert.equal(f.menu.hidden,true);assert.equal(f.document.activeElement,f.outside);
+    f.trigger.emit('click');f.custom.emit('click');f.press(f.hex,'Escape');assert.equal(f.menu.hidden,true);assert.equal(f.document.activeElement,f.trigger);f.dispose();
+});
+
+test('failed custom field save rolls back once and disposer removes every added listener',()=>{
+    const f=colorFixture();f.fail();f.hex.value='#123456';f.press(f.hex,'Enter');
+    assert.equal(f.hex.value,'#527c69');assert.equal(f.appearance.read().source,'cover');
+    f.hex.emit('change');assert.equal(f.changes.length,1);
+    f.dispose();f.dispose();
+    for(const node of [f.hex,...f.rgb])assert.equal(node.events.get('change')?.size||0,0);
+    assert.equal(f.pick.events.get('focusout')?.size||0,0);
+    f.hex.value='#abcdef';f.hex.emit('change');f.press(f.hex,'Enter');assert.equal(f.changes.length,1);
+});
+
+test('pending resource settlement leaves the focused uncommitted draft intact',async()=>{
+    const f=colorFixture();f.hex.focus();f.hex.value='#12';await Promise.resolve();await Promise.resolve();
+    assert.equal(f.hex.value,'#12');assert.equal(f.appearance.read().accent,'#527c69');assert.equal(f.changes.length,0);f.dispose();
+});
 
 test('theme markup preserves radio semantics, explicit button types and escaped descriptors', () => {
     const html = renderQianmuThemeMenu([{ key: 'light', name: '日间', dot: '#fff' }, { key: 'dark', name: '<img onerror="x">', dot: '#000' }], 'dark');

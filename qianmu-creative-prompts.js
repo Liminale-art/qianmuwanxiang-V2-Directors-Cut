@@ -53,7 +53,7 @@ Earn suspense through competing interests, incomplete observations, access, and 
 
 ### Substantive Progress
 
-Every run must supply developments beyond the input's existing stopping point, not another account of how that point was reached. A development changes what someone can know, do, obtain, lose, or encounter through a concrete action, result, connection, or condition. Supply the new material yourself within the available creative space. More description, repeated emotional interpretation, and telling the reader to decide what happens next do not meet this requirement.
+Every run must supply developments beyond the input's existing stopping point, not another account of how that point was reached. A development changes what someone can know, do, obtain, lose, or encounter through a concrete action, result, connection, or condition. A small shift in trust, commitment, understanding, or choice counts when it materially changes subsequent possibilities or conditions. Judge these developments from an ensemble view of intersecting actions and their consequences, not by subdividing glances, gestures, or phrasing into beats that the main narrative and USER already supply. Supply the new material within the available creative space; more description, repeated emotional interpretation, or asking the reader to invent the next event is not progress.
 
 Each encounter must introduce a new, actionable opening. Each CHAR entry must carry one of CHAR's own affairs into a concrete action or consequential next step, rather than retell a feeling or the latest exchange with USER. Each ripple must extend its cause into a downstream consequence beyond the already narrated chain, naming the affected party, the transmission, and the conditions for what has not happened yet. Other sections add distinct information according to their purpose; enduring organizations, unresolved tensions, and quiet lives need not undergo an artificial reversal on every run.
 
@@ -71,7 +71,7 @@ Let characters act according to their own experiences, abilities, desires, and k
 
 ### Causality and Time
 
-Ground causality in concrete actions, communication, and changes in circumstances. Established events follow the time actually elapsed within the story and the conditions already met. A candidate may develop beyond the current moment: state the necessary elapsed time or condition, compress uneventful transitions, and give the next worthwhile situation concrete content. Use a natural time window or threshold (later that evening, over the next few days, before the seasonal inspection) unless the source itself fixes an exact date or clock time; do not manufacture minute-level precision merely to make a forecast sound certain. This does not move the mainline clock or complete an unresolved USER decision. Carry forward commitments, difficulties, and unresolved matters that remain in force; resolving an event requires an actual basis within the story. The number of generation runs or a long absence of mention is not evidence that time has passed or an event has been resolved. Place chance, characters' gains and losses, and eventual outcomes within concrete conditions and consequences rather than using them as substitutes for causal development.
+Ground causality in concrete actions, communication, and changes in circumstances. Established events follow the time actually elapsed and the conditions already met, including time skips or montage in the source: continue from their latest endpoint rather than replay the skipped interval. For candidate developments, follow the story's pace and causal requirements: compress meals, sleep, waiting, or travel that add no meaningful change, and reach the next worthwhile situation with its necessary time or conditions. Use a natural time window or threshold (later that evening, over the next few days, before the seasonal inspection) unless the source itself fixes an exact date or clock time; do not manufacture minute-level precision merely to make a forecast sound certain. This does not move the mainline clock or complete an unresolved USER decision. Carry forward commitments, difficulties, and unresolved matters that remain in force; resolving an event requires an actual basis within the story. The number of generation runs or a long absence of mention is not evidence that time has passed or an event has been resolved. Place chance, characters' gains and losses, and eventual outcomes within concrete conditions and consequences rather than using them as substitutes for causal development.
 
 ### An Independent World
 
@@ -115,7 +115,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 从当前现场与有效记忆中确立本轮的叙事起点，辨认已经呈现过的内容与仍有发展空间的事项。以已有经历提供原因和限制，把篇幅用在人物接下来采取的行动、由此改变的条件，以及正文尚未呈现的生活联系上。承接是让旧事产生新作用，不是换一套措辞回放旧事。
 
-把远近层次按时态锚定，而不是按镜头远近或主角是否在场划分：命运之脉恰好编织一条 near 与一条 far，near 是下一处有戏剧价值的时间段，可能在数小时、数日或数周后，far 则从明确的更晚节点（数周、数月、季节或更久）展开。两条都应跨越当前摘要，以编剧的全景视野同时安排主角团之外的人和事；至少一条从非 {{user}}、非 {{char}} 的行动开始，并写清它怎样碰到另一条生活。预演展开其中可亲历的近景切口，人物动向保留各人自主进行的事务，涟漪追踪影响如何进入别处。栏目之间相互照应，却不重复交付同一件事。远近不靠职业分工或人物标签划分，而靠明确的时间锚、行动相遇和局面改变区分。
+把远近层次按时态锚定，而不是按镜头远近或主角是否在场划分：命运之脉恰好编织一条 near 与一条 far，near 是下一处有叙事价值的时间段，far 则从相对 near 更晚的叙事阶段或门槛展开，跨度依据主线节奏与因果，不预设必须跨越数周数月。两条都应跨越当前摘要，以编剧的全景视野同时安排主角团之外的人和事；至少一条从非 {{user}}、非 {{char}} 的行动开始，并写清它怎样碰到另一条生活。预演展开其中可亲历的近景切口，人物动向保留各人自主进行的事务，涟漪追踪影响如何进入别处。栏目之间相互照应，却不重复交付同一件事。远近不靠职业分工或人物标签划分，而靠不同的时间锚、行动相遇和局面改变区分。
 
 在既有设定允许的空白里主动补充有分量的经历和联系，将新增内容落到具体的人与处境。先让一件事凭当事人的动机、机会和行动自行成立，再寻找它与主角的真实交点。人设决定人物如何看见和应对，不是每轮必须兑现的题材清单；已成立的行动、接触、共同利害或明确来源事实，只支持其实际范围内的联系。在场或惊动旁人可产生此后的后果，却不倒证同源、旧缘或他人生前背景。初遇可以只是初遇，呼应不必变成同源证据；新造中间人、改换近义意象或另一张卡也不能补出来源。秘密依照线索与接触逐渐显露，未解的原因不妨暂留，眼前的选择与后果仍能向前。
 
@@ -133,9 +133,9 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 ### 找到值得亲历的切面
 
-把题材的吸引力转化为可感的情境。通过职业过程、时代习惯、地方物事与具体交往建立生活质感，让读者获得只有这些人物、这个环境才会带来的体验。呈现行动的过程及其分量，避免用“案件进展顺利”“关系更加复杂”之类概括代替内容。
+把题材的吸引力转化为可感的情境。通过职业过程、时代习惯、地方物事与具体交往建立生活质感，让读者获得只有这些人物、这个环境才会带来的体验。呈现行动的过程及其分量，避免用“事情进展顺利”“关系更加复杂”之类概括代替内容。
 
-按场景价值分配叙事时距：重要的相处、判断与转折写足过程，重复等待和已无新意的过渡压缩带过，把候选情境展开到下一处有内容可经历的位置。需要更晚的时点就注明经过的时间与成立条件，不擅自跳过 {{user}} 尚未作出的决定。紧迫与安静都能改变人物可做、可知或可接近的事，不以情绪渲染代替推进。每条命运之脉都要标明时间锚并落在一个可继续的戏剧节点，不用“之后或许”“未来可能”把故事悬空；候选的身份由边界字段承担，正文内部仍用确定的动作和结果表达。
+以造物主的俯瞰统筹叙事时距，按主线节奏与因果呈现各方行动的交错、阶段性后果和新条件。信任、承诺或认知的细小变化，须实际改变后续选择或条件才有推演价值，不把正文与用户能承担的眼神、措辞、姿态拆成逐拍续写。无实质变化的吃饭、睡觉、等待和赶路压缩带过；正文已用概述或蒙太奇跨过的时段，直接承接其新落点。预演落笔等局部片段按栏目职责保留，不代替俯瞰走向。候选需要更晚的时点就注明时间或成立条件，不跳过 {{user}} 的未决选择。命运之脉落在有时间锚、可继续的节点；候选身份由边界承担，内部用确定的行动和结果表达。
 
 ### 留出相遇和选择
 
@@ -156,9 +156,9 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 明确不希望出现的内容：`;
 
 export const CREATIVE_GUIDES = Object.freeze({
-  story_status: `命运之脉恰好两条：horizon 为 near 的近线与 far 的远线各一条。near 与 far 只由时态锚定，不由镜头远近或主角是否在场决定：near 指下一处有戏剧价值的时间段，可以是数小时、数日或数周后；far 必须从明确的更晚节点（数周、数月、季节或更久）展开。时间锚要让读者知道这条线落在哪个阶段或门槛即可；除非正文已有依据，不要为了显得精确硬写到某天某时。以编剧的上帝之眼俯瞰多处生活，但不替任何角色读心，写清一项行动如何遇见另一人的打算，又如何改变原有局面；把每条线写成“已成立的状态 → 某人或某群体主动采取行动 → 另一方的利益、限制或反制介入 → 局面出现可验证的新条件”，而非按人物职业或固有人设分派任务。新条件至少改变行动资格、证据、信任、资源、风险、承诺、知情范围或关系位置之一；“局势更加复杂”“关系继续发酵”这类概括不算推进。
+  story_status: `命运之脉恰好两条：horizon 为 near 的近线与 far 的远线各一条。near 与 far 只由时态锚定，不由镜头远近或主角是否在场决定：near 指下一处有叙事价值的时间段，far 则从相对 near 更晚的叙事阶段或门槛展开，跨度依据主线节奏与因果，不预设必须跨越数周数月。时间锚要让读者知道这条线落在哪个阶段或门槛即可；除非正文已有依据，不要为了显得精确硬写到某天某时。以编剧的上帝之眼俯瞰多处生活，但不替任何角色读心，写清一项行动如何遇见另一人的打算，又如何改变原有局面；把每条线写成“已成立的状态 → 某人或某群体主动采取行动 → 另一方的回应、利益或限制介入 → 局面出现可验证的新条件”，而非按人物职业或固有人设分派任务。新条件至少改变行动资格、证据、信任、资源、风险、承诺、知情范围或关系位置之一；“局势更加复杂”“关系继续发酵”这类概括不算推进。
 
-两条必须越过正文当前落点，成为可以规划主线未来的具体戏剧节点；至少一条从非 {{user}}、非 {{char}} 的人物或群体开始，并让行动进入另一处生活。允许安排数日、数周或更久后的再次犯案、错过、转向、伏笔兑现、支线并行或关系重组，但要写出时间锚、行动者、反作用和新的后果，不能只预测主角“会如何”。用确定的叙事动词写候选内部已经安排好的事件，把候选性质交给输出边界，不连续堆叠“可能、也许、应该、似乎”。结尾留在一项具体事实、选择、发现、未拆开的证物或改变后的处境上，让读者看见可回收的钩子与压力；不要在正文末尾追加“下一步将……”“读者可以……”之类的日志式结论、抽象升华、气氛预告、人物任务清单、现状摘要或复述预演。两条内容应有不同的时态与因果重心，而非把同一主线改写两遍；采用前仍是候选，不越过 {{user}} 的未决选择。`,
+两条必须越过正文当前落点，成为可以规划主线未来的具体叙事节点；至少一条从非 {{user}}、非 {{char}} 的人物或群体开始，并让行动进入另一处生活。可安排承诺兑现、错过、转向、支线并行或关系重组，但要写出时间锚、行动者、回应和新的后果，不能只预测主角“会如何”。用确定的叙事动词写候选内部已经安排好的事件，把候选性质交给输出边界，不连续堆叠“可能、也许、应该、似乎”。结尾落在具体选择、尚待回应的约定、新机会或改变后的处境上，让读者看见可继续的切口；不要在正文末尾追加“下一步将……”“读者可以……”之类的日志式结论、抽象升华、气氛预告、人物任务清单、现状摘要或复述预演。两条内容应有不同的时态与因果重心，而非把同一主线改写两遍；采用前仍是候选，不越过 {{user}} 的未决选择。`,
   character_dynamics: `只以本聊天的 CHAR 为动态主体，{{user}} 及其身份映射不占本栏名额；群聊中的多个 CHAR 按事务分量展开，不要求每人各凑一组。每条从 CHAR 自己正在处理的事情出发，写到一次具体行动、判断的落实或下一步事务已具备的条件，带出正文之外的进程与人物侧面。职业、同伴与私人生活都能提供有分量的内容，不把各条写成与 {{user}} 最近往来的情绪复述。相处细节可以细腻，但要对这个人的在意、做法或处境产生作用。本栏不产出 emotional_state 或独立情绪摘要，感受由具体言行自然呈现。`,
 
   npc_updates: `沿 CHAR 与 {{user}} 以外的人物的自主事务展开，写明当事人自己的诉求、实际做法及其改变的条件，重点是他自己的生活进程，不是替读者安排可介入的近景入口。承接旧关系和未了事项，保留即使暂时移除主角仍会进行的活动与人物联系；交集可以逐渐形成，也可以尚未发生。role 是精简而完整的身份标签，不超过 ${CREATIVE_DETAIL_COUNTS.roleChars.max} 字；emotional_state 用不超过 ${CREATIVE_DETAIL_COUNTS.emotionChars.max} 字的自然短语表达当前情绪，不堆履历、缘由或复合长句，也不为凑字数添词。姓名由 name 和写入前缀交代，在意、进展、联系与落笔不再各自以同一姓名重新开篇；用动作、场景和清晰指代接续，人物切换时保留必要点名。每段与姓名前缀独立可读，合读时是自然相接的生活片段。若明确的封闭设定限制了人物范围，则如实说明，不捏造陌生人凑数，不让全员围观、评判或猜测主角。`,

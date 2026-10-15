@@ -4,18 +4,19 @@ import { readFile } from 'node:fs/promises';
 import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = '1.59.454';
-const releaseVersion = '1.59.454';
+const version = '1.59.455';
+const releaseVersion = '1.59.455';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js', 'qianmu-creative-social.js', 'qianmu-director-live.js',
+  'qianmu-theme-menu.js',
 ]);
 const retained = new Map([
   ...['qianmu-model-response.js', 'qianmu-model-host.js', 'qianmu-model-external.js',
     'qianmu-prose-assistant-request.js', 'qianmu-prose-assistant-preferences.js', 'qianmu-prose-assistant-panel.js',
     'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js', 'qianmu-idle-preload.js'].map(file => [file, '1.59.452']),
   ['qianmu-hive-commands.js', '1.59.446'], ['qianmu-prose-hive.js', '1.59.446'],
-  ['qianmu-theme-menu.js', '1.59.451'], ['qianmu-appearance-session.js', '1.59.444'],
+  ['qianmu-appearance-session.js', '1.59.444'],
   ['qianmu-memory-context.js', '1.59.448'],
   ['qianmu-st-context-sources.js', '1.59.450'],
 ]);
@@ -61,6 +62,6 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.equal(manifest.js, `index.js?v=${releaseVersion}`);
   assert.equal(manifest.css, `style.css?v=${releaseVersion}`);
   assert.ok(files.includes('qianmu-creative-social.css'));
-  assert.match(await readFile(new URL('style.css', root), 'utf8'), /@import url\('\.\/qianmu-creative-social\.css\?v=1\.59\.454'\)/);
+  assert.match(await readFile(new URL('style.css', root), 'utf8'), /@import url\('\.\/qianmu-creative-social\.css\?v=1\.59\.455'\)/);
   assert.ok(sources.get('index.js').includes(`const VERSION = '${releaseVersion}';`));
 });

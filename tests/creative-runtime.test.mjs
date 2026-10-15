@@ -502,3 +502,39 @@ test('exact v453 defaults migrate without replacing edited templates, saved card
     assert.equal(edited.systemPrompt, before.systemPrompt); assert.equal(edited.outputSchemaText, before.outputSchemaText); assert.deepEqual(edited.templates, before.templates);
   }
 });
+
+test('exact v454 defaults migrate for narrative pacing while DIY, backups and saved content remain intact', () => {
+  // Measured from bc64c50b, independently of whether that release reached a remote.
+  const fingerprints = { 'v454-system': 'dd2092c1', 'v454-schema': 'f57a17f7', 'v454-blueprint': '40c652ba' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v454-system', outputSchemaText: 'v454-schema',
+      appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      systemPromptBackup: 'v454-system', outputSchemaBackup: 'manual schema',
+      templates: [{ id: 'default-free-blueprint', content: 'v454-blueprint' }, { id: 'mine', content: 'v454-blueprint' },
+        { id: 'default-free-blueprint', content: 'v454-blueprint', edited: true }] };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt); assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.templates[0].content, next.blueprint); assert.equal(settings.templates[1].content, 'v454-blueprint');
+    assert.equal(settings.templates[2].content, 'v454-blueprint'); assert.equal(settings.systemPromptBackup, 'v454-system');
+    assert.equal(settings.outputSchemaBackup, 'manual schema');
+    const after = structuredClone(settings); sandbox.upgradeCreativeDefaults(settings, next); assert.deepEqual(settings, after);
+    const store = { blueprint: 'v454-blueprint', appliedBlueprintDefaultHash: marker, blueprintBackup: 'v454-blueprint',
+      plan: { story_status: { directions: [{ horizon: 'far', content: '旧候选原文。' }] } }, history: [{ text: '旧历史原文。' }] };
+    const original = structuredClone(store);
+    sandbox.upgradeCreativeBlueprint(store, next.blueprint, 455);
+    assert.equal(store.blueprint, next.blueprint); assert.equal(store.blueprintBackup, original.blueprintBackup);
+    assert.deepEqual(store.plan, original.plan); assert.deepEqual(store.history, original.history);
+    const edited = { systemPrompt: 'v454-system。', outputSchemaText: 'v454-schema。', appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      templates: [{ id: 'default-free-blueprint', content: 'v454-blueprint。' }] };
+    const before = structuredClone(edited);
+    sandbox.upgradeCreativeDefaults(edited, next); sandbox.upgradeCreativeDefaults(edited, next);
+    assert.equal(edited.systemPrompt, before.systemPrompt); assert.equal(edited.outputSchemaText, before.outputSchemaText);
+    assert.deepEqual(edited.templates, before.templates);
+    const manualStore = { blueprint: 'v454-blueprint。', appliedBlueprintDefaultHash: fingerprints['v454-blueprint'] };
+    sandbox.upgradeCreativeBlueprint(manualStore, next.blueprint, 455); assert.equal(manualStore.blueprint, 'v454-blueprint。');
+  }
+});

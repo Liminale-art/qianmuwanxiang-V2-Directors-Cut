@@ -25,8 +25,7 @@ export function renderQianmuThemeMenu(themes, selected, { settings, supported = 
             <div class="sd-theme-swatches"><button type="button" class="sd-theme-opt sd-theme-mode-toggle" role="menuitem" data-appearance-mode-toggle aria-label="切换至${preference.mode === 'dark' ? '日间' : '夜间'}" title="切换至${preference.mode === 'dark' ? '日间' : '夜间'}">${modeIcon(preference.mode)}</button>${swatches}<label class="sd-theme-custom-color sd-theme-swatch${accents.some(([accent]) => accent === preference.accent) ? '' : ' active'}" title="自定强调色"><span aria-hidden="true"></span><input class="sd-theme-color" type="color" value="${preference.accent}" aria-label="自定强调色"></label></div>
             <div class="sd-theme-custom-picker" hidden aria-label="自定义强调色编辑器">
               <div class="sd-theme-sv" role="slider" aria-label="饱和度与明度" tabindex="0"><i aria-hidden="true"></i></div>
-              <input class="sd-theme-hue" type="range" min="0" max="360" step="1" value="0" aria-label="色相">
-              <div class="sd-theme-rgb"><label>R<input type="number" min="0" max="255" data-channel="r" aria-label="红色"></label><label>G<input type="number" min="0" max="255" data-channel="g" aria-label="绿色"></label><label>B<input type="number" min="0" max="255" data-channel="b" aria-label="蓝色"></label></div>
+              <div class="sd-theme-rgb"><label>R<input type="number" min="0" max="255" step="1" data-channel="r" aria-label="红色"></label><label>G<input type="number" min="0" max="255" step="1" data-channel="g" aria-label="绿色"></label><label>B<input type="number" min="0" max="255" step="1" data-channel="b" aria-label="蓝色"></label><label>Hex<input class="sd-theme-hex" type="text" maxlength="7" autocomplete="off" spellcheck="false" aria-label="Hex 颜色"></label></div>
             </div>
           </div>
         </div><div class="sd-theme-feedback" hidden><span class="sd-theme-status" role="status" aria-live="polite"></span><button type="button" class="sd-theme-opt sd-theme-retry" role="menuitem" hidden>重试</button></div>` : classic}
@@ -42,7 +41,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     const keys = new Map(buttons.map(button => [button, { classic: button.dataset.theme, family: button.dataset.appearanceFamily, accent: button.dataset.appearanceAccent }]));
     const classicOptions = menu.querySelector?.('.sd-theme-classic-options'), accentOptions = menu.querySelector?.('.sd-theme-accent-options');
     const color = menu.querySelector?.('.sd-theme-color'), customColor = menu.querySelector?.('.sd-theme-custom-color'), mode = menu.querySelector?.('.sd-theme-mode-toggle');
-    const customPicker = menu.querySelector?.('.sd-theme-custom-picker'), sv = customPicker?.querySelector?.('.sd-theme-sv'), hue = customPicker?.querySelector?.('.sd-theme-hue');
+    const customPicker = menu.querySelector?.('.sd-theme-custom-picker'), sv = customPicker?.querySelector?.('.sd-theme-sv'), hexInput = customPicker?.querySelector?.('.sd-theme-hex');
     const rgbInputs = customPicker ? [...customPicker.querySelectorAll?.('[data-channel]') || []] : [];
     const feedback = menu.querySelector?.('.sd-theme-feedback'), status = menu.querySelector?.('.sd-theme-status'), retry = menu.querySelector?.('.sd-theme-retry');
     let disposed = false, listening = false, actionError = '', sequence = 0;
@@ -112,7 +111,6 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     function syncPicker(hex) {
         if (!customPicker) return;
         pickerHsv = rgbHsv(hexRgb(hex));
-        if (hue) hue.value = String(Math.round(pickerHsv.h));
         if (sv) {
             sv.style.backgroundImage = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${pickerHsv.h} 100% 50%))`;
             const marker = sv.querySelector?.('i');
@@ -120,9 +118,15 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         }
         const rgb = hexRgb(hex);
         for (const input of rgbInputs) input.value = String(rgb[input.dataset.channel] ?? 0);
+        if (hexInput) hexInput.value = hex.toLowerCase();
     }
     function applyCustomHex(hex) {
         if (disposed || !appearance || appearance.read().family === 'classic' || !/^#[a-f\d]{6}$/i.test(hex)) return;
+        hex = hex.toLowerCase();
+        // Enter can be followed by a native change event. Do not save twice,
+        // or let a failed edit's rolled-back value clear its error/source.
+        const preference = appearance.read();
+        if (hex === preference.accent && (preference.source === 'manual' || actionError)) { syncPicker(hex); return; }
         if (color) color.value = hex.toLowerCase();
         actionError = ''; sequence++;
         try { const result = appearance.change({ accent: hex.toLowerCase(), source: 'manual' }); refresh(); settle(result); }
@@ -139,10 +143,18 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     }
     function updateRgb() {
         const rgb = { r: 0, g: 0, b: 0 };
-        for (const input of rgbInputs) rgb[input.dataset.channel] = clamp(Number(input.value), 0, 255);
+        for (const input of rgbInputs) {
+            if (!/^\d{1,3}$/.test(input.value) || Number(input.value) > 255) return;
+            rgb[input.dataset.channel] = Number(input.value);
+        }
         applyCustomHex(rgbHex(rgb));
     }
-    function refresh() {
+    function updateHex() {
+        const value = hexInput?.value.trim();
+        if (!/^#(?:[a-f\d]{3}|[a-f\d]{6})$/i.test(value || '')) return;
+        applyCustomHex(value.length === 4 ? '#' + [...value.slice(1)].map(char => char + char).join('') : value);
+    }
+    function refresh(preserveDraft = false) {
         if (disposed || !appearance) return;
         const preference = appearance.read(), resource = appearance.status();
         const retryHadFocus = retry && document.activeElement === retry;
@@ -157,7 +169,9 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         if (accentOptions) accentOptions.hidden = preference.family === 'classic';
         if (customPicker && preference.family === 'classic') customPicker.hidden = true;
         if (color && color.value !== preference.accent) color.value = preference.accent;
-        syncPicker(preference.accent);
+        // A resource promise can finish while a field contains an unfinished
+        // draft. Only explicit edits/rollback, not that late refresh, replace it.
+        if (!preserveDraft || !customPicker?.contains(document.activeElement)) syncPicker(preference.accent);
         if (customColor) {
             customColor.classList[accents.some(([accent]) => accent === preference.accent) ? 'remove' : 'add']('active');
         }
@@ -180,7 +194,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         positionMenu();
     }
     function settle(result, request = sequence) {
-        Promise.resolve(result).then(() => { if (request === sequence) refresh(); }, () => {
+        Promise.resolve(result).then(() => { if (request === sequence) refresh(true); }, () => {
             if (disposed || request !== sequence) return;
             actionError = '外观切换未完成，请重试或选择经典外观。'; refresh();
         });
@@ -192,6 +206,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
     }
     function outside(event) { if (!pick.contains(event.target)) close(); }
+    function focusout(event) { if (!menu.hidden && event.relatedTarget && !pick.contains(event.relatedTarget)) close(); }
     const visible = node => node && !node.disabled && !node.hidden && !node.closest?.('[hidden]');
     function available() { return [...buttons, ...(color ? [color] : [])].filter(visible); }
     function open(last = false) {
@@ -258,7 +273,6 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         if (!customPicker.hidden) syncPicker(appearance.read().accent);
         positionMenu();
     }
-    const onHueInput = () => { pickerHsv.h = Number(hue?.value) || 0; updatePickerFromHsv(); };
     const onSvMove = event => { if (event.buttons) updateSv(event); };
     function keydown(event) {
         if (disposed) return;
@@ -269,8 +283,15 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
             return;
         }
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); return; }
+        if (event.target.closest?.('.sd-theme-custom-picker')) {
+            if (event.key === 'Enter' && (event.target === hexInput || rgbInputs.includes(event.target))) {
+                event.preventDefault(); event.stopPropagation();
+                if (event.target === hexInput) updateHex(); else updateRgb();
+            }
+            return;
+        }
         if (event.key === 'Tab') { close(true); return; }
-        if (event.target === color || event.target === hue || event.target.closest?.('.sd-theme-custom-picker')) return;
+        if (event.target === color) return;
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault(); event.stopPropagation();
         const options = available(), index = options.indexOf(document.activeElement);
@@ -279,21 +300,21 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
             : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
         options[next].focus({ preventScroll: true });
     }
-    trigger.addEventListener('click', toggle); menu.addEventListener('click', select); pick.addEventListener('keydown', keydown);
+    trigger.addEventListener('click', toggle); menu.addEventListener('click', select); pick.addEventListener('keydown', keydown); pick.addEventListener('focusout', focusout);
     color?.addEventListener('input', chooseColor); color?.addEventListener('change', chooseColor);
     customColor?.addEventListener('click', toggleCustomPicker);
     sv?.addEventListener('pointerdown', updateSv); sv?.addEventListener('pointermove', onSvMove);
-    hue?.addEventListener('input', onHueInput);
     rgbInputs.forEach(input => input.addEventListener('change', updateRgb));
+    hexInput?.addEventListener('change', updateHex);
     if (appearance) { refresh(); settle(appearance.sync()); }
     return () => {
         if (disposed) return; disposed = true; sequence++; close();
-        trigger.removeEventListener('click', toggle); menu.removeEventListener('click', select); pick.removeEventListener('keydown', keydown);
+        trigger.removeEventListener('click', toggle); menu.removeEventListener('click', select); pick.removeEventListener('keydown', keydown); pick.removeEventListener('focusout', focusout);
         color?.removeEventListener('input', chooseColor); color?.removeEventListener('change', chooseColor);
         customColor?.removeEventListener('click', toggleCustomPicker);
         sv?.removeEventListener('pointerdown', updateSv);
         sv?.removeEventListener('pointermove', onSvMove);
-        hue?.removeEventListener('input', onHueInput);
         rgbInputs.forEach(input => input.removeEventListener('change', updateRgb));
+        hexInput?.removeEventListener('change', updateHex);
     };
 }
