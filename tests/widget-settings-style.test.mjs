@@ -43,3 +43,12 @@ test('the hive title and selected tags retain the existing theme system', () => 
     assert.match(theme, /data-qm-theme="editorial"[\s\S]*button:not\(\[data-coread-identity\]\)/);
     assert.match(theme, /\.sd-widget-toggle\.active[^{}]*\{\s*color:\s*var\(--qm-action-ink\)/);
 });
+
+test('new-theme newcomer and widget selections override soft skin fills with contrast-paired solid color', () => {
+    const selected = rules('#story-director-modal[data-qm-theme] .sd-widget-card button.sd-widget-toggle:is(.active, [aria-pressed="true"])').join('\n');
+    assert.match(css, /#story-director-modal\[data-qm-theme\] button\.sd-btn\.sd-newcomer-toggle:is\(\.active, \[aria-pressed="true"\]\),/);
+    assert.match(selected, /background:\s*var\(--sd-primary\) !important/);
+    assert.match(selected, /color:\s*var\(--sd-primary-text\) !important/);
+    assert.match(selected, /border-color:\s*var\(--sd-primary\) !important/);
+    assert.doesNotMatch(selected, /transparent|color-mix/);
+});

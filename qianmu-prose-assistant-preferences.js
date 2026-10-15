@@ -1,4 +1,4 @@
-import {normalizeProseAssistantSelection} from './qianmu-prose-assistant-request.js';
+import {normalizeProseAssistantSelection} from './qianmu-prose-assistant-request.js?v=1.59.452';
 
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const fail=()=>{throw Object.assign(new Error('助手设置或来源已变化，请重新打开后保存'),{code:'prose_assistant_preferences'});};

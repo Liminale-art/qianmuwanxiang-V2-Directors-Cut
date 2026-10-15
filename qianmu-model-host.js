@@ -1,4 +1,4 @@
-import { readModelResponse } from './qianmu-model-response.js';
+import { readModelResponse } from './qianmu-model-response.js?v=1.59.452';
 
 // The official factory supplies source-specific settings; it does not send the request.
 // Sending here retains raw content and end metadata that generateRaw strips away.

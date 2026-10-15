@@ -1,4 +1,4 @@
-import {readModelResponse} from './qianmu-model-response.js';
+import {readModelResponse} from './qianmu-model-response.js?v=1.59.452';
 import {normalizeQianmuChatApiRoot} from './qianmu-llm-output.js';
 import {assertPortableConnectionUrl} from './qianmu-portable-connection.js';
 

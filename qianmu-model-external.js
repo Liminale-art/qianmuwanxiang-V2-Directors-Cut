@@ -1,4 +1,4 @@
-import { readModelResponse } from './qianmu-model-response.js';
+import { readModelResponse } from './qianmu-model-response.js?v=1.59.452';
 export async function callExternalModel(messages, onDelta, cfg, controller, { settings, normalizeUrl, normalizeQianmuChatApiRoot, createQianmuChatCompletionResponseFormat }, fetchImpl = globalThis.fetch) {
   const apiUrl = cfg?.apiUrl ?? settings.apiUrl;
   const apiKey = cfg?.apiKey ?? settings.apiKey;

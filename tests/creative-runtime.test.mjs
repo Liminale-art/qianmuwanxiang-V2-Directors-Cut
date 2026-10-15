@@ -394,3 +394,39 @@ test('exact v449 markerless defaults upgrade once while edits, user templates an
     }
   }
 });
+
+test('exact v451 causal defaults and CHAR-emotion schema upgrade without overwriting author changes', () => {
+  // Measured from shipped 7cfd314e; no retired prompt needs to ship in the package.
+  const fingerprints = { 'v451-system': 'e2441079', 'v451-schema': 'd3522824', 'v451-blueprint': '321cc304' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v451-system', outputSchemaText: 'v451-schema',
+      appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      systemPromptBackup: 'v451-system', outputSchemaBackup: 'v451-schema',
+      templates: [{ id: 'default-free-blueprint', content: 'v451-blueprint' }, { id: 'mine', content: 'v451-blueprint' }] };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt);
+    assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.templates[0].content, next.blueprint);
+    assert.equal(settings.templates[1].content, 'v451-blueprint');
+    assert.equal(settings.systemPromptBackup, 'v451-system');
+    assert.equal(settings.outputSchemaBackup, 'v451-schema');
+    const store = { blueprint: 'v451-blueprint', appliedBlueprintDefaultHash: marker, blueprintBackup: 'kept' };
+    sandbox.upgradeCreativeBlueprint(store, next.blueprint, 452);
+    assert.equal(store.blueprint, next.blueprint); assert.equal(store.blueprintBackup, 'kept');
+    for (const edited of [false, true]) {
+      const author = { systemPrompt: 'v451-system。', outputSchemaText: 'v451-schema。',
+        templates: [{ id: 'default-free-blueprint', content: 'v451-blueprint。', edited }] };
+      const before = structuredClone(author);
+      sandbox.upgradeCreativeDefaults(author, next);
+      assert.equal(author.systemPrompt, before.systemPrompt); assert.equal(author.outputSchemaText, before.outputSchemaText);
+      assert.deepEqual(author.templates, before.templates);
+      const custom = { blueprint: 'v451-blueprint。', blueprintEdited: edited, appliedBlueprintDefaultHash: fingerprints['v451-blueprint'] };
+      sandbox.upgradeCreativeBlueprint(custom, next.blueprint, 452);
+      assert.equal(custom.blueprint, 'v451-blueprint。');
+    }
+  }
+});

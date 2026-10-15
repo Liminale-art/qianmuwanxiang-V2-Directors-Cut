@@ -5,10 +5,10 @@ import vm from 'node:vm';
 import * as host from '../qianmu-model-host.js';
 const entry=await fs.readFile(new URL('../index.js',import.meta.url),'utf8');
 const wrapper=entry.slice(entry.indexOf('async function callSillyTavernModel('),entry.indexOf('// 字符串感知'))
-  .replace("import('./qianmu-model-host.js')",'loadHostModel()');
+  .replace(/import\('\.\/qianmu-model-host\.js(?:\?[^']*)?'\)/,'loadHostModel()');
 function fixture(context){
   let legacy=0,sends=0,payload;
-  const c={ctx:()=>context,getGenerateRaw:()=>async args=>{legacy++;assert.equal(args.prompt,'prompt');return 'legacy result';},
+  const c={settings:{},ctx:()=>context,getGenerateRaw:()=>async args=>{legacy++;assert.equal(args.prompt,'prompt');return 'legacy result';},
     loadHostModel:async()=>({...host,callHostChatModel:options=>host.callHostChatModel({...options,fetchImpl:async(url,init)=>{
       sends++;payload=JSON.parse(init.body);return new Response('data: {"choices":[{"delta":{"content":" raw "},"finish_reason":"stop"}]}\n\n');
     }})})};
@@ -23,10 +23,10 @@ test('real ST wrapper uses independent raw transport for director requests and r
   assert.equal(full,' raw ');assert.equal(metadata.finishReason,'stop');assert.equal(e.payload.max_tokens,8765);assert.equal(e.sends,1);assert.equal(e.legacy,0);
   assert.deepEqual(e.payload.messages,[{role:'system',content:'system'},{role:'user',content:'prompt'}]);
 });
-test('legacy host stream is rejected before sending; nonstream fallback is labelled as processed output',async()=>{
+test('unsupported director routes never fall back; ordinary legacy calls remain labelled as processed output',async()=>{
   const e=fixture({mainApi:'textgenerationwebui'});
-  await assert.rejects(e.c.callSillyTavernModel('prompt','',()=>{},{directorRequest:true}),/未发送模型请求/);
+  for(const onDelta of [()=>{},null]) await assert.rejects(e.c.callSillyTavernModel('prompt','',onDelta,{directorRequest:true}),/未发送模型请求/);
   assert.equal(e.sends,0);assert.equal(e.legacy,0);let metadata;
-  assert.equal(await e.c.callSillyTavernModel('prompt','',null,{directorRequest:true,onResponse:value=>metadata=value}),'legacy result');
+  assert.equal(await e.c.callSillyTavernModel('prompt','',null,{onResponse:value=>metadata=value}),'legacy result');
   assert.equal(e.legacy,1);assert.match(metadata.compatibility,/处理后的最终正文/);
 });

@@ -2815,6 +2815,28 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 #story-director-modal .sd-term::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .16); border-radius: 99px; }
 
 #story-director-modal .sd-term.sd-term-error { color: #e0a8a8 !important; }
+#story-director-modal .sd-log-error-panel {
+  background: #14161a;
+  color: #e0a8a8;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+#story-director-modal .sd-log-error-panel .sd-term {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0;
+}
+#story-director-modal .sd-log-error-panel .sd-log-raw-error { margin-top: 8px; }
+#story-director-modal .sd-log-error-panel .sd-log-raw-error > summary {
+  color: #e0a8a8 !important;
+  font-size: .84em;
+  padding: 4px 0;
+  cursor: pointer;
+}
+#story-director-modal .sd-log-error-panel > :is(.sd-muted, .sd-log-cap) { color: #e0a8a8 !important; }
 #story-director-modal .sd-inject-term { margin-top: 8px; max-height: 240px; }
 
 /* ---------- 14. 响应式 ---------- */
@@ -11994,6 +12016,16 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   border-color: transparent !important;
   box-shadow: 0 1px 0 rgba(255,255,255,.2) inset, 0 1px 2px rgba(0,0,0,.06) !important;
 }
+/* Loaded skins soften generic controls; these explicit on/off actions need an
+   opaque selected surface. Keep the override local and use the palette's
+   contrast-paired primary tokens in both daylight and night. */
+#story-director-modal[data-qm-theme] button.sd-btn.sd-newcomer-toggle:is(.active, [aria-pressed="true"]),
+#story-director-modal[data-qm-theme] .sd-widget-card button.sd-widget-toggle:is(.active, [aria-pressed="true"]) {
+  background: var(--sd-primary) !important;
+  color: var(--sd-primary-text) !important;
+  border-color: var(--sd-primary) !important;
+  box-shadow: none !important;
+}
 
 /* “推演下一幕”是条目标题的唯一字号基准；角色名、关系名加粗但不再
    抢过卡片分区标题。折叠行收窄后仍由 summary 的居中布局托住多行芯片。 */
@@ -12020,12 +12052,11 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
 #story-director-modal .sd-plan-section .sd-item-card.sd-item-npc {
   margin: 0;
   border: 0 !important;
-  border-top: 1px solid var(--sd-border) !important;
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
-#story-director-modal .sd-plan-section .sd-item-card.sd-item-npc:last-child { border-bottom: 1px solid var(--sd-border) !important; }
+#story-director-modal .sd-plan-section .sd-item-card.sd-item-npc + .sd-item-card.sd-item-npc { border-top: 1px solid var(--sd-border) !important; }
 #story-director-modal .sd-plan-section .sd-item-npc > summary { padding: 14px 0 !important; gap: 10px; }
 #story-director-modal .sd-plan-section .sd-item-npc > .sd-item-detail { padding: 0 0 14px; }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main {
@@ -12043,7 +12074,13 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   font-variant-numeric: tabular-nums;
   line-height: 1;
   letter-spacing: -.04em;
-  color: var(--sd-text);
+  color: color-mix(in srgb, var(--sd-accent) 70%, transparent);
+  background: linear-gradient(to bottom,
+    color-mix(in srgb, var(--sd-accent) 78%, transparent),
+    color-mix(in srgb, var(--sd-accent) 18%, transparent));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   user-select: none;
 }
 #story-director-modal .sd-plan-section .sd-npc-heading {
@@ -12081,16 +12118,9 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   overflow-wrap: anywhere;
   color: var(--sd-muted);
 }
-#story-director-modal .sd-plan-section .sd-item-character .sd-item-emotion {
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: none !important;
-  box-shadow: none !important;
-}
 #story-director-modal .sd-plan-section .sd-npc-emotion { font-size: var(--qm-type-body); }
 /* A selected card's order stays at the top right but owns real space, so a
-   wrapped mood/title cannot run underneath its digits. */
+   wrapped title cannot run underneath its digits. */
 #story-director-modal .sd-plan-section .sd-item-character > summary > .sd-selection-order-card:not(:empty) {
   position: static;
   flex: 0 0 auto;
@@ -12100,8 +12130,8 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
 #story-director-modal .sd-plan-section .sd-npc-role {
   padding: 2px 6px;
   border-radius: 3px;
-  background: var(--sd-text);
-  color: var(--sd-sticky-bg, #fff);
+  background: color-mix(in srgb, var(--sd-accent) 46%, #000);
+  color: #fff;
 }
 /* 取材身份复用角色库标签；上下文参考与楼层数按动作基线。 */
 #story-director-modal .sd-context-reference-row :is(.checkbox_label, .sd-depth-field) {

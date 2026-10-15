@@ -385,12 +385,30 @@ test('relation output keeps a deliberate two-person and three-person mix', () =>
   assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'relation_undercurrents' && /双人关系.*三人关系/.test(issue.reason)));
 });
 
-test('character and NPC emotional cues stay concise when supplied', () => {
+test('NPC emotional cues stay concise while retired CHAR emotion never rejects an otherwise valid affair', () => {
   const plan = complete(OFF), options = { ...OFF, characterNames: ['阿岚'] };
-  plan.character_dynamics[0] = { name: '阿岚', content: '阿岚把旧账暂存在抽屉。', emotional_state: '克制而警觉' };
+  plan.character_dynamics[0] = { name: '阿岚', content: '阿岚把旧账暂存在抽屉。', emotional_state: '旧版的一段长情绪'.repeat(10) };
   assert.deepEqual(validateCreativePlan(plan, options), []);
   plan.npc_updates[0].emotional_state = '这是一整段会把人物当前情绪、缘由、关系判断和后续行动全部解释清楚的冗长分析句。';
   assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'npc_updates' && issue.reason.includes('4–32')));
+});
+
+test('fresh CHAR emotion is dropped without touching prose, NPC emotion, legacy originals or stored history', () => {
+  const original = normalizeCreativeSections(complete(OFF));
+  original.character_dynamics[0].emotional_state = '旧版情绪元数据';
+  original.npc_updates[0].emotional_state = '耐心而专注';
+  const snapshot = structuredClone(original);
+  assert.deepEqual(normalizeCreativeSections(original), snapshot, 'ordinary history normalization remains lossless');
+  const admitted = pruneInvalidCreativeItems(original, OFF);
+  assert.deepEqual(admitted.removed, [], 'retired metadata must not discard a substantive CHAR card');
+  assert.equal(Object.hasOwn(admitted.plan.character_dynamics[0], 'emotional_state'), false);
+  assert.equal(admitted.plan.character_dynamics[0].content, snapshot.character_dynamics[0].content);
+  assert.equal(admitted.plan.npc_updates[0].emotional_state, '耐心而专注');
+  const continuity = projectCreativeContinuity(original);
+  assert.equal(Object.hasOwn(continuity.character_dynamics[0], 'emotional_state'), false);
+  assert.equal(continuity.npc_updates[0].emotional_state, '耐心而专注');
+  assert.deepEqual(original, snapshot, 'reading, admission and projection never mutate stored originals');
+  for (const malformed of [false, 7]) assert.doesNotThrow(() => pruneInvalidCreativeItems({ character_dynamics: malformed }, OFF));
 });
 
 test('forum bounds and complete replies are enforced, while legacy theater remains readable but not valid new output', () => {

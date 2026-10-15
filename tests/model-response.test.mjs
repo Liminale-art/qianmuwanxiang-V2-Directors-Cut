@@ -96,3 +96,21 @@ test('HTTP error bodies and explicit reasoning detail fields retain diagnostic c
   const result=await readModelResponse(response(JSON.stringify(value),{mime:'application/json'}));
   assert.equal(result.text,'reply');assert.equal(result.reasoning,'  thought\n');
 });
+
+test('HTTP 200 JSON and SSE remote errors retain the complete received payload without replacing partial story text', async () => {
+  const data = { error: { message: 'provider detail '.repeat(80), type: 'invalid_request_error', code: 'model_not_found' } }, raw = JSON.stringify(data);
+  for (const stream of [false, true]) {
+    const content = stream ? frame(chunk('kept partial')) + `data: ${raw}\n\n` : raw;
+    const incoming = response(content, { mime: stream ? 'text/event-stream' : 'application/json' });
+    await assert.rejects(readModelResponse(incoming, { stream }), error => {
+      assert.equal(error.code, 'MODEL_REMOTE_ERROR');
+      assert.equal(error.modelResponse.rawTransport, raw);
+      assert.equal(error.modelResponse.text, stream ? 'kept partial' : '');
+      assert.equal(error.modelResponse.interrupted, true);
+      assert.equal(error.modelResponse.complete, false);
+      assert.ok(error.modelResponse.rawTransport.length > error.message.length);
+      return true;
+    });
+    assert.equal(incoming.body.locked, false);
+  }
+});

@@ -86,7 +86,8 @@ export async function readModelResponse(response, { stream = false, signal, guar
     if (payload.trim() === '[DONE]') { accumulator.done(); return; }
     let data;
     try { data = JSON.parse(payload); } catch (_) { failedPayload = payload; throw failure('MODEL_PROTOCOL_ERROR', '模型返回了损坏或截断的流式事件，已保留此前原文'); }
-    accumulator.consume(data);
+    try { accumulator.consume(data); }
+    catch (error) { failedPayload = payload; throw error; }
   }
   function line(value) {
     if (!value) { dispatch(); return; }
@@ -131,7 +132,7 @@ export async function readModelResponse(response, { stream = false, signal, guar
     return accumulator.finish({ streaming: sse });
   } catch (error) {
     accumulator.interrupt(); error.modelResponse = accumulator.snapshot();
-    if (['MODEL_PROTOCOL_ERROR', 'MODEL_HTTP_ERROR'].includes(error.code) || error instanceof TypeError) {
+    if (['MODEL_PROTOCOL_ERROR', 'MODEL_HTTP_ERROR', 'MODEL_REMOTE_ERROR'].includes(error.code) || error instanceof TypeError) {
       error.modelResponse.rawTransport = sse ? failedPayload || [event.join('\n'), buffer].filter(Boolean).join('\n') : json;
     }
     throw error;

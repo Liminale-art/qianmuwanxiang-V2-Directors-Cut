@@ -42,9 +42,23 @@ test('all closed creative fields project into ordinary sections without adopting
 
 test('failure and interruption reasons belong to the failure panel, never below returned text', () => {
   const log = { status: 'error', error: '回复截断', completion: { finishReason: 'length', interrupted: true } };
-  assert.equal(modelFailureText(log), '已中断。');
+  assert.equal(modelFailureText(log), '回复截断\n结束原因：length');
   assert.doesNotMatch(renderModelDiagnostics(log), /结束原因|未完整完成|渠道未提供/);
   assert.match(modelFailureText({ status: 'cancelled' }), /已中断/);
+});
+
+test('interruption preserves the original cause, finish reason and quality facts only in the failure panel', () => {
+  const log = { status: 'error', error: '本次推演未完整完成。', errorCause: '模型达到输出长度上限', errorCode: 'MODEL_OUTPUT_INCOMPLETE',
+    response: '{"quests":[]}', quality: { issues: [{ field: 'quests', missing: 5 }] },
+    completion: { interrupted: true, finishReason: 'length', rawTransport: '<unparsed>', compatibility: '兼容渠道信息' } };
+  const before = JSON.stringify(log), text = modelFailureText(log);
+  for (const detail of ['原始错误：模型达到输出长度上限', '错误代码：MODEL_OUTPUT_INCOMPLETE', '预演缺 5 条', '结束原因：length']) assert.ok(text.includes(detail), detail);
+  const failure = renderModelDiagnostics(log, { failure: true }), bottom = renderModelDiagnostics(log);
+  assert.match(failure, /原始服务响应[\s\S]*&lt;unparsed&gt;/);
+  assert.match(failure, /兼容渠道信息/);
+  assert.doesNotMatch(bottom, /unparsed|兼容渠道信息|结束原因|缺失内容/);
+  assert.equal(JSON.stringify(log), before);
+  assert.equal(renderModelDiagnostics({ status: 'success' }, { failure: true }), '');
 });
 
 test('old repair responses stay readable as historical evidence without promising current automatic calls', () => {

@@ -1,8 +1,8 @@
 import {captureProseAssistantChatSource} from './qianmu-prose-assistant-source.js';
 import {createProseAssistantSession,PROSE_ASSISTANT_SESSION_LIMITS as sessionLimits} from './qianmu-prose-assistant-session.js';
-import {createProseAssistantRequest} from './qianmu-prose-assistant-request.js';
+import {createProseAssistantRequest} from './qianmu-prose-assistant-request.js?v=1.59.452';
 import {compileProseAssistantMessages} from './qianmu-prose-assistant-messages.js';
-import {saveProseAssistantConnection,createProseAssistantAutosave} from './qianmu-prose-assistant-preferences.js';
+import {saveProseAssistantConnection,createProseAssistantAutosave} from './qianmu-prose-assistant-preferences.js?v=1.59.452';
 import {openProseAssistantHistory} from './qianmu-prose-assistant-history-runtime.js';
 import {bindProseAssistantWindow} from './qianmu-prose-assistant-window.js';
 import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.419';

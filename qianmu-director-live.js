@@ -160,17 +160,17 @@ export function renderDirectorLive(log, { fields = Object.keys(FIELDS), tasksOnl
 
 export function modelFailureText(log) {
   const info = log.completion;
-  const failed = ['error', 'cancelled'].includes(log.status) || info?.interrupted;
+  const failed = ['error', 'cancelled'].includes(log.status) || info?.interrupted || Boolean(log.error);
   if (!failed) return log.error || '';
-  // An explicit interruption is a single, concise state. Do not append the
-  // quality shortfall accumulated from the partial stream to it.
-  if (log.status === 'cancelled' || info?.interrupted) return '已中断。';
   const reason = info?.finishReason;
   const finish = reason && !['stop', 'end_turn', 'completed'].includes(reason)
-    ? `结束原因：${reason}` : info?.interrupted ? '回复未完整完成。' : '';
+    ? `结束原因：${reason}` : info?.interrupted && log.status !== 'cancelled' ? '回复未完整完成。' : '';
   const quality = log.response && directorQualitySummary(log);
   const missing = quality ? `缺失内容：${quality}` : '';
-  return [...new Set([log.error || (log.status === 'cancelled' ? '本次推演已停止。' : '本次推演未完成。'), missing, finish].filter(Boolean))].join('\n');
+  const original = log.errorCause && log.errorCause !== log.error && log.errorCause !== 'USER_CANCELLED'
+    ? `原始错误：${log.errorCause}` : '';
+  const code = log.errorCode ? `错误代码：${log.errorCode}` : '';
+  return [...new Set([log.error || (log.status === 'cancelled' ? '已中断。' : '本次推演未完成。'), original, code, missing, finish].filter(Boolean))].join('\n');
 }
 
 export function parseDirectorFinal(raw) {
@@ -189,15 +189,17 @@ export function parseDirectorFinal(raw) {
   }
 }
 
-export function renderModelDiagnostics(log) {
+export function renderModelDiagnostics(log, { failure = false } = {}) {
   const info = log.completion;
-  // Failure facts belong in the single failure panel above the raw response.
-  // Keep this area for transport provenance and optional reasoning only; do
-  // not append memory diagnostics or quality notices beneath the response.
-  return `${info?.compatibility ? `<p class="sd-muted">${escape(info.compatibility)}</p>` : ''}
-    ${info?.rawTransport ? `<details><summary>未解析的原始响应片段</summary><pre class="sd-term">${escape(info.rawTransport)}</pre></details>` : ''}
+  const failed = ['error', 'cancelled'].includes(log.status) || info?.interrupted || Boolean(log.error);
+  // Failed transport facts are rendered only inside the existing failure box.
+  // The bottom area retains optional reasoning and historical reply evidence.
+  const transport = `${info?.compatibility ? `<p class="sd-muted">${escape(info.compatibility)}</p>` : ''}
+    ${info?.rawTransport ? `<details class="sd-log-raw-error"><summary>${failed ? '原始服务响应' : '未解析的原始响应片段'}</summary><pre class="sd-term${failed ? ' sd-term-error' : ''}">${escape(info.rawTransport)}</pre></details>` : ''}`;
+  if (failure) return failed ? `${transport}${log.repairError ? `<div class="sd-log-cap">历史补写错误</div><pre class="sd-term sd-term-error">${escape(log.repairError)}</pre>` : ''}` : '';
+  return `${failed ? '' : transport}
     <details class="sd-log-reasoning" ${log.reasoning ? '' : 'hidden'}><summary>渠道返回的推理内容</summary><pre class="sd-term sd-term-reasoning">${escape(log.reasoning || '')}</pre></details>
-    ${log.repairResponse || log.repairError ? `<div class="sd-log-cap">历史补写记录 · 独立模型回复</div><pre class="sd-term">${escape(log.repairResponse || log.repairError)}</pre>` : ''}`;
+    ${log.repairResponse || (!failed && log.repairError) ? `<div class="sd-log-cap">历史补写记录 · 独立模型回复</div><pre class="sd-term">${escape(log.repairResponse || log.repairError)}</pre>` : ''}`;
 }
 
 export function paintModelLog(root, log, renderEntry) {

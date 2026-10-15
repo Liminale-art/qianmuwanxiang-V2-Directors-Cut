@@ -181,14 +181,15 @@ test('NPC editorial roster numbers each identity without changing paragraph ids 
   }
 });
 
-test('character emotion is text before its title while optional roles keep their existing chip', () => {
+test('character emotion is not displayed even in historical results, without deleting the stored field', () => {
   const { c } = fixture(null);
   const item = { name: '秦铎', title: '<核对记录>', emotional_state: '冷静 & 专注', role: '刑警', content: '逐行核对。' };
   const before = JSON.stringify(item);
   const html = c.renderItemCard(item, 'character', 0);
-  assert.match(html, /<span class="sd-item-emotion" title="情绪">冷静 &amp; 专注<\/span><h4>&lt;核对记录&gt;<\/h4>/);
+  assert.match(html, /<h4>&lt;核对记录&gt;<\/h4>/);
   assert.match(html, /<span class="sd-badge"><b>定位<\/b>刑警<\/span>/);
-  assert.doesNotMatch(html, /sd-npc-index|sd-npc-emotion|<b>情绪/);
+  assert.doesNotMatch(html, /sd-npc-index|sd-item-emotion|sd-npc-emotion|冷静|专注|<b>情绪/);
+  assert.doesNotMatch(c.renderItemCard(item, 'character', 0, true), /sd-item-emotion|冷静|专注/);
   assert.equal(JSON.stringify(item), before);
 });
 
@@ -324,10 +325,17 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
     'preview item summary content is vertically centered');
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-fold > summary\s*\{[^}]*min-height:\s*58px[^}]*padding-block:\s*0/,
     'preview entry folds keep a compact centered row');
-  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-card\.sd-item-npc\s*\{[^}]*border-top:\s*1px solid var\(--sd-border\)[^}]*border-radius:\s*0 !important[^}]*background:\s*transparent !important/,
-    'NPC entries use scoped hairline dividers without nested rounded cards');
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-card\.sd-item-npc\s*\{[^}]*border:\s*0 !important[^}]*border-radius:\s*0 !important[^}]*background:\s*transparent !important/,
+    'NPC entries have no outside frame or nested rounded card');
+  assert.match(styles, /\.sd-item-card\.sd-item-npc \+ \.sd-item-card\.sd-item-npc\s*\{[^}]*border-top:\s*1px solid var\(--sd-border\)/,
+    'hairline dividers occur only between adjacent entries');
+  assert.doesNotMatch(styles, /\.sd-item-card\.sd-item-npc:last-child\s*\{[^}]*border-bottom/);
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-npc \.sd-npc-index\s*\{[^}]*font-family:\s*Impact, 'Arial Narrow', sans-serif !important[^}]*font-size:\s*clamp\(44px, 10vw, 60px\)[^}]*font-variant-numeric:\s*tabular-nums/,
     'the decorative sequence uses consistent editorial number metrics');
+  assert.match(styles, /\.sd-item-npc \.sd-npc-index\s*\{[^}]*linear-gradient\(to bottom,[^}]*var\(--sd-accent\) 78%, transparent[^}]*var\(--sd-accent\) 18%, transparent[^}]*background-clip:\s*text/,
+    'sequence numerals use the live accent with a translucent top-to-bottom fade');
+  assert.match(styles, /\.sd-npc-role\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--sd-accent\) 46%, #000\)[^}]*color:\s*#fff/,
+    'role tags use a deep accent fill and white text');
   assert.match(styles, /\.sd-item-npc \.sd-item-summary-main\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\)/,
     'NPC identities keep a narrow sequence rail and flexible text column');
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-npc-heading\s*\{[^}]*flex-direction:\s*column[^}]*min-width:\s*0/,
@@ -338,8 +346,6 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
     'the breathing entry uses the live accent token');
   assert.doesNotMatch(styles, /--sd-world-glow-(?:left|right):/,
     'legacy hardcoded left/right glow palettes cannot override live accent changes');
-  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-character \.sd-item-emotion\s*\{[^}]*border:\s*0 !important[^}]*background:\s*none !important[^}]*box-shadow:\s*none !important/,
-    'character emotion remains text-only above the title across theme overrides');
   assert.match(styles, /#story-director-modal \.sd-relus-drift\s*\{[^}]*display:\s*block/,
     'relationship drift uses inline prose flow');
   assert.match(styles, /#story-director-modal \.sd-relus-drift > i\s*\{[^}]*display:\s*inline-block/,

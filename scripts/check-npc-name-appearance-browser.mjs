@@ -10,9 +10,10 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const functions = ['renderPlanSectionFold', 'renderRelationUndercurrentsCard', 'renderItemList', 'renderItemCard', 'renderItemChips', 'getContextItemId',
   'renderDirectorWorldEntryLink', 'bindDirectorWorldEntryLinks', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph',
-  'updateDirectorSelectionOrder', 'updateInjectDock', 'collectDirectorSelectedText', 'bindDirectorSelectionEvents'].map(storyboardFunctionSource).join('\n');
+  'updateDirectorSelectionOrder', 'updateInjectDock', 'collectDirectorSelectedText', 'bindDirectorSelectionEvents', 'renderGenerateRow',
+  'renderPlugTab', 'renderQuickWheelSettings', 'bindWidgetSettings', 'bindDirectorReadingEvents'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
-const qa = new URL('../dist/local-qa/npc-editorial-role-first/', import.meta.url);
+const qa = new URL('../dist/local-qa/npc-accent-selection/', import.meta.url);
 await mkdir(qa, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext({ serviceWorkers: 'block' }), page = await context.newPage();
@@ -31,7 +32,7 @@ await context.route('**/*', async route => {
 try {
   await page.goto('https://qianmu.test/');
   await page.evaluate(async source => {
-    const [{ createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }] = await Promise.all([import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js')]);
+    const [{ createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }, { QIANMU_HIVE_COMMANDS }] = await Promise.all([import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'), import('/qianmu-hive-commands.js')]);
     Object.assign(window, {
       MODAL_ID: 'story-director-modal', settings: { theme: 'dark' }, injectSelection: new Map(), mediaCalls: [], fixtureMediaRecords: [{ id: 'fixture-image' }],
       directorWorldEntryLinks: new Map([['npc_updates:1', { packetId: 'fixture-packet', signature: 'fixture-signature', records: [{ id: 'fixture-image' }] }]]),
@@ -40,6 +41,12 @@ try {
       storyboardOpenLightbox: (records, id) => mediaCalls.push({ action: 'lightbox', id, count: records.length }),
       storyboardGenerateProductionPacket: (_, id) => mediaCalls.push({ action: 'generation-handoff', id }),
       toast: message => mediaCalls.push({ action: 'toast', message }),
+      busy: false, LOG_LIMIT: 5, FLOAT_SIZE_MIN: 32, FLOAT_SIZE_MAX: 120, feedbackOpenScope: null,
+      QUICK_COMMANDS: QIANMU_HIVE_COMMANDS, QUICK_COMMAND_IDS: QIANMU_HIVE_COMMANDS.map(item => item.id), fixtureSaves: 0,
+      uniqueClean: values => [...new Set(values.filter(Boolean))], getFloatSize: () => 48,
+      normalizeQuickWheelSettings: () => {}, renderLogEntry: () => '', renderStorageManagementCard: () => '',
+      bindCreativeSocialEvents: () => {}, refreshWidgetRuntime: () => {}, saveSettings: () => fixtureSaves++,
+      closeQuickWheel: () => {}, closeNotesPanel: () => {}, renderFloatButton: () => {}, renderFloatingNotes: () => {},
       directorProductionPacketState: {
         packets: [{ packetId: 'fixture-packet', sourceRef: { worldSource: 'fixture-source' } }],
         sourceRuntime: { worldSourceKey: source => source, indexWorldMedia: () => new Map([['fixture-source', fixtureMediaRecords]]) },
@@ -61,6 +68,19 @@ try {
     (0, eval)(source);
     window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
     appearance.mount(document.querySelector('#story-director-modal'));
+    window.applyAccent = async accent => {
+      settings.appearance = updateAppearancePreferences(settings, { accent, source: 'manual' });
+      await appearance.sync();
+    };
+    window.colorBytes = color => {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+      const context = canvas.getContext('2d'); context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data];
+    };
+    window.colorContrast = (front, back) => {
+      const luminance = color => colorBytes(color).slice(0, 3).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+      const a = luminance(front), b = luminance(back); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+    };
     window.renderFixture = async (family, mode) => {
       injectSelection.clear(); mediaCalls.length = 0; fixtureMediaRecords = [{ id: 'fixture-image' }];
       if (family === 'classic') { settings.theme = mode; document.querySelector('#story-director-modal').className = 'open sd-theme-' + mode; }
@@ -69,6 +89,13 @@ try {
       root.innerHTML = renderPlanSectionFold('此间一人', plan.character_dynamics, 'character', 'castfold-character') + renderPlanSectionFold('其他人物动向', plan.npc_updates, 'npc', 'castfold-npc') + renderRelationUndercurrentsCard(plan);
       applyQianmuIcons(root); bindDirectorSelectionEvents(root); bindDirectorWorldEntryLinks(root);
     };
+    window.renderControlsFixture = () => {
+      const root = document.querySelector('.sd-body'), template = document.createElement('template');
+      template.innerHTML = renderPlugTab();
+      root.innerHTML = renderGenerateRow() + template.content.querySelector('.sd-widget-card').outerHTML;
+      applyQianmuIcons(root); bindDirectorReadingEvents(root); bindWidgetSettings(root);
+    };
+    window.renderModal = () => renderControlsFixture();
     window.isUnboxed = node => {
       const style = getComputedStyle(node);
       return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none' && style.boxShadow === 'none'
@@ -87,17 +114,17 @@ try {
     await page.setViewportSize({ width, height: 1000 });
     await page.evaluate(async ({ family, mode }) => renderFixture(family, mode), { family, mode });
     ok(label + ' character name appears only in its section-title suffix', await page.locator('[data-acc="castfold-character"] > summary').evaluate(node => node.textContent === '此间一人 · 秦铎' && !node.querySelector('.sd-character-names') && node.children.length === 1));
-    ok(label + ' character emotion is unboxed above its item title', await page.locator('.sd-item-character').evaluate(node => {
-      const emotion = node.querySelector('.sd-item-emotion'), title = node.querySelector('h4');
-      return emotion.textContent === plan.character_dynamics[0].emotional_state && isUnboxed(emotion) && emotion.nextElementSibling === title && emotion.getBoundingClientRect().bottom <= title.getBoundingClientRect().top + 1;
-    }));
+    ok(label + ' historical character emotion is not displayed or removed from stored data', await page.locator('.sd-item-character').evaluate(node => !node.querySelector('.sd-item-emotion') && !node.textContent.includes(plan.character_dynamics[0].emotional_state) && plan.character_dynamics[0].emotional_state === '沉静而专注'));
     ok(label + ' numbered roster preserves legacy title-plus-name identities', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.length === 4 && nodes.every((node, index) => node.querySelector('h4').textContent === plan.npc_updates[index].name
       && node.querySelector('.sd-npc-index').textContent === String(index + 1).padStart(2, '0') && node.querySelector('.sd-npc-index').getAttribute('aria-hidden') === 'true'
       && !node.querySelector('.sd-badge,.sd-mini-chip-row') && !node.classList.contains('sd-npc-name-left'))));
-    ok(label + ' NPC rows use thin dividers with no rounded shell', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.every(node => {
-      const style = getComputedStyle(node); return style.borderTopWidth === '1px' && style.borderTopStyle === 'solid' && style.borderTopLeftRadius === '0px' && style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.boxShadow === 'none';
+    ok(label + ' NPC dividers occur only between rows with no first/last frame', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.every((node, index) => {
+      const style = getComputedStyle(node); return style.borderTopWidth === (index ? '1px' : '0px') && style.borderBottomWidth === '0px' && style.borderTopLeftRadius === '0px' && style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.boxShadow === 'none';
     })));
     ok(label + ' sequence display face survives theme-wide font inheritance', await page.locator('.sd-npc-index').evaluateAll(nodes => nodes.every(node => /^Impact,/.test(getComputedStyle(node).fontFamily))));
+    ok(label + ' sequence numerals have a vertical translucent accent fade', await page.locator('.sd-npc-index').evaluateAll(nodes => nodes.every(node => {
+      const style = getComputedStyle(node); return style.backgroundImage.startsWith('linear-gradient(') && /\/ 0\.78\)/.test(style.backgroundImage) && /\/ 0\.18\)/.test(style.backgroundImage) && style.backgroundClip === 'text' && style.webkitTextFillColor === 'rgba(0, 0, 0, 0)';
+    })));
     const geometry = await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.map(node => {
       const number = node.querySelector('.sd-npc-index'), heading = node.querySelector('.sd-npc-heading'), emotion = heading.querySelector('.sd-npc-emotion'), name = heading.querySelector('h4'), role = heading.querySelector('.sd-npc-role'), nameRow = heading.querySelector('.sd-npc-name-row');
       const numberRect = number.getBoundingClientRect(), headingRect = heading.getBoundingClientRect(), emotionRect = emotion.getBoundingClientRect(), nameRect = nameRow.getBoundingClientRect(), roleRect = role.getBoundingClientRect();
@@ -108,7 +135,7 @@ try {
     ok(label + ' left sequence and right role/name/mood wrap without overlap: ' + JSON.stringify(geometry), geometry.every(item => item.ordered && item.separate && !item.overflow && item.numberSize >= 44));
     ok(label + ' NPC role is a compact contrast tag and emotion is unboxed', await page.locator('.sd-npc-heading').evaluateAll(nodes => nodes.every(node => {
       const role = getComputedStyle(node.querySelector('.sd-npc-role'));
-      return role.backgroundColor !== 'rgba(0, 0, 0, 0)' && role.color !== role.backgroundColor && isUnboxed(node.querySelector('.sd-npc-emotion'));
+      return colorBytes(role.backgroundColor)[3] === 255 && colorBytes(role.color).join(',') === '255,255,255,255' && colorContrast(role.color, role.backgroundColor) >= 4.5 && isUnboxed(node.querySelector('.sd-npc-emotion'));
     })));
     ok(label + ' short names stay on one line', await page.locator('.sd-item-npc h4').evaluateAll(nodes => nodes.every(node => node.clientHeight <= parseFloat(getComputedStyle(node).lineHeight) + 1)));
     ok(label + ' metadata and page stay horizontally bounded', await page.locator('.sd-body,.sd-npc-emotion,.sd-npc-role').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1)));
@@ -156,6 +183,16 @@ try {
       });
       await page.screenshot({ animations: 'disabled', clip, path: fileURLToPath(new URL(`roster-${mode}-${width}.png`, qa)) });
     }
+    if (family !== 'classic' && width === 393) {
+      let prior = await page.locator('.sd-item-npc').first().evaluate(node => ({ number: getComputedStyle(node.querySelector('.sd-npc-index')).backgroundImage, role: getComputedStyle(node.querySelector('.sd-npc-role')).backgroundColor }));
+      for (const accent of ['#b34168', '#27856a']) {
+        await page.evaluate(accent => applyAccent(accent), accent);
+        const next = await page.locator('.sd-item-npc').first().evaluate(node => ({ number: getComputedStyle(node.querySelector('.sd-npc-index')).backgroundImage, role: getComputedStyle(node.querySelector('.sd-npc-role')).backgroundColor }));
+        ok(label + ` live accent ${accent} recolors both numerals and role without rerender`, next.number !== prior.number && next.role !== prior.role);
+        prior = next;
+      }
+      await page.evaluate(() => applyAccent('#5c79d3'));
+    }
 
     await page.evaluate(async ({ family, mode }) => {
       window.savedNpcFixture = plan.npc_updates; window.savedCharacterFixture = plan.character_dynamics;
@@ -189,8 +226,8 @@ try {
     ok(label + ' missing character emotion leaves no empty heading row', await page.locator('.sd-item-character').nth(1).evaluate(node => {
       const main = node.querySelector('.sd-item-summary-main'); return !main.querySelector('.sd-item-emotion,.sd-mini-chip-row') && main.children.length === 1 && Math.abs(main.getBoundingClientRect().top - main.querySelector('h4').getBoundingClientRect().top) < 1;
     }));
-    ok(label + ' long character title and unboxed emotion remain bounded', await page.locator('[data-acc="castfold-character"]').evaluate(node => {
-      const summary = node.querySelector(':scope > summary'), emotion = node.querySelector('.sd-item-emotion'); return summary.textContent === '此间一人 · ' + plan.character_dynamics[0].name && summary.scrollWidth <= summary.clientWidth + 1 && emotion.scrollWidth <= emotion.clientWidth + 1 && isUnboxed(emotion);
+    ok(label + ' long character title stays bounded while historical emotion stays absent', await page.locator('[data-acc="castfold-character"]').evaluate(node => {
+      const summary = node.querySelector(':scope > summary'); return summary.textContent === '此间一人 · ' + plan.character_dynamics[0].name && summary.scrollWidth <= summary.clientWidth + 1 && !node.querySelector('.sd-item-emotion') && !node.textContent.includes(plan.character_dynamics[0].emotional_state);
     }));
     ok(label + ' read-only entries retain content but no selection/media actions', await page.evaluate(() => {
       const wrapper = document.createElement('div'); wrapper.innerHTML = renderItemCard(plan.npc_updates[0], 'npc', 0, true);
@@ -202,14 +239,63 @@ try {
     await longCharacter.locator('[data-director-paragraph]').nth(1).focus(); await page.keyboard.press('Space');
     const selectedGeometry = await longCharacter.evaluate(node => {
       const badge = node.querySelector('.sd-selection-order-card'), rect = badge.getBoundingClientRect();
-      const range = document.createRange(); range.selectNodeContents(node.querySelector('.sd-item-emotion'));
+      const range = document.createRange(); range.selectNodeContents(node.querySelector('h4'));
       const overlap = [...range.getClientRects()].some(text => text.left < rect.right && text.right > rect.left && text.top < rect.bottom && text.bottom > rect.top);
-      return { text: badge.textContent, overlap, badge: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, emotion: [...range.getClientRects()].map(r => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })) };
+      return { text: badge.textContent, overlap, badge: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, title: [...range.getClientRects()].map(r => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })) };
     });
-    ok(label + ' long emotion does not overlap selected passage numbers: ' + JSON.stringify(selectedGeometry), selectedGeometry.text === '1、2' && !selectedGeometry.overlap);
+    ok(label + ' title does not overlap selected passage numbers: ' + JSON.stringify(selectedGeometry), selectedGeometry.text === '1、2' && !selectedGeometry.overlap);
     if (family === 'glass' && width === 320) await page.locator('.sd-body').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-long-fields-${width}.png`, qa)) });
     await page.evaluate(() => { plan.npc_updates = savedNpcFixture; plan.character_dynamics = savedCharacterFixture; directorWorldEntryLinks.delete('npc_updates:0'); });
   }
+  for (const family of ['editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 393, 1100]) {
+    const label = `selected/${family}/${mode}/${width}`;
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(async ({ family, mode }) => {
+      await renderFixture(family, mode);
+      Object.assign(settings, { newcomerMode: false, floatingButton: false, quickWheelEnabled: false,
+        quickWheelCustomExpanded: true, quickWheelCustomOrder: QUICK_COMMAND_IDS.slice(0, 3), quickWheelCustomEnabled: [QUICK_COMMAND_IDS[0]], logHistory: [] });
+      fixtureSaves = 0; renderControlsFixture();
+    }, { family, mode });
+    const newcomer = page.locator('.sd-newcomer-toggle');
+    const offFill = await newcomer.evaluate(node => getComputedStyle(node).backgroundColor);
+    await newcomer.click();
+    const selectedPaint = async locator => locator.evaluate(async node => {
+      getComputedStyle(node).backgroundColor;
+      await Promise.all(node.getAnimations().filter(animation => animation.effect.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
+      const style = getComputedStyle(node), rgba = colorBytes(style.backgroundColor);
+      return { pressed: node.getAttribute('aria-pressed'), active: node.classList.contains('active'), opaque: rgba[3] === 255,
+        primary: rgba.join(',') === colorBytes(style.getPropertyValue('--sd-primary')).join(','), contrast: colorContrast(style.color, style.backgroundColor), fill: style.backgroundColor };
+    });
+    const onNewcomer = await selectedPaint(newcomer);
+    ok(label + ' real newcomer click yields an opaque contrast-paired selected state: ' + JSON.stringify(onNewcomer), onNewcomer.pressed === 'true' && onNewcomer.active && onNewcomer.opaque && onNewcomer.primary && onNewcomer.contrast >= 4.5 && onNewcomer.fill !== offFill);
+    await newcomer.focus(); await page.keyboard.press('Space');
+    ok(label + ' newcomer keyboard toggle restores its unselected state', await newcomer.evaluate(node => node.getAttribute('aria-pressed') === 'false' && !node.classList.contains('active')));
+    await newcomer.click();
+    for (const id of ['floating', 'wheel']) {
+      const toggle = page.locator(`[data-widget-toggle="${id}"]`), before = await toggle.evaluate(node => getComputedStyle(node).backgroundColor);
+      await toggle.click();
+      const paint = await selectedPaint(page.locator(`[data-widget-toggle="${id}"]`));
+      ok(label + ` actual ${id} enable action rerenders as opaque selected: ` + JSON.stringify(paint), paint.pressed === 'true' && paint.active && paint.opaque && paint.primary && paint.contrast >= 4.5 && paint.fill !== before);
+    }
+    const enabledChoice = page.locator('.sd-wheel-command-toggle.active').first(), offChoice = page.locator('.sd-wheel-command-toggle:not(.active)').first();
+    const initialChoicePaint = await selectedPaint(enabledChoice), offChoiceFill = await offChoice.evaluate(node => getComputedStyle(node).backgroundColor);
+    ok(label + ' hive selected entries are visibly filled rather than translucent', initialChoicePaint.opaque && initialChoicePaint.primary && initialChoicePaint.contrast >= 4.5 && initialChoicePaint.fill !== offChoiceFill);
+    const choiceId = await offChoice.getAttribute('data-command');
+    await offChoice.focus(); await page.keyboard.press('Enter');
+    const selectedChoice = page.locator(`.sd-wheel-command-toggle[data-command="${choiceId}"]`), newChoicePaint = await selectedPaint(selectedChoice);
+    ok(label + ' actual hive keyboard action updates selected state and fill', newChoicePaint.pressed === 'true' && newChoicePaint.active && newChoicePaint.primary && newChoicePaint.opaque);
+    await selectedChoice.click();
+    ok(label + ' hive deselection returns to the off appearance', await selectedChoice.evaluate(async (node, before) => {
+      getComputedStyle(node).backgroundColor;
+      await Promise.all(node.getAnimations().filter(animation => animation.effect.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
+      return node.getAttribute('aria-pressed') === 'false' && !node.classList.contains('active') && getComputedStyle(node).backgroundColor === before;
+    }, offChoiceFill));
+    ok(label + ' action controls stay inside narrow layouts', await page.locator('.sd-button-row,.sd-widget-toggle-row,.sd-wheel-custom-list,button').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1)));
+    if (width === 393) {
+      await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+      await page.locator('.sd-body').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`selected-${family}-${mode}-393.png`, qa)) });
+    }
+  }
   assert.deepEqual(errors, []); assert.equal(external, 0, JSON.stringify(blocked));
-  console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'actual numbered NPC/character rendering and disclosure/selection/media events; 3 themes x 2 modes x 320/393/1100; long/empty metadata; media handoffs only, no host state, writes or generation' }));
+  console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'actual NPC/character rendering, disclosure/selection/media handoffs; 3 themes x 2 modes x 320/393/1100; live accent and actual newcomer/widget/hive toggles; no host state, writes or generation' }));
 } finally { clearTimeout(deadline); await context.close(); await browser.close(); }

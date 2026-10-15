@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewPlan, directorQualitySummary } from '../qianmu-director-live.js';
+import { parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewPlan, directorQualitySummary, modelFailureText } from '../qianmu-director-live.js';
+import { callExternalModel } from '../qianmu-model-external.js';
+import { callHostChatModel } from '../qianmu-model-host.js';
 import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, CREATIVE_GUIDES, CREATIVE_DETAIL_COUNTS, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
 import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from '../qianmu-creative-contract.js';
 import { selectCreativeOptions, upgradeCreativeDefaults, upgradeCreativeBlueprint, recentInterludeHint } from '../qianmu-creative-runtime.js';
@@ -206,23 +208,88 @@ test('actual buildPrompt binds sources, custom blueprint and one fixed interlude
 });
 
 test('same-floor rerolls discard the previous candidate branch and synthetic director injection', async () => {
-  const e = fixture({ settings: BASIC });
+  const e = fixture({ settings: { ...BASIC, geopoliticsEnabled: true } });
   e.store.plan = fullPlan(); e.store.lastPlanIdx = e.context.chat.length - 1;
+  e.store.factions = [{ id: 'old-faction', name: 'OLD_CANDIDATE_CRAFT_GUILD', standing: 'OLD_CANDIDATE_VICTIM_OCCUPATION', clues: ['OLD_CANDIDATE_PIGMENT_CLUE'] }];
+  e.store.factionRelations = [{ a: 'old-faction', b: 'old-other', note: 'OLD_CANDIDATE_PERSONAL_CONNECTION' }];
+  e.store.worldEvents = [{ id: 'old-event', title: 'OLD_CANDIDATE_CASE', essence: 'OLD_CANDIDATE_MOTIVE', stage: '蔓延' }];
+  e.store.history = [{ plan: { npc_updates: [{ name: 'OLD_HISTORY_NPC' }] } }];
+  e.settings.logHistory = [{ status: 'error', response: 'OLD_FAILED_NPC' }];
   e.context.chat.push({ name: 'System', is_system: true, mes: 'OLD_DIRECTOR_DIGEST', extra: { qianmu_injected: true } });
   // Keep the stored floor aligned with the expanded chat fixture.
   e.store.lastPlanIdx = e.context.chat.length - 1;
+  const preserved = JSON.stringify(e.store);
   const run = {}, prompt = await e.c.buildPrompt(run);
   assert.equal(run.sameFloorReroll, true);
   assert.match(prompt, /同楼层独立重推演/);
   assert.doesNotMatch(prompt, /上次推演参考/);
-  assert.doesNotMatch(prompt, /OLD_DIRECTOR_DIGEST/);
+  assert.doesNotMatch(prompt, /OLD_DIRECTOR_DIGEST|OLD_CANDIDATE_|OLD_HISTORY_NPC|OLD_FAILED_NPC/);
+  assert.equal(JSON.stringify(e.store), preserved, 'request isolation must not clear any history, candidate or world archive');
+  assert.match(prompt, /WORLD_SOURCE|MEMORY_SOURCE|HISTORY_SOURCE/);
 });
 
 test('new-floor prompts retain ordinary continuity for the prior candidate plan', async () => {
-  const e = fixture({ settings: BASIC });
-  e.store.plan = fullPlan(); e.store.lastPlanIdx = 0;
+  const e = fixture({ settings: { ...BASIC, geopoliticsEnabled: true } });
+  e.store.plan = fullPlan(); e.store.planAtLen = 1;
+  // The automatic scheduler advances its counting marker before generation.
+  // That marker is not the floor on which the saved plan was produced.
+  e.store.lastPlanIdx = e.context.chat.length - 1;
+  e.store.factions = [{ id: 'existing', name: 'OLDER_WORLD_CONTINUITY' }];
   const prompt = await e.c.buildPrompt({});
   assert.match(prompt, /上次推演参考/);
+  assert.match(prompt, /OLDER_WORLD_CONTINUITY/);
+  assert.doesNotMatch(prompt, /同楼层独立重推演/);
+});
+
+test('saved plan floor wins over a reset automatic counter and missing floor is not coerced to zero', async () => {
+  const e = fixture({ settings: BASIC });
+  e.store.plan = fullPlan(); e.store.planAtLen = e.context.chat.length; e.store.lastPlanIdx = -1;
+  assert.equal(e.c.directorSameFloorReroll(), true);
+  e.context.chat.length = 1; delete e.store.planAtLen; e.store.lastPlanIdx = null;
+  assert.equal(e.c.directorSameFloorReroll(), false);
+  e.store.lastPlanIdx = 0;
+  assert.equal(e.c.directorSameFloorReroll(), true, 'legacy plans with a real floor still isolate candidates');
+});
+
+test('clearing the visible plan or rewinding prose does not feed its world candidates back into generation', async () => {
+  for (const clearPlan of [false, true]) {
+    const e = fixture({ settings: { ...BASIC, geopoliticsEnabled: true } });
+    e.store.planAtLen = e.context.chat.length; e.store.lastPlanIdx = 0;
+    e.store.factions = [{ name: 'OLD_CANDIDATE_CLEAR_OR_REWIND' }];
+    if (clearPlan) e.store.plan = null;
+    else e.context.chat.pop();
+    const before = JSON.stringify(e.store), run = {};
+    const prompt = await e.c.buildPrompt(run);
+    assert.equal(run.sameFloorReroll, true);
+    assert.doesNotMatch(prompt, /OLD_CANDIDATE_CLEAR_OR_REWIND/);
+    assert.equal(JSON.stringify(e.store), before);
+  }
+  const legacy = fixture({ settings: { ...BASIC, geopoliticsEnabled: true } });
+  legacy.store.plan = null; legacy.store.planAtLen = 0; legacy.store.lastPlanIdx = legacy.context.chat.length - 1;
+  legacy.store.worldEvents = [{ title: 'OLD_CANDIDATE_LEGACY_CLEAR' }];
+  const before = JSON.stringify(legacy.store), run = {};
+  assert.doesNotMatch(await legacy.c.buildPrompt(run), /OLD_CANDIDATE_LEGACY_CLEAR/);
+  assert.equal(run.sameFloorReroll, true);
+  assert.equal(JSON.stringify(legacy.store), before);
+});
+
+test('both transports receive an isolated same-floor request while archived and failed candidates are retained', async () => {
+  for (const providerMode of ['external', 'sillytavern']) {
+    const e = fixture({ settings: { ...BASIC, providerMode, geopoliticsEnabled: true }, responses: [() => { throw new Error('OFFLINE_TRANSPORT_STOP'); }] });
+    e.store.plan = fullPlan(); e.store.planAtLen = e.context.chat.length;
+    e.store.factions = [{ id: 'old', name: 'OLD_CANDIDATE_ROLE' }];
+    e.store.worldEvents = [{ id: 'old', title: 'OLD_CANDIDATE_CAUSE' }];
+    e.store.history = [{ plan: { npc_updates: [{ name: 'OLD_HISTORY_NPC' }] } }];
+    e.settings.logHistory = [{ status: 'error', response: 'OLD_FAILED_NPC' }];
+    const before = JSON.stringify(e.store);
+    await e.c.generateDirectorPlan();
+    assert.equal(e.requests.length, 1);
+    const sent = JSON.stringify(e.requests[0].messages);
+    assert.doesNotMatch(sent, /OLD_CANDIDATE_|OLD_HISTORY_NPC|OLD_FAILED_NPC|PARALLEL_ONLY_CONTENT|INTERLUDE_ONLY_CONTENT/);
+    assert.match(sent, /同楼层独立重推演/);
+    assert.equal(JSON.stringify(e.store), before);
+    assert.equal(e.saves, 0); assert.equal(e.injects, 0);
+  }
 });
 
 test('removing the temporary memory card preserves exact request memory and its diagnostics without a second archive', async () => {
@@ -338,7 +405,7 @@ test('each provider makes one request only; incomplete output keeps original res
     assert.doesNotMatch(JSON.stringify(log.creativeOptions), /SOURCE|personaNames|phoneSourceText|characterNames/);
     assert.ok(log.quality.issues.some(issue => issue.field === 'quests' && issue.missing === 1));
     assert.equal(directorPreviewPlan(log).quests.length, 4);
-    assert.equal(e.toasts.length, 1); assert.match(e.toasts[0][0], /预演.*已收内容/);
+    assert.equal(e.toasts.length, 1); assert.equal(e.toasts[0][0], '推演失败，请查看日志。');
   }
 });
 
@@ -388,7 +455,7 @@ test('expanded interlude quotas report shortfalls without another request, sourc
     assert.ok(validateCreativePlan(candidate, { interludeType: type }).some(issue => issue.field === 'interlude' && issue.reason.includes(type === 'forum' ? '至少有 8 帖' : '至少有 12 条')));
     const preview = directorPreviewPlan(log).interlude;
     assert.equal(type === 'forum' ? preview.posts.length : preview.messages.length, count, 'received short card remains viewable without synthetic entries');
-    assert.match(e.toasts[0][0], /幕间拾趣.*已收内容/);
+    assert.equal(e.toasts[0][0], '推演失败，请查看日志。');
   }
 });
 
@@ -427,7 +494,7 @@ test('cancelled, interrupted and malformed responses preserve received cards wit
   }
 });
 
-test('complete outputs save and inject once per provider, while background gaps still produce one summary', async () => {
+test('complete outputs save and inject once per provider, while background gaps still produce one concise notice', async () => {
   for (const providerMode of ['external', 'sillytavern']) {
     const complete = fixture({ settings: { ...BASIC, providerMode }, responses: [JSON.stringify(fullPlan(BASIC))] });
     await complete.c.generateDirectorPlan();
@@ -438,10 +505,75 @@ test('complete outputs save and inject once per provider, while background gaps 
     const background = fixture({ settings: { ...BASIC, providerMode }, responses: [JSON.stringify(partial)] });
     await background.c.generateDirectorPlan(false, true, { background: true });
     assert.equal(background.requests.length, 1); assert.equal(background.saves, 0); assert.equal(background.injects, 0);
-    assert.equal(background.toasts.length, 1); assert.match(background.toasts[0][0], /预演.*已收内容/);
+    assert.equal(background.toasts.length, 1); assert.equal(background.toasts[0][0], '推演失败，请查看日志。');
   }
   assert.doesNotMatch(qualitySource, /repairDirectorPlanQuality|callExternalApi|callSillyTavernModel|mergeCreativeRepair/);
   assert.doesNotMatch(generationSource, /repairDirectorPlanQuality|repairResponse\s*=|repairError\s*=/);
+});
+
+test('actual external and ST transports keep every failure diagnostic in logs with one concise toast and no automatic retry', async () => {
+  const partial = '{"quests":[' + JSON.stringify(fullPlan(BASIC).quests[0]) + ',{"title":"unfinished';
+  const remote = JSON.stringify({ error: { message: 'requested model unavailable <fixture>', type: 'invalid_request_error', code: 'model_not_found', detail: 'full detail '.repeat(90) } });
+  const frame = value => `data: ${JSON.stringify(value)}\n\n`;
+  for (const providerMode of ['external', 'sillytavern']) for (const outcome of ['success', 'http-error', 'json-error', 'sse-error', 'truncated', 'network', 'broken-envelope', 'invalid-story', 'cancelled']) {
+    const e = fixture({ settings: { ...BASIC, providerMode, streamEnabled: true } });
+    const oldPlan = e.store.plan;
+    e.store.history = [{ id: 'prior-history' }]; e.c.injectSelection.set('prior-selection', 'keep');
+    const fetchFixture = async (_url, options) => {
+      e.requests.push({ options });
+      assert.equal(e.requests.length, 1, `${providerMode}:${outcome}: no retry`);
+      if (outcome === 'network') throw new TypeError('network fixture disconnected');
+      if (outcome === 'http-error') return new Response(remote, { status: 404, headers: { 'content-type': 'application/json' } });
+      if (outcome === 'json-error') return new Response(remote, { headers: { 'content-type': 'application/json' } });
+      if (outcome === 'broken-envelope') return new Response('{"choices":[', { headers: { 'content-type': 'application/json' } });
+      if (outcome === 'sse-error') return new Response(frame({ choices: [{ delta: { content: partial } }] }) + `data: ${remote}\n\n`);
+      if (outcome === 'cancelled') return new Response(frame({ choices: [{ delta: { content: partial } }] }) + 'data: [DONE]\n\n');
+      const text = outcome === 'invalid-story' ? '{"story_status":' : JSON.stringify(fullPlan(BASIC));
+      return new Response(JSON.stringify({ choices: [{ message: { content: text, reasoning_content: 'separate provider reasoning' }, finish_reason: outcome === 'truncated' ? 'length' : 'stop' }] }), { headers: { 'content-type': 'application/json' } });
+    };
+    const wrapDelta = (delta, controller) => text => { delta?.(text); if (outcome === 'cancelled') controller.abort(); };
+    e.c.callExternalApi = (messages, delta, config, controller) => callExternalModel(messages, wrapDelta(delta, controller),
+      { ...config, apiUrl: 'https://offline.invalid', apiKey: 'OFFLINE_SECRET_DO_NOT_LOG', model: 'fixture' }, controller,
+      { settings: e.settings, normalizeUrl: String, normalizeQianmuChatApiRoot: String, createQianmuChatCompletionResponseFormat: () => null }, fetchFixture);
+    e.c.callSillyTavernModel = async (user, system, delta, config) => (await callHostChatModel({
+      context: { mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'openai' }, getChatCompletionModel: () => 'fixture',
+        getRequestHeaders: () => ({ 'X-CSRF-Token': 'OFFLINE_SECRET_DO_NOT_LOG' }),
+        ChatCompletionService: { presetToGeneratePayload: async (settings, unused, overrides) => ({ ...settings, ...overrides }) } },
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }], stream: true,
+      signal: config.controller.signal, guard: config.guard, onResponse: config.onResponse,
+      onDelta: wrapDelta(delta, config.controller), fetchImpl: fetchFixture,
+    })).text;
+    await e.c.generateDirectorPlan();
+    const log = e.settings.logHistory[0], label = `${providerMode}:${outcome}`;
+    assert.equal(e.requests.length, 1, label); assert.equal(e.toasts.length, 1, label);
+    assert.equal(e.c.busy, false, label); assert.equal(e.c.directorRun, null, label);
+    assert.doesNotMatch(JSON.stringify(log), /OFFLINE_SECRET_DO_NOT_LOG/, label);
+    if (outcome === 'success') {
+      assert.equal(log.status, 'success', label); assert.equal(e.saves, 1); assert.equal(e.injects, 1);
+      assert.equal(e.toasts[0][1], 'success'); assert.equal(modelFailureText(log), '');
+      continue;
+    }
+    assert.equal(log.status, outcome === 'cancelled' ? 'cancelled' : 'error', label);
+    assert.deepEqual(e.toasts[0], outcome === 'cancelled' ? ['已取消生成。', 'warning'] : ['推演失败，请查看日志。', 'error'], label);
+    assert.equal(e.store.plan, oldPlan, label); assert.equal(e.saves, 0); assert.equal(e.injects, 0);
+    assert.equal(e.store.history[0].id, 'prior-history'); assert.equal(e.c.injectSelection.get('prior-selection'), 'keep');
+    const failureText = modelFailureText(log);
+    if (['http-error', 'json-error', 'sse-error'].includes(outcome)) {
+      assert.equal(log.completion.rawTransport, remote, label);
+      assert.match(failureText, /requested model unavailable/);
+    }
+    if (['sse-error', 'cancelled'].includes(outcome)) {
+      assert.equal(log.response, partial, label); assert.equal(directorPreviewPlan(log).quests.length, 1);
+    }
+    if (outcome === 'truncated') {
+      assert.equal(log.response, JSON.stringify(fullPlan(BASIC)));
+      assert.match(failureText, /原始错误：模型达到输出长度上限/); assert.match(failureText, /结束原因：length/);
+      assert.equal(directorPreviewPlan(log).quests.length, 5, 'even structurally complete output is not accepted after provider truncation');
+    }
+    if (outcome === 'network') assert.match(failureText, /network fixture disconnected/);
+    if (outcome === 'broken-envelope') assert.equal(log.completion.rawTransport, '{"choices":[');
+    if (outcome === 'invalid-story') { assert.equal(log.response, '{"story_status":'); assert.match(failureText, /JSON_PARSE_FAILED/); }
+  }
 });
 
 test('actual normalization supports new readable cards and legacy fields without auto-validating bad interludes', () => {

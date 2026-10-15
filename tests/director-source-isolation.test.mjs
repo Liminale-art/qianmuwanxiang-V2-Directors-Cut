@@ -45,7 +45,7 @@ function fixture() {
     'getSelectedPresetNames','setPresetNameSelected','getGlobalWorldBookStore','setWorldBookGlobal','getSelectedWorldBookNames','setWorldBookNameSelected',
     'isPresetItemSelected','setPresetItemSelected','isWorldItemSelected','setWorldItemSelected','getContextItemId','getContextSelectionReviewStore',
     'contextSourceNeedsSelectionReview','confirmContextSourceSelection','renderContextSelectionReview','initializeSelectedContextState',
-    'resolvePresetMarker','buildPresetContextText','buildWorldContextText','directorHistorySelection','buildPrompt'];
+    'resolvePresetMarker','buildPresetContextText','buildWorldContextText','directorHistorySelection','directorSameFloorReroll','buildPrompt'];
   vm.runInContext(names.map(source).join('\n'),c);
   return {c,settings,cache,context,state,calls,presets,books,json:value=>JSON.parse(JSON.stringify(value))};
 }

@@ -11,9 +11,9 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), 'f6e4e380b4d8b892979981f0be6114d74738f9f67e5554d49f8d4f91581ee150');
-  assert.equal(digest(CREATIVE_BLUEPRINT), '7c6bf32fb0469a3f7f0f1ff12b60276ae0028ca4352fd797e910e02c0ee261b1');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'ecfb4a021b39b587f1393046bf2e767b982daeb4dd5bb9d7705a188776e96319');
+  assert.equal(digest(CREATIVE_LAWS), '46dd2ae11b5179156909c40a53b2c165b0438f57de4d462ce5decba5f5e64575');
+  assert.equal(digest(CREATIVE_BLUEPRINT), 'a99e559b04a8f5bd4bbe1c9f600da73395b8fa67e23b1f0e4e72355e3188cb04');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'd23fb11f21f59e59e366ba85a4ef03b63295ae44207fe6847ecfd2bc1305835b');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
 });
@@ -129,7 +129,7 @@ test('v447 responsibilities weave near/far trajectories, lived voices and varied
   assert.match(CREATIVE_GUIDES.story_status, /而非按人物职业或固有人设分派任务/);
   assert.match(CREATIVE_GUIDES.quests, /subject 明确写本条主体/);
   assert.match(CREATIVE_GUIDES.chain_reactions, /3–5 个简短节点/);
-  assert.match(CREATIVE_GUIDES.chain_reactions, /至少一条体现横向广度/);
+  assert.match(CREATIVE_GUIDES.chain_reactions, /至少一条体现真正的横向广度/);
   assert.match(CREATIVE_GUIDES.relation_undercurrents, /不能加入第三人规避/);
   assert.match(CREATIVE_GUIDES.world_chatter, /不要求藏线索、送情报或推动案件/);
   assert.match(CREATIVE_LAWS, /Situated human speech in 尘寰群生 may instead reveal temperament, an ordinary concern, or a way of living, without supplying a clue or new plot condition/);
@@ -168,19 +168,20 @@ test('causal design distinguishes a spoken cover story, thematic resonance and a
   assert.match(CREATIVE_LAWS, /A cover story or guess establishes that someone said it, not that its contents are physically true/);
   assert.match(CREATIVE_LAWS, /Build the underlying affair from its participants' own motives, opportunities, constraints, and actions/);
   assert.match(CREATIVE_LAWS, /occupation, origin, craft, or unusual perception can explain what they notice and how they respond/);
-  assert.match(CREATIVE_LAWS, /does not establish a prior tie to a victim, object, culprit, or cause/);
-  assert.match(CREATIVE_LAWS, /Shared imagery, materials, or hometowns can create resonance without proving a connection/);
-  assert.match(CREATIVE_LAWS, /Keep a chance first encounter a first encounter unless a separate history supports more/);
-  assert.match(CREATIVE_LAWS, /Without the principals, the affair should still have a coherent reason to exist/);
-  assert.match(CREATIVE_LAWS, /preserve the distinction between a suspicion, an observation, and a demonstrated link/);
+  assert.match(CREATIVE_LAWS, /a personal causal connection requires an established action, contact, shared stake, or explicit source fact/);
+  assert.match(CREATIVE_LAWS, /Biography alone must not generate a matching victim history, object provenance, culprit, local custom, or convenient expert problem/);
+  assert.match(CREATIVE_LAWS, /Keep a chance first encounter a first encounter unless a separate source history supports more/);
+  assert.match(CREATIVE_LAWS, /choose other people's backgrounds and affairs for their own stakes, not as disguised versions of USER's biography/);
+  assert.match(CREATIVE_LAWS, /preserving suspicion, observation, and demonstrated connection as distinct/);
   assert.match(CREATIVE_BLUEPRINT, /先让一件事凭当事人的动机、机会和行动自行成立/);
   assert.match(CREATIVE_BLUEPRINT, /人设决定人物如何看见和应对/);
   assert.match(CREATIVE_BLUEPRINT, /初遇可以只是初遇，呼应不必变成同源证据/);
+  assert.match(CREATIVE_BLUEPRINT, /呼应不必变成同源证据/);
 });
 
 test('mystery restraint still permits supported history, quiet lives and fresh situated people', () => {
   assert.match(CREATIVE_LAWS, /An unresolved origin can remain unresolved while choices and consequences advance/);
-  assert.match(CREATIVE_LAWS, /not a ban on surprise, personal stakes, ordinary intimacy, or newly invented supporting lives/);
+  assert.match(CREATIVE_LAWS, /not a ban on surprise, supported personal stakes, ordinary intimacy, or newly invented supporting lives/);
   assert.match(CREATIVE_LAWS, /previously unstated past experiences compatible with known facts/);
   assert.match(CREATIVE_LAWS, /enduring organizations, unresolved tensions, and quiet lives need not undergo an artificial reversal/);
   assert.match(CREATIVE_LAWS, /a concrete responsibility, exchange, shared resource, or disagreement gives them a place and an interest of their own/);
@@ -220,4 +221,50 @@ test('NPC supplied subject anchor replaces routine name repetition without weake
   assert.match(shape.character_dynamics[0].content, /naming CHAR/);
   assert.match(CREATIVE_BLUEPRINT, /单段连同姓名前缀可读，多段合选也不反复介绍同一人/);
   assert.match(CREATIVE_GUIDES.npc_updates, /人物切换时保留必要点名/);
+});
+
+test('personal causal relevance applies to the whole batch and cannot be supplied by invented intermediaries', () => {
+  const schema = createCreativeSchema({ worldChatterEnabled: true, geopoliticsEnabled: true, interludeType: 'forum' });
+  assert.match(CREATIVE_LAWS, /Across every enabled section, treat USER's persona as living background, not a checklist/);
+  assert.ok(CREATIVE_LAWS.indexOf('### Personal Relevance Across Sections') < CREATIVE_LAWS.indexOf('### Dramatic Design and Multiple Lines'), 'the source-scope rule governs all sections, not just the two dramatic trajectories');
+  assert.match(CREATIVE_LAWS, /That source supports only the connection it actually establishes/);
+  assert.match(CREATIVE_LAWS, /presence, contact, or a public disturbance does not establish shared origin, former acquaintance, or another person's pre-existing background/);
+  assert.match(CREATIVE_BLUEPRINT, /只支持其实际范围内的联系/);
+  assert.match(CREATIVE_BLUEPRINT, /在场或惊动旁人可产生此后的后果，却不倒证同源、旧缘或他人生前背景/);
+  assert.match(CREATIVE_LAWS, /Inventing an intermediary, synonym, or another card that repeats the motif does not supply that missing basis/);
+  assert.match(CREATIVE_LAWS, /New people and independently motivated affairs may create their own consequences within a coherent candidate/);
+  assert.match(CREATIVE_LAWS, /including earlier unadopted candidates, is not established source evidence for USER's hidden ties/);
+  assert.match(CREATIVE_LAWS, /the encounter itself can create new consequences from now on/);
+  assert.match(schema, /Across all enabled sections, do not turn USER's biography into a required causal theme/);
+  assert.match(schema, /only within that source's actual scope: contact does not prove shared origin or another person's past/);
+  assert.match(schema, /A newly invented intermediary, paraphrased motif or another candidate card is not independent evidence/);
+  assert.match(schema, /Preserve supported personal connections/);
+  assert.match(schema, /Concrete cause from an established source or a clearly candidate, independently motivated new affair/);
+  const runtimeText = [CREATIVE_LAWS, CREATIVE_BLUEPRINT, ...Object.values(CREATIVE_GUIDES), schema].join('\n');
+  assert.doesNotMatch(runtimeText, /岩彩|晋北|酆霁钰|秦铎/, 'the case must not become a production keyword blacklist');
+});
+
+test('ripple breadth requires an independent destination and social breadth follows speakers own lives', () => {
+  assert.match(CREATIVE_LAWS, /At least one chain must begin in other people's own affairs and carry its downstream stakes within their lives/);
+  assert.match(CREATIVE_LAWS, /without returning to USER's identity, reputation, special abilities, or next encounter/);
+  assert.match(CREATIVE_GUIDES.chain_reactions, /结尾仍属于他们，不回流为/);
+  assert.match(CREATIVE_GUIDES.chain_reactions, /职业近义词或材料别名，不算独立因果/);
+  assert.match(CREATIVE_GUIDES.chain_reactions, /其他链可以承接 USER 实际行动造成的后果/);
+  for (const interludeType of ['forum', 'phone']) {
+    const guidance = creativeSectionGuidance({ interludeType });
+    assert.match(guidance, /主要话题从说话者自己的生活需求、闲趣和分歧中取材/);
+    assert.match(guidance, /主线相关的交流须有真实传播路径，角色私密人设不自动成为公共知识/);
+  }
+});
+
+test('CHAR emotional metadata is not requested anywhere while NPC emotional cues remain', () => {
+  const schema = createCreativeSchema();
+  const start = schema.indexOf('\n{') + 1;
+  const shape = JSON.parse(schema.slice(start, schema.indexOf('\n\n', start)));
+  assert.equal(Object.hasOwn(shape.character_dynamics[0], 'emotional_state'), false);
+  assert.equal(Object.hasOwn(shape.npc_updates[0], 'emotional_state'), true);
+  assert.match(CREATIVE_GUIDES.character_dynamics, /本栏不产出 emotional_state 或独立情绪摘要/);
+  assert.match(schema, /Only npc_updates may include emotional_state/);
+  assert.match(schema, /character_dynamics must omit that field and any separate emotion summary/);
+  assert.doesNotMatch(schema, /Each CHAR and NPC emotional_state/);
 });

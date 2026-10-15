@@ -26,8 +26,37 @@ test('collapsed logs never read, tokenize or escape heavyweight request and resp
 test('stopped and truncated logs put all failure reasons before request/response, not under the output', () => {
   const html = render({ id: 'stopped', status: 'cancelled', completion: { interrupted: true, finishReason: 'length' }, response: 'partial' }, 0, true);
   assert.match(html, /sd-log-failure[\s\S]*已中断。[\s\S]*sd-term-request/);
-  assert.doesNotMatch(html, /结束原因：length/);
+  assert.match(html.slice(0, html.indexOf('sd-term-request')), /结束原因：length/);
   assert.doesNotMatch(html.slice(html.indexOf('sd-log-diagnostics')), /结束原因|未完整完成/);
+});
+
+test('director and other failed logs keep raw API errors in one escaped expandable failure box', () => {
+  const raw = JSON.stringify({ error: { message: '<script>bad()</script>', type: 'invalid_request_error', code: 'model_not_found', detail: 'x'.repeat(700) } });
+  for (const kind of ['director', 'theater', 'tts']) for (const status of ['error', 'cancelled']) {
+    const log = { id: `${kind}-${status}`, kind, status, error: '失败原文', errorCause: '具体错误', errorCode: 'MODEL_REMOTE_ERROR',
+      request: 'REQUEST_UNCHANGED', response: 'KEPT_PARTIAL', reasoning: 'REASONING_UNCHANGED',
+      completion: { interrupted: true, rawTransport: raw, compatibility: '渠道兼容说明' } };
+    const before = JSON.stringify(log), html = render(log, 0, true);
+    const top = html.slice(html.indexOf('sd-log-failure'), html.indexOf('sd-term-request'));
+    const bottom = html.slice(html.indexOf('sd-log-diagnostics'));
+    assert.equal((html.match(/class="sd-log-error-panel"/g) || []).length, 1);
+    assert.match(top, /sd-log-error-panel[\s\S]*sd-term-error[\s\S]*sd-log-raw-error/);
+    assert.match(top, /原始错误：具体错误/); assert.match(top, /MODEL_REMOTE_ERROR/);
+    assert.match(top, /<details class="sd-log-raw-error"><summary>原始服务响应/);
+    assert.ok(top.includes(escape(raw))); assert.match(top, /渠道兼容说明/);
+    assert.doesNotMatch(bottom, /model_not_found|渠道兼容说明|具体错误|MODEL_REMOTE_ERROR/);
+    assert.equal(html.split('model_not_found').length - 1, 1);
+    assert.match(bottom, /REASONING_UNCHANGED/);
+    assert.match(html, /sd-term-response">KEPT_PARTIAL/);
+    assert.doesNotMatch(html, /<script>/);
+    assert.equal(JSON.stringify(log), before);
+  }
+});
+
+test('failure details share one visual surface while internal raw text has no second background or border', () => {
+  assert.match(css, /\.sd-log-error-panel \{[^}]*background: #14161a;[^}]*border: 1px[^}]*border-radius: 10px;/);
+  assert.match(css, /\.sd-log-error-panel \.sd-term \{[^}]*background: transparent !important;[^}]*border: 0 !important;[^}]*border-radius: 0 !important;[^}]*padding: 0;/);
+  assert.doesNotMatch(render({ id: 'ok', status: 'success' }, 0, true), /sd-log-error-panel/);
 });
 const labels = {success:'成功', error:'失败', cancelled:'已取消', loading:'生成中', none:'状态未知'};
 

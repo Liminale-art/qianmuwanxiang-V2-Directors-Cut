@@ -1,13 +1,13 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.450';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.452';
 import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.448';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.450';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.450';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.452';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.452';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
-import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.449';
+import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.452';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.446';
@@ -30,7 +30,7 @@ import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor}
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
-import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.448';
+import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.452';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
@@ -307,7 +307,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.451';
+const VERSION = '1.59.452';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -3219,15 +3219,22 @@ function directorHistorySelection() {
   return { text, recentStartIndex };
 }
 
-// Manual rerolls at the current chat floor must be independent from the
-// previous candidate plan. New floors still receive ordinary continuity.
+// Rerolls at the saved floor (or after rewinding) must be independent from
+// its candidate branch. New floors still receive ordinary continuity.
 function directorSameFloorReroll(store = getChatStore()) {
   const floor = Array.isArray(ctx().chat) ? ctx().chat.length - 1 : -1;
-  const explicitFloor = Number(store?.lastPlanIdx);
-  const plannedFloor = Number.isFinite(explicitFloor)
-    ? explicitFloor
-    : Number(store?.planAtLen) - 1;
-  return Boolean(store?.plan && Number.isFinite(plannedFloor) && plannedFloor === floor);
+  // lastPlanIdx also belongs to the automatic trigger counter and can move
+  // before generation. planAtLen records when the saved candidate was made.
+  const planLength = Number(store?.planAtLen);
+  const legacyFloor = store?.lastPlanIdx;
+  const plannedFloor = Number.isInteger(planLength) && planLength > 0
+    ? planLength - 1
+    : legacyFloor !== null && legacyFloor !== undefined && legacyFloor !== ''
+      ? Number(legacyFloor) : NaN;
+  // Clearing the visible plan does not erase its saved world archive. Keep
+  // that archive out of a reroll as well, without deleting either record.
+  const archivedCandidates = ['factions', 'worldEvents'].some(field => Array.isArray(store?.[field]) && store[field].length > 0);
+  return Boolean((store?.plan || planLength > 0 || archivedCandidates) && Number.isInteger(plannedFloor) && plannedFloor >= 0 && floor <= plannedFloor);
 }
 
 let directorMemoryHostModule = null;
@@ -3322,9 +3329,13 @@ async function buildPrompt(run = {}) {
   if (store.plan && !sameFloorReroll) {
     segments.push('【上次推演参考】\n' + JSON.stringify(projectCreativeContinuity(store.plan)) + '\n以上仍为候选参考，是否已发生以正文、有效记忆及明确授权为准。');
   } else if (sameFloorReroll) {
-    segments.push('【同楼层独立重推演】\n这是同一正文楼层的重新取向。本次不得引用、复述或延续上一条推演的候选方向；请把上一条候选视为不存在，只依据正文、有效记忆与创作之律重新设计有效变化。允许改换冲突焦点、叙事视角、时间锚点与支线落点。独立批次标识：' + run.rerollSeed);
+    segments.push('【同楼层独立重推演】\n这是当前正文节点（同层重推或回退后）的重新取向。本次不得引用、复述或延续上一条推演的候选方向；请把上一条候选视为不存在，只依据正文、有效记忆与创作之律重新设计有效变化。允许改换冲突焦点、叙事视角、时间锚点与支线落点。独立批次标识：' + run.rerollSeed);
   }
-  if (settings.geopoliticsEnabled) {
+  // The live world archive contains generated candidates too. Sending it on
+  // a same-floor reroll would reintroduce the old branch through its clues,
+  // participants and motives after excluding store.plan above. Keep the
+  // archive intact; established prose/memory remain authoritative inputs.
+  if (settings.geopoliticsEnabled && !sameFloorReroll) {
     const geo = buildGeopoliticsArchiveSegment(store);
     if (geo) segments.push(geo);
   }
@@ -3354,7 +3365,7 @@ function validateApiSettings() {
 }
 
 async function callExternalApi(messages, onDelta = null, cfg = null, controller = null) {
-  const { callExternalModel } = await import('./qianmu-model-external.js');
+  const { callExternalModel } = await import('./qianmu-model-external.js?v=1.59.452');
   return callExternalModel(messages, onDelta, cfg, controller || (abortController = new AbortController()),
     { settings, normalizeUrl, normalizeQianmuChatApiRoot, createQianmuChatCompletionResponseFormat });
 }
@@ -3370,7 +3381,7 @@ async function callSillyTavernModel(userPrompt, systemPrompt = '', onDelta = nul
   const { directorRequest, controller, guard, onResponse, onReasoning, ...rawArgs } = extraArgs;
   const context = ctx();
   if (directorRequest) {
-    const { hostChatModelAvailable, callHostChatModel } = await import('./qianmu-model-host.js?v=1.59.445');
+    const { hostChatModelAvailable, callHostChatModel } = await import('./qianmu-model-host.js?v=1.59.452');
     if (hostChatModelAvailable(context)) {
       const result = await callHostChatModel({ context,
         messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), { role: 'user', content: userPrompt }],
@@ -3721,16 +3732,17 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
       : isJsonFail ? `模型输出格式有误；已收到的原文和完整条目仍可查看。\n原始错误：${msg.slice(19)}`
       : error?.code === 'MODEL_OUTPUT_INCOMPLETE' ? '本次推演未完整完成；已收到的条目仍可查看。'
       : msg;
+    // Keep the actual provider/parser failure when the short explanation above
+    // is friendlier. Details are shown in the log, never broadcast in a toast.
+    log.errorCause = error?.message || String(error);
+    if (typeof error?.code === 'string') log.errorCode = error.code;
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     if (alive()) saveSettings();
     // 失败提示照常后台弹出（推演完成/失败的反馈关界面也要能收到）；日志里始终有完整记录可回看
     const summary = directorQualitySummary(log);
     if (alive() && (!silentFailure || summary)) {
-      if (summary) toast(`${msg === 'USER_CANCELLED' ? '已停止推演' : '本次推演未完整完成'}：${summary}。已收内容与原始原因可查看。`, 'warning');
-      else if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
-      else if (error?.code === 'MODEL_OUTPUT_INCOMPLETE' || isJsonFail) toast(`本次推演未完整完成：${log.error}`, 'warning');
-      else if (msg === 'INVALID_API_SETTINGS') apiToast();
-      else toast(`生成失败：${log.error}`, 'error');
+      if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
+      else toast('推演失败，请查看日志。', 'error');
     }
   } finally {
     if (directorRun === run) {
@@ -8831,8 +8843,10 @@ function renderItemCard(item, kind, idx, readOnly = false) {
   const prompt = item.inject_prompt || item.content || item.description || item.objective || item.event || item.next_action || item.current_goal || item.hidden_agenda || item.relations || '';
   const injectId = `${kind}-${idx}-${getContextItemId(item)}`;
   const chips = renderItemChips(item, kind);
-  const emotion = ['character', 'npc'].includes(kind) ? String(item.emotional_state ?? '').trim() : '';
-  const emotionHtml = emotion ? `<span class="sd-item-emotion${kind === 'npc' ? ' sd-npc-emotion' : ''}" title="情绪">${htmlEscape(emotion)}</span>` : '';
+  // Historical character results may still carry emotional_state. Retain the
+  // stored field, but only NPC cards display this metadata.
+  const emotion = kind === 'npc' ? String(item.emotional_state ?? '').trim() : '';
+  const emotionHtml = emotion ? `<span class="sd-item-emotion sd-npc-emotion" title="情绪">${htmlEscape(emotion)}</span>` : '';
   const sourceField = ({quest:'quests',npc:'npc_updates',world:'world_updates'})[kind];
   const mediaEntry = sourceField && !readOnly ? renderDirectorWorldEntryLink(sourceField,idx) : '';
   const heading = kind === 'npc'
@@ -9140,7 +9154,7 @@ function renderLogEntry(log, index, expanded = settings.logOpenState?.[String(lo
 
 function renderLogDetail(log) {
   const failure = modelFailureText(log);
-  return `<div class="sd-log-failure">${failure ? `<pre class="sd-term sd-term-error">${htmlEscape(failure)}</pre>` : ''}</div>
+  return `<div class="sd-log-failure">${failure ? `<div class="sd-log-error-panel"><pre class="sd-term sd-term-error">${htmlEscape(failure)}</pre>${renderModelDiagnostics(log, { failure: true })}</div>` : ''}</div>
       <div class="sd-log-cap"><i class="fa-solid fa-arrow-up"></i>发送${log.request ? infoTag(`约 ${estimateTokens(log.request)} token`) : ''}</div>
       <pre class="sd-term sd-term-request">${htmlEscape(log.request || '暂无')}</pre>
       <div class="sd-log-cap"><i class="fa-solid fa-arrow-down"></i>返回${log.response ? infoTag(`约 ${estimateTokens(log.response)} token`) : ''}</div>
