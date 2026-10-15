@@ -385,12 +385,32 @@ test('relation output keeps a deliberate two-person and three-person mix', () =>
   assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'relation_undercurrents' && /双人关系.*三人关系/.test(issue.reason)));
 });
 
-test('NPC emotional cues stay concise while retired CHAR emotion never rejects an otherwise valid affair', () => {
+test('label brevity is a generation rule and never discards otherwise valid NPC or CHAR affairs', () => {
   const plan = complete(OFF), options = { ...OFF, characterNames: ['阿岚'] };
   plan.character_dynamics[0] = { name: '阿岚', content: '阿岚把旧账暂存在抽屉。', emotional_state: '旧版的一段长情绪'.repeat(10) };
   assert.deepEqual(validateCreativePlan(plan, options), []);
-  plan.npc_updates[0].emotional_state = '这是一整段会把人物当前情绪、缘由、关系判断和后续行动全部解释清楚的冗长分析句。';
-  assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'npc_updates' && issue.reason.includes('4–32')));
+  for (const [role, emotion] of [
+    ['身份'.repeat(8), '情绪'.repeat(9)],
+    ['身份'.repeat(9), '情绪'.repeat(10)],
+    ['守门人', '安静'],
+    ['忙', '急'],
+    ['', ''],
+    [undefined, undefined],
+    ['兼有职责、履历与关系说明的旧版长定位'.repeat(4), '这是一整段会把人物当前情绪、缘由、关系判断和后续行动全部解释清楚的冗长分析句。'],
+  ]) {
+    plan.npc_updates[0].role = role;
+    plan.npc_updates[0].emotional_state = emotion;
+    const original = structuredClone(plan);
+    assert.deepEqual(validateCreativePlan(plan, options), [], 'presentation metadata does not invalidate substantive content');
+    const admitted = pruneInvalidCreativeItems(plan, options);
+    assert.deepEqual(admitted.removed, []);
+    assert.equal(admitted.plan.npc_updates.length, plan.npc_updates.length);
+    assert.deepEqual(admitted.plan.npc_updates, original.npc_updates, 'no truncation, rewriting or removal');
+    assert.deepEqual(normalizeCreativeSections(plan).npc_updates, original.npc_updates, 'saved history stays lossless');
+    assert.deepEqual(plan, original, 'validation and admission do not mutate the source');
+  }
+  plan.npc_updates[0] = { name: '门房', role: '守门人', emotional_state: '疑惑' };
+  assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'npc_updates' && issue.indices?.includes(0)), 'short labels cannot substitute for an actual affair');
 });
 
 test('fresh CHAR emotion is dropped without touching prose, NPC emotion, legacy originals or stored history', () => {

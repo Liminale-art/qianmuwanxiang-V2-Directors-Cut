@@ -13,13 +13,13 @@ const functions = ['renderPlanSectionFold', 'renderRelationUndercurrentsCard', '
   'updateDirectorSelectionOrder', 'updateInjectDock', 'collectDirectorSelectedText', 'bindDirectorSelectionEvents', 'renderGenerateRow',
   'renderPlugTab', 'renderQuickWheelSettings', 'bindWidgetSettings', 'bindDirectorReadingEvents'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
-const qa = new URL('../dist/local-qa/npc-accent-selection/', import.meta.url);
+const qa = new URL('../dist/local-qa/npc-inline-metadata/', import.meta.url);
 await mkdir(qa, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext({ serviceWorkers: 'block' }), page = await context.newPage();
 context.setDefaultTimeout(5000);
 const checks = [], errors = [], blocked = []; let external = 0;
-const deadline = setTimeout(() => { void browser.close(); }, 120000);
+const deadline = setTimeout(() => { void browser.close(); }, 180000);
 const ok = (label, result) => { assert.ok(result, label); checks.push(label); };
 page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
@@ -56,9 +56,9 @@ try {
     window.directorDisplayPlan = () => plan;
     window.renderDirectorSectionNotice = () => '';
     window.plan = { character_dynamics: [{ name: '秦铎', title: '核对夜班记录', emotional_state: '沉静而专注', content: '他将新记录放在值班室的桌边。', inject_prompt: '他在交接记录末尾签下名字。' }], npc_updates: [
-      { id: 'npc2', name: '韩立', role: '江北分局刑侦大队副大队长', emotional_state: '沉稳务实', current_goal: '查清旧案的细节。', next_action: '把最新记录交给夜班同事核对。' },
-      { id: 'npc3', name: '赵德海', title: '旧版条目的工作标题', role: '杨家弄老旧小区物业代管员（新角入场）', emotional_state: '惊慌失措，存着侥幸心理想把责任推给流动租客，却又担心隐瞒的收据被找到。', current_goal: '想确认被收走的钥匙是否已经登记。' },
-      { id: 'npc4', name: '长孙无忌', role: '夜班资料室负责人，负责登记资料、核实来源并联系下一班交接人员', emotional_state: '冷静专注，面对现场反复变化的线索仍保持谨慎，准备完整核对每一项记录。', current_goal: '保留纸面原件与交接记录。' },
+      { id: 'npc2', name: '韩立', role: '刑侦大队副大队长', emotional_state: '对新人冒进既护短又压着火气', current_goal: '查清旧案的细节。', next_action: '把最新记录交给夜班同事核对。' },
+      { id: 'npc3', name: '赵德海', title: '旧版条目的工作标题', role: '老旧小区物业代管员', emotional_state: '做贼心虚又被怪事吓破了胆', current_goal: '想确认被收走的钥匙是否已经登记。' },
+      { id: 'npc4', name: '长孙无忌', role: '夜班资料室负责人', emotional_state: '专注耐烦且不愿过早下定论', current_goal: '保留纸面原件与交接记录。' },
       { id: 'npc5', name: '邵宁', role: '江北分局法医', emotional_state: '冷静专注', current_goal: '核对检验报告。' },
     ], relation_undercurrents: [
       { parties: ['韩立', '陈叙', '乔苒'], tone: '前辈敲打与同侪分寸', tension: '值班室里重新核对出勤记录，几人仍在磨合各自处理现场的方式。', drift: '交接之前还有一份记录等待当事人签字。' },
@@ -126,9 +126,13 @@ try {
       const style = getComputedStyle(node); return style.backgroundImage.startsWith('linear-gradient(') && /\/ 0\.78\)/.test(style.backgroundImage) && /\/ 0\.18\)/.test(style.backgroundImage) && style.backgroundClip === 'text' && style.webkitTextFillColor === 'rgba(0, 0, 0, 0)';
     })));
     const geometry = await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.map(node => {
-      const number = node.querySelector('.sd-npc-index'), heading = node.querySelector('.sd-npc-heading'), emotion = heading.querySelector('.sd-npc-emotion'), name = heading.querySelector('h4'), role = heading.querySelector('.sd-npc-role'), nameRow = heading.querySelector('.sd-npc-name-row');
-      const numberRect = number.getBoundingClientRect(), headingRect = heading.getBoundingClientRect(), emotionRect = emotion.getBoundingClientRect(), nameRect = nameRow.getBoundingClientRect(), roleRect = role.getBoundingClientRect();
-      return { ordered: role.nextElementSibling === nameRow && nameRow.nextElementSibling === emotion && roleRect.bottom <= nameRect.top + 1 && nameRect.bottom <= emotionRect.top + 1,
+      const number = node.querySelector('.sd-npc-index'), heading = node.querySelector('.sd-npc-heading'), emotion = heading.querySelector('.sd-npc-emotion'), name = heading.querySelector('h4'), role = heading.querySelector('.sd-npc-role'), nameRow = heading.querySelector('.sd-npc-name-row'), roleRow = heading.querySelector('.sd-npc-role-row');
+      const numberRect = number.getBoundingClientRect(), headingRect = heading.getBoundingClientRect(), emotionRect = emotion.getBoundingClientRect(), nameRect = name.getBoundingClientRect(), roleRect = roleRow.getBoundingClientRect();
+      const inline = emotionRect.top < nameRect.bottom - 1;
+      const emotionFlow = inline
+        ? nameRect.right + 5 <= emotionRect.left && emotionRect.height <= parseFloat(getComputedStyle(emotion).lineHeight) + 1
+        : emotionRect.top >= nameRect.bottom - 1 && Math.abs(emotionRect.left - nameRow.getBoundingClientRect().left) <= 1;
+      return { ordered: roleRow.nextElementSibling === nameRow && name.nextElementSibling === emotion && roleRect.bottom <= nameRect.top + 1 && emotionFlow,
         separate: numberRect.right + 5 <= headingRect.left && Math.abs(numberRect.top - headingRect.top) < 1,
         overflow: [node, heading, emotion, name, role].some(part => part.scrollWidth > part.clientWidth + 1), numberSize: parseFloat(getComputedStyle(number).fontSize) };
     }));
@@ -138,10 +142,14 @@ try {
       return colorBytes(role.backgroundColor)[3] === 255 && colorBytes(role.color).join(',') === '255,255,255,255' && colorContrast(role.color, role.backgroundColor) >= 4.5 && isUnboxed(node.querySelector('.sd-npc-emotion'));
     })));
     ok(label + ' short names stay on one line', await page.locator('.sd-item-npc h4').evaluateAll(nodes => nodes.every(node => node.clientHeight <= parseFloat(getComputedStyle(node).lineHeight) + 1)));
+    ok(label + ' genuinely short emotion remains beside its name', await page.locator('.sd-item-npc').last().evaluate(node => {
+      const name = node.querySelector('h4').getBoundingClientRect(), emotion = node.querySelector('.sd-npc-emotion').getBoundingClientRect();
+      return node.querySelector('.sd-npc-emotion').textContent === '冷静专注' && name.right + 5 <= emotion.left && emotion.top < name.bottom;
+    }));
     ok(label + ' metadata and page stay horizontally bounded', await page.locator('.sd-body,.sd-npc-emotion,.sd-npc-role').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1)));
-    ok(label + ' media action shares the name row at every width without overlapping text', await page.locator('.sd-item-npc .sd-npc-name-row:has(.sd-world-media-entry)').evaluate(node => {
-      const button = node.querySelector('.sd-world-media-entry').getBoundingClientRect(), name = node.querySelector('h4').getBoundingClientRect(), row = node.getBoundingClientRect();
-      return name.right <= button.left && button.top >= row.top - 1 && button.bottom <= row.bottom + 1 && node.scrollWidth <= node.clientWidth + 1 && node.closest('summary').querySelectorAll('.sd-world-media-entry').length === 1;
+    ok(label + ' media action follows the role tag and keeps its count without a frame', await page.locator('.sd-item-npc .sd-npc-role-row:has(.sd-world-media-entry)').evaluate(node => {
+      const action = node.querySelector('.sd-world-media-entry'), button = action.getBoundingClientRect(), role = node.querySelector('.sd-npc-role').getBoundingClientRect(), row = node.getBoundingClientRect(), icon = action.querySelector('.qm-glyph-icon').getBoundingClientRect();
+      return role.right <= button.left && button.left - role.right <= 9 && button.top >= row.top - 1 && button.bottom <= row.bottom + 1 && button.width >= 24 && button.height >= 24 && icon.width === 14 && icon.height === 14 && isUnboxed(action) && action.querySelector('span').textContent === '1' && action.getAttribute('aria-label').includes('1 张画面') && node.scrollWidth <= node.clientWidth + 1 && node.closest('summary').querySelectorAll('.sd-world-media-entry').length === 1;
     }));
     const first = page.locator('.sd-item-npc').first(), character = page.locator('.sd-item-character').first();
     await first.locator('summary').focus(); await page.keyboard.press('Enter');
@@ -164,6 +172,7 @@ try {
     ok(label + ' media action stays focusable and unobscured', await media.evaluate(node => {
       const rect = node.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2); return !node.disabled && document.activeElement === node && (hit === node || node.contains(hit));
     }));
+    ok(label + ' media keyboard focus is visible without restoring a background frame', await media.evaluate(node => getComputedStyle(node).outlineStyle === 'solid' && parseFloat(getComputedStyle(node).outlineWidth) === 2 && isUnboxed(node)));
     await media.click();
     ok(label + ' actual media click hands off existing image without toggling fold', await media.evaluate(node => !node.closest('details').open && mediaCalls.length === 1 && mediaCalls[0].action === 'lightbox' && mediaCalls[0].id === 'fixture-image'));
     await page.evaluate(() => { fixtureMediaRecords = []; });
@@ -207,21 +216,25 @@ try {
         { id: 'emotion-only', name: '仅有情绪', emotional_state: '谨慎', content: '没有定位的旧条目。' },
       ];
       directorWorldEntryLinks.set('npc_updates:0', directorWorldEntryLinks.get('npc_updates:1'));
+      directorWorldEntryLinks.delete('npc_updates:1');
       await renderFixture(family, mode);
     }, { family, mode });
-    ok(label + ' long names and fields wrap without clipping or truncation', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.length === 4 && nodes.every((node, index) => node.querySelector('h4').textContent === plan.npc_updates[index].name && [node, ...node.querySelectorAll('.sd-npc-heading,h4,.sd-npc-role,.sd-item-emotion')].every(part => part.scrollWidth <= part.clientWidth + 1 && part.scrollHeight <= part.clientHeight + 1))));
+    ok(label + ' long names and fields wrap without clipping or truncation', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.length === 4 && nodes.every((node, index) => node.querySelector('h4').textContent === plan.npc_updates[index].name
+      && (node.querySelector('.sd-npc-role')?.textContent || '') === String(plan.npc_updates[index].role || '').trim()
+      && (node.querySelector('.sd-npc-emotion')?.textContent || '') === String(plan.npc_updates[index].emotional_state || '').trim()
+      && [node, ...node.querySelectorAll('.sd-npc-heading,h4,.sd-npc-role,.sd-item-emotion')].every(part => part.scrollWidth <= part.clientWidth + 1 && part.scrollHeight <= part.clientHeight + 1))));
     ok(label + ' missing NPC fields reserve no placeholder row', await page.locator('.sd-item-npc').evaluateAll(nodes => {
       const bare = nodes[1].querySelector('.sd-npc-heading'), roleOnly = nodes[2].querySelector('.sd-npc-heading'), moodOnly = nodes[3].querySelector('.sd-npc-heading');
       return bare.children.length === 1 && bare.firstElementChild.classList.contains('sd-npc-name-row') && Math.abs(bare.getBoundingClientRect().top - bare.firstElementChild.getBoundingClientRect().top) < 1
-        && roleOnly.children.length === 2 && roleOnly.firstElementChild.classList.contains('sd-npc-role') && !roleOnly.querySelector('.sd-item-emotion')
-        && moodOnly.children.length === 2 && moodOnly.firstElementChild.classList.contains('sd-npc-name-row') && !moodOnly.querySelector('.sd-npc-role');
+        && roleOnly.children.length === 2 && roleOnly.firstElementChild.classList.contains('sd-npc-role-row') && !roleOnly.querySelector('.sd-item-emotion')
+        && moodOnly.children.length === 1 && moodOnly.firstElementChild.classList.contains('sd-npc-name-row') && !moodOnly.querySelector('.sd-npc-role');
     }));
     const longMedia = page.locator('.sd-item-npc').first().locator('.sd-world-media-entry');
     await longMedia.scrollIntoViewIfNeeded(); await longMedia.focus();
-    ok(label + ' long name leaves its same-row media action reachable and non-overlapping', await longMedia.evaluate(node => {
-      const button = node.getBoundingClientRect(), row = node.closest('.sd-npc-name-row'), name = row.querySelector('h4').getBoundingClientRect();
+    ok(label + ' long role leaves its adjacent media action reachable and non-overlapping', await longMedia.evaluate(node => {
+      const button = node.getBoundingClientRect(), row = node.closest('.sd-npc-role-row'), role = row.querySelector('.sd-npc-role').getBoundingClientRect();
       const hit = document.elementFromPoint(button.left + button.width / 2, button.top + button.height / 2);
-      return name.right <= button.left && button.right <= row.getBoundingClientRect().right + 1 && row.scrollWidth <= row.clientWidth + 1 && document.activeElement === node && (hit === node || node.contains(hit));
+      return role.right <= button.left && button.right <= row.getBoundingClientRect().right + 1 && row.scrollWidth <= row.clientWidth + 1 && document.activeElement === node && (hit === node || node.contains(hit));
     }));
     ok(label + ' missing character emotion leaves no empty heading row', await page.locator('.sd-item-character').nth(1).evaluate(node => {
       const main = node.querySelector('.sd-item-summary-main'); return !main.querySelector('.sd-item-emotion,.sd-mini-chip-row') && main.children.length === 1 && Math.abs(main.getBoundingClientRect().top - main.querySelector('h4').getBoundingClientRect().top) < 1;
@@ -245,8 +258,47 @@ try {
     });
     ok(label + ' title does not overlap selected passage numbers: ' + JSON.stringify(selectedGeometry), selectedGeometry.text === '1、2' && !selectedGeometry.overlap);
     if (family === 'glass' && width === 320) await page.locator('.sd-body').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-long-fields-${width}.png`, qa)) });
-    await page.evaluate(() => { plan.npc_updates = savedNpcFixture; plan.character_dynamics = savedCharacterFixture; directorWorldEntryLinks.delete('npc_updates:0'); });
+    await page.evaluate(async ({ family, mode }) => {
+      directorWorldEntryLinks.set('npc_updates:1', { ...directorWorldEntryLinks.get('npc_updates:0'), records: [] });
+      await renderFixture(family, mode); fixtureMediaRecords = [];
+    }, { family, mode });
+    const rolelessMedia = page.locator('.sd-item-npc').nth(1).locator('.sd-world-media-entry');
+    await rolelessMedia.scrollIntoViewIfNeeded(); await rolelessMedia.focus();
+    ok(label + ' absent role does not hide an unboxed zero-count action', await rolelessMedia.evaluate(node => {
+      const rect = node.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return !node.closest('.sd-npc-heading').querySelector('.sd-npc-role') && !node.querySelector('span') && node.getAttribute('aria-label') === '造物之眼 · 核对并创作'
+        && rect.width >= 24 && rect.height >= 24 && isUnboxed(node) && document.activeElement === node && (hit === node || node.contains(hit));
+    }));
+    await page.keyboard.press('Space');
+    ok(label + ' roleless action preserves keyboard creation handoff without toggling the card', await rolelessMedia.evaluate(node => !node.closest('details').open && mediaCalls.length === 1 && mediaCalls[0].action === 'generation-handoff' && mediaCalls[0].id === 'fixture-packet'));
+    await page.evaluate(() => { plan.npc_updates = savedNpcFixture; plan.character_dynamics = savedCharacterFixture; directorWorldEntryLinks.set('npc_updates:1', directorWorldEntryLinks.get('npc_updates:0')); directorWorldEntryLinks.delete('npc_updates:0'); });
   }
+  const metadataBounds = [];
+  for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 360, 375, 393, 430, 1100]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(async ({ family, mode }) => {
+      window.savedNpcFixture = plan.npc_updates;
+      plan.npc_updates = ['韩立', '赵德海', '长孙无忌'].map((name, index) => ({ name, role: '跨区域联合资料登记夜班交接负责人', emotional_state: '心存疑虑仍耐心等对方把事情原委讲清楚', content: '旧内容保持原样。', id: 'boundary-' + index }));
+      await renderFixture(family, mode);
+    }, { family, mode });
+    const bounds = await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.map(node => {
+      const row = node.querySelector('.sd-npc-name-row'), name = row.querySelector('h4'), emotion = row.querySelector('.sd-npc-emotion');
+      const r = row.getBoundingClientRect(), n = name.getBoundingClientRect(), e = emotion.getBoundingClientRect();
+      const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'), ns = getComputedStyle(name), es = getComputedStyle(emotion);
+      ctx.font = `${ns.fontWeight} ${ns.fontSize} ${ns.fontFamily}`; const nameWidth = ctx.measureText(name.textContent).width;
+      ctx.font = `${es.fontWeight} ${es.fontSize} ${es.fontFamily}`; const emotionWidth = ctx.measureText(emotion.textContent).width;
+      const expectedInline = nameWidth + emotionWidth + parseFloat(getComputedStyle(row).columnGap) <= r.width + .5;
+      return { name: name.textContent, nameWidth, emotionWidth, available: r.width, expectedInline, inline: e.top < n.bottom - 1,
+        separateRow: e.top >= n.bottom - 1 && Math.abs(e.left - r.left) <= 1, emotionLines: Math.round(e.height / parseFloat(es.lineHeight)),
+        bounded: [node, row, name, emotion].every(part => part.scrollWidth <= part.clientWidth + 1 && part.scrollHeight <= part.clientHeight + 1),
+        intact: emotion.textContent === '心存疑虑仍耐心等对方把事情原委讲清楚' && [...emotion.textContent].length === 18 && [...node.querySelector('.sd-npc-role').textContent].length === 16, caption: es.fontSize };
+    }));
+    ok(`${family}/${mode}/${width} 18-character emotion stays intact and moves as a whole when necessary: ` + JSON.stringify(bounds), bounds.every(item => item.bounded && item.intact && (item.expectedInline ? item.inline && item.emotionLines === 1 : item.separateRow)));
+    metadataBounds.push({ family, mode, width, bounds });
+    if (family === 'glass' && mode === 'light' && [375, 393].includes(width)) await page.locator('[data-acc="castfold-npc"]').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`metadata-boundary-${width}.png`, qa)) });
+    await page.evaluate(() => { plan.npc_updates = savedNpcFixture; });
+  }
+  console.log(JSON.stringify({ metadataBounds: metadataBounds.filter(item => item.family === 'glass' && item.mode === 'light') }));
   for (const family of ['editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 393, 1100]) {
     const label = `selected/${family}/${mode}/${width}`;
     await page.setViewportSize({ width, height: 1000 });
@@ -297,5 +349,5 @@ try {
     }
   }
   assert.deepEqual(errors, []); assert.equal(external, 0, JSON.stringify(blocked));
-  console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'actual NPC/character rendering, disclosure/selection/media handoffs; 3 themes x 2 modes x 320/393/1100; live accent and actual newcomer/widget/hive toggles; no host state, writes or generation' }));
+  console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'actual NPC/character rendering, disclosure/selection/media handoffs; 3 themes x 2 modes x 320/393/1100 plus whole-emotion wrapping at 360/375/430; live accent and actual newcomer/widget/hive toggles; no host state, writes or generation' }));
 } finally { clearTimeout(deadline); await context.close(); await browser.close(); }

@@ -16,9 +16,9 @@ export const CREATIVE_COUNTS = Object.freeze({
 export const CREATIVE_DETAIL_COUNTS = Object.freeze({
   rippleNodes: Object.freeze({ min: 3, max: 5 }),
   relationParties: Object.freeze({ min: 2, max: 3 }),
-  // Emotional chips are a cue, not a second paragraph. Keep enough room for
-  // a nuanced phrase while stopping models from turning them into analysis.
-  emotionChars: Object.freeze({ min: 4, max: 32 }),
+  // Generation limits for concise labels, not admission gates for valid prose.
+  roleChars: Object.freeze({ max: 16 }),
+  emotionChars: Object.freeze({ max: 18 }),
   supportingRelations: Object.freeze({ min: 2 }),
   forumPosts: Object.freeze({ min: 8 }),
   forumReplies: Object.freeze({ min: 1, max: 3 }),
@@ -158,7 +158,7 @@ export const CREATIVE_GUIDES = Object.freeze({
 两条必须越过正文当前落点，成为可以规划主线未来的具体戏剧节点；至少一条从非 {{user}}、非 {{char}} 的人物或群体开始，并让行动进入另一处生活。允许安排数日、数周或更久后的再次犯案、错过、转向、伏笔兑现、支线并行或关系重组，但要写出时间锚、行动者、反作用和新的后果，不能只预测主角“会如何”。用确定的叙事动词写候选内部已经安排好的事件，把候选性质交给输出边界，不连续堆叠“可能、也许、应该、似乎”。结尾留在一项具体事实、选择、发现、未拆开的证物或改变后的处境上，让读者看见可回收的钩子与压力；不要在正文末尾追加“下一步将……”“读者可以……”之类的日志式结论、抽象升华、气氛预告、人物任务清单、现状摘要或复述预演。两条内容应有不同的时态与因果重心，而非把同一主线改写两遍；采用前仍是候选，不越过 {{user}} 的未决选择。`,
   character_dynamics: `只以本聊天的 CHAR 为动态主体，{{user}} 及其身份映射不占本栏名额；群聊中的多个 CHAR 按事务分量展开，不要求每人各凑一组。每条从 CHAR 自己正在处理的事情出发，写到一次具体行动、判断的落实或下一步事务已具备的条件，带出正文之外的进程与人物侧面。职业、同伴与私人生活都能提供有分量的内容，不把各条写成与 {{user}} 最近往来的情绪复述。相处细节可以细腻，但要对这个人的在意、做法或处境产生作用。本栏不产出 emotional_state 或独立情绪摘要，感受由具体言行自然呈现。`,
 
-  npc_updates: `沿 CHAR 与 {{user}} 以外的人物的自主事务展开，写明当事人自己的诉求、实际做法及其改变的条件，重点是他自己的生活进程，不是替读者安排可介入的近景入口。承接旧关系和未了事项，保留即使暂时移除主角仍会进行的活动与人物联系；交集可以逐渐形成，也可以尚未发生。姓名由 name 和写入前缀交代，在意、进展、联系与落笔不再各自以同一姓名重新开篇；用动作、场景和清晰指代接续，人物切换时保留必要点名。每段与姓名前缀独立可读，合读时是自然相接的生活片段。若明确的封闭设定限制了人物范围，则如实说明，不捏造陌生人凑数，不让全员围观、评判或猜测主角。`,
+  npc_updates: `沿 CHAR 与 {{user}} 以外的人物的自主事务展开，写明当事人自己的诉求、实际做法及其改变的条件，重点是他自己的生活进程，不是替读者安排可介入的近景入口。承接旧关系和未了事项，保留即使暂时移除主角仍会进行的活动与人物联系；交集可以逐渐形成，也可以尚未发生。role 是精简而完整的身份标签，不超过 ${CREATIVE_DETAIL_COUNTS.roleChars.max} 字；emotional_state 用不超过 ${CREATIVE_DETAIL_COUNTS.emotionChars.max} 字的自然短语表达当前情绪，不堆履历、缘由或复合长句，也不为凑字数添词。姓名由 name 和写入前缀交代，在意、进展、联系与落笔不再各自以同一姓名重新开篇；用动作、场景和清晰指代接续，人物切换时保留必要点名。每段与姓名前缀独立可读，合读时是自然相接的生活片段。若明确的封闭设定限制了人物范围，则如实说明，不捏造陌生人凑数，不让全员围观、评判或猜测主角。`,
 
   quests: `每条预演提供一个正文现有落点之外、可以接近和回应的近景情境。来人来事带着自己的动因，通过行动、消息、发现或条件变化，把此前尚不可回应的切入口带到眼前；写到读者无需另发明事件就能接续的程度。subject 明确写本条主体，可以是人物、群体或具体事项，不从诗意标题乱猜一个人。这里亲历具体切口，与命运之脉的叙事走向、NPC 自己的事务分工，不重复当前现场或既定打算，不写任务目标、奖励和步骤。三段按“发生条件 → 情境 → 落笔”排列，并且各自是同一片段中可前后相接的作者叙述：发生条件写已经成立的因由、限制或入口，不写“某日某时触发”的任务提示；情境承接前段，让结果与人物处境具体出现；落笔写场景已经开始的第一拍，是人物带着具体言行进入场景的短小落笔。三段合在一起是一段完整片段，拆开后也各自交代主体和必要上下文，{{user}} 如何回应保持开放。`,
 

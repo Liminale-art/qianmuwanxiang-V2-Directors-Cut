@@ -169,13 +169,13 @@ test('NPC editorial roster numbers each identity without changing paragraph ids 
     const html = c.renderItemCard({ name: '邵宁', role: '法医', emotional_state: '专注', content: '核对记录。' }, 'npc', index, readOnly);
     assert.match(html, new RegExp(`<span class="sd-npc-index" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>`));
     assert.match(html, new RegExp(`data-acc="${readOnly ? 'preview-' : ''}item-npc-${index}-邵宁"`));
-    assert.match(html, /<div class="sd-npc-heading"><span class="sd-npc-role" title="定位">法医<\/span><div class="sd-npc-name-row"><h4>邵宁<\/h4>/);
-    assert.match(html, /<\/div><span class="sd-item-emotion sd-npc-emotion" title="情绪">专注<\/span><\/div>/);
+    assert.match(html, /<div class="sd-npc-heading"><div class="sd-npc-role-row"><span class="sd-npc-role" title="定位">法医<\/span>/);
+    assert.match(html, /<div class="sd-npc-name-row"><h4>邵宁<\/h4><span class="sd-item-emotion sd-npc-emotion" title="情绪">专注<\/span><\/div>/);
     assert.doesNotMatch(html, /sd-npc-name-left|sd-mini-chip-row|<b>定位|<b>情绪/);
     if (readOnly) assert.doesNotMatch(html, /data-director-paragraph |sd-world-media-entry/);
     else {
       assert.match(html, /data-text="【邵宁】核对记录。"/);
-      assert.match(html, /class="sd-npc-name-row"><h4>邵宁<\/h4><span class="sd-world-media-entry"><\/span><\/div>/);
+      assert.match(html, /class="sd-npc-role-row"><span class="sd-npc-role" title="定位">法医<\/span><span class="sd-world-media-entry"><\/span><\/div>/);
       assert.equal((html.match(/class="sd-world-media-entry"/g) || []).length, 1);
     }
   }
@@ -200,9 +200,11 @@ test('empty identity metadata emits no placeholder rows and escaped identities r
     const before = JSON.stringify(item);
     const html = c.renderItemCard(item, kind, 0);
     assert.match(html, /<h4>&lt;夜班员&gt;<\/h4>/);
-    assert.doesNotMatch(html, /sd-item-emotion|sd-npc-role|sd-mini-chip-row|<夜班员>/);
+    assert.doesNotMatch(html, /sd-item-emotion|class="sd-npc-role"|sd-mini-chip-row|<夜班员>/);
     assert.match(html, /仍可阅读的旧条目。/);
     assert.equal(JSON.stringify(item), before);
+    if (kind === 'npc') assert.doesNotMatch(c.renderItemCard(item, kind, 0, true), /sd-npc-role-row/,
+      'a missing role with no live media action does not reserve an empty metadata row');
   }
   const html = c.renderItemCard({ name: '安德烈亚·冯·罗森伯格', role: '<联合复核>', emotional_state: '紧张 & 谨慎' }, 'npc', 0);
   assert.match(html, /title="情绪">紧张 &amp; 谨慎/);
@@ -340,6 +342,14 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
     'NPC identities keep a narrow sequence rail and flexible text column');
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-npc-heading\s*\{[^}]*flex-direction:\s*column[^}]*min-width:\s*0/,
     'role, identity and emotion share a wrapping right-side column');
+  assert.match(styles, /\.sd-npc-name-row\s*\{[^}]*flex-wrap:\s*wrap[^}]*align-items:\s*baseline/,
+    'name and emotion share a baseline with a full-content fallback for legacy text');
+  assert.match(styles, /\.sd-npc-emotion\s*\{[^}]*flex:\s*0 0 auto[^}]*width:\s*max-content[^}]*max-width:\s*100%/,
+    'emotion moves to its own line as one block instead of splitting beside the name');
+  assert.match(styles, /\.sd-npc-role-row > \.sd-world-media-entry\s*\{[^}]*min-width:\s*24px[^}]*border:\s*0 !important[^}]*background:\s*transparent !important[^}]*box-shadow:\s*none !important/,
+    'the adjacent media action is compact and unboxed without removing its target');
+  assert.match(styles, /\.sd-npc-role-row > \.sd-world-media-entry:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--sd-accent\) !important/,
+    'the unboxed icon retains a visible keyboard focus indicator');
   assert.match(styles, /\.sd-relus-tone-neu\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--sd-muted\) 10%, transparent\)/,
     'neutral relationship labels retain a subtle gray fill');
   assert.match(styles, /\.sd-world-edge\s*\{[^}]*--sd-world-glow:\s*var\(--sd-accent\)/,

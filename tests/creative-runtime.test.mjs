@@ -430,3 +430,36 @@ test('exact v451 causal defaults and CHAR-emotion schema upgrade without overwri
     }
   }
 });
+
+test('exact v452 defaults migrate for concise NPC labels while edits and saved backups survive', () => {
+  // Measured from shipped 6218463e before changing the default schema.
+  const fingerprints = { 'v452-system': 'c3b76978', 'v452-schema': '2013edaf', 'v452-blueprint': '87904bd2' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v452-system', outputSchemaText: 'v452-schema',
+      appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      systemPromptBackup: 'v452-system', outputSchemaBackup: 'v452-schema',
+      templates: [{ id: 'default-free-blueprint', content: 'v452-blueprint' }, { id: 'mine', content: 'v452-blueprint' }] };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt);
+    assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.templates[0].content, next.blueprint);
+    assert.equal(settings.templates[1].content, 'v452-blueprint');
+    assert.equal(settings.systemPromptBackup, 'v452-system');
+    assert.equal(settings.outputSchemaBackup, 'v452-schema');
+    const after = structuredClone(settings);
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.deepEqual(settings, after);
+    const author = { systemPrompt: 'v452-system。', outputSchemaText: 'v452-schema。',
+      appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      templates: [{ id: 'default-free-blueprint', content: 'v452-blueprint。' }] };
+    const original = structuredClone(author);
+    sandbox.upgradeCreativeDefaults(author, next);
+    assert.equal(author.systemPrompt, original.systemPrompt);
+    assert.equal(author.outputSchemaText, original.outputSchemaText);
+    assert.deepEqual(author.templates, original.templates);
+  }
+});

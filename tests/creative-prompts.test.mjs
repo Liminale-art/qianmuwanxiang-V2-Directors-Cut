@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
   CREATIVE_IDENTITY, CREATIVE_LAWS, CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT,
-  CREATIVE_GUIDES, CREATIVE_COUNTS, CREATIVE_SECTION_LABELS, creativeSectionGuidance,
+  CREATIVE_GUIDES, CREATIVE_COUNTS, CREATIVE_DETAIL_COUNTS, CREATIVE_SECTION_LABELS, creativeSectionGuidance,
 } from '../qianmu-creative-prompts.js';
 import { createCreativeSchema } from '../qianmu-creative-contract.js';
 
@@ -13,7 +13,7 @@ test('Chinese identity stays exact while progression laws and guides remain sepa
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
   assert.equal(digest(CREATIVE_LAWS), '46dd2ae11b5179156909c40a53b2c165b0438f57de4d462ce5decba5f5e64575');
   assert.equal(digest(CREATIVE_BLUEPRINT), 'a99e559b04a8f5bd4bbe1c9f600da73395b8fa67e23b1f0e4e72355e3188cb04');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'd23fb11f21f59e59e366ba85a4ef03b63295ae44207fe6847ecfd2bc1305835b');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'd9d2b6371532c896f46892d91c1799785da813ca3bcaf19f1458b4666159f586');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
 });
@@ -265,6 +265,23 @@ test('CHAR emotional metadata is not requested anywhere while NPC emotional cues
   assert.equal(Object.hasOwn(shape.npc_updates[0], 'emotional_state'), true);
   assert.match(CREATIVE_GUIDES.character_dynamics, /本栏不产出 emotional_state 或独立情绪摘要/);
   assert.match(schema, /Only npc_updates may include emotional_state/);
-  assert.match(schema, /character_dynamics must omit that field and any separate emotion summary/);
+  assert.match(schema, /character_dynamics must omit emotional_state and any separate emotion summary/);
   assert.doesNotMatch(schema, /Each CHAR and NPC emotional_state/);
+});
+
+test('NPC labels use shared generation ceilings without minimum padding or a forced short emotion target', () => {
+  assert.deepEqual(CREATIVE_DETAIL_COUNTS.roleChars, { max: 16 });
+  assert.deepEqual(CREATIVE_DETAIL_COUNTS.emotionChars, { max: 18 });
+  assert.ok(Object.isFrozen(CREATIVE_DETAIL_COUNTS.roleChars));
+  assert.ok(Object.isFrozen(CREATIVE_DETAIL_COUNTS.emotionChars));
+  const schema = createCreativeSchema();
+  const start = schema.indexOf('\n{') + 1;
+  const shape = JSON.parse(schema.slice(start, schema.indexOf('\n\n', start)));
+  assert.match(shape.npc_updates[0].role, /complete identity label, at most 16 characters/);
+  assert.match(shape.npc_updates[0].emotional_state, /current emotion, at most 18 characters/);
+  assert.match(schema, /Neither label has a minimum to pad toward/);
+  assert.match(CREATIVE_GUIDES.npc_updates, /role 是精简而完整的身份标签，不超过 16 字/);
+  assert.match(CREATIVE_GUIDES.npc_updates, /emotional_state 用不超过 18 字的自然短语表达当前情绪/);
+  assert.match(CREATIVE_GUIDES.npc_updates, /不堆履历、缘由或复合长句，也不为凑字数添词/);
+  assert.doesNotMatch([CREATIVE_LAWS, CREATIVE_GUIDES.npc_updates, schema].join('\n'), /4–32|4–8|8–12/);
 });

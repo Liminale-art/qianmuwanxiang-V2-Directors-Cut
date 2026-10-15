@@ -12090,6 +12090,7 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   gap: 4px;
   min-width: 0;
 }
+#story-director-modal .sd-plan-section .sd-npc-role-row,
 #story-director-modal .sd-plan-section .sd-npc-name-row {
   display: flex;
   align-items: center;
@@ -12097,8 +12098,25 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   width: 100%;
   min-width: 0;
 }
-#story-director-modal .sd-plan-section .sd-npc-name-row > h4 { flex: 1 1 auto; min-width: 0; align-self: center; }
-#story-director-modal .sd-plan-section .sd-npc-name-row > .sd-world-media-entry { flex: 0 0 auto; margin-inline-start: auto !important; }
+#story-director-modal .sd-plan-section .sd-npc-name-row { flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+#story-director-modal .sd-plan-section .sd-npc-name-row > h4 { flex: 0 1 auto; min-width: 0; }
+#story-director-modal .sd-plan-section .sd-npc-role-row > .sd-npc-role { flex: 0 1 auto; min-width: 0; }
+#story-director-modal .sd-plan-section .sd-npc-role-row > .sd-world-media-entry {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 3px !important;
+  margin: 0 !important;
+  gap: 2px;
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#story-director-modal .sd-plan-section .sd-npc-role-row > .sd-world-media-entry .qm-glyph-icon { width: 14px !important; height: 14px !important; font-size: 14px !important; }
+#story-director-modal .sd-plan-section .sd-npc-role-row > .sd-world-media-entry:focus-visible { outline: 2px solid var(--sd-accent) !important; outline-offset: 1px !important; }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main h4 {
   max-width: 100%;
   text-align: left;
@@ -12118,7 +12136,7 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   overflow-wrap: anywhere;
   color: var(--sd-muted);
 }
-#story-director-modal .sd-plan-section .sd-npc-emotion { font-size: var(--qm-type-body); }
+#story-director-modal .sd-plan-section .sd-npc-emotion { flex: 0 0 auto; width: max-content; max-width: 100%; min-width: 0; font-size: var(--qm-type-body); }
 /* A selected card's order stays at the top right but owns real space, so a
    wrapped title cannot run underneath its digits. */
 #story-director-modal .sd-plan-section .sd-item-character > summary > .sd-selection-order-card:not(:empty) {

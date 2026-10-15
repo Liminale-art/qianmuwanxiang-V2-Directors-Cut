@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.452';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.453';
 import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.448';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.452';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.452';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.453';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.453';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -307,7 +307,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.452';
+const VERSION = '1.59.453';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -8849,8 +8849,9 @@ function renderItemCard(item, kind, idx, readOnly = false) {
   const emotionHtml = emotion ? `<span class="sd-item-emotion sd-npc-emotion" title="情绪">${htmlEscape(emotion)}</span>` : '';
   const sourceField = ({quest:'quests',npc:'npc_updates',world:'world_updates'})[kind];
   const mediaEntry = sourceField && !readOnly ? renderDirectorWorldEntryLink(sourceField,idx) : '';
+  const npcRole = kind === 'npc' && String(item.role ?? '').trim() ? `<span class="sd-npc-role" title="定位">${htmlEscape(item.role)}</span>` : '';
   const heading = kind === 'npc'
-    ? `<span class="sd-npc-index" aria-hidden="true">${String(idx + 1).padStart(2, '0')}</span><div class="sd-npc-heading">${String(item.role ?? '').trim() ? `<span class="sd-npc-role" title="定位">${htmlEscape(item.role)}</span>` : ''}<div class="sd-npc-name-row"><h4>${htmlEscape(title)}</h4>${mediaEntry}</div>${emotionHtml}</div>`
+    ? `<span class="sd-npc-index" aria-hidden="true">${String(idx + 1).padStart(2, '0')}</span><div class="sd-npc-heading">${npcRole || mediaEntry ? `<div class="sd-npc-role-row">${npcRole}${mediaEntry}</div>` : ''}<div class="sd-npc-name-row"><h4>${htmlEscape(title)}</h4>${emotionHtml}</div></div>`
     : `${emotionHtml}<h4>${htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}`;
   const segmented = ['quest', 'character', 'npc'].includes(kind);
   const subject = String((kind === 'quest' ? item.subject : item.name) || '').trim() || `事项：${title}`;
