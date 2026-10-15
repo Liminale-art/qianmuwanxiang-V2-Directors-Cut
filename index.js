@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.448';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.450';
 import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.448';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.448';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.448';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.450';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.450';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -192,7 +192,7 @@ import { createNotesPanelSync, captureNotesRefresh, mergeNotesRefresh } from './
 import { readNotesDeviceState, saveNotesDeviceState } from './qianmu-notes-device.js';
 import { bindProseAssistantWindow } from './qianmu-prose-assistant-window.js';
 import { syncQianmuNotesTheme } from './qianmu-notes-theme.js';
-import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js?v=1.59.450';
+import { renderQianmuThemeMenu, bindQianmuThemeMenu } from './qianmu-theme-menu.js?v=1.59.451';
 import { QIANMU_HIVE_THEME_LOGO } from './qianmu-hive-theme-logo.js';
 import { THEMES, THEME_KEYS, QUICK_HIVE_THEME_PALETTES, READER_PORTAL_BG } from './qianmu-classic-palettes.js';
 import { selectQianmuClassicTheme, changeQianmuAppearance } from './qianmu-appearance-actions.js';
@@ -307,7 +307,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.449';
+const VERSION = '1.59.450';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -816,7 +816,7 @@ const FLOAT_LOGO_URLS = Object.freeze({
 const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-SERVER-PLUGIN.md';
 
 const PROMPT_REVISION = 28;
-const BLUEPRINT_REVISION = 5;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
+const BLUEPRINT_REVISION = 6;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
 const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;

@@ -38,7 +38,7 @@ export function renderQianmuThemeMenu(themes, selected, { settings, supported = 
 export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     const pick = root.querySelector('.sd-theme-pick'), trigger = pick?.querySelector('.sd-theme-btn'), menu = pick?.querySelector('.sd-theme-menu');
     if (!pick || !trigger || !menu) return () => {};
-    const document = root.ownerDocument, buttons = [...menu.querySelectorAll('.sd-theme-opt')];
+    const document = root.ownerDocument, view = document.defaultView, buttons = [...menu.querySelectorAll('.sd-theme-opt')];
     const keys = new Map(buttons.map(button => [button, { classic: button.dataset.theme, family: button.dataset.appearanceFamily, accent: button.dataset.appearanceAccent }]));
     const classicOptions = menu.querySelector?.('.sd-theme-classic-options'), accentOptions = menu.querySelector?.('.sd-theme-accent-options');
     const color = menu.querySelector?.('.sd-theme-color'), customColor = menu.querySelector?.('.sd-theme-custom-color'), mode = menu.querySelector?.('.sd-theme-mode-toggle');
@@ -46,8 +46,51 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     const rgbInputs = customPicker ? [...customPicker.querySelectorAll?.('[data-channel]') || []] : [];
     const feedback = menu.querySelector?.('.sd-theme-feedback'), status = menu.querySelector?.('.sd-theme-status'), retry = menu.querySelector?.('.sd-theme-retry');
     let disposed = false, listening = false, actionError = '', sequence = 0;
+    let boundsObserver = null;
     let pickerHsv = { h: 0, s: 0, v: 1 };
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    function positionMenu() {
+        if (disposed || menu.hidden || !menu.style || !view || !menu.getBoundingClientRect) return;
+        const shell = pick.closest?.('.sd-window') || root;
+        const bounds = shell.getBoundingClientRect?.(), viewport = view.visualViewport;
+        if (!bounds?.width) return;
+        const viewportLeft = viewport?.offsetLeft || 0, viewportTop = viewport?.offsetTop || 0;
+        const left = Math.max(bounds.left, viewportLeft) + 8;
+        const right = Math.min(bounds.right, viewportLeft + (viewport?.width || view.innerWidth)) - 8;
+        const scale = trigger.offsetWidth ? trigger.getBoundingClientRect().width / trigger.offsetWidth || 1 : 1;
+        // Stay in the original theme-owned DOM and under the original trigger.
+        // Only shift enough to clear the clipping shell, never center globally.
+        menu.style.setProperty('--sd-theme-menu-max-width', `${Math.max(0, right - left) / scale}px`);
+        menu.style.setProperty('--sd-theme-menu-shift', '0px');
+        menu.style.setProperty('--sd-theme-menu-shift-y', '0px');
+        const rect = menu.getBoundingClientRect();
+        menu.style.setProperty('--sd-theme-menu-shift', `${(clamp(rect.left, left, Math.max(left, right - rect.width)) - rect.left) / scale}px`);
+        const top = Math.max(rect.top, Math.max(bounds.top, viewportTop) + 8);
+        menu.style.setProperty('--sd-theme-menu-shift-y', `${(top - rect.top) / scale}px`);
+        const bottom = Math.min(bounds.bottom, viewportTop + (viewport?.height || view.innerHeight)) - 8;
+        menu.style.setProperty('--sd-theme-menu-max-height', `${Math.max(0, bottom - top) / scale}px`);
+    }
+    function reposition(event) {
+        if (!event?.target?.nodeType || !menu.contains(event.target)) positionMenu();
+    }
+    function watchBounds() {
+        view?.addEventListener?.('resize', reposition);
+        document.addEventListener('scroll', reposition, true);
+        view?.visualViewport?.addEventListener('resize', reposition);
+        view?.visualViewport?.addEventListener('scroll', reposition);
+        if (view?.ResizeObserver) {
+            boundsObserver = new view.ResizeObserver(positionMenu);
+            boundsObserver.observe(pick.closest?.('.sd-window') || root);
+            boundsObserver.observe(trigger);
+        }
+    }
+    function unwatchBounds() {
+        view?.removeEventListener?.('resize', reposition);
+        document.removeEventListener('scroll', reposition, true);
+        view?.visualViewport?.removeEventListener('resize', reposition);
+        view?.visualViewport?.removeEventListener('scroll', reposition);
+        boundsObserver?.disconnect(); boundsObserver = null;
+    }
     function hexRgb(hex) {
         const raw = String(hex || '').replace(/^#/, '');
         if (!/^[a-f\d]{6}$/i.test(raw)) return { r: 0, g: 0, b: 0 };
@@ -134,6 +177,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         trigger.setAttribute('title', message ? `外观主题 · ${message}` : '外观主题');
         trigger.setAttribute('aria-label', message ? `外观主题：${message}` : '外观主题');
         trigger.classList[failed || actionError ? 'add' : 'remove']('has-appearance-error');
+        positionMenu();
     }
     function settle(result, request = sequence) {
         Promise.resolve(result).then(() => { if (request === sequence) refresh(); }, () => {
@@ -144,7 +188,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     function close(restoreFocus = false) {
         menu.hidden = true; pick.classList.remove('open'); trigger.setAttribute('aria-expanded', 'false');
         if (customPicker) customPicker.hidden = true;
-        if (listening) { document.removeEventListener('click', outside, true); listening = false; }
+        if (listening) { document.removeEventListener('click', outside, true); unwatchBounds(); listening = false; }
         if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
     }
     function outside(event) { if (!pick.contains(event.target)) close(); }
@@ -154,7 +198,8 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         if (disposed) return;
         refresh();
         menu.hidden = false; pick.classList.add('open'); trigger.setAttribute('aria-expanded', 'true');
-        if (!listening) { document.addEventListener('click', outside, true); listening = true; }
+        positionMenu();
+        if (!listening) { document.addEventListener('click', outside, true); watchBounds(); listening = true; }
         const options = available(), selected = options.find(button => button.getAttribute('aria-checked') === 'true');
         (last ? options.at(-1) : selected || options[0])?.focus({ preventScroll: true });
     }
@@ -211,6 +256,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         event.preventDefault(); event.stopPropagation();
         customPicker.hidden = !customPicker.hidden;
         if (!customPicker.hidden) syncPicker(appearance.read().accent);
+        positionMenu();
     }
     const onHueInput = () => { pickerHsv.h = Number(hue?.value) || 0; updatePickerFromHsv(); };
     const onSvMove = event => { if (event.buttons) updateSv(event); };

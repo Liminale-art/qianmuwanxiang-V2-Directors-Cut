@@ -34,6 +34,7 @@ try{
     const forbidden=()=>{calls.forbidden++;throw Error('Production write is forbidden');};window.saveMetadata=forbidden;window.applyDirectorInjection=forbidden;window.toast=forbidden;window.renderModal=forbidden;
     (0,eval)(source);window.appearance=createQianmuAppearanceSession({readSettings:()=>settings,loadStyles:()=>({promise:Promise.resolve(true),cancel(){}})});appearance.mount(document.querySelector('#story-director-modal'));
     window.setAppearance=async(family,mode)=>{if(family==='classic'){settings.theme=mode;document.querySelector('#story-director-modal').className='open sd-theme-'+mode;}settings.appearance=updateAppearancePreferences(settings,{family,mode});await appearance.sync();};
+    window.changeWorldAccent=async accent=>{settings.appearance=updateAppearancePreferences(settings,{source:'manual',accent});await appearance.sync();};
     window.renderMap=(mode='populated')=>{
       settings.geopoliticsView='map';delete settings.geopoliticsRelationKinds;calls.settings=0;calls.confirmation=0;calls.forbidden=0;
       window.worldFixture={factions:['港口商会与沿岸航运联合办事处','远行者','城中守望','林地联盟'].map((name,i)=>({id:'f'+i,name,type:'商业组织',scale:'区域性',trend:['rising','stable','declining','turbulent'][i],standing:'商会在风暴后重整沿岸仓储与航运，旧港停泊的货船仍在等待清点。值班员已经取回登记簿，却发现昨夜入港的三批货物没有留下收货人的名字。',agenda:'查清货物去向并恢复航线，同时保护与沿岸聚落签订的长期约定。',clues:['未寄出的旧信','旧仓库登记簿缺失的一页与夜间经过栈桥的运货车辆']})),
@@ -108,7 +109,11 @@ try{
     ok(label+' decorative orbit and stars breathe while actual node anchors remain fixed',await page.locator('.sd-geo-map').evaluate(node=>getComputedStyle(node.querySelector('.sd-geo-orbit')).animationName==='sd-geo-orbit-turn'&&getComputedStyle(node.querySelector('.sd-geo-bed-dot')).animationName==='sd-geo-star-breathe'&&[...node.querySelectorAll('.sd-geo-node,.sd-geo-edge-flow,.sd-geo-event-pulse')].every(el=>getComputedStyle(el).animationName==='none')));
     ok(label+' border cue has no inner arrows',await page.locator('.sd-world-edge').evaluateAll(nodes=>nodes.every(node=>node.children.length===0&&!!node.getAttribute('aria-label'))));
     ok(label+' world-map return controls remain border-aligned without a breathing cue',await page.locator('.sd-world-edge').evaluateAll(nodes=>{const panel=document.querySelector('.sd-window').getBoundingClientRect();return nodes.length===2&&nodes.every(node=>{const r=node.getBoundingClientRect(),style=getComputedStyle(node,'::before');return !node.classList.contains('has-content')&&style.animationName==='none'&&style.opacity==='0'&&node.getAttribute('aria-label')==='返回世界正面'&&Math.abs(node.classList.contains('sd-world-edge-left')?r.left-panel.left:r.right-panel.right)<=.6;});}));
-    ok(label+' entry cue is preserved only on the world front',await page.evaluate(()=>{worldPage='front';const markup=renderWorldPageEdges();worldPage='geopolitics';return (markup.match(/has-content/g)||[]).length===2&&markup.includes('查看世界格局');}));
+    ok(label+' entry cue renders on the world front and follows the actual theme accent',await page.evaluate(()=>{
+      worldPage='front';document.querySelectorAll('.sd-world-edge').forEach(node=>node.remove());document.querySelector('.sd-world-viewport').insertAdjacentHTML('beforeend',renderWorldPageEdges());
+      const valid=[...document.querySelectorAll('.sd-world-edge')].every(node=>{const css=getComputedStyle(node),glow=getComputedStyle(node,'::before');return node.classList.contains('has-content')&&node.getAttribute('aria-label')==='查看世界格局'&&css.getPropertyValue('--sd-world-glow').trim()===css.getPropertyValue('--sd-accent').trim()&&glow.animationName==='sd-world-edge-breathe'&&glow.filter.includes(css.color);});
+      worldPage='geopolitics';document.querySelectorAll('.sd-world-edge').forEach(node=>node.remove());document.querySelector('.sd-world-viewport').insertAdjacentHTML('beforeend',renderWorldPageEdges());return valid;
+    }));
     await page.locator('.sd-geo-view-btn[data-view=map]').click();
     ok(label+' relationship highlight actually travels without moving geometry',await page.locator('.sd-geo-edge-motion').first().evaluate(async motion=>{const svg=motion.closest('svg'),anchors=[...svg.querySelectorAll('.sd-geo-node')].map(node=>node.getAttribute('transform')),path=motion.getAttribute('d'),before=getComputedStyle(motion).strokeDashoffset;await new Promise(resolve=>setTimeout(resolve,160));return before!==getComputedStyle(motion).strokeDashoffset&&path===motion.getAttribute('d')&&[...svg.querySelectorAll('.sd-geo-node')].every((node,i)=>node.getAttribute('transform')===anchors[i]);}));
     await page.locator('.sd-geo-detail').evaluate(node=>Promise.all(node.getAnimations().map(animation=>animation.finished)));
@@ -119,6 +124,19 @@ try{
   }
   await page.evaluate(()=>renderMap());const movement=await page.evaluate(async()=>{const orbit=document.querySelector('.sd-geo-orbit'),nodes=[...document.querySelectorAll('.sd-geo-node')],before=getComputedStyle(orbit).transform,anchors=nodes.map(node=>node.getAttribute('transform'));await new Promise(resolve=>setTimeout(resolve,160));return before!==getComputedStyle(orbit).transform&&nodes.every((node,i)=>node.getAttribute('transform')===anchors[i]);});ok('real elapsed time moves the decorative orbit but never relation node anchors',movement);
   await page.setViewportSize({width:393,height:898});
+  for(const family of ['editorial','glass'])for(const mode of ['light','dark']){
+    await page.evaluate(async({family,mode})=>{await setAppearance(family,mode);renderMap();worldPage='front';document.querySelectorAll('.sd-world-edge').forEach(node=>node.remove());document.querySelector('.sd-world-viewport').insertAdjacentHTML('beforeend',renderWorldPageEdges());window.originalWorldEdges=[...document.querySelectorAll('.sd-world-edge')];},{family,mode});
+    let previous;
+    for(const accent of ['#bd4e68','#278d7a']){
+      await page.evaluate(accent=>changeWorldAccent(accent),accent);
+      const live=await page.locator('.sd-world-edge').evaluateAll(nodes=>nodes.map((node,index)=>{const css=getComputedStyle(node),glow=getComputedStyle(node,'::before');return{sameNode:node===originalWorldEdges[index],accent:css.getPropertyValue('--sd-accent').trim(),follows:css.getPropertyValue('--sd-world-glow').trim()===css.getPropertyValue('--sd-accent').trim(),filter:glow.filter,animation:glow.animationName};}));
+      ok(`${family}/${mode}/${accent} live accent recolors both breathing edges without remounting`,live.length===2&&live.every(item=>item.sameNode&&item.follows&&item.animation==='sd-world-edge-breathe'&&(!previous||item.filter!==previous)));
+      previous=live[0].filter;
+    }
+    await page.emulateMedia({reducedMotion:'reduce'});
+    ok(`${family}/${mode} reduced motion keeps the accent cue static`,await page.locator('.sd-world-edge').evaluateAll(nodes=>nodes.every(node=>getComputedStyle(node,'::before').animationName==='none'&&getComputedStyle(node,'::before').opacity==='0.9')));
+    await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>worldPage='geopolitics');
+  }
   for(const family of ['classic','editorial','glass'])for(const mode of ['light','dark']){
     await page.evaluate(async({family,mode})=>{await setAppearance(family,mode);renderMap();},{family,mode});
     for(const [name,time] of [['start',0],['later',1400]]){

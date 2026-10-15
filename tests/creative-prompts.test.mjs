@@ -5,14 +5,15 @@ import {
   CREATIVE_IDENTITY, CREATIVE_LAWS, CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT,
   CREATIVE_GUIDES, CREATIVE_COUNTS, CREATIVE_SECTION_LABELS, creativeSectionGuidance,
 } from '../qianmu-creative-prompts.js';
+import { createCreativeSchema } from '../qianmu-creative-contract.js';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), '04cda2d1e94ca76a06db49bdb37a2ca26de5984caaccb5f48b46f019abe69f53');
-  assert.equal(digest(CREATIVE_BLUEPRINT), '483319eed8fc5a703e40239fed919ec15439f15265dfe55587ca72286ae33ee7');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'e5da2317e29d2d04d9a91f3ba434591d0daf80d37bede7b2fdf679d4ccaaa212');
+  assert.equal(digest(CREATIVE_LAWS), 'f6e4e380b4d8b892979981f0be6114d74738f9f67e5554d49f8d4f91581ee150');
+  assert.equal(digest(CREATIVE_BLUEPRINT), '7c6bf32fb0469a3f7f0f1ff12b60276ae0028ca4352fd797e910e02c0ee261b1');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'ecfb4a021b39b587f1393046bf2e767b982daeb4dd5bb9d7705a188776e96319');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
 });
@@ -160,4 +161,63 @@ test('newcomer requirement is included only for enabled runs and honors actual c
   assert.match(CREATIVE_GUIDES.newcomer, /已有线索、事务、人物关系或行动后果/);
   assert.match(CREATIVE_GUIDES.newcomer, /不要求世界级大事件/);
   assert.match(CREATIVE_GUIDES.newcomer, /明确封闭设定或人物禁限/);
+});
+
+// These are prompt-contract regressions, not measurements of model prose quality.
+test('causal design distinguishes a spoken cover story, thematic resonance and actual evidence', () => {
+  assert.match(CREATIVE_LAWS, /A cover story or guess establishes that someone said it, not that its contents are physically true/);
+  assert.match(CREATIVE_LAWS, /Build the underlying affair from its participants' own motives, opportunities, constraints, and actions/);
+  assert.match(CREATIVE_LAWS, /occupation, origin, craft, or unusual perception can explain what they notice and how they respond/);
+  assert.match(CREATIVE_LAWS, /does not establish a prior tie to a victim, object, culprit, or cause/);
+  assert.match(CREATIVE_LAWS, /Shared imagery, materials, or hometowns can create resonance without proving a connection/);
+  assert.match(CREATIVE_LAWS, /Keep a chance first encounter a first encounter unless a separate history supports more/);
+  assert.match(CREATIVE_LAWS, /Without the principals, the affair should still have a coherent reason to exist/);
+  assert.match(CREATIVE_LAWS, /preserve the distinction between a suspicion, an observation, and a demonstrated link/);
+  assert.match(CREATIVE_BLUEPRINT, /先让一件事凭当事人的动机、机会和行动自行成立/);
+  assert.match(CREATIVE_BLUEPRINT, /人设决定人物如何看见和应对/);
+  assert.match(CREATIVE_BLUEPRINT, /初遇可以只是初遇，呼应不必变成同源证据/);
+});
+
+test('mystery restraint still permits supported history, quiet lives and fresh situated people', () => {
+  assert.match(CREATIVE_LAWS, /An unresolved origin can remain unresolved while choices and consequences advance/);
+  assert.match(CREATIVE_LAWS, /not a ban on surprise, personal stakes, ordinary intimacy, or newly invented supporting lives/);
+  assert.match(CREATIVE_LAWS, /previously unstated past experiences compatible with known facts/);
+  assert.match(CREATIVE_LAWS, /enduring organizations, unresolved tensions, and quiet lives need not undergo an artificial reversal/);
+  assert.match(CREATIVE_LAWS, /a concrete responsibility, exchange, shared resource, or disagreement gives them a place and an interest of their own/);
+  assert.match(CREATIVE_LAWS, /The supplied cast is not the whole population unless the setting explicitly says so/);
+  assert.match(CREATIVE_LAWS, /a disabled newcomer requirement does not close the world/);
+  const regularGuidance = creativeSectionGuidance({ interludeEnabled: false, newcomerMode: false });
+  assert.ok(regularGuidance.includes(CREATIVE_GUIDES.relation_undercurrents));
+  assert.match(regularGuidance, /新联系也可在当下建立，不必倒造与主角的旧缘/);
+  assert.match(regularGuidance, /明确封闭设定仍优先/);
+  assert.ok(!regularGuidance.includes(CREATIVE_GUIDES.newcomer), 'permission for new lives is not an extra mandatory new-character quota');
+  assert.match(CREATIVE_GUIDES.phone, /只从正文或有效记忆已经出现的非 USER 人物中选取手机所属者/);
+});
+
+test('a parallel scene cannot manufacture the evidence that another card uses to solve an active mystery', () => {
+  assert.match(CREATIVE_LAWS, /a shared place, an ordinary consequence, or a contrasting choice/);
+  assert.match(CREATIVE_LAWS, /one invented card cannot serve as evidence for another/);
+  assert.match(CREATIVE_LAWS, /Do not write these side stories into mainline memory, continuity references, or narrative injection/);
+  assert.match(CREATIVE_GUIDES.parallel_scene, /同一地点的另一段生活、某项行动的日常余波或彼此映照的选择/);
+  assert.match(CREATIVE_GUIDES.parallel_scene, /不借回溯补齐未获来源支持的身份、责任与事件起因/);
+  assert.match(createCreativeSchema(), /Preserve active mainline mysteries instead of inventing their definitive past/);
+  assert.doesNotMatch(createCreativeSchema(), /concrete alternate fact/);
+});
+
+test('NPC supplied subject anchor replaces routine name repetition without weakening standalone prose', () => {
+  const schema = createCreativeSchema();
+  const shape = JSON.parse(schema.slice(schema.indexOf('\n{') + 1, schema.indexOf('\n\n', schema.indexOf('\n{'))));
+  const npc = shape.npc_updates[0];
+  assert.match(npc.name, /supplies the subject prefix/);
+  assert.doesNotMatch(npc.current_goal, /naming this person/);
+  assert.match(npc.current_goal, /do not restart with their name in every field/);
+  assert.match(npc.next_action, /readable with the subject prefix alone and flowing with adjacent selected fields/);
+  assert.match(npc.relations, /identify other participants and disambiguate subject changes/);
+  assert.match(npc.inject_prompt, /name them only when needed for clarity/);
+  assert.match(schema, /each passage must read independently with that prefix and flow when combined/);
+  assert.match(CREATIVE_LAWS, /without depending on an unselected paragraph/);
+  assert.match(CREATIVE_LAWS, /sections without a subject prefix still identify their actor/);
+  assert.match(shape.character_dynamics[0].content, /naming CHAR/);
+  assert.match(CREATIVE_BLUEPRINT, /单段连同姓名前缀可读，多段合选也不反复介绍同一人/);
+  assert.match(CREATIVE_GUIDES.npc_updates, /人物切换时保留必要点名/);
 });

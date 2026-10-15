@@ -324,3 +324,73 @@ test('exact v446 fingerprints migrate to v447 without replacing edited defaults,
     assert.equal(customStore.blueprint, 'v446-blueprint edited');
   }
 });
+
+test('exact v449 markerless defaults upgrade once while edits, user templates and backups remain intact', () => {
+  const fingerprints = { 'v449-system': 'b7f8c92b', 'v449-schema': '5e96c8fa', 'v449-blueprint': '352d7c3f' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = {
+      systemPrompt: 'v449-system', outputSchemaText: 'v449-schema',
+      ...(marker === undefined ? {} : { appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker }),
+      systemPromptBackup: 'v449-system', outputSchemaBackup: 'manual schema backup',
+      templates: [
+        { id: 'default-free-blueprint', content: 'v449-blueprint' },
+        { id: 'mine', content: 'v449-blueprint' },
+        { id: 'default-free-blueprint', content: 'v449-blueprint', edited: true },
+        { id: 'default-free-blueprint', content: 'v449-blueprint。' },
+      ],
+    };
+    const preservedTemplates = structuredClone(settings.templates.slice(1));
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt);
+    assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.appliedPromptDefaultHash, hashText(next.systemPrompt));
+    assert.equal(settings.appliedSchemaDefaultHash, hashText(next.outputSchemaText));
+    assert.equal(settings.templates[0].content, next.blueprint);
+    assert.deepEqual(settings.templates.slice(1), preservedTemplates, 'content equality does not authorize upgrading user-owned or edited templates');
+    assert.equal(settings.systemPromptBackup, 'v449-system', 'even an exact old-default backup is never upgraded');
+    assert.equal(settings.outputSchemaBackup, 'manual schema backup');
+    const afterDefaults = structuredClone(settings);
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.deepEqual(settings, afterDefaults, 'repeated initialization is idempotent');
+
+    const store = { blueprint: 'v449-blueprint', blueprintBackup: 'manual chat draft',
+      ...(marker === undefined ? {} : { appliedBlueprintDefaultHash: marker }) };
+    sandbox.upgradeCreativeBlueprint(store, next.blueprint, 450);
+    assert.equal(store.blueprint, next.blueprint);
+    assert.equal(store.appliedBlueprintDefaultHash, hashText(next.blueprint));
+    assert.equal(store.blueprintRevision, 450);
+    assert.equal(store.blueprintBackup, 'manual chat draft');
+    const afterStore = structuredClone(store);
+    sandbox.upgradeCreativeBlueprint(store, next.blueprint, 450);
+    assert.deepEqual(store, afterStore);
+
+    const edited = { systemPrompt: 'v449-system。', outputSchemaText: 'v449-schema。',
+      ...(marker === undefined ? {} : { appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker }),
+      systemPromptBackup: 'manual prompt backup', outputSchemaBackup: 'v449-schema',
+      templates: [{ id: 'default-free-blueprint', content: 'v449-blueprint。' }, { id: 'mine', content: 'v449-blueprint' }] };
+    const editedText = structuredClone(edited);
+    for (let pass = 0; pass < 2; pass++) {
+      sandbox.upgradeCreativeDefaults(edited, next);
+      assert.equal(edited.systemPrompt, editedText.systemPrompt);
+      assert.equal(edited.outputSchemaText, editedText.outputSchemaText);
+      assert.equal(edited.systemPromptHash, ''); assert.equal(edited.outputSchemaHash, '');
+      assert.deepEqual(edited.templates, editedText.templates);
+      assert.equal(edited.systemPromptBackup, editedText.systemPromptBackup);
+      assert.equal(edited.outputSchemaBackup, editedText.outputSchemaBackup);
+    }
+    for (const customStore of [
+      { blueprint: 'v449-blueprint。', ...(marker === undefined ? {} : { appliedBlueprintDefaultHash: marker }) },
+      { blueprint: 'v449-blueprint。', appliedBlueprintDefaultHash: fingerprints['v449-blueprint'] },
+      { blueprint: 'v449-blueprint', blueprintEdited: true },
+    ]) {
+      const originalText = customStore.blueprint;
+      sandbox.upgradeCreativeBlueprint(customStore, next.blueprint, 450);
+      sandbox.upgradeCreativeBlueprint(customStore, next.blueprint, 450);
+      assert.equal(customStore.blueprint, originalText, 'one-character changes and explicit edit flags survive stale or absent markers');
+    }
+  }
+});

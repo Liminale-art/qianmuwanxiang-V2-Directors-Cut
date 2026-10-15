@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewPlan, directorQualitySummary } from '../qianmu-director-live.js';
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, CREATIVE_GUIDES, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, CREATIVE_GUIDES, CREATIVE_DETAIL_COUNTS, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
 import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from '../qianmu-creative-contract.js';
 import { selectCreativeOptions, upgradeCreativeDefaults, upgradeCreativeBlueprint, recentInterludeHint } from '../qianmu-creative-runtime.js';
 import { hashText, isPlainObject, mergeDefaults, uniqueClean, sanitizeEventStage, advanceEventStage } from '../qianmu-storyboard-utils.js';
@@ -55,7 +55,7 @@ function fullPlan(options = {}) {
     limitations: [],
   };
   if (options.parallelSceneEnabled !== false) plan.parallel_scene = { title: '如果赶上早班车', content: 'PARALLEL_ONLY_CONTENT：车门没有在面前关上，旧友从空座旁抬起头。' };
-  if (options.interludeEnabled !== false) plan.interlude = { type: 'phone', title: '早班群', owner: '阿岚', conversation_kind: 'group', messages: Array.from({ length: 6 }, (_, i) => ({ sender: i % 2 ? '阿岚' : '老周', content: `INTERLUDE_ONLY_CONTENT：第${i}条钥匙交接消息。`, time: `08:0${i}` })) };
+  if (options.interludeEnabled !== false) plan.interlude = { type: 'phone', title: '早班群', owner: '阿岚', conversation_kind: 'group', messages: Array.from({ length: CREATIVE_DETAIL_COUNTS.phoneMessages.min }, (_, i) => ({ sender: i % 2 ? '阿岚' : '老周', content: `INTERLUDE_ONLY_CONTENT：第${i}条钥匙交接消息。`, time: `08:${String(i).padStart(2, '0')}` })) };
   return plan;
 }
 
@@ -361,6 +361,35 @@ test('first-response gaps retain prior plan, history and injection selection wit
   assert.ok(log.quality.issues.some(issue => issue.field === 'quests' && issue.missing === 1));
   assert.equal(log.limitations[0].missing, 1);
   assert.equal(log.response, JSON.stringify(incomplete));
+});
+
+test('expanded interlude quotas report shortfalls without another request, source replacement or automatic fill', async () => {
+  for (const type of ['forum', 'phone']) for (const providerMode of ['external', 'sillytavern']) {
+    const candidate = fullPlan(), count = type === 'forum' ? CREATIVE_DETAIL_COUNTS.forumPosts.min - 1 : CREATIVE_DETAIL_COUNTS.phoneMessages.min - 1;
+    if (type === 'phone') candidate.interlude.messages = candidate.interlude.messages.slice(0, count);
+    else candidate.interlude = { type: 'forum', title: '街口闲话', posts: Array.from({ length: count }, (_, i) => ({
+      author: `街坊${i}`, handle: `lane_${i}`, content: `第${i}件互不相同的日常小事。`, time: `午后 ${i}`,
+      replies: [{ author: '邻居', content: '等会儿路过来看看。' }],
+    })) };
+    const raw = JSON.stringify(candidate), e = fixture({ settings: { providerMode }, responses: [raw, () => assert.fail('short interlude must not cause a second request')] });
+    if (type === 'forum') e.c.selectCreativeOptions = (value, options) => selectCreativeOptions(value, { ...options, random: () => .1 });
+    const oldPlan = e.store.plan;
+    e.store.history = [{ id: 'existing-history' }];
+    e.c.injectSelection.set('existing-selection', 'keep');
+    await e.c.generateDirectorPlan();
+    assert.equal(e.requests.length, 1, `${providerMode}:${type}`);
+    assert.equal(e.store.plan, oldPlan); assert.equal(e.saves, 0); assert.equal(e.injects, 0);
+    assert.equal(e.store.history[0].id, 'existing-history');
+    assert.equal(e.c.injectSelection.get('existing-selection'), 'keep');
+    const log = e.settings.logHistory[0];
+    assert.equal(log.status, 'error'); assert.equal(log.response, raw);
+    assert.equal(log.repairResponse, undefined);
+    assert.ok(log.quality.issues.some(issue => issue.field === 'interlude'));
+    assert.ok(validateCreativePlan(candidate, { interludeType: type }).some(issue => issue.field === 'interlude' && issue.reason.includes(type === 'forum' ? '至少有 8 帖' : '至少有 12 条')));
+    const preview = directorPreviewPlan(log).interlude;
+    assert.equal(type === 'forum' ? preview.posts.length : preview.messages.length, count, 'received short card remains viewable without synthetic entries');
+    assert.match(e.toasts[0][0], /幕间拾趣.*已收内容/);
+  }
 });
 
 test('source changes during first request prevent adoption and do not launch another request', async () => {

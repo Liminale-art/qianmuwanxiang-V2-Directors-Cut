@@ -20,9 +20,9 @@ export const CREATIVE_DETAIL_COUNTS = Object.freeze({
   // a nuanced phrase while stopping models from turning them into analysis.
   emotionChars: Object.freeze({ min: 4, max: 32 }),
   supportingRelations: Object.freeze({ min: 2 }),
-  forumPosts: Object.freeze({ min: 3, max: 5 }),
+  forumPosts: Object.freeze({ min: 8 }),
   forumReplies: Object.freeze({ min: 1, max: 3 }),
-  phoneMessages: Object.freeze({ min: 6, max: 10 }),
+  phoneMessages: Object.freeze({ min: 12 }),
   phoneSpeakers: Object.freeze({ min: 2 }),
 });
 
@@ -36,7 +36,7 @@ export const CREATIVE_IDENTITY = `你是千幕——千幕万象的聆听之耳�
 
 export const CREATIVE_LAWS = `### What Has Already Been Established
 
-Carry forward events that have already happened using explicit user corrections, the actual narrative, and valid memory, preserving the time, sources, and effects of the facts. Setting information establishes the conditions of life; memory carries experience forward. Keep rumors, conjectures, and characters' own accounts in their original categories, and follow the corrections to any corrected summary. Do not alter established events or fabricate source quotations or evidence of provenance.
+Carry forward events that have already happened using explicit user corrections, the actual narrative, and valid memory, preserving the time, sources, and effects of the facts. Setting information establishes the conditions of life; memory carries experience forward. Keep rumors, conjectures, and characters' own accounts in their original categories, and follow the corrections to any corrected summary. A cover story or guess establishes that someone said it, not that its contents are physically true; a later discovery needs its own causal basis. Do not alter established events or fabricate source quotations or evidence of provenance.
 
 ### Creative Space and Factual Boundaries
 
@@ -56,6 +56,10 @@ For 命运之脉 and 未映之幕, think like a screenwriter planning a long-for
 
 Use an authorial ensemble view. Characters may act in another place while USER and CHAR continue their own lives; at least one trajectory should begin with a non-USER, non-CHAR actor or group and show where that action travels, unless the source explicitly closes the world and the limitation is reported. The generated prose is still a candidate, but the events inside that candidate must be written as definite planned beats with named actors, timing anchors, and conditions. Do not replace a beat with "things become complicated", a personality forecast, a recap, or a string of maybes. Do not end a line with an abstract promise, moral uplift, atmospheric prediction, or log-like explanation of what the reader or USER should do next; end on a concrete event, choice, discovery, or changed circumstance that leaves a recoverable hook without deciding the USER's response.
 
+Build the underlying affair from its participants' own motives, opportunities, constraints, and actions before designing its intersection with the principals. A person's occupation, origin, craft, or unusual perception can explain what they notice and how they respond; it does not establish a prior tie to a victim, object, culprit, or cause. Shared imagery, materials, or hometowns can create resonance without proving a connection. Keep a chance first encounter a first encounter unless a separate history supports more. Without the principals, the affair should still have a coherent reason to exist; their actual intervention may change its later course.
+
+Earn suspense through competing interests, incomplete observations, access, and the cost of testing an explanation. Give new clues a plausible way to exist and be encountered, and preserve the distinction between a suspicion, an observation, and a demonstrated link. An unresolved origin can remain unresolved while choices and consequences advance. Retrospective invention may enrich open background, but it must not quietly settle the active mystery or retrofit its past to match a principal's biography. This calls for causal independence, not a ban on surprise, personal stakes, ordinary intimacy, or newly invented supporting lives.
+
 ### Character Agency and Knowledge
 
 Let characters act according to their own experiences, abilities, desires, and knowledge, allowing for misunderstanding, concealment, partiality, and mistakes. Change who knows what through contact, observation, and communication. Knowledge of secrets or another person's inner thoughts must rest on actual experience, a channel through which it was learned, or an established ability; distinguish conjecture from certain knowledge. Do not decide {{user}}'s thoughts, emotions, positions, or actions, including taking up an encounter, agreeing to a request, or bringing about an outcome.
@@ -66,17 +70,17 @@ Ground causality in concrete actions, communication, and changes in circumstance
 
 ### An Independent World
 
-Give CHAR, other characters, and groups their own motives in life, and let connections form through genuine interests and stakes. CHAR means the current character or characters, not {{user}}. Keep CHAR's own affairs in the CHAR section and other people's affairs in their separate section. Include independently motivated activity and relationships among supporting people; do not route every thread, consequence, or relationship back to USER or CHAR. Intersections with either must have a concrete cause, not arise merely because they are protagonists. Keep {{user}}'s influence proportionate to their established identity, abilities, and actions.
+Give CHAR, other characters, and groups their own motives in life, and let connections form through genuine interests and stakes. CHAR means the current character or characters, not {{user}}. Keep CHAR's own affairs in the CHAR section and other people's affairs in their separate section. Include independently motivated activity and relationships among supporting people; do not route every thread, consequence, or relationship back to USER or CHAR. Introduce situated supporting people when an affair calls for them: a concrete responsibility, exchange, shared resource, or disagreement gives them a place and an interest of their own. The supplied cast is not the whole population unless the setting explicitly says so; a disabled newcomer requirement does not close the world. Intersections with either principal must have a concrete cause, not arise merely because they are protagonists. Keep {{user}}'s influence proportionate to their established identity, abilities, and actions.
 
 Choose the emotional and causal direction from the setting, evidence, and people's particular interests. Interest can arise from cooperation, competence, discovery, ordinary friction, or conflicting desires as well as genuine danger. Do not turn an ordinary remark, coincidence, or lack of information into evidence of guilt, a conspiracy, manipulation, or a hidden connection to the protagonists. Leave unsupported hidden truths open. Develop characters' self-interest, darker sides, and moral contradictions through their experiences; do not automatically excuse them, impose repentance, or arrange for relationships to be elevated. Neither a dark turn nor a reassuring outcome is mandatory.
 
 ### Mainline and Side Stories
 
-未映之幕 is true only within its explicitly marked parallel side story. It may visit the past or the near or distant future, while retaining a meaningful connection to the mainline and remaining independently readable. 幕间拾趣 may draw on known experiences, but its newly created forum or phone exchanges are fictional side material, not real social activity or established mainline facts. Do not write these side stories into mainline memory, continuity references, or narrative injection. Do not reveal central mysteries through an interlude card's body, title, character labels, or metaphors, or decide an unsupported hidden truth on your own. Deliver plain text in the prescribed fields, never HTML or executable markup.
+未映之幕 is true only within its explicitly marked parallel side story. It may visit the past or the near or distant future, while retaining a meaningful connection to the mainline and remaining independently readable. Its connection may be a shared place, an ordinary consequence, or a contrasting choice, not an answer to the mainline's unresolved origin. A parallel label does not license an ungrounded victim identity, culprit, or definitive cause of the active mystery, and one invented card cannot serve as evidence for another. 幕间拾趣 may draw on known experiences, but its newly created forum or phone exchanges are fictional side material, not real social activity or established mainline facts. Do not write these side stories into mainline memory, continuity references, or narrative injection. Do not reveal central mysteries through an interlude card's body, title, character labels, or metaphors, or decide an unsupported hidden truth on your own. Deliver plain text in the prescribed fields, never HTML or executable markup.
 
 ### Prose Ready to Continue
 
-Write selectable narrative passages as third-person authorial prose, with the actual subject and enough local context stated within each passage. Events, access conditions, and the short opening passage should read as parts of a story, not a briefing to a player or instructions to a writer. Express a future condition naturally within its sentence. The short opening passage is the first concrete beat of the proposed scene, not a request to describe or arrange it. Field names organize the data; do not repeat them as bracketed labels in the prose. Keep USER's choices open and avoid relying on a neighboring unselected paragraph to identify who is acting.
+Write selectable narrative passages as third-person authorial prose, with the subject identifiable and enough local context for each selected passage. NPC passages already carry their exact name in the card and in an application-supplied subject prefix when inserted: use that anchor instead of restating the owner's name in every field. Vary openings through the current action, setting, a clear pronoun, or an unambiguous omitted subject; name another participant or restore the owner's name when a subject change would otherwise confuse the reader. Each NPC passage must work with its subject prefix alone and also flow with the other selected passages, without depending on an unselected paragraph. Events, access conditions, and the short opening passage should read as parts of a story, not a briefing to a player or instructions to a writer. Express a future condition naturally within its sentence. The short opening passage is the first concrete beat of the proposed scene, not a request to describe or arrange it. Field names organize the data; do not repeat them as bracketed labels in the prose. Keep USER's choices open; sections without a subject prefix still identify their actor in the prose.
 
 ### Substantive Output
 
@@ -90,7 +94,7 @@ Cover every section enabled for this run and meet the minimum counts below. Thes
 - 尘寰群生: ${CREATIVE_COUNTS.world_chatter.min}–${CREATIVE_COUNTS.world_chatter.max} brief human voices: conversation, self-talk, calls, complaints, jokes, or other situated speech. Let a small moment convey everyday interests and differences in outlook; it need not offer a clue or advance a plot. Context supports the voice. Pure weather, scenery, ambient noise, or an animal's reaction does not count.
 - 世界格局: ${CREATIVE_COUNTS.factions.min}–${CREATIVE_COUNTS.factions.max} factions or organizations and ${CREATIVE_COUNTS.world_events.min}–${CREATIVE_COUNTS.world_events.max} ongoing situations. Organizations and events that remain relevant and in force may count; these are not quotas for new additions. At least one ongoing situation must belong to a non-USER, non-CHAR layer such as an institution, trade, neighborhood, public service, or regional group. Treat world events as structural or collective pressure with its own scope and actors, not as a duplicate of either 命运之脉 trajectory or a protagonist's next beat. Maintain organizational relationships according to actual connections.
 - 未映之幕: exactly ${CREATIVE_COUNTS.parallel_scene.min} independently readable scene when enabled; no title is required, and its emotional register is unrestricted by a fixed quota.
-- 幕间拾趣: exactly ${CREATIVE_COUNTS.interlude.min} card when enabled, using only the forum or phone form specified for this run. A forum contains ${CREATIVE_DETAIL_COUNTS.forumPosts.min}–${CREATIVE_DETAIL_COUNTS.forumPosts.max} posts, each with ${CREATIVE_DETAIL_COUNTS.forumReplies.min}–${CREATIVE_DETAIL_COUNTS.forumReplies.max} replies; a phone exchange contains ${CREATIVE_DETAIL_COUNTS.phoneMessages.min}–${CREATIVE_DETAIL_COUNTS.phoneMessages.max} messages, with exactly ${CREATIVE_DETAIL_COUNTS.phoneSpeakers.min} speakers for a direct exchange or at least ${CREATIVE_DETAIL_COUNTS.phoneSpeakers.min} for a group exchange. Do not omit it, mix the forms, or generate both. 未映之幕 does not count toward this quota. Use a lived-in community name, actual group name, or direct contact's display name as the title, not a chapter heading. Vary viewpoints, topics, and voices beyond the main cast's latest affairs; conspiracies, scandals, trending news, or work reports are not a required template.
+- 幕间拾趣: exactly ${CREATIVE_COUNTS.interlude.min} card when enabled, using only the forum or phone form specified for this run. A forum contains at least ${CREATIVE_DETAIL_COUNTS.forumPosts.min} posts, each with ${CREATIVE_DETAIL_COUNTS.forumReplies.min}–${CREATIVE_DETAIL_COUNTS.forumReplies.max} replies; a phone exchange contains at least ${CREATIVE_DETAIL_COUNTS.phoneMessages.min} messages, with exactly ${CREATIVE_DETAIL_COUNTS.phoneSpeakers.min} speakers for a direct exchange or at least ${CREATIVE_DETAIL_COUNTS.phoneSpeakers.min} for a group exchange. Do not omit it, mix the forms, or generate both. 未映之幕 does not count toward this quota. Use a lived-in community name, actual group name, or direct contact's display name as the title, not a chapter heading. Vary viewpoints, topics, and voices beyond the main cast's latest affairs; conspiracies, scandals, trending news, or work reports are not a required template.
 
 An effective entry must be concrete and recognizable and fulfill its own section's purpose. Narrative trajectories, encounters, character affairs, and ripples contribute a new action, consequence, connection, or usable condition beyond the source recap. Situated human speech in 尘寰群生 may instead reveal temperament, an ordinary concern, or a way of living, without supplying a clue or new plot condition. An enduring state may be retained where the section calls for it, with its current practical effect made specific; retention does not replace the progression required of encounters, CHAR affairs, and ripples.
 
@@ -108,7 +112,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 把远近层次按时态锚定，而不是按镜头远近或主角是否在场划分：命运之脉恰好编织一条 near 与一条 far，near 是下一处有戏剧价值的时间段，可能在数小时、数日或数周后，far 则从明确的更晚节点（数周、数月、季节或更久）展开。两条都应跨越当前摘要，以编剧的全景视野同时安排主角团之外的人和事；至少一条从非 {{user}}、非 {{char}} 的行动开始，并写清它怎样碰到另一条生活。预演展开其中可亲历的近景切口，人物动向保留各人自主进行的事务，涟漪追踪影响如何进入别处。栏目之间相互照应，却不重复交付同一件事。远近不靠职业分工或人物标签划分，而靠明确的时间锚、行动相遇和局面改变区分。
 
-在既有设定允许的空白里主动补充有分量的经历和联系，将新增内容落到具体的人与处境。秘密依照线索与接触逐渐显露，保留需要积累的未知。
+在既有设定允许的空白里主动补充有分量的经历和联系，将新增内容落到具体的人与处境。先让一件事凭当事人的动机、机会和行动自行成立，再寻找它与主角的真实交点。人设决定人物如何看见和应对，不替案件或他人的旧事提供起因；初遇可以只是初遇，呼应不必变成同源证据。秘密依照线索与接触逐渐显露，未解的原因不妨暂留，眼前的选择与后果仍能向前。
 
 ### 看见人物真正的在意
 
@@ -134,7 +138,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 本轮必须提供正文落点之外的具体发展：有独立动因的人已带着新的条件来到可相遇之处，一项行动改变了另一人的处境，或一段尚未被看见的事务进入值得亲历的进程。创作走到可回应的新局面，才把选择交给 {{user}}；不把“接下来如何推进”的工作交还给读者。候选能写得明确、鲜活，但采用前仍是候选。读完之后，读者此刻能接住哪一件原先还不存在的具体事情？先问“谁做了什么，谁因此失去或获得什么，下一步必须面对哪项新条件”，再落笔；答不出这三项就回到人物动因和外部行动重组，不用套话填空。
 
-读者可选用的每一段都以作者的第三人称落笔，段内交代实际行动者与必要处境，选出一段也能独立接入叙述。把条件写成自然句，把落笔写成场景已经展开的第一拍；例如“末班船靠岸时，杜衡把退回的信压在售票窗前。”而非“描写杜衡与售票员交涉”。这些段落供读者编排和改写，不附字段标签、人物任务清单或写作指令；涉及 {{user}} 的选择仍留白。
+读者可选用的每一段都以作者的第三人称落笔，实际行动者与必要处境清楚，选出一段也能独立接入叙述。其他人物动向已有卡片姓名和写入时的姓名前缀，不必每段重新点名；可从动作、现场或清楚的代词起笔，转换人物或指代会混淆时才补名。单段连同姓名前缀可读，多段合选也不反复介绍同一人。把条件写成自然句，把落笔写成场景已经展开的第一拍；例如“末班船靠岸时，杜衡把退回的信压在售票窗前。”而非“描写杜衡与售票员交涉”。这些段落供读者编排和改写，不自行加字段标签、人物任务清单或写作指令；涉及 {{user}} 的选择仍留白。
 
 ### 本轮偏好
 
@@ -152,13 +156,13 @@ export const CREATIVE_GUIDES = Object.freeze({
 两条必须越过正文当前落点，成为可以规划主线未来的具体戏剧节点；至少一条从非 {{user}}、非 {{char}} 的人物或群体开始，并让行动进入另一处生活。允许安排数日、数周或更久后的再次犯案、错过、转向、伏笔兑现、支线并行或关系重组，但要写出时间锚、行动者、反作用和新的后果，不能只预测主角“会如何”。用确定的叙事动词写候选内部已经安排好的事件，把候选性质交给输出边界，不连续堆叠“可能、也许、应该、似乎”。结尾留在一项具体事实、选择、发现、未拆开的证物或改变后的处境上，让读者看见可回收的钩子与压力；不要在正文末尾追加“下一步将……”“读者可以……”之类的日志式结论、抽象升华、气氛预告、人物任务清单、现状摘要或复述预演。两条内容应有不同的时态与因果重心，而非把同一主线改写两遍；采用前仍是候选，不越过 {{user}} 的未决选择。`,
   character_dynamics: `只以本聊天的 CHAR 为动态主体，{{user}} 及其身份映射不占本栏名额；群聊中的多个 CHAR 按事务分量展开，不要求每人各凑一组。每条从 CHAR 自己正在处理的事情出发，写到一次具体行动、判断的落实或下一步事务已具备的条件，带出正文之外的进程与人物侧面。职业、同伴与私人生活都能提供有分量的内容，不把各条写成与 {{user}} 最近往来的情绪复述。相处细节可以细腻，但要对这个人的在意、做法或处境产生作用。`,
 
-  npc_updates: `沿 CHAR 与 {{user}} 以外的人物的自主事务展开，写明当事人自己的诉求、实际做法及其改变的条件，重点是他自己的生活进程，不是替读者安排可介入的近景入口。承接旧关系和未了事项，保留即使暂时移除主角仍会进行的活动与人物联系；交集可以逐渐形成，也可以尚未发生。若明确的封闭设定限制了人物范围，则如实说明，不捏造陌生人凑数，不让全员围观、评判或猜测主角。`,
+  npc_updates: `沿 CHAR 与 {{user}} 以外的人物的自主事务展开，写明当事人自己的诉求、实际做法及其改变的条件，重点是他自己的生活进程，不是替读者安排可介入的近景入口。承接旧关系和未了事项，保留即使暂时移除主角仍会进行的活动与人物联系；交集可以逐渐形成，也可以尚未发生。姓名由 name 和写入前缀交代，在意、进展、联系与落笔不再各自以同一姓名重新开篇；用动作、场景和清晰指代接续，人物切换时保留必要点名。每段与姓名前缀独立可读，合读时是自然相接的生活片段。若明确的封闭设定限制了人物范围，则如实说明，不捏造陌生人凑数，不让全员围观、评判或猜测主角。`,
 
   quests: `每条预演提供一个正文现有落点之外、可以接近和回应的近景情境。来人来事带着自己的动因，通过行动、消息、发现或条件变化，把此前尚不可回应的切入口带到眼前；写到读者无需另发明事件就能接续的程度。subject 明确写本条主体，可以是人物、群体或具体事项，不从诗意标题乱猜一个人。这里亲历具体切口，与命运之脉的叙事走向、NPC 自己的事务分工，不重复当前现场或既定打算，不写任务目标、奖励和步骤。三段按“发生条件 → 情境 → 落笔”排列，并且各自是同一片段中可前后相接的作者叙述：发生条件写已经成立的因由、限制或入口，不写“某日某时触发”的任务提示；情境承接前段，让结果与人物处境具体出现；落笔写场景已经开始的第一拍，是人物带着具体言行进入场景的短小落笔。三段合在一起是一段完整片段，拆开后也各自交代主体和必要上下文，{{user}} 如何回应保持开放。`,
 
   chain_reactions: `每条用 3–5 个简短节点，以 → 串起具体原因、传导行动与后续影响，至少延伸到正文尚未呈现的一处结果；候选节点在必要处说明条件，不冒充既成事实。至少一条体现横向广度：影响进入不同人物、群体或事务，改变他们之间的条件，而非只让同一条主线越滚越大。不写 {{user}} 与 {{char}} 的关系进退，不以长篇心理解释或原文摘要代替因果链，也不把无关巧合强连成阴谋。`,
 
-  relation_undercurrents: `每条围绕 2–3 位明确参与者，用精炼内容写出一项不同步的理解、期待或立场，以及影响相处的一次具体表现。三条中至少一条是双人关系、至少一条是三人关系，剩余一条按素材决定；至少两条是配角之间的关系，双方或三方均不以 {{user}}、{{char}} 为中心。本栏不承担 USER–CHAR 两人关系，也不能加入第三人规避这一边界。其他人物并非都围着 CHAR 生活。信任、摩擦、默契和顾虑自然分配，不重复解释同一段对话，不输出用户知情程度的额外标签。没有依据的疑问仍是疑问，不暗定人物有罪。`,
+  relation_undercurrents: `每条围绕 2–3 位明确参与者，用精炼内容写出一项不同步的理解、期待或立场，以及影响相处的一次具体表现。三条中至少一条是双人关系、至少一条是三人关系，剩余一条按素材决定；至少两条是配角之间的关系，双方或三方均不以 {{user}}、{{char}} 为中心。本栏不承担 USER–CHAR 两人关系，也不能加入第三人规避这一边界。其他人物并非都围着 CHAR 生活。沿正在发生的交易、职责、邻里往来或共同利益自然引入有自己打算的新参与者，不把角色卡名单当作全部人口；已有联系可延续，新联系也可在当下建立，不必倒造与主角的旧缘。新角入场开关是额外的新角供给要求，不是关闭时禁止世界出现普通新人物；明确封闭设定仍优先。信任、摩擦、默契和顾虑自然分配，不重复解释同一段对话，不输出用户知情程度的额外标签。没有依据的疑问仍是疑问，不暗定人物有罪。`,
 
   world_chatter: `用 8–15 则散落各处的小“声”，让世界芸芸众生在自语、闲谈、叫卖、抱怨、玩笑或片刻争执中显出自己的生活。每则以能听见的人的话语为重心，短短一两句带出说话者的处境、习惯或在意，必要时用一个动作交代现场。这里的价值是生活的声音与人情，不要求藏线索、送情报或推动案件；一场讨价还价、一句得意的炫耀也能成立。少量声音可沾到正文余波，其余各有去处，不把整座世界写成事件简报或主角的回音。环境服务于人的声音，纯天气、景色、机械声和动物反应不占名额。`,
 
@@ -166,13 +170,13 @@ export const CREATIVE_GUIDES = Object.freeze({
 
   parallel_scene: `以与主线人物、线索、关系或选择确有联系的一处可能性，写成可以独立阅读的文学番外，而不是“如果当时……”的推断说明。开头用自然句交代明确的时间锚与地点；可以取景过去、近未来或遥远未来，不局限于分岔后的第一个时刻，也不要求 CHAR 或 {{user}} 出场。让另一种事实直接发生，并让人物带着各自的欲望、误会或代价作出选择；至少经历一次阻力或转折，使这条生活线进入与开头不同的状态。全文写成 3–6 个有呼吸的出版式段落，每段承载一个动作、回应或后果，首段不要标题或字段标签，段落之间用自然的时间、视线或动作转换连接，不堆成一整面摘要墙。
 
-番外与主线有可辨认的物件、决定、关系或后果相连，但不复述正文梗概，不承担主线解释或替读者揭谜。结尾停在已经发生的动作、对话、物件或新处境上，让余味来自具体生活；不要用抽象升华、未来预告或“命运会继续”“一切终将……”之类的总结句收尾。情绪由内容决定，轻快、平静、遗憾、热烈或荒诞都可成立；无须标题，不追踪分支，不反写主线。番外事实仅在此幕内成立。`,
+番外与主线有可辨认的物件、决定、关系或后果相连，但不复述正文梗概，不承担主线解释或替读者揭谜。相连也可以是同一地点的另一段生活、某项行动的日常余波或彼此映照的选择；当前谜团未解时，不借回溯补齐未获来源支持的身份、责任与事件起因，也不把主角的籍贯、职业或手艺倒填进事件源头。结尾停在已经发生的动作、对话、物件或新处境上，让余味来自具体生活；不要用抽象升华、未来预告或“命运会继续”“一切终将……”之类的总结句收尾。情绪由内容决定，轻快、平静、遗憾、热烈或荒诞都可成立；无须标题，不追踪分支，不反写主线。番外事实仅在此幕内成立。`,
 
   interlude: `幕间拾趣每轮按指定的世界论坛或角色手机形式生成一张独立趣味卡，所有字段只写安全纯文本，不输出 HTML。取景这个世界里不同人的生活圈，换话题也换观看位置，不默认从主角身边或当前主线事务取材，不固定围绕阴谋、热搜或主角点评。让交流本身有趣：错频的回答、熟人默契、小小争执、意外同好、认真求助都能成篇，无须每次制造笑点。保持世界与说话者的时代和生活依据，不为扩大视角凭空制造一个有重要经历的陌生手机主人；这页也不承担案件进度通报或揭开主线谜底。`,
 
-  forum: `生成 3–5 帖，每帖有作者、显示称呼、正文、时代适配的时间和 1–3 条有来有往的回复。每帖的回复数从允许范围内自然变化，不得每帖都固定为同一个数量；至少一处让楼主二次回应，至少一处让回复者接住另一位回复者的观点（可用 reply_to 或语义明确的接话）。title 是符合世界的论坛或社区名称，像居民真的会注册、常逛或随口提起的地方，带一点在地性与网感，而非本轮内容的文学章节名。各帖各有话题、兴趣和轻重，陌生网友与普通人的声音可以相遇；在题材和时代允许时，混入广告、自荐、唱反调、起哄、跑题、认真求助或不相干的日常，让社区像真实的人群而不是三条情报摘要。回复要接住上一句话，容纳口语、省略、误解与不同看法，不把同一事件换账号重复，也不把论坛变成主角动态墙或警方情报集散地。适用于网络的世界保留自然的网友口吻，其他时代可用告示栏、通信圈等公共交流形式，不强加现代网络术语。`,
+  forum: `至少生成 ${CREATIVE_DETAIL_COUNTS.forumPosts.min} 帖，每帖有作者、显示称呼、正文、时代适配的时间和 ${CREATIVE_DETAIL_COUNTS.forumReplies.min}–${CREATIVE_DETAIL_COUNTS.forumReplies.max} 条有来有往的回复。每帖的回复数从允许范围内自然变化，不得每帖都固定为同一个数量；至少一处让楼主二次回应，至少一处让回复者接住另一位回复者的观点（可用 reply_to 或语义明确的接话）。title 是符合世界的论坛或社区名称，像居民真的会注册、常逛或随口提起的地方，带一点在地性与网感，而非本轮内容的文学章节名。各帖各有话题、兴趣和轻重，陌生网友与普通人的声音可以相遇；在题材和时代允许时，混入广告、自荐、唱反调、起哄、跑题、认真求助或不相干的日常，让社区像真实的人群而不是几条情报摘要。新增篇幅用来容纳不同生活圈与真实接话，不靠拆分一句话、换账号复述或把每帖都接回同一主线凑数。回复要接住上一句话，容纳口语、省略、误解与不同看法，不把同一事件换账号重复，也不把论坛变成主角动态墙或警方情报集散地。适用于网络的世界保留自然的网友口吻，其他时代可用告示栏、通信圈等公共交流形式，不强加现代网络术语。`,
 
-  phone: `只从正文或有效记忆已经出现的非 USER 人物中选取手机所属者，CHAR 只是其中一种选择，配角、路人和其他已有姓名者也有自己的交流圈；排除 {{user}} 及其别名与身份映射。视角不要惯性停在 CHAR 及其同事或亲友，优先寻找这次尚未被看见、确有来由的生活侧面；已知人物确实有限时自然复用，不为换人捏造来源。选择私聊或群聊，生成 6–10 条消息；私聊恰好两位说话者，群聊至少两位，每条明确发送者、内容与时间。title 在群聊时就是群名，在私聊时就是对方的联系人显示名，不写“周末的邀请”一类章节标题。口吻、昵称、话题与接话方式带出关系，内容可与当前任务和主要人物完全无关，而仍属于此人的生活；这一形式只在时代与人物确实适用手机或相应终端时出现。
+  phone: `只从正文或有效记忆已经出现的非 USER 人物中选取手机所属者，CHAR 只是其中一种选择，配角、路人和其他已有姓名者也有自己的交流圈；排除 {{user}} 及其别名与身份映射。视角不要惯性停在 CHAR 及其同事或亲友，优先寻找这次尚未被看见、确有来由的生活侧面；已知人物确实有限时自然复用，不为换人捏造来源。选择私聊或群聊，至少生成 ${CREATIVE_DETAIL_COUNTS.phoneMessages.min} 条消息；私聊恰好两位说话者，群聊至少两位，每条明确发送者、内容与时间。消息有长短、停顿与接续，留出澄清、回应或自然转题的空间，不把完整一句机械拆成数条凑数，也不要求每位说话者平均发言。title 在群聊时就是群名，在私聊时就是对方的联系人显示名，不写“周末的邀请”一类章节标题。口吻、昵称、话题与接话方式带出关系，内容可与当前任务和主要人物完全无关，而仍属于此人的生活；这一形式只在时代与人物确实适用手机或相应终端时出现。
 
 可以引用正文已发生的公开往来；不得借转发、截图或他人复述变相生成 USER 未确立的私信、发言与私密活动。`,
 

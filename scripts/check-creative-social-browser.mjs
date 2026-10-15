@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { CREATIVE_DETAIL_COUNTS } from '../qianmu-creative-prompts.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
@@ -48,6 +49,16 @@ try {
           { author: '老陈', content: '地图别扔，画得比我家那幅山水好。' }] },
         { author: '小雨', handle: 'before_rain', time: '半小时前', content: '我爸用十年没碰过的相机拍了晚霞。他说胶卷得洗出来才能给我看。\n我现在每天都在等一家不存在的照相馆营业。', replies: [
           { author: '邮差', content: '桥西那家还在。老板星期四去钓鱼，其他时候都在。' }] },
+        { author: '楼下阿姨', handle: 'downstairs', time: '一小时前', content: '楼道里是谁的猫把我的鞋排成一列了？还留了个空位。', replies: [
+          { author: '四楼', content: '它在等你另一只拖鞋。' }, { author: '楼下阿姨', content: '另一只在它窝里，破案了。' }, { author: '四楼', reply_to: '楼下阿姨', content: '那是它的候车室。' }] },
+        { author: '旧物交换', handle: 'second_hand', time: '午后', content: '送一个没用过的花盆，有一点歪，不影响种葱。桥南自取。', replies: [
+          { author: '小孟', content: '种蒜可以吗？我的葱也歪。' }] },
+        { author: '阿麦', handle: 'bread_today', time: '两小时前', content: '今天最后一炉面包比平常晚半小时，来之前不用赶。', replies: [
+          { author: '夜班', content: '刚下班，正好。' }, { author: '阿麦', reply_to: '夜班', content: '给你留一只热的。' }] },
+        { author: '新手钓鱼', handle: 'first_cast', time: '上午', content: '一上午只钓起自己的帽子，今晚暂时不请客了。', replies: [
+          { author: '桥西老张', content: '至少没空手回家。' }] },
+        { author: '骑车的陈姐', handle: 'two_wheels', time: '早上', content: '河边那条小路的树荫长了，今天骑过去几乎没晒到太阳。', replies: [
+          { author: '散步的人', content: '拐角有点积水，慢一点。' }, { author: '陈姐', content: '记下了，明早带雨鞋。' }] },
       ] },
       phone: { type: 'phone', title: '夜班续命互助群', owner: '林芷', conversation_kind: 'group', messages: [
         { sender: '周宁', content: '谁在茶水间留下了一只非常郑重的保温桶？', time: '21:03' },
@@ -58,6 +69,10 @@ try {
         { sender: '周宁', content: '他把盖子装反了。', time: '21:05' },
         { sender: '林芷', content: '明早两份。', time: '21:06' },
         { sender: '小陈', content: '收到。申请把安全检查交还专业人员。', time: '21:06' },
+        { sender: '周宁', content: '顺便问一下，明天有谁走河边那条路？', time: '21:07' },
+        { sender: '林芷', content: '我骑车，怎么了？', time: '21:07' },
+        { sender: '周宁', content: '帮我看看花店开没开，我想下班买一束。', time: '21:08' },
+        { sender: '林芷', content: '好，路过给你拍一下门口牌子。', time: '21:08' },
       ] },
     };
     window.mount = (kind, themeName, mode = 'light') => {
@@ -107,6 +122,8 @@ try {
       `${label}: panel content has responsive bounded accessible scrolling`, viewport);
 
     if (kind === 'forum') {
+      check(await page.locator('.sd-social-post').count() === CREATIVE_DETAIL_COUNTS.forumPosts.min,
+        `${label}: every requested post is retained in the bounded feed`);
       const like = page.locator('[data-qm-social-action="like"]').first();
       const initial = await like.evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node).borderColor]);
       await like.focus(); await page.keyboard.press('Enter');
@@ -123,7 +140,7 @@ try {
       await page.locator('[data-qm-social-action="replies"]').first().click();
       check(!await page.locator('.sd-social-replies').first().isVisible(), `${label}: replies close`);
     } else {
-      check(await page.locator('.sd-social-message:visible').count() === 8 && await page.locator('.sd-social-expand').count() === 0,
+      check(await page.locator('.sd-social-message:visible').count() === CREATIVE_DETAIL_COUNTS.phoneMessages.min && await page.locator('.sd-social-expand').count() === 0,
         `${label}: all messages available without a second expand control`);
       const messages = page.locator('.sd-social-messages');
       await messages.focus(); await page.keyboard.press('End');
@@ -144,7 +161,10 @@ try {
 
   await page.setViewportSize({ width: 393, height: 640 });
   await page.evaluate(() => {
-    samples.longForum = { ...samples.forum, posts: Array.from({ length: 5 }, (_, index) => ({ ...samples.forum.posts[index % 3], content: samples.forum.posts[index % 3].content.repeat(3) })) };
+    // Longer examples deliberately exceed the retired 12-post / 20-message
+    // quotas. Generation now has only a floor; these are not upper limits.
+    samples.longForum = { ...samples.forum, posts: Array.from({ length: 13 }, (_, index) => ({ ...samples.forum.posts[index % samples.forum.posts.length], content: `${index + 1}：${samples.forum.posts[index % samples.forum.posts.length].content.repeat(3)}` })) };
+    samples.longPhone = { ...samples.phone, messages: Array.from({ length: 21 }, (_, index) => ({ ...samples.phone.messages[index % samples.phone.messages.length], time: `22:${String(index).padStart(2, '0')}` })) };
     resetCreativeSocialState(); mount('longForum', 'editorial');
   });
   const longFeed = page.locator('.sd-social-feed');
@@ -153,10 +173,27 @@ try {
     return { top: node.scrollTop, height: node.getBoundingClientRect().height, canScroll: node.scrollHeight > node.clientHeight };
   });
   check(longScroll.top > 0 && longScroll.canScroll && longScroll.height <= 640 * .58 + 1, 'long forum feed scrolls within a short viewport', longScroll);
+  check(await page.locator('.sd-social-post').count() === 13, 'longer 13-post forum renders without truncation');
+  await longFeed.evaluate(node => { node.scrollTop = node.scrollHeight; });
+  const lastPostInside = await page.locator('.sd-social-post').last().evaluate(node => {
+    const box = node.getBoundingClientRect(), viewport = node.closest('[data-qm-social-scroll]').getBoundingClientRect();
+    return box.bottom <= viewport.bottom + 2 && box.bottom > viewport.top;
+  });
+  check(lastPostInside, 'last post of longer forum remains reachable');
+  await longFeed.evaluate((node, top) => { node.scrollTop = top; node.dispatchEvent(new Event('scroll')); }, longScroll.top);
   await page.evaluate(() => mount('longForum', 'glass'));
   check(Math.abs(await longFeed.evaluate(node => node.scrollTop) - longScroll.top) <= 1, 'theme changes preserve forum reading position');
   await page.evaluate(() => { resetCreativeSocialState(); mount('longForum', 'glass'); });
   check(await longFeed.evaluate(node => node.scrollTop) === 0, 'reset clears remembered feed position');
+
+  await page.evaluate(() => { resetCreativeSocialState(); mount('longPhone', 'glass'); });
+  check(await page.locator('.sd-social-message').count() === 21, 'longer 21-message phone renders without truncation');
+  const lastMessageInside = await page.locator('.sd-social-messages').evaluate(node => {
+    node.scrollTop = node.scrollHeight;
+    const box = node.lastElementChild.getBoundingClientRect(), viewport = node.getBoundingClientRect();
+    return box.bottom <= viewport.bottom + 2 && box.bottom > viewport.top && node.scrollWidth <= node.clientWidth + 2;
+  });
+  check(lastMessageInside, 'last message of longer phone remains reachable without horizontal overflow');
 
   const edges = await page.evaluate(() => {
     const root = document.getElementById('story-director-modal');

@@ -125,6 +125,22 @@ test('outside close does not consume the outside action or steal its focus', () 
     assert.equal(f.menu.hidden, true); assert.equal(f.listenerCount(), 0); assert.equal(event.stopped, undefined); assert.equal(f.document.activeElement, f.outside);
 });
 
+test('menu bounds listeners are open-only and disposed across repeated toggles', () => {
+    const f = fixture();
+    f.document.defaultView = f.outside;
+    f.outside.visualViewport = f.buttons[0];
+    const cleanup = bindQianmuThemeMenu(f.root, () => {});
+    const counts = () => [f.document.events.get('scroll')?.size || 0, f.outside.events.get('resize')?.size || 0,
+        f.buttons[0].events.get('resize')?.size || 0, f.buttons[0].events.get('scroll')?.size || 0];
+    assert.deepEqual(counts(), [0, 0, 0, 0]);
+    for (let i = 0; i < 5; i++) {
+        f.trigger.emit('click'); assert.deepEqual(counts(), [1, 1, 1, 1]);
+        assert.doesNotThrow(() => f.outside.emit('resize', { target: {} }), 'window targets are not DOM Nodes');
+        f.trigger.emit('click'); assert.deepEqual(counts(), [0, 0, 0, 0]);
+    }
+    f.trigger.emit('click'); cleanup(); cleanup(); assert.deepEqual(counts(), [0, 0, 0, 0]);
+});
+
 test('keyboard navigation skips unavailable options and Escape/Tab restore the trigger', () => {
     const f = fixture(); bindQianmuThemeMenu(f.root, () => {}); f.buttons[0].disabled = true;
     f.pick.emit('keydown', { target: f.trigger, key: 'ArrowDown' }); assert.equal(f.document.activeElement, f.buttons[1]);

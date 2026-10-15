@@ -4,16 +4,17 @@ import { readFile } from 'node:fs/promises';
 import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = '1.59.448';
-const releaseVersion = '1.59.449';
+const version = '1.59.450';
+const releaseVersion = '1.59.450';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
-  'qianmu-creative-runtime.js', 'qianmu-director-live.js', 'qianmu-creative-social.js',
+  'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
+  ['qianmu-director-live.js', '1.59.448'], ['qianmu-creative-social.js', '1.59.448'],
   ['qianmu-hive-commands.js', '1.59.446'], ['qianmu-prose-hive.js', '1.59.446'], ['qianmu-prose-floor-tools.js', '1.59.449'],
   ['qianmu-prose-assistant-floor.js', '1.59.449'],
-  ['qianmu-theme-menu.js', '1.59.450'], ['qianmu-appearance-session.js', '1.59.444'],
+  ['qianmu-theme-menu.js', '1.59.451'], ['qianmu-appearance-session.js', '1.59.444'],
   ['qianmu-memory-context.js', '1.59.448'],
   ['qianmu-st-context-sources.js', '1.59.450'], ['qianmu-model-host.js', '1.59.445'],
 ]);

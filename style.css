@@ -1179,6 +1179,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
+  transform: translate(var(--sd-theme-menu-shift, 0px), var(--sd-theme-menu-shift-y, 0px));
+  box-sizing: border-box;
+  max-width: var(--sd-theme-menu-max-width, calc(100vw - 16px));
   z-index: 30;
   width: max-content;             /* 刚好塞下「小圆点＋主题名」，不留多余宽度 */
   min-width: 96px;
@@ -1222,7 +1225,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* Compact family tiles with always-visible controls for the current theme. */
 #story-director-modal .sd-theme-menu.is-appearance {
   width: min(264px, calc(100vw - 80px));
-  max-height: min(480px, 70dvh);
+  max-height: min(480px, 70dvh, var(--sd-theme-menu-max-height, 70dvh));
   overflow: auto;
   scrollbar-width: none;
   padding: 8px;
@@ -3349,7 +3352,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   border: 1px solid var(--sd-border);
 }
 #story-director-modal .sd-relus-tone-neg { color: #c2606a; border-color: color-mix(in srgb, #c2606a 45%, var(--sd-border)); background: color-mix(in srgb, #c2606a 10%, transparent); }
-#story-director-modal .sd-relus-tone-neu { color: var(--sd-muted); }
+#story-director-modal .sd-relus-tone-neu { color: var(--sd-muted); background: color-mix(in srgb, var(--sd-muted) 10%, transparent); }
 #story-director-modal .sd-relus-tone-pos { color: #5f9e74; border-color: color-mix(in srgb, #5f9e74 45%, var(--sd-border)); background: color-mix(in srgb, #5f9e74 12%, transparent); }
 #story-director-modal .sd-relus-aware {
   font-size: .74em;
@@ -7207,29 +7210,18 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 #story-director-modal .sd-world-flip-shell { position: relative; grid-column: 1 / -1; width: 100%; min-height: 100%; touch-action: pan-y pinch-zoom; }
 #story-director-modal .sd-world-page { min-width: 0; }
 #story-director-modal .sd-world-edge {
-  --sd-world-glow: var(--sd-world-glow-left, color-mix(in srgb, var(--sd-accent) 42%, #008da2));
+  /* One live color source: custom/cover accents and classic palettes all flow
+     through the owner token. The return side still has no has-content cue. */
+  --sd-world-glow: var(--sd-accent);
   position: absolute; z-index: 8; top: 0; bottom: 0; width: 24px; min-width: 0; height: auto; margin: 0; padding: 0; border: 0;
   color: var(--sd-accent) !important; background: transparent !important; box-shadow: none !important; cursor: pointer;
   display: grid; place-items: center; touch-action: pan-y pinch-zoom;
-}
-#story-director-modal .sd-world-edge-right { --sd-world-glow: var(--sd-world-glow-right, var(--sd-world-glow)); }
-#story-director-modal.sd-theme-light .sd-world-viewport { --sd-world-glow-left: #18bfe0; --sd-world-glow-right: #ff5f9d; }
-#story-director-modal.sd-theme-summer .sd-world-viewport { --sd-world-glow-left: #8fcf35; --sd-world-glow-right: #20b9a5; }
-#story-director-modal.sd-theme-candy .sd-world-viewport { --sd-world-glow-left: #ff83b1; --sd-world-glow-right: #9b79ff; }
-#story-director-modal.sd-theme-kraft .sd-world-viewport { --sd-world-glow-left: #c38e45; --sd-world-glow-right: #3a9d9c; }
-#story-director-modal.sd-theme-dream .sd-world-viewport { --sd-world-glow-left: #a58cff; --sd-world-glow-right: #e77ac9; }
-#story-director-modal.sd-theme-dark .sd-world-viewport {
-  --sd-world-glow-left: #5ee7ff;
-  --sd-world-glow-right: #9c8cff;
 }
 #story-director-modal .sd-world-edge::before {
   content: ''; position: absolute; top: 0; bottom: 0; width: 2px; border-radius: 3px; pointer-events: none;
   background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--sd-world-glow) 8%, transparent) 10%, color-mix(in srgb, var(--sd-world-glow) 40%, transparent) 25%, var(--sd-world-glow) 46%, var(--sd-world-glow) 54%, color-mix(in srgb, var(--sd-world-glow) 40%, transparent) 75%, color-mix(in srgb, var(--sd-world-glow) 8%, transparent) 90%, transparent); opacity: 0;
   filter: drop-shadow(0 0 2px var(--sd-world-glow)) drop-shadow(0 0 6px var(--sd-world-glow));
 }
-#story-director-modal:is(.sd-theme-dark:not([data-qm-mode="light"]), [data-qm-mode="dark"]) .sd-world-edge { --sd-world-glow: color-mix(in srgb, var(--sd-accent) 55%, #70ffdc); }
-#story-director-modal:is(.sd-theme-dark:not([data-qm-mode="light"]), [data-qm-mode="dark"]) .sd-world-edge-left { --sd-world-glow: var(--sd-world-glow-left, #5ee7ff); }
-#story-director-modal:is(.sd-theme-dark:not([data-qm-mode="light"]), [data-qm-mode="dark"]) .sd-world-edge-right { --sd-world-glow: var(--sd-world-glow-right, #9c8cff); }
 #story-director-modal:is(.sd-theme-dark:not([data-qm-mode="light"]), [data-qm-mode="dark"]) .sd-world-edge::before { width: 1.5px; }
 #story-director-modal .sd-world-edge.has-content::before { opacity: .88; animation: sd-world-edge-breathe 2.8s ease-in-out infinite; }
 #story-director-modal .sd-world-edge-left { left: -1px; border-radius: 0; }
@@ -12023,38 +12015,38 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   gap: 6px;
 }
 #story-director-modal .sd-plan-section .sd-item-summary-main h4 { margin: 0 !important; line-height: 1.3 !important; }
+/* Separate the decorative name from the reading measure. Alternating headings
+   keep the rhythm without making long role/emotion prose share a narrow lane. */
 #story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   align-items: stretch;
 }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main h4 {
-  grid-column: 2;
+  grid-column: 1;
   grid-row: 1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   align-self: start;
-  max-width: clamp(80px, 25vw, 180px);
+  max-width: 100%;
   text-align: right;
   overflow-wrap: anywhere;
-  font-size: clamp(20px, 5.6vw, 36px) !important;
+  font-size: clamp(22px, 5.6vw, 32px) !important;
   line-height: 1.1 !important;
   background-image: linear-gradient(to bottom, color-mix(in srgb, var(--sd-text) 62%, transparent), color-mix(in srgb, var(--sd-accent) 8%, transparent)) !important;
 }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 2;
   flex-direction: column;
   justify-content: flex-start;
 }
-#story-director-modal .sd-plan-section .sd-item-npc.sd-npc-name-left .sd-item-summary-main { grid-template-columns: auto minmax(0, 1fr); }
 #story-director-modal .sd-plan-section .sd-item-npc.sd-npc-name-left .sd-item-summary-main h4 { grid-column: 1; justify-content: flex-start; text-align: left; }
-#story-director-modal .sd-plan-section .sd-item-npc.sd-npc-name-left .sd-mini-chip-row { grid-column: 2; }
 #story-director-modal .sd-plan-section .sd-item-npc > summary { gap: 10px; }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row { gap: 6px; align-items: stretch; }
-#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { display: block; margin: 0; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; line-height: 1.35; }
+#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { display: block; margin: 0; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; line-height: 1.55; }
 @media (max-width: 430px) {
   /* A media entry gets its own visible row instead of squeezing the emotion
      into a few characters. Inline labels let wrapped chip prose use its width. */

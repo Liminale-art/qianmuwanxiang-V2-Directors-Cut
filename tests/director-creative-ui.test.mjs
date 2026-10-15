@@ -290,10 +290,20 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
     'preview item summary content is vertically centered');
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-fold > summary\s*\{[^}]*min-height:\s*58px[^}]*padding-block:\s*0/,
     'preview entry folds keep a compact centered row');
-  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-npc \.sd-item-summary-main h4\s*\{[^}]*align-self:\s*start[^}]*font-size:\s*clamp\(20px, 5\.6vw, 36px\)[^}]*linear-gradient\(to bottom[^}]*62%[^}]*8%/,
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-npc \.sd-item-summary-main h4\s*\{[^}]*align-self:\s*start[^}]*font-size:\s*clamp\(22px, 5\.6vw, 32px\)[^}]*linear-gradient\(to bottom[^}]*62%[^}]*8%/,
     'other-person names use the requested top-aligned, lighter large gradient');
   assert.match(styles, /\.sd-item-npc\.sd-npc-name-left \.sd-item-summary-main h4\s*\{[^}]*grid-column:\s*1[^}]*text-align:\s*left/,
-    'alternating NPC names have a dedicated left column without affecting other card types');
+    'alternating NPC names retain left alignment without affecting other card types');
+  assert.match(styles, /\.sd-item-npc \.sd-item-summary-main\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/,
+    'NPC identity headings no longer take width away from the reading text');
+  assert.match(styles, /\.sd-item-npc \.sd-mini-chip-row\s*\{[^}]*grid-column:\s*1[^}]*grid-row:\s*2/,
+    'role and emotion occupy their own full-width reading row');
+  assert.match(styles, /\.sd-relus-tone-neu\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--sd-muted\) 10%, transparent\)/,
+    'neutral relationship labels retain a subtle gray fill');
+  assert.match(styles, /\.sd-world-edge\s*\{[^}]*--sd-world-glow:\s*var\(--sd-accent\)/,
+    'the breathing entry uses the live accent token');
+  assert.doesNotMatch(styles, /--sd-world-glow-(?:left|right):/,
+    'legacy hardcoded left/right glow palettes cannot override live accent changes');
   assert.match(styles, /\.sd-item-npc \.sd-mini-chip-row \.sd-badge\s*\{[^}]*border:\s*0 !important[^}]*background:\s*none !important[^}]*box-shadow:\s*none !important/,
     'NPC role and emotion remain text-only across theme overrides');
   assert.match(styles, /#story-director-modal \.sd-relus-drift\s*\{[^}]*display:\s*block/,

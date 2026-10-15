@@ -4,7 +4,7 @@ import {
   createCreativeSchema, normalizeCreativeSections, validateCreativePlan,
   pruneInvalidCreativeItems, projectCreativeContinuity,
 } from '../qianmu-creative-contract.js';
-import { CREATIVE_COUNTS } from '../qianmu-creative-prompts.js';
+import { CREATIVE_COUNTS, CREATIVE_DETAIL_COUNTS } from '../qianmu-creative-prompts.js';
 
 const OFF = Object.freeze({ interludeEnabled: false, parallelSceneEnabled: false });
 const FULL = Object.freeze({ worldChatterEnabled: true, geopoliticsEnabled: true, interludeType: 'phone', personaNames: ['访客', 'Guest'], eligiblePhoneOwners: ['阿岚', '老周'] });
@@ -27,8 +27,8 @@ function complete(options = FULL) {
   }
   if (options.parallelSceneEnabled !== false) result.parallel_scene = { title: '若赶上了那趟车', content: '那次没有误车，他在空座旁重新见到了旧友。' };
   if (options.interludeEnabled !== false) result.interlude = options.interludeType === 'phone'
-    ? { type: 'phone', title: '早班群里', owner: '阿岚', conversation_kind: 'group', messages: Array.from({ length: 6 }, (_, i) => ({ sender: i % 2 ? '阿岚' : '老周', content: `第${i}件小事得商量一下。`, time: `08:0${i}` })) }
-    : { type: 'forum', title: '街坊的告示板', posts: Array.from({ length: 3 }, (_, i) => ({ author: `街坊${i}`, handle: `小院${i}`, content: `第${i}件日常发现`, time: `午后${i}时`, replies: [{ author: '茶摊老板', content: '待会来看看。' }] })) };
+    ? { type: 'phone', title: '早班群里', owner: '阿岚', conversation_kind: 'group', messages: Array.from({ length: CREATIVE_DETAIL_COUNTS.phoneMessages.min }, (_, i) => ({ sender: i % 2 ? '阿岚' : '老周', content: `第${i}件小事得商量一下。`, time: `08:${String(i).padStart(2, '0')}` })) }
+    : { type: 'forum', title: '街坊的告示板', posts: Array.from({ length: CREATIVE_DETAIL_COUNTS.forumPosts.min }, (_, i) => ({ author: `街坊${i}`, handle: `小院${i}`, content: `第${i}件日常发现`, time: `午后${i}时`, replies: [{ author: '茶摊老板', content: '待会来看看。' }] })) };
   return result;
 }
 const parseShape = schema => {
@@ -396,7 +396,7 @@ test('character and NPC emotional cues stay concise when supplied', () => {
 test('forum bounds and complete replies are enforced, while legacy theater remains readable but not valid new output', () => {
   const options = { ...FULL, interludeType: 'forum' }, plan = complete(options);
   assert.deepEqual(validateCreativePlan(plan, options), []);
-  for (const count of [2, 6]) {
+  for (const count of [0, CREATIVE_DETAIL_COUNTS.forumPosts.min - 1]) {
     const bad = structuredClone(plan);
     bad.interlude.posts = Array.from({ length: count }, (_, i) => ({ ...plan.interlude.posts[0], content: `主题${i}` }));
     assert.ok(validateCreativePlan(bad, options).some(issue => issue.field === 'interlude'));
@@ -411,13 +411,13 @@ test('forum bounds and complete replies are enforced, while legacy theater remai
   assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'interlude'));
 });
 
-test('phone requires 6–10 messages and multiple speakers but permits natural repeated short replies', () => {
+test('phone requires at least 12 messages and multiple speakers but permits natural repeated short replies', () => {
   const plan = complete();
   plan.interlude.messages[0].content = '好'; plan.interlude.messages[1].content = '好';
   assert.deepEqual(validateCreativePlan(plan, FULL), []);
-  for (const count of [5, 11]) {
+  for (const count of [0, CREATIVE_DETAIL_COUNTS.phoneMessages.min - 1]) {
     const bad = structuredClone(plan);
-    bad.interlude.messages = Array.from({ length: count }, (_, i) => ({ ...plan.interlude.messages[i % 6], time: `09:${i}` }));
+    bad.interlude.messages = Array.from({ length: count }, (_, i) => ({ ...plan.interlude.messages[i % plan.interlude.messages.length], time: `09:${i}` }));
     assert.ok(validateCreativePlan(bad, FULL).some(issue => issue.field === 'interlude'));
   }
   const solo = structuredClone(plan); solo.interlude.messages.forEach(message => { message.sender = '阿岚'; });

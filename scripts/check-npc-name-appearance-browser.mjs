@@ -7,7 +7,7 @@ import { storyboardFunctionSource } from '../tests/helpers/storyboard-form-fixtu
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
-const functions = ['renderPlanSectionFold', 'renderItemList', 'renderItemCard', 'renderItemChips', 'getContextItemId', 'renderDirectorWorldEntryLink', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph'].map(storyboardFunctionSource).join('\n');
+const functions = ['renderPlanSectionFold', 'renderRelationUndercurrentsCard', 'renderItemList', 'renderItemCard', 'renderItemChips', 'getContextItemId', 'renderDirectorWorldEntryLink', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
 const qa = new URL('../dist/local-qa/npc-alternating/', import.meta.url);
 await mkdir(qa, { recursive: true });
@@ -37,6 +37,10 @@ try {
       { id: 'npc3', name: '赵德海', role: '杨家弄老旧小区物业代管员（新角入场）', emotional_state: '惊慌失措，存着侥幸心理想把责任推给流动租客，却又担心隐瞒的收据被找到。', current_goal: '想确认被收走的钥匙是否已经登记。' },
       { id: 'npc4', name: '长孙无忌', role: '夜班资料室负责人，负责登记资料、核实来源并联系下一班交接人员', emotional_state: '冷静专注，面对现场反复变化的线索仍保持谨慎，准备完整核对每一项记录。', current_goal: '保留纸面原件与交接记录。' },
       { id: 'npc5', name: '邵宁', role: '江北分局法医', emotional_state: '冷静专注，对现场围观者的议论毫无反应。', current_goal: '核对检验报告。' }
+    ], relation_undercurrents: [
+      { parties: ['韩立', '陈叙', '乔苒'], tone: '前辈敲打与同侪分寸', tension: '值班室里重新核对出勤记录，几人仍在磨合各自处理现场的方式。', drift: '交接之前还有一份记录等待当事人签字。' },
+      { parties: ['值班员', '夜班医师'], tone: 'positive', tension: '双方默契地接下临时交接。' },
+      { parties: ['承包商', '货主'], tone: 'negative', tension: '迟到的货运引发分歧。' }
     ] };
     (0, eval)(source);
     window.appearance = createQianmuAppearanceSession({ readSettings: () => settings, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
@@ -44,7 +48,7 @@ try {
     window.renderFixture = async (family, mode) => {
       if (family === 'classic') { settings.theme = mode; document.querySelector('#story-director-modal').className = 'open sd-theme-' + mode; }
       settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync();
-      document.querySelector('.sd-body').innerHTML = renderPlanSectionFold('此间一人', plan.character_dynamics, 'character', 'castfold-character') + renderPlanSectionFold('其他人物动向', plan.npc_updates, 'npc', 'castfold-npc');
+      document.querySelector('.sd-body').innerHTML = renderPlanSectionFold('此间一人', plan.character_dynamics, 'character', 'castfold-character') + renderPlanSectionFold('其他人物动向', plan.npc_updates, 'npc', 'castfold-npc') + renderRelationUndercurrentsCard(plan);
       applyQianmuIcons(document.querySelector('#story-director-modal'));
     };
   }, functions);
@@ -56,23 +60,28 @@ try {
     ok(label + ' renders four full two-, three- and four-character names with original text labels', await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.length === 4 && nodes.every((node, index) => node.querySelector('h4').textContent === plan.npc_updates[index].name && node.querySelectorAll('.sd-badge').length === 2 && node.textContent.includes(plan.npc_updates[index].emotional_state))));
     ok(label + ' names alternate left/right with a lighter vertical gradient and top alignment', await page.locator('.sd-item-npc h4').evaluateAll(nodes => nodes.every((node, index) => { const style = getComputedStyle(node); return parseFloat(style.fontSize) >= 20 && style.textAlign === (index % 2 === 0 ? 'left' : 'right') && style.alignSelf === 'start' && style.backgroundImage.startsWith('linear-gradient(') && !/linear-gradient\(\d/.test(style.backgroundImage) && /\/ 0\.62\)/.test(style.backgroundImage) && /\/ 0\.08\)/.test(style.backgroundImage) && style.backgroundClip === 'text' && style.webkitTextFillColor === 'rgba(0, 0, 0, 0)'; })));
     ok(label + ' role and emotion are unboxed transparent text with no border or shadow', await page.locator('.sd-item-npc .sd-badge').evaluateAll(nodes => nodes.every(node => { const style = getComputedStyle(node); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none' && style.boxShadow === 'none' && ['Top', 'Right', 'Bottom', 'Left'].every(side => style[`border${side}Width`] === '0px'); })));
-    const geometry = await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.map((node, index) => { const name = node.querySelector('h4'), chips = node.querySelector('.sd-mini-chip-row'), nameRect = name.getBoundingClientRect(), chipsRect = chips.getBoundingClientRect(); return { topDifference: Math.abs(nameRect.top - chipsRect.top), clipped: name.scrollWidth > name.clientWidth + 1, overflow: node.scrollWidth > node.clientWidth + 1, gap: index % 2 === 0 ? chipsRect.left - nameRect.right : nameRect.left - chipsRect.right }; }));
-    ok(label + ' alternating names share the top edge without overlapping text: ' + JSON.stringify(geometry), geometry.every(item => item.topDifference <= 1 && !item.clipped && !item.overflow && item.gap >= 9));
+    const geometry = await page.locator('.sd-item-npc').evaluateAll(nodes => nodes.map(node => { const name = node.querySelector('h4'), chips = node.querySelector('.sd-mini-chip-row'), mainRect = node.querySelector('.sd-item-summary-main').getBoundingClientRect(), nameRect = name.getBoundingClientRect(), chipsRect = chips.getBoundingClientRect(); return { fullWidth: Math.abs(chipsRect.width - mainRect.width) < 1, clipped: name.scrollWidth > name.clientWidth + 1, overflow: node.scrollWidth > node.clientWidth + 1, gap: chipsRect.top - nameRect.bottom }; }));
+    ok(label + ' alternating names own a heading row and labels use the full reading width: ' + JSON.stringify(geometry), geometry.every(item => item.fullWidth && !item.clipped && !item.overflow && item.gap >= 7));
     ok(label + ' long role/emotion text and whole page do not overflow horizontally', await page.locator('.sd-body,.sd-item-npc .sd-badge').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1)));
     ok(label + ' two-to-four-character names stay on one line', await page.locator('.sd-item-npc h4').evaluateAll(nodes => nodes.every(node => node.clientHeight <= parseFloat(getComputedStyle(node).lineHeight) + 1)));
     if (width <= 430) {
       const chipWidths = await page.locator('.sd-item-npc .sd-badge').evaluateAll(nodes => nodes.map(node => { const style = getComputedStyle(node); return (node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) / parseFloat(style.fontSize); }));
-      ok(label + ' mobile chip prose has room for at least eight characters: ' + JSON.stringify(chipWidths), chipWidths.every(value => value >= 8));
+      ok(label + ' mobile chip prose has room for at least sixteen characters: ' + JSON.stringify(chipWidths), chipWidths.every(value => value >= 16));
       ok(label + ' optional media action remains visible at the right on its own row', await page.locator('.sd-item-npc > summary:has(> .sd-world-media-entry)').evaluate(node => { const button = node.querySelector('.sd-world-media-entry').getBoundingClientRect(), main = node.querySelector('.sd-item-summary-main').getBoundingClientRect(); return button.top >= main.bottom && Math.abs(button.right - main.right) < 1; }));
     }
     const first = page.locator('.sd-item-npc').first();
     await first.locator('summary').focus(); await page.keyboard.press('Enter');
-    ok(label + ' native keyboard expansion retains top-aligned names and detail text', await first.evaluate(node => node.open && node.querySelector('.sd-director-paragraph p').textContent === plan.npc_updates[0].current_goal && Math.abs(node.querySelector('h4').getBoundingClientRect().top - node.querySelector('.sd-mini-chip-row').getBoundingClientRect().top) <= 1));
+    ok(label + ' native keyboard expansion retains independent name heading and detail text', await first.evaluate(node => node.open && node.querySelector('.sd-director-paragraph p').textContent === plan.npc_updates[0].current_goal && node.querySelector('.sd-mini-chip-row').getBoundingClientRect().top >= node.querySelector('h4').getBoundingClientRect().bottom + 7));
     await page.keyboard.press('Enter');
     ok(label + ' native keyboard collapse still works', await first.evaluate(node => !node.open));
     const media = page.locator('.sd-item-npc .sd-world-media-entry');
     await media.scrollIntoViewIfNeeded(); await media.focus();
     ok(label + ' unchanged media entry stays keyboard-focusable and unobscured', await media.evaluate(node => { const rect = node.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2); return !node.disabled && document.activeElement === node && (hit === node || node.contains(hit)); }));
+    ok(label + ' neutral relationship label has a visible gray fill without overriding positive/negative colors', await page.locator('.sd-relus-tone').evaluateAll(nodes => {
+      const styles = nodes.map(node => getComputedStyle(node));
+      return nodes.length === 3 && styles.every(style => style.backgroundColor !== 'rgba(0, 0, 0, 0)') && new Set(styles.map(style => style.color)).size === 3 && nodes[0].textContent === '前辈敲打与同侪分寸';
+    }));
+    ok(label + ' relation labels and prose stay within their cards', await page.locator('.sd-relus-row,.sd-relus-tone').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1)));
     if (width === 393 || family === 'glass') await page.locator('.sd-body').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${family}-${mode}-${width}.png`, qa)) });
     await page.evaluate(async ({ family, mode }) => {
       window.savedNpcFixture = plan.npc_updates;
