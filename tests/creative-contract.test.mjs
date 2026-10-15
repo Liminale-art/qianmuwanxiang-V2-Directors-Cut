@@ -48,8 +48,7 @@ test('schema preserves stable fields, count source, enabled world shapes and one
   assert.match(shape.factions[0].trend, /rising\/stable\/declining\/turbulent/);
   assert.match(shape.factions[0].scale, /城邦内\/区域性\/跨区域\/全局性/);
   assert.doesNotMatch(schema, /world_updates|director_comment|至少1桩跨地域|孤点至多|唯变是传/);
-  assert.match(schema, /阿岚/);
-  assert.match(schema, /老周/);
+  assert.doesNotMatch(schema, /阿岚|老周/, 'retired eligible-owner lists are not sent as a cast restriction');
   for (const [field, quota] of Object.entries(CREATIVE_COUNTS)) assert.match(schema, new RegExp(`${field} \\([^\n]+${quota.min}`));
   assert.deepEqual(Object.keys(shape.quests[0]), ['subject', 'title', 'trigger', 'description', 'inject_prompt']);
   assert.deepEqual(Object.keys(shape.story_status), ['title', 'current_arc', 'cycle', 'directions']);
@@ -87,7 +86,7 @@ test('English output protocol keeps narrative language, Chinese enums and establ
   assert.match(schema, /未映之幕 and 幕间拾趣 are independent and have no narrative-injection fields/);
   assert.match(shape.parallel_scene.content, /3–6 paragraphs with a turn and changed condition/);
   assert.match(schema, /specific ending; it is not a synopsis, branch analysis, or moral epilogue/);
-  assert.match(schema, /Exclude USER and every alias; do not invent an owner when the list is empty/);
+  assert.match(schema, /Exclude USER and every alias from both owner and senders/);
   assert.match(shape.quests[0].inject_prompt, /no action decided for USER/);
 });
 
@@ -234,15 +233,18 @@ test('interlude type must match the caller; normalizer never corrects invalid ty
   assert.ok(validateCreativePlan(normalizeCreativeSections(plan), FULL).some(item => item.field === 'interlude'));
 });
 
-test('phone excludes USER aliases before checking eligible non-USER owners', () => {
+test('phone excludes USER aliases as owners and senders without banning ordinary mentions', () => {
   for (const owner of ['{{user}}', 'USER', '用户', '访客', ' Guest ', 'GUEST']) {
     const plan = complete();
     plan.interlude.owner = owner;
-    assert.ok(validateCreativePlan(plan, { ...FULL, eligiblePhoneOwners: [...FULL.eligiblePhoneOwners, owner] }).some(item => item.field === 'interlude' && item.reason.includes('USER')), owner);
+    assert.ok(validateCreativePlan(plan, FULL).some(item => item.field === 'interlude' && item.reason.includes('USER')), owner);
+    const senderPlan = complete();
+    senderPlan.interlude.messages = senderPlan.interlude.messages.map(message => ({ ...message, sender: message.sender === '阿岚' ? owner : message.sender }));
+    assert.ok(validateCreativePlan(senderPlan, FULL).some(item => item.field === 'interlude' && item.reason.includes('USER')), owner);
   }
-  for (const owners of [[], ['老周']]) assert.ok(validateCreativePlan(complete(), { ...FULL, eligiblePhoneOwners: owners }).some(item => item.field === 'interlude' && item.reason.includes('名单')));
   const plan = complete();
   plan.interlude.owner = ' 阿岚 ';
+  plan.interlude.messages[0].content = '今天在公开活动见到了访客。';
   assert.deepEqual(validateCreativePlan(plan, FULL), []);
 });
 
@@ -263,20 +265,35 @@ test('new normalization is lossless for legacy fields, full text, unknown data a
   assert.deepEqual(normalizeCreativeSections({ quests: ['来信已寄到街口。'], character_dynamics: ['新的去向。'] }).quests, [{ description: '来信已寄到街口。' }]);
 });
 
-test('phone owners may come from narrative or effective memory without being chat speakers', () => {
+test('phone permits established and invented side-page owners without treating source-name matching as fact verification', () => {
   const plan = complete();
   plan.interlude.owner = '老周';
   const options = { ...FULL, eligiblePhoneOwners: undefined, phoneSourceText: '阿岚想起旧日那场争执。老周曾把钥匙留在桌上。SOURCE_PRIVATE_MARKER' };
   assert.deepEqual(validateCreativePlan(plan, options), []);
   assert.ok(!createCreativeSchema(options).includes('SOURCE_PRIVATE_MARKER'));
-  assert.match(createCreativeSchema(options), /non-USER characters already present in this run's narrative or valid memory/);
-  assert.ok(validateCreativePlan(plan, { ...options, phoneSourceText: '阿岚在等回信。' }).some(issue => issue.field === 'interlude'));
-  assert.ok(validateCreativePlan(plan, { ...options, phoneSourceText: '' }).some(issue => issue.field === 'interlude'));
+  assert.match(createCreativeSchema(options), /established or plausibly invented non-USER person/);
+  assert.match(createCreativeSchema(options), /not established source facts or presumed acquaintances/);
+  assert.deepEqual(validateCreativePlan(plan, { ...options, phoneSourceText: '阿岚在等回信。' }), []);
+  assert.deepEqual(validateCreativePlan(plan, { ...options, phoneSourceText: '' }), []);
   assert.ok(validateCreativePlan(plan, { ...options, personaNames: ['老周'] }).some(issue => issue.field === 'interlude' && issue.reason.includes('USER')));
-  assert.ok(validateCreativePlan(plan, { ...options, eligiblePhoneOwners: ['阿岚'] }).some(issue => issue.field === 'interlude' && issue.reason.includes('名单')));
-  plan.interlude.owner = 'Ann';
-  assert.ok(validateCreativePlan(plan, { ...options, phoneSourceText: 'The annual meeting has ended.' }).some(issue => issue.field === 'interlude'));
-  assert.deepEqual(validateCreativePlan(plan, { ...options, phoneSourceText: 'Ann: the meeting has ended.' }), []);
+  plan.interlude.owner = '旁页新人物';
+  assert.deepEqual(validateCreativePlan(plan, { ...options, eligiblePhoneOwners: [], phoneSourceText: '' }), [], 'retired source/owner options cannot re-close the invented side page');
+  assert.ok(!createCreativeSchema({ ...options, eligiblePhoneOwners: ['RETIRED_OWNER_LIST'] }).includes('RETIRED_OWNER_LIST'));
+});
+
+test('phone honors the request-selected direct or group form without rewriting mismatched cards', () => {
+  for (const kind of ['direct', 'group']) {
+    const plan = complete(); plan.interlude.conversation_kind = kind;
+    const options = { ...FULL, phoneConversationKind: kind };
+    assert.deepEqual(validateCreativePlan(plan, options), []);
+    assert.match(createCreativeSchema(options), new RegExp(`"conversation_kind": "${kind}"`));
+    assert.match(createCreativeSchema(options), new RegExp(`exactly ${kind} for this request`));
+    const other = kind === 'direct' ? 'group' : 'direct';
+    const before = structuredClone(plan);
+    assert.ok(validateCreativePlan(plan, { ...options, phoneConversationKind: other }).some(issue => issue.field === 'interlude' && issue.reason.includes('本轮指定')));
+    assert.deepEqual(plan, before);
+    assert.deepEqual(validateCreativePlan(plan, FULL), [], 'legacy or standalone validation without a selected mode still accepts either valid form');
+  }
 });
 
 test('limitations remain explicit, structurally valid and cannot waive quantity checks', () => {

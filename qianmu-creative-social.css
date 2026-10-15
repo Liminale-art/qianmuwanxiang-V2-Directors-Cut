@@ -119,6 +119,24 @@
 #story-director-modal .sd-social-message-own { flex-direction: row-reverse; }
 #story-director-modal .sd-social-message-own .sd-social-message-meta { justify-content: flex-end; }
 #story-director-modal .sd-social-message-own .sd-social-message-main p { background: color-mix(in srgb, var(--social-accent) 9%, var(--social-surface)); border-radius: 11px 3px 11px 11px; }
+/* One phone view per result. Feeds share the same bounded reading viewport;
+   their social hierarchy differs without adding a second navigation surface. */
+#story-director-modal .sd-social-phone-post { display: flex; align-items: flex-start; gap: 10px; }
+#story-director-modal .sd-social-phone-post-main { min-width: 0; flex: 1; }
+#story-director-modal .sd-social-phone-author { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; }
+#story-director-modal .sd-social-phone-author strong { font-size: var(--qm-type-body, 12px); line-height: 1.5; font-weight: 600; }
+#story-director-modal .sd-social-phone-author > span { font-size: var(--qm-type-caption, 11px); line-height: 1.5; color: var(--social-muted); }
+#story-director-modal .sd-social-phone-post .sd-social-post-content { margin-top: 5px; }
+#story-director-modal .sd-social-phone-post-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 8px; margin-top: 7px; }
+#story-director-modal .sd-social-phone-post-footer .sd-social-time { margin: 0; max-width: 100%; }
+#story-director-modal .sd-social-phone-post-footer .sd-social-actions { margin: 0 0 0 auto; justify-content: flex-end; gap: 2px; }
+#story-director-modal .sd-social-phone-feed .sd-social-replies { margin: 7px 0 0; padding: 6px 9px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--social-accent) 5%, var(--social-surface)); }
+#story-director-modal .sd-social-feed-reply { padding: 4px 0; font-size: var(--qm-type-body, 12px); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+#story-director-modal .sd-social-feed-reply strong { font-weight: 600; }
+#story-director-modal .sd-social-phone-moments .sd-social-avatar { border-radius: 7px; }
+#story-director-modal .sd-social-phone-microblog .sd-social-phone-post { gap: 9px; }
+#story-director-modal .sd-social-phone-microblog .sd-social-phone-post-footer { border-top: 1px solid var(--social-line); padding-top: 5px; }
+#story-director-modal .sd-social-phone-microblog .sd-social-actions { flex: 1; justify-content: space-evenly; }
 #story-director-modal .sd-social-legacy h4 { margin: 0; font-size: var(--qm-type-body, 12px); }
 #story-director-modal .sd-social-empty { margin: 12px 0; font-size: var(--qm-type-body, 12px); }
 #story-director-modal .sd-creative-social [hidden] { display: none !important; }

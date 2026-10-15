@@ -11,9 +11,9 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), '46dd2ae11b5179156909c40a53b2c165b0438f57de4d462ce5decba5f5e64575');
+  assert.equal(digest(CREATIVE_LAWS), '13d191547b26c93240465c95de0d726fb7688c656a8248c6d38accd6719832a6');
   assert.equal(digest(CREATIVE_BLUEPRINT), 'a99e559b04a8f5bd4bbe1c9f600da73395b8fa67e23b1f0e4e72355e3188cb04');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), 'd9d2b6371532c896f46892d91c1799785da813ca3bcaf19f1458b4666159f586');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '94329b3f84ca3c387cffa8269308e1c3e83eb61284f7319d6f1b892889410654');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
 });
@@ -119,6 +119,25 @@ test('caller must fix one interlude form; pure guide never silently selects or r
   assert.doesNotThrow(() => creativeSectionGuidance({ interludeEnabled: false }));
 });
 
+test('phone guidance follows the fixed request mode and never re-closes the world to an existing cast list', () => {
+  for (const kind of ['direct', 'group']) {
+    const options = Object.freeze({ interludeType: 'phone', phoneConversationKind: kind });
+    const result = creativeSectionGuidance(options);
+    assert.match(result, new RegExp(`固定为 ${kind}`));
+    assert.ok(result.includes(CREATIVE_GUIDES.phone));
+    assert.equal(result, creativeSectionGuidance(options));
+  }
+  const forum = creativeSectionGuidance({ interludeType: 'forum', phoneConversationKind: 'direct' });
+  assert.ok(!forum.includes('本轮手机会话形式固定为'));
+  const disabled = creativeSectionGuidance({ interludeEnabled: false, interludeType: 'phone', phoneConversationKind: 'direct' });
+  assert.ok(!disabled.includes('本轮手机会话形式固定为'));
+  const hint = creativeSectionGuidance({ interludeType: 'phone', phoneConversationKind: 'direct', recentInterludeHint: '{"owner":"前页人物"}' });
+  assert.match(hint, /另一处合理的生活圈/);
+  for (const guide of [CREATIVE_GUIDES.interlude, CREATIVE_GUIDES.phone, hint]) {
+    assert.doesNotMatch(guide, /只从正文或有效记忆已经出现|另一位已出现人物|不为扩大视角凭空制造/);
+  }
+});
+
 test('v447 responsibilities weave near/far trajectories, lived voices and varied social viewpoints', () => {
   assert.equal(CREATIVE_SECTION_LABELS.quests, '预演');
   assert.equal(CREATIVE_SECTION_LABELS.interlude, '幕间拾趣');
@@ -143,9 +162,11 @@ test('v447 responsibilities weave near/far trajectories, lived voices and varied
   assert.match(CREATIVE_GUIDES.story_status, /不连续堆叠“可能、也许、应该、似乎”/);
   assert.match(CREATIVE_GUIDES.interlude, /所有字段只写安全纯文本，不输出 HTML/);
   assert.match(CREATIVE_GUIDES.interlude, /不固定围绕阴谋、热搜或主角点评/);
-  assert.match(CREATIVE_GUIDES.phone, /配角、路人和其他已有姓名者/);
-  assert.match(CREATIVE_GUIDES.phone, /已知人物确实有限时自然复用/);
-  assert.match(CREATIVE_GUIDES.phone, /群聊时就是群名.*私聊时就是对方的联系人显示名/);
+  assert.match(CREATIVE_GUIDES.phone, /已有配角、路人或 CHAR.*也可创作符合世界的旁页人物/);
+  assert.match(CREATIVE_GUIDES.phone, /不要求每张卡都换人或造新人/);
+  assert.match(CREATIVE_GUIDES.phone, /已有角色也可与家人、朋友或同好聊私人关切/);
+  assert.match(CREATIVE_GUIDES.phone, /不只是把工作汇报改群名、改人数/);
+  assert.match(CREATIVE_GUIDES.phone_chat, /群聊时就是群名.*私聊时就是对方的联系人显示名/);
   assert.match(CREATIVE_GUIDES.forum, /带一点在地性与网感/);
   assert.match(CREATIVE_LAWS, /Write selectable narrative passages as third-person authorial prose/);
   assert.match(CREATIVE_LAWS, /do not repeat them as bracketed labels/);
@@ -192,7 +213,8 @@ test('mystery restraint still permits supported history, quiet lives and fresh s
   assert.match(regularGuidance, /新联系也可在当下建立，不必倒造与主角的旧缘/);
   assert.match(regularGuidance, /明确封闭设定仍优先/);
   assert.ok(!regularGuidance.includes(CREATIVE_GUIDES.newcomer), 'permission for new lives is not an extra mandatory new-character quota');
-  assert.match(CREATIVE_GUIDES.phone, /只从正文或有效记忆已经出现的非 USER 人物中选取手机所属者/);
+  assert.match(CREATIVE_GUIDES.phone, /不限于已出场名单/);
+  assert.match(CREATIVE_GUIDES.phone, /不默认与 USER\/CHAR 相识，其经历不是正文既定事实/);
 });
 
 test('a parallel scene cannot manufacture the evidence that another card uses to solve an active mystery', () => {

@@ -41,7 +41,8 @@ test('director and other failed logs keep raw API errors in one escaped expandab
     const bottom = html.slice(html.indexOf('sd-log-diagnostics'));
     assert.equal((html.match(/class="sd-log-error-panel"/g) || []).length, 1);
     assert.match(top, /sd-log-error-panel[\s\S]*sd-term-error[\s\S]*sd-log-raw-error/);
-    assert.match(top, /原始错误：具体错误/); assert.match(top, /MODEL_REMOTE_ERROR/);
+    assert.match(top, status === 'cancelled' ? /已中断/ : /模型服务返回错误/);
+    assert.doesNotMatch(top, /原始错误：|MODEL_REMOTE_ERROR|具体错误/);
     assert.match(top, /<details class="sd-log-raw-error"><summary>原始服务响应/);
     assert.ok(top.includes(escape(raw))); assert.match(top, /渠道兼容说明/);
     assert.doesNotMatch(bottom, /model_not_found|渠道兼容说明|具体错误|MODEL_REMOTE_ERROR/);

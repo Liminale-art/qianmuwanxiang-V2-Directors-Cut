@@ -10,6 +10,10 @@ const forum = { type: 'forum', title: '桥头今日事', posts: [
 ] };
 const phone = { type: 'phone', title: '夜班互助', owner: '林芷', conversation_kind: 'group',
   messages: Array.from({ length: 8 }, (_, i) => ({ sender: i % 2 ? '林芷' : '同事', content: `消息${i + 1}`, time: `20:0${i}` })) };
+const feedPhone = { type: 'phone', owner: '林芷', title: '街灯下', posts: [{
+  id: 'p1', author: '周宁', display_name: '周宁 · 夜班', handle: 'zhou_night', content: '下班时赶上了一场雨。', time: '片刻前', likes: 12,
+  replies: [{ id: 'r1', author: '林芷', display_name: '小林', handle: 'lin', content: '我在门口，多带了一把伞。', reply_to: '周宁' }],
+}] };
 
 test.beforeEach(() => resetCreativeSocialState());
 
@@ -63,6 +67,59 @@ test('direct conversation and short message list do not add a fake send affordan
   assert.match(html, /林芷的手机/);
   assert.match(html, /aria-label="私信消息"/);
   assert.doesNotMatch(html, /sd-social-expand|data-social-message-extra|type="submit"/);
+});
+
+for (const view_type of ['moments', 'microblog']) test(`${view_type} is one phone feed, with local reactions and collapsed comments`, () => {
+  const item = { ...feedPhone, view_type }, before = JSON.stringify(item), html = renderCreativeSocialCard(item, { notice: '本幕返回不完整' });
+  assert.match(html, new RegExp(`sd-social-phone-${view_type}`));
+  assert.match(html, /林芷的手机/);
+  assert.match(html, /周宁 · 夜班/);
+  assert.match(html, /小林/);
+  assert.match(html, /回复 周宁/);
+  assert.match(html, /data-social-like-count="12"/);
+  assert.match(html, /赞 12/);
+  assert.match(html, /评论 1/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /class="sd-social-replies"[^>]+ hidden/);
+  assert.match(html, /sd-director-notice-row[\s\S]*本幕返回不完整/);
+  assert.doesNotMatch(html, /sd-social-messages|role="tab|<img|<a\b|<form|textarea|contenteditable|type="submit"/);
+  if (view_type === 'microblog') assert.match(html, /@zhou_night/);
+  else assert.doesNotMatch(html, /@zhou_night/);
+  assert.equal(JSON.stringify(item), before);
+});
+
+test('legacy missing phone view and explicit chat remain identical while feeds get separate session identities', () => {
+  assert.equal(renderCreativeSocialCard(phone), renderCreativeSocialCard({ ...phone, view_type: 'chat' }));
+  assert.equal(renderCreativeSocialCard(phone), renderCreativeSocialCard({ ...phone, view_type: 'unknown' }));
+  const id = item => /data-qm-social="([^"]+)"/.exec(renderCreativeSocialCard(item))[1];
+  assert.notEqual(id({ ...feedPhone, view_type: 'moments' }), id({ ...feedPhone, view_type: 'microblog' }));
+});
+
+test('both phone feeds retain all 51 valid posts and complete source text without an invented display ceiling', () => {
+  for (const view_type of ['moments', 'microblog']) {
+    const item = { ...feedPhone, view_type, posts: Array.from({ length: 51 }, (_, i) => ({
+      ...feedPhone.posts[0], id: `post-${i}`, content: `第${i + 1}条完整动态：${'不裁切原文。'.repeat(30)}`,
+    })) }, before = JSON.stringify(item), html = renderCreativeSocialCard(item);
+    assert.equal((html.match(/class="sd-social-post sd-social-phone-post"/g) || []).length, 51);
+    for (const post of item.posts) assert.ok(html.includes(post.content));
+    assert.equal(JSON.stringify(item), before);
+  }
+});
+
+test('phone feeds keep text escaped, fallback names, optional counts and no invented post content', () => {
+  const injection = '<img src="https://outside.test/x" onerror="alert(1)">';
+  for (const view_type of ['moments', 'microblog']) {
+    const html = renderCreativeSocialCard({ ...feedPhone, view_type, title: injection, owner: injection, posts: [{ author: injection,
+      display_name: injection, handle: injection, content: injection, time: injection, likes: 'bad',
+      replies: [{ author: injection, display_name: injection, content: injection, reply_to: injection }] }] });
+    assert.doesNotMatch(html, /<img|<script|onerror="|href=|NaN|undefined/);
+    assert.match(html, /&lt;img/);
+    assert.match(html, /data-social-like-count="0"/);
+    const empty = renderCreativeSocialCard({ type: 'phone', view_type, posts: [null, { content: '没有作者' }], messages: phone.messages });
+    assert.match(empty, /尚未生成/);
+    assert.doesNotMatch(empty, /sd-social-message|sd-social-post"/);
+    assert.match(renderCreativeSocialCard({ type: 'phone', view_type, posts: [{ author: '邻居', content: '下午停雨了。' }] }), /<strong>邻居<\/strong>/);
+  }
 });
 
 test('legacy theater and phone prose remain readable without invented structured data', () => {
@@ -135,6 +192,17 @@ test('binding is idempotent and reactions remain local across rerenders until re
   fixture.click(); resetCreativeSocialState();
   assert.match(renderCreativeSocialCard(forum), /data-qm-social-action="like"[^>]*aria-pressed="false"/);
   dispose(); assert.equal(fixture.listeners.size, 0); assert.equal(fixture.scrollListeners.size, 0);
+});
+
+test('feed like counts toggle once, survive remount, and never alter original model likes', () => {
+  const item = { ...feedPhone, view_type: 'moments' }, before = JSON.stringify(item);
+  const key = /data-qm-social="([^"]+)"/.exec(renderCreativeSocialCard(item))[1], fixture = fakeRoot(key);
+  fixture.button.dataset.socialLikeCount = '12';
+  bindCreativeSocialEvents(fixture.root); bindCreativeSocialEvents(fixture.root);
+  fixture.click(); assert.equal(fixture.label.textContent, '已赞 13');
+  assert.match(renderCreativeSocialCard(item), /已赞 13/);
+  fixture.click(); assert.equal(fixture.label.textContent, '赞 12');
+  assert.equal(JSON.stringify(item), before);
 });
 
 test('same-result remount restores local scroll position, a new result and reset start at top', () => {

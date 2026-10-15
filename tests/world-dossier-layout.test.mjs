@@ -57,7 +57,8 @@ test('list keeps stable accordion identifiers and delegates its content to the s
 });
 
 test('world edge cue only invites entry from the front while return controls remain available', () => {
-  const edges = vm.createContext({ getChatStore: () => ({ factions }), settings: { geopoliticsEnabled: true }, worldPage: 'front' });
+  const edges = vm.createContext({ getChatStore: () => ({ factions }), settings: { geopoliticsEnabled: true }, worldPage: 'front', directorLiveLog: null, directorPreviewPlan: () => null });
+  vm.runInContext(storyboardFunctionSource('directorGeopoliticsState'), edges);
   vm.runInContext(storyboardFunctionSource('renderWorldPageEdges'), edges);
   assert.equal((edges.renderWorldPageEdges().match(/has-content/g) || []).length, 2);
   edges.worldPage = 'geopolitics';

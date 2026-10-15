@@ -21,7 +21,7 @@ test('interlude quotas agree across constants, instructions and generated schema
   assert.match(CREATIVE_SYSTEM_PROMPT, /at least 8 posts/);
   assert.match(CREATIVE_SYSTEM_PROMPT, /at least 12 messages/);
   assert.match(CREATIVE_GUIDES.forum, /至少生成 8 帖/);
-  assert.match(CREATIVE_GUIDES.phone, /至少生成 12 条消息/);
+  assert.match(CREATIVE_GUIDES.phone_chat, /至少生成 12 条消息/);
   assert.match(createCreativeSchema(options('forum')), /Forum form: at least 8 posts, each with 1–3 replies/);
   assert.match(createCreativeSchema(options('phone')), /Phone form: at least 12 messages/);
   assert.match(creativeSectionGuidance(options('forum')), /至少生成 8 帖/);
@@ -64,9 +64,9 @@ test('expanded social guidance preserves varied replies, speaker identity and na
   assert.match(CREATIVE_GUIDES.forum, /回复数从允许范围内自然变化/);
   assert.match(CREATIVE_GUIDES.forum, /至少一处让楼主二次回应/);
   assert.match(CREATIVE_GUIDES.forum, /不靠拆分一句话、换账号复述/);
-  assert.match(CREATIVE_GUIDES.phone, /私聊恰好两位说话者，群聊至少两位/);
-  assert.match(CREATIVE_GUIDES.phone, /不把完整一句机械拆成数条凑数/);
-  assert.match(CREATIVE_GUIDES.phone, /不要求每位说话者平均发言/);
+  assert.match(CREATIVE_GUIDES.phone_chat, /私聊恰好两位说话者，群聊至少两位/);
+  assert.match(CREATIVE_GUIDES.phone_chat, /不把完整一句机械拆成数条凑数/);
+  assert.match(CREATIVE_GUIDES.phone_chat, /不要求每位说话者平均发言/);
   const repeat = forum(8); repeat.posts[7].content = repeat.posts[0].content;
   assert.match(interludeIssues(repeat, 'forum')[0].reason, /重复帖子/);
   const solo = phone(12); solo.messages.forEach(message => { message.sender = '小林'; });

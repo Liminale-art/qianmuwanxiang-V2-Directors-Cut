@@ -242,7 +242,9 @@ try {
         const expectedCaption = getComputedStyle(root).getPropertyValue('--qm-type-caption').trim();
         const sizes = selectors => [...root.querySelectorAll(selectors)].map(node => ({ selector: node.className || node.tagName, size: getComputedStyle(node).fontSize }));
         const bodySizes = sizes('.sd-director-extra-content,.sd-director-narrative,.sd-item-detail dd,.sd-chain-node,.sd-relus-tension,.sd-relus-drift,.sd-chatter-say,.sd-inject-preview pre,.sd-director-paragraph p,.sd-director-direction p');
-        const titleSizes = sizes('.sd-item-summary-main h4,.sd-relus-parties,.sd-director-extra-card h4,.sd-director-direction h4');
+        const titleSizes = sizes('.sd-item-card:not(.sd-item-npc) .sd-item-summary-main h4,.sd-relus-parties,.sd-director-extra-card h4,.sd-director-direction h4');
+        const npcTitleSizes = sizes('.sd-item-npc .sd-npc-name-row h4');
+        const expectedNpcTitle = `${parseFloat(getComputedStyle(root).getPropertyValue('--qm-type-card-title')) + 3}px`;
         const captionSizes = sizes('.sd-item-detail dt,.sd-chatter-src,.sd-relus-tone,.sd-director-extra-card .sd-section-title > span,.sd-director-paragraph-label');
         const dock = root.querySelector('.sd-inject-selected');
         let dockStyle = null;
@@ -261,7 +263,7 @@ try {
           bodyText: body.textContent, firstVisible: first?.getClientRects().length > 0,
           font: first ? getComputedStyle(first).fontFamily : '', color: first ? getComputedStyle(first).color : '',
           expectedColor: getComputedStyle(root).getPropertyValue('--sd-text').trim(),
-          typography: { expectedBody, expectedCaption, bodySizes, titleSizes, captionSizes }, dockStyle,
+          typography: { expectedBody, expectedCaption, expectedNpcTitle, bodySizes, titleSizes, npcTitleSizes, captionSizes }, dockStyle,
           host: [hostStyle.fontSize, hostStyle.fontFamily, hostStyle.color, hostStyle.backgroundColor],
           extraActions: root.querySelectorAll('.sd-director-extra-card button,.sd-director-extra-card input,.sd-director-extra-card .sd-world-media-entry').length,
           extras: root.querySelectorAll('.sd-director-extra-card').length };
@@ -271,9 +273,10 @@ try {
       check(result.readingFragments.length === 0 && result.clippedStarts.length === 0, `${key}: reading folds never fragment into clipped columns`, result);
       check(result.firstVisible && result.bodyWidth > 200, `${key}: usable content area`);
       check(JSON.stringify(result.host) === JSON.stringify(['17px', 'serif', 'rgb(220, 230, 240)', 'rgb(30, 40, 50)']), `${key}: host typography and colors unchanged`, result.host);
-      const { expectedBody, expectedCaption, bodySizes, titleSizes, captionSizes } = result.typography;
+      const { expectedBody, expectedCaption, expectedNpcTitle, bodySizes, titleSizes, npcTitleSizes, captionSizes } = result.typography;
       if (bodySizes.length) check(bodySizes.every(item => item.size === expectedBody), `${key}: all creative body text uses the shared body scale`, result.typography);
       if (titleSizes.length) check(titleSizes.every(item => item.size === expectedBody), `${key}: item titles share a consistent size`, result.typography);
+      if (npcTitleSizes.length) check(npcTitleSizes.every(item => item.size === expectedNpcTitle), `${key}: NPC name keeps its approved editorial hierarchy`, result.typography);
       if (captionSizes.length) check(captionSizes.every(item => item.size === expectedCaption), `${key}: secondary labels share the caption scale`, result.typography);
       if (result.dockStyle) {
         const dock = result.dockStyle;
@@ -587,7 +590,9 @@ try {
     check(content.includes(marker) && (outcome === 'cancelled' ? noticeCount === 0 : noticeCount > 0), `${outcome}/${view}: received content remains beside local missing notices`);
     check(await page.locator('[data-director-paragraph],.sd-select-inject,.sd-inject-selected,.sd-world-media-entry,.sd-director-live').count() === 0
       && !content.includes('正在推演'), `${outcome}/${view}: partial results are read-only without a separate progress card`);
-    check(outcome === 'truncated' ? content.includes('回复截断') : !content.includes('回复截断'), `${outcome}/${view}: truncation is stated only with a recorded length finish reason`);
+    check(!/回复截断|本栏未生成成功|详情见日志/.test(content), `${outcome}/${view}: section notices remain concise and leave details in logs`);
+    check(await page.evaluate(() => [...document.querySelectorAll('.sd-director-section-notice')].every(node => node.textContent === '本幕返回不完整'
+      && node.parentElement.classList.contains('sd-director-notice-row'))), `${outcome}/${view}: every notice belongs to its section header`);
     if (outcome === 'cancelled') check(!content.includes('已停止') && !content.includes('本栏未生成成功'), `${outcome}/${view}: cancellation has no repeated section notice`);
     if (view === 'worldgeo') check(!content.includes('势力关系') && (outcome === 'cancelled' ? noticeCount === 0 : noticeCount === 2), `${outcome}/${view}: optional empty faction relations are not reported as missing`);
     if (process.env.QIANMU_CREATIVE_QA_DIR && ((outcome === 'truncated' && view === 'dashboard') || (outcome === 'unknown' && view === 'tasksnodes') || (outcome === 'cancelled' && view === 'castworld'))) {

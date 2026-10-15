@@ -17,6 +17,8 @@ const FIELDS = {
 };
 const OBJECT_FIELDS = new Set(['story_status', 'parallel_scene', 'interlude']);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const interludeEntries = value => value.type === 'forum' || (value.type === 'phone' && ['moments', 'microblog'].includes(value.view_type))
+  ? value.posts : value.type === 'phone' ? value.messages : null;
 // Consume only closed known cards. Top-level extras stay read-only, just like array previews.
 export function completeDirectorCards(source) {
   const text = String(source || ''), cards = [], stack = [];
@@ -64,7 +66,7 @@ export function completeDirectorCards(source) {
     if (key === 'parallel_scene' && (!value || typeof value.content !== 'string' || !value.content.trim())) return;
     if (key === 'interlude') {
       if (!value || !['forum', 'theater', 'phone'].includes(value.type)) return;
-      const entries = value.type === 'forum' ? value.posts : value.type === 'phone' ? value.messages : null;
+      const entries = interludeEntries(value);
       if (!(typeof value.content === 'string' && value.content.trim()) &&
         !(Array.isArray(entries) && entries.some(item => typeof item?.content === 'string' && item.content.trim()))) return;
     }
@@ -78,7 +80,7 @@ export function completeDirectorCards(source) {
       }
     }
     if (key === 'interlude') {
-      const entries = value.type === 'forum' ? value.posts : value.messages;
+      const entries = interludeEntries(value);
       if (Array.isArray(entries)) for (const entry of entries) {
         if (typeof entry?.content === 'string' && entry.content.trim()) lines.push(entry.content);
       }
@@ -127,8 +129,7 @@ export function directorSectionStatus(plan, field) {
   // Interruptions are represented once in the log failure panel; avoid
   // repeating a verbose notice inside every partially rendered section.
   if (generation.status === 'cancelled') return '';
-  if (/^(length|max_tokens|max_output_tokens)$/i.test(generation.completion?.finishReason || '')) return '回复截断，本栏未完整生成。详情见日志。';
-  return hasContent ? '本栏返回不完整，已收到内容保留供查阅。详情见日志。' : '本栏未生成成功。详情见日志。';
+  return '本幕返回不完整';
 }
 
 export function directorQualitySummary(log) {
@@ -154,7 +155,7 @@ export function renderDirectorLive(log, { fields = Object.keys(FIELDS), tasksOnl
   }
   return [...shown].map(field => {
     const status = directorSectionStatus(plan, field);
-    return `<section class="sd-card sd-plan-section"><h3>${escape(FIELDS[field][0])}</h3>${status ? `<p class="sd-muted sd-director-section-notice">${escape(status)}</p>` : ''}${cards.filter(card => card.field === field).map(card => `<article class="sd-lib-row"><div class="sd-lib-main">${card.lines.map((line, i) => i === 0 ? `<h4>${escape(line)}</h4>` : `<p>${escape(line)}</p>`).join('')}</div></article>`).join('')}</section>`;
+    return `<section class="sd-card sd-plan-section"><div class="sd-director-notice-row"><h3>${escape(FIELDS[field][0])}</h3>${status ? `<span class="sd-muted sd-director-section-notice">${escape(status)}</span>` : ''}</div>${cards.filter(card => card.field === field).map(card => `<article class="sd-lib-row"><div class="sd-lib-main">${card.lines.map((line, i) => i === 0 ? `<h4>${escape(line)}</h4>` : `<p>${escape(line)}</p>`).join('')}</div></article>`).join('')}</section>`;
   }).join('');
 }
 
@@ -162,15 +163,23 @@ export function modelFailureText(log) {
   const info = log.completion;
   const failed = ['error', 'cancelled'].includes(log.status) || info?.interrupted || Boolean(log.error);
   if (!failed) return log.error || '';
-  const reason = info?.finishReason;
-  const finish = reason && !['stop', 'end_turn', 'completed'].includes(reason)
-    ? `结束原因：${reason}` : info?.interrupted && log.status !== 'cancelled' ? '回复未完整完成。' : '';
-  const quality = log.response && directorQualitySummary(log);
+  const reason = info?.finishReason || '';
+  const truncated = /^(length|max_tokens|max_output_tokens|model_length)$/i.test(reason);
+  const finish = reason && (!truncated || log.status === 'cancelled') && !['stop', 'end_turn', 'stop_sequence', 'complete', 'completed', 'eos_token'].includes(reason.toLowerCase())
+    ? `结束原因：${reason}` : '';
+  const quality = log.hasValidContent !== false && log.response && directorQualitySummary(log);
   const missing = quality ? `缺失内容：${quality}` : '';
-  const original = log.errorCause && log.errorCause !== log.error && log.errorCause !== 'USER_CANCELLED'
-    ? `原始错误：${log.errorCause}` : '';
-  const code = log.errorCode ? `错误代码：${log.errorCode}` : '';
-  return [...new Set([log.error || (log.status === 'cancelled' ? '已中断。' : '本次推演未完成。'), original, code, missing, finish].filter(Boolean))].join('\n');
+  let message = log.error || '本次推演未完成。';
+  if (log.status === 'cancelled') message = '已中断。';
+  else if (truncated) message = `回复被截断（${reason}）。`;
+  else if (log.errorCode === 'MODEL_OUTPUT_INCOMPLETE') message = missing && !info?.interrupted ? '' : '回复未完整接收。';
+  else if (String(log.errorCause || '').startsWith('JSON_PARSE_FAILED::')) message = '模型输出格式有误。';
+  else if (log.errorCode === 'MODEL_HTTP_ERROR') {
+    const status = /HTTP\s+(\d{3})/.exec(log.errorCause || log.error || '')?.[1];
+    message = status ? `模型请求失败（HTTP ${status}）。` : '模型请求失败。';
+  } else if (log.errorCode === 'MODEL_REMOTE_ERROR') message = '模型服务返回错误。';
+  else if (log.errorCode === 'MODEL_PROTOCOL_ERROR') message = '模型响应格式异常。';
+  return [...new Set([message, missing, finish].filter(Boolean))].join('\n');
 }
 
 export function parseDirectorFinal(raw) {
@@ -192,11 +201,15 @@ export function parseDirectorFinal(raw) {
 export function renderModelDiagnostics(log, { failure = false } = {}) {
   const info = log.completion;
   const failed = ['error', 'cancelled'].includes(log.status) || info?.interrupted || Boolean(log.error);
+  const cause = log.errorCause || log.error || '';
+  const internalShortfall = log.errorCode === 'MODEL_OUTPUT_INCOMPLETE' && !info?.interrupted && directorQualitySummary(log);
+  const causeDetails = failed && !info?.rawTransport && log.status !== 'cancelled' && !internalShortfall
+    && cause && cause !== 'USER_CANCELLED' && !modelFailureText(log).includes(cause) ? cause : '';
   // Failed transport facts are rendered only inside the existing failure box.
   // The bottom area retains optional reasoning and historical reply evidence.
   const transport = `${info?.compatibility ? `<p class="sd-muted">${escape(info.compatibility)}</p>` : ''}
     ${info?.rawTransport ? `<details class="sd-log-raw-error"><summary>${failed ? '原始服务响应' : '未解析的原始响应片段'}</summary><pre class="sd-term${failed ? ' sd-term-error' : ''}">${escape(info.rawTransport)}</pre></details>` : ''}`;
-  if (failure) return failed ? `${transport}${log.repairError ? `<div class="sd-log-cap">历史补写错误</div><pre class="sd-term sd-term-error">${escape(log.repairError)}</pre>` : ''}` : '';
+  if (failure) return failed ? `${transport}${causeDetails ? `<details class="sd-log-error-detail"><summary>错误详情</summary><pre class="sd-term sd-term-error">${escape(causeDetails)}</pre></details>` : ''}${log.repairError ? `<div class="sd-log-cap">历史补写错误</div><pre class="sd-term sd-term-error">${escape(log.repairError)}</pre>` : ''}` : '';
   return `${failed ? '' : transport}
     <details class="sd-log-reasoning" ${log.reasoning ? '' : 'hidden'}><summary>渠道返回的推理内容</summary><pre class="sd-term sd-term-reasoning">${escape(log.reasoning || '')}</pre></details>
     ${log.repairResponse || (!failed && log.repairError) ? `<div class="sd-log-cap">历史补写记录 · 独立模型回复</div><pre class="sd-term">${escape(log.repairResponse || log.repairError)}</pre>` : ''}`;

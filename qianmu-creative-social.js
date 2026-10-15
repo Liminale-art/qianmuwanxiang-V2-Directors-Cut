@@ -10,6 +10,8 @@ const text = value => typeof value === 'string' ? value.trim() : '';
 const record = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const list = value => Array.isArray(value) ? value : [];
 const icon = name => qianmuIconMarkup(`qm-regular-${name}`);
+const likeCount = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
+const likeLabel = (count, selected) => `${selected ? '已赞' : '赞'}${count + Number(selected) ? ` ${count + Number(selected)}` : ''}`;
 
 function normalizedItem(value) {
   const item = record(value);
@@ -19,6 +21,16 @@ function normalizedItem(value) {
       author: text(post.author), handle: text(post.handle), content: text(post.content), time: text(post.time),
       replies: list(post.replies).slice(0, 30).map(record).filter(reply => text(reply.author) && text(reply.content))
         .map(reply => ({ author: text(reply.author), content: text(reply.content), reply_to: text(reply.reply_to) })),
+    })),
+  };
+  if (item.type === 'phone' && ['moments', 'microblog'].includes(item.view_type)) return {
+    type: 'phone', view_type: item.view_type, title: text(item.title), owner: text(item.owner),
+    posts: list(item.posts).map(record).filter(post => text(post.author) && text(post.content)).map(post => ({
+      author: text(post.author), display_name: text(post.display_name) || text(post.author), handle: text(post.handle),
+      content: text(post.content), time: text(post.time), likes: likeCount(post.likes),
+      replies: list(post.replies).slice(0, 30).map(record).filter(reply => text(reply.author) && text(reply.content))
+        .map(reply => ({ author: text(reply.author), display_name: text(reply.display_name) || text(reply.author),
+          content: text(reply.content), reply_to: text(reply.reply_to) })),
     })),
   };
   if (item.type === 'phone' && list(item.messages).length) return {
@@ -98,16 +110,38 @@ function phoneBody(item, key) {
   </div>`;
 }
 
+function phoneFeedBody(item, key, state) {
+  if (!item.posts.length) return '<p class="sd-muted sd-social-empty">尚未生成</p>';
+  const moments = item.view_type === 'moments', label = moments ? '朋友圈' : '短博';
+  return `<div class="sd-social-panel sd-social-phone sd-social-phone-feed sd-social-phone-${item.view_type}">
+    <div class="sd-social-panel-head">${icon(moments ? 'chats' : 'globe-hemisphere-east')}<div><strong>${htmlEscape(item.title || label)}</strong><span>${item.owner ? `${htmlEscape(item.owner)}的手机 · ` : ''}${label}</span></div></div>
+    <div class="sd-social-feed sd-social-scroll" data-qm-social-scroll tabindex="0" role="region" aria-label="${label}动态">${item.posts.map((post, index) => {
+      const liked = state.likes.has(index), expanded = state.replies.has(index), repliesId = `${key}-replies-${index}`;
+      return `<article class="sd-social-post sd-social-phone-post">
+        ${avatar(post.display_name)}<div class="sd-social-phone-post-main">
+          <header class="sd-social-phone-author"><strong>${htmlEscape(post.display_name)}</strong>${!moments && post.handle ? `<span>${htmlEscape(post.handle.startsWith('@') ? post.handle : `@${post.handle}`)}</span>` : ''}</header>
+          <p class="sd-social-post-content">${htmlEscape(post.content)}</p>
+          <div class="sd-social-phone-post-footer">${post.time ? `<span class="sd-social-time">${htmlEscape(post.time)}</span>` : ''}<div class="sd-social-actions" aria-label="本地模拟互动">
+            ${action('like', index, liked, likeLabel(post.likes, liked), 'bookmarks', `data-social-like-count="${post.likes}" title="仅本次阅读的模拟点赞"`)}
+            ${action('replies', index, expanded, `评论 ${post.replies.length}`, 'chat', `aria-controls="${repliesId}"${post.replies.length ? '' : ' disabled'}`)}
+          </div></div>
+          <div class="sd-social-replies" id="${repliesId}"${expanded ? '' : ' hidden'}>${post.replies.map(reply => `<div class="sd-social-feed-reply"><strong>${htmlEscape(reply.display_name)}</strong>${reply.reply_to ? `<span class="sd-social-reply-to">回复 ${htmlEscape(reply.reply_to)}</span>` : ''}<span>：${htmlEscape(reply.content)}</span></div>`).join('')}</div>
+        </div>
+      </article>`;
+    }).join('')}</div>
+  </div>`;
+}
+
 /** Render the complete Qianmu card. All model content is escaped, never HTML/URLs. */
 export function renderCreativeSocialCard(value, { notice = '' } = {}) {
   const item = normalizedItem(value), key = identity(item);
   const state = item.type === 'forum' || item.type === 'phone' ? session(key) : null;
   const body = item.type === 'forum' ? forumBody(item, key, state)
-    : item.type === 'phone' ? phoneBody(item, key)
+    : item.type === 'phone' ? item.view_type ? phoneFeedBody(item, key, state) : phoneBody(item, key)
       : item.type === 'legacy' ? `<div class="sd-social-legacy">${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}<p>${htmlEscape(item.content)}</p></div>`
         : notice ? '' : '<p class="sd-muted sd-social-empty">尚未生成</p>';
   return `<section class="sd-card sd-director-extra-card sd-director-extra-interlude sd-creative-social" data-qm-social="${key}">
-    <div class="sd-section-title"><h3>幕间拾趣</h3></div>${notice ? `<p class="sd-muted sd-director-section-notice">${htmlEscape(notice)}</p>` : ''}${body}</section>`;
+    <div class="sd-section-title sd-director-notice-row"><h3>幕间拾趣</h3>${notice ? `<span class="sd-muted sd-director-section-notice" data-director-section-status="interlude">${htmlEscape(notice)}</span>` : ''}</div>${body}</section>`;
 }
 
 /** Bind once per current root; repeated renders cannot accumulate listeners. */
@@ -128,7 +162,8 @@ export function bindCreativeSocialEvents(root) {
       const selected = !set.has(index);
       if (selected) set.add(index); else set.delete(index);
       button.setAttribute('aria-pressed', String(selected));
-      button.querySelector('.sd-social-action-label').textContent = selected ? '已赞' : '赞';
+      button.querySelector('.sd-social-action-label').textContent = button.dataset.socialLikeCount === undefined
+        ? selected ? '已赞' : '赞' : likeLabel(likeCount(Number(button.dataset.socialLikeCount)), selected);
     } else if (kind === 'replies') {
       const expanded = !state.replies.has(index), target = card.querySelector(`[id="${button.getAttribute('aria-controls')}"]`);
       if (!target) return;

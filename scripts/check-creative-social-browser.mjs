@@ -75,10 +75,26 @@ try {
         { sender: '林芷', content: '好，路过给你拍一下门口牌子。', time: '21:08' },
       ] },
     };
+    samples.moments = { type: 'phone', view_type: 'moments', owner: '林芷', title: '朋友圈', posts: [
+      { author: '周宁', display_name: '周宁', time: '刚刚', content: '妈把阳台那盆栀子养开了。特意打电话让我听一听，差点以为花也会讲话。', likes: 12, replies: [{ author: '林芷', content: '先替我闻一下。' }, { author: '周宁', reply_to: '林芷', content: '她说周末来吃饭，自己闻。' }] },
+      { author: '阿麦', display_name: '阿麦 · 面包店', time: '二十分钟前', content: '试了三次，终于没把吐司的边烤硬。留了一条给夜班的人，别走错后门。', likes: 8, replies: [{ author: '小陈', content: '已经绕到前门了，这就折回去。' }] },
+      { author: '陈姐', time: '一小时前', content: '车修好了，明早重新骑河边那条路。停骑一周，突然很想念那段没人的树荫。', likes: 6, replies: [] },
+      { author: '林芷', time: '午后', content: '抽屉终于清出来了。一半是空笔芯，另一半是觉得总有一天会有用的票根。', likes: 9, replies: [{ author: '周宁', content: '那张轮渡票留着，下次认路靠它。' }] },
+      { author: '许老师', time: '三小时前', content: '今日练字作业，最后一个字写坏了。不补，明天再来。', likes: 15, replies: [] },
+      { author: '老陈', time: '早上', content: '晒好的被子收进来，屋里都是太阳味。今天就不出远门了。', likes: 4, replies: [{ author: '陈姐', content: '爸，菜我下班顺路带。' }] },
+    ] };
+    samples.microblog = { type: 'phone', view_type: 'microblog', owner: '林芷', title: '沿途', posts: [
+      { author: '路边观察员', display_name: '路边观察员', handle: 'street_notes', time: '刚刚', content: '那座旧桥修了两个月，今天围挡终于撤了。最先过去的是一位推着空菜车的阿姨，比剪彩还郑重。', likes: 38, replies: [{ author: '桥南散步', handle: 'walk_south', content: '这下每天能少绕十五分钟。' }, { author: '路边观察员', reply_to: '桥南散步', content: '桥头的早餐摊也回来了。' }] },
+      { author: '听雨的人', display_name: '听雨的人', handle: 'rain_radio', time: '十八分钟前', content: '整理旧录音时听见车站的报站声。有些地方已经改了名字，耳朵还留在原来的站台。', likes: 21, replies: [{ author: '旧城声音档案', handle: 'city_tapes', content: '愿意的话可以把年份写下来，很多人正在找那一版报站。' }] },
+      { author: '慢慢做饭', handle: 'slow_kitchen', time: '四十分钟前', content: '番茄炒蛋到底先炒谁，我家已经争论三代了。今天决定点外卖，暂停历史问题。', likes: 106, replies: [] },
+      { author: '野外笔记', handle: 'field_notes', time: '一小时前', content: '河岸新来的小鸟不是迷路，只是在等风停。观察记录里最常用的一句话：今天先别急着解释。', likes: 57, replies: [{ author: '窗边', content: '这句话也适合留给自己。' }] },
+      { author: '末班车窗', handle: 'last_window', time: '两小时前', content: '司机今晚多等了几秒，让抱着一捆花的人上了车。整辆车突然有了很轻的香气。', likes: 19, replies: [] },
+      { author: '纸上小店', handle: 'paper_shop', time: '午后', content: '收到了读者寄回来的书签，背面写着另一种结尾。暂时夹回书里，让两种结尾一起住着。', likes: 42, replies: [{ author: '阿页', content: '我也喜欢那种不急着说完的故事。' }] },
+    ] };
     window.mount = (kind, themeName, mode = 'light') => {
       window.surface?.dispose();
       document.body.innerHTML = `<button id="host-control" style="font:17px serif;background:rgb(30,40,50);color:rgb(220,230,240)">宿主</button>
-        <div id="story-director-modal" class="sd-theme-light open"><div class="sd-backdrop"></div><section class="sd-window" role="dialog" aria-label="千幕">
+        <div id="story-director-modal" class="sd-theme-${mode} open"><div class="sd-backdrop"></div><section class="sd-window" role="dialog" aria-label="千幕">
         <header class="sd-header"><div class="sd-titlebox"><h2>千幕</h2></div></header>
         <main class="sd-body">${renderCreativeSocialCard(samples[kind])}</main></section></div>`;
       const root = document.getElementById('story-director-modal');
@@ -89,10 +105,10 @@ try {
     };
   }, { readingSocialBinding });
 
-  for (const width of [320, 393, 1440]) for (const theme of ['classic', 'editorial', 'glass']) for (const kind of ['forum', 'phone']) {
-    const label = `${theme}/${width}/${kind}`;
+  for (const width of [320, 393, 1440]) for (const theme of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) for (const kind of ['forum', 'phone', 'moments', 'microblog']) {
+    const label = `${theme}/${mode}/${width}/${kind}`;
     await page.setViewportSize({ width, height: 900 });
-    await page.evaluate(({ theme, kind }) => { resetCreativeSocialState(); mount(kind, theme); }, { theme, kind });
+    await page.evaluate(({ theme, kind, mode }) => { resetCreativeSocialState(); mount(kind, theme, mode); }, { theme, kind, mode });
     await frame();
     const layout = await page.evaluate(() => {
       const root = document.getElementById('story-director-modal'), win = root.querySelector('.sd-window'), box = win.getBoundingClientRect();
@@ -121,24 +137,33 @@ try {
     check(viewport.height <= Math.min(900 * .58, 520) + 1 && viewport.overflow === 'auto' && viewport.overscroll === 'auto' && viewport.focusable === 0,
       `${label}: panel content has responsive bounded accessible scrolling`, viewport);
 
-    if (kind === 'forum') {
-      check(await page.locator('.sd-social-post').count() === CREATIVE_DETAIL_COUNTS.forumPosts.min,
+    if (kind !== 'phone') {
+      check(await page.locator('.sd-social-post').count() === (kind === 'forum' ? CREATIVE_DETAIL_COUNTS.forumPosts.min : 6),
         `${label}: every requested post is retained in the bounded feed`);
       const like = page.locator('[data-qm-social-action="like"]').first();
       const initial = await like.evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node).borderColor]);
       await like.focus(); await page.keyboard.press('Enter');
-      check(await like.getAttribute('aria-pressed') === 'true' && await like.locator('span').textContent() === '已赞', `${label}: keyboard like once despite repeat binding`);
+      check(await like.getAttribute('aria-pressed') === 'true' && await like.locator('span').textContent() === (kind === 'forum' ? '已赞' : kind === 'moments' ? '已赞 13' : '已赞 39'), `${label}: keyboard like once despite repeat binding`);
       const selected = await like.evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node).borderColor]);
       check(JSON.stringify(initial) !== JSON.stringify(selected), `${label}: visible selected state`);
       await like.click(); check(await like.getAttribute('aria-pressed') === 'false', `${label}: like toggles off`);
       check(await page.locator('[data-qm-social-action="bookmark"]').count() === 0, `${label}: collection action removed`);
       const replies = page.locator('[data-qm-social-action="replies"]').first();
       await replies.click(); check(await replies.getAttribute('aria-expanded') === 'true' && await page.locator('.sd-social-replies').first().isVisible(), `${label}: reply list opens`);
-      await page.evaluate(({ theme }) => mount('forum', theme), { theme });
+      await page.evaluate(({ theme, kind, mode }) => mount(kind, theme, mode), { theme, kind, mode });
       check(await page.locator('[data-qm-social-action="bookmark"]').count() === 0
         && await page.locator('[data-qm-social-action="replies"]').first().getAttribute('aria-expanded') === 'true', `${label}: remount keeps local choices`);
       await page.locator('[data-qm-social-action="replies"]').first().click();
       check(!await page.locator('.sd-social-replies').first().isVisible(), `${label}: replies close`);
+      if (kind !== 'forum') {
+        check(await page.locator(`.sd-social-phone-${kind}`).count() === 1 && await page.locator('.sd-social-messages,[role="tablist"],[role="tab"],img').count() === 0,
+          `${label}: one phone view without navigation, chat duplication or image placeholders`);
+        check(await page.locator('.sd-social-phone-author > span').count() === (kind === 'microblog' ? 6 : 0), `${label}: public handles distinguish short posts from familiar names`);
+        const top = await page.locator('[data-qm-social-scroll]').evaluate(node => { node.scrollTop = 200; node.dispatchEvent(new Event('scroll')); return node.scrollTop; });
+        await page.evaluate(({ theme, kind, mode }) => mount(kind, theme, mode), { theme, kind, mode });
+        check(top > 0 && Math.abs(await page.locator('[data-qm-social-scroll]').evaluate(node => node.scrollTop) - top) <= 1, `${label}: phone feed reading position survives remount`);
+        await page.locator('[data-qm-social-scroll]').evaluate(node => { node.scrollTop = 0; });
+      }
     } else {
       check(await page.locator('.sd-social-message:visible').count() === CREATIVE_DETAIL_COUNTS.phoneMessages.min && await page.locator('.sd-social-expand').count() === 0,
         `${label}: all messages available without a second expand control`);
@@ -147,14 +172,15 @@ try {
       await frame();
       const scrollTop = await messages.evaluate(node => { node.scrollTop = node.scrollHeight; node.dispatchEvent(new Event('scroll')); return node.scrollTop; });
       check(scrollTop > 0, `${label}: long conversation scrolls inside panel`);
-      await page.evaluate(({ theme }) => mount('phone', theme), { theme });
+      await page.evaluate(({ theme, mode }) => mount('phone', theme, mode), { theme, mode });
       check(Math.abs(await messages.evaluate(node => node.scrollTop) - scrollTop) <= 1, `${label}: remount retains reading position`);
       await messages.evaluate(node => { node.scrollTop = 0; }); await frame();
     }
-    if (process.env.QIANMU_SOCIAL_QA_DIR && width === 393) {
+    if (process.env.QIANMU_SOCIAL_QA_DIR && width === 393 && theme === 'glass') {
       await mkdir(process.env.QIANMU_SOCIAL_QA_DIR, { recursive: true });
       await page.locator('.sd-body').evaluate(node => { node.scrollTop = 0; });
-      const path = join(process.env.QIANMU_SOCIAL_QA_DIR, `social_${theme}_${kind}_${width}.png`);
+      if (kind === 'moments' || kind === 'microblog') await page.locator('[data-qm-social-action="replies"]').first().click();
+      const path = join(process.env.QIANMU_SOCIAL_QA_DIR, `social_${theme}_${mode}_${kind}_${width}.png`);
       await page.screenshot({ path }); screenshots.push(path);
     }
   }
@@ -206,6 +232,28 @@ try {
   });
   check(edges.blockedMarkup && edges.visibleText, 'all model HTML/URLs are text only', edges);
   check(edges.fits && edges.controls === 2, 'long unbroken content wraps in structured feed', edges);
+
+  for (const kind of ['moments', 'microblog']) {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.evaluate(kind => {
+      const long = '很长的称呼与说明'.repeat(8), injection = '<img src="https://outside.test/avatar">';
+      samples.feedBoundary = { ...samples[kind], owner: long, title: long, posts: [
+        { author: long, display_name: long, handle: 'unbroken'.repeat(30), time: long, content: injection + 'unbroken'.repeat(80), replies: [{ author: long, content: '完整评论'.repeat(40), reply_to: long }] },
+        ...samples[kind].posts,
+      ] };
+      resetCreativeSocialState(); mount('feedBoundary', 'editorial', 'dark');
+    }, kind);
+    await page.locator('[data-qm-social-action="replies"]').first().click();
+    const boundary = await page.evaluate(() => {
+      const card = document.querySelector('.sd-creative-social'), scroll = card.querySelector('[data-qm-social-scroll]');
+      scroll.scrollTop = scroll.scrollHeight;
+      const last = scroll.lastElementChild.getBoundingClientRect(), box = scroll.getBoundingClientRect();
+      return { fits: [...card.querySelectorAll('.sd-social-phone-post-main,.sd-social-feed-reply,.sd-social-phone-author')].every(node => node.scrollWidth <= node.clientWidth + 2),
+        lastReachable: last.bottom <= box.bottom + 2 && last.bottom > box.top,
+        bounded: scroll.clientHeight <= 568 * .58 + 2, noMarkup: !card.querySelector('img,a,script'), posts: card.querySelectorAll('.sd-social-post').length };
+    });
+    check(boundary.fits && boundary.lastReachable && boundary.bounded && boundary.noMarkup && boundary.posts === 7, `${kind}: long fields, expanded comments and final post remain readable in a short narrow viewport`, boundary);
+  }
 
   await page.evaluate(() => { resetCreativeSocialState(); mount('forum', 'editorial'); });
   await page.locator('[data-qm-social-action="like"]').first().click();

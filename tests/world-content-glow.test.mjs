@@ -4,7 +4,8 @@ import vm from 'node:vm';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 
 test('world border glow requires actual faction or event content, not merely enabling the module', () => {
-    const context = vm.createContext({ settings: { geopoliticsEnabled: true }, worldPage: 'front', store: {} });
+    const context = vm.createContext({ settings: { geopoliticsEnabled: true }, worldPage: 'front', store: {}, directorLiveLog: null, directorPreviewPlan: () => null });
+    vm.runInContext(storyboardFunctionSource('directorGeopoliticsState'), context);
     vm.runInContext('function getChatStore(){return store;}\n' + storyboardFunctionSource('renderWorldPageEdges'), context);
     for (const store of [{}, { factions: [], worldEvents: [] }, { factions: [null, {}, { name: '  ' }], worldEvents: [{ title: '' }] }]) {
         context.store = store;

@@ -44,11 +44,16 @@ test('the hive title and selected tags retain the existing theme system', () => 
     assert.match(theme, /\.sd-widget-toggle\.active[^{}]*\{\s*color:\s*var\(--qm-action-ink\)/);
 });
 
-test('new-theme newcomer and widget selections override soft skin fills with contrast-paired solid color', () => {
-    const selected = rules('#story-director-modal[data-qm-theme] .sd-widget-card button.sd-widget-toggle:is(.active, [aria-pressed="true"])').join('\n');
-    assert.match(css, /#story-director-modal\[data-qm-theme\] button\.sd-btn\.sd-newcomer-toggle:is\(\.active, \[aria-pressed="true"\]\),/);
-    assert.match(selected, /background:\s*var\(--sd-primary\) !important/);
-    assert.match(selected, /color:\s*var\(--sd-primary-text\) !important/);
-    assert.match(selected, /border-color:\s*var\(--sd-primary\) !important/);
-    assert.doesNotMatch(selected, /transparent|color-mix/);
+test('tag selections share an opaque muted accent without recoloring primary actions', () => {
+    const selected = rules(':is(#story-director-modal, [data-qm-theme]) .sd-option-chip:is(.active, :has(> input:checked))').join('\n');
+    assert.match(css, /#story-director-modal button\.sd-btn\.sd-newcomer-toggle:is\(\.active, \[aria-pressed="true"\]\),/);
+    assert.match(css, /#story-director-modal button\.sd-btn\.sd-stream-toggle\[aria-pressed="true"\],/);
+    assert.match(css, /#story-director-modal \.sd-widget-card button\.sd-widget-toggle:is\(\.active, \[aria-pressed="true"\]\),/);
+    assert.match(selected, /background:\s*var\(--sd-tag-selected-bg\) !important/);
+    assert.match(selected, /color:\s*var\(--sd-text\) !important/);
+    assert.match(selected, /border-color:\s*var\(--sd-tag-selected-border\) !important/);
+    assert.doesNotMatch(selected, /--sd-primary|transparent/);
+    assert.match(css, /--sd-tag-selected-bg:\s*color-mix\(in srgb, var\(--sd-accent\) 24%, color-mix\(in srgb, var\(--sd-text\) 10%, var\(--sd-sticky-bg\)\)\)/);
+    assert.match(theme, /\[data-qm-theme\] \.sd-primary:not\(\.sd-option-chip\)\s*\{[^}]*background:\s*var\(--qm-accent\)/);
+    assert.doesNotMatch(theme, /:is\(\.sd-primary, \.sd-option-chip/);
 });

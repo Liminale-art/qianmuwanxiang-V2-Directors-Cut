@@ -45,8 +45,10 @@ try {
       Object.assign(log, { status: outcome === 'success' ? 'success' : outcome === 'cancelled' ? 'cancelled' : 'error', duration: '1s',
         response: prefix + '"kept":true}',
         error: outcome === 'success' ? '' : outcome === 'cancelled' ? '已中断。' : '推演未完成。',
-        errorCause: outcome === 'success' ? '' : 'ORIGINAL_CAUSE',
-        completion: outcome === 'success' ? { complete: true, finishReason: 'stop' } : { interrupted: true, finishReason: outcome === 'truncated' ? 'length' : '', rawTransport: rawError },
+        errorCause: outcome === 'success' ? '' : outcome === 'shortfall' ? '本次内容未完整达到栏目要求；已收内容可只读查看，缺项已记入日志。' : 'ORIGINAL_CAUSE',
+        errorCode: outcome === 'shortfall' ? 'MODEL_OUTPUT_INCOMPLETE' : undefined,
+        hasValidContent: true,
+        completion: ['success', 'shortfall'].includes(outcome) ? { complete: true, finishReason: 'stop' } : { interrupted: true, finishReason: outcome === 'truncated' ? 'length' : '', rawTransport: rawError },
         quality: outcome === 'success' ? {} : { issues: [{ field: 'quests', missing: 4 }] },
       });
       const before = JSON.stringify(log); paintModelLog(root, log, renderLogEntry);
@@ -64,14 +66,17 @@ try {
         const panel = failure.querySelector('.sd-log-error-panel'), panelStyle = panel && getComputedStyle(panel);
         results['all error details share one visual panel with transparent borderless internal text'] = failure.querySelectorAll('.sd-log-error-panel').length === 1
           && panelStyle.backgroundColor === 'rgb(20, 22, 26)' && panelStyle.borderRadius === '10px'
-          && panel.contains(diagnostic) && [...panel.querySelectorAll('.sd-term')].every(node => {
+          && (!diagnostic || panel.contains(diagnostic)) && [...panel.querySelectorAll('.sd-term')].every(node => {
             const style = getComputedStyle(node); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.borderTopWidth === '0px' && style.borderRadius === '0px';
           });
-        results['one expandable raw response exists inside the failure box only'] = root.querySelectorAll('.sd-log-raw-error').length === 1 && diagnostic.querySelector('pre').textContent === rawError && !diagnostic.open;
-        results['cause and shortfall remain in the failure box'] = failure.textContent.includes('ORIGINAL_CAUSE') && failure.textContent.includes('预演缺 4 条');
-        diagnostic.querySelector('summary').click(); paintModelLog(root, log, renderLogEntry);
-        results['diagnostic expansion survives a duplicate final update'] = diagnostic.open;
-        if (outcome === 'truncated') results['length finish is retained'] = failure.textContent.includes('结束原因：length');
+        if (outcome === 'shortfall') results['shortfall appears once without repeating the generated summary or original-error text'] = panel.textContent.trim() === '缺失内容：预演缺 4 条' && !panel.querySelector('details');
+        else {
+          results['one expandable raw response exists inside the failure box only'] = root.querySelectorAll('.sd-log-raw-error').length === 1 && diagnostic.querySelector('pre').textContent === rawError && !diagnostic.open;
+          results['shortfall remains visible without a duplicated raw-error summary'] = !panel.querySelector('.sd-log-error-detail') && !panel.textContent.includes('ORIGINAL_CAUSE') && panel.textContent.includes('预演缺 4 条');
+          diagnostic.querySelector('summary').click(); paintModelLog(root, log, renderLogEntry);
+          results['diagnostic expansion survives a duplicate final update'] = diagnostic.open;
+        }
+        if (outcome === 'truncated') results['length finish is retained'] = failure.textContent.includes('回复被截断（length）');
       }
       return results;
     };
@@ -84,10 +89,19 @@ try {
       document.querySelector('.sd-log-list').innerHTML = renderLogEntry(log, 0, true);
       document.querySelector('.sd-log-raw-error').open = true;
     };
+    window.showShortfallScreenshot = async () => {
+      await checkFixture({ family: 'glass', mode: 'light', outcome: 'shortfall' });
+      const log = { id: 'fixture', kind: 'director', status: 'error', time: '离线日志界面验证', duration: '1.0s',
+        error: '本次推演未完整完成；已收到的条目仍可查看。', errorCode: 'MODEL_OUTPUT_INCOMPLETE',
+        errorCause: '本次内容未完整达到栏目要求；已收内容可只读查看，缺项已记入日志。', hasValidContent: true,
+        request: '[离线模拟请求，未联系模型服务]', response: '{"quests":[{"subject":"值班员","description":"把新送来的记录本交给接班人。"}]}',
+        completion: { complete: true, finishReason: 'stop' }, quality: { issues: [{ field: 'quests', missing: 1 }, { field: 'interlude', missing: 1 }] } };
+      document.querySelector('.sd-log-list').innerHTML = renderLogEntry(log, 0, true);
+    };
   }, index.slice(start, end));
   for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 393, 1100]) {
     await page.setViewportSize({ width, height: 760 });
-    for (const outcome of ['error', 'cancelled', 'truncated', 'success']) {
+    for (const outcome of ['error', 'cancelled', 'truncated', 'shortfall', 'success']) {
       const results = await page.evaluate(options => checkFixture(options), { family, mode, outcome });
       for (const [name, passed] of Object.entries(results)) { const label = `${family}/${mode}/${width}/${outcome}: ${name}`; assert.ok(passed, label); checks.push(label); }
     }
@@ -96,6 +110,11 @@ try {
     await page.setViewportSize({ width: 540, height: 1100 });
     await page.evaluate(() => showFailureScreenshot());
     await page.screenshot({ path: process.env.QIANMU_FAILURE_SCREENSHOT, fullPage: true });
+  }
+  if (process.env.QIANMU_SHORTFALL_SCREENSHOT) {
+    await page.setViewportSize({ width: 540, height: 1100 });
+    await page.evaluate(() => showShortfallScreenshot());
+    await page.screenshot({ path: process.env.QIANMU_SHORTFALL_SCREENSHOT, fullPage: true });
   }
   assert.equal(external, 0, JSON.stringify(blocked)); assert.deepEqual(errors, []);
   console.log(JSON.stringify({ passed: checks.length, external, errors }, null, 2));

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewPlan, directorQualitySummary, modelFailureText } from '../qianmu-director-live.js';
+import { parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewPlan, directorQualitySummary, modelFailureText, renderModelDiagnostics } from '../qianmu-director-live.js';
 import { callExternalModel } from '../qianmu-model-external.js';
 import { callHostChatModel } from '../qianmu-model-host.js';
 import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, CREATIVE_GUIDES, CREATIVE_DETAIL_COUNTS, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
@@ -381,13 +381,18 @@ test('actual phone admission includes a narrative supporting character who is no
   assert.equal(e.store.plan.interlude.owner, '老周');
 });
 
-test('worldbook-only names do not become phone owners without appearing in narrative or effective memory', async () => {
-  const plan = fullPlan(); plan.interlude.owner = '方先生';
-  const e = fixture({ worldText: 'WORLD_SOURCE：方先生拥有手机，只在设定中出现。', responses: [JSON.stringify(plan)] });
-  await e.c.generateDirectorPlan();
-  assert.equal(e.requests.length, 1);
-  assert.equal(e.saves, 0); assert.equal(e.store.plan.original, true);
-  assert.ok(e.settings.logHistory[0].quality.issues.some(issue => issue.field === 'interlude'));
+test('phone worlds admit plausible new owners without requiring a literal prior name, while USER stays excluded', async () => {
+  for (const owner of ['方先生', '新来的调度员', '访客']) {
+    const plan = fullPlan(); plan.interlude.owner = owner;
+    const e = fixture({ worldText: 'WORLD_SOURCE：当地用手机协调临时线路。', responses: [JSON.stringify(plan)] });
+    await e.c.generateDirectorPlan();
+    assert.equal(e.requests.length, 1);
+    assert.equal(e.saves, owner === '访客' ? 0 : 1);
+    if (owner === '访客') {
+      assert.equal(e.store.plan.original, true);
+      assert.ok(e.settings.logHistory[0].quality.issues.some(issue => issue.field === 'interlude'));
+    } else assert.equal(e.store.plan.interlude.owner, owner);
+  }
 });
 
 test('each provider makes one request only; incomplete output keeps original responses and per-run switches without repair', async () => {
@@ -401,11 +406,13 @@ test('each provider makes one request only; incomplete output keeps original res
     assert.equal(log.response, JSON.stringify(first));
     assert.equal(log.repairResponse, undefined); assert.equal(log.repairError, undefined);
     assert.doesNotMatch(log.error, /未自动补写/);
-    assert.deepEqual(plain(log.creativeOptions), { parallelSceneEnabled: true, interludeEnabled: true, interludeType: 'phone', worldChatterEnabled: false, geopoliticsEnabled: false });
+    assert.deepEqual(plain(log.creativeOptions), { parallelSceneEnabled: true, interludeEnabled: true, interludeType: 'phone', phoneViewType: 'chat', phoneConversationKind: 'group', worldChatterEnabled: false, geopoliticsEnabled: false });
     assert.doesNotMatch(JSON.stringify(log.creativeOptions), /SOURCE|personaNames|phoneSourceText|characterNames/);
     assert.ok(log.quality.issues.some(issue => issue.field === 'quests' && issue.missing === 1));
     assert.equal(directorPreviewPlan(log).quests.length, 4);
-    assert.equal(e.toasts.length, 1); assert.equal(e.toasts[0][0], '推演失败，请查看日志。');
+    assert.equal(e.toasts.length, 1); assert.deepEqual(e.toasts[0], ['本次推演有内容缺失，详情见日志。', 'warning']);
+    assert.equal(log.hasValidContent, true);
+    assert.equal(modelFailureText(log), '缺失内容：预演缺 1 条');
   }
 });
 
@@ -455,7 +462,34 @@ test('expanded interlude quotas report shortfalls without another request, sourc
     assert.ok(validateCreativePlan(candidate, { interludeType: type }).some(issue => issue.field === 'interlude' && issue.reason.includes(type === 'forum' ? '至少有 8 帖' : '至少有 12 条')));
     const preview = directorPreviewPlan(log).interlude;
     assert.equal(type === 'forum' ? preview.posts.length : preview.messages.length, count, 'received short card remains viewable without synthetic entries');
-    assert.equal(e.toasts[0][0], '推演失败，请查看日志。');
+    assert.deepEqual(e.toasts[0], ['本次推演有内容缺失，详情见日志。', 'warning']);
+  }
+});
+
+test('both transports preserve selected phone feeds, saving complete pages once and previewing short pages without repair', async () => {
+  for (const view_type of ['moments', 'microblog']) for (const providerMode of ['external', 'sillytavern']) for (const count of [5, 6]) {
+    const candidate = fullPlan();
+    candidate.interlude = { type: 'phone', view_type, title: view_type === 'moments' ? '朋友圈' : '短博', owner: '新来的调度员',
+      posts: Array.from({ length: count }, (_, i) => ({ author: `街坊${i}`, content: `第${i}件独立的日常小事。`, time: `午后 ${i}`,
+        replies: i < 2 ? [{ author: '邻居', content: '等会儿路过看看。' }] : [] })) };
+    const raw = JSON.stringify(candidate), e = fixture({ settings: { providerMode }, responses: [raw, () => assert.fail('a feed must not trigger a second request')] });
+    const draws = [.9, view_type === 'moments' ? .1 : .5]; let selected = 0;
+    e.c.selectCreativeOptions = (value, options) => selectCreativeOptions(value, { ...options, random: () => draws[selected++] });
+    const previous = e.store.plan;
+    await e.c.generateDirectorPlan();
+    assert.equal(selected, 2); assert.equal(e.requests.length, 1);
+    const log = e.settings.logHistory[0];
+    assert.equal(log.response, raw); assert.equal(log.creativeOptions.phoneViewType, view_type); assert.equal(log.creativeOptions.phoneConversationKind, null);
+    assert.equal(log.repairResponse, undefined);
+    if (count === 6) {
+      assert.equal(log.status, 'success'); assert.equal(e.saves, 1); assert.equal(e.injects, 1);
+      assert.equal(e.store.plan.interlude.posts.length, 6); assert.equal(e.store.plan.interlude.view_type, view_type);
+    } else {
+      assert.equal(log.status, 'error'); assert.equal(e.saves, 0); assert.equal(e.injects, 0); assert.equal(e.store.plan, previous);
+      assert.equal(directorPreviewPlan(log).interlude.posts.length, 5);
+      assert.equal(directorQualitySummary(log), '幕间拾趣缺 1 张');
+      assert.deepEqual(e.toasts[0], ['本次推演有内容缺失，详情见日志。', 'warning']);
+    }
   }
 });
 
@@ -505,7 +539,7 @@ test('complete outputs save and inject once per provider, while background gaps 
     const background = fixture({ settings: { ...BASIC, providerMode }, responses: [JSON.stringify(partial)] });
     await background.c.generateDirectorPlan(false, true, { background: true });
     assert.equal(background.requests.length, 1); assert.equal(background.saves, 0); assert.equal(background.injects, 0);
-    assert.equal(background.toasts.length, 1); assert.equal(background.toasts[0][0], '推演失败，请查看日志。');
+    assert.equal(background.toasts.length, 1); assert.deepEqual(background.toasts[0], ['本次推演有内容缺失，详情见日志。', 'warning']);
   }
   assert.doesNotMatch(qualitySource, /repairDirectorPlanQuality|callExternalApi|callSillyTavernModel|mergeCreativeRepair/);
   assert.doesNotMatch(generationSource, /repairDirectorPlanQuality|repairResponse\s*=|repairError\s*=/);
@@ -554,25 +588,31 @@ test('actual external and ST transports keep every failure diagnostic in logs wi
       continue;
     }
     assert.equal(log.status, outcome === 'cancelled' ? 'cancelled' : 'error', label);
-    assert.deepEqual(e.toasts[0], outcome === 'cancelled' ? ['已取消生成。', 'warning'] : ['推演失败，请查看日志。', 'error'], label);
+    const partialExpected = ['sse-error', 'truncated', 'cancelled'].includes(outcome);
+    assert.equal(log.hasValidContent, partialExpected, label);
+    assert.deepEqual(e.toasts[0], outcome === 'cancelled' ? ['已取消生成。', 'warning']
+      : partialExpected ? ['本次推演有内容缺失，详情见日志。', 'warning'] : ['推演失败，请查看日志。', 'error'], label);
     assert.equal(e.store.plan, oldPlan, label); assert.equal(e.saves, 0); assert.equal(e.injects, 0);
     assert.equal(e.store.history[0].id, 'prior-history'); assert.equal(e.c.injectSelection.get('prior-selection'), 'keep');
     const failureText = modelFailureText(log);
     if (['http-error', 'json-error', 'sse-error'].includes(outcome)) {
       assert.equal(log.completion.rawTransport, remote, label);
-      assert.match(failureText, /requested model unavailable/);
+      assert.match(failureText, /模型请求失败|模型服务返回错误/);
+      assert.match(renderModelDiagnostics(log, { failure: true }), /requested model unavailable/);
+      assert.doesNotMatch(failureText, /requested model unavailable|原始错误：/);
     }
     if (['sse-error', 'cancelled'].includes(outcome)) {
       assert.equal(log.response, partial, label); assert.equal(directorPreviewPlan(log).quests.length, 1);
     }
     if (outcome === 'truncated') {
       assert.equal(log.response, JSON.stringify(fullPlan(BASIC)));
-      assert.match(failureText, /原始错误：模型达到输出长度上限/); assert.match(failureText, /结束原因：length/);
+      assert.equal(failureText, '回复被截断（length）。');
+      assert.match(renderModelDiagnostics(log, { failure: true }), /模型达到输出长度上限/);
       assert.equal(directorPreviewPlan(log).quests.length, 5, 'even structurally complete output is not accepted after provider truncation');
     }
     if (outcome === 'network') assert.match(failureText, /network fixture disconnected/);
     if (outcome === 'broken-envelope') assert.equal(log.completion.rawTransport, '{"choices":[');
-    if (outcome === 'invalid-story') { assert.equal(log.response, '{"story_status":'); assert.match(failureText, /JSON_PARSE_FAILED/); }
+    if (outcome === 'invalid-story') { assert.equal(log.response, '{"story_status":'); assert.equal(failureText, '模型输出格式有误。'); assert.match(renderModelDiagnostics(log, { failure: true }), /JSON_PARSE_FAILED/); }
   }
 });
 
@@ -586,6 +626,41 @@ test('actual normalization supports new readable cards and legacy fields without
   assert.equal(result.world_updates[0].content, '旧资料不清除');
   assert.equal(result.interlude.type, 'wrong');
   assert.ok(e.c.directorQualityNeeds(result, null, e.store, { interludeType: 'phone' }).issues.some(issue => issue.field === 'interlude'));
+});
+
+test('old complete plans and received invalid tokens never turn an empty new run into a partial-success warning', async () => {
+  for (const providerMode of ['external', 'sillytavern']) for (const raw of ['', '{}', '{"story_status":{"title":"only title"}}',
+    '{"npc_updates":[{"name":"only a name"}]}', '{"parallel_scene":{"content":"disabled card prose"}}',
+    '{"quests":[{"title":"unfinished']) {
+    const truncated = raw.endsWith('unfinished');
+    const e = fixture({ settings: { ...BASIC, providerMode }, responses: [() => {
+      if (truncated) throw Object.assign(new Error('model length limit'), { code: 'MODEL_OUTPUT_INCOMPLETE',
+        modelResponse: { text: raw, finishReason: 'length', complete: false, interrupted: true } });
+      return raw;
+    }] });
+    const priorPlan = fullPlan(BASIC); e.store.plan = priorPlan;
+    await e.c.generateDirectorPlan();
+    const log = e.settings.logHistory[0];
+    assert.equal(log.status, 'error', `${providerMode}:${raw}`);
+    assert.equal(log.hasValidContent, false); assert.equal(log.response, raw);
+    assert.deepEqual(e.toasts, [['推演失败，请查看日志。', 'error']]);
+    assert.equal(e.store.plan, priorPlan); assert.equal(e.requests.length, 1); assert.equal(e.saves, 0); assert.equal(e.injects, 0);
+    assert.doesNotMatch(modelFailureText(log), /缺失内容：/);
+  }
+});
+
+test('a valid new direction or single scene earns a yellow shortfall notice without adopting an incomplete plan', async () => {
+  for (const rawPlan of [{ story_status: { directions: [fullPlan(BASIC).story_status.directions[0]] } },
+    { character_dynamics: [{ content: '把旧收据拿到灯下核对。' }] }]) {
+    const e = fixture({ settings: BASIC, responses: [JSON.stringify(rawPlan)] });
+    await e.c.generateDirectorPlan();
+    const log = e.settings.logHistory[0];
+    assert.equal(log.hasValidContent, true); assert.equal(log.status, 'error');
+    assert.deepEqual(e.toasts, [['本次推演有内容缺失，详情见日志。', 'warning']]);
+    assert.equal(e.saves, 0); assert.equal(e.injects, 0); assert.equal(e.store.plan.original, true);
+    assert.match(modelFailureText(log), /^缺失内容：/);
+    assert.doesNotMatch(modelFailureText(log) + renderModelDiagnostics(log, { failure: true }), /原始错误|本次内容未完整达到|已收到的条目/);
+  }
 });
 
 test('unmodified qualified entries and persistent states are not rejected for resembling previous plans', () => {

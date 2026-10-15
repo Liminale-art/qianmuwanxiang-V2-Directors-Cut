@@ -224,7 +224,7 @@
   border-radius: 0;
 }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-btn, .sd-icon-btn):disabled { opacity: .46; cursor: not-allowed; }
-:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-primary, .sd-option-chip.active, .sd-option-chip:has(> input:checked)) {
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .sd-primary:not(.sd-option-chip) {
   background: var(--qm-accent) !important;
   color: var(--qm-on-accent) !important;
   border-color: transparent !important;
@@ -368,12 +368,6 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
 }
 #story-director-modal[data-qm-theme] .sd-relus-tone-pos { color: color-mix(in srgb, #5f9e74 60%, var(--qm-ink)); }
 #story-director-modal[data-qm-theme] .sd-relus-tone-neg { color: color-mix(in srgb, #c2606a 60%, var(--qm-ink)); }
-#story-director-modal[data-qm-theme] button.sd-newcomer-toggle[aria-pressed="true"] {
-  color: var(--qm-ink) !important;
-  background: color-mix(in srgb, var(--qm-accent) 20%, var(--qm-raised)) !important;
-  border-color: color-mix(in srgb, var(--qm-accent) 65%, var(--qm-line)) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qm-accent) 28%, transparent) !important;
-}
 
 /* Source selection and backstage libraries reuse their original nested folds.
    Keep nested surfaces light: the enclosing card already owns any blur. */

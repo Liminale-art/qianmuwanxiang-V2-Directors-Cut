@@ -1,5 +1,5 @@
 @import url('./qianmu-text-collection-floor.css');
-@import url('./qianmu-creative-social.css?v=1.59.448');
+@import url('./qianmu-creative-social.css?v=1.59.454');
 
 /* ============================================================
    千幕 (Qianmu)
@@ -2829,8 +2829,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   border-radius: 0 !important;
   padding: 0;
 }
-#story-director-modal .sd-log-error-panel .sd-log-raw-error { margin-top: 8px; }
-#story-director-modal .sd-log-error-panel .sd-log-raw-error > summary {
+#story-director-modal .sd-log-error-panel :is(.sd-log-raw-error, .sd-log-error-detail) { margin-top: 8px; }
+#story-director-modal .sd-log-error-panel :is(.sd-log-raw-error, .sd-log-error-detail) > summary {
   color: #e0a8a8 !important;
   font-size: .84em;
   padding: 4px 0;
@@ -9337,7 +9337,16 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 }
 #story-director-modal .sd-director-paragraph[role="button"] { cursor: pointer; }
 #story-director-modal .sd-director-paragraph-label { display: block; margin-bottom: 4px; color: var(--sd-muted); font-size: var(--qm-type-caption); line-height: 1.45; }
-#story-director-modal .sd-director-section-notice { margin: 8px 0; color: var(--sd-muted); font-size: var(--qm-type-caption); line-height: 1.55; }
+#story-director-modal .sd-director-notice-row:has(> .sd-director-section-notice) {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+}
+#story-director-modal .sd-director-notice-row:has(> .sd-director-section-notice) > :is(h3, b) {
+  min-width: 0; max-width: 100%; margin: 0; overflow-wrap: anywhere;
+}
+#story-director-modal .sd-director-notice-row > .sd-director-section-notice {
+  flex: 0 0 auto; max-width: 100%; margin: 0 0 0 auto; color: var(--sd-muted);
+  font-size: var(--qm-type-caption); font-weight: 400; line-height: 1.55; white-space: nowrap; text-align: right;
+}
 #story-director-modal .sd-director-paragraph p { margin: 0; font-size: var(--qm-type-body); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 #story-director-modal .sd-director-paragraph.is-selected {
   background: color-mix(in srgb, var(--sd-accent) 12%, var(--sd-card));
@@ -12009,21 +12018,19 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   background: linear-gradient(90deg, transparent, var(--sd-border) 18%, var(--sd-border) 82%, transparent) !important;
 }
 
-/* 纸间／极简的新角入场选中态与主操作按钮完全同源。 */
-#story-director-modal :is(.sd-newcomer-toggle.active, .sd-newcomer-toggle[aria-pressed="true"]) {
-  background: var(--sd-primary) !important;
-  color: var(--sd-primary-text) !important;
-  border-color: transparent !important;
-  box-shadow: 0 1px 0 rgba(255,255,255,.2) inset, 0 1px 2px rgba(0,0,0,.06) !important;
+/* Tag toggles use an opaque, low-chroma accent tint. Keep selection distinct
+   from the unfilled state without giving it the weight of a primary action. */
+#story-director-modal, [data-qm-theme] {
+  --sd-tag-selected-bg: color-mix(in srgb, var(--sd-accent) 24%, color-mix(in srgb, var(--sd-text) 10%, var(--sd-sticky-bg)));
+  --sd-tag-selected-border: color-mix(in srgb, var(--sd-accent) 45%, var(--sd-sticky-bg));
 }
-/* Loaded skins soften generic controls; these explicit on/off actions need an
-   opaque selected surface. Keep the override local and use the palette's
-   contrast-paired primary tokens in both daylight and night. */
-#story-director-modal[data-qm-theme] button.sd-btn.sd-newcomer-toggle:is(.active, [aria-pressed="true"]),
-#story-director-modal[data-qm-theme] .sd-widget-card button.sd-widget-toggle:is(.active, [aria-pressed="true"]) {
-  background: var(--sd-primary) !important;
-  color: var(--sd-primary-text) !important;
-  border-color: var(--sd-primary) !important;
+#story-director-modal button.sd-btn.sd-newcomer-toggle:is(.active, [aria-pressed="true"]),
+#story-director-modal button.sd-btn.sd-stream-toggle[aria-pressed="true"],
+#story-director-modal .sd-widget-card button.sd-widget-toggle:is(.active, [aria-pressed="true"]),
+:is(#story-director-modal, [data-qm-theme]) .sd-option-chip:is(.active, :has(> input:checked)) {
+  background: var(--sd-tag-selected-bg) !important;
+  color: var(--sd-text) !important;
+  border-color: var(--sd-tag-selected-border) !important;
   box-shadow: none !important;
 }
 
@@ -12098,7 +12105,7 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   width: 100%;
   min-width: 0;
 }
-#story-director-modal .sd-plan-section .sd-npc-name-row { flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+#story-director-modal .sd-plan-section .sd-npc-name-row { flex-wrap: wrap; align-items: flex-end; gap: 2px 8px; }
 #story-director-modal .sd-plan-section .sd-npc-name-row > h4 { flex: 0 1 auto; min-width: 0; }
 #story-director-modal .sd-plan-section .sd-npc-role-row > .sd-npc-role { flex: 0 1 auto; min-width: 0; }
 #story-director-modal .sd-plan-section .sd-npc-role-row > .sd-world-media-entry {

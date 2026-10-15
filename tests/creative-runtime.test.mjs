@@ -101,23 +101,33 @@ test('chat blueprint marker never authorizes replacing edited or unknown text', 
   upgradeCreativeBlueprint(store, next.blueprint, 2);
   assert.equal(store.blueprint, next.blueprint);
 });
-test('interlude is selected once, supports non-speaker story characters, and cannot pick USER as owner', () => {
+test('interlude and phone mode are frozen once per request without restricting side-page owners to source names', () => {
   let calls = 0;
   const input = { chat: [{ name: '用户别名', is_user: true }, { name: '陈警官', mes: '同事周青正在群聊里询问线索。' }],
     personaNames: ['本名'], characterName: '陈警官', sourceText: '手机 群聊', narrativeText: '周青正在群聊里询问线索。', random: () => { calls++; return .9; } };
   const options = selectCreativeOptions({}, input);
-  assert.equal(calls, 1); assert.equal(options.interludeType, 'phone'); assert.ok(Object.isFrozen(options));
+  assert.equal(calls, 3); assert.equal(options.interludeType, 'phone'); assert.equal(options.phoneViewType, 'chat'); assert.equal(options.phoneConversationKind, 'group'); assert.ok(Object.isFrozen(options));
   assert.ok(options.personaNames.includes('用户别名'));
   assert.equal(options.eligiblePhoneOwners, undefined);
-  assert.equal(options.phoneSourceText, input.narrativeText);
+  assert.equal(options.phoneSourceText, undefined);
+  for (let repeat = 0; repeat < 2; repeat++) {
+    assert.match(creativeSectionGuidance(options), /固定为 group（群聊）/);
+    assert.match(createCreativeSchema(options), /"conversation_kind": "group"/);
+  }
+  assert.equal(calls, 3, 'rendering guidance and schema cannot resample the request');
   const forum = selectCreativeOptions({}, { ...input, sourceText: '旧时客栈，众人围炉看戏。' });
-  assert.equal(forum.interludeType, 'forum'); assert.equal(calls, 1);
+  assert.equal(forum.interludeType, 'forum'); assert.equal(forum.phoneViewType, null); assert.equal(forum.phoneConversationKind, null); assert.equal(calls, 3);
   const off = selectCreativeOptions({ interludeEnabled: false }, input);
-  assert.equal(off.interludeType, null); assert.equal(calls, 1);
+  assert.equal(off.interludeType, null); assert.equal(off.phoneViewType, null); assert.equal(off.phoneConversationKind, null); assert.equal(calls, 3);
   const noSpeakerLabel = selectCreativeOptions({}, { chat: [], sourceText: '手机可用', narrativeText: '小余刚把发酵缸洗净。她的手机又响了。', random: () => .9 });
   assert.equal(noSpeakerLabel.interludeType, 'phone', 'prose-only supporting characters are not excluded by chat speaker labels');
   const noNarrative = selectCreativeOptions({}, { chat: [{ name: '陈警官' }], sourceText: '手机', random: () => .9 });
-  assert.equal(noNarrative.interludeType, 'forum', 'a speaker label alone cannot prove a story owner');
+  assert.equal(noNarrative.interludeType, 'phone', 'era evidence permits an invented side-page owner without pretending a speaker label is source proof');
+  for (const [draws, type, kind, count] of [[[.9, .9, .1], 'phone', 'direct', 3], [[.9, .9, .9], 'phone', 'group', 3], [[.1], 'forum', null, 1]]) {
+    let selected = 0;
+    const value = selectCreativeOptions({}, { sourceText: '手机', random: () => draws[selected++] });
+    assert.equal(value.interludeType, type); assert.equal(value.phoneConversationKind, kind); assert.equal(selected, count);
+  }
 });
 
 test('character scope accepts multiple confirmed CHARs, excludes USER, and respects an unavailable group scope', () => {
@@ -461,5 +471,34 @@ test('exact v452 defaults migrate for concise NPC labels while edits and saved b
     assert.equal(author.systemPrompt, original.systemPrompt);
     assert.equal(author.outputSchemaText, original.outputSchemaText);
     assert.deepEqual(author.templates, original.templates);
+  }
+});
+
+test('exact v453 defaults migrate without replacing edited templates, saved cards or backups', () => {
+  // Fingerprints measured from the shipped 33122e8a defaults before this change.
+  const fingerprints = { 'v453-system': 'c3b76978', 'v453-schema': '2776c64f', 'v453-blueprint': '87904bd2' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v453-system', outputSchemaText: 'v453-schema',
+      appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      systemPromptBackup: 'v453-system', outputSchemaBackup: 'v453-schema',
+      templates: [{ id: 'default-free-blueprint', content: 'v453-blueprint' }, { id: 'mine', content: 'v453-blueprint' }] };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt); assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.templates[0].content, next.blueprint); assert.equal(settings.templates[1].content, 'v453-blueprint');
+    assert.equal(settings.systemPromptBackup, 'v453-system'); assert.equal(settings.outputSchemaBackup, 'v453-schema');
+    const after = structuredClone(settings); sandbox.upgradeCreativeDefaults(settings, next); assert.deepEqual(settings, after);
+    const saved = { blueprint: 'v453-blueprint', blueprintBackup: 'v453-blueprint', plan: { interlude: { owner: '旧角色', conversation_kind: 'group', messages: ['原文保留'] } }, history: [{ owner: '历史原文' }] };
+    const oldData = structuredClone(saved);
+    sandbox.upgradeCreativeBlueprint(saved, next.blueprint, 454);
+    assert.equal(saved.blueprint, next.blueprint); assert.equal(saved.blueprintBackup, oldData.blueprintBackup);
+    assert.deepEqual(saved.plan, oldData.plan); assert.deepEqual(saved.history, oldData.history);
+    const edited = { systemPrompt: 'v453-system。', outputSchemaText: 'v453-schema。', appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      templates: [{ id: 'default-free-blueprint', content: 'v453-blueprint。' }, { id: 'default-free-blueprint', content: 'v453-blueprint', edited: true }] };
+    const before = structuredClone(edited); sandbox.upgradeCreativeDefaults(edited, next);
+    assert.equal(edited.systemPrompt, before.systemPrompt); assert.equal(edited.outputSchemaText, before.outputSchemaText); assert.deepEqual(edited.templates, before.templates);
   }
 });

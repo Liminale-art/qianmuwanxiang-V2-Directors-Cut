@@ -11,9 +11,9 @@ const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright
 const functions = ['renderPlanSectionFold', 'renderRelationUndercurrentsCard', 'renderItemList', 'renderItemCard', 'renderItemChips', 'getContextItemId',
   'renderDirectorWorldEntryLink', 'bindDirectorWorldEntryLinks', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph',
   'updateDirectorSelectionOrder', 'updateInjectDock', 'collectDirectorSelectedText', 'bindDirectorSelectionEvents', 'renderGenerateRow',
-  'renderPlugTab', 'renderQuickWheelSettings', 'bindWidgetSettings', 'bindDirectorReadingEvents'].map(storyboardFunctionSource).join('\n');
+  'renderPlugTab', 'renderQuickWheelSettings', 'bindWidgetSettings', 'bindDirectorReadingEvents', 'renderDirectorSettingsTab', 'renderInjectSections'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
-const qa = new URL('../dist/local-qa/npc-inline-metadata/', import.meta.url);
+const qa = new URL('../dist/local-qa/muted-tags-npc-align/', import.meta.url);
 await mkdir(qa, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext({ serviceWorkers: 'block' }), page = await context.newPage();
@@ -46,6 +46,7 @@ try {
       uniqueClean: values => [...new Set(values.filter(Boolean))], getFloatSize: () => 48,
       normalizeQuickWheelSettings: () => {}, renderLogEntry: () => '', renderStorageManagementCard: () => '',
       bindCreativeSocialEvents: () => {}, refreshWidgetRuntime: () => {}, saveSettings: () => fixtureSaves++,
+      currentPlan: () => plan, renderBackstageBlueprintCard: () => '', renderInjectPreview: () => '', DEFAULT_SYSTEM_PROMPT: '', JSON_SCHEMA_TEXT: '',
       closeQuickWheel: () => {}, closeNotesPanel: () => {}, renderFloatButton: () => {}, renderFloatingNotes: () => {},
       directorProductionPacketState: {
         packets: [{ packetId: 'fixture-packet', sourceRef: { worldSource: 'fixture-source' } }],
@@ -81,6 +82,7 @@ try {
       const luminance = color => colorBytes(color).slice(0, 3).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
       const a = luminance(front), b = luminance(back); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
     };
+    window.colorDistance = (a, b) => Math.hypot(...colorBytes(a).slice(0, 3).map((value, index) => value - colorBytes(b)[index]));
     window.renderFixture = async (family, mode) => {
       injectSelection.clear(); mediaCalls.length = 0; fixtureMediaRecords = [{ id: 'fixture-image' }];
       if (family === 'classic') { settings.theme = mode; document.querySelector('#story-director-modal').className = 'open sd-theme-' + mode; }
@@ -90,9 +92,13 @@ try {
       applyQianmuIcons(root); bindDirectorSelectionEvents(root); bindDirectorWorldEntryLinks(root);
     };
     window.renderControlsFixture = () => {
-      const root = document.querySelector('.sd-body'), template = document.createElement('template');
+      const root = document.querySelector('.sd-body'), template = document.createElement('template'), backstage = document.createElement('template');
       template.innerHTML = renderPlugTab();
-      root.innerHTML = renderGenerateRow() + template.content.querySelector('.sd-widget-card').outerHTML;
+      backstage.innerHTML = renderDirectorSettingsTab();
+      root.innerHTML = renderGenerateRow() + backstage.content.querySelector('.sd-derivative-card').outerHTML
+        + backstage.content.querySelector('.sd-injection-card').outerHTML + template.content.querySelector('.sd-stream-toggle').closest('.sd-button-row').outerHTML
+        + template.content.querySelector('.sd-widget-card').outerHTML;
+      root.querySelector('.sd-inject-subfold').open = true;
       applyQianmuIcons(root); bindDirectorReadingEvents(root); bindWidgetSettings(root);
     };
     window.renderModal = () => renderControlsFixture();
@@ -130,7 +136,7 @@ try {
       const numberRect = number.getBoundingClientRect(), headingRect = heading.getBoundingClientRect(), emotionRect = emotion.getBoundingClientRect(), nameRect = name.getBoundingClientRect(), roleRect = roleRow.getBoundingClientRect();
       const inline = emotionRect.top < nameRect.bottom - 1;
       const emotionFlow = inline
-        ? nameRect.right + 5 <= emotionRect.left && emotionRect.height <= parseFloat(getComputedStyle(emotion).lineHeight) + 1
+        ? nameRect.right + 5 <= emotionRect.left && Math.abs(nameRect.bottom - emotionRect.bottom) <= 1 && emotionRect.height <= parseFloat(getComputedStyle(emotion).lineHeight) + 1
         : emotionRect.top >= nameRect.bottom - 1 && Math.abs(emotionRect.left - nameRow.getBoundingClientRect().left) <= 1;
       return { ordered: roleRow.nextElementSibling === nameRow && name.nextElementSibling === emotion && roleRect.bottom <= nameRect.top + 1 && emotionFlow,
         separate: numberRect.right + 5 <= headingRect.left && Math.abs(numberRect.top - headingRect.top) < 1,
@@ -299,13 +305,14 @@ try {
     await page.evaluate(() => { plan.npc_updates = savedNpcFixture; });
   }
   console.log(JSON.stringify({ metadataBounds: metadataBounds.filter(item => item.family === 'glass' && item.mode === 'light') }));
-  for (const family of ['editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 393, 1100]) {
+  for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 393, 1100]) {
     const label = `selected/${family}/${mode}/${width}`;
     await page.setViewportSize({ width, height: 1000 });
     await page.evaluate(async ({ family, mode }) => {
       await renderFixture(family, mode);
       Object.assign(settings, { newcomerMode: false, floatingButton: false, quickWheelEnabled: false,
-        quickWheelCustomExpanded: true, quickWheelCustomOrder: QUICK_COMMAND_IDS.slice(0, 3), quickWheelCustomEnabled: [QUICK_COMMAND_IDS[0]], logHistory: [] });
+        quickWheelCustomExpanded: true, quickWheelCustomOrder: QUICK_COMMAND_IDS.slice(0, 3), quickWheelCustomEnabled: [QUICK_COMMAND_IDS[0]], logHistory: [],
+        streamEnabled: true, parallelSceneEnabled: true, interludeEnabled: true, worldChatterEnabled: false, geopoliticsEnabled: false, injectSections: { nodes: false, relations: false } });
       fixtureSaves = 0; renderControlsFixture();
     }, { family, mode });
     const newcomer = page.locator('.sd-newcomer-toggle');
@@ -315,11 +322,14 @@ try {
       getComputedStyle(node).backgroundColor;
       await Promise.all(node.getAnimations().filter(animation => animation.effect.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
       const style = getComputedStyle(node), rgba = colorBytes(style.backgroundColor);
+      const chroma = color => { const rgb = colorBytes(color).slice(0, 3); return (Math.max(...rgb) - Math.min(...rgb)) / 255; };
       return { pressed: node.getAttribute('aria-pressed'), active: node.classList.contains('active'), opaque: rgba[3] === 255,
-        primary: rgba.join(',') === colorBytes(style.getPropertyValue('--sd-primary')).join(','), contrast: colorContrast(style.color, style.backgroundColor), fill: style.backgroundColor };
+        soft: rgba.join(',') === colorBytes(style.getPropertyValue('--sd-tag-selected-bg')).join(','),
+        restrained: chroma(style.backgroundColor) <= Math.max(chroma(style.getPropertyValue('--sd-accent')) * .5, chroma(style.getPropertyValue('--sd-sticky-bg'))) + .015,
+        contrast: colorContrast(style.color, style.backgroundColor), fill: style.backgroundColor, border: style.borderColor };
     });
     const onNewcomer = await selectedPaint(newcomer);
-    ok(label + ' real newcomer click yields an opaque contrast-paired selected state: ' + JSON.stringify(onNewcomer), onNewcomer.pressed === 'true' && onNewcomer.active && onNewcomer.opaque && onNewcomer.primary && onNewcomer.contrast >= 4.5 && onNewcomer.fill !== offFill);
+    ok(label + ' real newcomer click yields a muted opaque and readable selected state: ' + JSON.stringify(onNewcomer), onNewcomer.pressed === 'true' && onNewcomer.active && onNewcomer.opaque && onNewcomer.soft && onNewcomer.restrained && onNewcomer.contrast >= 4.5 && onNewcomer.fill !== offFill);
     await newcomer.focus(); await page.keyboard.press('Space');
     ok(label + ' newcomer keyboard toggle restores its unselected state', await newcomer.evaluate(node => node.getAttribute('aria-pressed') === 'false' && !node.classList.contains('active')));
     await newcomer.click();
@@ -327,26 +337,81 @@ try {
       const toggle = page.locator(`[data-widget-toggle="${id}"]`), before = await toggle.evaluate(node => getComputedStyle(node).backgroundColor);
       await toggle.click();
       const paint = await selectedPaint(page.locator(`[data-widget-toggle="${id}"]`));
-      ok(label + ` actual ${id} enable action rerenders as opaque selected: ` + JSON.stringify(paint), paint.pressed === 'true' && paint.active && paint.opaque && paint.primary && paint.contrast >= 4.5 && paint.fill !== before);
+      ok(label + ` actual ${id} enable action rerenders as muted opaque selected: ` + JSON.stringify(paint), paint.pressed === 'true' && paint.active && paint.opaque && paint.soft && paint.restrained && paint.contrast >= 4.5 && paint.fill !== before);
     }
     const enabledChoice = page.locator('.sd-wheel-command-toggle.active').first(), offChoice = page.locator('.sd-wheel-command-toggle:not(.active)').first();
     const initialChoicePaint = await selectedPaint(enabledChoice), offChoiceFill = await offChoice.evaluate(node => getComputedStyle(node).backgroundColor);
-    ok(label + ' hive selected entries are visibly filled rather than translucent', initialChoicePaint.opaque && initialChoicePaint.primary && initialChoicePaint.contrast >= 4.5 && initialChoicePaint.fill !== offChoiceFill);
+    ok(label + ' hive selected entries share the low-chroma opaque fill', initialChoicePaint.opaque && initialChoicePaint.soft && initialChoicePaint.restrained && initialChoicePaint.contrast >= 4.5 && initialChoicePaint.fill !== offChoiceFill);
     const choiceId = await offChoice.getAttribute('data-command');
     await offChoice.focus(); await page.keyboard.press('Enter');
     const selectedChoice = page.locator(`.sd-wheel-command-toggle[data-command="${choiceId}"]`), newChoicePaint = await selectedPaint(selectedChoice);
-    ok(label + ' actual hive keyboard action updates selected state and fill', newChoicePaint.pressed === 'true' && newChoicePaint.active && newChoicePaint.primary && newChoicePaint.opaque);
+    ok(label + ' actual hive keyboard action updates selected state and fill', newChoicePaint.pressed === 'true' && newChoicePaint.active && newChoicePaint.soft && newChoicePaint.opaque);
     await selectedChoice.click();
     ok(label + ' hive deselection returns to the off appearance', await selectedChoice.evaluate(async (node, before) => {
       getComputedStyle(node).backgroundColor;
       await Promise.all(node.getAnimations().filter(animation => animation.effect.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
       return node.getAttribute('aria-pressed') === 'false' && !node.classList.contains('active') && getComputedStyle(node).backgroundColor === before;
     }, offChoiceFill));
+    const derivative = page.locator('.sd-derivative-options .sd-option-chip').nth(2);
+    const derivativeOff = await derivative.evaluate(node => getComputedStyle(node).backgroundColor);
+    await derivative.click();
+    const derivativeOn = await selectedPaint(derivative);
+    ok(label + ' native derivative choice gets the shared soft fill and clear text', derivativeOn.soft && derivativeOn.opaque && derivativeOn.restrained && derivativeOn.contrast >= 4.5 && derivativeOn.fill !== derivativeOff && await derivative.locator('input').isChecked());
+    await derivative.locator('input').focus(); await page.keyboard.press('Space');
+    ok(label + ' derivative keyboard deselection returns to the unselected state', !(await derivative.locator('input').isChecked()));
+    const injection = page.locator('.sd-inject-section').nth(1);
+    await injection.locator('input').focus(); await page.keyboard.press('Space');
+    const injectionOn = await selectedPaint(injection);
+    ok(label + ' native injection choice uses the same visible selected palette', injectionOn.soft && injectionOn.opaque && injectionOn.contrast >= 4.5 && await injection.locator('input').isChecked());
+    const streamOn = await selectedPaint(page.locator('.sd-stream-toggle'));
+    ok(label + ' streaming switch is a soft toggle rather than a primary action', streamOn.soft && streamOn.opaque && streamOn.restrained && streamOn.contrast >= 4.5);
+    ok(label + ' generation action keeps its original primary emphasis', await page.locator('.sd-generate-main').evaluate(node => {
+      const style = getComputedStyle(node); return colorBytes(style.backgroundColor).join(',') === colorBytes(style.getPropertyValue('--sd-primary')).join(',') && colorDistance(style.backgroundColor, style.getPropertyValue('--sd-tag-selected-bg')) >= 24;
+    }));
+    ok(label + ' selected and unselected choice fills are perceptibly distinct', await page.evaluate(() => {
+      const filled = document.querySelector('.sd-wheel-command-toggle.active'), empty = document.querySelector('.sd-wheel-command-toggle:not(.active)');
+      return colorDistance(getComputedStyle(filled).backgroundColor, getComputedStyle(empty).backgroundColor) >= 24;
+    }));
+    if (width === 393) {
+      for (const accent of ['#b34168', '#27856a', '#878787']) {
+        await page.evaluate(async ({ accent, family }) => {
+          if (family === 'classic') document.querySelector('#story-director-modal').style.setProperty('--sd-accent', accent);
+          else await applyAccent(accent);
+        }, { accent, family });
+        const paints = [];
+        for (const selector of ['.sd-newcomer-toggle', '.sd-widget-toggle.active', '.sd-option-chip:has(input:checked)', '.sd-stream-toggle']) paints.push(await selectedPaint(page.locator(selector).first()));
+        ok(label + ` selected groups stay softly tinted and legible for ${accent}: ` + JSON.stringify(paints), paints.every(paint => paint.soft && paint.opaque && paint.restrained && paint.contrast >= 4.5) && new Set(paints.map(paint => paint.fill)).size === 1);
+        if ((family === 'glass' && mode === 'light' && accent === '#27856a') || (family === 'editorial' && mode === 'dark' && accent === '#b34168')) {
+          await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+          await page.locator('.sd-body').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`selected-${family}-${mode}-${accent.slice(1)}-393.png`, qa)) });
+        }
+      }
+      await page.evaluate(async family => {
+        if (family === 'classic') document.querySelector('#story-director-modal').style.removeProperty('--sd-accent');
+        else await applyAccent('#5c79d3');
+      }, family);
+    }
     ok(label + ' action controls stay inside narrow layouts', await page.locator('.sd-button-row,.sd-widget-toggle-row,.sd-wheel-custom-list,button').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1)));
     if (width === 393) {
       await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
       await page.locator('.sd-body').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`selected-${family}-${mode}-393.png`, qa)) });
     }
+  }
+  for (const family of ['editorial', 'glass']) for (const mode of ['light', 'dark']) {
+    ok(`detached/${family}/${mode} owned option groups retain selected color without changing host controls`, await page.evaluate(async ({ family, mode }) => {
+      await renderFixture(family, mode);
+      const template = document.createElement('template'); template.innerHTML = renderDirectorSettingsTab();
+      const portal = document.createElement('section'); portal.append(template.content.querySelector('.sd-derivative-card'));
+      document.body.append(portal);
+      const input = portal.querySelector('.sd-option-chip input'), label = input.closest('label');
+      const hostBefore = getComputedStyle(label).backgroundColor;
+      const release = appearance.mount(portal); await appearance.sync();
+      const selected = getComputedStyle(label), fill = selected.backgroundColor;
+      const selectedOk = colorBytes(fill)[3] === 255 && colorBytes(fill).join(',') === colorBytes(selected.getPropertyValue('--sd-tag-selected-bg')).join(',') && colorContrast(selected.color, fill) >= 4.5;
+      release();
+      const restored = getComputedStyle(label).backgroundColor === hostBefore && !portal.hasAttribute('data-qm-theme');
+      portal.remove(); return selectedOk && restored;
+    }, { family, mode }));
   }
   assert.deepEqual(errors, []); assert.equal(external, 0, JSON.stringify(blocked));
   console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'actual NPC/character rendering, disclosure/selection/media handoffs; 3 themes x 2 modes x 320/393/1100 plus whole-emotion wrapping at 360/375/430; live accent and actual newcomer/widget/hive toggles; no host state, writes or generation' }));

@@ -1,13 +1,13 @@
 // Creative defaults and one-request state. No storage, network or model calls.
 import { hashText } from './qianmu-storyboard-utils.js';
-import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.453';
+import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.454';
 
 // Exact bundled defaults from prior releases, not phrase-based DIY detection.
-// v1.59.452 is included so this release can migrate the immediately previous
+// v1.59.453 is included so this release can migrate the immediately previous
 // built-in prose while preserving any text the author actually edited.
 const LEGACY_DEFAULT_HASHES = Object.freeze({
   systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd', '39271a80', 'bba2effb', 'c7c6f33d', 'b7f8c92b', 'e2441079', 'c3b76978']),
-  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107', '51ab8d18', 'e8981ef7', '5e96c8fa', 'd3522824', '2013edaf']),
+  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107', '51ab8d18', 'e8981ef7', '5e96c8fa', 'd3522824', '2013edaf', '2776c64f']),
   blueprint: Object.freeze(['4c919687', '1d95c305', '261d4a1a', '1d8cdeb6', 'af9d17bf', '352d7c3f', '321cc304', '87904bd2']),
 });
 const unchangedDefault = (value, current, legacyHashes, appliedHash) => {
@@ -47,31 +47,33 @@ export function upgradeCreativeBlueprint(store, blueprint, revision) {
 export function recentInterludeHint(card) {
   if (!card || typeof card !== 'object' || Array.isArray(card)) return '';
   const short = (value, max) => typeof value === 'string' ? value.replace(/\s+/gu, ' ').trim().slice(0, max) : '';
-  const first = card.type === 'forum' ? card.posts?.[0]?.content : card.type === 'phone' ? card.messages?.[0]?.content : card.content;
+  const first = card.type === 'forum' || (card.type === 'phone' && ['moments', 'microblog'].includes(card.view_type))
+    ? card.posts?.[0]?.content : card.type === 'phone' ? card.messages?.[0]?.content : card.content;
   const hint = { type: short(card.type, 16), title: short(card.title, 80), first_excerpt: short(first, 180) };
   if (card.type === 'phone' && short(card.owner, 60)) hint.owner = short(card.owner, 60);
   return hint.title || hint.first_excerpt ? JSON.stringify(hint) : '';
 }
 
-export function selectCreativeOptions(settings = {}, { chat = [], personaNames = [], characterName = '', characterNames, sourceText = '', narrativeText = '', previousInterlude, random = Math.random } = {}) {
+export function selectCreativeOptions(settings = {}, { chat = [], personaNames = [], characterName = '', characterNames, sourceText = '', previousInterlude, random = Math.random } = {}) {
   const normalize = name => String(name || '').trim().toLocaleLowerCase();
   const excluded = new Set(personaNames.map(normalize).filter(Boolean));
   for (const message of chat) if (message?.is_user) excluded.add(normalize(message.name));
   const hasPhone = /手机|短信|群聊|微信|移动终端|smartphone|cell\s*phone|text\s*message|group\s*chat/i.test(sourceText);
   const interludeEnabled = settings.interludeEnabled !== false;
-  // Chat speaker labels are not the cast: supporting people can be present only
-  // in prose/memory. Let the model choose from those sources; validation checks
-  // the chosen name against that same bounded narrative and USER exclusions.
-  const interludeType = !interludeEnabled ? null : hasPhone && typeof narrativeText === 'string' && narrativeText.trim() && random() >= .5 ? 'phone' : 'forum';
+  // Select form once per request, without carrying a mode or cast across rerolls.
+  // The setting permits a phone; its owner may belong to an invented side page.
+  const interludeType = !interludeEnabled ? null : hasPhone && random() >= .5 ? 'phone' : 'forum';
+  const phoneDraw = interludeType === 'phone' ? random() : null;
+  const phoneViewType = phoneDraw === null ? null : phoneDraw < 1 / 3 ? 'moments' : phoneDraw < 2 / 3 ? 'microblog' : 'chat';
+  const phoneConversationKind = phoneViewType === 'chat' ? (random() < .5 ? 'direct' : 'group') : null;
   return Object.freeze({
     worldChatterEnabled: Boolean(settings.worldChatterEnabled), geopoliticsEnabled: Boolean(settings.geopoliticsEnabled),
-    parallelSceneEnabled: settings.parallelSceneEnabled !== false, interludeEnabled, interludeType,
+    parallelSceneEnabled: settings.parallelSceneEnabled !== false, interludeEnabled, interludeType, phoneViewType, phoneConversationKind,
     newcomerMode: settings.newcomerMode === true,
     recentInterludeHint: interludeEnabled ? recentInterludeHint(previousInterlude) : '',
     personaNames: [...excluded], characterName,
     characterNames: [...new Set((Array.isArray(characterNames) ? characterNames : [characterName])
       .filter(name => typeof name === 'string').map(name => name.trim()).filter(name => name && !excluded.has(normalize(name))))],
-    phoneSourceText: narrativeText,
   });
 }
 

@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.453';
-import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.448';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.453';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.453';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.454';
+import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.454';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.454';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.454';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -30,7 +30,7 @@ import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor}
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
-import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.452';
+import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.454';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
@@ -307,7 +307,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.453';
+const VERSION = '1.59.454';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -2932,7 +2932,7 @@ function resolveFactionKey(ref, byId, byName) {
 
 // 把本次推演返回的 factions / faction_relations / world_events 并进档案：
 // 势力按 id 承接、关系按无序对去重续命、事件按 id 跨幕升降阶段。原地更新 store。
-function mergeGeopolitics(store, plan) {
+function mergeGeopolitics(store, plan, makeId = uid) {
   const round = Number(store.geoSeq || 0) + 1;
   store.geoSeq = round;
 
@@ -2961,7 +2961,7 @@ function mergeGeopolitics(store, plan) {
       f.lastTouched = round;
     } else {
       f = {
-        id: uid('fac'),
+        id: makeId('fac'),
         name: String(raw.name || '未命名势力'),
         type: String(raw.type || ''),
         agenda: String(raw.agenda || ''),
@@ -3034,7 +3034,7 @@ function mergeGeopolitics(store, plan) {
     } else {
       const stage = sanitizeEventStage(raw.stage);
       e = {
-        id: uid('evt'),
+        id: makeId('evt'),
         title: String(raw.title || '未命名事件'),
         essence: String(essence || ''),
         scope: String(raw.scope || ''),
@@ -3559,6 +3559,11 @@ function recordDirectorQuality(log, plan, creativeOptions = {}) {
   const needs = directorQualityNeeds(plan, null, null, creativeOptions);
   log.quality = needs;
   log.limitations = Array.isArray(plan?.limitations) ? plan.limitations : [];
+  // The candidate has already passed item pruning. Count only this response's
+  // accepted narrative fields, never defaults, raw tokens or a saved old plan.
+  log.hasValidContent = Boolean(plan.story_status?.directions?.length || plan.parallel_scene || plan.interlude
+    || ['quests', 'character_dynamics', 'npc_updates', 'chain_reactions', 'relation_undercurrents',
+      'world_chatter', 'factions', 'faction_relations', 'world_events'].some(field => Array.isArray(plan[field]) && plan[field].length));
   return needs;
 }
 
@@ -3587,10 +3592,17 @@ function refreshDirectorLiveUI() {
     applyAccState(root);
   }
   if (root && log) paintModelLog(root, log, renderLogEntry);
+  if (root?.querySelector('.sd-world-edge')) {
+    const world = directorGeopoliticsState().store;
+    const hasContent = world.factions?.some(item => String(item?.name || '').trim()) || world.worldEvents?.some(item => String(item?.title || item?.essence || '').trim());
+    root.querySelectorAll('.sd-world-edge').forEach(edge => edge.classList.toggle('has-content', Boolean(hasContent && worldPage !== 'geopolitics')));
+  }
   if (!host) return;
   const preview = directorPreviewPlan(log);
   if (!preview) {
-    if (host._liveStamp) { delete host._liveStamp; renderModal(); }
+    const geo = activeTab === 'castworld' && worldPage === 'geopolitics' ? host.querySelector('.sd-geo-tab') : null;
+    const waiting = log?.status === 'loading';
+    if (host._liveStamp || (geo && geo.hasAttribute('data-geo-preview') !== waiting)) { delete host._liveStamp; renderModal(); }
     return;
   }
   root.querySelector('.sd-inject-dock')?.remove();
@@ -3609,6 +3621,7 @@ function refreshDirectorLiveUI() {
   applyAccState(host);
   host.querySelectorAll('details[data-acc]').forEach(node => { if (folds.has(node.dataset.acc)) node.open = folds.get(node.dataset.acc); });
   bindDirectorReadingEvents(host);
+  if (worldBody && worldPage === 'geopolitics') bindGeopoliticsTabEvents(host);
 }
 async function generateDirectorPlan(showSuccessToast = true, silentFailure = false, options = {}) {
   const background = Boolean(options?.background);
@@ -3658,7 +3671,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     const systemPrompt = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
     const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
     log.memory = run.memoryStatus;
-    log.creativeOptions = Object.fromEntries(['parallelSceneEnabled', 'interludeEnabled', 'interludeType', 'worldChatterEnabled', 'geopoliticsEnabled']
+    log.creativeOptions = Object.fromEntries(['parallelSceneEnabled', 'interludeEnabled', 'interludeType', 'phoneViewType', 'phoneConversationKind', 'worldChatterEnabled', 'geopoliticsEnabled']
       .map(field => [field, run.creativeOptions[field]]));
     if (['partial', 'unverified', 'unsupported'].includes(log.memory?.status)) {
       toast(log.memory.status === 'unsupported' ? '当前记忆版本尚未适配，本次仅使用其他已选资料。' : '部分记忆无法核对，本次只采用可用资料；详情已记入日志。', 'warning');
@@ -3729,7 +3742,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     log.status = msg === 'USER_CANCELLED' ? 'cancelled' : 'error';
     log.error = msg === 'INVALID_API_SETTINGS' ? '请检查API设置'
       : msg === 'USER_CANCELLED' ? '已中断。'
-      : isJsonFail ? `模型输出格式有误；已收到的原文和完整条目仍可查看。\n原始错误：${msg.slice(19)}`
+      : isJsonFail ? '模型输出格式有误。'
       : error?.code === 'MODEL_OUTPUT_INCOMPLETE' ? '本次推演未完整完成；已收到的条目仍可查看。'
       : msg;
     // Keep the actual provider/parser failure when the short explanation above
@@ -3742,6 +3755,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     const summary = directorQualitySummary(log);
     if (alive() && (!silentFailure || summary)) {
       if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
+      else if (log.hasValidContent) toast('本次推演有内容缺失，详情见日志。', 'warning');
       else toast('推演失败，请查看日志。', 'error');
     }
   } finally {
@@ -6936,7 +6950,7 @@ function directorDisplayPlan() {
 
 function renderDirectorSectionNotice(plan, field) {
   const status = directorSectionStatus(plan, field);
-  return status ? `<p class="sd-muted sd-director-section-notice" data-director-section-status="${htmlEscape(field)}">${htmlEscape(status)}</p>` : '';
+  return status ? `<span class="sd-muted sd-director-section-notice" data-director-section-status="${htmlEscape(field)}">${htmlEscape(status)}</span>` : '';
 }
 
 function renderCoreadRuntimeGate() {
@@ -7297,9 +7311,19 @@ function renderFactionListView(factions, rels) {
   }).join('');
 }
 
+function directorGeopoliticsState() {
+  const preview = directorPreviewPlan(directorLiveLog);
+  if (!preview && directorLiveLog?.status !== 'loading') return { store: getChatStore(), readOnly: false };
+  // Closed live cards use the ordinary map without advancing the saved world.
+  // Start empty: a same-floor reroll must not mix old candidates into its preview.
+  const store = { factions: [], factionRelations: [], worldEvents: [] };
+  let sequence = 0;
+  if (preview && directorSectionEnabled(preview, 'factions', settings)) mergeGeopolitics(store, preview, prefix => `${prefix}-preview-${++sequence}`);
+  return { store, readOnly: true };
+}
+
 function renderGeopoliticsTab() {
-  if (directorPreviewPlan(directorLiveLog)) return renderDirectorLive(directorLiveLog, { fields: ['factions', 'faction_relations', 'world_events'] }) || renderNoPlan('世界格局尚未生成');
-  const store = getChatStore();
+  const { store, readOnly } = directorGeopoliticsState();
   const factions = Array.isArray(store.factions) ? store.factions : [];
   const rels = (Array.isArray(store.factionRelations) ? store.factionRelations : []).filter((r) => factions.some((f) => f.id === r.a) && factions.some((f) => f.id === r.b));
   const events = Array.isArray(store.worldEvents) ? store.worldEvents : [];
@@ -7307,7 +7331,7 @@ function renderGeopoliticsTab() {
   const closedEvents = events.filter((e) => e.status === 'closed');
 
   if (!factions.length && !events.length) {
-    return `<div class="sd-geo-tab"><div class="sd-empty sd-geo-empty">
+    return `<div class="sd-geo-tab"${readOnly ? ' data-geo-preview' : ''}><div class="sd-empty sd-geo-empty">
       <i class="fa-solid fa-atom"></i>
       <p><b>世界格局</b> 尚未生成。</p>
       <p class="sd-muted">${settings.geopoliticsEnabled ? '推演后，世界的势力格局、地缘张力会在此自成脉络。' : '该功能默认关闭。请到「幕后」页勾选「启用世界格局」，之后推演时世界的势力格局、地缘张力会在此自成脉络。'}</p>
@@ -7323,11 +7347,12 @@ function renderGeopoliticsTab() {
     `<button type="button" class="sd-geo-chip sd-geo-filter${selectedKinds.has(k) ? ' active' : ''}" data-kind="${k}" aria-pressed="${selectedKinds.has(k)}"><i style="background:${GEO_REL_COLOR[k]}"></i>${k} ${relTally[k]}</button>`).join('');
 
   const bandHtml = `<section class="sd-geo-band sd-geo-tier-${tier.key}">
+    ${readOnly ? `<p class="sd-muted sd-geo-preview-label">${directorLiveLog?.status === 'loading' ? '生成中' : '未完成'} · 只读预览</p>` : ''}
     <div class="sd-geo-band-top">
       <div class="sd-geo-tier"><span class="sd-geo-tier-label">${tier.label}</span><span class="sd-geo-tier-desc">${tier.desc}</span></div>
       <div class="sd-geo-band-right">
         <div class="sd-geo-heat-num">${heat}<small>世界温度</small></div>
-        <button type="button" class="sd-icon-btn sd-icon-sm sd-geo-clear" title="清空世界格局（势力 / 关系 / 世界事件）" aria-label="清空世界格局"><i class="fa-solid fa-broom"></i></button>
+        ${readOnly ? '' : '<button type="button" class="sd-icon-btn sd-icon-sm sd-geo-clear" title="清空世界格局（势力 / 关系 / 世界事件）" aria-label="清空世界格局"><i class="fa-solid fa-broom"></i></button>'}
       </div>
     </div>
     <div class="sd-geo-heat-track"><i style="width:${heat}%"></i></div>
@@ -7359,7 +7384,7 @@ function renderGeopoliticsTab() {
     ${closedEvents.length ? `<details class="sd-geo-closed" data-acc="geo-closed-fold"><summary>已落定的旧事（${closedEvents.length}）</summary><div class="sd-evt-grid">${closedEvents.map(renderWorldEventCard).join('')}</div></details>` : ''}
   </section>`;
 
-  return `<div class="sd-geo-tab">
+  return `<div class="sd-geo-tab"${readOnly ? ' data-geo-preview' : ''}>
     ${bandHtml}${mapHtml}${eventsHtml}
   </div>`;
 }
@@ -7370,11 +7395,12 @@ function bindGeopoliticsTabEvents(root) {
   // 世界格局一键清除：势力 / 关系 / 世界事件同属跨幕活档案，与伏笔一样独立于扫帚单独清。
   // 绑定放在 svg 存在性判断之前——有世界事件无势力时面板无 svg，但清除按钮仍在态势带、需可点。
   root.querySelector('.sd-geo-clear')?.addEventListener('click', async () => {
+    if (directorGeopoliticsState().readOnly) return;
     const store = getChatStore();
     const n = (store.factions || []).length + (store.worldEvents || []).length;
     if (!n) return;
     const yes = await confirmDialog('清空世界格局', '将清空全部势力、关系与世界事件，此操作不可撤销、无法从历史找回。确认清空？');
-    if (!yes) return;
+    if (!yes || directorGeopoliticsState().readOnly) return;
     store.factions = [];
     store.factionRelations = [];
     store.worldEvents = [];
@@ -7405,7 +7431,7 @@ function bindGeopoliticsTabEvents(root) {
   const svg = root.querySelector('.sd-geo-map');
   const panel = root.querySelector('.sd-geo-detail');
   if (!svg || !panel) return;
-  const store = getChatStore();
+  const { store } = directorGeopoliticsState();
   const factions = Array.isArray(store.factions) ? store.factions : [];
   const rels = Array.isArray(store.factionRelations) ? store.factionRelations : [];
   const byId = new Map(factions.map((f) => [f.id, f]));
@@ -7570,9 +7596,8 @@ function renderDashboardTab() {
     .sort((a, b) => ({ near: 0, far: 1 }[a.horizon] ?? 2) - ({ near: 0, far: 1 }[b.horizon] ?? 2));
   return `
     <section class="sd-card sd-hero">
-      <div class="sd-hero-top"><h3>命运之脉</h3>${renderHeroActions(!p._streamPreview || p._generation?.status !== 'loading')}</div>
+      <div class="sd-hero-top sd-director-notice-row"><h3>命运之脉</h3>${renderHeroActions(!p._streamPreview || p._generation?.status !== 'loading')}${renderDirectorSectionNotice(p, 'story_status')}</div>
       ${st.cycle ? `<div class="sd-fate-time">${htmlEscape(st.cycle)}</div>` : ''}
-      ${renderDirectorSectionNotice(p, 'story_status')}
       ${directions.length ? `<div class="sd-director-directions">${directions.map(item => `<article class="sd-director-direction"><p>${htmlEscape(item.content || item.title || '')}</p></article>`).join('')}</div>` : `<p class="sd-director-narrative">${htmlEscape(st.summary || st.title || st.current_arc || '')}</p>`}
       ${renderGenerateRow()}
     </section>
@@ -7597,8 +7622,8 @@ function renderDirectorExtraCard(value, kind, plan = directorDisplayPlan()) {
     : '';
   if (!prose && !notice) return '';
   return `<section class="sd-card sd-director-extra-card sd-director-extra-parallel">
-    <div class="sd-section-title"><h3>未映之幕</h3></div>
-    ${notice}${prose ? `<div class="sd-director-extra-content">${prose}</div>` : ''}
+    <div class="sd-section-title sd-director-notice-row"><h3>未映之幕</h3>${notice}</div>
+    ${prose ? `<div class="sd-director-extra-content">${prose}</div>` : ''}
   </section>`;
 }
 
@@ -7630,8 +7655,8 @@ function renderChainReactionsCard(p) {
   if (!body && !notice) return '';
   return `<section class="sd-card sd-chain-card">
     <details class="sd-plain-fold" data-acc="tnfold-chain" open>
-      <summary><b>涟漪</b></summary>
-      <div class="sd-fold-body">${notice}${body}</div>
+      <summary class="sd-director-notice-row"><b>涟漪</b>${notice}</summary>
+      <div class="sd-fold-body">${body}</div>
     </details>
   </section>`;
 }
@@ -8628,7 +8653,7 @@ function renderCastWorldTab() {
 }
 
 function renderWorldPageEdges() {
-  const store = getChatStore();
+  const { store } = directorGeopoliticsState();
   const hasContent = !!(store.factions?.some((item) => String(item?.name || '').trim()) || store.worldEvents?.some((item) => String(item?.title || item?.essence || '').trim()));
   const available = settings.geopoliticsEnabled || worldPage === 'geopolitics';
   if (!available) return '';
@@ -8725,8 +8750,8 @@ function renderRelationUndercurrentsCard(p) {
   if (!body && !notice) return '';
   return `<section class="sd-card sd-relus-card">
     <details class="sd-plain-fold" data-acc="castfold-relus" open>
-      <summary><b>关系暗涌</b></summary>
-      <div class="sd-fold-body">${notice}${body}</div>
+      <summary class="sd-director-notice-row"><b>关系暗涌</b>${notice}</summary>
+      <div class="sd-fold-body">${body}</div>
     </details>
   </section>`;
 }
@@ -8739,8 +8764,8 @@ function renderPlanSectionFold(title, items, kind, accKey, readOnly = false) {
   if (!(items?.length) && !notice) return '';
   return `<section class="sd-card sd-plan-section">
     <details class="sd-plain-fold" data-acc="${htmlEscape(accKey)}" open>
-      <summary><b>${htmlEscape(characterNames ? `${title} · ${characterNames}` : title)}</b></summary>
-      <div class="sd-fold-body">${notice}${items?.length ? renderItemList(items || [], kind, readOnly) : ''}</div>
+      <summary class="sd-director-notice-row"><b>${htmlEscape(characterNames ? `${title} · ${characterNames}` : title)}</b>${notice}</summary>
+      <div class="sd-fold-body">${items?.length ? renderItemList(items || [], kind, readOnly) : ''}</div>
     </details>
   </section>`;
 }
@@ -8759,8 +8784,7 @@ function renderWorldChatterCard(p) {
     .filter((c) => c.text);
   if (!list.length) {
     return notice ? `<section class="sd-card sd-chatter-card">
-      <div class="sd-section-title"><h3>尘寰群生</h3><span>随推演刷新</span></div>
-      ${notice}
+      <div class="sd-section-title sd-director-notice-row"><h3>尘寰群生</h3>${notice}</div>
     </section>` : '';
   }
   const lineHtml = (c) => `<div class="sd-chatter-line">${(c.who || c.where) ? `<span class="sd-chatter-src">${htmlEscape([c.who, c.where].filter(Boolean).join(' · '))}</span>` : ''}<span class="sd-chatter-say">${htmlEscape(c.text)}</span></div>`;
@@ -8768,8 +8792,8 @@ function renderWorldChatterCard(p) {
   // 展开态：完整台本列表
   if (chatterExpanded) {
     return `<section class="sd-card sd-chatter-card">
-      <div class="sd-section-title"><h3>尘寰群生</h3><button type="button" class="sd-icon-btn sd-chatter-toggle" title="收起" aria-label="收起"><i class="fa-solid fa-compress"></i></button></div>
-      ${notice}<div class="sd-chatter-list">${list.map(lineHtml).join('')}</div>
+      <div class="sd-section-title sd-director-notice-row"><h3>尘寰群生</h3><button type="button" class="sd-icon-btn sd-chatter-toggle" title="收起" aria-label="收起"><i class="fa-solid fa-compress"></i></button>${notice}</div>
+      <div class="sd-chatter-list">${list.map(lineHtml).join('')}</div>
     </section>`;
   }
 
@@ -8780,8 +8804,8 @@ function renderWorldChatterCard(p) {
     return `<div class="sd-chatter-float" style="animation-delay:-${delay}s">${lineHtml(c)}</div>`;
   }).join('');
   return `<section class="sd-card sd-chatter-card">
-    <div class="sd-section-title"><h3>尘寰群生</h3><button type="button" class="sd-icon-btn sd-chatter-toggle" title="展开" aria-label="展开"><i class="fa-solid fa-expand"></i></button></div>
-    ${notice}<div class="sd-chatter-stage" aria-label="市井浮声"><div class="sd-chatter-track">${stage}</div></div>
+    <div class="sd-section-title sd-director-notice-row"><h3>尘寰群生</h3><button type="button" class="sd-icon-btn sd-chatter-toggle" title="展开" aria-label="展开"><i class="fa-solid fa-expand"></i></button>${notice}</div>
+    <div class="sd-chatter-stage" aria-label="市井浮声"><div class="sd-chatter-track">${stage}</div></div>
   </section>`;
 }
 

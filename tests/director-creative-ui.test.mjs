@@ -145,7 +145,7 @@ test('character life and other people are independent sections, with distinct se
   const html = c.renderCastWorldFront();
   assert.match(html, /此间一人/); assert.match(html, /其他人物动向/); assert.match(html, /他把两份记录/); assert.match(html, /暂未寄出/);
   assert.match(html, /data-id="character-0-/); assert.match(html, /data-id="npc-0-/);
-  assert.match(html, /<summary><b>此间一人 · 陈晖<\/b><\/summary>/); assert.doesNotMatch(html, /sd-character-names|\d+ 条<|sd-director-paragraph-label">动向</);
+  assert.match(html, /<summary class="sd-director-notice-row"><b>此间一人 · 陈晖<\/b><\/summary>/); assert.doesNotMatch(html, /sd-character-names|\d+ 条<|sd-director-paragraph-label">动向</);
   assert.doesNotMatch(html, /世界回声/); assert.ok(links.every(item => item.field !== undefined));
   plan.world_updates = [{ title: '旧记录', content: '仍可阅读的历史世界记录' }];
   assert.match(c.renderCastWorldFront(), /仍可阅读的历史世界记录/);
@@ -157,9 +157,9 @@ test('character heading appends unique escaped names without a repeated right-si
   const items = [{ name: ' 陈晖 ', content: '甲' }, { name: '陈晖', content: '乙' }, { name: '<林医生>', content: '丙' }];
   const before = JSON.stringify(items);
   const html = c.renderPlanSectionFold('此间一人', items, 'character', 'castfold-character');
-  assert.match(html, /<summary><b>此间一人 · 陈晖 · &lt;林医生&gt;<\/b><\/summary>/);
+  assert.match(html, /<summary class="sd-director-notice-row"><b>此间一人 · 陈晖 · &lt;林医生&gt;<\/b><\/summary>/);
   assert.doesNotMatch(html, /sd-character-names|<林医生>/);
-  assert.match(c.renderPlanSectionFold('此间一人', [{ title: '片段', content: '无角色名' }], 'character', 'castfold-character'), /<summary><b>此间一人<\/b><\/summary>/);
+  assert.match(c.renderPlanSectionFold('此间一人', [{ title: '片段', content: '无角色名' }], 'character', 'castfold-character'), /<summary class="sd-director-notice-row"><b>此间一人<\/b><\/summary>/);
   assert.equal(JSON.stringify(items), before);
 });
 
@@ -342,8 +342,8 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
     'NPC identities keep a narrow sequence rail and flexible text column');
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-npc-heading\s*\{[^}]*flex-direction:\s*column[^}]*min-width:\s*0/,
     'role, identity and emotion share a wrapping right-side column');
-  assert.match(styles, /\.sd-npc-name-row\s*\{[^}]*flex-wrap:\s*wrap[^}]*align-items:\s*baseline/,
-    'name and emotion share a baseline with a full-content fallback for legacy text');
+  assert.match(styles, /\.sd-npc-name-row\s*\{[^}]*flex-wrap:\s*wrap[^}]*align-items:\s*flex-end/,
+    'name and emotion align at their bottom edges with a full-content fallback for legacy text');
   assert.match(styles, /\.sd-npc-emotion\s*\{[^}]*flex:\s*0 0 auto[^}]*width:\s*max-content[^}]*max-width:\s*100%/,
     'emotion moves to its own line as one block instead of splitting beside the name');
   assert.match(styles, /\.sd-npc-role-row > \.sd-world-media-entry\s*\{[^}]*min-width:\s*24px[^}]*border:\s*0 !important[^}]*background:\s*transparent !important[^}]*box-shadow:\s*none !important/,
@@ -387,7 +387,7 @@ test('failed and cancelled requests keep closed cards read-only with section-loc
     quests: [{ title: '已收到预演', subject: '邮差', description: '预演片段仍然可读。' }],
     character_dynamics: [{ name: '陈晖', title: '已收到人物', content: '人物片段仍然可读。' }] }).slice(0, -1) + ',"interlude":{"type":"phone","messages":[';
   const { c } = fixture({ story_status: { title: '旧方案不应冒充本次结果' } });
-  for (const [status, completion, expected] of [['error', undefined, '本栏未生成成功'], ['error', { finishReason: 'length' }, '回复截断'], ['cancelled', undefined, '']]) {
+  for (const [status, completion, expected] of [['error', undefined, '本幕返回不完整'], ['error', { finishReason: 'length' }, '本幕返回不完整'], ['cancelled', undefined, '']]) {
     c.directorLiveLog = { status, request: 'isolated request', response, completion,
       creativeOptions: { parallelSceneEnabled: true, interludeEnabled: true, worldChatterEnabled: true, geopoliticsEnabled: true },
       quality: { issues: ['story_status', 'quests', 'character_dynamics', 'npc_updates', 'chain_reactions', 'relation_undercurrents',
@@ -396,7 +396,8 @@ test('failed and cancelled requests keep closed cards read-only with section-loc
     assert.match(dashboard, /命运片段仍然可读/); assert.match(tasks, /预演片段仍然可读/); assert.match(world, /人物片段仍然可读/);
     for (const html of [dashboard, tasks, world]) {
       if (expected) assert.ok(html.includes(expected));
-      else assert.doesNotMatch(html, /已停止，本栏未完整生成|本栏未生成成功|回复截断/);
+      else assert.doesNotMatch(html, /本幕返回不完整/);
+      assert.doesNotMatch(html, /<p class="sd-muted sd-director-section-notice"|本栏未生成成功|回复截断|详情见日志/);
       assert.doesNotMatch(html, /旧方案不应冒充本次结果|data-director-paragraph|sd-select-inject|sd-world-media-entry|正在推演|sd-director-live/);
       if (!completion) assert.doesNotMatch(html, /回复截断/);
     }
@@ -407,7 +408,7 @@ test('failed and cancelled requests keep closed cards read-only with section-loc
     }
     const geo = renderDirectorLive(c.directorLiveLog, { fields: ['factions', 'faction_relations', 'world_events'] });
     if (expected) assert.ok(geo.includes(expected));
-    else assert.doesNotMatch(geo, /已停止，本栏未完整生成|本栏未生成成功|回复截断/);
+    else assert.doesNotMatch(geo, /本幕返回不完整/);
     assert.doesNotMatch(geo, /sd-inject|正在推演/);
   }
 });
@@ -426,9 +427,9 @@ test('optional empty legacy world and faction relations do not become spurious f
   for (const field of ['faction_relations', 'world_updates', 'quests']) assert.equal(directorSectionStatus(plan, field), '');
   delete plan._generation.quality;
   for (const field of ['faction_relations', 'world_updates']) assert.equal(directorSectionStatus(plan, field), '');
-  assert.match(directorSectionStatus(plan, 'quests'), /本栏未生成成功/);
+  assert.equal(directorSectionStatus(plan, 'quests'), '本幕返回不完整');
   plan._generation.quality = { issues: [{ field: 'faction_relations', reason: 'invalid relation' }] };
-  assert.match(directorSectionStatus(plan, 'faction_relations'), /本栏未生成成功/);
+  assert.equal(directorSectionStatus(plan, 'faction_relations'), '本幕返回不完整');
 });
 
 test('stream refresh binds only reading actions and preserves the world shell instead of rerunning global tab teardown', () => {

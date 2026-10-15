@@ -5,8 +5,8 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
-const constants=['FACTION_RELATION_KINDS','FACTION_TRENDS','GEO_REL_COLOR','GEO_TREND_CN','GEO_TREND_ICON','EVENT_STAGE_CLS'].map(name=>{const match=source.match(new RegExp('^const '+name+' = .+;','m'));assert.ok(match,name);return match[0];}).join('\n');
-const functions=['geoRelationKindsSelected','geoFactionClusters','geoClusteredNodeLayout','geoLabelLayout','geoPrimaryRelationKeys','renderFactionStarMap','starPath','renderWorldEventCard','renderFactionDossierBody','renderFactionListView','renderGeopoliticsTab','bindGeopoliticsTabEvents','renderWorldPageEdges'].map(storyboardFunctionSource).join('\n');
+const constants=['FACTION_RELATION_KINDS','FACTION_TRENDS','FACTION_SCALES','GEO_REL_COLOR','GEO_TREND_CN','GEO_TREND_ICON','EVENT_STAGE_CLS'].map(name=>{const match=source.match(new RegExp('^const '+name+' = .+;','m'));assert.ok(match,name);return match[0];}).join('\n');
+const functions=['resolveFactionKey','mergeGeopolitics','directorGeopoliticsState','geoRelationKindsSelected','geoFactionClusters','geoClusteredNodeLayout','geoLabelLayout','geoPrimaryRelationKeys','renderFactionStarMap','starPath','renderWorldEventCard','renderFactionDossierBody','renderFactionListView','renderGeopoliticsTab','bindGeopoliticsTabEvents','renderWorldPageEdges','renderCastWorldTab','refreshDirectorLiveUI'].map(storyboardFunctionSource).join('\n');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8')+'\n'+await readFile(new URL('../qianmu-theme-skins.css',import.meta.url),'utf8');
 // Baseline night colors predate the day-only candy override. Compare computed
 // variables and actual SVG ink, not moving-frame screenshot pixels.
@@ -29,7 +29,7 @@ try{
     const [utils,{createQianmuAppearanceSession},{updateAppearancePreferences},{applyQianmuIcons}]=await Promise.all([import('/qianmu-storyboard-utils.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),import('/qianmu-icon-renderer.js')]);
     for(const key of ['computeWorldHeat','heatTier','geoStableHash','geoRelationClass','snip','htmlEscape','sanitizeEventStage','EVENT_STAGE_LADDER'])window[key]=utils[key];
     window.applyQianmuIcons=applyQianmuIcons;window.getChatStore=()=>worldFixture;window.settings={theme:'dark',geopoliticsEnabled:true};window.activeTab='castworld';window.worldPage='geopolitics';
-    window.directorLiveLog=null;window.directorPreviewPlan=()=>null;
+    window.directorLiveLog=null;Object.assign(window,await import('/qianmu-director-live.js'));
     window.calls={settings:0,confirmation:0,forbidden:0};window.saveSettings=()=>calls.settings++;window.confirmDialog=async()=>{calls.confirmation++;return false;};
     const forbidden=()=>{calls.forbidden++;throw Error('Production write is forbidden');};window.saveMetadata=forbidden;window.applyDirectorInjection=forbidden;window.toast=forbidden;window.renderModal=forbidden;
     (0,eval)(source);window.appearance=createQianmuAppearanceSession({readSettings:()=>settings,loadStyles:()=>({promise:Promise.resolve(true),cancel(){}})});appearance.mount(document.querySelector('#story-director-modal'));
@@ -146,5 +146,47 @@ try{
   }
   await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>renderMap());ok('reduced-motion preference stops decorative world-map animations',await page.locator('.sd-geo-orbit,.sd-geo-edge-flow,.sd-geo-edge-motion,.sd-geo-event-pulse').evaluateAll(nodes=>nodes.every(node=>getComputedStyle(node).animationName==='none')));
   ok('reduced motion hides travelling highlights but retains static relationship cores and arrows',await page.locator('.sd-geo-edge').evaluateAll(nodes=>nodes.every(node=>getComputedStyle(node.querySelector('.sd-geo-edge-motion')).display==='none'&&getComputedStyle(node.querySelector('.sd-geo-edge-flow')).display!=='none')&&!!document.querySelector('.sd-geo-edge-vassal .sd-geo-edge-flow[marker-end]')));
-  await page.evaluate(()=>appearance.reset());assert.deepEqual(errors,[]);assert.equal(external,0,JSON.stringify(blocked));console.log(JSON.stringify({passed:checks.length,checks,errors,external,isolatedFonts,scope:'actual world graph renderer and event bindings; font CSS locally substituted, settings saved only in memory, world writes forbidden'}));
+  // Exercise the actual streaming refresh and map bindings, not the old text fallback.
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  for(const family of ['classic','editorial','glass'])for(const mode of ['light','dark'])for(const width of [320,393]){
+    await page.setViewportSize({width,height:898});
+    await page.evaluate(async({family,mode})=>{
+      directorLiveLog=null;await setAppearance(family,mode);renderMap('empty');worldPage='front';
+      Object.assign(window,{MODAL_ID:'story-director-modal',LOG_LIMIT:5,applyAccState:()=>{},bindDirectorReadingEvents:()=>{},renderLogEntry:()=>'',renderCastWorldFront:()=>'<p>人物页</p>'});
+      window.mountLiveWorld=()=>{const body=document.querySelector('.sd-body');body.innerHTML=`<div data-director-live-host>${renderCastWorldTab()}</div>`;document.querySelectorAll('.sd-world-edge').forEach(node=>node.remove());body.parentElement.insertAdjacentHTML('beforeend',renderWorldPageEdges());bindGeopoliticsTabEvents(body);applyQianmuIcons(body);};
+      window.renderModal=mountLiveWorld;
+      window.liveWorldPlan={factions:[{id:'new-a',name:'码头商会',standing:'核对停泊记录',agenda:'恢复接驳',clues:['待核验的运单'],trend:'rising'},{id:'new-b',name:'街道办',standing:'核对场地',agenda:'安排节庆'}],faction_relations:[{between:['new-a','new-b'],kind:'同盟',note:'共同协调临时场地'}],world_events:[{title:'渡口改道',essence:'临时渡口开始接驳',stage:'蔓延'}]};
+      directorLiveLog={id:'world-stream',status:'loading',request:'local fixture',response:'',creativeOptions:{geopoliticsEnabled:true}};
+      mountLiveWorld();window.liveEdges=[...document.querySelectorAll('.sd-world-edge')];window.beforeLiveStore=JSON.stringify(worldFixture);
+      directorLiveLog.response=JSON.stringify(liveWorldPlan).slice(0,-1);refreshDirectorLiveUI();
+    },{family,mode});
+    const label=`${family}/${mode}/${width} live world`;
+    ok(label+' closed cards immediately light existing front edges',await page.locator('.sd-world-edge').evaluateAll(nodes=>nodes.length===2&&nodes.every((node,i)=>node===liveEdges[i]&&node.classList.contains('has-content'))));
+    await page.evaluate(()=>{worldPage='geopolitics';mountLiveWorld();refreshDirectorLiveUI();});
+    ok(label+' uses complete graph and event presentation with read-only preview',await page.evaluate(()=>!!document.querySelector('.sd-geo-map')&&document.querySelectorAll('.sd-geo-node').length===2&&!!document.querySelector('.sd-evt-card')&&!!document.querySelector('.sd-geo-preview-label')&&!document.querySelector('.sd-lib-row,.sd-geo-clear,.sd-world-edge.has-content')));
+    await page.locator('.sd-geo-node').first().click();
+    ok(label+' streamed graph details are bound',await page.locator('.sd-geo-detail').isVisible());
+    await page.evaluate(()=>{liveWorldPlan.factions.push({id:'new-c',name:'居民互助会',standing:'整理借用登记'});directorLiveLog.response=JSON.stringify(liveWorldPlan);refreshDirectorLiveUI();});
+    await page.locator('.sd-geo-node').first().click();
+    ok(label+' appended cards retain styled map and working detail handlers',await page.locator('.sd-geo-node').count()===3&&await page.locator('.sd-geo-detail').isVisible());
+    await page.locator('.sd-geo-view-btn[data-view="list"]').click();
+    ok(label+' read-only preview supports the usual list view',await page.locator('.sd-geo-list-view').isVisible());
+    await page.locator('.sd-geo-list-card').first().locator('summary').click();
+    ok(label+' preview list dossier opens',await page.locator('.sd-geo-list-card').first().getAttribute('open')!==null);
+    for(const status of ['error','cancelled']){
+      await page.evaluate(status=>{directorLiveLog.status=status;refreshDirectorLiveUI();},status);
+      ok(label+' '+status+' preserves styled received content without archive writes',await page.evaluate(()=>!!document.querySelector('.sd-geo-map')&&!document.querySelector('.sd-geo-clear')&&JSON.stringify(worldFixture)===beforeLiveStore&&calls.forbidden===0));
+    }
+    if(family==='glass'&&mode==='light'&&width===393){await page.locator('.sd-geo-view-btn[data-view="map"]').click();await page.screenshot({animations:'disabled',path:fileURLToPath(new URL('stream-preview-glass-light-393.png',qa))});}
+    await page.evaluate(()=>{directorLiveLog=null;refreshDirectorLiveUI();});
+    ok(label+' leaving preview restores saved empty archive and removes stale edge light',await page.locator('.sd-geo-empty').count()===1&&await page.locator('.sd-world-edge.has-content').count()===0);
+    await page.evaluate(()=>{worldPage='front';mountLiveWorld();directorLiveLog={id:'completed-world',status:'success'};worldFixture={factions:[{id:'saved',name:'已保存商会'}],factionRelations:[],worldEvents:[]};refreshDirectorLiveUI();});
+    ok(label+' completion updates edge cue without a tab switch',await page.locator('.sd-world-edge.has-content').count()===2);
+    await page.evaluate(()=>{directorLiveLog=null;worldPage='geopolitics';mountLiveWorld();directorLiveLog={id:'waiting-world',status:'loading',request:'local fixture',response:''};refreshDirectorLiveUI();});
+    ok(label+' starting from a saved map removes old candidates before the first card closes',await page.evaluate(()=>!document.querySelector('.sd-geo-map,.sd-geo-clear')&&!!document.querySelector('.sd-geo-empty')&&!!document.querySelector('[data-geo-preview]')));
+    await page.evaluate(()=>{directorLiveLog.status='error';refreshDirectorLiveUI();});
+    ok(label+' empty failure restores the saved map without promoting partial content',await page.evaluate(()=>!!document.querySelector('.sd-geo-map')&&!!document.querySelector('.sd-geo-clear')&&!document.querySelector('[data-geo-preview]')));
+    await page.evaluate(()=>{directorLiveLog=null;worldPage='geopolitics';});
+  }
+  await page.evaluate(()=>appearance.reset());assert.deepEqual(errors,[]);assert.equal(external,0,JSON.stringify(blocked));console.log(JSON.stringify({passed:checks.length,checks,errors,external,isolatedFonts,scope:'actual world graph renderer and event bindings including closed streaming and failed partial cards; font CSS locally substituted, settings saved only in memory, world writes forbidden'}));
 }finally{clearTimeout(deadline);await context.close();await browser.close();}

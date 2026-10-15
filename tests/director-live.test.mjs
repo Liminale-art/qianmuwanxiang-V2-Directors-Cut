@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { completeDirectorCards, directorPreviewPlan, directorSectionStatus, directorSectionEnabled, directorQualitySummary, renderDirectorLive, renderModelDiagnostics, modelFailureText } from '../qianmu-director-live.js';
+import { validateCreativePlan } from '../qianmu-creative-contract.js';
 
 test('only closed known top-level cards are staged; nested fields and incomplete strings never become cards',()=>{
   const first={title:'Read "{quoted}"',objective:'A\nB',extra:{quests:[{title:'must not appear'}]}};
@@ -42,7 +43,7 @@ test('all closed creative fields project into ordinary sections without adopting
 
 test('failure and interruption reasons belong to the failure panel, never below returned text', () => {
   const log = { status: 'error', error: '回复截断', completion: { finishReason: 'length', interrupted: true } };
-  assert.equal(modelFailureText(log), '回复截断\n结束原因：length');
+  assert.equal(modelFailureText(log), '回复被截断（length）。');
   assert.doesNotMatch(renderModelDiagnostics(log), /结束原因|未完整完成|渠道未提供/);
   assert.match(modelFailureText({ status: 'cancelled' }), /已中断/);
 });
@@ -52,13 +53,27 @@ test('interruption preserves the original cause, finish reason and quality facts
     response: '{"quests":[]}', quality: { issues: [{ field: 'quests', missing: 5 }] },
     completion: { interrupted: true, finishReason: 'length', rawTransport: '<unparsed>', compatibility: '兼容渠道信息' } };
   const before = JSON.stringify(log), text = modelFailureText(log);
-  for (const detail of ['原始错误：模型达到输出长度上限', '错误代码：MODEL_OUTPUT_INCOMPLETE', '预演缺 5 条', '结束原因：length']) assert.ok(text.includes(detail), detail);
+  assert.equal(text, '回复被截断（length）。\n缺失内容：预演缺 5 条');
+  assert.doesNotMatch(text, /原始错误|错误代码|本次推演未完整完成/);
   const failure = renderModelDiagnostics(log, { failure: true }), bottom = renderModelDiagnostics(log);
   assert.match(failure, /原始服务响应[\s\S]*&lt;unparsed&gt;/);
   assert.match(failure, /兼容渠道信息/);
   assert.doesNotMatch(bottom, /unparsed|兼容渠道信息|结束原因|缺失内容/);
   assert.equal(JSON.stringify(log), before);
   assert.equal(renderModelDiagnostics({ status: 'success' }, { failure: true }), '');
+});
+
+test('an internal shortfall is stated once while unique parser diagnostics remain expandable', () => {
+  const log = { status: 'error', error: '本次推演未完整完成；已收到的条目仍可查看。',
+    errorCause: '本次内容未完整达到栏目要求；已收内容可只读查看，缺项已记入日志。', errorCode: 'MODEL_OUTPUT_INCOMPLETE',
+    response: '{"quests":[]}', hasValidContent: true, quality: { issues: [{ field: 'quests', missing: 1 }] }, completion: { complete: true, finishReason: 'stop' } };
+  assert.equal(modelFailureText(log), '缺失内容：预演缺 1 条');
+  assert.doesNotMatch(renderModelDiagnostics(log, { failure: true }), /本次内容|原始错误|错误详情|MODEL_OUTPUT_INCOMPLETE/);
+  const malformed = { ...log, error: '模型输出格式有误。', errorCode: undefined, errorCause: 'JSON_PARSE_FAILED::Unexpected token at position 143' };
+  assert.equal(modelFailureText(malformed), '模型输出格式有误。\n缺失内容：预演缺 1 条');
+  assert.match(renderModelDiagnostics(malformed, { failure: true }), /<details class="sd-log-error-detail"><summary>错误详情<\/summary>[\s\S]*JSON_PARSE_FAILED::Unexpected token at position 143/);
+  assert.doesNotMatch(renderModelDiagnostics(malformed), /JSON_PARSE_FAILED|错误详情/);
+  assert.equal(modelFailureText({ ...log, hasValidContent: false }), '回复未完整接收。', 'failed raw tokens do not manufacture a missing-content list');
 });
 
 test('old repair responses stay readable as historical evidence without promising current automatic calls', () => {
@@ -77,7 +92,7 @@ test('submitted incomplete runs retain readonly cards and show factual section n
   const before = JSON.stringify(log), plan = directorPreviewPlan(log);
   assert.equal(plan._streamPreview, true); assert.equal(plan.quests[0].title, '已收到');
   assert.match(directorSectionStatus(plan, 'quests'), /返回不完整/);
-  assert.match(directorSectionStatus(plan, 'parallel_scene'), /未生成成功/);
+  assert.equal(directorSectionStatus(plan, 'parallel_scene'), '本幕返回不完整');
   assert.doesNotMatch(directorSectionStatus(plan, 'parallel_scene'), /截断/);
   assert.equal(directorSectionEnabled(plan, 'interlude', { interludeEnabled: true }), false);
   assert.equal(directorSectionEnabled(plan, 'world_chatter', { worldChatterEnabled: true }), false);
@@ -86,7 +101,7 @@ test('submitted incomplete runs retain readonly cards and show factual section n
   assert.doesNotMatch(renderModelDiagnostics(log), /未自动补写|本次内容未完整|命运之脉缺/);
   assert.match(modelFailureText(log), /缺失内容：.*命运之脉缺 1 条/);
   const ended = directorPreviewPlan({ ...log, completion: { finishReason: 'MAX_TOKENS', interrupted: true } });
-  assert.match(directorSectionStatus(ended, 'parallel_scene'), /回复截断/);
+  assert.equal(directorSectionStatus(ended, 'parallel_scene'), '本幕返回不完整');
   assert.equal(directorSectionStatus(directorPreviewPlan({ ...log, status: 'cancelled' }), 'quests'), '');
   assert.equal(directorSectionStatus(directorPreviewPlan({ ...log, status: 'loading' }), 'quests'), '');
   assert.equal(directorPreviewPlan({ ...log, request: '' }), null, 'no request means no failed-run overlay on saved content');
@@ -141,4 +156,63 @@ test('structured directions and social cards wait for their outer object and ret
   }
   const phone = { type: 'phone', title: '值班群', owner: '同事', messages: [{ sender: '组员', content: '我带钥匙。' }] };
   assert.deepEqual(directorPreviewPlan({ status: 'loading', response: JSON.stringify({ interlude: phone }) }).interlude, phone);
+});
+
+test('phone feeds stage their own closed posts payload without requiring chat messages or changing the source', () => {
+  for (const view_type of ['moments', 'microblog']) {
+    const value = { type: 'phone', view_type, owner: '值班员', title: '午后动态', posts: [
+      { author: '摊主', handle: '旧街口', content: '<img src=x onerror=alert(1)>灯修好了。', time: '12:20', replies: [{ author: '邻居', content: '晚点经过看看。' }] },
+    ] };
+    const prefix = '{"interlude":', body = JSON.stringify(value), before = JSON.stringify(value);
+    for (let i = 0; i < body.length; i++) assert.deepEqual(completeDirectorCards(prefix + body.slice(0, i)), [], `${view_type}/${i}`);
+    const cards = completeDirectorCards(prefix + body + '}');
+    assert.equal(cards.length, 1); assert.equal(cards[0].field, 'interlude'); assert.deepEqual(cards[0].value, value);
+    assert.ok(cards[0].lines.includes(value.posts[0].content), 'feed contents reach readonly generic preview lines');
+    const log = { request: 'sent', status: 'error', response: prefix + body + '}',
+      creativeOptions: { interludeEnabled: true, interludeType: 'phone', phoneViewType: view_type },
+      quality: { issues: [{ field: 'interlude', missing: 1, reason: '手机动态须至少有 6 帖' }] } };
+    const plan = directorPreviewPlan(log);
+    assert.deepEqual(plan.interlude, value); assert.equal(directorSectionStatus(plan, 'interlude'), '本幕返回不完整');
+    assert.equal(directorQualitySummary(log), '幕间拾趣缺 1 张');
+    const html = renderDirectorLive(log, { fields: ['interlude'] });
+    assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;灯修好了。/);
+    assert.doesNotMatch(html, /<img|data-inject|sd-inject|sd-lib-load|12 条|messages/);
+    assert.equal(JSON.stringify(value), before);
+    assert.equal(directorSectionStatus(directorPreviewPlan({ ...log, status: 'cancelled' }), 'interlude'), '');
+    assert.equal(directorSectionStatus(directorPreviewPlan({ ...log, status: 'error', quality: { issues: [] } }), 'interlude'), '');
+  }
+});
+
+test('phone preview requires content from the selected page while retaining legacy chat records', () => {
+  for (const view_type of ['moments', 'microblog']) {
+    for (const posts of [[], [{ content: '  ' }], [{ title: 'only a heading' }]]) {
+      const value = { type: 'phone', view_type, title: '动态', owner: '同事', posts, messages: [{ content: 'wrong-page content' }] };
+      assert.deepEqual(completeDirectorCards(JSON.stringify({ interlude: value })), []);
+    }
+  }
+  for (const view_type of [undefined, 'chat']) {
+    const value = { type: 'phone', title: '值班群', owner: '同事', ...(view_type ? { view_type } : {}), messages: [{ sender: '组员', content: '我带钥匙。' }] };
+    const cards = completeDirectorCards(JSON.stringify({ interlude: value }));
+    assert.equal(cards.length, 1); assert.ok(cards[0].lines.includes('我带钥匙。'));
+    assert.deepEqual(completeDirectorCards(JSON.stringify({ interlude: { ...value, messages: [], posts: [{ content: 'wrong-page content' }] } })), []);
+  }
+});
+
+test('phone feed shortfalls use the actual feed quota without manufacturing posts or reusing chat-message limits', () => {
+  for (const view_type of ['moments', 'microblog']) {
+    const options = { interludeEnabled: true, interludeType: 'phone', phoneViewType: view_type };
+    const posts = Array.from({ length: 6 }, (_, i) => ({ author: `街坊${i}`, content: `第${i}条日常动态。`, time: `12:${String(i).padStart(2, '0')}`,
+      replies: i < 2 ? [{ author: '邻居', content: '下回一起。' }] : [] }));
+    const full = { interlude: { type: 'phone', view_type, owner: '值班员', title: '午后动态', posts } };
+    assert.equal(validateCreativePlan(full, options).some(issue => issue.field === 'interlude'), false);
+    const partial = { interlude: { ...full.interlude, posts: posts.slice(0, 5) } }, before = JSON.stringify(partial);
+    const issues = validateCreativePlan(partial, options).filter(issue => issue.field === 'interlude');
+    assert.equal(issues.length, 1); assert.equal(issues[0].missing, 1); assert.match(issues[0].reason, /至少有 6 条/);
+    assert.doesNotMatch(issues[0].reason, /12|消息/);
+    const log = { status: 'error', request: 'sent', response: JSON.stringify(partial), quality: { issues }, creativeOptions: options };
+    assert.equal(directorPreviewPlan(log).interlude.posts.length, 5);
+    assert.equal(directorQualitySummary(log), '幕间拾趣缺 1 张');
+    assert.equal(directorSectionStatus(directorPreviewPlan(log), 'interlude'), '本幕返回不完整');
+    assert.equal(JSON.stringify(partial), before);
+  }
 });
