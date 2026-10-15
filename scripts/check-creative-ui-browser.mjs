@@ -304,7 +304,7 @@ try {
       }
       if (view === 'tasksnodes') check(!/old-priority|old-reward|奖励|收获|优先级/.test(result.bodyText), `${key}: encounters are not task/reward tables`);
       if (view === 'castworld') {
-        check(result.bodyText.includes('此间一人') && result.bodyText.includes('其他人物动向'), `${key}: distinct character sections`);
+        check(result.bodyText.includes('此间一人') && result.bodyText.includes('各自人间'), `${key}: distinct character sections`);
         check(await page.locator('[data-acc="castfold-character"] > summary > b').textContent() === '此间一人 · 陈晖' && await page.locator('.sd-character-names').count() === 0 && !/\d+ 条/.test(result.bodyText), `${key}: real CHAR name follows the section title without a duplicate side note`);
         check(await page.locator('.sd-item-character .sd-director-paragraph-label').count() === 0, `${key}: character movement label is absent`);
         const characterOrder = await page.locator('.sd-item-character > summary .sd-selection-order-card').first().evaluate(node => ({

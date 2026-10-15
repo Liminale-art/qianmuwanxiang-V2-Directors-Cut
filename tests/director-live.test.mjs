@@ -29,7 +29,7 @@ test('preview is read-only, escaped, leaves old plan untouched and disappears on
   const log={id:'<unsafe>',status:'error',error:'<failure>',response:'{"quests":[{"title":"<img>","objective":"正文"}],"npc_updates":[{"name":"角色"}]}'};
   const before=JSON.stringify(log),html=renderDirectorLive(log),tasks=renderDirectorLive(log,{tasksOnly:true});
   assert.equal(JSON.stringify(log),before);assert.match(html,/&lt;img&gt;/);assert.doesNotMatch(html,/failure|正在推演|本次未完整完成|<img>|data-inject|sd-lib-load/);
-  assert.doesNotMatch(tasks,/其他人物动向/);assert.equal(renderDirectorLive({...log,status:'success'}),'');
+  assert.doesNotMatch(tasks,/各自人间/);assert.equal(renderDirectorLive({...log,status:'success'}),'');
 });
 
 test('all closed creative fields project into ordinary sections without adopting or mutating the raw log', () => {

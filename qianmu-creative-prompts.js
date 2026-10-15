@@ -93,7 +93,7 @@ Cover every section enabled for this run and meet the minimum counts below. Thes
 
 - 命运之脉: exactly ${CREATIVE_COUNTS.story_status.min} narrative trajectories, one near-range and one far-range, marked with horizon values near and far respectively. Each has a title and substantive content that weaves people's actions, intersecting interests, and consequences into a changing situation, not a character's assigned task, personality forecast, or recap of the present.
 - 预演: at least ${CREATIVE_COUNTS.quests.min} near-scene entries, each with an explicit subject: a person, group, or clearly named affair, never a guessed person inferred from the title.
-- 此间一人: at least ${CREATIVE_COUNTS.character_dynamics.min} entries about CHAR only, excluding USER; 其他人物动向: at least ${CREATIVE_COUNTS.npc_updates.min} entries about other non-USER, non-CHAR people. Together, these character developments retain the original supply of at least ${CREATIVE_COUNTS.character_dynamics.min + CREATIVE_COUNTS.npc_updates.min} entries. Count pieces of content, not a requirement to introduce ${CREATIVE_COUNTS.character_dynamics.min + CREATIVE_COUNTS.npc_updates.min} new people. A group chat can have several CHARs; distribute these entries by substantive relevance, not one quota per person.
+- 此间一人: at least ${CREATIVE_COUNTS.character_dynamics.min} entries about CHAR only, excluding USER; 各自人间: at least ${CREATIVE_COUNTS.npc_updates.min} entries about other non-USER, non-CHAR people. Together, these character developments retain the original supply of at least ${CREATIVE_COUNTS.character_dynamics.min + CREATIVE_COUNTS.npc_updates.min} entries. Count pieces of content, not a requirement to introduce ${CREATIVE_COUNTS.character_dynamics.min + CREATIVE_COUNTS.npc_updates.min} new people. A group chat can have several CHARs; distribute these entries by substantive relevance, not one quota per person.
 - 涟漪: at least ${CREATIVE_COUNTS.chain_reactions.min} concise chains, each using ${CREATIVE_DETAIL_COUNTS.rippleNodes.min}–${CREATIVE_DETAIL_COUNTS.rippleNodes.max} short causal nodes joined by →. At least one chain must begin in other people's own affairs and carry its downstream stakes within their lives, without returning to USER's identity, reputation, special abilities, or next encounter. Distinct people merely relaying the same USER-centered premise do not supply lateral breadth. This section does not develop the USER–CHAR relationship.
 - 关系暗涌: at least ${CREATIVE_COUNTS.relation_undercurrents.min} concise entries about ${CREATIVE_DETAIL_COUNTS.relationParties.min}–${CREATIVE_DETAIL_COUNTS.relationParties.max} named participants each; use a mixed set with at least one two-person relation and one three-person relation, rather than producing three entries of the same shape. At least ${CREATIVE_DETAIL_COUNTS.supportingRelations.min} entries concern supporting people only, with neither USER nor CHAR as a participant. Exclude the USER–CHAR pair, including attempts to insert a third person while retaining that pair as the subject. Do not output user_awareness.
 - 尘寰群生: ${CREATIVE_COUNTS.world_chatter.min}–${CREATIVE_COUNTS.world_chatter.max} brief human voices: conversation, self-talk, calls, complaints, jokes, or other situated speech. Let a small moment convey everyday interests and differences in outlook; it need not offer a clue or advance a plot. Context supports the voice. Pure weather, scenery, ambient noise, or an animal's reaction does not count.
@@ -143,7 +143,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 本轮必须提供正文落点之外的具体发展：有独立动因的人已带着新的条件来到可相遇之处，一项行动改变了另一人的处境，或一段尚未被看见的事务进入值得亲历的进程。创作走到可回应的新局面，才把选择交给 {{user}}；不把“接下来如何推进”的工作交还给读者。候选能写得明确、鲜活，但采用前仍是候选。读完之后，读者此刻能接住哪一件原先还不存在的具体事情？先问“谁做了什么，谁因此失去或获得什么，下一步必须面对哪项新条件”，再落笔；答不出这三项就回到人物动因和外部行动重组，不用套话填空。
 
-读者可选用的每一段都以作者的第三人称落笔，实际行动者与必要处境清楚，选出一段也能独立接入叙述。其他人物动向已有卡片姓名和写入时的姓名前缀，不必每段重新点名；可从动作、现场或清楚的代词起笔，转换人物或指代会混淆时才补名。单段连同姓名前缀可读，多段合选也不反复介绍同一人。把条件写成自然句，把落笔写成场景已经展开的第一拍；例如“末班船靠岸时，杜衡把退回的信压在售票窗前。”而非“描写杜衡与售票员交涉”。这些段落供读者编排和改写，不自行加字段标签、人物任务清单或写作指令；涉及 {{user}} 的选择仍留白。
+读者可选用的每一段都以作者的第三人称落笔，实际行动者与必要处境清楚，选出一段也能独立接入叙述。各自人间已有卡片姓名和写入时的姓名前缀，不必每段重新点名；可从动作、现场或清楚的代词起笔，转换人物或指代会混淆时才补名。单段连同姓名前缀可读，多段合选也不反复介绍同一人。把条件写成自然句，把落笔写成场景已经展开的第一拍；例如“末班船靠岸时，杜衡把退回的信压在售票窗前。”而非“描写杜衡与售票员交涉”。这些段落供读者编排和改写，不自行加字段标签、人物任务清单或写作指令；涉及 {{user}} 的选择仍留白。
 
 ### 本轮偏好
 
@@ -195,7 +195,7 @@ export const CREATIVE_GUIDES = Object.freeze({
 });
 
 export const CREATIVE_SECTION_LABELS = Object.freeze({
-  story_status: '命运之脉', character_dynamics: '此间一人', npc_updates: '其他人物动向', quests: '预演',
+  story_status: '命运之脉', character_dynamics: '此间一人', npc_updates: '各自人间', quests: '预演',
   chain_reactions: '涟漪', relation_undercurrents: '关系暗涌', world_chatter: '尘寰群生',
   geopolitics: '世界格局', parallel_scene: '未映之幕', interlude: '幕间拾趣',
   forum: '论坛', phone: '角色手机', phone_chat: '手机聊天', moments: '朋友圈', microblog: '短博', newcomer: '新角入场',

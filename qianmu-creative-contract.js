@@ -121,7 +121,7 @@ function itemProblem(field, item, options) {
     const characters = new Set(names(characterNames(options)));
     if (users.has(subject)) return '人物动态主体不能是 USER 或其别名';
     if (field === 'character_dynamics' && characters.size && !characters.has(subject)) return '此间一人的主体须为本聊天的 CHAR';
-    if (field === 'npc_updates' && characters.has(subject)) return 'CHAR 的事务应在此间一人，不计入其他人物动向';
+    if (field === 'npc_updates' && characters.has(subject)) return 'CHAR 的事务应在此间一人，不计入各自人间';
   }
   // Label length is a generation instruction, never a reason to discard the
   // person's substantive prose. Preserve returned labels verbatim, without a

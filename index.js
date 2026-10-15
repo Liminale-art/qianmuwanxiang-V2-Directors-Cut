@@ -8666,7 +8666,7 @@ function renderCastWorldFront() {
   if (!p) return renderNoPlan('角色世界尚未生成');
   const legacyWorld = Array.isArray(p.world_updates) && p.world_updates.length
     ? renderPlanSectionFold('世界回声', p.world_updates, 'world', 'castfold-world', p._streamPreview) : '';
-  return `${renderWorldChatterCard(p)}${renderPlanSectionFold('此间一人', p.character_dynamics || [], 'character', 'castfold-character', p._streamPreview)}${renderPlanSectionFold('其他人物动向', p.npc_updates || [], 'npc', 'castfold-npc', p._streamPreview)}${renderRelationUndercurrentsCard(p)}${legacyWorld}`;
+  return `${renderWorldChatterCard(p)}${renderPlanSectionFold('此间一人', p.character_dynamics || [], 'character', 'castfold-character', p._streamPreview)}${renderPlanSectionFold('各自人间', p.npc_updates || [], 'npc', 'castfold-npc', p._streamPreview)}${renderRelationUndercurrentsCard(p)}${legacyWorld}`;
 }
 
 function bindWorldFlipEvents(root) {
@@ -8876,7 +8876,7 @@ function renderItemCard(item, kind, idx, readOnly = false) {
   const npcRole = kind === 'npc' && String(item.role ?? '').trim() ? `<span class="sd-npc-role" title="定位">${htmlEscape(item.role)}</span>` : '';
   const heading = kind === 'npc'
     ? `<span class="sd-npc-index" aria-hidden="true">${String(idx + 1).padStart(2, '0')}</span><div class="sd-npc-heading">${npcRole || mediaEntry ? `<div class="sd-npc-role-row">${npcRole}${mediaEntry}</div>` : ''}<div class="sd-npc-name-row"><h4>${htmlEscape(title)}</h4>${emotionHtml}</div></div>`
-    : `${emotionHtml}<h4>${htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}`;
+    : `${emotionHtml}<h4>${kind === 'character' ? `<span class="sd-character-title">${htmlEscape(title)}</span>` : htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}`;
   const segmented = ['quest', 'character', 'npc'].includes(kind);
   const subject = String((kind === 'quest' ? item.subject : item.name) || '').trim() || `事项：${title}`;
   const fields = [['内容', item.content], ['波及', item.scope]];

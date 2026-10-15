@@ -13,7 +13,7 @@ const functions = ['renderPlanSectionFold', 'renderRelationUndercurrentsCard', '
   'updateDirectorSelectionOrder', 'updateInjectDock', 'collectDirectorSelectedText', 'bindDirectorSelectionEvents', 'renderGenerateRow',
   'renderPlugTab', 'renderQuickWheelSettings', 'bindWidgetSettings', 'bindDirectorReadingEvents', 'renderDirectorSettingsTab', 'renderInjectSections'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
-const qa = new URL('../dist/local-qa/muted-tags-npc-align/', import.meta.url);
+const qa = new URL('../dist/local-qa/character-affairs-final-454/', import.meta.url);
 await mkdir(qa, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext({ serviceWorkers: 'block' }), page = await context.newPage();
@@ -88,7 +88,7 @@ try {
       if (family === 'classic') { settings.theme = mode; document.querySelector('#story-director-modal').className = 'open sd-theme-' + mode; }
       settings.appearance = updateAppearancePreferences(settings, { family, mode }); await appearance.sync();
       const root = document.querySelector('.sd-body');
-      root.innerHTML = renderPlanSectionFold('此间一人', plan.character_dynamics, 'character', 'castfold-character') + renderPlanSectionFold('其他人物动向', plan.npc_updates, 'npc', 'castfold-npc') + renderRelationUndercurrentsCard(plan);
+      root.innerHTML = renderPlanSectionFold('此间一人', plan.character_dynamics, 'character', 'castfold-character') + renderPlanSectionFold('各自人间', plan.npc_updates, 'npc', 'castfold-npc') + renderRelationUndercurrentsCard(plan);
       applyQianmuIcons(root); bindDirectorSelectionEvents(root); bindDirectorWorldEntryLinks(root);
     };
     window.renderControlsFixture = () => {
@@ -412,6 +412,47 @@ try {
       const restored = getComputedStyle(label).backgroundColor === hostBefore && !portal.hasAttribute('data-qm-theme');
       portal.remove(); return selectedOk && restored;
     }, { family, mode }));
+  }
+  for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 393]) {
+    const label = `character-affairs/${family}/${mode}/${width}`;
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(async ({ family, mode }) => {
+      plan.character_dynamics = [
+        { name: '秦铎', title: '新旧锁痕的比对与破拆签字', content: '他将两份现场记录并排放在灯下，沿着照片上的旧锁痕逐一核对。', inject_prompt: '他抽出压在签字页下的便笺，重新写下那道尚未核实的划痕。' },
+        { name: '秦铎', title: '中控台上的静音手机与夜审排班', content: '他把手机调成静音，将夜班交接单折在笔记本内侧。' },
+        { name: '秦铎', title: '为一份尚未核实的旧记录留下完整交接说明与调查编号LongUnbrokenReferenceWithoutWhitespace0123456789', content: '完整的旧条目仍可在窄屏阅读。' },
+      ];
+      await renderFixture(family, mode);
+    }, { family, mode });
+    ok(label + ' character list has only inter-item separators, no rounded inner cards', await page.locator('.sd-item-character').evaluateAll(nodes => nodes.length === 3 && nodes.every((node, index) => {
+      const s = getComputedStyle(node); return s.borderTopWidth === (index ? '1px' : '0px') && s.borderBottomWidth === '0px' && s.borderLeftWidth === '0px' && s.borderRightWidth === '0px' && s.borderRadius === '0px' && s.backgroundColor === 'rgba(0, 0, 0, 0)' && s.boxShadow === 'none';
+    })));
+    ok(label + ' title tag matches NPC role accent and stays at the right after a quiet line', await page.locator('.sd-item-character').evaluateAll(nodes => nodes.every((node, index) => {
+      const title = node.querySelector('.sd-character-title'), heading = title.parentElement, s = getComputedStyle(title), ref = getComputedStyle(document.querySelector('.sd-npc-role')), line = getComputedStyle(heading, '::before');
+      const t = title.getBoundingClientRect(), h = heading.getBoundingClientRect();
+      return title.textContent === plan.character_dynamics[index].title && Math.abs(t.right - h.right) <= 1 && t.left > h.left + 10
+        && s.backgroundColor === ref.backgroundColor && s.color === ref.color && s.webkitTextFillColor === s.color && s.fontSize === ref.fontSize && colorContrast(s.webkitTextFillColor, s.backgroundColor) >= 4.5
+        && line.content === '""' && line.borderTopWidth === '1px' && Number(line.opacity) < 1
+        && [node, heading, title].every(part => part.scrollWidth <= part.clientWidth + 1 && part.scrollHeight <= part.clientHeight + 1);
+    })));
+    const firstCharacter = page.locator('.sd-item-character').first();
+    await firstCharacter.locator('summary').focus(); await page.keyboard.press('Enter');
+    await firstCharacter.locator('[data-director-paragraph]').first().focus(); await page.keyboard.press('Space');
+    await firstCharacter.locator('[data-director-paragraph]').nth(1).click();
+    ok(label + ' expanded paragraphs preserve exact selection, order and clear space beside title', await firstCharacter.evaluate(node => {
+      const t = node.querySelector('.sd-character-title').getBoundingClientRect(), badge = node.querySelector('.sd-selection-order-card'), b = badge.getBoundingClientRect();
+      return node.open && badge.textContent === '1、2' && t.right <= b.left
+        && collectDirectorSelectedText().join('\n') === [plan.character_dynamics[0].content, plan.character_dynamics[0].inject_prompt].join('\n');
+    }));
+    ok(label + ' readonly character keeps full title and prose without selection or media', await page.evaluate(() => {
+      const shell = document.createElement('div'); shell.innerHTML = renderItemCard(plan.character_dynamics[2], 'character', 2, true);
+      return shell.querySelector('details').open && shell.querySelector('.sd-character-title').textContent === plan.character_dynamics[2].title
+        && shell.querySelector('.sd-director-paragraph p').textContent === plan.character_dynamics[2].content && !shell.querySelector('[data-director-paragraph],.sd-selection-order-card,.sd-world-media-entry');
+    }));
+    if (family === 'glass' && ((mode === 'light' && width === 393) || (mode === 'dark' && width === 320))) {
+      await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
+      await page.locator('[data-acc="castfold-character"]').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`character-${mode}-${width}.png`, qa)) });
+    }
   }
   assert.deepEqual(errors, []); assert.equal(external, 0, JSON.stringify(blocked));
   console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'actual NPC/character rendering, disclosure/selection/media handoffs; 3 themes x 2 modes x 320/393/1100 plus whole-emotion wrapping at 360/375/430; live accent and actual newcomer/widget/hive toggles; no host state, writes or generation' }));

@@ -12054,6 +12054,38 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   gap: 6px;
 }
 #story-director-modal .sd-plan-section .sd-item-summary-main h4 { margin: 0 !important; line-height: 1.3 !important; }
+/* Character affairs read as a list: a quiet lead-in line and a right-aligned
+   title tag. The text owns its full height; the line yields on narrow screens. */
+#story-director-modal .sd-plan-section .sd-item-card.sd-item-character {
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#story-director-modal .sd-plan-section .sd-item-card.sd-item-character + .sd-item-card.sd-item-character { border-top: 1px solid var(--sd-border) !important; }
+#story-director-modal .sd-plan-section .sd-item-character > summary { min-height: 0 !important; padding: 14px 0 !important; gap: 8px; }
+#story-director-modal .sd-plan-section .sd-item-character > .sd-item-detail { padding: 0 0 14px; }
+#story-director-modal .sd-plan-section .sd-item-character .sd-item-summary-main h4 { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+#story-director-modal .sd-plan-section .sd-item-character .sd-item-summary-main h4::before {
+  content: '';
+  flex: 1 1 28px;
+  min-width: 12px;
+  border-top: 1px solid var(--sd-border);
+  opacity: .5;
+}
+#story-director-modal .sd-plan-section .sd-character-title {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 20px);
+  font-size: var(--qm-type-caption);
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-text-fill-color: currentColor;
+}
 /* Editorial roster: a narrow index rail, then role / name / mood. Preserve
    native disclosure and reading width without nested rounded cards. */
 #story-director-modal .sd-plan-section .sd-item-card.sd-item-npc {
@@ -12152,6 +12184,7 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   align-self: flex-start;
   margin-top: 2px;
 }
+#story-director-modal .sd-plan-section .sd-character-title,
 #story-director-modal .sd-plan-section .sd-npc-role {
   padding: 2px 6px;
   border-radius: 3px;

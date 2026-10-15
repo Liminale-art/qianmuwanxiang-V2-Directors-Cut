@@ -138,12 +138,28 @@ test('character paragraph order is summarized in the card header without an inli
   assert.match(styles, /\.sd-item-character \.sd-director-paragraph\[data-selection-order\][^}]*display:\s*none/);
 });
 
+test('character affair titles use escaped right-aligned tags and separators without changing disclosure or paragraphs', () => {
+  const { c } = fixture(null), item = { name: '陈晖', title: '<旧信>与未完成的交接', content: '他把两份记录放在桌上。' };
+  const html = c.renderItemCard(item, 'character', 0);
+  assert.match(html, /<h4><span class="sd-character-title">&lt;旧信&gt;与未完成的交接<\/span><\/h4>/);
+  assert.match(html, /data-director-paragraph/);
+  assert.match(html, /sd-selection-order-card/);
+  const preview = c.renderItemCard(item, 'character', 0, true);
+  assert.match(preview, /data-acc="preview-item-[^"]+" open/);
+  assert.match(preview, /sd-character-title/);
+  assert.doesNotMatch(preview, /data-director-paragraph|sd-selection-order-card|sd-world-media-entry/);
+  assert.match(styles, /\.sd-item-card\.sd-item-character\s*\{[^}]*border:\s*0 !important[^}]*border-radius:\s*0 !important[^}]*background:\s*transparent !important/);
+  assert.match(styles, /\.sd-item-card\.sd-item-character \+ \.sd-item-card\.sd-item-character\s*\{[^}]*border-top:\s*1px solid var\(--sd-border\)/);
+  assert.match(styles, /\.sd-item-character \.sd-item-summary-main h4::before\s*\{[^}]*content:\s*''[^}]*min-width:\s*12px[^}]*border-top:\s*1px solid var\(--sd-border\)/);
+  assert.match(styles, /\.sd-character-title\s*\{[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*anywhere/);
+});
+
 test('character life and other people are independent sections, with distinct selection ids and legacy world reading retained', () => {
   const plan = { character_dynamics: [{ name: '陈晖', title: '交接', content: '他把两份记录放在同事面前。' }],
     npc_updates: [{ title: '交接', name: '邻居', content: '她收起暂未寄出的信。' }], world_updates: [] };
   const { c, links } = fixture(plan);
   const html = c.renderCastWorldFront();
-  assert.match(html, /此间一人/); assert.match(html, /其他人物动向/); assert.match(html, /他把两份记录/); assert.match(html, /暂未寄出/);
+  assert.match(html, /此间一人/); assert.match(html, /各自人间/); assert.match(html, /他把两份记录/); assert.match(html, /暂未寄出/);
   assert.match(html, /data-id="character-0-/); assert.match(html, /data-id="npc-0-/);
   assert.match(html, /<summary class="sd-director-notice-row"><b>此间一人 · 陈晖<\/b><\/summary>/); assert.doesNotMatch(html, /sd-character-names|\d+ 条<|sd-director-paragraph-label">动向</);
   assert.doesNotMatch(html, /世界回声/); assert.ok(links.every(item => item.field !== undefined));
@@ -186,7 +202,7 @@ test('character emotion is not displayed even in historical results, without del
   const item = { name: '秦铎', title: '<核对记录>', emotional_state: '冷静 & 专注', role: '刑警', content: '逐行核对。' };
   const before = JSON.stringify(item);
   const html = c.renderItemCard(item, 'character', 0);
-  assert.match(html, /<h4>&lt;核对记录&gt;<\/h4>/);
+  assert.match(html, /<h4><span class="sd-character-title">&lt;核对记录&gt;<\/span><\/h4>/);
   assert.match(html, /<span class="sd-badge"><b>定位<\/b>刑警<\/span>/);
   assert.doesNotMatch(html, /sd-npc-index|sd-item-emotion|sd-npc-emotion|冷静|专注|<b>情绪/);
   assert.doesNotMatch(c.renderItemCard(item, 'character', 0, true), /sd-item-emotion|冷静|专注/);
@@ -199,7 +215,7 @@ test('empty identity metadata emits no placeholder rows and escaped identities r
     const item = { name: '<夜班员>', emotional_state: empty, role: empty, content: '仍可阅读的旧条目。' };
     const before = JSON.stringify(item);
     const html = c.renderItemCard(item, kind, 0);
-    assert.match(html, /<h4>&lt;夜班员&gt;<\/h4>/);
+    assert.match(html, kind === 'character' ? /<h4><span class="sd-character-title">&lt;夜班员&gt;<\/span><\/h4>/ : /<h4>&lt;夜班员&gt;<\/h4>/);
     assert.doesNotMatch(html, /sd-item-emotion|class="sd-npc-role"|sd-mini-chip-row|<夜班员>/);
     assert.match(html, /仍可阅读的旧条目。/);
     assert.equal(JSON.stringify(item), before);

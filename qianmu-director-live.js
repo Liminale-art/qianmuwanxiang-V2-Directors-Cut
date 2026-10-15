@@ -4,7 +4,7 @@ const FIELDS = {
   story_status: ['命运之脉', ['title', 'summary', 'current_arc']],
   quests: ['预演', ['title', 'content', 'description', 'trigger']],
   character_dynamics: ['此间一人', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
-  npc_updates: ['其他人物动向', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
+  npc_updates: ['各自人间', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
   world_updates: ['世界回声', ['title', 'type', 'content', 'scope', 'timing']],
   chain_reactions: ['涟漪', ['spark', 'chain', 'impact']],
   relation_undercurrents: ['关系暗涌', ['title', 'parties', 'surface', 'undercurrent', 'tension', 'content']],

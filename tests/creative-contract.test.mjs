@@ -101,7 +101,7 @@ test('output descriptions request concrete progression and explicit multi-CHAR s
   assert.match(schema, /Confirmed CHAR names for this request: \["阿岚","老周"\]/);
   assert.match(schema, /They may appear in an interaction without becoming its subject/);
   assert.match(schema, /character_dynamics \(此间一人\): at least 2/);
-  assert.match(schema, /npc_updates \(其他人物动向\): at least 3/);
+  assert.match(schema, /npc_updates \(各自人间\): at least 3/);
   assert.match(schema, /Write candidates concretely without turning them into mainline facts/);
 });
 

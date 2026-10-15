@@ -11,11 +11,13 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), '13d191547b26c93240465c95de0d726fb7688c656a8248c6d38accd6719832a6');
-  assert.equal(digest(CREATIVE_BLUEPRINT), 'a99e559b04a8f5bd4bbe1c9f600da73395b8fa67e23b1f0e4e72355e3188cb04');
+  assert.equal(digest(CREATIVE_LAWS), '448f9e465cbfdc7c5627d42af17ff8b3748d66cc62c4644c88ee8841716aa774');
+  assert.equal(digest(CREATIVE_BLUEPRINT), 'e77bdaac97b4faee0e430408896097f05965b6028d1f456fa55b49c55fdd742b');
   assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '94329b3f84ca3c387cffa8269308e1c3e83eb61284f7319d6f1b892889410654');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
+  assert.equal(CREATIVE_SECTION_LABELS.npc_updates, '各自人间');
+  assert.doesNotMatch([CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance({ interludeType: 'forum' }), createCreativeSchema()].join('\n'), /其他人物动向/);
 });
 
 test('progression is mandatory without declaring candidates real or taking USER agency', () => {
@@ -44,7 +46,7 @@ test('section responsibilities reject recaps, protagonist monopoly and unsupport
   assert.match(CREATIVE_LAWS, /A changed viewpoint, title, or emotional metaphor alone does not make a retelling new content/);
   assert.match(CREATIVE_LAWS, /Do not turn an ordinary remark, coincidence, or lack of information into evidence of guilt, a conspiracy/);
   assert.match(CREATIVE_LAWS, /Neither a dark turn nor a reassuring outcome is mandatory/);
-  assert.match(CREATIVE_LAWS, /excluding USER; 其他人物动向: at least 3 entries about other non-USER, non-CHAR people/);
+  assert.match(CREATIVE_LAWS, /excluding USER; 各自人间: at least 3 entries about other non-USER, non-CHAR people/);
 });
 
 test('count source is frozen and rendered in approved laws without an invented world echo quota', () => {
