@@ -163,16 +163,50 @@ test('character heading appends unique escaped names without a repeated right-si
   assert.equal(JSON.stringify(items), before);
 });
 
-test('NPC display alternates name sides by item index without changing identities or read-only semantics', () => {
+test('NPC editorial roster numbers each identity without changing paragraph ids or read-only semantics', () => {
   const { c } = fixture(null);
-  for (const readOnly of [false, true]) for (let index = 0; index < 4; index++) {
+  for (const readOnly of [false, true]) for (const index of [0, 1, 2, 3, 99]) {
     const html = c.renderItemCard({ name: '邵宁', role: '法医', emotional_state: '专注', content: '核对记录。' }, 'npc', index, readOnly);
-    assert.equal(/sd-npc-name-left/.test(html), index % 2 === 0);
+    assert.match(html, new RegExp(`<span class="sd-npc-index" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>`));
     assert.match(html, new RegExp(`data-acc="${readOnly ? 'preview-' : ''}item-npc-${index}-邵宁"`));
-    assert.match(html, /<b>定位<\/b>法医/);
-    assert.match(html, /<b>情绪<\/b>专注/);
-    if (readOnly) assert.doesNotMatch(html, /data-director-paragraph /);
+    assert.match(html, /<div class="sd-npc-heading"><span class="sd-npc-role" title="定位">法医<\/span><div class="sd-npc-name-row"><h4>邵宁<\/h4>/);
+    assert.match(html, /<\/div><span class="sd-item-emotion sd-npc-emotion" title="情绪">专注<\/span><\/div>/);
+    assert.doesNotMatch(html, /sd-npc-name-left|sd-mini-chip-row|<b>定位|<b>情绪/);
+    if (readOnly) assert.doesNotMatch(html, /data-director-paragraph |sd-world-media-entry/);
+    else {
+      assert.match(html, /data-text="【邵宁】核对记录。"/);
+      assert.match(html, /class="sd-npc-name-row"><h4>邵宁<\/h4><span class="sd-world-media-entry"><\/span><\/div>/);
+      assert.equal((html.match(/class="sd-world-media-entry"/g) || []).length, 1);
+    }
   }
+});
+
+test('character emotion is text before its title while optional roles keep their existing chip', () => {
+  const { c } = fixture(null);
+  const item = { name: '秦铎', title: '<核对记录>', emotional_state: '冷静 & 专注', role: '刑警', content: '逐行核对。' };
+  const before = JSON.stringify(item);
+  const html = c.renderItemCard(item, 'character', 0);
+  assert.match(html, /<span class="sd-item-emotion" title="情绪">冷静 &amp; 专注<\/span><h4>&lt;核对记录&gt;<\/h4>/);
+  assert.match(html, /<span class="sd-badge"><b>定位<\/b>刑警<\/span>/);
+  assert.doesNotMatch(html, /sd-npc-index|sd-npc-emotion|<b>情绪/);
+  assert.equal(JSON.stringify(item), before);
+});
+
+test('empty identity metadata emits no placeholder rows and escaped identities remain source-faithful', () => {
+  const { c } = fixture(null);
+  for (const kind of ['npc', 'character']) for (const empty of [undefined, null, '', '  ']) {
+    const item = { name: '<夜班员>', emotional_state: empty, role: empty, content: '仍可阅读的旧条目。' };
+    const before = JSON.stringify(item);
+    const html = c.renderItemCard(item, kind, 0);
+    assert.match(html, /<h4>&lt;夜班员&gt;<\/h4>/);
+    assert.doesNotMatch(html, /sd-item-emotion|sd-npc-role|sd-mini-chip-row|<夜班员>/);
+    assert.match(html, /仍可阅读的旧条目。/);
+    assert.equal(JSON.stringify(item), before);
+  }
+  const html = c.renderItemCard({ name: '安德烈亚·冯·罗森伯格', role: '<联合复核>', emotional_state: '紧张 & 谨慎' }, 'npc', 0);
+  assert.match(html, /title="情绪">紧张 &amp; 谨慎/);
+  assert.match(html, /title="定位">&lt;联合复核&gt;/);
+  assert.match(c.renderItemCard({ title: '旧版工作标题', name: '邵宁', content: '仍可阅读。' }, 'npc', 0), /<h4>邵宁<\/h4>/);
 });
 
 test('ripples keep full consequences and do not manufacture extra nodes by splitting natural connective words', () => {
@@ -290,22 +324,22 @@ test('creative card typography and overflow remain scoped to the Qianmu modal an
     'preview item summary content is vertically centered');
   assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-fold > summary\s*\{[^}]*min-height:\s*58px[^}]*padding-block:\s*0/,
     'preview entry folds keep a compact centered row');
-  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-npc \.sd-item-summary-main h4\s*\{[^}]*align-self:\s*start[^}]*font-size:\s*clamp\(22px, 5\.6vw, 32px\)[^}]*linear-gradient\(to bottom[^}]*62%[^}]*8%/,
-    'other-person names use the requested top-aligned, lighter large gradient');
-  assert.match(styles, /\.sd-item-npc\.sd-npc-name-left \.sd-item-summary-main h4\s*\{[^}]*grid-column:\s*1[^}]*text-align:\s*left/,
-    'alternating NPC names retain left alignment without affecting other card types');
-  assert.match(styles, /\.sd-item-npc \.sd-item-summary-main\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/,
-    'NPC identity headings no longer take width away from the reading text');
-  assert.match(styles, /\.sd-item-npc \.sd-mini-chip-row\s*\{[^}]*grid-column:\s*1[^}]*grid-row:\s*2/,
-    'role and emotion occupy their own full-width reading row');
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-card\.sd-item-npc\s*\{[^}]*border-top:\s*1px solid var\(--sd-border\)[^}]*border-radius:\s*0 !important[^}]*background:\s*transparent !important/,
+    'NPC entries use scoped hairline dividers without nested rounded cards');
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-npc \.sd-npc-index\s*\{[^}]*font-family:\s*Impact, 'Arial Narrow', sans-serif !important[^}]*font-size:\s*clamp\(44px, 10vw, 60px\)[^}]*font-variant-numeric:\s*tabular-nums/,
+    'the decorative sequence uses consistent editorial number metrics');
+  assert.match(styles, /\.sd-item-npc \.sd-item-summary-main\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\)/,
+    'NPC identities keep a narrow sequence rail and flexible text column');
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-npc-heading\s*\{[^}]*flex-direction:\s*column[^}]*min-width:\s*0/,
+    'role, identity and emotion share a wrapping right-side column');
   assert.match(styles, /\.sd-relus-tone-neu\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--sd-muted\) 10%, transparent\)/,
     'neutral relationship labels retain a subtle gray fill');
   assert.match(styles, /\.sd-world-edge\s*\{[^}]*--sd-world-glow:\s*var\(--sd-accent\)/,
     'the breathing entry uses the live accent token');
   assert.doesNotMatch(styles, /--sd-world-glow-(?:left|right):/,
     'legacy hardcoded left/right glow palettes cannot override live accent changes');
-  assert.match(styles, /\.sd-item-npc \.sd-mini-chip-row \.sd-badge\s*\{[^}]*border:\s*0 !important[^}]*background:\s*none !important[^}]*box-shadow:\s*none !important/,
-    'NPC role and emotion remain text-only across theme overrides');
+  assert.match(styles, /#story-director-modal \.sd-plan-section \.sd-item-character \.sd-item-emotion\s*\{[^}]*border:\s*0 !important[^}]*background:\s*none !important[^}]*box-shadow:\s*none !important/,
+    'character emotion remains text-only above the title across theme overrides');
   assert.match(styles, /#story-director-modal \.sd-relus-drift\s*\{[^}]*display:\s*block/,
     'relationship drift uses inline prose flow');
   assert.match(styles, /#story-director-modal \.sd-relus-drift > i\s*\{[^}]*display:\s*inline-block/,

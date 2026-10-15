@@ -12015,46 +12015,94 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   gap: 6px;
 }
 #story-director-modal .sd-plan-section .sd-item-summary-main h4 { margin: 0 !important; line-height: 1.3 !important; }
-/* Separate the decorative name from the reading measure. Alternating headings
-   keep the rhythm without making long role/emotion prose share a narrow lane. */
+/* Editorial roster: a narrow index rail, then role / name / mood. Preserve
+   native disclosure and reading width without nested rounded cards. */
+#story-director-modal .sd-plan-section .sd-item-card.sd-item-npc {
+  margin: 0;
+  border: 0 !important;
+  border-top: 1px solid var(--sd-border) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#story-director-modal .sd-plan-section .sd-item-card.sd-item-npc:last-child { border-bottom: 1px solid var(--sd-border) !important; }
+#story-director-modal .sd-plan-section .sd-item-npc > summary { padding: 14px 0 !important; gap: 10px; }
+#story-director-modal .sd-plan-section .sd-item-npc > .sd-item-detail { padding: 0 0 14px; }
 #story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  align-items: stretch;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
 }
-#story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main h4 {
-  grid-column: 1;
-  grid-row: 1;
+#story-director-modal .sd-plan-section .sd-item-npc .sd-npc-index {
+  display: block;
+  min-width: .95em;
+  font-family: Impact, 'Arial Narrow', sans-serif !important;
+  font-size: clamp(44px, 10vw, 60px);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -.04em;
+  color: var(--sd-text);
+  user-select: none;
+}
+#story-director-modal .sd-plan-section .sd-npc-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+#story-director-modal .sd-plan-section .sd-npc-name-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  align-self: start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+#story-director-modal .sd-plan-section .sd-npc-name-row > h4 { flex: 1 1 auto; min-width: 0; align-self: center; }
+#story-director-modal .sd-plan-section .sd-npc-name-row > .sd-world-media-entry { flex: 0 0 auto; margin-inline-start: auto !important; }
+#story-director-modal .sd-plan-section .sd-item-npc .sd-item-summary-main h4 {
   max-width: 100%;
-  text-align: right;
+  text-align: left;
   overflow-wrap: anywhere;
-  font-size: clamp(22px, 5.6vw, 32px) !important;
-  line-height: 1.1 !important;
-  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--sd-text) 62%, transparent), color-mix(in srgb, var(--sd-accent) 8%, transparent)) !important;
+  font-size: calc(var(--qm-type-card-title) + 3px) !important;
+  font-weight: 650 !important;
+  line-height: 1.3 !important;
 }
-#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row {
-  grid-column: 1;
-  grid-row: 2;
-  flex-direction: column;
-  justify-content: flex-start;
+#story-director-modal .sd-plan-section .sd-item-emotion,
+#story-director-modal .sd-plan-section .sd-npc-role {
+  display: block;
+  max-width: 100%;
+  font-size: var(--qm-type-caption);
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--sd-muted);
 }
-#story-director-modal .sd-plan-section .sd-item-npc.sd-npc-name-left .sd-item-summary-main h4 { grid-column: 1; justify-content: flex-start; text-align: left; }
-#story-director-modal .sd-plan-section .sd-item-npc > summary { gap: 10px; }
-#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row { gap: 6px; align-items: stretch; }
-#story-director-modal .sd-plan-section .sd-item-npc .sd-mini-chip-row .sd-badge { display: block; margin: 0; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; line-height: 1.55; }
-@media (max-width: 430px) {
-  /* A media entry gets its own visible row instead of squeezing the emotion
-     into a few characters. Inline labels let wrapped chip prose use its width. */
-  #story-director-modal .sd-plan-section .sd-item-npc > summary:has(> .sd-world-media-entry) { flex-wrap: wrap; }
-  #story-director-modal .sd-plan-section .sd-item-npc > summary:has(> .sd-world-media-entry) .sd-item-summary-main { flex-basis: 100%; }
-  #story-director-modal .sd-plan-section .sd-item-npc > summary > .sd-world-media-entry { margin-inline-start: auto !important; }
+#story-director-modal .sd-plan-section .sd-item-character .sd-item-emotion {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
 }
-
+#story-director-modal .sd-plan-section .sd-npc-emotion { font-size: var(--qm-type-body); }
+/* A selected card's order stays at the top right but owns real space, so a
+   wrapped mood/title cannot run underneath its digits. */
+#story-director-modal .sd-plan-section .sd-item-character > summary > .sd-selection-order-card:not(:empty) {
+  position: static;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+#story-director-modal .sd-plan-section .sd-npc-role {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--sd-text);
+  color: var(--sd-sticky-bg, #fff);
+}
 /* 取材身份复用角色库标签；上下文参考与楼层数按动作基线。 */
 #story-director-modal .sd-context-reference-row :is(.checkbox_label, .sd-depth-field) {
   font-size: var(--qm-type-action-title) !important;

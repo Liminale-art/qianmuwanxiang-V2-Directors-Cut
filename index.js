@@ -307,7 +307,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.450';
+const VERSION = '1.59.451';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -8827,13 +8827,19 @@ function renderDirectorParagraph(paragraph, { cardId, subject, order, readOnly, 
 }
 
 function renderItemCard(item, kind, idx, readOnly = false) {
-  const title = item.title || item.name || `项目 ${idx + 1}`;
+  const title = (kind === 'npc' ? item.name || item.title : item.title || item.name) || `项目 ${idx + 1}`;
   const prompt = item.inject_prompt || item.content || item.description || item.objective || item.event || item.next_action || item.current_goal || item.hidden_agenda || item.relations || '';
   const injectId = `${kind}-${idx}-${getContextItemId(item)}`;
   const chips = renderItemChips(item, kind);
+  const emotion = ['character', 'npc'].includes(kind) ? String(item.emotional_state ?? '').trim() : '';
+  const emotionHtml = emotion ? `<span class="sd-item-emotion${kind === 'npc' ? ' sd-npc-emotion' : ''}" title="情绪">${htmlEscape(emotion)}</span>` : '';
+  const sourceField = ({quest:'quests',npc:'npc_updates',world:'world_updates'})[kind];
+  const mediaEntry = sourceField && !readOnly ? renderDirectorWorldEntryLink(sourceField,idx) : '';
+  const heading = kind === 'npc'
+    ? `<span class="sd-npc-index" aria-hidden="true">${String(idx + 1).padStart(2, '0')}</span><div class="sd-npc-heading">${String(item.role ?? '').trim() ? `<span class="sd-npc-role" title="定位">${htmlEscape(item.role)}</span>` : ''}<div class="sd-npc-name-row"><h4>${htmlEscape(title)}</h4>${mediaEntry}</div>${emotionHtml}</div>`
+    : `${emotionHtml}<h4>${htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}`;
   const segmented = ['quest', 'character', 'npc'].includes(kind);
   const subject = String((kind === 'quest' ? item.subject : item.name) || '').trim() || `事项：${title}`;
-  const sourceField = ({quest:'quests',npc:'npc_updates',world:'world_updates'})[kind];
   const fields = [['内容', item.content], ['波及', item.scope]];
   const checked = injectSelection.has(injectId) ? 'checked' : '';
   const cardSelectionOrders = !readOnly && kind === 'character'
@@ -8842,10 +8848,10 @@ function renderItemCard(item, kind, idx, readOnly = false) {
   const cardSelectionBadge = kind === 'character' && !readOnly
     ? `<span class="sd-selection-order-card" data-selection-card-id="${htmlEscape(injectId)}" data-selection-card-order="${htmlEscape(cardSelectionOrders.join('、'))}" aria-label="${cardSelectionOrders.length ? `写入顺序 ${htmlEscape(cardSelectionOrders.join('、'))}` : '未选择写入段落'}">${htmlEscape(cardSelectionOrders.join('、'))}</span>`
     : '';
-  return `<details class="sd-item-card sd-item-fold sd-item-${htmlEscape(kind)}${kind === 'npc' && idx % 2 === 0 ? ' sd-npc-name-left' : ''}" data-acc="${readOnly ? 'preview-' : ''}item-${htmlEscape(injectId)}"${readOnly ? ' open' : ''}>
+  return `<details class="sd-item-card sd-item-fold sd-item-${htmlEscape(kind)}" data-acc="${readOnly ? 'preview-' : ''}item-${htmlEscape(injectId)}"${readOnly ? ' open' : ''}>
     <summary>
-      <div class="sd-item-summary-main"><h4>${htmlEscape(title)}</h4>${chips ? `<div class="sd-mini-chip-row">${chips}</div>` : ''}</div>
-      ${sourceField && !readOnly ? renderDirectorWorldEntryLink(sourceField,idx) : ''}
+      <div class="sd-item-summary-main">${heading}</div>
+      ${kind === 'npc' ? '' : mediaEntry}
       ${cardSelectionBadge}
       ${prompt && !readOnly && !segmented ? `<label class="sd-inject-select-label" title="加入写入队列"><input type="checkbox" class="sd-select-inject" data-text="${htmlEscape(prompt)}" data-id="${htmlEscape(injectId)}" ${checked}></label>` : ''}
     </summary>
@@ -8862,9 +8868,10 @@ function renderItemChips(item, kind) {
   };
   if (kind === 'quest') {
     push('时机', item.timing || item.deadline);
-  } else if (kind === 'npc' || kind === 'character') {
+  } else if (kind === 'character') {
     push('定位', item.role);
-    push('情绪', item.emotional_state);
+  } else if (kind === 'npc') {
+    // NPC identity is laid out in its numbered heading, not repeated as chips.
   } else {
     push('类型', item.type);
     push('时机', item.timing);
