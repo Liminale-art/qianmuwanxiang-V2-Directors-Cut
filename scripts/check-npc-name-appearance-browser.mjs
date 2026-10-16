@@ -11,9 +11,10 @@ const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright
 const functions = ['renderPlanSectionFold', 'renderRelationUndercurrentsCard', 'renderItemList', 'renderItemCard', 'renderItemChips', 'getContextItemId',
   'renderDirectorWorldEntryLink', 'bindDirectorWorldEntryLinks', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph',
   'updateDirectorSelectionOrder', 'updateInjectDock', 'collectDirectorSelectedText', 'bindDirectorSelectionEvents', 'renderGenerateRow',
-  'renderPlugTab', 'renderQuickWheelSettings', 'bindWidgetSettings', 'bindDirectorReadingEvents', 'renderDirectorSettingsTab', 'renderInjectSections'].map(storyboardFunctionSource).join('\n');
+  'renderPlugTab', 'renderQuickWheelSettings', 'bindWidgetSettings', 'bindDirectorReadingEvents', 'renderDirectorSettingsTab', 'renderInjectSections',
+  'renderNoPlan', 'renderDashboardTab', 'renderHeroActions', 'renderInjectBadge'].map(storyboardFunctionSource).join('\n');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8') + '\n' + await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
-const qa = new URL('../dist/local-qa/character-affairs-final-454/', import.meta.url);
+const qa = new URL('../dist/local-qa/director-polish-456/', import.meta.url);
 await mkdir(qa, { recursive: true });
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext({ serviceWorkers: 'block' }), page = await context.newPage();
@@ -47,6 +48,7 @@ try {
       normalizeQuickWheelSettings: () => {}, renderLogEntry: () => '', renderStorageManagementCard: () => '',
       bindCreativeSocialEvents: () => {}, refreshWidgetRuntime: () => {}, saveSettings: () => fixtureSaves++,
       currentPlan: () => plan, renderBackstageBlueprintCard: () => '', renderInjectPreview: () => '', DEFAULT_SYSTEM_PROMPT: '', JSON_SCHEMA_TEXT: '',
+      renderHistorySection: () => '',
       closeQuickWheel: () => {}, closeNotesPanel: () => {}, renderFloatButton: () => {}, renderFloatingNotes: () => {},
       directorProductionPacketState: {
         packets: [{ packetId: 'fixture-packet', sourceRef: { worldSource: 'fixture-source' } }],
@@ -365,8 +367,15 @@ try {
     ok(label + ' native injection choice uses the same visible selected palette', injectionOn.soft && injectionOn.opaque && injectionOn.contrast >= 4.5 && await injection.locator('input').isChecked());
     const streamOn = await selectedPaint(page.locator('.sd-stream-toggle'));
     ok(label + ' streaming switch is a soft toggle rather than a primary action', streamOn.soft && streamOn.opaque && streamOn.restrained && streamOn.contrast >= 4.5);
-    ok(label + ' generation action keeps its original primary emphasis', await page.locator('.sd-generate-main').evaluate(node => {
-      const style = getComputedStyle(node); return colorBytes(style.backgroundColor).join(',') === colorBytes(style.getPropertyValue('--sd-primary')).join(',') && colorDistance(style.backgroundColor, style.getPropertyValue('--sd-tag-selected-bg')) >= 24;
+    const generationPaint = await selectedPaint(page.locator('.sd-generate-main'));
+    ok(label + ' generation uses the same pale accent surface and readable ink as enabled newcomer', generationPaint.soft && generationPaint.opaque && generationPaint.restrained && generationPaint.contrast >= 4.5 && generationPaint.fill === streamOn.fill);
+    ok(label + ' stopping retains its red safety state without recoloring unrelated primary actions', await page.evaluate(() => {
+      busy = true;
+      const fixture = document.createElement('div'); fixture.innerHTML = renderGenerateRow() + '<button class="sd-btn sd-primary">原有主要操作</button>'; document.querySelector('.sd-body').append(fixture);
+      const stop = fixture.querySelector('.sd-as-stop'), ordinary = fixture.querySelector('.sd-primary:not(.sd-generate-main)'), stopStyle = getComputedStyle(stop), ordinaryStyle = getComputedStyle(ordinary);
+      const result = stop.textContent.includes('停止推演') && colorDistance(stopStyle.backgroundColor, stopStyle.getPropertyValue('--sd-tag-selected-bg')) >= 24
+        && colorBytes(ordinaryStyle.backgroundColor).join(',') === colorBytes(ordinaryStyle.getPropertyValue('--sd-primary')).join(',');
+      fixture.remove(); busy = false; return result;
     }));
     ok(label + ' selected and unselected choice fills are perceptibly distinct', await page.evaluate(() => {
       const filled = document.querySelector('.sd-wheel-command-toggle.active'), empty = document.querySelector('.sd-wheel-command-toggle:not(.active)');
@@ -413,7 +422,7 @@ try {
       portal.remove(); return selectedOk && restored;
     }, { family, mode }));
   }
-  for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 393]) {
+  for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) for (const width of [320, 393, 1100]) {
     const label = `character-affairs/${family}/${mode}/${width}`;
     await page.setViewportSize({ width, height: 1000 });
     await page.evaluate(async ({ family, mode }) => {
@@ -424,15 +433,16 @@ try {
       ];
       await renderFixture(family, mode);
     }, { family, mode });
-    ok(label + ' character list has only inter-item separators, no rounded inner cards', await page.locator('.sd-item-character').evaluateAll(nodes => nodes.length === 3 && nodes.every((node, index) => {
-      const s = getComputedStyle(node); return s.borderTopWidth === (index ? '1px' : '0px') && s.borderBottomWidth === '0px' && s.borderLeftWidth === '0px' && s.borderRightWidth === '0px' && s.borderRadius === '0px' && s.backgroundColor === 'rgba(0, 0, 0, 0)' && s.boxShadow === 'none';
+    ok(label + ' character list has no inter-item separators or rounded inner cards', await page.locator('.sd-item-character').evaluateAll(nodes => nodes.length === 3 && nodes.every(node => {
+      const s = getComputedStyle(node); return s.borderTopWidth === '0px' && s.borderBottomWidth === '0px' && s.borderLeftWidth === '0px' && s.borderRightWidth === '0px' && s.borderRadius === '0px' && s.backgroundColor === 'rgba(0, 0, 0, 0)' && s.boxShadow === 'none';
     })));
-    ok(label + ' title tag matches NPC role accent and stays at the right after a quiet line', await page.locator('.sd-item-character').evaluateAll(nodes => nodes.every((node, index) => {
-      const title = node.querySelector('.sd-character-title'), heading = title.parentElement, s = getComputedStyle(title), ref = getComputedStyle(document.querySelector('.sd-npc-role')), line = getComputedStyle(heading, '::before');
+    ok(label + ' title tag matches NPC role accent and stays at the right after slash and round dots', await page.locator('.sd-item-character').evaluateAll(nodes => nodes.every((node, index) => {
+      const title = node.querySelector('.sd-character-title'), heading = title.parentElement, s = getComputedStyle(title), ref = getComputedStyle(document.querySelector('.sd-npc-role')), slash = getComputedStyle(heading, '::before'), dots = getComputedStyle(heading, '::after');
       const t = title.getBoundingClientRect(), h = heading.getBoundingClientRect();
       return title.textContent === plan.character_dynamics[index].title && Math.abs(t.right - h.right) <= 1 && t.left > h.left + 10
         && s.backgroundColor === ref.backgroundColor && s.color === ref.color && s.webkitTextFillColor === s.color && s.fontSize === ref.fontSize && colorContrast(s.webkitTextFillColor, s.backgroundColor) >= 4.5
-        && line.content === '""' && line.borderTopWidth === '1px' && Number(line.opacity) < 1
+        && slash.content === '""' && slash.borderLeftWidth === '1px' && slash.transform !== 'none' && Number(slash.opacity) < 1
+        && dots.content === '""' && dots.backgroundImage.includes('radial-gradient') && dots.backgroundRepeat === 'repeat-x' && dots.order === '1' && s.order === '2'
         && [node, heading, title].every(part => part.scrollWidth <= part.clientWidth + 1 && part.scrollHeight <= part.clientHeight + 1);
     })));
     const firstCharacter = page.locator('.sd-item-character').first();
@@ -452,6 +462,24 @@ try {
     if (family === 'glass' && ((mode === 'light' && width === 393) || (mode === 'dark' && width === 320))) {
       await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
       await page.locator('[data-acc="castfold-character"]').screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`character-${mode}-${width}.png`, qa)) });
+    }
+    ok(label + ' generated-content placeholder labels and font size match preview/world baseline', await page.evaluate(async () => {
+      const { renderCreativeSocialCard } = await import('/qianmu-creative-social.js');
+      const prior = plan; plan = null;
+      const fixture = document.createElement('div'); fixture.innerHTML = renderDashboardTab() + renderNoPlan() + renderCreativeSocialCard(null) + renderItemList([], 'character');
+      document.querySelector('.sd-body').append(fixture);
+      const nodes = [...fixture.querySelectorAll('.sd-empty,.sd-social-empty,.sd-director-empty')];
+      const result = nodes.length === 4 && nodes.every(node => node.firstChild.textContent.trim() === '尚未生成')
+        && new Set(nodes.map(node => getComputedStyle(node).fontSize)).size === 1
+        && Math.abs(parseFloat(getComputedStyle(nodes[0]).fontSize) - parseFloat(getComputedStyle(document.querySelector('#story-director-modal')).fontSize) * 1.05) < .01;
+      fixture.remove(); plan = prior; return result;
+    }));
+    if (family === 'glass' && width === 393) {
+      await page.evaluate(async ({ family, mode }) => {
+        plan.character_dynamics = plan.character_dynamics.slice(0, 2);
+        await renderFixture(family, mode);
+      }, { family, mode });
+      await page.locator('.sd-plan-section').first().screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`character-collapsed-${mode}-393.png`, qa)) });
     }
   }
   assert.deepEqual(errors, []); assert.equal(external, 0, JSON.stringify(blocked));

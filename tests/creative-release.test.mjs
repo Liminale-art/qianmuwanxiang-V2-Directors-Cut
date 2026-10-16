@@ -4,14 +4,14 @@ import { readFile } from 'node:fs/promises';
 import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = '1.59.455';
-const releaseVersion = '1.59.455';
+const version = '1.59.456';
+const releaseVersion = '1.59.456';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
-  'qianmu-creative-runtime.js', 'qianmu-creative-social.js', 'qianmu-director-live.js',
-  'qianmu-theme-menu.js',
+  'qianmu-creative-runtime.js', 'qianmu-director-live.js',
 ]);
 const retained = new Map([
+  ['qianmu-creative-social.js', '1.59.455'], ['qianmu-theme-menu.js', '1.59.455'],
   ...['qianmu-model-response.js', 'qianmu-model-host.js', 'qianmu-model-external.js',
     'qianmu-prose-assistant-request.js', 'qianmu-prose-assistant-preferences.js', 'qianmu-prose-assistant-panel.js',
     'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js', 'qianmu-idle-preload.js'].map(file => [file, '1.59.452']),
@@ -64,4 +64,19 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.ok(files.includes('qianmu-creative-social.css'));
   assert.match(await readFile(new URL('style.css', root), 'utf8'), /@import url\('\.\/qianmu-creative-social\.css\?v=1\.59\.455'\)/);
   assert.ok(sources.get('index.js').includes(`const VERSION = '${releaseVersion}';`));
+});
+
+test('world display refresh imports only pure helpers without splitting shared utility state', () => {
+  const utility = 'qianmu-storyboard-utils.js';
+  const versioned = [];
+  for (const [file, source] of sources) {
+    for (const match of source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/qianmu-storyboard-utils\.js([^'"]*)['"]/g)) {
+      const names = match[1].split(',').map(name => name.trim()).filter(Boolean);
+      if (match[2]) versioned.push({ file, names, query: match[2] });
+      else assert.ok(!names.includes('geoRelationLabel'), `${file} cannot expect new exports from an old cached utility`);
+    }
+  }
+  assert.deepEqual(versioned, [{ file: 'index.js', names: ['heatTier', 'geoRelationLabel'], query: `?v=${version}` }]);
+  assert.ok(files.includes(utility));
+  assert.match(sources.get('index.js'), /import\s*\{[^}]*\buid\b[^}]*\}\s*from '\.\/qianmu-storyboard-utils\.js'/);
 });

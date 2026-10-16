@@ -120,6 +120,16 @@ test('new creative fields use current names and stage object extras only after t
   assert.match(html,/另一句话/);assert.match(html,/今晚还来/);assert.doesNotMatch(html,/sd-inject|sd-world-media-entry|data-inject/);
 });
 
+test('causal chains use the current display name without rewriting legacy fields or prose',()=>{
+  const raw = '{"chain_reactions":[{"spark":"涟漪中的旧标题原文","chain":"桥梁维修 → 邮路改道"}]}';
+  const cards = completeDirectorCards(raw);
+  assert.equal(cards[0].field, 'chain_reactions');
+  assert.equal(cards[0].label, '世事相牵');
+  assert.match(renderDirectorLive({ id: 'rename', status: 'loading', response: raw }), /世事相牵/);
+  assert.match(renderDirectorLive({ id: 'rename', status: 'loading', response: raw }), /涟漪中的旧标题原文/);
+  assert.match(directorQualitySummary({ quality: { issues: [{ field: 'chain_reactions', missing: 1 }] } }), /世事相牵缺 1 条/);
+});
+
 test('wrong extra shapes, unknown forms, empty content and repeated extra keys are not accepted as cards',()=>{
   for(const raw of [
     '{"parallel_scene":[{"content":"invalid array"}]}',

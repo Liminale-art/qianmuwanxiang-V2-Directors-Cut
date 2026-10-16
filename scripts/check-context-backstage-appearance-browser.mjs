@@ -197,7 +197,7 @@ try {
                         scrollWidth: grid.scrollWidth, clientWidth: grid.clientWidth };
                 });
                 ok(label + ' five compact scope labels stay on one complete row without overflow: ' + JSON.stringify(scopeRow),
-                    scopeRow.labels === '预演/涟漪/动向/关系/世界'
+                    scopeRow.labels === '预演/世事相牵/动向/关系/世界'
                     && scopeRow.fonts.every(size => size === '12px')
                     && scopeRow.tops.every(top => Math.abs(top - scopeRow.tops[0]) < 1)
                     && scopeRow.scrollWidth <= scopeRow.clientWidth + 1);

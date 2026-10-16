@@ -11,9 +11,9 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), '5adb040a5ed8d6f6721ae88c68d3cddf43693c9deca00903bc0d519cd966a6d9');
-  assert.equal(digest(CREATIVE_BLUEPRINT), '38a889bf0676e0b6fdf860a1c387b3d204a45f500e6f2d0ce948fa0acaee4804');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '327f00bf64e83e740c87442095dade10617c77ef8065cce269a93b9812f91616');
+  assert.equal(digest(CREATIVE_LAWS), '7a90e448daf65acb046cc3e29681e4e1580bc73aa60fbe8aa4bec72f984fc807');
+  assert.equal(digest(CREATIVE_BLUEPRINT), 'e2451abdca74390ae2608a3edcf118993d247074a311348998a5eeb64f91a8e2');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '51479f45368609252e55fe8579f638916a6ccdefcc44ad9a78cea6b7dc8b1a69');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
   assert.equal(CREATIVE_SECTION_LABELS.npc_updates, '各自人间');

@@ -7,7 +7,7 @@ import { createCreativeSchema } from '../qianmu-creative-contract.js';
 // fiction or claim that a model will obey a scene's intended pacing.
 test('genre-neutral trajectory examples permit promises and opportunities without requiring a crime or sealed clue', () => {
   assert.match(CREATIVE_GUIDES.story_status, /承诺兑现、错过、转向、支线并行或关系重组/);
-  assert.match(CREATIVE_GUIDES.story_status, /具体选择、尚待回应的约定、新机会或改变后的处境/);
+  assert.match(CREATIVE_GUIDES.story_status, /结尾停在可观察的行动、物件、对话或改变后的处境/);
   assert.match(CREATIVE_GUIDES.story_status, /另一方的回应、利益或限制介入/);
   assert.doesNotMatch(CREATIVE_GUIDES.story_status, /再次犯案|未拆开的证物|未启封|钩子与压力/);
   assert.doesNotMatch(CREATIVE_BLUEPRINT, /案件进展顺利/);

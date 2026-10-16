@@ -518,7 +518,7 @@ try {
     const raw = JSON.stringify({ story_status: { title: '独立的新一幕', summary: '已发生的新变化。' },
       quests: [{ title: '际遇专属', description: '邮差带来了退回的新信。' }],
       character_dynamics: [{ title: '角色专属', content: '同事已将调班签字递了过去。' }],
-      chain_reactions: [{ spark: '涟漪专属', chain: '停运 → 改道' }],
+      chain_reactions: [{ spark: '相牵专属', chain: '停运 → 改道' }],
       parallel_scene: { title: '番外专属', content: '另一种已展开的片刻。' } });
     directorLiveLog = { id: 'stream-qa', status: 'loading', response: raw.slice(0, -1), request: 'X'.repeat(1400000) };
     const old = JSON.stringify(plan), checks = {};
@@ -529,7 +529,7 @@ try {
       refreshDirectorLiveUI();
       const text = host.textContent;
       checks[`${view}: correct field placement`] = view === 'dashboard' ? text.includes('另一种已展开的片刻') && !text.includes('际遇专属') && !text.includes('角色专属')
-        : view === 'tasksnodes' ? text.includes('际遇专属') && text.includes('涟漪专属') && !text.includes('另一种已展开的片刻') && !text.includes('角色专属')
+        : view === 'tasksnodes' ? text.includes('际遇专属') && text.includes('相牵专属') && !text.includes('另一种已展开的片刻') && !text.includes('角色专属')
         : text.includes('角色专属') && !text.includes('际遇专属') && !text.includes('另一种已展开的片刻');
       checks[`${view}: no progress card or premature actions`] = !host.querySelector('.sd-director-live,.sd-select-inject,.sd-inject,.sd-world-media-entry,[data-director-paragraph]') && !text.includes('正在接收回复');
       const first = host.firstElementChild;
@@ -615,7 +615,7 @@ try {
   await page.evaluate(() => { directorLiveLog = { status: 'cancelled', request: 'synthetic', response: qaPartialResponse, creativeOptions: structuredClone(baseSettings) }; mount('dashboard', 'glass'); });
   await page.locator('.sd-clear-plan').click();
   check(await page.evaluate(() => directorLiveLog === null && qaStore.plan === null && qaStore.history.length === 1)
-    && (await page.locator('.sd-body').textContent()).includes('尚未推演剧情'), 'clear current removes the failed preview without deleting its saved history');
+    && (await page.locator('.sd-body').textContent()).includes('尚未生成'), 'clear current removes the failed preview without deleting its saved history');
   await page.evaluate(() => { currentPlan = qaOriginalCurrentPlan; delete window.qaOriginalCurrentPlan; qaStore.history = []; worldPage = 'front'; directorLiveLog = null; });
   check(pageErrors.length === 0, 'no page errors', pageErrors);
   check(blocked.length === 0, 'no external or unlisted requests attempted', blocked);

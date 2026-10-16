@@ -892,10 +892,15 @@ export function computeWorldHeat(rels, events) {
  * @returns {Object} 层级对象
  */
 export function heatTier(heat) {
-  if (heat >= 72) return { key: 'boil', label: '鼎沸', desc: '多方火并，世界沸反盈天' };
-  if (heat >= 45) return { key: 'turmoil', label: '动荡', desc: '冲突四起，暗潮已掀明浪' };
-  if (heat >= 20) return { key: 'undercurrent', label: '暗流', desc: '表面平静，底下各有盘算' };
-  return { key: 'calm', label: '承平', desc: '大势安稳，余波细微' };
+  if (heat >= 72) return { key: 'boil', label: '高涨', desc: '多重变化集中交汇' };
+  if (heat >= 45) return { key: 'turmoil', label: '升温', desc: '各方牵动加深' };
+  if (heat >= 20) return { key: 'undercurrent', label: '起伏', desc: '变化开始交织' };
+  return { key: 'calm', label: '平缓', desc: '局面变化较少' };
+}
+
+/** Genre-neutral display only; saved relation kinds and graph weights stay intact. */
+export function geoRelationLabel(kind) {
+  return { 同盟: '协作', 依附: '依赖' }[kind] || String(kind || '中立');
 }
 
 /**

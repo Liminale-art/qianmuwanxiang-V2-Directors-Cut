@@ -81,7 +81,7 @@ test('compact scope captions keep the five established selection keys', () => {
   const html = c.renderInjectSections();
   const pairs = [...html.matchAll(/data-key="([^"]+)"[^>]*><span>([^<]+)<\/span>/g)]
     .map(([, key, label]) => [key, label]);
-  assert.deepEqual(pairs, [['quests', '预演'], ['nodes', '涟漪'], ['npc', '动向'], ['relations', '关系'], ['geopolitics', '世界']]);
+  assert.deepEqual(pairs, [['quests', '预演'], ['nodes', '世事相牵'], ['npc', '动向'], ['relations', '关系'], ['geopolitics', '世界']]);
   assert.deepEqual(c.settings.injectSections, allOff, 'caption changes never rewrite selection preferences');
 });
 

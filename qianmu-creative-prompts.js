@@ -63,7 +63,7 @@ Candidate status controls whether a development is established in the mainline, 
 
 For 命运之脉 and 未映之幕, think like a screenwriter planning a long-form story rather than an assistant assigning tasks. Build each line as a causal dramatic beat: an already-grounded situation, an initiating action by a specific person or group, a counter-pressure or collision with another interest, and a concrete changed condition that creates the next beat. A valid change alters access, evidence, trust, resources, danger, obligations, knowledge, or a relationship; a new description of the same state is not a change. Carry at least one thread toward a subplot, setup/payoff, delayed consequence, or side character's life instead of returning every line to USER and CHAR.
 
-Use an authorial ensemble view. Characters may act in another place while USER and CHAR continue their own lives; at least one trajectory should begin with a non-USER, non-CHAR actor or group and show where that action travels, unless the source explicitly closes the world and the limitation is reported. The generated prose is still a candidate, but the events inside that candidate must be written as definite planned beats with named actors, timing anchors, and conditions. Do not replace a beat with "things become complicated", a personality forecast, a recap, or a string of maybes. Do not end a line with an abstract promise, moral uplift, atmospheric prediction, or log-like explanation of what the reader or USER should do next; end on a concrete event, choice, discovery, or changed circumstance that leaves a recoverable hook without deciding the USER's response.
+Use an authorial ensemble view. Characters may act in another place while USER and CHAR continue their own lives; at least one trajectory should begin with a non-USER, non-CHAR actor or group and show where that action travels, unless the source explicitly closes the world and the limitation is reported. This overhead view guides composition, not a narrator's verdict: arrange the encounter or changed condition, then let the observed action and its consequences speak without explaining their importance for the audience. The generated prose is still a candidate, but the events inside that candidate must be written as definite planned beats with named actors, timing anchors, and conditions. Do not replace a beat with "things become complicated", a personality forecast, a recap, or a string of maybes. End on a concrete event, choice, discovery, or changed circumstance without deciding the USER's response; do not append a summary of what this means, what a small affair has now become, or what the protagonist must face next. Leave interpretation and response to the reader, without abstract promises, moral uplift, or atmospheric prediction.
 
 ### Character Agency and Knowledge
 
@@ -94,7 +94,7 @@ Cover every section enabled for this run and meet the minimum counts below. Thes
 - 命运之脉: exactly ${CREATIVE_COUNTS.story_status.min} narrative trajectories, one near-range and one far-range, marked with horizon values near and far respectively. Each has a title and substantive content that weaves people's actions, intersecting interests, and consequences into a changing situation, not a character's assigned task, personality forecast, or recap of the present.
 - 预演: at least ${CREATIVE_COUNTS.quests.min} near-scene entries, each with an explicit subject: a person, group, or clearly named affair, never a guessed person inferred from the title.
 - 此间一人: at least ${CREATIVE_COUNTS.character_dynamics.min} entries about CHAR only, excluding USER; 各自人间: at least ${CREATIVE_COUNTS.npc_updates.min} entries about other non-USER, non-CHAR people. Together, these character developments retain the original supply of at least ${CREATIVE_COUNTS.character_dynamics.min + CREATIVE_COUNTS.npc_updates.min} entries. Count pieces of content, not a requirement to introduce ${CREATIVE_COUNTS.character_dynamics.min + CREATIVE_COUNTS.npc_updates.min} new people. A group chat can have several CHARs; distribute these entries by substantive relevance, not one quota per person.
-- 涟漪: at least ${CREATIVE_COUNTS.chain_reactions.min} concise chains, each using ${CREATIVE_DETAIL_COUNTS.rippleNodes.min}–${CREATIVE_DETAIL_COUNTS.rippleNodes.max} short causal nodes joined by →. At least one chain must begin in other people's own affairs and carry its downstream stakes within their lives, without returning to USER's identity, reputation, special abilities, or next encounter. Distinct people merely relaying the same USER-centered premise do not supply lateral breadth. This section does not develop the USER–CHAR relationship.
+- 世事相牵: at least ${CREATIVE_COUNTS.chain_reactions.min} concise chains, each using ${CREATIVE_DETAIL_COUNTS.rippleNodes.min}–${CREATIVE_DETAIL_COUNTS.rippleNodes.max} short causal nodes joined by →. Trace transmission into changed conditions across people, groups, resources, institutions or the natural environment, selecting scales relevant to the narrative and valid world state. A trajectory retold through its individual participants or split into procedural steps is not another ripple. At least one chain must begin in other people's own affairs and carry its downstream stakes within their lives, without returning to USER's identity, reputation, special abilities, or next encounter. Distinct people merely relaying the same USER-centered premise do not supply lateral breadth. A chain may remain local, widen or feed back into a collective condition; neither catastrophe nor escalation is required. This section does not develop the USER–CHAR relationship.
 - 关系暗涌: at least ${CREATIVE_COUNTS.relation_undercurrents.min} concise entries about ${CREATIVE_DETAIL_COUNTS.relationParties.min}–${CREATIVE_DETAIL_COUNTS.relationParties.max} named participants each; use a mixed set with at least one two-person relation and one three-person relation, rather than producing three entries of the same shape. At least ${CREATIVE_DETAIL_COUNTS.supportingRelations.min} entries concern supporting people only, with neither USER nor CHAR as a participant. Exclude the USER–CHAR pair, including attempts to insert a third person while retaining that pair as the subject. Do not output user_awareness.
 - 尘寰群生: ${CREATIVE_COUNTS.world_chatter.min}–${CREATIVE_COUNTS.world_chatter.max} brief human voices: conversation, self-talk, calls, complaints, jokes, or other situated speech. Let a small moment convey everyday interests and differences in outlook; it need not offer a clue or advance a plot. Context supports the voice. Pure weather, scenery, ambient noise, or an animal's reaction does not count.
 - 世界格局: ${CREATIVE_COUNTS.factions.min}–${CREATIVE_COUNTS.factions.max} factions or organizations and ${CREATIVE_COUNTS.world_events.min}–${CREATIVE_COUNTS.world_events.max} ongoing situations. Organizations and events that remain relevant and in force may count; these are not quotas for new additions. At least one ongoing situation must belong to a non-USER, non-CHAR layer such as an institution, trade, neighborhood, public service, or regional group. Treat world events as structural or collective pressure with its own scope and actors, not as a duplicate of either 命运之脉 trajectory or a protagonist's next beat. Maintain organizational relationships according to actual connections.
@@ -115,7 +115,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 从当前现场与有效记忆中确立本轮的叙事起点，辨认已经呈现过的内容与仍有发展空间的事项。以已有经历提供原因和限制，把篇幅用在人物接下来采取的行动、由此改变的条件，以及正文尚未呈现的生活联系上。承接是让旧事产生新作用，不是换一套措辞回放旧事。
 
-把远近层次按时态锚定，而不是按镜头远近或主角是否在场划分：命运之脉恰好编织一条 near 与一条 far，near 是下一处有叙事价值的时间段，far 则从相对 near 更晚的叙事阶段或门槛展开，跨度依据主线节奏与因果，不预设必须跨越数周数月。两条都应跨越当前摘要，以编剧的全景视野同时安排主角团之外的人和事；至少一条从非 {{user}}、非 {{char}} 的行动开始，并写清它怎样碰到另一条生活。预演展开其中可亲历的近景切口，人物动向保留各人自主进行的事务，涟漪追踪影响如何进入别处。栏目之间相互照应，却不重复交付同一件事。远近不靠职业分工或人物标签划分，而靠不同的时间锚、行动相遇和局面改变区分。
+把远近层次按时态锚定，而不是按镜头远近或主角是否在场划分：命运之脉恰好编织一条 near 与一条 far，near 是下一处有叙事价值的时间段，far 则从相对 near 更晚的叙事阶段或门槛展开，跨度依据主线节奏与因果，不预设必须跨越数周数月。两条都应跨越当前摘要，以编剧的全景视野同时安排主角团之外的人和事；至少一条从非 {{user}}、非 {{char}} 的行动开始，并写清它怎样碰到另一条生活。预演展开其中可亲历的近景切口，人物动向保留各人自主进行的事务，世事相牵追踪影响如何进入别处。栏目之间相互照应，却不重复交付同一件事。远近不靠职业分工或人物标签划分，而靠不同的时间锚、行动相遇和局面改变区分。
 
 在既有设定允许的空白里主动补充有分量的经历和联系，将新增内容落到具体的人与处境。先让一件事凭当事人的动机、机会和行动自行成立，再寻找它与主角的真实交点。人设决定人物如何看见和应对，不是每轮必须兑现的题材清单；已成立的行动、接触、共同利害或明确来源事实，只支持其实际范围内的联系。在场或惊动旁人可产生此后的后果，却不倒证同源、旧缘或他人生前背景。初遇可以只是初遇，呼应不必变成同源证据；新造中间人、改换近义意象或另一张卡也不能补出来源。秘密依照线索与接触逐渐显露，未解的原因不妨暂留，眼前的选择与后果仍能向前。
 
@@ -127,7 +127,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 ### 让后果拥有去处
 
-沿具体起因建立因果传导，越过正文已经写出的结果，找到下一位受影响者，写出其处境、理解与应对，使后果经由人际联系、信息、资源或制度进入另一段生活。呈现清楚的传播过程，允许影响延迟、受阻或被误读；改变不必更危险，却要使事情多出真实的去处。把每条线写成“起始状态 → 主动行为 → 反作用或碰撞 → 新条件”的可追踪链条，至少落下一项能改变行动、知情、资源、关系或风险的事实；“局势复杂了”“关系更紧张了”不算变化。支线可以暂时不碰 {{user}}，但要留下后续可回收的物件、承诺、误会、证据或人物选择。
+沿当前叙事与有效世界状态中的具体起因建立因果传导，越过已经写出的结果，看影响怎样借人际联系、信息、资源、制度或自然条件改变别处的处境，再被那里的人承接、转移或反馈。可以由公共变化落到个人生活再形成集体影响，也可以从小事外溢，或在另一处日常里沉淀；依据传导的价值选尺度，不为显得宏大硬造灾难。把关键转折连成可追踪的链条，而非将同一主线拆成不同人物的办事步骤；“局势复杂了”“关系更紧张了”不算变化。支线可以不碰 {{user}}，独立改变别人的行动、知情、资源、关系或风险，不必最终回收为主角的线索。
 
 把过去的承诺、损失、误会与善意带回合适的时机，让前后内容形成回响。明确已经显现的后果与尚待条件成立的走向，给后者保留变数。哪一个尚未显露的影响，会使读者重新理解最初那件事？
 
@@ -135,7 +135,7 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 
 把题材的吸引力转化为可感的情境。通过职业过程、时代习惯、地方物事与具体交往建立生活质感，让读者获得只有这些人物、这个环境才会带来的体验。呈现行动的过程及其分量，避免用“事情进展顺利”“关系更加复杂”之类概括代替内容。
 
-以造物主的俯瞰统筹叙事时距，按主线节奏与因果呈现各方行动的交错、阶段性后果和新条件。信任、承诺或认知的细小变化，须实际改变后续选择或条件才有推演价值，不把正文与用户能承担的眼神、措辞、姿态拆成逐拍续写。无实质变化的吃饭、睡觉、等待和赶路压缩带过；正文已用概述或蒙太奇跨过的时段，直接承接其新落点。预演落笔等局部片段按栏目职责保留，不代替俯瞰走向。候选需要更晚的时点就注明时间或成立条件，不跳过 {{user}} 的未决选择。命运之脉落在有时间锚、可继续的节点；候选身份由边界承担，内部用确定的行动和结果表达。
+以造物主的俯瞰统筹叙事时距，按主线节奏与因果呈现各方行动的交错、阶段性后果和新条件。俯瞰是选材与组织的视角，不是代观众下结论；只让行动相遇、条件改变，意义与回应留给读者。信任、承诺或认知的细小变化，须实际改变后续选择或条件才有推演价值，不把正文与用户能承担的眼神、措辞、姿态拆成逐拍续写。无实质变化的吃饭、睡觉、等待和赶路压缩带过；正文已用概述或蒙太奇跨过的时段，直接承接其新落点。预演落笔等局部片段按栏目职责保留，不代替俯瞰走向。候选需要更晚的时点就注明时间或成立条件，不跳过 {{user}} 的未决选择。命运之脉落在有时间锚、可继续的节点；候选身份由边界承担，内部用确定的行动和结果表达。
 
 ### 留出相遇和选择
 
@@ -158,14 +158,16 @@ export const CREATIVE_BLUEPRINT = `### 承接这段生活
 export const CREATIVE_GUIDES = Object.freeze({
   story_status: `命运之脉恰好两条：horizon 为 near 的近线与 far 的远线各一条。near 与 far 只由时态锚定，不由镜头远近或主角是否在场决定：near 指下一处有叙事价值的时间段，far 则从相对 near 更晚的叙事阶段或门槛展开，跨度依据主线节奏与因果，不预设必须跨越数周数月。时间锚要让读者知道这条线落在哪个阶段或门槛即可；除非正文已有依据，不要为了显得精确硬写到某天某时。以编剧的上帝之眼俯瞰多处生活，但不替任何角色读心，写清一项行动如何遇见另一人的打算，又如何改变原有局面；把每条线写成“已成立的状态 → 某人或某群体主动采取行动 → 另一方的回应、利益或限制介入 → 局面出现可验证的新条件”，而非按人物职业或固有人设分派任务。新条件至少改变行动资格、证据、信任、资源、风险、承诺、知情范围或关系位置之一；“局势更加复杂”“关系继续发酵”这类概括不算推进。
 
-两条必须越过正文当前落点，成为可以规划主线未来的具体叙事节点；至少一条从非 {{user}}、非 {{char}} 的人物或群体开始，并让行动进入另一处生活。可安排承诺兑现、错过、转向、支线并行或关系重组，但要写出时间锚、行动者、回应和新的后果，不能只预测主角“会如何”。用确定的叙事动词写候选内部已经安排好的事件，把候选性质交给输出边界，不连续堆叠“可能、也许、应该、似乎”。结尾落在具体选择、尚待回应的约定、新机会或改变后的处境上，让读者看见可继续的切口；不要在正文末尾追加“下一步将……”“读者可以……”之类的日志式结论、抽象升华、气氛预告、人物任务清单、现状摘要或复述预演。两条内容应有不同的时态与因果重心，而非把同一主线改写两遍；采用前仍是候选，不越过 {{user}} 的未决选择。`,
+两条必须越过正文当前落点，成为可以规划主线未来的具体叙事节点；至少一条从非 {{user}}、非 {{char}} 的人物或群体开始，并让行动进入另一处生活。可安排承诺兑现、错过、转向、支线并行或关系重组，但要写出时间锚、行动者、回应和新的后果，不能只预测主角“会如何”。用确定的叙事动词写候选内部已经安排好的事件，把候选性质交给输出边界，不连续堆叠“可能、也许、应该、似乎”。结尾停在可观察的行动、物件、对话或改变后的处境上；新条件已经显现就收笔，不再替观众解释“这意味着什么”“原本的小事成为了什么”，也不宣告主角因此必须如何安排或面对。俯瞰用于看见与编织交错，偶尔使一项条件发生变化，不用居高的旁白替读者归纳意义。不要追加日志式结论、抽象升华、气氛预告、人物任务清单、现状摘要或复述预演。两条内容应有不同的时态与因果重心，而非把同一主线改写两遍；采用前仍是候选，不越过 {{user}} 的未决选择。`,
   character_dynamics: `只以本聊天的 CHAR 为动态主体，{{user}} 及其身份映射不占本栏名额；群聊中的多个 CHAR 按事务分量展开，不要求每人各凑一组。每条从 CHAR 自己正在处理的事情出发，写到一次具体行动、判断的落实或下一步事务已具备的条件，带出正文之外的进程与人物侧面。职业、同伴与私人生活都能提供有分量的内容，不把各条写成与 {{user}} 最近往来的情绪复述。相处细节可以细腻，但要对这个人的在意、做法或处境产生作用。本栏不产出 emotional_state 或独立情绪摘要，感受由具体言行自然呈现。`,
 
   npc_updates: `沿 CHAR 与 {{user}} 以外的人物的自主事务展开，写明当事人自己的诉求、实际做法及其改变的条件，重点是他自己的生活进程，不是替读者安排可介入的近景入口。承接旧关系和未了事项，保留即使暂时移除主角仍会进行的活动与人物联系；交集可以逐渐形成，也可以尚未发生。role 是精简而完整的身份标签，不超过 ${CREATIVE_DETAIL_COUNTS.roleChars.max} 字；emotional_state 用不超过 ${CREATIVE_DETAIL_COUNTS.emotionChars.max} 字的自然短语表达当前情绪，不堆履历、缘由或复合长句，也不为凑字数添词。姓名由 name 和写入前缀交代，在意、进展、联系与落笔不再各自以同一姓名重新开篇；用动作、场景和清晰指代接续，人物切换时保留必要点名。每段与姓名前缀独立可读，合读时是自然相接的生活片段。若明确的封闭设定限制了人物范围，则如实说明，不捏造陌生人凑数，不让全员围观、评判或猜测主角。`,
 
   quests: `每条预演提供一个正文现有落点之外、可以接近和回应的近景情境。来人来事带着自己的动因，通过行动、消息、发现或条件变化，把此前尚不可回应的切入口带到眼前；写到读者无需另发明事件就能接续的程度。subject 明确写本条主体，可以是人物、群体或具体事项，不从诗意标题乱猜一个人。这里亲历具体切口，与命运之脉的叙事走向、NPC 自己的事务分工，不重复当前现场或既定打算，不写任务目标、奖励和步骤。三段按“发生条件 → 情境 → 落笔”排列，并且各自是同一片段中可前后相接的作者叙述：发生条件写已经成立的因由、限制或入口，不写“某日某时触发”的任务提示；情境承接前段，让结果与人物处境具体出现；落笔写场景已经开始的第一拍，是人物带着具体言行进入场景的短小落笔。三段合在一起是一段完整片段，拆开后也各自交代主体和必要上下文，{{user}} 如何回应保持开放。`,
 
-  chain_reactions: `每条用 3–5 个简短节点，以 → 串起具体原因、传导行动与后续影响，至少延伸到正文尚未呈现的一处结果；候选节点在必要处说明条件，不冒充既成事实。至少一条体现真正的横向广度：从他人的具体事务起因，经其行动传到另一些人的生活条件，结尾仍属于他们，不回流为 {{user}} 的身份、名声、特殊能力或下一次相遇。同一人设母题换几位传话者、职业近义词或材料别名，不算独立因果；其他链可以承接 USER 实际行动造成的后果，但不让整批都绕着同一个人设前提转。不写 {{user}} 与 {{char}} 的关系进退，不以长篇心理解释或原文摘要代替因果链，也不把无关巧合强连成阴谋。`,
+  chain_reactions: `每条用 3–5 个简短节点，以 → 串起具体原因、传导行动与后续影响，至少延伸到正文尚未呈现的一处结果；候选节点在必要处说明条件，不冒充既成事实。世事相牵关注影响如何跨过原来事务的边界：从当前叙事或有效世界格局的变化中选有传导价值的起因，沿资源、消息、规则、人际往来或自然条件进入别处，写受影响的人或群体怎样应对，继而改变谁的条件。可由宏观变化落到个人再反馈公共局面，由小事外溢，也可在另一处微小生活里沉淀；不规定每条都跨层、变大或升级灾难。每个箭头是一处有效转折，省略不改变影响去向的微动作和办事手续；不是把命运之脉换成个人视角重讲，或为同一既定主线补三份过程。
+
+至少一条体现真正的横向广度：从他人的具体事务起因，经其行动传到另一些人的生活条件，结尾仍属于他们，不回流为 {{user}} 的身份、名声、特殊能力或下一次相遇。同一人设母题换几位传话者、职业近义词或材料别名，不算独立因果；其他链可以承接 USER 实际行动造成的后果，但不让整批都绕着同一个人设前提转。不同链应打开不同的影响去向，不只是更换当前主线的参与者；主线与世界发生新变化时按实际作用重新取舍，不强制沿用上一轮或让一切相连。不写 {{user}} 与 {{char}} 的关系进退，不以长篇心理解释或原文摘要代替因果链，也不把无关巧合强连成阴谋。`,
 
   relation_undercurrents: `每条围绕 2–3 位明确参与者，用精炼内容写出一项不同步的理解、期待或立场，以及影响相处的一次具体表现。三条中至少一条是双人关系、至少一条是三人关系，剩余一条按素材决定；至少两条是配角之间的关系，双方或三方均不以 {{user}}、{{char}} 为中心。本栏不承担 USER–CHAR 两人关系，也不能加入第三人规避这一边界。其他人物并非都围着 CHAR 生活。沿正在发生的交易、职责、邻里往来或共同利益自然引入有自己打算的新参与者，不把角色卡名单当作全部人口；已有联系可延续，新联系也可在当下建立，不必倒造与主角的旧缘。新角入场开关是额外的新角供给要求，不是关闭时禁止世界出现普通新人物；明确封闭设定仍优先。信任、摩擦、默契和顾虑自然分配，不重复解释同一段对话，不输出用户知情程度的额外标签。没有依据的疑问仍是疑问，不暗定人物有罪。`,
 
@@ -177,26 +179,28 @@ export const CREATIVE_GUIDES = Object.freeze({
 
 番外与主线有可辨认的物件、决定、关系或后果相连，但不复述正文梗概，不承担主线解释或替读者揭谜。相连也可以是同一地点的另一段生活、某项行动的日常余波或彼此映照的选择；当前谜团未解时，不借回溯补齐未获来源支持的身份、责任与事件起因，也不把主角的籍贯、职业或手艺倒填进事件源头。结尾停在已经发生的动作、对话、物件或新处境上，让余味来自具体生活；不要用抽象升华、未来预告或“命运会继续”“一切终将……”之类的总结句收尾。情绪由内容决定，轻快、平静、遗憾、热烈或荒诞都可成立；无须标题，不追踪分支，不反写主线。番外事实仅在此幕内成立。`,
 
-  interlude: `幕间拾趣每轮按指定的世界论坛或角色手机形式生成一张独立趣味卡，所有字段只写安全纯文本，不输出 HTML。取景这个世界里不同人的生活圈，换话题也换观看位置，不默认从主角身边或当前主线事务取材，不固定围绕阴谋、热搜或主角点评。主要话题从说话者自己的生活需求、闲趣和分歧中取材，而不是把 USER 的职业、来历、能力改成多个匿名话题；主线相关的交流须有真实传播路径，角色私密人设不自动成为公共知识。让交流本身有趣：错频的回答、熟人默契、小小争执、意外同好、认真求助都能成篇，无须每次制造笑点。遵守世界的时代与明确人物边界，允许创作有自身生活的旁页人物；新增往来仅在这张趣味卡内成立，不冒充已知来源，也不承担主线进度通报或揭开谜底。`,
+  interlude: `幕间拾趣每轮按指定的世界论坛或角色手机形式生成一张独立趣味卡，所有字段只写安全纯文本，不输出 HTML。取景这个世界里不同人的生活圈，换话题也换观看位置，不默认从主角身边或当前主线事务取材，不固定围绕阴谋、热搜或主角点评。主要话题从说话者自己的生活需求、闲趣和分歧中取材，而不是把 USER 的职业、来历、能力改成多个匿名话题；主线相关的交流须有真实传播路径，角色私密人设不自动成为公共知识。让交流本身有趣：错频的回答、熟人默契、小小争执、意外同好、认真求助都能成篇，无须每次制造笑点。遵守世界的时代与明确人物边界，允许创作有自身生活的旁页人物；新增往来仅在这张趣味卡内成立，不冒充已知来源，也不承担主线进度通报或揭开谜底。
+
+论坛和公开社交页中，昵称与 handle 是两种标识，不能把昵称原样加 @ 充当 ID。同一账号在帖子与回复里保持标识稳定；昵称可口语、抽象、玩梗或一本正经，ID 可来自旧网名、缩写、兴趣或随手组合，彼此可以有反差，不把职业标签批量变成账号，也不让所有人使用同一套命名花样。让时代与平台决定网感；熟人页的联系人备注无需强行网名化，非网络世界不硬塞现代 ID。`,
 
   forum: `至少生成 ${CREATIVE_DETAIL_COUNTS.forumPosts.min} 帖，每帖有作者、显示称呼、正文、时代适配的时间和 ${CREATIVE_DETAIL_COUNTS.forumReplies.min}–${CREATIVE_DETAIL_COUNTS.forumReplies.max} 条有来有往的回复。每帖的回复数从允许范围内自然变化，不得每帖都固定为同一个数量；至少一处让楼主二次回应，至少一处让回复者接住另一位回复者的观点（可用 reply_to 或语义明确的接话）。title 是符合世界的论坛或社区名称，像居民真的会注册、常逛或随口提起的地方，带一点在地性与网感，而非本轮内容的文学章节名。各帖各有话题、兴趣和轻重，陌生网友与普通人的声音可以相遇；在题材和时代允许时，混入广告、自荐、唱反调、起哄、跑题、认真求助或不相干的日常，让社区像真实的人群而不是几条情报摘要。新增篇幅用来容纳不同生活圈与真实接话，不靠拆分一句话、换账号复述或把每帖都接回同一主线凑数。回复要接住上一句话，容纳口语、省略、误解与不同看法，不把同一事件换账号重复，也不把论坛变成主角动态墙或警方情报集散地。适用于网络的世界保留自然的网友口吻，其他时代可用告示栏、通信圈等公共交流形式，不强加现代网络术语。`,
 
-  phone: `手机所属者可选已有配角、路人或 CHAR，也可创作符合世界的旁页人物，不限于已出场名单；所有手机主人、发送者、动态作者和回复者排除 {{user}} 及其别名与身份映射。新人物有自己的交往与生活，不默认与 USER/CHAR 相识，其经历不是正文既定事实；也不要求每张卡都换人或造新人。视角不惯性停在主要角色的工作圈：已有角色也可与家人、朋友或同好聊私人关切，新人物也可有与主线无关的往来；私人生活须有自己的需求与趣味，不只是把工作汇报改群名、改人数。每幕只打开本轮指定的一种页面，不混写聊天、朋友圈与短博。用口吻、称呼、话题与接话带出人物自己的关系和生活，不强接主线；只在时代与人物确实适用手机或相应终端时出现。
+  phone: `手机所属者可选已有配角、路人或 CHAR，也可创作符合世界的旁页人物，不限于已出场名单；所有手机主人、发送者、动态作者和回复者排除 {{user}} 及其别名与身份映射。新人物有自己的交往与生活，不默认与 USER/CHAR 相识，其经历不是正文既定事实；也不要求每张卡都换人或造新人。以手机主人自己的交往来组织页面：认识 CHAR 不等于认识 CHAR 的家人、同事与朋友，相识、互加好友与关注也不自动传递。已有角色进入私人圈须有已知的直接联系或可合理说明的实际交点，不能只因同在设定名单就拼在一起；空白处可建立合设定的独立旁页交往，用称呼和接话自然交代来由，不倒造主要人物间的旧交。每位参与者都有脱离主角仍成立的关系、需求与生活，不只为主人凑热闹或给主线送素材。视角不惯性停在主要角色的工作圈：已有角色也可与家人、朋友或同好聊私人关切，新人物也可有与主线无关的往来；私人生活须有自己的需求与趣味，不只是把工作汇报改群名、改人数。每幕只打开本轮指定的一种页面，不混写聊天、朋友圈与短博。用口吻、称呼、话题与接话带出人物自己的关系和生活，不强接主线；只在时代与人物确实适用手机或相应终端时出现。
 
 可以引用正文已发生的公开往来；不得借转发、截图或他人复述变相生成 USER 未确立的私信、发言与私密活动。`,
 
   phone_chat: `按本轮指定的私聊或群聊形式，至少生成 ${CREATIVE_DETAIL_COUNTS.phoneMessages.min} 条消息；私聊恰好两位说话者，群聊至少两位，每条明确发送者、内容与时间。消息有长短、停顿与接续，留出澄清、回应或自然转题的空间，不把完整一句机械拆成数条凑数，也不要求每位说话者平均发言。title 在群聊时就是群名，在私聊时就是对方的联系人显示名，不写文学章节标题；本页只用 messages，不生成动态 posts。`,
 
-  moments: `生成手机主人可见的朋友圈，至少 ${CREATIVE_DETAIL_COUNTS.phoneFeedPosts.min} 条动态，取景其朋友、家人、同好等熟人各自的生活，也可有主人自己的动态。发布者之间的熟悉、分寸和不同生活节奏通过内容与评论自然可见，不把每条动态都接回主人或主线。每条有作者、正文、时间及 ${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.min}–${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.max} 条回复，至少 ${CREATIVE_DETAIL_COUNTS.phoneCommentedPosts.min} 条动态有评论互动，其余可以无人评论；让接话有来由，不均摊回复或拆句凑数。title 使用“朋友圈”或符合世界的页面名；只输出 posts，不混入聊天消息。可附显示名与非负整数点赞数，不虚构真实账号或外链。`,
+  moments: `生成手机主人可见的朋友圈，至少 ${CREATIVE_DETAIL_COUNTS.phoneFeedPosts.min} 条动态，取景其朋友、家人、同好等熟人各自的生活，也可有主人自己的动态。先确定每位发布者为什么会在这部手机的好友圈里，再写其独立生活；朋友的同事、亲属或其他朋友并不因此成为主人的好友。评论者的熟悉程度、可见范围和话题知识各有依据，不把同屏出现的人默认写成彼此相熟。联系通过自然内容显露即可，不额外附关系证明或人物小传。发布者之间的熟悉、分寸和不同生活节奏通过内容与评论自然可见，不把每条动态都接回主人或主线。每条有作者、正文、时间及 ${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.min}–${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.max} 条回复，至少 ${CREATIVE_DETAIL_COUNTS.phoneCommentedPosts.min} 条动态有评论互动，其余可以无人评论；让接话有来由，不均摊回复或拆句凑数。title 使用“朋友圈”或符合世界的页面名；只输出 posts，不混入聊天消息。可附显示名与非负整数点赞数，不虚构真实账号或外链。`,
 
-  microblog: `生成手机主人浏览的短博页，至少 ${CREATIVE_DETAIL_COUNTS.phoneFeedPosts.min} 条公开动态，来自其关注的兴趣、创作者、普通人及自身表达。让陌生人的不同生活与观点自然相遇，保留简短分享、认真表达、轻微争执或偶然发现，不写成论坛换皮、主线情报墙或仅围主人工作的报道。每条有作者、正文、时间及 ${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.min}–${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.max} 条回复，至少 ${CREATIVE_DETAIL_COUNTS.phoneCommentedPosts.min} 条动态有评论互动，其余可以无人评论；回复接住内容，账号不轮流复述同一话题。title 使用“短博”或符合世界的页面名；只输出 posts，不混入聊天消息。可用虚构显示名、账号称呼与非负整数点赞数，不输出真实账号链接。`,
+  microblog: `生成手机主人浏览的短博页，至少 ${CREATIVE_DETAIL_COUNTS.phoneFeedPosts.min} 条公开动态，来自其关注的兴趣、创作者、普通人及自身表达，也可有符合其浏览兴趣的公共推荐；关注或推荐不代表私下相识。让陌生人的不同生活与观点自然相遇，保留简短分享、认真表达、轻微争执或偶然发现，不写成论坛换皮、主线情报墙或仅围主人工作的报道。每条有作者、正文、时间及 ${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.min}–${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.max} 条回复，至少 ${CREATIVE_DETAIL_COUNTS.phoneCommentedPosts.min} 条动态有评论互动，其余可以无人评论；回复接住内容，账号不轮流复述同一话题。title 使用“短博”或符合世界的页面名；只输出 posts，不混入聊天消息。提供虚构 display_name 与不同的 handle，同账号前后一致；可附非负整数点赞数，不输出真实账号链接。`,
 
   newcomer: `本轮新角入场已开启：在已启用栏目中明确引入此前尚未出现的全新人物，使其通过已有线索、事务、人物关系或行动后果进入故事，写清自己的动因和具体关联，不仅给旧角色加个别称。新角可以参与普通生活与局部事务，不要求世界级大事件。若明确封闭设定或人物禁限使新增必然越界，则保留有效内容并准确说明限制，不强塞陌生人。`,
 });
 
 export const CREATIVE_SECTION_LABELS = Object.freeze({
   story_status: '命运之脉', character_dynamics: '此间一人', npc_updates: '各自人间', quests: '预演',
-  chain_reactions: '涟漪', relation_undercurrents: '关系暗涌', world_chatter: '尘寰群生',
+  chain_reactions: '世事相牵', relation_undercurrents: '关系暗涌', world_chatter: '尘寰群生',
   geopolitics: '世界格局', parallel_scene: '未映之幕', interlude: '幕间拾趣',
   forum: '论坛', phone: '角色手机', phone_chat: '手机聊天', moments: '朋友圈', microblog: '短博', newcomer: '新角入场',
 });

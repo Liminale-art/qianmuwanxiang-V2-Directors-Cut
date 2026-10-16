@@ -6,7 +6,7 @@ const FIELDS = {
   character_dynamics: ['此间一人', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
   npc_updates: ['各自人间', ['title', 'name', 'content', 'description', 'current_goal', 'next_action']],
   world_updates: ['世界回声', ['title', 'type', 'content', 'scope', 'timing']],
-  chain_reactions: ['涟漪', ['spark', 'chain', 'impact']],
+  chain_reactions: ['世事相牵', ['spark', 'chain', 'impact']],
   relation_undercurrents: ['关系暗涌', ['title', 'parties', 'surface', 'undercurrent', 'tension', 'content']],
   parallel_scene: ['未映之幕', ['title', 'content']],
   interlude: ['幕间拾趣', ['title', 'owner', 'content']],

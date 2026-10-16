@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.455';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.456';
 import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.455';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.455';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.455';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.456';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.456';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -30,7 +30,9 @@ import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor}
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
-import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.455';
+import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.456';
+// Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
+import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
 import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
@@ -150,7 +152,6 @@ import {
   formatDateTime,
   widthToPad,
   computeWorldHeat,
-  heatTier,
   geoStableHash,
   geoRelationClass,
   computeVisibleWindow,
@@ -307,7 +308,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.455';
+const VERSION = '1.59.456';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -3068,7 +3069,7 @@ function buildPlanDigest(plan) {
   }
   if (sec.nodes !== false) {
     const chains = (plan.chain_reactions || []).map((c) => `- ${snip(c.spark, INJ_LEN.label)} → ${snip(c.chain, INJ_LEN.chain)}`).filter(Boolean);
-    if (chains.length) lines.push(`涟漪（由已有行动、线索与关系传导的影响）：\n${chains.join('\n')}`);
+    if (chains.length) lines.push(`世事相牵（由已有行动、线索与关系传导的影响）：\n${chains.join('\n')}`);
   }
   if (sec.npc !== false) {
     const character = (plan.character_dynamics || []).map((item) => `- ${snip(item.title || item.name, INJ_LEN.label)}：${snip(item.content || item.next_action || item.current_goal || item.hidden_agenda || item.relations, INJ_LEN.line)}`);
@@ -6997,7 +6998,7 @@ const EVENT_STAGE_CLS = { 酝酿: 'brew', 爆发: 'erupt', 蔓延: 'spread', 消
 // 其它关系保留文字，避免第一次查看世界格局时需要猜测语义。
 function geoRelationKindMarkup(kind) {
   if (kind === '冲突') return '<span class="sd-geo-rel-icon sd-geo-rel-icon-conflict" role="img" aria-label="冲突" title="冲突"><i class="fa-solid fa-bolt" aria-hidden="true"></i></span>';
-  return `<b>${htmlEscape(kind)}</b>`;
+  return `<b>${htmlEscape(geoRelationLabel(kind))}</b>`;
 }
 
 // 世界温度：由关系张力 + 事件烈度合成 0-100，映射四档态势
@@ -7013,12 +7014,6 @@ function geoRelationKindMarkup(kind) {
 //   return Math.max(0, Math.min(100, Math.round(heat)));
 // }
 // heatTier - 已迁移到 qianmu-storyboard-utils.js
-// function heatTier(heat) {
-//   if (heat >= 72) return { key: 'boil', label: '鼎沸', desc: '多方火并，世界沸反盈天' };
-//   if (heat >= 45) return { key: 'turmoil', label: '动荡', desc: '冲突四起，暗潮已掀明浪' };
-//   if (heat >= 20) return { key: 'undercurrent', label: '暗流', desc: '表面平静，底下各有盘算' };
-//   return { key: 'calm', label: '承平', desc: '大势安稳，余波细微' };
-// }
 
 // geoStableHash - 已迁移到 qianmu-storyboard-utils.js
 // function geoStableHash(value) {
@@ -7185,7 +7180,7 @@ function renderFactionStarMap(factions, rels, activeEvents = []) {
     const d = `M${p1.x},${p1.y} Q${ctrlX},${ctrlY} ${p2.x},${p2.y}`;
     const key = [rel.a, rel.b].sort().join('::'), primary = primaryKeys.has(key), kindCls = geoRelationClass(rel.kind);
     const marker = rel.kind === '依附' ? ' marker-end="url(#sd-geo-arrow)"' : '';
-    const title = `${factions[a].name} · ${rel.kind} · ${factions[b].name}${rel.note ? `\n${rel.note}` : ''}`;
+    const title = `${factions[a].name} · ${geoRelationLabel(rel.kind)} · ${factions[b].name}${rel.note ? `\n${rel.note}` : ''}`;
     const flowDelay = -(geoStableHash(key) % 90) / 10;
     edgeMeta.push({ rel, d, key });
     return `<g class="sd-geo-edge sd-geo-edge-${kindCls} ${primary ? 'sd-geo-edge-primary' : 'sd-geo-edge-secondary'}${selectedKinds.has(rel.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(rel.kind)}" data-ea="${htmlEscape(rel.a)}" data-eb="${htmlEscape(rel.b)}">`
@@ -7280,10 +7275,10 @@ function renderFactionDossierBody(f, factions, rels, view = 'list') {
     const other = r.a === f.id ? r.b : r.a;
     const otherName = byId.get(other)?.name || '某势力';
     const direction = r.kind === '依附'
-      ? (r.a === f.id ? `依附于 ${otherName}` : `${otherName} 依附于此`)
+      ? (r.a === f.id ? `依赖于 ${otherName}` : `${otherName} 依赖于此`)
       : otherName;
     return `<li class="sd-geo-dossier-relation ${relationClass}${selectedKinds.has(r.kind) ? '' : ' sd-kind-hidden'}" data-kind="${htmlEscape(r.kind)}">
-      <div class="sd-geo-dossier-relation-head"><strong>${htmlEscape(direction)}</strong><span class="sd-geo-d-kind">${htmlEscape(r.kind)}</span></div>
+      <div class="sd-geo-dossier-relation-head"><strong>${htmlEscape(direction)}</strong><span class="sd-geo-d-kind">${htmlEscape(geoRelationLabel(r.kind))}</span></div>
       ${r.note ? `<p class="sd-geo-d-rtext">${htmlEscape(r.note)}</p>` : ''}
     </li>`;
   }).join('');
@@ -7344,7 +7339,7 @@ function renderGeopoliticsTab() {
   const relTally = rels.reduce((m, r) => { m[r.kind] = (m[r.kind] || 0) + 1; return m; }, {});
   const selectedKinds = new Set(geoRelationKindsSelected());
   const tallyChips = FACTION_RELATION_KINDS.filter((k) => relTally[k]).map((k) =>
-    `<button type="button" class="sd-geo-chip sd-geo-filter${selectedKinds.has(k) ? ' active' : ''}" data-kind="${k}" aria-pressed="${selectedKinds.has(k)}"><i style="background:${GEO_REL_COLOR[k]}"></i>${k} ${relTally[k]}</button>`).join('');
+    `<button type="button" class="sd-geo-chip sd-geo-filter${selectedKinds.has(k) ? ' active' : ''}" data-kind="${k}" aria-pressed="${selectedKinds.has(k)}"><i style="background:${GEO_REL_COLOR[k]}"></i>${geoRelationLabel(k)} ${relTally[k]}</button>`).join('');
 
   const bandHtml = `<section class="sd-geo-band sd-geo-tier-${tier.key}">
     ${readOnly ? `<p class="sd-muted sd-geo-preview-label">${directorLiveLog?.status === 'loading' ? '生成中' : '未完成'} · 只读预览</p>` : ''}
@@ -7588,7 +7583,7 @@ function renderGenerateRow() {
 function renderDashboardTab() {
   const p = directorDisplayPlan();
   if (!p) {
-    return `<section class="sd-card sd-plan-card"><div class="sd-hero-top"><h3 style="margin:0">剧情推演</h3>${renderHeroActions(false)}</div><div class="sd-empty">尚未推演剧情</div>${renderGenerateRow()}</section>
+    return `<section class="sd-card sd-plan-card"><div class="sd-hero-top"><h3 style="margin:0">剧情推演</h3>${renderHeroActions(false)}</div><div class="sd-empty">尚未生成</div>${renderGenerateRow()}</section>
     ${renderHistorySection()}`;
   }
   const st = p.story_status || {};
@@ -7627,7 +7622,7 @@ function renderDirectorExtraCard(value, kind, plan = directorDisplayPlan()) {
   </section>`;
 }
 
-// 涟漪承接实际起因与传播；只按显式箭头分段，不截断叙事情境。
+// 世事相牵承接实际起因与传播；只按显式箭头分段，不截断叙事情境。
 function renderChainReactionsCard(p) {
   const list = Array.isArray(p.chain_reactions) ? p.chain_reactions : [];
   const notice = renderDirectorSectionNotice(p, 'chain_reactions');
@@ -7655,7 +7650,7 @@ function renderChainReactionsCard(p) {
   if (!body && !notice) return '';
   return `<section class="sd-card sd-chain-card">
     <details class="sd-plain-fold" data-acc="tnfold-chain" open>
-      <summary class="sd-director-notice-row"><b>涟漪</b>${notice}</summary>
+      <summary class="sd-director-notice-row"><b>世事相牵</b>${notice}</summary>
       <div class="sd-fold-body">${body}</div>
     </details>
   </section>`;
@@ -8640,7 +8635,7 @@ function bindStorageManagementEvents(root) {
 
 function renderTasksNodesTab() {
   const p = directorDisplayPlan();
-  if (!p) return renderNoPlan('预演尚未生成');
+  if (!p) return renderNoPlan();
   return `${renderPlanSectionFold('预演', p.quests || [], 'quest', 'tnfold-quest', p._streamPreview)}${renderChainReactionsCard(p)}`;
 }
 
@@ -8663,7 +8658,7 @@ function renderWorldPageEdges() {
 
 function renderCastWorldFront() {
   const p = directorDisplayPlan();
-  if (!p) return renderNoPlan('角色世界尚未生成');
+  if (!p) return renderNoPlan();
   const legacyWorld = Array.isArray(p.world_updates) && p.world_updates.length
     ? renderPlanSectionFold('世界回声', p.world_updates, 'world', 'castfold-world', p._streamPreview) : '';
   return `${renderWorldChatterCard(p)}${renderPlanSectionFold('此间一人', p.character_dynamics || [], 'character', 'castfold-character', p._streamPreview)}${renderPlanSectionFold('各自人间', p.npc_updates || [], 'npc', 'castfold-npc', p._streamPreview)}${renderRelationUndercurrentsCard(p)}${legacyWorld}`;
@@ -8809,12 +8804,12 @@ function renderWorldChatterCard(p) {
   </section>`;
 }
 
-function renderNoPlan(text = '尚未推演剧情') {
-  return `<section class="sd-card sd-plan-card"><div class="sd-empty">${htmlEscape(text)}<p class="sd-muted">前往「审片」页点击推演下一幕</p></div></section>`;
+function renderNoPlan() {
+  return '<section class="sd-card sd-plan-card"><div class="sd-empty">尚未生成<p class="sd-muted">前往「审片」页点击推演下一幕</p></div></section>';
 }
 
 function renderItemList(items, kind, readOnly = false) {
-  if (!items.length) return '<p class="sd-muted">暂无</p>';
+  if (!items.length) return '<p class="sd-muted sd-director-empty">尚未生成</p>';
   return items.map((item, idx) => renderItemCard(item, kind, idx, readOnly)).join('');
 }
 
@@ -9089,7 +9084,7 @@ function renderInjectSections() {
   const legacyWorld = currentPlan()?.world_updates;
   const items = [
     ['quests', '预演'],
-    ['nodes', '涟漪'],
+    ['nodes', '世事相牵'],
     ['npc', '动向'],
     ['relations', '关系'],
   ];

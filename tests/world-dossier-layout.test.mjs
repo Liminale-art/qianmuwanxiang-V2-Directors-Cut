@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
-import { htmlEscape, geoStableHash } from '../qianmu-storyboard-utils.js';
+import { htmlEscape, geoStableHash, geoRelationLabel } from '../qianmu-storyboard-utils.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const context = vm.createContext({
-  htmlEscape, geoStableHash,
+  htmlEscape, geoStableHash, geoRelationLabel,
   geoRelationKindsSelected: () => ['同盟', '冲突', '依附'],
   GEO_TREND_ICON: { stable: '＝' }, GEO_TREND_CN: { stable: '稳守' },
 });
@@ -31,10 +31,10 @@ test('map and list share full prose while clues remain exclusively in the star-m
   assert.doesNotMatch(map, /sd-geo-dossier-clues|<h5>线索/);
   assert.deepEqual(factions[0].clues, ['第一条线索', '第二条完整线索']);
   assert.match(storyboardFunctionSource('renderFactionStarMap'), /f\.clues/);
-  assert.match(map, /sd-geo-dossier-relation-head[^]*<strong>林地联盟<\/strong><span class="sd-geo-d-kind">同盟<\/span><\/div>\s*<p class="sd-geo-d-rtext">/);
-  assert.match(map, /林地联盟 依附于此/);
+  assert.match(map, /sd-geo-dossier-relation-head[^]*<strong>林地联盟<\/strong><span class="sd-geo-d-kind">协作<\/span><\/div>\s*<p class="sd-geo-d-rtext">/);
+  assert.match(map, /林地联盟 依赖于此/);
   assert.match(map, /sd-kind-hidden" data-kind="张力"/);
-  assert.match(map, /sd-geo-d-kind">同盟<\/span>/);
+  assert.match(map, /sd-geo-d-kind">协作<\/span>/);
 });
 
 test('dossier content is escaped and empty sections do not produce placeholder cards', () => {

@@ -27,7 +27,7 @@ await context.route('**/*',async route=>{
 try{
   await page.goto('https://qianmu.test/');await page.evaluate(async source=>{
     const [utils,{createQianmuAppearanceSession},{updateAppearancePreferences},{applyQianmuIcons}]=await Promise.all([import('/qianmu-storyboard-utils.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),import('/qianmu-icon-renderer.js')]);
-    for(const key of ['computeWorldHeat','heatTier','geoStableHash','geoRelationClass','snip','htmlEscape','sanitizeEventStage','EVENT_STAGE_LADDER'])window[key]=utils[key];
+    for(const key of ['computeWorldHeat','heatTier','geoStableHash','geoRelationClass','geoRelationLabel','snip','htmlEscape','sanitizeEventStage','EVENT_STAGE_LADDER'])window[key]=utils[key];
     window.applyQianmuIcons=applyQianmuIcons;window.getChatStore=()=>worldFixture;window.settings={theme:'dark',geopoliticsEnabled:true};window.activeTab='castworld';window.worldPage='geopolitics';
     window.directorLiveLog=null;Object.assign(window,await import('/qianmu-director-live.js'));
     window.calls={settings:0,confirmation:0,forbidden:0};window.saveSettings=()=>calls.settings++;window.confirmDialog=async()=>{calls.confirmation++;return false;};
@@ -70,7 +70,13 @@ try{
     ok(label+' section headings are compact neutral-gray labels',await page.locator('.sd-geo-detail .sd-geo-dossier-section > h5').evaluateAll(nodes=>nodes.length===3&&nodes.every(node=>{const style=getComputedStyle(node),rgb=style.color.match(/[\d.]+/g).slice(0,3).map(Number);return Math.max(...rgb)-Math.min(...rgb)<=10&&style.fontWeight==='400'&&parseFloat(style.borderRadius)>=20&&node.offsetWidth<node.parentElement.clientWidth/2&&mapTextContrast(node)>=4.5;})));
     ok(label+' relation types sit at the right as small event-style pills',await page.locator('.sd-geo-detail .sd-geo-dossier-relation-head').evaluateAll(nodes=>nodes.length>0&&nodes.every(node=>{const kind=node.querySelector('.sd-geo-d-kind'),name=node.querySelector('strong'),style=getComputedStyle(kind),event=getComputedStyle(document.querySelector('.sd-evt-badge'));return kind.previousElementSibling===name&&Math.abs(kind.getBoundingClientRect().right-node.getBoundingClientRect().right)<.6&&style.borderRadius===event.borderRadius&&style.padding===event.padding&&style.fontSize===event.fontSize&&node.scrollWidth<=node.clientWidth+1;})));
     ok(label+' faction status follows its title and wraps without overlapping close',await page.locator('.sd-geo-detail .sd-geo-unit-title').evaluate(node=>{const title=node.querySelector('h4'),trend=node.querySelector('.sd-geo-d-trend'),a=title.getBoundingClientRect(),b=trend.getBoundingClientRect();return trend.previousElementSibling===title&&getComputedStyle(node).flexWrap==='wrap'&&node.scrollWidth<=node.clientWidth+1&&(b.top>=a.bottom-1||(b.left>=a.right&&b.top<a.bottom));}));
-    ok(label+' dossier paragraphs use normal weight and all relation kinds have visible words',await page.locator('.sd-geo-detail').evaluate(node=>[...node.querySelectorAll('.sd-geo-dossier p')].every(p=>getComputedStyle(p).fontWeight==='400')&&[...node.querySelectorAll('.sd-geo-d-kind')].every(kind=>['同盟','冲突','依附','张力','中立'].includes(kind.textContent))));
+    ok(label+' dossier paragraphs use normal weight and genre-neutral relationship labels',await page.locator('.sd-geo-detail').evaluate(node=>[...node.querySelectorAll('.sd-geo-dossier p')].every(p=>getComputedStyle(p).fontWeight==='400')&&[...node.querySelectorAll('.sd-geo-d-kind')].every(kind=>['协作','冲突','依赖','张力','中立'].includes(kind.textContent))));
+    ok(label+' neutral temperature and collaboration labels preserve existing filter codes',await page.evaluate(()=>{
+      const band=document.querySelector('.sd-geo-band');
+      return band.querySelector('.sd-geo-tier-label').textContent==='高涨'&&band.querySelector('.sd-geo-tier-desc').textContent==='多重变化集中交汇'
+        &&band.querySelector('[data-kind="同盟"]').textContent.trim()==='协作 1'&&band.querySelector('[data-kind="依附"]').textContent.trim()==='依赖 1'
+        &&document.querySelector('.sd-geo-edge[data-kind="同盟"] title').textContent.includes(' · 协作 · ');
+    }));
     if(width===393||family==='glass'){
       const originalViewport=page.viewportSize(),detailHeight=await page.locator('.sd-geo-detail').evaluate(node=>node.getBoundingClientRect().height);
       if(detailHeight>originalViewport.height-80)await page.setViewportSize({...originalViewport,height:Math.ceil(detailHeight)+120});

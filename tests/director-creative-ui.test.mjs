@@ -138,7 +138,7 @@ test('character paragraph order is summarized in the card header without an inli
   assert.match(styles, /\.sd-item-character \.sd-director-paragraph\[data-selection-order\][^}]*display:\s*none/);
 });
 
-test('character affair titles use escaped right-aligned tags and separators without changing disclosure or paragraphs', () => {
+test('character affair titles use escaped right-aligned tags and slash/dot decoration without changing disclosure or paragraphs', () => {
   const { c } = fixture(null), item = { name: '陈晖', title: '<旧信>与未完成的交接', content: '他把两份记录放在桌上。' };
   const html = c.renderItemCard(item, 'character', 0);
   assert.match(html, /<h4><span class="sd-character-title">&lt;旧信&gt;与未完成的交接<\/span><\/h4>/);
@@ -149,9 +149,20 @@ test('character affair titles use escaped right-aligned tags and separators with
   assert.match(preview, /sd-character-title/);
   assert.doesNotMatch(preview, /data-director-paragraph|sd-selection-order-card|sd-world-media-entry/);
   assert.match(styles, /\.sd-item-card\.sd-item-character\s*\{[^}]*border:\s*0 !important[^}]*border-radius:\s*0 !important[^}]*background:\s*transparent !important/);
-  assert.match(styles, /\.sd-item-card\.sd-item-character \+ \.sd-item-card\.sd-item-character\s*\{[^}]*border-top:\s*1px solid var\(--sd-border\)/);
-  assert.match(styles, /\.sd-item-character \.sd-item-summary-main h4::before\s*\{[^}]*content:\s*''[^}]*min-width:\s*12px[^}]*border-top:\s*1px solid var\(--sd-border\)/);
+  assert.doesNotMatch(styles, /\.sd-item-card\.sd-item-character \+ \.sd-item-card\.sd-item-character\s*\{[^}]*border-top/);
+  assert.match(styles, /\.sd-item-character \.sd-item-summary-main h4::before\s*\{[^}]*content:\s*''[^}]*border-left:\s*1px solid var\(--sd-accent\)[^}]*transform:\s*skew/);
+  assert.match(styles, /\.sd-item-character \.sd-item-summary-main h4::after\s*\{[^}]*min-width:\s*12px[^}]*radial-gradient\(circle/);
   assert.match(styles, /\.sd-character-title\s*\{[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*anywhere/);
+});
+
+test('generated-content empties use one short label without changing missing or disabled explanations', () => {
+  const { c } = fixture(null);
+  for (const html of [c.renderDashboardTab(), c.renderTasksNodesTab(), c.renderCastWorldFront(), c.renderItemList([], 'character'), renderCreativeSocialCard(null)]) {
+    assert.match(html, /尚未生成/);
+    assert.doesNotMatch(html, /尚未推演剧情|预演尚未生成|角色世界尚未生成|>暂无</);
+  }
+  assert.match(styles, /--qm-type-empty:\s*calc\(var\(--qm-type-body, 12px\) \* 1\.05\)/);
+  assert.match(styles, /\.sd-social-empty\s*\{[^}]*font-size:\s*var\(--qm-type-empty\) !important/);
 });
 
 test('character life and other people are independent sections, with distinct selection ids and legacy world reading retained', () => {
@@ -231,7 +242,7 @@ test('empty identity metadata emits no placeholder rows and escaped identities r
 test('ripples keep full consequences and do not manufacture extra nodes by splitting natural connective words', () => {
   const chain = '邮路改道，进而让原本错开的两班车在桥头相遇。'.repeat(5), { c } = fixture(null);
   const html = c.renderChainReactionsCard({ chain_reactions: [{ spark: '一座桥暂停通行', chain }] });
-  assert.match(html, /<b>涟漪<\/b>/); assert.ok(html.replace(/<[^>]+>/g, '').includes(chain));
+  assert.match(html, /<b>世事相牵<\/b>/); assert.ok(html.replace(/<[^>]+>/g, '').includes(chain));
   assert.match(html, /class="sd-chain-link-head"><span class="sd-chain-link" aria-hidden="true">→<\/span>邮路/);
   assert.match(html, /sd-chain-node sd-chain-node-spark" data-chain-depth="0"/);
   assert.match(html, /sd-chain-node" data-chain-depth="1"/);

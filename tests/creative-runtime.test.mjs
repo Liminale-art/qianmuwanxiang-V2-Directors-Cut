@@ -538,3 +538,41 @@ test('exact v454 defaults migrate for narrative pacing while DIY, backups and sa
     sandbox.upgradeCreativeBlueprint(manualStore, next.blueprint, 455); assert.equal(manualStore.blueprint, 'v454-blueprint。');
   }
 });
+
+test('exact v455 observation and pacing defaults migrate without rewriting private prompts or saved worlds', () => {
+  // Measured from shipped c7110d38. Its schema was unchanged from v454.
+  const fingerprints = { 'v455-system': '355e4aed', 'v455-schema': 'f57a17f7', 'v455-blueprint': '370762df' };
+  const sandbox = { hashText: value => fingerprints[value] || hashText(value) };
+  vm.createContext(sandbox);
+  const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
+  vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
+  for (const marker of [undefined, '__legacy__']) {
+    const settings = { systemPrompt: 'v455-system', outputSchemaText: 'v455-schema',
+      appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      systemPromptBackup: 'v455-system', outputSchemaBackup: 'v455-schema',
+      templates: [{ id: 'default-free-blueprint', content: 'v455-blueprint' }, { id: 'mine', content: 'v455-blueprint' },
+        { id: 'default-free-blueprint', content: 'v455-blueprint', edited: true }] };
+    sandbox.upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt); assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    assert.equal(settings.templates[0].content, next.blueprint); assert.equal(settings.templates[1].content, 'v455-blueprint');
+    assert.equal(settings.templates[2].content, 'v455-blueprint'); assert.equal(settings.systemPromptBackup, 'v455-system');
+    assert.equal(settings.outputSchemaBackup, 'v455-schema');
+    const after = structuredClone(settings); sandbox.upgradeCreativeDefaults(settings, next); assert.deepEqual(settings, after);
+    const store = { blueprint: 'v455-blueprint', appliedBlueprintDefaultHash: marker, blueprintBackup: 'v455-blueprint',
+      plan: { interlude: { type: 'phone', view_type: 'moments', owner: '旧旁页人物' } },
+      history: [{ chain_reactions: [{ spark: '旧起因', chain: '旧链原文' }] }], factions: [{ id: 'old', name: '旧组织' }], worldEvents: [{ title: '旧世界变化' }] };
+    const beforeStore = structuredClone(store);
+    sandbox.upgradeCreativeBlueprint(store, next.blueprint, 456);
+    assert.equal(store.blueprint, next.blueprint);
+    for (const field of ['blueprintBackup', 'plan', 'history', 'factions', 'worldEvents']) assert.deepEqual(store[field], beforeStore[field]);
+    for (const edited of [false, true]) {
+      const custom = { systemPrompt: 'v455-system。', outputSchemaText: 'v455-schema。', appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+        templates: [{ id: 'default-free-blueprint', content: 'v455-blueprint。', edited }] };
+      const before = structuredClone(custom); sandbox.upgradeCreativeDefaults(custom, next);
+      assert.equal(custom.systemPrompt, before.systemPrompt); assert.equal(custom.outputSchemaText, before.outputSchemaText);
+      assert.deepEqual(custom.templates, before.templates);
+      const manualStore = { blueprint: 'v455-blueprint。', blueprintEdited: edited, appliedBlueprintDefaultHash: fingerprints['v455-blueprint'] };
+      sandbox.upgradeCreativeBlueprint(manualStore, next.blueprint, 456); assert.equal(manualStore.blueprint, 'v455-blueprint。');
+    }
+  }
+});
