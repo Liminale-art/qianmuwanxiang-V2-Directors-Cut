@@ -308,7 +308,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.456';
+const VERSION = '1.59.457';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -3112,6 +3112,8 @@ function currentDirectorInjectionText(plan = getChatStore()?.plan) {
 // 写明「处处皆是却不点破」——大势是余波的来处，落到个体耳边时绝不直说源头在两层之上。
 function buildGeopoliticsDigest() {
   const store = getChatStore();
+  const world = prepareDirectorWorldRun(store, ctx().chat);
+  if (world.mode === 'blocked' || (world.mode === 'reroll' && world.node.hash !== store.geoNodeCheckpoint?.node.hash)) return '';
   const factions = Array.isArray(store.factions) ? store.factions : [];
   const events = (Array.isArray(store.worldEvents) ? store.worldEvents : []).filter((e) => e.status !== 'closed');
   const rels = Array.isArray(store.factionRelations) ? store.factionRelations : [];
@@ -3238,6 +3240,56 @@ function directorSameFloorReroll(store = getChatStore()) {
   return Boolean((store?.plan || planLength > 0 || archivedCandidates) && Number.isInteger(plannedFloor) && plannedFloor >= 0 && floor <= plannedFloor);
 }
 
+// One entering-node snapshot, not a second world archive or a branch history.
+// Synthetic prompt injections and display-only metadata cannot advance story time.
+function directorWorldNode(chat, limit) {
+  const rows = (Array.isArray(chat) ? chat : []).filter(message => message?.extra?.qianmu_injected !== true)
+    .map(message => [String(message?.name || ''), Boolean(message?.is_user), Boolean(message?.is_system), String(message?.mes || '')]);
+  const selected = limit === undefined ? rows : rows.slice(0, limit);
+  return { length: selected.length, hash: hashText(JSON.stringify(selected)), parentHash: hashText(JSON.stringify(selected.slice(0, -1))) };
+}
+
+function captureGeopoliticsArchive(store) {
+  return JSON.parse(JSON.stringify({
+    factions: Array.isArray(store?.factions) ? store.factions : [],
+    factionRelations: Array.isArray(store?.factionRelations) ? store.factionRelations : [],
+    worldEvents: Array.isArray(store?.worldEvents) ? store.worldEvents : [],
+    geoSeq: Number(store?.geoSeq) || 0,
+  }));
+}
+
+function prepareDirectorWorldRun(store, chat) {
+  const node = directorWorldNode(chat), checkpoint = store?.geoNodeCheckpoint;
+  const blocked = () => ({ node, mode: 'blocked', base: null, reference: null });
+  if (checkpoint == null) {
+    // Legacy records have no before-node state. Preserve them as the first base,
+    // but do not reintroduce their candidate contents into an initial reroll.
+    const oldLength = Number(store?.planAtLen) || (Number.isInteger(store?.lastPlanIdx) ? store.lastPlanIdx + 1 : 0);
+    const hasWorld = ['factions', 'worldEvents', 'factionRelations'].some(field => store?.[field]?.length);
+    if (hasWorld && oldLength > (Array.isArray(chat) ? chat.length : 0)) return blocked();
+    const base = captureGeopoliticsArchive(store), referenceAllowed = !directorSameFloorReroll(store);
+    return { node, mode: 'initial', base, referenceAllowed, reference: referenceAllowed ? base : null };
+  }
+  const previous = checkpoint.node, base = checkpoint.base;
+  if (checkpoint.version !== 1 || !Number.isInteger(previous?.length) || previous.length < 0
+    || typeof previous.hash !== 'string' || typeof previous.parentHash !== 'string'
+    || !base || !['factions', 'factionRelations', 'worldEvents'].every(field => Array.isArray(base[field]))
+    || !Number.isFinite(base.geoSeq) || base.geoSeq < 0
+    || checkpoint.archiveHash !== hashText(JSON.stringify(captureGeopoliticsArchive(store)))) return blocked();
+  if (node.length === previous.length && node.parentHash === previous.parentHash) {
+    const referenceAllowed = checkpoint.referenceAllowed === true;
+    const copy = captureGeopoliticsArchive(base);
+    return { node, mode: 'reroll', base: copy, referenceAllowed, reference: referenceAllowed ? copy : null };
+  }
+  if (node.length > previous.length && directorWorldNode(chat, previous.length).hash === previous.hash) {
+    const copy = captureGeopoliticsArchive(store);
+    return { node, mode: 'advance', base: copy, referenceAllowed: true, reference: copy };
+  }
+  // A current-node baseline cannot reconstruct an earlier branch. Do not feed
+  // future state into it or overwrite the user's archive with a guessed reset.
+  return blocked();
+}
+
 let directorMemoryHostModule = null;
 async function prepareDirectorMemoryHost() {
   if (directorMemoryHostModule) return;
@@ -3285,7 +3337,7 @@ function directorSourceFingerprint() {
     hostModel: settings.providerMode === 'sillytavern' ? [context.mainApi, context.getChatCompletionModel?.(), hostModelSettings] : null,
     continuity: projectCreativeContinuity(getChatStore().plan),
     interludeVariety: settings.interludeEnabled !== false ? recentInterludeHint(getChatStore().plan?.interlude) : '',
-    geopolitics: settings.geopoliticsEnabled ? [getChatStore().factions, getChatStore().factionRelations, getChatStore().worldEvents] : null,
+    geopolitics: settings.geopoliticsEnabled ? [getChatStore().factions, getChatStore().factionRelations, getChatStore().worldEvents, getChatStore().geoSeq, getChatStore().geoNodeCheckpoint] : null,
     features: [settings.worldChatterEnabled, settings.geopoliticsEnabled, settings.parallelSceneEnabled, settings.interludeEnabled, settings.newcomerMode],
     memory: directorMemorySnapshot().snapshot?.fingerprint || '',
   }));
@@ -3297,6 +3349,10 @@ async function buildPrompt(run = {}) {
   if (!contextScanCache.worldScannedAt) await refreshWorldBooks(false);
   const sourceAtStart = directorSourceFingerprint();
   const store = getChatStore(), segments = [];
+  run.world = settings.geopoliticsEnabled || store.geoNodeCheckpoint ? prepareDirectorWorldRun(store, ctx().chat) : null;
+  if (settings.geopoliticsEnabled && run.world.mode === 'blocked') {
+    throw Object.assign(new Error('世界格局与当前正文节点无法安全续接。请关闭世界格局后推演，或清空世界格局后重新生成；原档案未改动。'), { code: 'WORLD_NODE_MISMATCH' });
+  }
   const worldText = await buildWorldContextText();
   const charName = await resolveMacro(getCharacterName()), personaName = await resolveMacro(getPersonaName());
   const history = directorHistorySelection();
@@ -3309,7 +3365,7 @@ async function buildPrompt(run = {}) {
   const referenceText = references.join('\n\n');
   const budget = Number(settings.contextBudget || 0);
   if (budget > 0 && estimateTokens(referenceText) > budget) throw new Error('所选正文与记忆超过当前上下文预算，请调整选取范围或预算后重试。未裁切、未提交。');
-  const sameFloorReroll = directorSameFloorReroll(store);
+  const sameFloorReroll = directorSameFloorReroll(store) || ['reroll', 'blocked'].includes(run.world?.mode);
   run.sameFloorReroll = sameFloorReroll;
   run.rerollSeed = sameFloorReroll ? uid('director-reroll') : '';
   run.creativeOptions = selectCreativeOptions(settings, {
@@ -3332,12 +3388,10 @@ async function buildPrompt(run = {}) {
   } else if (sameFloorReroll) {
     segments.push('【同楼层独立重推演】\n这是当前正文节点（同层重推或回退后）的重新取向。本次不得引用、复述或延续上一条推演的候选方向；请把上一条候选视为不存在，只依据正文、有效记忆与创作之律重新设计有效变化。允许改换冲突焦点、叙事视角、时间锚点与支线落点。独立批次标识：' + run.rerollSeed);
   }
-  // The live world archive contains generated candidates too. Sending it on
-  // a same-floor reroll would reintroduce the old branch through its clues,
-  // participants and motives after excluding store.plan above. Keep the
-  // archive intact; established prose/memory remain authoritative inputs.
-  if (settings.geopoliticsEnabled && !sameFloorReroll) {
-    const geo = buildGeopoliticsArchiveSegment(store);
+  // Rerolls see only the entering-node baseline, never the previous candidate
+  // at this node. Forward progression sees the last successfully saved world.
+  if (settings.geopoliticsEnabled && run.world.reference) {
+    const geo = buildGeopoliticsArchiveSegment(run.world.reference);
     if (geo) segments.push(geo);
   }
   segments.push(creativeSectionGuidance(run.creativeOptions));
@@ -3649,18 +3703,18 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   const resolveDirectorAccount = async () => {
     try { return await resolveImageAccountNamespace(); }
     catch (_) {
-      throw Object.assign(new Error(log.request
+      throw Object.assign(new Error(run.saved ? '暂无法核对当前 ST 账户，后续注入已停止。' : log.request
         ? '暂无法核对当前 ST 账户，本次推演原文已保留，未继续采用。'
         : '暂未确认当前 ST 账户，未提交推演，请稍后重试。'), { code: 'DIRECTOR_ACCOUNT_UNAVAILABLE' });
     }
   };
   const guard = async () => {
-    if (modelKeys.some((field, i) => settings[field] !== modelValues[i])) throw new Error('模型配置已变更，本次原文保留但未采用；请按新配置重新推演。');
+    if (modelKeys.some((field, i) => settings[field] !== modelValues[i])) throw new Error(run.saved ? '模型配置已变更，后续注入已停止。' : '模型配置已变更，本次原文保留但未采用；请按新配置重新推演。');
     if (!alive() || controller.signal.aborted || namespace && namespace !== await resolveDirectorAccount()) {
       controller.abort(); throw Object.assign(new Error('生成所属的聊天或账户已变化，未写入其他聊天'), { name: 'AbortError' });
     }
     if (!alive() || controller.signal.aborted) throw Object.assign(new Error('已取消生成'), { name: 'AbortError' });
-    if (run.sourceFingerprint && run.sourceFingerprint !== directorSourceFingerprint()) throw new Error('正文、记忆或创作设置已变化，本次原文保留但未采用；请重新推演。');
+    if (run.sourceFingerprint && run.sourceFingerprint !== directorSourceFingerprint()) throw new Error(run.saved ? '正文、记忆或创作设置已变化，后续注入已停止。' : '正文、记忆或创作设置已变化，本次原文保留但未采用；请重新推演。');
     return true;
   };
   const paintResponse = makeStreamLogUpdater(log);
@@ -3694,6 +3748,19 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     if (directorHasQualityNeeds(remaining)) {
       throw Object.assign(new Error('本次内容未完整达到栏目要求；已收内容可只读查看，缺项已记入日志。'), { code: 'MODEL_OUTPUT_INCOMPLETE' });
     }
+    // Assemble world changes off-store first: repeated rerolls use the same base
+    // and round, so discarded factions, clues, stages and trails cannot linger.
+    let nextWorld = null;
+    if (settings.geopoliticsEnabled) {
+      nextWorld = captureGeopoliticsArchive(run.world.base);
+      mergeGeopolitics(nextWorld, newPlan);
+      nextWorld.geoNodeCheckpoint = { version: 1, node: run.world.node,
+        base: captureGeopoliticsArchive(run.world.base), referenceAllowed: run.world.referenceAllowed,
+        archiveHash: hashText(JSON.stringify(nextWorld)) };
+    }
+    const saveFields = ['directorQuality', 'plan', 'directorPlanRevisionId', 'injectOverride', 'updatedAt', 'lastPlanIdx', 'planAtLen', 'history',
+      ...(nextWorld ? ['factions', 'factionRelations', 'worldEvents', 'geoSeq', 'geoNodeCheckpoint'] : [])];
+    const previousValues = new Map(saveFields.map(field => [field, { owned: Object.hasOwn(store, field), value: store[field] }]));
     const now = new Date().toISOString();
     store.directorQuality = {
       at: now,
@@ -3706,15 +3773,29 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     store.updatedAt = now;
     store.lastPlanIdx = (Array.isArray(ctx().chat) ? ctx().chat.length : 1) - 1;   // 任何推演（手动/自动）后都以当前末尾为新基准，自动推演从此重新累积
     store.planAtLen = Array.isArray(ctx().chat) ? ctx().chat.length : 0;            // 记下推演时的聊天长度：若日后删楼回退到此长度之前，则注入的暗线已悬空，自动清空待下次推演
-    if (settings.geopoliticsEnabled) mergeGeopolitics(store, newPlan);   // 活幕·势：承接势力格局/世界事件档案
+    if (nextWorld) Object.assign(store, nextWorld);
     delete newPlan.factions; delete newPlan.faction_relations; delete newPlan.world_events;   // 已并入 store（唯一真源），从 plan 剔除避免重复注入
     // 历史快照须在剔除活档案字段之后再 clone：world 格局/伏笔是跨幕累积的活档案，绝不能随「载入历史」回滚复活，
     // 否则旧 factions/world_events/threads 会被重新塞回 store.plan、经【上次审片状态】喂回模型，导致清空后仍复刻旧格局。
     store.history = [{ id: uid('hist'), createdAt: now, directorPlanRevisionId:store.directorPlanRevisionId, plan: clone(newPlan) }, ...(Array.isArray(store.history) ? store.history : [])].slice(0, 5);
-    injectSelection.clear();   // 新推演结果生成，旧写入勾选失效
-    resetCreativeSocialState();
     run.sourceFingerprint = directorSourceFingerprint(); // 本次同步写入成为新的核对基准，后续仍拦截用户改源。
-    await saveMetadata();
+    const stagedValues = new Map(saveFields.map(field => [field, store[field]]));
+    try { await saveMetadata(); }
+    catch (error) {
+      // A rejected save must not leave the failed replacement as the local truth.
+      // Restore only values still owned by this run, not later user edits.
+      for (const [field, previous] of previousValues) {
+        if (store[field] !== stagedValues.get(field)) continue;
+        if (previous.owned) store[field] = previous.value;
+        else delete store[field];
+      }
+      throw Object.assign(new Error('推演保存未确认，本地已保留原内容；请重新载入核对后再试。'), { code: 'DIRECTOR_SAVE_UNCONFIRMED', cause: error });
+    }
+    run.saved = true;
+    if (alive() && store.plan === newPlan) {
+      injectSelection.clear();   // 已保存的新方案不再沿用旧勾选；不清理切聊或另载方案后的选择。
+      resetCreativeSocialState();
+    }
     await guard();
     await applyDirectorInjection();
     await guard();
@@ -3741,21 +3822,28 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     const msg = error?.name === 'AbortError' ? 'USER_CANCELLED' : (error?.message || String(error));
     const isJsonFail = msg.startsWith('JSON_PARSE_FAILED::');
     log.status = msg === 'USER_CANCELLED' ? 'cancelled' : 'error';
-    log.error = msg === 'INVALID_API_SETTINGS' ? '请检查API设置'
+    log.error = run.saved ? '推演结果已保存，后续同步未完成。'
+      : msg === 'INVALID_API_SETTINGS' ? '请检查API设置'
       : msg === 'USER_CANCELLED' ? '已中断。'
       : isJsonFail ? '模型输出格式有误。'
       : error?.code === 'MODEL_OUTPUT_INCOMPLETE' ? '本次推演未完整完成；已收到的条目仍可查看。'
       : msg;
     // Keep the actual provider/parser failure when the short explanation above
     // is friendlier. Details are shown in the log, never broadcast in a toast.
-    log.errorCause = error?.message || String(error);
+    log.errorCause = error?.cause?.message || error?.message || String(error);
     if (typeof error?.code === 'string') log.errorCode = error.code;
+    if (run.saved) {
+      log.resultSaved = true; log.errorCode = 'DIRECTOR_POST_SAVE_INTERRUPTED';
+      if (directorLiveLog === log) directorLiveLog = null; // The saved world, not a partial preview, remains the readable result.
+    }
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     if (alive()) saveSettings();
     // 失败提示照常后台弹出（推演完成/失败的反馈关界面也要能收到）；日志里始终有完整记录可回看
     const summary = directorQualitySummary(log);
     if (alive() && (!silentFailure || summary)) {
-      if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
+      if (run.saved) toast('推演结果已保存，后续同步未完成。', 'warning');
+      else if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
+      else if (error?.code === 'DIRECTOR_SAVE_UNCONFIRMED') toast('推演保存未确认，请查看日志。', 'warning');
       else if (log.hasValidContent) toast('本次推演有内容缺失，详情见日志。', 'warning');
       else toast('推演失败，请查看日志。', 'error');
     }
@@ -7325,7 +7413,7 @@ function renderGeopoliticsTab() {
   const activeEvents = events.filter((e) => e.status !== 'closed');
   const closedEvents = events.filter((e) => e.status === 'closed');
 
-  if (!factions.length && !events.length) {
+  if (!factions.length && !events.length && !store.geoNodeCheckpoint) {
     return `<div class="sd-geo-tab"${readOnly ? ' data-geo-preview' : ''}><div class="sd-empty sd-geo-empty">
       <i class="fa-solid fa-atom"></i>
       <p><b>世界格局</b> 尚未生成。</p>
@@ -7392,14 +7480,16 @@ function bindGeopoliticsTabEvents(root) {
   root.querySelector('.sd-geo-clear')?.addEventListener('click', async () => {
     if (directorGeopoliticsState().readOnly) return;
     const store = getChatStore();
+    const ownerChat = ctx().chat, ownerKey = getChatKey();
     const n = (store.factions || []).length + (store.worldEvents || []).length;
-    if (!n) return;
+    if (!n && !store.geoNodeCheckpoint) return;
     const yes = await confirmDialog('清空世界格局', '将清空全部势力、关系与世界事件，此操作不可撤销、无法从历史找回。确认清空？');
-    if (!yes || directorGeopoliticsState().readOnly) return;
+    if (!yes || getChatStore() !== store || ctx().chat !== ownerChat || getChatKey() !== ownerKey || directorGeopoliticsState().readOnly) return;
     store.factions = [];
     store.factionRelations = [];
     store.worldEvents = [];
     store.geoSeq = 0;
+    delete store.geoNodeCheckpoint;
     await saveMetadata();
     await applyDirectorInjection();   // 世界格局参与上游注入，清空后同步刷新
     toast('世界格局已清空。', 'success');

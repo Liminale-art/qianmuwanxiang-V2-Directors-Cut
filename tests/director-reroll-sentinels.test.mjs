@@ -149,7 +149,13 @@ test('legacy floor anchors, clearing only the current view and rollback all reta
     if (mode === 'counter-reset') e.store.lastPlanIdx = -1;
     const before = plain(e.store);
     await e.c.generateDirectorPlan();
-    assert.equal(e.requests.length, 1, mode);
+    assert.equal(e.requests.length, mode === 'rollback' ? 0 : 1, mode);
+    if (mode === 'rollback') {
+      assert.equal(e.settings.logHistory.at(-1).errorCode, 'WORLD_NODE_MISMATCH');
+      assert.deepEqual(plain(e.store), before, 'unsafe legacy rewind is stopped before the model or any archive write');
+      assert.equal(e.saves, 0); assert.equal(e.injects, 0);
+      continue;
+    }
     const sent = JSON.stringify(e.requests[0].messages);
     for (const marker of markers) assert.ok(!sent.includes(marker), `${mode}: ${marker}`);
     assert.match(sent, /同楼层独立重推演/);

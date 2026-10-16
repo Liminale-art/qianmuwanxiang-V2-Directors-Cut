@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { hashText } from '../qianmu-storyboard-utils.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function between(start, end) {
@@ -10,6 +11,7 @@ function between(start, end) {
   return source.slice(a, b);
 }
 const injectSource = between('function buildPlanDigest(', 'function clearDirectorInjection(');
+const worldNodeSource = between('function directorSameFloorReroll(', 'let directorMemoryHostModule =');
 const renderSource = between('function renderInjectSections(', 'function renderInjectPreview(');
 const toggleSource = between("  root.querySelectorAll('.sd-inject-section-toggle').forEach", '  // 自动推演开关');
 const allOff = { quests: false, nodes: false, npc: false, relations: false, world: false, geopolitics: false };
@@ -35,9 +37,10 @@ function fixture() {
     settings: { enabled: true, injectEnabled: true, injectSections: { ...allOff }, geopoliticsEnabled: true, injectDepth: 2 },
     getChatStore: () => store, currentPlan: () => store.plan, INJ_LEN: {}, MODULE_NAME: 'qianmu',
     snip: value => String(value || ''), htmlEscape: value => String(value || ''),
+    hashText,
     ctx: () => ({ chat: [], setExtensionPrompt: (...args) => applied.push(args) }), console,
   });
-  vm.runInContext(injectSource + '\n' + renderSource, c);
+  vm.runInContext(worldNodeSource + '\n' + injectSource + '\n' + renderSource, c);
   return { c, store, applied };
 }
 

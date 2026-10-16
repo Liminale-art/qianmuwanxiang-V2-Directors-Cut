@@ -259,6 +259,11 @@ test('clearing the visible plan or rewinding prose does not feed its world candi
     if (clearPlan) e.store.plan = null;
     else e.context.chat.pop();
     const before = JSON.stringify(e.store), run = {};
+    if (!clearPlan) {
+      await assert.rejects(e.c.buildPrompt(run), { code: 'WORLD_NODE_MISMATCH' });
+      assert.equal(JSON.stringify(e.store), before);
+      e.settings.geopoliticsEnabled = false; // Ordinary rerolls remain available without world advancement.
+    }
     const prompt = await e.c.buildPrompt(run);
     assert.equal(run.sameFloorReroll, true);
     assert.doesNotMatch(prompt, /OLD_CANDIDATE_CLEAR_OR_REWIND/);
