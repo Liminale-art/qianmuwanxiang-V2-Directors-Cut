@@ -104,9 +104,9 @@ test('chat blueprint marker never authorizes replacing edited or unknown text', 
 test('interlude and phone mode are frozen once per request without restricting side-page owners to source names', () => {
   let calls = 0;
   const input = { chat: [{ name: '用户别名', is_user: true }, { name: '陈警官', mes: '同事周青正在群聊里询问线索。' }],
-    personaNames: ['本名'], characterName: '陈警官', sourceText: '手机 群聊', narrativeText: '周青正在群聊里询问线索。', random: () => { calls++; return .9; } };
+    personaNames: ['本名'], characterName: '陈警官', sourceText: '手机 群聊', narrativeText: '周青正在群聊里询问线索。', random: () => { calls++; return 2.5 / 7; } };
   const options = selectCreativeOptions({}, input);
-  assert.equal(calls, 3); assert.equal(options.interludeType, 'phone'); assert.equal(options.phoneViewType, 'chat'); assert.equal(options.phoneConversationKind, 'group'); assert.ok(Object.isFrozen(options));
+  assert.equal(calls, 1); assert.equal(options.interludeType, 'phone'); assert.equal(options.phoneViewType, 'chat'); assert.equal(options.phoneConversationKind, 'group'); assert.ok(Object.isFrozen(options));
   assert.ok(options.personaNames.includes('用户别名'));
   assert.equal(options.eligiblePhoneOwners, undefined);
   assert.equal(options.phoneSourceText, undefined);
@@ -114,16 +114,16 @@ test('interlude and phone mode are frozen once per request without restricting s
     assert.match(creativeSectionGuidance(options), /固定为 group（群聊）/);
     assert.match(createCreativeSchema(options), /"conversation_kind": "group"/);
   }
-  assert.equal(calls, 3, 'rendering guidance and schema cannot resample the request');
-  const forum = selectCreativeOptions({}, { ...input, sourceText: '旧时客栈，众人围炉看戏。' });
-  assert.equal(forum.interludeType, 'forum'); assert.equal(forum.phoneViewType, null); assert.equal(forum.phoneConversationKind, null); assert.equal(calls, 3);
+  assert.equal(calls, 1, 'rendering guidance and schema cannot resample the request');
+  const forum = selectCreativeOptions({}, { ...input, narrativeText: '', sourceText: '旧时客栈，众人围炉看戏。' });
+  assert.equal(forum.interludeType, 'forum'); assert.equal(forum.phoneViewType, null); assert.equal(forum.phoneConversationKind, null); assert.equal(calls, 1);
   const off = selectCreativeOptions({ interludeEnabled: false }, input);
-  assert.equal(off.interludeType, null); assert.equal(off.phoneViewType, null); assert.equal(off.phoneConversationKind, null); assert.equal(calls, 3);
-  const noSpeakerLabel = selectCreativeOptions({}, { chat: [], sourceText: '手机可用', narrativeText: '小余刚把发酵缸洗净。她的手机又响了。', random: () => .9 });
+  assert.equal(off.interludeType, null); assert.equal(off.phoneViewType, null); assert.equal(off.phoneConversationKind, null); assert.equal(calls, 1);
+  const noSpeakerLabel = selectCreativeOptions({}, { chat: [], sourceText: '手机可用', narrativeText: '小余刚把发酵缸洗净。她的手机又响了。', random: () => 2.5 / 7 });
   assert.equal(noSpeakerLabel.interludeType, 'phone', 'prose-only supporting characters are not excluded by chat speaker labels');
   const noNarrative = selectCreativeOptions({}, { chat: [{ name: '陈警官' }], sourceText: '手机', random: () => .9 });
   assert.equal(noNarrative.interludeType, 'phone', 'era evidence permits an invented side-page owner without pretending a speaker label is source proof');
-  for (const [draws, type, kind, count] of [[[.9, .9, .1], 'phone', 'direct', 3], [[.9, .9, .9], 'phone', 'group', 3], [[.1], 'forum', null, 1]]) {
+  for (const [draws, type, kind, count] of [[[1.5 / 5], 'phone', 'direct', 1], [[2.5 / 5], 'phone', 'group', 1], [[.1], 'forum', null, 1]]) {
     let selected = 0;
     const value = selectCreativeOptions({}, { sourceText: '手机', random: () => draws[selected++] });
     assert.equal(value.interludeType, type); assert.equal(value.phoneConversationKind, kind); assert.equal(selected, count);

@@ -137,6 +137,21 @@
 #story-director-modal .sd-social-phone-microblog .sd-social-phone-post { gap: 9px; }
 #story-director-modal .sd-social-phone-microblog .sd-social-phone-post-footer { border-top: 1px solid var(--social-line); padding-top: 5px; }
 #story-director-modal .sd-social-phone-microblog .sd-social-actions { flex: 1; justify-content: space-evenly; }
+/* The fourth wall is a read-only prose page, not a social feed. Its ordinary
+   body size stays unchanged for long writing; the shared viewport remembers
+   position only for this result and hands boundary scrolling back to the page. */
+#story-director-modal .sd-fourth-wall { --fourth-muted: color-mix(in srgb, var(--social-ink) 25%, var(--social-muted)); }
+#story-director-modal .sd-fourth-wall-head { display: grid; gap: 7px; padding: 16px; border-bottom: 1px solid var(--social-line); }
+#story-director-modal .sd-fourth-wall-kicker { color: var(--fourth-muted); font-size: var(--qm-type-caption, 11px); line-height: 1.5; letter-spacing: .06em; }
+#story-director-modal .sd-fourth-wall-head h4 { margin: 0; color: var(--social-ink); font-size: var(--qm-type-card-title, 14px); line-height: 1.55; font-weight: 600; }
+#story-director-modal .sd-fourth-wall-byline { display: flex; flex-wrap: wrap; gap: 3px 7px; color: var(--fourth-muted); font-size: var(--qm-type-caption, 11px); line-height: 1.5; }
+#story-director-modal .sd-fourth-wall-reading { padding: 16px; }
+#story-director-modal .sd-fourth-wall-entry + .sd-fourth-wall-entry { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--social-line); }
+#story-director-modal .sd-fourth-wall-time { margin-bottom: 10px; padding-left: 9px; border-left: 2px solid color-mix(in srgb, var(--social-accent) 45%, var(--social-line)); }
+#story-director-modal .sd-fourth-wall-time time { display: block; color: var(--fourth-muted); font-size: var(--qm-type-caption, 11px); line-height: 1.5; overflow-wrap: anywhere; }
+#story-director-modal .sd-fourth-wall-prose { min-width: 0; color: var(--social-ink); font-size: var(--qm-type-body, 12px); line-height: 1.85; }
+#story-director-modal .sd-fourth-wall-prose p { margin: 0; font-size: inherit; line-height: inherit; white-space: pre-wrap; overflow-wrap: anywhere; text-indent: 2em; }
+#story-director-modal .sd-fourth-wall-prose p + p { margin-top: 1em; }
 #story-director-modal .sd-social-legacy h4 { margin: 0; font-size: var(--qm-type-body, 12px); }
 #story-director-modal .sd-social-empty { margin: 12px 0; font-size: var(--qm-type-body, 12px); }
 #story-director-modal .sd-creative-social [hidden] { display: none !important; }
@@ -145,4 +160,5 @@
   #story-director-modal :is(.sd-social-post, .sd-social-panel-head, .sd-social-messages) { padding: 11px; }
   #story-director-modal .sd-social-actions { column-gap: 2px; }
   #story-director-modal .sd-social-action { padding-inline: 6px; }
+  #story-director-modal :is(.sd-fourth-wall-head, .sd-fourth-wall-reading) { padding: 13px; }
 }

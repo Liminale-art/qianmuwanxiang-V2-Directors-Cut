@@ -64,7 +64,7 @@ test('schema defaults new cards on without silently selecting a type, keeps old 
   const shape = parseShape(createCreativeSchema());
   assert.ok(shape.parallel_scene);
   assert.ok(shape.interlude);
-  assert.equal(shape.interlude.type, 'Selected for this run: forum or phone');
+  assert.equal(shape.interlude.type, 'Selected for this run: forum, phone or fourth_wall');
   for (const field of ['world_chatter', 'factions', 'world_events', 'faction_relations']) assert.ok(!Object.hasOwn(shape, field));
   const off = parseShape(createCreativeSchema(OFF));
   assert.ok(!Object.hasOwn(off, 'parallel_scene'));

@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.456';
-import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.455';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.456';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.456';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.458';
+import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.458';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.458';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.458';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -30,7 +30,7 @@ import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor}
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
-import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.456';
+import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.458';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -308,7 +308,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.457';
+const VERSION = '1.59.458';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -817,7 +817,7 @@ const FLOAT_LOGO_URLS = Object.freeze({
 const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-SERVER-PLUGIN.md';
 
 const PROMPT_REVISION = 28;
-const BLUEPRINT_REVISION = 6;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
+const BLUEPRINT_REVISION = 7;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
 const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
 const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;
@@ -3217,7 +3217,7 @@ function directorHistorySelection() {
     // it back on a same-floor reroll makes the model echo its own last branch.
     if (message?.extra?.qianmu_injected === true) return '';
     const body = cleanContextText(message.mes || '');
-    return body ? '[楼层' + (recentStartIndex + offset) + '] ' + (message.is_user ? '<user>' : message.name || '<char>') + ': ' + body : '';
+    return String(body).trim() ? '[楼层' + (recentStartIndex + offset) + '] ' + (message.is_user ? '<user>' : message.name || '<char>') + ': ' + body : '';
   }).filter(Boolean).join('\n') : '';
   return { text, recentStartIndex };
 }
@@ -3374,7 +3374,8 @@ async function buildPrompt(run = {}) {
       ? (ctx().groups?.find(group => String(group.id) === String(ctx().groupId))?.members || [])
         .map(avatar => ctx().characters?.find(character => character?.avatar === avatar)?.name).filter(Boolean)
       : [charName],
-    sourceText: referenceText, narrativeText: [history.text, memory.text].filter(Boolean).join('\n'),
+    sourceText: [worldText, presetText, history.text, memory.text].filter(Boolean).join('\n'),
+    narrativeText: [history.text, memory.text].filter(Boolean).join('\n'),
     previousInterlude: sameFloorReroll ? null : store.plan?.interlude,
   });
   run.memoryStatus = { status: memory.status, diagnostics: memory.diagnostics };
@@ -3726,7 +3727,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     const systemPrompt = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
     const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
     log.memory = run.memoryStatus;
-    log.creativeOptions = Object.fromEntries(['parallelSceneEnabled', 'interludeEnabled', 'interludeType', 'phoneViewType', 'phoneConversationKind', 'worldChatterEnabled', 'geopoliticsEnabled']
+    log.creativeOptions = Object.fromEntries(['parallelSceneEnabled', 'interludeEnabled', 'interludeType', 'phoneViewType', 'phoneConversationKind', 'fourthWallForm', 'worldChatterEnabled', 'geopoliticsEnabled']
       .map(field => [field, run.creativeOptions[field]]));
     if (['partial', 'unverified', 'unsupported'].includes(log.memory?.status)) {
       toast(log.memory.status === 'unsupported' ? '当前记忆版本尚未适配，本次仅使用其他已选资料。' : '部分记忆无法核对，本次只采用可用资料；详情已记入日志。', 'warning');

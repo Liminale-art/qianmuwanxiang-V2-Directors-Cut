@@ -15,6 +15,14 @@ const likeLabel = (count, selected) => `${selected ? '已赞' : '赞'}${count + 
 
 function normalizedItem(value) {
   const item = record(value);
+  if (item.type === 'fourth_wall' && item.form === 'diary') return {
+    type: 'fourth_wall', form: 'diary', title: text(item.title), character: text(item.character),
+    entries: list(item.entries).map(record).filter(entry => text(entry.content))
+      .map(entry => ({ time: text(entry.time), content: text(entry.content) })),
+  };
+  if (item.type === 'fourth_wall' && item.form === 'scene') return {
+    type: 'fourth_wall', form: 'scene', title: text(item.title), character: text(item.character), content: text(item.content),
+  };
   if (item.type === 'forum') return {
     type: 'forum', title: text(item.title),
     posts: list(item.posts).slice(0, 50).map(record).filter(post => text(post.author) && text(post.content)).map(post => ({
@@ -132,12 +140,33 @@ function phoneFeedBody(item, key, state) {
   </div>`;
 }
 
+function fourthWallBody(item) {
+  const diary = item.form === 'diary', label = diary ? '日记' : '旁观';
+  if (diary ? !item.entries.length : !item.content) return '<p class="sd-muted sd-social-empty">尚未生成</p>';
+  const prose = content => content.replace(/\r\n?/g, '\n').split(/\n[\t ]*\n+/)
+    .map(paragraph => `<p>${htmlEscape(paragraph)}</p>`).join('');
+  return `<div class="sd-social-panel sd-fourth-wall sd-fourth-wall-${item.form}">
+    <header class="sd-fourth-wall-head">
+      <span class="sd-fourth-wall-kicker">第四面墙 · 独立番外</span>
+      ${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}
+      <div class="sd-fourth-wall-byline">${item.character ? `<span>${htmlEscape(item.character)}</span><span aria-hidden="true">·</span>` : ''}<span>${label}</span></div>
+    </header>
+    <div class="sd-fourth-wall-reading sd-social-scroll" data-qm-social-scroll tabindex="0" role="region" aria-label="第四面墙${label}">
+      ${diary ? item.entries.map(entry => `<article class="sd-fourth-wall-entry">
+        ${entry.time ? `<header class="sd-fourth-wall-time"><time>${htmlEscape(entry.time)}</time></header>` : ''}
+        <div class="sd-fourth-wall-prose">${prose(entry.content)}</div>
+      </article>`).join('') : `<div class="sd-fourth-wall-prose">${prose(item.content)}</div>`}
+    </div>
+  </div>`;
+}
+
 /** Render the complete Qianmu card. All model content is escaped, never HTML/URLs. */
 export function renderCreativeSocialCard(value, { notice = '' } = {}) {
   const item = normalizedItem(value), key = identity(item);
   const state = item.type === 'forum' || item.type === 'phone' ? session(key) : null;
   const body = item.type === 'forum' ? forumBody(item, key, state)
     : item.type === 'phone' ? item.view_type ? phoneFeedBody(item, key, state) : phoneBody(item, key)
+      : item.type === 'fourth_wall' ? fourthWallBody(item)
       : item.type === 'legacy' ? `<div class="sd-social-legacy">${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}<p>${htmlEscape(item.content)}</p></div>`
         : notice ? '' : '<p class="sd-muted sd-social-empty">尚未生成</p>';
   return `<section class="sd-card sd-director-extra-card sd-director-extra-interlude sd-creative-social" data-qm-social="${key}">

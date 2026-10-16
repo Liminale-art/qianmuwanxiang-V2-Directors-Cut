@@ -9,7 +9,7 @@ const FIELDS = {
   chain_reactions: ['世事相牵', ['spark', 'chain', 'impact']],
   relation_undercurrents: ['关系暗涌', ['title', 'parties', 'surface', 'undercurrent', 'tension', 'content']],
   parallel_scene: ['未映之幕', ['title', 'content']],
-  interlude: ['幕间拾趣', ['title', 'owner', 'content']],
+  interlude: ['幕间拾趣', ['title', 'owner', 'character', 'content']],
   world_chatter: ['尘寰群生', ['who', 'where', 'text']],
   factions: ['世界格局', ['name', 'standing', 'agenda']],
   faction_relations: ['势力关系', ['a', 'b', 'kind', 'note']],
@@ -18,7 +18,7 @@ const FIELDS = {
 const OBJECT_FIELDS = new Set(['story_status', 'parallel_scene', 'interlude']);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const interludeEntries = value => value.type === 'forum' || (value.type === 'phone' && ['moments', 'microblog'].includes(value.view_type))
-  ? value.posts : value.type === 'phone' ? value.messages : null;
+  ? value.posts : value.type === 'phone' ? value.messages : value.type === 'fourth_wall' && value.form === 'diary' ? value.entries : null;
 // Consume only closed known cards. Top-level extras stay read-only, just like array previews.
 export function completeDirectorCards(source) {
   const text = String(source || ''), cards = [], stack = [];
@@ -65,7 +65,8 @@ export function completeDirectorCards(source) {
     let value; try { value = JSON.parse(raw); } catch (_) { return; }
     if (key === 'parallel_scene' && (!value || typeof value.content !== 'string' || !value.content.trim())) return;
     if (key === 'interlude') {
-      if (!value || !['forum', 'theater', 'phone'].includes(value.type)) return;
+      if (!value || !['forum', 'theater', 'phone', 'fourth_wall'].includes(value.type)) return;
+      if (value.type === 'fourth_wall' && !['diary', 'scene'].includes(value.form)) return;
       const entries = interludeEntries(value);
       if (!(typeof value.content === 'string' && value.content.trim()) &&
         !(Array.isArray(entries) && entries.some(item => typeof item?.content === 'string' && item.content.trim()))) return;

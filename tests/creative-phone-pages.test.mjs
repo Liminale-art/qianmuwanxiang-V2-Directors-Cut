@@ -19,8 +19,8 @@ const shape = opts => {
   return JSON.parse(schema.slice(start, schema.indexOf('\n\n', start))).interlude;
 };
 
-test('a phone request picks one page once and samples direct/group only for chat', () => {
-  for (const [draws, view, kind] of [[[.9, .1], 'moments', null], [[.9, .5], 'microblog', null], [[.9, .9, .1], 'chat', 'direct'], [[.9, .9, .9], 'chat', 'group']]) {
+test('a phone request picks one complete leaf form once including its direct/group kind', () => {
+  for (const [draws, view, kind] of [[[3.5 / 5], 'moments', null], [[4.5 / 5], 'microblog', null], [[1.5 / 5], 'chat', 'direct'], [[2.5 / 5], 'chat', 'group']]) {
     let calls = 0;
     const selected = selectCreativeOptions({}, { sourceText: '这里有手机', random: () => draws[calls++] });
     assert.equal(selected.interludeType, 'phone'); assert.equal(selected.phoneViewType, view); assert.equal(selected.phoneConversationKind, kind);

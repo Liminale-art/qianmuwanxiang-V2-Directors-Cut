@@ -1,14 +1,14 @@
 // Creative defaults and one-request state. No storage, network or model calls.
 import { hashText } from './qianmu-storyboard-utils.js';
-import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.456';
+import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.458';
 
 // Exact bundled defaults from prior releases, not phrase-based DIY detection.
-// v1.59.453 through v1.59.455 are included so this release can migrate prior
+// Exact defaults through v1.59.457 are included so this release can migrate prior
 // built-in prose while preserving any text the author actually edited.
 const LEGACY_DEFAULT_HASHES = Object.freeze({
-  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd', '39271a80', 'bba2effb', 'c7c6f33d', 'b7f8c92b', 'e2441079', 'c3b76978', 'dd2092c1', '355e4aed']),
-  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107', '51ab8d18', 'e8981ef7', '5e96c8fa', 'd3522824', '2013edaf', '2776c64f', 'f57a17f7']),
-  blueprint: Object.freeze(['4c919687', '1d95c305', '261d4a1a', '1d8cdeb6', 'af9d17bf', '352d7c3f', '321cc304', '87904bd2', '40c652ba', '370762df']),
+  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd', '39271a80', 'bba2effb', 'c7c6f33d', 'b7f8c92b', 'e2441079', 'c3b76978', 'dd2092c1', '355e4aed', '24243610']),
+  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107', '51ab8d18', 'e8981ef7', '5e96c8fa', 'd3522824', '2013edaf', '2776c64f', 'f57a17f7', '2705ca8b']),
+  blueprint: Object.freeze(['4c919687', '1d95c305', '261d4a1a', '1d8cdeb6', 'af9d17bf', '352d7c3f', '321cc304', '87904bd2', '40c652ba', '370762df', 'e8c57aa2']),
 });
 const unchangedDefault = (value, current, legacyHashes, appliedHash) => {
   const text = String(value ?? '');
@@ -47,6 +47,9 @@ export function upgradeCreativeBlueprint(store, blueprint, revision) {
 export function recentInterludeHint(card) {
   if (!card || typeof card !== 'object' || Array.isArray(card)) return '';
   const short = (value, max) => typeof value === 'string' ? value.replace(/\s+/gu, ' ').trim().slice(0, max) : '';
+  // A meta-fictional experience must not become a later narrative reference.
+  // Only form and cast metadata may identify a recent side page, never its words.
+  if (card.type === 'fourth_wall') return JSON.stringify({ type: 'fourth_wall', form: short(card.form, 16), character: short(card.character, 60) });
   const first = card.type === 'forum' || (card.type === 'phone' && ['moments', 'microblog'].includes(card.view_type))
     ? card.posts?.[0]?.content : card.type === 'phone' ? card.messages?.[0]?.content : card.content;
   const hint = { type: short(card.type, 16), title: short(card.title, 80), first_excerpt: short(first, 180) };
@@ -54,21 +57,33 @@ export function recentInterludeHint(card) {
   return hint.title || hint.first_excerpt ? JSON.stringify(hint) : '';
 }
 
-export function selectCreativeOptions(settings = {}, { chat = [], personaNames = [], characterName = '', characterNames, sourceText = '', previousInterlude, random = Math.random } = {}) {
+export function selectCreativeOptions(settings = {}, { chat = [], personaNames = [], characterName = '', characterNames, sourceText = '', narrativeText = '', previousInterlude, random = Math.random } = {}) {
   const normalize = name => String(name || '').trim().toLocaleLowerCase();
   const excluded = new Set(personaNames.map(normalize).filter(Boolean));
   for (const message of chat) if (message?.is_user) excluded.add(normalize(message.name));
-  const hasPhone = /手机|短信|群聊|微信|移动终端|smartphone|cell\s*phone|text\s*message|group\s*chat/i.test(sourceText);
+  // A host's group-chat label is not evidence of an in-world phone.
+  const hasPhone = /手机|短信|微信|移动终端|smartphone|cell\s*phone|text\s*message/i.test(sourceText);
   const interludeEnabled = settings.interludeEnabled !== false;
-  // Select form once per request, without carrying a mode or cast across rerolls.
-  // The setting permits a phone; its owner may belong to an invented side page.
-  const interludeType = !interludeEnabled ? null : hasPhone && random() >= .5 ? 'phone' : 'forum';
-  const phoneDraw = interludeType === 'phone' ? random() : null;
-  const phoneViewType = phoneDraw === null ? null : phoneDraw < 1 / 3 ? 'moments' : phoneDraw < 2 / 3 ? 'microblog' : 'chat';
-  const phoneConversationKind = phoneViewType === 'chat' ? (random() < .5 ? 'direct' : 'group') : null;
+  // Draw once from applicable leaf forms: phone subtypes are not progressively
+  // diluted by nested lotteries, and the model cannot always pick its easiest form.
+  // No fixed rotation, persisted bag, prior candidate text, or extra request.
+  const pool = [{ interludeType: 'forum' }];
+  if (hasPhone) pool.push(
+    { interludeType: 'phone', phoneViewType: 'chat', phoneConversationKind: 'direct' },
+    { interludeType: 'phone', phoneViewType: 'chat', phoneConversationKind: 'group' },
+    { interludeType: 'phone', phoneViewType: 'moments' },
+    { interludeType: 'phone', phoneViewType: 'microblog' },
+  );
+  // Settings alone do not establish anyone's actual appearance in the mainline.
+  if (String(narrativeText || '').trim()) pool.push(
+    { interludeType: 'fourth_wall', fourthWallForm: 'diary' },
+    { interludeType: 'fourth_wall', fourthWallForm: 'scene' },
+  );
+  const selected = !interludeEnabled ? {} : pool[pool.length === 1 ? 0 : Math.min(pool.length - 1, Math.max(0, Math.floor(random() * pool.length)))];
+  const { interludeType = null, phoneViewType = null, phoneConversationKind = null, fourthWallForm = null } = selected;
   return Object.freeze({
     worldChatterEnabled: Boolean(settings.worldChatterEnabled), geopoliticsEnabled: Boolean(settings.geopoliticsEnabled),
-    parallelSceneEnabled: settings.parallelSceneEnabled !== false, interludeEnabled, interludeType, phoneViewType, phoneConversationKind,
+    parallelSceneEnabled: settings.parallelSceneEnabled !== false, interludeEnabled, interludeType, phoneViewType, phoneConversationKind, fourthWallForm,
     newcomerMode: settings.newcomerMode === true,
     recentInterludeHint: interludeEnabled ? recentInterludeHint(previousInterlude) : '',
     personaNames: [...excluded], characterName,

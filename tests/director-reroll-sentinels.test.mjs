@@ -82,7 +82,7 @@ function fixture({ responses = [], providerMode = 'external', persisted } = {}) 
     buildWorldContextText: async () => 'WORLD_SOURCE CHAR_SOURCE PERSONA_SOURCE 手机', buildPresetContextText: async () => 'PRESET_SOURCE',
     memoryHostFixture: { findExtension: () => ({ enabled: true }) },
     readGagaMemoryContext: () => ({ text: 'MEMORY_SOURCE', status: 'ready', diagnostics: [], snapshot: { fingerprint: 'memory-one' } }),
-    selectCreativeOptions: (s, options) => runtime.selectCreativeOptions(s, { ...options, random: () => .9 }),
+    selectCreativeOptions: (s, options) => runtime.selectCreativeOptions(s, { ...options, random: () => 2.5 / 7 }),
     estimateTokens: text => Math.ceil(text.length / 4), uid: prefix => `${prefix}-${++id}`,
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null,
     activeTab: 'dashboard', MODAL_ID: 'fixture-panel', document: { getElementById: () => null },
