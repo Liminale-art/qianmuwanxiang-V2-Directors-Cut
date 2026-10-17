@@ -10,7 +10,7 @@ const css = (await Promise.all(['style.css', 'qianmu-theme-skins.css'].map(file 
 const index = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const bindSource = /^function bindDirectorReadingEvents\(root\)\s*\{\s*(bindCreativeSocialEvents\([^\n]+;)/m.exec(index)?.[1];
 assert.ok(bindSource, 'actual reading-root binding exists');
-const qa = new URL('../dist/local-qa/fourth-wall-v458/', import.meta.url);
+const qa = new URL('../dist/local-qa/one-scene-away-v460/', import.meta.url);
 await mkdir(qa, { recursive: true });
 
 const diary = { type: 'fourth_wall', form: 'diary', title: '页边的灯', character: '林芷', entries: [
@@ -119,7 +119,8 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(async ({ family, mode, form }) => { resetCreativeSocialState(); await setAppearance(family, mode); renderPage(form); }, { family, mode, form });
     ok(await page.locator('.sd-creative-social h3').textContent() === '幕间拾趣', label + ' keeps the interlude shell');
-    ok(await page.locator('.sd-fourth-wall-kicker').textContent() === '第四面墙 · 独立番外', label + ' has a quiet standalone-side-story marker');
+    ok(await page.locator('.sd-fourth-wall-kicker').textContent() === '一幕之遥 · 独立番外', label + ' has the renamed standalone-side-story marker');
+    ok(await page.locator('.sd-fourth-wall-reading').getAttribute('aria-label') === `一幕之遥${form === 'diary' ? '日记' : '旁观'}`, label + ' shares the renamed accessible reading label');
     ok(await page.locator('.sd-fourth-wall-byline').textContent() === `${form === 'diary' ? '林芷·日记' : '周宁·旁观'}`, label + ' identifies the character and form');
     ok(await page.locator('.sd-creative-social button,.sd-creative-social input,.sd-creative-social textarea,.sd-creative-social [contenteditable],.sd-social-actions').count() === 0, label + ' offers no social, writing or generation actions');
     ok(await page.locator('.sd-fourth-wall-reading').evaluate(node => node.scrollHeight > node.clientHeight && getComputedStyle(node).overflowY === 'auto' && getComputedStyle(node).overscrollBehaviorY === 'auto'), label + ' reads long prose in a scroll viewport without trapping page gestures');

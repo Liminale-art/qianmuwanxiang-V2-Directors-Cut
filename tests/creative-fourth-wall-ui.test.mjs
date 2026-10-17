@@ -14,10 +14,11 @@ test('diary is a read-only fourth-wall page with every ordered timestamp and ful
   const before = JSON.stringify(diary), html = renderCreativeSocialCard(diary);
   assert.ok(diary.entries.reduce((sum, entry) => sum + (entry.content.match(/\p{Script=Han}/gu) || []).length, 0) >= 2000);
   assert.match(html, /<h3>幕间拾趣<\/h3>/);
-  assert.match(html, /第四面墙 · 独立番外/);
+  assert.match(html, /一幕之遥 · 独立番外/);
+  assert.doesNotMatch(html, /第四面墙/);
   assert.match(html, /sd-fourth-wall-diary/);
   assert.match(html, /<span>林芷<\/span><span aria-hidden="true">·<\/span><span>日记<\/span>/);
-  assert.match(html, /data-qm-social-scroll tabindex="0" role="region" aria-label="第四面墙日记"/);
+  assert.match(html, /data-qm-social-scroll tabindex="0" role="region" aria-label="一幕之遥日记"/);
   assert.equal((html.match(/class="sd-fourth-wall-entry"/g) || []).length, diary.entries.length);
   let previous = -1;
   for (const entry of diary.entries) {
@@ -33,6 +34,9 @@ test('scene retains long prose, normal paragraphs and single line breaks without
   const item = { type: 'fourth_wall', form: 'scene', title: '车窗另一边', character: '周宁', content };
   const html = renderCreativeSocialCard(item);
   assert.match(html, /sd-fourth-wall-scene/);
+  assert.match(html, /一幕之遥 · 独立番外/);
+  assert.match(html, /aria-label="一幕之遥旁观"/);
+  assert.doesNotMatch(html, /第四面墙/);
   assert.match(html, /<span>周宁<\/span><span aria-hidden="true">·<\/span><span>旁观<\/span>/);
   assert.ok(html.includes('<p>开头一段。\n这里仍属同段。</p>'));
   assert.ok(html.includes(`<p>${'角色把窗外一段正在发生的事情看完。'.repeat(800)}</p>`));

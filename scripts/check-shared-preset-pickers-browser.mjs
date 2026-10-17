@@ -71,6 +71,28 @@ try {
     await page.setViewportSize({ width, height: 1100 });
     await page.evaluate(async ({ family, mode }) => { await setAppearance(family, mode); }, { family, mode });
     await page.evaluate(() => { paint('materials'); document.querySelector('[data-acc="dd-preset"]').open = true; });
+    const materialLabel = `${family}/${mode}/${width}/materials`;
+    ok(`${materialLabel}: one concise preset-use hint`, await page.locator('.sd-preset-guidance').count() === 1
+      && await page.locator('[data-acc="acc-presets"] > summary > .sd-preset-guidance').textContent() === '按需勾选，乱选只会左右脑互搏哦(ˉ▽ˉ；)');
+    ok(`${materialLabel}: hint uses caption scale without clipping`, await page.locator('.sd-preset-guidance').evaluate(node => {
+      const style = getComputedStyle(node), root = getComputedStyle(document.querySelector('#story-director-modal'));
+      const box = node.getBoundingClientRect(), heading = node.parentElement.getBoundingClientRect(), title = node.parentElement.querySelector('b').getBoundingClientRect();
+      return style.fontSize === root.getPropertyValue('--qm-type-caption').trim() && node.scrollWidth <= node.clientWidth + 1
+        && style.textAlign === 'right' && box.left >= title.right && box.right <= heading.right;
+    }));
+    ok(`${materialLabel}: hint does not add selection controls`, await page.evaluate(() =>
+      !document.querySelector('.sd-preset-guidance input,.sd-preset-guidance button')
+      && document.querySelectorAll('.sd-pick-preset:checked').length === 1
+      && document.querySelector('.sd-pick-preset:checked').dataset.name === current));
+    ok(`${materialLabel}: only preset read status is replaced`, await page.evaluate(() =>
+      !/已读取|待读取/.test(document.querySelector('[data-acc="acc-presets"] > summary').textContent)
+      && /已读取|待读取/.test(document.querySelector('[data-acc="acc-worlds"] > summary').textContent)
+      && !document.querySelector('.sd-context-source-pick .sd-preset-guidance')));
+    if (width === 393 && ((family === 'glass' && mode === 'light') || (family === 'editorial' && mode === 'dark'))) {
+      await page.evaluate(() => { document.querySelector('[data-acc="dd-preset"]').open = false; });
+      await page.locator('[data-acc="acc-presets"]').screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-preset-guidance-heading-393.png`, qa)), animations: 'disabled' });
+      await page.evaluate(() => { document.querySelector('[data-acc="dd-preset"]').open = true; });
+    }
     const materialSelectors = ['[data-acc="dd-preset"]', '[data-acc="dd-preset"] > summary', '[data-acc="dd-preset"] .sd-preset-version-group > summary', '[data-acc="dd-preset"] label.sd-source-row', '[data-acc="blk-preset-entries"]', '[data-acc="blk-preset-entries"] > summary', '[data-acc="blk-preset-entries"] > .sd-dropdown-body', '[data-acc="blk-preset-entries"] .sd-unified-source-entry', '[data-acc="blk-preset-entries"] .sd-context-entry-label'];
     const expectedControls = [];
     for (const selector of materialSelectors) expectedControls.push(await page.locator(selector).first().evaluate(controlProbe));
@@ -154,5 +176,5 @@ try {
   await page.locator('.sd-reader-cps-scan').click();
   ok('host-added version appears after real refresh action', await page.locator('.sd-reader-cps-toggle[data-name="【照见】Claude-Versatile-5.2.0"]').count() === 1);
   ok('no page errors', errors.length === 0); ok(`no external requests: ${externalUrls.join(', ')}`, external === 0);
-  console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'Actual materials and theater cards compared; companion groups in modal and reader portal with production selection handlers; isolated settings/host reads', screenshots: ['theater-matched-groups-393.png', 'companion-matched-groups-393.png', 'companion-portal-matched-groups-393.png'] }));
+  console.log(JSON.stringify({ passed: checks.length, errors, external, scope: 'Actual materials and theater cards compared; companion groups in modal and reader portal with production selection handlers; isolated settings/host reads', screenshots: ['glass-light-preset-guidance-heading-393.png', 'editorial-dark-preset-guidance-heading-393.png', 'theater-matched-groups-393.png', 'companion-matched-groups-393.png', 'companion-portal-matched-groups-393.png'] }));
 } finally { clearTimeout(deadline); await browser.close(); }

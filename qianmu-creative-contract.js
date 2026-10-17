@@ -1,6 +1,6 @@
 // Pure output contract. It checks structure and explicit empty/duplicate items,
 // not narrative truth or literary quality; those remain in the creative guidance.
-import { CREATIVE_COUNTS, CREATIVE_DETAIL_COUNTS, CREATIVE_SECTION_LABELS } from './qianmu-creative-prompts.js?v=1.59.459';
+import { CREATIVE_COUNTS, CREATIVE_DETAIL_COUNTS, CREATIVE_SECTION_LABELS } from './qianmu-creative-prompts.js?v=1.59.460';
 
 const CORE_ARRAYS = ['quests', 'character_dynamics', 'npc_updates', 'chain_reactions', 'relation_undercurrents'];
 const WORLD_ARRAYS = ['world_chatter', 'factions', 'faction_relations', 'world_events'];

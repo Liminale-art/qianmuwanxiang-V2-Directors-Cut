@@ -147,11 +147,11 @@ function fourthWallBody(item) {
     .map(paragraph => `<p>${htmlEscape(paragraph)}</p>`).join('');
   return `<div class="sd-social-panel sd-fourth-wall sd-fourth-wall-${item.form}">
     <header class="sd-fourth-wall-head">
-      <span class="sd-fourth-wall-kicker">第四面墙 · 独立番外</span>
+      <span class="sd-fourth-wall-kicker">一幕之遥 · 独立番外</span>
       ${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}
       <div class="sd-fourth-wall-byline">${item.character ? `<span>${htmlEscape(item.character)}</span><span aria-hidden="true">·</span>` : ''}<span>${label}</span></div>
     </header>
-    <div class="sd-fourth-wall-reading sd-social-scroll" data-qm-social-scroll tabindex="0" role="region" aria-label="第四面墙${label}">
+    <div class="sd-fourth-wall-reading sd-social-scroll" data-qm-social-scroll tabindex="0" role="region" aria-label="一幕之遥${label}">
       ${diary ? item.entries.map(entry => `<article class="sd-fourth-wall-entry">
         ${entry.time ? `<header class="sd-fourth-wall-time"><time>${htmlEscape(entry.time)}</time></header>` : ''}
         <div class="sd-fourth-wall-prose">${prose(entry.content)}</div>

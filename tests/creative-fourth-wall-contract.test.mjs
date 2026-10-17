@@ -118,6 +118,20 @@ test('fourth-wall closeness is grounded without forcing acquaintance, intimacy o
   }
 });
 
+test('fourth-wall presence grows through character-specific opportunities without a compulsory mood or checklist', () => {
+  const guide = CREATIVE_GUIDES.fourth_wall;
+  assert.match(guide, /关系已亲近时/);
+  assert.match(guide, /可以似有意又无意地越过故事中的 USER，落向正在读到这里的你/);
+  assert.match(guide, /亲近与距离的张力从已有相处自然生长/);
+  assert.match(guide, /一句特有的幽默、体贴里的笨拙、欲言又止的保留、矛盾中仍然作出的选择/);
+  assert.match(guide, /合乎人物时可用的机会，而非逐项安排的清单/);
+  assert.match(guide, /由人物决定说透还是保留/);
+  assert.match(guide, /其他角色也保有独立生活与 USER 的实际距离/);
+  assert.match(guide, /氛围与结局自由，不强求感动、恋爱、表白或任何固定情绪/);
+  assert.match(guide, /不假称知道真实姓名、位置、设备、现实活动或内心，也不替你回应或决定/);
+  assert.match(CREATIVE_LAWS, /Do not decide the reader's response or assign real-world obligations/);
+});
+
 test('diary admits unequal entry lengths and applies its floor to all body content combined', () => {
   const card = diary([1500, 100, 100, 100, 200]);
   assert.deepEqual(problems(card), []);

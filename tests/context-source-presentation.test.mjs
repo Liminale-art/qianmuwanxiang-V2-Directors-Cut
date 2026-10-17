@@ -70,6 +70,29 @@ test('the current preset has one selectable row within its group and numeric-onl
   assert.match(html, /sd-preset-version-items[\s\S]*data-name="【照见】Claude-Versatile-5\.1\.3 5\.5" checked[\s\S]*当前使用[\s\S]*<\/div><\/details>/);
 });
 
+test('preset guidance replaces only its read status in the section heading without changing selections', () => {
+  for (const selected of [[], ['文风预设']]) {
+    const sandbox = fixture({ current: '文风预设', names: ['文风预设'], selected });
+    const panel = sandbox.renderPresetSourcePanel();
+    assert.doesNotMatch(panel, /sd-preset-guidance|千幕负责栏目与输出格式/);
+    assert.equal((panel.match(/<input /g) || []).length, 2);
+    assert.equal((panel.match(/ checked/g) || []).length, 1);
+    assert.deepEqual(sandbox.getSelectedPresetNames(), selected);
+    Object.assign(sandbox, { settings: { contextOptions: {} }, maybeAutoScanContext() {}, getCharacterName: () => '角色', getPersonaName: () => '用户', renderTagRules: () => '', renderWorldBookSourcePanel: () => '' });
+    vm.runInContext(storyboardFunctionSource('renderContextTab'), sandbox);
+    for (const scanned of [false, true]) {
+      sandbox.contextScanCache.presetScannedAt = sandbox.contextScanCache.worldScannedAt = scanned ? 1 : 0;
+      const html = sandbox.renderContextTab();
+      assert.equal((html.match(/sd-preset-guidance/g) || []).length, 1);
+      assert.match(html, /data-acc="acc-presets" open>\s*<summary><b>预设<\/b><span class="sd-summary-note sd-preset-guidance">按需勾选，乱选只会左右脑互搏哦\(ˉ▽ˉ；\)<\/span><\/summary>/);
+      const preset = html.slice(html.indexOf('data-acc="acc-presets"'), html.indexOf('data-acc="acc-worlds"'));
+      assert.doesNotMatch(preset, /已读取|待读取|冲突扫描|自动分类/);
+      assert.match(html, new RegExp(`<b>世界书</b><span>${scanned ? '已读取' : '待读取'}</span>`));
+    }
+  }
+  assert.match(fixture().renderPresetSourcePanel(), /未读取到预设。/);
+});
+
 test('preset and world entries remain selectable without expandable content previews', () => {
   const sandbox = fixture();
   for (const kind of ['preset', 'world']) {

@@ -13,7 +13,7 @@ test('Chinese identity stays exact while progression laws and guides remain sepa
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
   assert.equal(digest(CREATIVE_LAWS), 'fbe4be2ed3eb386b35e459aaa05d627465764ad5f64e9dd604181c3e1d9c6203');
   assert.equal(digest(CREATIVE_BLUEPRINT), 'e2451abdca74390ae2608a3edcf118993d247074a311348998a5eeb64f91a8e2');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '9b14fb023bc3fa193214214dc6f44aaa3bbf350580c9e6b01de66b25aa94e3f7');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '8e7db797189a8a25651e8ca954fc486f8e64bdd1685ae0725be3226750d1c7b9');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
   assert.equal(CREATIVE_SECTION_LABELS.npc_updates, '各自人间');

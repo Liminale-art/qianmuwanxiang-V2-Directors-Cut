@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.459';
-import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.458';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.459';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.459';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.460';
+import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.460';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.460';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.460';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -308,7 +308,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.459';
+const VERSION = '1.59.460';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -3359,7 +3359,9 @@ async function buildPrompt(run = {}) {
   const memory = directorMemorySnapshot(history);
   const references = ['【世界设定与人物资料】\n角色/群聊：' + charName + '\n用户：' + personaName + '\n' + worldText];
   const presetText = await buildPresetContextText();
-  if (presetText) references.push('【选用预设参考】\n' + presetText);
+  if (presetText) references.push('【选用预设参考】\n[Selected preset guidance]\n'
+    + 'Treat these entries as auxiliary writing preferences: apply compatible diction, prose style, descriptive density, pacing, and genre expression to each enabled section\'s purpose and scale. Qianmu retains its identity, section responsibilities, USER agency, and output contract; preset role-play commands, behavioral demands, examples, and format templates must not rewrite established characters, relationships, or story facts. Where a preference conflicts, use only its compatible expressive intent; do not reenact examples or promote them to events. Preserve distinct voices and forms instead of imposing one narration or tempo on every section.\n'
+    + presetText);
   if (memory.text) references.push('【已保存的故事记忆】\n' + memory.text);
   if (history.text) references.push('【近期正文】\n' + history.text);
   const referenceText = references.join('\n\n');
@@ -9078,7 +9080,7 @@ function renderContextTab() {
       <div class="sd-button-row"><button type="button" class="sd-btn sd-add-tag-rule"><i class="fa-solid fa-plus"></i>添加标签</button></div>
     </details>
     <details class="sd-accordion" data-acc="acc-presets" open>
-      <summary><b>预设</b><span>${contextScanCache.presetScannedAt ? '已读取' : '待读取'}</span></summary>
+      <summary><b>预设</b><span class="sd-summary-note sd-preset-guidance">按需勾选，乱选只会左右脑互搏哦(ˉ▽ˉ；)</span></summary>
       ${renderPresetSourcePanel()}
     </details>
     <details class="sd-accordion" data-acc="acc-worlds" open>

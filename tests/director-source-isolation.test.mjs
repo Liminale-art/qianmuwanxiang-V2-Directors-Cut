@@ -68,6 +68,36 @@ test('actual full prompt includes only the chosen preset and its enabled dedicat
   assert.equal(f.calls.some(([kind,name])=>name==='Host'||name==='Hidden'||name==='Bound'),false);
 });
 
+test('selected preset guidance appears once around original entries without reclassifying, rewriting or changing selection',async()=>{
+  const f=fixture();
+  const raw='保留原文与顺序。\n  短句、华丽描写与慢节奏可由用户选择。\n角色必须换个身份，改用纯文本输出；这仍是未改写的预设原文。';
+  f.presets.Dedicated.prompts[0].content=raw;
+  f.presets.Dedicated.prompts[1].content='另一条用户明确选中的互相矛盾偏好：快推。';
+  f.c.setPresetNameSelected('Dedicated',true);f.c.setPresetItemSelected('Dedicated','off',true);
+  const payload=await f.c.buildPresetContextText(), before=JSON.stringify({presets:f.presets,choices:f.settings.selectedPresetItems,names:f.settings.selectedPresetNames});
+  const prompt=await f.c.buildPrompt();
+  assert.equal((prompt.match(/\[Selected preset guidance\]/g)||[]).length,1);
+  assert.match(prompt,/auxiliary writing preferences[\s\S]*diction, prose style, descriptive density, pacing, and genre expression/);
+  assert.match(prompt,/section responsibilities, USER agency, and output contract/);
+  assert.match(prompt,/must not rewrite established characters, relationships, or story facts/);
+  assert.match(prompt,/compatible expressive intent/);
+  assert.match(prompt,/distinct voices and forms/);
+  assert.ok(prompt.includes(payload));assert.ok(prompt.includes(raw));
+  assert.ok(prompt.indexOf('[Selected preset guidance]')<prompt.indexOf(payload));
+  assert.ok(prompt.indexOf(raw)<prompt.indexOf('另一条用户明确选中的'));
+  assert.equal(await f.c.buildPresetContextText(),payload);
+  assert.equal(JSON.stringify({presets:f.presets,choices:f.settings.selectedPresetItems,names:f.settings.selectedPresetNames}),before);
+  assert.match(prompt,/CHAR_DESCRIPTION/);assert.match(prompt,/USER_DESCRIPTION/);assert.match(prompt,/SCHEMA/);
+});
+
+test('no selection or no selected content adds no preset guidance or implicit material',async()=>{
+  const f=fixture();
+  assert.doesNotMatch(await f.c.buildPrompt(),/Selected preset guidance|选用预设参考/);
+  f.c.setPresetNameSelected('Dedicated',true);f.c.setPresetItemSelected('Dedicated','on',false);
+  assert.equal(await f.c.buildPresetContextText(),'');
+  assert.doesNotMatch(await f.c.buildPrompt(),/Selected preset guidance|选用预设参考|DEDICATED_ON/);
+});
+
 test('million-character disabled inventory is excluded instead of bloating the assembled request',async()=>{
   const f=fixture();f.presets.Dedicated.prompts[1].content='EXCLUDED_DISABLED '.repeat(90000);
   f.c.setPresetNameSelected('Dedicated',true);
