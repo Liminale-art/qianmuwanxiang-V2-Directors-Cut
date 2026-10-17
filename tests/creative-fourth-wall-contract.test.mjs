@@ -65,12 +65,12 @@ test('writing boundaries preserve personality, equal cast opportunity and privat
   assert.match(CREATIVE_LAWS, /protagonist status neither earns nor removes priority/);
   assert.match(CREATIVE_LAWS, /never USER or an alias, a merely listed setting character, or a newly invented side-page person/);
   assert.match(CREATIVE_LAWS, /not a global exception to character knowledge or USER agency/);
-  assert.match(CREATIVE_LAWS, /persona or narrative material; such echoes are not evidence of the real reader/);
+  assert.match(CREATIVE_LAWS, /remains conjecture, not claimed knowledge of real identity, private life/);
   assert.match(CREATIVE_LAWS, /Do not write these side stories into mainline memory, continuity references, or narrative injection/);
   assert.match(CREATIVE_GUIDES.fourth_wall, /先是这个具体的人，才是破墙机关/);
   assert.match(CREATIVE_GUIDES.fourth_wall, /不因主角、配角地位增加或减少机会/);
-  assert.match(CREATIVE_GUIDES.fourth_wall, /职业只提供可能使用的知识或手段，不决定统一觉醒模板/);
-  assert.match(CREATIVE_GUIDES.fourth_wall, /可以让人物察觉或看见墙外用户的存在/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /不按职业分配觉醒模板/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /以自身口吻猜想墙外的你/);
   assert.match(CREATIVE_GUIDES.fourth_wall, /不把 persona 当成真实用户的身份或隐私证据/);
   assert.match(CREATIVE_GUIDES.fourth_wall, /氛围与结局自由/);
   assert.match(CREATIVE_GUIDES.fourth_wall_diary, /至少 5 则以上/);
@@ -80,6 +80,42 @@ test('writing boundaries preserve personality, equal cast opportunity and privat
   const hintGuide = creativeSectionGuidance({ ...selected('scene'), recentInterludeHint: '{"type":"fourth_wall","form":"diary","character":"阿岚"}' });
   assert.match(hintGuide, /第四面墙只参考形式与人物元信息，不以此证明角色在主线有过觉察/);
   assert.match(hintGuide, /不因上轮人物的主配角地位增加或减少机会，也不硬性换人/);
+});
+
+test('fourth-wall guidance starts inside the premise and carries the same relational you across forms', () => {
+  assert.match(CREATIVE_LAWS, /premise already in effect, not a discovery or verification sequence/);
+  assert.match(CREATIVE_LAWS, /rather than inventing a second outside observer; where the character knows USER, this is the same relational "you"/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /直接进入本篇破墙前提已经成立的叙事/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /已有的相识与关系在此延续，而不是另立一个陌生旁观者/);
+  assert.match(CREATIVE_GUIDES.fourth_wall_diary, /从第一则就进入破墙后的个人记录/);
+  assert.match(CREATIVE_GUIDES.fourth_wall_diary, /日记仍是写给自己的记录，未必每则都直接呼告/);
+  assert.match(CREATIVE_GUIDES.fourth_wall_scene, /不先叙述发现或验证那道墙的过程/);
+  for (const form of ['diary', 'scene']) {
+    const schema = createCreativeSchema(selected(form)), card = parseShape(schema).interlude;
+    const prose = form === 'diary' ? card.entries[0].content : card.content;
+    assert.match(prose, /premise (?:is |already )?in effect/);
+    assert.match(schema, /through USER with any existing relationship preserved, not as a new outside stranger/);
+    assert.doesNotMatch(prose, /notice the invisible wall|Let awareness, choices/);
+    assert.doesNotMatch(schema, /observe discovery, action and concrete consequences/);
+  }
+});
+
+test('fourth-wall closeness is grounded without forcing acquaintance, intimacy or factual private access', () => {
+  assert.match(CREATIVE_LAWS, /Preserve personality and the established relationship stage/);
+  assert.match(CREATIVE_LAWS, /wishes may reach ahead, but imagined futures are not shared memories or proof of USER's intimacy, commitment or consent/);
+  assert.match(CREATIVE_LAWS, /actual distance from USER, including no acquaintance/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /双方具体经历、当前关系阶段、未尽之言，以及有依据的未来可能性/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /未来可能性在本篇内展开，不倒写成已有共同记忆/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /愿望可以超前，但不把尚未获得的亲近、承诺或你的回应写成已成立/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /尚无直接交集就不强造旧交或亲密/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /不强求感动、恋爱、表白/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /猜想保留不确定/);
+  assert.match(CREATIVE_GUIDES.fourth_wall, /也不替你回应或决定/);
+  for (const form of ['diary', 'scene']) {
+    const schema = createCreativeSchema(selected(form));
+    assert.match(schema, /preserves personality, relationship stage and USER agency/);
+    assert.match(schema, /grants neither private knowledge nor mainline facts/);
+  }
 });
 
 test('diary admits unequal entry lengths and applies its floor to all body content combined', () => {

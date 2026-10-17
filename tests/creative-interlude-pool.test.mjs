@@ -79,27 +79,29 @@ test('fourth-wall words never become future continuity or variety excerpts; read
   }
 });
 
-test('exact v456-v457 built-in defaults upgrade while DIY, backups, old cards and world checkpoints survive', () => {
-  const fingerprints = { 'v457-system': '24243610', 'v457-schema': '2705ca8b', 'v457-blueprint': 'e8c57aa2' };
+test('exact v456-v458 built-in defaults upgrade while DIY, backups, old cards and world checkpoints survive', () => {
+  const fingerprints = { 'v457-system': '24243610', 'v457-schema': '2705ca8b', 'v457-blueprint': 'e8c57aa2',
+    'v458-system': '04b8c901', 'v458-schema': '8c9d7978', 'v458-blueprint': 'e8c57aa2' };
   const sandbox = vm.createContext({ hashText: value => fingerprints[value] || hashText(value) });
   const runtime = fs.readFileSync(new URL('../qianmu-creative-runtime.js', import.meta.url), 'utf8');
   vm.runInContext(runtime.replace(/^import .+;\r?$/gm, '').replace(/^export /gm, ''), sandbox);
   const next = { systemPrompt: CREATIVE_SYSTEM_PROMPT, outputSchemaText: createCreativeSchema(), blueprint: CREATIVE_BLUEPRINT };
-  for (const marker of [undefined, '__legacy__']) {
-    const settings = { systemPrompt: 'v457-system', outputSchemaText: 'v457-schema', appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
-      systemPromptBackup: 'v457-system', outputSchemaBackup: 'manual', templates: [{ id: 'default-free-blueprint', content: 'v457-blueprint' }, { id: 'mine', content: 'v457-blueprint' }] };
+  for (const prior of ['v457', 'v458']) for (const marker of [undefined, '__legacy__']) {
+    const system = `${prior}-system`, schema = `${prior}-schema`, blueprint = `${prior}-blueprint`;
+    const settings = { systemPrompt: system, outputSchemaText: schema, appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      systemPromptBackup: system, outputSchemaBackup: 'manual', templates: [{ id: 'default-free-blueprint', content: blueprint }, { id: 'mine', content: blueprint }] };
     sandbox.upgradeCreativeDefaults(settings, next);
     assert.equal(settings.systemPrompt, next.systemPrompt); assert.equal(settings.outputSchemaText, next.outputSchemaText);
-    assert.equal(settings.systemPromptBackup, 'v457-system'); assert.equal(settings.outputSchemaBackup, 'manual');
-    assert.equal(settings.templates[0].content, next.blueprint); assert.equal(settings.templates[1].content, 'v457-blueprint');
+    assert.equal(settings.systemPromptBackup, system); assert.equal(settings.outputSchemaBackup, 'manual');
+    assert.equal(settings.templates[0].content, next.blueprint); assert.equal(settings.templates[1].content, blueprint);
     const stable = structuredClone(settings); sandbox.upgradeCreativeDefaults(settings, next); assert.deepEqual(settings, stable);
-    const store = { blueprint: 'v457-blueprint', appliedBlueprintDefaultHash: marker, history: [{ interlude: { type: 'phone', content: '旧原文' } }],
+    const store = { blueprint, appliedBlueprintDefaultHash: marker, history: [{ interlude: { type: 'phone', content: '旧原文' } }],
       factions: [{ name: '旧组织' }], geoNodeCheckpoint: { version: 1, base: { geoSeq: 8 } } };
     const before = structuredClone(store); sandbox.upgradeCreativeBlueprint(store, next.blueprint, 7);
     assert.equal(store.blueprint, next.blueprint);
     for (const field of ['history', 'factions', 'geoNodeCheckpoint']) assert.deepEqual(store[field], before[field]);
-    const custom = { systemPrompt: 'v457-system。', outputSchemaText: 'v457-schema。', appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
-      templates: [{ id: 'default-free-blueprint', content: 'v457-blueprint。' }, { id: 'default-free-blueprint', content: 'v457-blueprint', edited: true }] };
+    const custom = { systemPrompt: system + '。', outputSchemaText: schema + '。', appliedPromptDefaultHash: marker, appliedSchemaDefaultHash: marker,
+      templates: [{ id: 'default-free-blueprint', content: blueprint + '。' }, { id: 'default-free-blueprint', content: blueprint, edited: true }] };
     const copy = structuredClone(custom); sandbox.upgradeCreativeDefaults(custom, next); assert.deepEqual(custom.templates, copy.templates);
     assert.equal(custom.systemPrompt, copy.systemPrompt); assert.equal(custom.outputSchemaText, copy.outputSchemaText);
   }

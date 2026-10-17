@@ -1,8 +1,8 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.458';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.459';
 import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.458';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.458';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.458';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.459';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.459';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
@@ -308,7 +308,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.458';
+const VERSION = '1.59.459';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -7757,7 +7757,7 @@ function renderHistorySection() {
         <button type="button" class="sd-icon-btn sd-icon-sm sd-danger sd-delete-history" data-id="${htmlEscape(record.id)}" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button>
       </div></article>`;
   }).join('');
-  return `<section class="sd-card"><div class="sd-field-head"><h3>历史记录</h3><span class="sd-summary-note">最多保留 5 条审片记录</span></div>${rows || '<p class="sd-muted">暂无历史记录。</p>'}</section>`;
+  return `<section class="sd-card"><div class="sd-field-head"><h3>历史记录</h3><span class="sd-summary-note">最多保留 5 条审片记录</span></div>${rows || '<p class="sd-muted sd-history-empty">暂无记录</p>'}</section>`;
 }
 
 // formatDateTime - 已迁移到 qianmu-storyboard-utils.js
@@ -12299,7 +12299,6 @@ function renderPlugTab() {
     <section class="sd-card sd-model-config">
       <h3>模型配置</h3>
       <label>模型来源</label><select class="text_pole sd-provider-select" aria-label="模型来源"><option value="sillytavern" ${!isExternal ? 'selected' : ''}>使用 SillyTavern 当前 API 设置</option><option value="external" ${isExternal ? 'selected' : ''}>自定义（兼容 OpenAI）</option></select>
-      ${!isExternal ? '<p class="sd-muted">继承 ST 当前连接；聊天补全支持独立流式，不影响正文生成。</p>' : ''}
       <div class="sd-api-external-fields" ${isExternal ? '' : 'hidden'}>
       <label>API预设</label>
       <div class="sd-api-profile-row">

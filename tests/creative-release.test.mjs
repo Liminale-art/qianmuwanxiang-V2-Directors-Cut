@@ -4,13 +4,14 @@ import { readFile } from 'node:fs/promises';
 import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = '1.59.458';
-const releaseVersion = '1.59.458';
+const version = '1.59.459';
+const releaseVersion = '1.59.459';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
-  'qianmu-creative-runtime.js', 'qianmu-director-live.js', 'qianmu-creative-social.js',
+  'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
+  ['qianmu-director-live.js', '1.59.458'], ['qianmu-creative-social.js', '1.59.458'],
   ['qianmu-theme-menu.js', '1.59.455'],
   ...['qianmu-model-response.js', 'qianmu-model-host.js', 'qianmu-model-external.js',
     'qianmu-prose-assistant-request.js', 'qianmu-prose-assistant-preferences.js', 'qianmu-prose-assistant-panel.js',

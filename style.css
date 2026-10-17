@@ -2499,6 +2499,17 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   white-space: normal;
 }
 
+#story-director-modal .sd-history-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: 0;
+  padding: 12px 0;
+  font-size: var(--qm-type-label, 12px);
+  text-align: center;
+}
+
 #story-director-modal .sd-context-block > .sd-source-list,
 #story-director-modal .sd-context-block > .sd-context-item,
 #story-director-modal .sd-context-block > p.sd-muted {
