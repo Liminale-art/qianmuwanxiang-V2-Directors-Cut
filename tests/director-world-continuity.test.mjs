@@ -8,6 +8,9 @@ import * as creative from '../qianmu-creative-prompts.js';
 import * as runtime from '../qianmu-creative-runtime.js';
 import * as live from '../qianmu-director-live.js';
 import { migrateQianmuChatStoreV2 } from '../qianmu-data-migrations.js';
+import { captureCurrentChatSource } from '../qianmu-current-chat-source.js';
+import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
+import { captureDirectorSaveSnapshot } from '../qianmu-director-save-confirmation.js';
 
 // Execute the real loader, input composition, generation, merge and clear
 // handlers. The fixture only replaces UI, storage and model transport boundaries.
@@ -30,11 +33,12 @@ const parts = [
   between('const INJ_LEN =', '\n/* ============================================================'),
   between('const FACTION_TRENDS =', '\nfunction buildPlanDigest('),
   between('function makeStreamLogUpdater(', '// MIGRATED to qianmu-storyboard-utils.js (commit 19)'),
-  ...['getChatStore', 'currentPlan', 'directorDisplayPlan', 'directorGeopoliticsState', 'buildGeopoliticsDigest', 'bindGeopoliticsTabEvents', 'resetDirectorNarrativeBridge'].map(source),
+  ...['getChatStore', 'currentPlan', 'directorDisplayPlan', 'directorGeopoliticsState', 'currentDirectorInjectionText', 'buildGeopoliticsDigest', 'bindGeopoliticsTabEvents', 'resetDirectorNarrativeBridge'].map(source),
   `function bindPlanClearFixture(root) {\n${between("  root.querySelector('.sd-clear-plan')?.addEventListener", '  // 尘寰群生：')}\n}`,
   `function bindHistoryLoadFixture(root) {\n${between("  root.querySelectorAll('.sd-load-history').forEach", "  root.querySelectorAll('.sd-delete-history').forEach")}\n}`,
 ];
 const plain = value => JSON.parse(JSON.stringify(value));
+const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const baseWorld = () => ({
   factions: ['A', 'B', 'C'].map((x, i) => ({ id: `base-${x}`, name: `BASE_FACTION_${x}`, standing: `BASE_STANDING_${x}`, agenda: `BASE_AGENDA_${x}`, clues: [`BASE_CLUE_${x}`], trend: 'stable', scale: '区域性', origin: 1, lastTouched: 7 - i })),
   factionRelations: [{ a: 'base-A', b: 'base-B', kind: '中立', note: 'BASE_RELATION' }],
@@ -62,12 +66,13 @@ function plan(tag, { reviseBase = false, stage = '蔓延', world = true } = {}) 
   }
   return result;
 }
-function fixture({ responses = [], providerMode = 'external', persisted, chat, saveHook, injectHook, confirmHook } = {}) {
+function fixture({ responses = [], providerMode = 'external', persisted, chat, saveHook, injectHook, confirmHook, saveConfirmationHook } = {}) {
   let id = 0, saves = 0, injects = 0, resets = 0, chatKey = 'chat-one';
   const requests = [], toasts = [], stages = [];
   const initial = persisted || { ...baseWorld(), blueprint: 'SELECTED_BLUEPRINT', plan: plan('OLD_CANDIDATE', { world: false }), planAtLen: 1, lastPlanIdx: 0,
     history: [{ id: 'old-history', plan: plan('HISTORY_ONLY', { world: false }) }], injectOverride: 'OLD_OVERRIDE' };
-  const context = { name1: '访客', extensionSettings: { gagaDogSummary: {} }, chatMetadata: { fixture: initial }, chat: chat || [
+  const context = { name1: '访客', chatId: 'chat-one', characterId: 0, characters: [{ chat: 'chat-one', avatar: 'fixture.png' }],
+    getRequestHeaders: () => ({}), saveMetadata: async () => {}, extensionSettings: { gagaDogSummary: {} }, chatMetadata: { fixture: initial }, chat: chat || [
     { name: '阿岚', is_user: false, mes: 'PROSE_SOURCE：阿岚拿起手机。' },
     { name: '访客', is_user: true, mes: 'USER_SOURCE：我问起尚未交还的信。' },
   ] };
@@ -85,14 +90,16 @@ function fixture({ responses = [], providerMode = 'external', persisted, chat, s
     memoryHostFixture: { findExtension: () => ({ enabled: true }) }, readGagaMemoryContext: () => ({ text: 'MEMORY_SOURCE', status: 'ready', diagnostics: [], snapshot: { fingerprint: 'memory-one' } }),
     estimateTokens: text => Math.ceil(text.length / 4), uid: prefix => `${prefix}-${++id}`,
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null,
-    activeTab: 'dashboard', worldPage: 'geopolitics', MODAL_ID: 'fixture-panel', document: { getElementById: () => null },
+    directorLeaveGuard: null, directorUnconfirmedSaves: new WeakMap(), captureCurrentChatSource, createDirectorLeaveGuard, captureDirectorSaveSnapshot,
+    confirmDirectorSave: async (_snapshot, { guard }) => { await guard(); await saveConfirmationHook?.({ c, context, settings, store: c.getChatStore() }); return { status: 'confirmed' }; },
+    activeTab: 'dashboard', worldPage: 'geopolitics', MODAL_ID: 'fixture-panel', document: { getElementById: () => null, addEventListener() {}, removeEventListener() {} },
     AbortController, Date, console, structuredClone, clone: structuredClone,
     validateApiSettings: () => true, resolveImageAccountNamespace: async () => 'account-one',
     renderBusyState: () => {}, renderModal: () => {}, renderFloatButton: () => {}, rerenderIfOpen: () => {}, apiToast: () => {}, toast: (message, type) => toasts.push({ message, type }),
     pushLog: log => { settings.logHistory.push(log); return log; }, saveSettings: () => {},
     saveMetadata: async () => { saves++; await saveHook?.({ c, context, settings, store: c.getChatStore(), saves }); },
     applyDirectorInjection: async () => { injects++; await injectHook?.({ c, context, settings, store: c.getChatStore(), injects }); },
-    injectSelection: new Map([['old-selection', true]]), resetCreativeSocialState: () => { resets++; },
+    injectSelection: new Map([['old-selection', true]]), resetCreativeSocialState: () => { resets++; }, clearDirectorInjection: () => {},
     storyboardState: () => ({ enabled: false }), FACTION_RELATION_KINDS: ['冲突', '同盟', '张力', '中立', '依附'],
     confirmDialog: async (...args) => confirmHook ? confirmHook({ c, context, store: c.getChatStore(), changeChat: () => { chatKey = 'chat-two'; context.chat = [...context.chat]; }, args }) : true,
     storyboardResetWorldAutomatic: () => {}, directorNarrativeBridgeEpoch: 0, directorWorldSourceRefreshKey: '', directorWorldEntryLinks: new Map(), directorProductionPacketState: {}, directorCandidatePoolState: {},
@@ -271,13 +278,109 @@ test('world disabled runs neither reference nor mutate world; re-enabling follow
   g.settings.geopoliticsEnabled = true; await g.c.generateDirectorPlan(); assert.equal(g.requests.length, 1); assert.equal(lastLog(g).errorCode, 'WORLD_NODE_MISMATCH');
 });
 
-test('a rejected metadata save restores only staged fields, keeps history and selection, and preserves the actual save error', async () => {
+test('a rejected invoked save retains its candidate and prior history without treating an unknown disk result as a rollback', async () => {
   const seed = fixture({ responses: [JSON.stringify(plan('SAVED'))] }); await seed.c.generateDirectorPlan();
   const f = fixture({ persisted: plain(seed.store), responses: [JSON.stringify(plan('SAVE_FAILED'))], saveHook: () => { throw new Error('OFFLINE_SAVE_REJECTED'); } });
   const before = plain(f.store); await f.c.generateDirectorPlan();
-  assert.deepEqual(plain(f.store), before); assert.equal(f.saves, 1); assert.equal(f.injects, 0);
+  assert.match(JSON.stringify(f.store.plan), /SAVE_FAILED/);
+  assert.match(JSON.stringify(archive(f)), /SAVE_FAILED/);
+  assert.deepEqual(plain(f.store.history.slice(1)), before.history);
+  assert.deepEqual(plain(f.c.directorInputStore(f.store)), before);
+  assert.equal(f.c.currentDirectorInjectionText(), ''); assert.equal(f.c.buildGeopoliticsDigest(), '');
+  assert.equal(f.saves, 1); assert.equal(f.injects, 0);
   assert.equal(f.c.injectSelection.size, 1); assert.equal(f.resets, 0);
   assert.equal(lastLog(f).errorCode, 'DIRECTOR_SAVE_UNCONFIRMED'); assert.equal(lastLog(f).errorCause, 'OFFLINE_SAVE_REJECTED');
+  assert.equal(lastLog(f).saveState, 'unconfirmed'); assert.notEqual(lastLog(f).resultSaved, true);
+  assert.match(lastLog(f).response, /SAVE_FAILED/);
+});
+
+test('snapshot preflight failure restores only owned staging before the host is invoked', async () => {
+  const seed = fixture({ responses: [JSON.stringify(plan('SAVED'))] }); await seed.c.generateDirectorPlan();
+  const f = fixture({ persisted: plain(seed.store), responses: [JSON.stringify(plan('NOT_SUBMITTED'))] });
+  const before = plain(f.store);
+  f.c.captureDirectorSaveSnapshot = () => { throw new Error('OFFLINE_CAPTURE_REJECTED'); };
+  await f.c.generateDirectorPlan();
+  assert.deepEqual(plain(f.store), before); assert.equal(f.saves, 0); assert.equal(f.injects, 0);
+  assert.equal(f.c.directorPendingSave(f.store), null); assert.equal(lastLog(f).saveState, 'not_submitted');
+  assert.equal(lastLog(f).errorCause, 'OFFLINE_CAPTURE_REJECTED'); assert.match(lastLog(f).response, /NOT_SUBMITTED/);
+});
+
+for (const hadUnknown of [false, true]) test(`staged metadata is quarantined before an awaiting pre-save guard and restores ${hadUnknown ? 'the prior unknown quarantine' : 'the prior verified input'} on pre-submit failure`, async () => {
+  const responses = [...(hadUnknown ? [JSON.stringify(plan('EARLIER_UNKNOWN'))] : []), JSON.stringify(plan('STAGING_WINDOW'))];
+  const f = fixture({ responses, saveHook: () => { throw new Error('EARLIER_UNKNOWN_SAVE'); } });
+  if (hadUnknown) await f.c.generateDirectorPlan();
+  const before = plain(f.store), previousPending = f.c.directorPendingSave(f.store), savesBefore = f.saves;
+  const gate = deferred(), reached = deferred(), setterCalls = [];
+  f.c.resolveImageAccountNamespace = () => {
+    if (f.store.plan?.story_status?.title === 'STAGING_WINDOW_TITLE') { reached.resolve(); return gate.promise; }
+    return 'account-one';
+  };
+  vm.runInContext([source('getInjectApi'), source('applyDirectorInjection').replace('async function applyDirectorInjection(', 'async function applyActualDirectorInjection(')].join('\n'), f.c);
+  f.settings.injectEnabled = true; f.context.setExtensionPrompt = (...args) => setterCalls.push(args);
+  const run = f.c.generateDirectorPlan(); await reached.promise;
+  assert.equal(f.saves, savesBefore); assert.ok(f.c.directorPendingSave(f.store));
+  assert.equal(f.c.currentDirectorInjectionText(), ''); assert.equal(f.c.buildGeopoliticsDigest(), '');
+  await f.c.applyActualDirectorInjection({ strict: true });
+  assert.equal(setterCalls.at(-1)[1], '', 'the real setter path must not publish staged candidate text');
+  assert.doesNotMatch(JSON.stringify(f.c.directorInputStore(f.store)), /STAGING_WINDOW/);
+  gate.reject(new Error('POST_STAGING_GUARD_FAILED')); await run;
+  assert.deepEqual(plain(f.store), before); assert.equal(f.saves, savesBefore); assert.equal(f.injects, 0);
+  assert.equal(f.c.directorPendingSave(f.store), previousPending); assert.equal(lastLog(f).saveState, 'not_submitted');
+});
+
+test('successive unknown saves never advance the world from an unconfirmed candidate, including world off and on', async () => {
+  for (const startsWithWorld of [false, true]) {
+    const tags = startsWithWorld ? ['UNKNOWN_WORLD_A', 'UNKNOWN_OFF', 'UNKNOWN_WORLD_B', 'CONFIRMED_FINAL'] : ['UNKNOWN_OFF', 'UNKNOWN_WORLD_A', 'UNKNOWN_WORLD_B', 'CONFIRMED_FINAL'];
+    const f = fixture({ responses: tags.map(tag => JSON.stringify(plan(tag, { world: tag !== 'UNKNOWN_OFF' }))),
+      saveHook: ({ saves }) => { if (saves < 4) throw new Error('OFFLINE_UNKNOWN'); } });
+    const baseline = archive(f);
+    for (let i = 0; i < tags.length; i++) {
+      f.settings.geopoliticsEnabled = tags[i] !== 'UNKNOWN_OFF';
+      if (i) f.context.chat.push({ name: '阿岚', mes: `FORWARD_PROSE_${i}` });
+      await f.c.generateDirectorPlan();
+      assert.doesNotMatch(sent(f, i), /UNKNOWN_(?:WORLD_A|WORLD_B|OFF)/, `unconfirmed input at ${i}`);
+      if (f.settings.geopoliticsEnabled) assert.deepEqual(f.stages[i].world.base, baseline);
+      if (i < 3) {
+        assert.equal(lastLog(f).saveState, 'unconfirmed');
+        assert.equal(f.c.currentDirectorInjectionText(), ''); assert.equal(f.c.buildGeopoliticsDigest(), '');
+      }
+    }
+    assert.equal(f.saves, 4); assert.equal(f.injects, 1); assert.equal(lastLog(f).saveState, 'confirmed');
+    assert.equal(f.c.directorPendingSave(f.store), null);
+    assert.match(f.c.buildGeopoliticsDigest(), /CONFIRMED_FINAL/);
+    assert.doesNotMatch(JSON.stringify(archive(f)), /UNKNOWN_/);
+  }
+});
+
+test('loading a history revision after an unknown save cannot release the world injection gate', async () => {
+  const f = fixture({ responses: [JSON.stringify(plan('UNKNOWN_WORLD')), JSON.stringify(plan('AFTER_HISTORY'))],
+    saveHook: ({ saves }) => { if (saves === 1) throw new Error('OFFLINE_UNKNOWN'); } });
+  const baseline = archive(f); await f.c.generateDirectorPlan();
+  const pending = f.c.directorPendingSave(f.store), priorRevision = f.store.directorPlanRevisionId;
+  await f.click('.sd-load-history', 'old-history');
+  assert.notEqual(f.store.directorPlanRevisionId, priorRevision);
+  assert.equal(f.c.directorPendingSave(f.store), pending);
+  assert.equal(f.c.currentDirectorInjectionText(), ''); assert.equal(f.c.buildGeopoliticsDigest(), '');
+  assert.match(JSON.stringify(archive(f)), /UNKNOWN_WORLD/, 'the retained archive itself is not silently rolled back');
+  assert.deepEqual(plain(f.c.captureGeopoliticsArchive(f.c.directorInputStore(f.store))), baseline);
+  await f.c.generateDirectorPlan();
+  assert.doesNotMatch(sent(f, 1), /UNKNOWN_WORLD/); assert.deepEqual(f.stages[1].world.base, baseline);
+  assert.equal(f.c.directorPendingSave(f.store), null); assert.equal(lastLog(f).saveState, 'confirmed');
+});
+
+test('explicit world clearing after an unknown result remains empty in the next request rather than reviving the saved baseline', async () => {
+  const f = fixture({ responses: [JSON.stringify(plan('UNKNOWN_BEFORE_CLEAR')), JSON.stringify(plan('AFTER_CLEAR'))],
+    saveHook: ({ saves }) => { if (saves === 1) throw new Error('OFFLINE_UNKNOWN'); } });
+  await f.c.generateDirectorPlan();
+  f.c.directorLiveLog = null; // Dismiss the failed-response read-only preview before using the live archive controls.
+  await f.click('.sd-geo-clear');
+  assert.deepEqual(archive(f), { factions: [], factionRelations: [], worldEvents: [], geoSeq: 0 });
+  assert.deepEqual(plain(f.c.captureGeopoliticsArchive(f.c.directorInputStore(f.store))), archive(f));
+  await f.c.generateDirectorPlan();
+  assert.equal(f.stages[1].world.mode, 'initial');
+  assert.doesNotMatch(sent(f, 1), /UNKNOWN_BEFORE_CLEAR|BASE_FACTION|BASE_EVENT/);
+  assert.doesNotMatch(JSON.stringify(archive(f)), /UNKNOWN_BEFORE_CLEAR|BASE_FACTION|BASE_EVENT/);
+  assert.equal(f.store.geoSeq, 1); assert.equal(lastLog(f).saveState, 'confirmed');
 });
 
 test('save failure does not restore a world or plan that the user cleared while persistence was pending', async () => {
@@ -288,7 +391,10 @@ test('save failure does not restore a world or plan that the user cleared while 
   } });
   const history = plain(f.store.history); await f.c.generateDirectorPlan();
   assert.deepEqual(archive(f), { factions: [], factionRelations: [], worldEvents: [], geoSeq: 0 }); assert.ok(!Object.hasOwn(f.store, 'geoNodeCheckpoint'));
-  assert.equal(f.store.plan, null); assert.deepEqual(plain(f.store.history), history); assert.equal(f.injects, 0);
+  assert.equal(f.store.plan, null); assert.deepEqual(plain(f.store.history.slice(1)), history); assert.equal(f.injects, 0);
+  const input = f.c.directorInputStore(f.store);
+  assert.equal(input.plan, null); assert.deepEqual(plain(f.c.captureGeopoliticsArchive(input)), archive(f));
+  assert.ok(!Object.hasOwn(input, 'geoNodeCheckpoint'));
 });
 
 test('saved world survives a later injection failure and the log honestly separates saved result from incomplete synchronization', async () => {
@@ -306,7 +412,9 @@ test('saved world survives a later injection failure and the log honestly separa
 
 test('post-save guards clear obsolete selections only while this run still owns the chat and saved plan', async () => {
   for (const change of ['settings', 'chat', 'plan']) {
-    const f = fixture({ responses: [JSON.stringify(plan('SAVED_BEFORE_GUARD'))], saveHook: ({ c, context, settings, store }) => {
+    // This boundary explicitly returns confirmed, then exposes a competing change
+    // to the caller's post-confirmation guard; it is not the native save promise.
+    const f = fixture({ responses: [JSON.stringify(plan('SAVED_BEFORE_GUARD'))], saveConfirmationHook: ({ c, context, settings, store }) => {
       if (change === 'settings') settings.temperature = 1.1;
       else {
         c.injectSelection.clear(); c.injectSelection.set('new-user-selection', true);
@@ -330,6 +438,9 @@ test('post-save guards clear obsolete selections only while this run still owns 
 
 test('world injection digest suppresses legacy rewinds, checkpoint rewinds and edited last floors until a matching world is saved', async () => {
   const legacy = fixture(); legacy.store.planAtLen = 2; legacy.store.lastPlanIdx = 1;
+  assert.ok(!Object.hasOwn(legacy.store, 'directorPlanRevisionId'));
+  assert.equal(legacy.c.directorPendingSave(legacy.store), null);
+  assert.equal(legacy.c.currentDirectorInjectionText(), 'OLD_OVERRIDE', 'a legacy store without a revision is not mistaken for an unknown save');
   assert.match(legacy.c.buildGeopoliticsDigest(), /BASE_EVENT_A/);
   legacy.context.chat.pop(); assert.equal(legacy.c.buildGeopoliticsDigest(), '', 'a legacy world cannot be injected after rewinding before its saved floor');
   const seed = fixture({ responses: [JSON.stringify(plan('SAVED_FOR_DIGEST'))] }); await seed.c.generateDirectorPlan();

@@ -13,7 +13,7 @@ const between = (start, end) => {
     return entry.slice(begin, finish);
 };
 const fingerprintSource = between('function directorSourceFingerprint()', 'async function buildPrompt(');
-const rerollSource = between('function directorSameFloorReroll(', 'let directorMemoryHostModule');
+const rerollSource = between('function directorPendingSave(', 'let directorMemoryHostModule');
 const itemIdentitySource = between('function getContextItemId(', 'function getContextSelectionReviewStore(');
 const promptSource = between('async function buildPrompt(', 'function buildGeopoliticsArchiveSegment(');
 
@@ -31,7 +31,7 @@ function fixture() {
         worldBooks: { world: [{ id: 'w1', content: '城市世界' }] } };
     const state = { memoryFingerprint: 'memory-a', memoryStatus: 'ready', presetNames: ['writing'], bookNames: ['world'],
         char: '林队', persona: '读者', charDescription: '刑警', personaDescription: '记者', onWorld: null, onPreset: null };
-    const c = { settings, contextScanCache: scan, hashText, projectCreativeContinuity, selectCreativeOptions, recentInterludeHint,
+    const c = { settings, contextScanCache: scan, hashText, projectCreativeContinuity, selectCreativeOptions, recentInterludeHint, directorUnconfirmedSaves: new WeakMap(),
         ctx: () => context, getChatStore: () => store, getChatKey: () => 'chat',
         getCharacterName: () => state.char, getPersonaName: () => state.persona,
         getCharacterDescription: () => state.charDescription, getPersonaDescription: () => state.personaDescription,

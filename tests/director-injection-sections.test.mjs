@@ -11,7 +11,7 @@ function between(start, end) {
   return source.slice(a, b);
 }
 const injectSource = between('function buildPlanDigest(', 'function clearDirectorInjection(');
-const worldNodeSource = between('function directorSameFloorReroll(', 'let directorMemoryHostModule =');
+const worldNodeSource = between('function directorPendingSave(', 'let directorMemoryHostModule =');
 const renderSource = between('function renderInjectSections(', 'function renderInjectPreview(');
 const toggleSource = between("  root.querySelectorAll('.sd-inject-section-toggle').forEach", '  // 自动推演开关');
 const allOff = { quests: false, nodes: false, npc: false, relations: false, world: false, geopolitics: false };
@@ -37,7 +37,7 @@ function fixture() {
     settings: { enabled: true, injectEnabled: true, injectSections: { ...allOff }, geopoliticsEnabled: true, injectDepth: 2 },
     getChatStore: () => store, currentPlan: () => store.plan, INJ_LEN: {}, MODULE_NAME: 'qianmu',
     snip: value => String(value || ''), htmlEscape: value => String(value || ''),
-    hashText,
+    hashText, directorUnconfirmedSaves: new WeakMap(),
     ctx: () => ({ chat: [], setExtensionPrompt: (...args) => applied.push(args) }), console,
   });
   vm.runInContext(worldNodeSource + '\n' + injectSource + '\n' + renderSource, c);
@@ -126,4 +126,34 @@ test('actual category toggles update live injection independently and preserve c
     assert.equal(store.injectOverride, override, 'scope changes do not silently discard manual editing');
   }
   assert.equal(saves, 5); assert.equal(renders, 5);
+});
+
+test('legacy stores without a plan revision remain injectable unless this store has an unconfirmed save', async () => {
+  const { c, store, applied } = fixture();
+  c.settings.injectSections = { ...allOff, nodes: true, geopolitics: true };
+  assert.equal(store.directorPlanRevisionId, undefined);
+  await c.applyDirectorInjection();
+  assert.match(applied.at(-1)[1], /RIPPLE_ONLY[\s\S]*GEOPOLITICS_ONLY/);
+  const pending = { previousValues: new Map(), stagedValues: new Map() };
+  c.directorUnconfirmedSaves.set(store, pending);
+  store.injectOverride = 'UNKNOWN_OVERRIDE';
+  assert.equal(c.currentDirectorInjectionText(), '');
+  assert.equal(c.buildGeopoliticsDigest(), '');
+  await c.applyDirectorInjection();
+  assert.equal(applied.at(-1)[1], '');
+  store.directorPlanRevisionId = 'loaded-old-history';
+  await c.applyDirectorInjection();
+  assert.equal(applied.at(-1)[1], '', 'loading history cannot silently approve the retained world');
+  assert.equal(c.directorPendingSave(store), pending);
+  c.directorUnconfirmedSaves.delete(store);
+  await c.applyDirectorInjection();
+  assert.equal(applied.at(-1)[1], 'UNKNOWN_OVERRIDE', 'a separately confirmed full save can explicitly release quarantine');
+});
+
+test('strict post-save injection reports setter failure without changing normal best-effort callers', async () => {
+  const { c } = fixture();
+  c.ctx = () => ({ chat: [], setExtensionPrompt: () => { throw new Error('setter unavailable'); } });
+  c.console = { warn: () => {} };
+  await c.applyDirectorInjection();
+  await assert.rejects(c.applyDirectorInjection({ strict: true }), /setter unavailable/);
 });

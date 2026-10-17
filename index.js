@@ -31,6 +31,8 @@ import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composit
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
 import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.458';
+import { createDirectorLeaveGuard } from './qianmu-director-leave-guard.js';
+import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -308,7 +310,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.460';
+const VERSION = '1.59.461';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1226,6 +1228,10 @@ let presetRefreshPromise = null;
 let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染加入场动画，之后的静默重渲染（刷新/扫描/切换）不再重播，消除闪动
 let busy = false;                  // 推演忙碌态
 let directorRun = null, directorLiveLog = null;
+let directorLeaveGuard = null;
+// Session-only quarantine: a host call without a confirmed readback must not
+// become new injected canon. A freshly loaded host store is not this object.
+const directorUnconfirmedSaves = new WeakMap();
 let abortController = null;         // 推演中止句柄
 let cancelRequested = false;       // 推演取消标记
 let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许并发）
@@ -3102,6 +3108,7 @@ function buildPlanDigest(plan) {
 // 覆盖层只存聊天元数据，不污染推演结构；新推演/载入历史/清空推演时会主动解除。
 function currentDirectorInjectionText(plan = getChatStore()?.plan) {
   const store = getChatStore();
+  if (directorPendingSave(store)) return '';
   if (Object.prototype.hasOwnProperty.call(store, 'injectOverride') && typeof store.injectOverride === 'string') {
     return store.injectOverride;
   }
@@ -3112,6 +3119,7 @@ function currentDirectorInjectionText(plan = getChatStore()?.plan) {
 // 写明「处处皆是却不点破」——大势是余波的来处，落到个体耳边时绝不直说源头在两层之上。
 function buildGeopoliticsDigest() {
   const store = getChatStore();
+  if (directorPendingSave(store)) return '';
   const world = prepareDirectorWorldRun(store, ctx().chat);
   if (world.mode === 'blocked' || (world.mode === 'reroll' && world.node.hash !== store.geoNodeCheckpoint?.node.hash)) return '';
   const factions = Array.isArray(store.factions) ? store.factions : [];
@@ -3144,7 +3152,7 @@ function getInjectApi() {
   };
 }
 
-async function applyDirectorInjection() {
+async function applyDirectorInjection({ strict = false } = {}) {
   const { setter, position, role } = getInjectApi();
   if (!setter) return;
   try {
@@ -3158,6 +3166,7 @@ async function applyDirectorInjection() {
     setter(MODULE_NAME, text, position, depth, false, role);
   } catch (error) {
     console.warn(`[${MODULE_NAME}] apply injection failed`, error);
+    if (strict) throw error;
   }
 }
 
@@ -3220,6 +3229,26 @@ function directorHistorySelection() {
     return String(body).trim() ? '[楼层' + (recentStartIndex + offset) + '] ' + (message.is_user ? '<user>' : message.name || '<char>') + ': ' + body : '';
   }).filter(Boolean).join('\n') : '';
   return { text, recentStartIndex };
+}
+
+function directorPendingSave(store) {
+  // Loading an old history entry changes its revision but does not restore the
+  // live world archive. Only a complete confirmed save/new host store releases it.
+  return directorUnconfirmedSaves.get(store) || null;
+}
+
+function directorInputStore(store) {
+  const pending = directorPendingSave(store);
+  if (!pending) return store;
+  // Only input projection, never a write/rollback. Unknown candidates must not
+  // feed the next run's continuity; retain the preceding verified baseline.
+  const source = { ...store };
+  for (const [field, previous] of pending.previousValues) {
+    if (store[field] !== pending.stagedValues.get(field)) continue;
+    if (previous.owned) source[field] = previous.value;
+    else delete source[field];
+  }
+  return source;
 }
 
 // Rerolls at the saved floor (or after rewinding) must be independent from
@@ -3348,7 +3377,7 @@ async function buildPrompt(run = {}) {
   if (!contextScanCache.presetScannedAt) await refreshPresets(false);
   if (!contextScanCache.worldScannedAt) await refreshWorldBooks(false);
   const sourceAtStart = directorSourceFingerprint();
-  const store = getChatStore(), segments = [];
+  const store = directorInputStore(getChatStore()), segments = [];
   run.world = settings.geopoliticsEnabled || store.geoNodeCheckpoint ? prepareDirectorWorldRun(store, ctx().chat) : null;
   if (settings.geopoliticsEnabled && run.world.mode === 'blocked') {
     throw Object.assign(new Error('世界格局与当前正文节点无法安全续接。请关闭世界格局后推演，或清空世界格局后重新生成；原档案未改动。'), { code: 'WORLD_NODE_MISMATCH' });
@@ -3699,7 +3728,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   const ownerSettings = settings, store = getChatStore(), chat = ctx().chat, key = getChatKey();
   const modelKeys = ['providerMode', 'apiUrl', 'apiKey', 'model', 'temperature', 'maxOutputTokens'];
   const modelValues = modelKeys.map(field => settings[field]);
-  const controller = new AbortController(), run = { controller, log }; directorRun = run; abortController = controller;
+  const controller = new AbortController(), run = { controller, log, phase: 'generating' }; directorRun = run; abortController = controller;
   directorLiveLog = log; refreshDirectorLiveUI();
   const alive = () => directorRun === run && settings === ownerSettings && ctx().chat === chat && getChatKey() === key && getChatStore() === store;
   let namespace;
@@ -3712,17 +3741,23 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     }
   };
   const guard = async () => {
+    run.source?.assertCurrent();
     if (modelKeys.some((field, i) => settings[field] !== modelValues[i])) throw new Error(run.saved ? '模型配置已变更，后续注入已停止。' : '模型配置已变更，本次原文保留但未采用；请按新配置重新推演。');
     if (!alive() || controller.signal.aborted || namespace && namespace !== await resolveDirectorAccount()) {
       controller.abort(); throw Object.assign(new Error('生成所属的聊天或账户已变化，未写入其他聊天'), { name: 'AbortError' });
     }
     if (!alive() || controller.signal.aborted) throw Object.assign(new Error('已取消生成'), { name: 'AbortError' });
+    run.source?.assertCurrent();
     if (run.sourceFingerprint && run.sourceFingerprint !== directorSourceFingerprint()) throw new Error(run.saved ? '正文、记忆或创作设置已变化，后续注入已停止。' : '正文、记忆或创作设置已变化，本次原文保留但未采用；请重新推演。');
     return true;
   };
   const paintResponse = makeStreamLogUpdater(log);
   const updateResponse = response => { if (alive()) { log.response = response.text; log.reasoning = response.reasoning; log.completion = { ...response }; delete log.completion.text; delete log.completion.reasoning; paintResponse(response.text); } };
   try {
+    const leaveGuard = directorLeaveGuard ||= createDirectorLeaveGuard({ document, getContext: ctx, notify: toast });
+    run.leaveGuard = leaveGuard;
+    run.leaveTicket = leaveGuard.begin(run, () => { cancelRequested = true; controller.abort(); });
+    run.source = captureCurrentChatSource({ getContext: () => ({ ...ctx(), eventTypes: ctx().event_types }), epoch: () => 0 });
     namespace = await resolveDirectorAccount(); await guard();
     const userPrompt = await buildPrompt(run);
     await guard();
@@ -3761,9 +3796,17 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
         base: captureGeopoliticsArchive(run.world.base), referenceAllowed: run.world.referenceAllowed,
         archiveHash: hashText(JSON.stringify(nextWorld)) };
     }
+    // Admit synchronously before mutating metadata or invoking ST's delayed
+    // writer. Protected close/switch clicks cannot slip into its 100ms wait.
+    if (!run.leaveGuard.acquire(run.leaveTicket)) throw Object.assign(new Error('已取消生成'), { name: 'AbortError' });
+    run.phase = 'saving'; log.saveState = 'saving'; renderBusyState();
+    await guard();
     const saveFields = ['directorQuality', 'plan', 'directorPlanRevisionId', 'injectOverride', 'updatedAt', 'lastPlanIdx', 'planAtLen', 'history',
       ...(nextWorld ? ['factions', 'factionRelations', 'worldEvents', 'geoSeq', 'geoNodeCheckpoint'] : [])];
     const previousValues = new Map(saveFields.map(field => [field, { owned: Object.hasOwn(store, field), value: store[field] }]));
+    const pending = directorPendingSave(store), verifiedInput = directorInputStore(store);
+    const previousVerifiedValues = new Map([...new Set([...saveFields, ...(pending?.previousValues.keys() || [])])]
+      .map(field => [field, { owned: Object.hasOwn(verifiedInput, field), value: verifiedInput[field] }]));
     const now = new Date().toISOString();
     store.directorQuality = {
       at: now,
@@ -3783,34 +3826,59 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     store.history = [{ id: uid('hist'), createdAt: now, directorPlanRevisionId:store.directorPlanRevisionId, plan: clone(newPlan) }, ...(Array.isArray(store.history) ? store.history : [])].slice(0, 5);
     run.sourceFingerprint = directorSourceFingerprint(); // 本次同步写入成为新的核对基准，后续仍拦截用户改源。
     const stagedValues = new Map(saveFields.map(field => [field, store[field]]));
-    try { await saveMetadata(); }
-    catch (error) {
-      // A rejected save must not leave the failed replacement as the local truth.
-      // Restore only values still owned by this run, not later user edits.
-      for (const [field, previous] of previousValues) {
-        if (store[field] !== stagedValues.get(field)) continue;
-        if (previous.owned) store[field] = previous.value;
-        else delete store[field];
-      }
-      throw Object.assign(new Error('推演保存未确认，本地已保留原内容；请重新载入核对后再试。'), { code: 'DIRECTOR_SAVE_UNCONFIRMED', cause: error });
+    const pendingRecord = { previousValues: previousVerifiedValues,
+      stagedValues: new Map([...previousVerifiedValues.keys()].map(field => [field, store[field]])) };
+    try {
+      // Quarantine synchronously: the account guard below may await, and other
+      // injection consumers must never observe staged data as confirmed.
+      directorUnconfirmedSaves.set(store, pendingRecord);
+      clearDirectorInjection();
+      if (typeof ctx().saveMetadata !== 'function') throw new Error('当前 ST 未提供聊天保存接口。');
+      const snapshot = captureDirectorSaveSnapshot({ target: run.source.target, metadata: ctx().chatMetadata, messages: ctx().chat });
+      await guard();
+      run.saveStarted = true;
+      await saveMetadata();
+      await confirmDirectorSave(snapshot, { guard, signal: controller.signal,
+        headers: () => ctx().getRequestHeaders?.() || {}, origin: globalThis.location?.origin });
     }
-    run.saved = true;
+    catch (error) {
+      if (!run.saveStarted) {
+        // Nothing was submitted. Restore only values still owned by this run,
+        // never later edits; once ST was invoked its outcome is uncertain.
+        for (const [field, previous] of previousValues) {
+          if (store[field] !== stagedValues.get(field)) continue;
+          if (previous.owned) store[field] = previous.value;
+          else delete store[field];
+        }
+        if (directorUnconfirmedSaves.get(store) === pendingRecord) {
+          if (pending) directorUnconfirmedSaves.set(store, pending);
+          else directorUnconfirmedSaves.delete(store);
+        }
+      }
+      log.saveState = run.saveStarted ? 'unconfirmed' : 'not_submitted';
+      throw Object.assign(new Error(run.saveStarted
+        ? '推演保存未确认；本次内容已保留，未自动重试。'
+        : '推演未提交保存；原内容未替换，本次输出保留在日志。'), { code: 'DIRECTOR_SAVE_UNCONFIRMED', cause: error });
+    }
+    run.saved = true; log.saveState = 'confirmed';
+    directorUnconfirmedSaves.delete(store);
     if (alive() && store.plan === newPlan) {
       injectSelection.clear();   // 已保存的新方案不再沿用旧勾选；不清理切聊或另载方案后的选择。
       resetCreativeSocialState();
     }
     await guard();
-    await applyDirectorInjection();
+    await applyDirectorInjection({ strict: true });
     await guard();
     log.status = 'success';
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     saveSettings();
-    if (showSuccessToast) toast('推演完成，下一幕已就位。', 'success');
+    if (showSuccessToast) toast('推演完成，保存已确认。', 'success');
     const storyboard = storyboardState();
     if (storyboard.enabled && storyboard.directorBridge?.worldSideShotsEnabled) {
       void storyboardQueueNewWorldPlan(newPlan,{store,chatKey:key,namespace}).catch(()=>console.warn('[千幕] 造物之眼排程未就绪，本次推演结果保留。'));
     }
   } catch (error) {
+    if (log.saveState === 'saving') log.saveState = run.saveStarted ? 'unconfirmed' : 'not_submitted';
     if (error?.modelResponse) updateResponse(error.modelResponse);
     if (log.request && run.creativeOptions && !log.quality) {
       // Analyse only closed cards already received. This never repairs, changes
@@ -3851,6 +3919,8 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
       else toast('推演失败，请查看日志。', 'error');
     }
   } finally {
+    run.source?.close();
+    run.leaveGuard?.release(run.leaveTicket);
     if (directorRun === run) {
       directorRun = null;
       if (abortController === controller) abortController = null;
@@ -3906,6 +3976,10 @@ async function fetchModels() {
 }
 
 function stopGeneration() {
+  if (directorRun?.phase === 'saving') {
+    toast('正在保存，请稍候。', 'warning');
+    return;
+  }
   cancelRequested = true;
   (directorRun?.controller || abortController)?.abort();
   const loading = directorRun?.log || (settings.logHistory || []).find((x) => x.status === 'loading' && x.kind !== 'theater');
@@ -6150,9 +6224,11 @@ function startFloatHostGuard() {
 function renderBusyState() {
   // 推演键自身在「推演下一幕 ⇄ 停止推演」之间原地切换，不额外加按钮
   document.querySelectorAll('.sd-generate-main').forEach((el) => {
-    el.disabled = !settings.enabled;
-    el.classList.toggle('sd-as-stop', busy);
-    el.innerHTML = busy
+    const saving = busy && directorRun?.phase === 'saving';
+    el.disabled = !settings.enabled || saving;
+    el.classList.toggle('sd-as-stop', busy && !saving);
+    el.innerHTML = saving ? '<i class="fa-solid fa-spinner fa-spin"></i>正在保存'
+      : busy
       ? '<i class="fa-solid fa-stop"></i>停止推演'
       : '<i class="fa-solid fa-clapperboard" data-qm-icon="dashboard"></i>推演下一幕';
     applyQianmuIcons(el);
@@ -35469,10 +35545,9 @@ function bindEvents() {
       const len = Array.isArray(chat) ? chat.length : 0;
       const store = getChatStore();
       let mark = Number(store.lastPlanIdx ?? -1);
-      let metadataChanged = false;
       if (mark < 0 || mark > len - 1) {
         mark = len - 1;   // 首次启用/删楼后：基准夹到当前末尾，既不漏数也不让历史楼层一次触发
-        if (Number(store.lastPlanIdx) !== mark) { store.lastPlanIdx = mark; metadataChanged = true; }
+        if (Number(store.lastPlanIdx) !== mark) store.lastPlanIdx = mark;
       }
       let layers = 0;                                    // 基准之后真正新增的「角色回复」层（你发的楼、system 都不计）
       for (let i = mark + 1; i < len; i++) {
@@ -35481,11 +35556,9 @@ function bindEvents() {
       }
       if (settings.autoRefresh && settings.autoRefreshEvery > 0 && !busy && layers >= settings.autoRefreshEvery) {
         store.lastPlanIdx = len - 1;                     // 以当前末尾为新基准，下一轮重新累积
-        await saveMetadata();
+        // The successful generation persists this counter with its guarded
+        // result save. Do not open a second, unprotected whole-chat save first.
         await generateDirectorPlan(false, true, { background: true });
-      } else {
-        // 计数由聊天长度相对固定基准实时得出；无状态变化时不重写整份聊天 metadata。
-        if (metadataChanged) await saveMetadata();
       }
     } catch (error) {
       console.warn(`[${MODULE_NAME}] auto refresh handler failed`, error);
@@ -35764,6 +35837,7 @@ function cleanupRuntime(resetSettings = false) {
     });
     clean('storyboard events', () => storyboardUnbindChat());
     clean('director candidate pool', () => resetDirectorNarrativeBridge());
+    clean('director leave guard', () => { directorLeaveGuard?.dispose(); directorLeaveGuard = null; });
     clean('video gallery', () => {
       storyboardCloseVideoViewer();
       storyboardCloseFilmViewer();

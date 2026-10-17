@@ -8,6 +8,9 @@ import * as creative from '../qianmu-creative-prompts.js';
 import * as runtime from '../qianmu-creative-runtime.js';
 import * as live from '../qianmu-director-live.js';
 import { migrateQianmuChatStoreV2 } from '../qianmu-data-migrations.js';
+import { captureCurrentChatSource } from '../qianmu-current-chat-source.js';
+import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
+import { captureDirectorSaveSnapshot } from '../qianmu-director-save-confirmation.js';
 
 // Exercise the actual composition and generation functions up to the transport
 // boundary. Synthetic sentinels identify sources; no real model/network is used.
@@ -63,7 +66,8 @@ function fixture({ responses = [], providerMode = 'external', persisted } = {}) 
     worldEvents: [{ id: 'old-e', title: 'ARCHIVE_OLD_EVENT', essence: 'ARCHIVE_OLD_CAUSE', stage: '蔓延' }],
     injectOverride: 'INJECTION_ONLY_OVERRIDE',
   };
-  const context = { name1: '访客', extensionSettings: { gagaDogSummary: {} }, chatMetadata: { fixture: initial }, chat: [
+  const context = { name1: '访客', chatId: 'chat-one', characterId: 0, characters: [{ chat: 'chat-one', avatar: 'fixture.png' }],
+    getRequestHeaders: () => ({}), saveMetadata: async () => {}, extensionSettings: { gagaDogSummary: {} }, chatMetadata: { fixture: initial }, chat: [
     { name: '阿岚', is_user: false, mes: 'PROSE_SOURCE：阿岚拿起手机，看见老周的消息。' },
     { name: '访客', is_user: true, mes: 'USER_SOURCE：我问起尚未交还的信。' },
   ] };
@@ -85,12 +89,14 @@ function fixture({ responses = [], providerMode = 'external', persisted } = {}) 
     selectCreativeOptions: (s, options) => runtime.selectCreativeOptions(s, { ...options, random: () => 2.5 / 7 }),
     estimateTokens: text => Math.ceil(text.length / 4), uid: prefix => `${prefix}-${++id}`,
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null,
-    activeTab: 'dashboard', MODAL_ID: 'fixture-panel', document: { getElementById: () => null },
+    directorLeaveGuard: null, directorUnconfirmedSaves: new WeakMap(), captureCurrentChatSource, createDirectorLeaveGuard, captureDirectorSaveSnapshot,
+    confirmDirectorSave: async (_snapshot, { guard }) => { await guard(); return { status: 'confirmed' }; },
+    activeTab: 'dashboard', MODAL_ID: 'fixture-panel', document: { getElementById: () => null, addEventListener() {}, removeEventListener() {} },
     AbortController, Date, console, structuredClone, clone: structuredClone,
     validateApiSettings: () => true, resolveImageAccountNamespace: async () => 'account-one',
     renderBusyState: () => {}, renderModal: () => {}, renderFloatButton: () => {}, rerenderIfOpen: () => {}, toast: () => {}, apiToast: () => {},
     pushLog: log => { settings.logHistory.push(log); return log; }, saveSettings: () => {},
-    saveMetadata: async () => { saves++; }, applyDirectorInjection: async () => { injects++; }, injectSelection: new Map(), resetCreativeSocialState: () => {},
+    saveMetadata: async () => { saves++; }, applyDirectorInjection: async () => { injects++; }, injectSelection: new Map(), resetCreativeSocialState: () => {}, clearDirectorInjection: () => {},
     storyboardState: () => ({ enabled: false }), FACTION_RELATION_KINDS: ['冲突', '同盟', '张力', '中立', '依附'],
     callExternalApi: async (messages, onDelta, config, controller) => {
       const request = { messages, onDelta, config, controller };

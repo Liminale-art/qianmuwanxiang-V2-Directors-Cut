@@ -9,6 +9,9 @@ import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, CREATIVE_GUIDES, CREATIVE_D
 import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from '../qianmu-creative-contract.js';
 import { selectCreativeOptions, upgradeCreativeDefaults, upgradeCreativeBlueprint, recentInterludeHint } from '../qianmu-creative-runtime.js';
 import { hashText, isPlainObject, mergeDefaults, uniqueClean, sanitizeEventStage, advanceEventStage } from '../qianmu-storyboard-utils.js';
+import { captureCurrentChatSource } from '../qianmu-current-chat-source.js';
+import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
+import { captureDirectorSaveSnapshot } from '../qianmu-director-save-confirmation.js';
 
 const entry = await fs.readFile(new URL('../index.js', import.meta.url), 'utf8');
 function between(start, end) {
@@ -66,7 +69,8 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
   let memoryText = memoryResult.text ?? 'MEMORY_SOURCE：旧码头的欠款尚未结清。', memoryFingerprint = 'memory-v1';
   const requests = [], toasts = [];
   const store = { blueprint: 'CUSTOM_BLUEPRINT：保留缓慢的日常节奏。', plan: { original: true }, history: [] };
-  const context = { name1: '访客', chatMetadata: {}, extensionSettings: { gagaDogSummary: {} }, chat: [
+  const context = { name1: '访客', chatId: 'chat-one', characterId: 0, characters: [{ chat: 'chat-one', avatar: 'fixture.png' }],
+    chatMetadata: { story_director_liminale: store }, extensionSettings: { gagaDogSummary: {} }, getRequestHeaders: () => ({}), saveMetadata: async () => {}, chat: [
     { name: '阿岚', is_user: false, mes: 'HISTORY_SOURCE：阿岚拿起手机，读到了老周的短信。' },
     { name: '访客', is_user: true, mes: 'USER_SOURCE：我询问那份旧账。' },
   ] };
@@ -89,7 +93,9 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     creativeSectionGuidance, createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity, recentInterludeHint,
     selectCreativeOptions: (value, options) => { selectionCount++; return selectCreativeOptions(value, { ...options, random: () => { randomCount++; return random(); } }); },
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null, activeTab: 'dashboard', MODAL_ID: 'panel',
-    document: { getElementById: () => null }, AbortController, Date, console, clone: structuredClone,
+    directorLeaveGuard: null, directorUnconfirmedSaves: new WeakMap(), captureCurrentChatSource, createDirectorLeaveGuard, captureDirectorSaveSnapshot,
+    confirmDirectorSave: async (_snapshot, { guard }) => { await guard(); return { status: 'confirmed' }; },
+    document: { getElementById: () => null, addEventListener() {}, removeEventListener() {} }, AbortController, Date, console, clone: structuredClone,
     validateApiSettings: () => true, toast: (...args) => { toasts.push(args); }, apiToast: () => {}, uid: prefix => `${prefix}-${++id}`,
     featureRuntime: { load: async () => assert.fail('ordinary director requests must not load image admission') },
     resolveImageAccountNamespace: async () => 'st-user:one',
@@ -97,7 +103,7 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     renderBusyState: () => {}, renderModal: () => {}, renderFloatButton: () => {}, rerenderIfOpen: () => {},
     pushLog: log => { settings.logHistory.push(log); return log; }, saveSettings: () => {},
     saveMetadata: async () => { saveCount++; }, applyDirectorInjection: async () => { injectCount++; }, injectSelection: new Map(),
-    resetCreativeSocialState: () => {},
+    resetCreativeSocialState: () => {}, clearDirectorInjection: () => {},
     storyboardQueueNewWorldPlan: async () => assert.fail('disabled storyboard must not receive director work'), parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewPlan, directorQualitySummary,
     FACTION_RELATION_KINDS: ['冲突', '同盟', '张力', '中立', '依附'], sanitizeEventStage, advanceEventStage,
     callExternalApi: async (messages, onDelta, config, controller) => {

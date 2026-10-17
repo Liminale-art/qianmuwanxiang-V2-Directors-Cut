@@ -32,7 +32,7 @@ function fixture() {
     contextOptions:{includeChatHistory:true,contextDepth:5},contextBudget:0,systemPrompt:'OWN_SYSTEM'};
   const cache = {presets:{},worldBooks:{},presetNames:[],worldBookNames:[]};
   const store = {blueprint:'OWN_BLUEPRINT'};
-  const c = vm.createContext({...utils,...sources,structuredClone,settings,contextScanCache:cache,ctx:()=>context,getChatKey:()=>state.chatKey,
+  const c = vm.createContext({...utils,...sources,structuredClone,settings,directorUnconfirmedSaves:new WeakMap(),contextScanCache:cache,ctx:()=>context,getChatKey:()=>state.chatKey,
     saveSettings:()=>state.saved++,rerenderIfOpen:()=>{},toast:()=>{},resolveMacro:async text=>text,cleanContextText:text=>String(text||''),
     getCharacterName:()=> 'CHAR',getPersonaName:()=> 'USER',getCharacterDescription:()=> 'CHAR_DESCRIPTION',getPersonaDescription:()=> 'USER_DESCRIPTION',
     prepareDirectorMemoryHost:async()=>{},directorSourceFingerprint:()=> 'unchanged',getChatStore:()=>store,
@@ -45,7 +45,7 @@ function fixture() {
     'getSelectedPresetNames','setPresetNameSelected','getGlobalWorldBookStore','setWorldBookGlobal','getSelectedWorldBookNames','setWorldBookNameSelected',
     'isPresetItemSelected','setPresetItemSelected','isWorldItemSelected','setWorldItemSelected','getContextItemId','getContextSelectionReviewStore',
     'contextSourceNeedsSelectionReview','confirmContextSourceSelection','renderContextSelectionReview','initializeSelectedContextState',
-    'resolvePresetMarker','buildPresetContextText','buildWorldContextText','directorHistorySelection','directorSameFloorReroll','buildPrompt'];
+    'resolvePresetMarker','buildPresetContextText','buildWorldContextText','directorHistorySelection','directorPendingSave','directorInputStore','directorSameFloorReroll','buildPrompt'];
   vm.runInContext(names.map(source).join('\n'),c);
   return {c,settings,cache,context,state,calls,presets,books,json:value=>JSON.parse(JSON.stringify(value))};
 }

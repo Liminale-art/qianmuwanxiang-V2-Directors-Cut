@@ -5,12 +5,23 @@ import vm from 'node:vm';
 import { parseDirectorFinal, renderDirectorLive, paintModelLog, renderModelDiagnostics, modelFailureText, directorPreviewPlan, directorQualitySummary } from '../qianmu-director-live.js';
 import { normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems } from '../qianmu-creative-contract.js';
 import { isPlainObject, mergeDefaults } from '../qianmu-storyboard-utils.js';
+import { captureCurrentChatSource } from '../qianmu-current-chat-source.js';
+import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
+import { captureDirectorSaveSnapshot } from '../qianmu-director-save-confirmation.js';
 const entry=await fs.readFile(new URL('../index.js',import.meta.url),'utf8');
 const source=entry.slice(entry.indexOf('function makeStreamLogUpdater('),entry.indexOf('// MIGRATED to qianmu-storyboard-utils.js (commit 19)'));
 const normalizeSource=entry.slice(entry.indexOf('function normalizePlan('),entry.indexOf('// directorItemText -'));
 const qualitySource=entry.slice(entry.indexOf('function directorDedupePlan('),entry.indexOf('function makeStreamLogUpdater('));
 const stop=entry.slice(entry.indexOf('function stopGeneration()'),entry.indexOf('// 幕外停止：'));
+const saveInputSource=entry.slice(entry.indexOf('function directorPendingSave('),entry.indexOf('// Rerolls at the saved floor'));
+const busyStart=entry.indexOf('function renderBusyState()');
+const busySource=entry.slice(busyStart,entry.indexOf('// 折叠面板开合状态记忆',busyStart));
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
+const closeClick=()=>{
+  const close={closest:selector=>selector==='#options'?{}:null};
+  return {type:'click',button:0,target:{closest:selector=>selector==='#option_close_chat'?close:null},prevented:false,stopped:false,
+    preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}};
+};
 const creativeOptions=Object.freeze({parallelSceneEnabled:false,interludeEnabled:false});
 function completePlan(){
   return {quests:Array.from({length:5},(_,i)=>({title:i?'offer '+i:'first',subject:'visitor',description:i?'a visitor brings letter '+i:'complete card'})),
@@ -32,25 +43,31 @@ test('director parser keeps genuinely invalid output as a JSON failure', () => {
   assert.throws(() => parseDirectorFinal('{"story_status":'), /JSON_PARSE_FAILED::/);
 });
 
-function fixture(){
-  let store={plan:{original:true}},context={chat:[]},account='st-user:a',calls=0,repairs=0,saves=0,injects=0,invocation;
+function fixture({ saveHook, confirmHook, captureHook }={}){
+  let store={plan:{original:true}},context={chat:[],chatId:'one',characterId:0,characters:[{chat:'one',avatar:'fixture.png'}],chatMetadata:{},saveMetadata:async()=>{},getRequestHeaders:()=>({})},account='st-user:a',calls=0,repairs=0,saves=0,injects=0,invocation;
+  context.chatMetadata.story_director_liminale=store;
+  const notices=[],saveStages=[],listeners=new Map(),button={disabled:false,innerHTML:'',classList:{toggle(){}}};let releases=0;
   const gate=deferred(),sent=deferred();
   const c={worldCompletions:[],busy:false,cancelRequested:false,abortController:null,directorRun:null,directorLiveLog:null,activeTab:'dashboard',MODAL_ID:'panel',
-    settings:{enabled:true,providerMode:'external',streamEnabled:true,logHistory:[]},document:{getElementById:()=>null},AbortController,Date,console,
-    validateApiSettings:()=>true,toast:()=>{},apiToast:()=>{},uid:()=>String(Math.random()),getChatStore:()=>store,getChatKey:()=>context.chatId||'one',ctx:()=>context,
-    featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account})},renderBusyState:()=>{},buildPrompt:async run=>{run.creativeOptions=creativeOptions;run.sourceFingerprint='fixture-source';return 'fixture';},directorSourceFingerprint:()=>'fixture-source',DEFAULT_SYSTEM_PROMPT:'system',
+    settings:{enabled:true,providerMode:'external',streamEnabled:true,logHistory:[]},document:{getElementById:()=>null,querySelectorAll:selector=>selector==='.sd-generate-main'?[button]:[],addEventListener:(type,fn)=>listeners.set(type,fn),removeEventListener:(type,fn)=>{if(listeners.get(type)===fn)listeners.delete(type);}},AbortController,Date,console,
+    directorLeaveGuard:null,directorUnconfirmedSaves:new WeakMap(),captureCurrentChatSource,
+    createDirectorLeaveGuard:options=>{const owner=createDirectorLeaveGuard(options);return {...owner,release:ticket=>{releases++;return owner.release(ticket);}};},
+    captureDirectorSaveSnapshot:options=>{saveStages.push('capture');return captureHook?captureHook(options):captureDirectorSaveSnapshot(options);},
+    confirmDirectorSave:async(snapshot,options)=>{saveStages.push('confirm');await options.guard();if(confirmHook)return await confirmHook({c,context,store,snapshot,options});return {status:'confirmed'};},
+    validateApiSettings:()=>true,toast:(...args)=>notices.push(args),apiToast:()=>{},uid:()=>String(Math.random()),getChatStore:()=>store,getChatKey:()=>context.chatId||'one',ctx:()=>context,
+    featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=>account})},applyQianmuIcons:()=>{},theaterBusy:false,buildPrompt:async run=>{run.creativeOptions=creativeOptions;run.sourceFingerprint='fixture-source';return 'fixture';},directorSourceFingerprint:()=>'fixture-source',DEFAULT_SYSTEM_PROMPT:'system',
     resolveImageAccountNamespace:async()=>account,storyboardState:()=>({enabled:true,directorBridge:{worldSideShotsEnabled:true}}),
     pushLog:log=>{c.settings.logHistory.push(log);return log;},saveSettings:()=>{},clone:structuredClone,parseDirectorFinal,
     isPlainObject,mergeDefaults,normalizeCreativeSections,validateCreativePlan,pruneInvalidCreativeItems,directorPreviewPlan,directorQualitySummary,
     repairDirectorPlanQuality:async()=>{repairs++;return {repaired:false,needs:{},removed:[],raw:'',error:''};},
-    saveMetadata:async()=>saves++,applyDirectorInjection:async()=>injects++,refreshDirectorProductionPackets:async()=>{},injectSelection:new Set(),resetCreativeSocialState:()=>{},
+    saveMetadata:async()=>{saves++;saveStages.push('save');await saveHook?.({c,context,store});},applyDirectorInjection:async()=>{injects++;saveStages.push('inject');},clearDirectorInjection:()=>{},refreshDirectorProductionPackets:async()=>{},injectSelection:new Set(),resetCreativeSocialState:()=>{},
     storyboardQueueNewWorldPlan:async(plan,owner)=>{assert.equal(saves,1);assert.equal(injects,1);assert.equal(plan,store.plan);assert.equal(owner.store,store);assert.equal(owner.namespace,account);c.worldCompletions.push({plan,owner});},
     renderModal:()=>{},renderFloatButton:()=>{},rerenderIfOpen:()=>{},paintModelLog,renderDirectorLive,
     callExternalApi:async(messages,onDelta,cfg,controller)=>{calls++;invocation={messages,onDelta,cfg,controller};sent.resolve();return gate.promise;},
   };
-  vm.createContext(c);vm.runInContext(normalizeSource+'\n'+qualitySource+'\n'+source+'\n'+stop,c);
-  return {c,gate,sent,run:()=>c.generateDirectorPlan(),get request(){return invocation;},get store(){return store;},get calls(){return calls;},get repairs(){return repairs;},get saves(){return saves;},get injects(){return injects;},
-    switchChat(){store={plan:{other:true}};context={chat:[],chatId:'two'};},switchAccount(){account='st-user:b';}};
+  vm.createContext(c);vm.runInContext(normalizeSource+'\n'+qualitySource+'\n'+saveInputSource+'\n'+source+'\n'+stop+'\n'+busySource,c);
+  return {c,gate,sent,saveStages,notices,listeners,button,run:()=>c.generateDirectorPlan(),get releases(){return releases;},get context(){return context;},get request(){return invocation;},get store(){return store;},get calls(){return calls;},get repairs(){return repairs;},get saves(){return saves;},get injects(){return injects;},
+    switchChat(){store={plan:{other:true}};context={chat:[],chatId:'two',characterId:0,characters:[{chat:'two',avatar:'fixture.png'}],chatMetadata:{story_director_liminale:store},saveMetadata:async()=>{}};},switchAccount(){account='st-user:b';}};
 }
 
 test('actual director streams into its own log, stages complete cards, and commits only the completed final object',async()=>{
@@ -114,4 +131,67 @@ test('editing model configuration mid-request cannot dispatch quality repair to 
 test('host preview no longer listens to global token events and custom transport delegates raw decoding',()=>{
   const model=entry.slice(entry.indexOf('async function callExternalApi('),entry.indexOf('// 字符串感知'));
   assert.doesNotMatch(model,/STREAM_TOKEN_RECEIVED|source\.on|stream_token_received/);assert.match(model,/callHostChatModel/);assert.match(model,/callExternalModel/);
+});
+
+test('slow native save holds the saving phase, disables stop and verifies before injection or storyboard work',async()=>{
+  const hostGate=deferred(),hostStarted=deferred(),confirmationGate=deferred(),confirmationStarted=deferred();
+  const e=fixture({saveHook:()=>{hostStarted.resolve();return hostGate.promise;},confirmHook:async()=>{confirmationStarted.resolve();await confirmationGate.promise;return {status:'confirmed'};}});
+  const run=e.run();await e.sent.promise;const raw=JSON.stringify(completePlan());e.gate.resolve(raw);await hostStarted.promise;
+  const owned=e.c.directorRun;
+  assert.equal(owned.phase,'saving');assert.equal(e.button.disabled,true);assert.match(e.button.innerHTML,/正在保存/);
+  assert.equal(e.saves,1);assert.equal(e.injects,0);assert.equal(e.c.worldCompletions.length,0);
+  e.c.stopGeneration();assert.equal(owned.controller.signal.aborted,false);assert.equal(e.c.cancelRequested,false);
+  assert.match(e.notices.at(-1)[0],/正在保存/);assert.equal(e.c.settings.logHistory[0].saveState,'saving');
+  const duringSave=closeClick();e.listeners.get('click')(duringSave);
+  assert.equal(duringSave.prevented,true);assert.equal(duringSave.stopped,true);assert.equal(owned.controller.signal.aborted,false);
+  await e.run();assert.equal(e.calls,1,'a second generation is not admitted while persistence is pending');
+  hostGate.resolve();await confirmationStarted.promise;
+  assert.equal(e.injects,0);assert.equal(e.c.worldCompletions.length,0);assert.equal(e.c.directorPendingSave(e.store)?.previousValues.get('plan').value.original,true);
+  confirmationGate.resolve();await run;
+  assert.deepEqual(e.saveStages,['capture','save','confirm','inject']);assert.equal(e.injects,1);assert.equal(e.c.worldCompletions.length,1);
+  assert.equal(e.c.settings.logHistory[0].saveState,'confirmed');assert.equal(e.c.directorPendingSave(e.store),null);
+  assert.equal(e.releases,1);assert.equal(owned.source.isCurrent(),false);assert.equal(e.c.busy,false);
+  assert.equal(e.button.disabled,false);assert.match(e.button.innerHTML,/推演下一幕/);
+  const afterSave=closeClick();e.listeners.get('click')(afterSave);assert.equal(afterSave.prevented,false);assert.equal(afterSave.stopped,false);
+});
+
+test('ordinary close during generation cancels before host submission while allowing the navigation',async()=>{
+  const e=fixture(),run=e.run();await e.sent.promise;
+  const event=closeClick();e.listeners.get('click')(event);
+  assert.equal(event.prevented,false);assert.equal(event.stopped,false);assert.equal(e.request.controller.signal.aborted,true);
+  e.gate.resolve(JSON.stringify(completePlan()));await run;
+  assert.equal(e.saves,0);assert.equal(e.injects,0);assert.equal(e.store.plan.original,true);
+  assert.equal(e.releases,1);assert.equal(e.c.settings.logHistory[0].status,'cancelled');
+});
+
+for(const failure of ['host-rejection','readback-mismatch','readback-timeout'])test(`invoked save ${failure} preserves the candidate and response without rollback, retry or downstream admission`,async()=>{
+  const error=Object.assign(new Error(failure),{code:'DIRECTOR_SAVE_UNCONFIRMED'});
+  const e=fixture(failure==='host-rejection'?{saveHook:()=>{throw error;}}:{confirmHook:()=>{throw error;}});
+  const run=e.run();await e.sent.promise;const raw=JSON.stringify(completePlan());e.gate.resolve(raw);await run;
+  assert.equal(e.store.plan.quests[0].title,'first');assert.equal(e.saves,1);assert.equal(e.injects,0);assert.equal(e.calls,1);
+  assert.equal(e.c.worldCompletions.length,0);assert.equal(e.releases,1);assert.equal(e.c.busy,false);
+  const log=e.c.settings.logHistory[0];assert.equal(log.saveState,'unconfirmed');assert.notEqual(log.resultSaved,true);
+  assert.equal(log.response,raw);assert.equal(log.errorCode,'DIRECTOR_SAVE_UNCONFIRMED');assert.equal(log.errorCause,failure);
+  assert.equal(e.c.directorInputStore(e.store).plan.original,true);assert.ok(e.c.directorPendingSave(e.store));
+  assert.equal(e.saveStages.filter(stage=>stage==='save').length,1);
+  assert.equal(e.saveStages.includes('confirm'),failure!=='host-rejection','undefined host resolution is not itself a save confirmation');
+});
+
+test('snapshot preflight rejection does not invoke the native save and releases the protection after restoring owned staging',async()=>{
+  const e=fixture({captureHook:()=>{throw new Error('SNAPSHOT_NOT_AVAILABLE');}}),original=e.store.plan;
+  const run=e.run();await e.sent.promise;const raw=JSON.stringify(completePlan());e.gate.resolve(raw);await run;
+  assert.equal(e.store.plan,original);assert.equal(e.saves,0);assert.equal(e.injects,0);assert.equal(e.c.worldCompletions.length,0);
+  assert.equal(e.releases,1);assert.equal(e.c.busy,false);assert.equal(e.c.directorPendingSave(e.store),null);
+  assert.equal(e.c.settings.logHistory[0].saveState,'not_submitted');assert.equal(e.c.settings.logHistory[0].response,raw);
+});
+
+test('a non-UI source replacement during an invoked save cannot inject into the replacement chat or roll back the old candidate',async()=>{
+  const hostGate=deferred(),hostStarted=deferred();
+  const e=fixture({saveHook:()=>{hostStarted.resolve();return hostGate.promise;}}),original=e.store;
+  const run=e.run();await e.sent.promise;e.gate.resolve(JSON.stringify(completePlan()));await hostStarted.promise;
+  const oldRun=e.c.directorRun;e.switchChat();hostGate.resolve();await run;
+  assert.equal(e.store.plan.other,true);assert.equal(original.plan.quests[0].title,'first');
+  assert.equal(e.saves,1);assert.equal(e.injects,0);assert.equal(e.c.worldCompletions.length,0);
+  assert.equal(e.c.settings.logHistory[0].saveState,'unconfirmed');assert.ok(e.c.directorPendingSave(original));
+  assert.equal(e.c.directorPendingSave(e.store),null);assert.equal(e.releases,1);assert.equal(oldRun.source.isCurrent(),false);
 });

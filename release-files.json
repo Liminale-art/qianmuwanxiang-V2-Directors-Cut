@@ -212,6 +212,8 @@
     "qianmu-model-external.js",
     "qianmu-model-host.js",
     "qianmu-director-live.js",
+    "qianmu-director-leave-guard.js",
+    "qianmu-director-save-confirmation.js",
     "qianmu-film-editor-save.js",
     "qianmu-notes-device.js",
     "qianmu-notes-panel-sync.js",
