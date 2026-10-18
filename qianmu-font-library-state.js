@@ -1,4 +1,4 @@
-import { validateFontRecord } from './qianmu-font-sources.js';
+import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.472';
 
 export const FONT_LIBRARY_SAMPLE = '一蝶振翅，万象入幕。';
 const LEGACY_FONT_LIBRARY_SAMPLE = '风过长街，故事仍在继续。The quick brown fox 0123456789.';

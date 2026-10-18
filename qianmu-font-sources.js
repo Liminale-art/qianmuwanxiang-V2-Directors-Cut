@@ -6,7 +6,10 @@ export const FONT_SOURCE_LIMITS = Object.freeze({
     totalCssBytes: 2 * 1024 * 1024,
     cssSources: 12,
     importDepth: 3,
-    faces: 512,
+    // Raw declarations are bounded before deduplication; a stored family is
+    // bounded separately so normal CJK subsets do not hit the parser budget.
+    sourceDeclarations: 8192,
+    faces: 2048,
     totalFaces: 8192,
     records: 200,
     packBytes: 132 * 1024 * 1024,
@@ -209,7 +212,7 @@ export function parseFontStylesheet(css, { baseUrl } = {}) {
                 if (/^@font-face$/iu.test(header)) {
                     const face = parseFontFace(body, baseUrl);
                     if (face) faces.push(face);
-                    if (faces.length > FONT_SOURCE_LIMITS.faces) fail('字体分片过多');
+                    if (faces.length > FONT_SOURCE_LIMITS.sourceDeclarations) fail('字体来源声明过多');
                 } else if (/^@(media|supports|layer)\b/iu.test(header)) scan(body, nesting + 1);
                 i = end - 1; start = end;
             }
@@ -301,13 +304,16 @@ async function resolveWebFontSourceInternal(input, { fetchImpl = globalThis.fetc
     }
     const visited = new Set(), found = [];
     let totalBytes = 0;
+    function appendDeclarations(faces) {
+        if (found.length + faces.length > FONT_SOURCE_LIMITS.sourceDeclarations) fail('字体来源声明过多');
+        found.push(...faces);
+    }
     async function parse(css, currentBase, depth) {
         checkAbort(signal);
         totalBytes += textEncoder.encode(css).byteLength;
         if (totalBytes > FONT_SOURCE_LIMITS.totalCssBytes) fail('字体样式总量过大');
         const parsed = parseFontStylesheet(css, { baseUrl: currentBase });
-        found.push(...parsed.faces);
-        if (found.length > FONT_SOURCE_LIMITS.faces) fail('字体分片过多');
+        appendDeclarations(parsed.faces);
         for (const url of parsed.imports) await load(url, depth + 1);
     }
     async function load(url, depth) {
@@ -328,7 +334,7 @@ async function resolveWebFontSourceInternal(input, { fetchImpl = globalThis.fetc
         const currentBase = response.url ? normalizeFontUrl(response.url) : url;
         const type = response.headers?.get?.('content-type') || '';
         if (/^(?:font\/|application\/(?:font-|x-font-|vnd\.ms-opentype))/iu.test(type)) {
-            found.push({ name: boundedText(name, 160, '字体名称') || urlFontName(currentBase), face: { urls: [{ url: currentBase }], weight: '400', style: 'normal' } });
+            appendDeclarations([{ name: boundedText(name, 160, '字体名称') || urlFontName(currentBase), face: { urls: [{ url: currentBase }], weight: '400', style: 'normal' } }]);
         } else await parse(await readCssResponse(response, signal), currentBase, depth);
     }
     if (source.url) await load(source.url, 0);
@@ -339,13 +345,15 @@ async function resolveWebFontSourceInternal(input, { fetchImpl = globalThis.fetc
     const grouped = new Map();
     for (const { name: family, face } of found) {
         const key = family.toLowerCase();
-        if (!grouped.has(key)) grouped.set(key, { name: family, source: { kind: 'web', input: source.input, ...(source.url ? { url: source.url } : {}) }, faces: [] });
-        const record = grouped.get(key);
-        if (!record.faces.some((existing) => JSON.stringify(existing) === JSON.stringify(face))) record.faces.push(face);
+        if (!grouped.has(key)) grouped.set(key, { record: { name: family, source: { kind: 'web', input: source.input, ...(source.url ? { url: source.url } : {}) }, faces: [] }, signatures: new Set() });
+        const group = grouped.get(key), signature = JSON.stringify(face);
+        if (group.signatures.has(signature)) continue;
+        group.signatures.add(signature); group.record.faces.push(face);
+        if (group.record.faces.length > FONT_SOURCE_LIMITS.faces) fail('单款字体分片过多');
     }
     if (!grouped.size) fail('未找到可用的网络字体声明；请确认链接允许跨域读取且包含 @font-face');
     if (grouped.size > FONT_SOURCE_LIMITS.records) fail('一次引入的字体种类过多');
-    const records = [...grouped.values()];
+    const records = [...grouped.values()].map(group => group.record);
     if (name && records.length === 1) records[0].name = boundedText(name, 160, '字体名称') || records[0].name;
     return records;
 }
@@ -531,7 +539,7 @@ function packMetadata(records, { previewText = '', folders = [] } = {}) {
         if (!record.id || ids.has(record.id)) fail('字体标识缺失或重复');
         ids.add(record.id); faces += record.faces.length;
     }
-    if (faces > FONT_SOURCE_LIMITS.totalFaces) fail('字体分片总量过多');
+    if (faces > FONT_SOURCE_LIMITS.totalFaces) fail('字体包分片总量过多，请分批导出后再使用');
     if (!Array.isArray(folders) || folders.length > 200) fail('字体文件夹过多');
     return { records: clean, previewText: boundedText(previewText, FONT_SOURCE_LIMITS.previewLength, '预览文案'),
         folders: [...new Set(folders.map((folder) => boundedText(folder, 80, '文件夹')).filter(Boolean))] };

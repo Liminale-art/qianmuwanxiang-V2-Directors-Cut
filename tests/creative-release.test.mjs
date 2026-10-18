@@ -5,13 +5,14 @@ import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
 const version = '1.59.464';
-const releaseVersion = '1.59.471';
+const releaseVersion = '1.59.472';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
-  ...['qianmu-font-library.js', 'qianmu-font-library-view.js', 'qianmu-font-library-state.js'].map(file => [file, releaseVersion]),
+  ...['qianmu-font-library.js', 'qianmu-font-library-state.js', 'qianmu-font-sources.js'].map(file => [file, releaseVersion]),
+  ['qianmu-font-library-view.js', '1.59.471'],
   ['qianmu-font-runtime.js', '1.59.468'],
   ['qianmu-creative-social.js', '1.59.460'],
   ['qianmu-director-leave-guard.js', '1.59.463'],
@@ -68,10 +69,10 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.equal(manifest.css, `style.css?v=${releaseVersion}`);
   assert.ok(files.includes('qianmu-creative-social.css'));
   assert.ok(files.includes('qianmu-font-library.css'));
-  assert.ok((await readFile(new URL('style.css', root), 'utf8')).includes(`@import url('./qianmu-font-library.css?v=${releaseVersion}')`));
-  assert.ok(sources.get('qianmu-font-library.js').includes("from './qianmu-font-sources.js?v=1.59.470'"));
+  assert.ok((await readFile(new URL('style.css', root), 'utf8')).includes("@import url('./qianmu-font-library.css?v=1.59.471')"));
+  assert.ok(sources.get('qianmu-font-library.js').includes("from './qianmu-font-sources.js?v=1.59.472'"));
   assert.ok(sources.get('qianmu-font-library-view.js').includes("from './qianmu-icon-renderer.js?v=1.59.470'"));
-  assert.ok(sources.get('qianmu-font-library-state.js').includes("from './qianmu-font-sources.js'"), 'unchanged validator consumer retains its existing module identity');
+  assert.ok(sources.get('qianmu-font-library-state.js').includes("from './qianmu-font-sources.js?v=1.59.472'"), 'source and validator consumers share the compatible fragment limit');
   assert.match(sources.get('index.js'), /fontLibrary\.activate\(\);\s*void fontLibrary\.sync\(\)/);
   assert.match(sources.get('index.js'), /initialized = false;\s*fontLibrary\.dispose\(\)/);
   for (const file of ['qianmu-director-leave-guard.js', 'qianmu-director-navigation.js', 'qianmu-director-save-confirmation.js', 'qianmu-director-host-state.js', 'qianmu-director-auto-refresh.js']) {

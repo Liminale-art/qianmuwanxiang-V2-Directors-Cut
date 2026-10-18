@@ -229,3 +229,25 @@ test('bad configurations fail without mutating or silently truncating existing d
   assert.throws(() => updateFontLibrary(fixture(), 'set-assignment', { target: 'body', fontId: 'missing' }));
   assert.throws(() => updateFontLibrary(fixture(), 'set-assignment', { target: 'body', fontId: 'a', weight: '400;}' }));
 });
+
+test('larger per-font subsets retain all metadata and choices while over-limit records fail without replacing old state', () => {
+  const large = { ...font('large-cjk'), folder: '旧目录', tags: ['中文'], faces: Array.from({ length: 2048 }, (_, index) => ({ urls: [{ url: `https://fonts.example/cjk/${index}.woff2`, format: 'woff2' }], weight: '200 900', style: 'normal', unicodeRange: `U+${(0x4e00 + index).toString(16)}` })) };
+  const original = normalizeFontLibrary({ ...fixture(), fonts: [...fixture().fonts, large], pinnedIds: ['large-cjk', 'a'], sortOrder: 'desc', body: { fontId: 'large-cjk', weight: '600', style: 'normal', enabled: true } });
+  const before = structuredClone(original), readBack = normalizeFontLibrary(JSON.parse(JSON.stringify(original)));
+  assert.deepEqual(readBack, before); assert.equal(readBack.fonts[2].faces.length, 2048);
+  const invalid = { ...large, faces: [...large.faces, { ...large.faces[0], urls: [{ url: 'https://fonts.example/cjk/extra.woff2' }] }] };
+  assert.throws(() => mergeFontLibraryRecords(original, [invalid], () => 'unused'), /分片数量不正确/);
+  assert.throws(() => updateFontLibrary(original, 'replace-web', { id: 'large-cjk', record: invalid }), /分片数量不正确/);
+  assert.deepEqual(original, before);
+});
+
+test('reading existing libraries does not add a new aggregate face gate intended only for portable packs', () => {
+  // Twenty 512-face families were valid before the compatibility change. Keep
+  // them readable even though exporting all at once exceeds a pack's budget.
+  const fonts = Array.from({ length: 20 }, (_, family) => ({ ...font(`old-${family}`), faces: Array.from({ length: 512 }, (_, index) => ({ urls: [{ url: `https://fonts.example/${family}/${index}.woff2` }], weight: '400', style: 'normal' })) }));
+  const value = { ...normalizeFontLibrary(), fonts, pinnedIds: ['old-19', 'old-0'], sortOrder: 'desc' }, before = structuredClone(value);
+  const normalized = normalizeFontLibrary(value);
+  assert.equal(normalized.fonts.reduce((count, item) => count + item.faces.length, 0), 10240);
+  assert.deepEqual(normalized.pinnedIds, value.pinnedIds); assert.equal(normalized.sortOrder, 'desc');
+  assert.deepEqual(normalized.fonts.map(item => item.faces), fonts.map(item => item.faces)); assert.deepEqual(value, before);
+});

@@ -10,6 +10,7 @@ const response = (text, url = 'https://fonts.example/style.css', headers = {}) =
     headers: { get: (key) => headers[key] || null }, text: async () => text });
 const webRecord = () => ({ id: 'web-1', name: '网络字体', source: { kind: 'web', input: 'https://fonts.example/a.woff2', url: 'https://fonts.example/a.woff2' },
     faces: [{ urls: [{ url: 'https://fonts.example/a.woff2', format: 'woff2' }], weight: '400', style: 'normal' }], folder: '阅读', tags: ['中文', '正文'] });
+const subsetCss = count => Array.from({ length: count }, (_, index) => `@font-face{font-family:"大字集";src:url("https://fonts.example/subset-${index}.woff2") format("woff2");font-weight:200 900;font-style:normal;unicode-range:U+${(0x4e00 + index).toString(16)};}`).join('\n');
 function makeFont(format = 'truetype') {
     const size = format === 'woff' ? 68 : format === 'woff2' ? 52 : 32;
     const bytes = new Uint8Array(size);
@@ -57,6 +58,56 @@ test('Chinese subsets and variable descriptors are preserved, same-family faces 
     assert.equal(records[0].faces[0].weight, '100 900'); assert.equal(records[0].faces[0].style, 'oblique -10deg 10deg');
     assert.equal(records[0].faces[0].stretch, '80% 120%'); assert.equal(records[0].faces[1].unicodeRange, 'U+4E00-9FFF, U+3000-303f');
     assert.equal(records[0].source.input, input);
+});
+
+test('a 672-subset variable CJK font preserves all faces and round trips alongside Web and local originals', async () => {
+    const source = 'https://fonts.example/cjk.css', stylesheet = subsetCss(672);
+    const [large] = await resolveWebFontSource(source, { fetchImpl: async () => response(stylesheet, source) });
+    Object.assign(large, { id: 'cjk-large', folder: '正文', tags: ['中日韩', '可变字重'] });
+    assert.equal(large.faces.length, 672); assert.equal(large.source.url, source);
+    assert.deepEqual(large.faces, parseFontStylesheet(stylesheet).faces.map(value => value.face));
+    assert.ok(large.faces.every(face => face.weight === '200 900' && face.style === 'normal'));
+    const local = await createLocalFontRecord(file(makeFont())); Object.assign(local.record, { id: 'local-cjk-pack', tags: ['原件'] });
+    const records = [large, webRecord(), local.record], original = structuredClone(records);
+    const packed = exportFontPack(records, { localFiles: { [local.record.id]: local.bytes }, folders: ['正文', '阅读'], previewText: '一蝶振翅，万象入幕。' });
+    const decoded = importFontPack(packed);
+    assert.equal(JSON.parse(packed).version, 1); assert.deepEqual(decoded.records, records);
+    assert.deepEqual(decoded.localFiles[local.record.id], local.bytes); assert.deepEqual(records, original);
+    assert.equal(decoded.records[0].faces.at(-1).unicodeRange, 'U+509f');
+});
+
+test('per-family limit accepts 2048 unique faces, rejects 2049 and does not confuse parser declarations with stored faces', async () => {
+    assert.equal(FONT_SOURCE_LIMITS.faces, 2048); assert.equal(FONT_SOURCE_LIMITS.sourceDeclarations, 8192);
+    const allowed = subsetCss(2048), [font] = await resolveWebFontSource(allowed);
+    assert.equal(font.faces.length, 2048); assert.deepEqual(validateFontRecord(font).faces, font.faces);
+    const oversized = subsetCss(2049);
+    assert.equal(parseFontStylesheet(oversized).faces.length, 2049);
+    await assert.rejects(resolveWebFontSource(oversized), /单款字体分片过多/u);
+    const invalid = { ...font, faces: parseFontStylesheet(oversized).faces.map(value => value.face) }, before = structuredClone(invalid);
+    assert.throws(() => validateFontRecord(invalid), /字体分片数量不正确/u); assert.deepEqual(invalid, before);
+});
+
+test('repeated source declarations deduplicate before the per-family limit but remain bounded at 8192 raw declarations', async () => {
+    const one = '@font-face{font-family:a;src:url(https://f.example/a.woff2)}';
+    const [font] = await resolveWebFontSource(one.repeat(8192));
+    assert.equal(font.faces.length, 1); assert.equal(font.faces[0].urls[0].url, 'https://f.example/a.woff2');
+    await assert.rejects(resolveWebFontSource(one.repeat(8193)), /字体来源声明过多/u);
+    const urls = ['https://fonts.example/first.css', 'https://fonts.example/second.css'], calls = [];
+    await assert.rejects(resolveWebFontSource(urls.map(url => `@import "${url}";`).join('\n'), { fetchImpl: async url => {
+        calls.push(url); return response(one.repeat(url === urls[0] ? 4096 : 4097), url);
+    } }), /字体来源声明过多/u);
+    assert.deepEqual(calls, urls);
+});
+
+test('font grouping preserves each family and distinct variants while deduplicating equivalent declarations in first-seen order', async () => {
+    const first = '@font-face{font-family:"First";src:url(https://fonts.example/a.woff2);font-weight:400;unicode-range:U+4e00;}';
+    const italic = first.replace('font-weight:400;', 'font-weight:400;font-style:italic;');
+    const bold = first.replace('font-weight:400;', 'font-weight:700;');
+    const other = first.replace('"First"', '"Other"');
+    const result = await resolveWebFontSource(first + italic + first + bold + other + other + italic);
+    assert.deepEqual(result.map(font => font.name), ['First', 'Other']);
+    assert.deepEqual(result[0].faces.map(face => [face.weight, face.style]), [['400', 'normal'], ['400', 'italic'], ['700', 'normal']]);
+    assert.equal(result[1].faces.length, 1); assert.deepEqual(result[1].faces[0], result[0].faces[0]);
 });
 
 test('quoted CSS braces/semicolons, comments and CSS escapes do not break parsing', () => {
@@ -307,4 +358,16 @@ test('multiple Chinese subset families do not exhaust the per-source face allowa
     const fonts = Array.from({ length: 3 }, (_, index) => ({ ...webRecord(), id: `font-${index}`,
         faces: Array.from({ length: 200 }, (_, sub) => ({ urls: [{ url: `https://fonts.example/${index}/${sub}.woff2` }], weight: '400', style: 'normal', unicodeRange: 'U+4E00-9FFF' })) }));
     assert.equal(importFontPack(exportFontPack(fonts)).records.length, 3);
+});
+
+test('font packs keep the 8192-face aggregate limit, preserve every allowed face and reject excess without truncating', () => {
+    const fonts = Array.from({ length: 4 }, (_, index) => ({ ...webRecord(), id: `large-family-${index}`,
+        faces: Array.from({ length: 2048 }, (_, sub) => ({ urls: [{ url: `https://fonts.example/${index}/${sub}.woff2` }], weight: '200 900', style: 'normal', unicodeRange: `U+${(0x4e00 + sub).toString(16)}` })) }));
+    assert.equal(FONT_SOURCE_LIMITS.totalFaces, 8192);
+    const original = structuredClone(fonts), packed = exportFontPack(fonts), decoded = importFontPack(packed);
+    assert.deepEqual(decoded.records, original); assert.deepEqual(fonts, original);
+    const excessive = [...fonts, { ...webRecord(), id: 'one-extra-face' }], excessiveBefore = structuredClone(excessive);
+    assert.throws(() => exportFontPack(excessive), /分片总量过多.*请分批导出/u);
+    assert.throws(() => importFontPack(JSON.stringify({ type: 'qianmu-font-library', version: 1, fonts: excessive, localFiles: {} })), /分片总量过多/u);
+    assert.deepEqual(excessive, excessiveBefore);
 });
