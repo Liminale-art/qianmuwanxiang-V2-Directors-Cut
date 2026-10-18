@@ -43,6 +43,31 @@ const appliedLabel = id => page.locator(`[data-font-apply="${id}"]`).evaluate(no
 const visibleIconVariants = locator => locator.evaluate(node => [...node.querySelectorAll('[data-qm-icon-variant]')].filter(icon => getComputedStyle(icon).display !== 'none').map(icon => icon.dataset.qmIconVariant));
 const setPreviewSize = async value => page.locator('[data-font-preview-size]').selectOption(String(value));
 const setAddOpen = async open => { const card = page.locator('details.qm-font-add'); if (await card.evaluate(node => node.open) !== open) await card.locator('summary').click(); };
+const tagPanel = key => page.locator(`[data-font-tag-options="${key}"]`);
+const tagToggle = key => page.locator(`[data-font-action="tags"][data-font-tag-target="${key}"]`);
+const tagChip = (key, tag) => tagPanel(key).locator('[data-font-action="tag-toggle"]').filter({ hasText: new RegExp(`^${tag}$`) });
+const parsedTags = async locator => (await locator.inputValue()).split(/[,，]/).map(value => value.trim()).filter(Boolean);
+const tagPanelFits = async key => tagPanel(key).evaluate(node => {
+    const rect = node.getBoundingClientRect(), host = node.closest('[data-font-local-dialog]') || node.closest('.sd-body'), bounds = host.getBoundingClientRect(), style = getComputedStyle(node);
+    return { fits: rect.left >= bounds.left && rect.right <= bounds.right && node.scrollWidth <= node.clientWidth + 1,
+        limited: Number.isFinite(parseFloat(style.maxHeight)) && parseFloat(style.maxHeight) > 0 && parseFloat(style.maxHeight) <= bounds.height,
+        chipsFit: [...node.querySelectorAll('button')].every(chip => chip.getBoundingClientRect().right <= rect.right + 1 && chip.scrollWidth <= chip.clientWidth + 1) };
+});
+const cardFor = id => page.locator(`.qm-font-card[data-font-id="${id}"]`);
+const setSelected = async (id, selected) => { if ((await cardFor(id).getAttribute('aria-pressed') === 'true') !== selected) await cardFor(id).locator('.qm-font-name strong').click(); assert.equal(await cardFor(id).getAttribute('aria-pressed'), String(selected)); };
+const orderedFonts = state => {
+    const pinned = new Map((state.pinnedIds || []).map((id, index) => [id, index])), compare = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' }).compare;
+    return state.fonts.map((font, index) => ({ ...font, insertion: index })).sort((a, b) => {
+        if (pinned.has(a.id) || pinned.has(b.id)) return (pinned.get(a.id) ?? Infinity) - (pinned.get(b.id) ?? Infinity);
+        return (state.sortOrder === 'desc' ? -1 : 1) * compare(a.name, b.name) || a.insertion - b.insertion;
+    });
+};
+const cataloguePage = async desired => {
+    const currentPage = async () => Number((await page.locator('.qm-font-pagination>span').textContent()).match(/^\s*(\d+)/)[1]) - 1;
+    while (await currentPage() < desired) await page.locator('[data-font-action="next"]').click();
+    while (await currentPage() > desired) await page.locator('[data-font-action="previous"]').click();
+};
+const showFont = async id => { const sorted = orderedFonts(await page.evaluate(() => owner.fontLibrary)); const index = sorted.findIndex(font => font.id === id); assert.ok(index >= 0); await cataloguePage(Math.floor(index / 10)); };
 const switchGeometry = async () => page.locator('[data-font-enabled]').evaluate(async node => {
     void getComputedStyle(node, '::after').transform;
     await Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
@@ -123,6 +148,11 @@ try {
     assert.equal(await page.locator('[data-font-web-name]').isVisible(), true);
     assert.equal(await page.locator('[data-font-web-source]').isVisible(), true);
     assert.equal(await page.locator('[data-font-web-tags]').getAttribute('placeholder'), '如：宋体,黑体，多个标签用逗号分隔');
+    assert.equal(await page.locator('[data-font-action="add-web"] .qm-glyph-icon').getAttribute('data-qm-icon'), 'qm-regular-check', 'Adding Web fonts uses the same affirmative check as saving edits');
+    await tagToggle('web').click();
+    assert.match(await tagPanel('web').textContent(), /暂无已有标签/);
+    await page.locator('[data-font-web-name]').click();
+    assert.equal(await tagPanel('web').isVisible(), false);
     assert.equal(await page.locator('[data-font-preview]').inputValue(), '一蝶振翅，万象入幕。');
     record('Library reuses themed icon rendering and removes duplicate application panels and persistent explanatory notes');
     await page.locator('[data-font-web-source]').fill(shortWebSource);
@@ -136,6 +166,27 @@ try {
     await page.locator('[data-font-library]').click(); await page.locator('[data-font-preview-size]').waitFor();
     assert.equal(await page.locator('details.qm-font-add').evaluate(node => node.open), false, 'A fresh session with existing fonts defaults to a collapsed add card');
     await setAddOpen(true); assert.equal(await page.locator('[data-font-web-tags]').isVisible(), true);
+    const beforeTagDraft = await page.evaluate(() => ({ state: owner.fontLibrary, saved }));
+    await tagToggle('web').click();
+    assert.deepEqual((await tagPanel('web').locator('[data-font-action="tag-toggle"]').allTextContents()).sort(), ['中文', '初始'].sort(), 'Existing tag choices are deduplicated from saved font entries');
+    await page.locator('[data-font-web-tags]').fill('初始，,中文,,手输新标签');
+    assert.equal(await tagChip('web', '初始').getAttribute('aria-pressed'), 'true');
+    assert.equal(await tagChip('web', '中文').getAttribute('aria-pressed'), 'true');
+    assert.equal(await tagChip('web', '手输新标签').count(), 0, 'Unsaved free-text tags do not enter the shared saved-tag pool');
+    await tagChip('web', '中文').click();
+    assert.deepEqual(await parsedTags(page.locator('[data-font-web-tags]')), ['初始', '手输新标签']);
+    await tagChip('web', '中文').click();
+    assert.deepEqual(await parsedTags(page.locator('[data-font-web-tags]')), ['初始', '手输新标签', '中文']);
+    await page.locator('[data-font-web-name]').click();
+    assert.equal(await tagPanel('web').isVisible(), false);
+    assert.equal(await page.locator('[data-font-web-name]').evaluate(node => node === document.activeElement), true, 'Outside dismissal never consumes the next field focus');
+    await page.locator('[data-font-web-name]').fill('首击可编辑');
+    assert.deepEqual(await page.evaluate(() => ({ state: owner.fontLibrary, saved })), beforeTagDraft, 'Picking reusable tags only changes the active form draft');
+    await tagToggle('web').click(); await page.keyboard.press('Escape');
+    assert.equal(await tagPanel('web').isVisible(), false);
+    assert.deepEqual(await parsedTags(page.locator('[data-font-web-tags]')), ['初始', '手输新标签', '中文']);
+    await page.locator('[data-font-web-name]').fill(''); await page.locator('[data-font-web-tags]').fill('');
+    record('Web tag reuse deduplicates saved choices, synchronizes mixed-comma text and multi-toggle highlights, and dismisses without swallowing focus or saving drafts');
     await setAddOpen(false); assert.equal(await page.locator('[data-font-web-tags]').isVisible(), false);
     assert.equal(await page.evaluate(() => window.closedPanels || 0), 0);
     record('The add card starts expanded only for an empty library, folds existing-library controls together and never mistakes internal toggles for an outside close');
@@ -237,6 +288,17 @@ try {
         assert.equal(await page.locator('[data-font-local-name]').count(), 2, 'Each pending local file has its own editable metadata');
         await page.locator('[data-font-local-name="0"]').fill('第一款待确认');
         await page.locator('[data-font-local-tags="1"]').fill('第二款标签');
+        await tagToggle('local-0').click(); await tagChip('local-0', '中文').click();
+        assert.deepEqual(await parsedTags(page.locator('[data-font-local-tags="0"]')), ['中文']);
+        assert.equal(await page.locator('[data-font-local-tags="1"]').inputValue(), '第二款标签', 'Tag reuse in the first pending file never overwrites the second file draft');
+        await tagToggle('local-1').click();
+        assert.equal(await tagPanel('local-0').isVisible(), false);
+        await tagChip('local-1', '初始').click();
+        assert.deepEqual(await parsedTags(page.locator('[data-font-local-tags="1"]')), ['第二款标签', '初始']);
+        await page.locator('[data-font-local-name="1"]').click();
+        assert.equal(await tagPanel('local-1').isVisible(), false);
+        assert.equal(await page.locator('[data-font-local-name="1"]').evaluate(node => node === document.activeElement), true);
+        await tagToggle('local-0').click();
         await page.setViewportSize({ width: 320, height: 650 });
         const modalFits = await page.locator('[data-font-local-dialog]').evaluate(node => {
             const rect = node.getBoundingClientRect();
@@ -259,6 +321,7 @@ try {
                     return { background: style.backgroundColor, alpha: context.getImageData(0, 0, 1, 1).data[3], opacity: style.opacity };
                 });
                 modalMaterials.push({ family, mode, ...material });
+                assert.deepEqual(await tagPanelFits('local-0'), { fits: true, limited: true, chipsFit: true }, `${family}/${mode}: pending-local tag choices fit the 320px dialog`);
                 await page.screenshot({ path: fileURLToPath(new URL(`local-upload-${family}-${mode}.png`, qa)) });
             }
             assert.ok(modalMaterials.every(material => material.alpha === 255 && material.opacity === '1'), `Local upload dialogs must be opaque in every theme: ${JSON.stringify(modalMaterials)}`);
@@ -268,6 +331,10 @@ try {
                 await Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})));
             });
             await page.screenshot({ path: fileURLToPath(new URL('local-upload-metadata.png', qa)) });
+            await page.keyboard.press('Escape');
+            assert.equal(await tagPanel('local-0').isVisible(), false, 'The first Escape only retracts the tag choices');
+            assert.equal(await page.locator('[data-font-local-dialog]').isVisible(), true, 'A tag-panel Escape does not discard pending uploads');
+            assert.deepEqual(await parsedTags(page.locator('[data-font-local-tags="0"]')), ['中文']);
             await page.locator('[data-font-local-name="0"]').focus(); await page.keyboard.press('Shift+Tab');
             assert.equal(await page.locator('[data-font-action="local-confirm"]').evaluate(node => node === document.activeElement), true, 'Reverse Tab remains inside the local metadata dialog');
             await page.keyboard.press('Tab');
@@ -286,6 +353,7 @@ try {
         await page.setViewportSize({ width: 393, height: 850 });
     }
     record('Pending multi-file metadata fits narrow screens, traps focus and cancels through Escape or its own overlay without storing bytes or closing the parent');
+    record('Local tag reuse isolates each pending file, preserves first-click input focus, and handles Escape before cancelling the uncommitted upload');
     await page.locator('[data-font-file="local"]').setInputFiles({ name: 'Local Fixture.ttf', mimeType: 'font/ttf', buffer: bytes });
     await page.locator('[data-font-local-dialog]').waitFor();
     await page.locator('[data-font-local-name="0"]').fill('Local 自定名称');
@@ -321,18 +389,43 @@ try {
     assert.deepEqual(await page.evaluate(() => ({ body: owner.fontLibrary.body, st: owner.fontLibrary.st, shared: owner.fontLibrary.shared, fonts: owner.fontLibrary.fonts })), beforeSingleRemoval);
     assert.deepEqual(await page.evaluate(() => hostFonts()), independentFonts);
     record('Single-font removal needs no extra confirmation and deletes only its target while retaining other records and active scope choices');
-    assert.equal(await page.locator('[data-font-select]').first().isVisible(), false);
+    assert.equal(await page.locator('[data-font-select]').count(), 0, 'Card selection no longer renders separate checkboxes');
     await page.locator('[data-font-action="manage"]').click();
     await page.locator('[data-font-action="select-page"]').click();
-    assert.equal(await page.locator('[data-font-select]:checked').count(), 2);
+    assert.equal(await page.locator('.qm-font-card[aria-pressed="true"]').count(), 2);
     await page.locator('[data-font-action="manage"]').click();
-    assert.equal(await page.locator('[data-font-select]:checked').count(), 0);
-    assert.equal(await page.locator('[data-font-select]').first().isVisible(), false);
+    assert.equal(await page.locator('.qm-font-card[aria-pressed="true"]').count(), 0);
+    assert.equal(await page.locator('[data-font-select]').count(), 0);
     await page.locator('[data-font-action="manage"]').click();
     await page.locator('.qm-font-card').first().locator('[data-font-sample]').click();
-    assert.equal(await page.locator('[data-font-select]:checked').count(), 1);
+    assert.equal(await page.locator('.qm-font-card[aria-pressed="true"]').count(), 1);
+    const selectedCard = page.locator('.qm-font-card').first();
+    await selectedCard.focus(); await page.keyboard.press('Space');
+    assert.equal(await selectedCard.getAttribute('aria-pressed'), 'false', 'Space toggles a managed card once');
+    await page.keyboard.press('Enter');
+    assert.equal(await selectedCard.getAttribute('aria-pressed'), 'true', 'Enter toggles a managed card once');
+    assert.equal(await selectedCard.locator('.qm-font-card-tools').isVisible(), false, 'Management avoids accidental individual actions while selecting a card');
     await page.locator('[data-font-action="select-page"]').click();
-    record('Bookshelf-style management hides checkboxes until requested, supports row selection and clears picks on exit');
+    record('Management selects whole cards without checkboxes, supports click/Space/Enter exactly once, hides individual tools and clears picks on exit');
+    await setSelected(webId, false);
+    const beforeBulkDraft = await page.evaluate(() => owner.fontLibrary);
+    await page.locator('[data-font-action="bulk-tags"]').click(); await tagToggle('bulk').click();
+    assert.equal(await tagPanel('bulk').locator('[data-font-action="tag-toggle"]').count(), 4);
+    await tagChip('bulk', '中文').click(); await tagChip('bulk', '手写').click();
+    assert.deepEqual(await parsedTags(page.locator('[data-font-bulk-value]')), ['中文', '手写']);
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary), beforeBulkDraft);
+    await page.locator('[data-font-action="manage"]').click();
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary), beforeBulkDraft, 'Leaving management without saving discards only the bulk draft');
+    await page.locator('[data-font-action="manage"]').click(); await setSelected(localId, true);
+    await page.locator('[data-font-action="bulk-tags"]').click(); await tagToggle('bulk').click();
+    await page.locator('[data-font-bulk-value]').fill('中文，喜爱,,');
+    assert.equal(await tagChip('bulk', '中文').getAttribute('aria-pressed'), 'true');
+    assert.equal(await tagChip('bulk', '手写').getAttribute('aria-pressed'), 'false');
+    await page.locator('[data-font-action="bulk-save"]').click(); await settled();
+    assert.deepEqual(await page.evaluate(id => owner.fontLibrary.fonts.find(font => font.id === id), webId), beforeBulkDraft.fonts.find(font => font.id === webId), 'Bulk tag confirmation affects only explicitly selected entries');
+    assert.deepEqual(await page.evaluate(id => owner.fontLibrary.fonts.find(font => font.id === id).tags, localId), ['中文', '喜爱']);
+    await page.locator('[data-font-action="select-page"]').click();
+    record('Bulk tag reuse deduplicates across entries, leaves cancelled drafts unsaved and updates only the explicitly selected fonts');
     await page.locator('[data-font-action="bulk-tags"]').click(); await page.locator('[data-font-bulk-value]').fill('中文,喜爱'); await page.locator('[data-font-action="bulk-save"]').click(); await settled();
     assert.deepEqual(await page.evaluate(() => owner.fontLibrary.fonts.map(font => font.tags)), [['中文', '喜爱'], ['中文', '喜爱']]);
     await page.locator('[data-font-action="manage"]').click();
@@ -345,12 +438,16 @@ try {
     assert.equal(await page.locator('[data-font-web-name]').inputValue(), 'Web 样本');
     assert.equal(await page.locator('[data-font-web-source]').inputValue(), shortWebSource, 'Editing a 64-face imported stylesheet restores the concise original input rather than expanding every face');
     assert.deepEqual((await page.locator('[data-font-web-tags]').inputValue()).split(/[,，]/).map(value => value.trim()).filter(Boolean), ['中文', '喜爱']);
+    assert.equal(await page.locator('[data-font-action="add-web"] .qm-glyph-icon').getAttribute('data-qm-icon'), 'qm-regular-check');
     await page.locator('[data-font-web-name]').fill('取消的改名');
     await page.locator('[data-font-web-tags]').fill('取消的标签');
+    await tagToggle('web').click(); await tagChip('web', '中文').click();
     await page.locator('[data-font-action="cancel-web"]').click();
     assert.deepEqual(await page.evaluate(() => owner.fontLibrary), beforeWebEdit);
     await page.locator(`[data-font-action="edit"][data-font-id="${webId}"]`).click();
     await page.locator('[data-font-web-tags]').fill('中文,新增,新增');
+    await tagToggle('web').click();
+    assert.equal(await tagChip('web', '中文').getAttribute('aria-pressed'), 'true');
     await page.locator('[data-font-web-source]').fill('https://fonts.test/failed-edit.css');
     await page.locator('[data-font-action="add-web"]').click(); await settled();
     assert.deepEqual(await page.evaluate(() => owner.fontLibrary), beforeWebEdit, 'A failed source fetch cannot damage the existing font');
@@ -395,6 +492,13 @@ try {
     afterTagOnly.state.fonts.find(font => font.id === webId).tags = beforeTagOnly.state.fonts.find(font => font.id === webId).tags;
     assert.deepEqual(afterTagOnly.state, beforeTagOnly.state);
     record('Editing only Web tags changes just the requested classifications while leaving source, binary face and all other settings intact');
+    await tagToggle('web').click();
+    assert.equal(await tagChip('web', '标签续改').count(), 1, 'A newly saved tag immediately becomes reusable without reopening the library');
+    await tagChip('web', '标签续改').click();
+    assert.deepEqual(await parsedTags(page.locator('[data-font-web-tags]')), ['标签续改']);
+    await page.locator('[data-font-web-tags]').fill(''); await page.keyboard.press('Escape');
+    assert.equal(await tagPanel('web').isVisible(), false);
+    record('Web editing shares reusable tags and check-mark submission; newly saved tags appear immediately while failed or cancelled edits keep original records');
     const legacyId = await page.evaluate(async source => {
         await library.action('add-web', { name: '旧档分片字体', source });
         const entry = owner.fontLibrary.fonts.find(font => font.name === '旧档分片字体');
@@ -426,30 +530,40 @@ try {
     assert.equal(renamed.name, 'Local 已改名');
     assert.deepEqual([afterRename.body, afterRename.st, afterRename.shared], [beforeRename.body, beforeRename.st, beforeRename.shared]);
     record('Local name editing uses a small cancellable panel and changes only the name, not identity, source metadata or applied choices');
-    await page.evaluate(async () => {
-        for (let index = 1; index <= 8; index++) await library.action('add-web', { name: `不选入包 ${index}`, source: `https://fonts.test/unselected-${index}.ttf` });
-    });
+    await page.evaluate(async ({ webId, localId }) => {
+        await library.action('update-fonts', { ids: [webId], name: 'A Web 包内记录' });
+        await library.action('update-fonts', { ids: [localId], name: 'B Local 包内记录' });
+        for (let index = 1; index <= 8; index++) await library.action('add-web', { name: `M 不选入包 ${index}`, source: `https://fonts.test/unselected-${index}.ttf` });
+    }, { webId, localId });
     await setAddOpen(true);
     await page.locator('[data-font-file="local"]').setInputFiles({ name: 'Second Original.ttf', mimeType: 'font/ttf', buffer: secondBytes });
     await page.locator('[data-font-local-dialog]').waitFor();
-    await page.locator('[data-font-local-name="0"]').fill('第二种本地原件');
+    await page.locator('[data-font-local-name="0"]').fill('Z 第二种本地原件');
     await page.locator('[data-font-local-tags="0"]').fill('衬线,第二原件');
     await page.locator('[data-font-action="local-confirm"]').click(); await settled();
-    const secondLocalId = await page.evaluate(() => owner.fontLibrary.fonts.find(font => font.name === '第二种本地原件').id);
+    const secondLocalId = await page.evaluate(() => owner.fontLibrary.fonts.find(font => font.name === 'Z 第二种本地原件').id);
     assert.notEqual(secondLocalId, localId);
     assert.equal(await page.evaluate(() => owner.fontLibrary.fonts.length), 11);
     await page.locator('[data-font-action="previous"]').click();
     await page.locator('[data-font-action="manage"]').click();
-    await page.locator(`[data-font-select="${webId}"]`).check();
-    await page.locator(`[data-font-select="${localId}"]`).check();
+    await setSelected(webId, true);
+    await setSelected(localId, true);
     await page.locator('[data-font-action="next"]').click();
-    await page.locator(`[data-font-select="${secondLocalId}"]`).check();
+    await setSelected(secondLocalId, true);
     assert.match(await page.locator('[data-font-selection-count]').textContent(), /3/);
+    assert.equal(await page.locator('[data-font-action="top"]').evaluate(node => node.nextElementSibling?.matches('[data-font-action="next"]')), true, 'Return-to-top is immediately before the next-page control');
+    await page.locator('[data-font-action="top"]').scrollIntoViewIfNeeded();
+    const beforeTop = await page.evaluate(() => ({ page: document.querySelector('.qm-font-pagination>span').textContent, query: document.querySelector('[data-font-search]').value, selected: document.querySelector('[data-font-selection-count]').textContent, ids: [...document.querySelectorAll('.qm-font-card')].map(node => [node.dataset.fontId, node.getAttribute('aria-pressed')]), globalScroll: window.scrollY, saved }));
+    assert.ok(await page.locator('.qm-font-window>.sd-body').evaluate(node => node.scrollTop > 0), 'Page-two return-to-top starts from a genuinely scrolled panel');
+    await page.locator('[data-font-action="top"]').click();
+    await page.waitForFunction(() => document.querySelector('.qm-font-window>.sd-body').scrollTop < 1);
+    assert.deepEqual(await page.evaluate(() => ({ page: document.querySelector('.qm-font-pagination>span').textContent, query: document.querySelector('[data-font-search]').value, selected: document.querySelector('[data-font-selection-count]').textContent, ids: [...document.querySelectorAll('.qm-font-card')].map(node => [node.dataset.fontId, node.getAttribute('aria-pressed')]), globalScroll: window.scrollY, saved })), beforeTop, 'Returning to the top changes only the font-panel scroll position');
+    record('Quick return-to-top sits beside next-page and scrolls only the font panel without changing page, query, cross-page picks or persistent settings');
     await page.locator('[data-font-action="select-page"]').click();
     assert.match(await page.locator('[data-font-selection-count]').textContent(), /2/, 'Deselect page only changes the current page');
     await page.locator('[data-font-action="select-page"]').click();
     await page.locator('[data-font-action="previous"]').click();
-    assert.equal(await page.locator('[data-font-select]:checked').count(), 2, 'Selections on page one survive visiting page two');
+    assert.equal(await page.locator('.qm-font-card[aria-pressed="true"]').count(), 2, 'Selections on page one survive visiting page two');
     assert.match(await page.locator('[data-font-selection-count]').textContent(), /3/);
     const selectedRecords = await page.evaluate(ids => owner.fontLibrary.fonts.filter(font => ids.includes(font.id)), [webId, localId, secondLocalId]);
     const beforeMissingOriginal = await page.evaluate(() => ({ state: owner.fontLibrary, saved }));
@@ -463,7 +577,7 @@ try {
     const pack = await page.evaluate(() => downloads[0].text), packed = JSON.parse(pack);
     assert.equal(packed.fonts.length, 3, 'Cross-page selected fonts produce one package, not separate downloads');
     assert.deepEqual(packed.fonts, selectedRecords, 'Only selected metadata and original source declarations enter the package');
-    assert.equal(packed.fonts.some(font => font.name.startsWith('不选入包')), false);
+    assert.equal(packed.fonts.some(font => font.name.startsWith('M 不选入包')), false);
     assert.deepEqual(Object.keys(packed.localFiles).sort(), [localId, secondLocalId].sort());
     assert.ok(Buffer.from(packed.localFiles[localId], 'base64').equals(bytes));
     assert.ok(Buffer.from(packed.localFiles[secondLocalId], 'base64').equals(secondBytes));
@@ -494,10 +608,11 @@ try {
         }
         return result;
     });
-    assert.ok(Buffer.from(importedBinaries['Local 已改名'], 'base64').equals(bytes));
-    assert.ok(Buffer.from(importedBinaries['第二种本地原件'], 'base64').equals(secondBytes));
+    assert.ok(Buffer.from(importedBinaries['B Local 包内记录'], 'base64').equals(bytes));
+    assert.ok(Buffer.from(importedBinaries['Z 第二种本地原件'], 'base64').equals(secondBytes));
     assert.equal(await page.evaluate(() => owner.fontLibrary.body.enabled || owner.fontLibrary.st.enabled || owner.fontLibrary.shared.enabled), false);
     await page.locator(`[data-font-action="delete-one"][data-font-id="${secondLocalId}"]`).click(); await settled();
+    await page.evaluate(async () => { for (const [oldName, name] of [['A Web 包内记录', 'Web 样本·已编辑'], ['B Local 包内记录', 'Local 已改名']]) { const font = owner.fontLibrary.fonts.find(item => item.name === oldName); await library.action('update-fonts', { ids: [font.id], name }); } });
     assert.equal(await page.locator('[data-font-sample]').count(), 2);
     await setPreviewSize(20);
     record('A fresh synthetic account imports the mixed package with exact original bytes and metadata; incomplete packages save nothing and imports never auto-apply fonts');
@@ -551,13 +666,15 @@ try {
                     const tools = node.querySelector('.qm-font-card-tools'), name = node.querySelector('.qm-font-name'), select = tools?.querySelector('[data-font-apply]');
                     return { tail: !!tools?.lastElementChild?.contains(select), line: !!select && Math.abs(name.getBoundingClientRect().top + name.getBoundingClientRect().height / 2 - select.getBoundingClientRect().top - select.getBoundingClientRect().height / 2) <= 2, weight: getComputedStyle(name.querySelector('strong')).fontWeight };
                 }),
-                toolbarOrder: [...host.querySelector('.qm-font-toolbar').children].map(node => node.matches('[data-font-search]') ? 'search' : node.matches('[data-font-action="manage"]') ? 'manage' : '?'),
+                toolbarOrder: [...host.querySelector('.qm-font-toolbar').children].map(node => node.matches('[data-font-search]') ? 'search' : node.matches('[data-font-action="manage"]') ? 'manage' : node.querySelector('[data-font-sort-order]') ? 'sort' : '?'),
                 imports: [...host.querySelector('.qm-font-imports').children].map(node => ({ top: node.getBoundingClientRect().top, height: node.getBoundingClientRect().height, width: node.getBoundingClientRect().width, text: node.textContent.trim(), icons: node.querySelectorAll('.qm-glyph-icon').length })),
                 enable: (() => { const node = host.querySelector('.qm-font-enable'), label = node.querySelector('strong,span') || node, style = getComputedStyle(label); return { fontSize: style.fontSize, fontWeight: style.fontWeight }; })(),
                 bodyControls: [...host.querySelectorAll('[data-font-web-name],[data-font-web-source],[data-font-web-tags],[data-font-preview],[data-font-search],[data-font-apply],[data-font-preview-size]')].map(node => getComputedStyle(node).fontSize),
                 editor: (() => { const editor = host.querySelector('.qm-font-preview-editor').getBoundingClientRect(), card = host.querySelector('.qm-font-card').getBoundingClientRect(); return { left: editor.left - card.left, right: editor.right - card.right }; })(),
                 previewTool: (() => { const head = host.querySelector('.qm-font-preview-editor .qm-font-field-head').getBoundingClientRect(), tool = host.querySelector('.qm-font-size-pick').getBoundingClientRect(); return { width: tool.width, height: tool.height, right: head.right - tool.right, top: tool.top - head.top, semantic: host.querySelector('.qm-font-size-pick .qm-glyph-icon')?.dataset.qmIcon }; })(),
                 summaryMarker: (() => { const node = host.querySelector('.qm-font-add>summary'), style = getComputedStyle(node); return { display: style.display, listStyle: style.listStyleType, content: getComputedStyle(node, '::marker').content }; })(),
+                listGap: getComputedStyle(host.querySelector('.qm-font-list')).rowGap,
+                listHitAreas: [...host.querySelectorAll('.qm-font-card-tools .qm-font-icon')].map(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })),
                 bareTools: [...host.querySelectorAll('.qm-font-card-tools .qm-font-icon')].map(node => { const style = getComputedStyle(node); return { background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow, weight: style.fontWeight }; }),
                 iconShapes: [...panel.querySelectorAll('.qm-font-icon,.qm-font-file-pick')].filter(node => node.offsetParent).map(node => ({ header: !!node.closest('.qm-font-header'), radius: getComputedStyle(node).borderTopLeftRadius, width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })),
                 filePicks: [...host.querySelectorAll('.qm-font-file-pick')].map(node => ({ color: getComputedStyle(node).color, opacity: getComputedStyle(node).opacity, display: getComputedStyle(node).display, input: { color: getComputedStyle(node.querySelector('input')).color, opacity: getComputedStyle(node.querySelector('input')).opacity, display: getComputedStyle(node.querySelector('input')).display } })),
@@ -573,7 +690,7 @@ try {
         assert.deepEqual(measured.material, measured.mainMaterial, `${family}/${mode}: same main-panel surface, corner and filter treatment`);
         assert.ok(measured.titleRows.every(row => row.tail && row.line), `${width}/${family}/${mode} application is the title-tools tail on the same line`);
         assert.ok(measured.titleRows.every(row => row.weight === '400'), 'Font entry names use regular weight');
-        assert.deepEqual(measured.toolbarOrder, ['search', 'manage']);
+        assert.ok(measured.toolbarOrder[0] === 'search' && measured.toolbarOrder.length === 3 && measured.toolbarOrder.includes('sort') && measured.toolbarOrder.includes('manage'), 'Name sorting sits beside management, after search');
         assert.deepEqual(measured.imports.map(item => item.text), ['上传本地字体', '导入字体包']);
         assert.ok(measured.imports.every(item => Math.abs(item.top - measured.imports[0].top) <= 1 && Math.abs(item.height - measured.imports[0].height) <= 1 && Math.abs(item.width - measured.imports[0].width) <= 1 && item.text && !item.icons), `${width}/${family}/${mode} local upload and package import are text-only, equal-width and equal-height`);
         assert.equal(measured.enable.fontSize, '14px'); assert.ok(Number(measured.enable.fontWeight) >= 600);
@@ -582,6 +699,8 @@ try {
         assert.deepEqual({ ...measured.previewTool, semantic: undefined }, { width: 28, height: 28, right: 0, top: 0, semantic: undefined }, 'The 28px sample-size control aligns to the upper-right of its card header');
         assert.equal(measured.previewTool.semantic, 'qm-signature-font-preview-size', 'Sample size uses its dedicated smallcaps semantic icon');
         assert.equal(measured.summaryMarker.listStyle, 'none', 'The add-card summary has no native disclosure arrow');
+        assert.equal(measured.listGap, '6px', 'Only inter-card spacing is tightened to 6px');
+        assert.ok(measured.listHitAreas.every(area => area.width === 28 && area.height === 28), 'Tighter card spacing preserves every 28px list action hit area');
         assert.ok(measured.bareTools.every(tool => tool.background === 'rgba(0, 0, 0, 0)' && tool.border === '0px' && tool.shadow === 'none'), `${family}/${mode}: list actions have no individual background shell, border or shadow`);
         for (const shape of measured.iconShapes) {
             const circular = shape.radius.includes('%') ? parseFloat(shape.radius) >= 50 : parseFloat(shape.radius) >= Math.min(shape.width, shape.height) / 2 - 1;
@@ -597,6 +716,20 @@ try {
         assert.deepEqual(measured.manageVariants, ['outline'], 'Management uses the requested fixed document-filter outline icon');
         assert.ok(measured.applyVariants.length === 2 && measured.applyVariants.every(value => value === 'outline'), 'Unapplied state uses tick-square outline regardless of theme');
         record(`${width}/${family}/${mode}: 16px title, visible host-resistant switch, upper-right sample size, bare list actions and compact tags without clipping`);
+        if (width === 320) {
+            await tagToggle('web').click();
+            assert.deepEqual(await tagPanelFits('web'), { fits: true, limited: true, chipsFit: true }, `${family}/${mode}: reusable tags and long labels remain bounded at 320px`);
+            const tagTexts = await tagPanel('web').locator('[data-font-action="tag-toggle"]').allTextContents();
+            assert.equal(new Set(tagTexts).size, tagTexts.length, 'Saved tags are never duplicated between fonts in the reuse panel');
+            await page.locator('[data-font-web-tags]').fill('中文，标签续改,,');
+            assert.equal(await tagChip('web', '中文').getAttribute('aria-pressed'), 'true');
+            assert.equal(await tagChip('web', '标签续改').getAttribute('aria-pressed'), 'true');
+            await tagPanel('web').scrollIntoViewIfNeeded();
+            await page.screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-tag-picker-narrow.png`, qa)) });
+            await page.keyboard.press('Escape');
+            assert.equal(await tagPanel('web').isVisible(), false);
+            await page.locator('[data-font-web-tags]').fill('');
+        }
         if (width === 393 && mode === 'dark') {
             await page.evaluate(() => { document.querySelector('.qm-font-window>.sd-body').scrollTop = 0; });
             await page.screenshot({ path: fileURLToPath(new URL(`${family}-add-open.png`, qa)) });
@@ -609,6 +742,17 @@ try {
             await setAddOpen(false);
             await page.evaluate(() => { document.querySelector('.qm-font-window>.sd-body').scrollTop = 0; });
             await page.screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-tags-narrow.png`, qa)) });
+            await page.locator('[data-font-action="manage"]').click();
+            const card = page.locator('.qm-font-card').first(), appearance = node => { const style = getComputedStyle(node); return [style.backgroundColor, style.borderColor, style.outlineColor, style.outlineStyle, style.boxShadow]; };
+            const unselectedAppearance = await card.evaluate(appearance);
+            await card.locator('[data-font-sample]').click();
+            await card.evaluate(async node => { void getComputedStyle(node).backgroundColor; await Promise.all(node.getAnimations().map(animation => animation.finished.catch(() => {}))); });
+            assert.equal(await card.getAttribute('aria-pressed'), 'true');
+            assert.notDeepEqual(await card.evaluate(appearance), unselectedAppearance, `${family}/${mode}: selected cards have a visible background or border state`);
+            assert.equal(await page.locator('[data-font-select]').count(), 0);
+            assert.equal(await card.locator('.qm-font-card-tools').isVisible(), false);
+            await page.screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-selection.png`, qa)) });
+            await page.locator('[data-font-action="manage"]').click();
             await setAddOpen(true);
         }
     }
@@ -632,23 +776,25 @@ try {
     await page.locator('[data-font-search]').fill('不存在的筛选');
     assert.equal(await page.locator('[data-font-sample]').count(), 0);
     await setAddOpen(true);
-    await page.locator('[data-font-web-name]').fill('分页 9');
+    await page.locator('[data-font-web-name]').fill('AAA 分页 9');
     await page.locator('[data-font-web-source]').fill('https://fonts.test/page-9.ttf');
     await page.locator('[data-font-action="add-web"]').click(); await settled();
     assert.equal(await page.locator('[data-font-search]').inputValue(), '', 'A new addition clears stale filters so the user can see the new font');
-    assert.equal(await page.locator('[data-font-sample]').count(), 1, 'Adding on a later page reveals the new font automatically');
-    assert.equal(await page.locator('.qm-font-name strong').textContent(), '分页 9');
-    assert.equal(await page.locator('.qm-font-card').getAttribute('data-font-revealed'), 'true');
-    const revealed = await page.locator('.qm-font-card').evaluate(async node => {
+    const sortedAfterAddition = orderedFonts(await page.evaluate(() => owner.fontLibrary)), addedIndex = sortedAfterAddition.findIndex(font => font.name === 'AAA 分页 9'), addedFontId = sortedAfterAddition[addedIndex].id;
+    assert.ok(addedIndex < 10 && addedIndex !== sortedAfterAddition.length - 1, 'The chosen name sorts onto page one rather than its last insertion position');
+    assert.equal(await page.locator('[data-font-sample]').count(), 10, 'New-font reveal uses the sorted page, not the original array position');
+    assert.deepEqual(await page.locator('.qm-font-name strong').allTextContents(), sortedAfterAddition.slice(0, 10).map(font => font.name));
+    assert.equal(await cardFor(addedFontId).getAttribute('data-font-revealed'), 'true');
+    const revealed = await cardFor(addedFontId).evaluate(async node => {
         const body = node.closest('.sd-body'), cardRect = node.getBoundingClientRect(), bodyRect = body.getBoundingClientRect(), animation = getComputedStyle(node).animationName;
         await Promise.all(node.getAnimations().map(item => item.finished.catch(() => {})));
         return { visible: cardRect.top >= bodyRect.top - 1 && cardRect.bottom <= bodyRect.bottom + 1, animation, finalOpacity: getComputedStyle(node).opacity, pageScroll: window.scrollY };
     });
     assert.deepEqual(revealed, { visible: true, animation: 'qm-font-reveal', finalOpacity: '1', pageScroll: 0 }, 'The newly added card is in view, fades in once, and scrolls only the font-library body');
-    await page.locator('[data-font-action="previous"]').click();
     assert.equal(await page.locator('[data-font-sample]').count(), 10);
     await page.locator('[data-font-action="next"]').click();
     assert.equal(await page.locator('[data-font-sample]').count(), 1);
+    assert.deepEqual(await page.locator('.qm-font-name strong').allTextContents(), sortedAfterAddition.slice(10).map(font => font.name), 'Names are sorted before the ten-card pagination split');
     await page.locator('[data-font-action="previous"]').click();
     assert.equal(await page.locator('[data-font-sample]').count(), 10);
     assert.equal(await page.evaluate(() => owner.fontLibrary.fonts.length), 11);
@@ -669,10 +815,49 @@ try {
     assert.equal(await page.locator('[data-font-sample]').getAttribute('data-font-sample'), pageTwoId);
     await page.locator('[data-font-search]').fill('');
     record('Same-account return and reopening preserve list search, pagination and reading position without saving transient controls');
+    const beforeOrdering = await page.evaluate(() => ({ fonts: owner.fontLibrary.fonts, enabled: owner.fontLibrary.enabled, body: owner.fontLibrary.body, st: owner.fontLibrary.st, shared: owner.fontLibrary.shared }));
+    const pinIds = await page.evaluate(() => ['分页 3', 'Local 已改名'].map(name => owner.fontLibrary.fonts.find(font => font.name === name).id));
+    for (const id of pinIds) { await showFont(id); await cardFor(id).locator('[data-font-action="pin"]').click(); await settled(); }
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.pinnedIds), pinIds);
+    assert.deepEqual(await page.locator('.qm-font-card').evaluateAll(nodes => nodes.slice(0, 2).map(node => node.dataset.fontId)), pinIds, 'Pins appear in the order they were pinned');
+    await page.locator('[data-font-sort-order]').selectOption('desc'); await settled();
+    assert.equal(await page.evaluate(() => owner.fontLibrary.sortOrder), 'desc');
+    assert.deepEqual(await page.locator('.qm-font-name strong').allTextContents(), orderedFonts(await page.evaluate(() => owner.fontLibrary)).slice(0, 10).map(font => font.name));
+    assert.deepEqual(await page.locator('.qm-font-card').evaluateAll(nodes => nodes.slice(0, 2).map(node => node.dataset.fontId)), pinIds, 'Descending name order never reverses pins');
+    await cardFor(pinIds[0]).locator('[data-font-action="pin"]').click(); await settled();
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.pinnedIds), [pinIds[1]]);
+    await showFont(pinIds[0]); await cardFor(pinIds[0]).locator('[data-font-action="pin"]').click(); await settled();
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.pinnedIds), [pinIds[1], pinIds[0]], 'Re-pinning appends after the pins that remained');
+    await page.locator('[data-font-search]').fill('分页');
+    assert.equal(await page.locator('.qm-font-card').first().getAttribute('data-font-id'), pinIds[0]);
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.pinnedIds), [pinIds[1], pinIds[0]], 'Searching hides non-matches without deleting their pins');
+    await page.locator('[data-font-search]').fill('');
+    await page.locator('[data-font-action="manage"]').click();
+    await setSelected(pinIds[0], true); await setSelected(pinIds[1], true);
+    const crossPageId = orderedFonts(await page.evaluate(() => owner.fontLibrary)).at(-1).id;
+    await showFont(crossPageId); await setSelected(crossPageId, true);
+    assert.match(await page.locator('[data-font-selection-count]').textContent(), /3/);
+    await page.locator('[data-font-sort-order]').selectOption('asc'); await settled();
+    for (const id of [...pinIds, crossPageId]) { await showFont(id); assert.equal(await cardFor(id).getAttribute('aria-pressed'), 'true', 'Sorting does not lose managed selections across pages'); }
+    await page.locator('[data-font-sort-order]').selectOption('desc'); await settled();
+    assert.match(await page.locator('[data-font-selection-count]').textContent(), /3/);
+    await page.locator('[data-font-action="manage"]').click();
+    await page.locator('[data-font-action="back"]').click(); await page.locator('[data-font-library]').click(); await page.locator('[data-font-sort-order]').waitFor();
+    assert.equal(await page.locator('[data-font-sort-order]').inputValue(), 'desc');
+    assert.deepEqual(await page.locator('.qm-font-card').evaluateAll(nodes => nodes.slice(0, 2).map(node => node.dataset.fontId)), [pinIds[1], pinIds[0]]);
+    await page.evaluate(() => { library.dispose(); library = createSyntheticLibrary(); library.attach(document.getElementById('story-director-floor-nav')); });
+    await page.locator('[data-font-library]').click(); await page.locator('[data-font-sort-order]').waitFor();
+    assert.equal(await page.locator('[data-font-sort-order]').inputValue(), 'desc', 'Sorting restores from persisted settings in a fresh view instance');
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.pinnedIds), [pinIds[1], pinIds[0]]);
+    assert.deepEqual(await page.evaluate(() => ({ fonts: owner.fontLibrary.fonts, enabled: owner.fontLibrary.enabled, body: owner.fontLibrary.body, st: owner.fontLibrary.st, shared: owner.fontLibrary.shared })), beforeOrdering, 'Pins and sorting never rewrite font records, original sources or application choices');
+    for (const id of [...pinIds].reverse()) { await showFont(id); await cardFor(id).locator('[data-font-action="pin"]').click(); await settled(); }
+    await page.locator('[data-font-sort-order]').selectOption('asc'); await settled(); await setPreviewSize(20);
+    record('Multiple pins retain pin-time order across name sorting, filtering and reopen; unpin/re-pin is stable and sorting preserves managed selections without rewriting font data');
     const variantId = await page.evaluate(async () => {
         await library.action('add-web', { name: 'Variant 样本', source: '@font-face{font-family:"Variant";src:url("https://fonts.test/variant.ttf");font-weight:100 900;font-style:normal}@font-face{font-family:"Variant";src:url("https://fonts.test/variant-italic.ttf");font-weight:100 900;font-style:italic}' });
         return owner.fontLibrary.fonts.find(font => font.name === 'Variant 样本').id;
     });
+    const otherCardId = await page.evaluate(async () => { await library.action('add-web', { name: 'Variant 同页固定款', source: 'https://fonts.test/variant-neighbor.ttf' }); return owner.fontLibrary.fonts.find(font => font.name === 'Variant 同页固定款').id; });
     await page.locator('[data-font-search]').fill('Variant');
     const more = page.locator(`[data-font-action="more"][data-font-id="${variantId}"]`);
     assert.equal(await more.isVisible(), true);
@@ -704,7 +889,7 @@ try {
     assert.deepEqual(await page.evaluate(() => [owner.fontLibrary.body.weight, owner.fontLibrary.body.style]), ['600', 'italic'], 'Re-selecting the already active target applies the newly chosen variant');
     assert.equal(await page.locator('#host-prose').evaluate(node => getComputedStyle(node).fontWeight), '600');
     await more.click();
-    const variantRow = await page.locator('.qm-font-card-head').evaluate(node => {
+    const variantRow = await cardFor(variantId).locator('.qm-font-card-head').evaluate(node => {
         const tools = node.querySelector('.qm-font-card-tools'), controls = [...tools.querySelectorAll('button,.qm-font-style-pick')].filter(child => child.offsetParent).map(child => child.getBoundingClientRect());
         const style = node.querySelector('.qm-font-style-pick'), weight = node.querySelector('[data-font-action="weight"]');
         const styleMatches = ['borderTopStyle', 'borderTopWidth', 'borderRadius', 'width', 'height'].every(property => getComputedStyle(style)[property] === getComputedStyle(weight)[property]);
@@ -714,6 +899,31 @@ try {
     await page.locator(`.qm-font-card[data-font-id="${variantId}"]`).scrollIntoViewIfNeeded();
     await page.screenshot({ path: fileURLToPath(new URL('glass-variant-narrow.png', qa)) });
     record('More expands edit/remove/variant controls horizontally while hiding apply; preview variants stay local until explicit application');
+    await cardFor(variantId).locator('[data-font-sample]').click();
+    assert.equal(await more.getAttribute('aria-expanded'), 'false', 'Clicking the same card sample retracts its more tools');
+    await more.click(); await cardFor(otherCardId).locator('.qm-font-name strong').click();
+    assert.equal(await more.getAttribute('aria-expanded'), 'false', 'Clicking another card retracts the previous tools');
+    await more.click(); await page.locator('[data-font-search]').click();
+    assert.equal(await more.getAttribute('aria-expanded'), 'false', 'Search focus retracts the previous tools on the first click');
+    assert.equal(await page.locator('[data-font-search]').evaluate(node => node === document.activeElement), true);
+    await page.locator('[data-font-search]').fill('Variant 样本');
+    assert.equal(await page.locator('[data-font-search]').evaluate(node => node === document.activeElement), true, 'Retraction never replaces the typing target or steals focus');
+    assert.equal(await page.locator('[data-font-sample]').count(), 1);
+    await page.locator('[data-font-search]').fill('Variant');
+    await more.click(); await cardFor(otherCardId).locator('[data-font-action="edit"]').click();
+    assert.equal(await page.locator('[data-font-web-name]').inputValue(), 'Variant 同页固定款', 'The first click both closes old tools and opens the requested edit action');
+    assert.equal(await more.getAttribute('aria-expanded'), 'false');
+    await page.locator('[data-font-action="cancel-web"]').click();
+    await more.click(); await page.locator(`[data-font-action="weight"][data-font-id="${variantId}"]`).click();
+    await page.locator(`[data-font-weight="${variantId}"]`).click();
+    assert.equal(await more.getAttribute('aria-expanded'), 'true', 'Clicks inside the weight popup do not retract its parent tools');
+    await page.locator(`[data-font-style="${variantId}"]`).selectOption('normal');
+    assert.equal(await more.getAttribute('aria-expanded'), 'true', 'Using the style picker does not retract its parent tools');
+    await page.locator(`[data-font-action="weight"][data-font-id="${variantId}"]`).click();
+    await page.locator(`[data-font-weight="${variantId}"]`).focus(); await page.keyboard.press('Escape');
+    assert.equal(await more.getAttribute('aria-expanded'), 'false', 'Escape retracts expanded tools');
+    assert.equal(await page.locator(`[data-font-weight-pop="${variantId}"]`).isVisible(), false);
+    record('Expanded tools retract on sample, other card, search and Escape without swallowing the next edit click or typing focus; variant popups stay usable');
     const beforeBackRequest = await startHeldWeb('back');
     await page.locator('[data-font-action="back"]').click();
     assert.equal(await page.locator('.qm-font-window').count(), 0);

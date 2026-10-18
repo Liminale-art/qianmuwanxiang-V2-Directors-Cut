@@ -177,6 +177,55 @@ test('complete export retains Web references and never downloads remote font bin
   const text = await f.downloads[0][0].text(); assert.ok(text.includes(webFont.source.url)); f.stop();
 });
 
+test('pin and sort actions persist only management preferences without changing originals or application choices', async () => {
+  const f = setup(); await f.library.action('add-web', { source: webFont.source.input });
+  await f.library.action('add-local', { files: [fontFile().file] });
+  const [web, local] = f.owner.fontLibrary.fonts, bytes = f.binaries.get('one' + local.id);
+  await f.library.action('apply-font', { target: 'shared', fontId: local.id });
+  await f.library.action('set-enabled', { enabled: false });
+  const original = structuredClone(f.owner.fontLibrary);
+  await f.library.action('set-font-pinned', { id: local.id, pinned: true });
+  await f.library.action('set-font-pinned', { id: web.id, pinned: true });
+  await f.library.action('set-font-pinned', { id: local.id, pinned: true });
+  await f.library.action('set-sort-order', { order: 'desc' });
+  assert.deepEqual(f.owner.fontLibrary, { ...original, pinnedIds: [local.id, web.id], sortOrder: 'desc' });
+  assert.deepEqual(f.saves.at(-1).fontLibrary, f.owner.fontLibrary); assert.equal(f.binaries.get('one' + local.id), bytes);
+  await f.library.action('set-font-pinned', { id: local.id, pinned: false });
+  await f.library.action('set-font-pinned', { id: local.id, pinned: true });
+  assert.deepEqual(f.owner.fontLibrary.pinnedIds, [web.id, local.id]);
+  await f.library.action('edit-web', { id: web.id, source: web.source.input, name: 'ZZZ 新名称' });
+  assert.deepEqual(f.owner.fontLibrary.pinnedIds, [web.id, local.id]); assert.equal(f.owner.fontLibrary.sortOrder, 'desc');
+  assert.deepEqual(f.owner.fontLibrary.fonts.map(item => item.id), [web.id, local.id]);
+  await f.library.action('delete-font', { id: web.id });
+  assert.deepEqual(f.owner.fontLibrary.pinnedIds, [local.id]); assert.equal(f.owner.fontLibrary.sortOrder, 'desc');
+  assert.deepEqual(f.owner.fontLibrary.shared, original.shared); assert.equal(f.owner.fontLibrary.enabled, false);
+  assert.equal(f.binaries.get('one' + local.id), bytes); f.stop();
+});
+
+test('invalid and stale pin or sorting actions cannot save over existing records and local originals', async () => {
+  const f = setup(); await f.library.action('add-local', { files: [fontFile().file] });
+  const original = f.owner.fontLibrary, id = original.fonts[0].id, bytes = f.binaries.get('one' + id), saves = f.saves.length;
+  for (const pinned of [undefined, null, 'true', 1]) await assert.rejects(f.library.action('set-font-pinned', { id, pinned }), /置顶设置无效/);
+  for (const pinned of [false, true]) await assert.rejects(f.library.action('set-font-pinned', { id: 'stale', pinned }), /已不在库中/);
+  for (const order of [null, '', 'random', 1]) await assert.rejects(f.library.action('set-sort-order', { order }), /排序设置无效/);
+  assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves); assert.equal(f.binaries.get('one' + id), bytes);
+  f.owner.fontLibrary = { ...original, pinnedIds: [id, id] }; const malformed = f.owner.fontLibrary;
+  await assert.rejects(f.library.action('set-sort-order', { order: 'desc' }), /重复条目/);
+  assert.equal(f.owner.fontLibrary, malformed); assert.equal(f.saves.length, saves); assert.equal(f.binaries.get('one' + id), bytes);
+  f.stop();
+});
+
+test('account changes while preparing a management action cannot write either account preferences', async () => {
+  let finish;
+  const f = setup({ resolveNamespace: () => new Promise(resolve => { finish = resolve; }) });
+  f.owner.fontLibrary = normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [{ ...webFont, id: 'saved' }] });
+  const oldOwner = f.owner, original = structuredClone(oldOwner.fontLibrary);
+  const work = f.library.action('set-font-pinned', { id: 'saved', pinned: true });
+  await waitUntil(() => finish); f.replace(); finish('one');
+  await assert.rejects(work, /来源已变化/);
+  assert.deepEqual(oldOwner.fontLibrary, original); assert.deepEqual(f.owner, {}); assert.equal(f.saves.length, 0); f.stop();
+});
+
 test('one selected mixed-font pack restores every selected original and metadata without replacing recipient choices', async () => {
   const source = setup({ webResolver: resolveWebFontSource }), originals = [fontFile(), fontFile(), fontFile()];
   originals.forEach((item, index) => { item.bytes[31] = index + 1; item.file.name = `本地${index + 1}.ttf`; });
@@ -188,6 +237,8 @@ test('one selected mixed-font pack restores every selected original and metadata
   await source.library.action('update-fonts', { ids: [selected[0].id, selected[2].id], folder: '旧版阅读目录' });
   await source.library.action('add-folder', { name: '旧版空目录' });
   await source.library.action('set-preview', { text: '发送方预览，不替换接收方已有文案' });
+  await source.library.action('set-font-pinned', { id: selected[2].id, pinned: true });
+  await source.library.action('set-sort-order', { order: 'desc' });
   const senderBefore = structuredClone(source.owner.fontLibrary), senderSaves = source.saves.length;
   await source.library.action('export', { ids: selected.map(font => font.id).reverse() });
   assert.equal(source.downloads.length, 1, 'all selected fonts share one download');
@@ -201,7 +252,7 @@ test('one selected mixed-font pack restores every selected original and metadata
   assert.deepEqual(packed.localFiles[selected[3].id], originals[1].bytes);
   assert.deepEqual(packed.folders, senderBefore.folders, 'legacy folder metadata remains portable even without folder controls');
   for (const font of excluded) { assert.ok(!packed.records.some(record => record.id === font.id)); assert.ok(!Object.hasOwn(packed.localFiles, font.id)); }
-  for (const key of ['body', 'st', 'shared', 'mode', 'enabled']) assert.equal(Object.hasOwn(rawPack, key), false);
+  for (const key of ['body', 'st', 'shared', 'mode', 'enabled', 'pinnedIds', 'sortOrder']) assert.equal(Object.hasOwn(rawPack, key), false);
   assert.deepEqual(source.owner.fontLibrary, senderBefore); assert.equal(source.saves.length, senderSaves);
 
   for (const mode of ['separate', 'shared']) for (const enabled of [true, false]) {
@@ -216,10 +267,13 @@ test('one selected mixed-font pack restores every selected original and metadata
     await receiver.library.action('set-enabled', { enabled });
     await receiver.library.action('set-preview', { text: '接收方自己的样字' });
     await receiver.library.action('add-folder', { name: '接收方旧目录' });
+    await receiver.library.action('set-font-pinned', { id: st.id, pinned: true });
+    await receiver.library.action('set-font-pinned', { id: body.id, pinned: true });
+    await receiver.library.action('set-sort-order', { order: mode === 'shared' ? 'desc' : 'asc' });
     const before = structuredClone(receiver.owner.fontLibrary), saves = receiver.saves.length;
     await receiver.library.action('import', { file: packFile(packedText) });
     const after = receiver.owner.fontLibrary;
-    for (const key of ['body', 'st', 'shared', 'mode', 'enabled', 'previewText']) assert.deepEqual(after[key], before[key], `${mode}/${enabled}: ${key}`);
+    for (const key of ['body', 'st', 'shared', 'mode', 'enabled', 'previewText', 'pinnedIds', 'sortOrder']) assert.deepEqual(after[key], before[key], `${mode}/${enabled}: ${key}`);
     assert.deepEqual(after.fonts.slice(0, before.fonts.length), before.fonts);
     assert.deepEqual(after.fonts.slice(before.fonts.length), expected);
     assert.deepEqual(after.folders, [...before.folders, ...packed.folders]);

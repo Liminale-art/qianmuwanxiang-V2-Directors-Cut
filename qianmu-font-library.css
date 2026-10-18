@@ -55,19 +55,33 @@
 .qm-font-library .qm-font-bulk-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
 .qm-font-library .qm-font-bulk-actions>span { margin-left:auto; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
 .qm-font-library .qm-font-bulk-editor { display:flex; align-items:end; gap:8px; }
-.qm-font-library .qm-font-bulk-editor>label { display:flex; flex-direction:column; flex:1; gap:6px; min-width:0; }
-.qm-font-library .qm-font-list { display:flex; flex-direction:column; gap:8px; }
+.qm-font-library .qm-font-bulk-editor>.qm-font-bulk-field { display:flex; flex-direction:column; flex:1; gap:6px; min-width:0; }
+.qm-font-library .qm-font-list { display:flex; flex-direction:column; gap:6px; }
+.qm-font-window .qm-font-tag-editor { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.qm-font-window .qm-font-tag-input { display:flex; align-items:center; gap:5px; min-width:0; }
+.qm-font-window .qm-font-tag-input>input { flex:1; min-width:0; }
+#story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-tag-input>.qm-font-icon { width:28px; height:28px; min-width:28px; min-height:28px; background:none !important; border:0 !important; box-shadow:none !important; }
+.qm-font-window .qm-font-tag-options { display:flex; flex-wrap:wrap; align-content:start; gap:5px; min-width:0; max-height:160px; overflow:auto; padding:8px; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,9px); background:var(--sd-glass-weak); overscroll-behavior:contain; }
+#story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-tag-choice { flex:0 1 auto; min-width:0; max-width:100%; min-height:28px; margin:0; padding:4px 7px !important; color:var(--sd-text); font-size:12px !important; line-height:1.4; white-space:normal; overflow-wrap:anywhere; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,6px); background:var(--sd-card); box-shadow:none; cursor:pointer; }
+#story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-tag-choice[aria-pressed="true"] { border-color:var(--sd-accent); background:color-mix(in srgb,var(--sd-accent) 15%,var(--sd-card)); }
+.qm-font-window .qm-font-tag-choice:disabled { opacity:.45; cursor:default; }
+.qm-font-window .qm-font-tag-choice:focus-visible { outline:2px solid var(--sd-accent); outline-offset:1px; }
+.qm-font-window .qm-font-tag-empty { margin:0; color:var(--sd-muted); font-size:12px; line-height:1.5; }
 .qm-font-library .qm-font-card { position:relative; display:flex; flex-direction:column; gap:6px; min-width:0; margin:0; }
 .qm-font-library .qm-font-card.is-selecting { cursor:pointer; }
-.qm-font-library .qm-font-card:has([data-font-select]:checked) { outline:1px solid var(--sd-accent); outline-offset:-1px; }
+#story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-card.is-selected { background:color-mix(in srgb,var(--sd-accent) 13%,var(--sd-card)) !important; border-color:var(--sd-accent) !important; outline:1px solid var(--sd-accent); outline-offset:-1px; }
+.qm-font-library .qm-font-card.is-selecting:focus-visible { outline:2px solid var(--sd-accent); outline-offset:2px; }
 .qm-font-library .qm-font-card-head { display:flex; justify-content:space-between; align-items:center; gap:6px; }
 .qm-font-library .qm-font-name { display:flex; flex:1 1 0; align-items:center; gap:8px; min-width:0; }
 .qm-font-library .qm-font-name>strong { min-width:0; font-size:12px !important; font-weight:400 !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.qm-font-library .qm-font-pin-mark { display:inline-flex; align-items:center; flex:none; color:var(--sd-accent); }
+.qm-font-library .qm-font-pin-mark>.qm-glyph-icon { font-size:12px; }
+#story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-card-tools .qm-font-icon.is-pinned { color:var(--sd-accent) !important; }
 .qm-font-library .qm-font-card-tools { display:flex; flex:0 0 auto; align-items:center; gap:3px; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window :is(.qm-font-card-tools,.qm-font-field-head,.qm-font-rename-pop) .qm-font-icon { width:28px; height:28px; min-width:28px; min-height:28px; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window :is(.qm-font-card-tools,.qm-font-rename-pop) .qm-font-icon { background:none !important; border:0 !important; box-shadow:none !important; }
-.qm-font-library :is(.qm-font-style-pick,.qm-font-size-pick,.qm-font-apply-pick) { position:relative; }
-.qm-font-library :is(.qm-font-style-pick,.qm-font-size-pick,.qm-font-apply-pick)>select { position:absolute; inset:0; width:100%; height:100%; min-height:0; opacity:0; padding:0; cursor:pointer; }
+.qm-font-library :is(.qm-font-style-pick,.qm-font-size-pick,.qm-font-sort-pick,.qm-font-apply-pick) { position:relative; }
+.qm-font-library :is(.qm-font-style-pick,.qm-font-size-pick,.qm-font-sort-pick,.qm-font-apply-pick)>select { position:absolute; inset:0; width:100%; height:100%; min-height:0; opacity:0; padding:0; cursor:pointer; }
 .qm-font-library .qm-font-weight-pick { position:static; }
 .qm-font-library .qm-font-weight-pop { position:absolute; top:44px; right:8px; z-index:35; display:flex; align-items:center; gap:9px; width:min(220px,calc(100% - 16px)); padding:12px; border:1px solid var(--sd-border); border-radius:var(--qm-card-radius,12px); background:var(--sd-folder-head,var(--sd-card)); box-shadow:0 8px 28px #0003; }
 .qm-font-library .qm-font-weight-pop input { min-width:0; width:100%; accent-color:var(--sd-accent); }
@@ -86,6 +100,7 @@
 .qm-font-library .qm-font-load-state { color:var(--sd-muted); font-size:var(--qm-type-caption,11px); line-height:1.5; overflow-wrap:anywhere; }
 .qm-font-library .qm-font-load-state:empty { display:none; }
 .qm-font-library .qm-font-pagination { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
+.qm-font-library .qm-font-page-end { display:flex; align-items:center; gap:4px; }
 .qm-font-library .qm-font-empty { margin:20px 0; text-align:center; }
 .qm-font-library .qm-font-status { margin:0; padding:8px 10px; border:1px solid var(--sd-border); border-radius:var(--qm-card-radius,8px); font-size:var(--qm-type-caption,11px); line-height:1.5; overflow-wrap:anywhere; }
 .qm-font-library .qm-font-status.is-error { border-color:color-mix(in srgb,#b86b70 50%,var(--sd-border)); }
@@ -100,7 +115,7 @@
 .qm-font-window .qm-font-local-file { display:flex; flex-direction:column; gap:8px; min-width:0; }
 .qm-font-window .qm-font-local-file+.qm-font-local-file { border-top:1px solid var(--sd-hairline); padding-top:12px; margin-top:12px; }
 .qm-font-window .qm-font-local-file>p { margin:0; color:var(--sd-muted); overflow-wrap:anywhere; }
-.qm-font-window .qm-font-local-file>label { display:flex; flex-direction:column; gap:6px; margin:0; min-width:0; }
+.qm-font-window .qm-font-local-file>:is(label,.qm-font-local-tag-field) { display:flex; flex-direction:column; gap:6px; margin:0; min-width:0; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-local-dialog input { width:100%; min-width:0; min-height:36px; padding:7px 10px; margin:0; border:1px solid var(--sd-border); border-radius:var(--qm-button-radius,9px); color:var(--sd-text); background:var(--sd-input-bg); box-shadow:none; font-size:12px !important; }
 .qm-font-window .qm-font-local-dialog>footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; flex:none; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-local-dialog>footer>button { min-width:0; margin:0; }
