@@ -56,7 +56,7 @@ test('Chinese subsets and variable descriptors are preserved, same-family faces 
     assert.equal(records.length, 1); assert.equal(records[0].faces.length, 2);
     assert.equal(records[0].faces[0].weight, '100 900'); assert.equal(records[0].faces[0].style, 'oblique -10deg 10deg');
     assert.equal(records[0].faces[0].stretch, '80% 120%'); assert.equal(records[0].faces[1].unicodeRange, 'U+4E00-9FFF, U+3000-303f');
-    assert.equal(records[0].source.input, '内嵌字体样式');
+    assert.equal(records[0].source.input, input);
 });
 
 test('quoted CSS braces/semicolons, comments and CSS escapes do not break parsing', () => {
@@ -82,14 +82,44 @@ test('stylesheet import resolves relative paths, credentials omitted, cycles ter
 test('stylesheet redirects provide the base for relative font files', async () => {
     const result = await resolveWebFontSource('https://fonts.example/start', { fetchImpl: async () => response(css('../final.woff2'), 'https://cdn.example/css/a.css') });
     assert.equal(result[0].faces[0].urls[0].url, 'https://cdn.example/final.woff2');
+    assert.deepEqual(result[0].source, { kind: 'web', input: 'https://fonts.example/start', url: 'https://fonts.example/start' });
 });
 
-test('link/style snippets extract font sources only and decode URL entities', async () => {
+test('link/style snippets retain inert original edit text but extract only font faces and decode URL entities', async () => {
     const calls = [];
-    const result = await resolveWebFontSource(`<link rel="preconnect" href="https://ignored.example"><link rel='stylesheet' href='https://fonts.example/css?family=A&amp;display=swap'><script>alert(1)</script>
-        <style>body{color:red}${css('https://fonts.example/local.woff2')}</style>`, { fetchImpl: async (url) => { calls.push(url); return response(css('/remote.woff2'), url); } });
+    const input = `<link rel="preconnect" href="https://ignored.example"><link rel='stylesheet' href='https://fonts.example/css?family=A&amp;display=swap'><script>alert(1)</script>
+        <style>body{color:red}${css('https://fonts.example/local.woff2')}</style>`;
+    const result = await resolveWebFontSource(input, { fetchImpl: async (url) => { calls.push(url); return response(css('/remote.woff2'), url); } });
     assert.deepEqual(calls, ['https://fonts.example/css?family=A&display=swap']); assert.equal(result[0].faces.length, 2);
-    assert.doesNotMatch(JSON.stringify(result), /alert|color:red/u);
+    assert.equal(result[0].source.input, input);
+    assert.doesNotMatch(JSON.stringify(result[0].faces), /alert|color:red|ignored/u);
+    assert.deepEqual(result[0].faces.map(face => face.urls[0].url), ['https://fonts.example/local.woff2', 'https://fonts.example/remote.woff2']);
+});
+
+test('short import plus body input stays concise through validation and packs without losing remote subsets', async () => {
+    const input = '@import url("https://fonts.example/578/main/result.css");\nbody { font-family: "春日字体"; font-weight: normal; }';
+    const remote = Array.from({ length: 200 }, (_, index) => css(`./${index}.woff2`, `font-weight: 100 900; font-style: ${index % 2 ? 'italic' : 'normal'}; unicode-range: U+${(0x4e00 + index).toString(16)};`)).join('\n');
+    const [font] = await resolveWebFontSource(input, { fetchImpl: async () => response(remote, 'https://fonts.example/578/main/result.css') });
+    assert.equal(font.source.input, input); assert.equal(font.faces.length, 200);
+    assert.equal(font.faces[0].urls[0].url, 'https://fonts.example/578/main/0.woff2');
+    assert.equal(font.faces.at(-1).unicodeRange, 'U+4ec7'); assert.equal(font.faces.at(-1).style, 'italic');
+    assert.ok(font.faces.every(face => face.weight === '100 900'));
+    font.id = 'imported-subsets';
+    assert.deepEqual(validateFontRecord(font), font);
+    assert.deepEqual(importFontPack(exportFontPack([font])).records[0], font);
+    assert.doesNotMatch(JSON.stringify(font.faces), /body|font-family/u);
+});
+
+test('overlong original CSS retains full validated faces without overfilling source metadata or guessing an origin', async () => {
+    const declarations = css('https://fonts.example/a.woff2', 'unicode-range: U+4e00;') + css('https://fonts.example/b.woff2', 'font-weight: 700; unicode-range: U+4e01;');
+    const input = '/*' + 'x'.repeat(8192) + '*/' + declarations;
+    const [font] = await resolveWebFontSource(input);
+    assert.deepEqual(font.source, { kind: 'web', input: '内嵌字体样式' });
+    assert.deepEqual(font.faces, parseFontStylesheet(declarations).faces.map(item => item.face));
+    assert.equal(validateFontRecord(font).faces.length, 2);
+    for (const invalid of ['', ' ', null, {}, declarations + '\u0001', '@font-face {font-family:"unclosed']) {
+        await assert.rejects(resolveWebFontSource(invalid));
+    }
 });
 
 test('nested media/supports/layer font faces are supported without applying conditional page CSS', () => {

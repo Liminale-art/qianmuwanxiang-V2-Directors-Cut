@@ -28,7 +28,7 @@ test('classic notification uses the supplied tone geometry without muted paths; 
   assert.equal(suppliedArtwork('maximize-4','twotone'), null);
 });
 test('font-management artwork is the exact selected official linear subset; application state stays local', () => {
-  assert.deepEqual(Object.keys(officialSelectedIcons), ['document-filter/outline']);
+  assert.deepEqual(Object.keys(officialSelectedIcons).sort(), ['document-filter/outline', 'smallcaps/bold', 'smallcaps/outline', 'smallcaps/twotone']);
   const svg = officialSelectedIcons['document-filter/outline'];
   assert.deepEqual(Object.keys(ICONSAX_ICON_MARKUP['document-filter']), ['outline']);
   assert.equal(ICONSAX_ICON_MARKUP['document-filter'].outline, normalizeIcon(svg));
@@ -50,6 +50,19 @@ test('paper prediction/world map use classic geometry while glass keeps its own 
     assert.equal(rendered.length,3);
     for (const [,variant,body] of rendered) assert.equal(body,ICONSAX_ICON_MARKUP[name][variant==='bold'?'outline':variant]);
   }
+});
+test('font preview uses the exact smallcaps family without replacing generic text icons', () => {
+  assert.equal(ICONSAX_GLYPH_NAMES['font-preview-size'], 'smallcaps');
+  const rendered = parts(qianmuIconMarkup('font-preview-size'));
+  assert.equal(rendered.length, 3);
+  for (const [, variant, body] of rendered) {
+    const svg = officialSelectedIcons[`smallcaps/${variant}`];
+    assert.equal(body, normalizeIcon(svg));
+    assert.equal(body, ICONSAX_ICON_MARKUP.smallcaps[variant]);
+    assert.deepEqual([...body.matchAll(/ d="([^"]+)"/g)].map(m => m[1]), [...svg.matchAll(/ d="([^"]+)"/g)].map(m => m[1]));
+    assert.doesNotMatch(body, /https?:|clip-path|<defs|href=/i);
+  }
+  assert.equal(QIANMU_FA_ICON_MAP['fa-font'], 'qm-regular-text-aa');
 });
 test('only the paper entrance heart is solid, independent of floor collection state', async () => {
   const rendered=parts(qianmuIconMarkup('bookmarks'));

@@ -22,7 +22,7 @@ export const glyphs = {
   eye:'eye', 'eye-slash':'eye-slash', feather:'pen-tool', 'file-arrow-down':'document-download',
   'file-arrow-up':'document-upload', 'film-slate':'video-play', 'film-strip':'video-horizontal', flask:'lamp-charge',
   'floor-tools':'align-bottom', 'floppy-disk':'save-2', focus:'notification', folder:'folder', 'folder-minus':'folder-minus',
-  'font-manage':'document-filter', 'font-apply':'tick-square', 'font-applied':'tick-square',
+  'font-manage':'document-filter', 'font-apply':'tick-square', 'font-applied':'tick-square', 'font-preview-size':'smallcaps',
   'folder-plus':'folder-add', funnel:'filter', gauge:'speedometer', gear:'setting-2', 'globe-hemisphere-east':'global',
   graph:'hierarchy-2', headphones:'headphone', highlighter:'brush', image:'gallery', 'image-regenerate':'refresh-arrow-02',
   images:'gallery', info:'info-circle', lightbulb:'lamp-on', link:'link', list:'menu', 'list-bullets':'task',

@@ -82,6 +82,7 @@ export const ICONSAX_GLYPH_NAMES = Object.freeze({
   "font-manage": "document-filter",
   "font-apply": "tick-square",
   "font-applied": "tick-square",
+  "font-preview-size": "smallcaps",
   "folder-plus": "folder-add",
   "funnel": "filter",
   "gauge": "speedometer",
@@ -710,6 +711,11 @@ export const ICONSAX_ICON_MARKUP = Object.freeze({
     "bold": "<g><path d=\"M18.54 4.11984L13.04 2.05984C12.47 1.84984 11.54 1.84984 10.97 2.05984L5.47005 4.11984C4.41005 4.51984 3.55005 5.75984 3.55005 6.88984V14.9898C3.55005 15.7998 4.08005 16.8698 4.73005 17.3498L10.23 21.4598C11.2 22.1898 12.79 22.1898 13.76 21.4598L19.26 17.3498C19.91 16.8598 20.4401 15.7998 20.4401 14.9898V6.88984C20.4501 5.75984 19.59 4.51984 18.54 4.11984ZM15.48 9.71984L11.18 14.0198C11.03 14.1698 10.84 14.2398 10.65 14.2398C10.46 14.2398 10.27 14.1698 10.12 14.0198L8.52005 12.3998C8.23005 12.1098 8.23005 11.6298 8.52005 11.3398C8.81005 11.0498 9.29005 11.0498 9.58005 11.3398L10.66 12.4198L14.43 8.64984C14.72 8.35984 15.2 8.35984 15.49 8.64984C15.78 8.93984 15.78 9.42984 15.48 9.71984Z\" fill=\"currentColor\"/></g>",
     "twotone": "<g><path d=\"M10.4902 2.23055L5.50016 4.11055C4.35016 4.54055 3.41016 5.90055 3.41016 7.12055V14.5505C3.41016 15.7305 4.19016 17.2805 5.14016 17.9905L9.44016 21.2005C10.8502 22.2605 13.1702 22.2605 14.5802 21.2005L18.8802 17.9905C19.8302 17.2805 20.6102 15.7305 20.6102 14.5505V7.12055C20.6102 5.89055 19.6702 4.53055 18.5202 4.10055L13.5302 2.23055C12.6802 1.92055 11.3202 1.92055 10.4902 2.23055Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path opacity=\"0.4\" d=\"M9.0498 11.8697L10.6598 13.4797L14.9598 9.17969\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>"
   },
+  "smallcaps": {
+    "outline": "<g><path d=\"M1.98999 5.93031V4.42031C1.98999 3.40031 2.81999 2.57031 3.83999 2.57031H16.76C17.78 2.57031 18.61 3.40031 18.61 4.42031V5.93031\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10.3 18.1003V3.32031\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M6.90002 18.0996H12.48\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M13.6801 10.3398H20.6901C21.4201 10.3398 22.0101 10.9298 22.0101 11.6598V12.4598\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M16.08 21.4301V10.8701\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M13.9399 21.4297H18.2199\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>",
+    "bold": "<g><path d=\"M20.95 4.13C20.66 3.71 20.29 3.34 19.87 3.05C18.92 2.36 17.68 2 16.19 2H7.81C7.61 2 7.41 2.01 7.22 2.03C3.94 2.24 2 4.37 2 7.81V16.19C2 17.68 2.36 18.92 3.05 19.87C3.34 20.29 3.71 20.66 4.13 20.95C4.95 21.55 5.99 21.9 7.22 21.98C7.41 21.99 7.61 22 7.81 22H16.19C19.83 22 22 19.83 22 16.19V7.81C22 6.32 21.64 5.08 20.95 4.13ZM11.39 15.88H8.52C8.11 15.88 7.77 15.54 7.77 15.13C7.77 14.72 8.11 14.38 8.52 14.38H9.52V7.91H6.95C6.84 7.91 6.75 8 6.75 8.11V8.89C6.75 9.3 6.41 9.63 6 9.63C5.59 9.63 5.25 9.3 5.25 8.88V8.1C5.25 7.16 6.01 6.4 6.95 6.4H13.59C14.53 6.4 15.29 7.16 15.29 8.1V8.88C15.29 9.29 14.95 9.63 14.54 9.63C14.13 9.63 13.79 9.29 13.79 8.88V8.1C13.79 7.99 13.7 7.9 13.59 7.9H11.02V14.38H11.39C11.8 14.38 12.14 14.72 12.14 15.13C12.14 15.54 11.8 15.88 11.39 15.88ZM18.75 12.23C18.75 12.64 18.41 12.98 18 12.98C17.59 12.98 17.25 12.64 17.25 12.23V11.9H15.7V16.1H16.05C16.46 16.1 16.8 16.44 16.8 16.85C16.8 17.26 16.46 17.6 16.05 17.6H13.85C13.44 17.6 13.1 17.26 13.1 16.85C13.1 16.44 13.44 16.1 13.85 16.1H14.2V11.9H13.72C13.31 11.9 12.97 11.56 12.97 11.15C12.97 10.74 13.31 10.4 13.72 10.4H17.32C18.11 10.4 18.75 11.04 18.75 11.83V12.23Z\" fill=\"currentColor\"/></g>",
+    "twotone": "<g><path d=\"M1.99023 5.93031V4.42031C1.99023 3.40031 2.82023 2.57031 3.84023 2.57031H16.7602C17.7802 2.57031 18.6102 3.40031 18.6102 4.42031V5.93031\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10.2998 18.1003V3.32031\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M6.8999 18.0996H12.4799\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><g opacity=\"0.4\"><path d=\"M13.6797 10.3398H20.6897C21.4197 10.3398 22.0097 10.9298 22.0097 11.6598V12.4598\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M16.0801 21.4301V10.8701\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M13.9395 21.4297H18.2195\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g></g>"
+  },
   "sort": {
     "outline": "<g><path d=\"M3 7H21\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><path d=\"M6 12H18\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><path d=\"M10 17H14\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/></g>",
     "bold": "<g><path d=\"M16.19 2H7.81C4.17 2 2 4.17 2 7.81V16.18C2 19.83 4.17 22 7.81 22H16.18C19.82 22 21.99 19.83 21.99 16.19V7.81C22 4.17 19.83 2 16.19 2ZM13.33 17H10.66C10.25 17 9.91 16.66 9.91 16.25C9.91 15.84 10.25 15.5 10.66 15.5H13.33C13.74 15.5 14.08 15.84 14.08 16.25C14.08 16.66 13.75 17 13.33 17ZM16 12.75H8C7.59 12.75 7.25 12.41 7.25 12C7.25 11.59 7.59 11.25 8 11.25H16C16.41 11.25 16.75 11.59 16.75 12C16.75 12.41 16.41 12.75 16 12.75ZM18 8.5H6C5.59 8.5 5.25 8.16 5.25 7.75C5.25 7.34 5.59 7 6 7H18C18.41 7 18.75 7.34 18.75 7.75C18.75 8.16 18.41 8.5 18 8.5Z\" fill=\"currentColor\"/></g>",
@@ -848,7 +854,7 @@ export const ICONSAX_ICON_MARKUP = Object.freeze({
   }
 });
 
-export const QIANMU_ICON_SYSTEM_VERSION = 'iconsax-free-2026-10-18';
+export const QIANMU_ICON_SYSTEM_VERSION = 'iconsax-free-2026-10-19';
 export const QIANMU_ICON_SYSTEM_NAME = 'Iconsax · 千幕 2.5';
 
 export const QIANMU_SEMANTIC_ICONS = Object.freeze({
@@ -859,6 +865,7 @@ export const QIANMU_SEMANTIC_ICONS = Object.freeze({
   'character-profile': 'qm-signature-character',
   'floor-tools': 'qm-signature-floor-tools',
   'font-manage': 'qm-signature-font-manage',
+  'font-preview-size': 'qm-signature-font-preview-size',
   'font-apply': 'qm-signature-font-apply',
   'font-applied': 'qm-signature-font-applied',
   backstage: 'qm-signature-backstage',

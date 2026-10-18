@@ -28,6 +28,14 @@ async function waitUntil(predicate) {
   }
   assert.fail('Expected asynchronous test checkpoint was not reached');
 }
+async function editableSetup(overrides = {}) {
+  const views = [], entry = { addEventListener(_type, handler) { this.click = handler; }, removeEventListener() {}, focus() {} };
+  const root = { isConnected: true, classList: { add() {}, remove() {} }, querySelector: selector => selector === '[data-font-library]' ? entry : selector === '.sd-floor-shell' ? { appendChild() {} } : null };
+  const f = setup({ document: { baseURI: 'https://st.example/', createElement: () => ({ remove() {}, setAttribute() {} }) },
+    viewFactory: options => { const view = { options, render() {}, setStatus() {}, destroy() {} }; views.push(view); return view; }, ...overrides });
+  f.library.attach(root); entry.click(); await waitUntil(() => views.length === 1);
+  return { ...f, get owner() { return f.owner; }, entries: () => views.at(-1).options.getState().entries };
+}
 test('Web entries use ordinary settings with references only; adding never applies a font', async () => {
   const f = setup(); await f.library.action('add-web', { source: webFont.source.input });
   assert.equal(f.owner.fontLibrary.fonts.length, 1); assert.equal(f.binaries.size, 0);
@@ -269,6 +277,98 @@ test('delete removes only selected entries and resets their assignments', async 
   assert.equal(f.owner.fontLibrary.fonts.length, 0); assert.equal(f.owner.fontLibrary.body.enabled, false); f.stop();
 });
 
+test('single delete skips confirmation and removes only its exact entry and local original', async () => {
+  let confirmations = 0;
+  const f = setup({ confirm: async () => { confirmations++; return false; } });
+  await f.library.action('add-web', { source: webFont.source.input });
+  const first = fontFile(), second = fontFile(); second.bytes[28] = 1;
+  await f.library.action('add-local', { files: [first.file, second.file] });
+  const [web, remove, keep] = structuredClone(f.owner.fontLibrary.fonts), keptBytes = f.binaries.get('one' + keep.id);
+  await f.library.action('apply-font', { target: 'body', fontId: remove.id });
+  await f.library.action('apply-font', { target: 'st', fontId: keep.id });
+  await f.library.action('delete-font', { id: remove.id, ids: [web.id, keep.id] });
+  assert.equal(confirmations, 0); assert.deepEqual(f.owner.fontLibrary.fonts, [web, keep]);
+  assert.equal(f.owner.fontLibrary.body.enabled, false); assert.equal(f.owner.fontLibrary.st.fontId, keep.id);
+  assert.equal(f.binaries.has('one' + remove.id), false); assert.equal(f.binaries.get('one' + keep.id), keptBytes);
+  const original = f.owner.fontLibrary, saves = f.saves.length;
+  for (const id of [undefined, null, '', '../all', {}]) await assert.rejects(f.library.action('delete-font', { id }), /标识无效/);
+  assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves); assert.equal(f.binaries.get('one' + keep.id), keptBytes);
+  f.stop();
+});
+
+test('bulk delete keeps confirmation even for a one-row selection and cancellation preserves original files', async () => {
+  let allowed = false, confirmations = 0;
+  const f = setup({ confirm: async () => { confirmations++; return allowed; } });
+  await f.library.action('add-local', { files: [fontFile().file] });
+  const original = f.owner.fontLibrary, id = original.fonts[0].id, bytes = f.binaries.get('one' + id), saves = f.saves.length;
+  await f.library.action('delete-fonts', { ids: [id] });
+  assert.equal(confirmations, 1); assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves);
+  assert.equal(f.binaries.get('one' + id), bytes);
+  allowed = true; await f.library.action('delete-fonts', { ids: [id] });
+  assert.equal(confirmations, 2); assert.equal(f.owner.fontLibrary.fonts.length, 0); assert.equal(f.binaries.has('one' + id), false);
+  f.stop();
+});
+
+test('import plus body Web editing stays short across repeated edits while preserving every remote face', async () => {
+  const source = '@import url("https://fonts.example/578/main/result.css");\nbody {font-family:"AR PL New Sung";font-weight:normal;}';
+  const remote = Array.from({ length: 200 }, (_, index) => `@font-face {font-family:"AR PL New Sung";src:url("./${index}.woff2");font-weight:100 900;unicode-range:U+${(0x4e00 + index).toString(16)};}`).join('\n');
+  let resolutions = 0, fetches = 0, verifications = 0;
+  const f = await editableSetup({ webResolver: (input, options) => { resolutions++; return resolveWebFontSource(input, { ...options, fetchImpl: async url => { fetches++; return { ok: true, url, headers: { get: () => null }, text: async () => remote }; } }); },
+    runtimeFactory: () => ({ sync: async () => {}, dispose() {}, verifyWebFont: async () => { verifications++; } }) });
+  await f.library.action('add-web', { source });
+  const id = f.owner.fontLibrary.fonts[0].id, faces = structuredClone(f.owner.fontLibrary.fonts[0].faces);
+  assert.equal(faces.length, 200);
+  await f.library.action('apply-font', { target: 'shared', fontId: id, weight: '600' });
+  const applied = structuredClone(f.owner.fontLibrary.shared);
+  for (let index = 0; index < 3; index++) {
+    const entry = f.entries()[0];
+    assert.equal(entry.editableSource, source); assert.equal(entry.editableSourceMissing, false);
+    await f.library.action('edit-web', { id, source: entry.editableSource, name: `新名称${index}`, tags: ['正文'] });
+    assert.deepEqual(f.owner.fontLibrary.fonts[0].faces, faces);
+    assert.equal(f.owner.fontLibrary.fonts[0].source.input, source);
+  }
+  assert.equal(resolutions, 1); assert.equal(fetches, 1); assert.equal(verifications, 0);
+  assert.deepEqual(f.owner.fontLibrary.shared, applied);
+  await f.library.action('export'); const pack = importFontPack(await f.downloads[0][0].text());
+  assert.equal(pack.records[0].source.input, source); assert.deepEqual(pack.records[0].faces, faces);
+  f.stop();
+});
+
+test('legacy inline source stays blank; empty edits retain validated faces and do not guess or fetch origins', async () => {
+  let resolutions = 0, verifications = 0;
+  const f = await editableSetup({ webResolver: (...args) => { resolutions++; return resolveWebFontSource(...args); },
+    runtimeFactory: () => ({ sync: async () => {}, dispose() {}, verifyWebFont: async () => { verifications++; } }) });
+  await f.library.action('add-local', { files: [fontFile().file] });
+  const local = structuredClone(f.owner.fontLibrary.fonts[0]), bytes = f.binaries.get('one' + local.id);
+  const faces = Array.from({ length: 200 }, (_, index) => ({ urls: [{ url: `https://fonts.example/${index}.woff2`, format: 'woff2' }], weight: '100 900', style: 'normal', unicodeRange: `U+${(0x4e00 + index).toString(16)}` }));
+  const legacy = { ...webFont, id: 'legacy', name: '旧字体', folder: '兼容旧目录', tags: ['旧标签'], source: { kind: 'web', input: '内嵌字体样式' }, faces };
+  f.owner.fontLibrary = normalizeFontLibrary({ ...f.owner.fontLibrary, fonts: [legacy, local] });
+  await f.library.action('apply-font', { target: 'body', fontId: legacy.id, weight: '700' });
+  const applied = structuredClone(f.owner.fontLibrary.body);
+  for (const source of ['', ' \n ']) {
+    const entry = f.entries()[0]; assert.equal(entry.editableSource, ''); assert.equal(entry.editableSourceMissing, true);
+    await f.library.action('edit-web', { id: legacy.id, source, name: '只改名字', tags: ['新标签'] });
+    assert.deepEqual(f.owner.fontLibrary.fonts[0], { ...legacy, name: '只改名字', tags: ['新标签'] });
+  }
+  assert.equal(resolutions, 0); assert.equal(verifications, 0); assert.deepEqual(f.owner.fontLibrary.body, applied);
+  assert.deepEqual(f.owner.fontLibrary.fonts[1], local); assert.equal(f.binaries.get('one' + local.id), bytes);
+  const original = f.owner.fontLibrary, saves = f.saves.length;
+  await assert.rejects(f.library.action('add-web', { source: '' }), /填写/);
+  await assert.rejects(f.library.action('edit-web', { id: legacy.id, source: '@font-face {font-family:"broken', tags: [] }));
+  assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves); assert.equal(verifications, 0);
+  f.stop();
+});
+
+test('stylesheet URLs remain the editable source instead of expanded subset declarations', async () => {
+  let resolutions = 0;
+  const f = await editableSetup({ webResolver: (source, options) => { resolutions++; return resolveWebFontSource(source, { ...options,
+    fetchImpl: async () => ({ ok: true, url: 'https://cdn.example/font.css', headers: { get: () => null }, text: async () => '@font-face {font-family:"URL font";src:url("./font.woff2");}' }) }); } });
+  const source = 'https://fonts.example/styles.css'; await f.library.action('add-web', { source });
+  const entry = f.entries()[0]; assert.equal(entry.editableSource, source); assert.equal(entry.editableSourceMissing, false);
+  await f.library.action('edit-web', { id: entry.id, source: entry.editableSource, name: '仅重命名' });
+  assert.equal(resolutions, 1); assert.equal(f.owner.fontLibrary.fonts[0].source.url, source); f.stop();
+});
+
 test('adding reveals the first new entry, while duplicate addition never misreports a new font', async () => {
   const f = setup(); const first = await f.library.action('add-web', { source: webFont.source.input });
   assert.equal(first.revealFontId, f.owner.fontLibrary.fonts[0].id);
@@ -484,11 +584,9 @@ test('library return restores only its same-account view session and release can
   entry.click(); await waitUntil(() => views.length === 1);
   assert.equal(views[0].options.getState().defaultPreviewSize, 19);
   f.owner.fontLibrary = normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [{ ...webFont, id: 'inline', name: '含"引号', source: { kind: 'web', input: '内嵌字体样式' } }] });
-  const editable = views[0].options.getState().entries[0].editableSource;
-  const reparsed = await resolveWebFontSource(editable);
-  assert.deepEqual(reparsed[0].faces, webFont.faces);
-  assert.equal(reparsed[0].name, '含"引号');
-  assert.match(editable, /^@font-face/); assert.doesNotMatch(editable, /body\s*\{/);
+  const editable = views[0].options.getState().entries[0];
+  assert.equal(editable.editableSource, ''); assert.equal(editable.editableSourceMissing, true);
+  assert.deepEqual(editable.faces, webFont.faces); assert.equal(editable.name, '含"引号');
   fontSize = 22;
   assert.equal(views[0].options.getState().defaultPreviewSize, 22);
   fontSize = NaN;
@@ -501,5 +599,21 @@ test('library return restores only its same-account view session and release can
   assert.equal(views[1].destroyed, true); assert.equal(classes.has('qm-font-library-open'), false);
   entry.click(); await waitUntil(() => views.length === 3);
   assert.equal(views[2].options.initialSession, null); assert.equal(f.saves.length, 0);
+  f.stop();
+});
+
+test('a successful closed legacy edit clears only its matching draft including the missing-source hint', async () => {
+  const views = [], entry = { addEventListener(_type, handler) { this.click = handler; }, removeEventListener() {}, focus() {} };
+  const root = { isConnected: true, classList: { add() {}, remove() {} }, querySelector: selector => selector === '[data-font-library]' ? entry : selector === '.sd-floor-shell' ? { appendChild() {} } : null };
+  const snapshot = { query: '保留筛选', scrollTop: 80, webSource: '', webName: '新名字', webTags: '中文', editWebId: 'legacy', editWebSourceMissing: true };
+  const f = setup({ document: { baseURI: 'https://st.example/', createElement: () => ({ remove() {}, setAttribute() {} }) },
+    viewFactory: options => { const view = { options, captureSession: () => structuredClone(snapshot), destroy() {} }; views.push(view); return view; } });
+  f.owner.fontLibrary = normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [{ ...webFont, id: 'legacy', source: { kind: 'web', input: '内嵌字体样式' } }] });
+  f.library.attach(root); entry.click(); await waitUntil(() => views.length === 1);
+  const pending = f.library.action('edit-web', { id: 'legacy', source: '', name: '新名字', tags: ['中文'] });
+  views[0].options.onBack(); await pending;
+  entry.click(); await waitUntil(() => views.length === 2);
+  assert.deepEqual(views[1].options.initialSession, { ...snapshot, webSource: '', webName: '', webTags: '', editWebId: '', editWebSourceMissing: false });
+  assert.equal(f.owner.fontLibrary.fonts[0].name, '新名字'); assert.deepEqual(f.owner.fontLibrary.fonts[0].faces, webFont.faces);
   f.stop();
 });

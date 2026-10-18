@@ -1,4 +1,4 @@
-/** Font sources only: no page styles, settings writes or persistent binary storage. */
+/** Only validated font faces reach the runtime. Short original inputs remain inert edit metadata. */
 export const FONT_SOURCE_LIMITS = Object.freeze({
     fontBytes: 32 * 1024 * 1024,
     totalLocalBytes: 96 * 1024 * 1024,
@@ -227,6 +227,9 @@ function htmlDecode(value) {
 function inputSource(input, baseUrl) {
     const value = boundedText(input, FONT_SOURCE_LIMITS.cssBytes, '字体来源');
     if (!value) fail('请填写字体网址或字体样式');
+    // Use the existing bounded metadata field, not the expanded remote CSS.
+    // Long pasted styles still retain every parsed face; no origin is guessed.
+    const remembered = value.length <= 8192 ? value : '内嵌字体样式';
     if (/^(?:https?:\/\/|\/\/)/iu.test(value) && !/[\r\n<>]/u.test(value)) {
         return { url: normalizeFontUrl(value, baseUrl), input: value };
     }
@@ -239,9 +242,9 @@ function inputSource(input, baseUrl) {
             if (attributes.href && /(?:^|\s)stylesheet(?:\s|$)/iu.test(attributes.rel || '')) imports.push(normalizeFontUrl(attributes.href, baseUrl));
         }
         if (!styles.length && !imports.length) fail('请提供字体文件链接、字体样式或 stylesheet 引用');
-        return { css: styles.join('\n'), imports, input: !styles.length && imports.length === 1 ? imports[0] : '内嵌字体样式' };
+        return { css: styles.join('\n'), imports, input: !styles.length && imports.length === 1 ? imports[0] : remembered };
     }
-    return { css: value, input: '内嵌字体样式' };
+    return { css: value, input: remembered };
 }
 
 function checkAbort(signal) {

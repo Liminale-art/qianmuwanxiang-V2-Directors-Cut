@@ -1,6 +1,6 @@
 import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.468';
-import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.469';
+import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js?v=1.59.470';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.470';
 import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.468';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
 
@@ -10,14 +10,13 @@ function fontInputName(value) {
   return value.trim();
 }
 
-// Reconstruct only validated font declarations for historical inline sources.
-// Never retain or re-execute unrelated page CSS supplied alongside a font.
+// Original input is display/edit data only. Legacy inline records do not retain
+// their origin: leave the field empty rather than guessing a URL or expanding
+// hundreds of already-validated font fragments back into the editor.
 function editableWebSource(font) {
   if (font.source.kind !== 'web') return '';
   if (font.source.url) return font.source.url;
-  if (/^https?:\/\//i.test(font.source.input)) return font.source.input;
-  const quote = value => '"' + String(value).replace(/["\\\r\n\f]/g, char => `\\${char.codePointAt(0).toString(16)} `) + '"';
-  return font.faces.map(face => `@font-face {\n  font-family: ${quote(font.name)};\n  src: ${face.urls.map(source => `url(${quote(source.url)})${source.format ? ` format(${quote(source.format)})` : ''}`).join(', ')};\n  font-weight: ${face.weight || '400'};\n  font-style: ${face.style || 'normal'};${face.stretch ? `\n  font-stretch: ${face.stretch};` : ''}${face.unicodeRange ? `\n  unicode-range: ${face.unicodeRange};` : ''}\n}`).join('\n\n');
+  return font.source.input && font.source.input !== '内嵌字体样式' ? font.source.input : '';
 }
 
 // Web references live in the ordinary ST extension settings. Uploaded originals
@@ -83,7 +82,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   function uiState() {
     const state = read(), requestedSize = Number(getPreviewFontSize());
     const defaultPreviewSize = Number.isFinite(requestedSize) && requestedSize >= 1 && requestedSize <= 200 ? requestedSize : 18;
-    return { ...state, defaultPreviewSize, entries: state.fonts.map(font => ({ ...font, sourceType: font.source.kind, editableSource: editableWebSource(font), variantKnown: font.source.variantKnown,
+    return { ...state, defaultPreviewSize, entries: state.fonts.map(font => ({ ...font, sourceType: font.source.kind, editableSource: editableWebSource(font), editableSourceMissing: font.source.kind === 'web' && !editableWebSource(font), variantKnown: font.source.variantKnown,
       weights: [...new Set(font.faces.map(face => face.weight || '400'))],
       styles: [...new Set(font.faces.map(face => face.style || 'normal'))], status: statuses.get(font.id)?.status === 'error' ? statuses.get(font.id).message : '' })) };
   }
@@ -114,7 +113,8 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         const aborter = webAbort;
         let records;
         try {
-          records = originalFont && payload.source === editableWebSource(originalFont)
+          const editable = originalFont && editableWebSource(originalFont);
+          records = originalFont && (payload.source === editable || (!editable && typeof payload.source === 'string' && !payload.source.trim()))
             ? [{ ...originalFont, name: name || originalFont.name }]
             : await webResolver(payload.source, { name, baseUrl: document.baseURI, signal: aborter.signal });
         }
@@ -192,20 +192,20 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         view?.setStatus('字体包已导出'); return;
       } else {
         if (type === 'delete-fonts' && !await confirm('移除字体', '移除选中的字体及本机原件？正在使用的字体将恢复原生字体。')) return;
-        guard(); next = updateFontLibrary(read(), type, payload);
+        guard(); next = updateFontLibrary(read(), type === 'delete-font' ? 'delete-fonts' : type, type === 'delete-font' ? { ids: [payload.id] } : payload);
       }
       guard(); const previous = read(); commit(next, token);
       if (type === 'add-web' || type === 'edit-web') {
         const draftTags = typeof viewSession?.webTags === 'string' ? [...new Set(viewSession.webTags.split(/[,，]/).map(value => value.trim()).filter(Boolean))] : [];
         if (viewSession?.webSource === payload.source && viewSession.webName === (payload.name || '') && (viewSession.editWebId || '') === (editedFontId || '') && JSON.stringify(draftTags) === JSON.stringify(payload.tags || [])) {
-          viewSession = { ...viewSession, webSource: '', webName: '', webTags: '', editWebId: '' };
+          viewSession = { ...viewSession, webSource: '', webName: '', webTags: '', editWebId: '', editWebSourceMissing: false };
         }
         view?.clearWebDraft?.(payload);
       }
       if (type === 'update-fonts' && typeof payload.name === 'string' && payload.ids?.length === 1 && viewSession?.renameId === payload.ids[0] && viewSession.renameDraft === payload.name) {
         viewSession = { ...viewSession, renameId: '', renameDraft: '' };
       }
-      if (type === 'delete-fonts') {
+      if (type === 'delete-fonts' || type === 'delete-font') {
         const deleted = previous.fonts.filter(font => font.source.kind === 'local' && !next.fonts.some(item => item.id === font.id));
         try { await store.delete(deleted.map(font => font.id)); } catch { view?.setStatus('已移除条目，本机原件清理未完成', { error: true }); }
       }
